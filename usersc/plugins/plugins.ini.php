@@ -1,0 +1,22 @@
+;<?php die();?>
+demo = 2
+hooker = 1
+userinfo = 2
+forms = 0
+superlogger = 0
+charts = 0
+community_functions = 0
+mysql = 2
+performancechecker = 2
+getsettings = 1
+debugmodal = 2
+cms = 2
+recaptcha = 0
+spiceinspector = 1
+autoassignun = 1
+quickcrud = 0
+meekro = 0
+reports = 2
+passwordless = 0
+sendinblue = 1
+sendinblue.mod = 2
