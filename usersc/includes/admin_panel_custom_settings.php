@@ -59,71 +59,14 @@
             <div class="col-md-12">
                 <div class="card no-padding">
                     <div class="card-header">
-                        <h3>JQuery CDN </h3>
+                        <h3>JQuery UI CDN</h3>
                     </div>
                     <div class="card-body">
-                        <a style='text-decoration: underline;' rel="noopener noreferrer" target='_blank' href='https://code.jquery.com'>JQUERY</a><br>
+                        <a style='text-decoration: underline;' rel="noopener noreferrer" target='_blank' href='https://jqueryui.com'>jQuery UI</a><br>
+                        <small class="form-text text-muted">Used by car edit forms for enhanced date picker functionality.</small>
                         <div class="form-group">
-                            <label for='elan_jquery_cdn'>JQuery CDN URL</label>
-                            <textarea rows="4" class="form-control ajxtxt" data-desc="JQuery CDN URL" name="elan_jquery_cdn" id="elan_jquery_cdn"><?= $settings->elan_jquery_cdn; ?></textarea>
-                            <small id="fileHelp" class="form-text text-muted">Do not select SLIM version.</small>
-                        </div>
-                    </div>
-                    <div class="form-group">
-                        <label for='elan_jquery_cdn'>JQuery UI CDN URL</label>
-                        <textarea rows="4" class="form-control ajxtxt" data-desc="JQuery UI CDN URL" name="elan_jquery_ui_cdn" id="elan_jquery_ui_cdn"><?= $settings->elan_jquery_ui_cdn; ?></textarea>
-                        <small id="fileHelp" class="form-text text-muted">Do not select SLIM version.</small>
-                    </div>
-                </div>
-
-                <div class="card no-padding">
-                    <div class="card-header">
-                        <h3>Bootstrap</h3>
-                    </div>
-                    <div class="card-body">
-                        <div class="form-group">
-                            <a style='text-decoration: underline;' rel="noopener noreferrer" target='_blank' href='https://getbootstrap.com'>Get Bootstrap</a><br>
-                            <label for='elan_bootstrap_js_cdn'>Bootstrap JS CDN URL</label>
-                            <input type="text" class="form-control ajxtxt" data-desc="Bootstrap JS CDN URL" name="elan_bootstrap_js_cdn" id="elan_bootstrap_js_cdn" value="<?= $settings->elan_bootstrap_js_cdn; ?>">
-                        </div>
-                        <div class="form-group">
-                            <label for='elan_bootstrap_css_cdn'>Bootstrap CSS CDN URL</label>
-                            <input type="text" class="form-control ajxtxt" data-desc="Bootstrap CSS CDN URL" name="elan_bootstrap_css_cdn" id="elan_bootstrap_css_cdn" value="<?= $settings->elan_bootstrap_css_cdn; ?>">
-                        </div>
-
-                        <div class="form-group">
-                            <label for='elan_popper_cdn'>Popper CDN URL</label>
-                            <input type="text" class="form-control ajxtxt" data-desc="Popper CDN URL" name="elan_popper_cdn" id="elan_popper_cdn" value="<?= $settings->elan_popper_cdn; ?>">
-                        </div>
-                    </div>
-                </div>
-
-                <div class="card no-padding">
-                    <div class="card-header">
-                        <h3>Font Awesome</h3>
-                    </div>
-                    <div class="card-body">
-
-                        <a style='text-decoration: underline;' rel="noopener noreferrer" target='_blank' href='https://fontawesome.com'>Get Fontawesome</a>
-                        <small id="fileHelp" class="form-text text-muted">Setup and get Font Awesome Kit. Options: Free Icons, Technology: Web Font Version: pick latest or specific Features: Auto-Accessibility, Version 4 Compatibility</small>
-
-                        <div class="form-group">
-                            <label for='elan_fontawesome_cdn'>Font Awesome CDN URL</label>
-                            <input type="text" class="form-control ajxtxt" data-desc="Font Awesome CDN URL" name="elan_fontawesome_cdn" id="elan_fontawesome_cdn" value="<?= $settings->elan_fontawesome_cdn; ?>">
-                        </div>
-                    </div>
-                </div>
-
-                <div class="card no-padding">
-                    <div class="card-header">
-                        <h3>Bootswatch</h3>
-                    </div>
-                    <div class="card-body">
-                        <a style='text-decoration: underline;' rel="noopener noreferrer" target='_blank' href='https://cdnjs.com/libraries/bootswatch'>Get Bootswacth (Theme)</a>
-                        <small id="fileHelp" class="form-text text-muted">Tested with Simplex</small>
-                        <div class="form-group">
-                            <label for='elan_bootswatch_cdn'>Bootswatch Template CDN URL</label>
-                            <input type="text" class="form-control ajxtxt" data-desc="Bootswatch Template CDN URL" name="elan_bootswatch_cdn" id="elan_bootswatch_cdn" value="<?= $settings->elan_bootswatch_cdn; ?>">
+                            <label for='elan_jquery_ui_cdn'>JQuery UI CDN URL</label>
+                            <textarea rows="4" class="form-control ajxtxt" data-desc="JQuery UI CDN URL" name="elan_jquery_ui_cdn" id="elan_jquery_ui_cdn"><?= $settings->elan_jquery_ui_cdn; ?></textarea>
                         </div>
                     </div>
                 </div>
