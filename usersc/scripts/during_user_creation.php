@@ -32,7 +32,11 @@ $db->update('profiles', ["user_id", "=", $theNewId], ['country' => $country]);
 //   Update geolocation
 $fields = [];
 include($abs_us_root . $us_url_root . 'app/views/_geolocate.php');
-$db->update('profiles', ["user_id", "=", $theNewId], $fields);
+
+// Only update coordinates if geocoding was successful
+if (!empty($fields)) {
+    $db->update('profiles', ["user_id", "=", $theNewId], $fields);
+}
 
 // Even if you do not want to add additional fields to the the join form, this is a great opportunity to add this user to another database table.
 // Get creative!

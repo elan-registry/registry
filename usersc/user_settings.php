@@ -234,9 +234,15 @@ if (!empty($_POST)) {
 
         // Update geolocation
         include($abs_us_root . $us_url_root . 'app/views/_geolocate.php');
-        $db->update('profiles', $profileId, $fields);
-        $successes[] = 'Lat/Lon updated.';
-        logger($user->data()->id, 'User', 'Changed updated lat/lon');
+        
+        // Only update coordinates if geocoding was successful
+        if (!empty($fields)) {
+            $db->update('profiles', $profileId, $fields);
+            $successes[] = 'Lat/Lon updated.';
+            logger($user->data()->id, 'User', 'Successfully updated lat/lon: ' . json_encode($fields));
+        } else {
+            logger($user->data()->id, 'User', 'Geocoding failed - preserving existing lat/lon coordinates');
+        }
 
         //Update Website
         if ($profiledetails->website != $_POST['website']) {

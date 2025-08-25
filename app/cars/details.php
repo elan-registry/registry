@@ -228,7 +228,9 @@ if (!empty($_GET)) {
                             <h2 class="mb-0">Location</h2>
                         </div>
                         <div class="card-body">
-                            <?php if (!empty($car->data()->lat) && !empty($car->data()->lon)) { ?>
+                            <?php if (!empty($car->data()->lat) && !empty($car->data()->lon) && 
+                                        $car->data()->lat !== null && $car->data()->lon !== null &&
+                                        is_numeric($car->data()->lat) && is_numeric($car->data()->lon)) { ?>
                                 <div class="map-container map-container-small" style="height: 100%;">
                                     <div id="map" style="height: 450px; width: 100%;"></div>
                                 </div>
@@ -297,8 +299,13 @@ echo html_entity_decode($settings->elan_datatables_css_cdn);
         csrf: '<?= Token::generate(); ?>',
         usUrlRoot: '<?= $us_url_root ?>',
         imgRoot: '<?= $us_url_root . $settings->elan_image_dir ?>',
-        hasLocation: <?= (!empty($car->data()->lat) && !empty($car->data()->lon)) ? 'true' : 'false' ?>
-        <?php if (!empty($car->data()->lat) && !empty($car->data()->lon)) { ?>
+        hasLocation: <?php
+            $hasValidLocation = (!empty($car->data()->lat) && !empty($car->data()->lon) && 
+                               $car->data()->lat !== null && $car->data()->lon !== null &&
+                               is_numeric($car->data()->lat) && is_numeric($car->data()->lon));
+            echo $hasValidLocation ? 'true' : 'false';
+        ?>
+        <?php if ($hasValidLocation) { ?>
         ,latitude: <?= (float)$car->data()->lat ?>
         ,longitude: <?= (float)$car->data()->lon ?>
         <?php } ?>
@@ -313,6 +320,6 @@ echo html_entity_decode($settings->elan_datatables_css_cdn);
 <!-- Load external JavaScript files -->
 <script src='<?= $us_url_root ?>app/assets/js/imagedisplay.js'></script>
 <script src='<?= $us_url_root ?>app/assets/js/car_details.js'></script>
-<?php if (!empty($car->data()->lat) && !empty($car->data()->lon)) { ?>
+<?php if ($hasValidLocation) { ?>
 <script async defer src="https://maps.googleapis.com/maps/api/js?key=<?= $settings->elan_google_maps_key ?>&callback=initMap"></script>
 <?php } ?>
