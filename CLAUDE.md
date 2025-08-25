@@ -125,6 +125,17 @@ The system maintains location synchronization between user profiles and car reco
 
 This flow ensures location data consistency across the entire registry, preventing stale location information in car records when owners relocate.
 
+#### Future Testing Requirements
+Additional PHPUnit test cases needed for comprehensive location sync validation:
+
+1. **`testLocationSyncWhenGeocodingSucceeds()`** - Verify cars are updated when profile geocoding succeeds
+2. **`testLocationSyncSkippedWhenGeocodingFails()`** - Ensure cars remain unchanged when geocoding fails
+3. **`testHistoryRecordsCreatedForLocationSync()`** - Validate `LOCATION_SYNC` history entries are created
+4. **`testUserFeedbackShowsCorrectCarCount()`** - Verify user sees correct "synchronized X cars" message
+5. **`testNoUpdateForUsersWithoutCars()`** - Confirm no errors when user has no cars to sync
+
+These test cases should be implemented to ensure robust validation of the location synchronization functionality and edge case handling.
+
 #### FIX Directory Scripts
 The `/FIX/` directory contains administrative cleanup scripts with the following features:
 - **Run Status Tracking**: Scripts automatically record completion in the `fix_script_runs` table
