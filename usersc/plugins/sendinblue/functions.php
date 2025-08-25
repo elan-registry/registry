@@ -37,21 +37,14 @@ function sendinblue($to, $subject, $body, $to_name = "", $options = [])
   if (isset($options['reply'])) {
     $send->reply = $options['reply'];
   }
-<<<<<<< HEAD
   if (isset($options['reply_name'])) {
     $send->reply_name = $options['reply_name'];
   }
-=======
->>>>>>> remotes/prod/Email-Updates
 
   $sendSmtpEmail = new \SendinBlue\Client\Model\SendSmtpEmail([
     'subject' => $subject,
     'sender' => ['name' => $send->from_name, 'email' => $send->from],
-<<<<<<< HEAD
     'replyTo' => ['name' => $send->reply_name, 'email' => $send->reply],
-=======
-    'replyTo' => ['name' => $send->from_name, 'email' => $send->reply],
->>>>>>> remotes/prod/Email-Updates
     'to' => [['name' => $to_name, 'email' => $to]],
     'htmlContent' => $body
   ]);

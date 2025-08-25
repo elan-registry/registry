@@ -57,8 +57,6 @@ usersc/plugins/hooker/*
 !usersc/plugins/hooker/hooks/
 usersc/plugins/hooker/hooks/sample_hook.php
 usersc/plugins/hooker/hooks/uman_tbody.php
-#
-# Include updates for the sendinblue plugin
 !usersc/plugins/sendinblue/
 usersc/plugins/sendinblue/*
 !usersc/plugins/sendinblue/override.php
