@@ -240,6 +240,41 @@ if (!empty($_POST)) {
             $db->update('profiles', $profileId, $fields);
             $successes[] = 'Lat/Lon updated.';
             logger($user->data()->id, 'User', 'Successfully updated lat/lon: ' . json_encode($fields));
+            
+            // BUGFIX #193: Sync location to all cars owned by this user
+            $userCarsQuery = $db->query("SELECT id FROM cars WHERE user_id = ?", [$userId]);
+            if ($userCarsQuery->count() > 0) {
+                $userCars = $userCarsQuery->results();
+                $carFields = [
+                    'city' => $city,
+                    'state' => $state, 
+                    'country' => $country,
+                    'lat' => $fields['lat'],
+                    'lon' => $fields['lon'],
+                    'mtime' => date('Y-m-d G:i:s')
+                ];
+                
+                $carsUpdated = 0;
+                foreach ($userCars as $car) {
+                    // Update each car with new location
+                    if ($db->update('cars', $car->id, $carFields)) {
+                        $carsUpdated++;
+                        
+                        // Add history record for location sync
+                        $historyFields = $carFields;
+                        $historyFields['car_id'] = $car->id;
+                        $historyFields['operation'] = 'LOCATION_SYNC';
+                        $historyFields['comments'] = "Car location synchronized with owner profile update. City: $city, State: $state, Country: $country";
+                        $historyFields['ctime'] = $carFields['mtime'];
+                        $db->insert('cars_hist', $historyFields);
+                    }
+                }
+                
+                if ($carsUpdated > 0) {
+                    $successes[] = "Location synchronized to $carsUpdated car(s).";
+                    logger($user->data()->id, 'User', "Location sync: Updated $carsUpdated cars with new coordinates");
+                }
+            }
         } else {
             logger($user->data()->id, 'User', 'Geocoding failed - preserving existing lat/lon coordinates');
         }
@@ -258,9 +293,9 @@ if (!empty($_POST)) {
                 $successes[] = 'website updated.';
                 logger($user->data()->id, 'User', "Changed website from $profiledetails->website to $website.");
             } else {
-                echo "$url is not a valid URL";
+                echo "$website is not a valid URL";
                 //validation did not pass
-                $errors[] = "$url is not a valid URL";
+                $errors[] = "$website is not a valid URL";
             }
         } else {
             $state = $profiledetails->website;
