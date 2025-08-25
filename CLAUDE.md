@@ -97,6 +97,32 @@ The `/FIX/` directory contains administrative cleanup scripts with the following
 - **Outline Buttons**: Red outline buttons for safe script execution access
 - **Progress Reporting**: All scripts use consistent progress messaging with timestamps
 
+##### Creating New FIX Scripts
+**IMPORTANT**: Always use the template when creating new FIX scripts:
+
+1. **Copy Template**: Start with `/FIX/_TEMPLATE_Fix-Script.php`
+2. **Replace Placeholders**: Update all bracketed placeholders:
+   - `[SCRIPT_NAME]` - Name of the script
+   - `[SCRIPT_DESCRIPTION]` - Brief description of what it does
+   - `[ISSUE_NUMBER]` - GitHub issue number
+   - `[ISSUE_TITLE]` - GitHub issue title
+   - `[ICON_NAME]` - FontAwesome icon name (without fa-)
+   - `[SCRIPT_TITLE]` - Display title for the UI
+   - `[ACTION_NAME]` - Action verb (e.g., "Processing", "Cleanup")
+   - `[BULLET_POINT_1-5]` - Description bullet points
+   - `[BACKUP_COMMAND_HERE]` - Relevant backup command
+   - `[TABLE_NAME]`, `[CONDITIONS]` - Database specifics
+
+3. **Standard Features Included**:
+   - ✅ Two-column layout (Progress left, Summary right)
+   - ✅ Full-width progress log below
+   - ✅ Color-coded success indicators (red/yellow/green)
+   - ✅ ElanRegistry template integration
+   - ✅ Return to FIX menu functionality
+   - ✅ UserSpice security and authentication
+   - ✅ Progress tracking and error handling
+   - ✅ Script completion recording
+
 ### Templates & Styling
 - Uses Bootstrap 4/5 for responsive layout
 - Custom CSS in `usersc/templates/ElanRegistry/assets/css/`
