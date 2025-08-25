@@ -89,6 +89,42 @@ npm install
 - User uploads organized by car ID in `/userimages/`
 - **Database fixes**: All database fix scripts must be placed in `/FIX/` directory using the established PHP format with progress reporting and error handling
 
+### Data Flow: User Registration to Car Management
+
+The system maintains location synchronization between user profiles and car records through the following flow:
+
+#### 1. New User Registration (`usersc/scripts/during_user_creation.php`)
+- User provides location information (city, state, country) during registration
+- Location is automatically geocoded using Google Maps API via `app/views/_geolocate.php`  
+- Coordinates are stored in the `profiles` table linked to the user account
+
+#### 2. Car Creation (`app/cars/actions/edit.php`)
+- When a user creates a new car record, owner profile data is copied to the car
+- Location fields copied: `city`, `state`, `country`, `lat`, `lon` (lines 167-171)
+- This ensures the car initially has the same location as its owner
+
+#### 3. Car Record History (`usersc/classes/Car.php`)
+- Any changes to car records trigger automatic history tracking
+- Changes are recorded in the `cars_hist` table with timestamps and operation types
+- History preserves audit trail of all car modifications
+
+#### 4. Owner Location Updates (`usersc/user_settings.php`) **[FIXED in #193]**
+- When an owner changes their location in user settings:
+  - Profile location is updated and re-geocoded (lines 235-245)
+  - **NEW**: All cars owned by the user are automatically synchronized (lines 244-277)
+  - Car records are updated with new location coordinates  
+  - History entries are created with `LOCATION_SYNC` operation type
+  - Users receive confirmation of how many cars were synchronized
+
+#### Location Sync Implementation Details:
+- **Trigger**: Any change to city, state, or country in user settings
+- **Process**: Geocoding → Profile update → Car synchronization → History logging  
+- **Safety**: Only updates cars if geocoding succeeds (preserves existing data on API failures)
+- **Audit Trail**: All location changes are logged and tracked in car history
+- **User Feedback**: Clear success messages indicate how many cars were synchronized
+
+This flow ensures location data consistency across the entire registry, preventing stale location information in car records when owners relocate.
+
 #### FIX Directory Scripts
 The `/FIX/` directory contains administrative cleanup scripts with the following features:
 - **Run Status Tracking**: Scripts automatically record completion in the `fix_script_runs` table
