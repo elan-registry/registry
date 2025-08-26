@@ -136,6 +136,35 @@ Additional PHPUnit test cases needed for comprehensive location sync validation:
 
 These test cases should be implemented to ensure robust validation of the location synchronization functionality and edge case handling.
 
+#### SPAM and Inactive User Cleanup System
+**Issue #232** - Comprehensive automated cleanup system for maintaining database quality:
+
+**Features:**
+- **Automated SPAM Detection**: Identifies legacy data anomalies (1969 dates) and suspicious registration patterns
+- **Inactive User Management**: Grace period notifications and cleanup for users with no cars after 30+ days
+- **Safety Mechanisms**: Multiple percentage limits, maximum deletion counts, and dry-run testing
+- **Email Integration**: Grace period notifications via UserSpice email system (supports Mailtrap.io for dev testing)
+- **Comprehensive Logging**: All actions tracked via UserSpice logging system with searchable categories
+
+**Implementation Files:**
+- **`/users/cron/spam_inactive_cleanup.php`** - Main cleanup cron script (191 lines, database-driven configuration)
+- **`/FIX/Generate-Test-Data-For-SPAM-Cleanup.php`** - Test data generation script (creates 6 SPAM + 6 inactive test users)
+- **`/usersc/includes/admin_panel_custom_settings.php`** - Modern admin interface with toggle switches and auto-save
+- **`/docs/SPAM_CLEANUP_SYSTEM.md`** - Complete setup and configuration documentation
+
+**Admin Interface Enhancements:**
+- **Toggle Switches**: Professional slide toggles replacing checkboxes (matching UserSpice General Settings)
+- **Auto-Save AJAX**: Immediate database updates using native UserSpice handlers (no form submission)
+- **Visual Feedback**: Success/error messages with auto-hide functionality  
+- **Direct Log Access**: "View Dry Run Logs" link for immediate execution verification
+- **Color-Coded Sections**: Organized by function (Google Services, System Maintenance, Media, User Cleanup)
+
+**Testing Capabilities:**
+- **Test User Generation**: Creates realistic test data matching exact cleanup criteria
+- **Dry-Run Validation**: Complete testing without affecting live data
+- **Email Preview**: Mailtrap.io integration for testing grace period notifications
+- **Safety Verification**: Multiple test queries validate detection accuracy before live execution
+
 #### FIX Directory Scripts
 The `/FIX/` directory contains administrative cleanup scripts with the following features:
 - **Run Status Tracking**: Scripts automatically record completion in the `fix_script_runs` table

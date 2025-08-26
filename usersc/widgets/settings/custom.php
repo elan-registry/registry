@@ -1,4 +1,5 @@
 <?php
+
 /**
  * Custom Settings Widget Extensions for ElanRegistry
  * 
@@ -9,6 +10,4 @@
  */
 
 // Add ElanRegistry-specific menu items using the new v5.9 override system
-$tools[] = ['Custom Settings', 'general.png', '?view=custom', 'custom'];
-$tools[] = ['Classic Menu', 'navigation.png', '?view=nav', 'nav'];
-?>
+$tools[] = ['Elan Registry Settings', 'logo-72x72.png', '?view=custom', 'custom'];

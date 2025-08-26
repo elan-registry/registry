@@ -18,7 +18,7 @@ if (!securePage($_SERVER['PHP_SELF'])) {
 
 // Get list of files in the FIX directory
 $directory    = $abs_us_root . $us_url_root . 'FIX/';
-$scanned_directory = array_diff(scandir($directory), array('..', '.', '.htaccess', 'index.php'));
+$scanned_directory = array_diff(scandir($directory), array('..', '.', '.htaccess', 'index.php', '_TEMPLATE_Fix-Script.php'));
 
 // Sort files newest first (reverse natural order)
 rsort($scanned_directory, SORT_NATURAL);
