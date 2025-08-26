@@ -38,8 +38,8 @@ require_once($abs_us_root . $us_url_root . 'users/includes/html_footer.php');
 // echo html_entity_decode($settings->elan_fontawesome_cdn);
 ?>
 
-<!-- Global site tag (gtag.js) - Google Analytics -->
-<script async src="https://www.googletagmanager.com/gtag/js?id=UA-7230761-6"></script>
+<!-- Global site tag (gtag.js) - Google Analytics 4 -->
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-WS56C3X5NR"></script>
 <script>
   window.dataLayer = window.dataLayer || [];
 
@@ -48,5 +48,5 @@ require_once($abs_us_root . $us_url_root . 'users/includes/html_footer.php');
   }
   gtag('js', new Date());
 
-  gtag('config', 'UA-7230761-6');
+  gtag('config', 'G-WS56C3X5NR');
 </script>
