@@ -2,7 +2,7 @@
 *Generated: 2025-08-26*
 
 ## Overview
-Strategic release plan organizing 10 open issues into logical batches based on dependencies, impact, and development efficiency.
+Strategic release plan organizing 11 open issues into logical batches based on dependencies, impact, and development efficiency.
 
 ---
 
@@ -99,7 +99,13 @@ Strategic release plan organizing 10 open issues into logical batches based on d
   - **Impact:** 30% page load improvement
   - **Type:** Performance enhancement
 
-### Batch 5B: Modernization & Testing (Weeks 15-16)
+### Batch 5B: Modernization & Testing (Weeks 15-18)
+- **#234** - Template Modernization: Update ElanRegistry template to current standards
+  - **Priority:** MEDIUM 🟡
+  - **Effort:** Extra Large (1-2 weeks)
+  - **Impact:** Modern responsive design, better performance, accessibility compliance
+  - **Type:** Template enhancement
+
 - **#218** - Google Maps Modernization - Upgrade to AdvancedMarkerElement  
   - **Priority:** LOW 🟢
   - **Effort:** Medium (1-2 days)
@@ -117,7 +123,7 @@ Strategic release plan organizing 10 open issues into logical batches based on d
 
 **Rationale:** Performance and modernization work that enhances the system but isn't critical for core functionality. Can be implemented after all core features are stable.
 
-**Estimated Timeline:** 4-5 weeks
+**Estimated Timeline:** 5-6 weeks
 **Release Target:** v2.6.0, v2.7.0
 
 ---
@@ -131,9 +137,9 @@ Strategic release plan organizing 10 open issues into logical batches based on d
 | **v2.4.1** | Weeks 7-9 | Data Quality | 1 | 1-2 weeks |
 | **v2.5.0** | Weeks 10-11 | DevOps Tools | 1 | 1 week |
 | **v2.6.0** | Weeks 12-14 | Performance | 1 | 2-3 weeks |
-| **v2.7.0** | Weeks 15-16 | Modernization | 3 | 2-3 weeks |
+| **v2.7.0** | Weeks 15-18 | Modernization | 4 | 3-4 weeks |
 
-**Total Timeline:** ~16 weeks (4 months)
+**Total Timeline:** ~18 weeks (4.5 months)
 
 ---
 
@@ -150,7 +156,7 @@ Strategic release plan organizing 10 open issues into logical batches based on d
 2. **Administrative Efficiency** - 90% reduction in manual work (#229,#230,#231,#232)
 3. **Data Quality** - Prevent duplicates and maintain accuracy (#233)  
 4. **Operational Excellence** - Better deployments and performance (#221,#217)
-5. **Future-proofing** - Modernization and enhanced testing (#218,#216,#215)
+5. **Future-proofing** - Template modernization and enhanced testing (#234,#218,#216,#215)
 
 ### Batch Logic
 - **User Management** issues grouped together for workflow continuity
