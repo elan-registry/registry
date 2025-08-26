@@ -24,6 +24,7 @@ if (!securePage($_SERVER['PHP_SELF'])) {
 $badusers = "SELECT users.id FROM users  LEFT JOIN car_user ON (users.id = car_user.userid) WHERE ( users.email_verified = 0 AND users.last_login = 0 AND car_user.carid IS NULL AND vericode_expiry < CURRENT_DATE ) GROUP BY users.id ";
 $unusedprofiles = " SELECT t1.user_id FROM profiles t1 LEFT JOIN users t2 ON t1.user_id = t2.id WHERE t2.id IS NULL ";
 $orphanedcars = "SELECT t1.userid FROM car_user t1 LEFT JOIN users t2 ON t1.userid = t2.id  WHERE t2.id IS NULL ";
+$orphanedcaruser = "SELECT cu.id, cu.userid, cu.carid FROM car_user cu WHERE cu.carid NOT IN (SELECT id FROM cars) ORDER BY cu.carid ASC"; // Issue #35: car_user records with deleted cars
 $duplicates = "SELECT  a.* FROM cars a JOIN(  SELECT  type,chassis,  COUNT(*)  FROM  users_carsview  WHERE chassis <> '' GROUP BY type,chassis HAVING COUNT(*) > 1) b ON a.chassis = b.chassis ORDER BY a.chassis, a.type";
 
 // Get list of suspected duplicates
@@ -465,6 +466,24 @@ if (Input::exists('post')) {
                 foreach ($car as $c) {
                     echo "- carid " . $c->id . "<br>";
                     $db->query("INSERT INTO car_user (userid, carid ) VALUES (83, ?)", array($c->id));
+                }
+
+                // Issue #35: Clean up car_user records where the car no longer exists
+                echo "<br><strong>Orphaned car_user Records (Issue #35):</strong><br>";
+                $orphanedCarUserResult = $db->query($orphanedcaruser);
+                echo "There are " . $orphanedCarUserResult->count() . " car_user rows referencing deleted cars<br>";
+
+                $orphanedRecords = $orphanedCarUserResult->results();
+                foreach ($orphanedRecords as $record) {
+                    echo "- car_user.id " . $record->id . " references missing carid " . $record->carid . "<br>";
+                    $db->query("DELETE FROM car_user WHERE id = ?", array($record->id));
+                }
+
+                if (count($orphanedRecords) > 0) {
+                    logger($user->data()->id, 'DatabaseCleanup', "Cleaned up " . count($orphanedRecords) . " orphaned car_user records (Issue #35)");
+                    echo "<span style='color: green;'>✓ Cleaned up " . count($orphanedRecords) . " orphaned car_user records</span><br>";
+                } else {
+                    echo "<span style='color: green;'>✓ No orphaned car_user records found</span><br>";
                 }
                 ?>
             </div>
