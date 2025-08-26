@@ -19,7 +19,9 @@ header("Content-Security-Policy: " .
         // Google Services
         "https://maps.googleapis.com " .
         "https://www.google-analytics.com " .
+        "https://analytics.google.com " .
         "https://www.googletagmanager.com " .
+        "https://region1.google-analytics.com " .
         "https://www.gstatic.com " .
         "https://ssl.gstatic.com " .
         "https://charts.googleapis.com " .
@@ -60,7 +62,9 @@ header("Content-Security-Policy: " .
         "https://maps.googleapis.com " .
         "https://maps.gstatic.com " .
         "https://www.google-analytics.com " .
+        "https://analytics.google.com " .
         "https://www.googletagmanager.com " .
+        "https://region1.google-analytics.com " .
         "https://ssl.gstatic.com; " .
     "font-src 'self' " .
         // Font sources
@@ -72,6 +76,9 @@ header("Content-Security-Policy: " .
         // API and AJAX endpoints
         "https://maps.googleapis.com " .
         "https://www.google-analytics.com " .
+        "https://analytics.google.com " .
+        "https://www.googletagmanager.com " .
+        "https://region1.google-analytics.com " .
         "https://www.gstatic.com " .
         "https://ssl.gstatic.com " .
         "https://charts.googleapis.com " .
