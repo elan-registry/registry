@@ -55,7 +55,8 @@ try {
         $newnode->setAttribute("variant", $car->variant ?? "");
         $count = count($carImages);
         if ($count != 0) {
-            $newnode->setAttribute("image", $carImages[0]);
+            // Include car ID in image path for proper subdirectory access
+            $newnode->setAttribute("image", $car->id . '/' . $carImages[0]);
         } else {
             $newnode->setAttribute("image", "");
         }
