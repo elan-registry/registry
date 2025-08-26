@@ -76,6 +76,7 @@ header("Content-Security-Policy: " .
         // API and AJAX endpoints
         "https://maps.googleapis.com " .
         "https://www.google-analytics.com " .
+        "https://www.google-analytics.com/* " .
         "https://analytics.google.com " .
         "https://www.googletagmanager.com " .
         "https://region1.google-analytics.com " .
