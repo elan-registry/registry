@@ -51,7 +51,7 @@ Strategic release plan organizing 10 open issues into logical batches based on d
 **Rationale:** These four issues work synergistically to dramatically reduce administrative overhead. Grouping user management and ownership systems creates natural workflow continuity.
 
 **Estimated Timeline:** 4-5 weeks total
-**Release Target:** v3.0.0 (Major - significant workflow changes)
+**Release Target:** v2.4.0 (Minor - significant workflow changes)
 
 ---
 
@@ -68,7 +68,7 @@ Strategic release plan organizing 10 open issues into logical batches based on d
 **Rationale:** Critical for data quality but depends on stable user management and ownership systems from Release 2. Should be implemented after administrative automation is complete.
 
 **Estimated Timeline:** 1-2 weeks  
-**Release Target:** v3.1.0
+**Release Target:** v2.4.1
 
 ---
 
@@ -85,7 +85,7 @@ Strategic release plan organizing 10 open issues into logical batches based on d
 **Rationale:** Addresses lessons learned from v2.0 deployment. Essential for reliable deployments but not user-facing. Can be developed in parallel with other work.
 
 **Estimated Timeline:** 1 week
-**Release Target:** v3.2.0
+**Release Target:** v2.5.0
 
 ---
 
@@ -118,7 +118,7 @@ Strategic release plan organizing 10 open issues into logical batches based on d
 **Rationale:** Performance and modernization work that enhances the system but isn't critical for core functionality. Can be implemented after all core features are stable.
 
 **Estimated Timeline:** 4-5 weeks
-**Release Target:** v3.3.0, v3.4.0
+**Release Target:** v2.6.0, v2.7.0
 
 ---
 
@@ -127,11 +127,11 @@ Strategic release plan organizing 10 open issues into logical batches based on d
 | Release | Timeline | Focus | Issues | Effort |
 |---------|----------|--------|---------|---------|
 | **v2.3.2** | Week 1 | Critical Bug Fix | 1 | 1 day |
-| **v3.0.0** | Weeks 2-6 | Admin Automation | 4 | 4-5 weeks |  
-| **v3.1.0** | Weeks 7-9 | Data Quality | 1 | 1-2 weeks |
-| **v3.2.0** | Weeks 10-11 | DevOps Tools | 1 | 1 week |
-| **v3.3.0** | Weeks 12-14 | Performance | 1 | 2-3 weeks |
-| **v3.4.0** | Weeks 15-16 | Modernization | 3 | 2-3 weeks |
+| **v2.4.0** | Weeks 2-6 | Admin Automation | 4 | 4-5 weeks |  
+| **v2.4.1** | Weeks 7-9 | Data Quality | 1 | 1-2 weeks |
+| **v2.5.0** | Weeks 10-11 | DevOps Tools | 1 | 1 week |
+| **v2.6.0** | Weeks 12-14 | Performance | 1 | 2-3 weeks |
+| **v2.7.0** | Weeks 15-16 | Modernization | 3 | 2-3 weeks |
 
 **Total Timeline:** ~16 weeks (4 months)
 
