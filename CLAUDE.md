@@ -234,11 +234,12 @@ git push prod --tags
 ```
 
 ### Complete Production Deployment Process
-1. **Commit changes** with updated VERSION file and git tag
-2. **Push to origin** for GitHub repository updates: `git push origin main && git push origin --tags`
-3. **Deploy to production** with both code and tags: `git push prod main && git push prod --tags`
-4. **Verify deployment** by checking version display on production site
-5. **Complete post-deployment verification** (see checklist below)
+1. **Update VERSION file and create matching git tag** (tag must exactly match VERSION content)
+2. **Commit changes** with version bump and tag
+3. **Push to origin** for GitHub repository updates: `git push origin main && git push origin --tags`
+4. **Deploy to production** with both code and tags: `git push prod main && git push prod --tags`
+5. **Verify deployment** by checking version display matches git tag on production site
+6. **Complete post-deployment verification** (see checklist below)
 
 ### Post-Deployment Configuration Requirements
 
@@ -330,11 +331,53 @@ npm run test:security
 - Phase branches: `phase-{number}-{name}`
 - Hotfix branches: `hotfix/issue-{number}-brief-description`
 
-### Version Management
+### Version Management & Automated Release Process
+
+#### Version File Structure
 - Version information stored in `/VERSION` file in project root
 - `ApplicationVersion::get()` reads from this file (no git dependencies)
 - Production deployment timestamp shows file modification time
-- **REQUIRED:** All merged branches must update VERSION file and create matching git tag
+- Format: `vX.Y.Z` (semantic versioning, e.g., `v2.3.4`)
+
+#### Automated Version Enforcement
+- **Git Pre-Commit Hook**: Automatically enforces version updates on main branch
+- **Location**: `.git/hooks/pre-commit` (installed automatically)
+- **Rules**:
+  - VERSION file must be updated when committing code changes to main
+  - Documentation-only changes skip version requirements
+  - Hook can be bypassed with `git commit --no-verify` (not recommended)
+
+#### Version Bump Helper Script
+- **Location**: `scripts/bump-version.sh`
+- **Usage**: `./scripts/bump-version.sh [patch|minor|major] [--tag] [--dry-run]`
+- **Features**:
+  - Automatic semantic version incrementing
+  - Optional git tag creation
+  - Dry-run mode for testing
+  - Validation of version format
+
+#### Version Update Requirements
+- **REQUIRED:** All code changes to main branch must update VERSION file
+- **REQUIRED:** Git tag must always match VERSION file content exactly
+- **AUTOMATIC:** Pre-commit hook prevents commits without version updates
+- **RECOMMENDED:** Use version bump script for consistent formatting
+- **PROCESS:**
+  ```bash
+  # Recommended: Quick version bump with automatic tag
+  ./scripts/bump-version.sh patch --tag
+  git commit -m "VERSION: Bump to v2.3.5 - Fix critical security issue"
+  
+  # Manual version update (must create matching tag)
+  echo "v2.3.5" > VERSION
+  git add VERSION
+  git commit -m "VERSION: Bump to v2.3.5 - Fix critical security issue"
+  git tag -a v2.3.5 -m "Release v2.3.5"  # REQUIRED: Tag must match VERSION
+  ```
+
+#### Exception Handling
+- **Documentation Changes**: `.md`, `README`, `docs/` files skip version requirements
+- **Emergency Bypass**: Use `--no-verify` flag only for critical hotfixes
+- **Branch-Specific**: Version enforcement only applies to main branch
 
 ## Environment & Configuration
 

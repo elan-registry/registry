@@ -1,0 +1,21 @@
+# Commit Message Template for ElanRegistry
+# 
+# Format: TYPE: Brief description (Issue #XXX)
+#
+# Types: FIX, FEATURE, ENHANCEMENT, SECURITY, REFACTOR, DOCS, TEST, VERSION
+#
+# Examples:
+# FIX: reCAPTCHA bypass vulnerability in login process (Issue #XXX)
+# FEATURE: Add dark mode toggle to user settings (Issue #XXX)  
+# ENHANCEMENT: Improve car search performance with database indexing (Issue #XXX)
+# VERSION: Bump to v2.3.5 - Security fixes and performance improvements
+#
+# ✅ CHECKLIST (delete lines that don't apply):
+# [ ] Updated VERSION file (required for code changes to main branch)
+# [ ] Created matching git tag (recommended for releases)
+# [ ] Updated relevant documentation
+# [ ] Added/updated tests for new functionality
+# [ ] Verified no breaking changes
+# [ ] Security review completed (for security-related changes)
+#
+# 🤖 This commit will include the standard Claude Code footer automatically
