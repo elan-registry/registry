@@ -200,6 +200,14 @@ $line = 1; // Where messages go
                                     logger($user->data()->id, 'DatabaseCleanup', "Cleaned up {$deletedCount} orphaned car_user records (Issue #35)");
                                 }
                                 
+                                // Record script completion
+                                try {
+                                    $db->query("INSERT INTO fix_script_runs (script_name) VALUES (?)", [basename(__FILE__)]);
+                                    logProgress("Script completion recorded in fix_script_runs table", 'success');
+                                } catch (Exception $e) {
+                                    logProgress("Warning: Could not record script completion: " . $e->getMessage(), 'warning');
+                                }
+                                
                                 logProgress("Cleanup process completed successfully", 'success');
                                 
                             } catch (Exception $e) {
@@ -244,7 +252,7 @@ $line = 1; // Where messages go
                                 <?php endif; ?>
                                 
                                 <div class="mt-3">
-                                    <a href="../" class="btn btn-primary btn-sm">
+                                    <a href="<?= $us_url_root ?>FIX/" class="btn btn-primary btn-sm">
                                         <i class="fa fa-arrow-left"></i> Return to FIX Menu
                                     </a>
                                 </div>
