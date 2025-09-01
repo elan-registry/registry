@@ -556,8 +556,26 @@ if (Input::exists('post')) {
                             <form name="deleteCar" action="manage.php" method="POST" class="delete-form needs-validation" novalidate>
                                 <div class="form-group">
                                     <label for="delete_car_id" class="form-label">Car ID to Delete</label>
-                                    <input type="number" class="form-control" id="delete_car_id" name="car_id" required>
+                                    <div class="input-group">
+                                        <input type="number" class="form-control" id="delete_car_id" name="car_id" placeholder="Enter Car ID" required>
+                                        <div class="input-group-append">
+                                            <button class="btn btn-outline-info" type="button" id="lookupDeleteCarBtn">
+                                                <i class="fas fa-search"></i>
+                                            </button>
+                                        </div>
+                                    </div>
                                     <div class="invalid-feedback">Please provide a valid car ID.</div>
+                                    
+                                    <!-- Car Details Display -->
+                                    <div id="deleteCarDetails" class="mt-2" style="display: none;">
+                                        <div class="alert alert-warning alert-sm">
+                                            <h6 class="alert-heading mb-1"><i class="fas fa-car"></i> Car to Delete</h6>
+                                            <div id="deleteCarInfo"></div>
+                                            <div class="mt-2">
+                                                <strong>Current Owner:</strong> <span id="deleteCurrentOwner"></span>
+                                            </div>
+                                        </div>
+                                    </div>
                                 </div>
                                 <div class="form-group">
                                     <label for="delete_confirmation" class="form-label">Type "DELETE" to confirm</label>
@@ -1217,15 +1235,97 @@ $(document).ready(function() {
         $('[data-toggle="tooltip"]').tooltip();
     }
     
-    // Delete car functionality
-    $('.delete-form').on('input', function() {
-        const $form = $(this);
+    // Delete car lookup functionality
+    let selectedDeleteCar = null;
+    
+    $('#lookupDeleteCarBtn').on('click', function() {
+        const carId = $('#delete_car_id').val();
+        if (!carId) {
+            alert('Please enter a Car ID first');
+            return;
+        }
+        
+        const $btn = $(this);
+        const originalHtml = $btn.html();
+        $btn.prop('disabled', true);
+        $btn.html('<i class="fas fa-spinner fa-spin"></i>');
+        
+        $.ajax({
+            url: 'manage.php',
+            type: 'POST',
+            data: {
+                command: 'getCarDetails',
+                car_id: carId,
+                csrf: $('.delete-form input[name="csrf"]').val()
+            },
+            dataType: 'json',
+            success: function(response) {
+                $btn.prop('disabled', false);
+                $btn.html(originalHtml);
+                
+                if (!response.success) {
+                    alert('Error: ' + response.error);
+                    $('#deleteCarDetails').hide();
+                    selectedDeleteCar = null;
+                    updateDeleteButton();
+                    return;
+                }
+                
+                selectedDeleteCar = response.car;
+                const car = response.car;
+                const ownerName = car.fname && car.lname ? `${car.fname} ${car.lname}` : 'Unknown Owner';
+                
+                $('#deleteCarInfo').html(
+                    `<strong>${car.year || 'Unknown'} ${car.type || 'Unknown'}</strong><br>` +
+                    `Chassis: ${car.chassis || 'Unknown'} | Color: ${car.color || 'Unknown'} | Series: ${car.series || 'Unknown'}`
+                );
+                $('#deleteCurrentOwner').text(`${ownerName} (${car.email || 'No email'})`);
+                $('#deleteCarDetails').show();
+                updateDeleteButton();
+            },
+            error: function(xhr, status, error) {
+                $btn.prop('disabled', false);
+                $btn.html(originalHtml);
+                alert('Error fetching car details: ' + error);
+                $('#deleteCarDetails').hide();
+                selectedDeleteCar = null;
+                updateDeleteButton();
+            }
+        });
+    });
+    
+    // Auto-lookup on enter key for delete car
+    $('#delete_car_id').on('keypress', function(e) {
+        if (e.which === 13) {
+            e.preventDefault();
+            $('#lookupDeleteCarBtn').click();
+        }
+    });
+    
+    // Clear delete car selection when input changes
+    $('#delete_car_id').on('input', function() {
+        const value = $(this).val();
+        
+        // Clear previous car details when typing
+        if (!value || (selectedDeleteCar && value != selectedDeleteCar.id)) {
+            $('#deleteCarDetails').hide();
+            selectedDeleteCar = null;
+        }
+        updateDeleteButton();
+    });
+
+    // Delete car functionality - updated to work with lookup
+    function updateDeleteButton() {
+        const $form = $('.delete-form');
         const carId = $form.find('#delete_car_id').val();
         const confirmation = $form.find('#delete_confirmation').val();
         const $deleteBtn = $form.find('#deleteBtn');
         
-        // Enable button only when both fields are filled and confirmation matches
-        const canDelete = carId && confirmation === 'DELETE';
+        // Enable button only when car is looked up, confirmation matches, and IDs match
+        const carLookedUp = selectedDeleteCar && selectedDeleteCar.id == carId;
+        const confirmationValid = confirmation === 'DELETE';
+        const canDelete = carLookedUp && confirmationValid;
+        
         $deleteBtn.prop('disabled', !canDelete);
         
         if (canDelete) {
@@ -1233,9 +1333,12 @@ $(document).ready(function() {
         } else {
             $deleteBtn.removeClass('btn-danger').addClass('btn-secondary');
         }
-    });
+    }
     
-    // Delete form submission with double confirmation
+    // Monitor confirmation field changes
+    $('#delete_confirmation').on('input', updateDeleteButton);
+    
+    // Delete form submission with confirmation using already-loaded car data
     $('.delete-form').on('submit', function(e) {
         e.preventDefault();
         
@@ -1243,111 +1346,69 @@ $(document).ready(function() {
         const carId = $('#delete_car_id').val();
         const confirmation = $('#delete_confirmation').val();
         
-        if (!carId || confirmation !== 'DELETE') {
-            alert('Please enter a valid car ID and type DELETE to confirm.');
+        if (!selectedDeleteCar || !carId || confirmation !== 'DELETE') {
+            alert('Please lookup the car details first and type DELETE to confirm.');
             return false;
         }
         
-        // Show loading state
-        const $btn = $('#deleteBtn');
-        const originalBtnText = $btn.html();
-        $btn.prop('disabled', true);
-        $btn.html('<i class="fas fa-spinner fa-spin"></i> Checking...');
+        if (selectedDeleteCar.id != carId) {
+            alert('Please lookup the current car ID before proceeding.');
+            return false;
+        }
         
-        // Fetch car details via AJAX
-        $.ajax({
-            url: 'manage.php',
-            type: 'POST',
-            data: {
-                command: 'getCarDetails',
-                car_id: carId,
-                csrf: $form.find('input[name="csrf"]').val()
-            },
-            dataType: 'json',
-            success: function(response) {
-                // Restore button state
-                $btn.prop('disabled', false);
-                $btn.html(originalBtnText);
-                
-                if (!response.success) {
-                    alert('Error: ' + response.error);
-                    return;
-                }
-                
-                const car = response.car;
-                const ownerName = car.fname && car.lname ? `${car.fname} ${car.lname}` : 'Unknown Owner';
-                const location = car.city && car.state ? `${car.city}, ${car.state} ${car.country}` : 'Unknown Location';
-                const createdDate = new Date(car.ctime).toLocaleDateString();
-                const modifiedDate = new Date(car.mtime).toLocaleDateString();
-                
-                // First confirmation dialog with car details
-                const carDetails = 
-                    `⚠️ PERMANENT DELETION WARNING ⚠️\n\n` +
-                    `You are about to permanently delete:\n\n` +
-                    `Car ID: ${car.id}\n` +
-                    `Year: ${car.year || 'Unknown'}\n` +
-                    `Type: ${car.type || 'Unknown'}\n` +
-                    `Chassis: ${car.chassis || 'Unknown'}\n` +
-                    `Color: ${car.color || 'Unknown'}\n` +
-                    `Series: ${car.series || 'Unknown'}\n` +
-                    `Owner: ${ownerName}\n` +
-                    `Email: ${car.email || 'Unknown'}\n` +
-                    `Location: ${location}\n` +
-                    `Created: ${createdDate}\n` +
-                    `Modified: ${modifiedDate}\n\n` +
-                    `This action will:\n` +
-                    `• Delete the car record permanently\n` +
-                    `• Remove all user-car relationships\n` +
-                    `• Delete all uploaded images\n` +
-                    `• Cannot be undone\n\n` +
-                    `Are you absolutely sure you want to continue?`;
-                
-                const firstConfirm = confirm(carDetails);
-                
-                if (!firstConfirm) {
-                    return false;
-                }
-                
-                // Second confirmation dialog
-                const secondConfirm = confirm(
-                    `FINAL CONFIRMATION\n\n` +
-                    `This is your last chance to cancel.\n\n` +
-                    `${car.year || 'Unknown'} ${car.type || 'Unknown'} (${car.chassis || 'Unknown'})\n` +
-                    `Owner: ${ownerName}\n\n` +
-                    `This car will be PERMANENTLY DELETED.\n\n` +
-                    `Click OK to proceed with deletion or Cancel to abort.`
-                );
-                
-                if (secondConfirm) {
-                    // Show final loading state
-                    $btn.prop('disabled', true);
-                    $btn.html('<i class="fas fa-spinner fa-spin"></i> Deleting...');
-                    
-                    // Submit the form
-                    $form[0].submit();
-                }
-            },
-            error: function(xhr, status, error) {
-                // Restore button state
-                $btn.prop('disabled', false);
-                $btn.html(originalBtnText);
-                
-                console.log('AJAX Error Details:', {
-                    status: status,
-                    error: error,
-                    responseText: xhr.responseText,
-                    responseStatus: xhr.status
-                });
-                
-                let errorMessage = 'Error fetching car details: ' + error;
-                if (xhr.responseText && xhr.responseText.length < 500) {
-                    errorMessage += '\n\nResponse: ' + xhr.responseText;
-                }
-                errorMessage += '\n\nPlease try again.';
-                
-                alert(errorMessage);
-            }
-        });
+        const car = selectedDeleteCar;
+        const ownerName = car.fname && car.lname ? `${car.fname} ${car.lname}` : 'Unknown Owner';
+        const location = car.city && car.state ? `${car.city}, ${car.state} ${car.country}` : 'Unknown Location';
+        const createdDate = new Date(car.ctime).toLocaleDateString();
+        const modifiedDate = new Date(car.mtime).toLocaleDateString();
+        
+        // First confirmation dialog with car details
+        const carDetails = 
+            `⚠️ PERMANENT DELETION WARNING ⚠️\n\n` +
+            `You are about to permanently delete:\n\n` +
+            `Car ID: ${car.id}\n` +
+            `Year: ${car.year || 'Unknown'}\n` +
+            `Type: ${car.type || 'Unknown'}\n` +
+            `Chassis: ${car.chassis || 'Unknown'}\n` +
+            `Color: ${car.color || 'Unknown'}\n` +
+            `Series: ${car.series || 'Unknown'}\n` +
+            `Owner: ${ownerName}\n` +
+            `Email: ${car.email || 'Unknown'}\n` +
+            `Location: ${location}\n` +
+            `Created: ${createdDate}\n` +
+            `Modified: ${modifiedDate}\n\n` +
+            `This action will:\n` +
+            `• Delete the car record permanently\n` +
+            `• Remove all user-car relationships\n` +
+            `• Delete all uploaded images\n` +
+            `• Cannot be undone\n\n` +
+            `Are you absolutely sure you want to continue?`;
+        
+        const firstConfirm = confirm(carDetails);
+        
+        if (!firstConfirm) {
+            return false;
+        }
+        
+        // Second confirmation dialog
+        const secondConfirm = confirm(
+            `FINAL CONFIRMATION\n\n` +
+            `This is your last chance to cancel.\n\n` +
+            `${car.year || 'Unknown'} ${car.type || 'Unknown'} (${car.chassis || 'Unknown'})\n` +
+            `Owner: ${ownerName}\n\n` +
+            `This car will be PERMANENTLY DELETED.\n\n` +
+            `Click OK to proceed with deletion or Cancel to abort.`
+        );
+        
+        if (secondConfirm) {
+            // Show final loading state
+            const $btn = $('#deleteBtn');
+            $btn.prop('disabled', true);
+            $btn.html('<i class="fas fa-spinner fa-spin"></i> Deleting...');
+            
+            // Submit the form
+            $form[0].submit();
+        }
         
         return false;
     });
@@ -1615,8 +1676,19 @@ $(document).ready(function() {
         $('#carDetails, #userDetails, #noOwnerDetails').hide();
     }
     
+    // Initialize delete form state
+    function initializeDeleteForm() {
+        // Reset delete car selection
+        selectedDeleteCar = null;
+        updateDeleteButton();
+        
+        // Hide delete car details
+        $('#deleteCarDetails').hide();
+    }
+    
     // Call initialization
     initializeReassignForm();
+    initializeDeleteForm();
     
     // Debug: Add click handler to ensure field is responsive
     $('#reassign_user_id').on('click focus', function() {
