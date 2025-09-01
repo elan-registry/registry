@@ -6,6 +6,7 @@
  *
  * Provides comprehensive reports on data quality issues including:
  * - Missing chassis numbers
+ * - Invalid chassis numbers (using centralized validation)
  * - Invalid model data 
  * - Missing series information
  * - Deprecated field usage analysis
@@ -16,6 +17,7 @@
  */
 require_once '../../users/init.php';
 require_once $abs_us_root . $us_url_root . 'users/includes/template/prep.php';
+require_once '../../usersc/classes/ChassisValidator.php';
 
 if (!securePage($_SERVER['PHP_SELF'])) {
     die();
@@ -156,8 +158,41 @@ function getDataQualityReports($db) {
         'data' => $missingChassisQ->results(),
         'impact' => 'High - Affects identification, sorting, and duplicate detection'
     ];
+
+    // Report 2: Invalid Chassis Numbers (using centralized validator)
+    $invalidChassisData = [];
+    $chassisCheckQ = $db->query("
+        SELECT c.id, c.model, c.series, c.year, c.chassis, c.username, c.mtime,
+               u.fname, u.lname, u.email
+        FROM cars c 
+        LEFT JOIN car_user cu ON c.id = cu.carid
+        LEFT JOIN users u ON cu.userid = u.id
+        WHERE c.chassis IS NOT NULL AND c.chassis != '' 
+          AND c.year IS NOT NULL AND c.year != 0
+          AND c.model IS NOT NULL AND c.model != ''
+        ORDER BY c.mtime DESC, c.id
+    ");
     
-    // Report 2: Invalid Model Data
+    $validator = new ChassisValidator();
+    foreach ($chassisCheckQ->results() as $car) {
+        $result = $validator->validate($car->chassis, $car->year, $car->model, false);
+        if (!$result['valid']) {
+            $car->validation_error = $result['error_reason'];
+            $invalidChassisData[] = $car;
+        }
+    }
+    
+    $reports['invalid_chassis'] = [
+        'title' => 'Invalid Chassis Numbers',
+        'description' => 'Cars with chassis numbers that fail validation against Lotus numbering standards',
+        'icon' => 'fas fa-times-circle',
+        'severity' => 'danger',
+        'count' => count($invalidChassisData),
+        'data' => $invalidChassisData,
+        'impact' => 'High - May indicate incorrect data entry or non-standard numbering'
+    ];
+    
+    // Report 3: Invalid Model Data
     $invalidModelQ = $db->query("
         SELECT c.id, c.model, c.series, c.year, c.chassis, c.username, c.mtime,
                u.fname, u.lname, u.email
@@ -177,7 +212,7 @@ function getDataQualityReports($db) {
         'impact' => 'Critical - Prevents proper display and categorization'
     ];
     
-    // Report 3: Missing Series Data
+    // Report 4: Missing Series Data
     $missingSeriesQ = $db->query("
         SELECT c.id, c.model, c.series, c.year, c.chassis, c.username, c.mtime,
                u.fname, u.lname, u.email
@@ -197,7 +232,7 @@ function getDataQualityReports($db) {
         'impact' => 'Medium - Affects categorization and filtering'
     ];
     
-    // Report 4: Multiple Critical Missing Fields
+    // Report 5: Multiple Critical Missing Fields
     $multipleMissingQ = $db->query("
         SELECT c.id, c.model, c.series, c.year, c.chassis, c.username, c.mtime,
                u.fname, u.lname, u.email,
@@ -221,7 +256,7 @@ function getDataQualityReports($db) {
         'impact' => 'Critical - Severely impacts display and functionality'
     ];
     
-    // Report 5: Deprecated Username Field Analysis
+    // Report 6: Deprecated Username Field Analysis
     $deprecatedUsernameQ = $db->query("
         SELECT COUNT(*) as total_cars, 
                COUNT(CASE WHEN username IS NULL OR username = '' THEN 1 END) as missing_username,
@@ -285,7 +320,7 @@ foreach ($dataQualityReports as $key => $report) {
                     <div class="d-sm-flex align-items-center justify-content-between mb-4">
                         <div>
                             <h1 class="h3 mb-2 text-gray-800">
-                                <i class="fas fa-chart-line"></i> Data Quality Reports
+                                <i class="fas fa-clipboard-check"></i> Data Quality Reports
                             </h1>
                             <p class="text-muted mb-0">Comprehensive analysis of car registry data quality and integrity</p>
                         </div>
@@ -304,6 +339,96 @@ foreach ($dataQualityReports as $key => $report) {
                         </div>
                     </div>
                 </div>
+            </div>
+
+            <!-- Action Recommendations -->
+            <?php if ($totalIssues > 0) { ?>
+                <div class="row mb-4">
+                    <div class="col-12">
+                        <div class="card registry-card border-info">
+                            <div class="card-header bg-info text-white">
+                                <h4 class="mb-0">
+                                    <i class="fas fa-lightbulb"></i> Recommended Actions
+                                </h4>
+                            </div>
+                            <div class="card-body">
+                                <div class="row">
+                                    <div class="col-md-4">
+                                        <h6><i class="fas fa-exclamation-triangle text-danger"></i> High Priority - Cars</h6>
+                                        <ul class="list-unstyled ml-3">
+                                            <?php if ($dataQualityReports['invalid_model']['count'] > 0) { ?>
+                                                <li><i class="fas fa-arrow-right text-danger"></i> Fix invalid model data (critical for display)</li>
+                                            <?php } ?>
+                                            <?php if ($dataQualityReports['multiple_missing']['count'] > 0) { ?>
+                                                <li><i class="fas fa-arrow-right text-danger"></i> Address cars with multiple missing fields</li>
+                                            <?php } ?>
+                                            <?php if ($dataQualityReports['invalid_chassis']['count'] > 0) { ?>
+                                                <li><i class="fas fa-arrow-right text-danger"></i> Fix invalid chassis numbers using validation override if needed</li>
+                                            <?php } ?>
+                                            <?php if ($dataQualityReports['missing_chassis']['count'] > 10) { ?>
+                                                <li><i class="fas fa-arrow-right text-warning"></i> Add chassis numbers for identification</li>
+                                            <?php } ?>
+                                        </ul>
+                                    </div>
+                                    <div class="col-md-4">
+                                        <h6><i class="fas fa-users text-warning"></i> Owner Issues</h6>
+                                        <ul class="list-unstyled ml-3">
+                                            <?php if ($dataQualityReports['owners_missing_info']['count'] > 0) { ?>
+                                                <li><i class="fas fa-arrow-right text-warning"></i> Contact owners with missing profile information</li>
+                                            <?php } ?>
+                                            <?php if ($dataQualityReports['duplicate_emails']['count'] > 0) { ?>
+                                                <li><i class="fas fa-arrow-right text-warning"></i> Resolve duplicate email accounts</li>
+                                            <?php } ?>
+                                            <?php if ($dataQualityReports['inactive_owners']['count'] > 10) { ?>
+                                                <li><i class="fas fa-arrow-right text-info"></i> Re-engage inactive car owners</li>
+                                            <?php } ?>
+                                        </ul>
+                                    </div>
+                                    <div class="col-md-4">
+                                        <h6><i class="fas fa-info-circle text-info"></i> General Improvements</h6>
+                                        <ul class="list-unstyled ml-3">
+                                            <?php if ($dataQualityReports['missing_series']['count'] > 0) { ?>
+                                                <li><i class="fas fa-arrow-right text-info"></i> Fill in missing series information</li>
+                                            <?php } ?>
+                                            <?php if ($dataQualityReports['users_without_cars']['count'] > 20) { ?>
+                                                <li><i class="fas fa-arrow-right text-info"></i> Encourage car registration among new users</li>
+                                            <?php } ?>
+                                            <li><i class="fas fa-arrow-right text-info"></i> Consider removing deprecated username field</li>
+                                            <li><i class="fas fa-arrow-right text-info"></i> Set up regular data quality monitoring</li>
+                                        </ul>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            <?php } ?>
+
+            <!-- Car Quality Summary Cards -->
+            <div class="row mb-4">
+                <div class="col-12">
+                    <h2 class="h4 mb-3 text-success"><i class="fas fa-car"></i> Car Quality Reports</h2>
+                </div>
+                <?php foreach ($dataQualityReports as $key => $report) { ?>
+                    <?php if (in_array($key, ['owners_missing_info', 'inactive_owners', 'users_without_cars', 'duplicate_emails', 'deprecated_username'])) continue; ?>
+                    <div class="col-lg-3 col-md-6 mb-3">
+                        <div class="card registry-card border-<?= $report['severity'] ?> h-100">
+                            <div class="card-body text-center">
+                                <div class="text-<?= $report['severity'] ?> mb-3">
+                                    <i class="<?= $report['icon'] ?>" style="font-size: 2.5rem;"></i>
+                                </div>
+                                <h5 class="card-title"><?= $report['title'] ?></h5>
+                                <h3 class="text-<?= $report['severity'] ?> mb-2"><?= $report['count'] ?></h3>
+                                <p class="card-text small text-muted"><?= $report['description'] ?></p>
+                                <?php if ($report['count'] > 0) { ?>
+                                    <a href="#report-<?= $key ?>" class="btn btn-outline-<?= $report['severity'] ?> btn-sm">
+                                        <i class="fas fa-eye"></i> View Details
+                                    </a>
+                                <?php } ?>
+                            </div>
+                        </div>
+                    </div>
+                <?php } ?>
             </div>
 
             <!-- Owner Quality Summary Cards -->
@@ -333,49 +458,26 @@ foreach ($dataQualityReports as $key => $report) {
                 <?php } ?>
             </div>
 
-            <!-- Car Quality Summary Cards -->
-            <div class="row mb-4">
-                <div class="col-12">
-                    <h2 class="h4 mb-3 text-success"><i class="fas fa-car"></i> Car Quality Reports</h2>
-                </div>
-                <?php foreach ($dataQualityReports as $key => $report) { ?>
-                    <?php if (in_array($key, ['owners_missing_info', 'inactive_owners', 'users_without_cars', 'duplicate_emails', 'deprecated_username'])) continue; ?>
-                    <div class="col-lg-3 col-md-6 mb-3">
-                        <div class="card registry-card border-<?= $report['severity'] ?> h-100">
-                            <div class="card-body text-center">
-                                <div class="text-<?= $report['severity'] ?> mb-3">
-                                    <i class="<?= $report['icon'] ?>" style="font-size: 2.5rem;"></i>
-                                </div>
-                                <h5 class="card-title"><?= $report['title'] ?></h5>
-                                <h3 class="text-<?= $report['severity'] ?> mb-2"><?= $report['count'] ?></h3>
-                                <p class="card-text small text-muted"><?= $report['description'] ?></p>
-                                <?php if ($report['count'] > 0) { ?>
-                                    <a href="#report-<?= $key ?>" class="btn btn-outline-<?= $report['severity'] ?> btn-sm">
-                                        <i class="fas fa-eye"></i> View Details
-                                    </a>
-                                <?php } ?>
-                            </div>
-                        </div>
-                    </div>
-                <?php } ?>
-            </div>
-
             <!-- Detailed Reports -->
             <?php foreach ($dataQualityReports as $key => $report) { ?>
                 <?php if ($report['count'] > 0 || $key === 'deprecated_username') { ?>
                     <div class="row mb-4" id="report-<?= $key ?>">
                         <div class="col-12">
                             <div class="card registry-card border-<?= $report['severity'] ?>">
-                                <div class="card-header bg-dark d-flex justify-content-between align-items-center">
-                                    <h4 class="mb-0 text-white">
-                                        <i class="<?= $report['icon'] ?> text-<?= $report['severity'] ?>"></i> <?= $report['title'] ?>
-                                        <span class="badge badge-<?= $report['severity'] ?> ml-2"><?= $report['count'] ?></span>
-                                    </h4>
-                                    <div>
-                                        <small class="text-light">Impact: <?= $report['impact'] ?></small>
+                                <div class="card-header bg-dark" data-toggle="collapse" data-target="#collapse-<?= $key ?>" aria-expanded="false" style="cursor: pointer;">
+                                    <div class="d-flex justify-content-between align-items-center">
+                                        <h4 class="mb-0 text-white">
+                                            <i class="<?= $report['icon'] ?> text-<?= $report['severity'] ?>"></i> <?= $report['title'] ?>
+                                            <span class="badge badge-<?= $report['severity'] ?> ml-2"><?= $report['count'] ?></span>
+                                        </h4>
+                                        <div class="d-flex align-items-center">
+                                            <small class="text-light mr-3">Impact: <?= $report['impact'] ?></small>
+                                            <i class="fas fa-chevron-down text-light collapse-icon"></i>
+                                        </div>
                                     </div>
                                 </div>
-                                <div class="card-body">
+                                <div class="collapse" id="collapse-<?= $key ?>">
+                                    <div class="card-body">
                                     <p class="card-text mb-3"><?= $report['description'] ?></p>
                                     
                                     <?php if ($key === 'deprecated_username') { ?>
@@ -412,6 +514,72 @@ foreach ($dataQualityReports as $key => $report) {
                                                 <h6 class="alert-heading"><i class="fas fa-info-circle"></i> Inactive Car Owners Summary</h6>
                                                 <p class="mb-2">Found <strong><?= $report['count'] ?></strong> car owners who have not logged in for over 2 years or never logged in.</p>
                                                 <p class="mb-0">These accounts may be abandoned or owners may have lost access. Consider reaching out via email to re-engage these users or verify if their cars should remain in the registry.</p>
+                                            </div>
+                                        <?php } elseif ($key === 'invalid_chassis') { ?>
+                                            <!-- Special handling for invalid chassis with validation error display -->
+                                            <div class="alert alert-warning mb-3">
+                                                <h6 class="alert-heading"><i class="fas fa-info-circle"></i> Chassis Validation Information</h6>
+                                                <p class="mb-2">These chassis numbers fail validation against Lotus numbering standards. Review each case to determine if:</p>
+                                                <ul class="mb-0">
+                                                    <li>The chassis number contains data entry errors</li>
+                                                    <li>The car has non-standard factory numbering requiring validation override</li>
+                                                    <li>Historical documentation supports the unusual chassis format</li>
+                                                </ul>
+                                            </div>
+                                            <div class="table-responsive">
+                                                <table class="table table-hover">
+                                                    <thead class="thead-light">
+                                                        <tr>
+                                                            <th>Car ID</th>
+                                                            <th>Model</th>
+                                                            <th>Year</th>
+                                                            <th>Chassis</th>
+                                                            <th>Validation Error</th>
+                                                            <th>Owner</th>
+                                                            <th>Actions</th>
+                                                        </tr>
+                                                    </thead>
+                                                    <tbody>
+                                                        <?php foreach ($report['data'] as $car) { ?>
+                                                        <tr>
+                                                            <td>
+                                                                <a href="../cars/details.php?id=<?= $car->id ?>" target="_blank" class="btn btn-sm btn-outline-primary">
+                                                                    <i class="fas fa-eye"></i> <?= $car->id ?>
+                                                                </a>
+                                                            </td>
+                                                            <td><?= htmlspecialchars($car->model) ?></td>
+                                                            <td><?= $car->year ?></td>
+                                                            <td><code class="text-danger"><?= htmlspecialchars($car->chassis) ?></code></td>
+                                                            <td>
+                                                                <small class="text-danger">
+                                                                    <i class="fas fa-exclamation-triangle"></i>
+                                                                    <?= htmlspecialchars($car->validation_error) ?>
+                                                                </small>
+                                                            </td>
+                                                            <td>
+                                                                <?php if ($car->fname && $car->lname) { ?>
+                                                                    <?= htmlspecialchars($car->fname . ' ' . $car->lname) ?>
+                                                                <?php } else { ?>
+                                                                    <span class="text-muted">Owner Unknown</span>
+                                                                <?php } ?>
+                                                            </td>
+                                                            <td>
+                                                                <form method="post" action="../cars/edit.php" target="_blank" style="display: inline;">
+                                                                    <input type="hidden" name="carid" value="<?= $car->id ?>">
+                                                                    <input type="hidden" name="action" value="updateCar">
+                                                                    <input type="hidden" name="csrf" value="<?= Token::generate(); ?>">
+                                                                    <button type="submit" class="btn btn-sm btn-outline-success" title="Edit Car">
+                                                                        <i class="fas fa-edit"></i>
+                                                                    </button>
+                                                                </form>
+                                                                <button type="button" class="btn btn-sm btn-outline-info ml-1" data-toggle="modal" data-target="#chassisValidationModal">
+                                                                    <i class="fas fa-info-circle"></i> Rules
+                                                                </button>
+                                                            </td>
+                                                        </tr>
+                                                        <?php } ?>
+                                                    </tbody>
+                                                </table>
                                             </div>
                                         <?php } else { ?>
                                             <!-- Data table for other reports -->
@@ -612,6 +780,7 @@ foreach ($dataQualityReports as $key => $report) {
                                             <p class="text-muted">All cars have proper data for this category.</p>
                                         </div>
                                     <?php } ?>
+                                    </div>
                                 </div>
                             </div>
                         </div>
@@ -619,66 +788,108 @@ foreach ($dataQualityReports as $key => $report) {
                 <?php } ?>
             <?php } ?>
 
-            <!-- Action Recommendations -->
-            <?php if ($totalIssues > 0) { ?>
-                <div class="row">
-                    <div class="col-12">
-                        <div class="card registry-card border-info">
-                            <div class="card-header bg-info bg-opacity-10">
-                                <h4 class="mb-0 text-info">
-                                    <i class="fas fa-lightbulb"></i> Recommended Actions
-                                </h4>
+        </div>
+    </div>
+</div>
+
+<!-- Chassis Validation Rules Modal -->
+<div class="modal fade" id="chassisValidationModal" tabindex="-1" role="dialog" aria-labelledby="chassisValidationModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg" role="document">
+        <div class="modal-content">
+            <div class="modal-header bg-primary text-white">
+                <h5 class="modal-title" id="chassisValidationModalLabel">
+                    <i class="fas fa-barcode"></i> Chassis Validation Rules - Quick Reference
+                </h5>
+                <button type="button" class="close text-white" data-dismiss="modal" aria-label="Close">
+                    <span aria-hidden="true">&times;</span>
+                </button>
+            </div>
+            <div class="modal-body">
+                <!-- Format Overview -->
+                <div class="row mb-4">
+                    <div class="col-md-4">
+                        <div class="text-center p-3 border rounded bg-light">
+                            <h6 class="text-primary mb-2">Pre-1970 (1963-1969)</h6>
+                            <code class="d-block mb-2">1234</code>
+                            <small class="text-muted">4 digits only</small>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="text-center p-3 border rounded bg-light">
+                            <h6 class="text-warning mb-2">1970 Transition</h6>
+                            <code class="d-block mb-1">1234A</code>
+                            <code class="d-block mb-2">7001019999B</code>
+                            <small class="text-muted">5 or 11 characters</small>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="text-center p-3 border rounded bg-light">
+                            <h6 class="text-success mb-2">Post-1970 (1971-1974)</h6>
+                            <code class="d-block mb-2">7301019999B</code>
+                            <small class="text-muted">11 characters YYMMBBXXXXC</small>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Letter Codes -->
+                <div class="row mb-4">
+                    <div class="col-md-6">
+                        <div class="card border-primary">
+                            <div class="card-header bg-primary text-white">
+                                <h6 class="mb-0"><i class="fas fa-car-side"></i> Elan Models</h6>
                             </div>
                             <div class="card-body">
-                                <div class="row">
-                                    <div class="col-md-4">
-                                        <h6><i class="fas fa-exclamation-triangle text-danger"></i> High Priority - Cars</h6>
-                                        <ul class="list-unstyled ml-3">
-                                            <?php if ($dataQualityReports['invalid_model']['count'] > 0) { ?>
-                                                <li><i class="fas fa-arrow-right text-danger"></i> Fix invalid model data (critical for display)</li>
-                                            <?php } ?>
-                                            <?php if ($dataQualityReports['multiple_missing']['count'] > 0) { ?>
-                                                <li><i class="fas fa-arrow-right text-danger"></i> Address cars with multiple missing fields</li>
-                                            <?php } ?>
-                                            <?php if ($dataQualityReports['missing_chassis']['count'] > 10) { ?>
-                                                <li><i class="fas fa-arrow-right text-warning"></i> Add chassis numbers for identification</li>
-                                            <?php } ?>
-                                        </ul>
-                                    </div>
-                                    <div class="col-md-4">
-                                        <h6><i class="fas fa-users text-warning"></i> Owner Issues</h6>
-                                        <ul class="list-unstyled ml-3">
-                                            <?php if ($dataQualityReports['owners_missing_info']['count'] > 0) { ?>
-                                                <li><i class="fas fa-arrow-right text-warning"></i> Contact owners with missing profile information</li>
-                                            <?php } ?>
-                                            <?php if ($dataQualityReports['duplicate_emails']['count'] > 0) { ?>
-                                                <li><i class="fas fa-arrow-right text-warning"></i> Resolve duplicate email accounts</li>
-                                            <?php } ?>
-                                            <?php if ($dataQualityReports['inactive_owners']['count'] > 10) { ?>
-                                                <li><i class="fas fa-arrow-right text-info"></i> Re-engage inactive car owners</li>
-                                            <?php } ?>
-                                        </ul>
-                                    </div>
-                                    <div class="col-md-4">
-                                        <h6><i class="fas fa-info-circle text-info"></i> General Improvements</h6>
-                                        <ul class="list-unstyled ml-3">
-                                            <?php if ($dataQualityReports['missing_series']['count'] > 0) { ?>
-                                                <li><i class="fas fa-arrow-right text-info"></i> Fill in missing series information</li>
-                                            <?php } ?>
-                                            <?php if ($dataQualityReports['users_without_cars']['count'] > 20) { ?>
-                                                <li><i class="fas fa-arrow-right text-info"></i> Encourage car registration among new users</li>
-                                            <?php } ?>
-                                            <li><i class="fas fa-arrow-right text-info"></i> Consider removing deprecated username field</li>
-                                            <li><i class="fas fa-arrow-right text-info"></i> Set up regular data quality monitoring</li>
-                                        </ul>
-                                    </div>
-                                </div>
+                                <p><strong>Valid codes:</strong> A, B, C, D, E, F, G, H, J, K</p>
+                                <p class="text-danger mb-0"><strong>Invalid:</strong> I (never used)</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="card border-success">
+                            <div class="card-header bg-success text-white">
+                                <h6 class="mb-0"><i class="fas fa-plus"></i> +2 Models</h6>
+                            </div>
+                            <div class="card-body">
+                                <p><strong>Valid codes:</strong> L, M, N only</p>
+                                <p class="text-danger mb-0"><strong>Invalid:</strong> A-K (Elan codes)</p>
                             </div>
                         </div>
                     </div>
                 </div>
-            <?php } ?>
 
+                <!-- Examples -->
+                <div class="row mb-3">
+                    <div class="col-md-6">
+                        <h6 class="text-success"><i class="fas fa-check-circle"></i> Valid Examples</h6>
+                        <ul class="list-unstyled">
+                            <li><code class="text-success">1234</code> - Pre-1970</li>
+                            <li><code class="text-success">5678A</code> - 1970 Elan</li>
+                            <li><code class="text-success">7012345678M</code> - 1970 +2</li>
+                            <li><code class="text-success">7301019999B</code> - 1973 Elan</li>
+                        </ul>
+                    </div>
+                    <div class="col-md-6">
+                        <h6 class="text-danger"><i class="fas fa-times-circle"></i> Invalid Examples</h6>
+                        <ul class="list-unstyled">
+                            <li><code class="text-danger">123</code> - Too short</li>
+                            <li><code class="text-danger">7301019999I</code> - Invalid letter I</li>
+                            <li><code class="text-danger">7301019999L</code> - Wrong letter for Elan</li>
+                            <li><code class="text-danger">36/1234</code> - Includes type prefix</li>
+                        </ul>
+                    </div>
+                </div>
+
+                <div class="alert alert-info mb-0">
+                    <h6 class="alert-heading"><i class="fas fa-info-circle"></i> Override Option</h6>
+                    <p class="mb-0">If your chassis number doesn't validate but you have historical documentation supporting it, you can use the validation override checkbox with caution.</p>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <a href="../help/chassis-validation.php" target="_blank" class="btn btn-outline-primary">
+                    <i class="fas fa-external-link-alt"></i> View Full Documentation
+                </a>
+                <button type="button" class="btn btn-secondary" data-dismiss="modal">Close</button>
+            </div>
         </div>
     </div>
 </div>
@@ -699,9 +910,37 @@ document.querySelectorAll('a[href^="#report-"]').forEach(anchor => {
                 behavior: 'smooth',
                 block: 'start'
             });
+            // Auto-expand the clicked report
+            const collapseElement = target.querySelector('.collapse');
+            if (collapseElement && !collapseElement.classList.contains('show')) {
+                $(collapseElement).collapse('show');
+            }
         }
     });
 });
+
+// Handle collapse icon rotation
+$(document).on('show.bs.collapse', '.collapse', function() {
+    const icon = $(this).prev('.card-header').find('.collapse-icon');
+    icon.removeClass('fa-chevron-down').addClass('fa-chevron-up');
+});
+
+$(document).on('hide.bs.collapse', '.collapse', function() {
+    const icon = $(this).prev('.card-header').find('.collapse-icon');
+    icon.removeClass('fa-chevron-up').addClass('fa-chevron-down');
+});
+
+// Add hover effect for collapsible headers
+$(document).ready(function() {
+    $('.card-header[data-toggle="collapse"]').hover(
+        function() {
+            $(this).css('background-color', '#495057');
+        },
+        function() {
+            $(this).css('background-color', '');
+        }
+    );
+});
 </script>
 
-<?php require_once $abs_us_root . $us_url_root . 'users/includes/template/footers.php'; ?>
+<?php require_once $abs_us_root . $us_url_root . 'users/includes/html_footer.php'; ?>

@@ -212,6 +212,108 @@ function updateCarDetails(array &$car): void
         </div>
     </div>
 </div>
+
+<!-- Chassis Validation Rules Modal -->
+<div class="modal fade" id="chassisValidationModal" tabindex="-1" role="dialog" aria-labelledby="chassisValidationModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg" role="document">
+        <div class="modal-content">
+            <div class="modal-header bg-primary text-white">
+                <h5 class="modal-title" id="chassisValidationModalLabel">
+                    <i class="fas fa-barcode"></i> Chassis Validation Rules - Quick Reference
+                </h5>
+                <button type="button" class="close text-white" data-dismiss="modal" aria-label="Close">
+                    <span aria-hidden="true">&times;</span>
+                </button>
+            </div>
+            <div class="modal-body">
+                <!-- Format Overview -->
+                <div class="row mb-4">
+                    <div class="col-md-4">
+                        <div class="text-center p-3 border rounded bg-light">
+                            <h6 class="text-primary mb-2">Pre-1970 (1963-1969)</h6>
+                            <code class="d-block mb-2">1234</code>
+                            <small class="text-muted">4 digits only</small>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="text-center p-3 border rounded bg-light">
+                            <h6 class="text-warning mb-2">1970 Transition</h6>
+                            <code class="d-block mb-1">1234A</code>
+                            <code class="d-block mb-2">7001019999B</code>
+                            <small class="text-muted">5 or 11 characters</small>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="text-center p-3 border rounded bg-light">
+                            <h6 class="text-success mb-2">Post-1970 (1971-1974)</h6>
+                            <code class="d-block mb-2">7301019999B</code>
+                            <small class="text-muted">11 characters YYMMBBXXXXC</small>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Letter Codes -->
+                <div class="row mb-4">
+                    <div class="col-md-6">
+                        <div class="card border-primary">
+                            <div class="card-header bg-primary text-white">
+                                <h6 class="mb-0"><i class="fas fa-car-side"></i> Elan Models</h6>
+                            </div>
+                            <div class="card-body">
+                                <p><strong>Valid codes:</strong> A, B, C, D, E, F, G, H, J, K</p>
+                                <p class="text-danger mb-0"><strong>Invalid:</strong> I (never used)</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="card border-success">
+                            <div class="card-header bg-success text-white">
+                                <h6 class="mb-0"><i class="fas fa-plus"></i> +2 Models</h6>
+                            </div>
+                            <div class="card-body">
+                                <p><strong>Valid codes:</strong> L, M, N only</p>
+                                <p class="text-danger mb-0"><strong>Invalid:</strong> A-K (Elan codes)</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Examples -->
+                <div class="row mb-3">
+                    <div class="col-md-6">
+                        <h6 class="text-success"><i class="fas fa-check-circle"></i> Valid Examples</h6>
+                        <ul class="list-unstyled">
+                            <li><code class="text-success">1234</code> - Pre-1970</li>
+                            <li><code class="text-success">5678A</code> - 1970 Elan</li>
+                            <li><code class="text-success">7012345678M</code> - 1970 +2</li>
+                            <li><code class="text-success">7301019999B</code> - 1973 Elan</li>
+                        </ul>
+                    </div>
+                    <div class="col-md-6">
+                        <h6 class="text-danger"><i class="fas fa-times-circle"></i> Invalid Examples</h6>
+                        <ul class="list-unstyled">
+                            <li><code class="text-danger">123</code> - Too short</li>
+                            <li><code class="text-danger">7301019999I</code> - Invalid letter I</li>
+                            <li><code class="text-danger">7301019999L</code> - Wrong letter for Elan</li>
+                            <li><code class="text-danger">36/1234</code> - Includes type prefix</li>
+                        </ul>
+                    </div>
+                </div>
+
+                <div class="alert alert-info mb-0">
+                    <h6 class="alert-heading"><i class="fas fa-info-circle"></i> Override Option</h6>
+                    <p class="mb-0">If your chassis number doesn't validate but you have historical documentation supporting it, you can use the validation override checkbox with caution.</p>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <a href="<?= $us_url_root ?>app/help/chassis-validation.php" target="_blank" class="btn btn-outline-primary">
+                    <i class="fas fa-external-link-alt"></i> View Full Documentation
+                </a>
+                <button type="button" class="btn btn-secondary" data-dismiss="modal">Close</button>
+            </div>
+        </div>
+    </div>
+</div>
 <!--footers-->
 <?php
 require_once $abs_us_root . $us_url_root . 'users/includes/html_footer.php'; //custom template footer
@@ -382,6 +484,7 @@ require_once $abs_us_root . $us_url_root . 'users/includes/html_footer.php'; //c
             formData.append('variant', $('#variant').val());
             formData.append('type', $('#type').val());
             formData.append('chassis', $('#chassis').val());
+            formData.append('chassis_override', $('#chassis_override').is(':checked') ? '1' : '0');
             formData.append('color', $('#color').val());
             formData.append('engine', $('#engine').val());
             formData.append('purchasedate', $('#purchasedate').val());
@@ -696,201 +799,123 @@ require_once $abs_us_root . $us_url_root . 'users/includes/html_footer.php'; //c
         $('#chassis').prop('disabled', false);
     });
 
-    // Validate Chassis
-    // Chassis Validation Rules:
-    // Race cars: 26-R-xx (1963) or 26-R-xx/26-S2-xx (1964) or 26-S2-xx (1965-1966)
-    // Pre-1970: 4 digits only (all production models)
-    // Post-Jan 1970: YYMMBBXXXXC format (11 characters) where:
-    //   - YY = Year, MM = Month, BB = Batch, XXXX = Sequential, C = Letter code
-    //   - Elan models: Letter codes A-K only
-    //   - +2 models: Letter codes L, M, N only
+    // Validate Chassis - Centralized AJAX Validation
+    // Uses centralized ChassisValidator class for consistent frontend/backend validation
     $('#chassis').blur(function() {
-        // Letter codes are now validated based on model type in the validation logic below
         const _chassis = $('#chassis').val();
-        var _base;
-        var _suffix;
-        var errorReason = '';
-
-        // Check if override is enabled
         const overrideEnabled = $('#chassis_override').is(':checked');
-
-        // Race cars: year-specific format validation
-        if (validModel.indexOf('Race') >= 0) {
-            const racePatternR = /^26-R-\d{2}$/;   // 26-R-xx format
-            const racePatternS2 = /^26-S2-\d{2}$/; // 26-S2-xx format
-            
-            if (validYear === '1963') {
-                // 1963: 26-R-xx only
-                if (racePatternR.test(_chassis)) {
-                    validChassis = _chassis;
-                } else {
-                    validChassis = overrideEnabled ? _chassis : '';
-                    errorReason = '1963 race cars must use format 26-R-xx (e.g., 26-R-01)';
-                }
-            } else if (validYear === '1964') {
-                // 1964: 26-R-xx OR 26-S2-xx
-                if (racePatternR.test(_chassis) || racePatternS2.test(_chassis)) {
-                    validChassis = _chassis;
-                } else {
-                    validChassis = overrideEnabled ? _chassis : '';
-                    errorReason = '1964 race cars must use format 26-R-xx or 26-S2-xx (e.g., 26-R-01 or 26-S2-01)';
-                }
-            } else if (validYear === '1965' || validYear === '1966') {
-                // 1965-1966: 26-S2-xx only
-                if (racePatternS2.test(_chassis)) {
-                    validChassis = _chassis;
-                } else {
-                    validChassis = overrideEnabled ? _chassis : '';
-                    errorReason = validYear + ' race cars must use format 26-S2-xx (e.g., 26-S2-01)';
-                }
-            } else {
-                // Other years with race models - use 26-R-xx format as default
-                if (racePatternR.test(_chassis)) {
-                    validChassis = _chassis;
-                } else {
-                    validChassis = overrideEnabled ? _chassis : '';
-                    errorReason = validYear + ' race cars must use format 26-R-xx (e.g., 26-R-01)';
-                }
-            }
-        } else {
-            // Production cars validation
-            switch (validYear) {
-                case '1963':
-                case '1964':
-                case '1965':
-                case '1966':
-                case '1967':
-                case '1968':
-                case '1969':
-                    // Pre-1970: 4 digits only
-                    if ($.isNumeric(_chassis) && (_chassis.length === 4)) {
-                        validChassis = _chassis;
-                    } else {
-                        validChassis = overrideEnabled ? _chassis : '';
-                        if (!$.isNumeric(_chassis)) {
-                            errorReason = 'Pre-1970 chassis must be numeric (4 digits only, e.g., 1234)';
-                        } else {
-                            errorReason = 'Pre-1970 chassis must be exactly 4 digits (e.g., 1234)';
-                        }
-                    }
-                    break;
-                case '1970':
-                case '1971':
-                case '1972':
-                case '1973':
-                case '1974':
-                    // Post-Jan 1970: All models use YYMMBBXXXXC format (11 characters)
-                    if (_chassis.length === 11) {
-                        _base = _chassis.slice(0, 10);
-                        _suffix = _chassis.slice(10, 11).toUpperCase();
-                        
-                        // Model-specific letter validation
-                        let validSuffixes;
-                        if (validModel.indexOf('+2') >= 0) {
-                            // +2 models can only use L, M, N
-                            validSuffixes = ['L', 'M', 'N'];
-                        } else {
-                            // Elan models can only use A-K
-                            validSuffixes = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'J', 'K'];
-                        }
-                        
-                        if ($.isNumeric(_base) && ($.inArray(_suffix, validSuffixes) !== -1)) {
-                            validChassis = _chassis;
-                        } else {
-                            validChassis = overrideEnabled ? _chassis : '';
-                            if (!$.isNumeric(_base)) {
-                                errorReason = 'First 10 characters must be numeric in YYMMBBXXXXC format (e.g., 7301019999B)';
-                            } else {
-                                const modelType = validModel.indexOf('+2') >= 0 ? '+2' : 'Elan';
-                                const allowedCodes = validModel.indexOf('+2') >= 0 ? 'L, M, N' : 'A-K (excluding I)';
-                                errorReason = modelType + ' models require letter codes: ' + allowedCodes + ' (current: "' + _suffix + '")';
-                            }
-                        }
-                    } else if (validYear === '1970' && _chassis.length === 5) {
-                        // 1970 transition year: also allow legacy 5-character format
-                        _base = _chassis.slice(0, 4);
-                        _suffix = _chassis.slice(4, 5).toUpperCase();
-                        
-                        let validSuffixes = (validModel.indexOf('+2') >= 0) ? ['L', 'M', 'N'] : ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'J', 'K'];
-                        
-                        if ($.isNumeric(_base) && ($.inArray(_suffix, validSuffixes) !== -1)) {
-                            validChassis = _chassis;
-                        } else {
-                            validChassis = overrideEnabled ? _chassis : '';
-                            if (!$.isNumeric(_base)) {
-                                errorReason = '1970 transition format: First 4 characters must be numeric plus letter (e.g., 1234A)';
-                            } else {
-                                const modelType = validModel.indexOf('+2') >= 0 ? '+2' : 'Elan';
-                                const allowedCodes = validModel.indexOf('+2') >= 0 ? 'L, M, N' : 'A-K (excluding I)';
-                                errorReason = '1970 ' + modelType + ' models require letter codes: ' + allowedCodes + ' (current: "' + _suffix + '")';
-                            }
-                        }
-                    } else {
-                        validChassis = overrideEnabled ? _chassis : '';
-                        if (validYear === '1970') {
-                            errorReason = '1970 chassis must be 5 characters (legacy format) or 11 characters (new YYMMBBXXXXC format)';
-                        } else {
-                            errorReason = 'Post-1970 chassis must be 11 characters in YYMMBBXXXXC format (e.g., 7301019999B)';
-                        }
-                    }
-                    break;
-                default:
-                    validChassis = overrideEnabled ? _chassis : '';
-                    errorReason = 'Invalid year selected';
-                    break;
-            }
+        
+        // Skip validation if empty chassis
+        if (!_chassis || !validYear || !validModel) {
+            validChassis = '';
+            updateChassisUI(false, '');
+            return;
         }
 
-        // Display or hide validation error
-        if (!validChassis && _chassis && !overrideEnabled) {
+        // Call centralized validation via AJAX
+        $.ajax({
+            url: 'actions/validateChassis.php',
+            type: 'POST',
+            dataType: 'json',
+            headers: {
+                'X-Requested-With': 'XMLHttpRequest'
+            },
+            data: {
+                'chassis': _chassis,
+                'year': validYear,
+                'model': validModel,
+                'allow_override': overrideEnabled ? 'true' : 'false',
+                'csrf': csrf
+            },
+            success: function(result) {
+                validChassis = result.valid ? _chassis : '';
+                updateChassisUI(result.valid, result.error_reason || '');
+                
+                // Debug logging removed - validation working correctly
+            },
+            error: function(xhr, status, error) {
+                console.error('Chassis validation AJAX error:', {
+                    status: status,
+                    error: error,
+                    responseText: xhr.responseText,
+                    statusCode: xhr.status
+                });
+                validChassis = overrideEnabled ? _chassis : '';
+                updateChassisUI(validChassis !== '', 'Validation service temporarily unavailable - Check console for details');
+            }
+        });
+    });
+
+    /**
+     * Update chassis UI based on validation result
+     * @param {boolean} isValid - Whether chassis is valid
+     * @param {string} errorReason - Error message if invalid
+     */
+    function updateChassisUI(isValid, errorReason) {
+        // Update visual indicators
+        $('#chassis_icon').toggleClass('fa-thumbs-up', isValid)
+                          .toggleClass('fa-thumbs-down', !isValid)
+                          .toggleClass('is-valid', isValid)
+                          .toggleClass('is-invalid', !isValid);
+        
+        $('#chassis').toggleClass('is-valid', isValid)
+                     .toggleClass('is-invalid', !isValid);
+
+        // Show/hide validation error
+        const overrideEnabled = $('#chassis_override').is(':checked');
+        if (!isValid && errorReason && !overrideEnabled) {
             $('#chassis_validation_error').removeClass('hidden').show();
             $('#chassis_error_reason').text(errorReason);
         } else {
             $('#chassis_validation_error').addClass('hidden').hide();
         }
 
-        $('#chassis_icon').toggleClass('fa-thumbs-up', Boolean(validChassis)).toggleClass('fa-thumbs-down', !Boolean(validChassis)).toggleClass('is-valid', Boolean(validChassis)).toggleClass('is-invalid', !Boolean(validChassis));
-        $('#chassis').toggleClass('is-valid', Boolean(validChassis)).toggleClass('is-invalid', !Boolean(validChassis));
-
-        if ($('#action').val() === 'addCar' && (validChassis)) {
-            // addCar
-            if (validChassis) {
-                // Now see if the chassis is taken
-                // const csrf = $('#csrf').val();
-                $.ajax({
-                    url: 'action/checkChassis.php',
-                    type: 'post',
-                    data: {
-                        'command': 'chassis_check',
-                        'year': validYear,
-                        'model': validModel,
-                        'chassis': validChassis,
-                        'csrf': csrf,
-                    },
-                    success: function(response) {
-                        if (response === 'taken') {
-                            validChassis = '';
-                            $('#chassis_icon').toggleClass('fa-thumbs-up', Boolean(validChassis)).toggleClass('fa-thumbs-down', !Boolean(validChassis)).toggleClass('is-valid', Boolean(validChassis)).toggleClass('is-invalid', !Boolean(validChassis));
-                            $('#chassis').toggleClass('is-valid', Boolean(validChassis)).toggleClass('is-invalid', !Boolean(validChassis));
-                            $('#chassis_taken').show();
-                        } else if (response === 'not_taken') {
-                            $('#chassis_taken').hide();
-                            $('#color').prop('disabled', false)
-                            $('#engine').prop('disabled', false)
-                        }
-                    },
-                    error: function(response) {},
-                });
-            }
+        // Check chassis availability for new cars only
+        if ($('#action').val() === 'addCar' && isValid && validChassis) {
+            checkChassisAvailability();
         }
-    });
+    }
+
+    /**
+     * Check if chassis number is already taken (for new cars)
+     */
+    function checkChassisAvailability() {
+        $.ajax({
+            url: 'actions/checkChassis.php',
+            type: 'post',
+            data: {
+                'command': 'chassis_check',
+                'year': validYear,
+                'model': validModel,
+                'chassis': validChassis,
+                'csrf': csrf,
+            },
+            success: function(response) {
+                if (response === 'taken') {
+                    validChassis = '';
+                    updateChassisUI(false, 'This chassis number is already registered');
+                    $('#chassis_taken').show();
+                } else if (response === 'not_taken') {
+                    $('#chassis_taken').hide();
+                    $('#color').prop('disabled', false);
+                    $('#engine').prop('disabled', false);
+                }
+            },
+            error: function(response) {
+                console.error('Chassis availability check failed:', response);
+            }
+        });
+    }
 
     // Override checkbox event handler - re-validate when toggled
     $('#chassis_override').change(function() {
+        console.log('Override checkbox changed:', $(this).is(':checked'), 'Value:', $(this).val());
         if ($('#chassis').val()) {
             $('#chassis').trigger('blur');
         }
     });
+
+    // Debug form submission removed - override functionality working
 
     // End Car Validation
 </script>

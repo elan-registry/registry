@@ -29,7 +29,32 @@ $stories = $abs_us_root . $us_url_root . 'stories/stories.php';
                             <h2><strong>Documents</strong></h2>
                         </div>
                         <div class="card-body">
+                            
+                            <!-- Web-based Documentation -->
+                            <h5 class="mb-3"><i class="fas fa-globe"></i> Online Documentation</h5>
+                            <table class="table table-striped table-bordered table-sm mb-4">
+                                <thead class="thead-light">
+                                    <tr>
+                                        <th scope="col">Document</th>
+                                        <th scope="col">Description</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr>
+                                        <td>
+                                            <a href="../app/help/chassis-validation.php" target="_blank" class="btn btn-sm btn-outline-primary">
+                                                <i class="fas fa-barcode"></i> Chassis Validation Rules
+                                            </a>
+                                        </td>
+                                        <td>
+                                            Complete guide to Lotus Elan chassis numbering formats, validation standards, and override procedures
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
 
+                            <!-- PDF Documents -->
+                            <h5 class="mb-3"><i class="fas fa-file-pdf"></i> PDF Documents</h5>
                             <table class="table table-striped table-bordered table-sm" aria-describedby="legend">
                                 <colgroup>
                                     <col span="1" style="width: 50%;">

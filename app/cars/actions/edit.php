@@ -18,6 +18,7 @@ $settings = getSettings();  // Get global settings from plugin
 // A place to put some messages
 $errors     = [];
 $successes  = [];
+$chassis_override_used = false; // Track if chassis validation override was used
 $cardetails = [];
 
 
@@ -42,7 +43,7 @@ if (!empty($_POST)) {
                     addCar($cardetails);
                     mvTmpImages($cardetails);
                 } else {
-                    $errors[] = 'Add_Car: Cannot add record';
+                    $errors[] = '<strong>ERROR:</strong> Add_Car: Cannot add record';
                 }
                 break;
             case "updateCar":
@@ -52,7 +53,7 @@ if (!empty($_POST)) {
                     uploadImages($cardetails); // On update I know the car number
                     updateCar($cardetails);
                 } else {
-                    $errors[] = 'Update_Car: Cannot add record';
+                    $errors[] = '<strong>ERROR:</strong> Update_Car: Cannot add record';
                 }
                 break;
             case "fetchImages":
@@ -242,137 +243,59 @@ function updateModel(array &$cardetails): void
 }
 
 /**
- * Update car chassis number from form input with comprehensive validation
+ * Update car chassis number from form input with centralized validation
  * 
  * @param array $cardetails Car details array to update
  * @return void
  */
 function updateChassis(array &$cardetails): void
 {
-    global $errors, $successes;
+    global $errors, $successes, $chassis_override_used;
     
     // Check if validation override is enabled
-    $chassisOverride = Input::get('chassis_override') === '1';
+    // Checkbox only sends value when checked, so check if parameter exists and has value '1'
+    $chassisOverrideRaw = Input::get('chassis_override');
+    $chassisOverride = ($chassisOverrideRaw === '1');
+    
+    // Debug: Log override status (remove when working)
+    // error_log("Chassis override status: " . ($chassisOverride ? 'true' : 'false') . " (raw value: '" . $chassisOverrideRaw . "')");
     
     // Update 'chassis'
     if (Input::get('chassis')) {
         $cardetails['chassis'] = Input::get('chassis');
         $chassis = $cardetails['chassis'];
-        $chassisLength = strlen($chassis);
         $year = (int)$cardetails['year'];
-        $variant = $cardetails['variant'];
-        $series = $cardetails['series'];
+        $model = $cardetails['model']; // Contains series|variant|type format
         
-        $validationPassed = false;
-        $errorReason = '';
-        
-        // Race cars: year-specific format validation
-        if (strcmp($variant, 'Race') === 0) {
-            if ($year === 1963) {
-                // 1963: 26-R-xx only
-                if (preg_match('/^26-R-\d{2}$/', $chassis)) {
-                    $validationPassed = true;
-                } else {
-                    $errorReason = '1963 race cars must use format 26-R-xx (e.g., 26-R-01)';
-                }
-            } elseif ($year === 1964) {
-                // 1964: 26-R-xx OR 26-S2-xx
-                if (preg_match('/^26-R-\d{2}$/', $chassis) || preg_match('/^26-S2-\d{2}$/', $chassis)) {
-                    $validationPassed = true;
-                } else {
-                    $errorReason = '1964 race cars must use format 26-R-xx or 26-S2-xx (e.g., 26-R-01 or 26-S2-01)';
-                }
-            } elseif ($year === 1965 || $year === 1966) {
-                // 1965-1966: 26-S2-xx only
-                if (preg_match('/^26-S2-\d{2}$/', $chassis)) {
-                    $validationPassed = true;
-                } else {
-                    $errorReason = $year . ' race cars must use format 26-S2-xx (e.g., 26-S2-01)';
-                }
-            } else {
-                // Other years with race models - use 26-R-xx format as default
-                if (preg_match('/^26-R-\d{2}$/', $chassis)) {
-                    $validationPassed = true;
-                } else {
-                    $errorReason = $year . ' race cars must use format 26-R-xx (e.g., 26-R-01)';
-                }
-            }
-        } else {
-            // Production cars validation
-            if ($year < 1970) {
-                // Pre-1970: 4 digits only
-                if (is_numeric($chassis) && $chassisLength === 4) {
-                    $validationPassed = true;
-                } else {
-                    if (!is_numeric($chassis)) {
-                        $errorReason = 'Pre-1970 chassis must be numeric (4 digits only, e.g., 1234)';
-                    } else {
-                        $errorReason = 'Pre-1970 chassis must be exactly 4 digits (e.g., 1234)';
-                    }
-                }
-            } elseif ($year >= 1970) {
-                // Post-Jan 1970: YYMMBBXXXXC format (11 characters)
-                if ($chassisLength === 11) {
-                    $base = substr($chassis, 0, 10);
-                    $suffix = strtoupper(substr($chassis, 10, 1));
-                    
-                    // Model-specific letter validation
-                    if (strpos($series, '+2') !== false) {
-                        // +2 models can only use L, M, N
-                        $validSuffixes = ['L', 'M', 'N'];
-                        $modelType = '+2';
-                        $allowedCodes = 'L, M, N';
-                    } else {
-                        // Elan models can only use A-K (excluding I)
-                        $validSuffixes = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'J', 'K'];
-                        $modelType = 'Elan';
-                        $allowedCodes = 'A-K (excluding I)';
-                    }
-                    
-                    if (is_numeric($base) && in_array($suffix, $validSuffixes)) {
-                        $validationPassed = true;
-                    } else {
-                        if (!is_numeric($base)) {
-                            $errorReason = 'First 10 characters must be numeric in YYMMBBXXXXC format (e.g., 7301019999B)';
-                        } else {
-                            $errorReason = $modelType . ' models require letter codes: ' . $allowedCodes . ' (current: "' . $suffix . '")';
-                        }
-                    }
-                } elseif ($year === 1970 && $chassisLength === 5) {
-                    // 1970 transition year: also allow legacy 5-character format
-                    $base = substr($chassis, 0, 4);
-                    $suffix = strtoupper(substr($chassis, 4, 1));
-                    
-                    $validSuffixes = (strpos($series, '+2') !== false) ? ['L', 'M', 'N'] : ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'J', 'K'];
-                    
-                    if (is_numeric($base) && in_array($suffix, $validSuffixes)) {
-                        $validationPassed = true;
-                    } else {
-                        if (!is_numeric($base)) {
-                            $errorReason = '1970 transition format: First 4 characters must be numeric plus letter (e.g., 1234A)';
-                        } else {
-                            $modelType = (strpos($series, '+2') !== false) ? '+2' : 'Elan';
-                            $allowedCodes = (strpos($series, '+2') !== false) ? 'L, M, N' : 'A-K (excluding I)';
-                            $errorReason = '1970 ' . $modelType . ' models require letter codes: ' . $allowedCodes . ' (current: "' . $suffix . '")';
-                        }
-                    }
-                } else {
-                    if ($year === 1970) {
-                        $errorReason = '1970 chassis must be 5 characters (legacy format) or 11 characters (new YYMMBBXXXXC format)';
-                    } else {
-                        $errorReason = 'Post-1970 chassis must be 11 characters in YYMMBBXXXXC format (e.g., 7301019999B)';
-                    }
-                }
-            }
+        // Use centralized chassis validator
+        $validatorPath = '../../../usersc/classes/ChassisValidator.php';
+        if (!file_exists($validatorPath)) {
+            $errors[] = 'ChassisValidator class file not found at: ' . realpath($validatorPath);
+            return;
         }
         
+        require_once $validatorPath;
+        
+        try {
+            $validator = new ChassisValidator();
+            $result = $validator->validate($chassis, $year, $model, $chassisOverride);
+            
+            // Debug: Log validation result
+            error_log("Validation result: " . print_r($result, true));
+        } catch (Exception $e) {
+            $errors[] = 'Chassis validation error: ' . $e->getMessage();
+            return;
+        }
+        
+        // Debug output removed - override functionality working
         // Handle validation result
-        if ($validationPassed) {
+        if ($result['valid'] && !$result['override_used']) {
             $successes[] = 'Chassis Updated (' . $cardetails['chassis'] . ')';
-        } elseif ($chassisOverride) {
-            $successes[] = 'Chassis Updated with Override (' . $cardetails['chassis'] . ') - Warning: ' . $errorReason;
+        } elseif ($result['valid'] && $result['override_used']) {
+            $successes[] = 'Chassis Updated with Override (' . $cardetails['chassis'] . ') - Warning: ' . $result['error_reason'];
+            $chassis_override_used = true; // Track that override was used for comments
         } else {
-            $errors[] = 'Chassis Validation Failed: ' . $errorReason;
+            $errors[] = '<strong>ERROR:</strong> Chassis Validation Failed: ' . $result['error_reason'];
         }
     } else {
         $errors[] = "Please enter chassis number";
@@ -439,12 +362,27 @@ function updateWebsite(&$cardetails)
 
 function updateComments(&$cardetails)
 {
+    global $successes, $chassis_override_used;
+    
     // Update 'comments'
     if (Input::get('comments')) {
         $cardetails['comments'] = Input::get('comments');
         $successes[] = 'Comments Updated (' . $cardetails['comments'] . ')';
     } else {
         $cardetails['comments'] = null;
+    }
+    
+    // If chassis override was used, append audit note to comments
+    if (isset($chassis_override_used) && $chassis_override_used === true) {
+        $overrideNote = "\nCHASSIS VALIDATION OVERRIDDEN: " . date('Y-m-d H:i:s') . " - Admin override used for chassis validation.";
+        
+        if ($cardetails['comments']) {
+            // Append to existing comments with line break
+            $cardetails['comments'] .= "\n" . $overrideNote;
+        } else {
+            // Set as new comment if no existing comments
+            $cardetails['comments'] = $overrideNote;
+        }
     }
 }
 
