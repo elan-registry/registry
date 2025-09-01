@@ -52,6 +52,24 @@ if (Input::exists('post')) {
             'columns' => Input::get('columns') ?? []
         ];
         
+        // Handle special endpoints
+        if ($table === 'findCarByChassis') {
+            $chassis = Input::get('chassis');
+            if (empty($chassis)) {
+                echo json_encode(['success' => false, 'error' => 'Chassis number required']);
+                exit;
+            }
+            
+            $carQuery = $db->query("SELECT id FROM cars WHERE chassis = ? LIMIT 1", [$chassis]);
+            if ($carQuery->count() > 0) {
+                $car = $carQuery->first();
+                echo json_encode(['success' => true, 'car_id' => $car->id]);
+            } else {
+                echo json_encode(['success' => false]);
+            }
+            exit;
+        }
+        
         // Validate table parameter
         if (!in_array($table, ['cars', 'factory'], true)) {
             throw new InvalidArgumentException('Invalid table parameter: ' . $table);

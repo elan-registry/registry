@@ -46,6 +46,7 @@ if (!securePage($_SERVER['PHP_SELF'])) {
                     <th scope="column">Color</th>
                     <th scope="column">Built / Invoiced / 1ST Registered </th>
                     <th scope="column">Note</th>
+                    <th scope="column">Registry Link</th>
                   </tr>
                 </thead>
               </table>
@@ -139,7 +140,82 @@ echo html_entity_decode($settings->elan_datatables_css_cdn);
         data: "builddate",
       }, {
         data: "note",
+      }, {
+        data: "serial",
+        render: function(data, type, row, meta) {
+          if (type === 'display' && data) {
+            // Return placeholder that will be populated via AJAX
+            return '<div class="registry-link-container" data-chassis="' + data + '">' +
+                   '<span class="text-muted small">' +
+                   '<i class="fas fa-spinner fa-spin"></i> Checking...' +
+                   '</span></div>';
+          }
+          return '';
+        },
+        orderable: false,
+        searchable: false
       }
     ]
+  });
+
+  // Function to check for registry matches and populate links
+  function checkRegistryLinks() {
+    $('.registry-link-container').each(function() {
+      const container = $(this);
+      const chassis = container.data('chassis');
+      
+      if (!chassis) {
+        container.html('<span class="text-muted small">No chassis data</span>');
+        return;
+      }
+
+      // Make AJAX request to find car by chassis
+      $.ajax({
+        url: '../action/getDataTables.php',
+        method: 'POST',
+        data: {
+          table: 'findCarByChassis',
+          chassis: chassis,
+          csrf: csrf
+        },
+        dataType: 'json',
+        success: function(response) {
+          if (response.success && response.car_id) {
+            // Car exists - create link to car details
+            const detailsUrl = us_url_root + 'app/cars/details.php?car_id=' + response.car_id;
+            container.html(
+              '<a href="' + detailsUrl + '" class="btn btn-sm btn-success" target="_blank">' +
+              '<i class="fas fa-car"></i> View Car #' + response.car_id +
+              '</a>'
+            );
+          } else {
+            // Car not found - show not registered message
+            container.html(
+              '<span class="text-muted small">' +
+              '<i class="fas fa-times-circle"></i> Not in registry' +
+              '</span>'
+            );
+          }
+        },
+        error: function(xhr, status, error) {
+          console.error('Error checking registry for chassis:', chassis, error);
+          container.html(
+            '<span class="text-danger small">' +
+            '<i class="fas fa-exclamation-triangle"></i> Check failed' +
+            '</span>'
+          );
+        }
+      });
+    });
+  }
+
+  // Check registry links after table is drawn
+  table.on('draw.dt', function() {
+    checkRegistryLinks();
+  });
+
+  // Initial check after table loads
+  table.on('init.dt', function() {
+    checkRegistryLinks();
   });
 </script>
