@@ -85,12 +85,20 @@ function updateCarDetails(array &$car): void
 
     $carQ = new Car($car['id']);
 
-    // Security: Verify user ownership of the car
-    if ($user->data()->id != $carQ->data()->user_id) {
-        // Security violation: User attempting to access car they don't own
-        logger($user->data()->id, 'ElanRegistry', 'Not owner of car! USER ' . $user->data()->id . ' CAR ' . $car['id']);
+    // Security: Verify user ownership or admin/editor permissions
+    $isOwner = ($user->data()->id == $carQ->data()->user_id);
+    $hasAdminAccess = hasPerm([2, 3]); // Permission 2 = Administrator, 3 = Editor
+    
+    if (!$isOwner && !$hasAdminAccess) {
+        // Security violation: User attempting to access car they don't own and don't have admin/editor access
+        logger($user->data()->id, 'ElanRegistry', 'Access denied for car edit - USER ' . $user->data()->id . ' CAR ' . $car['id'] . ' (not owner, no admin/editor perms)');
         $user->logout();
         exit();
+    }
+    
+    // Log admin/editor access for audit trail
+    if (!$isOwner && $hasAdminAccess) {
+        logger($user->data()->id, 'ElanRegistry', 'Admin/Editor accessing car edit - USER ' . $user->data()->id . ' CAR ' . $car['id']);
     }
 
     foreach ($carQ->data() as $key => $value) {
@@ -477,17 +485,28 @@ require_once $abs_us_root . $us_url_root . 'users/includes/html_footer.php'; //c
             // Check to see if the page is error free
             var form_data = current_fs.serializeArray();
             var error_free = true;
+            var chassis_override = $('#chassis_override').is(':checked');
 
             for (var input in form_data) {
                 var element = $('#' + form_data[input]['name'] + '_icon');
                 var invalid = element.hasClass('fa-thumbs-down');
+                
+                // Allow proceeding if chassis validation is overridden
+                if (invalid && form_data[input]['name'] === 'chassis' && chassis_override) {
+                    continue; // Skip chassis validation error if override is enabled
+                }
+                
                 if (invalid) {
                     error_free = false;
                 }
             }
 
             if (!error_free) {
-                $('#message').show().html('<div class="alert alert-primary">Error: There are one or more errors on the page.<br>Please update and submit.<div>');
+                var errorMessage = 'Error: There are one or more errors on the page.<br>Please update and submit.';
+                if (chassis_override) {
+                    errorMessage += '<br><strong>Note:</strong> Chassis validation has been overridden - please verify the chassis number is correct.';
+                }
+                $('#message').show().html('<div class="alert alert-primary">' + errorMessage + '<div>');
             } else {
                 $('#message').hide();
 
@@ -678,59 +697,156 @@ require_once $abs_us_root . $us_url_root . 'users/includes/html_footer.php'; //c
     });
 
     // Validate Chassis
-    // Pre 1970 = Chassis is 4 digits
-    // 1970 = Chassis is either a) 4 digits plus letter or b) 10 digits (YY MM BB SSSS) plus letter
-    // Post Jan 1 1972 Chassis is 8 digits (YY MM SSSS) plus letter
+    // Chassis Validation Rules:
+    // Race cars: 26-R-xx (1963) or 26-R-xx/26-S2-xx (1964) or 26-S2-xx (1965-1966)
+    // Pre-1970: 4 digits only (all production models)
+    // Post-Jan 1970: YYMMBBXXXXC format (11 characters) where:
+    //   - YY = Year, MM = Month, BB = Batch, XXXX = Sequential, C = Letter code
+    //   - Elan models: Letter codes A-K only
+    //   - +2 models: Letter codes L, M, N only
     $('#chassis').blur(function() {
-        const _valid_suffix = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'J', 'K', 'L', 'M', 'N'];
+        // Letter codes are now validated based on model type in the validation logic below
         const _chassis = $('#chassis').val();
         var _base;
         var _suffix;
+        var errorReason = '';
 
+        // Check if override is enabled
+        const overrideEnabled = $('#chassis_override').is(':checked');
 
-        // If this is a Race model let the chassis be anything
+        // Race cars: year-specific format validation
         if (validModel.indexOf('Race') >= 0) {
-            validChassis = _chassis;
+            const racePatternR = /^26-R-\d{2}$/;   // 26-R-xx format
+            const racePatternS2 = /^26-S2-\d{2}$/; // 26-S2-xx format
+            
+            if (validYear === '1963') {
+                // 1963: 26-R-xx only
+                if (racePatternR.test(_chassis)) {
+                    validChassis = _chassis;
+                } else {
+                    validChassis = overrideEnabled ? _chassis : '';
+                    errorReason = '1963 race cars must use format 26-R-xx (e.g., 26-R-01)';
+                }
+            } else if (validYear === '1964') {
+                // 1964: 26-R-xx OR 26-S2-xx
+                if (racePatternR.test(_chassis) || racePatternS2.test(_chassis)) {
+                    validChassis = _chassis;
+                } else {
+                    validChassis = overrideEnabled ? _chassis : '';
+                    errorReason = '1964 race cars must use format 26-R-xx or 26-S2-xx (e.g., 26-R-01 or 26-S2-01)';
+                }
+            } else if (validYear === '1965' || validYear === '1966') {
+                // 1965-1966: 26-S2-xx only
+                if (racePatternS2.test(_chassis)) {
+                    validChassis = _chassis;
+                } else {
+                    validChassis = overrideEnabled ? _chassis : '';
+                    errorReason = validYear + ' race cars must use format 26-S2-xx (e.g., 26-S2-01)';
+                }
+            } else {
+                // Other years with race models - use 26-R-xx format as default
+                if (racePatternR.test(_chassis)) {
+                    validChassis = _chassis;
+                } else {
+                    validChassis = overrideEnabled ? _chassis : '';
+                    errorReason = validYear + ' race cars must use format 26-R-xx (e.g., 26-R-01)';
+                }
+            }
+        } else {
+            // Production cars validation
+            switch (validYear) {
+                case '1963':
+                case '1964':
+                case '1965':
+                case '1966':
+                case '1967':
+                case '1968':
+                case '1969':
+                    // Pre-1970: 4 digits only
+                    if ($.isNumeric(_chassis) && (_chassis.length === 4)) {
+                        validChassis = _chassis;
+                    } else {
+                        validChassis = overrideEnabled ? _chassis : '';
+                        if (!$.isNumeric(_chassis)) {
+                            errorReason = 'Pre-1970 chassis must be numeric (4 digits only, e.g., 1234)';
+                        } else {
+                            errorReason = 'Pre-1970 chassis must be exactly 4 digits (e.g., 1234)';
+                        }
+                    }
+                    break;
+                case '1970':
+                case '1971':
+                case '1972':
+                case '1973':
+                case '1974':
+                    // Post-Jan 1970: All models use YYMMBBXXXXC format (11 characters)
+                    if (_chassis.length === 11) {
+                        _base = _chassis.slice(0, 10);
+                        _suffix = _chassis.slice(10, 11).toUpperCase();
+                        
+                        // Model-specific letter validation
+                        let validSuffixes;
+                        if (validModel.indexOf('+2') >= 0) {
+                            // +2 models can only use L, M, N
+                            validSuffixes = ['L', 'M', 'N'];
+                        } else {
+                            // Elan models can only use A-K
+                            validSuffixes = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'J', 'K'];
+                        }
+                        
+                        if ($.isNumeric(_base) && ($.inArray(_suffix, validSuffixes) !== -1)) {
+                            validChassis = _chassis;
+                        } else {
+                            validChassis = overrideEnabled ? _chassis : '';
+                            if (!$.isNumeric(_base)) {
+                                errorReason = 'First 10 characters must be numeric in YYMMBBXXXXC format (e.g., 7301019999B)';
+                            } else {
+                                const modelType = validModel.indexOf('+2') >= 0 ? '+2' : 'Elan';
+                                const allowedCodes = validModel.indexOf('+2') >= 0 ? 'L, M, N' : 'A-K (excluding I)';
+                                errorReason = modelType + ' models require letter codes: ' + allowedCodes + ' (current: "' + _suffix + '")';
+                            }
+                        }
+                    } else if (validYear === '1970' && _chassis.length === 5) {
+                        // 1970 transition year: also allow legacy 5-character format
+                        _base = _chassis.slice(0, 4);
+                        _suffix = _chassis.slice(4, 5).toUpperCase();
+                        
+                        let validSuffixes = (validModel.indexOf('+2') >= 0) ? ['L', 'M', 'N'] : ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'J', 'K'];
+                        
+                        if ($.isNumeric(_base) && ($.inArray(_suffix, validSuffixes) !== -1)) {
+                            validChassis = _chassis;
+                        } else {
+                            validChassis = overrideEnabled ? _chassis : '';
+                            if (!$.isNumeric(_base)) {
+                                errorReason = '1970 transition format: First 4 characters must be numeric plus letter (e.g., 1234A)';
+                            } else {
+                                const modelType = validModel.indexOf('+2') >= 0 ? '+2' : 'Elan';
+                                const allowedCodes = validModel.indexOf('+2') >= 0 ? 'L, M, N' : 'A-K (excluding I)';
+                                errorReason = '1970 ' + modelType + ' models require letter codes: ' + allowedCodes + ' (current: "' + _suffix + '")';
+                            }
+                        }
+                    } else {
+                        validChassis = overrideEnabled ? _chassis : '';
+                        if (validYear === '1970') {
+                            errorReason = '1970 chassis must be 5 characters (legacy format) or 11 characters (new YYMMBBXXXXC format)';
+                        } else {
+                            errorReason = 'Post-1970 chassis must be 11 characters in YYMMBBXXXXC format (e.g., 7301019999B)';
+                        }
+                    }
+                    break;
+                default:
+                    validChassis = overrideEnabled ? _chassis : '';
+                    errorReason = 'Invalid year selected';
+                    break;
+            }
         }
-        switch (validYear) {
-            case '1963':
-            case '1964':
-            case '1965':
-            case '1966':
-            case '1967':
-            case '1968':
-            case '1969':
-                validChassis = ($.isNumeric(_chassis) && (_chassis.length === 4)) ? _chassis : '';
-                break;
-            case '1970':
-                if (_chassis.length === 5) {
-                    _base = _chassis.slice(0, 4);
-                    _suffix = _chassis.slice(4, 5).toUpperCase();
-                } else if (_chassis.length === 11) {
-                    _base = _chassis.slice(0, 10);
-                    _suffix = _chassis.slice(10, 11).toUpperCase();
-                }
-                validChassis = ($.isNumeric(_base) && ($.inArray(_suffix, _valid_suffix) !== -1)) ? _chassis : '';
-                break;
-            case '1971':
-                if (_chassis.length === 11) {
-                    _base = _chassis.slice(0, 10);
-                    _suffix = _chassis.slice(10, 11).toUpperCase();
-                }
-                validChassis = ($.isNumeric(_base) && ($.inArray(_suffix, _valid_suffix) !== -1)) ? _chassis : '';
-                break;
-            case '1972':
-            case '1973':
-            case '1974':
-                if (_chassis.length === 9) {
-                    _base = _chassis.slice(0, 8);
-                    _suffix = _chassis.slice(8, 9).toUpperCase();
-                }
-                validChassis = ($.isNumeric(_base) && ($.inArray(_suffix, _valid_suffix) !== -1)) ? _chassis : '';
-                break;
-            default:
-                break;
 
+        // Display or hide validation error
+        if (!validChassis && _chassis && !overrideEnabled) {
+            $('#chassis_validation_error').removeClass('hidden').show();
+            $('#chassis_error_reason').text(errorReason);
+        } else {
+            $('#chassis_validation_error').addClass('hidden').hide();
         }
 
         $('#chassis_icon').toggleClass('fa-thumbs-up', Boolean(validChassis)).toggleClass('fa-thumbs-down', !Boolean(validChassis)).toggleClass('is-valid', Boolean(validChassis)).toggleClass('is-invalid', !Boolean(validChassis));
@@ -768,5 +884,13 @@ require_once $abs_us_root . $us_url_root . 'users/includes/html_footer.php'; //c
             }
         }
     });
+
+    // Override checkbox event handler - re-validate when toggled
+    $('#chassis_override').change(function() {
+        if ($('#chassis').val()) {
+            $('#chassis').trigger('blur');
+        }
+    });
+
     // End Car Validation
 </script>

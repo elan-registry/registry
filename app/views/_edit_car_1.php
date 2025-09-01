@@ -95,6 +95,19 @@
                         <li>T = Type Letter</li>
                     </ul>
                 </div>
+                
+                <div id="chassis_validation_error" class="text-danger hidden">
+                    <strong>Chassis Validation Failed:</strong><br>
+                    <span id="chassis_error_reason"></span>
+                </div>
+                
+                <div class="form-check mt-2">
+                    <input type="checkbox" class="form-check-input" id="chassis_override" name="chassis_override" value="1">
+                    <label class="form-check-label text-warning" for="chassis_override">
+                        <strong>⚠️ Override chassis validation</strong><br>
+                        <small>Check this box to proceed with an invalid chassis number. Use with caution - this may indicate incorrect data entry.</small>
+                    </label>
+                </div>
             </div>
         </div>
 

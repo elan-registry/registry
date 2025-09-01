@@ -242,7 +242,7 @@ function updateModel(array &$cardetails): void
 }
 
 /**
- * Update car chassis number from form input with validation
+ * Update car chassis number from form input with comprehensive validation
  * 
  * @param array $cardetails Car details array to update
  * @return void
@@ -251,23 +251,128 @@ function updateChassis(array &$cardetails): void
 {
     global $errors, $successes;
     
+    // Check if validation override is enabled
+    $chassisOverride = Input::get('chassis_override') === '1';
+    
     // Update 'chassis'
     if (Input::get('chassis')) {
         $cardetails['chassis'] = Input::get('chassis');
-        $chassisLength = strlen($cardetails['chassis']);
+        $chassis = $cardetails['chassis'];
+        $chassisLength = strlen($chassis);
+        $year = (int)$cardetails['year'];
+        $variant = $cardetails['variant'];
+        $series = $cardetails['series'];
         
-        // Validate based on car type and year
-        if (strcmp($cardetails['variant'], 'Race') === 0) { /* For the 26R let them do what they want */
-            $successes[] =  'Chassis Updated (' . $cardetails['chassis'] . ')';
-        } elseif ($cardetails['year'] < 1970) {
-            // Chassis number for years < 1970 are 4 digits
-            if ($chassisLength !== 4) {
-                $errors[] = "Enter Chassis Number. Four Digits,6490 not 36/6490";
+        $validationPassed = false;
+        $errorReason = '';
+        
+        // Race cars: year-specific format validation
+        if (strcmp($variant, 'Race') === 0) {
+            if ($year === 1963) {
+                // 1963: 26-R-xx only
+                if (preg_match('/^26-R-\d{2}$/', $chassis)) {
+                    $validationPassed = true;
+                } else {
+                    $errorReason = '1963 race cars must use format 26-R-xx (e.g., 26-R-01)';
+                }
+            } elseif ($year === 1964) {
+                // 1964: 26-R-xx OR 26-S2-xx
+                if (preg_match('/^26-R-\d{2}$/', $chassis) || preg_match('/^26-S2-\d{2}$/', $chassis)) {
+                    $validationPassed = true;
+                } else {
+                    $errorReason = '1964 race cars must use format 26-R-xx or 26-S2-xx (e.g., 26-R-01 or 26-S2-01)';
+                }
+            } elseif ($year === 1965 || $year === 1966) {
+                // 1965-1966: 26-S2-xx only
+                if (preg_match('/^26-S2-\d{2}$/', $chassis)) {
+                    $validationPassed = true;
+                } else {
+                    $errorReason = $year . ' race cars must use format 26-S2-xx (e.g., 26-S2-01)';
+                }
             } else {
-                $successes[] =  'Chassis Updated (' . $cardetails['chassis'] . ')';
+                // Other years with race models - use 26-R-xx format as default
+                if (preg_match('/^26-R-\d{2}$/', $chassis)) {
+                    $validationPassed = true;
+                } else {
+                    $errorReason = $year . ' race cars must use format 26-R-xx (e.g., 26-R-01)';
+                }
             }
         } else {
-            $successes[] =  'Chassis Updated (' . $cardetails['chassis'] . ')';
+            // Production cars validation
+            if ($year < 1970) {
+                // Pre-1970: 4 digits only
+                if (is_numeric($chassis) && $chassisLength === 4) {
+                    $validationPassed = true;
+                } else {
+                    if (!is_numeric($chassis)) {
+                        $errorReason = 'Pre-1970 chassis must be numeric (4 digits only, e.g., 1234)';
+                    } else {
+                        $errorReason = 'Pre-1970 chassis must be exactly 4 digits (e.g., 1234)';
+                    }
+                }
+            } elseif ($year >= 1970) {
+                // Post-Jan 1970: YYMMBBXXXXC format (11 characters)
+                if ($chassisLength === 11) {
+                    $base = substr($chassis, 0, 10);
+                    $suffix = strtoupper(substr($chassis, 10, 1));
+                    
+                    // Model-specific letter validation
+                    if (strpos($series, '+2') !== false) {
+                        // +2 models can only use L, M, N
+                        $validSuffixes = ['L', 'M', 'N'];
+                        $modelType = '+2';
+                        $allowedCodes = 'L, M, N';
+                    } else {
+                        // Elan models can only use A-K (excluding I)
+                        $validSuffixes = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'J', 'K'];
+                        $modelType = 'Elan';
+                        $allowedCodes = 'A-K (excluding I)';
+                    }
+                    
+                    if (is_numeric($base) && in_array($suffix, $validSuffixes)) {
+                        $validationPassed = true;
+                    } else {
+                        if (!is_numeric($base)) {
+                            $errorReason = 'First 10 characters must be numeric in YYMMBBXXXXC format (e.g., 7301019999B)';
+                        } else {
+                            $errorReason = $modelType . ' models require letter codes: ' . $allowedCodes . ' (current: "' . $suffix . '")';
+                        }
+                    }
+                } elseif ($year === 1970 && $chassisLength === 5) {
+                    // 1970 transition year: also allow legacy 5-character format
+                    $base = substr($chassis, 0, 4);
+                    $suffix = strtoupper(substr($chassis, 4, 1));
+                    
+                    $validSuffixes = (strpos($series, '+2') !== false) ? ['L', 'M', 'N'] : ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'J', 'K'];
+                    
+                    if (is_numeric($base) && in_array($suffix, $validSuffixes)) {
+                        $validationPassed = true;
+                    } else {
+                        if (!is_numeric($base)) {
+                            $errorReason = '1970 transition format: First 4 characters must be numeric plus letter (e.g., 1234A)';
+                        } else {
+                            $modelType = (strpos($series, '+2') !== false) ? '+2' : 'Elan';
+                            $allowedCodes = (strpos($series, '+2') !== false) ? 'L, M, N' : 'A-K (excluding I)';
+                            $errorReason = '1970 ' . $modelType . ' models require letter codes: ' . $allowedCodes . ' (current: "' . $suffix . '")';
+                        }
+                    }
+                } else {
+                    if ($year === 1970) {
+                        $errorReason = '1970 chassis must be 5 characters (legacy format) or 11 characters (new YYMMBBXXXXC format)';
+                    } else {
+                        $errorReason = 'Post-1970 chassis must be 11 characters in YYMMBBXXXXC format (e.g., 7301019999B)';
+                    }
+                }
+            }
+        }
+        
+        // Handle validation result
+        if ($validationPassed) {
+            $successes[] = 'Chassis Updated (' . $cardetails['chassis'] . ')';
+        } elseif ($chassisOverride) {
+            $successes[] = 'Chassis Updated with Override (' . $cardetails['chassis'] . ') - Warning: ' . $errorReason;
+        } else {
+            $errors[] = 'Chassis Validation Failed: ' . $errorReason;
         }
     } else {
         $errors[] = "Please enter chassis number";

@@ -196,6 +196,26 @@ if (Input::exists('post')) {
 <div class="page-wrapper">
     <div class="container-fluid">
         <div class="page-container">
+            
+            <!-- Page Header -->
+            <div class="row mb-4">
+                <div class="col-12">
+                    <div class="d-sm-flex align-items-center justify-content-between">
+                        <div>
+                            <h1 class="h3 mb-2 text-gray-800">
+                                <i class="fas fa-cogs"></i> Car Management
+                            </h1>
+                            <p class="text-muted mb-0">Admin tools for managing duplicate cars, reassignments, and data quality</p>
+                        </div>
+                        <div>
+                            <a href="../reports/data-quality.php" class="btn btn-outline-primary">
+                                <i class="fas fa-chart-line"></i> Data Quality Reports
+                            </a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
             <div class="row">
                 <!-- Messages Section -->
                 <div class="col-lg-4 col-md-12 mb-4">

@@ -345,7 +345,15 @@ npm run test:security
 - **Rules**:
   - VERSION file must be updated when committing code changes to main
   - Documentation-only changes skip version requirements
+  - **Feature Branch Integration**: Detects feature branch merges and offers interactive version prompting
   - Hook can be bypassed with `git commit --no-verify` (not recommended)
+
+#### Feature Branch Version Prompting
+- **Automatic Detection**: Pre-commit hook identifies feature branch merges to main
+- **Interactive Prompts**: Offers patch/minor/major version update options during merge commits
+- **Integration**: Uses `scripts/bump-version.sh` with automatic staging and tagging
+- **Timeout**: 30-second timeout with default "skip" option for non-interactive environments
+- **Safety**: Only prompts for `feature/` prefixed branches
 
 #### Version Bump Helper Script
 - **Location**: `scripts/bump-version.sh`
