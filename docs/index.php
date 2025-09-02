@@ -1,10 +1,10 @@
 <?php
 
 /**
- * Document Index Page
+ * Documents Index - Redirect Page
  *
- * Lists available PDF documents in the docs/assets directory and displays them in a table.
- * Requires authentication and uses Bootstrap for layout.
+ * The documents section has been reorganized into focused pages.
+ * This page provides navigation to the new sections.
  */
 require_once '../users/init.php';
 require_once $abs_us_root . $us_url_root . 'users/includes/template/prep.php';
@@ -13,118 +13,97 @@ if (!securePage($_SERVER['PHP_SELF'])) {
     die();
 }
 
-// Get list of PDF files in the directory
-$directory    = $abs_us_root . $us_url_root . 'docs/assets/';
-$files = preg_grep('~\.(pdf)$~', scandir($directory));
-$stories = $abs_us_root . $us_url_root . 'stories/stories.php';
-
 ?>
-<div id="page-wrapper">
+<div class="page-wrapper">
     <div class="container">
-        <div class="well">
-            <div class="row">
-                <div class="col-sm-6">
-                    <div class="card card-default">
+        <div class="row">
+            <div class="col-sm-12">
+                <div class="card registry-card">
                         <div class="card-header">
-                            <h2><strong>Documents</strong></h2>
+                            <h2><strong>Documentation Center</strong></h2>
+                            <p class="text-muted">Our documentation has been reorganized for better navigation</p>
                         </div>
                         <div class="card-body">
                             
-                            <!-- Web-based Documentation -->
-                            <h5 class="mb-3"><i class="fas fa-globe"></i> Online Documentation</h5>
-                            <table class="table table-striped table-bordered table-sm mb-4">
-                                <thead class="thead-light">
-                                    <tr>
-                                        <th scope="col">Document</th>
-                                        <th scope="col">Description</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    <tr>
-                                        <td>
-                                            <a href="../app/help/chassis-validation.php" target="_blank" class="btn btn-sm btn-outline-primary">
-                                                <i class="fas fa-barcode"></i> Chassis Validation Rules
+                            <div class="alert alert-info mb-4">
+                                <i class="fas fa-info-circle"></i>
+                                <strong>Updated Organization:</strong> We've split our documentation into focused sections 
+                                to make it easier to find what you're looking for.
+                            </div>
+
+                            <div class="row">
+                                <div class="col-md-6 mb-4">
+                                    <div class="card border-primary">
+                                        <div class="card-header bg-primary text-white">
+                                            <h5 class="mb-0">
+                                                <i class="fas fa-book"></i> Reference Library
+                                            </h5>
+                                        </div>
+                                        <div class="card-body">
+                                            <p class="card-text">
+                                                Technical documentation, workshop manuals, parts lists, and owner guides. 
+                                                Everything you need for maintenance and restoration.
+                                            </p>
+                                            <ul class="list-unstyled">
+                                                <li><i class="fas fa-wrench text-primary"></i> Workshop Manuals</li>
+                                                <li><i class="fas fa-cogs text-primary"></i> Parts Lists</li>
+                                                <li><i class="fas fa-tools text-primary"></i> Technical Guides</li>
+                                                <li><i class="fas fa-barcode text-primary"></i> Chassis Validation</li>
+                                            </ul>
+                                            <a href="reference-library.php" class="btn btn-primary">
+                                                <i class="fas fa-arrow-right"></i> View Reference Library
                                             </a>
-                                        </td>
-                                        <td>
-                                            Complete guide to Lotus Elan chassis numbering formats, validation standards, and override procedures
-                                        </td>
-                                    </tr>
-                                </tbody>
-                            </table>
+                                        </div>
+                                    </div>
+                                </div>
 
-                            <!-- PDF Documents -->
-                            <h5 class="mb-3"><i class="fas fa-file-pdf"></i> PDF Documents</h5>
-                            <table class="table table-striped table-bordered table-sm" aria-describedby="legend">
-                                <colgroup>
-                                    <col span="1" style="width: 50%;">
-                                    <col span="1" style="width: 50%;">
-                                </colgroup>
-                                <tr>
-                                    <th scope=column>Document</th>
-                                    <th scope=column>Description </th>
-                                </tr>
+                                <div class="col-md-6 mb-4">
+                                    <div class="card border-success">
+                                        <div class="card-header bg-success text-white">
+                                            <h5 class="mb-0">
+                                                <i class="fas fa-book-open"></i> Car Stories
+                                            </h5>
+                                        </div>
+                                        <div class="card-body">
+                                            <p class="card-text">
+                                                Individual car histories, owner stories, and community articles. 
+                                                Discover the unique tales behind registry vehicles.
+                                            </p>
+                                            <ul class="list-unstyled">
+                                                <li><i class="fas fa-history text-success"></i> Individual Car Histories</li>
+                                                <li><i class="fas fa-users text-success"></i> Owner Stories</li>
+                                                <li><i class="fas fa-newspaper text-success"></i> Magazine Articles</li>
+                                                <li><i class="fas fa-archive text-success"></i> Historical Archives</li>
+                                            </ul>
+                                            <a href="car-stories.php" class="btn btn-success">
+                                                <i class="fas fa-arrow-right"></i> Read Car Stories
+                                            </a>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
 
-                                <?php
-                                foreach ($files as $file) {
-                                    $path_parts = pathinfo($file);
-                                    $img = $path_parts['filename'] . '.png';
-                                    $description = $path_parts['filename'] . '.txt';
+                            <!-- Quick Access Links -->
+                            <div class="mt-4">
+                                <h5>Quick Access</h5>
+                                <div class="btn-group-vertical btn-group-sm w-100" role="group">
+                                    <a href="../app/help/chassis-validation.php" class="btn btn-outline-secondary text-left">
+                                        <i class="fas fa-barcode"></i> Chassis Validation Rules
+                                    </a>
+                                    <a href="reference-library.php" class="btn btn-outline-secondary text-left">
+                                        <i class="fas fa-file-pdf"></i> Workshop Manual (Elan 26/36)
+                                    </a>
+                                    <a href="car-stories.php" class="btn btn-outline-secondary text-left">
+                                        <i class="fas fa-external-link-alt"></i> SGO 2F Story
+                                    </a>
+                                </div>
+                            </div>
 
-                                ?>
-                                    <tr>
-                                        <td>
-                                            <?php
-
-                                            if (file_exists($directory . $img)) {
-                                            ?>
-                                                <a href='<?= $us_url_root ?>docs/embed.php?doc=<?= $path_parts['basename'] ?>' target='_blank'>
-                                                    <img src='<?= $us_url_root ?>docs/assets/<?= $img ?>' height='225' alt='<?= $file ?>' /><br>
-                                                </a>
-                                            <?php
-                                            } else {
-                                            ?>
-                                                <a href='<?= $us_url_root ?>docs/embed.php?doc=<?= $path_parts['basename'] ?>' target='_blank'><?= $path_parts['filename'] ?></a>
-                                            <?php
-                                            }
-                                            ?>
-                                            <br><br><a href='<?= $us_url_root ?>docs/assets/<?= $file ?>' download><u><small>Direct Download</small></u></a>
-
-                                        <td>
-                                            <?php
-                                            if (file_exists($directory . $description)) {
-                                                require_once $directory . $description;
-                                            }
-                                            ?>
-                                        </td>
-                                    </tr>
-                                <?php
-                                }
-                                ?>
-                            </table>
                         </div> <!-- card-body -->
                     </div> <!-- card -->
                 </div> <!-- col -->
-
-                <div class="col-sm-6">
-                    <div class="card card-default">
-                        <?php
-                        include_once $stories
-                        ?>
-                    </div>
-                </div> <!-- col -->
             </div> <!-- row -->
-        </div> <!-- well -->
     </div><!-- Container -->
 </div><!-- page -->
 
-
-<!-- Javascript -->
-
-
-
-<!-- footers -->
-
-
-<?php require_once $abs_us_root . $us_url_root . 'usersc/templates/' . $settings->template . '/footer.php'; //custom template footer
-?>
+<?php require_once $abs_us_root . $us_url_root . 'usersc/templates/' . $settings->template . '/footer.php'; ?>
