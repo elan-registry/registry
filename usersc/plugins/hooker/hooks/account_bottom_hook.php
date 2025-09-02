@@ -20,9 +20,9 @@ $cars = findByOwner($user_id);
 ?>
 
 
-<div class="card border-default">
+<div class="card registry-card">
     <div class="card-header">
-        <h2><strong>Your Car Information</strong></h2>
+        <h4 class="mb-0"><i class="fas fa-car"></i> <strong>Your Car Information</strong></h4>
     </div>
     <div class="card-body">
         <?php
@@ -190,5 +190,6 @@ $cars = findByOwner($user_id);
     $('#lname').remove();
     $('.col-sm-12.col-md-9 p').remove(); // Edit Button
 
-    $('.col-sm-12.col-md-9').addClass('col-md-8 col-xs-12').removeClass('col-sm-12 col-md-9');
+    // Ensure proper column alignment with the left card
+    $('.col-sm-12.col-md-9').removeClass('col-sm-12').addClass('col-12');
 </script>

@@ -18,63 +18,98 @@ $lastlogin = new DateTime($thatUser[0]->last_login);
 
 ?>
 
-<div class="card card-default">
+<div class="card registry-card">
     <div class="card-header">
-        <h2><strong>Account Information</strong></h2>
+        <h4 class="mb-0"><i class="fas fa-user-circle"></i> Account Information</h4>
     </div>
     <div class="card-body">
-        <table id="accounttable" class="table table-striped table-bordered table-sm" aria-describedby="card-header">
-            <tr>
-                <th scope=column><strong>First name : </strong></th>
-                <th scope=column><?= ucfirst($thatUser[0]->fname) ?></th>
-            </tr>
-            <tr>
-                <td><strong>Last name : </strong></td>
-                <td><?= ucfirst($thatUser[0]->lname) ?></td>
-            </tr>
-            <tr>
-                <td><strong>Email : </strong></td>
-                <td><?= $thatUser[0]->email ?></td>
-            </tr>
-            <tr>
-                <td><strong>City : </strong></td>
-                <td><?= html_entity_decode($thatUser[0]->city); ?></td>
-            </tr>
-            <tr>
-                <td><strong>State : </strong></td>
-                <td><?= html_entity_decode($thatUser[0]->state); ?></td>
-            </tr>
-            <tr>
-                <td><strong>Country : </strong></td>
-                <td><?= html_entity_decode($thatUser[0]->country); ?></td>
-            </tr>
-            <tr>
-                <td><strong>Member Since : </strong></td>
-                <td><?= $signupdate->format("Y-m-d") ?></td>
-            </tr>
-            <tr>
-                <td><strong>Last Login : </strong></td>
-                <td><?= $lastlogin->format("Y-m-d") ?></td>
-            </tr>
-            <tr>
-                <td><strong>Number of Logins: </strong></td>
-                <td><?= $thatUser[0]->logins ?></td>
-            </tr>
+        <!-- Name Section -->
+        <div class="mb-3">
+            <div class="d-flex align-items-center mb-2">
+                <i class="fas fa-user text-primary me-2"></i>
+                <small class="text-muted text-uppercase fw-bold">Full Name</small>
+            </div>
+            <p class="mb-0 ps-3">
+                <?= ucfirst($thatUser[0]->fname) . ' ' . ucfirst($thatUser[0]->lname) ?>
+                <br>
+                <small class="text-muted">@<?= $thatUser[0]->username ?></small>
+            </p>
+        </div>
 
-            <tr>
-                <td colspan="2"><a class="btn btn-success" href=<?= $us_url_root . "users/user_settings.php" ?>>Update Account Info</a>
-                </td>
-            </tr>
-        </table>
+        <!-- Email Section -->
+        <div class="mb-3">
+            <div class="d-flex align-items-center mb-2">
+                <i class="fas fa-envelope text-primary me-2"></i>
+                <small class="text-muted text-uppercase fw-bold">Email Address</small>
+            </div>
+            <p class="mb-0 ps-3">
+                <?= $thatUser[0]->email ?>
+            </p>
+        </div>
 
+        <!-- Location Section -->
+        <div class="mb-3">
+            <div class="d-flex align-items-center mb-2">
+                <i class="fas fa-map-marker-alt text-primary me-2"></i>
+                <small class="text-muted text-uppercase fw-bold">Location</small>
+            </div>
+            <p class="mb-0 ps-3">
+                <?php 
+                $location = [];
+                if (!empty($thatUser[0]->city)) $location[] = html_entity_decode($thatUser[0]->city);
+                if (!empty($thatUser[0]->state)) $location[] = html_entity_decode($thatUser[0]->state);
+                if (!empty($thatUser[0]->country)) $location[] = html_entity_decode($thatUser[0]->country);
+                echo !empty($location) ? implode(', ', $location) : '<span class="text-muted fst-italic">Not specified</span>';
+                ?>
+            </p>
+        </div>
+
+        <hr class="my-3">
+
+        <!-- Account Stats -->
+        <div class="row text-center">
+            <div class="col-6">
+                <div class="border-end">
+                    <i class="fas fa-calendar-alt text-success d-block mb-1"></i>
+                    <small class="text-muted d-block">Member Since</small>
+                    <strong><?= $signupdate->format("M Y") ?></strong>
+                </div>
+            </div>
+            <div class="col-6">
+                <i class="fas fa-chart-line text-info d-block mb-1"></i>
+                <small class="text-muted d-block">Total Logins</small>
+                <strong><?= number_format($thatUser[0]->logins) ?></strong>
+            </div>
+        </div>
+
+        <div class="mt-3 text-center">
+            <small class="text-muted d-block mb-2">
+                <i class="fas fa-clock"></i> Last login: <?= $lastlogin->format("M j, Y") ?>
+            </small>
+        </div>
+        
+        <div class="mt-3 d-grid">
+            <a class="btn btn-primary" href="<?= $us_url_root ?>users/user_settings.php">
+                <i class="fas fa-edit"></i> Update Account
+            </a>
+        </div>
     </div>
 </div>
 
 
 <script>
-    // Remove/ things in the master that I don't want
-    $('.row .col-md-3 img').remove(); // Avitar
+    // Remove specific elements but keep the structure
+    $('.row .col-md-3 img').remove(); // Avatar image only
     $('.row .col-md-3 a').first().remove(); // Edit Button
-
-    $('.col-sm-12.col-md-3').addClass('col-md-4 col-xs-12').removeClass('col-sm-12 col-md-3');
+    $('.row .col-md-3 .idd').remove(); // Username (we're showing it in Account Info instead)
+    
+    // Remove the name paragraph but keep the container
+    $('.row .col-md-3 p').first().remove(); // Remove name paragraph that creates spacing
+    
+    // Fix column layout without breaking Bootstrap grid
+    $('.col-sm-12.col-md-3').removeClass('col-sm-12').addClass('col-12');
+    
+    // Reduce padding and margins more conservatively
+    $('.row .col-md-3').removeClass('mt-2').addClass('mt-1');
+    $('.row .col-md-3 .card').removeClass('p-4').addClass('p-3');
 </script>
