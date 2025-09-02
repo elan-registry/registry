@@ -33,19 +33,26 @@ require_once $abs_us_root . $us_url_root . 'users/includes/template/prep.php';
 					</div>
 					<div class="card-body">
 						<p>This is not a comprehensive list of differences between the cars, rather a quick guide to identifying a car. Like all manufacturers, there were running changes throughout the life of the Elan. In the case of Lotus, many of these changes were poorly documented. If in doubt, post a question to the <a href="http://www.lotuselan.net/forums/">LotusElan.net forum</a> and ask.</p>
-						<ul class="nav nav-pills mb-3">
-							<li class="nav-item"><a class="nav-link" href="#roadster">Roadster</a></li>
-							<li class="nav-item"><a class="nav-link" href="#coupe">Coupe</a></li>
-							<li class="nav-item"><a class="nav-link" href="#race">Race</a></li>
-							<li class="nav-item"><a class="nav-link" href="#plus2">Plus 2</a></li>
-							<li class="nav-item"><a class="nav-link" href='<?= $us_url_root ?>/docs/embed.php?doc=2019_Jan_The_Elan_Super_Safety.pdf'>Super Safety</a></li>
+						<!-- Skip Navigation -->
+						<a class="visually-hidden-focusable btn btn-primary" href="#roadster">Skip to identification guide</a>
+						
+						<!-- Navigation Pills -->
+						<ul class="nav nav-pills mb-3 justify-content-center" role="tablist">
+							<li class="nav-item" role="presentation"><a class="nav-link" href="#roadster" role="tab">Roadster</a></li>
+							<li class="nav-item" role="presentation"><a class="nav-link" href="#coupe" role="tab">Coupe</a></li>
+							<li class="nav-item" role="presentation"><a class="nav-link" href="#race" role="tab">Race</a></li>
+							<li class="nav-item" role="presentation"><a class="nav-link" href="#plus2" role="tab">Plus 2</a></li>
+							<li class="nav-item" role="presentation"><a class="nav-link" href='<?= $us_url_root ?>/docs/embed.php?doc=2019_Jan_The_Elan_Super_Safety.pdf' target="_blank" rel="noopener"><i class="fas fa-external-link-alt me-1"></i>Super Safety</a></li>
 						</ul>
 						<!-- Roadster Section -->
 						<section id="roadster" aria-labelledby="roadster-heading">
-							<fieldset>
-								<legend id="roadster-heading">Roadster/Drophead</legend>
-								<div class="table-responsive">
-									<table class="table table-striped table-bordered table-sm" aria-describedby="roadster-heading">
+							<h3 id="roadster-heading" class="mt-4 mb-3">
+								<i class="fas fa-car text-primary me-2"></i>Roadster/Drophead
+								<a href="#roadster" class="text-muted ms-2 text-decoration-none" title="Link to this section">#</a>
+							</h3>
+							<div class="table-responsive">
+								<table class="table table-striped table-bordered table-sm" aria-describedby="roadster-heading">
+									<caption class="visually-hidden">Lotus Elan Roadster and Drophead model identification guide with descriptions and images</caption>
 										<thead>
 											<tr>
 												<th scope="col" class="w-20">Model</th>
@@ -78,7 +85,7 @@ require_once $abs_us_root . $us_url_root . 'users/includes/template/prep.php';
 														<li>Lift up windows</li>
 													</ul>
 												</td>
-												<td><img class="polaroid" src="../images/examples/thumbs/elan1600.jpg" height="112" width="150" title="Type 26 Elan 1600 (S1)" alt="Type 26 Elan 1600 (S1)"></td>
+												<td><img class="img-fluid rounded shadow-sm" src="../images/examples/thumbs/elan1600.jpg" style="max-width: 150px; height: auto;" title="Type 26 Elan 1600 (S1)" alt="Type 26 Elan 1600 (S1)" loading="lazy"></td>
 											</tr>
 
 											<tr>
@@ -93,7 +100,7 @@ require_once $abs_us_root . $us_url_root . 'users/includes/template/prep.php';
 													</ul>
 												</td>
 												<td><img class="polaroid" src="../images/examples/thumbs/s2a.jpg" height="112" width="150" title="Type 26 Elan S2" alt="Type 26 Elan S2">
-													< <img class="polaroid" src="../images/examples/thumbs/s2b.jpg" height="112" width="150" title="Type 26 Elan S2" alt="Type 26 Elan S2">
+													<img class="polaroid" src="../images/examples/thumbs/s2b.jpg" height="112" width="150" title="Type 26 Elan S2" alt="Type 26 Elan S2">
 												</td>
 											</tr>
 
@@ -166,14 +173,18 @@ require_once $abs_us_root . $us_url_root . 'users/includes/template/prep.php';
 												<td><img class="polaroid" src="../images/examples/thumbs/sprint_dhc.jpg" height="84" width="150" title="Type 45 Sprint DHC" alt="Type 45 Sprint DHC"></td>
 											</tr>
 									</table>
-							</fieldset>
+							</div>
+						</section>
 
-							<!-- Coupe Section -->
-							<section id="coupe" aria-labelledby="coupe-heading">
-								<fieldset>
-									<legend id="coupe-heading">Coupe</legend>
-									<div class="table-responsive">
-										<table class="table table-striped table-bordered table-sm" aria-describedby="coupe-heading">
+						<!-- Coupe Section -->
+						<section id="coupe" aria-labelledby="coupe-heading">
+							<h3 id="coupe-heading" class="mt-4 mb-3">
+								<i class="fas fa-car text-primary me-2"></i>Coupe
+								<a href="#coupe" class="text-muted ms-2 text-decoration-none" title="Link to this section">#</a>
+							</h3>
+							<div class="table-responsive">
+								<table class="table table-striped table-bordered table-sm" aria-describedby="coupe-heading">
+									<caption class="visually-hidden">Lotus Elan Coupe model identification guide with descriptions and images</caption>
 											<thead>
 												<tr>
 													<th scope="col" class="w-20">Model</th>
@@ -260,14 +271,19 @@ require_once $abs_us_root . $us_url_root . 'users/includes/template/prep.php';
 													</td>
 												</tr>
 										</table>
-								</fieldset>
+									</div>
+							</fieldset>
+						</section>
 
-								<!-- Race Section -->
-								<section id="race" aria-labelledby="race-heading">
-									<fieldset>
-										<legend id="race-heading">Racing Version</legend>
-										<div class="table-responsive">
-											<table class="table table-striped table-bordered table-sm" aria-describedby="race-heading">
+						<!-- Race Section -->
+						<section id="race" aria-labelledby="race-heading">
+							<h3 id="race-heading" class="mt-4 mb-3">
+								<i class="fas fa-trophy text-primary me-2"></i>Racing Version
+								<a href="#race" class="text-muted ms-2 text-decoration-none" title="Link to this section">#</a>
+							</h3>
+							<div class="table-responsive">
+								<table class="table table-striped table-bordered table-sm" aria-describedby="race-heading">
+									<caption class="visually-hidden">Lotus Elan Racing version identification guide with descriptions and images</caption>
 												<thead>
 													<tr>
 														<th scope="col" class="w-20">Model</th>
@@ -290,16 +306,18 @@ require_once $abs_us_root . $us_url_root . 'users/includes/template/prep.php';
 												</tbody>
 											</table>
 										</div>
-									</fieldset>
-								</section>
+							</fieldset>
+						</section>
 
-
-								<!-- Plus 2 Section -->
-								<section id="plus2" aria-labelledby="plus2-heading">
-									<fieldset>
-										<legend id="plus2-heading">Plus 2</legend>
-										<div class="table-responsive">
-											<table class="table table-striped table-bordered table-sm" aria-describedby="plus2-heading">
+						<!-- Plus 2 Section -->
+						<section id="plus2" aria-labelledby="plus2-heading">
+							<h3 id="plus2-heading" class="mt-4 mb-3">
+								<i class="fas fa-users text-primary me-2"></i>Plus 2
+								<a href="#plus2" class="text-muted ms-2 text-decoration-none" title="Link to this section">#</a>
+							</h3>
+							<div class="table-responsive">
+								<table class="table table-striped table-bordered table-sm" aria-describedby="plus2-heading">
+									<caption class="visually-hidden">Lotus Elan Plus 2 model identification guide with descriptions and images</caption>
 												<thead>
 													<tr>
 														<th scope="col" class="w-20">Model</th>
@@ -377,7 +395,7 @@ require_once $abs_us_root . $us_url_root . 'users/includes/template/prep.php';
 																<li>6 small gauges - Oil, Water temp, Battery Condition, Temp, Fuel, Clock</li>
 																<li>3 warning lights in center of dash (Hazard, Park/Brake Fail, Rear Screen) </li>
 																<li>Luxury interior including revised seats and centre console</li>
-																<li>Big Valve engine
+																<li>Big Valve engine</li>
 																<li>Fog/Driving lamps below the bumper</li>
 															</ul>
 														</td>
@@ -400,13 +418,22 @@ require_once $abs_us_root . $us_url_root . 'users/includes/template/prep.php';
 														<td></td>
 													</tr>
 											</table>
-									</fieldset>
+										</div>
+							</fieldset>
+						</section>
 
 
 
 
 
-									<!-- End of main content section -->
+									<!-- Back to Top Button -->
+						<div class="text-center mt-4">
+							<button type="button" class="btn btn-outline-primary" id="backToTop" title="Back to Top">
+								<i class="fas fa-chevron-up"></i> Back to Top
+							</button>
+						</div>
+
+						<!-- End of main content section -->
 					</div> <!-- card-body -->
 				</div> <!-- card -->
 				</div>
@@ -414,6 +441,114 @@ require_once $abs_us_root . $us_url_root . 'users/includes/template/prep.php';
 		</div>
 	</div>
 </div>
+
+<!-- JavaScript for Enhanced Navigation -->
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Smooth scrolling for navigation links
+    document.querySelectorAll('a[href^="#"]').forEach(anchor => {
+        anchor.addEventListener('click', function (e) {
+            e.preventDefault();
+            const target = document.querySelector(this.getAttribute('href'));
+            if (target) {
+                target.scrollIntoView({
+                    behavior: 'smooth',
+                    block: 'start'
+                });
+                
+                // Update nav pills active state
+                document.querySelectorAll('.nav-link').forEach(link => {
+                    link.classList.remove('active');
+                });
+                this.classList.add('active');
+            }
+        });
+    });
+    
+    // Back to top functionality
+    const backToTopBtn = document.getElementById('backToTop');
+    if (backToTopBtn) {
+        backToTopBtn.addEventListener('click', function() {
+            window.scrollTo({
+                top: 0,
+                behavior: 'smooth'
+            });
+        });
+        
+        // Show/hide back to top button based on scroll position
+        window.addEventListener('scroll', function() {
+            if (window.pageYOffset > 300) {
+                backToTopBtn.style.opacity = '1';
+            } else {
+                backToTopBtn.style.opacity = '0.5';
+            }
+        });
+    }
+    
+    // Set initial active state based on URL hash
+    if (window.location.hash) {
+        const activeLink = document.querySelector(`a[href="${window.location.hash}"]`);
+        if (activeLink) {
+            document.querySelectorAll('.nav-link').forEach(link => {
+                link.classList.remove('active');
+            });
+            activeLink.classList.add('active');
+        }
+    }
+});
+</script>
+
+<!-- Custom CSS for Enhanced Styling -->
+<style>
+.polaroid {
+    /* Legacy class maintained for existing images */
+    max-width: 150px;
+    height: auto;
+}
+
+#backToTop {
+    transition: opacity 0.3s ease;
+    opacity: 0.5;
+}
+
+/* Mobile responsive improvements */
+@media (max-width: 768px) {
+    .table-responsive {
+        font-size: 0.875rem;
+    }
+    
+    .nav-pills {
+        flex-wrap: wrap;
+    }
+    
+    .nav-pills .nav-item {
+        margin-bottom: 0.25rem;
+    }
+    
+    .w-20, .w-30, .w-50 {
+        width: auto !important;
+    }
+    
+    .img-fluid {
+        max-width: 100px;
+    }
+}
+
+/* Print styles */
+@media print {
+    .nav-pills, #backToTop, .visually-hidden-focusable {
+        display: none !important;
+    }
+    
+    .table {
+        font-size: 12px;
+    }
+    
+    h3 {
+        page-break-after: avoid;
+    }
+}
+</style>
 
 <!-- footers -->
 <?php

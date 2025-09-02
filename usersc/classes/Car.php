@@ -130,10 +130,16 @@ class Car
         // Get the car images
         // Turn images into array
         // Images can be encoded as JSON or simple CSV
-        $carImages = json_decode($this->_data->image);
-
-        if (is_null($carImages)) {
-            $carImages = explode(',', $this->_data->image);
+        $carImages = null;
+        
+        if (!is_null($this->_data->image) && !empty($this->_data->image)) {
+            $carImages = json_decode($this->_data->image);
+            
+            if (is_null($carImages)) {
+                $carImages = explode(',', $this->_data->image);
+            }
+        } else {
+            $carImages = [];
         }
 
         $images = [];
@@ -164,14 +170,17 @@ class Car
         //    or
         // The right most 5 digits of the car.chassis (post 1970 and some 1969) will =  elan_factory_info.serial
 
-        $search = array($this->_data->chassis, substr($this->_data->chassis, -5));
+        $search = [];
+        if (!is_null($this->_data->chassis) && !empty($this->_data->chassis)) {
+            $search = array($this->_data->chassis, substr($this->_data->chassis, -5));
+        }
 
         $factory = null;
         foreach ($search as $serialNumber) {
             $factory = $this->_db->query('SELECT * FROM elan_factory_info WHERE serial = ? ', [$serialNumber]);
             // Did it return anything?
             if ($factory->count()) {
-                if ($factory->first()->suffix !== "") {
+                if (!is_null($factory->first()->suffix) && $factory->first()->suffix !== "") {
                     $factory->first()->suffix = $factory->first()->suffix .
                         " (" . $this->suffixtotext($factory->first()->suffix) . ")";
                 }
