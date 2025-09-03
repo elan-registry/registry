@@ -1,19 +1,12 @@
 # Disable directory browsing but allow image access
 Options -Indexes
 
-<FilesMatch ".(jpg|gif|png|jpeg|webp)$">
-    Order Deny,Allow
-    Allow from all
+# Allow access to image files only
+<FilesMatch "\.(jpg|gif|png|jpeg|webp)$">
+    Require all granted
 </FilesMatch>
 
 # Block any non-image files in user directories
-<FilesMatch ".*">
-    Order Allow,Deny
-    Deny from all
-</FilesMatch>
-
-# Override to allow images
-<FilesMatch ".(jpg|gif|png|jpeg|webp)$">
-    Order Deny,Allow
-    Allow from all
+<FilesMatch "^(?!.*\.(jpg|gif|png|jpeg|webp)$).*">
+    Require all denied
 </FilesMatch>
