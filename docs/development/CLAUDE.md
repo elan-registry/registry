@@ -233,23 +233,50 @@ The application is fully compatible with PHP 8+ and includes comprehensive null 
 #### Car Class Modernization Roadmap
 **GitHub Issues tracking comprehensive improvements:**
 
-1. **Issue #239** (High Priority - Release 1): Type declarations and input validation
-   - Add missing return type declarations to all methods
-   - Implement comprehensive input validation for create/update operations
-   - Extract magic numbers to named constants
-   - Add proper error handling for image processing
+**Phase 1: Foundation & Security (Release 1)**
+1. **Issue #239** ✅ **COMPLETED** - Type declarations and input validation
+   - ✅ Add missing return type declarations to all methods
+   - ✅ Implement comprehensive input validation for create/update operations
+   - ✅ Extract magic numbers to named constants
+   - ✅ Add proper error handling for image processing
+   - ✅ Lotus Elan year range validation (1963-1974)
 
-2. **Issues #240 & #241** (Medium Priority - Release 2): Performance and security
+**Phase 2: Database Consistency & Security Fixes (Release 2)**
+2. **Issue #247** (High Priority) - Fix removeImage() direct database access  
+   - Replace direct DB calls with Car class methods
+   - Add removeImage() method to Car class
+   - Implement proper JSON image format handling
+   - Add comprehensive error handling and validation
+
+3. **Issue #248** (Critical Priority) - Replace direct DB access in car management
+   - Add Car class methods: delete(), transfer(), merge()
+   - Replace all direct database operations in manage.php
+   - Implement proper audit trails for admin operations
+   - Add comprehensive input validation for management operations
+
+4. **Issue #249** (High Priority) - Fix car verification system bypasses
+   - Add Car class methods: setVerificationCode(), markVerified(), markSold()
+   - Add static findByVerificationCode() method
+   - Replace direct database access in verification scripts
+   - Implement proper verification audit trails
+
+**Phase 3: Performance & Architecture (Release 3)**
+5. **Issues #240 & #241** (Medium Priority) - Performance and advanced security
    - Database query optimization (single query vs. multiple queries)
    - Implement lazy loading for images and factory data
    - Custom exception classes for better error handling
    - File path security improvements
 
-3. **Issue #242** (Low Priority - Future): Architecture refactoring
+6. **Issue #242** (Low Priority - Future) - Architecture refactoring
    - Split Car class into focused responsibilities
    - Remove global variable dependencies  
    - Modern PHP features (enums, readonly properties)
    - Comprehensive testing infrastructure
+
+**Dependencies:**
+- **Phase 2** requires **Phase 1** completion ✅
+- **Phase 3** requires **Phase 2** completion
+- All issues build upon Issue #239 foundation
 
 #### UI/UX Improvements
 
