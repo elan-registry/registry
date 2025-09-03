@@ -98,18 +98,39 @@ $lastlogin = new DateTime($thatUser[0]->last_login);
 
 
 <script>
-    // Remove specific elements but keep the structure
-    $('.row .col-md-3 img').remove(); // Avatar image only
-    $('.row .col-md-3 a').first().remove(); // Edit Button
-    $('.row .col-md-3 .idd').remove(); // Username (we're showing it in Account Info instead)
+    $(document).ready(function() {
+        // Completely prevent avatar loading to avoid CSP violations
+        // Remove avatar image before it can load from Gravatar
+        $('.row .col-md-3 img').each(function() {
+            // Prevent the image from loading by removing src attribute and element
+            $(this).removeAttr('src').remove();
+        });
+        
+        // Remove other avatar-related elements
+        $('.row .col-md-3 a').first().remove(); // Edit Button
+        $('.row .col-md-3 .idd').remove(); // Username (we're showing it in Account Info instead)
+        
+        // Remove the name paragraph but keep the container
+        $('.row .col-md-3 p').first().remove(); // Remove name paragraph that creates spacing
+        
+        // Fix column layout without breaking Bootstrap grid
+        $('.col-sm-12.col-md-3').removeClass('col-sm-12').addClass('col-12');
+        
+        // Reduce padding and margins more conservatively
+        $('.row .col-md-3').removeClass('mt-2').addClass('mt-1');
+        $('.row .col-md-3 .card').removeClass('p-4').addClass('p-3');
+        
+        // Add a notice about disabled avatars (optional)
+        $('.row .col-md-3 .image').prepend(
+            '<div class="text-center mb-3">' +
+            '<i class="fas fa-user-circle fa-4x text-muted"></i>' +
+            '<p class="small text-muted mt-2">Profile pictures disabled</p>' +
+            '</div>'
+        );
+    });
     
-    // Remove the name paragraph but keep the container
-    $('.row .col-md-3 p').first().remove(); // Remove name paragraph that creates spacing
-    
-    // Fix column layout without breaking Bootstrap grid
-    $('.col-sm-12.col-md-3').removeClass('col-sm-12').addClass('col-12');
-    
-    // Reduce padding and margins more conservatively
-    $('.row .col-md-3').removeClass('mt-2').addClass('mt-1');
-    $('.row .col-md-3 .card').removeClass('p-4').addClass('p-3');
+    // Additional protection: intercept any image requests to Gravatar
+    $(document).on('error', 'img[src*="gravatar.com"]', function() {
+        $(this).remove(); // Remove any Gravatar images that might slip through
+    });
 </script>
