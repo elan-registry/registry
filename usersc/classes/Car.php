@@ -14,6 +14,8 @@
 
 class Car
 {
+    private const CHASSIS_SUFFIX_LENGTH = 5;
+    
     private $_db;
     private $_data;
     private $_history;
@@ -54,19 +56,34 @@ class Car
      *
      * @param array $fields Key value pairs for car data
      * @return bool True if car is created
+     * @throws Exception If validation fails or database operation fails
      */
     public function create(array $fields = []): bool
     {
         $settings = getSettings();  // Get global settings from plugin
 
         if (empty($fields)) {
-            return false;
+            throw new Exception('No data provided for car creation');
         }
+        
+        // Validate required fields
+        $this->validateRequiredFields($fields, ['chassis', 'model', 'year']);
+        
+        // Validate and sanitize individual fields
+        $fields = $this->validateAndSanitizeFields($fields);
 
         $fields['ctime'] = date('Y-m-d G:i:s');
         if (!empty($fields['images'])) {
-            $fields['image'] = json_encode($fields['images']);
-            unset($fields['images']);
+            try {
+                $fields['image'] = json_encode($fields['images']);
+                if ($fields['image'] === false) {
+                    throw new Exception('Failed to encode images as JSON');
+                }
+                unset($fields['images']);
+            } catch (Exception $e) {
+                error_log("Car class: Image encoding error during create: " . $e->getMessage());
+                throw new Exception('Error processing car images: ' . $e->getMessage());
+            }
         }
 
         if (!$this->_db->insert($this->tableName, $fields)) {
@@ -84,17 +101,38 @@ class Car
      *
      * @param array $fields Car data to update
      * @return bool True if update succeeds
+     * @throws Exception If validation fails or database operation fails
      */
     public function update(array $fields = []): bool
     {
-        if (is_null($fields['id'])) {
-            return false;
+        if (empty($fields) || !isset($fields['id'])) {
+            throw new Exception('No data or ID provided for car update');
+        }
+        
+        if (!is_numeric($fields['id']) || $fields['id'] <= 0) {
+            throw new Exception('Invalid car ID provided for update');
+        }
+        
+        // Validate and sanitize fields (excluding id which is already validated)
+        $fieldsToValidate = $fields;
+        unset($fieldsToValidate['id']);
+        if (!empty($fieldsToValidate)) {
+            $validatedFields = $this->validateAndSanitizeFields($fieldsToValidate, false);
+            $fields = array_merge(['id' => $fields['id']], $validatedFields);
         }
 
         $fields['mtime'] = date('Y-m-d G:i:s');
         if (!empty($fields['images'])) {
-            $fields['image'] = json_encode($fields['images']);
-            unset($fields['images']);
+            try {
+                $fields['image'] = json_encode($fields['images']);
+                if ($fields['image'] === false) {
+                    throw new Exception('Failed to encode images as JSON');
+                }
+                unset($fields['images']);
+            } catch (Exception $e) {
+                error_log("Car class: Image encoding error during update: " . $e->getMessage());
+                throw new Exception('Error processing car images: ' . $e->getMessage());
+            }
         }
 
         if (!$this->_db->update($this->tableName, $fields['id'], $fields)) {
@@ -152,19 +190,31 @@ class Car
                 $images[$key]['path'] = $us_url_root . $this->imageDir . $images[$key]['basename'];
                 $images[$key]['size'] = filesize($file);
                 
-                // Safely get image type and MIME type with error handling
+                // Safely get image type and MIME type with comprehensive error handling
                 try {
                     $imageType = @exif_imagetype($file);
-                    $images[$key]['type'] = $imageType ? image_type_to_extension($imageType, false) : 'unknown';
+                    if ($imageType !== false) {
+                        $images[$key]['type'] = image_type_to_extension($imageType, false);
+                    } else {
+                        $images[$key]['type'] = 'unknown';
+                        error_log("Car class: Unable to determine image type for file: {$file}");
+                    }
                 } catch (Exception $e) {
                     $images[$key]['type'] = 'unknown';
+                    error_log("Car class: Exception getting image type for {$file}: " . $e->getMessage());
                 }
                 
                 try {
                     $mimeType = @mime_content_type($file);
-                    $images[$key]['mime'] = $mimeType ?: 'application/octet-stream';
+                    if ($mimeType !== false) {
+                        $images[$key]['mime'] = $mimeType;
+                    } else {
+                        $images[$key]['mime'] = 'application/octet-stream';
+                        error_log("Car class: Unable to determine MIME type for file: {$file}");
+                    }
                 } catch (Exception $e) {
                     $images[$key]['mime'] = 'application/octet-stream';
+                    error_log("Car class: Exception getting MIME type for {$file}: " . $e->getMessage());
                 }
             }
         }
@@ -185,7 +235,7 @@ class Car
 
         $search = [];
         if (!is_null($this->_data->chassis) && !empty($this->_data->chassis)) {
-            $search = array($this->_data->chassis, substr($this->_data->chassis, -5));
+            $search = array($this->_data->chassis, substr($this->_data->chassis, -self::CHASSIS_SUFFIX_LENGTH));
         }
 
         $factory = null;
@@ -246,7 +296,7 @@ class Car
      *
      * @return mixed Car data object or array
      */
-    public function data()
+    public function data(): mixed
     {
         return $this->_data;
     }
@@ -282,7 +332,7 @@ class Car
      *
      * @return array|object Owner information
      */
-    public function owner()
+    public function owner(): array|object
     {
         return $this->_owner;
     }
@@ -464,5 +514,168 @@ class Car
                 $desc = "Unknown suffix: " . $suffix;
         }
         return $desc;
+    }
+    
+    /**
+     * Validate that required fields are present and not empty
+     *
+     * @param array $fields Fields to validate
+     * @param array $requiredFields List of required field names
+     * @throws Exception If any required field is missing or empty
+     */
+    private function validateRequiredFields(array $fields, array $requiredFields): void
+    {
+        foreach ($requiredFields as $field) {
+            if (!isset($fields[$field]) || empty(trim($fields[$field]))) {
+                throw new Exception("Required field '{$field}' is missing or empty");
+            }
+        }
+    }
+    
+    /**
+     * Validate and sanitize car fields
+     *
+     * @param array $fields Fields to validate and sanitize
+     * @param bool $requireAll Whether all validations are required (create) or optional (update)
+     * @return array Validated and sanitized fields
+     * @throws Exception If validation fails
+     */
+    private function validateAndSanitizeFields(array $fields, bool $requireAll = true): array
+    {
+        $validatedFields = [];
+        
+        foreach ($fields as $key => $value) {
+            switch ($key) {
+                case 'chassis':
+                    if (!empty($value)) {
+                        $validatedFields[$key] = $this->sanitizeString($value, 50);
+                        if (strlen($validatedFields[$key]) < 3) {
+                            throw new Exception('Chassis number must be at least 3 characters long');
+                        }
+                    } elseif ($requireAll) {
+                        throw new Exception('Chassis number is required');
+                    }
+                    break;
+                    
+                case 'model':
+                    if (!empty($value)) {
+                        $validatedFields[$key] = $this->sanitizeString($value, 100);
+                    } elseif ($requireAll) {
+                        throw new Exception('Model is required');
+                    }
+                    break;
+                    
+                case 'year':
+                    if (!empty($value)) {
+                        if (!is_numeric($value) || $value < 1960 || $value > (date('Y') + 1)) {
+                            throw new Exception('Year must be a valid number between 1960 and ' . (date('Y') + 1));
+                        }
+                        $validatedFields[$key] = (int)$value;
+                    } elseif ($requireAll) {
+                        throw new Exception('Year is required');
+                    }
+                    break;
+                    
+                case 'series':
+                case 'variant':
+                case 'type':
+                case 'color':
+                case 'engine':
+                    if (!empty($value)) {
+                        $validatedFields[$key] = $this->sanitizeString($value, 100);
+                    }
+                    break;
+                    
+                case 'comments':
+                    if (!empty($value)) {
+                        $validatedFields[$key] = $this->sanitizeString($value, 5000);
+                    }
+                    break;
+                    
+                case 'purchasedate':
+                case 'solddate':
+                    if (!empty($value)) {
+                        $date = DateTime::createFromFormat('Y-m-d', $value);
+                        if (!$date || $date->format('Y-m-d') !== $value) {
+                            throw new Exception("Invalid date format for {$key}. Use YYYY-MM-DD format");
+                        }
+                        $validatedFields[$key] = $value;
+                    }
+                    break;
+                    
+                case 'email':
+                    if (!empty($value)) {
+                        if (!filter_var($value, FILTER_VALIDATE_EMAIL)) {
+                            throw new Exception('Invalid email address format');
+                        }
+                        $validatedFields[$key] = filter_var($value, FILTER_SANITIZE_EMAIL);
+                    }
+                    break;
+                    
+                case 'website':
+                    if (!empty($value)) {
+                        if (!filter_var($value, FILTER_VALIDATE_URL)) {
+                            throw new Exception('Invalid website URL format');
+                        }
+                        $validatedFields[$key] = filter_var($value, FILTER_SANITIZE_URL);
+                    }
+                    break;
+                    
+                case 'user_id':
+                    if (!empty($value)) {
+                        if (!is_numeric($value) || $value <= 0) {
+                            throw new Exception('Invalid user ID');
+                        }
+                        $validatedFields[$key] = (int)$value;
+                    }
+                    break;
+                    
+                // Geographic fields
+                case 'city':
+                case 'state':
+                case 'country':
+                    if (!empty($value)) {
+                        $validatedFields[$key] = $this->sanitizeString($value, 100);
+                    }
+                    break;
+                    
+                case 'lat':
+                case 'lon':
+                    if (!empty($value)) {
+                        if (!is_numeric($value) || abs($value) > 180) {
+                            throw new Exception("Invalid {$key} coordinate");
+                        }
+                        $validatedFields[$key] = (float)$value;
+                    }
+                    break;
+                    
+                // Pass through other fields (like images, ctime, mtime, etc.)
+                default:
+                    $validatedFields[$key] = $value;
+                    break;
+            }
+        }
+        
+        return $validatedFields;
+    }
+    
+    /**
+     * Sanitize string input
+     *
+     * @param string $input Input string to sanitize
+     * @param int $maxLength Maximum allowed length
+     * @return string Sanitized string
+     */
+    private function sanitizeString(string $input, int $maxLength): string
+    {
+        // Remove HTML tags and trim whitespace
+        $sanitized = trim(strip_tags($input));
+        
+        // Limit length
+        if (strlen($sanitized) > $maxLength) {
+            $sanitized = substr($sanitized, 0, $maxLength);
+        }
+        
+        return $sanitized;
     }
 }
