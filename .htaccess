@@ -27,32 +27,23 @@ Header always set Referrer-Policy "strict-origin-when-cross-origin"
     Require all denied
 </Files>
 
+# Block access to sensitive directories using RewriteRule
+RewriteEngine On
+
 # Block access to backup directories
-<DirectoryMatch "/@backup">
-    Require all denied
-</DirectoryMatch>
+RewriteRule ^@backup/ - [F,L]
 
 # Block access to node_modules
-<DirectoryMatch "/node_modules">
-    Require all denied
-</DirectoryMatch>
+RewriteRule ^node_modules/ - [F,L]
 
 # Block access to vendor directory from web
-<DirectoryMatch "/vendor">
-    Require all denied
-</DirectoryMatch>
+RewriteRule ^vendor/ - [F,L]
 
 # Block access to test directories
-<DirectoryMatch "/tests">
-    Require all denied
-</DirectoryMatch>
+RewriteRule ^tests/ - [F,L]
 
 # Block access to SQL directory
-<DirectoryMatch "/SQL">
-    Require all denied
-</DirectoryMatch>
+RewriteRule ^SQL/ - [F,L]
 
 # Block access to FIX directory (admin scripts)
-<DirectoryMatch "/FIX">
-    Require all denied
-</DirectoryMatch>
+RewriteRule ^FIX/ - [F,L]
