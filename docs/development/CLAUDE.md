@@ -2,7 +2,18 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-## Architecture Overview
+## 📖 Table of Contents
+
+- [🏗️ Architecture Overview](#️-architecture-overview)
+- [⚙️ Development Setup](#️-development-setup)
+- [🔧 Development Guidelines](#-development-guidelines)
+- [🚀 Deployment & Production](#-deployment--production)
+- [🛡️ Security & CSP Management](#️-security--csp-management)
+- [📊 Current Development Status](#-current-development-status)
+
+---
+
+## 🏗️ Architecture Overview
 
 This is a PHP web application for the Lotus Elan Registry hosted at https://elanregistry.org. It's built on top of UserSpice (userspice.com) for user authentication and management, with custom car registry functionality.
 
@@ -21,12 +32,6 @@ This is a PHP web application for the Lotus Elan Registry hosted at https://elan
 - Views: `usersview`, `users_carsview` for complex queries
 - Database triggers automatically maintain audit trails
 
-#### Development Database Access
-- **Configuration**: Use credentials from `.env.local` file (see DEV_DB_* variables)
-- **Connection**: MAMP MySQL server on port 8889
-- **MAMP MySQL Path**: `/Applications/MAMP/Library/bin/mysql`
-- **Direct Command**: `/Applications/MAMP/Library/bin/mysql -h localhost -P 8889 -u claude -p"claude" elanregi_spice`
-
 ### Key Application Files
 - `app/cars/index.php` - Searchable car listing with DataTables
 - `app/cars/details.php` - Individual car detail pages
@@ -34,16 +39,38 @@ This is a PHP web application for the Lotus Elan Registry hosted at https://elan
 - `app/reports/statistics.php` - Registry statistics with Google Charts
 - `app/contact/send-owner-email.php` - Owner contact functionality
 
-## Development Commands
+---
 
-### Testing
+## ⚙️ Development Setup
+
+### System Requirements
+- PHP 7.4+ required
+- MySQL 8.0+ 
+- Uses `johnathanmiller/secure-env-php` for encrypted environment variable handling
+
+### Quick Start Commands
 ```bash
+# Install PHP dependencies
+composer install
+
+# Install Node dependencies (for testing)
+npm install
+
 # Run PHPUnit tests
 vendor/bin/phpunit tests/
 
 # Run Playwright browser tests (requires test credentials)
 npm test
+```
 
+### Database Access
+- **Configuration**: Use credentials from `.env.local` file (see DEV_DB_* variables)
+- **Connection**: MAMP MySQL server on port 8889
+- **MAMP MySQL Path**: `/Applications/MAMP/Library/bin/mysql`
+- **Direct Command**: `/Applications/MAMP/Library/bin/mysql -h localhost -P 8889 -u claude -p"claude" elanregi_spice`
+
+### Testing
+```bash
 # Run specific test suites
 npm run test:security      # Security-focused tests
 npm run test:ui           # UI consistency tests
@@ -59,16 +86,26 @@ For Playwright browser tests that require authentication:
 2. Set `TEST_USERNAME` and `TEST_PASSWORD` with valid test account credentials
 3. Ensure `.env.local` is never committed to git (it's in `.gitignore`)
 
-### Dependencies
-```bash
-# Install PHP dependencies
-composer install
+### Environment Variables
+See comprehensive documentation in `docs/development/ENVIRONMENT.md`:
+- **Database credentials** (`DB_HOST`, `DB_USER`, `DB_PASS`, `DB_NAME`)
+- **Google API keys** - **Production**: Stored in database settings table; **Testing only**: Environment variables (`MAPS_KEY`, `GEO_ENCODE_KEY`)
+- All variables encrypted at rest using SecureEnvPHP
 
-# Install Node dependencies (for testing)
-npm install
-```
+### UserSpice Plugins
+**Active Plugins:**
+- `Auto Assign Usernames` - Hides username field and auto-assigns usernames on registration
+- `getSettings Function` - Provides global settings access via getSettings() function
+- `hooker` - Custom hooks system for code injection points
+- `reCAPTCHA` - Google reCAPTCHA v2/v3 integration for spam protection
+- `Brevo Sendinblue` - API-based email delivery replacing phpmailer (300 emails/day free)
 
-## Development Guidelines
+**Inactive Plugins:**
+- `CMS and Blog Plugin` - Content management system and blog platform (currently inactive)
+
+---
+
+## 🔧 Development Guidelines
 
 ### Security Requirements
 - All forms must use CSRF tokens
@@ -116,119 +153,7 @@ The system maintains location synchronization between user profiles and car reco
   - History entries are created with `LOCATION_SYNC` operation type
   - Users receive confirmation of how many cars were synchronized
 
-#### Location Sync Implementation Details:
-- **Trigger**: Any change to city, state, or country in user settings
-- **Process**: Geocoding → Profile update → Car synchronization → History logging  
-- **Safety**: Only updates cars if geocoding succeeds (preserves existing data on API failures)
-- **Audit Trail**: All location changes are logged and tracked in car history
-- **User Feedback**: Clear success messages indicate how many cars were synchronized
-
-This flow ensures location data consistency across the entire registry, preventing stale location information in car records when owners relocate.
-
-#### Future Testing Requirements
-Additional PHPUnit test cases needed for comprehensive location sync validation:
-
-1. **`testLocationSyncWhenGeocodingSucceeds()`** - Verify cars are updated when profile geocoding succeeds
-2. **`testLocationSyncSkippedWhenGeocodingFails()`** - Ensure cars remain unchanged when geocoding fails
-3. **`testHistoryRecordsCreatedForLocationSync()`** - Validate `LOCATION_SYNC` history entries are created
-4. **`testUserFeedbackShowsCorrectCarCount()`** - Verify user sees correct "synchronized X cars" message
-5. **`testNoUpdateForUsersWithoutCars()`** - Confirm no errors when user has no cars to sync
-
-These test cases should be implemented to ensure robust validation of the location synchronization functionality and edge case handling.
-
-#### SPAM and Inactive User Cleanup System
-**Issue #232** - Comprehensive automated cleanup system for maintaining database quality:
-
-**Features:**
-- **Automated SPAM Detection**: Identifies legacy data anomalies (1969 dates) and suspicious registration patterns
-- **Inactive User Management**: Grace period notifications and cleanup for users with no cars after 30+ days
-- **Safety Mechanisms**: Multiple percentage limits, maximum deletion counts, and dry-run testing
-- **Email Integration**: Grace period notifications via UserSpice email system (supports Mailtrap.io for dev testing)
-- **Comprehensive Logging**: All actions tracked via UserSpice logging system with searchable categories
-
-**Implementation Files:**
-- **`/users/cron/spam_inactive_cleanup.php`** - Main cleanup cron script (191 lines, database-driven configuration)
-- **`/FIX/Generate-Test-Data-For-SPAM-Cleanup.php`** - Test data generation script (creates 6 SPAM + 6 inactive test users)
-- **`/usersc/includes/admin_panel_custom_settings.php`** - Modern admin interface with toggle switches and auto-save
-- **`/docs/SPAM_CLEANUP_SYSTEM.md`** - Complete setup and configuration documentation
-
-**Admin Interface Enhancements:**
-- **Toggle Switches**: Professional slide toggles replacing checkboxes (matching UserSpice General Settings)
-- **Auto-Save AJAX**: Immediate database updates using native UserSpice handlers (no form submission)
-- **Visual Feedback**: Success/error messages with auto-hide functionality  
-- **Direct Log Access**: "View Dry Run Logs" link for immediate execution verification
-- **Color-Coded Sections**: Organized by function (Google Services, System Maintenance, Media, User Cleanup)
-
-**Testing Capabilities:**
-- **Test User Generation**: Creates realistic test data matching exact cleanup criteria
-- **Dry-Run Validation**: Complete testing without affecting live data
-- **Email Preview**: Mailtrap.io integration for testing grace period notifications
-- **Safety Verification**: Multiple test queries validate detection accuracy before live execution
-
-#### FIX Directory Scripts
-The `/FIX/` directory contains administrative cleanup scripts with the following features:
-- **Run Status Tracking**: Scripts automatically record completion in the `fix_script_runs` table
-- **Status Indicators**: Index page shows ✅ for completed scripts, ➖ for unrun scripts
-- **Last Run Times**: Displays when each script was last executed
-- **Outline Buttons**: Red outline buttons for safe script execution access
-- **Progress Reporting**: All scripts use consistent progress messaging with timestamps
-
-##### Creating New FIX Scripts
-**IMPORTANT**: Always use the template when creating new FIX scripts:
-
-1. **Copy Template**: Start with `/FIX/_TEMPLATE_Fix-Script.php`
-2. **Replace Placeholders**: Update all bracketed placeholders:
-   - `[SCRIPT_NAME]` - Name of the script
-   - `[SCRIPT_DESCRIPTION]` - Brief description of what it does
-   - `[ISSUE_NUMBER]` - GitHub issue number
-   - `[ISSUE_TITLE]` - GitHub issue title
-   - `[ICON_NAME]` - FontAwesome icon name (without fa-)
-   - `[SCRIPT_TITLE]` - Display title for the UI
-   - `[ACTION_NAME]` - Action verb (e.g., "Processing", "Cleanup")
-   - `[BULLET_POINT_1-5]` - Description bullet points
-   - `[BACKUP_COMMAND_HERE]` - Relevant backup command
-   - `[TABLE_NAME]`, `[CONDITIONS]` - Database specifics
-
-3. **Standard Features Included**:
-   - ✅ Two-column layout (Progress left, Summary right)
-   - ✅ Full-width progress log below
-   - ✅ Color-coded success indicators (red/yellow/green)
-   - ✅ ElanRegistry template integration
-   - ✅ Return to FIX menu functionality
-   - ✅ UserSpice security and authentication
-   - ✅ Progress tracking and error handling
-   - ✅ Script completion recording
-
-## PHP Compatibility & Code Quality
-
-### PHP 8+ Compatibility
-The application is fully compatible with PHP 8+ and includes comprehensive null handling to prevent deprecated warnings.
-
-#### Car Class Null Handling (v2.6.2)
-**Critical improvements to `usersc/classes/Car.php` for robust data handling:**
-
-- **Image Processing**: Added null/empty checks before `json_decode()` and `explode()` operations
-  - **Issue**: Cars with null image data caused deprecated warnings
-  - **Solution**: Validates `$this->_data->image` before processing
-  - **Result**: Graceful handling of cars without image data
-
-- **Chassis Factory Lookup**: Added null validation before `substr()` operations
-  - **Issue**: Cars with null chassis values caused deprecated warnings  
-  - **Solution**: Validates chassis field before creating search array
-  - **Result**: Safe factory data lookup for all car records
-
-- **Factory Suffix Processing**: Added null checks for factory data
-  - **Issue**: Factory records with null suffix values caused issues
-  - **Solution**: Validates suffix field before processing
-  - **Result**: Robust factory data display
-
-#### Recommended PHP Practices
-- **Always validate inputs**: Check for null/empty before string operations
-- **Use type declarations**: Add return types to all methods for better debugging
-- **Handle edge cases**: Graceful degradation when data is missing
-- **Log errors appropriately**: Use proper error handling instead of silent failures
-
-### Code Quality Standards
+### PHP 8+ Compatibility & Code Quality
 
 #### Car Class Modernization Roadmap
 **GitHub Issues tracking comprehensive improvements:**
@@ -242,32 +167,44 @@ The application is fully compatible with PHP 8+ and includes comprehensive null 
    - ✅ Lotus Elan year range validation (1963-1974)
 
 **Phase 2: Database Consistency & Security Fixes (Release 2)**
-2. **Issue #247** (High Priority) - Fix removeImage() direct database access  
+2. **Issue #158** (Medium Priority) - Standardize column names across car-related tables
+   - Create database migration to rename `carid` → `car_id` in car_user and car_user_hist tables
+   - Update Car class methods to use consistent `car_id` format
+   - Update all affected queries for consistency
+   - Ensure clean, consistent schema for Car class operations
+
+3. **Issue #238** (Low Priority) - Remove deprecated username field from cars table
+   - Remove `username` from Car class `allowedColumns` array
+   - Create database migration to drop deprecated `username` column
+   - Verify all relationships use proper `car_user` table patterns
+   - Update schema documentation
+
+4. **Issue #247** (High Priority) - Fix removeImage() direct database access  
    - Replace direct DB calls with Car class methods
    - Add removeImage() method to Car class
    - Implement proper JSON image format handling
    - Add comprehensive error handling and validation
 
-3. **Issue #248** (Critical Priority) - Replace direct DB access in car management
+5. **Issue #248** (Critical Priority) - Replace direct DB access in car management
    - Add Car class methods: delete(), transfer(), merge()
    - Replace all direct database operations in manage.php
    - Implement proper audit trails for admin operations
    - Add comprehensive input validation for management operations
 
-4. **Issue #249** (High Priority) - Fix car verification system bypasses
+6. **Issue #249** (High Priority) - Fix car verification system bypasses
    - Add Car class methods: setVerificationCode(), markVerified(), markSold()
    - Add static findByVerificationCode() method
    - Replace direct database access in verification scripts
    - Implement proper verification audit trails
 
 **Phase 3: Performance & Architecture (Release 3)**
-5. **Issues #240 & #241** (Medium Priority) - Performance and advanced security
+7. **Issues #240 & #241** (Medium Priority) - Performance and advanced security
    - Database query optimization (single query vs. multiple queries)
    - Implement lazy loading for images and factory data
    - Custom exception classes for better error handling
    - File path security improvements
 
-6. **Issue #242** (Low Priority - Future) - Architecture refactoring
+8. **Issue #242** (Low Priority - Future) - Architecture refactoring
    - Split Car class into focused responsibilities
    - Remove global variable dependencies  
    - Modern PHP features (enums, readonly properties)
@@ -278,31 +215,11 @@ The application is fully compatible with PHP 8+ and includes comprehensive null 
 - **Phase 3** requires **Phase 2** completion
 - All issues build upon Issue #239 foundation
 
-#### UI/UX Improvements
-
-##### Car Details Page Enhancements (v2.6.2)
-- **Layout Optimization**: Moved Location Map under Owner Information for logical flow
-- **Visual Hierarchy**: Enhanced Quick Facts summary with larger icons and better typography
-- **Accessibility**: Fixed breadcrumb navigation visibility (white-on-white text issue)
-- **User Experience**: Improved map caption for brevity and clarity
-
-##### Identification Guide Modernization (v2.6.2)
-**Critical HTML Fixes:**
-- Fixed malformed HTML tags and missing closing elements
-- Corrected section nesting structure for proper semantics
-- Validated all HTML for standards compliance
-
-**Accessibility Enhancements:**
-- Added skip navigation links for keyboard users
-- Implemented semantic heading structure with proper ARIA roles
-- Added table captions and section anchor links
-- Enhanced screen reader compatibility
-
-**Modern UX Features:**  
-- Smooth scrolling navigation with active state management
-- Back-to-top button with scroll-based fade effects
-- Mobile-responsive design with lazy loading images
-- Print-optimized layouts and external link security
+#### Recommended PHP Practices
+- **Always validate inputs**: Check for null/empty before string operations
+- **Use type declarations**: Add return types to all methods for better debugging
+- **Handle edge cases**: Graceful degradation when data is missing
+- **Log errors appropriately**: Use proper error handling instead of silent failures
 
 ### Templates & Styling
 - Uses Bootstrap 4/5 for responsive layout
@@ -314,12 +231,46 @@ The application is fully compatible with PHP 8+ and includes comprehensive null 
 - Template system via UserSpice with custom overrides
 - Card-based layout for consistent UI
 
-### Custom Branding
-- ElanRegistry template includes custom Lotus Elan Registry branding
-- Logo files are self-contained within the template directory
-- Favicon automatically uses template-specific icon instead of generic UserSpice favicon
-- Template uses CDN-based asset loading for Bootstrap, jQuery, and FontAwesome
-## Production Deployment
+### Administrative Tools
+
+#### SPAM and Inactive User Cleanup System
+**Issue #232** - Comprehensive automated cleanup system for maintaining database quality:
+
+**Features:**
+- **Automated SPAM Detection**: Identifies legacy data anomalies (1969 dates) and suspicious registration patterns
+- **Inactive User Management**: Grace period notifications and cleanup for users with no cars after 30+ days
+- **Safety Mechanisms**: Multiple percentage limits, maximum deletion counts, and dry-run testing
+- **Email Integration**: Grace period notifications via UserSpice email system (supports Mailtrap.io for dev testing)
+- **Comprehensive Logging**: All actions tracked via UserSpice logging system with searchable categories
+
+#### FIX Directory Scripts
+The `/FIX/` directory contains administrative cleanup scripts with the following features:
+- **Run Status Tracking**: Scripts automatically record completion in the `fix_script_runs` table
+- **Status Indicators**: Index page shows ✅ for completed scripts, ➖ for unrun scripts
+- **Last Run Times**: Displays when each script was last executed
+- **Outline Buttons**: Red outline buttons for safe script execution access
+- **Progress Reporting**: All scripts use consistent progress messaging with timestamps
+
+##### Creating New FIX Scripts
+**IMPORTANT**: Always use the template when creating new FIX scripts:
+
+1. **Copy Template**: Start with `/FIX/_TEMPLATE_Fix-Script.php`
+2. **Replace Placeholders**: Update all bracketed placeholders with appropriate values
+3. **Standard Features Included**: Two-column layout, progress tracking, error handling, authentication
+
+### Code Quality Requirements
+
+**ALWAYS run the following commands before completing any task:**
+
+- Run `mcp__ide__getDiagnostics` to check all files for diagnostics
+- Fix any linting or type errors before considering the task complete
+- Run appropriate test suites for modified functionality
+
+This is a CRITICAL step that must NEVER be skipped when working on any code-related task.
+
+---
+
+## 🚀 Deployment & Production
 
 ### Production Environment
 - **Hosting**: A2 Hosting with git deployment hooks
@@ -327,24 +278,72 @@ The application is fully compatible with PHP 8+ and includes comprehensive null 
 - **Auto-deployment**: Master branch deploys automatically when pushed to prod remote
 - **Version Display**: Uses VERSION file modification time for deployment timestamp
 
-### Deployment Commands
-When deploying to production, always push both code and tags:
+### 🚨 CRITICAL: Production Deployment Commands
 
+**⚠️ IMPORTANT:** When someone says "push to prod", always use the `prod` remote, NOT `origin`!
+
+**Live Production Server:**
 ```bash
-# Push code to production
+# Push code to PRODUCTION SERVER (live site)
 git push prod main
 
-# Push version tags to production  
+# Push version tags to PRODUCTION SERVER  
 git push prod --tags
 ```
+
+**GitHub Repository (backup/development):**
+```bash
+# Push to GitHub for repository backup
+git push origin main && git push origin --tags
+```
+
+### Remote Configuration Reference
+```bash
+origin	git@github.com:unibrain1/elanregistry.git    # GitHub repository
+prod	a2hosting:/home/unibrain/elanregistry.project  # LIVE PRODUCTION SERVER
+```
+
+**🔄 Deployment Rule:** 
+- `origin` = GitHub (development/backup)
+- `prod` = **LIVE WEBSITE** (elanregistry.org)
 
 ### Complete Production Deployment Process
 1. **Update VERSION file and create matching git tag** (tag must exactly match VERSION content)
 2. **Commit changes** with version bump and tag
-3. **Push to origin** for GitHub repository updates: `git push origin main && git push origin --tags`
-4. **Deploy to production** with both code and tags: `git push prod main && git push prod --tags`
+3. **Push to GitHub** for repository backup: `git push origin main && git push origin --tags`
+4. **🎯 DEPLOY TO PRODUCTION** (the important step): `git push prod main && git push prod --tags`
 5. **Verify deployment** by checking version display matches git tag on production site
 6. **Complete post-deployment verification** (see checklist below)
+
+### Git & Version Control
+
+#### Branch Management Strategy
+- `main` branch always contains production-ready code
+- All development work happens on feature/phase branches
+- Direct commits to main are discouraged
+
+#### Branch Naming Convention
+- Feature branches: `feature/issue-{number}-brief-description`
+- Phase branches: `phase-{number}-{name}`
+- Hotfix branches: `hotfix/issue-{number}-brief-description`
+
+#### Version Management & Automated Release Process
+
+**Version File Structure:**
+- Version information stored in `/VERSION` file in project root
+- `ApplicationVersion::get()` reads from this file (no git dependencies)
+- Production deployment timestamp shows file modification time
+- Format: `vX.Y.Z` (semantic versioning, e.g., `v2.3.4`)
+
+**Automated Version Enforcement:**
+- **Git Pre-Commit Hook**: Automatically enforces version updates on main branch
+- **Location**: `.git/hooks/pre-commit` (installed automatically)
+- **Rules**: VERSION file must be updated when committing code changes to main
+
+**Version Bump Helper Script:**
+- **Location**: `scripts/bump-version.sh`
+- **Usage**: `./scripts/bump-version.sh [patch|minor|major] [--tag] [--dry-run]`
+- **Features**: Automatic semantic version incrementing, optional git tag creation
 
 ### Post-Deployment Configuration Requirements
 
@@ -354,14 +353,11 @@ git push prod --tags
 - **Problem:** File reorganization affects API referrer restrictions
 - **Solution:** Update Google Cloud Console API restrictions to include new file paths
 - **Check:** Verify maps display correctly on statistics and detail pages
-- **Location:** Google Cloud Console → APIs & Services → Credentials → API Keys
 
 #### UserSpice Page Permissions
 - **Problem:** New pages and redirects need proper access permissions configured
 - **Solution:** Update page permissions in UserSpice admin panel
 - **Required for:** Both redirect pages AND new destination pages
-- **Access:** Admin Panel → Manage Pages → Set appropriate permission levels
-- **Test:** Verify all user roles can access reorganized pages correctly
 
 #### Deployment Verification Checklist
 - [ ] Google Maps display correctly on all pages
@@ -371,7 +367,9 @@ git push prod --tags
 - [ ] Version information displays correctly in footer
 - [ ] Test critical user workflows (car registration, editing, contact forms)
 
-## Content Security Policy (CSP) Management
+---
+
+## 🛡️ Security & CSP Management
 
 The application implements a comprehensive Content Security Policy to prevent XSS attacks and unauthorized resource loading while supporting all required external services.
 
@@ -379,7 +377,7 @@ The application implements a comprehensive Content Security Policy to prevent XS
 **File:** `usersc/includes/security_headers.php`
 
 ### Supported External Services
-- **Google Services**: Maps, Charts, Analytics, reCAPTCHA, Tag Manager
+- **Google Services**: Maps, Charts, reCAPTCHA, Tag Manager (Google Analytics removed in v2.6.12)
 - **Cloudflare**: Analytics with wildcard pattern support for versioned scripts
 - **CDN Resources**: JSDelivr, Cloudflare CDN, Bootstrap CDN, jQuery, DataTables
 - **Font Services**: Google Fonts, FontAwesome (including kit support)
@@ -389,10 +387,7 @@ The application implements a comprehensive Content Security Policy to prevent XS
 - **Issue**: UserSpice core attempts to load profile pictures from `www.gravatar.com`
 - **CSP Conflict**: Gravatar domain is not in the allowed `img-src` directive
 - **Solution**: Custom JavaScript in `/usersc/plugins/hooker/hooks/account_body_hook.php` prevents avatar loading
-- **User Experience**: Account pages show a FontAwesome user icon instead of profile pictures
 - **Privacy Benefit**: No external requests to Gravatar service protect user privacy
-- **Technical Approach**: JavaScript removes image sources and elements before they can trigger CSP violations
-- **Note**: This is a non-invasive solution that doesn't modify core UserSpice files
 
 ### CSP Validation & Testing
 
@@ -406,7 +401,6 @@ The application implements a comprehensive Content Security Policy to prevent XS
    - Command-line tool: `php tests/validate-csp-policy.php`
    - Validates all required domains are present
    - Checks security best practices
-   - Generates detailed validation reports
 
 #### Running CSP Tests
 ```bash
@@ -434,105 +428,9 @@ npm run test:security
 3. Run validation tests to ensure no regressions
 4. Test on actual pages with browser console monitoring
 
-## Git & Version Control
+---
 
-### Branch Management Strategy
-- `main` branch always contains production-ready code
-- All development work happens on feature/phase branches
-- Direct commits to main are discouraged
-
-### Branch Naming Convention
-- Feature branches: `feature/issue-{number}-brief-description`
-- Phase branches: `phase-{number}-{name}`
-- Hotfix branches: `hotfix/issue-{number}-brief-description`
-
-### Version Management & Automated Release Process
-
-#### Version File Structure
-- Version information stored in `/VERSION` file in project root
-- `ApplicationVersion::get()` reads from this file (no git dependencies)
-- Production deployment timestamp shows file modification time
-- Format: `vX.Y.Z` (semantic versioning, e.g., `v2.3.4`)
-
-#### Automated Version Enforcement
-- **Git Pre-Commit Hook**: Automatically enforces version updates on main branch
-- **Location**: `.git/hooks/pre-commit` (installed automatically)
-- **Rules**:
-  - VERSION file must be updated when committing code changes to main
-  - Documentation-only changes skip version requirements
-  - **Feature Branch Integration**: Detects feature branch merges and offers interactive version prompting
-  - Hook can be bypassed with `git commit --no-verify` (not recommended)
-
-#### Feature Branch Version Prompting
-- **Automatic Detection**: Pre-commit hook identifies feature branch merges to main
-- **Interactive Prompts**: Offers patch/minor/major version update options during merge commits
-- **Integration**: Uses `scripts/bump-version.sh` with automatic staging and tagging
-- **Timeout**: 30-second timeout with default "skip" option for non-interactive environments
-- **Safety**: Only prompts for `feature/` prefixed branches
-
-#### Version Bump Helper Script
-- **Location**: `scripts/bump-version.sh`
-- **Usage**: `./scripts/bump-version.sh [patch|minor|major] [--tag] [--dry-run]`
-- **Features**:
-  - Automatic semantic version incrementing
-  - Optional git tag creation
-  - Dry-run mode for testing
-  - Validation of version format
-
-#### Version Update Requirements
-- **REQUIRED:** All code changes to main branch must update VERSION file
-- **REQUIRED:** Git tag must always match VERSION file content exactly
-- **AUTOMATIC:** Pre-commit hook prevents commits without version updates
-- **RECOMMENDED:** Use version bump script for consistent formatting
-- **PROCESS:**
-  ```bash
-  # Recommended: Quick version bump with automatic tag
-  ./scripts/bump-version.sh patch --tag
-  git commit -m "VERSION: Bump to v2.3.5 - Fix critical security issue"
-  
-  # Manual version update (must create matching tag)
-  echo "v2.3.5" > VERSION
-  git add VERSION
-  git commit -m "VERSION: Bump to v2.3.5 - Fix critical security issue"
-  git tag -a v2.3.5 -m "Release v2.3.5"  # REQUIRED: Tag must match VERSION
-  ```
-
-#### Exception Handling
-- **Documentation Changes**: `.md`, `README`, `docs/` files skip version requirements
-- **Emergency Bypass**: Use `--no-verify` flag only for critical hotfixes
-- **Branch-Specific**: Version enforcement only applies to main branch
-
-## Environment & Configuration
-
-### System Requirements
-- PHP 7.4+ required
-- MySQL 8.0+ 
-- Uses `johnathanmiller/secure-env-php` for encrypted environment variable handling
-- Google Analytics integration for statistics
-
-### Environment Variables
-See comprehensive documentation in `docs/development/ENVIRONMENT.md`:
-- Database credentials (`DB_HOST`, `DB_USER`, `DB_PASS`, `DB_NAME`)
-- Google API keys (`MAPS_KEY`, `GEO_ENCODE_KEY`)
-- All variables encrypted at rest using SecureEnvPHP
-
-### UserSpice Plugins
-- `cms` - Content management
-- `recaptcha` - Spam protection  
-- `reports` - Data reporting
-- `hooker` - Custom hooks system
-
-## Code Quality Requirements
-
-**ALWAYS run the following commands before completing any task:**
-
-- Run `mcp__ide__getDiagnostics` to check all files for diagnostics
-- Fix any linting or type errors before considering the task complete
-- Run appropriate test suites for modified functionality
-
-This is a CRITICAL step that must NEVER be skipped when working on any code-related task.
-
-## Current Development Status
+## 📊 Current Development Status
 
 ### ✅ Production Ready Features
 - **Security**: Enterprise-grade security implementation with comprehensive CSRF protection, prepared statements, and secure session handling
@@ -543,6 +441,7 @@ This is a CRITICAL step that must NEVER be skipped when working on any code-rela
 - **PHP 8+ Compatibility**: Full compatibility with modern PHP versions, comprehensive null handling
 - **Accessibility**: WCAG 2.1 compliant identification guide with semantic HTML and screen reader support
 - **Mobile Responsiveness**: Optimized layouts and lazy loading for all screen sizes
+- **Privacy Enhancement**: Complete Google Analytics removal (v2.6.12) for improved privacy and performance
 
 ### 📋 Active Development Areas
 Current GitHub Issues are organized into development phases:

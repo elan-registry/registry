@@ -45,5 +45,5 @@ RewriteRule ^tests/ - [F,L]
 # Block access to SQL directory
 RewriteRule ^SQL/ - [F,L]
 
-# Block access to FIX directory except index.php and directory root (admin interface)
-RewriteRule ^FIX/(?!$|index\.php$) - [F,L]
+# Block access to FIX directory except index.php (admin interface)
+RewriteRule ^FIX/(?!index\.php$) - [F,L]

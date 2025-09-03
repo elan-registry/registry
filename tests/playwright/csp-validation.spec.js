@@ -168,11 +168,16 @@ test.describe('CSP Validation Tests', () => {
     expect(cspViolations, `Found ${cspViolations.length} CSP violations: ${JSON.stringify(cspViolations, null, 2)}`).toHaveLength(0);
     
     // Verify critical resources loaded successfully
-    const criticalFailures = failedRequests.filter(req => 
-      req.url.includes('charts.googleapis.com') || 
-      req.url.includes('gstatic.com') ||
-      req.url.includes('cloudflareinsights.com')
-    );
+    const criticalDomains = ['charts.googleapis.com', 'gstatic.com', 'cloudflareinsights.com'];
+    const criticalFailures = failedRequests.filter(req => {
+      try {
+        const url = new URL(req.url);
+        return criticalDomains.includes(url.hostname);
+      } catch (e) {
+        // If URL parsing fails, fall back to includes check
+        return criticalDomains.some(domain => req.url.includes(domain));
+      }
+    });
     
     expect(criticalFailures, `Critical external resources failed to load: ${JSON.stringify(criticalFailures, null, 2)}`).toHaveLength(0);
   });
