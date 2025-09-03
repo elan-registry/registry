@@ -567,8 +567,8 @@ class Car
                     
                 case 'year':
                     if (!empty($value)) {
-                        if (!is_numeric($value) || $value < 1960 || $value > (date('Y') + 1)) {
-                            throw new Exception('Year must be a valid number between 1960 and ' . (date('Y') + 1));
+                        if (!is_numeric($value) || $value < 1963 || $value > 1974) {
+                            throw new Exception('Year must be between 1963 and 1974 (Lotus Elan production years)');
                         }
                         $validatedFields[$key] = (int)$value;
                     } elseif ($requireAll) {
