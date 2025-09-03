@@ -11,6 +11,9 @@
  * @copyright 2025
  */
 
+// Start output buffering to prevent any HTML from being output before JSON
+ob_start();
+
 require_once '../../../users/init.php';
 
 // Debug: Check if ChassisValidator class file exists
@@ -52,6 +55,8 @@ $allowOverride = Input::get('allow_override', false) === 'true';
 
 // Validate required parameters
 if (empty($chassis) || $year === 0 || empty($model)) {
+    ob_clean();
+    header('Content-Type: application/json');
     echo json_encode([
         'valid' => false,
         'error_reason' => 'Missing required parameters: chassis, year, and model',
@@ -70,11 +75,14 @@ try {
     // Debug info removed - validation working correctly
     
     // Return JSON response
+    ob_clean();
     header('Content-Type: application/json');
     echo json_encode($result);
 } catch (Exception $e) {
     error_log("ChassisValidator error: " . $e->getMessage());
+    ob_clean();
     http_response_code(500);
+    header('Content-Type: application/json');
     echo json_encode([
         'valid' => false,
         'error' => 'Validation error: ' . $e->getMessage(),

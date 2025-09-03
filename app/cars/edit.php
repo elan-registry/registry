@@ -306,7 +306,7 @@ function updateCarDetails(array &$car): void
                 </div>
             </div>
             <div class="modal-footer">
-                <a href="<?= $us_url_root ?>app/help/chassis-validation.php" target="_blank" class="btn btn-outline-primary">
+                <a href="<?= $us_url_root ?>docs/chassis-validation.php" target="_blank" class="btn btn-outline-primary">
                     <i class="fas fa-external-link-alt"></i> View Full Documentation
                 </a>
                 <button type="button" class="btn btn-secondary" data-dismiss="modal">Close</button>
@@ -378,17 +378,24 @@ require_once $abs_us_root . $us_url_root . 'users/includes/html_footer.php'; //c
 
             init: function() {
                 thisDropzone = this;
-                // Load any existing images
-                $.post('actions/edit.php', {
-                        'carID': carid,
-                        'csrf': csrf,
-                        'action': 'fetchImages'
-                    },
-                    function(response) {
-                        let data = JSON.parse(response);
-                        if (data == null || data.status != 'success') {
-                            return;
-                        }
+                
+                // Only load existing images if we have a valid car ID (editing mode)
+                if (carid && carid !== '') {
+                    $.ajax({
+                        url: 'actions/edit.php',
+                        type: 'POST',
+                        dataType: 'json',
+                        data: {
+                            'carID': carid,
+                            'csrf': csrf,
+                            'action': 'fetchImages'
+                        },
+                        success: function(data) {
+                            console.log('fetchImages response:', data);
+                            if (data == null || data.status != 'success') {
+                                console.log('fetchImages failed or returned null');
+                                return;
+                            }
                         $.each(data.images, function(key, value) {
                             var mockFile = {
                                 path: value.path,
@@ -411,7 +418,13 @@ require_once $abs_us_root . $us_url_root . 'users/includes/html_footer.php'; //c
                             thisDropzone.files.push(mockFile);
                         });
 
+                        },
+                        error: function(xhr, status, error) {
+                            console.error('Failed to fetch images:', error);
+                            console.log('XHR response:', xhr.responseText);
+                        }
                     });
+                }
 
                 // Grab the submit button.  Make sure it's error free and process the queue
                 document.getElementById("submit").addEventListener("click", function(e) {
@@ -494,7 +507,8 @@ require_once $abs_us_root . $us_url_root . 'users/includes/html_footer.php'; //c
         });
 
         myDropzone.on("successmultiple", function(file, message) {
-            const data = JSON.parse(message);
+            // Message may already be parsed by Dropzone due to Content-Type header
+            const data = (typeof message === 'string') ? JSON.parse(message) : message;
 
             if (data.status === 'success') {
                 window.location = '<?= $us_url_root ?>app/cars/details.php?car_id=' + data.cardetails.id;
@@ -881,7 +895,7 @@ require_once $abs_us_root . $us_url_root . 'users/includes/html_footer.php'; //c
      */
     function checkChassisAvailability() {
         $.ajax({
-            url: 'actions/checkChassis.php',
+            url: 'actions/check-chassis.php',
             type: 'post',
             data: {
                 'command': 'chassis_check',

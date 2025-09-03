@@ -10,6 +10,9 @@
  * @copyright 2025
  */
 
+// Start output buffering to prevent any HTML from being output before JSON
+ob_start();
+
 // Check to see if the chassis number is taken
 require_once '../../../users/init.php';
 
@@ -89,7 +92,12 @@ if (!empty($_POST)) {
                 $response['cardetails'][$key] = "";
             }
         }
+        
+        // Clean any unwanted output and send JSON response
+        ob_clean();
+        header('Content-Type: application/json');
         echo json_encode($response);
+        exit;
     } // End Post with data
 }
 
@@ -520,13 +528,38 @@ function uploadImages(&$cardetails)
  */
 function fetchImages(int $carid): void
 {
-    $car = new Car($carid);
+    try {
+        // Validate car ID
+        if (empty($carid) || $carid <= 0) {
+            throw new Exception("Invalid car ID");
+        }
 
-    $response = [
-        'status' => 'success',
-        'images' => $car->images(),
-    ];
+        $car = new Car($carid);
+        
+        // Check if car exists
+        if (!$car->exists()) {
+            throw new Exception("Car not found");
+        }
 
+        $images = $car->images();
+        error_log("fetchImages for car $carid: " . print_r($images, true));
+
+        $response = [
+            'status' => 'success',
+            'images' => $images,
+        ];
+    } catch (Exception $e) {
+        // Return error response in JSON format
+        $response = [
+            'status' => 'error',
+            'message' => $e->getMessage(),
+            'images' => []
+        ];
+    }
+
+    // Clean any unwanted output and send JSON response
+    ob_clean();
+    header('Content-Type: application/json');
     echo json_encode($response);
     exit;
 }
@@ -602,6 +635,10 @@ function removeImage(int $carID, string $file): void
             'info'   => "image not found"
         ];
     }
+    
+    // Clean any unwanted output and send JSON response
+    ob_clean();
+    header('Content-Type: application/json');
     echo json_encode($response);
     exit;
 }
