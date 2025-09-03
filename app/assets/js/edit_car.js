@@ -593,6 +593,7 @@ function prepopulateForEditing() {
     const modelValue = window.carModel;
     if (modelValue) {
         const escapedModel = modelValue
+            .replace(/\\/g, "\\\\")
             .replace(/\|/g, "\\|")
             .replace(/ /g, "\\ ")
             .replace(/\//g, "\\/")
@@ -608,7 +609,7 @@ function prepopulateForEditing() {
     fields.forEach(field => $('#' + field).prop('disabled', false));
 
     $('#submit').attr('value', 'Update Car');
-    $('#carid').html($('#carid').val());
+    $('#carid').text($('#carid').val());
     $('#carHeader').html('<h2><strong>Update car</strong></h2>');
 }
 
