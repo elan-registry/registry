@@ -1,22 +1,12 @@
 # Disable directory browsing
 Options -Indexes
+RewriteEngine On
 
 # Deny access to action scripts (should only be called via forms/AJAX)
-<DirectoryMatch "/actions">
-    <Files "*.php">
-        Require all denied
-    </Files>
-</DirectoryMatch>
+RewriteRule ^actions/.*\.php$ - [F,L]
 
-# Allow access to API endpoints but disable browsing
-<Directory "api">
-    Options -Indexes
-</Directory>
+# Allow access to API endpoints but disable browsing (handled by Options -Indexes)
+# API directory is accessible for valid endpoints
 
 # Protect views directory (should not be directly accessible)
-<Directory "views">
-    Options -Indexes
-    <Files "*.php">
-        Require all denied
-    </Files>
-</Directory>
+RewriteRule ^views/.*\.php$ - [F,L]

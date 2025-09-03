@@ -1,5 +1,8 @@
-# Disable directory browsing and access to administrative fix scripts
+# Disable directory browsing for security
 Options -Indexes
-Require all denied
 
-# Only allow access through proper authentication in the scripts themselves
+# Allow index.php access for admin interface
+# Block direct access to PHP fix scripts (they should be run via index.php)
+<FilesMatch "^(?!index\.php$).*\.php$">
+    Require all denied
+</FilesMatch>
