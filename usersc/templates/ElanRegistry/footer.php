@@ -38,6 +38,11 @@ require_once($abs_us_root . $us_url_root . 'users/includes/html_footer.php');
 // echo html_entity_decode($settings->elan_fontawesome_cdn);
 ?>
 
+<?php
+// Only load Google Analytics in production environment
+// Prevents development tracking pollution and localhost URL errors
+$is_production = !in_array($_SERVER['HTTP_HOST'], ['localhost', '127.0.0.1', 'localhost:9999']);
+if ($is_production): ?>
 <!-- Global site tag (gtag.js) - Google Analytics 4 -->
 <script async src="https://www.googletagmanager.com/gtag/js?id=G-WS56C3X5NR"></script>
 <script>
@@ -50,3 +55,4 @@ require_once($abs_us_root . $us_url_root . 'users/includes/html_footer.php');
 
   gtag('config', 'G-WS56C3X5NR');
 </script>
+<?php endif; ?>
