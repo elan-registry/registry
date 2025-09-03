@@ -151,8 +151,21 @@ class Car
                 $images[$key] = $temp;
                 $images[$key]['path'] = $us_url_root . $this->imageDir . $images[$key]['basename'];
                 $images[$key]['size'] = filesize($file);
-                $images[$key]['type'] = image_type_to_extension(exif_imagetype($file), false);
-                $images[$key]['mime'] = mime_content_type($file);
+                
+                // Safely get image type and MIME type with error handling
+                try {
+                    $imageType = @exif_imagetype($file);
+                    $images[$key]['type'] = $imageType ? image_type_to_extension($imageType, false) : 'unknown';
+                } catch (Exception $e) {
+                    $images[$key]['type'] = 'unknown';
+                }
+                
+                try {
+                    $mimeType = @mime_content_type($file);
+                    $images[$key]['mime'] = $mimeType ?: 'application/octet-stream';
+                } catch (Exception $e) {
+                    $images[$key]['mime'] = 'application/octet-stream';
+                }
             }
         }
         $this->_images =  array_values($images);  // Reindex in case a file didn't exist
@@ -262,7 +275,7 @@ class Car
      */
     public function images(): array
     {
-        return $this->_images;
+        return $this->_images ?? [];
     }
     /**
      * Get car owner information

@@ -1,215 +1,360 @@
 <?php
 /*
-This is a user-facing page
-UserSpice 5
-An Open Source PHP User Management System
-by the UserSpice Team at http://UserSpice.com
-
-This program is free software: you can redistribute it and/or modify
-it under the terms of the GNU General Public License as published by
-the Free Software Foundation, either version 3 of the License, or
-(at your option) any later version.
-
-This program is distributed in the hope that it will be useful,
-but WITHOUT ANY WARRANTY; without even the implied warranty of
-MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-GNU General Public License for more details.
-
-You should have received a copy of the GNU General Public License
-along with this program.  If not, see <http://www.gnu.org/licenses/>.
-
-Special thanks to John Bovey for the password strenth feature.
+Enhanced Lotus Elan Registry Registration Page
+Customized for the Lotus Elan Registry with improved UX and registry-specific features
+Based on UserSpice 5 registration system
 */
 ?>
-<style>
-  .gray_out_icon {
-    -webkit-filter: grayscale(100%);
-    /* Safari 6.0 - 9.0 */
-    filter: grayscale(100%);
-  }
 
-  .gray_out_text {
-    opacity: .5;
-  }
-</style>
-
-<div class="row">
-  <div class="col-sm-12">
-    <?php
-    if (!$form_valid && Input::exists()) { ?>
-      <?php if (!$validation->errors() == '') {
-        display_errors($validation->errors());
-      } ?>
-    <?php }
-    includeHook($hooks, 'body');
-    ?>
-
-    <form class="form-signup" action="<?= $form_action; ?>" method="<?= $form_method; ?>" id="payment-form">
-
-      <h2 class="form-signin-heading"> <?= lang("SIGNUP_TEXT", ""); ?></h2>
-
-      <div class="form-group">
-        <label id="username-label"><?= lang("GEN_UNAME"); ?>*</label>
-        <span id="usernameCheck" class="small"></span>
-
-        <input type="text" class="form-control" id="username" name="username" placeholder="<?= lang("GEN_UNAME"); ?>" value="<?php if (!$form_valid && !empty($_POST)) {
-                                                                                                                                echo $username;
-                                                                                                                              } ?>" required autofocus autocomplete="username">
-      </div>
-
-      <div class="form-group">
-        <label for="fname" id="fname-label"><?= lang("GEN_FNAME"); ?>*</label>
-
-        <input type="text" class="form-control" id="fname" name="fname" placeholder="<?= lang("GEN_FNAME"); ?>" value="<?php if (!$form_valid && !empty($_POST)) {
-                                                                                                                          echo $fname;
-                                                                                                                        } ?>" required autofocus autocomplete="first-name">
-      </div>
-
-      <div class="form-group">
-        <label for="lname" id="lname-label"><?= lang("GEN_LNAME"); ?>*</label>
-
-        <input type="text" class="form-control" id="lname" name="lname" placeholder="<?= lang("GEN_LNAME"); ?>" value="<?php if (!$form_valid && !empty($_POST)) {
-                                                                                                                          echo $lname;
-                                                                                                                        } ?>" required autocomplete="family-name">
-      </div>
-
-      <div class="form-group">
-        <label for="email" id="email-label"><?= lang("GEN_EMAIL"); ?>*</label>
-
-        <input class="form-control" type="text" name="email" id="email" placeholder="<?= lang("GEN_EMAIL"); ?>" value="<?php if (!$form_valid && !empty($_POST)) {
-                                                                                                                          echo $email;
-                                                                                                                        } ?>" required autocomplete="email">
-      </div>
-      <!-- Additional Form Fields moved for ElanRegistry -->
-      <?php
-      include($abs_us_root . $us_url_root . 'usersc/scripts/additional_join_form_fields.php');
-      ?>
-
-
-      <div class="form-group">
-        <?php
-        $character_range = lang("GEN_MIN") . " " . $settings->min_pw . " " . lang("GEN_AND") . " " . $settings->max_pw . " " . lang("GEN_MAX") . " " . lang("GEN_CHAR");
-        $character_statement = '<span id="character_range" class="gray_out_text">' . $character_range . ' </span>';
-
-        if ($settings->req_cap == 1) {
-          $num_caps = '1'; //Password must have at least 1 capital
-          if ($num_caps != 1) {
-            $num_caps_s = 's';
-          }
-          $num_caps_statement = '<span id="caps" class="gray_out_text">' . lang("JOIN_HAVE") . $num_caps . lang("JOIN_CAP") . '</span>';
-        }
-
-        if ($settings->req_num == 1) {
-          $num_numbers = '1'; //Password must have at least 1 number
-          if ($num_numbers != 1) {
-            $num_numbers_s = 's';
-          }
-
-          $num_numbers_statement = '<span id="number" class="gray_out_text">' . lang("JOIN_HAVE") . $num_numbers . " " . lang("GEN_NUMBER") . '</span>';
-        }
-        $password_match_statement = '<span id="password_match" class="gray_out_text">' . lang("JOIN_TWICE") . '</span>';
-        ?>
-
-        <div style="display: inline-block">
-          <label for="password" id="password-label"><?= lang("GEN_PASS"); ?>* (<?= lang("GEN_MIN"); ?> <?= $settings->min_pw ?> <?= lang("GEN_AND"); ?> <?= lang("GEN_MAX"); ?> <?= $settings->max_pw ?> <?= lang("GEN_CHAR"); ?>)</label>
-
-          <input class="form-control" type="password" name="password" id="password" placeholder="<?= lang("GEN_PASS"); ?>" required autocomplete="new-password" aria-describedby="passwordhelp">
-
-          <label for="confirm" id="confirm-label"><?= lang("PW_CONF"); ?>*</label>
-
-          <input type="password" id="confirm" name="confirm" class="form-control" placeholder="<?= lang("PW_CONF"); ?>" required autocomplete="new-password">
-        </div>
-
-        <div style="display: inline-block; padding-left: 20px">
-          <strong><?= lang("PW_SHOULD"); ?></strong><br>
-          <span id="character_range_icon" class="fa fa-thumbs-o-up gray_out_icon" style="color: green"></span>&nbsp;&nbsp;<?php echo $character_statement; ?>
-
-          <br>
-
-          <?php
-          if ($settings->req_cap == 1) { ?>
-            <span id="num_caps_icon" class="fa fa-thumbs-o-up gray_out_icon" style="color: green"></span>&nbsp;&nbsp;<?php echo $num_caps_statement; ?>
-            <br>
-          <?php }
-
-          if ($settings->req_num == 1) { ?>
-            <span id="num_numbers_icon" class="fa fa-thumbs-o-up gray_out_icon" style="color: green"></span>&nbsp;&nbsp;<?php echo $num_numbers_statement; ?>
-            <br>
-          <?php } ?>
-
-          <span id="password_match_icon" class="fa fa-thumbs-o-up gray_out_icon" style="color: green"></span>&nbsp;&nbsp;<?php echo $password_match_statement; ?>
-
-          <br><br>
-
-          <a class="nounderline" id="password_view_control"><span class="fa fa-eye"></span> <?= lang("PW_SHOWS"); ?></a>
+<div class="container">
+  <div class="row justify-content-center">
+    <div class="col-12 col-lg-10 col-xl-8">
+      <!-- Registry Welcome Header -->
+      <div class="card registry-card mb-4">
+        <div class="card-body text-center py-4">
+          <div class="mb-3">
+            <i class="fas fa-car fa-3x text-primary"></i>
+          </div>
+          <h1 class="h3 mb-3 text-primary">Join the Lotus Elan Registry</h1>
+          <p class="text-muted mb-0">
+            Welcome to the world's most comprehensive database of Lotus Elan ownership and history.
+            Register your account to add your Elan to our growing registry of over 2,000 vehicles.
+          </p>
         </div>
       </div>
 
-      <?php
-      includeHook($hooks, 'form');
-      // Additional Form Fields moved for ElanRegistry 
-      // include($abs_us_root . $us_url_root . 'usersc/scripts/additional_join_form_fields.php');
-      ?>
+      <?php includeHook($hooks, 'body'); ?>
 
-      <input type="hidden" value="<?= Token::generate(); ?>" name="csrf">
+      <!-- Registration Form -->
+      <div class="card registry-card">
+        <div class="card-header">
+          <h2 class="mb-0"><i class="fas fa-user-plus"></i> <strong>Create Your Account</strong></h2>
+        </div>
+        <div class="card-body">
+          <form class="needs-validation" action="" method="POST" id="payment-form" novalidate>
 
-      <div class="form-group">
-        <button class="submit btn btn-primary " type="submit" id="next_button"><em class="fa fa-plus-square"></em> <?= lang("SIGNUP_TEXT"); ?></button>
+            <!-- Account Information Section -->
+            <div class="form-section mb-4">
+              <h5 class="section-title mb-3">
+                <i class="fas fa-user text-primary"></i> Account Information
+              </h5>
+              
+              <div class="row">
+                <div class="col-12 mb-3">
+                  <label for="email" class="form-label"><?= lang("GEN_EMAIL"); ?> *</label>
+                  <div class="input-group">
+                    <span class="input-group-text"><i class="fas fa-envelope"></i></span>
+                    <input type="email" class="form-control" id="email" name="email" 
+                           placeholder="your.email@example.com"
+                           value="<?php if (!$form_valid && !empty($_POST)) echo htmlspecialchars($email); ?>" 
+                           required autocomplete="email">
+                    <div class="invalid-feedback">Please provide a valid email address.</div>
+                  </div>
+                  <div class="form-text text-muted">
+                    <i class="fas fa-info-circle"></i>
+                    Your username will be automatically generated from your email address.
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Personal Information Section -->
+            <div class="form-section mb-4">
+              <h5 class="section-title mb-3">
+                <i class="fas fa-id-card text-primary"></i> Personal Information
+              </h5>
+              
+              <div class="row">
+                <div class="col-md-6 mb-3">
+                  <label for="fname" class="form-label"><?= lang("GEN_FNAME"); ?> *</label>
+                  <div class="input-group">
+                    <span class="input-group-text"><i class="fas fa-user-circle"></i></span>
+                    <input type="text" class="form-control" id="fname" name="fname" 
+                           placeholder="First name"
+                           value="<?php if (!$form_valid && !empty($_POST)) echo htmlspecialchars($fname); ?>" 
+                           required autocomplete="given-name">
+                    <div class="invalid-feedback">Please enter your first name.</div>
+                  </div>
+                </div>
+                
+                <div class="col-md-6 mb-3">
+                  <label for="lname" class="form-label"><?= lang("GEN_LNAME"); ?> *</label>
+                  <div class="input-group">
+                    <span class="input-group-text"><i class="fas fa-user-circle"></i></span>
+                    <input type="text" class="form-control" id="lname" name="lname" 
+                           placeholder="Last name"
+                           value="<?php if (!$form_valid && !empty($_POST)) echo htmlspecialchars($lname); ?>" 
+                           required autocomplete="family-name">
+                    <div class="invalid-feedback">Please enter your last name.</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Location Information Section -->
+            <div class="form-section mb-4">
+              <h5 class="section-title mb-3">
+                <i class="fas fa-map-marker-alt text-primary"></i> Location Information
+              </h5>
+              <p class="text-muted mb-3">
+                <i class="fas fa-info-circle"></i>
+                Your location helps other registry members find Elans in their area and assists with regional statistics.
+                This information will be used to geocode your car's location on our registry maps.
+              </p>
+              
+              <?php
+              // Get the country list for the enhanced location section
+              $city = Input::get('city') ?? '';
+              $state = Input::get('state') ?? '';
+              $country = Input::get('country') ?? '';
+              ?>
+              
+              <div class="row">
+                <div class="col-md-4 mb-3">
+                  <label for="city" class="form-label">City *</label>
+                  <div class="input-group">
+                    <span class="input-group-text"><i class="fas fa-building"></i></span>
+                    <input type="text" class="form-control" id="city" name="city" 
+                           placeholder="Enter your city"
+                           value="<?php if (!$form_valid && !empty($_POST)) echo htmlspecialchars($city); ?>" 
+                           required autocomplete="address-level2">
+                    <div class="invalid-feedback">Please enter your city.</div>
+                  </div>
+                </div>
+                
+                <div class="col-md-4 mb-3">
+                  <label for="state" class="form-label">State/Province *</label>
+                  <div class="input-group">
+                    <span class="input-group-text"><i class="fas fa-map"></i></span>
+                    <input type="text" class="form-control" id="state" name="state" 
+                           placeholder="State or Province"
+                           value="<?php if (!$form_valid && !empty($_POST)) echo htmlspecialchars($state); ?>" 
+                           required autocomplete="address-level1">
+                    <div class="invalid-feedback">Please enter your state or province.</div>
+                  </div>
+                </div>
+                
+                <div class="col-md-4 mb-3">
+                  <label for="country" class="form-label">Country *</label>
+                  <div class="input-group">
+                    <span class="input-group-text"><i class="fas fa-globe"></i></span>
+                    <select class="form-control form-select" id="country" name="country" required>
+                      <?php
+                      if (!$form_valid && !empty($_POST) && !empty($country)) {
+                          echo "<option selected value=\"" . htmlspecialchars($country) . "\">" . htmlspecialchars($country) . "</option>";
+                      } else {
+                          echo '<option value="">Select Country</option>';
+                      }
+                      
+                      // First, show popular countries from registry data
+                      if (!empty($popularCountries) && count($popularCountries) > 0) {
+                          foreach ($popularCountries as $popularCountry) {
+                              // Skip if already selected above
+                              if (!(!$form_valid && !empty($_POST) && $country == $popularCountry)) {
+                                  echo "<option value=\"" . htmlspecialchars($popularCountry) . "\">" . htmlspecialchars($popularCountry) . "</option>";
+                              }
+                          }
+                          echo '<option disabled style="color: #999;">────────────────</option>';
+                      }
+                      
+                      // Then show all other countries
+                      if (isset($countrylist)) {
+                          foreach ($countrylist as $c) {
+                              // Skip separator-like entries, empty names, or countries already in popular list
+                              if (!empty($c->name) && 
+                                  strpos($c->name, '────') === false && 
+                                  strpos($c->name, '---') === false &&
+                                  (empty($popularCountries) || !in_array($c->name, $popularCountries))) {
+                                  // Skip if already selected above
+                                  if (!(!$form_valid && !empty($_POST) && $country == $c->name)) {
+                                      echo "<option value=\"" . htmlspecialchars($c->name) . "\">" . htmlspecialchars($c->name) . "</option>";
+                                  }
+                              }
+                          }
+                      }
+                      ?>
+                    </select>
+                    <div class="invalid-feedback">Please select your country.</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Password Section -->
+            <?php if ($settings->no_passwords == 0) { ?>
+            <div class="form-section mb-4">
+              <h5 class="section-title mb-3">
+                <i class="fas fa-lock text-primary"></i> Password Security
+              </h5>
+              
+              <div class="row">
+                <div class="col-lg-5 mb-3">
+                  <?php 
+                    if(file_exists($abs_us_root . $us_url_root . 'usersc/includes/password_meter.php')) {
+                      include($abs_us_root . $us_url_root . 'usersc/includes/password_meter.php');
+                    } else {
+                      include($abs_us_root . $us_url_root . 'users/includes/password_meter.php');
+                    }
+                  ?>
+                </div>
+                
+                <div class="col-lg-7">
+                  <div class="mb-3">
+                    <label for="password" class="form-label"><?= lang("GEN_PASS"); ?> *</label>
+                    <div class="input-group">
+                      <span class="input-group-text"><i class="fas fa-key"></i></span>
+                      <input type="password" class="form-control" id="password" name="password" 
+                             placeholder="Enter secure password" required autocomplete="new-password" tabindex="1">
+                      <button type="button" class="btn btn-outline-secondary password-toggle" data-target="password" tabindex="-1">
+                        <i class="fas fa-eye"></i>
+                      </button>
+                      <div class="invalid-feedback">Please enter a password.</div>
+                    </div>
+                  </div>
+                  
+                  <div class="mb-3">
+                    <label for="confirm" class="form-label"><?= lang("PW_CONF"); ?> *</label>
+                    <div class="input-group">
+                      <span class="input-group-text"><i class="fas fa-key"></i></span>
+                      <input type="password" class="form-control" id="confirm" name="confirm" 
+                             placeholder="Confirm password" required autocomplete="new-password" tabindex="2">
+                      <button type="button" class="btn btn-outline-secondary password-toggle" data-target="confirm" tabindex="-1">
+                        <i class="fas fa-eye"></i>
+                      </button>
+                      <div class="invalid-feedback">Please confirm your password.</div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <?php } ?>
+
+            <!-- Form Hooks and Additional Fields -->
+            <?php includeHook($hooks, 'form'); ?>
+
+            <!-- CSRF Protection -->
+            <input type="hidden" value="<?= Token::generate(); ?>" name="csrf">
+
+            <!-- Submit Section -->
+            <div class="text-center pt-3">
+              <button type="submit" class="btn btn-primary btn-lg px-5" id="next_button">
+                <i class="fas fa-user-plus me-2"></i>
+                Create Registry Account
+              </button>
+              <div class="mt-3">
+                <small class="text-muted">
+                  Already have an account? 
+                  <a href="<?= $us_url_root ?>users/login.php" class="text-primary">Sign in here</a>
+                </small>
+              </div>
+            </div>
+
+          </form>
+        </div>
       </div>
 
-    </form>
-    <br>
+      <!-- Social Logins (if enabled) -->
+      <?php
+      if (file_exists($abs_us_root . $us_url_root . "usersc/views/_social_logins.php")) {
+        require_once $abs_us_root . $us_url_root . "usersc/views/_social_logins.php";
+      } else {
+        require_once $abs_us_root . $us_url_root . "users/views/_social_logins.php";
+      }
+      ?>
+
+    </div>
   </div>
 </div>
 
+<!-- Custom Registration Styles and Scripts -->
+<style>
+.form-section {
+  border-left: 3px solid var(--bs-primary);
+  padding-left: 1rem;
+}
 
-<script type="text/javascript">
-  $(document).ready(function() {
+.section-title {
+  color: var(--bs-gray-700);
+  font-weight: 600;
+}
 
-    $("#password").keyup(function() {
-      var pswd = $("#password").val();
+.input-group-text {
+  background-color: var(--bs-light);
+  border-color: var(--bs-border-color);
+  color: var(--bs-primary);
+}
 
-      //validate the length
-      if (pswd.length >= <?= $settings->min_pw ?> && pswd.length <= <?= $settings->max_pw ?>) {
-        $("#character_range_icon").removeClass("gray_out_icon");
-        $("#character_range").removeClass("gray_out_text");
+.form-control:focus {
+  border-color: var(--bs-primary);
+  box-shadow: 0 0 0 0.2rem rgba(var(--bs-primary-rgb), 0.25);
+}
+
+.password-toggle {
+  cursor: pointer;
+}
+
+.password-toggle:hover {
+  background-color: var(--bs-light);
+}
+
+@media (max-width: 768px) {
+  .form-section {
+    border-left: none;
+    border-top: 3px solid var(--bs-primary);
+    padding-left: 0;
+    padding-top: 1rem;
+  }
+}
+</style>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+  // Enhanced password visibility toggle
+  document.querySelectorAll('.password-toggle').forEach(function(button) {
+    button.addEventListener('click', function() {
+      const targetId = this.dataset.target;
+      const targetInput = document.getElementById(targetId);
+      const icon = this.querySelector('i');
+      
+      if (targetInput.type === 'password') {
+        targetInput.type = 'text';
+        icon.classList.remove('fa-eye');
+        icon.classList.add('fa-eye-slash');
       } else {
-        $("#character_range_icon").addClass("gray_out_icon");
-        $("#character_range").addClass("gray_out_text");
+        targetInput.type = 'password';
+        icon.classList.remove('fa-eye-slash');
+        icon.classList.add('fa-eye');
       }
-
-      //validate capital letter
-      if (pswd.match(/[A-Z]/)) {
-        $("#num_caps_icon").removeClass("gray_out_icon");
-        $("#caps").removeClass("gray_out_text");
-      } else {
-        $("#num_caps_icon").addClass("gray_out_icon");
-        $("#caps").addClass("gray_out_text");
-      }
-
-      //validate number
-      if (pswd.match(/\d/)) {
-        $("#num_numbers_icon").removeClass("gray_out_icon");
-        $("#number").removeClass("gray_out_text");
-      } else {
-        $("#num_numbers_icon").addClass("gray_out_icon");
-        $("#number").addClass("gray_out_text");
-      }
-    });
-
-    $("#confirm").keyup(function() {
-      var pswd = $("#password").val();
-      var confirm_pswd = $("#confirm").val();
-
-      //validate password_match
-      if (pswd == confirm_pswd) {
-        $("#password_match_icon").removeClass("gray_out_icon");
-        $("#password_match").removeClass("gray_out_text");
-      } else {
-        $("#password_match_icon").addClass("gray_out_icon");
-        $("#password_match").addClass("gray_out_text");
-      }
-
     });
   });
+
+  // Form validation feedback
+  const form = document.getElementById('payment-form');
+  if (form) {
+    form.addEventListener('submit', function(event) {
+      if (!form.checkValidity()) {
+        event.preventDefault();
+        event.stopPropagation();
+      }
+      form.classList.add('was-validated');
+    });
+  }
+
+  // Password confirmation validation
+  const password = document.getElementById('password');
+  const confirm = document.getElementById('confirm');
+  
+  if (password && confirm) {
+    function validatePasswordMatch() {
+      if (confirm.value && password.value !== confirm.value) {
+        confirm.setCustomValidity('Passwords do not match');
+      } else {
+        confirm.setCustomValidity('');
+      }
+    }
+    
+    password.addEventListener('input', validatePasswordMatch);
+    confirm.addEventListener('input', validatePasswordMatch);
+  }
+});
 </script>
