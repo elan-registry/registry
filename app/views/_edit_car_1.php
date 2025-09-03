@@ -113,7 +113,7 @@
                     <button type="button" class="btn btn-sm btn-outline-info" data-toggle="modal" data-target="#chassisValidationModal">
                         <i class="fas fa-info-circle"></i> Chassis Validation Rules
                     </button>
-                    <a href="<?= $us_url_root ?>app/help/chassis-validation.php" target="_blank" class="btn btn-sm btn-outline-secondary ml-1">
+                    <a href="<?= $us_url_root ?>docs/chassis-validation.php" target="_blank" class="btn btn-sm btn-outline-secondary ml-1">
                         <i class="fas fa-external-link-alt"></i> Full Documentation
                     </a>
                 </div>

@@ -87,7 +87,7 @@ if (!securePage($_SERVER['PHP_SELF'])) {
                             <div class="mt-4">
                                 <h5>Quick Access</h5>
                                 <div class="btn-group-vertical btn-group-sm w-100" role="group">
-                                    <a href="../app/help/chassis-validation.php" class="btn btn-outline-secondary text-left">
+                                    <a href="chassis-validation.php" class="btn btn-outline-secondary text-left">
                                         <i class="fas fa-barcode"></i> Chassis Validation Rules
                                     </a>
                                     <a href="reference-library.php" class="btn btn-outline-secondary text-left">

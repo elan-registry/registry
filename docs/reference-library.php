@@ -41,7 +41,7 @@ $files = preg_grep('~\.(pdf)$~', scandir($directory));
                                 <tbody>
                                     <tr>
                                         <td>
-                                            <a href="../app/help/chassis-validation.php" target="_blank" class="btn btn-sm btn-outline-primary">
+                                            <a href="chassis-validation.php" target="_blank" class="btn btn-sm btn-outline-primary">
                                                 <i class="fas fa-barcode"></i> Chassis Validation Rules
                                             </a>
                                         </td>
