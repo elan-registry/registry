@@ -357,6 +357,16 @@ The application implements a comprehensive Content Security Policy to prevent XS
 - **CDN Resources**: JSDelivr, Cloudflare CDN, Bootstrap CDN, jQuery, DataTables
 - **Font Services**: Google Fonts, FontAwesome (including kit support)
 
+### Avatar/Profile Picture Management
+**Important:** Gravatar functionality has been disabled to maintain CSP compliance and improve privacy:
+- **Issue**: UserSpice core attempts to load profile pictures from `www.gravatar.com`
+- **CSP Conflict**: Gravatar domain is not in the allowed `img-src` directive
+- **Solution**: Custom JavaScript in `/usersc/plugins/hooker/hooks/account_body_hook.php` prevents avatar loading
+- **User Experience**: Account pages show a FontAwesome user icon instead of profile pictures
+- **Privacy Benefit**: No external requests to Gravatar service protect user privacy
+- **Technical Approach**: JavaScript removes image sources and elements before they can trigger CSP violations
+- **Note**: This is a non-invasive solution that doesn't modify core UserSpice files
+
 ### CSP Validation & Testing
 
 #### Automated Testing Tools
