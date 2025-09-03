@@ -1,0 +1,22 @@
+# Disable directory browsing
+Options -Indexes
+
+# Deny access to action scripts (should only be called via forms/AJAX)
+<DirectoryMatch "/actions">
+    <Files "*.php">
+        Require all denied
+    </Files>
+</DirectoryMatch>
+
+# Allow access to API endpoints but disable browsing
+<Directory "api">
+    Options -Indexes
+</Directory>
+
+# Protect views directory (should not be directly accessible)
+<Directory "views">
+    Options -Indexes
+    <Files "*.php">
+        Require all denied
+    </Files>
+</Directory>

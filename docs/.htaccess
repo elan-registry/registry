@@ -1,0 +1,16 @@
+# Disable directory browsing for documentation
+Options -Indexes
+
+# Allow reading documentation files but prevent browsing
+<Files "*.md">
+    Require all granted
+</Files>
+
+<Files "*.html">
+    Require all granted
+</Files>
+
+# Protect any sensitive documentation
+<Files "ENVIRONMENT.md">
+    Require all denied
+</Files>

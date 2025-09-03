@@ -1,0 +1,5 @@
+# Disable directory browsing and access to administrative fix scripts
+Options -Indexes
+Require all denied
+
+# Only allow access through proper authentication in the scripts themselves

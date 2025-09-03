@@ -1,0 +1,58 @@
+# Disable directory browsing for security
+Options -Indexes
+
+# Security headers
+Header always set X-Frame-Options "SAMEORIGIN"
+Header always set X-Content-Type-Options "nosniff"
+Header always set Referrer-Policy "strict-origin-when-cross-origin"
+
+# Deny access to sensitive files
+<Files "*.env*">
+    Require all denied
+</Files>
+
+<Files "CLAUDE.md">
+    Require all denied
+</Files>
+
+<Files "composer.json">
+    Require all denied
+</Files>
+
+<Files "composer.lock">
+    Require all denied
+</Files>
+
+<Files "VERSION">
+    Require all denied
+</Files>
+
+# Block access to backup directories
+<DirectoryMatch "/@backup">
+    Require all denied
+</DirectoryMatch>
+
+# Block access to node_modules
+<DirectoryMatch "/node_modules">
+    Require all denied
+</DirectoryMatch>
+
+# Block access to vendor directory from web
+<DirectoryMatch "/vendor">
+    Require all denied
+</DirectoryMatch>
+
+# Block access to test directories
+<DirectoryMatch "/tests">
+    Require all denied
+</DirectoryMatch>
+
+# Block access to SQL directory
+<DirectoryMatch "/SQL">
+    Require all denied
+</DirectoryMatch>
+
+# Block access to FIX directory (admin scripts)
+<DirectoryMatch "/FIX">
+    Require all denied
+</DirectoryMatch>

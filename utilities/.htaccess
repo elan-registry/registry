@@ -1,0 +1,3 @@
+# Disable directory browsing and access to utility scripts
+Options -Indexes
+Require all denied
