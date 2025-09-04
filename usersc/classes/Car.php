@@ -402,6 +402,84 @@ class Car
             throw new Exception('Failed to remove image from database: ' . $e->getMessage());
         }
     }
+
+    /**
+     * Delete the car and all associated records
+     * 
+     * Replaces direct database access in car management operations with proper 
+     * Car class method. Includes transaction support and comprehensive audit trails.
+     * 
+     * @param string $reason Reason for deletion (for audit trail)
+     * @return bool True if deletion was successful, false otherwise
+     * @throws Exception If validation fails or database operation fails
+     * 
+     * @see https://github.com/unibrain1/elanregistry/issues/248 Issue #248: Replace direct DB access in car management
+     */
+    public function delete(string $reason = 'Administrative deletion'): bool
+    {
+        global $user;
+        
+        // Ensure car exists
+        if (!$this->exists()) {
+            throw new Exception('Car not found - cannot delete');
+        }
+
+        // Validate we have a valid user for audit purposes
+        if (!isset($user) || !$user->isLoggedIn()) {
+            throw new Exception('User authentication required for car deletion');
+        }
+
+        $carId = $this->_data->id;
+        $chassis = $this->_data->chassis ?? 'Unknown';
+
+        try {
+            // Start transaction for data integrity
+            $this->_db->query("START TRANSACTION");
+
+            // Create audit trail entry before deletion
+            $historyFields = [
+                'car_id' => $carId,
+                'comments' => "Car ID $carId ($chassis) permanently deleted by admin " . $user->data()->id . ". Reason: $reason",
+                'operation' => 'DELETE',
+                'ctime' => date('Y-m-d G:i:s'),
+                'mtime' => date('Y-m-d G:i:s')
+            ];
+            
+            $historyInserted = $this->_db->insert('cars_hist', $historyFields);
+            if (!$historyInserted) {
+                throw new Exception('Failed to create audit trail entry');
+            }
+
+            // Remove car-user relationships
+            $carUserDeleted = $this->_db->query("DELETE FROM car_user WHERE car_id = ?", [$carId]);
+            if ($this->_db->error()) {
+                throw new Exception('Failed to delete car-user relationships: ' . $this->_db->errorString());
+            }
+
+            // Remove the car record itself
+            $carDeleted = $this->_db->query("DELETE FROM cars WHERE id = ?", [$carId]);
+            if ($this->_db->error()) {
+                throw new Exception('Failed to delete car record: ' . $this->_db->errorString());
+            }
+
+            // Commit transaction
+            $this->_db->query("COMMIT");
+            
+            // Clear local data since car no longer exists
+            $this->_data = null;
+            $this->_images = null;
+            $this->_factory = null;
+            $this->_owner = null;
+
+            return true;
+            
+        } catch (Exception $e) {
+            // Rollback on any error
+            $this->_db->query("ROLLBACK");
+            throw new Exception('Car deletion failed: ' . $e->getMessage());
+        }
+    }
+    
     /**
      * Get car owner information
      *
