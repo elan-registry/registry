@@ -673,6 +673,158 @@ class Car
             throw new Exception('Car merge failed: ' . $e->getMessage());
         }
     }
+
+    /**
+     * Set verification code for the car
+     * 
+     * Provides proper Car class method for verification code management,
+     * replacing any direct database access patterns.
+     * 
+     * @param string $verificationCode The verification code to set
+     * @return bool True if verification code was set successfully, false otherwise
+     * @throws Exception If validation fails or database operation fails
+     * 
+     * @see https://github.com/unibrain1/elanregistry/issues/249 Issue #249: Add verification methods to Car class
+     */
+    public function setVerificationCode(string $verificationCode): bool
+    {
+        // Ensure car exists
+        if (!$this->exists()) {
+            throw new Exception('Car not found - cannot set verification code');
+        }
+
+        // Validate verification code format (basic validation)
+        if (empty($verificationCode) || strlen($verificationCode) < 8) {
+            throw new Exception('Invalid verification code format');
+        }
+
+        try {
+            $updateSuccess = $this->_db->update('cars', $this->_data->id, ['vericode' => $verificationCode]);
+            
+            if ($updateSuccess) {
+                // Update local data to reflect the change
+                $this->_data->vericode = $verificationCode;
+                return true;
+            } else {
+                throw new Exception('Database update failed');
+            }
+        } catch (Exception $e) {
+            throw new Exception('Failed to set verification code: ' . $e->getMessage());
+        }
+    }
+
+    /**
+     * Mark car as verified
+     * 
+     * Provides proper Car class method for verification status management,
+     * replacing any direct database access patterns.
+     * 
+     * @return bool True if car was marked as verified successfully, false otherwise
+     * @throws Exception If validation fails or database operation fails
+     * 
+     * @see https://github.com/unibrain1/elanregistry/issues/249 Issue #249: Add verification methods to Car class
+     */
+    public function markVerified(): bool
+    {
+        // Ensure car exists
+        if (!$this->exists()) {
+            throw new Exception('Car not found - cannot mark as verified');
+        }
+
+        try {
+            $currentDateTime = date('Y-m-d G:i:s');
+            $updateSuccess = $this->_db->update('cars', $this->_data->id, ['last_verified' => $currentDateTime]);
+            
+            if ($updateSuccess) {
+                // Update local data to reflect the change
+                $this->_data->last_verified = $currentDateTime;
+                return true;
+            } else {
+                throw new Exception('Database update failed');
+            }
+        } catch (Exception $e) {
+            throw new Exception('Failed to mark car as verified: ' . $e->getMessage());
+        }
+    }
+
+    /**
+     * Mark car as sold
+     * 
+     * Provides proper Car class method for sold status management,
+     * replacing any direct database access patterns.
+     * 
+     * @param string|null $soldDate Optional sold date (defaults to current date)
+     * @return bool True if car was marked as sold successfully, false otherwise
+     * @throws Exception If validation fails or database operation fails
+     * 
+     * @see https://github.com/unibrain1/elanregistry/issues/249 Issue #249: Add verification methods to Car class
+     */
+    public function markSold(?string $soldDate = null): bool
+    {
+        // Ensure car exists
+        if (!$this->exists()) {
+            throw new Exception('Car not found - cannot mark as sold');
+        }
+
+        // Use current date if none provided
+        if ($soldDate === null) {
+            $soldDate = date('Y-m-d');
+        }
+
+        // Basic date format validation
+        if (!DateTime::createFromFormat('Y-m-d', $soldDate)) {
+            throw new Exception('Invalid sold date format (expected: Y-m-d)');
+        }
+
+        try {
+            $updateSuccess = $this->_db->update('cars', $this->_data->id, ['solddate' => $soldDate]);
+            
+            if ($updateSuccess) {
+                // Update local data to reflect the change
+                $this->_data->solddate = $soldDate;
+                return true;
+            } else {
+                throw new Exception('Database update failed');
+            }
+        } catch (Exception $e) {
+            throw new Exception('Failed to mark car as sold: ' . $e->getMessage());
+        }
+    }
+
+    /**
+     * Find a car by its verification code
+     * 
+     * Provides proper Car class method for verification code lookup,
+     * replacing any direct database query patterns.
+     * 
+     * @param string $verificationCode The verification code to search for
+     * @return Car|null Car object if found, null if not found
+     * @throws Exception If database operation fails
+     * 
+     * @see https://github.com/unibrain1/elanregistry/issues/249 Issue #249: Add verification methods to Car class
+     */
+    public static function findByVerificationCode(string $verificationCode): ?Car
+    {
+        // Validate verification code format
+        if (empty($verificationCode)) {
+            return null;
+        }
+
+        try {
+            $db = DB::getInstance();
+            $result = $db->query('SELECT * FROM cars WHERE vericode = ?', [$verificationCode]);
+            
+            if ($result->count() > 0) {
+                $carData = $result->first();
+                $car = new Car($carData->id);
+                return $car->exists() ? $car : null;
+            } else {
+                return null;
+            }
+        } catch (Exception $e) {
+            throw new Exception('Failed to find car by verification code: ' . $e->getMessage());
+        }
+    }
     
     /**
      * Get car owner information
