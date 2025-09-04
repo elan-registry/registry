@@ -256,7 +256,11 @@ The `/FIX/` directory contains administrative cleanup scripts with the following
 
 1. **Copy Template**: Start with `/FIX/_TEMPLATE_Fix-Script.php`
 2. **Replace Placeholders**: Update all bracketed placeholders with appropriate values
-3. **Standard Features Included**: Two-column layout, progress tracking, error handling, authentication
+3. **Use Sequential Numbering**: Name scripts as `##-Descriptive-Name.php` (e.g., `06-New-Feature-Cleanup.php`)
+4. **Standard Features Included**: Two-column layout, progress tracking, error handling, authentication
+5. **Access Control**: Root and FIX `.htaccess` files allow all operational scripts to run directly
+6. **Script Access**: Scripts can be accessed via `/FIX/index.php` menu interface or direct URLs
+7. **Template Protection**: Only `_TEMPLATE*` files are blocked from direct access
 
 ### Code Quality Requirements
 
