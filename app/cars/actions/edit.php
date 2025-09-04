@@ -50,7 +50,7 @@ if (!empty($_POST)) {
                 }
                 break;
             case "updateCar":
-                buildCarDetails($cardetails, Input::get('carid'));
+                buildCarDetails($cardetails, Input::get('car_id'));
                 buildImageDetails($cardetails);
                 if (empty($errors)) {
                     uploadImages($cardetails); // On update I know the car number
@@ -60,13 +60,13 @@ if (!empty($_POST)) {
                 }
                 break;
             case "fetchImages":
-                $carid = Input::get('carID');
-                fetchImages($carid);
+                $car_id = Input::get('carID');
+                fetchImages($car_id);
                 break;
             case "removeImages":
-                $carid = Input::get('carID');
+                $car_id = Input::get('carID');
                 $file = Input::get('file');
-                removeImage($carid, $file);
+                removeImage($car_id, $file);
                 break;
             default:
                 $errors[] = "No valid action";
@@ -265,9 +265,6 @@ function updateChassis(array &$cardetails): void
     $chassisOverrideRaw = Input::get('chassis_override');
     $chassisOverride = ($chassisOverrideRaw === '1');
     
-    // Debug: Log override status (remove when working)
-    // error_log("Chassis override status: " . ($chassisOverride ? 'true' : 'false') . " (raw value: '" . $chassisOverrideRaw . "')");
-    
     // Update 'chassis'
     if (Input::get('chassis')) {
         $cardetails['chassis'] = Input::get('chassis');
@@ -287,15 +284,11 @@ function updateChassis(array &$cardetails): void
         try {
             $validator = new ChassisValidator();
             $result = $validator->validate($chassis, $year, $model, $chassisOverride);
-            
-            // Debug: Log validation result
-            error_log("Validation result: " . print_r($result, true));
         } catch (Exception $e) {
             $errors[] = 'Chassis validation error: ' . $e->getMessage();
             return;
         }
         
-        // Debug output removed - override functionality working
         // Handle validation result
         if ($result['valid'] && !$result['override_used']) {
             $successes[] = 'Chassis Updated (' . $cardetails['chassis'] . ')';
@@ -502,7 +495,7 @@ function uploadImages(&$cardetails)
                         $user->data()->id,
                         "ElanRegistry",
                         "ERROR: File upload failed for carId: " .
-                            Input::get('carid') . " File: " . $name . " Target: " . $newFileName
+                            Input::get('car_id') . " File: " . $name . " Target: " . $newFileName
                     );
                 }
             } catch (Exception $e) {
@@ -512,7 +505,7 @@ function uploadImages(&$cardetails)
                     $user->data()->id,
                     "ElanRegistry",
                     "SECURITY: File upload rejected for carId: " .
-                        Input::get('carid') . " File: " . $name . " Reason: " . $e->getMessage()
+                        Input::get('car_id') . " File: " . $name . " Reason: " . $e->getMessage()
                 );
             }
         }
@@ -523,18 +516,18 @@ function uploadImages(&$cardetails)
 /**
  * Fetch images for a specific car
  * 
- * @param int $carid Car ID
+ * @param int $car_id Car ID
  * @return void Outputs JSON response and exits
  */
-function fetchImages(int $carid): void
+function fetchImages(int $car_id): void
 {
     try {
         // Validate car ID
-        if (empty($carid) || $carid <= 0) {
+        if (empty($car_id) || $car_id <= 0) {
             throw new Exception("Invalid car ID");
         }
 
-        $car = new Car($carid);
+        $car = new Car($car_id);
         
         // Check if car exists
         if (!$car->exists()) {
@@ -542,7 +535,6 @@ function fetchImages(int $carid): void
         }
 
         $images = $car->images();
-        error_log("fetchImages for car $carid: " . print_r($images, true));
 
         $response = [
             'status' => 'success',

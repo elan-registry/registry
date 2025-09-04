@@ -125,12 +125,8 @@ if (!function_exists('validateFileUpload')) {
     }
 }
 
-// Debug: Check if Car class exists
-error_log("Bootstrap: Checking if Car class exists: " . (class_exists('Car') ? 'YES' : 'NO'));
-
 // Mock Car class if not loaded from UserSpice
 if (!class_exists('Car')) {
-    error_log("Bootstrap: Creating mock Car class");
     class Car {
         private $data;
         private static $nextId = 1000;

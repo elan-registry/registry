@@ -12,6 +12,17 @@ if (!empty($_POST)) {
         $draw = Input::get('draw');
         $carID = Input::get('car_id');
 
+        if (empty($carID)) {
+            echo json_encode(array(
+                'draw' => $draw, 
+                'recordsTotal' => 0, 
+                'recordsFiltered' => 0, 
+                'history' => [],
+                'error' => 'Car ID not provided'
+            ));
+            return;
+        }
+
         $car = new Car($carID);
         $carHist = $car->history();
         $count   = count($carHist);
