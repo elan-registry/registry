@@ -596,35 +596,51 @@ function mvTmpImages(array &$cardetails): void
 /**
  * Remove an image from a car's image list
  * 
+ * Uses Car class method to replace direct database access and ensure proper validation.
+ * 
  * @param int $carID Car ID
  * @param string $file Image filename to remove
  * @return void Outputs JSON response and exits
+ * 
+ * @see https://github.com/unibrain1/elanregistry/issues/247 Issue #247: Fix removeImage() direct database access
  */
 function removeImage(int $carID, string $file): void
 {
-    global $db;
     global $user;
 
-    $car = $db->findById($carID, 'cars')->results()[0];
-    $carImages = explode(',', $car->image);
-    $imageIndex = array_search($file, $carImages, true);
+    try {
+        // Use Car class for proper validation and data handling
+        $car = new Car($carID);
+        if (!$car->exists()) {
+            throw new Exception('Car not found');
+        }
 
-    if ($imageIndex !== false) {
-        unset($carImages[$imageIndex]);
-        // Write the new array to the DB
-        $images = implode(',', $carImages);
-        $db->update("cars", $carID, ["image" => $images]);
-
-        $response = [
-            'status' => 'success',
-            'count'   => count($carImages),
-            'images' => $carImages
-        ];
-    } else {
-        logger($user->data()->id, "ElanRegistry", "ERROR: removeImage carId: " . $carID . " Image not found: " . $file);
+        // Use Car class method to remove image
+        $imageRemoved = $car->removeImage($file);
+        
+        if ($imageRemoved) {
+            // Log successful removal
+            logger($user->data()->id, "ElanRegistry", "Image removed: carId: " . $carID . " image: " . $file);
+            
+            $response = [
+                'status' => 'success',
+                'count'   => count($car->images()),
+                'images' => array_column($car->images(), 'basename') // Return just filenames for compatibility
+            ];
+        } else {
+            // Image not found in car's image list
+            logger($user->data()->id, "ElanRegistry", "ERROR: removeImage carId: " . $carID . " Image not found: " . $file);
+            $response = [
+                'status' => 'error',
+                'info'   => 'image not found'
+            ];
+        }
+    } catch (Exception $e) {
+        // Log error and return error response
+        logger($user->data()->id, "ElanRegistry", "ERROR: removeImage carId: " . $carID . " Error: " . $e->getMessage());
         $response = [
             'status' => 'error',
-            'info'   => "image not found"
+            'info'   => 'Failed to remove image: ' . $e->getMessage()
         ];
     }
     

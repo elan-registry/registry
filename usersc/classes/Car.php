@@ -328,6 +328,80 @@ class Car
     {
         return $this->_images ?? [];
     }
+
+    /**
+     * Remove an image from the car's image list
+     *
+     * Replaces direct database access with proper Car class method for image removal.
+     * Uses JSON format for image storage and maintains data validation.
+     *
+     * @param string $filename Image filename to remove
+     * @return bool True if image was removed successfully, false otherwise
+     * @throws Exception If validation fails or database operation fails
+     * 
+     * @see https://github.com/unibrain1/elanregistry/issues/247 Issue #247: Fix removeImage() direct database access
+     */
+    public function removeImage(string $filename): bool
+    {
+        // Validate input
+        if (empty($filename)) {
+            throw new Exception('Image filename cannot be empty');
+        }
+
+        // Ensure car exists
+        if (!$this->exists()) {
+            throw new Exception('Car not found');
+        }
+
+        // Get current images
+        $currentImages = [];
+        if (!is_null($this->_data->image) && !empty($this->_data->image)) {
+            $imageData = json_decode($this->_data->image);
+            if ($imageData !== null) {
+                $currentImages = is_array($imageData) ? $imageData : [$imageData];
+            } else {
+                // Fallback to CSV format for backward compatibility
+                $currentImages = explode(',', $this->_data->image);
+            }
+        }
+
+        // Find and remove the image
+        $imageIndex = array_search($filename, $currentImages, true);
+        if ($imageIndex === false) {
+            // Image not found - this is not an error condition, return false
+            return false;
+        }
+
+        // Remove the image from array
+        unset($currentImages[$imageIndex]);
+        
+        // Reindex array to prevent gaps
+        $currentImages = array_values($currentImages);
+
+        // Update database with JSON format
+        $imageJson = empty($currentImages) ? '' : json_encode($currentImages);
+        if ($imageJson === false && !empty($currentImages)) {
+            throw new Exception('Failed to encode images as JSON');
+        }
+
+        try {
+            $updateSuccess = $this->_db->update('cars', $this->_data->id, ['image' => $imageJson]);
+            
+            if ($updateSuccess) {
+                // Update local data to reflect the change
+                $this->_data->image = $imageJson;
+                
+                // Clear cached images to force reload
+                $this->_images = null;
+                
+                return true;
+            } else {
+                throw new Exception('Database update failed');
+            }
+        } catch (Exception $e) {
+            throw new Exception('Failed to remove image from database: ' . $e->getMessage());
+        }
+    }
     /**
      * Get car owner information
      *
