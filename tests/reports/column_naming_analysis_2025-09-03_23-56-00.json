@@ -1,0 +1,11 @@
+{
+    "timestamp": "2025-09-03 23:56:00",
+    "analysis_summary": {
+        "carid_files": 0,
+        "car_id_files": 0,
+        "mixed_usage_files": 0,
+        "syntax_issues": 0,
+        "files_to_migrate": 0
+    },
+    "detailed_analysis": []
+}
