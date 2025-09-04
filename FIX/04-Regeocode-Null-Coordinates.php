@@ -235,7 +235,7 @@ $line = 1; // Where messages go
             ${stats}
         </div>
         <div class="text-center">
-            <button onclick="if(window.opener){window.opener.location.reload(); window.close();} else {window.location.href='../FIX/';}" class="btn btn-outline-primary">
+            <button onclick="if(window.opener){window.opener.location.reload(); window.close();} else {window.location.href='index.php';}" class="btn btn-outline-primary">
                 <i class="fa fa-arrow-left"></i> Return to FIX Menu
             </button>
         </div>
@@ -342,7 +342,7 @@ $line = 1; // Where messages go
 
 <!-- Return to FIX Menu button -->
 <div style="margin-top: 20px; text-align: center;">
-    <button onclick="if(window.opener){window.opener.location.reload(); window.close();} else {window.location.href='../FIX/';}" class="btn btn-outline-primary">
+    <button onclick="if(window.opener){window.opener.location.reload(); window.close();} else {window.location.href='index.php';}" class="btn btn-outline-primary">
         <i class="fa fa-arrow-left" aria-hidden="true"></i> Return to FIX Menu
     </button>
 </div>
@@ -601,7 +601,7 @@ function geocodeAddress($address)
  */
 function displayFinalStatistics($carAttempts, $carSuccesses, $profileAttempts, $profileSuccesses)
 {
-    global $db, $line;
+    global $db, $line, $user;
 
     outputMessage($line++, "=== FINAL COORDINATE STATISTICS ===");
 
@@ -648,17 +648,22 @@ function displayFinalStatistics($carAttempts, $carSuccesses, $profileAttempts, $
 
     if ($totalSuccesses > 0) {
         outputMessage($line++, "✅ Successfully updated $totalSuccesses coordinate records");
+        // Log the completion action with summary
+        logger($user->data()->id, 'DatabaseCleanup', "Re-geocoding completed - Updated: {$totalSuccesses}/{$totalAttempts} coordinates");
     } else if ($totalAttempts > 0) {
         outputMessage($line++, "⚠️  No coordinates were successfully updated");
+        logger($user->data()->id, 'DatabaseCleanup', "Re-geocoding completed - No coordinates updated from {$totalAttempts} attempts");
     } else {
         outputMessage($line++, "ℹ️  No records required re-geocoding");
+        logger($user->data()->id, 'DatabaseCleanup', "Re-geocoding completed - No records required geocoding");
     }
 
     // Record script completion
     try {
-        global $db;
+        global $db, $user;
         $db->query("INSERT INTO fix_script_runs (script_name) VALUES (?)", [basename(__FILE__)]);
         outputMessage($line++, "✓ Script completion recorded");
+        logger($user->data()->id, 'SystemMaintenance', "FIX script completed: " . basename(__FILE__));
     } catch (Exception) {
         // Create table if it doesn't exist
         try {

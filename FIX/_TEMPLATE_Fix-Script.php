@@ -7,6 +7,14 @@
  * Issue #[ISSUE_NUMBER]: [ISSUE_TITLE]
  *
  * [ADDITIONAL_NOTES]
+ *
+ * DEPLOYMENT INSTRUCTIONS:
+ * 1. Copy this file to FIX/ directory with proper naming: ##-Descriptive-Name.php
+ * 2. The FIX/.htaccess allows all scripts except templates to run directly
+ * 3. Scripts can be accessed via FIX/index.php menu or direct URL
+ * 4. Use sequential numbering (01, 02, 03...) for proper execution order
+ * 5. Return buttons automatically detect new window vs direct navigation
+ * 6. See FIX/README.md for detailed instructions and best practices
  */
 ini_set('display_errors', 1);
 ini_set('display_startup_errors', 1);
@@ -210,7 +218,7 @@ $line = 1; // Where messages go
             ${stats}
         </div>
         <div class="text-center">
-            <button onclick="if(window.opener){window.opener.location.reload(); window.close();} else {window.location.href='../FIX/';}" class="btn btn-outline-primary">
+            <button onclick="if(window.opener){window.opener.location.reload(); window.close();} else {window.location.href='index.php';}" class="btn btn-outline-primary">
                 <i class="fa fa-arrow-left"></i> Return to FIX Menu
             </button>
         </div>
@@ -336,10 +344,15 @@ $line = 1; // Where messages go
 
                     outputMessage($line++, "✅ SUCCESS: All processing completed!");
 
+                    // Log the completion action with summary
+                    // NOTE: If using logger() inside functions, add: global $user;
+                    logger($user->data()->id, 'DatabaseCleanup', "[SCRIPT_NAME] completed - Processed: {$global_successes}/{$global_attempts} records (Issue #[ISSUE_NUMBER])");
+
                     // Record script completion
                     try {
                         $db->query("INSERT INTO fix_script_runs (script_name) VALUES (?)", [basename(__FILE__)]);
                         outputMessage($line++, "✅ Script completion recorded");
+                        logger($user->data()->id, 'SystemMaintenance', "FIX script completed: " . basename(__FILE__));
                     } catch (Exception $record_e) {
                         outputMessage($line++, "⚠️  Could not record script completion: " . $record_e->getMessage());
                     }
@@ -347,6 +360,9 @@ $line = 1; // Where messages go
                 } catch (Exception $e) {
                     outputMessage($line++, "❌ ERROR during processing: " . $e->getMessage());
                     outputMessage($line++, "Processing aborted - no changes made");
+                    
+                    // Log the error
+                    logger($user->data()->id, 'DatabaseError', "[SCRIPT_NAME] failed: " . $e->getMessage() . " (Issue #[ISSUE_NUMBER])");
                 }
 
                 outputMessage($line++, "");
@@ -388,7 +404,7 @@ $line = 1; // Where messages go
 
 <!-- Return to FIX Menu button -->
 <div style="margin-top: 20px; text-align: center;">
-    <button onclick="if(window.opener){window.opener.location.reload(); window.close();} else {window.location.href='../FIX/';}" class="btn btn-outline-primary">
+    <button onclick="if(window.opener){window.opener.location.reload(); window.close();} else {window.location.href='index.php';}" class="btn btn-outline-primary">
         <i class="fa fa-arrow-left" aria-hidden="true"></i> Return to FIX Menu
     </button>
 </div>
