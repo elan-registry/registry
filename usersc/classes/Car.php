@@ -92,7 +92,7 @@ class Car
             $id = $this->_db->lastId();
             $this->find($id);  // Populate the car with the data
             $this->imageDir = $settings->elan_image_dir  . $id . '/';
-            $this->_db->insert('car_user', array('userid' => $this->data()->user_id, 'carid' => $id));
+            $this->_db->insert('car_user', array('userid' => $this->data()->user_id, 'car_id' => $id));
             return true;
         }
     }
@@ -153,6 +153,7 @@ class Car
     {
         global $us_url_root;
         global $abs_us_root;
+        
 
         if (is_null($carID)) {
             return $this->findAll();
