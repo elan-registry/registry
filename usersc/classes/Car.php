@@ -935,7 +935,7 @@ class Car
         // Define allowed columns for each table (based on actual schema)
         $allowedColumns = [
             'cars' => [
-                'id', 'username', 'ctime', 'mtime', 'vericode', 'last_verified', 'ModifiedBy',
+                'id', 'ctime', 'mtime', 'vericode', 'last_verified', 'ModifiedBy',
                 'model', 'series', 'variant', 'year', 'type', 'chassis', 'color', 'engine',
                 'purchasedate', 'solddate', 'comments', 'image', 'user_id', 'email', 'fname',
                 'lname', 'join_date', 'city', 'state', 'country', 'lat', 'lon', 'website'
