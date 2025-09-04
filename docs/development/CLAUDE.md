@@ -167,11 +167,11 @@ The system maintains location synchronization between user profiles and car reco
    - ✅ Lotus Elan year range validation (1963-1974)
 
 **Phase 2: Database Consistency & Security Fixes (Release 2)**
-2. **Issue #158** (Medium Priority) - Standardize column names across car-related tables
-   - Create database migration to rename `carid` → `car_id` in car_user and car_user_hist tables
-   - Update Car class methods to use consistent `car_id` format
-   - Update all affected queries for consistency
-   - Ensure clean, consistent schema for Car class operations
+2. **Issue #158** ✅ **COMPLETED** - Standardize column names across car-related tables
+   - ✅ Create database migration to rename `carid` → `car_id` in car_user and car_user_hist tables
+   - ✅ Update Car class methods to use consistent `car_id` format
+   - ✅ Update all affected queries for consistency
+   - ✅ Ensure clean, consistent schema for Car class operations
 
 3. **Issue #238** (Low Priority) - Remove deprecated username field from cars table
    - Remove `username` from Car class `allowedColumns` array
