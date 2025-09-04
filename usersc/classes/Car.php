@@ -579,6 +579,100 @@ class Car
             throw new Exception('Car ownership transfer failed: ' . $e->getMessage());
         }
     }
+
+    /**
+     * Merge another car's history into this car and delete the old car
+     * 
+     * Replaces direct database access in car management operations with proper 
+     * Car class method. Includes transaction support and comprehensive audit trails
+     * for car merging operations.
+     * 
+     * @param int $oldCarId The car ID to merge into this car (will be deleted)
+     * @param string $reason Reason for merge (for audit trail)
+     * @return bool True if merge was successful, false otherwise
+     * @throws Exception If validation fails or database operation fails
+     * 
+     * @see https://github.com/unibrain1/elanregistry/issues/248 Issue #248: Replace direct DB access in car management
+     */
+    public function merge(int $oldCarId, string $reason = 'Administrative merge'): bool
+    {
+        global $user;
+        
+        // Ensure this car exists
+        if (!$this->exists()) {
+            throw new Exception('Target car not found - cannot merge');
+        }
+
+        // Validate we have a valid user for audit purposes
+        if (!isset($user) || !$user->isLoggedIn()) {
+            throw new Exception('User authentication required for car merge');
+        }
+
+        // Validate old car exists
+        $oldCar = new Car($oldCarId);
+        if (!$oldCar->exists()) {
+            throw new Exception('Source car not found - cannot merge');
+        }
+
+        // Prevent merging a car with itself
+        if ($oldCarId === $this->_data->id) {
+            throw new Exception('Cannot merge a car with itself');
+        }
+
+        $newCarId = $this->_data->id;
+        $newChassis = $this->_data->chassis ?? 'Unknown';
+        $oldChassis = $oldCar->data()->chassis ?? 'Unknown';
+
+        try {
+            // Start transaction for data integrity
+            $this->_db->query("START TRANSACTION");
+
+            // Transfer all history records from old car to new car
+            $historyTransferred = $this->_db->query("UPDATE cars_hist SET car_id = ? WHERE car_id = ?", [$newCarId, $oldCarId]);
+            if ($this->_db->error()) {
+                throw new Exception('Failed to transfer car history: ' . $this->_db->errorString());
+            }
+
+            // Remove car-user relationships for old car
+            $carUserDeleted = $this->_db->query("DELETE FROM car_user WHERE car_id = ?", [$oldCarId]);
+            if ($this->_db->error()) {
+                throw new Exception('Failed to delete old car-user relationships: ' . $this->_db->errorString());
+            }
+
+            // Delete the old car record
+            $oldCarDeleted = $this->_db->query("DELETE FROM cars WHERE id = ?", [$oldCarId]);
+            if ($this->_db->error()) {
+                throw new Exception('Failed to delete old car record: ' . $this->_db->errorString());
+            }
+
+            // Create audit trail entry for the merge operation
+            $historyFields = [
+                'car_id' => $newCarId,
+                'comments' => "Car $oldChassis (ID: $oldCarId) was merged into car $newChassis (ID: $newCarId) by admin " . $user->data()->id . ". Reason: $reason",
+                'operation' => 'MERGE',
+                'ctime' => date('Y-m-d G:i:s'),
+                'mtime' => date('Y-m-d G:i:s')
+            ];
+            
+            $historyInserted = $this->_db->insert('cars_hist', $historyFields);
+            if (!$historyInserted) {
+                throw new Exception('Failed to create audit trail entry');
+            }
+
+            // Commit transaction
+            $this->_db->query("COMMIT");
+            
+            // Clear cached data to force reload of history
+            $this->_history = null;
+
+            return true;
+            
+        } catch (Exception $e) {
+            // Rollback on any error
+            $this->_db->query("ROLLBACK");
+            throw new Exception('Car merge failed: ' . $e->getMessage());
+        }
+    }
     
     /**
      * Get car owner information
