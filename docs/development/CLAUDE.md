@@ -179,23 +179,33 @@ The system maintains location synchronization between user profiles and car reco
    - Verify all relationships use proper `car_user` table patterns
    - Update schema documentation
 
-4. **Issue #247** (High Priority) - Fix removeImage() direct database access  
-   - Replace direct DB calls with Car class methods
-   - Add removeImage() method to Car class
-   - Implement proper JSON image format handling
-   - Add comprehensive error handling and validation
+4. **Issue #247** ✅ **COMPLETED** - Fix removeImage() direct database access  
+   - ✅ Replace direct DB calls with Car class methods
+   - ✅ Add removeImage() method to Car class
+   - ✅ Implement proper JSON image format handling
+   - ✅ Add comprehensive error handling and validation
 
-5. **Issue #248** (Critical Priority) - Replace direct DB access in car management
-   - Add Car class methods: delete(), transfer(), merge()
-   - Replace all direct database operations in manage.php
-   - Implement proper audit trails for admin operations
-   - Add comprehensive input validation for management operations
+5. **Issue #248** ✅ **COMPLETED** - Replace direct DB access in car management
+   - ✅ Add Car class methods: delete(), transfer(), merge()
+   - ✅ Replace all direct database operations in manage.php
+   - ✅ Implement proper audit trails for admin operations
+   - ✅ Add comprehensive input validation for management operations
 
-6. **Issue #249** (High Priority) - Fix car verification system bypasses
-   - Add Car class methods: setVerificationCode(), markVerified(), markSold()
-   - Add static findByVerificationCode() method
-   - Replace direct database access in verification scripts
-   - Implement proper verification audit trails
+6. **Issue #249** ✅ **COMPLETED** - Fix car verification system bypasses
+   - ✅ Add Car class methods: setVerificationCode(), markVerified(), markSold()
+   - ✅ Add static findByVerificationCode() method
+   - ✅ Replace direct database access in verification scripts (excluded per Issue #230)
+   - ✅ Implement proper verification audit trails
+
+**✅ Phase 2 Complete - New Car Class Methods Available:**
+- `removeImage(string $filename): bool` - Proper image removal with JSON format support
+- `delete(string $reason): bool` - Car deletion with audit trail  
+- `transfer(int $newUserId, string $reason): bool` - Ownership transfer with validation
+- `merge(int $oldCarId, string $reason): bool` - Car merge with history preservation
+- `setVerificationCode(string $code): bool` - Verification code management
+- `markVerified(): bool` - Update verification timestamp
+- `markSold(?string $soldDate): bool` - Mark car as sold with date validation
+- `findByVerificationCode(string $code): ?Car` - Static method for verification lookup
 
 **Phase 3: Performance & Architecture (Release 3)**
 7. **Issues #240 & #241** (Medium Priority) - Performance and advanced security
