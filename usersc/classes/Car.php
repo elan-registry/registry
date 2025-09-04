@@ -479,6 +479,106 @@ class Car
             throw new Exception('Car deletion failed: ' . $e->getMessage());
         }
     }
+
+    /**
+     * Transfer car ownership to a different user
+     * 
+     * Replaces direct database access in car management operations with proper 
+     * Car class method. Includes validation, transaction support, and audit trails.
+     * 
+     * @param int $newUserId The user ID to transfer ownership to
+     * @param string $reason Reason for transfer (for audit trail)
+     * @return bool True if transfer was successful, false otherwise
+     * @throws Exception If validation fails or database operation fails
+     * 
+     * @see https://github.com/unibrain1/elanregistry/issues/248 Issue #248: Replace direct DB access in car management
+     */
+    public function transfer(int $newUserId, string $reason = 'Administrative transfer'): bool
+    {
+        global $user;
+        
+        // Ensure car exists
+        if (!$this->exists()) {
+            throw new Exception('Car not found - cannot transfer');
+        }
+
+        // Validate we have a valid user for audit purposes
+        if (!isset($user) || !$user->isLoggedIn()) {
+            throw new Exception('User authentication required for car transfer');
+        }
+
+        // Validate new user exists
+        $targetUser = new User($newUserId);
+        if (!$targetUser->exists()) {
+            throw new Exception('Target user not found - cannot transfer ownership');
+        }
+
+        $carId = $this->_data->id;
+        $chassis = $this->_data->chassis ?? 'Unknown';
+
+        try {
+            // Start transaction for data integrity
+            $this->_db->query("START TRANSACTION");
+
+            // Prepare fields with new owner information
+            $updateFields = [
+                'user_id' => $newUserId,
+                'email' => $targetUser->data()->email ?? '',
+                'fname' => $targetUser->data()->fname ?? '',
+                'lname' => $targetUser->data()->lname ?? '',
+                'join_date' => $targetUser->data()->join_date ?? date('Y-m-d G:i:s'),
+                'city' => $targetUser->data()->city ?? '',
+                'state' => $targetUser->data()->state ?? '',
+                'country' => $targetUser->data()->country ?? '',
+                'lat' => $targetUser->data()->lat ?? null,
+                'lon' => $targetUser->data()->lon ?? null,
+                'website' => $targetUser->data()->website ?? ''
+            ];
+
+            // Use Car class update method to maintain validation and consistency
+            $updateSuccess = $this->update($updateFields);
+            if (!$updateSuccess) {
+                throw new Exception('Failed to update car with new owner information');
+            }
+
+            // Update the car_user relationship table
+            $relationshipUpdated = $this->_db->query("UPDATE car_user SET userid = ? WHERE car_id = ?", [$newUserId, $carId]);
+            if ($this->_db->error()) {
+                throw new Exception('Failed to update car-user relationship: ' . $this->_db->errorString());
+            }
+
+            // Create audit trail entry
+            $ownerName = $targetUser->data()->fname && $targetUser->data()->lname 
+                ? "{$targetUser->data()->fname} {$targetUser->data()->lname}" 
+                : "User ID $newUserId";
+            
+            $historyFields = [
+                'car_id' => $carId,
+                'comments' => "Car $chassis was transferred to $ownerName (User ID: $newUserId) by admin " . $user->data()->id . ". Reason: $reason",
+                'operation' => 'TRANSFER',
+                'ctime' => date('Y-m-d G:i:s'),
+                'mtime' => date('Y-m-d G:i:s')
+            ];
+            
+            $historyInserted = $this->_db->insert('cars_hist', $historyFields);
+            if (!$historyInserted) {
+                throw new Exception('Failed to create audit trail entry');
+            }
+
+            // Commit transaction
+            $this->_db->query("COMMIT");
+            
+            // Refresh local data to reflect the changes
+            $this->find($carId);
+
+            return true;
+            
+        } catch (Exception $e) {
+            // Rollback on any error
+            $this->_db->query("ROLLBACK");
+            throw new Exception('Car ownership transfer failed: ' . $e->getMessage());
+        }
+    }
     
     /**
      * Get car owner information
