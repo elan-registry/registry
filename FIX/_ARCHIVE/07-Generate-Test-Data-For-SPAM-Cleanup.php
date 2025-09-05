@@ -215,7 +215,7 @@ $line = 1; // Where messages go
             ${stats}
         </div>
         <div class="text-center">
-            <button onclick="if(window.opener){window.opener.location.reload(); window.close();} else {window.location.href='../FIX/';}" class="btn btn-outline-primary">
+            <button onclick="if(window.opener){window.opener.location.reload(); window.close();} else {window.location.href='index.php';}" class="btn btn-outline-primary">
                 <i class="fa fa-arrow-left"></i> Return to FIX Menu
             </button>
         </div>
@@ -597,7 +597,7 @@ $line = 1; // Where messages go
 
 <!-- Return to FIX Menu button -->
 <div style="margin-top: 20px; text-align: center;">
-    <button onclick="if(window.opener){window.opener.location.reload(); window.close();} else {window.location.href='../FIX/';}" class="btn btn-outline-primary">
+    <button onclick="if(window.opener){window.opener.location.reload(); window.close();} else {window.location.href='index.php';}" class="btn btn-outline-primary">
         <i class="fa fa-arrow-left" aria-hidden="true"></i> Return to FIX Menu
     </button>
 </div>

@@ -93,7 +93,7 @@ if (Input::exists('post')) {
                     }
 
                     // Update the cross reference table
-                    $db->query("UPDATE car_user SET userid = ? WHERE carid = ?", [$user_id, $car_id]);
+                    $db->query("UPDATE car_user SET userid = ? WHERE car_id = ?", [$user_id, $car_id]);
                     if ($db->error()) {
                         $errors[] = "Failed to update car-user relationship: " . $db->errorString();
                         break;
@@ -193,7 +193,7 @@ if (Input::exists('post')) {
                         logger($user->data()->id, "ElanRegistry", "FAILED: Merged CAR $old_car_id to CAR $new_car_id.");
                     } else {
                         // Unassign from the previous owner
-                        $db->query("DELETE FROM car_user WHERE carid = ?", [$old_car_id]);
+                        $db->query("DELETE FROM car_user WHERE car_id = ?", [$old_car_id]);
 
                         // Remove old car
                         $db->query("DELETE FROM cars WHERE id = ?", [$old_car_id]);
@@ -252,7 +252,7 @@ if (Input::exists('post')) {
                     $db->insert("cars_hist", $fields);
                     
                     // Remove from car_user relationship table
-                    $db->query("DELETE FROM car_user WHERE carid = ?", [$car_id]);
+                    $db->query("DELETE FROM car_user WHERE car_id = ?", [$car_id]);
                     
                     // Remove the car record
                     $result = $db->query("DELETE FROM cars WHERE id = ?", [$car_id]);

@@ -18,7 +18,18 @@ if (!securePage($_SERVER['PHP_SELF'])) {
 
 // Get list of files in the FIX directory
 $directory    = $abs_us_root . $us_url_root . 'FIX/';
-$scanned_directory = array_diff(scandir($directory), array('..', '.', '.htaccess', 'index.php', '_TEMPLATE_Fix-Script.php'));
+$all_items = scandir($directory);
+
+// Filter to only include PHP files (exclude directories, non-PHP files, and specific files)
+$scanned_directory = [];
+foreach ($all_items as $item) {
+    $full_path = $directory . $item;
+    if (is_file($full_path) && 
+        pathinfo($item, PATHINFO_EXTENSION) === 'php' && 
+        !in_array($item, ['index.php', '_TEMPLATE_Fix-Script.php'])) {
+        $scanned_directory[] = $item;
+    }
+}
 
 // Sort files newest first (reverse natural order)
 rsort($scanned_directory, SORT_NATURAL);
@@ -60,6 +71,42 @@ function getScriptRunStatus($scriptName) {
     }
 }
 
+// Function to extract script description from file
+function getScriptDescription($filename) {
+    global $abs_us_root, $us_url_root;
+    
+    $descriptions = [
+        '02-Cleanup-Orphaned-Profiles.php' => 'Clean up orphaned user profile records and reassign cars',
+        '03-Remove-Duplicate-History.php' => 'Remove duplicate entries from cars_hist table',
+        '04-Regeocode-Null-Coordinates.php' => 'Fix missing geocoding data for user locations', 
+        '05-Database-Column-Standardization-carid-to-car_id.php' => 'Standardize column naming from carid to car_id',
+        '06-Cleanup-Orphaned-Car-User-Records.php' => 'Clean up orphaned car-user relationship records'
+    ];
+    
+    // Return predefined description if available
+    if (isset($descriptions[$filename])) {
+        return $descriptions[$filename];
+    }
+    
+    // Try to extract description from file comments
+    $filePath = $abs_us_root . $us_url_root . 'FIX/' . $filename;
+    if (file_exists($filePath) && is_file($filePath)) {
+        $content = file_get_contents($filePath);
+        
+        // Look for description in comment block
+        if (preg_match('/\* Administrative script to (.+?)\./', $content, $matches)) {
+            return ucfirst($matches[1]);
+        }
+        
+        // Look for description in header comment
+        if (preg_match('/\* (.+?) Script/', $content, $matches)) {
+            return $matches[1] . ' operations';
+        }
+    }
+    
+    return 'Administrative cleanup script';
+}
+
 ?>
 <div id="page-wrapper">
     <div class="container-fluid">
@@ -85,6 +132,7 @@ function getScriptRunStatus($scriptName) {
                                     <tr>
                                         <th>Status</th>
                                         <th>Script Name</th>
+                                        <th>Description</th>
                                         <th>Last Run</th>
                                         <th>Action</th>
                                     </tr>
@@ -100,10 +148,13 @@ function getScriptRunStatus($scriptName) {
                                         $lastRunText = $runStatus['has_run'] && $runStatus['last_run'] ?
                                             date('M j, Y g:i A', strtotime($runStatus['last_run'])) :
                                             'Never run';
+
+                                        $description = getScriptDescription($file);
                                     ?>
                                     <tr>
                                         <td><?= $statusBadge ?></td>
                                         <td><strong><?= $file ?></strong></td>
+                                        <td><span class="text-info"><?= htmlspecialchars($description) ?></span></td>
                                         <td><span class="text-muted"><?= $lastRunText ?></span></td>
                                         <td>
                                             <button class="btn btn-outline-danger btn-sm" onclick="window.open('<?= $file ?>','_blank')">

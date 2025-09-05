@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<phpunit xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:noNamespaceSchemaLocation="https://schema.phpunit.de/10.5/phpunit.xsd"
+         bootstrap="tests/bootstrap.php"
+         colors="true"
+         processIsolation="false"
+         stopOnFailure="false"
+         cacheDirectory=".phpunit.cache"
+         backupGlobals="false">
+    
+    <testsuites>
+        <!-- Standard unit tests that can run with mocks -->
+        <testsuite name="Unit">
+            <directory>tests/</directory>
+            <!-- Exclude database migration tests that require real DB connections -->
+            <exclude>tests/PreMigrationBaselineTest.php</exclude>
+            <exclude>tests/CarUserJunctionTableTest.php</exclude>
+            <exclude>tests/ColumnNamingConsistencyTest.php</exclude>
+            <exclude>tests/DatabaseSchemaConsistencyTest.php</exclude>
+            <exclude>tests/PostMigrationValidationTest.php</exclude>
+            <exclude>tests/SimpleDatabaseSchemaTest.php</exclude>
+            <exclude>tests/test_class.php</exclude>
+            <exclude>tests/run_tests.php</exclude>
+        </testsuite>
+        
+        <!-- Database integration tests (run separately with real DB) -->
+        <testsuite name="Migration">
+            <file>tests/PreMigrationBaselineTest.php</file>
+            <file>tests/CarUserJunctionTableTest.php</file>
+            <file>tests/ColumnNamingConsistencyTest.php</file>
+            <file>tests/DatabaseSchemaConsistencyTest.php</file>
+            <file>tests/PostMigrationValidationTest.php</file>
+            <file>tests/SimpleDatabaseSchemaTest.php</file>
+        </testsuite>
+    </testsuites>
+    
+    <php>
+        <env name="TESTING" value="true"/>
+        <ini name="error_reporting" value="E_ALL"/>
+        <ini name="display_errors" value="1"/>
+        <ini name="display_startup_errors" value="1"/>
+    </php>
+    
+    <source>
+        <include>
+            <directory>usersc/classes</directory>
+            <directory>app</directory>
+        </include>
+        <exclude>
+            <directory>vendor</directory>
+            <directory>users</directory>
+            <directory>FIX</directory>
+        </exclude>
+    </source>
+</phpunit>

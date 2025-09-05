@@ -16,7 +16,7 @@ if ($noOwnerQuery->count() > 0) {
     $noOwnerUserId = $noOwnerQuery->first()->id;
     
     // Get list of cars owned by deleted user before cleanup
-    $userCarsQuery = $db->query('SELECT carid FROM car_user WHERE userid = ?', [$id]);
+    $userCarsQuery = $db->query('SELECT car_id FROM car_user WHERE userid = ?', [$id]);
     $userCars = $userCarsQuery->results();
     $carCount = count($userCars);
     
@@ -28,8 +28,8 @@ if ($noOwnerQuery->count() > 0) {
     
     // Reassign cars to noowner in car_user table
     foreach ($userCars as $car) {
-        $db->query('INSERT INTO car_user (userid, carid) VALUES (?, ?)', 
-                   [$noOwnerUserId, $car->carid]);
+        $db->query('INSERT INTO car_user (userid, car_id) VALUES (?, ?)', 
+                   [$noOwnerUserId, $car->car_id]);
     }
     
     // Update primary car ownership (this triggers cars_hist via database trigger)

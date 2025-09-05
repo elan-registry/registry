@@ -97,7 +97,7 @@ $cars = findByOwner($user_id);
                                 <form method='POST' action='<?= $us_url_root ?>app/cars/edit.php' class="d-inline me-2">
                                     <input type="hidden" name="csrf" value="<?= Token::generate(); ?>" />
                                     <input type="hidden" name="action" value="updateCar" />
-                                    <input type="hidden" name="carid" value="<?= $car->data()->id ?>" />
+                                    <input type="hidden" name="car_id" value="<?= $car->data()->id ?>" />
                                     <button class="btn btn-light btn-lg" type="submit">
                                         <i class="fas fa-edit"></i> Update Car
                                     </button>

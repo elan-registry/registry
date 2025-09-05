@@ -1,8 +1,8 @@
 # Disable directory browsing for security
 Options -Indexes
 
-# Allow index.php access for admin interface
-# Block direct access to PHP fix scripts (they should be run via index.php)
-<FilesMatch "^(?!index\.php$).*\.php$">
+# Allow index.php and current FIX scripts access for admin interface
+# Block access only to template files - all current operational scripts are allowed
+<FilesMatch "^_TEMPLATE.*\.php$">
     Require all denied
 </FilesMatch>
