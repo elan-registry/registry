@@ -137,10 +137,10 @@ $line = 1; // Where messages go
                                 logProgress("Step 1: Identifying orphaned car_user records", 'info');
                                 
                                 $orphanedQuery = $db->query("
-                                    SELECT cu.id, cu.userid, cu.carid, cu.mtime 
+                                    SELECT cu.id, cu.userid, cu.car_id, cu.mtime 
                                     FROM car_user cu 
-                                    WHERE cu.carid NOT IN (SELECT id FROM cars)
-                                    ORDER BY cu.carid ASC
+                                    WHERE cu.car_id NOT IN (SELECT id FROM cars)
+                                    ORDER BY cu.car_id ASC
                                 ");
                                 
                                 $orphanedRecords = $orphanedQuery->results();
@@ -204,6 +204,7 @@ $line = 1; // Where messages go
                                 try {
                                     $db->query("INSERT INTO fix_script_runs (script_name) VALUES (?)", [basename(__FILE__)]);
                                     logProgress("Script completion recorded in fix_script_runs table", 'success');
+                                    logger($user->data()->id, 'SystemMaintenance', "FIX script completed: " . basename(__FILE__));
                                 } catch (Exception $e) {
                                     logProgress("Warning: Could not record script completion: " . $e->getMessage(), 'warning');
                                 }
@@ -252,9 +253,9 @@ $line = 1; // Where messages go
                                 <?php endif; ?>
                                 
                                 <div class="mt-3">
-                                    <a href="<?= $us_url_root ?>FIX/" class="btn btn-primary btn-sm">
+                                    <button onclick="if(window.opener){window.opener.location.reload(); window.close();} else {window.location.href='index.php';}" class="btn btn-primary btn-sm">
                                         <i class="fa fa-arrow-left"></i> Return to FIX Menu
-                                    </a>
+                                    </button>
                                 </div>
                             </div>
                         </div>

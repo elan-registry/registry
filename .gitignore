@@ -28,6 +28,7 @@ runme.php
 .env.key
 .env.local
 .env
+.env.testing
 
 ########################################
 # Scripts & Utilities
@@ -103,6 +104,10 @@ tests/temp/
 usersc/tests
 @backup*
 usupdate.zip
+
+# FIX script backups and rollbacks (runtime generated)
+FIX/backups/
+FIX/rollback_*.php
 
 
 

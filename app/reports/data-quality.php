@@ -33,7 +33,7 @@ function getDataQualityReports($db) {
     $ownersWithMissingInfoQ = $db->query("
         SELECT u.id, u.username, u.fname, u.lname, u.email, u.join_date, u.last_login,
                p.city, p.state, p.country, p.lat, p.lon,
-               COUNT(cu.carid) as car_count,
+               COUNT(cu.car_id) as car_count,
                CASE WHEN u.fname IS NULL OR u.fname = '' THEN 1 ELSE 0 END +
                CASE WHEN u.lname IS NULL OR u.lname = '' THEN 1 ELSE 0 END +
                CASE WHEN p.city IS NULL OR p.city = '' THEN 1 ELSE 0 END +
@@ -70,7 +70,7 @@ function getDataQualityReports($db) {
     $inactiveOwnersQ = $db->query("
         SELECT u.id, u.username, u.fname, u.lname, u.email, u.join_date, u.last_login,
                p.city, p.state, p.country,
-               COUNT(cu.carid) as car_count,
+               COUNT(cu.car_id) as car_count,
                DATEDIFF(NOW(), u.last_login) as days_since_login
         FROM users u
         JOIN car_user cu ON u.id = cu.userid
@@ -144,7 +144,7 @@ function getDataQualityReports($db) {
         SELECT c.id, c.model, c.series, c.year, c.chassis, c.username, c.mtime,
                u.fname, u.lname, u.email
         FROM cars c 
-        LEFT JOIN car_user cu ON c.id = cu.carid
+        LEFT JOIN car_user cu ON c.id = cu.car_id
         LEFT JOIN users u ON cu.userid = u.id
         WHERE c.chassis IS NULL OR c.chassis = '' 
         ORDER BY c.mtime DESC, c.id
@@ -165,7 +165,7 @@ function getDataQualityReports($db) {
         SELECT c.id, c.model, c.series, c.year, c.chassis, c.username, c.mtime,
                u.fname, u.lname, u.email
         FROM cars c 
-        LEFT JOIN car_user cu ON c.id = cu.carid
+        LEFT JOIN car_user cu ON c.id = cu.car_id
         LEFT JOIN users u ON cu.userid = u.id
         WHERE c.chassis IS NOT NULL AND c.chassis != '' 
           AND c.year IS NOT NULL AND c.year != 0
@@ -197,7 +197,7 @@ function getDataQualityReports($db) {
         SELECT c.id, c.model, c.series, c.year, c.chassis, c.username, c.mtime,
                u.fname, u.lname, u.email
         FROM cars c 
-        LEFT JOIN car_user cu ON c.id = cu.carid
+        LEFT JOIN car_user cu ON c.id = cu.car_id
         LEFT JOIN users u ON cu.userid = u.id
         WHERE c.model = '||' OR c.model LIKE '%test%' OR c.model LIKE '%placeholder%'
         ORDER BY c.mtime DESC, c.id
@@ -217,7 +217,7 @@ function getDataQualityReports($db) {
         SELECT c.id, c.model, c.series, c.year, c.chassis, c.username, c.mtime,
                u.fname, u.lname, u.email
         FROM cars c 
-        LEFT JOIN car_user cu ON c.id = cu.carid
+        LEFT JOIN car_user cu ON c.id = cu.car_id
         LEFT JOIN users u ON cu.userid = u.id
         WHERE c.series IS NULL OR c.series = ''
         ORDER BY c.mtime DESC, c.id
@@ -241,7 +241,7 @@ function getDataQualityReports($db) {
                CASE WHEN c.chassis IS NULL OR c.chassis = '' THEN 1 ELSE 0 END +
                CASE WHEN c.model = '||' THEN 1 ELSE 0 END as missing_count
         FROM cars c 
-        LEFT JOIN car_user cu ON c.id = cu.carid
+        LEFT JOIN car_user cu ON c.id = cu.car_id
         LEFT JOIN users u ON cu.userid = u.id
         HAVING missing_count >= 2
         ORDER BY missing_count DESC, c.mtime DESC, c.id
@@ -269,7 +269,7 @@ function getDataQualityReports($db) {
     $carUserRelationsQ = $db->query("
         SELECT COUNT(DISTINCT c.id) as cars_with_relations
         FROM cars c 
-        INNER JOIN car_user cu ON c.id = cu.carid
+        INNER JOIN car_user cu ON c.id = cu.car_id
         WHERE c.username IS NULL OR c.username = ''
     ");
     $relationStats = $carUserRelationsQ->results()[0];
@@ -565,7 +565,7 @@ foreach ($dataQualityReports as $key => $report) {
                                                             </td>
                                                             <td>
                                                                 <form method="post" action="../cars/edit.php" target="_blank" style="display: inline;">
-                                                                    <input type="hidden" name="carid" value="<?= $car->id ?>">
+                                                                    <input type="hidden" name="car_id" value="<?= $car->id ?>">
                                                                     <input type="hidden" name="action" value="updateCar">
                                                                     <input type="hidden" name="csrf" value="<?= Token::generate(); ?>">
                                                                     <button type="submit" class="btn btn-sm btn-outline-success" title="Edit Car">
@@ -758,7 +758,7 @@ foreach ($dataQualityReports as $key => $report) {
                                                             <?php } ?>
                                                             <td>
                                                                 <form method="post" action="../cars/edit.php" target="_blank" style="display: inline;">
-                                                                    <input type="hidden" name="carid" value="<?= $car->id ?>">
+                                                                    <input type="hidden" name="car_id" value="<?= $car->id ?>">
                                                                     <input type="hidden" name="action" value="updateCar">
                                                                     <input type="hidden" name="csrf" value="<?= Token::generate(); ?>">
                                                                     <button type="submit" class="btn btn-sm btn-outline-success" title="Edit Car">

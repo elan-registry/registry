@@ -57,7 +57,7 @@ if (Input::exists('post')) {
     } else {
 
         $action = Input::get('action');
-        $cardetails['id']  = Input::get('carid');
+        $cardetails['id']  = Input::get('car_id');
 
         if ($action === 'updateCar') {
             updateCarDetails($cardetails);
@@ -79,7 +79,7 @@ function updateCarDetails(array &$car): void
     global $user;
 
     if (empty($car['id'])) {
-        logger($user->data()->id, 'ElanRegistry', 'Empty carid field in GET');
+        logger($user->data()->id, 'ElanRegistry', 'Empty car_id field in GET');
         return;
     }
 
@@ -186,7 +186,7 @@ function updateCarDetails(array &$car): void
                     <!-- End Image panel -->
                     <input type="hidden" name="csrf" id="csrf" value="<?= htmlspecialchars(Token::generate(), ENT_QUOTES, 'UTF-8'); ?>" />
                     <input type="hidden" name="action" id="action" value="<?= htmlspecialchars($action, ENT_QUOTES, 'UTF-8'); ?>" />
-                    <input type="hidden" name="carid" id="carid" value="<?= htmlspecialchars($cardetails['id'] ?? '', ENT_QUOTES, 'UTF-8'); ?>" />
+                    <input type="hidden" name="car_id" id="car_id" value="<?= htmlspecialchars($cardetails['id'] ?? '', ENT_QUOTES, 'UTF-8'); ?>" />
                     <input type="submit" name="submit" id="submit" class="btn btn-success" value="Add Car" />
                     <input type="button" name="previous" class="previous btn btn-danger" value="Previous" />
                 </fieldset>
@@ -334,7 +334,7 @@ require_once $abs_us_root . $us_url_root . 'users/includes/html_footer.php'; //c
 <script>
     Dropzone.autoDiscover = false;
     const csrf = $('#csrf').val();
-    const carid = $('#carid').val();
+    const car_id = $('#car_id').val();
 
     $(document).ready(function() {
         // BEGIN DROPZONE
@@ -380,13 +380,13 @@ require_once $abs_us_root . $us_url_root . 'users/includes/html_footer.php'; //c
                 thisDropzone = this;
                 
                 // Only load existing images if we have a valid car ID (editing mode)
-                if (carid && carid !== '') {
+                if (car_id && car_id !== '') {
                     $.ajax({
                         url: 'actions/edit.php',
                         type: 'POST',
                         dataType: 'json',
                         data: {
-                            'carID': carid,
+                            'carID': car_id,
                             'csrf': csrf,
                             'action': 'fetchImages'
                         },
@@ -490,7 +490,7 @@ require_once $abs_us_root . $us_url_root . 'users/includes/html_footer.php'; //c
             formData.append('action', $('#action').val());
             formData.append('csrf', $('#csrf').val());
             formData.append('filenames', filenames);
-            formData.append('carid', $('#carid').val());
+            formData.append('car_id', $('#car_id').val());
             formData.append('year', $('#year').val());
             formData.append('model', $('#model').val());
             formData.append('series', $('#series').val());
@@ -748,7 +748,7 @@ require_once $abs_us_root . $us_url_root . 'users/includes/html_footer.php'; //c
 
             // Set the form text for Update
             $('#submit').attr('value', 'Update Car');
-            $('#carid').html($('#carid').val());
+            $('#car_id').html($('#car_id').val());
             $('#carHeader').html('<h2><strong>Update car</strong><h2>');
         }
     });
