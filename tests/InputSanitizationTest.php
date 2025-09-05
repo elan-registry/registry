@@ -277,8 +277,8 @@ class InputSanitizationTest extends TestCase
      */
     public function testCSRFTokenValidation(): void
     {
-        // Valid token
-        Input::setMockData(['csrf' => 'valid_token']);
+        // Valid token (matches mock Token::check() pattern)
+        Input::setMockData(['csrf' => 'test_csrf_token_123']);
         $this->assertTrue(Token::check(Input::get('csrf')));
         
         // Invalid token

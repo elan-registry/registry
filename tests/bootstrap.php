@@ -309,12 +309,28 @@ if (!function_exists('securePage')) {
 // Mock Input class if not available
 if (!class_exists('Input')) {
     class Input {
+        private static $mockData = [];
+        
         public static function get($key, $default = null) {
+            if (!empty(self::$mockData)) {
+                return self::$mockData[$key] ?? $default;
+            }
             return $_POST[$key] ?? $_GET[$key] ?? $default;
         }
         
         public static function exists($method = 'post') {
+            if (!empty(self::$mockData)) {
+                return !empty(self::$mockData);
+            }
             return $method === 'post' ? !empty($_POST) : !empty($_GET);
+        }
+        
+        public static function setMockData($data) {
+            self::$mockData = $data;
+        }
+        
+        public static function clearMockData() {
+            self::$mockData = [];
         }
     }
 }

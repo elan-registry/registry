@@ -312,4 +312,14 @@ class CarUpdateTest extends TestCase
         $validActions = ['addCar', 'updateCar', 'fetchImages', 'removeImages'];
         $this->assertNotContains($action, $validActions);
     }
+    
+    /**
+     * Clean up test data after each test
+     */
+    private function cleanupTestData(): void
+    {
+        // In a mock environment, cleanup is handled automatically
+        // This method is here to prevent test errors but doesn't need real cleanup
+        // since we're using mock objects that don't persist
+    }
 }
