@@ -29,8 +29,11 @@
 - **#263** - Update UserSpice core for v2.7.1 compatibility
   - **Impact:** Framework compatibility verification
   - **Effort:** Small
+- **#274** - Remove outdated migration plan document
+  - **Impact:** Documentation cleanup after completed migration work
+  - **Effort:** Extra Small
 
-**Deployment Notes:** Critical accessibility fix for mobile users, security improvements to Car class, image rotation fix, UserSpice compatibility verification
+**Deployment Notes:** Critical accessibility fix for mobile users, security improvements to Car class, image rotation fix, UserSpice compatibility verification, documentation cleanup
 
 ### 🔄 **v2.8.0: Core Stability** *(October 28, 2025)*
 **Type:** Minor Release - Stability & UX Improvements  
@@ -61,6 +64,11 @@
 - **#264** - Update UserSpice core for v2.8.0 stability improvements
   - **Impact:** Framework compatibility verification
   - **Effort:** High Priority
+
+#### Codebase Cleanup:
+- **#273** - Remove backward compatibility redirect files from app/ directory
+  - **Impact:** Removes 9 temporary redirect files from file reorganization
+  - **Effort:** Extra Small (simple file deletion after verification)
 
 #### Admin Interface Improvements:
 - **#269** - Create ElanRegistry-specific owner management interface for profile editing
@@ -134,14 +142,14 @@
 
 | Version | Target Date | Type | Focus | Issues | Est. Dev Time |
 |---------|-------------|------|--------|---------|---------------|
-| **v2.7.1** | Sep 12, 2025 | Patch | Critical Fixes | 5 | 1.5 weeks |
-| **v2.8.0** | Oct 28, 2025 | Minor | Core Stability | 17 | 3.5 weeks |  
+| **v2.7.1** | Sep 12, 2025 | Patch | Critical Fixes | 6 | 1.5 weeks |
+| **v2.8.0** | Oct 28, 2025 | Minor | Core Stability | 18 | 3.5 weeks |  
 | **v2.9.0** | Nov 15, 2025 | Minor | Admin & Data | 10 | 2 weeks |
 | **v3.0.0** | Jan 15, 2026 | Major | Automation | 24 | 4 weeks |
 
 **Total Timeline:** ~18 weeks (4.5 months) - Extended for comprehensive admin interface work  
 **Total Development Time:** ~11 weeks active development  
-**Total Issues:** 56 open issues across all milestones  
+**Total Issues:** 58 open issues across all milestones  
 **Admin Interfaces:** Unified admin dashboard with 4 consolidated management areas  
 **Database Views:** 2 legacy views scheduled for removal  
 **Vacation Period:** Sept 15 - Oct 5, 2025 (accounted for in dates)
