@@ -69,6 +69,17 @@
 - **#273** - Remove backward compatibility redirect files from app/ directory
   - **Impact:** Removes 9 temporary redirect files from file reorganization
   - **Effort:** Extra Small (simple file deletion after verification)
+- **#276** - Move findByOwner to Car class as static method
+  - **Impact:** Proper OOP design, better code organization
+  - **Effort:** Extra Small (30 minutes, follows standard factory method pattern)
+- **#277** - Rename CarHelpers to CarView for proper separation of concerns
+  - **Impact:** Clear separation between data operations and display logic
+  - **Effort:** Extra Small (15 minutes, simple class rename)
+  - **Dependencies:** Requires #276
+- **#278** - Replace deprecated function calls with new class methods
+  - **Impact:** Modern OOP patterns, better type safety and IDE support
+  - **Effort:** Small (1-2 hours depending on usage count)
+  - **Dependencies:** Requires #276 and #277
 
 #### Admin Interface Improvements:
 - **#269** - Create ElanRegistry-specific owner management interface for profile editing
