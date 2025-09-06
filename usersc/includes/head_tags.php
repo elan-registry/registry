@@ -3,7 +3,7 @@ require_once $abs_us_root . $us_url_root . 'app/version.php';
 ?>
 <meta charset="utf-8">
 <meta http-equiv="X-UA-Compatible" content="IE=edge">
-<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="description" content="Registry for the Lotus Elan and Elan +2">
 <meta name="author" content="Jim Boone">
 <meta name="version" content="<?= ApplicationVersion::get(); ?>">
