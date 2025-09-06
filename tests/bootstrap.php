@@ -126,7 +126,8 @@ if (!function_exists('validateFileUpload')) {
 }
 
 // Mock Car class if not loaded from UserSpice
-if (!class_exists('Car')) {
+// Only use mock for pure unit tests to avoid conflicts
+if (!class_exists('Car') && (defined('TESTING_UNIT_ONLY') || !file_exists(dirname(__DIR__) . '/usersc/classes/Car.php'))) {
     class Car {
         private $data;
         private static $nextId = 1000;

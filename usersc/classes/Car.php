@@ -48,7 +48,6 @@ class Car
             $this->imageDir = $settings->elan_image_dir  . $id . '/';
             $this->find($id);
         }
-        return true;
     }
 
     /**
@@ -842,7 +841,7 @@ class Car
      * @param string $table Table type ('cars' or 'factory')
      * @return array DataTables response array
      */
-    public function getDataTablesData($request, $table = 'cars')
+    public function getDataTablesData(array $request, string $table = 'cars'): array
     {
         // Validate and sanitize table parameter
         $validTables = [
@@ -930,7 +929,7 @@ class Car
      * @param string $tableName Table name for context
      * @return string|false Validated column name or false if invalid
      */
-    private function validateColumnName($columnName, $tableName)
+    private function validateColumnName(string $columnName, string $tableName): string|false
     {
         // Define allowed columns for each table (based on actual schema)
         $allowedColumns = [
