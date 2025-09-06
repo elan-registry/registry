@@ -102,6 +102,7 @@ tests/.phpunit.result.cache
 tests/coverage/
 tests/temp/
 usersc/tests
+.phpunit.cache
 @backup*
 usupdate.zip
 
