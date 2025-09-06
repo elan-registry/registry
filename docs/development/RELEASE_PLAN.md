@@ -96,20 +96,28 @@
 **Deployment Notes:** New self-service features for users, enhanced search capabilities, admin workflow improvements
 
 ### 🚀 **v3.0.0: Admin Automation** *(January 15, 2026)*
-**Estimated Development Time**: 4 weeks
-**Type:** Major Release - Automation & Performance  
+**Estimated Development Time**: 12 weeks (8 weeks testing infrastructure + 4 weeks automation)
+**Type:** Major Release - Testing Infrastructure & Automation  
 **Priority:** FUTURE
+
+#### Testing Infrastructure (CRITICAL FIRST):
+- **#275** - Test Framework Modernization: Enable UserSpice Integration Testing
+  - **Impact:** **REQUIRED FOUNDATION** for all other v3.0.0 development
+  - **Effort:** Extra Large (8 weeks - must complete first)
+  - **Priority:** 🚨 **HIGHEST** - Blocks all other v3.0.0 work
 
 #### Automation & Performance:
 - **#230** - Automated Owner Data Freshness Campaign System
   - **Impact:** Automated data quality maintenance
   - **Effort:** High Priority (includes verification code work)
+  - **Dependencies:** Requires #275 (testing infrastructure)
 - **#260** - SECURITY: Enhance verification code validation with format checking
   - **Impact:** Part of #230 automation system
   - **Effort:** Small (integrated with #230)
 - **#217** - Performance Optimization - Dependencies and Assets
   - **Impact:** 30% page load improvement
   - **Effort:** Extra Large
+  - **Dependencies:** Requires #275 (performance regression testing)
 - **#218** - Google Maps Modernization - Upgrade to AdvancedMarkerElement
   - **Impact:** Future-proofs maps functionality
   - **Effort:** Medium
@@ -118,17 +126,21 @@
 - **#268** - Remove users_carsview database view and integrate with Car class architecture
   - **Impact:** Database modernization, removes complex view dependency
   - **Effort:** High (complex JOIN logic refactoring)
+  - **Dependencies:** Requires #275 (database testing infrastructure)
 - **#242** - LOW PRIORITY: Refactor Car class architecture and modernize codebase
   - **Impact:** Foundation for database view removal
   - **Effort:** Extra Large
+  - **Dependencies:** Requires #275 (comprehensive testing for refactoring safety)
 
 #### Testing & Quality:
 - **#215** - Database Integration Testing
   - **Impact:** Production readiness validation
   - **Effort:** Large
+  - **Dependencies:** **SUPERSEDED BY #275** (comprehensive test framework)
 - **#216** - Browser-based Functional Testing Enhancement
   - **Impact:** Improved cross-browser compatibility
   - **Effort:** Large
+  - **Dependencies:** Works with #275 (integrated testing approach)
 
 **Deployment Notes:**
 - **⚠️ MAJOR VERSION** - Potential breaking changes
