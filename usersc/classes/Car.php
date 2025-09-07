@@ -144,10 +144,22 @@ class Car
             }
         }
 
-        if (!$this->_db->update($this->tableName, $fields['id'], $fields)) {
-            throw new CarValidationException('There was a problem updating.');
+        // Filter fields to only include valid cars table columns
+        $validCarFields = [
+            'id', 'user_id', 'year', 'model', 'series', 'variant', 'type', 
+            'chassis', 'color', 'engine', 'purchasedate', 'solddate', 
+            'website', 'comments', 'image', 'mtime'
+        ];
+        
+        $filteredFields = array_intersect_key($fields, array_flip($validCarFields));
+        
+        // Debug: Log the fields being passed for update
+        logger($fields['user_id'] ?? 0, 'CarUpdate', 'Attempting update for car ID: ' . $filteredFields['id'] . ' with ' . count($filteredFields) . ' filtered fields');
+        
+        if (!$this->_db->update($this->tableName, $filteredFields['id'], $filteredFields)) {
+            throw new CarValidationException('Database update failed - check logs for details');
         } else {
-            $this->find($fields['id']);  // Populate the car with the data
+            $this->find($filteredFields['id']);  // Populate the car with the data
         }
 
         return true;
