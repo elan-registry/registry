@@ -1,16 +1,24 @@
 <?php
 
+declare(strict_types=1);
 
-
+/**
+ * Image Resize Class with EXIF Orientation Support
+ * 
+ * Handles image resizing, EXIF orientation correction, and privacy-preserving
+ * metadata removal for the Elan Registry application.
+ * 
+ * @author Elan Registry Development Team
+ * @version 2.7.1
+ */
 class Resize
 {
-    // *** Class variables
     private $image;
-    private $width;
-    private $height;
+    private int $width;
+    private int $height;
     private $imageResized;
 
-    public function __construct($fileName)
+    public function __construct(string $fileName)
     {
         // *** Open up the file
         $this->image = $this->openImage($fileName);
@@ -29,7 +37,7 @@ class Resize
      * Correct image orientation based on EXIF data
      * Handles all 8 EXIF orientation values and strips EXIF data for privacy
      */
-    private function correctOrientation($fileName, $image)
+    private function correctOrientation(string $fileName, $image)
     {
         // Only process JPEG files for EXIF orientation
         $extension = strtolower(strrchr($fileName, '.'));
@@ -93,7 +101,7 @@ class Resize
 
     ## --------------------------------------------------------
 
-    private function openImage($file)
+    private function openImage(string $file)
     {
         // *** Get extension
         $extension = strtolower(strrchr($file, '.'));
@@ -118,7 +126,7 @@ class Resize
 
     ## --------------------------------------------------------
 
-    public function resizeImage($newWidth, $newHeight, $option = "auto")
+    public function resizeImage(int $newWidth, int $newHeight, string $option = "auto"): void
     {
         // *** Get optimal width and height - based on $option
         $optionArray = $this->getDimensions($newWidth, $newHeight, $option);
@@ -128,8 +136,11 @@ class Resize
 
 
         // *** Resample - create image canvas of x, y size (ensure integers for GD functions)
-        $this->imageResized = imagecreatetruecolor((int)round($optimalWidth), (int)round($optimalHeight));
-        imagecopyresampled($this->imageResized, $this->image, 0, 0, 0, 0, (int)round($optimalWidth), (int)round($optimalHeight), $this->width, $this->height);
+        $width = $this->toInt($optimalWidth);
+        $height = $this->toInt($optimalHeight);
+        
+        $this->imageResized = imagecreatetruecolor($width, $height);
+        imagecopyresampled($this->imageResized, $this->image, 0, 0, 0, 0, $width, $height, $this->width, $this->height);
 
 
         // *** if option is 'crop', then crop too
@@ -140,7 +151,7 @@ class Resize
 
     ## --------------------------------------------------------
 
-    private function getDimensions($newWidth, $newHeight, $option)
+    private function getDimensions(int $newWidth, int $newHeight, string $option): array
     {
 
         switch ($option) {
@@ -174,19 +185,19 @@ class Resize
 
     ## --------------------------------------------------------
 
-    private function getSizeByFixedHeight($newHeight)
+    private function getSizeByFixedHeight(int $newHeight): float
     {
         $ratio = $this->width / $this->height;
         return $newHeight * $ratio;
     }
 
-    private function getSizeByFixedWidth($newWidth)
+    private function getSizeByFixedWidth(int $newWidth): float
     {
         $ratio = $this->height / $this->width;
         return $newWidth * $ratio;
     }
 
-    private function getSizeByAuto($newWidth, $newHeight)
+    private function getSizeByAuto(int $newWidth, int $newHeight): array
     {
         if ($this->height < $this->width) {
             // *** Image to be resized is wider (landscape)
@@ -216,7 +227,7 @@ class Resize
 
     ## --------------------------------------------------------
 
-    private function getOptimalCrop($newWidth, $newHeight)
+    private function getOptimalCrop(int $newWidth, int $newHeight): array
     {
 
         $heightRatio = $this->height / $newHeight;
@@ -236,11 +247,11 @@ class Resize
 
     ## --------------------------------------------------------
 
-    private function crop($optimalWidth, $optimalHeight, $newWidth, $newHeight)
+    private function crop(float $optimalWidth, float $optimalHeight, int $newWidth, int $newHeight): void
     {
         // *** Find center - this will be used for the crop (ensure integers for GD functions)
-        $cropStartX = (int)round(($optimalWidth / 2) - ($newWidth / 2));
-        $cropStartY = (int)round(($optimalHeight / 2) - ($newHeight / 2));
+        $cropStartX = $this->toInt(($optimalWidth / 2) - ($newWidth / 2));
+        $cropStartY = $this->toInt(($optimalHeight / 2) - ($newHeight / 2));
 
         $crop = $this->imageResized;
 
@@ -251,7 +262,7 @@ class Resize
 
     ## --------------------------------------------------------
 
-    public function saveImage($savePath, $imageQuality = "100")
+    public function saveImage(string $savePath, int $imageQuality = 100): void
     {
         // *** Get extension
         $extension = strrchr($savePath, '.');
@@ -293,6 +304,21 @@ class Resize
         imagedestroy($this->imageResized);
     }
 
+    ## --------------------------------------------------------
+
+    /**
+     * Safely convert float/numeric values to integers for GD functions
+     * 
+     * This method ensures PHP 8+ compatibility by properly handling
+     * float-to-int conversions without deprecation warnings.
+     * 
+     * @param float|int $value The numeric value to convert
+     * @return int The safely converted integer value
+     */
+    private function toInt(float|int $value): int
+    {
+        return (int) round((float) $value);
+    }
 
     ## --------------------------------------------------------
 
