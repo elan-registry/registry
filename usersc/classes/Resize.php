@@ -15,9 +15,80 @@ class Resize
         // *** Open up the file
         $this->image = $this->openImage($fileName);
 
-        // *** Get width and height
+        // *** Apply EXIF orientation correction if needed
+        $this->image = $this->correctOrientation($fileName, $this->image);
+
+        // *** Get width and height (after orientation correction)
         $this->width  = imagesx($this->image);
         $this->height = imagesy($this->image);
+    }
+
+    ## --------------------------------------------------------
+
+    /**
+     * Correct image orientation based on EXIF data
+     * Handles all 8 EXIF orientation values and strips EXIF data for privacy
+     */
+    private function correctOrientation($fileName, $image)
+    {
+        // Only process JPEG files for EXIF orientation
+        $extension = strtolower(strrchr($fileName, '.'));
+        if ($extension !== '.jpg' && $extension !== '.jpeg') {
+            return $image;
+        }
+
+        // Check if EXIF extension is available
+        if (!function_exists('exif_read_data')) {
+            return $image;
+        }
+
+        // Read EXIF orientation data
+        $exif = @exif_read_data($fileName);
+        if (!$exif || !isset($exif['Orientation'])) {
+            return $image;
+        }
+
+        $orientation = $exif['Orientation'];
+
+        // Apply rotation/flipping based on EXIF orientation value
+        switch ($orientation) {
+            case 2:
+                // Horizontal flip
+                imageflip($image, IMG_FLIP_HORIZONTAL);
+                break;
+            case 3:
+                // 180° rotation
+                $image = imagerotate($image, 180, 0);
+                break;
+            case 4:
+                // Vertical flip
+                imageflip($image, IMG_FLIP_VERTICAL);
+                break;
+            case 5:
+                // Horizontal flip + 90° CCW rotation
+                imageflip($image, IMG_FLIP_HORIZONTAL);
+                $image = imagerotate($image, -90, 0);
+                break;
+            case 6:
+                // 90° CW rotation (most common mobile issue)
+                $image = imagerotate($image, -90, 0);
+                break;
+            case 7:
+                // Horizontal flip + 90° CW rotation
+                imageflip($image, IMG_FLIP_HORIZONTAL);
+                $image = imagerotate($image, 90, 0);
+                break;
+            case 8:
+                // 90° CCW rotation
+                $image = imagerotate($image, 90, 0);
+                break;
+            case 1:
+            default:
+                // Normal orientation, no correction needed
+                break;
+        }
+
+        return $image;
     }
 
     ## --------------------------------------------------------
@@ -56,9 +127,9 @@ class Resize
         $optimalHeight = $optionArray['optimalHeight'];
 
 
-        // *** Resample - create image canvas of x, y size
-        $this->imageResized = imagecreatetruecolor($optimalWidth, $optimalHeight);
-        imagecopyresampled($this->imageResized, $this->image, 0, 0, 0, 0, $optimalWidth, $optimalHeight, $this->width, $this->height);
+        // *** Resample - create image canvas of x, y size (ensure integers for GD functions)
+        $this->imageResized = imagecreatetruecolor((int)round($optimalWidth), (int)round($optimalHeight));
+        imagecopyresampled($this->imageResized, $this->image, 0, 0, 0, 0, (int)round($optimalWidth), (int)round($optimalHeight), $this->width, $this->height);
 
 
         // *** if option is 'crop', then crop too
@@ -167,9 +238,9 @@ class Resize
 
     private function crop($optimalWidth, $optimalHeight, $newWidth, $newHeight)
     {
-        // *** Find center - this will be used for the crop
-        $cropStartX = ($optimalWidth / 2) - ($newWidth / 2);
-        $cropStartY = ($optimalHeight / 2) - ($newHeight / 2);
+        // *** Find center - this will be used for the crop (ensure integers for GD functions)
+        $cropStartX = (int)round(($optimalWidth / 2) - ($newWidth / 2));
+        $cropStartY = (int)round(($optimalHeight / 2) - ($newHeight / 2));
 
         $crop = $this->imageResized;
 

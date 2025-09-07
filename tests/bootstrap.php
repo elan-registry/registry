@@ -22,6 +22,11 @@ if (!isset($_SESSION)) {
     $_SESSION = [];
 }
 
+// Load actual classes for testing
+if (file_exists($projectRoot . '/usersc/classes/Resize.php')) {
+    require_once $projectRoot . '/usersc/classes/Resize.php';
+}
+
 // Mock classes for testing if they don't exist
 if (!class_exists('Token')) {
     class Token {

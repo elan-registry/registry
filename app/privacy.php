@@ -12,7 +12,7 @@
 require_once '../users/init.php';
 require_once $abs_us_root . $us_url_root . 'users/includes/template/prep.php';
 
-$mdFile = __DIR__ . '/../PRIVACY.md';
+$mdFile = __DIR__ . '/../docs/elanregistry/PRIVACY.md';
 $policy = '';
 if (file_exists($mdFile)) {
     $policy = file_get_contents($mdFile);
