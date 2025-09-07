@@ -164,10 +164,25 @@ class Car
         
         $updateResult = $this->_db->update($this->tableName, $carId, $filteredFields);
         
+        // Debug logging to diagnose returned error
+        logger($fields['user_id'] ?? 0, 'CarUpdate', 'DB update result: ' . ($updateResult ? 'TRUE' : 'FALSE'));
+        logger($fields['user_id'] ?? 0, 'CarUpdate', 'DB error status: ' . ($this->_db->error() ? 'ERROR' : 'NO ERROR'));
+        
+        if ($this->_db->error()) {
+            logger($fields['user_id'] ?? 0, 'CarUpdate', 'DB error string: ' . $this->_db->errorString());
+        }
+        
+        logger($fields['user_id'] ?? 0, 'CarUpdate', 'Car ID: ' . $carId);
+        logger($fields['user_id'] ?? 0, 'CarUpdate', 'Table: ' . $this->tableName);
+        logger($fields['user_id'] ?? 0, 'CarUpdate', 'Fields count: ' . count($filteredFields));
+        logger($fields['user_id'] ?? 0, 'CarUpdate', 'Fields: ' . json_encode($filteredFields));
+        
         // Check if there was an actual database error vs UserSpice returning false for "no changes"
         if (!$updateResult && $this->_db->error()) {
+            logger($fields['user_id'] ?? 0, 'CarUpdate', 'Throwing exception due to actual DB error');
             throw new CarValidationException('Database update failed - check logs for details');
         } else {
+            logger($fields['user_id'] ?? 0, 'CarUpdate', 'Treating as success - refreshing car data');
             // UserSpice returned false but no error means "no changes needed" - treat as success
             $this->find($carId);  // Populate the car with the data
         }
