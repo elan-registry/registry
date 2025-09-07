@@ -113,14 +113,20 @@ function updateCar(array &$cardetails): void
     global $errors;
     global $successes;
 
-    $car = new Car();
+    try {
+        $car = new Car();
 
-    // Update
-    if ($car->update($cardetails)) {
-        $successes[] = 'Update Car ID: ' . $car->data()->id;
-        $successes[] = 'Update BY ID: ' . $car->data()->user_id;
-    } else {
-        $errors[] = 'Update Car ERROR';
+        // Update
+        if ($car->update($cardetails)) {
+            $successes[] = 'Update Car ID: ' . $car->data()->id;
+            $successes[] = 'Update BY ID: ' . $car->data()->user_id;
+        } else {
+            $errors[] = 'Update Car ERROR';
+        }
+    } catch (CarValidationException $e) {
+        $errors[] = 'Car Update Validation Error: ' . $e->getMessage();
+    } catch (Exception $e) {
+        $errors[] = 'Car Update Error: ' . $e->getMessage();
     }
 }
 /**
@@ -133,14 +139,21 @@ function addCar(array &$cardetails): void
 {
     global $errors;
     global $successes;
-    $car = new Car();
+    
+    try {
+        $car = new Car();
 
-    if ($car->create($cardetails)) {
-        $successes[] = 'Add Car ID: ' . $car->data()->id;
-        $successes[] = 'Added by User ID: ' . $car->data()->user_id;
-        $cardetails['id'] = $car->data()->id;
-    } else {
-        $errors[] = 'Car Create ERROR';
+        if ($car->create($cardetails)) {
+            $successes[] = 'Add Car ID: ' . $car->data()->id;
+            $successes[] = 'Added by User ID: ' . $car->data()->user_id;
+            $cardetails['id'] = $car->data()->id;
+        } else {
+            $errors[] = 'Car Create ERROR';
+        }
+    } catch (CarValidationException $e) {
+        $errors[] = 'Car Creation Validation Error: ' . $e->getMessage();
+    } catch (Exception $e) {
+        $errors[] = 'Car Creation Error: ' . $e->getMessage();
     }
 }
 
@@ -193,6 +206,9 @@ function buildCarDetails(array &$cardetails, ?int $carId = null): void
         $cardetails['website']      = null;
         $cardetails['comments']     = null;
     }
+    // Add CSRF token for Car class validation
+    $cardetails['token'] = Input::get('csrf');
+    
     updateYear($cardetails);
     updateModel($cardetails);
     updateChassis($cardetails);
@@ -217,7 +233,7 @@ function updateYear(array &$cardetails): void
     //Update Year
     if (Input::get('year')) {
         $cardetails['year'] =  Input::get('year');
-        $successes[] = 'Year Updated (' . $cardetails['year'] . ')';
+        $successes[] = 'Year: ' . $cardetails['year'];
     } else {
         $errors[] = "Please select Year";
     }
@@ -244,7 +260,7 @@ function updateModel(array &$cardetails): void
         $cardetails['variant'] = filter_var($variant, FILTER_UNSAFE_RAW);
         $cardetails['type'] = filter_var($type, FILTER_UNSAFE_RAW);
 
-        $successes[] = 'Model Updated (' . $cardetails['model'] . ')';
+        $successes[] = 'Model: ' . $cardetails['model'];
     } else {
         $errors[] = "Please select Model";
     }
@@ -291,9 +307,9 @@ function updateChassis(array &$cardetails): void
         
         // Handle validation result
         if ($result['valid'] && !$result['override_used']) {
-            $successes[] = 'Chassis Updated (' . $cardetails['chassis'] . ')';
+            $successes[] = 'Chassis: ' . $cardetails['chassis'];
         } elseif ($result['valid'] && $result['override_used']) {
-            $successes[] = 'Chassis Updated with Override (' . $cardetails['chassis'] . ') - Warning: ' . $result['error_reason'];
+            $successes[] = 'Chassis: ' . $cardetails['chassis'] . ' (Override used)';
             $chassis_override_used = true; // Track that override was used for comments
         } else {
             $errors[] = '<strong>ERROR:</strong> Chassis Validation Failed: ' . $result['error_reason'];
@@ -308,7 +324,7 @@ function updateColor(&$cardetails)
     // Update 'color'
     if (Input::get('color')) {
         $cardetails['color'] = Input::get('color');
-        $successes[] = 'Color Updated (' . $cardetails['color'] . ')';
+        $successes[] = 'Color: ' . $cardetails['color'];
     } else {
         $cardetails['color'] = null;
     }
@@ -320,7 +336,7 @@ function updateEngine(&$cardetails)
     if (Input::get('engine')) {
         $cardetails['engine'] = Input::get('engine');
         $cardetails['engine'] = str_replace(" ", "", strtoupper(trim($cardetails['engine'])));
-        $successes[] = 'Engine Updated (' . $cardetails['engine'] . ')';
+        $successes[] = 'Engine: ' . $cardetails['engine'];
     } else {
         $cardetails['engine'] = null;
     }
@@ -332,7 +348,7 @@ function updatePurchasedate(&$cardetails)
     if (Input::get('purchasedate')) {
         $cardetails['purchasedate'] = Input::get('purchasedate');
         $cardetails['purchasedate'] = date("Y-m-d", strtotime($cardetails['purchasedate']));
-        $successes[] = 'Purchase Date Updated (' . $cardetails['purchasedate'] . ')';
+        $successes[] = 'Purchase Date: ' . $cardetails['purchasedate'];
     } else {
         $cardetails['purchasedate'] = null;
     }
@@ -344,7 +360,7 @@ function updateSolddate(&$cardetails)
     if (Input::get('solddate')) {
         $cardetails['solddate'] = Input::get('solddate');
         $cardetails['solddate'] = date("Y-m-d", strtotime($cardetails['solddate']));
-        $successes[] = 'Sold Date Updated (' . $cardetails['solddate'] . ')';
+        $successes[] = 'Sold Date: ' . $cardetails['solddate'];
     } else {
         $cardetails['solddate'] = null;
     }
@@ -355,7 +371,7 @@ function updateWebsite(&$cardetails)
     // Update 'website'
     if (Input::get('website')) {
         $cardetails['website'] = Input::get('website');
-        $successes[] = 'Website Updated (' . $cardetails['website'] . ')';
+        $successes[] = 'Website: ' . $cardetails['website'];
     } else {
         $cardetails['website'] = null;
     }
@@ -368,7 +384,7 @@ function updateComments(&$cardetails)
     // Update 'comments'
     if (Input::get('comments')) {
         $cardetails['comments'] = Input::get('comments');
-        $successes[] = 'Comments Updated (' . $cardetails['comments'] . ')';
+        $successes[] = 'Comments: Updated';
     } else {
         $cardetails['comments'] = null;
     }
@@ -473,20 +489,31 @@ function uploadImages(&$cardetails)
                 $newFileName = generateSecureFilename($extension);
 
                 if (move_uploaded_file($tempFile, $filePath . $newFileName)) {
-                    $successes[] = "Photo has been uploaded " . $name . " as " . $newFileName;
+                    $successes[] = "Photo uploaded: " . $name;
 
                     //  Create resized images
                     $fileinfo = pathinfo($filePath . $newFileName);
                     $filename = $fileinfo['filename'];
                     $extension = $fileinfo['extension'];
+                    $resizeSuccess = true;
 
                     foreach ($imageSizes as $size) {
                         $thumbname = $filePath . $filename . "-resized-" . $size . "." . $extension;
 
-                        $resizeObj = new Resize($filePath . $newFileName);
-                        $resizeObj->resizeImage($size, $size, 'auto');
-                        $resizeObj->saveImage($thumbname, 80);
-                        $successes[] = " Created " . $thumbname;
+                        try {
+                            $resizeObj = new Resize($filePath . $newFileName);
+                            $resizeObj->resizeImage($size, $size, 'auto');
+                            $resizeObj->saveImage($thumbname, 80);
+                        } catch (Exception $e) {
+                            $resizeSuccess = false;
+                            break;
+                        }
+                    }
+                    
+                    if ($resizeSuccess) {
+                        $successes[] = "Image resize: Success";
+                    } else {
+                        $errors[] = "Image resize: Failed";
                     }
                     arrayReplaceValue($requestedOrder, $name, $newFileName);
                 } else {
