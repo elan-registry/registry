@@ -134,9 +134,11 @@ Complex view combining car, user, and profile information including:
 
 ### Database Triggers
 **Car Audit Triggers**:
-- `cars_insert`: Logs new car registrations
-- `cars_update`: Logs modifications (with bypass option via `@disable_triggers`)
-- `cars_delete`: Logs car deletions
+- `cars_insert`: Logs new car registrations to `cars_hist` table
+- `cars_update`: Logs modifications to `cars_hist` table (with bypass option via `@disable_triggers`)  
+- `cars_delete`: Logs car deletions to `cars_hist` table
+
+**Note**: As of 2025-09-07, all car audit triggers have been updated to remove references to the deprecated `username` column that was removed from the `cars` table during the migration to the `car_user` junction table system.
 
 **Relationship Audit Triggers**:
 - `car_user_insert/update/delete`: Maintains audit trail for sharing relationships
