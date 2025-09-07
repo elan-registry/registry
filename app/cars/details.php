@@ -22,8 +22,8 @@ if (!securePage($_SERVER['PHP_SELF'])) {
 if (!empty($_GET)) {
     $carID = Input::get('car_id');
 
-    // Get the car information
-    $car = new Car($carID);
+    // Get the car information - cast to int for type safety
+    $car = new Car((int)$carID);
 
     // Validate that car exists
     if (!$car->exists()) {
