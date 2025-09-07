@@ -3,12 +3,13 @@ name: Claude Code Review
 on:
   pull_request:
     types: [opened, synchronize]
-    # Optional: Only run on specific file changes
-    # paths:
-    #   - "src/**/*.ts"
-    #   - "src/**/*.tsx"
-    #   - "src/**/*.js"
-    #   - "src/**/*.jsx"
+    # Focus on code files that need standards enforcement
+    paths:
+      - "**.php"
+      - "**.js" 
+      - "**.css"
+      - "docs/development/**"
+      - ".github/workflows/**"
 
 jobs:
   claude-review:
@@ -40,16 +41,56 @@ jobs:
           # Optional: Specify model (defaults to Claude Sonnet 4, uncomment for Claude Opus 4.1)
           # model: "claude-opus-4-1-20250805"
 
-          # Direct prompt for automated review (no @claude mention needed)
+          # Direct prompt for automated review with coding standards enforcement
           direct_prompt: |
-            Please review this pull request and provide feedback on:
-            - Code quality and best practices
-            - Potential bugs or issues
-            - Performance considerations
-            - Security concerns
-            - Test coverage
+            Please review this pull request against the Elan Registry coding standards (docs/development/CODING_STANDARDS.md).
             
-            Be constructive and helpful in your feedback.
+            🚨 CRITICAL COMPLIANCE CHECKS:
+            
+            **PHP 8+ Type Safety:**
+            ❌ FAIL if ANY function lacks complete type declarations (parameters AND return types)
+            ❌ FAIL if new PHP files missing `declare(strict_types=1)`
+            ❌ FAIL if using legacy syntax instead of modern PHP 8+ features
+            
+            **Security Requirements:**
+            ❌ FAIL if forms missing CSRF token validation with Token::check()
+            ❌ FAIL if database queries use string concatenation instead of parameterized statements
+            ❌ FAIL if user input not validated/sanitized
+            ❌ FAIL if file uploads missing comprehensive validation
+            
+            **Code Architecture:**
+            ❌ FAIL if throwing generic Exception instead of custom typed exceptions
+            ❌ FAIL if missing try-catch blocks for error-prone operations
+            ⚠️  WARN if method naming doesn't follow verb-based conventions
+            ⚠️  WARN if class organization doesn't follow standards (constants, properties, constructor, methods)
+            
+            **Documentation Requirements:**
+            ❌ FAIL if public methods missing PHPDoc blocks with @param, @return, @throws
+            ⚠️  WARN if complex logic lacks inline comments
+            ⚠️  WARN if TODO/FIXME comments don't reference issue numbers
+            
+            **Performance & Best Practices:**
+            ⚠️  WARN about N+1 database query patterns
+            ⚠️  WARN about missing caching for expensive operations
+            ⚠️  WARN about code duplication or DRY violations
+            
+            **PROJECT CONTEXT:**
+            This is a PHP web application for the Lotus Elan Registry built on UserSpice framework.
+            - Car class contains core business logic with typed methods
+            - All database operations must use prepared statements
+            - CSRF protection required for all forms
+            - Custom exception classes for proper error handling
+            
+            **REVIEW OUTPUT FORMAT:**
+            Provide specific feedback with:
+            1. ❌ **BLOCKING ISSUES** - Must be fixed before merge
+            2. ⚠️  **WARNINGS** - Should be addressed
+            3. ✅ **GOOD PRACTICES** - Highlight compliance with standards
+            4. 💡 **SUGGESTIONS** - Optional improvements
+            
+            For each issue, reference the specific coding standard rule and provide a code example of the correct implementation.
+            
+            Be constructive but firm about compliance with established standards.
 
           # Optional: Use sticky comments to make Claude reuse the same comment on subsequent pushes to the same PR
           # use_sticky_comment: true
@@ -68,8 +109,15 @@ jobs:
           #   'Welcome! Please review this PR from a first-time contributor. Be encouraging and provide detailed explanations for any suggestions.' ||
           #   'Please provide a thorough code review focusing on our coding standards and best practices.' }}
           
-          # Optional: Add specific tools for running tests or linting
-          # allowed_tools: "Bash(npm run test),Bash(npm run lint),Bash(npm run typecheck)"
+          # Enable tools for coding standards enforcement
+          allowed_tools: |
+            Bash(php -l **/*.php)
+            Bash(vendor/bin/phpunit tests/)
+            Bash(find . -name "*.php" -not -path "./vendor/*" -exec php -l {} \;)
+            Read(docs/development/CODING_STANDARDS.md)
+            Grep(declare\(strict_types=1\))
+            Grep(public function.*\):)
+            Grep(Token::check)
           
           # Optional: Skip review for certain conditions
           # if: |
