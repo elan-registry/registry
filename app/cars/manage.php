@@ -1690,13 +1690,9 @@ $(document).ready(function() {
     initializeReassignForm();
     initializeDeleteForm();
     
-    // Debug: Add click handler to ensure field is responsive
+    // User ID field responsive handler
     $('#reassign_user_id').on('click focus', function() {
-        console.log('User ID field clicked/focused, disabled:', $(this).prop('disabled'));
-        if ($(this).prop('disabled')) {
-            console.log('Field is disabled - this might be the issue');
-            console.log('Checkbox checked:', $('#noOwnerCheckbox').is(':checked'));
-        }
+        // Field interaction handled
     });
 
     // Auto-focus first input in reassignment form

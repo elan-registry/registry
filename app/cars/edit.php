@@ -391,9 +391,7 @@ require_once $abs_us_root . $us_url_root . 'users/includes/html_footer.php'; //c
                             'action': 'fetchImages'
                         },
                         success: function(data) {
-                            console.log('fetchImages response:', data);
                             if (data == null || data.status != 'success') {
-                                console.log('fetchImages failed or returned null');
                                 return;
                             }
                         $.each(data.images, function(key, value) {
@@ -420,8 +418,7 @@ require_once $abs_us_root . $us_url_root . 'users/includes/html_footer.php'; //c
 
                         },
                         error: function(xhr, status, error) {
-                            console.error('Failed to fetch images:', error);
-                            console.log('XHR response:', xhr.responseText);
+                            // Failed to fetch images - handle silently
                         }
                     });
                 }
@@ -540,7 +537,8 @@ require_once $abs_us_root . $us_url_root . 'users/includes/html_footer.php'; //c
                 });
                 setProgressBar(++current);
                 var html = "<table id='resultstable' class='table table-striped table-bordered table-sm text-wrap'>";
-                html += '<tr><td>Status</td><td>' + data.status + '</td></tr>';
+                var statusDisplay = data.status === 'error' ? '<strong class="text-danger">ERROR</strong>' : data.status;
+                html += '<tr><td>Status</td><td>' + statusDisplay + '</td></tr>';
                 html += '<tr><td>Info</td><td><ul>';
                 data.info.forEach(function(element, index, names) {
                     html += '<li>' + element + '</li>';
@@ -848,14 +846,8 @@ require_once $abs_us_root . $us_url_root . 'users/includes/html_footer.php'; //c
                 // Debug logging removed - validation working correctly
             },
             error: function(xhr, status, error) {
-                console.error('Chassis validation AJAX error:', {
-                    status: status,
-                    error: error,
-                    responseText: xhr.responseText,
-                    statusCode: xhr.status
-                });
                 validChassis = overrideEnabled ? _chassis : '';
-                updateChassisUI(validChassis !== '', 'Validation service temporarily unavailable - Check console for details');
+                updateChassisUI(validChassis !== '', 'Validation service temporarily unavailable');
             }
         });
     });
@@ -916,14 +908,13 @@ require_once $abs_us_root . $us_url_root . 'users/includes/html_footer.php'; //c
                 }
             },
             error: function(response) {
-                console.error('Chassis availability check failed:', response);
+                // Chassis availability check failed - handle silently
             }
         });
     }
 
     // Override checkbox event handler - re-validate when toggled
     $('#chassis_override').change(function() {
-        console.log('Override checkbox changed:', $(this).is(':checked'), 'Value:', $(this).val());
         if ($('#chassis').val()) {
             $('#chassis').trigger('blur');
         }
