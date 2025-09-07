@@ -1,5 +1,5 @@
 # Elan Registry Release Plan
-*Updated: September 5, 2025*
+*Updated: September 7, 2025*
 
 ## Current Version
 **v2.7.0** (Production)
@@ -13,7 +13,7 @@
 **Type:** Patch Release - Critical Bug Fixes  
 **Priority:** IMMEDIATE
 
-#### Issues:
+#### Issues (6 completed, 4 remaining):
 - **#250** - CRITICAL: Fix mobile accessibility - Enable zooming for users with vision impairments
   - **Impact:** Critical accessibility compliance issue
   - **Effort:** Small
@@ -23,8 +23,8 @@
 - **#241** - MEDIUM PRIORITY: Improve Car class security and error handling
   - **Impact:** Security hardening of core functionality
   - **Effort:** Medium
-- **#169** - Bug: Photos from some sources are not properly rotated
-  - **Impact:** Image display quality fix
+- **#169** ✅ **COMPLETED** - Bug: Photos from some sources are not properly rotated
+  - **Impact:** EXIF orientation handling for mobile uploads
   - **Effort:** Large
 - **#263** - Update UserSpice core for v2.7.1 compatibility
   - **Impact:** Framework compatibility verification
@@ -32,71 +32,131 @@
 - **#274** - Remove outdated migration plan document
   - **Impact:** Documentation cleanup after completed migration work
   - **Effort:** Extra Small
+- **#279** ✅ **COMPLETED** - Clean up debug console messages in car management JavaScript
+  - **Impact:** Production browser console cleanliness
+  - **Effort:** Extra Small
+- **#280** ✅ **COMPLETED** - Fix Dropzone JSON parse error and PHP deprecation warnings  
+  - **Impact:** Eliminate JSON parse errors and PHP 8+ warnings
+  - **Effort:** Small
+- **#281** ✅ **COMPLETED** - Improve car update success/error messages for better UX
+  - **Impact:** Cleaner success messages and prominent error display
+  - **Effort:** Small
+- **#282** ✅ **COMPLETED** - Fix 'There was a problem updating' car validation error
+  - **Impact:** Resolve car update validation failures
+  - **Effort:** Small
 
-**Deployment Notes:** Critical accessibility fix for mobile users, security improvements to Car class, image rotation fix, UserSpice compatibility verification, documentation cleanup
+**Deployment Notes:** Critical accessibility fix for mobile users, security improvements to Car class, EXIF image orientation handling, console cleanup, UX message improvements, car validation fixes, UserSpice compatibility verification, documentation cleanup
 
 ### 🔄 **v2.8.0: Core Stability** *(October 28, 2025)*
-**Type:** Minor Release - Stability & UX Improvements  
+**Type:** Minor Release - Stability, Performance & Code Quality  
 **Priority:** HIGH  
-**Estimated Development Time**: 3.5 weeks
+**Total Issues:** 14 issues across 4 logical work packages  
+**Estimated Development Time**: 3-4 weeks (focused scope)
 
-#### Core Issues:
+---
+
+## 📦 **WORK PACKAGE 1: Framework Stability** (Week 1)
+**Focus:** Core framework upgrades and deprecated function cleanup  
+**Priority:** CRITICAL - Must complete first  
+**Estimated Time:** 1 week
+
+### Issues:
 - **#237** - Replace deprecated display_errors() and display_successes() functions
-  - **Impact:** Eliminates deprecated function usage
-  - **Effort:** High Priority
+  - **Impact:** Eliminates deprecated function usage across application
+  - **Effort:** High Priority (affects multiple pages)
+- **#264** - Update UserSpice core for v2.8.0 stability improvements
+  - **Impact:** Framework compatibility and security updates
+  - **Effort:** High Priority (testing required)
 - **#255** - Enhance error handling with UserSpice logger integration
-  - **Impact:** Better error tracking and debugging
-  - **Effort:** High Priority
+  - **Impact:** Better error tracking and debugging capabilities
+  - **Effort:** High Priority (system-wide impact)
+
+---
+
+## 📦 **WORK PACKAGE 2: User Experience & Performance** (Week 2)
+**Focus:** UI improvements, accessibility, and Core Web Vitals  
+**Priority:** HIGH  
+**Estimated Time:** 1 week
+
+### Issues:
 - **#261** - UX: Improve error messages for better user experience
   - **Impact:** Clearer user feedback and guidance
-  - **Effort:** Small
+  - **Effort:** Small (enhanced by Package 1 logger work)
 - **#251** - FIX: Image layout shifts - Add aspect ratios to prevent CLS issues
-  - **Impact:** Performance improvement, better Core Web Vitals
-  - **Effort:** High Priority
+  - **Impact:** Performance improvement, better Core Web Vitals scores
+  - **Effort:** High Priority (affects SEO rankings)
+- **#253** - ACCESSIBILITY: Fix insufficient color contrast in text elements
+  - **Impact:** WCAG 2.1 compliance improvement
+  - **Effort:** Small (CSS adjustments)
+- **#252** - OPTIMIZE: Fix render-blocking CSS to improve page load performance
+  - **Impact:** Faster initial page loads
+  - **Effort:** Medium (critical CSS extraction)
 - **#246** - Homepage 'One of the Cars' should only select cars with valid images
   - **Impact:** Better homepage presentation quality
-  - **Effort:** Medium
+  - **Effort:** Small (query optimization)
 
-#### Database Cleanup:
-- **#267** - Remove usersview database view and replace with proper user data access
-  - **Impact:** Database modernization, removes view dependency
-  - **Effort:** Medium (3 locations to update)
-- **#264** - Update UserSpice core for v2.8.0 stability improvements
-  - **Impact:** Framework compatibility verification
-  - **Effort:** High Priority
+---
 
-#### Codebase Cleanup:
-- **#273** - Remove backward compatibility redirect files from app/ directory
-  - **Impact:** Removes 9 temporary redirect files from file reorganization
-  - **Effort:** Extra Small (simple file deletion after verification)
+## 📦 **WORK PACKAGE 3: Code Architecture & OOP Modernization** (Week 3)
+**Focus:** Clean code practices and modern PHP patterns  
+**Priority:** MEDIUM  
+**Estimated Time:** 3-4 days
+
+### Issues (Sequential Dependencies):
 - **#276** - Move findByOwner to Car class as static method
-  - **Impact:** Proper OOP design, better code organization
-  - **Effort:** Extra Small (30 minutes, follows standard factory method pattern)
+  - **Impact:** Proper OOP factory method pattern
+  - **Effort:** Extra Small (30 minutes)
 - **#277** - Rename CarHelpers to CarView for proper separation of concerns
-  - **Impact:** Clear separation between data operations and display logic
-  - **Effort:** Extra Small (15 minutes, simple class rename)
+  - **Impact:** Clear MVC separation (Model vs View)
+  - **Effort:** Extra Small (15 minutes)
   - **Dependencies:** Requires #276
-- **#278** - Replace deprecated function calls with new class methods
-  - **Impact:** Modern OOP patterns, better type safety and IDE support
-  - **Effort:** Small (1-2 hours depending on usage count)
+- **#278** - Replace deprecated function calls with new class methods  
+  - **Impact:** Modern OOP patterns, better IDE support
+  - **Effort:** Small (1-2 hours search/replace)
   - **Dependencies:** Requires #276 and #277
+- **#273** - Remove backward compatibility redirect files from app/ directory
+  - **Impact:** Cleanup 9 temporary files from reorganization
+  - **Effort:** Extra Small (file deletion after verification)
 
-#### Admin Interface Improvements:
+---
+
+## 📦 **WORK PACKAGE 4: Performance Optimization** (Week 4)
+**Focus:** Database and query performance improvements  
+**Priority:** MEDIUM  
+**Estimated Time:** 3-4 days
+
+### Issues:
+- **#240** - MEDIUM PRIORITY: Optimize Car class database queries and performance
+  - **Impact:** Faster car data operations, reduced server load
+  - **Effort:** Medium (query optimization and caching)
+- **#176** - Add image sizes to configuration
+  - **Impact:** Centralized image size management
+  - **Effort:** Small (configuration extraction)
+
+---
+
+**Deployment Notes:** Enhanced error handling and logging, significant performance improvements, modern code architecture, UX and accessibility improvements, clean codebase with modern OOP patterns
+
+### 🏗️ **v2.9.0: Admin & Data Management** *(November 15, 2025)*
+**Estimated Development Time**: 3 weeks  
+**Type:** Minor Release - Admin Features & Data Management  
+**Priority:** MEDIUM  
+**Total Issues:** 8 issues (moved from v2.8.0 + existing)
+
+#### Database Modernization:
+- **#267** - Remove usersview database view and replace with proper user data access
+  - **Impact:** Database modernization, removes view dependency  
+  - **Effort:** Medium (3 locations to update with JOIN queries)
+
+#### Admin Interface Overhaul:
 - **#269** - Create ElanRegistry-specific owner management interface for profile editing
   - **Impact:** Enables profile editing from car quality reports, geolocation updates
   - **Effort:** Large (new interface with multiple integrations)
-- **#270** - Consolidate admin interfaces: Manage Cars, Owners, Data Quality and Fix Scripts  
-  - **Impact:** Unified admin experience, better organization
+- **#270** - Consolidate admin interfaces: Manage Cars, Owners, Data Quality and Fix Scripts
+  - **Impact:** Unified admin dashboard experience
   - **Effort:** Medium (interface reorganization and navigation)
 
-**Deployment Notes:** Improved error handling and logging, better UX with clearer error messages, performance improvements to image loading, database view cleanup, comprehensive admin interface overhaul
-
-### 🏗️ **v2.9.0: Admin & Data Management** *(November 15, 2025)*
-**Estimated Development Time**: 2 weeks
-**Type:** Minor Release - Admin Features & Search Enhancement  
-**Priority:** MEDIUM
-
-#### Issues:
+#### User Experience Improvements:
 - **#229** - Self-Service Car Ownership Transfer System
   - **Impact:** 90% reduction in manual transfer work
   - **Effort:** High Priority
@@ -104,7 +164,18 @@
   - **Impact:** Better user experience for finding cars
   - **Effort:** Large
 
-**Deployment Notes:** New self-service features for users, enhanced search capabilities, admin workflow improvements
+#### Data Validation & Quality:
+- **#188** - Website Field Validation on user_settings.php
+  - **Impact:** Better data quality and user experience
+  - **Effort:** Small (URL validation enhancement)
+- **#161** - Error logging improvements
+  - **Impact:** Enhanced debugging capabilities (complements v2.8.0 logger work)
+  - **Effort:** Medium
+- **#10** - User Add and Account Update - Data Validation
+  - **Impact:** Comprehensive input validation across user forms
+  - **Effort:** Medium (form validation overhaul)
+
+**Deployment Notes:** Comprehensive admin interface overhaul, self-service user features, enhanced search capabilities, database modernization, improved data validation and quality controls
 
 ### 🚀 **v3.0.0: Admin Automation** *(January 15, 2026)*
 **Estimated Development Time**: 12 weeks (8 weeks testing infrastructure + 4 weeks automation)
@@ -165,7 +236,7 @@
 
 | Version | Target Date | Type | Focus | Issues | Est. Dev Time |
 |---------|-------------|------|--------|---------|---------------|
-| **v2.7.1** | Sep 12, 2025 | Patch | Critical Fixes | 6 | 1.5 weeks |
+| **v2.7.1** | Sep 12, 2025 | Patch | Critical Fixes | 10 (6 completed, 4 remaining) | 1.5 weeks |
 | **v2.8.0** | Oct 28, 2025 | Minor | Core Stability | 18 | 3.5 weeks |  
 | **v2.9.0** | Nov 15, 2025 | Minor | Admin & Data | 10 | 2 weeks |
 | **v3.0.0** | Jan 15, 2026 | Major | Automation | 24 | 4 weeks |
