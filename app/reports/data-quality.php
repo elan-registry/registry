@@ -263,7 +263,8 @@ function getDataQualityReports($db) {
                COUNT(CASE WHEN username IS NOT NULL AND username != '' THEN 1 END) as has_username
         FROM cars
     ");
-    $usernameStats = $deprecatedUsernameQ->results()[0];
+    $usernameResults = $deprecatedUsernameQ->results();
+    $usernameStats = !empty($usernameResults) ? $usernameResults[0] : null;
     
     // Check car_user relationships
     $carUserRelationsQ = $db->query("
@@ -272,17 +273,18 @@ function getDataQualityReports($db) {
         INNER JOIN car_user cu ON c.id = cu.car_id
         WHERE c.username IS NULL OR c.username = ''
     ");
-    $relationStats = $carUserRelationsQ->results()[0];
+    $relationResults = $carUserRelationsQ->results();
+    $relationStats = !empty($relationResults) ? $relationResults[0] : null;
     
     $reports['deprecated_username'] = [
         'title' => 'Deprecated Username Field Analysis',
         'description' => 'Analysis of legacy username field usage vs modern car_user relationships',
         'icon' => 'fas fa-archive',
         'severity' => 'info', 
-        'count' => $usernameStats->missing_username,
-        'total_cars' => $usernameStats->total_cars,
-        'cars_with_username' => $usernameStats->has_username,
-        'cars_with_relations' => $relationStats->cars_with_relations,
+        'count' => $usernameStats ? $usernameStats->missing_username : 0,
+        'total_cars' => $usernameStats ? $usernameStats->total_cars : 0,
+        'cars_with_username' => $usernameStats ? $usernameStats->has_username : 0,
+        'cars_with_relations' => $relationStats ? $relationStats->cars_with_relations : 0,
         'data' => [],
         'impact' => 'Low - Field is deprecated but does not affect functionality'
     ];

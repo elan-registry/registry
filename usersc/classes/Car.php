@@ -153,13 +153,17 @@ class Car
         
         $filteredFields = array_intersect_key($fields, array_flip($validCarFields));
         
-        // Debug: Log the fields being passed for update
-        logger($fields['user_id'] ?? 0, 'CarUpdate', 'Attempting update for car ID: ' . $filteredFields['id'] . ' with ' . count($filteredFields) . ' filtered fields');
+        // Extract ID for update method and remove from fields array
+        $carId = $filteredFields['id'];
+        unset($filteredFields['id']);
         
-        if (!$this->_db->update($this->tableName, $filteredFields['id'], $filteredFields)) {
+        // Debug: Log the fields being passed for update
+        logger($fields['user_id'] ?? 0, 'CarUpdate', 'Attempting update for car ID: ' . $carId . ' with ' . count($filteredFields) . ' filtered fields');
+        
+        if (!$this->_db->update($this->tableName, $carId, $filteredFields)) {
             throw new CarValidationException('Database update failed - check logs for details');
         } else {
-            $this->find($filteredFields['id']);  // Populate the car with the data
+            $this->find($carId);  // Populate the car with the data
         }
 
         return true;
