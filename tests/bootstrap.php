@@ -22,6 +22,11 @@ if (!isset($_SESSION)) {
     $_SESSION = [];
 }
 
+// Load actual classes for testing
+if (file_exists($projectRoot . '/usersc/classes/Resize.php')) {
+    require_once $projectRoot . '/usersc/classes/Resize.php';
+}
+
 // Mock classes for testing if they don't exist
 if (!class_exists('Token')) {
     class Token {
@@ -126,7 +131,8 @@ if (!function_exists('validateFileUpload')) {
 }
 
 // Mock Car class if not loaded from UserSpice
-if (!class_exists('Car')) {
+// Only use mock for pure unit tests to avoid conflicts
+if (!class_exists('Car') && (defined('TESTING_UNIT_ONLY') || !file_exists(dirname(__DIR__) . '/usersc/classes/Car.php'))) {
     class Car {
         private $data;
         private static $nextId = 1000;

@@ -186,7 +186,7 @@ $line = 1; // Where messages go
                                     // Step 4: Verify cleanup
                                     logProgress("Step 4: Verifying cleanup completion", 'info');
                                     
-                                    $verifyQuery = $db->query("SELECT COUNT(*) as remaining FROM car_user WHERE carid NOT IN (SELECT id FROM cars)");
+                                    $verifyQuery = $db->query("SELECT COUNT(*) as remaining FROM car_user WHERE car_id NOT IN (SELECT id FROM cars)");
                                     $remainingCount = $verifyQuery->first()->remaining;
                                     
                                     if ($remainingCount == 0) {
@@ -227,7 +227,8 @@ $line = 1; // Where messages go
                                 <?php
                                 // Get final statistics
                                 $totalCarUserRecords = $db->query("SELECT COUNT(*) as total FROM car_user")->first()->total;
-                                $remainingOrphaned = $db->query("SELECT COUNT(*) as remaining FROM car_user WHERE carid NOT IN (SELECT id FROM cars)")->first()->remaining;
+                                $result = $db->query("SELECT COUNT(*) as remaining FROM car_user WHERE car_id NOT IN (SELECT id FROM cars)")->first();
+                                $remainingOrphaned = $result ? $result->remaining : 0;
                                 $totalCars = $db->query("SELECT COUNT(*) as total FROM cars")->first()->total;
                                 $totalUsers = $db->query("SELECT COUNT(*) as total FROM users")->first()->total;
                                 ?>

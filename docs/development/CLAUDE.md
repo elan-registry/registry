@@ -107,6 +107,16 @@ See comprehensive documentation in `docs/development/ENVIRONMENT.md`:
 
 ## 🔧 Development Guidelines
 
+### Coding Standards
+**📋 See [CODING_STANDARDS.md](CODING_STANDARDS.md) for comprehensive development guidelines**
+
+Key requirements for all new code:
+- **PHP 8+ Type Declarations**: All functions must have complete parameter and return type hints
+- **Strict Typing**: New files must include `declare(strict_types=1)`
+- **Custom Exceptions**: Use typed exception classes for proper error handling
+- **Security First**: Follow secure coding practices outlined in coding standards
+- **Documentation**: Complete PHPDoc blocks required for all public methods
+
 ### Security Requirements
 - All forms must use CSRF tokens
 - Use prepared statements for SQL queries

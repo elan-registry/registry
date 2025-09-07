@@ -198,7 +198,7 @@ echo html_entity_decode($settings->elan_datatables_css_cdn);
           }
         },
         error: function(xhr, status, error) {
-          console.error('Error checking registry for chassis:', chassis, error);
+          // Registry check failed - handle silently
           container.html(
             '<span class="text-danger small">' +
             '<i class="fas fa-exclamation-triangle"></i> Check failed' +

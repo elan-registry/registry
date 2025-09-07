@@ -48,7 +48,6 @@ class Car
             $this->imageDir = $settings->elan_image_dir  . $id . '/';
             $this->find($id);
         }
-        return true;
     }
 
     /**
@@ -63,7 +62,12 @@ class Car
         $settings = getSettings();  // Get global settings from plugin
 
         if (empty($fields)) {
-            throw new Exception('No data provided for car creation');
+            throw new CarCreationException('No data provided for car creation');
+        }
+        
+        // CSRF Protection
+        if (!isset($fields['token']) || !Token::check($fields['token'])) {
+            throw new CarCreationException('Invalid CSRF token provided');
         }
         
         // Validate required fields
@@ -77,17 +81,17 @@ class Car
             try {
                 $fields['image'] = json_encode($fields['images']);
                 if ($fields['image'] === false) {
-                    throw new Exception('Failed to encode images as JSON');
+                    throw new ImageProcessingException('Failed to encode images as JSON');
                 }
                 unset($fields['images']);
             } catch (Exception $e) {
                 error_log("Car class: Image encoding error during create: " . $e->getMessage());
-                throw new Exception('Error processing car images: ' . $e->getMessage());
+                throw new ImageProcessingException('Error processing car images: ' . $e->getMessage());
             }
         }
 
         if (!$this->_db->insert($this->tableName, $fields)) {
-            throw new Exception($this->_db->errorString());
+            throw new CarCreationException('Database error during car creation: ' . $this->_db->errorString());
         } else {
             $id = $this->_db->lastId();
             $this->find($id);  // Populate the car with the data
@@ -106,11 +110,16 @@ class Car
     public function update(array $fields = []): bool
     {
         if (empty($fields) || !isset($fields['id'])) {
-            throw new Exception('No data or ID provided for car update');
+            throw new CarValidationException('No data or ID provided for car update');
+        }
+        
+        // CSRF Protection
+        if (!isset($fields['token']) || !Token::check($fields['token'])) {
+            throw new CarValidationException('Invalid CSRF token provided');
         }
         
         if (!is_numeric($fields['id']) || $fields['id'] <= 0) {
-            throw new Exception('Invalid car ID provided for update');
+            throw new CarValidationException('Invalid car ID provided for update');
         }
         
         // Validate and sanitize fields (excluding id which is already validated)
@@ -126,19 +135,31 @@ class Car
             try {
                 $fields['image'] = json_encode($fields['images']);
                 if ($fields['image'] === false) {
-                    throw new Exception('Failed to encode images as JSON');
+                    throw new ImageProcessingException('Failed to encode images as JSON');
                 }
                 unset($fields['images']);
             } catch (Exception $e) {
                 error_log("Car class: Image encoding error during update: " . $e->getMessage());
-                throw new Exception('Error processing car images: ' . $e->getMessage());
+                throw new ImageProcessingException('Error processing car images: ' . $e->getMessage());
             }
         }
 
-        if (!$this->_db->update($this->tableName, $fields['id'], $fields)) {
-            throw new Exception('There was a problem updating.');
+        // Filter fields to only include valid cars table columns
+        $validCarFields = [
+            'id', 'user_id', 'year', 'model', 'series', 'variant', 'type', 
+            'chassis', 'color', 'engine', 'purchasedate', 'solddate', 
+            'website', 'comments', 'image', 'mtime'
+        ];
+        
+        $filteredFields = array_intersect_key($fields, array_flip($validCarFields));
+        
+        // Debug: Log the fields being passed for update
+        logger($fields['user_id'] ?? 0, 'CarUpdate', 'Attempting update for car ID: ' . $filteredFields['id'] . ' with ' . count($filteredFields) . ' filtered fields');
+        
+        if (!$this->_db->update($this->tableName, $filteredFields['id'], $filteredFields)) {
+            throw new CarValidationException('Database update failed - check logs for details');
         } else {
-            $this->find($fields['id']);  // Populate the car with the data
+            $this->find($filteredFields['id']);  // Populate the car with the data
         }
 
         return true;
@@ -345,12 +366,12 @@ class Car
     {
         // Validate input
         if (empty($filename)) {
-            throw new Exception('Image filename cannot be empty');
+            throw new ImageProcessingException('Image filename cannot be empty');
         }
 
         // Ensure car exists
         if (!$this->exists()) {
-            throw new Exception('Car not found');
+            throw new CarNotFoundException('Car not found');
         }
 
         // Get current images
@@ -381,7 +402,7 @@ class Car
         // Update database with JSON format
         $imageJson = empty($currentImages) ? '' : json_encode($currentImages);
         if ($imageJson === false && !empty($currentImages)) {
-            throw new Exception('Failed to encode images as JSON');
+            throw new ImageProcessingException('Failed to encode images as JSON');
         }
 
         try {
@@ -419,14 +440,19 @@ class Car
     {
         global $user;
         
+        // CSRF Protection - Check token from session/request
+        if (!Token::check()) {
+            throw new CarDeletionException('Invalid CSRF token for car deletion');
+        }
+        
         // Ensure car exists
         if (!$this->exists()) {
-            throw new Exception('Car not found - cannot delete');
+            throw new CarNotFoundException('Car not found - cannot delete');
         }
 
         // Validate we have a valid user for audit purposes
         if (!isset($user) || !$user->isLoggedIn()) {
-            throw new Exception('User authentication required for car deletion');
+            throw new CarDeletionException('User authentication required for car deletion');
         }
 
         $carId = $this->_data->id;
@@ -504,7 +530,7 @@ class Car
 
         // Validate we have a valid user for audit purposes
         if (!isset($user) || !$user->isLoggedIn()) {
-            throw new Exception('User authentication required for car transfer');
+            throw new CarTransferException('User authentication required for car transfer');
         }
 
         // Validate new user exists
@@ -605,7 +631,7 @@ class Car
 
         // Validate we have a valid user for audit purposes
         if (!isset($user) || !$user->isLoggedIn()) {
-            throw new Exception('User authentication required for car merge');
+            throw new CarMergeException('User authentication required for car merge');
         }
 
         // Validate old car exists
@@ -842,7 +868,7 @@ class Car
      * @param string $table Table type ('cars' or 'factory')
      * @return array DataTables response array
      */
-    public function getDataTablesData($request, $table = 'cars')
+    public function getDataTablesData(array $request, string $table = 'cars'): array
     {
         // Validate and sanitize table parameter
         $validTables = [
@@ -930,7 +956,7 @@ class Car
      * @param string $tableName Table name for context
      * @return string|false Validated column name or false if invalid
      */
-    private function validateColumnName($columnName, $tableName)
+    private function validateColumnName(string $columnName, string $tableName): string|false
     {
         // Define allowed columns for each table (based on actual schema)
         $allowedColumns = [
