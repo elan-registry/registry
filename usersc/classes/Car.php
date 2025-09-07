@@ -152,17 +152,38 @@ class Car
         ];
         
         $filteredFields = array_intersect_key($fields, array_flip($validCarFields));
+        logger($fields['user_id'] ?? 0, 'CarUpdate', 'Raw filtered fields count: ' . count($filteredFields));
+        logger($fields['user_id'] ?? 0, 'CarUpdate', 'Raw filtered fields: ' . json_encode(array_keys($filteredFields)));
         
         // Extract ID for update method and remove from fields array
         $carId = $filteredFields['id'];
         unset($filteredFields['id']);
         
+        // Remove empty fields that might cause issues with UserSpice
+        $filteredFields = array_filter($filteredFields, function($value) {
+            return $value !== '' && $value !== null;
+        });
+        
+        logger($fields['user_id'] ?? 0, 'CarUpdate', 'Final filtered fields count after removing empty: ' . count($filteredFields));
+        
         // Debug: Log the fields being passed for update
         logger($fields['user_id'] ?? 0, 'CarUpdate', 'Attempting update for car ID: ' . $carId . ' with ' . count($filteredFields) . ' filtered fields');
+        logger($fields['user_id'] ?? 0, 'CarUpdate', 'Fields to update: ' . json_encode($filteredFields));
+        logger($fields['user_id'] ?? 0, 'CarUpdate', 'Table name: ' . $this->tableName);
         
-        if (!$this->_db->update($this->tableName, $carId, $filteredFields)) {
+        $updateResult = $this->_db->update($this->tableName, $carId, $filteredFields);
+        logger($fields['user_id'] ?? 0, 'CarUpdate', 'DB update result: ' . ($updateResult ? 'TRUE' : 'FALSE'));
+        logger($fields['user_id'] ?? 0, 'CarUpdate', 'DB error status: ' . ($this->_db->error() ? 'ERROR' : 'NO ERROR'));
+        
+        if ($this->_db->error()) {
+            logger($fields['user_id'] ?? 0, 'CarUpdate', 'DB error string: ' . $this->_db->errorString());
+        }
+        
+        if (!$updateResult) {
+            logger($fields['user_id'] ?? 0, 'CarUpdate', 'Update returned false - throwing exception');
             throw new CarValidationException('Database update failed - check logs for details');
         } else {
+            logger($fields['user_id'] ?? 0, 'CarUpdate', 'Update successful - refreshing car data');
             $this->find($carId);  // Populate the car with the data
         }
 
