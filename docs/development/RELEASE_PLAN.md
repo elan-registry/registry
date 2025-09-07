@@ -121,6 +121,11 @@
   - **Impact:** Modern OOP patterns, better IDE support
   - **Effort:** Small (1-2 hours search/replace)
   - **Dependencies:** Requires #276 and #277
+- **CODE QUALITY** - Standardize type declarations in edit.php functions
+  - **Impact:** PHP 8+ compatibility, improved IDE support, better error detection
+  - **Effort:** Extra Small (30-45 minutes - lines 322-404)
+  - **Files:** `app/cars/actions/edit.php` functions: updateColor(), updateEngine(), updateChassis(), etc.
+  - **Action:** Add proper parameter and return type hints to legacy functions
 - **#273** - Remove backward compatibility redirect files from app/ directory
   - **Impact:** Cleanup 9 temporary files from reorganization
   - **Effort:** Extra Small (file deletion after verification)
@@ -142,7 +147,7 @@
 
 ---
 
-**Deployment Notes:** Enhanced error handling and logging, significant performance improvements, modern code architecture, UX and accessibility improvements, clean codebase with modern OOP patterns
+**Deployment Notes:** Enhanced error handling and logging, significant performance improvements, modern code architecture with PHP 8+ type declarations, UX and accessibility improvements, clean codebase with modern OOP patterns
 
 ### 🏗️ **v2.9.0: Admin & Data Management** *(November 15, 2025)*
 **Estimated Development Time**: 3 weeks  
