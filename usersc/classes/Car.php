@@ -152,8 +152,6 @@ class Car
         ];
         
         $filteredFields = array_intersect_key($fields, array_flip($validCarFields));
-        logger($fields['user_id'] ?? 0, 'CarUpdate', 'Raw filtered fields count: ' . count($filteredFields));
-        logger($fields['user_id'] ?? 0, 'CarUpdate', 'Raw filtered fields: ' . json_encode(array_keys($filteredFields)));
         
         // Extract ID for update method and remove from fields array
         $carId = $filteredFields['id'];
@@ -164,33 +162,13 @@ class Car
             return $value !== '' && $value !== null;
         });
         
-        logger($fields['user_id'] ?? 0, 'CarUpdate', 'Final filtered fields count after removing empty: ' . count($filteredFields));
-        
-        // Debug: Log the fields being passed for update
-        logger($fields['user_id'] ?? 0, 'CarUpdate', 'Attempting update for car ID: ' . $carId . ' with ' . count($filteredFields) . ' filtered fields');
-        logger($fields['user_id'] ?? 0, 'CarUpdate', 'Fields to update: ' . json_encode($filteredFields));
-        logger($fields['user_id'] ?? 0, 'CarUpdate', 'Table name: ' . $this->tableName);
-        
         $updateResult = $this->_db->update($this->tableName, $carId, $filteredFields);
-        logger($fields['user_id'] ?? 0, 'CarUpdate', 'DB update result: ' . ($updateResult ? 'TRUE' : 'FALSE'));
-        logger($fields['user_id'] ?? 0, 'CarUpdate', 'DB error status: ' . ($this->_db->error() ? 'ERROR' : 'NO ERROR'));
-        
-        if ($this->_db->error()) {
-            logger($fields['user_id'] ?? 0, 'CarUpdate', 'DB error string: ' . $this->_db->errorString());
-        }
         
         // Check if there was an actual database error vs UserSpice returning false for "no changes"
         if (!$updateResult && $this->_db->error()) {
-            logger($fields['user_id'] ?? 0, 'CarUpdate', 'Update failed with database error - throwing exception');
             throw new CarValidationException('Database update failed - check logs for details');
-        } else if (!$updateResult && !$this->_db->error()) {
-            logger($fields['user_id'] ?? 0, 'CarUpdate', 'Update returned false but no DB error - likely no changes detected by UserSpice');
-            // UserSpice returned false but no error - this often means "no changes needed"
-            // Since you confirmed DB update does occur, we'll treat this as success
-            logger($fields['user_id'] ?? 0, 'CarUpdate', 'Treating as successful update - refreshing car data');
-            $this->find($carId);  // Populate the car with the data
         } else {
-            logger($fields['user_id'] ?? 0, 'CarUpdate', 'Update successful - refreshing car data');
+            // UserSpice returned false but no error means "no changes needed" - treat as success
             $this->find($carId);  // Populate the car with the data
         }
 
