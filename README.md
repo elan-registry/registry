@@ -40,10 +40,11 @@ The registry represents the collaborative effort of many enthusiasts from the El
 - Google Maps API key
 
 ### Installation
+0. Install UserSpice - https://userspice.com
 1. Clone the repository
 2. Install dependencies: `composer install`
 3. Configure environment variables (see `ENVIRONMENT.md`)
-4. Import database schema
+4. Import database schema (TODO)
 5. Configure web server to serve from project root
 
 For detailed setup instructions, see `ENVIRONMENT.md`.
