@@ -19,6 +19,7 @@ TODO
 .scannerwork/*
 .git
 .htaccess
+!usersc/plugins/hooker/hooks/.htaccess
 runme.php
 
 ########################################
@@ -56,8 +57,7 @@ usersc/plugins/*
 !usersc/plugins/hooker/
 usersc/plugins/hooker/*
 !usersc/plugins/hooker/hooks/
-usersc/plugins/hooker/hooks/sample_hook.php
-usersc/plugins/hooker/hooks/uman_tbody.php
+!usersc/plugins/hooker/hooks/*
 
 ########################################
 # Usersc Templates, Widgets, Install
@@ -67,6 +67,8 @@ usersc/templates/*
 usersc/widgets/*
 !usersc/widgets/settings/
 usersc/widgets/settings/*.png
+!usersc/widgets/tools/
+usersc/widgets/tools/*.png
 install/*
 
 ########################################
@@ -110,8 +112,7 @@ usupdate.zip
 FIX/backups/
 FIX/rollback_*.php
 
-
-
-
 users/logs/*.log.php
 usersc/includes/totp_key.php
+usersc/plugins/plugins.ini.php
+**/.DS_Store
