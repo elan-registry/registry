@@ -37,7 +37,12 @@ The registry represents the collaborative effort of many enthusiasts from the El
 - PHP 7.4+
 - MySQL 8.0+
 - Composer for dependency management
-- Google Maps API key
+
+**Required API Keys:**
+- Google Maps API Key (for map displays)
+- Google Geocoding API Key (for location lookup)
+- reCAPTCHA Keys (for spam protection)
+- Brevo/Sendinblue API Key or SMTP configuration (for email delivery)
 
 ### Installation
 0. Install UserSpice - https://userspice.com
@@ -47,7 +52,7 @@ The registry represents the collaborative effort of many enthusiasts from the El
 4. Import database schema (TODO)
 5. Configure web server to serve from project root
 
-For detailed setup instructions, see `ENVIRONMENT.md`.
+For detailed setup instructions including API key configuration, see the complete installation guide in `docs/development/INSTALLATION.md`.
 
 ## Development
 
