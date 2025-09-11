@@ -148,8 +148,7 @@ $notes['+2']     = "4526";
 								<td><?= $car->data()->type ?></td>
 							</tr>
 							<tr>
-								<td colspan='2'><a class='btn btn-success btn-sm' href='<?= $us_url_root ?>
-									app/cars/details.php?car_id=<?= $car->data()->id ?>'><i class='fas fa-eye'></i> Details</a></td>
+								<td colspan='2'><a class='btn btn-success btn-sm' href='<?= $us_url_root ?>app/cars/details.php?car_id=<?= $car->data()->id ?>'><i class='fas fa-eye'></i> Details</a></td>
 							</tr>
 						</table>
 					</div> <!-- card-body -->
