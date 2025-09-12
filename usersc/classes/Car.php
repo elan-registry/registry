@@ -868,6 +868,36 @@ class Car
     }
     
     /**
+     * Find all cars owned by a specific user
+     * 
+     * Factory method for retrieving Car objects by owner ID.
+     * Follows standard OOP pattern for data retrieval operations.
+     * 
+     * @param int $ownerID User ID of the car owner
+     * @return array Array of Car objects owned by the user
+     * @throws CarValidationException If owner ID is invalid
+     * 
+     * @see https://github.com/unibrain1/elanregistry/issues/276 Issue #276: Move findByOwner to Car class
+     */
+    public static function findByOwner(int $ownerID): array
+    {
+        // Input validation
+        if ($ownerID <= 0) {
+            throw new CarValidationException('Invalid owner ID provided');
+        }
+        
+        $db = DB::getInstance();
+        $carQ = $db->query("SELECT id FROM cars WHERE user_id = ?", array($ownerID))->results();
+        $cars = [];
+
+        foreach ($carQ as $key => $car) {
+            $cars[$key] = new Car($car->id);
+        }
+        
+        return $cars;
+    }
+    
+    /**
      * Get car owner information
      *
      * @return array|object Owner information

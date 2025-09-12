@@ -122,31 +122,6 @@ class CarView
         return $html;
     }
 
-    /**
-     * Find all cars owned by a specific user
-     * 
-     * @param int $ownerID User ID of the car owner
-     * @return array Array of Car objects owned by the user
-     * @throws CarValidationException If owner ID is invalid
-     */
-    public static function findByOwner(int $ownerID): array
-    {
-        // Input validation
-        if ($ownerID <= 0) {
-            throw new CarValidationException('Invalid owner ID provided');
-        }
-        
-        global $db;
-
-        $carQ = $db->query("SELECT id FROM cars WHERE user_id = ?", array($ownerID))->results();
-        $cars = [];
-
-        foreach ($carQ as $key => $car) {
-            $cars[$key] = new Car($car->id);
-        }
-        
-        return $cars;
-    }
 }
 
 // Backward compatibility functions - delegate to static class methods
@@ -159,5 +134,5 @@ function displayCarousel($car) {
 }
 
 function findByOwner($ownerID) {
-    return CarView::findByOwner($ownerID);
+    return Car::findByOwner($ownerID);
 }
