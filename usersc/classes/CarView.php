@@ -128,15 +128,3 @@ class CarView
 
 }
 
-// Backward compatibility functions - delegate to static class methods
-function loadPicture($image, $thumbnail = null) {
-    return CarView::loadPicture($image, $thumbnail);
-}
-
-function displayCarousel($car) {
-    return CarView::displayCarousel($car);
-}
-
-function findByOwner($ownerID) {
-    return Car::findByOwner($ownerID);
-}

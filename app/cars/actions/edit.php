@@ -319,7 +319,7 @@ function updateChassis(array &$cardetails): void
     }
 }
 
-function updateColor(&$cardetails)
+function updateColor(array &$cardetails): void
 {
     // Update 'color'
     if (Input::get('color')) {
@@ -330,7 +330,7 @@ function updateColor(&$cardetails)
     }
 }
 
-function updateEngine(&$cardetails)
+function updateEngine(array &$cardetails): void
 {
     // Update 'engine'
     if (Input::get('engine')) {
@@ -342,7 +342,7 @@ function updateEngine(&$cardetails)
     }
 }
 
-function updatePurchasedate(&$cardetails)
+function updatePurchasedate(array &$cardetails): void
 {
     // Update 'purchasedate'
     if (Input::get('purchasedate')) {
@@ -354,7 +354,7 @@ function updatePurchasedate(&$cardetails)
     }
 }
 
-function updateSolddate(&$cardetails)
+function updateSolddate(array &$cardetails): void
 {
     // Update 'solddate'
     if (Input::get('solddate')) {
@@ -366,7 +366,7 @@ function updateSolddate(&$cardetails)
     }
 }
 
-function updateWebsite(&$cardetails)
+function updateWebsite(array &$cardetails): void
 {
     // Update 'website'
     if (Input::get('website')) {
@@ -377,7 +377,7 @@ function updateWebsite(&$cardetails)
     }
 }
 
-function updateComments(&$cardetails)
+function updateComments(array &$cardetails): void
 {
     global $successes, $chassis_override_used;
     
@@ -403,7 +403,7 @@ function updateComments(&$cardetails)
     }
 }
 
-function buildImageDetails(&$cardetails)
+function buildImageDetails(array &$cardetails): void
 {
     // This needs to happen before processinging new files to the event the order changes
     // without adding new files
@@ -418,7 +418,7 @@ function buildImageDetails(&$cardetails)
     }
 }
 
-function uploadImages(&$cardetails)
+function uploadImages(array &$cardetails): void
 {
     global $targetFilePath;
     global $errors;

@@ -15,7 +15,7 @@ if ($userQ->count() > 0) {
     $thatUser = $userQ->results();
 }
 
-$cars = findByOwner($user_id);
+$cars = Car::findByOwner($user_id);
 
 ?>
 
@@ -237,7 +237,7 @@ $cars = findByOwner($user_id);
                                 <h4 class="mb-0"><i class="fas fa-images text-primary"></i> Photos</h4>
                             </div>
                             <div class="card-body">
-                                <?php echo displayCarousel($car); ?>
+                                <?php echo CarView::displayCarousel($car); ?>
                             </div>
                         </div>
                         <!-- Factory Data Card -->

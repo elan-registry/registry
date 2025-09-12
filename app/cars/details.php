@@ -377,7 +377,7 @@ if (!empty($_GET)) {
                             <h3 class="mb-0"><i class="fas fa-images text-primary"></i> Photos</h3>
                         </div>
                         <div class="card-body">
-                            <?php echo displayCarousel($car); ?>
+                            <?php echo CarView::displayCarousel($car); ?>
                         </div>
                     </div>
                     
@@ -586,7 +586,7 @@ if (!empty($_GET)) {
                                                         </td>
                                                         <td>
                                                             <?php if (!empty($record->image)): ?>
-                                                                <?= displayCarousel($car, $record->car_id ?? $carData->id) ?>
+                                                                <?= CarView::displayCarousel($car) ?>
                                                             <?php endif; ?>
                                                         </td>
                                                         <td><?= htmlspecialchars($record->fname ?? '') ?></td>
