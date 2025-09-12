@@ -9,8 +9,8 @@ global $user;
 
 $user_id = $user->data()->id;
 
-// USER ID is in $user_id .  Use the USER ID to get the users Profile information
-$userQ = $db->query("SELECT * FROM usersview WHERE id = ?", array($user_id));
+// USER ID is in $user_id .  Use the USER ID to get the user information from users table
+$userQ = $db->query("SELECT * FROM users WHERE id = ?", array($user_id));
 if ($userQ->count() > 0) {
     $thatUser = $userQ->results();
 }

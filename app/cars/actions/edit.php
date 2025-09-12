@@ -178,7 +178,7 @@ function buildCarDetails(array &$cardetails, ?int $carId = null): void
             $cardetails[$key] = $value;
         }
     } else {
-        $userQ = $db->findById($user->data()->id, "usersview")->results()[0];
+        $userQ = $db->findById($user->data()->id, "users")->results()[0];
 
         /*  Add the User/profile information to the record */
         $cardetails['user_id']      = $userQ->id;

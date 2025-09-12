@@ -82,8 +82,7 @@ if (Input::exists('post')) {
         }
     }
     
-    // Display all session messages
-    sessionValMessages($errors, $successes, null);
+    // Messages will be displayed by UserSpice session system in template
 }
 
 /**

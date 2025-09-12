@@ -431,8 +431,7 @@ if (!empty($_POST)) {
         }
     }
     
-    // Display all session messages
-    sessionValMessages($errors, $successes, null);
+    // Messages will be displayed by UserSpice session system in template
 }
 // mod to allow edited values to be shown in form after update
 $user2 = new User();

@@ -48,6 +48,19 @@ if (Input::exists('post')) {
     } else {
         $action = Input::get('action');
         if ($action === 'send_message' && Input::get('from_user_id') && Input::get('to_user_id') && Input::get('message')) {
+            // Validate message input
+            $message = Input::get('message');
+            if (empty(trim($message))) {
+                $errors[] = 'Message cannot be empty';
+                include($abs_us_root . $us_url_root . 'usersc/scripts/token_error.php');
+                exit();
+            }
+            if (strlen($message) > 2000) {
+                $errors[] = 'Message is too long (maximum 2000 characters)';
+                include($abs_us_root . $us_url_root . 'usersc/scripts/token_error.php');
+                exit();
+            }
+            
             // Security: Get user data from database instead of trusting serialized data
             $fromUserId = (int) Input::get('from_user_id');
             $toUserId = (int) Input::get('to_user_id');
@@ -78,7 +91,7 @@ if (Input::exists('post')) {
             );
 
             $template       =  array(
-                'message'   => Input::get('message'),
+                'message'   => clean_string($message),
                 'from'      => $fromName,
                 'fromEmail' => $fromEmail,
                 'to'        => $toName
@@ -88,7 +101,7 @@ if (Input::exists('post')) {
 
             $result = email($toEmail, $subject, $body, $options);
 
-            $successes[] = "Message sent successfully to $toName";
+            // Log the email sending (no session message needed - we show "Message Sent" page)
             logger($user->data()->id, "ElanRegistry", "contact_owner_email.php from " . $fromEmail . " to " . $toEmail);
         } else {
             $errors[] = 'Not enough parameters provided';
@@ -107,8 +120,7 @@ if (Input::exists('post')) {
         }
     }
     
-    // Display all session messages
-    sessionValMessages($errors, $successes, null);
+    // Messages will be displayed by UserSpice session system in template
 } // End Post
 
 ?>
@@ -118,19 +130,24 @@ if (Input::exists('post')) {
         <div class='row'>
             <div class='col-sm-12'>
                 <div class='jumbotron'>
-                    <?php
-                    if ($result) {
-                        echo '<div class="alert alert-success" role="alert"><strong>Mail sent successfully<strong><br />
-                        <p>Taking you back home in a few seconds</p></div>';
-                    } else {
-                        echo '<div class="alert alert-danger" role="alert">Mail ERROR</div><br />';
-                    }
-                    ?>
+                    <!-- Messages now handled by UserSpice session system in template (Issue #237) -->
+                    <div class="text-center py-4">
+                        <i class="fas fa-envelope fa-3x text-success mb-3"></i>
+                        <h4>Message Sent</h4>
+                        <p class="text-muted">Taking you back to the car in a few seconds</p>
+                    </div>
                     <script>
                         //Using setTimeout to execute a function after 5 seconds.
                         setTimeout(function() {
-                            //Redirect with JavaScript
-                            window.location.href = '<?= $us_url_root ?>';
+                            //Redirect back to the car details page
+                            <?php 
+                            $carId = Input::get('car_id');
+                            if ($carId) {
+                                echo "window.location.href = '" . $us_url_root . "app/cars/details.php?car_id=" . (int)$carId . "';";
+                            } else {
+                                echo "window.location.href = '" . $us_url_root . "';";
+                            }
+                            ?>
                         }, 5000);
                     </script>
                 </div><!-- End of main content section -->

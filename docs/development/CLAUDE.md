@@ -300,6 +300,47 @@ The system maintains location synchronization between user profiles and car reco
 - Template system via UserSpice with custom overrides
 - Card-based layout for consistent UI
 
+### Email Template Standards
+
+**All email communications MUST use the professional HTML email template format established in the spam cleanup system.**
+
+#### ✅ Required Email Template Structure
+```php
+// Use email_body() function with dedicated template files
+$template = array(
+    'variable1' => $value1,
+    'variable2' => $value2
+);
+$body = email_body('_email_template_name.php', $template);
+$email_sent = email($recipient, $subject, $body, $options);
+```
+
+#### Template Design Standards
+**Based on `users/cron/spam_inactive_cleanup.php` HTML email template:**
+- **HTML5 Doctype**: `<!DOCTYPE html>` with proper meta tags
+- **Responsive Design**: Mobile-friendly with `@media` queries
+- **Professional Styling**: Clean CSS with registry branding colors
+  - Primary Blue: `#029acf` (headers, accents)
+  - Lotus Green: `#469408` (highlights, CTAs) 
+  - Background: `#f4f4f4` with white content container
+- **Registry Branding**: Official logo and consistent footer
+- **Accessibility**: Semantic HTML structure with proper contrast
+- **Content Structure**:
+  - Header section with logo and title
+  - Main content with clear typography
+  - Professional footer with registry information
+
+#### Template File Location
+- All email templates stored in `usersc/views/_email_*.php`
+- Use descriptive naming: `_email_feedback.php`, `_email_contact_owner.php`
+- Include proper variable escaping: `<?= htmlspecialchars($variable) ?>`
+
+#### Benefits
+- ✅ **Professional Appearance** - Consistent with registry branding
+- ✅ **Mobile Responsive** - Works across all email clients
+- ✅ **Brand Consistency** - Matches website design language
+- ✅ **Security** - Proper input sanitization and escaping
+
 ### Administrative Tools
 
 #### SPAM and Inactive User Cleanup System

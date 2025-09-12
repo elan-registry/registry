@@ -21,9 +21,9 @@ if (!securePage($_SERVER['PHP_SELF'])) {
     die();
 }
 
-// Duplicate detection query - finds cars with same chassis number (regardless of type)
+// Duplicate detection query - finds cars with same type AND chassis number
 // Fixed: Replaced deprecated users_carsview with actual cars table
-$duplicates = "SELECT a.* FROM cars a JOIN (SELECT chassis, COUNT(*) FROM cars WHERE chassis <> '' AND chassis IS NOT NULL GROUP BY chassis HAVING COUNT(*) > 1) b ON a.chassis = b.chassis ORDER BY a.chassis, a.type";
+$duplicates = "SELECT a.* FROM cars a JOIN (SELECT type, chassis, COUNT(*) FROM cars WHERE chassis <> '' AND chassis IS NOT NULL GROUP BY type, chassis HAVING COUNT(*) > 1) b ON a.chassis = b.chassis AND a.type = b.type ORDER BY a.chassis, a.type";
 
 // Get list of suspected duplicates
 $duplicatesQ = $db->query($duplicates);
@@ -403,8 +403,7 @@ if (Input::exists('post')) {
         }
     }
     
-    // Display all session messages
-    sessionValMessages($errors, $successes, null);
+    // Messages will be displayed by UserSpice session system in template
 }
 
 ?>
