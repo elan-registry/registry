@@ -19,13 +19,36 @@ if (!securePage($_SERVER['PHP_SELF'])) {
 }
 
 /**
- * Fetch a random car with an image to display on homepage
+ * Fetch a random car with valid images to display on homepage
+ * 
+ * Filters for cars that have:
+ * - Non-empty image field
+ * - Valid JSON format (not empty array '[]')
+ * - At least one image in the JSON array
  *
- * @var int $randomCarId The ID of a randomly selected car with an image
+ * @var int $randomCarId The ID of a randomly selected car with valid images
  * @var Car $car Car object instance for the selected random car
  */
-$randomCarId = (int) $db->query("SELECT id FROM cars WHERE image <> '' ORDER BY RAND() LIMIT 1")->results()[0]->id;
-$car = new Car($randomCarId);
+$randomCarResults = $db->query("SELECT id FROM cars
+    WHERE image <> ''
+    AND image <> '[]'
+    AND JSON_LENGTH(image) > 0
+    ORDER BY RAND() LIMIT 1")->results();
+
+if (!empty($randomCarResults)) {
+    $randomCarId = (int) $randomCarResults[0]->id;
+    $car = new Car($randomCarId);
+} else {
+    // Fallback: if no cars with valid images found, try any car with non-empty image field
+    $fallbackResults = $db->query("SELECT id FROM cars WHERE image <> '' ORDER BY RAND() LIMIT 1")->results();
+    if (!empty($fallbackResults)) {
+        $randomCarId = (int) $fallbackResults[0]->id;
+        $car = new Car($randomCarId);
+    } else {
+        // No cars with images at all - set to null to handle in template
+        $car = null;
+    }
+}
 
 /**
  * Get count of cars by series using efficient single query
@@ -189,28 +212,39 @@ $notes['+2']     = "4526";
 						 * Display featured random car
 						 * Shows carousel images and key details for a randomly selected car
 						 */
-						echo displayCarousel($car); ?>
-						<table id='cartable' class='table table-striped table-bordered table-hover table-sm' aria-describedby='Car ID <?= (int) $car->data()->id ?>'>
-							<tr>
-								<th scope='col'><strong>Year :</strong></th>
-								<th scope='col'><?= htmlspecialchars((string) $car->data()->year, ENT_QUOTES, 'UTF-8') ?></th>
-							</tr>
-							<tr>
-								<td><strong>Series :</strong></td>
-								<td><?= htmlspecialchars((string) $car->data()->series, ENT_QUOTES, 'UTF-8') ?></td>
-							</tr>
-							<tr>
-								<td><strong>Variant:</strong></td>
-								<td><?= htmlspecialchars((string) $car->data()->variant, ENT_QUOTES, 'UTF-8') ?></td>
-							</tr>
-							<tr>
-								<td><strong>Type:</strong></td>
-								<td><?= htmlspecialchars((string) $car->data()->type, ENT_QUOTES, 'UTF-8') ?></td>
-							</tr>
-							<tr>
-								<td colspan='2'><a class='btn btn-success btn-sm' href='<?= htmlspecialchars($us_url_root, ENT_QUOTES, 'UTF-8') ?>app/cars/details.php?car_id=<?= (int) $car->data()->id ?>'><i class='fas fa-eye'></i> Details</a></td>
-							</tr>
-						</table>
+						if ($car !== null) {
+							echo displayCarousel($car); ?>
+							<table id='cartable' class='table table-striped table-bordered table-hover table-sm' aria-describedby='Car ID <?= (int) $car->data()->id ?>'>
+								<tr>
+									<th scope='col'><strong>Year :</strong></th>
+									<th scope='col'><?= htmlspecialchars((string) $car->data()->year, ENT_QUOTES, 'UTF-8') ?></th>
+								</tr>
+								<tr>
+									<td><strong>Series :</strong></td>
+									<td><?= htmlspecialchars((string) $car->data()->series, ENT_QUOTES, 'UTF-8') ?></td>
+								</tr>
+								<tr>
+									<td><strong>Variant:</strong></td>
+									<td><?= htmlspecialchars((string) $car->data()->variant, ENT_QUOTES, 'UTF-8') ?></td>
+								</tr>
+								<tr>
+									<td><strong>Type:</strong></td>
+									<td><?= htmlspecialchars((string) $car->data()->type, ENT_QUOTES, 'UTF-8') ?></td>
+								</tr>
+								<tr>
+									<td colspan='2'><a class='btn btn-success btn-sm' href='<?= htmlspecialchars($us_url_root, ENT_QUOTES, 'UTF-8') ?>app/cars/details.php?car_id=<?= (int) $car->data()->id ?>'><i class='fas fa-eye'></i> Details</a></td>
+								</tr>
+							</table>
+						<?php
+						} else {
+							// No cars with images found - show message
+							echo '<div class="text-center py-4">';
+							echo '<i class="fas fa-car text-muted" style="font-size: 3rem;"></i>';
+							echo '<h5 class="text-muted mt-3 mb-2">No Featured Cars Available</h5>';
+							echo '<p class="text-muted">Cars are being added to the registry regularly. Check back soon!</p>';
+							echo '</div>';
+						}
+						?>
 					</div> <!-- card-body -->
 				</div> <!-- card -->
 			</div> <!-- /.col-md-4 -->
