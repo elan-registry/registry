@@ -36,4 +36,42 @@
 img.card-img-top {
     border: 5px solid transparent;
     border-radius: 8px;
+    width: 100%;
+    height: auto;
+    max-height: 400px;
+    object-fit: contain;
+}
+
+/* Prevent layout shift for thumbnail images only */
+.carousel-indicators .img-fluid {
+    aspect-ratio: 4/3;
+    object-fit: cover;
+    width: 100px;
+    height: 75px;
+}
+
+/* General fluid images preserve natural aspect ratio */
+.img-fluid:not(.carousel-indicators .img-fluid) {
+    width: 100%;
+    height: auto;
+    object-fit: contain;
+}
+
+/* Polaroid images in identification guide */
+.polaroid {
+    object-fit: cover;
+    border-radius: 4px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+/* Photo placeholder styling */
+.photo-placeholder {
+    min-height: 200px;
+    background: #f8f9fa;
+    border: 2px dashed #dee2e6;
+    transition: border-color 0.3s ease;
+}
+
+.photo-placeholder:hover {
+    border-color: #6c757d;
 }

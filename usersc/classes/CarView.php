@@ -44,13 +44,12 @@ class CarView
         if ($thumbnail) {
             $html .= '<img src="' . $path['dirname'] . "/" .
                 $path['filename'] . $resize . $thumbsize . "." .
-                $path['extension'] . '" width="100" alt="elan" loading="lazy" class="img-fluid"> ';
+                $path['extension'] . '" width="100" height="75" alt="elan" loading="lazy" class="img-fluid"> ';
         } else {
             $html = '<img loading="lazy" class="card-img-top" src="' .
                 $path['dirname'] . "/" . $path['filename'] . $resize . $thumbsize . $path['extension'] . '"';
             $html .= ' sizes="50vw" ';
-            $html .= ' width="100" ';
-            $html .= 'srcset="';
+            $html .= ' srcset="';
             $html .= $path['dirname'] . "/" . $path['filename'] . '-resized-' . self::THUMBNAIL_SIZE . '.' . $path['extension'] . ' ' . self::THUMBNAIL_SIZE . 'w,';
             $html .= $path['dirname'] . "/" . $path['filename'] . '-resized-' . self::IMAGE_SIZE_SMALL . '.' . $path['extension'] . ' ' . self::IMAGE_SIZE_SMALL . 'w,';
             $html .= $path['dirname'] . "/" . $path['filename'] . '-resized-' . self::IMAGE_SIZE_MEDIUM . '.' . $path['extension'] . ' ' . self::IMAGE_SIZE_MEDIUM . 'w,';
@@ -76,7 +75,12 @@ class CarView
 
         $count = count($carImages);
         if ($count === 0 || $carImages[0] == '') {
-            // No images or image name is blank
+            // No images or image name is blank - display placeholder
+            $html .= '<div class="photo-placeholder text-center py-5 rounded d-flex flex-column justify-content-center">';
+            $html .= '<i class="fas fa-camera text-muted mb-3" style="font-size: 4rem;"></i>';
+            $html .= '<h5 class="text-muted mb-2">No Photos Available</h5>';
+            $html .= '<p class="text-muted small mb-0">Photos for this car have not been uploaded yet.</p>';
+            $html .= '</div>';
             $html .= '<!--End displayCarousel -->';
             return $html;
         }
