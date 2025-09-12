@@ -24,7 +24,8 @@ if (!securePage($_SERVER['PHP_SELF'])) {
  * Filters for cars that have:
  * - Non-empty image field
  * - Valid JSON format (not empty array '[]')
- * - At least one image in the JSON array
+ * - Properly formatted JSON (JSON_VALID = 1)
+ * - At least one image in the JSON array (JSON_LENGTH > 0)
  *
  * @var int $randomCarId The ID of a randomly selected car with valid images
  * @var Car $car Car object instance for the selected random car
@@ -32,6 +33,7 @@ if (!securePage($_SERVER['PHP_SELF'])) {
 $randomCarResults = $db->query("SELECT id FROM cars
     WHERE image <> ''
     AND image <> '[]'
+    AND JSON_VALID(image) = 1
     AND JSON_LENGTH(image) > 0
     ORDER BY RAND() LIMIT 1")->results();
 
