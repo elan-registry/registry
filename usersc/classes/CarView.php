@@ -1,12 +1,13 @@
 <?php
 
 /**
- * CarHelpers - Static utility class for car-related functions
+ * CarView - Static utility class for car display and view functions
  * 
  * This class provides static methods for car display, image processing,
- * and car data retrieval operations used across multiple pages.
+ * and HTML generation operations used across multiple pages.
+ * Separated from data operations following proper MVC patterns.
  */
-class CarHelpers
+class CarView
 {
     // Image size constants to avoid magic numbers
     private const THUMBNAIL_SIZE = 100;
@@ -150,13 +151,13 @@ class CarHelpers
 
 // Backward compatibility functions - delegate to static class methods
 function loadPicture($image, $thumbnail = null) {
-    return CarHelpers::loadPicture($image, $thumbnail);
+    return CarView::loadPicture($image, $thumbnail);
 }
 
 function displayCarousel($car) {
-    return CarHelpers::displayCarousel($car);
+    return CarView::displayCarousel($car);
 }
 
 function findByOwner($ownerID) {
-    return CarHelpers::findByOwner($ownerID);
+    return CarView::findByOwner($ownerID);
 }
