@@ -26,8 +26,8 @@ if (!empty($_POST)) {
         if ($action === 'contact_owner') {
 
             $carID = Input::get('car_id');
-            // Get the combined user+profile
-            $fromData = $db->findById($user->data()->id, "usersview")->results()[0];
+            // Get the user data from users table  
+            $fromData = $db->findById($user->data()->id, "users")->results()[0];
             $toData = $db->findById($carID, "cars")->results()[0];
 
             $from = array(

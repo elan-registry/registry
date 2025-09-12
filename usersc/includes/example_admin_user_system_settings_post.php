@@ -20,8 +20,15 @@
     $successes[] = "First Name Updated";
     logger($user->data()->id,"User Manager","Updated whatismyname for $userdetails->whatismyname from $userdetails->whatismyname to $whatismyname.");
   }else{
-        ?><?php if(!$validation->errors()=='') {?><div class="alert alert-danger"><?=display_errors($validation->errors());?></div><?php } ?>
-          <?php
+    // Convert validation errors to UserSpice session messages (Issue #237)
+    if (!empty($validation->errors())) {
+      foreach ($validation->errors() as $error) {
+        usError($error);
+      }
+    }
     }
   }
+  
+  // Display session messages (Issue #237)
+  sessionValMessages($errors ?? [], $successes ?? [], null);
       } ?>

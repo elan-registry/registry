@@ -13,7 +13,8 @@ $base_url = $query->first()->verify_url;
 
 $verify_url = $base_url . $us_url_root . "app/verify/verify_car.php";
 
-$carQ = $db->query("SELECT * FROM users_carsview WHERE mtime < DATE_SUB(NOW(), INTERVAL 16 YEAR) ORDER BY `users_carsview`.`mtime` ASC LIMIT 1");
+// Fixed: Replaced deprecated users_carsview with actual cars table
+$carQ = $db->query("SELECT * FROM cars WHERE mtime < DATE_SUB(NOW(), INTERVAL 16 YEAR) ORDER BY mtime ASC LIMIT 1");
 $carData = $carQ->results();  // Results as an array
 
 // Set verification codes

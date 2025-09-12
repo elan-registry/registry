@@ -50,6 +50,10 @@ $carprompt['website']       = 'Website URL';
 // Default action when no form submission
 $action = 'addCar';
 
+// Initialize message arrays
+$errors = [];
+$successes = [];
+
 if (Input::exists('post')) {
     $token = Input::get('csrf');
     if (!Token::check($token)) {
@@ -65,6 +69,21 @@ if (Input::exists('post')) {
             $errors[] = 'No valid action';
         }
     } // End Post with data
+    
+    // Convert error/success arrays to UserSpice session messages (Issue #237)
+    if (!empty($errors)) {
+        foreach ($errors as $error) {
+            usError($error);
+        }
+    }
+    if (!empty($successes)) {
+        foreach ($successes as $success) {
+            usSuccess($success);
+        }
+    }
+    
+    // Display all session messages
+    sessionValMessages($errors, $successes, null);
 }
 
 /**

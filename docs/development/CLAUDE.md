@@ -127,6 +127,54 @@ Key requirements for all new code:
 - Use environment variables for all sensitive configuration
 - Test credentials must be in `.env.local` (git-ignored) or environment variables
 
+### Message Handling Standards
+
+**All error and success messages MUST use the modern UserSpice session-based messaging system for consistent UX.**
+
+#### ✅ Correct Message Pattern
+```php
+// Set error messages (instead of deprecated display_errors())
+if (!empty($errors)) {
+    foreach ($errors as $error) {
+        usError($error);
+    }
+}
+
+// Set success messages (instead of deprecated display_successes())  
+if (!empty($successes)) {
+    foreach ($successes as $success) {
+        usSuccess($success);
+    }
+}
+
+// Display all messages (replaces manual Bootstrap alert HTML)
+sessionValMessages($errors, $successes, null);
+```
+
+#### ❌ Deprecated/Inconsistent Patterns - DO NOT USE
+```php
+// DEPRECATED - Do not use
+display_errors($errors);
+display_successes($successes);
+
+// INCONSISTENT - Do not use custom HTML
+echo '<div class="alert alert-danger">' . $error . '</div>';
+
+// INCOMPLETE - Setting arrays without display
+$errors[] = "Error message"; // Must call usError() and sessionValMessages()
+```
+
+#### Template Requirements
+- ElanRegistry template includes required UserSpice message divs in `container_open.php`
+- Messages appear as dismissible Bootstrap alerts with auto-timeout
+- Consistent styling and accessibility across entire application
+
+#### Benefits
+- ✅ **Consistent UX** - All messages follow same pattern
+- ✅ **Framework Compliance** - Uses UserSpice intended approach  
+- ✅ **Accessibility** - Proper ARIA roles and screen reader support
+- ✅ **Dismissible** - Auto-timeout and close button functionality
+
 ### File Organization
 - Car-related logic in `/app/cars/`
 - Contact forms and email handling in `/app/contact/`

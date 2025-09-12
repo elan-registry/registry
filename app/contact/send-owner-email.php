@@ -19,6 +19,10 @@ if (!securePage($_SERVER['PHP_SELF'])) {
 // EDIT THE 2 LINES BELOW AS REQUIRED
 $subject = 'elanregistry.org - Owner to Owner Contact';
 
+// Initialize message arrays
+$errors = [];
+$successes = [];
+
 function died($error)
 {
     // your error code can go here
@@ -84,11 +88,27 @@ if (Input::exists('post')) {
 
             $result = email($toEmail, $subject, $body, $options);
 
+            $successes[] = "Message sent successfully to $toName";
             logger($user->data()->id, "ElanRegistry", "contact_owner_email.php from " . $fromEmail . " to " . $toEmail);
         } else {
-            died('Not enough parameters');
+            $errors[] = 'Not enough parameters provided';
         }
     } // End Post with data
+    
+    // Convert error/success arrays to UserSpice session messages (Issue #237)
+    if (!empty($errors)) {
+        foreach ($errors as $error) {
+            usError($error);
+        }
+    }
+    if (!empty($successes)) {
+        foreach ($successes as $success) {
+            usSuccess($success);
+        }
+    }
+    
+    // Display all session messages
+    sessionValMessages($errors, $successes, null);
 } // End Post
 
 ?>

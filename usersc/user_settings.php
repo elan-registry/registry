@@ -418,6 +418,21 @@ if (!empty($_POST)) {
             }
         }
     }
+    
+    // Convert error/success arrays to UserSpice session messages (Issue #237)
+    if (!empty($errors)) {
+        foreach ($errors as $error) {
+            usError($error);
+        }
+    }
+    if (!empty($successes)) {
+        foreach ($successes as $success) {
+            usSuccess($success);
+        }
+    }
+    
+    // Display all session messages
+    sessionValMessages($errors, $successes, null);
 }
 // mod to allow edited values to be shown in form after update
 $user2 = new User();
@@ -439,12 +454,7 @@ if ($userQ2->count() > 0) {
             <div class="row">
                 <div class="col-xs-12 col-md-10">
                     <h1>Update your user settings</h1> <br>
-                    <?php if (!$errors == '') {
-                    ?><div class="alert alert-danger"><?= display_errors($errors); ?></div><?php
-                                                                                        } ?>
-                    <?php if (!$successes == '') {
-                    ?><div class="alert alert-success"><?= display_successes($successes); ?></div><?php
-                                                                                                } ?>
+                    <!-- Messages now handled by UserSpice session system in template (Issue #237) -->
 
                     <form name='updateAccount' action='user_settings.php' method='post'>
 
