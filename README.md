@@ -24,7 +24,7 @@ The registry represents the collaborative effort of many enthusiasts from the El
 
 ## Technology Stack
 
-- **Backend**: PHP 7.4+ with UserSpice framework for authentication
+- **Backend**: PHP 8.1+ with UserSpice framework for authentication
 - **Database**: MySQL 8.0+ with comprehensive audit trails
 - **Frontend**: Bootstrap 4/5 with responsive design
 - **APIs**: Google Maps JavaScript API, Google Geocoding API
@@ -34,7 +34,7 @@ The registry represents the collaborative effort of many enthusiasts from the El
 
 ### Requirements
 
-- PHP 7.4+
+- PHP 8.1+ (8.2+ recommended)
 - MySQL 8.0+
 - Composer for dependency management
 
@@ -81,13 +81,6 @@ npm run test:csp           # Content Security Policy validation
 # Run PHP security tests
 vendor/bin/phpunit tests/
 ```
-
-**Testing Coverage**:
-
-- 35/35 Playwright browser tests (100% success rate)
-- Comprehensive PHPUnit security test suite
-- Automated CSP violation detection
-- Cross-browser compatibility validation
 
 ### Development Workflow
 

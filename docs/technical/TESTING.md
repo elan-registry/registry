@@ -89,7 +89,7 @@ php tests/FileUploadSecurityTest.php
 
 ## Test Requirements
 
-- **PHP 7.4+** with PHPUnit framework
+- **PHP 8.1+** with PHPUnit framework (8.2+ recommended for PHPUnit 12 compatibility)
 - **No Database Required** - All tests use mock database system
 - **File system permissions** for temporary file creation during upload tests
 - **UserSpice framework** mocked for isolated testing
