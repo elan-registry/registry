@@ -593,7 +593,7 @@ $line = 1; // Where messages go
                 outputMessage($line++, "✅ SUCCESS: Image data validation completed!");
 
                 // Log the completion action with summary
-                logger($user->data()->id, 'DatabaseCleanup', "Car Image Data Validation completed - Fixed: {$global_successes}/{$global_attempts} cars (Issue #246)");
+                logger($user->data()->id, 'DatabaseMaintenance', "Car Image Data Validation completed - Fixed: {$global_successes}/{$global_attempts} cars (Issue #246)");
 
                 // Record script completion
                 try {

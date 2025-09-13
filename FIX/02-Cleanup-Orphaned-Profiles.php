@@ -447,7 +447,7 @@ $line = 1; // Where messages go
                 outputMessage($line++, "✅ Database cleanup completed successfully!", 100);
 
                 // Log the completion action with summary
-                logger($user->data()->id, 'DatabaseCleanup', "Orphaned profiles cleanup completed - Processed: {$global_successes}/{$global_attempts} records (Issue #18)");
+                logger($user->data()->id, 'DatabaseMaintenance', "Orphaned profiles cleanup completed - Processed: {$global_successes}/{$global_attempts} records (Issue #18)");
 
                 // Record script completion
                 try {

@@ -123,6 +123,7 @@ function updateCar(array &$cardetails): void
 {
     global $errors;
     global $successes;
+    global $user;
 
     try {
         $car = new Car();
@@ -135,8 +136,10 @@ function updateCar(array &$cardetails): void
             $errors[] = 'Update Car ERROR';
         }
     } catch (CarValidationException $e) {
+        logger($user->data()->id, 'ValidationError', 'Car Update Validation Error: ' . $e->getMessage());
         $errors[] = 'Car Update Validation Error: ' . $e->getMessage();
     } catch (Exception $e) {
+        logger($user->data()->id, 'CarErrors', 'Car Update Error: ' . $e->getMessage());
         $errors[] = 'Car Update Error: ' . $e->getMessage();
     }
 }
@@ -150,6 +153,7 @@ function addCar(array &$cardetails): void
 {
     global $errors;
     global $successes;
+    global $user;
     
     try {
         $car = new Car();
@@ -162,8 +166,10 @@ function addCar(array &$cardetails): void
             $errors[] = 'Car Create ERROR';
         }
     } catch (CarValidationException $e) {
+        logger($user->data()->id, 'ValidationError', 'Car Creation Validation Error: ' . $e->getMessage());
         $errors[] = 'Car Creation Validation Error: ' . $e->getMessage();
     } catch (Exception $e) {
+        logger($user->data()->id, 'CarErrors', 'Car Creation Error: ' . $e->getMessage());
         $errors[] = 'Car Creation Error: ' . $e->getMessage();
     }
 }
@@ -285,7 +291,7 @@ function updateModel(array &$cardetails): void
  */
 function updateChassis(array &$cardetails): void
 {
-    global $errors, $successes, $chassis_override_used;
+    global $errors, $successes, $chassis_override_used, $user;
     
     // Check if validation override is enabled
     // Checkbox only sends value when checked, so check if parameter exists and has value '1'
@@ -302,6 +308,7 @@ function updateChassis(array &$cardetails): void
         // Use centralized chassis validator
         $validatorPath = '../../../usersc/classes/ChassisValidator.php';
         if (!file_exists($validatorPath)) {
+            logger($user->data()->id, 'SystemError', 'ChassisValidator class file not found at: ' . realpath($validatorPath));
             $errors[] = 'ChassisValidator class file not found at: ' . realpath($validatorPath);
             return;
         }
@@ -472,6 +479,7 @@ function uploadImages(array &$cardetails): void
     if (!is_dir($filePath)) {
         // Create directory with secure permissions (755)
         if (!mkdir($filePath, 0755, true)) {
+            logger($user->data()->id, 'FileError', "Failed to create upload directory: " . $filePath);
             throw new Exception("Failed to create upload directory");
         }
     }
@@ -535,7 +543,7 @@ function uploadImages(array &$cardetails): void
                     $errors[] = "Photo failed to upload " . $name . " as " . $newFileName;
                     logger(
                         $user->data()->id,
-                        "ElanRegistry",
+                        "FileError",
                         "ERROR: File upload failed for carId: " .
                             Input::get('car_id') . " File: " . $name . " Target: " . $newFileName
                     );
@@ -545,7 +553,7 @@ function uploadImages(array &$cardetails): void
                 $errors[] = "File upload rejected: " . $e->getMessage();
                 logger(
                     $user->data()->id,
-                    "ElanRegistry",
+                    "FileError",
                     "SECURITY: File upload rejected for carId: " .
                         Input::get('car_id') . " File: " . $name . " Reason: " . $e->getMessage()
                 );
@@ -662,7 +670,7 @@ function removeImage(int $carID, string $file): void
         
         if ($imageRemoved) {
             // Log successful removal
-            logger($user->data()->id, "ElanRegistry", "Image removed: carId: " . $carID . " image: " . $file);
+            logger($user->data()->id, "CarActions", "Image removed: carId: " . $carID . " image: " . $file);
             
             $response = [
                 'status' => 'success',
@@ -671,7 +679,7 @@ function removeImage(int $carID, string $file): void
             ];
         } else {
             // Image not found in car's image list
-            logger($user->data()->id, "ElanRegistry", "ERROR: removeImage carId: " . $carID . " Image not found: " . $file);
+            logger($user->data()->id, "CarErrors", "ERROR: removeImage carId: " . $carID . " Image not found: " . $file);
             $response = [
                 'status' => 'error',
                 'info'   => 'image not found'
@@ -679,7 +687,7 @@ function removeImage(int $carID, string $file): void
         }
     } catch (Exception $e) {
         // Log error and return error response
-        logger($user->data()->id, "ElanRegistry", "ERROR: removeImage carId: " . $carID . " Error: " . $e->getMessage());
+        logger($user->data()->id, "CarErrors", "ERROR: removeImage carId: " . $carID . " Error: " . $e->getMessage());
         $response = [
             'status' => 'error',
             'info'   => 'Failed to remove image: ' . $e->getMessage()

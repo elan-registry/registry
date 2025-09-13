@@ -346,7 +346,7 @@ $line = 1; // Where messages go
 
                     // Log the completion action with summary
                     // NOTE: If using logger() inside functions, add: global $user;
-                    logger($user->data()->id, 'DatabaseCleanup', "[SCRIPT_NAME] completed - Processed: {$global_successes}/{$global_attempts} records (Issue #[ISSUE_NUMBER])");
+                    logger($user->data()->id, 'DatabaseMaintenance', "[SCRIPT_NAME] completed - Processed: {$global_successes}/{$global_attempts} records (Issue #[ISSUE_NUMBER])");
 
                     // Record script completion
                     try {

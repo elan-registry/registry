@@ -649,13 +649,13 @@ function displayFinalStatistics($carAttempts, $carSuccesses, $profileAttempts, $
     if ($totalSuccesses > 0) {
         outputMessage($line++, "✅ Successfully updated $totalSuccesses coordinate records");
         // Log the completion action with summary
-        logger($user->data()->id, 'DatabaseCleanup', "Re-geocoding completed - Updated: {$totalSuccesses}/{$totalAttempts} coordinates");
+        logger($user->data()->id, 'DatabaseMaintenance', "Re-geocoding completed - Updated: {$totalSuccesses}/{$totalAttempts} coordinates");
     } else if ($totalAttempts > 0) {
         outputMessage($line++, "⚠️  No coordinates were successfully updated");
-        logger($user->data()->id, 'DatabaseCleanup', "Re-geocoding completed - No coordinates updated from {$totalAttempts} attempts");
+        logger($user->data()->id, 'DatabaseMaintenance', "Re-geocoding completed - No coordinates updated from {$totalAttempts} attempts");
     } else {
         outputMessage($line++, "ℹ️  No records required re-geocoding");
-        logger($user->data()->id, 'DatabaseCleanup', "Re-geocoding completed - No records required geocoding");
+        logger($user->data()->id, 'DatabaseMaintenance', "Re-geocoding completed - No records required geocoding");
     }
 
     // Record script completion

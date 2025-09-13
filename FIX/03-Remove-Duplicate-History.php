@@ -445,7 +445,7 @@ $line = 1; // Where messages go
                     }
 
                     // Log the completion action with summary
-                    logger($user->data()->id, 'DatabaseCleanup', "Duplicate history removal completed - Removed: {$global_successes}/{$global_attempts} records (Issue #202)");
+                    logger($user->data()->id, 'DatabaseMaintenance', "Duplicate history removal completed - Removed: {$global_successes}/{$global_attempts} records (Issue #202)");
 
                     outputMessage($line++, "✅ Duplicate Removal completed successfully!");
 

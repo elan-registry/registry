@@ -88,12 +88,13 @@ class Car
                 }
                 unset($fields['images']);
             } catch (Exception $e) {
-                error_log("Car class: Image encoding error during create: " . $e->getMessage());
+                logger($fields['user_id'] ?? 0, 'FileError', "Car class: Image encoding error during create: " . $e->getMessage());
                 throw new ImageProcessingException('Error processing car images: ' . $e->getMessage());
             }
         }
 
         if (!$this->_db->insert($this->tableName, $fields)) {
+            logger($fields['user_id'] ?? 0, 'DatabaseError', 'Car creation failed: ' . $this->_db->errorString());
             throw new CarCreationException('Database error during car creation: ' . $this->_db->errorString());
         } else {
             $id = $this->_db->lastId();
@@ -113,11 +114,13 @@ class Car
     public function update(array $fields = []): bool
     {
         if (empty($fields) || !isset($fields['id'])) {
+            logger($fields['user_id'] ?? 0, 'ValidationError', 'Car update failed: No data or ID provided');
             throw new CarValidationException('No data or ID provided for car update');
         }
         
         // CSRF Protection
         if (!isset($fields['token']) || !Token::check($fields['token'])) {
+            logger($fields['user_id'] ?? 0, 'ValidationError', 'Car update failed: Invalid CSRF token');
             throw new CarValidationException('Invalid CSRF token provided');
         }
         
@@ -145,7 +148,7 @@ class Car
                 }
                 unset($fields['images']);
             } catch (Exception $e) {
-                error_log("Car class: Image encoding error during update: " . $e->getMessage());
+                logger($fields['user_id'] ?? 0, 'FileError', "Car class: Image encoding error during update: " . $e->getMessage());
                 throw new ImageProcessingException('Error processing car images: ' . $e->getMessage());
             }
         }
@@ -177,6 +180,7 @@ class Car
         
         // Check if there was an actual database error vs UserSpice returning false for "no changes"
         if (!$updateResult && $this->_db->error()) {
+            logger($fields['user_id'] ?? 0, 'DatabaseError', 'Car update failed: ' . $this->_db->errorString());
             throw new CarValidationException('Database update failed - check logs for details');
         } else {
             // UserSpice returned false but no error means "no changes needed" - treat as success
@@ -240,11 +244,11 @@ class Car
                         $images[$key]['type'] = image_type_to_extension($imageType, false);
                     } else {
                         $images[$key]['type'] = 'unknown';
-                        error_log("Car class: Unable to determine image type for file: {$file}");
+                        logger(0, 'FileError', "Car class: Unable to determine image type for file: {$file}");
                     }
                 } catch (Exception $e) {
                     $images[$key]['type'] = 'unknown';
-                    error_log("Car class: Exception getting image type for {$file}: " . $e->getMessage());
+                    logger(0, 'FileError', "Car class: Exception getting image type for {$file}: " . $e->getMessage());
                 }
                 
                 try {
@@ -253,11 +257,11 @@ class Car
                         $images[$key]['mime'] = $mimeType;
                     } else {
                         $images[$key]['mime'] = 'application/octet-stream';
-                        error_log("Car class: Unable to determine MIME type for file: {$file}");
+                        logger(0, 'FileError', "Car class: Unable to determine MIME type for file: {$file}");
                     }
                 } catch (Exception $e) {
                     $images[$key]['mime'] = 'application/octet-stream';
-                    error_log("Car class: Exception getting MIME type for {$file}: " . $e->getMessage());
+                    logger(0, 'FileError', "Car class: Exception getting MIME type for {$file}: " . $e->getMessage());
                 }
             }
         }
