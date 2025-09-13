@@ -70,6 +70,9 @@ class Car
             throw new CarCreationException('Invalid CSRF token provided');
         }
         
+        // Remove token from fields array after validation (token should not be stored in database)
+        unset($fields['token']);
+        
         // Validate required fields
         $this->validateRequiredFields($fields, ['chassis', 'model', 'year']);
         
@@ -117,6 +120,9 @@ class Car
         if (!isset($fields['token']) || !Token::check($fields['token'])) {
             throw new CarValidationException('Invalid CSRF token provided');
         }
+        
+        // Remove token from fields array after validation (token should not be stored in database)
+        unset($fields['token']);
         
         if (!is_numeric($fields['id']) || $fields['id'] <= 0) {
             throw new CarValidationException('Invalid car ID provided for update');

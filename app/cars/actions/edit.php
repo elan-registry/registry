@@ -18,6 +18,17 @@ require_once '../../../users/init.php';
 
 $settings = getSettings();  // Get global settings from plugin
 
+// Ensure settings have default values for image configuration
+if (!isset($settings->elan_image_upload_max_size)) {
+    $settings->elan_image_upload_max_size = 2;
+}
+if (!isset($settings->elan_image_display_max_size)) {
+    $settings->elan_image_display_max_size = 2048;
+}
+if (!isset($settings->elan_image_thumbnail_sizes)) {
+    $settings->elan_image_thumbnail_sizes = '100,300,600,1024,2048';
+}
+
 // A place to put some messages
 $errors     = [];
 $successes  = [];
@@ -425,8 +436,12 @@ function uploadImages(array &$cardetails): void
     global $successes;
     global $user;
 
-    // Image resize dimensions - consider moving to configuration
-    $imageSizes = [100, 300, 600, 1024, 2048];
+    // Image resize dimensions from settings
+    $thumbnailSizesString = isset($settings->elan_image_thumbnail_sizes) && !empty($settings->elan_image_thumbnail_sizes) 
+        ? $settings->elan_image_thumbnail_sizes 
+        : '100,300,600,1024,2048'; // Default fallback
+    $thumbnailSizes = explode(',', $thumbnailSizesString);
+    $imageSizes = array_map('intval', array_map('trim', $thumbnailSizes));
 
 
     // Do I have any new files?

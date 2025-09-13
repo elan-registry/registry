@@ -12,6 +12,7 @@
 
 require_once 'users/init.php';
 require_once $abs_us_root . $us_url_root . 'users/includes/template/prep.php';
+require_once $abs_us_root . $us_url_root . 'usersc/classes/CarView.php';
 
 // Security check - ensure page access is authorized
 if (!securePage($_SERVER['PHP_SELF'])) {
@@ -215,7 +216,7 @@ $notes['+2']     = "4526";
 						 * Shows carousel images and key details for a randomly selected car
 						 */
 						if ($car !== null) {
-							echo displayCarousel($car); ?>
+							echo CarView::displayCarousel($car); ?>
 							<table id='cartable' class='table table-striped table-bordered table-hover table-sm' aria-describedby='Car ID <?= (int) $car->data()->id ?>'>
 								<tr>
 									<th scope='col'><strong>Year :</strong></th>

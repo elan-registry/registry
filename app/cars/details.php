@@ -707,6 +707,28 @@ echo html_entity_decode($settings->elan_datatables_css_cdn);
 ?>
 
 <!-- Load external JavaScript files -->
+<!-- Configure thumbnail sizes from settings -->
+<script>
+window.ELAN_CONFIG = {
+    THUMBNAIL_SIZE: <?php 
+        $thumbnailSize = 100; // Default
+        $responsiveSize = 300; // Default
+        
+        // Try to get settings if the field exists
+        if (isset($settings->elan_image_thumbnail_sizes) && !empty($settings->elan_image_thumbnail_sizes)) {
+            $thumbnailSizes = explode(',', $settings->elan_image_thumbnail_sizes);
+            if (count($thumbnailSizes) >= 1) {
+                $thumbnailSize = intval(trim($thumbnailSizes[0]));
+            }
+            if (count($thumbnailSizes) >= 2) {
+                $responsiveSize = intval(trim($thumbnailSizes[1]));
+            }
+        }
+        echo $thumbnailSize;
+    ?>,
+    RESPONSIVE_SIZE: <?php echo $responsiveSize; ?>
+};
+</script>
 <script src='<?= $us_url_root ?>app/assets/js/imagedisplay.js'></script>
 
 <?php 
