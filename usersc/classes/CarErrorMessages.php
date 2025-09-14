@@ -19,7 +19,7 @@ class CarErrorMessages
 {
     /**
      * Get user-friendly error message with optional technical details
-     * 
+     *
      * @param string $errorKey Error message key
      * @param string $context Additional context (user|admin|technical)
      * @param array $params Parameters for message interpolation
@@ -46,7 +46,7 @@ class CarErrorMessages
     
     /**
      * Get technical error message for logging
-     * 
+     *
      * @param string $errorKey Error message key
      * @param array $params Parameters for message interpolation
      * @return string Technical error message for logging
@@ -58,7 +58,7 @@ class CarErrorMessages
     
     /**
      * Get admin error message with more context
-     * 
+     *
      * @param string $errorKey Error message key
      * @param array $params Parameters for message interpolation
      * @return string Admin error message
@@ -70,7 +70,7 @@ class CarErrorMessages
     
     /**
      * Error message definitions
-     * 
+     *
      * @return array Multi-dimensional array of error messages by context
      */
     private static function getMessages(): array
