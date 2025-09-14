@@ -14,16 +14,32 @@ This file provides essential guidance to Claude Code (claude.ai/code) when worki
 
 ## 🏗️ Architecture Overview
 
-This is a PHP web application for the Lotus Elan Registry hosted at https://elanregistry.org. It's built on top of UserSpice (userspice.com) for user authentication and management, with custom car registry functionality.
+This is a PHP web application for the Lotus Elan Registry hosted at <https://elanregistry.org>. It's built on top of UserSpice (userspice.com) for user authentication and management, with custom car registry functionality.
 
 ### Core Application Structure
 
 - `/app/` - Main application pages (car listings, details, forms, actions)
-- `/users/` - UserSpice authentication system 
+- `/users/` - UserSpice authentication system
 - `/usersc/` - UserSpice customizations (templates, plugins, overrides)
 - `/userimages/` - User-uploaded car images organized by car ID
 - `/docs/` - Documentation organized by category (elanregistry/, development/, technical/)
 - `/tests/` - PHPUnit and Playwright test files
+
+### UserSpice Management Requirements
+
+**CRITICAL:** When working with UserSpice-managed pages:
+
+1. **New Directories with PHP Files**: When adding new folders containing PHP files, update the `$path` array in `/z_us_root.php` to include the new directory path. This ensures proper path resolution and security monitoring.
+
+   ```php
+   // Example: Adding 'app/reports/api/' directory
+   $path = ['', 'users/', 'usersc/', 'app/', 'app/reports/', 'app/reports/api/', ...];
+   ```
+
+2. **securePage() Authentication**: Pages that use `securePage($_SERVER['PHP_SELF'])` are managed by UserSpice's permission system. When creating new pages with `securePage()`:
+   - The page must be manually added to UserSpice's page management system
+   - Set appropriate permissions through UserSpice admin interface
+   - Without proper page registration, `securePage()` will redirect to login/unauthorized pages
 
 ### Database Architecture
 
@@ -38,7 +54,7 @@ This is a PHP web application for the Lotus Elan Registry hosted at https://elan
 - `app/cars/index.php` - Searchable car listing with DataTables
 - `app/cars/details.php` - Individual car detail pages
 - `app/cars/edit.php` - Car editing forms
-- `app/reports/statistics.php` - Registry statistics with Google Charts
+- `app/reports/statistics.php` - Registry analytics & statistics with Chart.js (tabbed interface)
 - `app/contact/send-owner-email.php` - Owner contact functionality
 
 ## ⚙️ Development Setup
@@ -46,7 +62,7 @@ This is a PHP web application for the Lotus Elan Registry hosted at https://elan
 ### System Requirements
 
 - PHP 8.1+ required (8.2+ recommended for full PHPUnit 12 compatibility)
-- MySQL 8.0+ 
+- MySQL 8.0+
 - Uses `johnathanmiller/secure-env-php` for encrypted environment variable handling
 
 ### Quick Start Commands
@@ -195,9 +211,30 @@ Current GitHub Issues are organized into development phases:
 
 See GitHub Issues for detailed development roadmap and current work items.
 
+## 📊 Recent Major Changes
+
+### Chart.js Migration (Issue #285) - v2.8.1
+
+**Completed Migration from Google Charts to Chart.js:**
+- **Statistics Page Enhanced**: Converted to tabbed interface with lazy loading
+  - Overview, Geographic, Production, Colors, Data Quality tabs
+  - 11+ interactive charts with Bootstrap theming
+  - Performance optimized with caching (1 day prod, 5 minutes dev)
+- **Analytics Page Consolidated**: All analytics features moved to statistics page
+- **Security Improved**: Removed Google Charts CSP dependencies
+- **Self-Hosted Solution**: Chart.js CDN configurable via Admin Panel
+
+**Key Features:**
+- Responsive Bootstrap-themed charts
+- Lazy loading for performance
+- Environment-based caching system
+- API endpoints for dynamic data loading
+- Comprehensive analytics dashboard
+
 ---
 
 **📖 For detailed information, see the complete documentation files:**
+
 - [DEVELOPMENT_WORKFLOW.md](DEVELOPMENT_WORKFLOW.md) - Detailed development processes
 - [DEPLOYMENT.md](DEPLOYMENT.md) - Production deployment procedures
 - [CODING_STANDARDS.md](CODING_STANDARDS.md) - Comprehensive coding standards

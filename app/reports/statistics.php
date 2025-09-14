@@ -1,307 +1,295 @@
 <?php
 /**
  * statistics.php
- * Displays comprehensive statistics and analytics for the car registry.
+ * Comprehensive analytics dashboard for the Elan Registry
  *
- * Shows various charts and visualizations including car counts by country, series, 
- * variant, registration timeline, and an interactive world map of car locations.
- * Uses Google Charts and Google Maps APIs for data visualization.
+ * Displays statistics and analytics including geographic data, production patterns,
+ * color trends, data quality metrics, and registry growth analytics.
+ * Uses Chart.js for data visualization with Bootstrap-themed tabbed interface.
+ * Includes lazy loading for performance optimization.
  *
- * @author Elan Registry Admin
+ * @author Elan Registry Analytics Team
  * @copyright 2025
  */
 require_once '../../users/init.php';
 require_once $abs_us_root . $us_url_root . 'users/includes/template/prep.php';
-?>
+require_once $abs_us_root . $us_url_root . 'app/classes/StatisticsDataService.php';
 
-<?php if (!securePage($_SERVER['PHP_SELF'])) {
-  die();
-} ?>
+if (!securePage($_SERVER['PHP_SELF'])) {
+    die();
+}
 
-<?php
-$countryData     = $db->query("SELECT country, COUNT(country) as count FROM cars GROUP BY country ORDER BY count DESC")->results();
-$typeData        = $db->query("SELECT type, COUNT(type) as count FROM cars GROUP BY type ORDER BY count DESC")->results();
-$seriesData      = $db->query("SELECT series, COUNT(series) as count FROM cars GROUP BY series ORDER BY count DESC")->results();
-$variantData     = $db->query("SELECT variant, COUNT(variant) as count FROM cars GROUP BY variant ORDER BY count DESC")->results();
-$timeData        = $db->query("SELECT ctime FROM cars WHERE 1 ORDER BY `cars`.`ctime` ASC")->results();
-
-// There should be a more efficient way to do this
-$count['s1']     = $db->query("select count(*) as count from cars where series like 's1%'")->results()[0]->count;
-$count['s2']     = $db->query("select count(*) as count from cars where series like 's2%'")->results()[0]->count;
-$count['s3']     = $db->query("select count(*) as count from cars where series like 's3%'")->results()[0]->count;
-$count['s4']     = $db->query("select count(*) as count from cars where series like 's4%'")->results()[0]->count;
-$count['sprint'] = $db->query("select count(*) as count from cars where series like 'sprint%'")->results()[0]->count;
-$count['+2']     = $db->query("select count(*) as count from cars where series like '+2%'")->results()[0]->count;
-
-// Number of cars produced
-$notes['s1']     = "900";
-$notes['s2']     = "1250";
-$notes['s3']     = "2650";
-$notes['s4']     = "2976";
-$notes['sprint'] = "900";
-$notes['+2']     = "4526";
-
-
-$ageData = $db->query("
-SELECT t.age as age,  count(*) as count
-FROM (
-  SELECT CASE
-  WHEN ctime BETWEEN DATE_SUB( CURDATE(), INTERVAL 15 DAY ) AND CURDATE() THEN '15 days'
-  WHEN ctime BETWEEN DATE_SUB( CURDATE(), INTERVAL 30 DAY ) AND CURDATE() THEN '30 days'
-  WHEN ctime BETWEEN DATE_SUB( CURDATE(), INTERVAL 60 DAY ) AND CURDATE() THEN '60 days'
-  WHEN ctime BETWEEN DATE_SUB( CURDATE(), INTERVAL 90 DAY ) AND CURDATE() THEN '90 days'
-  WHEN ctime BETWEEN DATE_SUB( CURDATE(), INTERVAL 180 DAY ) AND CURDATE() THEN '180 days'
-  WHEN ctime BETWEEN DATE_SUB( CURDATE(), INTERVAL 365 DAY ) AND CURDATE() THEN '365 days'
-  END AS age
-  FROM cars  WHERE ctime > DATE_SUB( CURDATE(), INTERVAL 365 DAY )) t
-  group by t.age ORDER BY CAST(t.age as unsigned) 
-")->results();
+// Initialize data service
+$dataService = new StatisticsDataService($db);
 ?>
 
 <div class="page-wrapper">
-  <div class="container-fluid">
-    <div class="page-container">
-      <!-- Map Section -->
-      <div class="row">
-        <div class="col-12">
-          <div class="card registry-card">
-            <div class="card-header">
-              <h2 class="mb-0">Where are the cars around the world</h2>
+    <div class="container-fluid">
+        <div class="page-container">
+            <!-- Page Header -->
+            <div class="row mb-4">
+                <div class="col-12">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <h1 class="h2 mb-0">Registry Analytics & Statistics</h1>
+                            <p class="text-muted">Comprehensive analysis of car registry data with interactive visualizations</p>
+                        </div>
+                        <div class="text-right">
+                            <small class="text-muted">
+                                <i class="fas fa-sync-alt"></i>
+                                Data cached for <?= (defined('US_ENVIRONMENT') && US_ENVIRONMENT === 'development') ? '5 minutes' : '1 day' ?>
+                            </small>
+                        </div>
+                    </div>
+                </div>
             </div>
-            <div class="card-body text-center">
-              <div class="map-container">
-                <div id="map"></div>
-              </div>
-              26 <img alt="yellow pin" src="https://maps.gstatic.com/mapfiles/ridefinder-images/mm_20_yellow.png" /> |
-              36 <img alt="white pin" src="https://maps.gstatic.com/mapfiles/ridefinder-images/mm_20_white.png" /> |
-              45 <img alt="red pin" src="https://maps.gstatic.com/mapfiles/ridefinder-images/mm_20_red.png" /> |
-              50 <img alt="blue pin" src="https://maps.gstatic.com/mapfiles/ridefinder-images//mm_20_blue.png" /> |
-              26R <img alt="purple pin" src="https://maps.gstatic.com/mapfiles/ridefinder-images/mm_20_purple.png" />
-            </div>
-          </div>
-        </div>
-      </div>
 
-      <!-- Statistics Grid -->
-      <div class="row">
-        <div class="col-lg-6 mb-4">
-          <div class="card registry-card h-100">
-            <div class="card-header">
-              <h2 class="mb-0">Count of Cars by Series</h2>
-            </div>
-            <div class="card-body">
-              <table id="seriestable" class="table table-striped table-bordered table-sm" aria-describedby="card-header">
-                <thead>
-                  <tr>
-                    <th scope=columnd>Series</th>
-                    <th scope=columnd>Count</th>
-                    <th scope=columnd>Number produced *</th>
-                    <th scope=columnd>Percent recorded</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <?php
-                  $total = 0;
-                  $totalN = 0;
-                  foreach ($count as $key => $value) {
-                    echo "<tr><td>" . ucfirst($key) . "</td><td>" . $value . "</td>";
-                    echo "<td>" . $notes[$key] . "</td>";
-                    echo "<td>" . round(($value * 100) / $notes[$key], 0) . " %</td></tr>";
+            <!-- Navigation Tabs -->
+            <div class="row">
+                <div class="col-12">
+                    <div class="card">
+                        <div class="card-header p-0">
+                            <ul class="nav nav-tabs card-header-tabs" id="statisticsTabs" role="tablist">
+                                <li class="nav-item">
+                                    <a class="nav-link active" id="overview-tab" data-toggle="tab" href="#overview" role="tab" aria-controls="overview" aria-selected="true">
+                                        <i class="fas fa-tachometer-alt"></i> Overview
+                                    </a>
+                                </li>
+                                <li class="nav-item">
+                                    <a class="nav-link" id="geographic-tab" data-toggle="tab" href="#geographic" role="tab" aria-controls="geographic" aria-selected="false">
+                                        <i class="fas fa-globe-americas"></i> Geographic
+                                    </a>
+                                </li>
+                                <li class="nav-item">
+                                    <a class="nav-link" id="production-tab" data-toggle="tab" href="#production" role="tab" aria-controls="production" aria-selected="false">
+                                        <i class="fas fa-industry"></i> Production
+                                    </a>
+                                </li>
+                                <li class="nav-item">
+                                    <a class="nav-link" id="colors-tab" data-toggle="tab" href="#colors" role="tab" aria-controls="colors" aria-selected="false">
+                                        <i class="fas fa-palette"></i> Colors
+                                    </a>
+                                </li>
+                                <li class="nav-item">
+                                    <a class="nav-link" id="quality-tab" data-toggle="tab" href="#quality" role="tab" aria-controls="quality" aria-selected="false">
+                                        <i class="fas fa-check-circle"></i> Data Quality
+                                    </a>
+                                </li>
+                            </ul>
+                        </div>
 
-                    $total += $value;
-                    $totalN += $notes[$key];
-                  }
-                  echo "<tr><td><strong>Total</strong></td><td><strong>" . $total . "</strong></td><td>" . $totalN . "</td><td>" . round(($total * 100) / $totalN) . " %</td></tr>";
-                  ?>
-                </tbody>
-              </table>
-              <p><small>* - Number produced is from
-                  <a href="https://www.amazon.com/Authentic-Lotus-1962-1974-Marques-Models/dp/0947981950">
-                    Authentic Lotus Elan & Plus 2 1962 - 1974 by Robinshaw and Ross</a>, page 22 and page 138.
-                  In cases where there is a range of values, I took the lower.</small></p>
-            </div> <!-- body -->
-          </div><!-- card -->
-        </div> <!-- col -->
-        <div class="col-lg-6 mb-4">
-          <div class="card registry-card h-100">
-            <div class="card-header">
-              <h2 class="mb-0">Cars by Country</h2>
-            </div>
-            <div class="card-body">
-              <div id="chart_country"></div>
-            </div> <!-- body -->
-          </div><!-- card -->
-        </div> <!-- col -->
-      </div> <!-- row -->
+                        <div class="card-body">
+                            <div class="tab-content" id="statisticsTabContent">
+                                <!-- Overview Tab -->
+                                <div class="tab-pane fade show active" id="overview" role="tabpanel" aria-labelledby="overview-tab">
+                                    <!-- Map Section -->
+                                    <div class="row mb-4">
+                                        <div class="col-12">
+                                            <div class="card">
+                                                <div class="card-header">
+                                                    <h4 class="mb-0">Global Car Distribution</h4>
+                                                </div>
+                                                <div class="card-body text-center">
+                                                    <div class="map-container">
+                                                        <div id="map"></div>
+                                                    </div>
+                                                    <div class="mt-3">
+                                                        <small class="text-muted">
+                                                            26 <img alt="yellow pin" src="https://maps.gstatic.com/mapfiles/ridefinder-images/mm_20_yellow.png" /> |
+                                                            36 <img alt="white pin" src="https://maps.gstatic.com/mapfiles/ridefinder-images/mm_20_white.png" /> |
+                                                            45 <img alt="red pin" src="https://maps.gstatic.com/mapfiles/ridefinder-images/mm_20_red.png" /> |
+                                                            50 <img alt="blue pin" src="https://maps.gstatic.com/mapfiles/ridefinder-images//mm_20_blue.png" /> |
+                                                            26R <img alt="purple pin" src="https://maps.gstatic.com/mapfiles/ridefinder-images/mm_20_purple.png" />
+                                                        </small>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
 
-      <div class="row">
-        <div class="col-lg-6 mb-4">
-          <div class="card registry-card h-100">
-            <div class="card-header">
-              <h2 class="mb-0">Cars by Type</h2>
-            </div>
-            <div class="card-body">
-              <div id="chart_type"></div>
-            </div>
-          </div>
-        </div>
-        <div class="col-lg-6 mb-4">
-          <div class="card registry-card h-100">
-            <div class="card-header">
-              <h2 class="mb-0">Cars by Series</h2>
-            </div>
-            <div class="card-body">
-              <div id="chart_series"></div>
-            </div>
-          </div>
-        </div>
-      
-        <div class="col-lg-6 mb-4">
-          <div class="card registry-card h-100">
-            <div class="card-header">
-              <h2 class="mb-0">Cars by Variant</h2>
-            </div>
-            <div class="card-body">
-              <div id="chart_variant"></div>
-            </div>
-          </div>
-        </div>
-        
-        <div class="col-lg-6 mb-4">
-          <div class="card registry-card h-100">
-            <div class="card-header">
-              <h2 class="mb-0">Cars added in the last period</h2>
-            </div>
-            <div class="card-body">
-              <div id="chart_age"></div>
-            </div>
-          </div>
-        </div>
-      </div>
+                                    <!-- Key Metrics Cards -->
+                                    <div class="row mb-4">
+                                        <div class="col-md-3 mb-3">
+                                            <div class="card bg-primary text-white">
+                                                <div class="card-body text-center">
+                                                    <i class="fas fa-car fa-2x mb-2"></i>
+                                                    <h3 class="mb-0" id="totalCars">-</h3>
+                                                    <small>Total Cars Registered</small>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div class="col-md-3 mb-3">
+                                            <div class="card bg-success text-white">
+                                                <div class="card-body text-center">
+                                                    <i class="fas fa-globe fa-2x mb-2"></i>
+                                                    <h3 class="mb-0" id="totalCountries">-</h3>
+                                                    <small>Countries Represented</small>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div class="col-md-3 mb-3">
+                                            <div class="card bg-info text-white">
+                                                <div class="card-body text-center">
+                                                    <i class="fas fa-palette fa-2x mb-2"></i>
+                                                    <h3 class="mb-0" id="totalColors">-</h3>
+                                                    <small>Unique Colors</small>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div class="col-md-3 mb-3">
+                                            <div class="card bg-warning text-white">
+                                                <div class="card-body text-center">
+                                                    <i class="fas fa-calendar fa-2x mb-2"></i>
+                                                    <h3 class="mb-0" id="registrationGrowth">-</h3>
+                                                    <small>New This Year</small>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
 
-      <!-- Timeline Chart -->
-      <div class="row">
-        <div class="col-12">
-          <div class="card registry-card">
-            <div class="card-header">
-              <h2 class="mb-0">Cars added over Time</h2>
-            </div>
-            <div class="card-body">
-              <div id="car_chart"></div>
-            </div>
-          </div>
-        </div>
-      </div>
+                                    <!-- Essential Charts -->
+                                    <div class="row">
+                                        <div class="col-lg-6 mb-4">
+                                            <div class="card">
+                                                <div class="card-header">
+                                                    <h5 class="mb-0">Registry Timeline</h5>
+                                                </div>
+                                                <div class="card-body" style="height: 400px;">
+                                                    <canvas id="timelineChart"></canvas>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div class="col-lg-6 mb-4">
+                                            <div class="card">
+                                                <div class="card-header">
+                                                    <h5 class="mb-0">Recent Registration Activity</h5>
+                                                </div>
+                                                <div class="card-body" style="height: 400px;">
+                                                    <canvas id="ageChart"></canvas>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
 
+                                <!-- Geographic Tab -->
+                                <div class="tab-pane fade" id="geographic" role="tabpanel" aria-labelledby="geographic-tab">
+                                    <div class="d-flex justify-content-between align-items-center mb-3">
+                                        <h4>Geographic Distribution Analysis</h4>
+                                        <div class="spinner-border text-primary" role="status" id="geographic-spinner" style="display: none;">
+                                            <span class="sr-only">Loading...</span>
+                                        </div>
+                                    </div>
+                                    <div id="geographic-content">
+                                        <!-- Content will be loaded dynamically -->
+                                    </div>
+                                </div>
+
+                                <!-- Production Tab -->
+                                <div class="tab-pane fade" id="production" role="tabpanel" aria-labelledby="production-tab">
+                                    <div class="d-flex justify-content-between align-items-center mb-3">
+                                        <h4>Production Analysis</h4>
+                                        <div class="spinner-border text-primary" role="status" id="production-spinner" style="display: none;">
+                                            <span class="sr-only">Loading...</span>
+                                        </div>
+                                    </div>
+                                    <div id="production-content">
+                                        <!-- Content will be loaded dynamically -->
+                                    </div>
+                                </div>
+
+                                <!-- Colors Tab -->
+                                <div class="tab-pane fade" id="colors" role="tabpanel" aria-labelledby="colors-tab">
+                                    <div class="d-flex justify-content-between align-items-center mb-3">
+                                        <h4>Color Analysis Dashboard</h4>
+                                        <div class="spinner-border text-primary" role="status" id="colors-spinner" style="display: none;">
+                                            <span class="sr-only">Loading...</span>
+                                        </div>
+                                    </div>
+                                    <div id="colors-content">
+                                        <!-- Content will be loaded dynamically -->
+                                    </div>
+                                </div>
+
+                                <!-- Data Quality Tab -->
+                                <div class="tab-pane fade" id="quality" role="tabpanel" aria-labelledby="quality-tab">
+                                    <div class="d-flex justify-content-between align-items-center mb-3">
+                                        <h4>Data Quality & Completeness</h4>
+                                        <div class="spinner-border text-primary" role="status" id="quality-spinner" style="display: none;">
+                                            <span class="sr-only">Loading...</span>
+                                        </div>
+                                    </div>
+                                    <div id="quality-content">
+                                        <!-- Content will be loaded dynamically -->
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
     </div>
-  </div>
 </div>
 
-<!-- footers -->
-<?php
-require_once $abs_us_root . $us_url_root . 'users/includes/html_footer.php'; //custom template footer
-?>
-
-<!-- Data injection for external JavaScript -->
+<!-- Data for JavaScript -->
 <script>
-  // Inject raw PHP data for JavaScript consumption
-  window.statisticsRawData = {
-    countryData: [
-      [{
-          label: 'Country',
-          type: 'string'
-        },
-        {
-          label: 'Count',
-          type: 'number'
-        }
-      ],
-      <?php
-      foreach ($countryData as $record) {
-        echo "['" . $record->country . "'," . $record->count . "],";
-      }
-      ?>
-    ],
-    typeData: [
-      [{
-          label: 'Type',
-          type: 'string'
-        },
-        {
-          label: 'Count',
-          type: 'number'
-        }
-      ],
-      <?php
-      foreach ($typeData as $record) {
-        echo "['" . $record->type . "'," . $record->count . "],";
-      }
-      ?>
-    ],
-    seriesData: [
-      [{
-          label: 'Series',
-          type: 'string'
-        },
-        {
-          label: 'Count',
-          type: 'number'
-        }
-      ],
-      <?php
-      foreach ($seriesData as $record) {
-        echo "['" . $record->series . "'," . $record->count . "],";
-      }
-      ?>
-    ],
-    variantData: [
-      [{
-          label: 'Variant',
-          type: 'string'
-        },
-        {
-          label: 'Count',
-          type: 'number'
-        }
-      ],
-      <?php
-      foreach ($variantData as $record) {
-        echo "['" . $record->variant . "'," . $record->count . "],";
-      }
-      ?>
-    ],
-    ageData: [
-      [{
-          label: 'Age',
-          type: 'string'
-        },
-        {
-          label: 'Count',
-          type: 'number'
-        }
-      ],
-      <?php
-      $count = 0;
-      foreach ($ageData as $record) {
-        $count += $record->count;
-        echo "['" . $record->age . "'," . $count . "],";
-      }
-      ?>
-    ],
-    timeDataRows: [
-      <?php
-      $count = 0;
-      foreach ($timeData as $car) {
-        $count++;
-        echo "[ new Date(" . date('Y, m, d, G, i, s', strtotime($car->ctime)) . "), " . $count . "],";
-      }
-      ?>
-    ],
-    imageDir: "<?= $us_url_root . $settings->elan_image_dir ?>"
-  };
+window.statisticsRawData = {
+    // Overview data - loaded immediately
+    timeline: <?= json_encode($dataService->getTimelineData()) ?>,
+    age: <?= json_encode($dataService->getAgeData()) ?>,
+
+    // Basic counts for overview cards
+    countriesCount: <?= count($dataService->getCountryData()) ?>,
+    colorsCount: <?= count($dataService->getColorData()) ?>
+};
+
+// Configuration
+window.statisticsConfig = {
+    chartjsUrl: '<?= $settings->elan_chartjs_cdn ?? "https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.min.js" ?>',
+    mapsApiKey: '<?= $settings->elan_google_maps_key ?? "" ?>',
+    baseUrl: '<?= $us_url_root ?>app/reports/'
+};
 </script>
 
-<!-- Load external JavaScript files -->
-<script src="https://www.gstatic.com/charts/loader.js"></script>
-<script src="../assets/js/statistics.js"></script>
-<script async defer src="https://maps.googleapis.com/maps/api/js?&key=<?= $settings->elan_google_maps_key ?>&callback=initMap"> </script>
+<!-- Load Chart.js -->
+<script src="<?= $settings->elan_chartjs_cdn ?? 'https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.js' ?>"></script>
+
+<!-- Load Statistics JavaScript first -->
+<script src="<?= $us_url_root ?>app/assets/js/statistics.js?v=2.8.3"></script>
+
+<!-- Initialize Google Maps and Statistics -->
+<script>
+// Global initMap function for Google Maps callback
+function initMap() {
+    // Wait for statisticsInitMap to be available
+    function tryInitMap() {
+        if (window.statisticsInitMap) {
+            window.statisticsInitMap();
+        } else {
+            setTimeout(tryInitMap, 100); // Retry every 100ms
+        }
+    }
+
+    tryInitMap();
+}
+
+// Wait for DOM and Chart.js to be ready
+document.addEventListener('DOMContentLoaded', function() {
+    if (typeof Chart === 'undefined') {
+        console.error('Chart.js failed to load');
+        return;
+    }
+
+
+    // Wait a moment for statistics.js to fully load before loading Google Maps
+    setTimeout(() => {
+        // Load Google Maps API dynamically with proper loading parameter
+        const mapsScript = document.createElement('script');
+        mapsScript.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent('<?= $settings->elan_google_maps_key ?? '' ?>')}&callback=initMap&libraries=geometry,places&loading=async`;
+        mapsScript.async = true;
+        mapsScript.defer = true;
+        document.head.appendChild(mapsScript);
+    }, 500); // Give statistics.js 500ms to fully load
+});
+</script>
