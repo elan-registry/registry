@@ -26,8 +26,8 @@ if (!empty($_POST)) {
         if ($action === 'contact_owner') {
 
             $carID = Input::get('car_id');
-            // Get the combined user+profile
-            $fromData = $db->findById($user->data()->id, "usersview")->results()[0];
+            // Get the user data from users table  
+            $fromData = $db->findById($user->data()->id, "users")->results()[0];
             $toData = $db->findById($carID, "cars")->results()[0];
 
             $from = array(
@@ -60,45 +60,74 @@ if (!empty($_POST)) {
                 <h2 class="mb-0">Contact Owner</h2>
             </div>
             <div class="card-body">
-                <form name="contactform" method="post" action="send-owner-email.php">
+                <!-- Contact Information -->
+                <div class="row mb-4">
+                    <div class="col-md-6">
+                        <h5 class="text-primary"><i class="fas fa-user-circle"></i> From</h5>
+                        <div class="bg-light p-3 rounded">
+                            <div class="mb-2">
+                                <strong><?= $from['fname'] . ' ' . $from['lname'] ?></strong>
+                            </div>
+                            <div class="text-muted">
+                                <i class="fas fa-envelope"></i> <?= $from['email'] ?>
+                            </div>
+                            <small class="text-muted">User ID: <?= $from['id'] ?></small>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <h5 class="text-primary"><i class="fas fa-user"></i> To</h5>
+                        <div class="bg-light p-3 rounded">
+                            <div class="mb-2">
+                                <strong><?= $to['fname'] . ' ' . $to['lname'] ?></strong>
+                            </div>
+                            <div class="text-muted">
+                                <i class="fas fa-envelope"></i> <?= $to['email'] ?>
+                            </div>
+                            <small class="text-muted">User ID: <?= $to['id'] ?></small>
+                        </div>
+                    </div>
+                </div>
 
-                    <table id="cartable" class="table table-striped table-bordered table-sm" aria-describedby="card-header">
-                        <tr>
-                            <th scope=column><strong>From User ID</strong></th>
-                            <th scope=column><?= $from['id'] ?></th>
-                        </tr>
-                        <tr>
-                            <td><strong>From</strong></td>
-                            <td> <?php echo $from['fname'] . ' ' . $from['lname']; ?> </td>
-                        </tr>
-                        <tr>
-                            <td><strong>From email</strong></td>
-                            <td> <?= $from['email'] ?> </td>
-                        </tr>
-                        <tr></tr>
-                        <tr>
-                            <td><strong>To User ID</strong></td>
-                            <td><?= $to['id'] ?></td>
-                        </tr>
-                        <tr>
-                            <td><strong>To</strong></td>
-                            <td> <?php echo $to['fname'] . ' ' . $to['lname']; ?> </td>
-                        </tr>
-                        <tr>
-                            <td><label for='message'><strong>Message</strong></label></td>
-                            <td><textarea required class="form-control" name="message" id="message" rows="10" wrap="soft" placeholder="Enter a message" oninvalid="this.setCustomValidity('Please enter a message')" oninput="setCustomValidity('')"></textarea></td>
-                        </tr>
-                        <tr>
-                            <td></td>
-                            <td>
-                                <input type='hidden' name='csrf' value='<?= Token::generate(); ?>' />
-                                <input type='hidden' name='action' value='send_message' />
-                                <input type='hidden' name='from_user_id' id='from_user_id' value='<?= htmlspecialchars($from['id'], ENT_QUOTES, 'UTF-8'); ?>' />
-                                <input type='hidden' name='to_user_id' id='to_user_id' value='<?= htmlspecialchars($to['id'], ENT_QUOTES, 'UTF-8'); ?>' />
-                                <input class='btn btn-primary' type='submit' value='Send' class='Submit' />
-                            </td>
-                        </tr>
-                    </table>
+                <!-- Message Form -->
+                <form name="contactform" method="post" action="send-owner-email.php" class="needs-validation" novalidate>
+                    <div class="mb-4">
+                        <label for="message" class="form-label h5">
+                            <i class="fas fa-comment text-primary"></i> Your Message
+                        </label>
+                        <textarea 
+                            required 
+                            class="form-control" 
+                            name="message" 
+                            id="message"
+                            maxlength="2000" 
+                            rows="8" 
+                            placeholder="Enter your message to the car owner..."
+                            style="resize: vertical;"
+                        ></textarea>
+                        <div class="form-text">
+                            <i class="fas fa-info-circle"></i> Maximum 2000 characters. Your contact information will be included so the owner can reply directly to you.
+                        </div>
+                        <div class="invalid-feedback">
+                            Please enter a message.
+                        </div>
+                    </div>
+
+                    <!-- Hidden Fields -->
+                    <input type='hidden' name='csrf' value='<?= Token::generate(); ?>' />
+                    <input type='hidden' name='action' value='send_message' />
+                    <input type='hidden' name='from_user_id' value='<?= htmlspecialchars($from['id'], ENT_QUOTES, 'UTF-8'); ?>' />
+                    <input type='hidden' name='to_user_id' value='<?= htmlspecialchars($to['id'], ENT_QUOTES, 'UTF-8'); ?>' />
+                    <input type='hidden' name='car_id' value='<?= htmlspecialchars($carID, ENT_QUOTES, 'UTF-8'); ?>' />
+
+                    <!-- Submit Button -->
+                    <div class="d-grid gap-2 d-md-flex justify-content-md-end">
+                        <a href="javascript:history.back()" class="btn btn-outline-secondary me-md-2">
+                            <i class="fas fa-arrow-left"></i> Cancel
+                        </a>
+                        <button type="submit" class="btn btn-primary btn-lg">
+                            <i class="fas fa-paper-plane"></i> Send Message
+                        </button>
+                    </div>
                 </form>
             </div> <!-- car body -->
         </div> <!-- /.col -->

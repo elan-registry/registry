@@ -1,6 +1,16 @@
 # Environment Variables Documentation
 
-This document covers environment variables used in the Elan Registry application.
+This document covers environment variables and environments used in the Elan Registry application.
+
+## Environment URLs
+
+The Elan Registry operates across three environments:
+
+- **Development:** `http://localhost:9999/elan_registry`
+- **Test:** `http://localhost:9999/test_reg/`
+- **Production:** `https://elanregistry.org`
+
+Environment detection is performed using URL/hostname pattern matching for environment-specific configurations and behaviors.
 
 ## Overview
 

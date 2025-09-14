@@ -1,0 +1,209 @@
+name: Menu System Sync
+
+on:
+  # Trigger on push to production branch
+  push:
+    branches:
+      - main
+      - production
+    # Only run when menu-related files change
+    paths:
+      - 'database/5.3-essential_config.sql'
+      - 'scripts/menu-sync.php'
+      - 'usersc/templates/*/navigation.php'
+      - '.github/workflows/menu-sync.yml'
+
+  # Allow manual triggering
+  workflow_dispatch:
+    inputs:
+      target_environment:
+        description: 'Target environment for menu sync'
+        required: true
+        default: 'production'
+        type: choice
+        options:
+          - production
+          - test
+
+      export_from_dev:
+        description: 'Export from development first'
+        required: true
+        default: true
+        type: boolean
+
+jobs:
+  menu-sync:
+    runs-on: ubuntu-latest
+
+    # Only run if not triggered by the sync bot to prevent loops
+    if: ${{ !contains(github.event.head_commit.message, '[menu-sync-bot]') }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 2  # Need previous commit to check for changes
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.1'
+          extensions: mysqli, pdo, pdo_mysql
+
+      - name: Install dependencies
+        run: composer install --no-dev --optimize-autoloader
+
+      - name: Check for menu changes
+        id: menu_changes
+        run: |
+          # Check if any menu-related files changed in the last commit
+          CHANGED_FILES=$(git diff-tree --no-commit-id --name-only -r HEAD)
+          MENU_CHANGED=false
+
+          for file in $CHANGED_FILES; do
+            case "$file" in
+              database/5.3-essential_config.sql|scripts/menu-sync.php|usersc/templates/*/navigation.php)
+                MENU_CHANGED=true
+                break
+                ;;
+            esac
+          done
+
+          echo "menu_changed=$MENU_CHANGED" >> $GITHUB_OUTPUT
+          echo "Menu files changed: $MENU_CHANGED"
+
+      - name: Export menu configuration
+        id: export_menu
+        if: ${{ steps.menu_changes.outputs.menu_changed == 'true' || github.event.inputs.export_from_dev == 'true' }}
+        run: |
+          # This would typically connect to development environment to export
+          # For now, create a placeholder export based on database schema
+
+          EXPORT_FILE="menu_export_$(date +%Y%m%d_%H%M%S).json"
+
+          # Create export metadata
+          cat > "$EXPORT_FILE" << EOF
+          {
+            "export_info": {
+              "timestamp": "$(date -Iseconds)",
+              "source_environment": "development",
+              "menu_system": "classic",
+              "version": "1.0",
+              "commit_hash": "$GITHUB_SHA",
+              "branch": "$GITHUB_REF_NAME"
+            },
+            "pages": [],
+            "permissions": [],
+            "menus": [],
+            "menu_permissions": []
+          }
+          EOF
+
+          echo "export_file=$EXPORT_FILE" >> $GITHUB_OUTPUT
+          echo "Menu configuration exported to: $EXPORT_FILE"
+
+      - name: Upload export artifact
+        if: ${{ steps.export_menu.outputs.export_file != '' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: menu-export-${{ github.run_id }}
+          path: ${{ steps.export_menu.outputs.export_file }}
+          retention-days: 30
+
+      - name: Deploy to production (placeholder)
+        if: ${{ (steps.menu_changes.outputs.menu_changed == 'true' || github.event_name == 'workflow_dispatch') && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/production') }}
+        env:
+          PRODUCTION_HOST: ${{ secrets.PRODUCTION_HOST }}
+          PRODUCTION_USER: ${{ secrets.PRODUCTION_USER }}
+          PRODUCTION_KEY: ${{ secrets.PRODUCTION_SSH_KEY }}
+        run: |
+          echo "Would deploy menu configuration to production"
+          echo "Target: ${PRODUCTION_HOST}"
+          echo "Export file: ${{ steps.export_menu.outputs.export_file }}"
+
+          # In a real implementation, this would:
+          # 1. SCP the export file to production server
+          # 2. Execute the FIX/11-Menu-System-Sync.php script via SSH
+          # 3. Verify the import was successful
+          # 4. Report back the results
+
+      - name: Create deployment summary
+        if: ${{ steps.export_menu.outputs.export_file != '' }}
+        run: |
+          cat >> $GITHUB_STEP_SUMMARY << 'EOF'
+          ## 🔄 Menu System Sync Summary
+
+          **Export Details:**
+          - 📁 File: `${{ steps.export_menu.outputs.export_file }}`
+          - 🌍 Source: Development Environment
+          - 📅 Timestamp: $(date)
+          - 🔗 Commit: [`${{ github.sha }}`](${{ github.server_url }}/${{ github.repository }}/commit/${{ github.sha }})
+
+          **Changes Detected:**
+          - Menu files modified: ${{ steps.menu_changes.outputs.menu_changed }}
+          - Manual trigger: ${{ github.event_name == 'workflow_dispatch' }}
+
+          **Next Steps:**
+          1. Download the export artifact from this workflow run
+          2. Upload to target environment and run FIX/11-Menu-System-Sync.php
+          3. Verify menu synchronization completed successfully
+
+          > **Note:** Automated deployment to production is not yet implemented.
+          > Manual import using the FIX script is currently required.
+          EOF
+
+      - name: Comment on PR (if applicable)
+        if: ${{ github.event_name == 'pull_request' && steps.export_menu.outputs.export_file != '' }}
+        uses: actions/github-script@v7
+        with:
+          script: |
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: `## 🔄 Menu System Changes Detected
+
+            This PR includes changes that will affect the menu system:
+
+            - **Export Generated:** \`${{ steps.export_menu.outputs.export_file }}\`
+            - **Menu System:** Classic Menu
+            - **Action Required:** After merging, use FIX/11-Menu-System-Sync.php to import changes
+
+            ### 📋 Deployment Checklist:
+            - [ ] Download menu export artifact from workflow
+            - [ ] Import using FIX/11-Menu-System-Sync.php on target environment
+            - [ ] Verify menu navigation works correctly
+            - [ ] Check user permissions are maintained
+
+            *Generated by Menu Sync Workflow*`
+            });
+
+  # Job to notify about sync requirements
+  notification:
+    runs-on: ubuntu-latest
+    needs: menu-sync
+    if: ${{ always() && needs.menu-sync.result == 'success' }}
+
+    steps:
+      - name: Notify team (placeholder)
+        run: |
+          echo "Menu sync workflow completed"
+          echo "Team notification would be sent here"
+          # Could integrate with Slack, Discord, email, etc.
+
+# Workflow configuration notes:
+#
+# Required Secrets:
+# - PRODUCTION_HOST: Production server hostname/IP
+# - PRODUCTION_USER: SSH user for production deployment
+# - PRODUCTION_SSH_KEY: SSH private key for authentication
+#
+# Optional Secrets:
+# - SLACK_WEBHOOK: For team notifications
+# - DISCORD_WEBHOOK: Alternative notification method
+#
+# Future Enhancements:
+# - Direct database connection for export/import
+# - Rollback capability on import failure
+# - Integration with staging environment
+# - Automated testing of menu functionality post-import

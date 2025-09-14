@@ -39,8 +39,8 @@ if ($countryQ->count() > 0) {
     $countrylist = [];
 }
 
-// Get popular countries from actual registry data (usersview)
-$popularCountriesQ = $db->query("SELECT country, COUNT(*) as user_count FROM usersview WHERE country IS NOT NULL AND country != '' AND LENGTH(TRIM(country)) > 0 GROUP BY country ORDER BY user_count DESC LIMIT 10");
+// Get popular countries from actual registry data (users table)
+$popularCountriesQ = $db->query("SELECT country, COUNT(*) as user_count FROM users WHERE country IS NOT NULL AND country != '' AND LENGTH(TRIM(country)) > 0 GROUP BY country ORDER BY user_count DESC LIMIT 10");
 $popularCountries = [];
 if ($popularCountriesQ->count() > 0) {
     foreach ($popularCountriesQ->results() as $country) {

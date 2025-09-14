@@ -19,7 +19,7 @@ require_once '../../../users/init.php';
 // Debug: Check if ChassisValidator class file exists
 $validatorPath = '../../../usersc/classes/ChassisValidator.php';
 if (!file_exists($validatorPath)) {
-    error_log("ChassisValidator file not found at: " . realpath($validatorPath));
+    logger($user->data()->id ?? 0, 'SystemError', "ChassisValidator file not found at: " . realpath($validatorPath));
     http_response_code(500);
     echo json_encode([
         'valid' => false,
@@ -79,7 +79,7 @@ try {
     header('Content-Type: application/json');
     echo json_encode($result);
 } catch (Exception $e) {
-    error_log("ChassisValidator error: " . $e->getMessage());
+    logger($user->data()->id ?? 0, 'ValidationError', "ChassisValidator error: " . $e->getMessage());
     ob_clean();
     http_response_code(500);
     header('Content-Type: application/json');

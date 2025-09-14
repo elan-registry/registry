@@ -218,17 +218,44 @@ $line = 1; // Where messages go
                                             addMessage($line++, "⚠️ Could not create rollback script (non-critical)", 'warning');
                                         }
                                         
-                                        // Step 3: Drop existing triggers
-                                        addMessage($line++, "Dropping existing car history triggers...");
+                                        // Step 3: Complete car trigger cleanup
+                                        addMessage($line++, "Performing complete car trigger cleanup...");
                                         
-                                        $triggers = ['cars_insert', 'cars_update', 'cars_delete'];
-                                        foreach ($triggers as $trigger) {
-                                            $dropResult = $db->query("DROP TRIGGER IF EXISTS $trigger");
-                                            if (!$db->error()) {
-                                                addMessage($line++, "  ✅ Dropped trigger: $trigger", 'success');
-                                            } else {
-                                                throw new Exception("Failed to drop trigger $trigger: " . $db->errorString());
+                                        // Aggressive cleanup - repeat until all car triggers are gone
+                                        $attempt = 0;
+                                        $maxAttempts = 10;
+                                        
+                                        do {
+                                            $attempt++;
+                                            addMessage($line++, "🧹 Cleanup round $attempt...", 'info');
+                                            
+                                            // Get current car-related triggers (database-specific)
+                                            $carTriggers = $db->query("SELECT TRIGGER_NAME FROM information_schema.TRIGGERS WHERE TRIGGER_SCHEMA = 'elanregi_spice' AND (EVENT_OBJECT_TABLE = 'cars' OR TRIGGER_NAME LIKE 'cars_%')")->results();
+                                            $count = count($carTriggers);
+                                            
+                                            if ($count == 0) {
+                                                addMessage($line++, "✅ All car triggers cleared in $attempt attempts", 'success');
+                                                break;
                                             }
+                                            
+                                            addMessage($line++, "  Removing $count triggers...", 'info');
+                                            
+                                            // Drop all found triggers
+                                            foreach ($carTriggers as $trigger) {
+                                                $name = $trigger->TRIGGER_NAME;
+                                                $db->query("DROP TRIGGER IF EXISTS `$name`");
+                                                addMessage($line++, "    🗑️ Dropped: $name", 'info');
+                                            }
+                                            
+                                            // Brief pause for MySQL
+                                            usleep(200000); // 200ms
+                                            
+                                        } while ($count > 0 && $attempt < $maxAttempts);
+                                        
+                                        // Final verification (database-specific)
+                                        $finalCount = $db->query("SELECT COUNT(*) as count FROM information_schema.TRIGGERS WHERE TRIGGER_SCHEMA = 'elanregi_spice' AND (EVENT_OBJECT_TABLE = 'cars' OR TRIGGER_NAME LIKE 'cars_%')")->first()->count;
+                                        if ($finalCount > 0) {
+                                            throw new Exception("Failed to remove all car triggers. $finalCount still remain.");
                                         }
                                         
                                         // Step 4: Create new triggers without username references
@@ -317,11 +344,20 @@ $line = 1; // Where messages go
                                             throw new Exception("Failed to create cars_delete trigger: " . $db->errorString());
                                         }
                                         
+                                        // Brief pause to allow MySQL metadata to update
+                                        addMessage($line++, "Waiting for MySQL metadata to refresh...");
+                                        sleep(2);
+                                        
+                                        // Force MySQL to refresh information_schema cache
+                                        $db->query("FLUSH TABLES");
+                                        
                                         // Step 5: Verify trigger recreation
                                         addMessage($line++, "Verifying trigger recreation...");
                                         
-                                        $verifyTriggers = $db->query("SELECT TRIGGER_NAME FROM information_schema.TRIGGERS WHERE EVENT_OBJECT_TABLE = 'cars' ORDER BY TRIGGER_NAME");
+                                        // Database-specific verification query
+                                        $verifyTriggers = $db->query("SELECT TRIGGER_NAME FROM information_schema.TRIGGERS WHERE TRIGGER_SCHEMA = 'elanregi_spice' AND EVENT_OBJECT_TABLE = 'cars' ORDER BY TRIGGER_NAME");
                                         $newTriggerCount = $verifyTriggers->count();
+                                        
                                         
                                         if ($newTriggerCount == 3) {
                                             addMessage($line++, "✅ All 3 car history triggers successfully recreated", 'success');
@@ -330,7 +366,7 @@ $line = 1; // Where messages go
                                                 addMessage($line++, "  - " . $trigger->TRIGGER_NAME . " (active)", 'info');
                                             }
                                         } else {
-                                            throw new Exception("Expected 3 triggers, found {$newTriggerCount}");
+                                            throw new Exception("Expected 3 car triggers, found {$newTriggerCount}");
                                         }
                                         
                                         // Step 6: Test trigger functionality (optional)
@@ -341,6 +377,18 @@ $line = 1; // Where messages go
                                         $beforeCount = $testQuery->first()->count;
                                         
                                         addMessage($line++, "✅ Trigger functionality verification complete", 'success');
+                                        
+                                        // Log completion
+                                        logger($user->data()->id, 'DatabaseMaintenance', "Car history triggers fixed - Username column references removed (Issue #TBD)");
+                                        
+                                        // Record script completion
+                                        try {
+                                            $db->query("INSERT INTO fix_script_runs (script_name) VALUES (?)", [basename(__FILE__)]);
+                                            addMessage($line++, "✅ Script completion recorded", 'success');
+                                            logger($user->data()->id, 'SystemMaintenance', "FIX script completed: " . basename(__FILE__));
+                                        } catch (Exception $record_e) {
+                                            addMessage($line++, "⚠️  Could not record script completion: " . $record_e->getMessage(), 'warning');
+                                        }
                                         
                                         // Final success message
                                         echo "<br><div class='success-message'><strong>🎉 TRIGGER FIX COMPLETED SUCCESSFULLY!</strong><br>";
@@ -427,6 +475,6 @@ function scrollToBottom() {
     }
 }
 
-// Auto-scroll during execution
-setInterval(scrollToBottom, 500);
+// Auto-scroll during execution - DISABLED to allow manual scrollback
+// setInterval(scrollToBottom, 500);
 </script>

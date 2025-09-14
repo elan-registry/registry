@@ -1,3 +1,18 @@
+/**
+ * Image Display JavaScript
+ * 
+ * Handles carousel and image display functionality for car images.
+ * Uses globally configured thumbnail sizes from ELAN_CONFIG.
+ */
+
+// Default configuration (fallback if not set)
+if (typeof ELAN_CONFIG === 'undefined') {
+    window.ELAN_CONFIG = {
+        THUMBNAIL_SIZE: 100,
+        RESPONSIVE_SIZE: 300
+    };
+}
+
 function carousel(row, carid = null) {
     if (carid == null) {
         carid = row['id']
@@ -45,15 +60,18 @@ function load_picture(image, thumbnail = null) {
     const filename = image.substr(0, index);
     const extension = image.substr((index + 1));
 
+    const thumbnailSize = ELAN_CONFIG.THUMBNAIL_SIZE;
+    const responsiveSize = ELAN_CONFIG.RESPONSIVE_SIZE;
+
     if (thumbnail) {
-        html = '<img src="' + img_path + filename + '-resized-100.' + extension + '" width="100" alt="elan" loading="lazy" class="img-fluid"> ';
+        html = '<img src="' + img_path + filename + '-resized-' + thumbnailSize + '.' + extension + '" width="' + thumbnailSize + '" alt="elan" loading="lazy" class="img-fluid"> ';
     } else {
-        html = '<img loading="lazy" class="card-img-top" src="' + img_path + filename + '-resized-100.' + extension + '"';
+        html = '<img loading="lazy" class="card-img-top" src="' + img_path + filename + '-resized-' + thumbnailSize + '.' + extension + '"';
         html += ' sizes="5vw" ';
-        html += ' width="100" ';
+        html += ' width="' + thumbnailSize + '" ';
         html += 'srcset="';
-        html += img_path + filename + '-resized-100.' + extension + ' 100w,';
-        html += img_path + filename + '-resized-300.' + extension + ' 300w"';
+        html += img_path + filename + '-resized-' + thumbnailSize + '.' + extension + ' ' + thumbnailSize + 'w,';
+        html += img_path + filename + '-resized-' + responsiveSize + '.' + extension + ' ' + responsiveSize + 'w"';
         html += 'alt="Elan" > ';
     }
     return html;

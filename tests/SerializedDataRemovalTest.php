@@ -78,7 +78,7 @@ class SerializedDataRemovalTest extends TestCase
     }
     
     /**
-     * Test that contact_owner_email.php uses secure database lookups
+     * Test that send-owner-email.php uses secure database lookups
      */
     public function testContactOwnerEmailUsesSecureLookups()
     {
@@ -89,10 +89,10 @@ class SerializedDataRemovalTest extends TestCase
         
         // Should use secure database lookup pattern
         $this->assertStringContainsString('SELECT id, email, fname, lname FROM users WHERE id = ?', $content,
-            'contact_owner_email.php should use secure database lookups');
+            'send-owner-email.php should use secure database lookups');
         
         // Should not contain unserialize calls
-        $this->assertStringNotContainsString('unserialize(', $content, 'contact_owner_email.php should not contain unserialize() calls');
+        $this->assertStringNotContainsString('unserialize(', $content, 'send-owner-email.php should not contain unserialize() calls');
     }
     
     /**

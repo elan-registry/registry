@@ -27,6 +27,8 @@ if (!empty($_GET)) {
 
     // Validate that car exists
     if (!$car->exists()) {
+        // Log car not found error
+        logger($user->data()->id ?? 0, 'ValidationError', "Car details requested for non-existent car ID: $carID");
         // Redirect to list if car not found
         Redirect::to($us_url_root . '/app/cars/index.php');
     }
@@ -46,6 +48,7 @@ if (!empty($_GET)) {
         try {
             $purchaseDate = new DateTime($carData->purchasedate);
         } catch (Exception $e) {
+            logger($user->data()->id ?? 0, 'SystemError', "Invalid purchase date format for car ID $carID: " . $carData->purchasedate);
             $purchaseDate = null;
         }
     }
@@ -54,6 +57,7 @@ if (!empty($_GET)) {
         try {
             $soldDate = new DateTime($carData->solddate);
         } catch (Exception $e) {
+            logger($user->data()->id ?? 0, 'SystemError', "Invalid sold date format for car ID $carID: " . $carData->solddate);
             $soldDate = null;
         }
     }
@@ -62,12 +66,14 @@ if (!empty($_GET)) {
         try {
             $buildDate = new DateTime($factoryData->builddate);
         } catch (Exception $e) {
+            logger($user->data()->id ?? 0, 'SystemError', "Invalid build date format for car ID $carID: " . $factoryData->builddate);
             $buildDate = null;
         }
     }
     
 } else {
     // Shouldn't be here unless someone is mangling the url
+    logger($user->data()->id ?? 0, 'ValidationError', 'Car details page accessed without car_id parameter');
     Redirect::to($us_url_root . '/app/cars/index.php');
 }
 ?>
@@ -284,7 +290,7 @@ if (!empty($_GET)) {
                                     <i class="fas fa-plus-circle text-success d-block mb-1"></i>
                                     <small class="text-muted d-block">Added to Registry</small>
                                     <strong>
-                                        <?php 
+                                        <?php
                                         $createdDate = new DateTime($car->data()->ctime);
                                         echo $createdDate->format('M j, Y');
                                         ?>
@@ -294,7 +300,7 @@ if (!empty($_GET)) {
                                     <i class="fas fa-edit text-info d-block mb-1"></i>
                                     <small class="text-muted d-block">Last Updated</small>
                                     <strong>
-                                        <?php 
+                                        <?php
                                         $modifiedDate = new DateTime($car->data()->mtime);
                                         echo $modifiedDate->format('M j, Y');
                                         ?>
@@ -322,7 +328,7 @@ if (!empty($_GET)) {
                                     <i class="fas fa-map-marker-alt text-primary"></i> Location
                                 </dt>
                                 <dd class="col-sm-8">
-                                    <?php 
+                                    <?php
                                     $location = [];
                                     if (!empty($carData->city)) $location[] = html_entity_decode($carData->city);
                                     if (!empty($carData->state)) $location[] = html_entity_decode($carData->state);
@@ -348,7 +354,7 @@ if (!empty($_GET)) {
                             <h3 class="mb-0"><i class="fas fa-map-marked-alt text-primary"></i> Location</h3>
                         </div>
                         <div class="card-body">
-                            <?php if (!empty($carData->lat) && !empty($carData->lon) && 
+                            <?php if (!empty($carData->lat) && !empty($carData->lon) &&
                                         $carData->lat !== null && $carData->lon !== null &&
                                         is_numeric($carData->lat) && is_numeric($carData->lon)) { ?>
                                 <div class="map-container map-container-small" style="height: 100%;">
@@ -377,7 +383,7 @@ if (!empty($_GET)) {
                             <h3 class="mb-0"><i class="fas fa-images text-primary"></i> Photos</h3>
                         </div>
                         <div class="card-body">
-                            <?php echo displayCarousel($car); ?>
+                            <?php echo CarView::displayCarousel($car); ?>
                         </div>
                     </div>
                     
@@ -476,7 +482,7 @@ if (!empty($_GET)) {
                             <div class="collapse" id="historyDetails">
                                 <div class="alert alert-info mb-3">
                                     <i class="fas fa-info-circle"></i>
-                                    <strong>About History:</strong> This table shows all changes made to the car's information over time. 
+                                    <strong>About History:</strong> This table shows all changes made to the car's information over time.
                                     Use horizontal scrolling on mobile devices to view all columns.
                                 </div>
                                 
@@ -586,7 +592,7 @@ if (!empty($_GET)) {
                                                         </td>
                                                         <td>
                                                             <?php if (!empty($record->image)): ?>
-                                                                <?= displayCarousel($car, $record->car_id ?? $carData->id) ?>
+                                                                <?= CarView::displayCarousel($car) ?>
                                                             <?php endif; ?>
                                                         </td>
                                                         <td><?= htmlspecialchars($record->fname ?? '') ?></td>
@@ -707,10 +713,32 @@ echo html_entity_decode($settings->elan_datatables_css_cdn);
 ?>
 
 <!-- Load external JavaScript files -->
+<!-- Configure thumbnail sizes from settings -->
+<script>
+window.ELAN_CONFIG = {
+    THUMBNAIL_SIZE: <?php 
+        $thumbnailSize = 100; // Default
+        $responsiveSize = 300; // Default
+        
+        // Try to get settings if the field exists
+        if (isset($settings->elan_image_thumbnail_sizes) && !empty($settings->elan_image_thumbnail_sizes)) {
+            $thumbnailSizes = explode(',', $settings->elan_image_thumbnail_sizes);
+            if (count($thumbnailSizes) >= 1) {
+                $thumbnailSize = intval(trim($thumbnailSizes[0]));
+            }
+            if (count($thumbnailSizes) >= 2) {
+                $responsiveSize = intval(trim($thumbnailSizes[1]));
+            }
+        }
+        echo $thumbnailSize;
+    ?>,
+    RESPONSIVE_SIZE: <?php echo $responsiveSize; ?>
+};
+</script>
 <script src='<?= $us_url_root ?>app/assets/js/imagedisplay.js'></script>
 
 <?php 
-$hasValidLocation = (!empty($carData->lat) && !empty($carData->lon) && 
+$hasValidLocation = (!empty($carData->lat) && !empty($carData->lon) &&
                    $carData->lat !== null && $carData->lon !== null &&
                    is_numeric($carData->lat) && is_numeric($carData->lon));
 ?>
@@ -777,8 +805,8 @@ document.addEventListener('DOMContentLoaded', function() {
 @media print {
     .btn, .breadcrumb, .card-header .row .col-md-4 { display: none !important; }
     .card { border: 1px solid #000 !important; box-shadow: none !important; }
-    .bg-primary { background-color: #0056b3 !important; -webkit-print-color-adjust: exact; }
-    .text-white { color: #fff !important; -webkit-print-color-adjust: exact; }
+    .bg-primary { background-color: #0056b3 !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    .text-white { color: #fff !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
     #historyDetails { display: block !important; }
     #historySummary { display: none !important; }
     .collapse { display: block !important; }

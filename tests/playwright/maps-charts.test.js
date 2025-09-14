@@ -29,20 +29,16 @@ test.describe('Maps and Charts Functionality', () => {
     }
   });
 
-  test('Google Charts load on statistics page', async ({ page }) => {
+  test('Chart.js charts load on statistics page', async ({ page }) => {
     await page.goto('http://localhost:9999/elan_registry/app/reports/statistics.php');
-    
-    // Wait for chart containers
-    const chartContainers = [
-      '#chart_country',
-      '#chart_type', 
-      '#chart_series',
-      '#chart_variant',
-      '#chart_age',
-      '#car_chart'
+
+    // Wait for initial chart containers (Overview tab)
+    const overviewChartContainers = [
+      '#timelineChart',
+      '#ageChart'
     ];
     
-    for (const containerId of chartContainers) {
+    for (const containerId of overviewChartContainers) {
       const container = page.locator(containerId);
       if (await container.count() > 0) {
         await expect(container).toBeVisible();
@@ -173,7 +169,7 @@ test.describe('Maps and Charts Functionality', () => {
     const pageContent = await page.content();
     
     // Should contain data for charts
-    expect(pageContent).toMatch(/statisticsRawData|chart|google\.charts/);
+    expect(pageContent).toMatch(/statisticsRawData|chart|Chart\.js/);
     
     // Wait for charts to render
     await page.waitForTimeout(5000);

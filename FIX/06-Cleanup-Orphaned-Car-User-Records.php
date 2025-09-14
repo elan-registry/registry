@@ -197,7 +197,7 @@ $line = 1; // Where messages go
                                     }
                                     
                                     // Log the cleanup action
-                                    logger($user->data()->id, 'DatabaseCleanup', "Cleaned up {$deletedCount} orphaned car_user records (Issue #35)");
+                                    logger($user->data()->id, 'DatabaseMaintenance', "Cleaned up {$deletedCount} orphaned car_user records (Issue #35)");
                                 }
                                 
                                 // Record script completion

@@ -24,7 +24,6 @@ header("Content-Security-Policy: " .
         "https://region1.google-analytics.com " .
         "https://www.gstatic.com " .
         "https://ssl.gstatic.com " .
-        "https://charts.googleapis.com " .
         // Google reCAPTCHA
         "https://www.google.com " .
         "https://www.gstatic.com/recaptcha/ " .
@@ -53,10 +52,7 @@ header("Content-Security-Policy: " .
         "https://use.fontawesome.com " .
         "https://kit.fontawesome.com " .
         "https://ka-f.fontawesome.com " .
-        // Google Charts CSS
-        "https://www.gstatic.com " .
-        "https://www.gstatic.com/charts/ " .
-        "https://www.gstatic.com/charts/*; " .
+        "https://www.gstatic.com; " .
     "img-src 'self' data: blob: " .
         // Image sources
         "https://maps.googleapis.com " .
@@ -82,11 +78,12 @@ header("Content-Security-Policy: " .
         "https://region1.google-analytics.com " .
         "https://www.gstatic.com " .
         "https://ssl.gstatic.com " .
-        "https://charts.googleapis.com " .
         // Google reCAPTCHA API
         "https://www.google.com " .
         "https://kit.fontawesome.com " .
         "https://ka-f.fontawesome.com " .
+        // CDN for source maps
+        "https://cdn.jsdelivr.net " .
         // Cloudflare Analytics
         "https://cloudflareinsights.com " .
         "https://static.cloudflareinsights.com; " .

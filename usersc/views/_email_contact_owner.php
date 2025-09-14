@@ -1,72 +1,73 @@
-<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
-<html lang="en" xmlns:v="urn:schemas-microsoft-com:vml">
-
+<!DOCTYPE html>
+<html lang="en">
 <head>
-    <meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
-    <meta name="viewport" content="width=device-width; initial-scale=1.0;" />
-
-    <title>Lotus Elan Registry - Owner to Owner Email</title>
-    <style type="text/css">
-        .container {
-            margin-left: 10%;
-            margin-bottom: 10%;
-            width: 80%;
-        }
-
-        table {
-            border: 1px solid #999999;
-            background-color: #FFFFFF;
-            width: 100%;
-            text-align: left;
-            border-collapse: collapse;
-        }
-
-        table td,
-        table th {
-            border: 1px solid #999999;
-            padding: 3px 2px;
-        }
-
-        table tr:nth-child(even) {
-            background: #efefef;
-        }
-
-        .blank_row {
-            height: 1px !important;
-            /* overwrites any other rules */
-            background-color: #000000 !important;
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Lotus Elan Registry - Owner to Owner Message</title>
+    <style>
+        body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; margin: 0; padding: 0; background-color: #f4f4f4; }
+        .email-container { max-width: 600px; margin: 0 auto; background-color: #ffffff; }
+        .header { background-color: #029acf; color: white; padding: 20px; text-align: center; }
+        .logo { width: 48px; height: 48px; margin-bottom: 10px; }
+        .content { padding: 30px; }
+        .owner-box { background-color: #f8f9fa; border: 2px solid #029acf; border-radius: 8px; padding: 20px; margin: 20px 0; }
+        .owner-details { background-color: #fff; border: 1px solid #dee2e6; border-radius: 5px; padding: 15px; margin: 15px 0; }
+        .detail-row { display: flex; margin-bottom: 10px; }
+        .detail-label { font-weight: bold; min-width: 100px; color: #469408; }
+        .detail-value { flex: 1; }
+        .message-content { background-color: #f8f9fa; border-left: 4px solid #469408; padding: 15px; margin: 20px 0; white-space: pre-wrap; }
+        .footer { background-color: #f8f9fa; padding: 20px; text-align: center; border-top: 1px solid #dee2e6; color: #6b7280; font-size: 14px; }
+        .lotus-green { color: #469408; }
+        .lotus-blue { color: #029acf; }
+        @media only screen and (max-width: 600px) {
+            .content { padding: 20px; }
+            .detail-row { flex-direction: column; }
+            .detail-label { min-width: auto; margin-bottom: 5px; }
         }
     </style>
-
 </head>
-
 <body>
-    <div class="container" id='message'>
-        <p>Hello <?= $to ?>,</p>
-        <p>This is a message from the <a href='https://www.elanregistry.org'>Lotus Elan Registry</a>. Another Elan owner has sent you a message.</p>
-        <table aria-describedby='message'>
-            <tr style="background-color:#9fc77f">
-                <th colspan="2" id='email'>Message</th>
-            </tr>
-            <tr>
-                <td><strong>From</strong></td>
-                <td> <?= $from ?> </td>
-            </tr>
-
-            <tr>
-                <td><strong>Email</strong></td>
-                <td> <?= $fromEmail ?> </td>
-            </tr>
-            <tr class='blank_row'>
-                <td colspan="2"></td>
-            </tr>
-            <tr>
-                <td colspan="2">
-                    <pre><?= $message ?> </pre>
-                </td>
-            </tr>
-        </table>
+    <div class="email-container">
+        <div class="header">
+            <img src="https://elanregistry.org/usersc/templates/ElanRegistry/assets/images/logo-72x72.png" alt="Lotus Logo" class="logo">
+            <h1>Lotus Elan Registry</h1>
+            <p>Owner to Owner Message</p>
+        </div>
+        
+        <div class="content">
+            <p>Hello <strong><?= htmlspecialchars($to) ?></strong>,</p>
+            
+            <p>Another Elan owner has sent you a message through the <strong class="lotus-green">Lotus Elan Registry</strong>.</p>
+            
+            <div class="owner-box">
+                <h3 class="lotus-blue">From Owner</h3>
+                <div class="owner-details">
+                    <div class="detail-row">
+                        <div class="detail-label">Name:</div>
+                        <div class="detail-value"><?= htmlspecialchars($from) ?></div>
+                    </div>
+                    <div class="detail-row">
+                        <div class="detail-label">Email:</div>
+                        <div class="detail-value"><?= htmlspecialchars($fromEmail) ?></div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="owner-box">
+                <h3 class="lotus-blue">Message</h3>
+                <div class="message-content"><?= htmlspecialchars($message) ?></div>
+            </div>
+            
+            <p><strong>You can reply directly to this email to respond to <?= htmlspecialchars($from) ?>.</strong></p>
+        </div>
+        
+        <div class="footer">
+            <p><strong>The Lotus Elan Registry</strong></p>
+            <p><a href="https://elanregistry.org">https://elanregistry.org</a></p>
+            <p>Preserving the legacy of Colin Chapman's masterpiece since 2003</p>
+            <hr style="border: none; border-top: 1px solid #dee2e6; margin: 15px 0;">
+            <p><small>This message was sent through the registry contact system.</small></p>
+        </div>
     </div>
 </body>
-
 </html>

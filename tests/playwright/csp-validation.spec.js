@@ -121,23 +121,23 @@ test.describe('CSP Validation Tests', () => {
     expect(cspViolations, `Found ${cspViolations.length} CSP violations: ${JSON.stringify(cspViolations, null, 2)}`).toHaveLength(0);
   });
 
-  test('Statistics page Google Charts should load successfully', async ({ page }) => {
+  test('Statistics page Chart.js should load successfully', async ({ page }) => {
     const cspViolations = setupCSPViolationMonitoring(page);
-    
+
     await page.goto('/app/reports/statistics.php');
     await page.waitForLoadState('networkidle');
-    
-    // Wait for Google Charts to load
-    await page.waitForTimeout(5000);
-    
-    // Check if charts are actually rendered (they should have SVG elements)
-    const chartElements = await page.locator('#chart_country svg, #chart_type svg, #chart_series svg').count();
-    
+
+    // Wait for Chart.js to load and render charts
+    await page.waitForTimeout(3000);
+
+    // Check if charts are actually rendered (they should have canvas elements)
+    const chartElements = await page.locator('#timelineChart, #ageChart').count();
+
     // Verify no CSP violations occurred
     expect(cspViolations, `Found ${cspViolations.length} CSP violations while loading charts: ${JSON.stringify(cspViolations, null, 2)}`).toHaveLength(0);
-    
+
     // Verify at least some charts loaded successfully
-    expect(chartElements, 'No chart SVG elements found - charts may not be loading properly').toBeGreaterThan(0);
+    expect(chartElements, 'No chart canvas elements found - charts may not be loading properly').toBeGreaterThan(0);
   });
 
   test('Statistics page external resources should load', async ({ page }) => {
@@ -168,7 +168,7 @@ test.describe('CSP Validation Tests', () => {
     expect(cspViolations, `Found ${cspViolations.length} CSP violations: ${JSON.stringify(cspViolations, null, 2)}`).toHaveLength(0);
     
     // Verify critical resources loaded successfully
-    const criticalDomains = ['charts.googleapis.com', 'gstatic.com', 'cloudflareinsights.com'];
+    const criticalDomains = ['gstatic.com', 'cloudflareinsights.com'];
     const criticalFailures = failedRequests.filter(req => {
       try {
         const url = new URL(req.url);

@@ -1,19 +1,66 @@
-  e<?php
+  <?php
+/**
+ * Lotus Elan Registry - Homepage
+ *
+ * This is the main landing page for the Lotus Elan Registry website.
+ * It displays registry statistics, a random featured car, and important resources.
+ *
+ * @package ElanRegistry
+ * @version 2.8.0
+ * @author Jim Boone
+ */
 
 require_once 'users/init.php';
 require_once $abs_us_root . $us_url_root . 'users/includes/template/prep.php';
+require_once $abs_us_root . $us_url_root . 'usersc/classes/CarView.php';
 
+// Security check - ensure page access is authorized
 if (!securePage($_SERVER['PHP_SELF'])) {
 	die();
 }
 
-// Grab a random car with an image!
-$randomCarId = $db->query("SELECT id FROM cars WHERE image <> '' ORDER BY RAND() LIMIT 1")->results()[0]->id;
-$car = new Car($randomCarId);
+/**
+ * Fetch a random car with valid images to display on homepage
+ * 
+ * Filters for cars that have:
+ * - Non-empty image field
+ * - Valid JSON format (not empty array '[]')
+ * - Properly formatted JSON (JSON_VALID = 1)
+ * - At least one image in the JSON array (JSON_LENGTH > 0)
+ *
+ * @var int $randomCarId The ID of a randomly selected car with valid images
+ * @var Car $car Car object instance for the selected random car
+ */
+$randomCarResults = $db->query("SELECT id FROM cars
+    WHERE image <> ''
+    AND image <> '[]'
+    AND JSON_VALID(image) = 1
+    AND JSON_LENGTH(image) > 0
+    ORDER BY RAND() LIMIT 1")->results();
 
-// Grab count of cars by Series - using efficient single query
-$seriesResults = $db->query("SELECT 
-    CASE 
+if (!empty($randomCarResults)) {
+    $randomCarId = (int) $randomCarResults[0]->id;
+    $car = new Car($randomCarId);
+} else {
+    // Fallback: if no cars with valid images found, try any car with non-empty image field
+    $fallbackResults = $db->query("SELECT id FROM cars WHERE image <> '' ORDER BY RAND() LIMIT 1")->results();
+    if (!empty($fallbackResults)) {
+        $randomCarId = (int) $fallbackResults[0]->id;
+        $car = new Car($randomCarId);
+    } else {
+        // No cars with images at all - set to null to handle in template
+        $car = null;
+    }
+}
+
+/**
+ * Get count of cars by series using efficient single query
+ * Groups cars into series categories and counts registrations
+ *
+ * @var array $seriesResults Database results containing series counts
+ */
+$seriesResults = $db->query("SELECT
+    CASE
         WHEN series LIKE 's1%' THEN 's1'
         WHEN series LIKE 's2%' THEN 's2'
         WHEN series LIKE 's3%' THEN 's3'
@@ -22,21 +69,33 @@ $seriesResults = $db->query("SELECT
         WHEN series LIKE '+2%' THEN '+2'
     END as series_group,
     COUNT(*) as count
-FROM cars 
+FROM cars
 WHERE series LIKE 's1%' OR series LIKE 's2%' OR series LIKE 's3%' OR series LIKE 's4%' OR series LIKE 'sprint%' OR series LIKE '+2%'
 GROUP BY series_group")->results();
 
-// Initialize count array with zeros
+/**
+ * Initialize count array with zeros for all series
+ *
+ * @var array<string, int> $count Array of series counts indexed by series name
+ */
 $count = ['s1' => 0, 's2' => 0, 's3' => 0, 's4' => 0, 'sprint' => 0, '+2' => 0];
 
-// Populate count array from query results
+/**
+ * Populate count array from database query results
+ */
 foreach ($seriesResults as $result) {
     if ($result->series_group) {
-        $count[$result->series_group] = $result->count;
+        $count[$result->series_group] = (int) $result->count;
     }
 }
 
-// Number of cars produced
+/**
+ * Number of cars produced per series (from reference material)
+ * Data source: "Authentic Lotus Elan & Plus 2 1962-1974" by Robinshaw and Ross
+ *
+ * @var array<string, string> $notes Production numbers for each series
+ */
+$notes = [];
 $notes['s1']     = "900";
 $notes['s2']     = "1250";
 $notes['s3']     = "2650";
@@ -44,6 +103,17 @@ $notes['s4']     = "2976";
 $notes['sprint'] = "900";
 $notes['+2']     = "4526";
 
+?>
+<?php
+/**
+ * HTML Template Start - Homepage Layout
+ *
+ * The following section contains the main homepage template with:
+ * - Site header and navigation
+ * - Registry statistics table
+ * - Featured random car display
+ * - Resource links and acknowledgments
+ */
 ?>
 <div class="page-wrapper">
 	<!-- Page Content -->
@@ -53,14 +123,19 @@ $notes['+2']     = "4526";
 			<div class='col-lg-5'>
 				<div class='card registry-card'>
 					<div class='card-header'>
-						<h1 class='mb-0'><i class='fas fa-car'></i> <?php echo $settings->site_name; ?></h1>
+						<h1 class='mb-0'><i class='fas fa-car'></i> <?php echo htmlspecialchars($settings->site_name ?? 'Lotus Elan Registry', ENT_QUOTES, 'UTF-8'); ?></h1>
 						<p class='text-muted'>A place to document Lotus Elan and Lotus Elan Plus 2</p>
 					</div>
 					<div class='card-body'>
 
-
-						<?php if ($user->isLoggedIn()) {
-							$uid = $user->data()->id; ?>
+						<?php
+						/**
+						 * Display user authentication buttons
+						 * Shows account link for logged-in users, login/signup for guests
+						 */
+						if ($user->isLoggedIn()) {
+							/** @var int $uid Current user ID */
+							$uid = (int) $user->data()->id; ?>
 							<a class='btn btn-outline-secondary btn-sm' href='users/account.php' role='button'><i class='fas fa-user'></i> User Account &raquo;</a>
 						<?php
 						} else { ?>
@@ -98,15 +173,22 @@ $notes['+2']     = "4526";
 							</thead>
 							<tbody>
 								<?php
+								/**
+								 * Generate statistics table rows showing registry data by series
+								 * Calculates totals and percentages for registered vs produced cars
+								 *
+								 * @var int $total Total registered cars across all series
+								 * @var int $totalN Total cars produced across all series
+								 */
 								$total = 0;
 								$totalN = 0;
 								foreach ($count as $key => $value) {
-									echo "<tr><td>" . ucfirst($key) . "</td><td>" . $value . "</td>";
-									echo "<td>" . $notes[$key] . "</td>";
-									echo "<td>" . round(($value * 100) / $notes[$key], 0) . " %</td></tr>";
+									echo "<tr><td>" . ucfirst((string) $key) . "</td><td>" . (int) $value . "</td>";
+									echo "<td>" . htmlspecialchars((string) $notes[$key], ENT_QUOTES, 'UTF-8') . "</td>";
+									echo "<td>" . round(((int) $value * 100) / (int) $notes[$key], 0) . " %</td></tr>";
 
-									$total += $value;
-									$totalN += $notes[$key];
+									$total += (int) $value;
+									$totalN += (int) $notes[$key];
 								}
 								echo "<tr><td><strong>Total</strong></td><td><strong>" . $total . "</strong></td><td>" .
 									$totalN . "</td><td>" . round(($total * 100) / $totalN) . " %</td></tr>";
@@ -128,29 +210,44 @@ $notes['+2']     = "4526";
 						<h2 class='mb-0'><i class='fas fa-star'></i> One of the Cars</h2>
 					</div>
 					<div class='card-body'>
-
-						<?php echo displayCarousel($car); ?>
-						<table id='cartable' class='table table-striped table-bordered table-hover table-sm' aria-describedby='Car ID <?= $car->data()->id ?>'>
-							<tr>
-								<th scope='col'><strong>Year :</strong></th>
-								<th scope='col'><?= $car->data()->year ?></th>
-							</tr>
-							<tr>
-								<td><strong>Series :</strong></td>
-								<td><?= $car->data()->series ?></td>
-							</tr>
-							<tr>
-								<td><strong>Variant:</strong></td>
-								<td><?= $car->data()->variant ?></td>
-							</tr>
-							<tr>
-								<td><strong>Type:</strong></td>
-								<td><?= $car->data()->type ?></td>
-							</tr>
-							<tr>
-								<td colspan='2'><a class='btn btn-success btn-sm' href='<?= $us_url_root ?>app/cars/details.php?car_id=<?= $car->data()->id ?>'><i class='fas fa-eye'></i> Details</a></td>
-							</tr>
-						</table>
+						<?php
+						/**
+						 * Display featured random car
+						 * Shows carousel images and key details for a randomly selected car
+						 */
+						if ($car !== null) {
+							echo CarView::displayCarousel($car); ?>
+							<table id='cartable' class='table table-striped table-bordered table-hover table-sm' aria-describedby='Car ID <?= (int) $car->data()->id ?>'>
+								<tr>
+									<th scope='col'><strong>Year :</strong></th>
+									<th scope='col'><?= htmlspecialchars((string) $car->data()->year, ENT_QUOTES, 'UTF-8') ?></th>
+								</tr>
+								<tr>
+									<td><strong>Series :</strong></td>
+									<td><?= htmlspecialchars((string) $car->data()->series, ENT_QUOTES, 'UTF-8') ?></td>
+								</tr>
+								<tr>
+									<td><strong>Variant:</strong></td>
+									<td><?= htmlspecialchars((string) $car->data()->variant, ENT_QUOTES, 'UTF-8') ?></td>
+								</tr>
+								<tr>
+									<td><strong>Type:</strong></td>
+									<td><?= htmlspecialchars((string) $car->data()->type, ENT_QUOTES, 'UTF-8') ?></td>
+								</tr>
+								<tr>
+									<td colspan='2'><a class='btn btn-success btn-sm' href='<?= htmlspecialchars($us_url_root, ENT_QUOTES, 'UTF-8') ?>app/cars/details.php?car_id=<?= (int) $car->data()->id ?>'><i class='fas fa-eye'></i> Details</a></td>
+								</tr>
+							</table>
+						<?php
+						} else {
+							// No cars with images found - show message
+							echo '<div class="text-center py-4">';
+							echo '<i class="fas fa-car text-muted" style="font-size: 3rem;"></i>';
+							echo '<h5 class="text-muted mt-3 mb-2">No Featured Cars Available</h5>';
+							echo '<p class="text-muted">Cars are being added to the registry regularly. Check back soon!</p>';
+							echo '</div>';
+						}
+						?>
 					</div> <!-- card-body -->
 				</div> <!-- card -->
 			</div> <!-- /.col-md-4 -->

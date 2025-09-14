@@ -3,6 +3,7 @@
     "description": "Lotus Elan Registry",
     "type": "project",
     "require": {
+        "php": ">=8.1",
         "johnathanmiller/secure-env-php": "^2.0"
     },
     "authors": [

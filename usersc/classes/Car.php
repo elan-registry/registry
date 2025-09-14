@@ -70,6 +70,9 @@ class Car
             throw new CarCreationException('Invalid CSRF token provided');
         }
         
+        // Remove token from fields array after validation (token should not be stored in database)
+        unset($fields['token']);
+        
         // Validate required fields
         $this->validateRequiredFields($fields, ['chassis', 'model', 'year']);
         
@@ -85,12 +88,13 @@ class Car
                 }
                 unset($fields['images']);
             } catch (Exception $e) {
-                error_log("Car class: Image encoding error during create: " . $e->getMessage());
+                logger($fields['user_id'] ?? 0, 'FileError', "Car class: Image encoding error during create: " . $e->getMessage());
                 throw new ImageProcessingException('Error processing car images: ' . $e->getMessage());
             }
         }
 
         if (!$this->_db->insert($this->tableName, $fields)) {
+            logger($fields['user_id'] ?? 0, 'DatabaseError', 'Car creation failed: ' . $this->_db->errorString());
             throw new CarCreationException('Database error during car creation: ' . $this->_db->errorString());
         } else {
             $id = $this->_db->lastId();
@@ -110,13 +114,18 @@ class Car
     public function update(array $fields = []): bool
     {
         if (empty($fields) || !isset($fields['id'])) {
+            logger($fields['user_id'] ?? 0, 'ValidationError', 'Car update failed: No data or ID provided');
             throw new CarValidationException('No data or ID provided for car update');
         }
         
         // CSRF Protection
         if (!isset($fields['token']) || !Token::check($fields['token'])) {
+            logger($fields['user_id'] ?? 0, 'ValidationError', 'Car update failed: Invalid CSRF token');
             throw new CarValidationException('Invalid CSRF token provided');
         }
+        
+        // Remove token from fields array after validation (token should not be stored in database)
+        unset($fields['token']);
         
         if (!is_numeric($fields['id']) || $fields['id'] <= 0) {
             throw new CarValidationException('Invalid car ID provided for update');
@@ -139,7 +148,7 @@ class Car
                 }
                 unset($fields['images']);
             } catch (Exception $e) {
-                error_log("Car class: Image encoding error during update: " . $e->getMessage());
+                logger($fields['user_id'] ?? 0, 'FileError', "Car class: Image encoding error during update: " . $e->getMessage());
                 throw new ImageProcessingException('Error processing car images: ' . $e->getMessage());
             }
         }
@@ -171,6 +180,7 @@ class Car
         
         // Check if there was an actual database error vs UserSpice returning false for "no changes"
         if (!$updateResult && $this->_db->error()) {
+            logger($fields['user_id'] ?? 0, 'DatabaseError', 'Car update failed: ' . $this->_db->errorString());
             throw new CarValidationException('Database update failed - check logs for details');
         } else {
             // UserSpice returned false but no error means "no changes needed" - treat as success
@@ -234,11 +244,11 @@ class Car
                         $images[$key]['type'] = image_type_to_extension($imageType, false);
                     } else {
                         $images[$key]['type'] = 'unknown';
-                        error_log("Car class: Unable to determine image type for file: {$file}");
+                        logger(0, 'FileError', "Car class: Unable to determine image type for file: {$file}");
                     }
                 } catch (Exception $e) {
                     $images[$key]['type'] = 'unknown';
-                    error_log("Car class: Exception getting image type for {$file}: " . $e->getMessage());
+                    logger(0, 'FileError', "Car class: Exception getting image type for {$file}: " . $e->getMessage());
                 }
                 
                 try {
@@ -247,11 +257,11 @@ class Car
                         $images[$key]['mime'] = $mimeType;
                     } else {
                         $images[$key]['mime'] = 'application/octet-stream';
-                        error_log("Car class: Unable to determine MIME type for file: {$file}");
+                        logger(0, 'FileError', "Car class: Unable to determine MIME type for file: {$file}");
                     }
                 } catch (Exception $e) {
                     $images[$key]['mime'] = 'application/octet-stream';
-                    error_log("Car class: Exception getting MIME type for {$file}: " . $e->getMessage());
+                    logger(0, 'FileError', "Car class: Exception getting MIME type for {$file}: " . $e->getMessage());
                 }
             }
         }
@@ -381,12 +391,12 @@ class Car
     {
         // Validate input
         if (empty($filename)) {
-            throw new ImageProcessingException('Image filename cannot be empty');
+            throw new ImageProcessingException(CarErrorMessages::getMessage('image_filename_empty'));
         }
 
         // Ensure car exists
         if (!$this->exists()) {
-            throw new CarNotFoundException('Car not found');
+            throw new CarNotFoundException(CarErrorMessages::getMessage('car_not_found'));
         }
 
         // Get current images
@@ -417,7 +427,7 @@ class Car
         // Update database with JSON format
         $imageJson = empty($currentImages) ? '' : json_encode($currentImages);
         if ($imageJson === false && !empty($currentImages)) {
-            throw new ImageProcessingException('Failed to encode images as JSON');
+            throw new ImageProcessingException(CarErrorMessages::getMessage('image_encoding_failed'));
         }
 
         try {
@@ -432,10 +442,12 @@ class Car
                 
                 return true;
             } else {
-                throw new Exception('Database update failed');
+                throw new Exception(CarErrorMessages::getAdminMessage('database_update_failed'));
             }
         } catch (Exception $e) {
-            throw new Exception('Failed to remove image from database: ' . $e->getMessage());
+            $technicalMsg = CarErrorMessages::getTechnicalMessage('image_remove_failed', ['error' => $e->getMessage()]);
+            logger(0, 'ImageRemoval', $technicalMsg);
+            throw new Exception(CarErrorMessages::getMessage('image_remove_failed'));
         }
     }
 
@@ -451,23 +463,25 @@ class Car
      * 
      * @see https://github.com/unibrain1/elanregistry/issues/248 Issue #248: Replace direct DB access in car management
      */
-    public function delete(string $reason = 'Administrative deletion'): bool
+    public function delete(string $reason = 'Administrative deletion', ?string $token = null): bool
     {
         global $user;
         
-        // CSRF Protection - Check token from session/request
-        if (!Token::check()) {
-            throw new CarDeletionException('Invalid CSRF token for car deletion');
+        // CSRF Protection - Check token if provided
+        if ($token !== null && !Token::check($token)) {
+            throw new CarDeletionException(CarErrorMessages::getMessage('csrf_token_invalid', 'admin', ['operation' => 'car deletion']));
         }
         
         // Ensure car exists
         if (!$this->exists()) {
-            throw new CarNotFoundException('Car not found - cannot delete');
+            $technicalMsg = CarErrorMessages::getTechnicalMessage('car_not_found_delete', ['id' => 'unknown']);
+            logger(0, 'CarDeletion', $technicalMsg);
+            throw new CarNotFoundException(CarErrorMessages::getMessage('car_not_found_delete'));
         }
 
         // Validate we have a valid user for audit purposes
         if (!isset($user) || !$user->isLoggedIn()) {
-            throw new CarDeletionException('User authentication required for car deletion');
+            throw new CarDeletionException(CarErrorMessages::getMessage('user_auth_required', 'admin', ['operation' => 'car deletion']));
         }
 
         $carId = $this->_data->id;
@@ -488,19 +502,25 @@ class Car
             
             $historyInserted = $this->_db->insert('cars_hist', $historyFields);
             if (!$historyInserted) {
-                throw new Exception('Failed to create audit trail entry');
+                $technicalMsg = CarErrorMessages::getTechnicalMessage('audit_trail_failed', ['operation' => 'car deletion']);
+                logger($user->data()->id ?? 0, 'CarDeletion', $technicalMsg);
+                throw new Exception(CarErrorMessages::getAdminMessage('audit_trail_failed', ['operation' => 'car deletion']));
             }
 
             // Remove car-user relationships
             $carUserDeleted = $this->_db->query("DELETE FROM car_user WHERE car_id = ?", [$carId]);
             if ($this->_db->error()) {
-                throw new Exception('Failed to delete car-user relationships: ' . $this->_db->errorString());
+                $technicalMsg = CarErrorMessages::getTechnicalMessage('car_relationship_failed', ['error' => $this->_db->errorString()]);
+                logger($user->data()->id ?? 0, 'CarDeletion', $technicalMsg);
+                throw new Exception(CarErrorMessages::getAdminMessage('car_relationship_failed'));
             }
 
             // Remove the car record itself
             $carDeleted = $this->_db->query("DELETE FROM cars WHERE id = ?", [$carId]);
             if ($this->_db->error()) {
-                throw new Exception('Failed to delete car record: ' . $this->_db->errorString());
+                $technicalMsg = CarErrorMessages::getTechnicalMessage('database_update_failed', ['error' => $this->_db->errorString()]);
+                logger($user->data()->id ?? 0, 'CarDeletion', $technicalMsg);
+                throw new Exception(CarErrorMessages::getAdminMessage('database_update_failed'));
             }
 
             // Commit transaction
@@ -517,7 +537,9 @@ class Car
         } catch (Exception $e) {
             // Rollback on any error
             $this->_db->query("ROLLBACK");
-            throw new Exception('Car deletion failed: ' . $e->getMessage());
+            $technicalMsg = CarErrorMessages::getTechnicalMessage('operation_failed', ['operation' => 'Car deletion', 'error' => $e->getMessage()]);
+            logger($user->data()->id ?? 0, 'CarDeletion', $technicalMsg);
+            throw new Exception(CarErrorMessages::getMessage('operation_failed', 'admin'));
         }
     }
 
@@ -540,18 +562,22 @@ class Car
         
         // Ensure car exists
         if (!$this->exists()) {
-            throw new Exception('Car not found - cannot transfer');
+            $technicalMsg = CarErrorMessages::getTechnicalMessage('car_not_found_transfer', ['id' => 'unknown']);
+            logger(0, 'CarTransfer', $technicalMsg);
+            throw new Exception(CarErrorMessages::getMessage('car_not_found_transfer'));
         }
 
         // Validate we have a valid user for audit purposes
         if (!isset($user) || !$user->isLoggedIn()) {
-            throw new CarTransferException('User authentication required for car transfer');
+            throw new CarTransferException(CarErrorMessages::getMessage('user_auth_required', 'admin', ['operation' => 'car transfer']));
         }
 
         // Validate new user exists
         $targetUser = new User($newUserId);
         if (!$targetUser->exists()) {
-            throw new Exception('Target user not found - cannot transfer ownership');
+            $technicalMsg = CarErrorMessages::getTechnicalMessage('user_not_found', ['user_id' => $newUserId]);
+            logger($user->data()->id ?? 0, 'CarTransfer', $technicalMsg);
+            throw new Exception(CarErrorMessages::getMessage('user_not_found'));
         }
 
         $carId = $this->_data->id;
@@ -579,13 +605,17 @@ class Car
             // Use Car class update method to maintain validation and consistency
             $updateSuccess = $this->update($updateFields);
             if (!$updateSuccess) {
-                throw new Exception('Failed to update car with new owner information');
+                $technicalMsg = CarErrorMessages::getTechnicalMessage('database_update_failed', ['error' => 'Car update method returned false']);
+                logger($user->data()->id ?? 0, 'CarTransfer', $technicalMsg);
+                throw new Exception(CarErrorMessages::getAdminMessage('database_update_failed'));
             }
 
             // Update the car_user relationship table
             $relationshipUpdated = $this->_db->query("UPDATE car_user SET userid = ? WHERE car_id = ?", [$newUserId, $carId]);
             if ($this->_db->error()) {
-                throw new Exception('Failed to update car-user relationship: ' . $this->_db->errorString());
+                $technicalMsg = CarErrorMessages::getTechnicalMessage('car_relationship_failed', ['error' => $this->_db->errorString()]);
+                logger($user->data()->id ?? 0, 'CarTransfer', $technicalMsg);
+                throw new Exception(CarErrorMessages::getAdminMessage('car_relationship_failed'));
             }
 
             // Create audit trail entry
@@ -603,7 +633,9 @@ class Car
             
             $historyInserted = $this->_db->insert('cars_hist', $historyFields);
             if (!$historyInserted) {
-                throw new Exception('Failed to create audit trail entry');
+                $technicalMsg = CarErrorMessages::getTechnicalMessage('audit_trail_failed', ['operation' => 'car transfer']);
+                logger($user->data()->id ?? 0, 'CarTransfer', $technicalMsg);
+                throw new Exception(CarErrorMessages::getAdminMessage('audit_trail_failed', ['operation' => 'car transfer']));
             }
 
             // Commit transaction
@@ -617,7 +649,9 @@ class Car
         } catch (Exception $e) {
             // Rollback on any error
             $this->_db->query("ROLLBACK");
-            throw new Exception('Car ownership transfer failed: ' . $e->getMessage());
+            $technicalMsg = CarErrorMessages::getTechnicalMessage('operation_failed', ['operation' => 'Car ownership transfer', 'error' => $e->getMessage()]);
+            logger($user->data()->id ?? 0, 'CarTransfer', $technicalMsg);
+            throw new Exception(CarErrorMessages::getMessage('operation_failed', 'admin'));
         }
     }
 
@@ -641,23 +675,29 @@ class Car
         
         // Ensure this car exists
         if (!$this->exists()) {
-            throw new Exception('Target car not found - cannot merge');
+            $technicalMsg = CarErrorMessages::getTechnicalMessage('car_not_found_merge', ['id' => 'target']);
+            logger(0, 'CarMerge', $technicalMsg);
+            throw new Exception(CarErrorMessages::getMessage('car_not_found_merge'));
         }
 
         // Validate we have a valid user for audit purposes
         if (!isset($user) || !$user->isLoggedIn()) {
-            throw new CarMergeException('User authentication required for car merge');
+            throw new CarMergeException(CarErrorMessages::getMessage('user_auth_required', 'admin', ['operation' => 'car merge']));
         }
 
         // Validate old car exists
         $oldCar = new Car($oldCarId);
         if (!$oldCar->exists()) {
-            throw new Exception('Source car not found - cannot merge');
+            $technicalMsg = CarErrorMessages::getTechnicalMessage('merge_source_not_found', ['id' => $oldCarId]);
+            logger($user->data()->id ?? 0, 'CarMerge', $technicalMsg);
+            throw new Exception(CarErrorMessages::getMessage('merge_source_not_found'));
         }
 
         // Prevent merging a car with itself
         if ($oldCarId === $this->_data->id) {
-            throw new Exception('Cannot merge a car with itself');
+            $technicalMsg = CarErrorMessages::getTechnicalMessage('car_merge_self', ['id' => $oldCarId]);
+            logger($user->data()->id ?? 0, 'CarMerge', $technicalMsg);
+            throw new Exception(CarErrorMessages::getMessage('car_merge_self'));
         }
 
         $newCarId = $this->_data->id;
@@ -671,19 +711,25 @@ class Car
             // Transfer all history records from old car to new car
             $historyTransferred = $this->_db->query("UPDATE cars_hist SET car_id = ? WHERE car_id = ?", [$newCarId, $oldCarId]);
             if ($this->_db->error()) {
-                throw new Exception('Failed to transfer car history: ' . $this->_db->errorString());
+                $technicalMsg = CarErrorMessages::getTechnicalMessage('car_history_transfer_failed', ['error' => $this->_db->errorString()]);
+                logger($user->data()->id ?? 0, 'CarMerge', $technicalMsg);
+                throw new Exception(CarErrorMessages::getAdminMessage('car_history_transfer_failed'));
             }
 
             // Remove car-user relationships for old car
             $carUserDeleted = $this->_db->query("DELETE FROM car_user WHERE car_id = ?", [$oldCarId]);
             if ($this->_db->error()) {
-                throw new Exception('Failed to delete old car-user relationships: ' . $this->_db->errorString());
+                $technicalMsg = CarErrorMessages::getTechnicalMessage('car_relationship_failed', ['error' => $this->_db->errorString()]);
+                logger($user->data()->id ?? 0, 'CarMerge', $technicalMsg);
+                throw new Exception(CarErrorMessages::getAdminMessage('car_relationship_failed'));
             }
 
             // Delete the old car record
             $oldCarDeleted = $this->_db->query("DELETE FROM cars WHERE id = ?", [$oldCarId]);
             if ($this->_db->error()) {
-                throw new Exception('Failed to delete old car record: ' . $this->_db->errorString());
+                $technicalMsg = CarErrorMessages::getTechnicalMessage('database_update_failed', ['error' => $this->_db->errorString()]);
+                logger($user->data()->id ?? 0, 'CarMerge', $technicalMsg);
+                throw new Exception(CarErrorMessages::getAdminMessage('database_update_failed'));
             }
 
             // Create audit trail entry for the merge operation
@@ -697,7 +743,9 @@ class Car
             
             $historyInserted = $this->_db->insert('cars_hist', $historyFields);
             if (!$historyInserted) {
-                throw new Exception('Failed to create audit trail entry');
+                $technicalMsg = CarErrorMessages::getTechnicalMessage('audit_trail_failed', ['operation' => 'car merge']);
+                logger($user->data()->id ?? 0, 'CarMerge', $technicalMsg);
+                throw new Exception(CarErrorMessages::getAdminMessage('audit_trail_failed', ['operation' => 'car merge']));
             }
 
             // Commit transaction
@@ -711,7 +759,9 @@ class Car
         } catch (Exception $e) {
             // Rollback on any error
             $this->_db->query("ROLLBACK");
-            throw new Exception('Car merge failed: ' . $e->getMessage());
+            $technicalMsg = CarErrorMessages::getTechnicalMessage('operation_failed', ['operation' => 'Car merge', 'error' => $e->getMessage()]);
+            logger($user->data()->id ?? 0, 'CarMerge', $technicalMsg);
+            throw new Exception(CarErrorMessages::getMessage('operation_failed', 'admin'));
         }
     }
 
@@ -731,12 +781,14 @@ class Car
     {
         // Ensure car exists
         if (!$this->exists()) {
-            throw new Exception('Car not found - cannot set verification code');
+            $technicalMsg = CarErrorMessages::getTechnicalMessage('car_not_found_verification', ['id' => 'unknown']);
+            logger(0, 'CarVerification', $technicalMsg);
+            throw new Exception(CarErrorMessages::getMessage('car_not_found_verification'));
         }
 
         // Validate verification code format (basic validation)
         if (empty($verificationCode) || strlen($verificationCode) < 8) {
-            throw new Exception('Invalid verification code format');
+            throw new Exception(CarErrorMessages::getMessage('invalid_verification_code'));
         }
 
         try {
@@ -747,10 +799,14 @@ class Car
                 $this->_data->vericode = $verificationCode;
                 return true;
             } else {
-                throw new Exception('Database update failed');
+                $technicalMsg = CarErrorMessages::getTechnicalMessage('database_update_failed', ['error' => 'Database update returned false']);
+                logger(0, 'CarVerification', $technicalMsg);
+                throw new Exception(CarErrorMessages::getMessage('database_update_failed'));
             }
         } catch (Exception $e) {
-            throw new Exception('Failed to set verification code: ' . $e->getMessage());
+            $technicalMsg = CarErrorMessages::getTechnicalMessage('verification_code_failed', ['error' => $e->getMessage()]);
+            logger(0, 'CarVerification', $technicalMsg);
+            throw new Exception(CarErrorMessages::getMessage('verification_code_failed'));
         }
     }
 
@@ -769,7 +825,9 @@ class Car
     {
         // Ensure car exists
         if (!$this->exists()) {
-            throw new Exception('Car not found - cannot mark as verified');
+            $technicalMsg = CarErrorMessages::getTechnicalMessage('car_not_found_verify', ['id' => 'unknown']);
+            logger(0, 'CarVerification', $technicalMsg);
+            throw new Exception(CarErrorMessages::getMessage('car_not_found_verify'));
         }
 
         try {
@@ -781,10 +839,14 @@ class Car
                 $this->_data->last_verified = $currentDateTime;
                 return true;
             } else {
-                throw new Exception('Database update failed');
+                $technicalMsg = CarErrorMessages::getTechnicalMessage('database_update_failed', ['error' => 'Database update returned false']);
+                logger(0, 'CarVerification', $technicalMsg);
+                throw new Exception(CarErrorMessages::getMessage('database_update_failed'));
             }
         } catch (Exception $e) {
-            throw new Exception('Failed to mark car as verified: ' . $e->getMessage());
+            $technicalMsg = CarErrorMessages::getTechnicalMessage('verification_mark_failed', ['error' => $e->getMessage()]);
+            logger(0, 'CarVerification', $technicalMsg);
+            throw new Exception(CarErrorMessages::getMessage('verification_mark_failed'));
         }
     }
 
@@ -804,7 +866,9 @@ class Car
     {
         // Ensure car exists
         if (!$this->exists()) {
-            throw new Exception('Car not found - cannot mark as sold');
+            $technicalMsg = CarErrorMessages::getTechnicalMessage('car_not_found_sold', ['id' => 'unknown']);
+            logger(0, 'CarSold', $technicalMsg);
+            throw new Exception(CarErrorMessages::getMessage('car_not_found_sold'));
         }
 
         // Use current date if none provided
@@ -814,7 +878,7 @@ class Car
 
         // Basic date format validation
         if (!DateTime::createFromFormat('Y-m-d', $soldDate)) {
-            throw new Exception('Invalid sold date format (expected: Y-m-d)');
+            throw new Exception(CarErrorMessages::getMessage('invalid_sold_date', 'user', ['date' => $soldDate]));
         }
 
         try {
@@ -825,10 +889,14 @@ class Car
                 $this->_data->solddate = $soldDate;
                 return true;
             } else {
-                throw new Exception('Database update failed');
+                $technicalMsg = CarErrorMessages::getTechnicalMessage('database_update_failed', ['error' => 'Database update returned false']);
+                logger(0, 'CarSold', $technicalMsg);
+                throw new Exception(CarErrorMessages::getMessage('database_update_failed'));
             }
         } catch (Exception $e) {
-            throw new Exception('Failed to mark car as sold: ' . $e->getMessage());
+            $technicalMsg = CarErrorMessages::getTechnicalMessage('sold_mark_failed', ['error' => $e->getMessage()]);
+            logger(0, 'CarSold', $technicalMsg);
+            throw new Exception(CarErrorMessages::getMessage('sold_mark_failed'));
         }
     }
 
@@ -863,8 +931,40 @@ class Car
                 return null;
             }
         } catch (Exception $e) {
-            throw new Exception('Failed to find car by verification code: ' . $e->getMessage());
+            $technicalMsg = CarErrorMessages::getTechnicalMessage('unexpected_error', ['error' => $e->getMessage()]);
+            logger(0, 'CarVerification', $technicalMsg);
+            throw new Exception(CarErrorMessages::getMessage('unexpected_error'));
         }
+    }
+    
+    /**
+     * Find all cars owned by a specific user
+     * 
+     * Factory method for retrieving Car objects by owner ID.
+     * Follows standard OOP pattern for data retrieval operations.
+     * 
+     * @param int $ownerID User ID of the car owner
+     * @return array Array of Car objects owned by the user
+     * @throws CarValidationException If owner ID is invalid
+     * 
+     * @see https://github.com/unibrain1/elanregistry/issues/276 Issue #276: Move findByOwner to Car class
+     */
+    public static function findByOwner(int $ownerID): array
+    {
+        // Input validation
+        if ($ownerID <= 0) {
+            throw new CarValidationException('Invalid owner ID provided');
+        }
+        
+        $db = DB::getInstance();
+        $carQ = $db->query("SELECT id FROM cars WHERE user_id = ?", array($ownerID))->results();
+        $cars = [];
+
+        foreach ($carQ as $key => $car) {
+            $cars[$key] = new Car($car->id);
+        }
+        
+        return $cars;
     }
     
     /**

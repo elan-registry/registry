@@ -545,7 +545,7 @@ foreach ($dataQualityReports as $key => $report) {
                                                         <?php foreach ($report['data'] as $car) { ?>
                                                         <tr>
                                                             <td>
-                                                                <a href="../cars/details.php?id=<?= $car->id ?>" target="_blank" class="btn btn-sm btn-outline-primary">
+                                                                <a href="../cars/details.php?car_id=<?= $car->id ?>" target="_blank" class="btn btn-sm btn-outline-primary">
                                                                     <i class="fas fa-eye"></i> <?= $car->id ?>
                                                                 </a>
                                                             </td>
@@ -719,7 +719,7 @@ foreach ($dataQualityReports as $key => $report) {
                                                         <?php foreach ($report['data'] as $car) { ?>
                                                         <tr>
                                                             <td>
-                                                                <a href="../cars/details.php?id=<?= $car->id ?>" target="_blank" class="btn btn-sm btn-outline-primary">
+                                                                <a href="../cars/details.php?car_id=<?= $car->id ?>" target="_blank" class="btn btn-sm btn-outline-primary">
                                                                     <?= $car->id ?>
                                                                 </a>
                                                             </td>

@@ -34,7 +34,7 @@ use SecureEnvPHP\SecureEnvPHP;
 
 include_once $abs_us_root . $us_url_root . 'usersc/classes/Car.php';
 include_once $abs_us_root . $us_url_root . 'usersc/classes/Resize.php';
-include_once $abs_us_root . $us_url_root . 'usersc/classes/CarHelpers.php';
+include_once $abs_us_root . $us_url_root . 'usersc/classes/CarView.php';
 
 // Include Car exception autoloader
 include_once $abs_us_root . $us_url_root . 'usersc/includes/car_exceptions_autoloader.php';

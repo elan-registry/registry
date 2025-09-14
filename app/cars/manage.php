@@ -22,7 +22,8 @@ if (!securePage($_SERVER['PHP_SELF'])) {
 }
 
 // Duplicate detection query - finds cars with same type AND chassis number
-$duplicates = "SELECT  a.* FROM cars a JOIN(  SELECT  type,chassis,  COUNT(*)  FROM  users_carsview  WHERE chassis <> '' GROUP BY type,chassis HAVING COUNT(*) > 1) b ON a.chassis = b.chassis AND a.type = b.type ORDER BY a.chassis, a.type";
+// Fixed: Replaced deprecated users_carsview with actual cars table
+$duplicates = "SELECT a.* FROM cars a JOIN (SELECT type, chassis, COUNT(*) FROM cars WHERE chassis <> '' AND chassis IS NOT NULL GROUP BY type, chassis HAVING COUNT(*) > 1) b ON a.chassis = b.chassis AND a.type = b.type ORDER BY a.chassis, a.type";
 
 // Get list of suspected duplicates
 $duplicatesQ = $db->query($duplicates);
@@ -54,7 +55,7 @@ if (Input::exists('post')) {
                     }
 
                     // Get the new user details
-                    $userQ = $db->findById($user_id, "usersview");
+                    $userQ = $db->findById($user_id, "users");
                     $userData = $userQ->results();
 
                     // Check if user was found
@@ -333,8 +334,8 @@ if (Input::exists('post')) {
                         $user = null;
                         
                         // Try multiple approaches to find the user
-                        // 1. First try usersview (same as reassignment logic)
-                        $userQ = $db->findById($user_id, "usersview");
+                        // 1. First try users table (same as reassignment logic)
+                        $userQ = $db->findById($user_id, "users");
                         $userData = $userQ->results();
                         
                         if (!empty($userData)) {
@@ -389,6 +390,20 @@ if (Input::exists('post')) {
             }
         }
     }
+    
+    // Convert error/success arrays to UserSpice session messages (Issue #237)
+    if (!empty($errors)) {
+        foreach ($errors as $error) {
+            usError($error);
+        }
+    }
+    if (!empty($successes)) {
+        foreach ($successes as $success) {
+            usSuccess($success);
+        }
+    }
+    
+    // Messages will be displayed by UserSpice session system in template
 }
 
 ?>
@@ -423,37 +438,10 @@ if (Input::exists('post')) {
                             <h3 class="mb-0"><i class="fas fa-bell"></i> Messages</h3>
                         </div>
                         <div class="card-body">
-                            <?php if (!empty($errors)) { ?>
-                                <div class="alert alert-danger alert-dismissible fade show" role="alert">
-                                    <strong><i class="fas fa-exclamation-triangle"></i> Error!</strong>
-                                    <button type="button" class="close" data-dismiss="alert" aria-label="Close">
-                                        <span aria-hidden="true">&times;</span>
-                                    </button>
-                                    <ul class="mb-0 mt-2">
-                                        <?php foreach ($errors as $error) { ?>
-                                            <li><?= htmlspecialchars($error) ?></li>
-                                        <?php } ?>
-                                    </ul>
-                                </div>
-                            <?php } ?>
-                            <?php if (!empty($successes)) { ?>
-                                <div class="alert alert-success alert-dismissible fade show" role="alert">
-                                    <strong><i class="fas fa-check-circle"></i> Success!</strong>
-                                    <button type="button" class="close" data-dismiss="alert" aria-label="Close">
-                                        <span aria-hidden="true">&times;</span>
-                                    </button>
-                                    <ul class="mb-0 mt-2">
-                                        <?php foreach ($successes as $success) { ?>
-                                            <li><?= htmlspecialchars($success) ?></li>
-                                        <?php } ?>
-                                    </ul>
-                                </div>
-                            <?php } ?>
-                            <?php if (empty($errors) && empty($successes)) { ?>
-                                <div class="text-muted text-center py-3">
-                                    <i class="fas fa-info-circle"></i> Messages will appear here after operations.
-                                </div>
-                            <?php } ?>
+                            <!-- Messages now handled by UserSpice session system in template (Issue #237) -->
+                            <div class="text-muted text-center py-3">
+                                <i class="fas fa-info-circle"></i> Messages will appear at the top of the page after operations.
+                            </div>
                         </div>
                     </div>
                 </div>

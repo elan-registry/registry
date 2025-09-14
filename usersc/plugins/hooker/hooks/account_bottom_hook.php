@@ -9,13 +9,13 @@ global $user;
 
 $user_id = $user->data()->id;
 
-// USER ID is in $user_id .  Use the USER ID to get the users Profile information
-$userQ = $db->query("SELECT * FROM usersview WHERE id = ?", array($user_id));
+// USER ID is in $user_id .  Use the USER ID to get the user information from users table
+$userQ = $db->query("SELECT * FROM users WHERE id = ?", array($user_id));
 if ($userQ->count() > 0) {
     $thatUser = $userQ->results();
 }
 
-$cars = findByOwner($user_id);
+$cars = Car::findByOwner($user_id);
 
 ?>
 
@@ -237,7 +237,7 @@ $cars = findByOwner($user_id);
                                 <h4 class="mb-0"><i class="fas fa-images text-primary"></i> Photos</h4>
                             </div>
                             <div class="card-body">
-                                <?php echo displayCarousel($car); ?>
+                                <?php echo CarView::displayCarousel($car); ?>
                             </div>
                         </div>
                         <!-- Factory Data Card -->

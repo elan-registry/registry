@@ -4,7 +4,7 @@ This document provides step-by-step instructions for setting up the Lotus Elan R
 
 ## Prerequisites
 
-- PHP 7.4+ (PHP 8+ recommended)
+- PHP 8.1+ required (8.2+ recommended for full PHPUnit 12 compatibility)
 - MySQL 8.0+
 - Composer for dependency management
 - Web server (Apache/Nginx) with mod_rewrite enabled
@@ -22,7 +22,6 @@ The Elan Registry requires several API keys for full functionality:
 **Optional/Alternative Services:**
 - **Brevo/Sendinblue API Key** - For email delivery (300 emails/day free tier)
   - Alternative: Standard SMTP configuration can be used instead
-- **Cloudflare Analytics** - Optional website analytics (privacy-focused alternative to Google Analytics)
 
 **Development vs Production:**
 - **Development**: API keys can be stored in environment variables for testing
@@ -246,44 +245,15 @@ mysql -u username -p database_name < database/5.4-sample_user.sql
 - User permission restrictions
 - Contact and communication features
 
-#### Configuration Areas to Address
+#### Manual Configuration
 
-**A. General Settings**
-
-- Application name, description, and branding
-- Site-wide configuration options
-
-**B. Email Settings**
+**A. Email Settings**
 
 - SMTP configuration for transactional emails
-- Email templates and notification preferences
 - **Brevo Sendinblue API configuration** (requires account signup and API credentials)
 - **Development**: Mailtrap.io recommended for email testing
 - **Production**: Brevo Sendinblue optional - other mail services can be used
 
-**C. Page Security / Page Manager**
-
-- UserSpice page permissions for all registry pages
-- Access level configurations for different user roles
-
-**D. Plugin Settings**
-
-- Configuration for all required plugins listed above
-- reCAPTCHA keys and settings
-- Auto username assignment patterns
-
-**E. Template Settings**
-
-- ElanRegistry template configuration
-- Custom CSS and branding settings
-- Logo and asset configurations
-
-**F. Elan Registry Settings**
-
-- Car model year ranges (1963-1974 for Elan, 1967-1974 for +2)
-- Registry-specific configurations
-- Statistical and reporting settings
-- Google API Keys configuration (Maps and Geocoding)
 - Configure UserSpice page permissions for all registry pages
 
 ## Post-Installation Configuration
@@ -352,8 +322,7 @@ npm run test:csp
 After deployment, verify the following:
 
 - [ ] Google Maps display correctly on all pages
-- [ ] All redirected pages work with proper permissions
-- [ ] New pages have appropriate UserSpice permission levels
+- [ ] Pages have appropriate UserSpice permission levels
 - [ ] Contact forms send to correct email addresses
 - [ ] Version information displays correctly in footer
 - [ ] Test critical workflows: car registration, editing, contact forms

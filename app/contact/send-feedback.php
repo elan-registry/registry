@@ -75,18 +75,28 @@ if (isset($_POST['email'])) {
         died($error_message);
     }
 
-    $body = "";
-
     function cleanString($string)
     {
         $bad = array("content-type", "bcc:", "to:", "cc:", "href");
         return str_replace($bad, "", $string);
     }
 
-    $body .= "Name       : " . cleanString($name) . "</br>";
-    $body .= "Email      : " . cleanString($email_from) . "</br>";
-    $body .= "Account ID : " . cleanString($id_from) . "</br></br>";
-    $body .= "Comments   : " . cleanString($comments) . "</br>";
+    // Clean the input data
+    $name = cleanString($name);
+    $email_from = cleanString($email_from);
+    $id_from = cleanString($id_from);
+    $comments = cleanString($comments);
+
+    // Prepare template data
+    $template = array(
+        'name' => $name,
+        'email' => $email_from,
+        'accountId' => $id_from,
+        'comments' => $comments
+    );
+
+    // Generate email body using template
+    $body = email_body('_email_feedback.php', $template);
 
     $opts = array(
         // 'from' => $email_from,  // If you change the from email address gmail thinks it's spam
@@ -95,12 +105,11 @@ if (isset($_POST['email'])) {
         'reply' => $email_from
     );
 
-
     $email_sent = email($email_to, $email_subject, $body, $opts);
     if (!$email_sent) {
         logger(1, "Feedback form", "Error sending email");
     }
-    logger(1, "Feedback form", "Complete:" . $email_to . " " . $email_subject . " " . $body . " " . $opts);
+    logger(1, "Feedback form", "Complete: sent to " . $email_to . " with subject '" . $email_subject . "'");
 }
 
 ?>
@@ -109,19 +118,25 @@ if (isset($_POST['email'])) {
         <div class="row">
             <div class="col-sm-12">
                 <div class="jumbotron">
-                    <!-- Content Goes Here. Class width can be adjusted -->
-
-                    <h2>
-                        <p>Thank you for feedback! Your help makes the Elan Registry better!</p>
-                    </h2>
-                    <h3>
-                        <p>Taking you back home in a few secondss</p>
-                    </h3>
+                    <!-- Use same success page style as contact owner -->
+                    <div class="text-center py-4">
+                        <i class="fas fa-envelope fa-3x text-success mb-3"></i>
+                        <h4>Message Sent</h4>
+                        <p class="text-muted">Thank you for your feedback! Your help makes the Elan Registry better!</p>
+                        <p class="text-muted">Taking you back in a few seconds</p>
+                    </div>
                     <script>
                         //Using setTimeout to execute a function after 5 seconds.
                         setTimeout(function() {
-                            //Redirect with JavaScript
-                            window.location.href = '<?= $us_url_root ?>';
+                            //Redirect back to where they came from
+                            <?php 
+                            $referrer = Input::get('referrer');
+                            if ($referrer && filter_var($referrer, FILTER_VALIDATE_URL) && strpos($referrer, $_SERVER['HTTP_HOST']) !== false) {
+                                echo "window.location.href = '" . htmlspecialchars($referrer, ENT_QUOTES, 'UTF-8') . "';";
+                            } else {
+                                echo "window.location.href = '" . $us_url_root . "';";
+                            }
+                            ?>
                         }, 5000);
                     </script>
                 </div><!-- End of main content section -->

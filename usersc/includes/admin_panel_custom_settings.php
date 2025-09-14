@@ -1,8 +1,10 @@
 <?php
 
 /**
- * Auto-create SPAM cleanup settings fields if they don't exist
+ * Auto-create settings fields if they don't exist
  */
+
+// SPAM cleanup settings
 $spamCleanupFields = [
     'elan_spam_cleanup_enabled' => ['type' => 'TINYINT(1)', 'default' => '0', 'description' => 'Enable automated SPAM cleanup'],
     'elan_spam_cleanup_dry_run' => ['type' => 'TINYINT(1)', 'default' => '1', 'description' => 'Run SPAM cleanup in dry-run mode'],
@@ -13,8 +15,23 @@ $spamCleanupFields = [
     'elan_spam_email_notifications' => ['type' => 'TINYINT(1)', 'default' => '0', 'description' => 'Enable grace period email notifications']
 ];
 
+// Image size configuration settings (Issue #176)
+$imageSettingsFields = [
+    'elan_image_upload_max_size' => ['type' => 'DECIMAL(4,2)', 'default' => '2.00', 'description' => 'Maximum upload file size in MB'],
+    'elan_image_display_max_size' => ['type' => 'INT(11)', 'default' => '2048', 'description' => 'Maximum display image width in pixels'],
+    'elan_image_thumbnail_sizes' => ['type' => 'TEXT', 'default' => "'100,300,768,1024,2048'", 'description' => 'Comma-separated thumbnail sizes in pixels']
+];
+
+// Chart.js configuration settings (Issue #285)
+$chartJsSettingsFields = [
+    'elan_chartjs_cdn' => ['type' => 'TEXT', 'default' => "'https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.js'", 'description' => 'Chart.js CDN URL for statistics charts']
+];
+
+// Combine all settings fields for processing
+$allSettingsFields = array_merge($spamCleanupFields, $imageSettingsFields, $chartJsSettingsFields);
+
 $fieldsToAdd = [];
-foreach ($spamCleanupFields as $fieldName => $fieldConfig) {
+foreach ($allSettingsFields as $fieldName => $fieldConfig) {
     $checkField = $db->query("SHOW COLUMNS FROM settings LIKE ?", [$fieldName]);
     if ($checkField->count() == 0) {
         $fieldsToAdd[] = $fieldName;
@@ -24,18 +41,18 @@ foreach ($spamCleanupFields as $fieldName => $fieldConfig) {
 if (!empty($fieldsToAdd)) {
     try {
         foreach ($fieldsToAdd as $fieldName) {
-            $fieldConfig = $spamCleanupFields[$fieldName];
+            $fieldConfig = $allSettingsFields[$fieldName];
             $sql = "ALTER TABLE settings ADD COLUMN {$fieldName} {$fieldConfig['type']} DEFAULT {$fieldConfig['default']} COMMENT '{$fieldConfig['description']}'";
             $db->query($sql);
         }
 
         // Log the addition
-        logger($user->data()->id, 'SettingsUpdate', 'Auto-created SPAM cleanup settings fields: ' . implode(', ', $fieldsToAdd));
+        logger($user->data()->id, 'SettingsUpdate', 'Auto-created settings fields: ' . implode(', ', $fieldsToAdd));
 
         // Show success message
-        $fieldsAddedMsg = count($fieldsToAdd) . ' SPAM cleanup settings fields were automatically added to the database.';
+        $fieldsAddedMsg = count($fieldsToAdd) . ' settings fields were automatically added to the database.';
     } catch (Exception $e) {
-        $fieldsErrorMsg = 'Error adding SPAM cleanup settings fields: ' . $e->getMessage();
+        $fieldsErrorMsg = 'Error adding settings fields: ' . $e->getMessage();
         logger($user->data()->id, 'SettingsError', $fieldsErrorMsg);
     }
 }
@@ -154,7 +171,7 @@ if (!empty($fieldsToAdd)) {
                                 <small class="form-text text-muted">Directory path where car images are stored (relative to site root)</small>
                             </div>
                             
-                            <div class="form-group mb-0">
+                            <div class="form-group">
                                 <label for='elan_image_max' class="font-weight-bold">
                                     <i class="fas fa-photo-video"></i> Maximum Photos per Car
                                 </label>
@@ -165,6 +182,40 @@ if (!empty($fieldsToAdd)) {
                                     </div>
                                 </div>
                                 <small class="form-text text-muted">Limit number of photos users can upload per car</small>
+                            </div>
+                            
+                            <div class="form-group">
+                                <label for='elan_image_upload_max_size' class="font-weight-bold">
+                                    <i class="fas fa-file-upload"></i> Maximum Upload File Size
+                                </label>
+                                <div class="input-group">
+                                    <input type="number" step="0.1" min="0.5" max="10.0" class="form-control ajxnum" data-desc="Max Upload File Size" name="elan_image_upload_max_size" id="elan_image_upload_max_size" value="<?= $settings->elan_image_upload_max_size; ?>">
+                                    <div class="input-group-append">
+                                        <span class="input-group-text">MB</span>
+                                    </div>
+                                </div>
+                                <small class="form-text text-muted">Maximum file size for individual photo uploads (0.5-10 MB)</small>
+                            </div>
+                            
+                            <div class="form-group">
+                                <label for='elan_image_display_max_size' class="font-weight-bold">
+                                    <i class="fas fa-expand-arrows-alt"></i> Maximum Display Width
+                                </label>
+                                <div class="input-group">
+                                    <input type="number" step="1" min="800" max="4096" class="form-control ajxnum" data-desc="Max Display Width" name="elan_image_display_max_size" id="elan_image_display_max_size" value="<?= $settings->elan_image_display_max_size; ?>">
+                                    <div class="input-group-append">
+                                        <span class="input-group-text">pixels</span>
+                                    </div>
+                                </div>
+                                <small class="form-text text-muted">Maximum width for full-size image display (800-4096 pixels)</small>
+                            </div>
+                            
+                            <div class="form-group mb-0">
+                                <label for='elan_image_thumbnail_sizes' class="font-weight-bold">
+                                    <i class="fas fa-images"></i> Thumbnail Sizes
+                                </label>
+                                <input class="form-control ajxtxt" data-desc="Thumbnail Sizes" name="elan_image_thumbnail_sizes" id="elan_image_thumbnail_sizes" value="<?= $settings->elan_image_thumbnail_sizes; ?>" placeholder="100,300,768,1024,2048">
+                                <small class="form-text text-muted">Comma-separated list of thumbnail sizes in pixels (e.g., 100,300,768,1024,2048)</small>
                             </div>
                         </div>
                     </div>
@@ -483,7 +534,7 @@ if (!empty($fieldsToAdd)) {
 
                             <div class="row">
                                 <div class="col-md-6">
-                                    <div class="form-group mb-0">
+                                    <div class="form-group">
                                         <label for='elan_dropzone_js_cdn' class="font-weight-bold">
                                             <i class="fas fa-cloud-upload-alt"></i> Dropzone JS CDN
                                         </label>
@@ -496,13 +547,28 @@ if (!empty($fieldsToAdd)) {
                                 </div>
 
                                 <div class="col-md-6">
-                                    <div class="form-group mb-0">
+                                    <div class="form-group">
                                         <label for='elan_dropzone_css_cdn' class="font-weight-bold">
                                             <i class="fas fa-cloud-upload-alt"></i> Dropzone CSS CDN
                                         </label>
                                         <input type="text" class="form-control ajxtxt" data-desc="Dropzone CSS CDN URL" name="elan_dropzone_css_cdn" id="elan_dropzone_css_cdn" value="<?= $settings->elan_dropzone_css_cdn; ?>" placeholder="https://cdn.jsdelivr.net/npm/dropzone@5.7.6/dist/min/dropzone.min.css">
                                         <small class="form-text text-muted">
                                             <i class="fas fa-external-link-alt"></i> Dropzone styling
+                                        </small>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="row">
+                                <div class="col-md-12">
+                                    <div class="form-group mb-0">
+                                        <label for='elan_chartjs_cdn' class="font-weight-bold">
+                                            <i class="fas fa-chart-pie"></i> Chart.js CDN URL
+                                        </label>
+                                        <input type="text" class="form-control ajxtxt" data-desc="Chart.js CDN URL" name="elan_chartjs_cdn" id="elan_chartjs_cdn" value="<?= $settings->elan_chartjs_cdn; ?>" placeholder="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.js">
+                                        <small class="form-text text-muted">
+                                            <i class="fas fa-external-link-alt"></i> Chart.js library for statistics page charts (replaces Google Charts)
+                                            <a href="https://www.chartjs.org/docs/latest/getting-started/installation.html" target="_blank" class="ml-2">Get Chart.js</a>
                                         </small>
                                     </div>
                                 </div>

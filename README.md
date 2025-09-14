@@ -12,7 +12,6 @@ The registry represents the collaborative effort of many enthusiasts from the El
 
 **Special thanks** to Ross, Tim, Gary, Ed, Terry, Peter, Jeff, Nicholas, Alan, Christian, Michael, Stan, Jason, and everyone else who has contributed to making this registry a place for enthusiasts to celebrate these remarkable British sports cars.
 
-
 ## Features
 
 - **Comprehensive Car Database**: Detailed records of Elan and +2 vehicles with chassis numbers, specifications, and ownership history
@@ -25,7 +24,7 @@ The registry represents the collaborative effort of many enthusiasts from the El
 
 ## Technology Stack
 
-- **Backend**: PHP 7.4+ with UserSpice framework for authentication
+- **Backend**: PHP 8.1+ with UserSpice framework for authentication
 - **Database**: MySQL 8.0+ with comprehensive audit trails
 - **Frontend**: Bootstrap 4/5 with responsive design
 - **APIs**: Google Maps JavaScript API, Google Geocoding API
@@ -34,35 +33,39 @@ The registry represents the collaborative effort of many enthusiasts from the El
 ## Quick Start
 
 ### Requirements
-- PHP 7.4+
+
+- PHP 8.1+ (8.2+ recommended)
 - MySQL 8.0+
 - Composer for dependency management
 
 **Required API Keys:**
+
 - Google Maps API Key (for map displays)
 - Google Geocoding API Key (for location lookup)
 - reCAPTCHA Keys (for spam protection)
 - Brevo/Sendinblue API Key or SMTP configuration (for email delivery)
 
 ### Installation
+
 0. Install UserSpice - https://userspice.com
 1. Clone the repository
 2. Install dependencies: `composer install`
 3. Configure environment variables (see `ENVIRONMENT.md`)
-4. Import database schema (TODO)
-5. Configure web server to serve from project root
+4. Import database schema
 
 For detailed setup instructions including API key configuration, see the complete installation guide in `docs/development/INSTALLATION.md`.
 
 ## Development
 
 ### Documentation
+
 - **`CLAUDE.md`** - Complete development guide, coding standards, and deployment procedures
 - **`DATABASE.md`** - Database schema documentation and relationships
 - **`ENVIRONMENT.md`** - Environment configuration and security setup
 - **`PRIVACY.md`** - GDPR compliance and privacy policy details
 
 ### Testing
+
 The project includes comprehensive automated testing:
 
 ```bash
@@ -79,20 +82,14 @@ npm run test:csp           # Content Security Policy validation
 vendor/bin/phpunit tests/
 ```
 
-**Testing Coverage**:
-- 35/35 Playwright browser tests (100% success rate)
-- Comprehensive PHPUnit security test suite
-- Automated CSP violation detection
-- Cross-browser compatibility validation
-
 ### Development Workflow
+
 1. Review development guidelines in `CLAUDE.md`
 2. Create feature branch from main
 3. Implement changes with appropriate tests
 4. Run full test suite before committing
 5. Update VERSION file for releases
 6. Deploy using production workflow documented in `CLAUDE.md`
-
 
 ## Privacy & GDPR Compliance
 
@@ -122,10 +119,11 @@ This project is open source. See the LICENSE file for details.
 ## Support
 
 For registry support or questions:
+
 - Visit [elanregistry.org](https://elanregistry.org)
 - Review documentation in this repository
 - Check GitHub issues for known problems and solutions
 
 ---
 
-*Preserving the legacy of Lotus Elan and Elan +2 sports cars for current and future generations.*
+_Preserving the legacy of Lotus Elan and Elan +2 sports cars for current and future generations._

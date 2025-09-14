@@ -19,6 +19,17 @@ if (!securePage($_SERVER['PHP_SELF'])) {
     die();
 }
 
+// Ensure settings have default values for image configuration
+if (!isset($settings->elan_image_upload_max_size)) {
+    $settings->elan_image_upload_max_size = 2;
+}
+if (!isset($settings->elan_image_display_max_size)) {
+    $settings->elan_image_display_max_size = 2048;
+}
+if (!isset($settings->elan_image_thumbnail_sizes)) {
+    $settings->elan_image_thumbnail_sizes = '100,300,600,1024,2048';
+}
+
 $maximages = $settings->elan_image_max;
 
 $cardetails = [];
@@ -50,6 +61,10 @@ $carprompt['website']       = 'Website URL';
 // Default action when no form submission
 $action = 'addCar';
 
+// Initialize message arrays
+$errors = [];
+$successes = [];
+
 if (Input::exists('post')) {
     $token = Input::get('csrf');
     if (!Token::check($token)) {
@@ -65,6 +80,20 @@ if (Input::exists('post')) {
             $errors[] = 'No valid action';
         }
     } // End Post with data
+    
+    // Convert error/success arrays to UserSpice session messages (Issue #237)
+    if (!empty($errors)) {
+        foreach ($errors as $error) {
+            usError($error);
+        }
+    }
+    if (!empty($successes)) {
+        foreach ($successes as $success) {
+            usSuccess($success);
+        }
+    }
+    
+    // Messages will be displayed by UserSpice session system in template
 }
 
 /**
@@ -359,13 +388,13 @@ require_once $abs_us_root . $us_url_root . 'users/includes/html_footer.php'; //c
 
             uploadMultiple: true,
             maxFiles: <?= $maximages ?>,
-            maxFilesize: 2, // MB
+            maxFilesize: <?= isset($settings->elan_image_upload_max_size) ? $settings->elan_image_upload_max_size : 2 ?>, // MB
             parallelUploads: 10,
 
             acceptedFiles: 'image/*',
             addRemoveLinks: true,
 
-            resizeWidth: 2048,
+            resizeWidth: <?= isset($settings->elan_image_display_max_size) ? $settings->elan_image_display_max_size : 2048 ?>,
             resizeMimeType: 'image/jpeg',
 
             dictRemoveFile: 'Remove photo',

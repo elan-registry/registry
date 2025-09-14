@@ -1,12 +1,13 @@
 <?php
 
 /**
- * CarHelpers - Static utility class for car-related functions
+ * CarView - Static utility class for car display and view functions
  * 
  * This class provides static methods for car display, image processing,
- * and car data retrieval operations used across multiple pages.
+ * and HTML generation operations used across multiple pages.
+ * Separated from data operations following proper MVC patterns.
  */
-class CarHelpers
+class CarView
 {
     // Image size constants to avoid magic numbers
     private const THUMBNAIL_SIZE = 100;
@@ -43,13 +44,12 @@ class CarHelpers
         if ($thumbnail) {
             $html .= '<img src="' . $path['dirname'] . "/" .
                 $path['filename'] . $resize . $thumbsize . "." .
-                $path['extension'] . '" width="100" alt="elan" loading="lazy" class="img-fluid"> ';
+                $path['extension'] . '" width="100" height="75" alt="elan" loading="lazy" class="img-fluid"> ';
         } else {
             $html = '<img loading="lazy" class="card-img-top" src="' .
                 $path['dirname'] . "/" . $path['filename'] . $resize . $thumbsize . $path['extension'] . '"';
             $html .= ' sizes="50vw" ';
-            $html .= ' width="100" ';
-            $html .= 'srcset="';
+            $html .= ' srcset="';
             $html .= $path['dirname'] . "/" . $path['filename'] . '-resized-' . self::THUMBNAIL_SIZE . '.' . $path['extension'] . ' ' . self::THUMBNAIL_SIZE . 'w,';
             $html .= $path['dirname'] . "/" . $path['filename'] . '-resized-' . self::IMAGE_SIZE_SMALL . '.' . $path['extension'] . ' ' . self::IMAGE_SIZE_SMALL . 'w,';
             $html .= $path['dirname'] . "/" . $path['filename'] . '-resized-' . self::IMAGE_SIZE_MEDIUM . '.' . $path['extension'] . ' ' . self::IMAGE_SIZE_MEDIUM . 'w,';
@@ -75,7 +75,12 @@ class CarHelpers
 
         $count = count($carImages);
         if ($count === 0 || $carImages[0] == '') {
-            // No images or image name is blank
+            // No images or image name is blank - display placeholder
+            $html .= '<div class="photo-placeholder text-center py-5 rounded d-flex flex-column justify-content-center">';
+            $html .= '<i class="fas fa-camera text-muted mb-3" style="font-size: 4rem;"></i>';
+            $html .= '<h5 class="text-muted mb-2">No Photos Available</h5>';
+            $html .= '<p class="text-muted small mb-0">Photos for this car have not been uploaded yet.</p>';
+            $html .= '</div>';
             $html .= '<!--End displayCarousel -->';
             return $html;
         }
@@ -121,42 +126,5 @@ class CarHelpers
         return $html;
     }
 
-    /**
-     * Find all cars owned by a specific user
-     * 
-     * @param int $ownerID User ID of the car owner
-     * @return array Array of Car objects owned by the user
-     * @throws CarValidationException If owner ID is invalid
-     */
-    public static function findByOwner(int $ownerID): array
-    {
-        // Input validation
-        if ($ownerID <= 0) {
-            throw new CarValidationException('Invalid owner ID provided');
-        }
-        
-        global $db;
-
-        $carQ = $db->query("SELECT id FROM cars WHERE user_id = ?", array($ownerID))->results();
-        $cars = [];
-
-        foreach ($carQ as $key => $car) {
-            $cars[$key] = new Car($car->id);
-        }
-        
-        return $cars;
-    }
 }
 
-// Backward compatibility functions - delegate to static class methods
-function loadPicture($image, $thumbnail = null) {
-    return CarHelpers::loadPicture($image, $thumbnail);
-}
-
-function displayCarousel($car) {
-    return CarHelpers::displayCarousel($car);
-}
-
-function findByOwner($ownerID) {
-    return CarHelpers::findByOwner($ownerID);
-}
