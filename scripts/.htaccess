@@ -1,3 +1,27 @@
-# Disable directory browsing and access to scripts
+# Scripts Directory Access Control
+# Allow access to PHP files for administrative scripts
+
+# Disable directory browsing
 Options -Indexes
-Require all denied
+
+# Allow PHP execution for authenticated users
+<Files "*.php">
+    Require all granted
+</Files>
+
+# Deny access to all other file types
+<FilesMatch "^(?!.*\.php$)">
+    Require all denied
+</FilesMatch>
+
+# Security headers
+<IfModule mod_headers.c>
+    Header always set X-Content-Type-Options nosniff
+    Header always set X-Frame-Options DENY
+    Header always set X-XSS-Protection "1; mode=block"
+</IfModule>
+
+# Prevent access to hidden files
+<Files ~ "^\.">
+    Require all denied
+</Files>
