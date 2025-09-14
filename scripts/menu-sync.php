@@ -411,30 +411,40 @@ function createBackup($environment) {
 
     $tablesStr = implode(' ', $tables);
 
-    // For hosting environments, use PHP-based backup for reliability
+    // Try mysqldump first, fallback to PHP-based backup (similar to FIX script approach)
     $currentEnv = detectEnvironment();
     $backupSuccess = false;
 
-    if ($currentEnv === 'development') {
-        // Local MAMP installation - use mysqldump
-        $mysqldumpPath = '/Applications/MAMP/Library/bin/mysql57/bin/mysqldump';
-        $command = sprintf(
-            '%s -h %s -P %d -u %s -p%s %s %s > %s',
-            $mysqldumpPath,
-            escapeshellarg($host),
-            $port,
-            escapeshellarg($username),
-            escapeshellarg($password),
-            escapeshellarg($dbname),
-            $tablesStr,
-            escapeshellarg($backupFile)
-        );
-
-        exec($command, $output, $returnCode);
-        $backupSuccess = ($returnCode === 0 && file_exists($backupFile) && filesize($backupFile) > 100);
+    // Determine mysqldump path based on environment - use approach from FIX scripts
+    if (strpos($host, 'localhost') !== false && file_exists('/Applications/MAMP/Library/bin/mysqldump')) {
+        // Local MAMP installation
+        $mysqldumpPath = '/Applications/MAMP/Library/bin/mysqldump';
+        $socketParam = '--socket=/Applications/MAMP/tmp/mysql/mysql.sock';
     } else {
-        // For test/production environments, use PHP backup directly for reliability
-        error_log("Using PHP-based backup for environment: {$currentEnv}");
+        // Production/Test environments - try system mysqldump first
+        $mysqldumpPath = 'mysqldump';
+        $socketParam = '';
+    }
+
+    // Try mysqldump
+    $command = sprintf(
+        '%s --host=%s --port=%d %s --user=%s --password=%s --single-transaction %s > %s 2>&1',
+        escapeshellcmd($mysqldumpPath),
+        escapeshellarg($host),
+        $port,
+        $socketParam,
+        escapeshellarg($username),
+        escapeshellarg($password),
+        $tablesStr,
+        escapeshellarg($backupFile)
+    );
+
+    exec($command, $output, $returnCode);
+    $backupSuccess = ($returnCode === 0 && file_exists($backupFile) && filesize($backupFile) > 100);
+
+    // If mysqldump failed, use PHP-based backup
+    if (!$backupSuccess) {
+        error_log("Mysqldump failed (return code: {$returnCode}), trying PHP backup...");
         $backupSuccess = createPhpBackup($backupFile, $tables, DB::getInstance());
     }
 
