@@ -36,8 +36,8 @@ $dataService = new StatisticsDataService($db);
                         </div>
                         <div class="text-right">
                             <small class="text-muted">
-                                <i class="fas fa-sync-alt"></i>
-                                Data cached for <?= (defined('US_ENVIRONMENT') && US_ENVIRONMENT === 'development') ? '5 minutes' : '1 day' ?>
+                                <i class="fas fa-chart-bar"></i>
+                                Live analytics data
                             </small>
                         </div>
                     </div>

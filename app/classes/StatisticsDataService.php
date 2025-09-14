@@ -1,10 +1,9 @@
 <?php
 /**
  * StatisticsDataService.php
- * Centralized data service for statistics with environment-based caching
+ * Centralized data service for statistics
  *
- * Provides cached data queries for the statistics dashboard with different
- * cache durations based on environment (1 day prod, 5 minutes dev).
+ * Provides data queries for the statistics dashboard.
  *
  * @author Elan Registry Development Team
  * @copyright 2025
@@ -12,66 +11,29 @@
 
 class StatisticsDataService {
     private $db;
-    private $cache_prefix = 'stats_';
-    private $cache_duration;
 
     public function __construct($database) {
         $this->db = $database;
-
-        // Set cache duration based on environment
-        // Production: 1 day (86400 seconds)
-        // Development: 5 minutes (300 seconds)
-        // Use same environment detection as rate_limits.php
-        $is_development = (defined('US_ENVIRONMENT') && US_ENVIRONMENT === 'development');
-
-        $this->cache_duration = $is_development ? 300 : 86400;
     }
 
     /**
-     * Get cached data or execute query and cache result
+     * Execute database query and return results
      */
-    private function getCachedData($key, $query, $single = false) {
-        $cache_key = $this->cache_prefix . $key;
-
-        // Try to get from cache (simple file-based caching)
-        $cache_file = sys_get_temp_dir() . '/' . $cache_key . '.cache';
-
-        if (file_exists($cache_file) && (time() - filemtime($cache_file)) < $this->cache_duration) {
-            $data = unserialize(file_get_contents($cache_file));
-            return $data;
-        }
-
-        // Cache miss - execute query
+    private function executeQuery($query, $single = false) {
         $result = $this->db->query($query);
-        $data = $single ? $result->first() : $result->results();
-
-        // Store in cache
-        file_put_contents($cache_file, serialize($data));
-
-        return $data;
-    }
-
-    /**
-     * Clear all cached data
-     */
-    public function clearCache() {
-        $temp_dir = sys_get_temp_dir();
-        $files = glob($temp_dir . '/' . $this->cache_prefix . '*.cache');
-        foreach ($files as $file) {
-            unlink($file);
-        }
+        return $single ? $result->first() : $result->results();
     }
 
     // === GEOGRAPHIC DATA ===
 
     public function getCountryData() {
-        return $this->getCachedData('country_data',
+        return $this->executeQuery(
             "SELECT country, COUNT(country) as count FROM cars GROUP BY country ORDER BY count DESC"
         );
     }
 
     public function getCountryDistribution() {
-        return $this->getCachedData('country_distribution',
+        return $this->executeQuery(
             "SELECT country, COUNT(*) as count
              FROM cars
              WHERE country IS NOT NULL AND country != ''
@@ -82,7 +44,7 @@ class StatisticsDataService {
     }
 
     public function getUSStateDistribution() {
-        return $this->getCachedData('us_state_distribution',
+        return $this->executeQuery(
             "SELECT
                 CASE
                     WHEN state = 'California' OR state = 'CA' THEN 'California'
@@ -114,25 +76,25 @@ class StatisticsDataService {
     // === PRODUCTION DATA ===
 
     public function getTypeData() {
-        return $this->getCachedData('type_data',
+        return $this->executeQuery(
             "SELECT type, COUNT(type) as count FROM cars GROUP BY type ORDER BY count DESC"
         );
     }
 
     public function getSeriesData() {
-        return $this->getCachedData('series_data',
+        return $this->executeQuery(
             "SELECT series, COUNT(series) as count FROM cars GROUP BY series ORDER BY count DESC"
         );
     }
 
     public function getVariantData() {
-        return $this->getCachedData('variant_data',
+        return $this->executeQuery(
             "SELECT variant, COUNT(variant) as count FROM cars GROUP BY variant ORDER BY count DESC"
         );
     }
 
     public function getProductionByYear() {
-        return $this->getCachedData('production_by_year',
+        return $this->executeQuery(
             "SELECT year, COUNT(*) as count
              FROM cars
              GROUP BY year
@@ -141,7 +103,7 @@ class StatisticsDataService {
     }
 
     public function getEarlyVsLateProduction() {
-        return $this->getCachedData('early_vs_late',
+        return $this->executeQuery(
             "SELECT
                 CASE
                     WHEN year BETWEEN '1963' AND '1967' THEN 'Early Production (1963-1967)'
@@ -156,19 +118,19 @@ class StatisticsDataService {
 
     public function getSeriesCounts() {
         return [
-            's1' => $this->getCachedData('series_s1', "select count(*) as count from cars where series like 's1%'", true)->count,
-            's2' => $this->getCachedData('series_s2', "select count(*) as count from cars where series like 's2%'", true)->count,
-            's3' => $this->getCachedData('series_s3', "select count(*) as count from cars where series like 's3%'", true)->count,
-            's4' => $this->getCachedData('series_s4', "select count(*) as count from cars where series like 's4%'", true)->count,
-            'sprint' => $this->getCachedData('series_sprint', "select count(*) as count from cars where series like 'sprint%'", true)->count,
-            '+2' => $this->getCachedData('series_plus2', "select count(*) as count from cars where series like '+2%'", true)->count,
+            's1' => $this->executeQuery("select count(*) as count from cars where series like 's1%'", true)->count,
+            's2' => $this->executeQuery("select count(*) as count from cars where series like 's2%'", true)->count,
+            's3' => $this->executeQuery("select count(*) as count from cars where series like 's3%'", true)->count,
+            's4' => $this->executeQuery("select count(*) as count from cars where series like 's4%'", true)->count,
+            'sprint' => $this->executeQuery("select count(*) as count from cars where series like 'sprint%'", true)->count,
+            '+2' => $this->executeQuery("select count(*) as count from cars where series like '+2%'", true)->count,
         ];
     }
 
     // === COLOR DATA ===
 
     public function getColorData() {
-        return $this->getCachedData('color_data',
+        return $this->executeQuery(
             "SELECT color, COUNT(*) as count
              FROM cars
              WHERE color IS NOT NULL AND color != ''
@@ -179,7 +141,7 @@ class StatisticsDataService {
     }
 
     public function getColorByYear() {
-        return $this->getCachedData('color_by_year',
+        return $this->executeQuery(
             "SELECT year, color, COUNT(*) as count
              FROM cars
              WHERE color IS NOT NULL AND color != ''
@@ -190,7 +152,7 @@ class StatisticsDataService {
     }
 
     public function getColorBySeries() {
-        return $this->getCachedData('color_by_series',
+        return $this->executeQuery(
             "SELECT series, color, COUNT(*) as count
              FROM cars
              WHERE color IS NOT NULL AND color != ''
@@ -203,13 +165,13 @@ class StatisticsDataService {
     // === TIMELINE DATA ===
 
     public function getTimelineData() {
-        return $this->getCachedData('timeline_data',
+        return $this->executeQuery(
             "SELECT ctime FROM cars WHERE 1 ORDER BY `cars`.`ctime` ASC"
         );
     }
 
     public function getAgeData() {
-        return $this->getCachedData('age_data',
+        return $this->executeQuery(
             "SELECT
                periods.age,
                COALESCE(data.count, 0) as count
@@ -239,7 +201,7 @@ class StatisticsDataService {
     // === DATA QUALITY ===
 
     public function getDataCompleteness() {
-        return $this->getCachedData('data_completeness',
+        return $this->executeQuery(
             "SELECT
                 COUNT(*) as total_cars,
                 COUNT(chassis) as has_chassis,
