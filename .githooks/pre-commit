@@ -1,0 +1,60 @@
+#!/bin/bash
+
+#
+# Pre-commit hook to enforce coding standards
+#
+# This hook runs before each commit and prevents commits that violate
+# the Elan Registry coding standards. It only checks staged PHP files.
+#
+# To install: git config core.hooksPath .githooks
+# To bypass: git commit --no-verify (use sparingly!)
+#
+
+set -e
+
+echo "🔍 Running pre-commit coding standards check..."
+
+# Get list of staged PHP files
+STAGED_FILES=$(git diff --cached --name-only --diff-filter=ACM | grep '\.php$' || true)
+
+if [ -z "$STAGED_FILES" ]; then
+    echo "✅ No PHP files staged, skipping coding standards check"
+    exit 0
+fi
+
+# Create temporary directory for staged files
+TEMP_DIR=$(mktemp -d)
+trap "rm -rf $TEMP_DIR" EXIT
+
+echo "📁 Checking staged files only..."
+
+# Copy staged versions of files to temp directory
+for FILE in $STAGED_FILES; do
+    # Create directory structure in temp
+    mkdir -p "$TEMP_DIR/$(dirname "$FILE")"
+    # Get staged version of file
+    git show ":$FILE" > "$TEMP_DIR/$FILE"
+    echo "  • $FILE"
+done
+
+# Run coding standards checker on staged files
+echo ""
+if php scripts/check-coding-standards.php "$TEMP_DIR" --staged; then
+    echo "✅ All coding standards checks passed!"
+    echo "🚀 Commit allowed!"
+    exit 0
+else
+    echo ""
+    echo "❌ COMMIT BLOCKED: Coding standards violations found"
+    echo ""
+    echo "🔧 To fix these issues:"
+    echo "1. Review the errors above"
+    echo "2. Fix the issues in your working directory"
+    echo "3. Stage the fixes with 'git add'"
+    echo "4. Try committing again"
+    echo ""
+    echo "🚨 To bypass this check (NOT recommended):"
+    echo "   git commit --no-verify"
+    echo ""
+    exit 1
+fi

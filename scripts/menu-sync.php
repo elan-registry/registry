@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 /**
  * Menu System Export/Import Tool
  *
@@ -37,8 +39,10 @@ $db = DB::getInstance();
 /**
  * Environment Detection
  * Based on URL patterns documented in docs/development/ENVIRONMENT.md
+ *
+ * @return string Environment name (development, test, production)
  */
-function detectEnvironment() {
+function detectEnvironment(): string {
     $host = $_SERVER['HTTP_HOST'] ?? '';
     $uri = $_SERVER['REQUEST_URI'] ?? '';
 

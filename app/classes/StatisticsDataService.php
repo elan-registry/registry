@@ -1,4 +1,7 @@
 <?php
+
+declare(strict_types=1);
+
 /**
  * StatisticsDataService.php
  * Centralized data service for statistics
@@ -10,29 +13,48 @@
  */
 
 class StatisticsDataService {
-    private $db;
+    private object $db;
 
-    public function __construct($database) {
+    /**
+     * Constructor for StatisticsDataService
+     *
+     * @param object $database Database connection instance
+     */
+    public function __construct(object $database) {
         $this->db = $database;
     }
 
     /**
      * Execute database query and return results
+     *
+     * @param string $query SQL query to execute
+     * @param bool $single Whether to return single result or array
+     * @return array|object|null Query results
      */
-    private function executeQuery($query, $single = false) {
+    private function executeQuery(string $query, bool $single = false): array|object|null {
         $result = $this->db->query($query);
         return $single ? $result->first() : $result->results();
     }
 
     // === GEOGRAPHIC DATA ===
 
-    public function getCountryData() {
+    /**
+     * Get country distribution data
+     *
+     * @return array Country data with counts
+     */
+    public function getCountryData(): array {
         return $this->executeQuery(
             "SELECT country, COUNT(country) as count FROM cars GROUP BY country ORDER BY count DESC"
         );
     }
 
-    public function getCountryDistribution() {
+    /**
+     * Get top country distribution data
+     *
+     * @return array Top 15 countries with car counts
+     */
+    public function getCountryDistribution(): array {
         return $this->executeQuery(
             "SELECT country, COUNT(*) as count
              FROM cars
@@ -43,7 +65,12 @@ class StatisticsDataService {
         );
     }
 
-    public function getUSStateDistribution() {
+    /**
+     * Get US state distribution data
+     *
+     * @return array Top 10 US states with normalized names and counts
+     */
+    public function getUSStateDistribution(): array {
         return $this->executeQuery(
             "SELECT
                 CASE
@@ -75,25 +102,45 @@ class StatisticsDataService {
 
     // === PRODUCTION DATA ===
 
-    public function getTypeData() {
+    /**
+     * Get car type distribution data
+     *
+     * @return array Car types with counts
+     */
+    public function getTypeData(): array {
         return $this->executeQuery(
             "SELECT type, COUNT(type) as count FROM cars GROUP BY type ORDER BY count DESC"
         );
     }
 
-    public function getSeriesData() {
+    /**
+     * Get car series distribution data
+     *
+     * @return array Car series with counts
+     */
+    public function getSeriesData(): array {
         return $this->executeQuery(
             "SELECT series, COUNT(series) as count FROM cars GROUP BY series ORDER BY count DESC"
         );
     }
 
-    public function getVariantData() {
+    /**
+     * Get car variant distribution data
+     *
+     * @return array Car variants with counts
+     */
+    public function getVariantData(): array {
         return $this->executeQuery(
             "SELECT variant, COUNT(variant) as count FROM cars GROUP BY variant ORDER BY count DESC"
         );
     }
 
-    public function getProductionByYear() {
+    /**
+     * Get production counts by year
+     *
+     * @return array Production data by year
+     */
+    public function getProductionByYear(): array {
         return $this->executeQuery(
             "SELECT year, COUNT(*) as count
              FROM cars
@@ -102,7 +149,12 @@ class StatisticsDataService {
         );
     }
 
-    public function getEarlyVsLateProduction() {
+    /**
+     * Get early vs late production comparison
+     *
+     * @return array Production periods with counts
+     */
+    public function getEarlyVsLateProduction(): array {
         return $this->executeQuery(
             "SELECT
                 CASE
@@ -116,7 +168,12 @@ class StatisticsDataService {
         );
     }
 
-    public function getSeriesCounts() {
+    /**
+     * Get detailed series counts
+     *
+     * @return array Series counts by type
+     */
+    public function getSeriesCounts(): array {
         return [
             's1' => $this->executeQuery("select count(*) as count from cars where series like 's1%'", true)->count,
             's2' => $this->executeQuery("select count(*) as count from cars where series like 's2%'", true)->count,
@@ -129,7 +186,12 @@ class StatisticsDataService {
 
     // === COLOR DATA ===
 
-    public function getColorData() {
+    /**
+     * Get color distribution data
+     *
+     * @return array Top 15 colors with counts
+     */
+    public function getColorData(): array {
         return $this->executeQuery(
             "SELECT color, COUNT(*) as count
              FROM cars
@@ -140,7 +202,12 @@ class StatisticsDataService {
         );
     }
 
-    public function getColorByYear() {
+    /**
+     * Get color distribution by year
+     *
+     * @return array Color data grouped by year
+     */
+    public function getColorByYear(): array {
         return $this->executeQuery(
             "SELECT year, color, COUNT(*) as count
              FROM cars
@@ -151,7 +218,12 @@ class StatisticsDataService {
         );
     }
 
-    public function getColorBySeries() {
+    /**
+     * Get color distribution by series
+     *
+     * @return array Color data grouped by series
+     */
+    public function getColorBySeries(): array {
         return $this->executeQuery(
             "SELECT series, color, COUNT(*) as count
              FROM cars
@@ -164,13 +236,23 @@ class StatisticsDataService {
 
     // === TIMELINE DATA ===
 
-    public function getTimelineData() {
+    /**
+     * Get timeline data for car registrations
+     *
+     * @return array Timeline data sorted by creation time
+     */
+    public function getTimelineData(): array {
         return $this->executeQuery(
             "SELECT ctime FROM cars WHERE 1 ORDER BY `cars`.`ctime` ASC"
         );
     }
 
-    public function getAgeData() {
+    /**
+     * Get data quality age analysis
+     *
+     * @return array Age-based data quality metrics
+     */
+    public function getAgeData(): array {
         return $this->executeQuery(
             "SELECT
                periods.age,
@@ -200,7 +282,12 @@ class StatisticsDataService {
 
     // === DATA QUALITY ===
 
-    public function getDataCompleteness() {
+    /**
+     * Get data completeness analysis
+     *
+     * @return object|null Data completeness metrics
+     */
+    public function getDataCompleteness(): object|null {
         return $this->executeQuery(
             "SELECT
                 COUNT(*) as total_cars,
@@ -219,7 +306,12 @@ class StatisticsDataService {
 
     // === CONSTANTS ===
 
-    public function getSeriesNotes() {
+    /**
+     * Get series production notes
+     *
+     * @return array Series production numbers
+     */
+    public function getSeriesNotes(): array {
         return [
             's1' => "900",
             's2' => "1250",
