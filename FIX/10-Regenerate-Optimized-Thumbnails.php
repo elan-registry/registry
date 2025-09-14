@@ -111,9 +111,31 @@ $line = 1; // Where messages go
                                 </ul>
                             </div>
 
+                            <div class="alert alert-warning">
+                                <h5><i class="fa fa-cogs"></i> Batch Processing Configuration</h5>
+                                <p class="mb-3">This script uses batch processing to prevent timeouts. You can adjust the batch size based on your server's capabilities.</p>
+
+                                <div class="form-group row">
+                                    <label for="batchSize" class="col-sm-3 col-form-label">Batch Size:</label>
+                                    <div class="col-sm-4">
+                                        <select id="batchSize" class="form-control">
+                                            <option value="5">5 cars per batch (Safe)</option>
+                                            <option value="10" selected>10 cars per batch (Default)</option>
+                                            <option value="15">15 cars per batch (Faster)</option>
+                                            <option value="25">25 cars per batch (High Performance)</option>
+                                        </select>
+                                    </div>
+                                    <div class="col-sm-5">
+                                        <small class="text-muted">
+                                            <i class="fa fa-info-circle"></i> Smaller batches are safer for slower servers
+                                        </small>
+                                    </div>
+                                </div>
+                            </div>
+
                             <div class="text-center">
                                 <button onclick="startProcessing()" class="btn btn-success">
-                                    <i class="fa fa-play"></i> Continue - Start Thumbnail Optimization
+                                    <i class="fa fa-play"></i> Start Thumbnail Optimization
                                 </button>
                             </div>
                         </div>
@@ -257,6 +279,9 @@ $line = 1; // Where messages go
                     if (processStarted) return;
                     processStarted = true;
 
+                    // Get selected batch size
+                    const batchSize = document.getElementById('batchSize').value;
+
                     // Hide description section
                     document.getElementById('descriptionSection').style.display = 'none';
 
@@ -264,8 +289,12 @@ $line = 1; // Where messages go
                     const now = new Date();
                     document.getElementById('startTimeText').textContent = now.toLocaleString();
 
-                    // Start the actual processing
-                    window.location.href = window.location.href + (window.location.href.includes('?') ? '&' : '?') + 'start=1';
+                    // Start the actual processing with batch size
+                    const params = new URLSearchParams(window.location.search);
+                    params.set('start', '1');
+                    params.set('batch_size', batchSize);
+
+                    window.location.href = window.location.pathname + '?' + params.toString();
                 }
 
                 // Check if we should start automatically
@@ -281,12 +310,27 @@ $line = 1; // Where messages go
             <?php
             // Only run the actual processing if start parameter is set
             if (isset($_GET['start']) && $_GET['start'] == '1') {
-                
-                // Initialize global counters
+
+                // Batch processing parameters
+                $batch_size = (int)($_GET['batch_size'] ?? 10); // Default 10 cars per batch
+                $offset = (int)($_GET['offset'] ?? 0);
+                $total_processed_prev = (int)($_GET['total_processed'] ?? 0); // From previous batches
+
+                // Initialize global counters (for this batch)
                 $global_processed = 0;
                 $global_generated = 0;
                 $global_removed = 0;
                 $global_errors = 0;
+
+                // Cumulative counters (including previous batches)
+                $cumulative_processed = $total_processed_prev;
+                $cumulative_generated = (int)($_GET['total_generated'] ?? 0);
+                $cumulative_removed = (int)($_GET['total_removed'] ?? 0);
+                $cumulative_errors = (int)($_GET['total_errors'] ?? 0);
+
+                // Track batch start time for timeout management
+                $batch_start_time = time();
+                $max_batch_time = 25; // Allow 25 seconds per batch (5s buffer)
                 
                 function outputMessage($message, $percentage = null) {
                     echo '<script>addLogMessage("' . addslashes($message) . '");</script>';
@@ -308,11 +352,20 @@ $line = 1; // Where messages go
                 $imageBasePath = $abs_us_root . $us_url_root . $settings->elan_image_dir;
                 outputMessage("🔍 Image base path: " . $imageBasePath);
 
-                // Get all cars with images
-                $cars_with_images = $db->query("SELECT id, image FROM cars WHERE image IS NOT NULL AND image != ''")->results();
-                $total_cars = count($cars_with_images);
+                // Get total count of cars with images (for overall progress tracking)
+                $total_cars_result = $db->query("SELECT COUNT(*) as count FROM cars WHERE image IS NOT NULL AND image != ''")->results();
+                $total_cars = $total_cars_result[0]->count;
+
+                // Get batched cars with images for processing
+                $cars_with_images = $db->query("SELECT id, image FROM cars WHERE image IS NOT NULL AND image != '' LIMIT {$batch_size} OFFSET {$offset}")->results();
+                $batch_car_count = count($cars_with_images);
                 
-                outputMessage("📊 Found {$total_cars} cars with image data");
+                outputMessage("📊 Found {$total_cars} total cars with image data");
+                outputMessage("📦 Processing batch: " . ($offset + 1) . " to " . min($offset + $batch_size, $total_cars) . " (batch size: {$batch_size})");
+
+                if ($total_processed_prev > 0) {
+                    outputMessage("📈 Previously processed: {$total_processed_prev} cars");
+                }
                 outputMessage("");
 
                 if ($total_cars == 0) {
@@ -321,7 +374,26 @@ $line = 1; // Where messages go
                     exit;
                 }
 
-                outputMessage("🚀 Starting thumbnail optimization...");
+                if ($batch_car_count == 0) {
+                    outputMessage("✅ All cars have been processed! Batch processing complete.");
+
+                    // Final summary with cumulative stats
+                    $final_stats = "
+                        <div class='row'>
+                            <div class='col-sm-3'><strong>Total Cars:</strong> {$cumulative_processed}</div>
+                            <div class='col-sm-3'><strong>768px Generated:</strong> {$cumulative_generated}</div>
+                            <div class='col-sm-3'><strong>600px Removed:</strong> {$cumulative_removed}</div>
+                            <div class='col-sm-3'><strong>Errors:</strong> {$cumulative_errors}</div>
+                        </div>";
+
+                    echo "<script>showCompletionSummary(`$final_stats`);</script>";
+
+                    // Log final completion
+                    logger($user->data()->id, 'ThumbnailOptimization', "Thumbnail optimization completed (batched) - Total Processed: {$cumulative_processed}, Generated: {$cumulative_generated}, Removed: {$cumulative_removed}, Errors: {$cumulative_errors} (Issue #303)");
+                    exit;
+                }
+
+                outputMessage("🚀 Starting batch thumbnail optimization...");
                 outputMessage("");
 
                 try {
@@ -340,8 +412,10 @@ $line = 1; // Where messages go
                             }
                         }
 
-                        $percentage = round((($index + 1) / $total_cars) * 100);
-                        outputMessage("Processing Car ID {$car_id} (" . ($index + 1) . "/{$total_cars})...", $percentage);
+                        // Calculate progress within current batch and overall progress
+                        $current_car_overall = $offset + $index + 1;
+                        $percentage = round(($current_car_overall / $total_cars) * 100);
+                        outputMessage("Processing Car ID {$car_id} (Overall: {$current_car_overall}/{$total_cars}, Batch: " . ($index + 1) . "/{$batch_car_count})...", $percentage);
                         
                         if (empty($car_images)) {
                             outputMessage("  ⚠️  No images found for Car ID {$car_id}");
@@ -432,52 +506,128 @@ $line = 1; // Where messages go
                         $global_processed++;
                         $global_generated += $car_generated;
                         $global_removed += $car_removed;
-                        
+
                         outputMessage("");
-                        
+
+                        // Check for timeout - if we're running close to limit, stop batch here
+                        if ((time() - $batch_start_time) > $max_batch_time) {
+                            outputMessage("⚠️ Batch time limit reached, preparing for next batch...");
+                            break;
+                        }
+
                         // Small delay to prevent server overload
                         usleep(100000); // 0.1 second
                     }
 
-                    outputMessage("✅ Thumbnail Optimization completed successfully!");
+                    // Update cumulative counters
+                    $cumulative_processed += $global_processed;
+                    $cumulative_generated += $global_generated;
+                    $cumulative_removed += $global_removed;
+                    $cumulative_errors += $global_errors;
 
-                    // Log the completion action with summary
-                    logger($user->data()->id, 'ThumbnailOptimization', "Thumbnail optimization completed - Processed: {$global_processed}, Generated: {$global_generated}, Removed: {$global_removed}, Errors: {$global_errors} (Issue #176)");
+                    // Check if there are more batches to process
+                    $next_offset = $offset + $batch_size;
+                    if ($next_offset < $total_cars) {
+                        outputMessage("📦 Batch complete! Continuing to next batch...");
+                        outputMessage("📈 Progress: Processed {$cumulative_processed}/{$total_cars} cars");
+
+                        // Build URL for next batch
+                        $next_url = $_SERVER['PHP_SELF'] . '?' . http_build_query([
+                            'start' => '1',
+                            'batch_size' => $batch_size,
+                            'offset' => $next_offset,
+                            'total_processed' => $cumulative_processed,
+                            'total_generated' => $cumulative_generated,
+                            'total_removed' => $cumulative_removed,
+                            'total_errors' => $cumulative_errors
+                        ]);
+
+                        // Log this batch completion
+                        logger($user->data()->id, 'ThumbnailOptimization', "Batch completed - Batch: " . (floor($offset / $batch_size) + 1) . ", Cars: {$global_processed}, Generated: {$global_generated}, Removed: {$global_removed}, Errors: {$global_errors} (Issue #303)");
+
+                        // Auto-redirect to next batch after 2 seconds
+                        echo "<script>
+                            setTimeout(function() {
+                                addLogMessage('🔄 Automatically continuing to next batch...');
+                                window.location.href = '{$next_url}';
+                            }, 2000);
+                        </script>";
+
+                        // Don't show completion summary yet
+                        exit;
+                    }
+
+                    outputMessage("✅ All batches completed! Thumbnail optimization finished!");
+
+                    // Log the final completion
+                    logger($user->data()->id, 'ThumbnailOptimization', "Thumbnail optimization completed (batched) - Total Processed: {$cumulative_processed}, Generated: {$cumulative_generated}, Removed: {$cumulative_removed}, Errors: {$cumulative_errors} (Issue #303)");
 
                 } catch (Exception $e) {
-                    outputMessage("❌ ERROR during processing: " . $e->getMessage());
-                    outputMessage("Processing aborted - partial changes may have been made");
-                    
-                    // Log the error
-                    logger($user->data()->id, 'ThumbnailOptimization', "Thumbnail optimization failed: " . $e->getMessage() . " (Issue #176)");
-                    $global_errors++;
+                    // Update cumulative counters even if there's an error
+                    $cumulative_processed += $global_processed;
+                    $cumulative_generated += $global_generated;
+                    $cumulative_removed += $global_removed;
+                    $cumulative_errors += $global_errors + 1; // +1 for the current exception
+
+                    outputMessage("❌ ERROR during batch processing: " . $e->getMessage());
+
+                    // Check if this might be a timeout error
+                    if (strpos($e->getMessage(), 'Maximum execution time') !== false ||
+                        strpos($e->getMessage(), 'timeout') !== false) {
+
+                        outputMessage("⚠️ Timeout detected - this batch will be retried");
+                        outputMessage("📈 Progress so far: Processed {$cumulative_processed}/{$total_cars} cars");
+
+                        // Calculate resume point (current batch with current progress)
+                        $resume_url = $_SERVER['PHP_SELF'] . '?' . http_build_query([
+                            'start' => '1',
+                            'batch_size' => $batch_size,
+                            'offset' => $offset, // Resume from same batch
+                            'total_processed' => $cumulative_processed,
+                            'total_generated' => $cumulative_generated,
+                            'total_removed' => $cumulative_removed,
+                            'total_errors' => $cumulative_errors
+                        ]);
+
+                        outputMessage("🔄 You can resume processing by refreshing the page or clicking the button below:");
+                        echo "<div style='text-align: center; margin: 20px;'>
+                            <button onclick='window.location.href=\"{$resume_url}\"' class='btn btn-warning'>
+                                <i class='fa fa-refresh'></i> Resume Batch Processing
+                            </button>
+                        </div>";
+
+                        logger($user->data()->id, 'ThumbnailOptimization', "Batch timeout - Batch: " . (floor($offset / $batch_size) + 1) . ", Partial progress saved. Resume URL available. (Issue #303)");
+                    } else {
+                        outputMessage("Processing aborted - partial changes may have been made");
+                        logger($user->data()->id, 'ThumbnailOptimization', "Thumbnail optimization failed: " . $e->getMessage() . " (Issue #303)");
+                    }
                 }
 
                 outputMessage("");
                 outputMessage("Script completed at " . date("h:i:sa"));
 
                 // Calculate final stats and show completion summary
-                $completionPercentage = $global_processed > 0 ? 100 : 0;
+                $completionPercentage = $cumulative_processed > 0 ? 100 : 0;
 
                 // Determine color based on success rate
                 $rateColor = '#dc3545'; // red (default for errors)
                 $rateIcon = 'exclamation-circle';
-                if ($global_errors == 0) {
+                if ($cumulative_errors == 0) {
                     $rateColor = '#28a745'; // green
                     $rateIcon = 'check-circle';
-                } elseif ($global_errors < ($global_generated + $global_removed) / 2) {
+                } elseif ($cumulative_errors < ($cumulative_generated + $cumulative_removed) / 2) {
                     $rateColor = '#ffc107'; // yellow
                     $rateIcon = 'exclamation-triangle';
                 }
 
                 $statsHtml = "
                     <div class='row'>
-                        <div class='col-sm-3'><strong>Cars Processed:</strong> $global_processed</div>
-                        <div class='col-sm-3'><strong>768px Generated:</strong> $global_generated</div>
-                        <div class='col-sm-3'><strong>600px Removed:</strong> $global_removed</div>
-                        <div class='col-sm-3'><strong>Errors:</strong> 
+                        <div class='col-sm-3'><strong>Cars Processed:</strong> $cumulative_processed</div>
+                        <div class='col-sm-3'><strong>768px Generated:</strong> $cumulative_generated</div>
+                        <div class='col-sm-3'><strong>600px Removed:</strong> $cumulative_removed</div>
+                        <div class='col-sm-3'><strong>Errors:</strong>
                             <span style='color: $rateColor; font-weight: bold;'>
-                                <i class='fa fa-$rateIcon'></i> $global_errors
+                                <i class='fa fa-$rateIcon'></i> $cumulative_errors
                             </span>
                         </div>
                     </div>";
