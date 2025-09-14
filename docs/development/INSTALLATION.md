@@ -4,11 +4,16 @@ This document provides step-by-step instructions for setting up the Lotus Elan R
 
 ## Prerequisites
 
-- PHP 8.1+ required (8.2+ recommended for full PHPUnit 12 compatibility)
+- **PHP 8.2.29+** required (tested with PHP 8.2.29 CLI built Jul 11 2025)
 - MySQL 8.0+
 - Composer for dependency management
 - Web server (Apache/Nginx) with mod_rewrite enabled
 - Git for version control
+
+**PHP Version Notes:**
+- Minimum: PHP 8.1 (basic functionality)
+- Recommended: PHP 8.2.29+ (full compatibility and PHPUnit 12 support)
+- Development Environment: PHP 8.2.29 (cli) verified working
 
 ### Required API Keys and External Services
 
