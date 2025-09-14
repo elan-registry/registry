@@ -203,12 +203,12 @@ function exportMenuSystem($db, $environment) {
  */
 function importMenuSystem($db, $importData, $targetEnvironment) {
     // Validate import data
-    if (!isset($importData['export_info']) || !isset($importData['export_info']['menu_system'])) {
+    if (!isset($importData->export_info) || !isset($importData->export_info->menu_system)) {
         throw new Exception("Invalid import data: Missing export information");
     }
 
-    $menuSystem = $importData['export_info']['menu_system'];
-    $sourceEnv = $importData['export_info']['source_environment'] ?? 'unknown';
+    $menuSystem = $importData->export_info->menu_system;
+    $sourceEnv = $importData->export_info->source_environment ?? 'unknown';
 
     // Environment validation
     if ($sourceEnv === $targetEnvironment) {
@@ -255,8 +255,8 @@ function importMenuSystem($db, $importData, $targetEnvironment) {
  */
 function importPagesAndPermissions($db, $importData) {
     // Import pages (with conflict handling)
-    if (isset($importData['pages'])) {
-        foreach ($importData['pages'] as $page) {
+    if (isset($importData->pages)) {
+        foreach ($importData->pages as $page) {
             $db->query("INSERT INTO pages (id, page, title, private, re_auth, core)
                        VALUES (?, ?, ?, ?, ?, ?)
                        ON DUPLICATE KEY UPDATE
@@ -271,11 +271,11 @@ function importPagesAndPermissions($db, $importData) {
     }
 
     // Import permission_page_matches
-    if (isset($importData['permissions'])) {
+    if (isset($importData->permissions)) {
         // Clear existing permission-page relationships that might be replaced
         $db->query("DELETE FROM permission_page_matches");
 
-        foreach ($importData['permissions'] as $perm) {
+        foreach ($importData->permissions as $perm) {
             $db->query("INSERT INTO permission_page_matches (permission_id, page_id)
                        VALUES (?, ?)
                        ON DUPLICATE KEY UPDATE
@@ -296,8 +296,8 @@ function importClassicMenus($db, $importData) {
     $db->query("DELETE FROM menus WHERE id > 20"); // Keep base UserSpice menus
 
     // Import menus
-    if (isset($importData['menus'])) {
-        foreach ($importData['menus'] as $menu) {
+    if (isset($importData->menus)) {
+        foreach ($importData->menus as $menu) {
             $db->query("INSERT INTO menus (id, menu_title, parent, dropdown, logged_in, display_order, label, link, icon_class)
                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                        ON DUPLICATE KEY UPDATE
@@ -317,8 +317,8 @@ function importClassicMenus($db, $importData) {
     }
 
     // Import groups_menus (menu permissions)
-    if (isset($importData['menu_permissions'])) {
-        foreach ($importData['menu_permissions'] as $menuPerm) {
+    if (isset($importData->menu_permissions)) {
+        foreach ($importData->menu_permissions as $menuPerm) {
             $db->query("INSERT INTO groups_menus (group_id, menu_id)
                        VALUES (?, ?)
                        ON DUPLICATE KEY UPDATE
@@ -347,8 +347,8 @@ function importUltraMenus($db, $importData) {
     // TODO: Add clearing of other UltraMenu tables as needed
 
     // Import UltraMenu data
-    if (isset($importData['us_menus'])) {
-        foreach ($importData['us_menus'] as $menu) {
+    if (isset($importData->us_menus)) {
+        foreach ($importData->us_menus as $menu) {
             $db->query("INSERT INTO us_menus (id, menu_name, type, z_index, show_active, theme, disabled)
                        VALUES (?, ?, ?, ?, ?, ?, ?)
                        ON DUPLICATE KEY UPDATE
@@ -495,12 +495,12 @@ if (isset($_GET['action'])) {
             echo $jsonResult;
 
         } elseif ($_GET['action'] === 'import') {
-            $input = json_decode(file_get_contents('php://input'), true);
+            $input = json_decode(file_get_contents('php://input'), false);
             if (!$input) {
                 throw new Exception('Invalid JSON input');
             }
 
-            $result = importMenuSystem($db, (object)$input, $currentEnvironment);
+            $result = importMenuSystem($db, $input, $currentEnvironment);
             echo json_encode(['success' => true] + $result);
 
         } else {
@@ -515,6 +515,11 @@ if (isset($_GET['action'])) {
     }
 
     exit; // Critical: exit before any HTML is rendered
+}
+
+// Stop here if being included for functions only
+if (defined('INCLUDE_FUNCTIONS_ONLY') && INCLUDE_FUNCTIONS_ONLY) {
+    return;
 }
 
 ?>
@@ -573,19 +578,16 @@ if (isset($_GET['action'])) {
                     throw new Error(`HTTP error! status: ${response.status}`);
                 }
 
-                // Try to get text first to debug
+                // Parse response as JSON
                 return response.text().then(text => {
                     try {
                         return JSON.parse(text);
                     } catch (jsonError) {
-                        console.error('Raw response:', text);
                         throw new Error('Invalid JSON response: ' + jsonError.message);
                     }
                 });
             })
             .then(data => {
-                console.log('Export response:', data);
-
                 if (data.success) {
                     const blob = new Blob([JSON.stringify(data.export, null, 2)], {type: 'application/json'});
                     const url = URL.createObjectURL(blob);
@@ -605,7 +607,6 @@ if (isset($_GET['action'])) {
                 }
             })
             .catch(error => {
-                console.error('Export error:', error);
                 document.getElementById('exportResults').innerHTML =
                     '<div class="error">Export failed: ' + error.message + '</div>';
             });
@@ -630,15 +631,29 @@ if (isset($_GET['action'])) {
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(importData)
                 })
-                .then(response => response.json())
+                .then(response => {
+                    // Check if response is ok
+                    if (!response.ok) {
+                        throw new Error(`HTTP error! status: ${response.status}`);
+                    }
+
+                    // Parse response as JSON
+                    return response.text().then(text => {
+                        try {
+                            return JSON.parse(text);
+                        } catch (jsonError) {
+                            throw new Error('Invalid JSON response: ' + jsonError.message);
+                        }
+                    });
+                })
                 .then(data => {
                     if (data.success) {
                         document.getElementById('importResults').innerHTML =
                             '<div class="success">Import successful!</div>' +
-                            '<p>Backup created: ' + data.backup_file + '</p>';
+                            '<p>Backup created: ' + (data.backup_file || 'unknown') + '</p>';
                     } else {
                         document.getElementById('importResults').innerHTML =
-                            '<div class="error">Import failed: ' + data.error + '</div>';
+                            '<div class="error">Import failed: ' + (data.error || 'Unknown error') + '</div>';
                     }
                 })
                 .catch(error => {

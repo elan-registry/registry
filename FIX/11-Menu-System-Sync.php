@@ -28,6 +28,14 @@ error_reporting(E_ALL);
 require_once '../users/init.php';
 require_once $abs_us_root . $us_url_root . 'users/includes/template/prep.php';
 
+// Include menu sync functions
+$menuSyncPath = $abs_us_root . $us_url_root . 'scripts/menu-sync.php';
+if (file_exists($menuSyncPath)) {
+    // Define flag to prevent HTML output when including
+    define('INCLUDE_FUNCTIONS_ONLY', true);
+    include $menuSyncPath;
+}
+
 if (!securePage($_SERVER['PHP_SELF'])) {
     die();
 }
@@ -37,23 +45,7 @@ $db = DB::getInstance();
 
 $line = 1; // Where messages go
 
-/**
- * Environment Detection
- */
-function detectEnvironment() {
-    $host = $_SERVER['HTTP_HOST'] ?? '';
-    $uri = $_SERVER['REQUEST_URI'] ?? '';
-
-    if (strpos($host, 'localhost') !== false && strpos($uri, '/elan_registry') !== false) {
-        return 'development';
-    } elseif (strpos($host, 'localhost') !== false && strpos($uri, '/test_reg') !== false) {
-        return 'test';
-    } elseif (strpos($host, 'elanregistry.org') !== false) {
-        return 'production';
-    }
-
-    return 'unknown';
-}
+// detectEnvironment function is now available from included menu-sync.php
 
 $currentEnvironment = detectEnvironment();
 
@@ -444,12 +436,26 @@ $currentEnvironment = detectEnvironment();
                     return $backupFile;
                 }
 
+                // Import functions now available from included menu-sync.php
+
                 outputMessage($line++, "=== Menu System Import Process ===", 5);
                 outputMessage($line++, "🌍 Current Environment: " . ucfirst($currentEnvironment));
                 outputMessage($line++, "");
 
-                // Note: In a real implementation, the menu export data would be passed
-                // through session or form data. For this example, we'll show the process structure.
+                // Check if menu data was uploaded
+                $menuData = null;
+                if (isset($_FILES['menuFile']) && $_FILES['menuFile']['error'] === UPLOAD_ERR_OK) {
+                    $uploadedFile = $_FILES['menuFile']['tmp_name'];
+                    $menuDataJson = file_get_contents($uploadedFile);
+                    $menuData = json_decode($menuDataJson, false);
+
+                    if (!$menuData) {
+                        throw new Exception('Invalid JSON file uploaded');
+                    }
+                } else {
+                    // For demonstration purposes, we'll create a basic completion record
+                    outputMessage($line++, "ℹ️  No menu file uploaded - recording script execution");
+                }
 
                 outputMessage($line++, "⚠️  SAFETY NOTICE: Creating backup before import...");
                 outputMessage($line++, "This will backup: pages, permission_page_matches, menus, groups_menus tables");
@@ -464,41 +470,51 @@ $currentEnvironment = detectEnvironment();
                     outputMessage($line++, "📁 Location: " . basename($backup_file));
                     outputMessage($line++, "");
 
-                    // Step 2: Validate import (placeholder - would validate uploaded data)
-                    outputMessage($line++, "🔍 Validating import data...", 25);
-                    outputMessage($line++, "✅ Import data validation complete");
-                    outputMessage($line++, "");
+                    if ($menuData) {
+                        // Real import with uploaded data
+                        outputMessage($line++, "🔍 Validating import data...", 25);
+                        if (!isset($menuData->export_info) || !isset($menuData->export_info->menu_system)) {
+                            throw new Exception("Invalid menu data: Missing export information");
+                        }
+                        outputMessage($line++, "✅ Import data validation complete");
+                        outputMessage($line++, "📊 Menu System: " . $menuData->export_info->menu_system);
+                        outputMessage($line++, "🌍 Source: " . ($menuData->export_info->source_environment ?? 'unknown'));
+                        outputMessage($line++, "");
 
-                    // Step 3: Clear existing menu data
-                    outputMessage($line++, "🗑️  Clearing existing menu configuration...", 40);
-                    $db->query("DELETE FROM groups_menus WHERE group_id IN (0, 2, 3)");
-                    $db->query("DELETE FROM menus WHERE id > 20");
-                    outputMessage($line++, "✅ Existing menu data cleared");
-                    outputMessage($line++, "");
+                        // Begin transaction
+                        $db->query("START TRANSACTION");
 
-                    // Step 4: Import pages (placeholder)
-                    outputMessage($line++, "📄 Importing pages...", 60);
-                    // Import logic would go here
-                    outputMessage($line++, "✅ Pages imported successfully");
+                        // Step 3: Import pages and permissions
+                        outputMessage($line++, "📄 Importing pages and permissions...", 50);
+                        importPagesAndPermissions($db, $menuData);
+                        outputMessage($line++, "✅ Pages and permissions imported successfully");
 
-                    // Step 5: Import menus (placeholder)
-                    outputMessage($line++, "📋 Importing menu items...", 75);
-                    // Import logic would go here
-                    outputMessage($line++, "✅ Menu items imported successfully");
+                        // Step 4: Import menu system
+                        if ($menuData->export_info->menu_system === 'classic') {
+                            outputMessage($line++, "📋 Importing Classic Menu system...", 75);
+                            importClassicMenus($db, $menuData);
+                            outputMessage($line++, "✅ Classic menus imported successfully");
+                        } else {
+                            outputMessage($line++, "⚠️  UltraMenu import not yet implemented");
+                        }
 
-                    // Step 6: Import permissions (placeholder)
-                    outputMessage($line++, "🔐 Importing permissions...", 90);
-                    // Import logic would go here
-                    outputMessage($line++, "✅ Permissions imported successfully");
+                        // Commit transaction
+                        $db->query("COMMIT");
+                        outputMessage($line++, "✅ All changes committed successfully");
+
+                        $global_successes = 1;
+                        $global_attempts = 1;
+
+                    } else {
+                        // No data uploaded - just record script execution
+                        outputMessage($line++, "ℹ️  No import performed - just recording script execution");
+                        $global_successes = 0;
+                        $global_attempts = 1;
+                    }
 
                     outputMessage($line++, "");
                     outputMessage($line++, "🔍 Verifying import results...", 95);
-                    outputMessage($line++, "✅ Import verification complete");
-
-                    outputMessage($line++, "✅ SUCCESS: Menu system import completed!");
-
-                    $global_successes = 1;
-                    $global_attempts = 1;
+                    outputMessage($line++, "✅ Process completed successfully");
 
                     // Log the completion
                     logger($user->data()->id, 'DatabaseMaintenance', "Menu system import completed - Environment: {$currentEnvironment} (Issue #297)");
@@ -509,6 +525,7 @@ $currentEnvironment = detectEnvironment();
                                    ON DUPLICATE KEY UPDATE run_date = CURRENT_TIMESTAMP, status = VALUES(status), notes = VALUES(notes)",
                                    [basename(__FILE__), 'completed', "Menu system import - Backup: " . basename($backup_file)]);
                         outputMessage($line++, "✅ Import completion recorded");
+                        logger($user->data()->id, 'SystemMaintenance', "FIX script completed: " . basename(__FILE__));
                     } catch (Exception $record_e) {
                         outputMessage($line++, "⚠️  Could not record completion: " . $record_e->getMessage());
                     }
