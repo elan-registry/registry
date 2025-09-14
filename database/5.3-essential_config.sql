@@ -50,19 +50,20 @@ UPDATE settings SET
   elan_image_max = 6,
   
   -- CDN Resource Management (Production URLs with integrity hashes)
-  elan_jquery_cdn = '<script src="https://cdn.jsdelivr.net/npm/jquery@3.5.1/dist/jquery.min.js"></script>',
-  elan_bootstrap_js_cdn = '<script src="https://cdn.jsdelivr.net/npm/bootstrap@4.5.3/dist/js/bootstrap.bundle.min.js" integrity="sha384-ho+j7jyWK8fNQe+A12Hb8AhRq26LrZ/JpcUGGOn+Y7RsweNrtN/tE3MoK7ZeZDyx" crossorigin="anonymous"></script>',
-  elan_bootstrap_css_cdn = '<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@4.5.3/dist/css/bootstrap.min.css" integrity="sha384-TX8t27EcRE3e/ihU7zmQxVncDAy5uIKz4rEkgIXeMed4M0jlfIDPvg6uqKI2xXr2" crossorigin="anonymous">',
-  elan_popper_cdn = '<script src="https://cdn.jsdelivr.net/npm/popper.js@1.16.1/dist/umd/popper.min.js" integrity="sha384-9/reFTGAW83EW2RDu2S0VKaIzap3H66lZH81PoYlFhbGU+6BZp6G7niu735Sk7lN" crossorigin="anonymous"></script>',
-  elan_fontawesome_cdn = '<script src="https://kit.fontawesome.com/2d8f489b15.js" crossorigin="anonymous"></script>',
-  elan_bootswatch_cdn = '<!-- Bootswatch --> <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/bootswatch/4.6.0/simplex/bootstrap.min.css" integrity="sha512-9hj+qhrmo7MUSzKG3nwkDWncL1x8e2d1wfJxufofoBMMLXlqlqvjpT0V0blusJ8CFx9fs9Ru7ICYkVrz62Q33w==" crossorigin="anonymous" />',
-  elan_datatables_js_cdn = '<script type="text/javascript" src="https://cdn.datatables.net/v/bs4/dt-1.10.23/fh-3.1.8/r-2.2.7/rg-1.1.2/sc-2.0.3/sb-1.0.1/sp-1.2.2/datatables.min.js"></script>',
-  elan_datatables_css_cdn = '<link rel="stylesheet" type="text/css" href="https://cdn.datatables.net/v/bs4/dt-1.10.23/fh-3.1.8/r-2.2.7/rg-1.1.2/sc-2.0.3/sb-1.0.1/sp-1.2.2/datatables.min.css" />',
-  elan_datepicker_js_cdn = '<script src="https://cdnjs.cloudflare.com/ajax/libs/bootstrap-datepicker/1.9.0/js/bootstrap-datepicker.min.js" integrity="sha512-T/tUfKSV1bihCnd+MxKD0Hm1uBBroVYBOYSk1knyvQ9VyZJpc/ALb4P0r6ubwVPSGB2GvjeoMAJJImBG12TiaQ==" crossorigin="anonymous"></script>',
-  elan_datepicker_css_cdn = '<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap-datepicker/1.9.0/css/bootstrap-datepicker.min.css" integrity="sha512-mSYUmp1HYZDFaVKK//63EcZq4iFWFjxSL+Z3T/aCt4IO9Cejm03q3NKKYN6pFQzY0SBOr8h+eCIAZHPXcpZaNw==" crossorigin="anonymous" />',
-  elan_jquery_ui_cdn = '<script src="https://code.jquery.com/ui/1.12.1/jquery-ui.min.js" integrity="sha256-VazP97ZCwtekAsvgPBSUwPFKdrwD3unUfSGVYrahUqU=" crossorigin="anonymous"></script>',
-  elan_dropzone_js_cdn = '<script src="https://cdn.jsdelivr.net/npm/dropzone@5.7.6/dist/min/dropzone.min.js" integrity="sha256-jj9KUPHT4VOIR8ZhUcJB66aiEAwt+eLk+10MeVKSbio=" crossorigin="anonymous"></script>',
-  elan_dropzone_css_cdn = '<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/dropzone@5.7.6/dist/min/dropzone.min.css" integrity="sha256-n/Cuyrm+v15Nim0mJ2ZrElHlCk8raJs/57WeCsIzDr4=" crossorigin="anonymous">',
+  -- NOTE: CDN values are HTML-encoded because template uses html_entity_decode()
+  elan_jquery_cdn = '&lt;script src=&quot;https://cdn.jsdelivr.net/npm/jquery@3.5.1/dist/jquery.min.js&quot;&gt;&lt;/script&gt;',
+  elan_bootstrap_js_cdn = '&lt;script src=&quot;https://cdn.jsdelivr.net/npm/bootstrap@4.5.3/dist/js/bootstrap.bundle.min.js&quot; integrity=&quot;sha384-ho+j7jyWK8fNQe+A12Hb8AhRq26LrZ/JpcUGGOn+Y7RsweNrtN/tE3MoK7ZeZDyx&quot; crossorigin=&quot;anonymous&quot;&gt;&lt;/script&gt;',
+  elan_bootstrap_css_cdn = '&lt;link rel=&quot;stylesheet&quot; href=&quot;https://cdn.jsdelivr.net/npm/bootstrap@4.5.3/dist/css/bootstrap.min.css&quot; integrity=&quot;sha384-TX8t27EcRE3e/ihU7zmQxVncDAy5uIKz4rEkgIXeMed4M0jlfIDPvg6uqKI2xXr2&quot; crossorigin=&quot;anonymous&quot;&gt;',
+  elan_popper_cdn = '&lt;script src=&quot;https://cdn.jsdelivr.net/npm/popper.js@1.16.1/dist/umd/popper.min.js&quot; integrity=&quot;sha384-9/reFTGAW83EW2RDu2S0VKaIzap3H66lZH81PoYlFhbGU+6BZp6G7niu735Sk7lN&quot; crossorigin=&quot;anonymous&quot;&gt;&lt;/script&gt;',
+  elan_fontawesome_cdn = '&lt;script src=&quot;https://kit.fontawesome.com/2d8f489b15.js&quot; crossorigin=&quot;anonymous&quot;&gt;&lt;/script&gt;',
+  elan_bootswatch_cdn = '&lt;!-- Bootswatch --&gt; &lt;link rel=&quot;stylesheet&quot; href=&quot;https://cdnjs.cloudflare.com/ajax/libs/bootswatch/4.6.0/simplex/bootstrap.min.css&quot; integrity=&quot;sha512-9hj+qhrmo7MUSzKG3nwkDWncL1x8e2d1wfJxufofoBMMLXlqlqvjpT0V0blusJ8CFx9fs9Ru7ICYkVrz62Q33w==&quot; crossorigin=&quot;anonymous&quot; /&gt;',
+  elan_datatables_js_cdn = '&lt;script type=&quot;text/javascript&quot; src=&quot;https://cdn.datatables.net/v/bs4/dt-1.10.23/fh-3.1.8/r-2.2.7/rg-1.1.2/sc-2.0.3/sb-1.0.1/sp-1.2.2/datatables.min.js&quot;&gt;&lt;/script&gt;',
+  elan_datatables_css_cdn = '&lt;link rel=&quot;stylesheet&quot; type=&quot;text/css&quot; href=&quot;https://cdn.datatables.net/v/bs4/dt-1.10.23/fh-3.1.8/r-2.2.7/rg-1.1.2/sc-2.0.3/sb-1.0.1/sp-1.2.2/datatables.min.css&quot; /&gt;',
+  elan_datepicker_js_cdn = '&lt;script src=&quot;https://cdnjs.cloudflare.com/ajax/libs/bootstrap-datepicker/1.9.0/js/bootstrap-datepicker.min.js&quot; integrity=&quot;sha512-T/tUfKSV1bihCnd+MxKD0Hm1uBBroVYBOYSk1knyvQ9VyZJpc/ALb4P0r6ubwVPSGB2GvjeoMAJJImBG12TiaQ==&quot; crossorigin=&quot;anonymous&quot;&gt;&lt;/script&gt;',
+  elan_datepicker_css_cdn = '&lt;link rel=&quot;stylesheet&quot; href=&quot;https://cdnjs.cloudflare.com/ajax/libs/bootstrap-datepicker/1.9.0/css/bootstrap-datepicker.min.css&quot; integrity=&quot;sha512-mSYUmp1HYZDFaVKK//63EcZq4iFWFjxSL+Z3T/aCt4IO9Cejm03q3NKKYN6pFQzY0SBOr8h+eCIAZHPXcpZaNw==&quot; crossorigin=&quot;anonymous&quot; /&gt;',
+  elan_jquery_ui_cdn = '&lt;script src=&quot;https://code.jquery.com/ui/1.12.1/jquery-ui.min.js&quot; integrity=&quot;sha256-VazP97ZCwtekAsvgPBSUwPFKdrwD3unUfSGVYrahUqU=&quot; crossorigin=&quot;anonymous&quot;&gt;&lt;/script&gt;',
+  elan_dropzone_js_cdn = '&lt;script src=&quot;https://cdn.jsdelivr.net/npm/dropzone@5.7.6/dist/min/dropzone.min.js&quot; integrity=&quot;sha256-jj9KUPHT4VOIR8ZhUcJB66aiEAwt+eLk+10MeVKSbio=&quot; crossorigin=&quot;anonymous&quot;&gt;&lt;/script&gt;',
+  elan_dropzone_css_cdn = '&lt;link rel=&quot;stylesheet&quot; href=&quot;https://cdn.jsdelivr.net/npm/dropzone@5.7.6/dist/min/dropzone.min.css&quot; integrity=&quot;sha256-n/Cuyrm+v15Nim0mJ2ZrElHlCk8raJs/57WeCsIzDr4=&quot; crossorigin=&quot;anonymous&quot;&gt;',
   
   -- SPAM Cleanup System Configuration (Safe defaults)
   elan_spam_cleanup_enabled = 0,        -- Start disabled for safety
