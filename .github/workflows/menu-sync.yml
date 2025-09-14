@@ -51,7 +51,10 @@ jobs:
           extensions: mysqli, pdo, pdo_mysql
 
       - name: Install dependencies
-        run: composer install --no-dev --optimize-autoloader --ignore-platform-reqs
+        run: |
+          # Remove PHPUnit requirement temporarily for CI
+          composer remove --dev phpunit/phpunit --no-update || true
+          composer install --no-dev --optimize-autoloader
 
       - name: Check for menu changes
         id: menu_changes
