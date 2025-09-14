@@ -16,6 +16,7 @@ This document provides comprehensive deployment procedures for the Lotus Elan Re
 **⚠️ IMPORTANT:** When someone says "push to prod", always use the `prod` remote, NOT `origin`!
 
 **Live Production Server:**
+
 ```bash
 # Push code to PRODUCTION SERVER (live site)
 git push prod main
@@ -25,6 +26,7 @@ git push prod --tags
 ```
 
 **GitHub Repository (backup/development):**
+
 ```bash
 # Push to GitHub for repository backup
 git push origin main && git push origin --tags
@@ -33,8 +35,8 @@ git push origin main && git push origin --tags
 ### Remote Configuration Reference
 
 ```bash
-origin	git@github.com:unibrain1/elanregistry.git    # GitHub repository
-prod	a2hosting:/home/unibrain/elanregistry.project  # LIVE PRODUCTION SERVER
+origin git@github.com:unibrain1/elanregistry.git    # GitHub repository
+prod a2hosting:/home/unibrain/elanregistry.project  # LIVE PRODUCTION SERVER
 ```
 
 **🔄 Deployment Rule:**
@@ -60,6 +62,7 @@ All pull requests to the `main` branch are automatically validated through a com
 ### Security & Code Quality Checks
 
 #### 1. **CodeQL Analysis**
+
 - **What it does**: Static analysis for security vulnerabilities and code quality issues in JavaScript
 - **When it runs**: On every pull request to main branch
 - **Scope**: Analyzes JavaScript files for common vulnerabilities (XSS, injection attacks, etc.)
@@ -67,6 +70,7 @@ All pull requests to the `main` branch are automatically validated through a com
 - **Failure impact**: Blocks merge until vulnerabilities are resolved
 
 #### 2. **GitGuardian Security Checks**
+
 - **What it does**: Scans for secrets, API keys, passwords, and credentials in code
 - **When it runs**: On every commit and pull request
 - **Scope**: All files in the repository for hardcoded secrets
@@ -75,6 +79,7 @@ All pull requests to the `main` branch are automatically validated through a com
 - **Configuration**: External service, no local configuration files
 
 #### 3. **Claude Code Review**
+
 - **What it does**: Automated code review against Elan Registry coding standards
 - **When it runs**: When PR contains PHP, JS, CSS files or documentation changes
 - **Scope**: Enforces coding standards from `docs/development/CODING_STANDARDS.md`
@@ -90,6 +95,7 @@ All pull requests to the `main` branch are automatically validated through a com
 ### Project Management Automation
 
 #### 4. **Issue Management Automation**
+
 - **What it does**: Automatically manages GitHub issues with labels, milestones, and status tracking
 - **When it runs**: On issue creation, updates, and closure
 - **Key functions**:
@@ -100,6 +106,7 @@ All pull requests to the `main` branch are automatically validated through a com
 - **Labels applied**: `priority: critical/high/medium/low`, `status: needs-planning/in-progress/needs-review`
 
 #### 5. **PR Management Automation**
+
 - **What it does**: Links PRs to issues and manages development workflow
 - **When it runs**: On PR creation, updates, and merge
 - **Key functions**:
@@ -110,6 +117,7 @@ All pull requests to the `main` branch are automatically validated through a com
 - **Status flow**: `status: in-progress` → `status: needs-review` → issue closed
 
 #### 6. **Phase Progress Tracking**
+
 - **What it does**: Tracks milestone completion and celebrates progress
 - **When it runs**: When issues with milestones are closed
 - **Scope**: Milestone-based development phases (v2.8.1, etc.)
@@ -122,11 +130,13 @@ All pull requests to the `main` branch are automatically validated through a com
 ### Special Workflow Behaviors
 
 #### Version Check Behavior
+
 - **Feature branches**: Version check **skipped** (allows development work)
 - **Main branch**: Full version validation runs (ensures production quality)
 - **Why skipped on PR**: Prevents blocking development, validation happens on merge
 
 #### Check Dependencies
+
 - **Required for merge**: CodeQL, GitGuardian, Claude Review (if applicable)
 - **Informational only**: Project management automation (doesn't block merge)
 - **Manual override**: Repository administrators can override if needed
@@ -134,24 +144,91 @@ All pull requests to the `main` branch are automatically validated through a com
 ### Troubleshooting Common Check Failures
 
 #### CodeQL Failures
+
 - **Cause**: Security vulnerabilities in JavaScript code
 - **Resolution**: Fix identified vulnerabilities, rerun analysis
 - **Common issues**: XSS vulnerabilities, unsafe DOM manipulation
 
 #### GitGuardian Failures
+
 - **Cause**: Hardcoded secrets, API keys, or credentials detected
 - **Resolution**: Remove secrets, use environment variables instead
 - **Prevention**: Use `.env.enc` encrypted storage for sensitive data
 
 #### Claude Review Failures
+
 - **Cause**: Coding standard violations (missing types, CSRF, documentation)
 - **Resolution**: Address specific issues mentioned in review comments
 - **Reference**: Follow examples and standards in review feedback
 
 #### Project Automation Issues
+
 - **Cause**: Usually permissions or malformed issue references
 - **Impact**: Non-blocking, informational only
 - **Resolution**: Check issue numbers in PR description, verify GitHub permissions
+
+## 🛠️ Local Development Tools
+
+### Pre-Commit Coding Standards Hook
+
+A **blocking pre-commit hook** automatically checks your code for standards violations before allowing commits.
+
+#### Setup (One-time)
+
+```bash
+# Install git hooks
+./scripts/setup-git-hooks.sh
+```
+
+#### How It Works
+
+- **Automatic**: Runs on every `git commit`
+- **Fast**: Only checks staged PHP files
+- **Blocking**: Prevents commits with coding standard errors
+- **Helpful**: Shows specific errors with fix suggestions
+
+#### Manual Testing
+
+```bash
+# Test current directory
+php scripts/check-coding-standards.php .
+
+# Test specific directory
+php scripts/check-coding-standards.php app/classes/
+
+# Test staged files only (used by pre-commit hook)
+php scripts/check-coding-standards.php /tmp/staged --staged
+```
+
+#### Bypass Hook (Emergency Only)
+
+```bash
+# NOT recommended - use sparingly!
+git commit --no-verify
+```
+
+### What the Standards Checker Validates
+
+#### ❌ **Blocking Issues**
+
+- Missing `declare(strict_types=1)` in new PHP files
+- Functions without return type declarations
+- Function parameters without type hints
+- Public methods missing PHPDoc blocks
+- Potential SQL injection patterns (string concatenation in queries)
+
+#### ⚠️ **Warnings**
+
+- Forms without CSRF protection
+- SQL queries that may not use prepared statements
+- Function parameters that might need type declarations
+
+### Benefits
+
+- **Prevents CI Failures**: Catches issues locally before PR submission
+- **Faster Development**: No need to wait for Claude Code Review to find basic issues
+- **Consistent Code Quality**: Enforces standards across all developers
+- **Educational**: Shows examples of correct implementations
 
 ## 📋 Complete Production Deployment Process
 
@@ -286,6 +363,7 @@ If deployment fails:
 ---
 
 **📖 Related Documentation:**
+
 - [CLAUDE.md](CLAUDE.md) - Essential development guidance
 - [DEVELOPMENT_WORKFLOW.md](DEVELOPMENT_WORKFLOW.md) - Detailed development processes
 - [ENVIRONMENT.md](ENVIRONMENT.md) - Environment setup and configuration
