@@ -395,47 +395,8 @@ $currentEnvironment = detectEnvironment();
                 }
 
                 function createMenuBackup($environment) {
-                    global $db;
-
-                    $backupDir = dirname(__FILE__) . '/backups';
-                    if (!is_dir($backupDir)) {
-                        mkdir($backupDir, 0755, true);
-                    }
-
-                    $timestamp = date('Ymd_His');
-                    $backupFile = "{$backupDir}/menu_sync_backup_{$environment}_{$timestamp}.sql";
-
-                    // Get database config
-                    $host = $GLOBALS['config']['mysql']['host'] ?? 'localhost';
-                    $username = $GLOBALS['config']['mysql']['username'] ?? '';
-                    $password = $GLOBALS['config']['mysql']['password'] ?? '';
-                    $dbname = $GLOBALS['config']['mysql']['db'] ?? '';
-                    $port = $GLOBALS['config']['mysql']['port'] ?? 3306;
-
-                    // Tables to backup
-                    $tables = ['pages', 'permission_page_matches', 'menus', 'groups_menus'];
-
-                    $tablesStr = implode(' ', $tables);
-
-                    // Build mysqldump command
-                    $command = sprintf(
-                        '/Applications/MAMP/Library/bin/mysqldump -h %s -P %d -u %s -p%s %s %s > %s',
-                        escapeshellarg($host),
-                        $port,
-                        escapeshellarg($username),
-                        escapeshellarg($password),
-                        escapeshellarg($dbname),
-                        $tablesStr,
-                        escapeshellarg($backupFile)
-                    );
-
-                    exec($command, $output, $returnCode);
-
-                    if ($returnCode !== 0 || !file_exists($backupFile) || filesize($backupFile) < 100) {
-                        throw new Exception("Backup failed - return code: {$returnCode}");
-                    }
-
-                    return $backupFile;
+                    // Use the improved backup function from menu-sync.php
+                    return createBackup($environment);
                 }
 
                 // Import functions now available from included menu-sync.php
