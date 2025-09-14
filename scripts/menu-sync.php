@@ -46,11 +46,16 @@ function detectEnvironment(): string {
     $host = $_SERVER['HTTP_HOST'] ?? '';
     $uri = $_SERVER['REQUEST_URI'] ?? '';
 
-    if (strpos($host, 'localhost') !== false && strpos($uri, '/elan_registry') !== false) {
-        return 'development';
-    } elseif (strpos($host, 'localhost') !== false && strpos($uri, '/test_reg') !== false) {
+    // Check for test environment first (more specific)
+    if (strpos($host, 'test.elanregistry.org') !== false) {
         return 'test';
-    } elseif (strpos($host, 'elanregistry.org') !== false) {
+    }
+    // Check for development environment
+    elseif (strpos($host, 'localhost') !== false && strpos($uri, '/elan_registry') !== false) {
+        return 'development';
+    }
+    // Check for production environment (main domain only, excluding subdomains)
+    elseif ($host === 'elanregistry.org' || $host === 'www.elanregistry.org') {
         return 'production';
     }
 
@@ -406,9 +411,20 @@ function createBackup($environment) {
 
     $tablesStr = implode(' ', $tables);
 
+    // Determine mysqldump path based on environment
+    $currentEnv = detectEnvironment();
+    if ($currentEnv === 'development') {
+        // Local MAMP installation
+        $mysqldumpPath = '/Applications/MAMP/Library/bin/mysql57/bin/mysqldump';
+    } else {
+        // Production/Test environments (A2 Hosting or other hosting)
+        $mysqldumpPath = 'mysqldump'; // Use system mysqldump
+    }
+
     // Build mysqldump command
     $command = sprintf(
-        '/Applications/MAMP/Library/bin/mysqldump -h %s -P %d -u %s -p%s %s %s > %s',
+        '%s -h %s -P %d -u %s -p%s %s %s > %s',
+        $mysqldumpPath,
         escapeshellarg($host),
         $port,
         escapeshellarg($username),
@@ -442,9 +458,20 @@ function rollbackFromBackup($backupFile) {
     $dbname = $GLOBALS['config']['mysql']['db'] ?? '';
     $port = $GLOBALS['config']['mysql']['port'] ?? 3306;
 
+    // Determine mysql path based on environment
+    $currentEnv = detectEnvironment();
+    if ($currentEnv === 'development') {
+        // Local MAMP installation
+        $mysqlPath = '/Applications/MAMP/Library/bin/mysql57/bin/mysql';
+    } else {
+        // Production/Test environments (A2 Hosting or other hosting)
+        $mysqlPath = 'mysql'; // Use system mysql
+    }
+
     // Build mysql restore command
     $command = sprintf(
-        '/Applications/MAMP/Library/bin/mysql -h %s -P %d -u %s -p%s %s < %s',
+        '%s -h %s -P %d -u %s -p%s %s < %s',
+        $mysqlPath,
         escapeshellarg($host),
         $port,
         escapeshellarg($username),

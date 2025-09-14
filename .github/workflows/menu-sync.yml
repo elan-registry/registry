@@ -140,7 +140,7 @@ jobs:
           echo ""
           echo "🌐 Environment URLs:"
           echo "- Development: http://localhost:9999/elan_registry/scripts/menu-sync.php"
-          echo "- Test: http://localhost:9999/test_reg/scripts/menu-sync.php"
+          echo "- Test: https://test.elanregistry.org/scripts/menu-sync.php"
           echo "- Production: https://elanregistry.org/scripts/menu-sync.php"
 
       - name: Create deployment summary
@@ -162,7 +162,7 @@ jobs:
           **Manual Menu Sync Required:**
           1. 🔗 [Access Development Menu Sync](http://localhost:9999/elan_registry/scripts/menu-sync.php)
           2. 📤 Export real menu data from development
-          3. 🔗 [Access Target Environment Menu Sync](${{ github.event.inputs.target_environment == 'test' && 'http://localhost:9999/test_reg/scripts/menu-sync.php' || 'https://elanregistry.org/scripts/menu-sync.php' }})
+          3. 🔗 [Access Target Environment Menu Sync](${{ github.event.inputs.target_environment == 'test' && 'https://test.elanregistry.org/scripts/menu-sync.php' || 'https://elanregistry.org/scripts/menu-sync.php' }})
           4. 📥 Import the exported JSON file
           5. ✅ Verify menu navigation works correctly
 
