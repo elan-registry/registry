@@ -22,8 +22,13 @@ $imageSettingsFields = [
     'elan_image_thumbnail_sizes' => ['type' => 'TEXT', 'default' => "'100,300,768,1024,2048'", 'description' => 'Comma-separated thumbnail sizes in pixels']
 ];
 
+// Chart.js configuration settings (Issue #285)
+$chartJsSettingsFields = [
+    'elan_chartjs_cdn' => ['type' => 'TEXT', 'default' => "'https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.js'", 'description' => 'Chart.js CDN URL for statistics charts']
+];
+
 // Combine all settings fields for processing
-$allSettingsFields = array_merge($spamCleanupFields, $imageSettingsFields);
+$allSettingsFields = array_merge($spamCleanupFields, $imageSettingsFields, $chartJsSettingsFields);
 
 $fieldsToAdd = [];
 foreach ($allSettingsFields as $fieldName => $fieldConfig) {
@@ -529,7 +534,7 @@ if (!empty($fieldsToAdd)) {
 
                             <div class="row">
                                 <div class="col-md-6">
-                                    <div class="form-group mb-0">
+                                    <div class="form-group">
                                         <label for='elan_dropzone_js_cdn' class="font-weight-bold">
                                             <i class="fas fa-cloud-upload-alt"></i> Dropzone JS CDN
                                         </label>
@@ -542,13 +547,28 @@ if (!empty($fieldsToAdd)) {
                                 </div>
 
                                 <div class="col-md-6">
-                                    <div class="form-group mb-0">
+                                    <div class="form-group">
                                         <label for='elan_dropzone_css_cdn' class="font-weight-bold">
                                             <i class="fas fa-cloud-upload-alt"></i> Dropzone CSS CDN
                                         </label>
                                         <input type="text" class="form-control ajxtxt" data-desc="Dropzone CSS CDN URL" name="elan_dropzone_css_cdn" id="elan_dropzone_css_cdn" value="<?= $settings->elan_dropzone_css_cdn; ?>" placeholder="https://cdn.jsdelivr.net/npm/dropzone@5.7.6/dist/min/dropzone.min.css">
                                         <small class="form-text text-muted">
                                             <i class="fas fa-external-link-alt"></i> Dropzone styling
+                                        </small>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="row">
+                                <div class="col-md-12">
+                                    <div class="form-group mb-0">
+                                        <label for='elan_chartjs_cdn' class="font-weight-bold">
+                                            <i class="fas fa-chart-pie"></i> Chart.js CDN URL
+                                        </label>
+                                        <input type="text" class="form-control ajxtxt" data-desc="Chart.js CDN URL" name="elan_chartjs_cdn" id="elan_chartjs_cdn" value="<?= $settings->elan_chartjs_cdn; ?>" placeholder="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.js">
+                                        <small class="form-text text-muted">
+                                            <i class="fas fa-external-link-alt"></i> Chart.js library for statistics page charts (replaces Google Charts)
+                                            <a href="https://www.chartjs.org/docs/latest/getting-started/installation.html" target="_blank" class="ml-2">Get Chart.js</a>
                                         </small>
                                     </div>
                                 </div>

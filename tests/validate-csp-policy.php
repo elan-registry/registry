@@ -29,7 +29,6 @@ class CSPPolicyValidator {
             'https://www.googletagmanager.com' => 'Google Tag Manager',
             'https://www.gstatic.com' => 'Google Static Resources',
             'https://ssl.gstatic.com' => 'Google SSL Resources',
-            'https://charts.googleapis.com' => 'Google Charts API',
             'https://www.google.com' => 'Google reCAPTCHA',
             'https://static.cloudflareinsights.com' => 'Cloudflare Analytics',
             'https://kit.fontawesome.com' => 'FontAwesome Icons',
@@ -43,7 +42,7 @@ class CSPPolicyValidator {
         ],
         'style-src' => [
             'https://fonts.googleapis.com' => 'Google Fonts',
-            'https://www.gstatic.com' => 'Google Charts CSS',
+            'https://www.gstatic.com' => 'Google Static Resources',
             'https://use.fontawesome.com' => 'FontAwesome CSS',
             'https://kit.fontawesome.com' => 'FontAwesome Kit CSS',
             'https://cdn.jsdelivr.net' => 'JSDelivr CDN',
@@ -67,7 +66,6 @@ class CSPPolicyValidator {
             'https://maps.googleapis.com' => 'Google Maps API',
             'https://www.google-analytics.com' => 'Google Analytics API',
             'https://www.gstatic.com' => 'Google Static Resources',
-            'https://charts.googleapis.com' => 'Google Charts API',
             'https://www.google.com' => 'Google reCAPTCHA API',
             'https://cloudflareinsights.com' => 'Cloudflare Analytics API',
             'https://static.cloudflareinsights.com' => 'Cloudflare Analytics Static'
@@ -150,15 +148,15 @@ class CSPPolicyValidator {
         $policy = "default-src 'self'; ";
         $policy .= "script-src 'self' 'unsafe-inline' 'unsafe-eval' ";
         $policy .= "https://maps.googleapis.com https://www.google-analytics.com https://www.googletagmanager.com ";
-        $policy .= "https://www.gstatic.com https://ssl.gstatic.com https://charts.googleapis.com ";
+        $policy .= "https://www.gstatic.com https://ssl.gstatic.com ";
         $policy .= "https://www.google.com https://static.cloudflareinsights.com https://static.cloudflareinsights.com/* ";
         $policy .= "https://kit.fontawesome.com https://cdn.jsdelivr.net https://cdnjs.cloudflare.com ";
         $policy .= "https://code.jquery.com https://ajax.googleapis.com https://maxcdn.bootstrapcdn.com ";
         $policy .= "https://stackpath.bootstrapcdn.com https://cdn.datatables.net; ";
         
         $policy .= "style-src 'self' 'unsafe-inline' ";
-        $policy .= "https://fonts.googleapis.com https://www.gstatic.com https://www.gstatic.com/charts/ ";
-        $policy .= "https://www.gstatic.com/charts/* https://use.fontawesome.com https://kit.fontawesome.com ";
+        $policy .= "https://fonts.googleapis.com https://www.gstatic.com ";
+        $policy .= "https://use.fontawesome.com https://kit.fontawesome.com ";
         $policy .= "https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://maxcdn.bootstrapcdn.com ";
         $policy .= "https://stackpath.bootstrapcdn.com https://cdn.datatables.net; ";
         
@@ -168,7 +166,7 @@ class CSPPolicyValidator {
         $policy .= "font-src 'self' https://fonts.gstatic.com https://use.fontawesome.com https://kit.fontawesome.com; ";
         
         $policy .= "connect-src 'self' https://maps.googleapis.com https://www.google-analytics.com ";
-        $policy .= "https://www.gstatic.com https://charts.googleapis.com https://www.google.com ";
+        $policy .= "https://www.gstatic.com https://www.google.com ";
         $policy .= "https://cloudflareinsights.com https://static.cloudflareinsights.com; ";
         
         $policy .= "frame-src 'self' https://www.google.com; object-src 'none'; base-uri 'self'";
