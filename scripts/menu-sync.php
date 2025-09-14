@@ -411,42 +411,35 @@ function createBackup($environment) {
 
     $tablesStr = implode(' ', $tables);
 
-    // Try mysqldump first, fallback to PHP-based backup
+    // For hosting environments, use PHP-based backup for reliability
     $currentEnv = detectEnvironment();
     $backupSuccess = false;
 
-    // Determine mysqldump path based on environment
     if ($currentEnv === 'development') {
-        // Local MAMP installation
+        // Local MAMP installation - use mysqldump
         $mysqldumpPath = '/Applications/MAMP/Library/bin/mysql57/bin/mysqldump';
+        $command = sprintf(
+            '%s -h %s -P %d -u %s -p%s %s %s > %s',
+            $mysqldumpPath,
+            escapeshellarg($host),
+            $port,
+            escapeshellarg($username),
+            escapeshellarg($password),
+            escapeshellarg($dbname),
+            $tablesStr,
+            escapeshellarg($backupFile)
+        );
+
+        exec($command, $output, $returnCode);
+        $backupSuccess = ($returnCode === 0 && file_exists($backupFile) && filesize($backupFile) > 100);
     } else {
-        // Production/Test environments (A2 Hosting)
-        $mysqldumpPath = '/usr/bin/mysqldump';
-    }
-
-    // Try mysqldump first
-    $command = sprintf(
-        '%s -h %s -P %d -u %s -p%s %s %s > %s',
-        $mysqldumpPath,
-        escapeshellarg($host),
-        $port,
-        escapeshellarg($username),
-        escapeshellarg($password),
-        escapeshellarg($dbname),
-        $tablesStr,
-        escapeshellarg($backupFile)
-    );
-
-    exec($command, $output, $returnCode);
-    $backupSuccess = ($returnCode === 0 && file_exists($backupFile) && filesize($backupFile) > 100);
-
-    // If mysqldump failed or not available, use PHP-based backup
-    if (!$backupSuccess) {
+        // For test/production environments, use PHP backup directly for reliability
+        error_log("Using PHP-based backup for environment: {$currentEnv}");
         $backupSuccess = createPhpBackup($backupFile, $tables, DB::getInstance());
     }
 
     if (!$backupSuccess) {
-        throw new Exception("Both mysqldump and PHP backup methods failed");
+        throw new Exception("Backup creation failed for environment: {$currentEnv}");
     }
 
     return $backupFile;
