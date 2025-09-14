@@ -482,32 +482,13 @@ $currentEnvironment = detectEnvironment();
                     // Log the completion
                     logger($user->data()->id, 'DatabaseMaintenance', "Menu system import completed - Environment: {$currentEnvironment} (Issue #297)");
 
-                    // Record script completion
+                    // Record script completion (using standard FIX template approach)
                     try {
-                        // Check if table has the expected columns, if not use simple insert
-                        $tableInfo = $db->query("DESCRIBE fix_script_runs");
-                        $columns = [];
-                        if ($tableInfo && $tableInfo->results()) {
-                            foreach ($tableInfo->results() as $column) {
-                                $columns[] = $column->Field;
-                            }
-                        }
-
-                        if (in_array('status', $columns) && in_array('notes', $columns)) {
-                            // Full table structure available
-                            $db->query("INSERT INTO fix_script_runs (script_name, status, notes) VALUES (?, ?, ?)
-                                       ON DUPLICATE KEY UPDATE run_date = CURRENT_TIMESTAMP, status = VALUES(status), notes = VALUES(notes)",
-                                       [basename(__FILE__), 'completed', "Menu system import - Backup: " . basename($backup_file)]);
-                        } else {
-                            // Simplified table structure (from index.php)
-                            $db->query("INSERT INTO fix_script_runs (script_name) VALUES (?)
-                                       ON DUPLICATE KEY UPDATE completed_at = CURRENT_TIMESTAMP",
-                                       [basename(__FILE__)]);
-                        }
-                        outputMessage($line++, "✅ Import completion recorded");
+                        $db->query("INSERT INTO fix_script_runs (script_name) VALUES (?)", [basename(__FILE__)]);
+                        outputMessage($line++, "✅ Script completion recorded");
                         logger($user->data()->id, 'SystemMaintenance', "FIX script completed: " . basename(__FILE__));
                     } catch (Exception $record_e) {
-                        outputMessage($line++, "⚠️  Could not record completion: " . $record_e->getMessage());
+                        outputMessage($line++, "⚠️  Could not record script completion: " . $record_e->getMessage());
                     }
 
                 } catch (Exception $e) {
