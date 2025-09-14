@@ -411,17 +411,20 @@ function createBackup($environment) {
 
     $tablesStr = implode(' ', $tables);
 
-    // Determine mysqldump path based on environment
+    // Try mysqldump first, fallback to PHP-based backup
     $currentEnv = detectEnvironment();
+    $backupSuccess = false;
+
+    // Determine mysqldump path based on environment
     if ($currentEnv === 'development') {
         // Local MAMP installation
         $mysqldumpPath = '/Applications/MAMP/Library/bin/mysql57/bin/mysqldump';
     } else {
-        // Production/Test environments (A2 Hosting or other hosting)
-        $mysqldumpPath = 'mysqldump'; // Use system mysqldump
+        // Production/Test environments (A2 Hosting)
+        $mysqldumpPath = '/usr/bin/mysqldump';
     }
 
-    // Build mysqldump command
+    // Try mysqldump first
     $command = sprintf(
         '%s -h %s -P %d -u %s -p%s %s %s > %s',
         $mysqldumpPath,
@@ -435,12 +438,71 @@ function createBackup($environment) {
     );
 
     exec($command, $output, $returnCode);
+    $backupSuccess = ($returnCode === 0 && file_exists($backupFile) && filesize($backupFile) > 100);
 
-    if ($returnCode !== 0 || !file_exists($backupFile) || filesize($backupFile) < 100) {
-        throw new Exception("Backup failed - return code: {$returnCode}");
+    // If mysqldump failed or not available, use PHP-based backup
+    if (!$backupSuccess) {
+        $backupSuccess = createPhpBackup($backupFile, $tables, DB::getInstance());
+    }
+
+    if (!$backupSuccess) {
+        throw new Exception("Both mysqldump and PHP backup methods failed");
     }
 
     return $backupFile;
+}
+
+/**
+ * Create PHP-based backup (fallback when mysqldump not available)
+ * Creates SQL dump using PHP database queries
+ */
+function createPhpBackup($backupFile, $tables, $db) {
+    try {
+        $sql = "-- Menu System Backup\n";
+        $sql .= "-- Created: " . date('Y-m-d H:i:s') . "\n";
+        $sql .= "-- Environment: " . detectEnvironment() . "\n\n";
+
+        foreach ($tables as $table) {
+            // Get table structure
+            $createQuery = $db->query("SHOW CREATE TABLE `{$table}`");
+            if ($createQuery && $createQuery->first()) {
+                $sql .= "-- Table structure for {$table}\n";
+                $sql .= "DROP TABLE IF EXISTS `{$table}`;\n";
+                $sql .= $createQuery->first()->{'Create Table'} . ";\n\n";
+            }
+
+            // Get table data
+            $dataQuery = $db->query("SELECT * FROM `{$table}`");
+            if ($dataQuery && $dataQuery->results()) {
+                $sql .= "-- Data for table {$table}\n";
+
+                foreach ($dataQuery->results() as $row) {
+                    $columns = array_keys((array)$row);
+                    $values = array_values((array)$row);
+
+                    // Escape values
+                    $escapedValues = array_map(function($value) {
+                        if ($value === null) {
+                            return 'NULL';
+                        }
+                        return "'" . addslashes($value) . "'";
+                    }, $values);
+
+                    $sql .= "INSERT INTO `{$table}` (`" . implode('`, `', $columns) . "`) VALUES (";
+                    $sql .= implode(', ', $escapedValues) . ");\n";
+                }
+                $sql .= "\n";
+            }
+        }
+
+        // Write to file
+        $result = file_put_contents($backupFile, $sql);
+        return ($result !== false && file_exists($backupFile) && filesize($backupFile) > 100);
+
+    } catch (Exception $e) {
+        error_log("PHP backup failed: " . $e->getMessage());
+        return false;
+    }
 }
 
 /**
@@ -464,8 +526,8 @@ function rollbackFromBackup($backupFile) {
         // Local MAMP installation
         $mysqlPath = '/Applications/MAMP/Library/bin/mysql57/bin/mysql';
     } else {
-        // Production/Test environments (A2 Hosting or other hosting)
-        $mysqlPath = 'mysql'; // Use system mysql
+        // Production/Test environments (A2 Hosting)
+        $mysqlPath = '/usr/bin/mysql';
     }
 
     // Build mysql restore command
