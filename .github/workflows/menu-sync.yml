@@ -79,12 +79,19 @@ jobs:
         id: export_menu
         if: ${{ steps.menu_changes.outputs.menu_changed == 'true' || github.event.inputs.export_from_dev == 'true' }}
         run: |
-          # This would typically connect to development environment to export
-          # For now, create a placeholder export based on database schema
+          # Use the scripts/menu-sync.php to perform real export from development
+          # This requires database access to development environment
 
           EXPORT_FILE="menu_export_$(date +%Y%m%d_%H%M%S).json"
 
-          # Create export metadata
+          # For CI/CD workflow, we need to connect to actual development database
+          # This is a placeholder implementation - real implementation would need:
+          # 1. Development database connection credentials
+          # 2. Network access to development environment
+          # 3. Or a webhook/API endpoint on development to trigger export
+
+          # TODO: Implement real database export
+          # For now, create a structured export that can be manually populated
           cat > "$EXPORT_FILE" << EOF
           {
             "export_info": {
@@ -93,17 +100,20 @@ jobs:
               "menu_system": "classic",
               "version": "1.0",
               "commit_hash": "$GITHUB_SHA",
-              "branch": "$GITHUB_REF_NAME"
+              "branch": "$GITHUB_REF_NAME",
+              "note": "Manual export required - use scripts/menu-sync.php on development"
             },
             "pages": [],
             "permissions": [],
             "menus": [],
-            "menu_permissions": []
+            "menu_permissions": [],
+            "instructions": "Download this file and replace with real export from development using scripts/menu-sync.php"
           }
           EOF
 
           echo "export_file=$EXPORT_FILE" >> $GITHUB_OUTPUT
-          echo "Menu configuration exported to: $EXPORT_FILE"
+          echo "Menu configuration template created: $EXPORT_FILE"
+          echo "⚠️  Manual action required: Use scripts/menu-sync.php to create real export"
 
       - name: Upload export artifact
         if: ${{ steps.export_menu.outputs.export_file != '' }}
@@ -113,22 +123,28 @@ jobs:
           path: ${{ steps.export_menu.outputs.export_file }}
           retention-days: 30
 
-      - name: Deploy to production (placeholder)
+      - name: Deploy menu sync instructions
         if: ${{ (steps.menu_changes.outputs.menu_changed == 'true' || github.event_name == 'workflow_dispatch') && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/production') }}
         env:
           PRODUCTION_HOST: ${{ secrets.PRODUCTION_HOST }}
           PRODUCTION_USER: ${{ secrets.PRODUCTION_USER }}
           PRODUCTION_KEY: ${{ secrets.PRODUCTION_SSH_KEY }}
         run: |
-          echo "Would deploy menu configuration to production"
-          echo "Target: ${PRODUCTION_HOST}"
-          echo "Export file: ${{ steps.export_menu.outputs.export_file }}"
-
-          # In a real implementation, this would:
-          # 1. SCP the export file to production server
-          # 2. Execute the FIX/11-Menu-System-Sync.php script via SSH
-          # 3. Verify the import was successful
-          # 4. Report back the results
+          echo "🔄 Menu Sync Deployment Required"
+          echo "Target environment: ${{ github.event.inputs.target_environment || 'production' }}"
+          echo "Export template: ${{ steps.export_menu.outputs.export_file }}"
+          echo ""
+          echo "📋 Manual Steps Required:"
+          echo "1. Access development environment: http://localhost:9999/elan_registry/scripts/menu-sync.php"
+          echo "2. Click 'Export Menus' to download real menu data"
+          echo "3. Access target environment menu sync tool"
+          echo "4. Import the exported JSON file"
+          echo "5. Verify menu synchronization completed successfully"
+          echo ""
+          echo "🌐 Environment URLs:"
+          echo "- Development: http://localhost:9999/elan_registry/scripts/menu-sync.php"
+          echo "- Test: http://localhost:9999/test_reg/scripts/menu-sync.php"
+          echo "- Production: https://elanregistry.org/scripts/menu-sync.php"
 
       - name: Create deployment summary
         if: ${{ steps.export_menu.outputs.export_file != '' }}
@@ -146,13 +162,20 @@ jobs:
           - Menu files modified: ${{ steps.menu_changes.outputs.menu_changed }}
           - Manual trigger: ${{ github.event_name == 'workflow_dispatch' }}
 
-          **Next Steps:**
-          1. Download the export artifact from this workflow run
-          2. Upload to target environment and run FIX/11-Menu-System-Sync.php
-          3. Verify menu synchronization completed successfully
+          **Manual Menu Sync Required:**
+          1. 🔗 [Access Development Menu Sync](http://localhost:9999/elan_registry/scripts/menu-sync.php)
+          2. 📤 Export real menu data from development
+          3. 🔗 [Access Target Environment Menu Sync](${{ github.event.inputs.target_environment == 'test' && 'http://localhost:9999/test_reg/scripts/menu-sync.php' || 'https://elanregistry.org/scripts/menu-sync.php' }})
+          4. 📥 Import the exported JSON file
+          5. ✅ Verify menu navigation works correctly
 
-          > **Note:** Automated deployment to production is not yet implemented.
-          > Manual import using the FIX script is currently required.
+          **Why Manual Process:**
+          - CI/CD cannot access local development database
+          - Menu sync requires live database connections
+          - Manual process ensures data integrity and verification
+
+          > **Workflow provides:** Export template and deployment instructions
+          > **Manual action required:** Actual data export/import using menu sync tool
           EOF
 
       - name: Comment on PR (if applicable)
@@ -168,15 +191,19 @@ jobs:
 
             This PR includes changes that will affect the menu system:
 
-            - **Export Generated:** \`${{ steps.export_menu.outputs.export_file }}\`
+            - **Export Template Generated:** \`${{ steps.export_menu.outputs.export_file }}\`
             - **Menu System:** Classic Menu
-            - **Action Required:** After merging, use FIX/11-Menu-System-Sync.php to import changes
+            - **Action Required:** Manual menu sync using scripts/menu-sync.php
 
-            ### 📋 Deployment Checklist:
-            - [ ] Download menu export artifact from workflow
-            - [ ] Import using FIX/11-Menu-System-Sync.php on target environment
+            ### 📋 Manual Menu Sync Process:
+            - [ ] Access [Development Menu Sync](http://localhost:9999/elan_registry/scripts/menu-sync.php)
+            - [ ] Export real menu data from development environment
+            - [ ] Access target environment menu sync tool
+            - [ ] Import the exported JSON file
             - [ ] Verify menu navigation works correctly
             - [ ] Check user permissions are maintained
+
+            **Note:** CI/CD provides templates and instructions. Actual data export/import requires manual process due to database access limitations.
 
             *Generated by Menu Sync Workflow*`
             });
