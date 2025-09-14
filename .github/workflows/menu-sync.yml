@@ -51,7 +51,7 @@ jobs:
           extensions: mysqli, pdo, pdo_mysql
 
       - name: Install dependencies
-        run: composer install --no-dev --optimize-autoloader
+        run: composer install --no-dev --optimize-autoloader --ignore-platform-reqs
 
       - name: Check for menu changes
         id: menu_changes
