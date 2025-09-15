@@ -74,6 +74,9 @@ composer install
 # Install Node dependencies (for testing)
 npm install
 
+# Setup enhanced pre-commit quality checks (RECOMMENDED)
+./scripts/setup-git-hooks.sh
+
 # PHP test commands (core infrastructure)
 composer test:quick        # Unit tests only (<30s)
 composer test:medium       # Unit + Integration (<2min)
@@ -104,6 +107,30 @@ npm run playwright:csp          # CSP validation tests
 ```
 
 ## 🔧 Essential Development Guidelines
+
+### Pre-commit Quality Checks (HIGHLY RECOMMENDED)
+
+**Setup once per developer:**
+
+```bash
+./scripts/setup-git-hooks.sh
+```
+
+**What it does:**
+
+- **Step 1**: PHP coding standards validation (security, types, documentation)
+- **Step 2**: Markdown linting for documentation files
+- **Step 3**: Fast unit tests when critical files are modified
+- **Blocks commits** with violations and provides fix guidance
+- **No installation required** - uses existing tools and npx
+
+**Benefits:**
+
+- Prevents PR failures by catching issues locally
+- Maintains consistent code quality across the team
+- Provides immediate feedback with actionable fix suggestions
+
+**Bypass (emergency only):** `git commit --no-verify`
 
 ### PHP 8+ Requirements
 
@@ -226,6 +253,7 @@ See GitHub Issues for detailed development roadmap and current work items.
 ### Chart.js Migration (Issue #285) - v2.8.1
 
 **Completed Migration from Google Charts to Chart.js:**
+
 - **Statistics Page Enhanced**: Converted to tabbed interface with lazy loading
   - Overview, Geographic, Production, Colors, Data Quality tabs
   - 11+ interactive charts with Bootstrap theming
@@ -235,6 +263,7 @@ See GitHub Issues for detailed development roadmap and current work items.
 - **Self-Hosted Solution**: Chart.js CDN configurable via Admin Panel
 
 **Key Features:**
+
 - Responsive Bootstrap-themed charts
 - Lazy loading for performance
 - Environment-based caching system
