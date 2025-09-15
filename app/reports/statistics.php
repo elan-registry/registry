@@ -248,7 +248,8 @@ window.statisticsRawData = {
 window.statisticsConfig = {
     chartjsUrl: '<?= $settings->elan_chartjs_cdn ?? "https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.min.js" ?>',
     mapsApiKey: '<?= $settings->elan_google_maps_key ?? "" ?>',
-    baseUrl: '<?= $us_url_root ?>app/reports/'
+    baseUrl: '<?= $us_url_root ?>app/reports/',
+    imageUrl: '<?= $us_url_root . $settings->elan_image_dir ?>'
 };
 </script>
 
@@ -256,7 +257,7 @@ window.statisticsConfig = {
 <script src="<?= $settings->elan_chartjs_cdn ?? 'https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.js' ?>"></script>
 
 <!-- Load Statistics JavaScript first -->
-<script src="<?= $us_url_root ?>app/assets/js/statistics.js?v=2.8.3"></script>
+<script src="<?= $us_url_root ?>app/assets/js/statistics.js?v=2.8.4-debug"></script>
 
 <!-- Initialize Google Maps and Statistics -->
 <script>
