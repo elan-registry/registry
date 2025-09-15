@@ -19,21 +19,40 @@ $spamCleanupFields = [
 $imageSettingsFields = [
     'elan_image_upload_max_size' => ['type' => 'DECIMAL(4,2)', 'default' => '2.00', 'description' => 'Maximum upload file size in MB'],
     'elan_image_display_max_size' => ['type' => 'INT(11)', 'default' => '2048', 'description' => 'Maximum display image width in pixels'],
-    'elan_image_thumbnail_sizes' => ['type' => 'TEXT', 'default' => "'100,300,768,1024,2048'", 'description' => 'Comma-separated thumbnail sizes in pixels']
+    'elan_image_thumbnail_sizes' => ['type' => 'TEXT', 'default' => '100,300,768,1024,2048', 'description' => 'Comma-separated thumbnail sizes in pixels']
 ];
 
 // Chart.js configuration settings (Issue #285)
 $chartJsSettingsFields = [
-    'elan_chartjs_cdn' => ['type' => 'TEXT', 'default' => "'https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.js'", 'description' => 'Chart.js CDN URL for statistics charts']
+    'elan_chartjs_cdn' => ['type' => 'TEXT', 'default' => 'https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.js', 'description' => 'Chart.js CDN URL for statistics charts']
 ];
 
 // Combine all settings fields for processing
 $allSettingsFields = array_merge($spamCleanupFields, $imageSettingsFields, $chartJsSettingsFields);
 
 $fieldsToAdd = [];
+$fieldsToPopulate = [];
+
 foreach ($allSettingsFields as $fieldName => $fieldConfig) {
-    $checkField = $db->query("SHOW COLUMNS FROM settings LIKE ?", [$fieldName]);
-    if ($checkField->count() == 0) {
+    // Use a robust column existence check
+    try {
+        $checkField = $db->query("SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'settings' AND COLUMN_NAME = ?", [$fieldName]);
+        $columnExists = $checkField->count() > 0;
+
+        if (!$columnExists) {
+            $fieldsToAdd[] = $fieldName;
+        } else {
+            // Check if existing field has NULL value in settings record
+            $checkValue = $db->query("SELECT {$fieldName} FROM settings WHERE id = 1");
+            if ($checkValue->count() > 0) {
+                $currentValue = $checkValue->first()->$fieldName;
+                if ($currentValue === null) {
+                    $fieldsToPopulate[] = $fieldName;
+                }
+            }
+        }
+    } catch (Exception $e) {
+        // If column doesn't exist, the SELECT will fail, so add it to creation list
         $fieldsToAdd[] = $fieldName;
     }
 }
@@ -42,17 +61,59 @@ if (!empty($fieldsToAdd)) {
     try {
         foreach ($fieldsToAdd as $fieldName) {
             $fieldConfig = $allSettingsFields[$fieldName];
-            $sql = "ALTER TABLE settings ADD COLUMN {$fieldName} {$fieldConfig['type']} DEFAULT {$fieldConfig['default']} COMMENT '{$fieldConfig['description']}'";
-            $db->query($sql);
+
+            // Handle TEXT fields differently (they can't have DEFAULT values in MySQL)
+            if (strpos($fieldConfig['type'], 'TEXT') !== false) {
+                // Create TEXT column without DEFAULT
+                $sql = "ALTER TABLE settings ADD COLUMN {$fieldName} {$fieldConfig['type']} COMMENT '{$fieldConfig['description']}'";
+            } else {
+                // Create column with DEFAULT value for non-TEXT types
+                $sql = "ALTER TABLE settings ADD COLUMN {$fieldName} {$fieldConfig['type']} DEFAULT '{$fieldConfig['default']}' COMMENT '{$fieldConfig['description']}'";
+            }
+
+            $result = $db->query($sql);
+            if (!$result) {
+                throw new Exception("Failed to create column {$fieldName}");
+            }
+
+            // IMPORTANT: Populate existing settings record with default value
+            $updateSql = "UPDATE settings SET {$fieldName} = ? WHERE id = 1";
+            $updateResult = $db->query($updateSql, [$fieldConfig['default']]);
+            if (!$updateResult) {
+                throw new Exception("Failed to populate column {$fieldName} with default value");
+            }
         }
 
         // Log the addition
-        logger($user->data()->id, 'SettingsUpdate', 'Auto-created settings fields: ' . implode(', ', $fieldsToAdd));
+        logger($user->data()->id, 'SettingsUpdate', 'Auto-created and populated settings fields: ' . implode(', ', $fieldsToAdd));
 
         // Show success message
-        $fieldsAddedMsg = count($fieldsToAdd) . ' settings fields were automatically added to the database.';
+        $fieldsAddedMsg = count($fieldsToAdd) . ' settings fields were automatically added and populated with default values.';
     } catch (Exception $e) {
         $fieldsErrorMsg = 'Error adding settings fields: ' . $e->getMessage();
+        logger($user->data()->id, 'SettingsError', $fieldsErrorMsg);
+    }
+}
+
+// Handle existing fields with NULL values
+if (!empty($fieldsToPopulate)) {
+    try {
+        foreach ($fieldsToPopulate as $fieldName) {
+            $fieldConfig = $allSettingsFields[$fieldName];
+            $updateSql = "UPDATE settings SET {$fieldName} = ? WHERE id = 1 AND {$fieldName} IS NULL";
+            $updateResult = $db->query($updateSql, [$fieldConfig['default']]);
+            if (!$updateResult) {
+                throw new Exception("Failed to populate existing column {$fieldName} with default value");
+            }
+        }
+
+        // Log the population
+        logger($user->data()->id, 'SettingsUpdate', 'Populated NULL settings fields with defaults: ' . implode(', ', $fieldsToPopulate));
+
+        // Show success message for populated fields
+        $fieldsPopulatedMsg = count($fieldsToPopulate) . ' existing settings fields were populated with default values.';
+    } catch (Exception $e) {
+        $fieldsErrorMsg = 'Error populating settings fields: ' . $e->getMessage();
         logger($user->data()->id, 'SettingsError', $fieldsErrorMsg);
     }
 }
@@ -62,6 +123,15 @@ if (!empty($fieldsToAdd)) {
     <?php if (isset($fieldsAddedMsg)): ?>
         <div class="alert alert-success alert-dismissible fade show" role="alert">
             <strong>Database Updated:</strong> <?= $fieldsAddedMsg ?>
+            <button type="button" class="close" data-dismiss="alert" aria-label="Close">
+                <span aria-hidden="true">&times;</span>
+            </button>
+        </div>
+    <?php endif; ?>
+
+    <?php if (isset($fieldsPopulatedMsg)): ?>
+        <div class="alert alert-info alert-dismissible fade show" role="alert">
+            <strong>Database Updated:</strong> <?= $fieldsPopulatedMsg ?>
             <button type="button" class="close" data-dismiss="alert" aria-label="Close">
                 <span aria-hidden="true">&times;</span>
             </button>
@@ -189,7 +259,7 @@ if (!empty($fieldsToAdd)) {
                                     <i class="fas fa-file-upload"></i> Maximum Upload File Size
                                 </label>
                                 <div class="input-group">
-                                    <input type="number" step="0.1" min="0.5" max="10.0" class="form-control ajxnum" data-desc="Max Upload File Size" name="elan_image_upload_max_size" id="elan_image_upload_max_size" value="<?= $settings->elan_image_upload_max_size; ?>">
+                                    <input type="number" step="0.1" min="0.5" max="10.0" class="form-control ajxnum" data-desc="Max Upload File Size" name="elan_image_upload_max_size" id="elan_image_upload_max_size" value="<?= $settings->elan_image_upload_max_size ?? '2.00'; ?>">
                                     <div class="input-group-append">
                                         <span class="input-group-text">MB</span>
                                     </div>
@@ -202,7 +272,7 @@ if (!empty($fieldsToAdd)) {
                                     <i class="fas fa-expand-arrows-alt"></i> Maximum Display Width
                                 </label>
                                 <div class="input-group">
-                                    <input type="number" step="1" min="800" max="4096" class="form-control ajxnum" data-desc="Max Display Width" name="elan_image_display_max_size" id="elan_image_display_max_size" value="<?= $settings->elan_image_display_max_size; ?>">
+                                    <input type="number" step="1" min="800" max="4096" class="form-control ajxnum" data-desc="Max Display Width" name="elan_image_display_max_size" id="elan_image_display_max_size" value="<?= $settings->elan_image_display_max_size ?? '2048'; ?>">
                                     <div class="input-group-append">
                                         <span class="input-group-text">pixels</span>
                                     </div>
@@ -214,7 +284,7 @@ if (!empty($fieldsToAdd)) {
                                 <label for='elan_image_thumbnail_sizes' class="font-weight-bold">
                                     <i class="fas fa-images"></i> Thumbnail Sizes
                                 </label>
-                                <input class="form-control ajxtxt" data-desc="Thumbnail Sizes" name="elan_image_thumbnail_sizes" id="elan_image_thumbnail_sizes" value="<?= $settings->elan_image_thumbnail_sizes; ?>" placeholder="100,300,768,1024,2048">
+                                <input class="form-control ajxtxt" data-desc="Thumbnail Sizes" name="elan_image_thumbnail_sizes" id="elan_image_thumbnail_sizes" value="<?= $settings->elan_image_thumbnail_sizes ?? '100,300,768,1024,2048'; ?>" placeholder="100,300,768,1024,2048">
                                 <small class="form-text text-muted">Comma-separated list of thumbnail sizes in pixels (e.g., 100,300,768,1024,2048)</small>
                             </div>
                         </div>
@@ -565,7 +635,7 @@ if (!empty($fieldsToAdd)) {
                                         <label for='elan_chartjs_cdn' class="font-weight-bold">
                                             <i class="fas fa-chart-pie"></i> Chart.js CDN URL
                                         </label>
-                                        <input type="text" class="form-control ajxtxt" data-desc="Chart.js CDN URL" name="elan_chartjs_cdn" id="elan_chartjs_cdn" value="<?= $settings->elan_chartjs_cdn; ?>" placeholder="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.js">
+                                        <input type="text" class="form-control ajxtxt" data-desc="Chart.js CDN URL" name="elan_chartjs_cdn" id="elan_chartjs_cdn" value="<?= $settings->elan_chartjs_cdn ?? 'https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.js'; ?>" placeholder="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.js">
                                         <small class="form-text text-muted">
                                             <i class="fas fa-external-link-alt"></i> Chart.js library for statistics page charts (replaces Google Charts)
                                             <a href="https://www.chartjs.org/docs/latest/getting-started/installation.html" target="_blank" class="ml-2">Get Chart.js</a>
