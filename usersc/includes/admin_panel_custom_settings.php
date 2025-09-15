@@ -1,8 +1,40 @@
 <?php
 
+declare(strict_types=1);
+
 /**
- * Auto-create settings fields if they don't exist
+ * Admin panel custom settings auto-creation logic
+ *
+ * Handles automatic database schema updates for new settings fields,
+ * ensuring proper default values and backward compatibility.
+ *
+ * @author Elan Registry Development Team
+ * @version 2.8.4
+ * @since 2.7.0
  */
+
+/**
+ * Custom exception for database column creation errors
+ */
+class DatabaseColumnCreationException extends Exception {}
+
+/**
+ * Custom exception for database population errors
+ */
+class DatabasePopulationException extends Exception {}
+
+/**
+ * Custom exception for security-related errors
+ */
+class SecurityException extends Exception {}
+
+// CSRF token validation for any POST requests
+if (!empty($_POST)) {
+    $token = Input::get('csrf');
+    if (!Token::check($token)) {
+        throw new SecurityException('Invalid CSRF token');
+    }
+}
 
 // SPAM cleanup settings
 $spamCleanupFields = [
@@ -33,8 +65,15 @@ $allSettingsFields = array_merge($spamCleanupFields, $imageSettingsFields, $char
 $fieldsToAdd = [];
 $fieldsToPopulate = [];
 
+// Validate and process each field safely
 foreach ($allSettingsFields as $fieldName => $fieldConfig) {
-    // Use a robust column existence check
+    // Validate field name to prevent SQL injection
+    if (!preg_match('/^[a-zA-Z_][a-zA-Z0-9_]*$/', $fieldName)) {
+        logger($user->data()->id ?? 0, 'SecurityError', "Invalid field name attempted: {$fieldName}");
+        continue;
+    }
+
+    // Use robust column existence check with validated field name
     try {
         $checkField = $db->query("SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'settings' AND COLUMN_NAME = ?", [$fieldName]);
         $columnExists = $checkField->count() > 0;
@@ -42,8 +81,8 @@ foreach ($allSettingsFields as $fieldName => $fieldConfig) {
         if (!$columnExists) {
             $fieldsToAdd[] = $fieldName;
         } else {
-            // Check if existing field has NULL value in settings record
-            $checkValue = $db->query("SELECT {$fieldName} FROM settings WHERE id = 1");
+            // Check if existing field has NULL value in settings record (safe since field name is validated)
+            $checkValue = $db->query("SELECT `{$fieldName}` FROM settings WHERE id = 1");
             if ($checkValue->count() > 0) {
                 $currentValue = $checkValue->first()->$fieldName;
                 if ($currentValue === null) {
@@ -51,8 +90,13 @@ foreach ($allSettingsFields as $fieldName => $fieldConfig) {
                 }
             }
         }
+    } catch (DatabaseException $e) {
+        // Database-specific error handling
+        logger($user->data()->id ?? 0, 'DatabaseError', "Database error checking field {$fieldName}: " . $e->getMessage());
+        $fieldsToAdd[] = $fieldName;
     } catch (Exception $e) {
         // If column doesn't exist, the SELECT will fail, so add it to creation list
+        logger($user->data()->id ?? 0, 'SystemError', "Error checking field {$fieldName}: " . $e->getMessage());
         $fieldsToAdd[] = $fieldName;
     }
 }
@@ -62,25 +106,37 @@ if (!empty($fieldsToAdd)) {
         foreach ($fieldsToAdd as $fieldName) {
             $fieldConfig = $allSettingsFields[$fieldName];
 
-            // Handle TEXT fields differently (they can't have DEFAULT values in MySQL)
-            if (strpos($fieldConfig['type'], 'TEXT') !== false) {
-                // Create TEXT column without DEFAULT
-                $sql = "ALTER TABLE settings ADD COLUMN {$fieldName} {$fieldConfig['type']} COMMENT '{$fieldConfig['description']}'";
-            } else {
-                // Create column with DEFAULT value for non-TEXT types
-                $sql = "ALTER TABLE settings ADD COLUMN {$fieldName} {$fieldConfig['type']} DEFAULT '{$fieldConfig['default']}' COMMENT '{$fieldConfig['description']}'";
+            // Validate field configuration
+            if (!isset($fieldConfig['type']) || !isset($fieldConfig['default']) || !isset($fieldConfig['description'])) {
+                throw new DatabaseColumnCreationException("Invalid field configuration for {$fieldName}");
             }
 
-            $result = $db->query($sql);
+            // Validate field type to prevent SQL injection
+            $allowedTypes = ['TINYINT(1)', 'INT(11)', 'DECIMAL(4,2)', 'TEXT', 'VARCHAR(255)'];
+            if (!in_array($fieldConfig['type'], $allowedTypes)) {
+                throw new SecurityException("Invalid field type attempted: {$fieldConfig['type']}");
+            }
+
+            // Create column safely with proper escaping (field names are already validated)
+            if (strpos($fieldConfig['type'], 'TEXT') !== false) {
+                // TEXT fields can't have DEFAULT values in MySQL
+                $sql = "ALTER TABLE settings ADD COLUMN `{$fieldName}` {$fieldConfig['type']} COMMENT ?";
+                $result = $db->query($sql, [$fieldConfig['description']]);
+            } else {
+                // Other types can have DEFAULT values
+                $sql = "ALTER TABLE settings ADD COLUMN `{$fieldName}` {$fieldConfig['type']} DEFAULT ? COMMENT ?";
+                $result = $db->query($sql, [$fieldConfig['default'], $fieldConfig['description']]);
+            }
+
             if (!$result) {
-                throw new Exception("Failed to create column {$fieldName}");
+                throw new DatabaseColumnCreationException("Failed to create column {$fieldName}");
             }
 
             // IMPORTANT: Populate existing settings record with default value
-            $updateSql = "UPDATE settings SET {$fieldName} = ? WHERE id = 1";
+            $updateSql = "UPDATE settings SET `{$fieldName}` = ? WHERE id = 1";
             $updateResult = $db->query($updateSql, [$fieldConfig['default']]);
             if (!$updateResult) {
-                throw new Exception("Failed to populate column {$fieldName} with default value");
+                throw new DatabasePopulationException("Failed to populate column {$fieldName} with default value");
             }
         }
 
@@ -89,9 +145,18 @@ if (!empty($fieldsToAdd)) {
 
         // Show success message
         $fieldsAddedMsg = count($fieldsToAdd) . ' settings fields were automatically added and populated with default values.';
+    } catch (DatabaseColumnCreationException $e) {
+        $fieldsErrorMsg = 'Database error creating settings fields: ' . $e->getMessage();
+        logger($user->data()->id ?? 0, 'DatabaseError', $fieldsErrorMsg);
+    } catch (DatabasePopulationException $e) {
+        $fieldsErrorMsg = 'Error populating settings fields with defaults: ' . $e->getMessage();
+        logger($user->data()->id ?? 0, 'DatabaseError', $fieldsErrorMsg);
+    } catch (SecurityException $e) {
+        $fieldsErrorMsg = 'Security error in settings fields: ' . $e->getMessage();
+        logger($user->data()->id ?? 0, 'SecurityError', $fieldsErrorMsg);
     } catch (Exception $e) {
-        $fieldsErrorMsg = 'Error adding settings fields: ' . $e->getMessage();
-        logger($user->data()->id, 'SettingsError', $fieldsErrorMsg);
+        $fieldsErrorMsg = 'Unexpected error adding settings fields: ' . $e->getMessage();
+        logger($user->data()->id ?? 0, 'SystemError', $fieldsErrorMsg);
     }
 }
 
@@ -100,10 +165,12 @@ if (!empty($fieldsToPopulate)) {
     try {
         foreach ($fieldsToPopulate as $fieldName) {
             $fieldConfig = $allSettingsFields[$fieldName];
-            $updateSql = "UPDATE settings SET {$fieldName} = ? WHERE id = 1 AND {$fieldName} IS NULL";
+
+            // Field names are already validated in the previous loop
+            $updateSql = "UPDATE settings SET `{$fieldName}` = ? WHERE id = 1 AND `{$fieldName}` IS NULL";
             $updateResult = $db->query($updateSql, [$fieldConfig['default']]);
             if (!$updateResult) {
-                throw new Exception("Failed to populate existing column {$fieldName} with default value");
+                throw new DatabasePopulationException("Failed to populate existing column {$fieldName} with default value");
             }
         }
 
@@ -112,9 +179,12 @@ if (!empty($fieldsToPopulate)) {
 
         // Show success message for populated fields
         $fieldsPopulatedMsg = count($fieldsToPopulate) . ' existing settings fields were populated with default values.';
+    } catch (DatabasePopulationException $e) {
+        $fieldsErrorMsg = 'Database error populating settings fields: ' . $e->getMessage();
+        logger($user->data()->id ?? 0, 'DatabaseError', $fieldsErrorMsg);
     } catch (Exception $e) {
-        $fieldsErrorMsg = 'Error populating settings fields: ' . $e->getMessage();
-        logger($user->data()->id, 'SettingsError', $fieldsErrorMsg);
+        $fieldsErrorMsg = 'Unexpected error populating settings fields: ' . $e->getMessage();
+        logger($user->data()->id ?? 0, 'SystemError', $fieldsErrorMsg);
     }
 }
 ?>
