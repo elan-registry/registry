@@ -36,7 +36,7 @@ git push origin main && git push origin --tags
 
 ```bash
 origin git@github.com:unibrain1/elanregistry.git    # GitHub repository
-prod a2hosting:/home/unibrain/elanregistry.project  # LIVE PRODUCTION SERVER
+prod a2hosting:/home/unibrain/git/elanregistry.git  # LIVE PRODUCTION SERVER
 ```
 
 **🔄 Deployment Rule:**
