@@ -7,10 +7,8 @@
  * @copyright 2025
  */
 
-
 // Global chart instances to manage cleanup
 window.statisticsCharts = {};
-
 
 // Bootstrap color palette for consistent theming
 const BOOTSTRAP_COLORS = {
@@ -46,36 +44,36 @@ function getColorForName(colorName) {
 
   // Define realistic color mappings
   const colorMap = {
-    'red': '#DC3545',
-    'carnival red': '#DC143C',
-    'dark red': '#8B0000',
-    'blue': '#007BFF',
-    'dark blue': '#0056B3',
-    'light blue': '#87CEEB',
-    'navy blue': '#000080',
-    'white': '#F8F9FA',
-    'off white': '#FFFACD',
-    'pearl white': '#F8F8F8',
-    'cirrus white': '#E6E6FA',
-    'yellow': '#FFC107',
-    'bright yellow': '#FFFF00',
-    'pale yellow': '#FFFFE0',
-    'green': '#28A745',
-    'dark green': '#006400',
-    'light green': '#90EE90',
-    'british racing green': '#004225',
-    'brg': '#004225',
-    'black': '#343A40',
-    'silver': '#C0C0C0',
-    'grey': '#6C757D',
-    'gray': '#6C757D',
-    'orange': '#FD7E14',
-    'purple': '#6F42C1',
-    'brown': '#8B4513',
-    'gold': '#FFD700',
-    'bronze': '#CD7F32',
-    'pink': '#E83E8C',
-    'maroon': '#800000'
+    red: "#DC3545",
+    "carnival red": "#DC143C",
+    "dark red": "#8B0000",
+    blue: "#007BFF",
+    "dark blue": "#0056B3",
+    "light blue": "#87CEEB",
+    "navy blue": "#000080",
+    white: "#F8F9FA",
+    "off white": "#FFFACD",
+    "pearl white": "#F8F8F8",
+    "cirrus white": "#E6E6FA",
+    yellow: "#FFC107",
+    "bright yellow": "#FFFF00",
+    "pale yellow": "#FFFFE0",
+    green: "#28A745",
+    "dark green": "#006400",
+    "light green": "#90EE90",
+    "british racing green": "#004225",
+    brg: "#004225",
+    black: "#343A40",
+    silver: "#C0C0C0",
+    grey: "#6C757D",
+    gray: "#6C757D",
+    orange: "#FD7E14",
+    purple: "#6F42C1",
+    brown: "#8B4513",
+    gold: "#FFD700",
+    bronze: "#CD7F32",
+    pink: "#E83E8C",
+    maroon: "#800000"
   };
 
   // Try exact match first
@@ -91,34 +89,47 @@ function getColorForName(colorName) {
   }
 
   // Smart fallback: try to guess color from common patterns
-  if (name.includes('light') || name.includes('pale')) {
-    return '#D3D3D3'; // Light gray for light variants
+  if (name.includes("light") || name.includes("pale")) {
+    return "#D3D3D3"; // Light gray for light variants
   }
-  if (name.includes('dark') || name.includes('deep')) {
-    return '#2C2C2C'; // Dark gray for dark variants
+  if (name.includes("dark") || name.includes("deep")) {
+    return "#2C2C2C"; // Dark gray for dark variants
   }
-  if (name.includes('metallic') || name.includes('pearl')) {
-    return '#C0C0C0'; // Silver for metallic variants
+  if (name.includes("metallic") || name.includes("pearl")) {
+    return "#C0C0C0"; // Silver for metallic variants
   }
 
   // Consistent fallback colors for unknown colors (deterministic hash)
   const fallbackColors = [
-    '#FF6384', '#36A2EB', '#FFCE56', '#4BC0C0', '#9966FF',
-    '#FF9F40', '#C9CBCF', '#E74C3C', '#3498DB', '#F39C12',
-    '#27AE60', '#8E44AD', '#E67E22', '#95A5A6'
+    "#FF6384",
+    "#36A2EB",
+    "#FFCE56",
+    "#4BC0C0",
+    "#9966FF",
+    "#FF9F40",
+    "#C9CBCF",
+    "#E74C3C",
+    "#3498DB",
+    "#F39C12",
+    "#27AE60",
+    "#8E44AD",
+    "#E67E22",
+    "#95A5A6"
   ];
 
   // Create deterministic hash for consistent color assignment
   let hash = 0;
   for (let i = 0; i < name.length; i++) {
     const char = name.charCodeAt(i);
-    hash = ((hash << 5) - hash) + char;
+    hash = (hash << 5) - hash + char;
     hash = hash & hash; // Convert to 32bit integer
   }
 
   // Log unknown colors for admin awareness (only in development)
-  if (typeof console !== 'undefined' && console.warn) {
-    console.warn(`Unknown car color detected: "${colorName}" - using fallback color. Consider adding to color mapping.`);
+  if (typeof console !== "undefined" && console.warn) {
+    console.warn(
+      `Unknown car color detected: "${colorName}" - using fallback color. Consider adding to color mapping.`
+    );
   }
 
   return fallbackColors[Math.abs(hash) % fallbackColors.length];
@@ -128,7 +139,6 @@ function getColorForName(colorName) {
  * Initialize the statistics dashboard
  */
 $(document).ready(function () {
-
   try {
     // Initialize overview tab (load immediately)
     initializeOverviewTab();
@@ -138,7 +148,6 @@ $(document).ready(function () {
 
     // Update overview metrics
     updateOverviewMetrics();
-
   } catch (error) {
     console.error("Error in statistics initialization:", error);
   }
@@ -957,11 +966,13 @@ function createEarlyLateChart(data) {
 function createColorDistributionChart(data) {
   // Normalize color names to handle inconsistent capitalization and spacing
   function normalizeColor(color) {
-    return color.trim().toLowerCase()
-      .replace(/\s+/g, ' ') // Replace multiple spaces with single space
-      .split(' ')
-      .map(word => word.charAt(0).toUpperCase() + word.slice(1))
-      .join(' ');
+    return color
+      .trim()
+      .toLowerCase()
+      .replace(/\s+/g, " ") // Replace multiple spaces with single space
+      .split(" ")
+      .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+      .join(" ");
   }
 
   // Aggregate data by normalized color names
@@ -979,7 +990,9 @@ function createColorDistributionChart(data) {
   const values = Object.values(normalizedData);
 
   // Generate realistic colors for each color name
-  const backgroundColors = labels.map(colorName => getColorForName(colorName));
+  const backgroundColors = labels.map((colorName) =>
+    getColorForName(colorName)
+  );
 
   const ctx = document
     .getElementById("colorDistributionChart")
@@ -1013,11 +1026,13 @@ function createColorDistributionChart(data) {
 function createColorByYearChart(data) {
   // Normalize color names to handle inconsistent capitalization and spacing
   function normalizeColor(color) {
-    return color.trim().toLowerCase()
-      .replace(/\s+/g, ' ') // Replace multiple spaces with single space
-      .split(' ')
-      .map(word => word.charAt(0).toUpperCase() + word.slice(1))
-      .join(' ');
+    return color
+      .trim()
+      .toLowerCase()
+      .replace(/\s+/g, " ") // Replace multiple spaces with single space
+      .split(" ")
+      .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+      .join(" ");
   }
 
   // Group data by normalized color
@@ -1074,11 +1089,13 @@ function createColorByYearChart(data) {
 function createColorBySeriesChart(data) {
   // Normalize color names to handle inconsistent capitalization and spacing
   function normalizeColor(color) {
-    return color.trim().toLowerCase()
-      .replace(/\s+/g, ' ') // Replace multiple spaces with single space
-      .split(' ')
-      .map(word => word.charAt(0).toUpperCase() + word.slice(1))
-      .join(' ');
+    return color
+      .trim()
+      .toLowerCase()
+      .replace(/\s+/g, " ") // Replace multiple spaces with single space
+      .split(" ")
+      .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+      .join(" ");
   }
 
   // Group data by series and normalized color
@@ -1236,7 +1253,6 @@ function loadMapMarkers(map) {
       return response.text();
     })
     .then((xmlText) => {
-
       const parser = new DOMParser();
       const xmlDoc = parser.parseFromString(xmlText, "text/xml");
 
@@ -1285,19 +1301,42 @@ function loadMapMarkers(map) {
             position: { lat: lat, lng: lng },
             map: map,
             icon: iconUrl,
-            title: `${markerData.getAttribute("name") || "Car"} - ${series}`
+            title: `${markerData.getAttribute("name") || "Car"} - ${
+              markerData.getAttribute("city") || ""
+            }`
           });
+
+          // Get car details for info window
+          const carName = markerData.getAttribute("name") || "Elan";
+          const imageUrl = markerData.getAttribute("image");
+
+          // Get car ID for details link
+          const carId = markerData.getAttribute("id");
 
           // Create info window content
           const infoContent = `
                         <div class="map-info-window">
-                            <h6>${
-                              markerData.getAttribute("name") || "Elan"
-                            }</h6>
+                            ${
+                              imageUrl
+                                ? `<img src="${window.statisticsConfig.imageUrl}${imageUrl}" alt="Car Image" style="width: 100px; height: 75px; object-fit: cover; float: right; margin-left: 10px; border-radius: 4px;" onerror="this.style.display='none'">`
+                                : ""
+                            }
+                            <h6>${carName}</h6>
                             <p><strong>Series:</strong> ${series}</p>
-                            <p><strong>Location:</strong> ${
-                              markerData.getAttribute("city") || ""
-                            }, ${markerData.getAttribute("country") || ""}</p>
+                            ${
+                              markerData.getAttribute("variant")
+                                ? `<p><strong>Variant:</strong> ${markerData.getAttribute(
+                                    "variant"
+                                  )}</p>`
+                                : ""
+                            }
+                            <p><strong>Location:</strong> ${[
+                              markerData.getAttribute("city"),
+                              markerData.getAttribute("state"),
+                              markerData.getAttribute("country")
+                            ]
+                              .filter(Boolean)
+                              .join(", ")}</p>
                             ${
                               markerData.getAttribute("owner")
                                 ? `<p><strong>Owner:</strong> ${markerData.getAttribute(
@@ -1305,6 +1344,12 @@ function loadMapMarkers(map) {
                                   )}</p>`
                                 : ""
                             }
+                            ${
+                              carId
+                                ? `<p><a href="${window.statisticsConfig.baseUrl}../cars/details.php?car_id=${carId}" target="_blank" style="color: #007bff; text-decoration: none;"><i class="fas fa-external-link-alt"></i> View Details</a></p>`
+                                : ""
+                            }
+                            <div style="clear: both;"></div>
                         </div>
                     `;
 
@@ -1315,7 +1360,6 @@ function loadMapMarkers(map) {
           });
         }
       });
-
     })
     .catch((error) => {
       console.error("Error loading map markers:", error);

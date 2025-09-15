@@ -42,14 +42,24 @@ try {
             continue;
         }
         
-        // Handle null or empty image strings safely
-        $carImages = !empty($car->image) ? explode(',', $car->image) : [];
+        // Handle null or empty image strings safely - try JSON decode first, fallback to comma-separated
+        $carImages = [];
+        if (!empty($car->image)) {
+            $decoded = json_decode($car->image);
+            if (json_last_error() === JSON_ERROR_NONE && is_array($decoded)) {
+                $carImages = $decoded;
+            } else {
+                // Fallback to comma-separated for legacy data
+                $carImages = explode(',', $car->image);
+            }
+        }
         // Add to XML document node
         $node = $doc->createElement("marker");
         $newnode = $parnode->appendChild($node);
 
         // Set marker attributes with null safety
         $newnode->setAttribute("id", $car->id ?? "");
+        $newnode->setAttribute("name", ($car->year ?? "") . "-" . ($car->series ?? "") . "-" . ($car->chassis ?? ""));
         $newnode->setAttribute("series", $car->series ?? "");
         $newnode->setAttribute("year", $car->year ?? "");
         $newnode->setAttribute("variant", $car->variant ?? "");
@@ -62,6 +72,10 @@ try {
         }
         $newnode->setAttribute("url", $car->website ?? "");
         $newnode->setAttribute("type", $car->type ?? "");
+        $newnode->setAttribute("city", $car->city ?? "");
+        $newnode->setAttribute("state", $car->state ?? "");
+        $newnode->setAttribute("country", $car->country ?? "");
+        $newnode->setAttribute("owner", trim($car->fname ?? ""));
         $newnode->setAttribute("lat", random($car->lat ?? 0));
         $newnode->setAttribute("lng", random($car->lon ?? 0));
     }
