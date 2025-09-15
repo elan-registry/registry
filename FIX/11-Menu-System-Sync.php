@@ -385,7 +385,7 @@ $currentEnvironment = detectEnvironment();
                 $global_successes = 0;
                 $backup_file = '';
 
-                function outputMessage($lineNum, $message, $percentage = null) {
+                function outputMessage(int $lineNum, string $message, ?int $percentage = null): void {
                     echo '<script>addLogMessage("' . addslashes($message) . '");</script>';
                     if ($percentage !== null) {
                         echo '<script>updateProgress(' . $percentage . ', 100, "' . addslashes($message) . '");</script>';
@@ -394,7 +394,7 @@ $currentEnvironment = detectEnvironment();
                     flush();
                 }
 
-                function createMenuBackup($environment) {
+                function createMenuBackup(string $environment): string {
                     // Use the improved backup function from menu-sync.php
                     return createBackup($environment);
                 }

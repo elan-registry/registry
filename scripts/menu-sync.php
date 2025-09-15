@@ -71,7 +71,7 @@ function detectEnvironment(): string {
  * This logic maps templates to their supported menu systems and will need
  * updates when converting to UltraMenu or adding new templates.
  */
-function detectMenuSystem($db) {
+function detectMenuSystem(DB $db): string {
     try {
         // Check what template is currently active
         $templateQuery = $db->query("SELECT template FROM settings WHERE id = 1");
@@ -141,7 +141,7 @@ function detectMenuSystem($db) {
  * Export Menu System
  * Exports complete menu configuration to JSON format
  */
-function exportMenuSystem($db, $environment) {
+function exportMenuSystem(DB $db, string $environment): array {
     try {
         $menuSystem = detectMenuSystem($db);
         $timestamp = date('c');
@@ -210,7 +210,7 @@ function exportMenuSystem($db, $environment) {
  * Import Menu System
  * Imports menu configuration from JSON with safety checks
  */
-function importMenuSystem($db, $importData, $targetEnvironment) {
+function importMenuSystem(DB $db, object $importData, string $targetEnvironment): array {
     // Validate import data
     if (!isset($importData->export_info) || !isset($importData->export_info->menu_system)) {
         throw new Exception("Invalid import data: Missing export information");
@@ -262,7 +262,7 @@ function importMenuSystem($db, $importData, $targetEnvironment) {
 /**
  * Import Pages and Permissions (Common to both menu systems)
  */
-function importPagesAndPermissions($db, $importData) {
+function importPagesAndPermissions(DB $db, object $importData): void {
     // Import pages (with conflict handling)
     if (isset($importData->pages)) {
         foreach ($importData->pages as $page) {
@@ -299,7 +299,7 @@ function importPagesAndPermissions($db, $importData) {
 /**
  * Import Classic Menu System
  */
-function importClassicMenus($db, $importData) {
+function importClassicMenus(DB $db, object $importData): void {
     // Clear existing menu data
     $db->query("DELETE FROM groups_menus WHERE group_id IN (0, 2, 3)");
     $db->query("DELETE FROM menus WHERE id > 20"); // Keep base UserSpice menus
@@ -350,7 +350,7 @@ function importClassicMenus($db, $importData) {
  * 4. Test with ElanRegistry template converted to UltraMenu
  * 5. Verify backup/restore includes all UltraMenu tables
  */
-function importUltraMenus($db, $importData) {
+function importUltraMenus(DB $db, object $importData): void {
     // Clear existing UltraMenu data
     $db->query("DELETE FROM us_menus");
     // TODO: Add clearing of other UltraMenu tables as needed
@@ -382,7 +382,7 @@ function importUltraMenus($db, $importData) {
  * Create Backup
  * Creates timestamped backup following FIX script patterns
  */
-function createBackup($environment) {
+function createBackup(string $environment): string {
     $backupDir = dirname(__FILE__) . '/../FIX/backups';
     if (!is_dir($backupDir)) {
         mkdir($backupDir, 0755, true);
@@ -459,7 +459,7 @@ function createBackup($environment) {
  * Create PHP-based backup (fallback when mysqldump not available)
  * Creates SQL dump using PHP database queries
  */
-function createPhpBackup($backupFile, $tables, $db) {
+function createPhpBackup(string $backupFile, array $tables, DB $db): bool {
     try {
         $sql = "-- Menu System Backup\n";
         $sql .= "-- Created: " . date('Y-m-d H:i:s') . "\n";
@@ -511,7 +511,7 @@ function createPhpBackup($backupFile, $tables, $db) {
 /**
  * Rollback from Backup
  */
-function rollbackFromBackup($backupFile) {
+function rollbackFromBackup(string $backupFile): bool {
     if (!file_exists($backupFile)) {
         throw new Exception("Backup file not found: {$backupFile}");
     }
