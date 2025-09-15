@@ -74,23 +74,33 @@ composer install
 # Install Node dependencies (for testing)
 npm install
 
-# Run PHPUnit tests
-vendor/bin/phpunit tests/
+# PHP test commands (core infrastructure)
+composer test:quick        # Unit tests only (<30s)
+composer test:medium       # Unit + Integration (<2min)
+composer test:full         # All PHP tests
+composer test:coverage     # Generate coverage report
 
-# Run Playwright browser tests (requires test credentials)
-npm test
+# UI testing (requires setup)
+npm test                   # Shows setup requirements
+npm run playwright:install # Install Playwright browsers
+npm run playwright:test    # Run UI tests (after setup)
 ```
 
 ### Testing
 
 ```bash
-# Run specific test suites
-npm run test:security      # Security-focused tests
-npm run test:ui           # UI consistency tests
-npm run test:navigation   # Navigation and redirects
-npm run test:functionality # Core functionality
-npm run test:maps         # Maps and charts
-npm run test:csp          # CSP validation tests
+# PHP test suites (working)
+composer test:unit         # Fast unit tests
+composer test:integration  # Database integration tests
+composer test:regression   # Issue-specific regression tests
+
+# UI test suites (requires setup)
+npm run playwright:security      # Security-focused tests
+npm run playwright:ui           # UI consistency tests
+npm run playwright:navigation   # Navigation and redirects
+npm run playwright:functionality # Core functionality
+npm run playwright:maps         # Maps and charts
+npm run playwright:csp          # CSP validation tests
 ```
 
 ## 🔧 Essential Development Guidelines

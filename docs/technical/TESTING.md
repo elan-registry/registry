@@ -1,6 +1,35 @@
 # Elan Registry Test Suite
 
-This directory contains comprehensive automated test cases for the Elan Registry application, including car functionality, security validations, and GDPR compliance testing.
+This directory contains comprehensive automated test cases for the Elan Registry application, organized into logical test suites for efficient development and CI/CD workflows.
+
+## Test Organization
+
+The test suite is organized into three main categories:
+
+### 📁 Unit Tests (`tests/unit/`)
+Fast tests that can run with mocks and don't require database connections:
+- **Execution Time**: <30 seconds
+- **Dependencies**: Minimal, uses mocks
+- **Purpose**: Core logic, validation, and functionality testing
+
+### 📁 Integration Tests (`tests/integration/`)
+Tests that require database connections and test component interactions:
+- **Execution Time**: 1-2 minutes
+- **Dependencies**: Real database connections
+- **Purpose**: Database operations, schema validation, data migration testing
+
+### 📁 Regression Tests (`tests/regression/`)
+Issue-specific tests that prevent previously fixed bugs from reoccurring:
+- **Execution Time**: Variable
+- **Dependencies**: Varies by issue
+- **Purpose**: Prevent regressions of specific GitHub issues
+
+### 📁 Browser Tests (`tests/playwright/`) - REQUIRES SETUP
+End-to-end browser automation tests (not included in core infrastructure):
+- **Execution Time**: 2-5 minutes
+- **Dependencies**: Playwright setup, configured web server, authentication
+- **Purpose**: User workflows, UI validation, cross-browser testing
+- **Status**: Available but requires additional configuration
 
 ## Test Coverage
 
@@ -55,36 +84,83 @@ The test suite validates protection against:
 - **GDPR Violations** - User deletion rights balanced with data preservation
 - **Data Integrity Issues** - Database consistency during cleanup operations
 
-## Running Tests
+## Quick Start Commands
 
-### Option 1: PHPUnit (Recommended)
+### PHP (PHPUnit) Tests
 ```bash
-# Install PHPUnit if not already installed
-composer require --dev phpunit/phpunit
+# Fast feedback loop (<30s) - Unit tests only
+composer test:quick
 
-# Run all tests
-./vendor/bin/phpunit tests/
+# Pre-commit validation (<2min) - Unit + Integration
+composer test:medium
 
-# Run specific test class
-./vendor/bin/phpunit tests/CarUpdateTest.php
-./vendor/bin/phpunit tests/UserDeletionCleanupTest.php  # GDPR compliance tests
-./vendor/bin/phpunit tests/SecurityFunctionsTest.php    # File security tests
+# Complete PHP test suite
+composer test:full
 
-# Run with coverage report
-./vendor/bin/phpunit --coverage-html coverage/ tests/
+# Generate coverage report
+composer test:coverage
+
+# Run specific test suites
+composer test:unit
+composer test:integration
+composer test:regression
 ```
 
-### Option 2: Custom Test Runner
+### Browser (Playwright) Tests - REQUIRES SETUP
 ```bash
-# Run the custom test runner script
-php tests/run_tests.php
+# UI tests require additional setup
+npm test  # Shows setup instructions
+
+# Once configured, Playwright tests are available:
+npm run playwright:install    # Install browsers
+npm run playwright:test       # Run all UI tests
+npm run playwright:security   # Security-focused tests
+npm run playwright:navigation # Navigation tests
+npm run playwright:functionality # Core functionality
 ```
 
-### Option 3: Individual Test Files
+### Legacy Commands (Still Supported)
 ```bash
-# Run individual test classes
-php tests/CarUpdateTest.php
-php tests/FileUploadSecurityTest.php
+# Direct PHPUnit usage
+./vendor/bin/phpunit tests/unit/CarTest.php
+./vendor/bin/phpunit --testsuite=Unit
+./vendor/bin/phpunit --coverage-html=coverage/
+```
+
+## Development Workflow
+
+### For Local Development
+```bash
+# 1. Quick feedback while coding (PHP only)
+composer test:quick
+
+# 2. Before committing changes (PHP only)
+composer test:medium
+
+# 3. Before pushing to main branch (PHP only)
+composer test:full
+
+# 4. UI testing (requires setup)
+# Configure web server and Playwright, then:
+npm run playwright:test
+```
+
+### For Issue Resolution
+```bash
+# 1. Create regression test for the issue
+cp tests/regression/RegressionTestTemplate.php tests/regression/Issue{NUMBER}RegressionTest.php
+
+# 2. Ensure test fails with current code
+composer test:regression
+
+# 3. Fix the issue
+# ... make your changes ...
+
+# 4. Verify regression test now passes
+composer test:regression
+
+# 5. Run full test suite to check for regressions
+composer test:full
 ```
 
 ## Test Requirements

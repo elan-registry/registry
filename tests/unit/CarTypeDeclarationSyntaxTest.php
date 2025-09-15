@@ -10,7 +10,7 @@ declare(strict_types=1);
 
 // Test that the Car class file has valid PHP syntax
 function testCarClassSyntax(): bool {
-    $carFile = dirname(__DIR__) . '/usersc/classes/Car.php';
+    $carFile = dirname(__DIR__, 2) . '/usersc/classes/Car.php';
     if (!file_exists($carFile)) {
         echo "❌ Car.php file not found\n";
         return false;
@@ -33,7 +33,7 @@ function testCarClassSyntax(): bool {
 // Test that we can check method signatures via reflection
 function testMethodSignatures(): bool {
     // Create a temporary test version to check method signatures
-    $carFile = dirname(__DIR__) . '/usersc/classes/Car.php';
+    $carFile = dirname(__DIR__, 2) . '/usersc/classes/Car.php';
     $content = file_get_contents($carFile);
     
     // Check for the expected method signatures
