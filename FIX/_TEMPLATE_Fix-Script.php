@@ -30,6 +30,9 @@ if (!securePage($_SERVER['PHP_SELF'])) {
 // Get the database instance
 $db = DB::getInstance();
 
+// Include standardized backup functions
+require_once 'backup-functions.php';
+
 $line = 1; // Where messages go
 
 ?>
@@ -290,9 +293,25 @@ $line = 1; // Where messages go
                     flush();
                 }
 
-                // SAFETY: Create backup notification
-                outputMessage($line++, "⚠️  SAFETY NOTICE: Backup relevant tables before running this script!");
-                outputMessage($line++, "Command: [BACKUP_COMMAND_HERE]");
+                // SAFETY: Create automatic backup
+                outputMessage($line++, "⚠️  SAFETY NOTICE: Creating automatic backup...");
+                try {
+                    // Clean up old backups first
+                    $cleanupSummary = cleanupOldBackups();
+                    outputMessage($line++, "🧹 Cleaned up old backups: {$cleanupSummary['automated']['deleted']} automated, {$cleanupSummary['manual']['deleted']} manual, {$cleanupSummary['rollback']['deleted']} rollback");
+
+                    // Create backup for this script
+                    $backupPath = createStandardizedBackup(
+                        '[SCRIPT_KEBAB_NAME]',           // e.g., 'cleanup-orphaned-profiles'
+                        ['[TABLE1]', '[TABLE2]'],       // Tables to backup
+                        'automated',                     // Backup type
+                        '[ENVIRONMENT]'                  // 'development', 'test', or 'production'
+                    );
+                    outputMessage($line++, "✅ Backup created: " . basename($backupPath));
+                } catch (Exception $e) {
+                    outputMessage($line++, "❌ Backup creation failed: " . $e->getMessage());
+                    outputMessage($line++, "⚠️  Proceeding without backup - use caution!");
+                }
                 outputMessage($line++, "");
 
                 // Analysis before processing
