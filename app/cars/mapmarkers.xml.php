@@ -1,5 +1,6 @@
-
 <?php
+
+declare(strict_types=1);
 
 /**
  * Generates an XML document of car markers for Google Maps integration.
@@ -25,9 +26,13 @@ ob_clean();
 header("Content-type: text/xml; charset=utf-8");
 
 try {
-    // Get the cars data
+    // Get the cars data with proper validation
     $carData = new Car();
     $carData->findAll();
+
+    if (!$carData->data() || !is_array($carData->data())) {
+        throw new RuntimeException('No car data available for map markers');
+    }
 
     // Start XML file, create parent node
     $doc = new DOMDocument('1.0', 'UTF-8');
@@ -41,7 +46,7 @@ try {
         if (empty($car->lat) || empty($car->lon) || $car->lat == 0 || $car->lon == 0) {
             continue;
         }
-        
+
         // Handle null or empty image strings safely - try JSON decode first, fallback to comma-separated
         $carImages = [];
         if (!empty($car->image)) {
@@ -57,12 +62,12 @@ try {
         $node = $doc->createElement("marker");
         $newnode = $parnode->appendChild($node);
 
-        // Set marker attributes with null safety
-        $newnode->setAttribute("id", $car->id ?? "");
+        // Set marker attributes with null safety and proper type casting
+        $newnode->setAttribute("id", (string)($car->id ?? ""));
         $newnode->setAttribute("name", ($car->year ?? "") . "-" . ($car->series ?? "") . "-" . ($car->chassis ?? ""));
-        $newnode->setAttribute("series", $car->series ?? "");
-        $newnode->setAttribute("year", $car->year ?? "");
-        $newnode->setAttribute("variant", $car->variant ?? "");
+        $newnode->setAttribute("series", (string)($car->series ?? ""));
+        $newnode->setAttribute("year", (string)($car->year ?? ""));
+        $newnode->setAttribute("variant", (string)($car->variant ?? ""));
         $count = count($carImages);
         if ($count != 0) {
             // Include car ID in image path for proper subdirectory access
@@ -70,25 +75,39 @@ try {
         } else {
             $newnode->setAttribute("image", "");
         }
-        $newnode->setAttribute("url", $car->website ?? "");
-        $newnode->setAttribute("type", $car->type ?? "");
-        $newnode->setAttribute("city", $car->city ?? "");
-        $newnode->setAttribute("state", $car->state ?? "");
-        $newnode->setAttribute("country", $car->country ?? "");
-        $newnode->setAttribute("owner", trim($car->fname ?? ""));
-        $newnode->setAttribute("lat", random($car->lat ?? 0));
-        $newnode->setAttribute("lng", random($car->lon ?? 0));
+        $newnode->setAttribute("url", (string)($car->website ?? ""));
+        $newnode->setAttribute("type", (string)($car->type ?? ""));
+        $newnode->setAttribute("city", (string)($car->city ?? ""));
+        $newnode->setAttribute("state", (string)($car->state ?? ""));
+        $newnode->setAttribute("country", (string)($car->country ?? ""));
+        $newnode->setAttribute("owner", trim((string)($car->fname ?? "")));
+        $newnode->setAttribute("lat", (string)random((float)($car->lat ?? 0)));
+        $newnode->setAttribute("lng", (string)random((float)($car->lon ?? 0)));
     }
 
     echo $doc->saveXML();
 
+} catch (DatabaseException $e) {
+    // Log database-specific errors
+    logger($user->data()->id ?? 0, 'DatabaseError', 'Failed to fetch car data for map markers: ' . $e->getMessage());
+    echo '<?xml version="1.0" encoding="utf-8"?><markers></markers>';
+} catch (RuntimeException $e) {
+    // Log runtime errors
+    logger($user->data()->id ?? 0, 'SystemError', 'Map markers data error: ' . $e->getMessage());
+    echo '<?xml version="1.0" encoding="utf-8"?><markers></markers>';
 } catch (Exception $e) {
-    // Output minimal valid XML on error
+    // Log unexpected errors with UserSpice logger integration
+    logger($user->data()->id ?? 0, 'SystemError', 'Map markers XML generation failed: ' . $e->getMessage());
     echo '<?xml version="1.0" encoding="utf-8"?><markers></markers>';
 }
 
-// Randomize the lat/lon info so pins don't stack on top of each other
-function random($num)
+/**
+ * Add small random offset to coordinates to prevent pin stacking
+ *
+ * @param float $num Original coordinate value
+ * @return float Coordinate with random offset applied
+ */
+function random(float $num): float
 {
     return $num + (rand(-1000, 1000) / 10000);
 }
