@@ -11,7 +11,7 @@ The Menu Sync System provides a complete solution for maintaining synchronized m
 The system operates across three environments:
 
 - **Development:** `http://localhost:9999/elan_registry`
-- **Test:** `http://localhost:9999/test_reg/`
+- **Test:** `https://test.elanregistry.org`
 - **Production:** `https://elanregistry.org`
 
 Environment detection is automatic based on URL patterns.

@@ -385,7 +385,7 @@ $currentEnvironment = detectEnvironment();
                 $global_successes = 0;
                 $backup_file = '';
 
-                function outputMessage($lineNum, $message, $percentage = null) {
+                function outputMessage(int $lineNum, string $message, ?int $percentage = null): void {
                     echo '<script>addLogMessage("' . addslashes($message) . '");</script>';
                     if ($percentage !== null) {
                         echo '<script>updateProgress(' . $percentage . ', 100, "' . addslashes($message) . '");</script>';
@@ -394,48 +394,9 @@ $currentEnvironment = detectEnvironment();
                     flush();
                 }
 
-                function createMenuBackup($environment) {
-                    global $db;
-
-                    $backupDir = dirname(__FILE__) . '/backups';
-                    if (!is_dir($backupDir)) {
-                        mkdir($backupDir, 0755, true);
-                    }
-
-                    $timestamp = date('Ymd_His');
-                    $backupFile = "{$backupDir}/menu_sync_backup_{$environment}_{$timestamp}.sql";
-
-                    // Get database config
-                    $host = $GLOBALS['config']['mysql']['host'] ?? 'localhost';
-                    $username = $GLOBALS['config']['mysql']['username'] ?? '';
-                    $password = $GLOBALS['config']['mysql']['password'] ?? '';
-                    $dbname = $GLOBALS['config']['mysql']['db'] ?? '';
-                    $port = $GLOBALS['config']['mysql']['port'] ?? 3306;
-
-                    // Tables to backup
-                    $tables = ['pages', 'permission_page_matches', 'menus', 'groups_menus'];
-
-                    $tablesStr = implode(' ', $tables);
-
-                    // Build mysqldump command
-                    $command = sprintf(
-                        '/Applications/MAMP/Library/bin/mysqldump -h %s -P %d -u %s -p%s %s %s > %s',
-                        escapeshellarg($host),
-                        $port,
-                        escapeshellarg($username),
-                        escapeshellarg($password),
-                        escapeshellarg($dbname),
-                        $tablesStr,
-                        escapeshellarg($backupFile)
-                    );
-
-                    exec($command, $output, $returnCode);
-
-                    if ($returnCode !== 0 || !file_exists($backupFile) || filesize($backupFile) < 100) {
-                        throw new Exception("Backup failed - return code: {$returnCode}");
-                    }
-
-                    return $backupFile;
+                function createMenuBackup(string $environment): string {
+                    // Use the improved backup function from menu-sync.php
+                    return createBackup($environment);
                 }
 
                 // Import functions now available from included menu-sync.php
@@ -521,15 +482,13 @@ $currentEnvironment = detectEnvironment();
                     // Log the completion
                     logger($user->data()->id, 'DatabaseMaintenance', "Menu system import completed - Environment: {$currentEnvironment} (Issue #297)");
 
-                    // Record script completion
+                    // Record script completion (using standard FIX template approach)
                     try {
-                        $db->query("INSERT INTO fix_script_runs (script_name, status, notes) VALUES (?, ?, ?)
-                                   ON DUPLICATE KEY UPDATE run_date = CURRENT_TIMESTAMP, status = VALUES(status), notes = VALUES(notes)",
-                                   [basename(__FILE__), 'completed', "Menu system import - Backup: " . basename($backup_file)]);
-                        outputMessage($line++, "✅ Import completion recorded");
+                        $db->query("INSERT INTO fix_script_runs (script_name) VALUES (?)", [basename(__FILE__)]);
+                        outputMessage($line++, "✅ Script completion recorded");
                         logger($user->data()->id, 'SystemMaintenance', "FIX script completed: " . basename(__FILE__));
                     } catch (Exception $record_e) {
-                        outputMessage($line++, "⚠️  Could not record completion: " . $record_e->getMessage());
+                        outputMessage($line++, "⚠️  Could not record script completion: " . $record_e->getMessage());
                     }
 
                 } catch (Exception $e) {

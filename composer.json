@@ -3,7 +3,7 @@
     "description": "Lotus Elan Registry",
     "type": "project",
     "require": {
-        "php": ">=8.1",
+        "php": ">=8.2.29",
         "johnathanmiller/secure-env-php": "^2.0"
     },
     "authors": [
@@ -13,11 +13,6 @@
         }
     ],
     "require-dev": {
-        "phpunit/phpunit": "^11.0|^12.3"
-    },
-    "config": {
-        "platform": {
-            "php": "8.1"
-        }
+        "phpunit/phpunit": "^11.0"
     }
 }

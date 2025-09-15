@@ -16,7 +16,7 @@
 UPDATE settings SET 
   -- Basic Site Configuration
   site_name = 'Lotus Elan Registry',
-  recaptcha = 1,
+  recaptcha = 0,
   req_cap = 1,
   req_num = 1,
   copyright = 'Lotus Elan Registry and UniBrain',
@@ -99,28 +99,41 @@ UPDATE settings SET
   elan_google_geo_key = '[GOOGLE_GEOCODING_API_KEY_REQUIRED]'
 WHERE id = 1;
 
--- reCAPTCHA Keys (PLACEHOLDER - Replace with actual keys)  
-UPDATE settings SET
-  recap_public = '[RECAPTCHA_SITE_KEY_REQUIRED]',
-  recap_private = '[RECAPTCHA_SECRET_KEY_REQUIRED]',
-  recap_type = 1,
-  recap_version = 2
-WHERE id = 1;
+-- NOTE: reCAPTCHA configuration removed - plugin is optional
+-- If you install reCAPTCHA plugin later, configure keys via Admin Panel → Plugin Manager
 
 -- ==================================================================
--- 4. PLUGIN CONFIGURATION PLACEHOLDERS
+-- 4. PLUGIN CONFIGURATION
 -- ==================================================================
+
+-- Configure Hooker Plugin Hooks
+INSERT INTO `us_plugin_hooks` (`id`, `page`, `folder`, `position`, `hook`, `disabled`) VALUES
+(10, 'admin.php?view=user', 'hooker', 'form', 'hooks/user_form_hook.php', 0),
+(12, 'login.php', 'getsettings', 'bottom', 'hooks/loginbottom.php', 0),
+(19, 'joinAttempt', 'autoassignun', 'body', 'hooks/username_replace.php', 0),
+(20, 'join.php', 'autoassignun', 'bottom', 'hooks/username_field_removal.php', 0),
+(23, 'account.php', 'hooker', 'body', 'hooks/account_body_hook.php', 0),
+(24, 'account.php', 'hooker', 'bottom', 'hooks/account_bottom_hook.php', 0),
+(25, 'admin.php?view=user', 'userspice_core', 'form', 'hooks/tags_admin_user_form.php', 0),
+(26, 'admin.php?view=user', 'userspice_core', 'post', 'hooks/tags_admin_user_post.php', 0)
+-- NOTE: reCAPTCHA hooks removed since plugin is optional
+ON DUPLICATE KEY UPDATE
+  page = VALUES(page),
+  folder = VALUES(folder),
+  position = VALUES(position),
+  hook = VALUES(hook),
+  disabled = VALUES(disabled);
 
 -- Note: Plugin-specific settings are typically stored in individual plugin tables
--- The following are common configurations that may need manual setup:
+-- The following may require manual setup:
 
--- Brevo/Sendinblue Plugin Configuration
+-- Brevo/Sendinblue Plugin Configuration (OPTIONAL)
 -- (Stored in plg_sendinblue table - requires manual API key setup)
 
--- reCAPTCHA Plugin Configuration  
--- (Uses recap_public/recap_private settings configured above)
+-- reCAPTCHA Plugin Configuration (OPTIONAL)
+-- (Configure via Admin Panel → Plugin Manager when plugin is activated)
 
--- Auto-assign Username Plugin
+-- Auto-assign Username Plugin (REQUIRED)
 -- (Uses auto_assign_un setting configured above)
 
 
@@ -133,18 +146,7 @@ WHERE id = 1;
 -- These pages are essential for the registry functionality
 
 -- First, update existing UserSpice pages to match production settings
--- Add missing UserSpice pages that exist in production
-INSERT INTO `pages` (`page`, `title`, `private`, `re_auth`, `core`) VALUES
-('users/passkeys.php', 'Passkey Management', 1, 0, 1),
-('users/passwordless.php', 'Passwordless Login', 1, 0, 1),
-('users/release_blacklist.php', 'Release Blacklist', 1, 0, 1),
-('users/totp_management.php', 'TOTP Management', 1, 0, 1),
-('users/totp_verification.php', 'TOTP Verification', 1, 0, 1)
-ON DUPLICATE KEY UPDATE 
-  title = VALUES(title),
-  private = VALUES(private),
-  re_auth = VALUES(re_auth),
-  core = VALUES(core);
+-- Note: Some UserSpice pages may be added automatically by plugins or updates
 
 -- Insert all Elan Registry specific pages
 INSERT INTO `pages` (`id`, `page`, `title`, `private`, `re_auth`, `core`) VALUES
@@ -158,36 +160,12 @@ INSERT INTO `pages` (`id`, `page`, `title`, `private`, `re_auth`, `core`) VALUES
 (233, 'app/cars/identify.php', NULL, 0, 0, 0),
 (229, 'app/cars/index.php', NULL, 0, 0, 0),
 (234, 'app/cars/manage.php', NULL, 1, 0, 0),
-(235, 'app/cars/mapmarkers.xml.php', NULL, 0, 0, 0),
-(126, 'app/car_details.php', 'Car Details', 0, 0, 0),
-(223, 'app/contact.php', NULL, 1, 0, 0),
 (236, 'app/contact/index.php', NULL, 1, 0, 0),
 (237, 'app/contact/owner.php', NULL, 1, 0, 0),
 (238, 'app/contact/send-feedback.php', NULL, 1, 0, 0),
-(239, 'app/contact/send-owner-email.php', NULL, 1, 0, 0),
-(224, 'app/contact_owner.php', NULL, 1, 0, 0),
-(225, 'app/contact/send-owner-email.php', NULL, 1, 0, 0),
-(125, 'app/edit_car.php', 'UpdateCar', 1, 0, 0),
-(123, 'app/identification.php', 'Identification Guide', 0, 0, 0),
-(119, 'app/list_cars.php', 'Car Listing', 0, 0, 0),
-(122, 'app/list_factory.php', 'Factory Data', 0, 0, 0),
-(120, 'app/manage_cars.php', 'Manage Cars', 1, 0, 0),
-(121, 'app/cars/mapmarkers.xml.php', 'Map Markers', 0, 0, 0),
 (245, 'app/privacy.php', NULL, 0, 0, 0),
-(246, 'app/reports/analytics.php', NULL, 0, 0, 0),
 (247, 'app/reports/data-quality.php', NULL, 0, 0, 0),
-(248, 'app/reports/statistics.php', NULL, 0, 0, 0),
-(249, 'app/statistics.php', NULL, 0, 0, 0),
-(250, 'app/terms.php', NULL, 0, 0, 0),
-(251, 'app/view_car.php', NULL, 0, 0, 0),
-(252, 'car_details.php', NULL, 0, 0, 0),
-(253, 'edit_car.php', NULL, 1, 0, 0),
-(254, 'identification.php', NULL, 0, 0, 0),
-(255, 'list_cars.php', NULL, 0, 0, 0),
-(256, 'list_factory.php', NULL, 0, 0, 0),
-(257, 'manage_cars.php', NULL, 1, 0, 0),
-(258, 'statistics.php', NULL, 0, 0, 0),
-(259, 'view_car.php', NULL, 0, 0, 0)
+(248, 'app/reports/statistics.php', NULL, 0, 0, 0)
 ON DUPLICATE KEY UPDATE 
   title = VALUES(title),
   private = VALUES(private),
@@ -195,20 +173,19 @@ ON DUPLICATE KEY UPDATE
   core = VALUES(core);
 
 -- Insert permission-page relationships for Administrator and Editor permissions
-INSERT INTO `permission_page_matches` (`permission_id`, `page_id`) VALUES
--- Administrator permissions (permission_id = 2)
-(2, (SELECT id FROM pages WHERE page = 'app/reports/data-quality.php')),
-(2, (SELECT id FROM pages WHERE page = 'app/cars/manage.php')),
-(2, (SELECT id FROM pages WHERE page = 'app/manage_cars.php')),
-(2, (SELECT id FROM pages WHERE page = 'manage_cars.php')),
-(2, (SELECT id FROM pages WHERE page = 'statistics.php')),
--- Editor permissions (permission_id = 3)  
-(3, (SELECT id FROM pages WHERE page = 'users/login.php')),
-(3, (SELECT id FROM pages WHERE page = 'users/index.php')),
-(3, (SELECT id FROM pages WHERE page = 'app/identification.php'))
-ON DUPLICATE KEY UPDATE 
-  permission_id = VALUES(permission_id),
-  page_id = VALUES(page_id);
+-- Use LIMIT 1 to handle potential duplicates and IGNORE to skip if relationship already exists
+INSERT IGNORE INTO `permission_page_matches` (`permission_id`, `page_id`)
+SELECT 2, id FROM pages WHERE page = 'app/cars/manage.php' LIMIT 1;
+INSERT IGNORE INTO `permission_page_matches` (`permission_id`, `page_id`)
+SELECT 2, id FROM pages WHERE page = 'app/reports/data-quality.php' LIMIT 1;
+INSERT IGNORE INTO `permission_page_matches` (`permission_id`, `page_id`)
+SELECT 2, id FROM pages WHERE page = 'app/reports/statistics.php' LIMIT 1;
+INSERT IGNORE INTO `permission_page_matches` (`permission_id`, `page_id`)
+SELECT 3, id FROM pages WHERE page = 'users/login.php' LIMIT 1;
+INSERT IGNORE INTO `permission_page_matches` (`permission_id`, `page_id`)
+SELECT 3, id FROM pages WHERE page = 'users/index.php' LIMIT 1;
+INSERT IGNORE INTO `permission_page_matches` (`permission_id`, `page_id`)
+SELECT 3, id FROM pages WHERE page = 'app/reports/data-quality.php' LIMIT 1;
 
 -- ==================================================================
 -- 5. MENU SYSTEM CONFIGURATION
@@ -226,41 +203,43 @@ ON DUPLICATE KEY UPDATE
 --
 -- Clear existing menus and rebuild with Elan Registry structure
 DELETE FROM groups_menus WHERE group_id IN (0, 2, 3);
-DELETE FROM menus WHERE id > 20; -- Keep base UserSpice menus, add registry menus
+DELETE FROM menus; -- Remove ALL existing menus - complete replacement
 
 -- Insert Elan Registry menu items (CLASSIC MENU SYSTEM)
 INSERT INTO `menus` (`id`, `menu_title`, `parent`, `dropdown`, `logged_in`, `display_order`, `label`, `link`, `icon_class`) VALUES
+-- Core UserSpice menu items (required for structure)
+(2, 'main', -1, 1, 1, 140, 'Admin', '', ''),
+(3, 'main', 43, 0, 1, 110, '{{username}}', 'users/account.php', 'fa fa-fw fa-user'),
+(9, 'main', 2, 0, 1, 60, '{{dashboard}}', 'users/admin.php', 'fa fa-fw fa-cogs'),
+(15, 'main', 43, 0, 1, 1000, '{{hr}}', '', ''),
+(16, 'main', 43, 0, 1, 99999, '{{logout}}', 'users/logout.php', 'fa fa-fw fa-sign-out'),
+
 -- Main navigation items
-(25, 'main', -1, 0, 0, 20, 'List Cars', 'app/list_cars.php', 'fa fa-fw fa-car'),
+(25, 'main', -1, 0, 0, 20, 'List Cars!', 'app/cars/index.php', 'fa fa-fw fa-car'),
 (38, 'main', -1, 0, 1, 0, '{{home}}', '#', 'fa fa-fw fa-home'),
-(39, 'main', -1, 0, 1, 20, 'List Cars', 'app/list_cars.php', 'fa fa-fw fa-car'),
-(42, 'main', -1, 0, 1, 30, 'Add Car', 'app/edit_car.php', 'fa fa-fw fa-plus'),
+(39, 'main', -1, 0, 1, 20, 'List Cars!', 'app/cars/index.php', 'fa fa-fw fa-car'),
+(42, 'main', -1, 0, 1, 30, 'Add Car', 'app/cars/edit.php', 'fa fa-fw fa-plus'),
 (43, 'main', -1, 1, 1, 99999, '{{account}}', '#', 'fa fa-fw fa-user'),
-(47, 'main', -1, 0, 1, 80, 'Feedback', 'app/contact.php', 'fa fa-fw fa-comments'),
-(48, 'main', -1, 0, 0, 40, 'Statistics', 'app/statistics.php', 'fa fa-fw fa-pie-chart'),
-(49, 'main', -1, 0, 1, 40, 'Statistics', 'app/statistics.php', 'fa fa-fw fa-pie-chart'),
+(47, 'main', -1, 0, 1, 80, 'Feedback', 'app/contact/index.php', 'fa fa-fw fa-comments'),
+(48, 'main', -1, 0, 0, 40, 'Statistics', 'app/reports/statistics.php', 'fa fa-fw fa-pie-chart'),
+(49, 'main', -1, 0, 1, 40, 'Statistics', 'app/reports/statistics.php', 'fa fa-fw fa-pie-chart'),
 (61, 'main', -1, 1, 0, 50, 'Technical Resources', '#', 'fa fa-fw fa-tools'),
 (63, 'main', -1, 0, 0, 70, 'Car Stories', 'docs/car-stories.php', 'fa fa-fw fa-book-open'),
 (64, 'main', -1, 1, 1, 50, 'Technical Resources', '#', 'fa fa-fw fa-tools'),
 (68, 'main', -1, 0, 1, 70, 'Car Stories', 'docs/car-stories.php', 'fa fa-fw fa-book-open'),
 
 -- Admin dropdown items (parent = 2)
-(44, 'main', 2, 0, 1, 1, 'Manage Cars', 'app/manage_cars.php', 'fa fa-fw fa-car'),
+(44, 'main', 2, 0, 1, 1, 'Manage Cars', 'app/cars/manage.php', 'fa fa-fw fa-car'),
 (45, 'main', 2, 0, 1, 50, '{{hr}}', '#', ''),
 (53, 'main', 2, 0, 1, 10, 'Fixes', 'FIX/index.php', 'fa fa-fw fa-wrench'),
 (60, 'main', 2, 0, 1, 20, 'Data Quality', 'app/reports/data-quality.php', 'fa fa-fw fa-clipboard-check'),
 
--- Account dropdown items (parent = 43)  
-(3, 'main', 43, 0, 1, 110, '{{username}}', 'users/account.php', 'fa fa-fw fa-user'),
-(15, 'main', 43, 0, 1, 1000, '{{hr}}', '', ''),
-(16, 'main', 43, 0, 1, 99999, '{{logout}}', 'users/logout.php', 'fa fa-fw fa-sign-out'),
-
 -- Technical Resources dropdown items (parent = 61 for public, parent = 64 for logged in)
-(41, 'main', 61, 0, 0, 10, 'Identification Guide', 'app/identification.php', 'fa fa-fw fa-binoculars'),
-(54, 'main', 61, 0, 0, 20, 'Factory Data', 'app/list_factory.php', 'fa fa-fw fa-list-alt'),
+(41, 'main', 61, 0, 0, 10, 'Identification Guide', 'app/cars/identify.php', 'fa fa-fw fa-binoculars'),
+(54, 'main', 61, 0, 0, 20, 'Factory Data', 'app/cars/factory.php', 'fa fa-fw fa-list-alt'),
 (62, 'main', 61, 0, 1, 30, 'Reference Library - Tech Manuals', 'docs/reference-library.php', 'fa fa-fw fa-book'),
-(65, 'main', 64, 0, 1, 10, 'Identification Guide', 'app/identification.php', 'fa fa-fw fa-binoculars'),
-(66, 'main', 64, 0, 1, 20, 'Factory Data', 'app/list_factory.php', 'fa fa-fw fa-list-alt'),
+(65, 'main', 64, 0, 1, 10, 'Identification Guide', 'app/cars/identify.php', 'fa fa-fw fa-binoculars'),
+(66, 'main', 64, 0, 1, 20, 'Factory Data', 'app/cars/factory.php', 'fa fa-fw fa-list-alt'),
 (67, 'main', 64, 0, 1, 30, 'Reference Library - Tech Manuals', 'docs/reference-library.php', 'fa fa-fw fa-book')
 ON DUPLICATE KEY UPDATE 
   menu_title = VALUES(menu_title),
@@ -285,13 +264,15 @@ INSERT INTO `groups_menus` (`group_id`, `menu_id`) VALUES
 
 -- Administrator menu items (group_id = 2)
 (2, 2),   -- Admin dropdown
+(2, 9),   -- Dashboard
 (2, 44),  -- Manage Cars
 (2, 45),  -- HR separator
 (2, 53),  -- Fixes
 (2, 60),  -- Data Quality
 
--- Editor menu items (group_id = 3)  
+-- Editor menu items (group_id = 3)
 (3, 2),   -- Admin dropdown (limited access)
+(3, 9),   -- Dashboard
 (3, 44),  -- Manage Cars
 (3, 45),  -- HR separator
 (3, 53),  -- Fixes
@@ -374,31 +355,30 @@ CRITICAL: The following items require manual configuration:
 
 1. **Google API Keys**
    - Replace [GOOGLE_MAPS_API_KEY_REQUIRED] with actual Google Maps API key
-   - Replace [GOOGLE_GEOCODING_API_KEY_REQUIRED] with actual Geocoding API key  
+   - Replace [GOOGLE_GEOCODING_API_KEY_REQUIRED] with actual Geocoding API key
    - Configure domain restrictions in Google Cloud Console
    - Enable billing for Google Cloud project
 
-2. **reCAPTCHA Keys**
-   - Replace [RECAPTCHA_SITE_KEY_REQUIRED] with actual reCAPTCHA site key
-   - Replace [RECAPTCHA_SECRET_KEY_REQUIRED] with actual reCAPTCHA secret key
+2. **Optional: reCAPTCHA Keys** (if you activate the reCAPTCHA plugin)
+   - Install and activate reCAPTCHA plugin via Admin Panel → Plugin Manager
+   - Configure reCAPTCHA site key and secret key in plugin settings
    - Configure domain restrictions in Google reCAPTCHA Console
 
-3. **Email Service (Brevo/Sendinblue)**
+3. **Optional: Email Service (Brevo/Sendinblue)**
    - Create Brevo/Sendinblue account and obtain API credentials
+   - Install and activate Brevo Sendinblue plugin
    - Configure API key in plugin settings via UserSpice admin panel
    - Set up email templates and sender verification
 
-
-7. **Security Configuration**
+4. **Security Configuration**
    - Review and adjust SPAM cleanup settings if needed
-   - Test reCAPTCHA functionality on registration and contact forms
    - Verify CDN resources load correctly and CSP policy allows them
 
 RECOMMENDED TESTING AFTER CONFIGURATION:
 - User registration with auto-assigned username
-- Google Maps display on car detail pages  
-- Email delivery for notifications
-- reCAPTCHA on forms
+- Google Maps display on car detail pages
+- Email delivery for notifications (if email plugin configured)
+- reCAPTCHA on forms (if reCAPTCHA plugin activated)
 - File upload functionality
 - Page access permissions for different user levels
 */

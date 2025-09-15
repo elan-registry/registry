@@ -7,10 +7,30 @@ This document covers environment variables and environments used in the Elan Reg
 The Elan Registry operates across three environments:
 
 - **Development:** `http://localhost:9999/elan_registry`
-- **Test:** `http://localhost:9999/test_reg/`
+- **Test:** `https://test.elanregistry.org`
 - **Production:** `https://elanregistry.org`
 
 Environment detection is performed using URL/hostname pattern matching for environment-specific configurations and behaviors.
+
+## Database Access
+
+### Local Development (MAMP)
+
+MySQL binaries are located in MAMP installation:
+- **MySQL 8.0:** `/Applications/MAMP/Library/bin/mysql80/bin/mysql`
+- **MySQL 5.7:** `/Applications/MAMP/Library/bin/mysql57/bin/mysql`
+
+Access development database:
+```bash
+/Applications/MAMP/Library/bin/mysql57/bin/mysql -u mysql57 -p
+```
+
+Access test database (remote):
+```bash
+# Test environment now uses https://test.elanregistry.org
+# Database access requires SSH tunnel or direct connection to A2 Hosting server
+# See deployment documentation for database connection details
+```
 
 ## Overview
 

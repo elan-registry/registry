@@ -46,11 +46,16 @@ function detectEnvironment(): string {
     $host = $_SERVER['HTTP_HOST'] ?? '';
     $uri = $_SERVER['REQUEST_URI'] ?? '';
 
-    if (strpos($host, 'localhost') !== false && strpos($uri, '/elan_registry') !== false) {
-        return 'development';
-    } elseif (strpos($host, 'localhost') !== false && strpos($uri, '/test_reg') !== false) {
+    // Check for test environment first (more specific)
+    if (strpos($host, 'test.elanregistry.org') !== false) {
         return 'test';
-    } elseif (strpos($host, 'elanregistry.org') !== false) {
+    }
+    // Check for development environment
+    elseif (strpos($host, 'localhost') !== false && strpos($uri, '/elan_registry') !== false) {
+        return 'development';
+    }
+    // Check for production environment (main domain only, excluding subdomains)
+    elseif ($host === 'elanregistry.org' || $host === 'www.elanregistry.org') {
         return 'production';
     }
 
@@ -66,7 +71,7 @@ function detectEnvironment(): string {
  * This logic maps templates to their supported menu systems and will need
  * updates when converting to UltraMenu or adding new templates.
  */
-function detectMenuSystem($db) {
+function detectMenuSystem(DB $db): string {
     try {
         // Check what template is currently active
         $templateQuery = $db->query("SELECT template FROM settings WHERE id = 1");
@@ -136,7 +141,7 @@ function detectMenuSystem($db) {
  * Export Menu System
  * Exports complete menu configuration to JSON format
  */
-function exportMenuSystem($db, $environment) {
+function exportMenuSystem(DB $db, string $environment): array {
     try {
         $menuSystem = detectMenuSystem($db);
         $timestamp = date('c');
@@ -205,7 +210,7 @@ function exportMenuSystem($db, $environment) {
  * Import Menu System
  * Imports menu configuration from JSON with safety checks
  */
-function importMenuSystem($db, $importData, $targetEnvironment) {
+function importMenuSystem(DB $db, object $importData, string $targetEnvironment): array {
     // Validate import data
     if (!isset($importData->export_info) || !isset($importData->export_info->menu_system)) {
         throw new Exception("Invalid import data: Missing export information");
@@ -257,7 +262,7 @@ function importMenuSystem($db, $importData, $targetEnvironment) {
 /**
  * Import Pages and Permissions (Common to both menu systems)
  */
-function importPagesAndPermissions($db, $importData) {
+function importPagesAndPermissions(DB $db, object $importData): void {
     // Import pages (with conflict handling)
     if (isset($importData->pages)) {
         foreach ($importData->pages as $page) {
@@ -294,7 +299,7 @@ function importPagesAndPermissions($db, $importData) {
 /**
  * Import Classic Menu System
  */
-function importClassicMenus($db, $importData) {
+function importClassicMenus(DB $db, object $importData): void {
     // Clear existing menu data
     $db->query("DELETE FROM groups_menus WHERE group_id IN (0, 2, 3)");
     $db->query("DELETE FROM menus WHERE id > 20"); // Keep base UserSpice menus
@@ -345,7 +350,7 @@ function importClassicMenus($db, $importData) {
  * 4. Test with ElanRegistry template converted to UltraMenu
  * 5. Verify backup/restore includes all UltraMenu tables
  */
-function importUltraMenus($db, $importData) {
+function importUltraMenus(DB $db, object $importData): void {
     // Clear existing UltraMenu data
     $db->query("DELETE FROM us_menus");
     // TODO: Add clearing of other UltraMenu tables as needed
@@ -377,7 +382,7 @@ function importUltraMenus($db, $importData) {
  * Create Backup
  * Creates timestamped backup following FIX script patterns
  */
-function createBackup($environment) {
+function createBackup(string $environment): string {
     $backupDir = dirname(__FILE__) . '/../FIX/backups';
     if (!is_dir($backupDir)) {
         mkdir($backupDir, 0755, true);
@@ -406,31 +411,107 @@ function createBackup($environment) {
 
     $tablesStr = implode(' ', $tables);
 
-    // Build mysqldump command
+    // Try mysqldump first, fallback to PHP-based backup (similar to FIX script approach)
+    $currentEnv = detectEnvironment();
+    $backupSuccess = false;
+
+    // Determine mysqldump path based on environment - use approach from FIX scripts
+    if (strpos($host, 'localhost') !== false && file_exists('/Applications/MAMP/Library/bin/mysqldump')) {
+        // Local MAMP installation
+        $mysqldumpPath = '/Applications/MAMP/Library/bin/mysqldump';
+        $socketParam = '--socket=/Applications/MAMP/tmp/mysql/mysql.sock';
+    } else {
+        // Production/Test environments - try system mysqldump first
+        $mysqldumpPath = 'mysqldump';
+        $socketParam = '';
+    }
+
+    // Try mysqldump
     $command = sprintf(
-        '/Applications/MAMP/Library/bin/mysqldump -h %s -P %d -u %s -p%s %s %s > %s',
+        '%s --host=%s --port=%d %s --user=%s --password=%s --single-transaction %s > %s 2>&1',
+        escapeshellcmd($mysqldumpPath),
         escapeshellarg($host),
         $port,
+        $socketParam,
         escapeshellarg($username),
         escapeshellarg($password),
-        escapeshellarg($dbname),
         $tablesStr,
         escapeshellarg($backupFile)
     );
 
     exec($command, $output, $returnCode);
+    $backupSuccess = ($returnCode === 0 && file_exists($backupFile) && filesize($backupFile) > 100);
 
-    if ($returnCode !== 0 || !file_exists($backupFile) || filesize($backupFile) < 100) {
-        throw new Exception("Backup failed - return code: {$returnCode}");
+    // If mysqldump failed, use PHP-based backup
+    if (!$backupSuccess) {
+        error_log("Mysqldump failed (return code: {$returnCode}), trying PHP backup...");
+        $backupSuccess = createPhpBackup($backupFile, $tables, DB::getInstance());
+    }
+
+    if (!$backupSuccess) {
+        throw new Exception("Backup creation failed for environment: {$currentEnv}");
     }
 
     return $backupFile;
 }
 
 /**
+ * Create PHP-based backup (fallback when mysqldump not available)
+ * Creates SQL dump using PHP database queries
+ */
+function createPhpBackup(string $backupFile, array $tables, DB $db): bool {
+    try {
+        $sql = "-- Menu System Backup\n";
+        $sql .= "-- Created: " . date('Y-m-d H:i:s') . "\n";
+        $sql .= "-- Environment: " . detectEnvironment() . "\n\n";
+
+        foreach ($tables as $table) {
+            // Get table structure
+            $createQuery = $db->query("SHOW CREATE TABLE `{$table}`");
+            if ($createQuery && $createQuery->first()) {
+                $sql .= "-- Table structure for {$table}\n";
+                $sql .= "DROP TABLE IF EXISTS `{$table}`;\n";
+                $sql .= $createQuery->first()->{'Create Table'} . ";\n\n";
+            }
+
+            // Get table data
+            $dataQuery = $db->query("SELECT * FROM `{$table}`");
+            if ($dataQuery && $dataQuery->results()) {
+                $sql .= "-- Data for table {$table}\n";
+
+                foreach ($dataQuery->results() as $row) {
+                    $columns = array_keys((array)$row);
+                    $values = array_values((array)$row);
+
+                    // Escape values
+                    $escapedValues = array_map(function($value) {
+                        if ($value === null) {
+                            return 'NULL';
+                        }
+                        return "'" . addslashes($value) . "'";
+                    }, $values);
+
+                    $sql .= "INSERT INTO `{$table}` (`" . implode('`, `', $columns) . "`) VALUES (";
+                    $sql .= implode(', ', $escapedValues) . ");\n";
+                }
+                $sql .= "\n";
+            }
+        }
+
+        // Write to file
+        $result = file_put_contents($backupFile, $sql);
+        return ($result !== false && file_exists($backupFile) && filesize($backupFile) > 100);
+
+    } catch (Exception $e) {
+        error_log("PHP backup failed: " . $e->getMessage());
+        return false;
+    }
+}
+
+/**
  * Rollback from Backup
  */
-function rollbackFromBackup($backupFile) {
+function rollbackFromBackup(string $backupFile): bool {
     if (!file_exists($backupFile)) {
         throw new Exception("Backup file not found: {$backupFile}");
     }
@@ -442,9 +523,20 @@ function rollbackFromBackup($backupFile) {
     $dbname = $GLOBALS['config']['mysql']['db'] ?? '';
     $port = $GLOBALS['config']['mysql']['port'] ?? 3306;
 
+    // Determine mysql path based on environment
+    $currentEnv = detectEnvironment();
+    if ($currentEnv === 'development') {
+        // Local MAMP installation
+        $mysqlPath = '/Applications/MAMP/Library/bin/mysql57/bin/mysql';
+    } else {
+        // Production/Test environments (A2 Hosting)
+        $mysqlPath = '/usr/bin/mysql';
+    }
+
     // Build mysql restore command
     $command = sprintf(
-        '/Applications/MAMP/Library/bin/mysql -h %s -P %d -u %s -p%s %s < %s',
+        '%s -h %s -P %d -u %s -p%s %s < %s',
+        $mysqlPath,
         escapeshellarg($host),
         $port,
         escapeshellarg($username),

@@ -4,11 +4,16 @@ This document provides step-by-step instructions for setting up the Lotus Elan R
 
 ## Prerequisites
 
-- PHP 8.1+ required (8.2+ recommended for full PHPUnit 12 compatibility)
+- **PHP 8.2.29+** required (tested with PHP 8.2.29 CLI built Jul 11 2025)
 - MySQL 8.0+
 - Composer for dependency management
 - Web server (Apache/Nginx) with mod_rewrite enabled
 - Git for version control
+
+**PHP Version Notes:**
+- Minimum: PHP 8.1 (basic functionality)
+- Recommended: PHP 8.2.29+ (full compatibility and PHPUnit 12 support)
+- Development Environment: PHP 8.2.29 (cli) verified working
 
 ### Required API Keys and External Services
 
@@ -17,9 +22,9 @@ The Elan Registry requires several API keys for full functionality:
 **Essential for Core Features:**
 - **Google Maps API Key** - Required for map displays on car detail pages and statistics
 - **Google Geocoding API Key** - Required for location coordinate lookup during user registration
-- **reCAPTCHA Keys (Site Key + Secret Key)** - Required for spam protection on forms
 
-**Optional/Alternative Services:**
+**Optional Services:**
+- **reCAPTCHA Keys (Site Key + Secret Key)** - Optional, needed only if you want spam protection on forms
 - **Brevo/Sendinblue API Key** - For email delivery (300 emails/day free tier)
   - Alternative: Standard SMTP configuration can be used instead
 
@@ -53,17 +58,46 @@ The Elan Registry is built on top of UserSpice for user authentication and manag
 
 #### Required UserSpice Plugins
 
-After completing the base UserSpice installation, install these required plugins:
+After completing the base UserSpice installation, install and activate these required plugins:
 
-**Active Plugins (Required):**
+**Required Plugins:**
 
 - **`Auto Assign Usernames`** - Hides username field and auto-assigns usernames on registration
 - **`getSettings Function`** - Provides global settings access via `getSettings()` function
 - **`hooker`** - Custom hooks system for code injection points
+
+**Optional Plugins:**
+
 - **`reCAPTCHA`** - Google reCAPTCHA v2/v3 integration for spam protection
+  - **Note**: Requires Google reCAPTCHA account and API keys
+  - **Alternative**: Can run without spam protection initially
 - **`Brevo Sendinblue`** - API-based email delivery replacing phpmailer (300 emails/day free)
   - **Note**: Requires Brevo/Sendinblue account and API credentials
-  - **Optional**: Other mail services can be used for production instead
+  - **Alternative**: Standard SMTP configuration can be used instead
+
+**Plugin Installation and Activation:**
+
+1. **Install and activate required plugins** through UserSpice Admin Panel → Plugin Manager:
+   - **`Auto Assign Usernames`**
+   - **`getSettings Function`**
+   - **`hooker`**
+
+2. **Optional plugins** can be installed and activated later as needed:
+   - **`reCAPTCHA`** - Install and activate when you have Google reCAPTCHA keys configured
+   - **`Brevo Sendinblue`** - Install and activate if you want API-based email delivery
+
+**Plugin Manager Configuration:**
+
+After completing plugin installation and activation, your Plugin Manager should look like this:
+
+![Plugin Manager Configuration](images/plugin-manager-configuration.png)
+
+**Correct Plugin Status:**
+- ✅ **Auto Assign Usernames** - Active
+- ✅ **getSettings Function** - Active
+- ✅ **Hooker Plugin** - Active
+- ❌ **reCAPTCHA** - Inactive (install but don't activate initially)
+- ❌ **Brevo Sendinblue** - Inactive (optional for email delivery)
 
 ### 2. Clone the Elan Registry Repository
 
