@@ -6,9 +6,11 @@ use PHPUnit\Framework\TestCase;
 
 /**
  * Simple Database Schema Test
- * 
+ *
  * Direct database connection test to validate schema consistency
  * without UserSpice framework dependencies.
+ *
+ * @database
  */
 final class SimpleDatabaseSchemaTest extends TestCase
 {
@@ -46,6 +48,8 @@ final class SimpleDatabaseSchemaTest extends TestCase
 
     /**
      * Test that car-related tables exist
+     *
+     * @database
      */
     public function testCarTablesExist(): void
     {

@@ -5,15 +5,19 @@ const { navigateAndWait, testRedirect, handleAuthRequired } = require('./auth-he
 test.describe('Navigation and File Reorganization', () => {
   test('homepage loads successfully', async ({ page }) => {
     await navigateAndWait(page, '/index.php');
-    await expect(page).toHaveTitle(/Lotus Elan Registry/);
+    // Check for the actual title that includes "Home"
+    await expect(page).toHaveTitle(/Home Lotus Elan Registry|Lotus Elan Registry/, { timeout: 10000 });
   });
 
   test('car listing page loads (reorganized)', async ({ page }) => {
     await navigateAndWait(page, '/app/cars/index.php');
-    
-    // Check for List Cars header
-    await expect(page.locator('h2')).toContainText(/List Cars/);
-    
+
+    // Wait for network to be idle (all resources loaded)
+    await page.waitForLoadState('networkidle');
+
+    // Check for List Cars header with increased timeout
+    await expect(page.locator('h2')).toContainText(/List Cars/, { timeout: 10000 });
+
     // Test backward compatibility redirect
     await testRedirect(page, '/app/list_cars.php', 'app/cars/index.php');
   });

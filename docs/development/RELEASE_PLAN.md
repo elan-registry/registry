@@ -312,3 +312,35 @@ The new release plan organizes development around semantic versioning with clear
 **Complete Planning**: ✅ All 50 open issues now have milestone assignments
 
 This approach balances immediate stability needs with long-term automation goals while respecting semantic versioning principles and vacation scheduling.
+
+## 📋 **Release Documentation Requirements**
+
+### Pull Request and Release Notes Policy
+
+**Every pull request MUST include appropriate release notes documentation:**
+
+#### For Milestone-Assigned Issues:
+1. **Check for existing release notes**: Look for `RELEASE_NOTES_V[VERSION].md` in root directory
+2. **Update existing notes**: Add your changes to the appropriate sections
+3. **Create new notes**: Use `docs/development/RELEASE_NOTES_TEMPLATE.md` if none exist
+
+#### Required Release Notes Structure:
+1. **🚨 REQUIRED ACTIONS AFTER DEPLOYMENT** - Manual steps needed post-deployment
+2. **👤 User-Facing Changes** - What end users will notice
+3. **🔧 Admin-Facing Changes** - Administrative tools and interface improvements
+4. **📋 Issues Resolved in This Release** - Simple list with GitHub issue links
+
+#### Content Guidelines:
+- **Focus on impact and benefits**, not implementation details
+- **Include clear testing instructions** for any manual deployment steps
+- **Keep descriptions brief** - detailed technical changes belong in GitHub issues
+- **Remove unused sections** to keep documentation clean
+- **Use consistent formatting** with emoji headers and bullet points
+
+#### Examples:
+- **User-Facing**: "Improved car search performance" vs "Optimized database queries"
+- **Admin-Facing**: "Enhanced FIX script progress tracking" vs "Added outputMessage() functions"
+- **Required Actions**: Step-by-step testing instructions for database migrations
+
+**📖 Template Location**: `docs/development/RELEASE_NOTES_TEMPLATE.md`
+**📋 Standards Reference**: See v2.8.6 release notes for proper formatting example

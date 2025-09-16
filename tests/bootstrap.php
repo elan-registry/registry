@@ -1,4 +1,7 @@
 <?php
+
+declare(strict_types=1);
+
 /**
  * PHPUnit Bootstrap File for Elan Registry Tests
  * 
@@ -45,7 +48,7 @@ if (!function_exists('generateSecureFilename')) {
     /**
      * Generate a cryptographically secure filename
      */
-    function generateSecureFilename($extension) {
+    function generateSecureFilename(string $extension): string {
         $randomBytes = random_bytes(16);
         return 'img_' . bin2hex($randomBytes) . '.' . $extension;
     }
@@ -55,7 +58,7 @@ if (!function_exists('getMimeType')) {
     /**
      * Get and validate MIME type of uploaded file
      */
-    function getMimeType($filepath) {
+    function getMimeType(string $filepath): string {
         if (!file_exists($filepath)) {
             throw new Exception('File does not exist');
         }
@@ -83,7 +86,7 @@ if (!function_exists('getExtension')) {
     /**
      * Get file extension based on MIME type
      */
-    function getExtension($mimeType) {
+    function getExtension(string $mimeType): string {
         $extensionMap = [
             'image/jpeg' => 'jpg',
             'image/png' => 'png',
@@ -103,7 +106,7 @@ if (!function_exists('validateFileUpload')) {
     /**
      * Validate file upload security
      */
-    function validateFileUpload($file) {
+    function validateFileUpload(array $file): bool {
         // Check for upload errors
         if ($file['error'] !== UPLOAD_ERR_OK) {
             throw new Exception('File upload error: ' . $file['error']);
@@ -157,24 +160,38 @@ if (!class_exists('Car') && (defined('TESTING_UNIT_ONLY') || !file_exists(dirnam
             ];
         }
         
-        public static function find($id) {
+        public static function find(int $id): ?self {
             $car = new self();
             $car->data->id = $id;
             return $car;
         }
-        
-        public function data() {
+
+        /**
+         * Get car data object
+         * @return object Car data
+         */
+        public function data(): object {
             return $this->data;
         }
-        
-        public function create($data) {
+
+        /**
+         * Create car with data
+         * @param array $data Car data
+         * @return bool Success status
+         */
+        public function create(array $data): bool {
             foreach ($data as $key => $value) {
                 $this->data->$key = $value;
             }
             return true;
         }
         
-        public function update($data) {
+        /**
+         * Update car with data
+         * @param array $data Car data
+         * @return bool Success status
+         */
+        public function update(array $data): bool {
             foreach ($data as $key => $value) {
                 $this->data->$key = $value;
             }
@@ -188,14 +205,14 @@ if (!class_exists('DB')) {
     class DB {
             private static $instance = null;
             
-            public static function getInstance() {
+            public static function getInstance(): self {
                 if (self::$instance === null) {
                     self::$instance = new self();
                 }
                 return self::$instance;
             }
             
-            public function query($sql, $params = []) {
+            public function query(string $sql, array $params = []): object {
                 global $mockUsers, $mockProfiles, $mockCarUser, $mockCars;
                 
                 // Handle noowner user lookup
@@ -225,19 +242,19 @@ if (!class_exists('DB')) {
                 return new MockQueryResult();
             }
             
-            public function insert($table, $fields) {
+            public function insert(string $table, array $fields): bool {
                 return rand(1, 1000); // Mock insert ID
             }
             
-            public function update($table, $id, $fields) {
+            public function update(string $table, int $id, array $fields): bool {
                 return true;
             }
             
-            public function delete($table, $where) {
+            public function delete(string $table, array $where): bool {
                 return true;
             }
             
-            public function findById($id, $table) {
+            public function findById(int $id, string $table): ?object {
                 return new MockQueryResult();
             }
         }
@@ -249,7 +266,7 @@ if (!class_exists('DB')) {
                 $this->mockData = $data;
             }
             
-            public function results() {
+            public function results(): array {
                 if ($this->mockData !== null) {
                     return $this->mockData;
                 }
@@ -266,12 +283,12 @@ if (!class_exists('DB')) {
                 ]];
             }
             
-            public function first() {
+            public function first(): ?object {
                 $results = $this->results();
                 return count($results) > 0 ? $results[0] : null;
             }
             
-            public function count() {
+            public function count(): int {
                 return count($this->results());
             }
         }
@@ -292,11 +309,11 @@ if (!isset($user) || !is_object($user)) {
             ];
         }
         
-        public function data() {
+        public function data(): object {
             return $this->userData;
         }
-        
-        public function isLoggedIn() {
+
+        public function isLoggedIn(): bool {
             return true;
         }
     }

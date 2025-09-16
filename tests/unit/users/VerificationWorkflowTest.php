@@ -28,6 +28,11 @@ class VerificationWorkflowTest extends TestCase
         $this->assertFalse($this->isValidVerificationCode('invalidcode'));
     }
     
+    /**
+     * Test verification email generation
+     *
+     * @group fast
+     */
     public function testVerificationEmailGeneration(): void
     {
         $carData = [
@@ -48,6 +53,11 @@ class VerificationWorkflowTest extends TestCase
         $this->assertStringContainsString('elanregistry.org', $emailContent);
     }
     
+    /**
+     * Test verification link generation
+     *
+     * @group fast
+     */
     public function testVerificationLinkGeneration(): void
     {
         $carId = 123;
@@ -59,6 +69,11 @@ class VerificationWorkflowTest extends TestCase
         $this->assertMatchesRegularExpression($expectedPattern, $link);
     }
     
+    /**
+     * Test verification status transitions
+     *
+     * @group fast
+     */
     public function testVerificationStatusTransitions(): void
     {
         // Test valid status transitions
@@ -84,6 +99,11 @@ class VerificationWorkflowTest extends TestCase
         $this->assertFalse($this->isValidStatusTransition('pending', 'unverified'));
     }
     
+    /**
+     * Test verification requirements validation
+     *
+     * @group fast
+     */
     public function testVerificationRequirements(): void
     {
         // Test minimum requirements for verification
@@ -109,6 +129,11 @@ class VerificationWorkflowTest extends TestCase
         $this->assertFalse($this->meetsVerificationRequirements($incompleteData));
     }
     
+    /**
+     * Test verification document validation
+     *
+     * @group fast
+     */
     public function testVerificationDocumentValidation(): void
     {
         // Test document types accepted for verification
@@ -135,6 +160,11 @@ class VerificationWorkflowTest extends TestCase
         }
     }
     
+    /**
+     * Test chassis number uniqueness validation
+     *
+     * @group fast
+     */
     public function testChassisNumberUniquenessValidation(): void
     {
         $testChassis = '12345678';
@@ -150,6 +180,11 @@ class VerificationWorkflowTest extends TestCase
         $this->assertTrue($this->isChassisNumberUnique('99999999', $existingChassis));
     }
     
+    /**
+     * Test verification email throttling
+     *
+     * @group fast
+     */
     public function testVerificationEmailThrottling(): void
     {
         $carId = 123;

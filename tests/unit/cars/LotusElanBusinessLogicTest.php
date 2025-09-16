@@ -27,6 +27,11 @@ class LotusElanBusinessLogicTest extends TestCase
         }
     }
     
+    /**
+     * Test chassis number validation with invalid formats
+     *
+     * @group fast
+     */
     public function testChassisNumberValidationInvalid(): void
     {
         // Test invalid chassis numbers
@@ -45,6 +50,11 @@ class LotusElanBusinessLogicTest extends TestCase
         }
     }
     
+    /**
+     * Test model year validation rules
+     *
+     * @group fast
+     */
     public function testModelYearValidation(): void
     {
         // Lotus Elan production years: 1962-1975, 1989-1995
@@ -60,6 +70,11 @@ class LotusElanBusinessLogicTest extends TestCase
         }
     }
     
+    /**
+     * Test Lotus Elan series classification
+     *
+     * @group fast
+     */
     public function testSeriesClassification(): void
     {
         // Test Series 1-4 classification based on year ranges
@@ -77,6 +92,11 @@ class LotusElanBusinessLogicTest extends TestCase
         $this->assertNull($this->getElanSeries(1988));
     }
     
+    /**
+     * Test engine type validation
+     *
+     * @group fast
+     */
     public function testEngineTypeValidation(): void
     {
         // Valid Lotus Elan engine types
@@ -106,6 +126,11 @@ class LotusElanBusinessLogicTest extends TestCase
         }
     }
     
+    /**
+     * Test color code validation
+     *
+     * @group fast
+     */
     public function testColorCodeValidation(): void
     {
         // Test Lotus factory color codes
@@ -124,6 +149,11 @@ class LotusElanBusinessLogicTest extends TestCase
         }
     }
     
+    /**
+     * Test registry number generation
+     *
+     * @group fast
+     */
     public function testRegistryNumberGeneration(): void
     {
         // Test that registry numbers follow proper format
@@ -141,6 +171,11 @@ class LotusElanBusinessLogicTest extends TestCase
         }
     }
     
+    /**
+     * Test verification code generation
+     *
+     * @group fast
+     */
     public function testVerificationCodeGeneration(): void
     {
         // Test verification codes for new registrations
@@ -158,6 +193,11 @@ class LotusElanBusinessLogicTest extends TestCase
         }
     }
     
+    /**
+     * Test car status validation
+     *
+     * @group fast
+     */
     public function testCarStatusValidation(): void
     {
         $validStatuses = ['verified', 'pending', 'unverified', 'needs_verification', 'disputed'];

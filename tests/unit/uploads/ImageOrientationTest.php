@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 /**
  * Test for EXIF orientation handling in the Resize class
  * 
@@ -41,12 +43,22 @@ class ImageOrientationTest extends PHPUnit\Framework\TestCase
         }
     }
 
-    public function testResizeClassExists()
+    /**
+     * Test that the Resize class exists
+     *
+     * @group fast
+     */
+    public function testResizeClassExists(): void
     {
         $this->assertTrue(class_exists('Resize'), 'Resize class should exist');
     }
 
-    public function testCorrectOrientationMethodExists()
+    /**
+     * Test that the correctOrientation method exists in Resize class
+     *
+     * @group fast
+     */
+    public function testCorrectOrientationMethodExists(): void
     {
         $reflection = new ReflectionClass('Resize');
         $this->assertTrue(
@@ -55,7 +67,12 @@ class ImageOrientationTest extends PHPUnit\Framework\TestCase
         );
     }
 
-    public function testOrientationCorrectionWithMockImage()
+    /**
+     * Test orientation correction with mock image data
+     *
+     * @group fast
+     */
+    public function testOrientationCorrectionWithMockImage(): void
     {
         // Create a simple test image
         $testImage = imagecreate(100, 50);
@@ -89,7 +106,12 @@ class ImageOrientationTest extends PHPUnit\Framework\TestCase
         }
     }
 
-    public function testEXIFExtensionAvailable()
+    /**
+     * Test that EXIF extension is available
+     *
+     * @group fast
+     */
+    public function testEXIFExtensionAvailable(): void
     {
         $this->assertTrue(
             function_exists('exif_read_data'),
@@ -97,7 +119,12 @@ class ImageOrientationTest extends PHPUnit\Framework\TestCase
         );
     }
 
-    public function testImageRotateAvailable()
+    /**
+     * Test that imagerotate function is available
+     *
+     * @group fast
+     */
+    public function testImageRotateAvailable(): void
     {
         $this->assertTrue(
             function_exists('imagerotate'),
@@ -105,7 +132,12 @@ class ImageOrientationTest extends PHPUnit\Framework\TestCase
         );
     }
 
-    public function testImageFlipAvailable()
+    /**
+     * Test that imageflip function is available
+     *
+     * @group fast
+     */
+    public function testImageFlipAvailable(): void
     {
         // imageflip was added in PHP 5.5.0
         $this->assertTrue(

@@ -103,6 +103,7 @@ yarn-error.log*
 tests/.phpunit.result.cache
 tests/coverage/
 tests/temp/
+coverage/
 usersc/tests
 .phpunit.cache
 @backup*

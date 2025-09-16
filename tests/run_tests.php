@@ -1,4 +1,7 @@
 <?php
+
+declare(strict_types=1);
+
 /**
  * Test runner script for Elan Registry automated tests
  * 

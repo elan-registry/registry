@@ -47,11 +47,12 @@ The registry represents the collaborative effort of many enthusiasts from the El
 
 ### Installation
 
-0. Install UserSpice - https://userspice.com
+0. Install UserSpice - <https://userspice.com>
 1. Clone the repository
 2. Install dependencies: `composer install`
-3. Configure environment variables (see `ENVIRONMENT.md`)
-4. Import database schema
+3. **Setup pre-commit quality checks:** `./scripts/setup-git-hooks.sh` *(recommended)*
+4. Configure environment variables (see `ENVIRONMENT.md`)
+5. Import database schema
 
 For detailed setup instructions including API key configuration, see the complete installation guide in `docs/development/INSTALLATION.md`.
 
@@ -126,4 +127,4 @@ For registry support or questions:
 
 ---
 
-_Preserving the legacy of Lotus Elan and Elan +2 sports cars for current and future generations._
+*Preserving the legacy of Lotus Elan and Elan +2 sports cars for current and future generations.*

@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 /**
  * [SCRIPT_NAME] Script
  *
@@ -15,6 +17,12 @@
  * 4. Use sequential numbering (01, 02, 03...) for proper execution order
  * 5. Return buttons automatically detect new window vs direct navigation
  * 6. See FIX/README.md for detailed instructions and best practices
+ *
+ * TEMPLATE USAGE:
+ * - Always use this template for consistent UI/UX across all FIX scripts
+ * - Replace [PLACEHOLDERS] with appropriate content for your script
+ * - Maintain the two-step process: description card + start button + progress tracking
+ * - Use outputMessage() for progress updates and addLogMessage() for detailed logging
  */
 ini_set('display_errors', 1);
 ini_set('display_startup_errors', 1);
@@ -29,6 +37,9 @@ if (!securePage($_SERVER['PHP_SELF'])) {
 
 // Get the database instance
 $db = DB::getInstance();
+
+// Include standardized backup functions
+require_once 'backup-functions.php';
 
 $line = 1; // Where messages go
 
@@ -290,9 +301,25 @@ $line = 1; // Where messages go
                     flush();
                 }
 
-                // SAFETY: Create backup notification
-                outputMessage($line++, "⚠️  SAFETY NOTICE: Backup relevant tables before running this script!");
-                outputMessage($line++, "Command: [BACKUP_COMMAND_HERE]");
+                // SAFETY: Create automatic backup
+                outputMessage($line++, "⚠️  SAFETY NOTICE: Creating automatic backup...");
+                try {
+                    // Clean up old backups first
+                    $cleanupSummary = cleanupOldBackups();
+                    outputMessage($line++, "🧹 Cleaned up old backups: {$cleanupSummary['automated']['deleted']} automated, {$cleanupSummary['manual']['deleted']} manual, {$cleanupSummary['rollback']['deleted']} rollback");
+
+                    // Create backup for this script
+                    $backupPath = createStandardizedBackup(
+                        '[SCRIPT_KEBAB_NAME]',           // e.g., 'cleanup-orphaned-profiles'
+                        ['[TABLE1]', '[TABLE2]'],       // Tables to backup
+                        'automated',                     // Backup type
+                        '[ENVIRONMENT]'                  // 'development', 'test', or 'production'
+                    );
+                    outputMessage($line++, "✅ Backup created: " . basename($backupPath));
+                } catch (Exception $e) {
+                    outputMessage($line++, "❌ Backup creation failed: " . $e->getMessage());
+                    outputMessage($line++, "⚠️  Proceeding without backup - use caution!");
+                }
                 outputMessage($line++, "");
 
                 // Analysis before processing

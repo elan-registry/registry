@@ -45,6 +45,9 @@ if (!securePage($_SERVER['PHP_SELF'])) {
 // Get the database instance
 $db = DB::getInstance();
 
+// Include standardized backup functions
+require_once 'backup-functions.php';
+
 $line = 1; // Where messages go
 
 // detectEnvironment function is now available from included menu-sync.php
@@ -395,8 +398,14 @@ $currentEnvironment = detectEnvironment();
                 }
 
                 function createMenuBackup(string $environment): string {
-                    // Use the improved backup function from menu-sync.php
-                    return createBackup($environment);
+                    // Use standardized backup functions
+                    $tables = ['pages', 'permission_page_matches', 'menus', 'groups_menus'];
+                    return createStandardizedBackup(
+                        'menu-system-sync',
+                        $tables,
+                        'automated',
+                        $environment
+                    );
                 }
 
                 // Import functions now available from included menu-sync.php
@@ -420,11 +429,15 @@ $currentEnvironment = detectEnvironment();
                     outputMessage($line++, "ℹ️  No menu file uploaded - recording script execution");
                 }
 
-                outputMessage($line++, "⚠️  SAFETY NOTICE: Creating backup before import...");
+                outputMessage($line++, "⚠️  SAFETY NOTICE: Creating standardized backup before import...");
                 outputMessage($line++, "This will backup: pages, permission_page_matches, menus, groups_menus tables");
                 outputMessage($line++, "");
 
                 try {
+                    // Clean up old backups first
+                    $cleanupSummary = cleanupOldBackups();
+                    outputMessage($line++, "🧹 Cleaned up old backups: {$cleanupSummary['automated']['deleted']} automated files");
+
                     // Step 1: Create backup
                     outputMessage($line++, "🔒 Creating backup of current menu system...", 15);
                     $backup_file = createMenuBackup($currentEnvironment);

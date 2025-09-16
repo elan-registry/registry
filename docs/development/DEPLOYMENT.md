@@ -36,7 +36,7 @@ git push origin main && git push origin --tags
 
 ```bash
 origin git@github.com:unibrain1/elanregistry.git    # GitHub repository
-prod a2hosting:/home/unibrain/elanregistry.project  # LIVE PRODUCTION SERVER
+prod a2hosting:/home/unibrain/git/elanregistry.git  # LIVE PRODUCTION SERVER
 ```
 
 **🔄 Deployment Rule:**
@@ -169,25 +169,43 @@ All pull requests to the `main` branch are automatically validated through a com
 
 ## 🛠️ Local Development Tools
 
-### Pre-Commit Coding Standards Hook
+### Enhanced Pre-Commit Quality Checks
 
-A **blocking pre-commit hook** automatically checks your code for standards violations before allowing commits.
+A **comprehensive pre-commit hook** automatically validates code quality and runs fast tests before allowing commits.
 
 #### Setup (One-time)
 
 ```bash
-# Install git hooks
+# Install enhanced git hooks
 ./scripts/setup-git-hooks.sh
 ```
 
 #### How It Works
 
-- **Automatic**: Runs on every `git commit`
-- **Fast**: Only checks staged PHP files
-- **Blocking**: Prevents commits with coding standard errors
-- **Helpful**: Shows specific errors with fix suggestions
+**Three-Step Process:**
+
+1. **PHP Coding Standards Check** (runs for staged PHP files):
+   - **Enhanced Security Validation**: CSRF protection, SQL injection prevention, input validation
+   - **Type Safety**: Complete PHP 8+ type declarations, strict typing
+   - **Documentation**: PHPDoc completeness with @param, @return, @throws
+   - **Architecture**: Specific exception types, proper error handling
+   - **Performance**: N+1 query detection, caching opportunities
+
+2. **Markdown Lint Check** (runs for staged .md files):
+   - **Formatting**: Header spacing, list indentation, line endings
+   - **Standards**: Consistent markdown formatting across documentation
+   - **Quality**: No trailing whitespace, proper blank line usage
+   - **Tools**: Uses `markdownlint-cli2` via npx (no installation required)
+
+3. **Fast Unit Tests** (runs when critical files modified):
+   - **Automatic**: Triggered by PHP, JSON, or test file changes
+   - **Fast**: Uses `composer test:quick` (unit tests with early failure)
+   - **Smart**: Skips if composer dependencies not installed
+   - **Comprehensive**: Validates core functionality before commit
 
 #### Manual Testing
+
+**PHP Coding Standards:**
 
 ```bash
 # Test current directory
@@ -200,6 +218,19 @@ php scripts/check-coding-standards.php app/classes/
 php scripts/check-coding-standards.php /tmp/staged --staged
 ```
 
+**Markdown Linting:**
+
+```bash
+# Test all markdown files
+npx markdownlint-cli2 "**/*.md"
+
+# Test specific files
+npx markdownlint-cli2 README.md docs/**/*.md
+
+# Test with fix suggestions
+npx markdownlint-cli2 --fix "**/*.md"
+```
+
 #### Bypass Hook (Emergency Only)
 
 ```bash
@@ -207,21 +238,52 @@ php scripts/check-coding-standards.php /tmp/staged --staged
 git commit --no-verify
 ```
 
-### What the Standards Checker Validates
+### What the Enhanced Standards Checker Validates
 
 #### ❌ **Blocking Issues**
+
+**PHP Type Safety:**
 
 - Missing `declare(strict_types=1)` in new PHP files
 - Functions without return type declarations
 - Function parameters without type hints
 - Public methods missing PHPDoc blocks
+
+**Security Violations:**
+
 - Potential SQL injection patterns (string concatenation in queries)
+- Direct output of user input (XSS vulnerability)
+- Email functions with unvalidated user input
+- Generic Exception usage (should use specific exception types)
+
+**Documentation Requirements:**
+
+- Missing @param tags in PHPDoc blocks
+- Missing @return tags for non-void functions
+- Incomplete PHPDoc documentation
 
 #### ⚠️ **Warnings**
 
+**Security Concerns:**
+
 - Forms without CSRF protection
-- SQL queries that may not use prepared statements
-- Function parameters that might need type declarations
+- Direct use of superglobals without validation
+- File uploads without proper validation
+- RuntimeException usage (consider more specific types)
+
+**Architecture Issues:**
+
+- Database operations without try-catch blocks
+- File operations without error handling
+- JSON operations without error checking
+- Catching generic Exception (catch specific types when possible)
+
+**Performance Issues:**
+
+- Potential N+1 query patterns (database queries in loops)
+- High number of database queries that could be optimized
+- Missing caching for expensive operations (API calls, file scans, aggregations)
+- Multiple complex calculations without caching
 
 ### Benefits
 

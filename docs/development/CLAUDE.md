@@ -16,6 +16,23 @@ This file provides essential guidance to Claude Code (claude.ai/code) when worki
 
 This is a PHP web application for the Lotus Elan Registry hosted at <https://elanregistry.org>. It's built on top of UserSpice (userspice.com) for user authentication and management, with custom car registry functionality.
 
+### 🔧 FIX Script Creation Guidelines
+
+**When creating FIX scripts, ALWAYS use the standardized template:**
+
+1. **Use Template**: Start with `FIX/_TEMPLATE_Fix-Script.php`
+2. **Sequential Naming**: Use format `##-Descriptive-Name.php` (e.g., `13-Fix-Something.php`)
+3. **UI Standards**: Maintain two-step process (description → start button → progress tracking)
+4. **Progress Tracking**: Use `outputMessage()` for progress updates and step indicators
+5. **Logging**: Use simple `INSERT INTO fix_script_runs (script_name) VALUES (?)` format
+6. **Database**: Always use proper transactions and error handling
+
+**Template Features:**
+- Professional UI with progress bars and status updates
+- Standardized completion summaries with statistics
+- Proper error handling and rollback capabilities
+- Consistent return navigation and logging
+
 ### Core Application Structure
 
 - `/app/` - Main application pages (car listings, details, forms, actions)
@@ -74,26 +91,63 @@ composer install
 # Install Node dependencies (for testing)
 npm install
 
-# Run PHPUnit tests
-vendor/bin/phpunit tests/
+# Setup enhanced pre-commit quality checks (RECOMMENDED)
+./scripts/setup-git-hooks.sh
 
-# Run Playwright browser tests (requires test credentials)
-npm test
+# PHP test commands (core infrastructure)
+composer test:quick        # Unit tests only (<30s)
+composer test:medium       # Unit + Integration (<2min)
+composer test:full         # All PHP tests
+composer test:coverage     # Generate coverage report
+
+# UI testing (requires setup)
+npm test                   # Shows setup requirements
+npm run playwright:install # Install Playwright browsers
+npm run playwright:test    # Run UI tests (after setup)
 ```
 
 ### Testing
 
 ```bash
-# Run specific test suites
-npm run test:security      # Security-focused tests
-npm run test:ui           # UI consistency tests
-npm run test:navigation   # Navigation and redirects
-npm run test:functionality # Core functionality
-npm run test:maps         # Maps and charts
-npm run test:csp          # CSP validation tests
+# PHP test suites (working)
+composer test:unit         # Fast unit tests
+composer test:integration  # Database integration tests
+composer test:regression   # Issue-specific regression tests
+
+# UI test suites (requires setup)
+npm run playwright:security      # Security-focused tests
+npm run playwright:ui           # UI consistency tests
+npm run playwright:navigation   # Navigation and redirects
+npm run playwright:functionality # Core functionality
+npm run playwright:maps         # Maps and charts
+npm run playwright:csp          # CSP validation tests
 ```
 
 ## 🔧 Essential Development Guidelines
+
+### Pre-commit Quality Checks (HIGHLY RECOMMENDED)
+
+**Setup once per developer:**
+
+```bash
+./scripts/setup-git-hooks.sh
+```
+
+**What it does:**
+
+- **Step 1**: PHP coding standards validation (security, types, documentation)
+- **Step 2**: Markdown linting for documentation files
+- **Step 3**: Fast unit tests when critical files are modified
+- **Blocks commits** with violations and provides fix guidance
+- **No installation required** - uses existing tools and npx
+
+**Benefits:**
+
+- Prevents PR failures by catching issues locally
+- Maintains consistent code quality across the team
+- Provides immediate feedback with actionable fix suggestions
+
+**Bypass (emergency only):** `git commit --no-verify`
 
 ### PHP 8+ Requirements
 
@@ -179,6 +233,18 @@ sessionValMessages($errors, $successes, null);
 
 This is a CRITICAL step that must NEVER be skipped when working on any code-related task.
 
+### Release Notes Requirements
+
+**ALWAYS update or create release notes when creating a pull request:**
+
+- **Update existing release notes** if the target milestone already has a RELEASE_NOTES_V[VERSION].md file
+- **Create new release notes** using the template at `docs/development/RELEASE_NOTES_TEMPLATE.md` if none exist
+- **Follow the standardized structure**: Required Actions → User-Facing Changes → Admin-Facing Changes → Issues Resolved
+- **Focus on impact and benefits**, not implementation details (those belong in GitHub issues)
+- **Include clear testing instructions** in the Required Actions section for any manual steps needed post-deployment
+
+**📋 See [RELEASE_NOTES_TEMPLATE.md](RELEASE_NOTES_TEMPLATE.md) for complete guidelines and structure**
+
 ## 🚀 Quick Deployment Reference
 
 **🚨 CRITICAL:** When deploying to production, always use the `prod` remote, NOT `origin`!
@@ -216,6 +282,7 @@ See GitHub Issues for detailed development roadmap and current work items.
 ### Chart.js Migration (Issue #285) - v2.8.1
 
 **Completed Migration from Google Charts to Chart.js:**
+
 - **Statistics Page Enhanced**: Converted to tabbed interface with lazy loading
   - Overview, Geographic, Production, Colors, Data Quality tabs
   - 11+ interactive charts with Bootstrap theming
@@ -225,6 +292,7 @@ See GitHub Issues for detailed development roadmap and current work items.
 - **Self-Hosted Solution**: Chart.js CDN configurable via Admin Panel
 
 **Key Features:**
+
 - Responsive Bootstrap-themed charts
 - Lazy loading for performance
 - Environment-based caching system

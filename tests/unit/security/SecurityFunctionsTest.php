@@ -7,6 +7,8 @@ use PHPUnit\Framework\TestCase;
 /**
  * Direct tests of security functions without full framework bootstrap
  * SECURITY: Removed eval() usage and implemented safe function definitions
+ *
+ * @group fast
  */
 class SecurityFunctionsTest extends TestCase
 {
@@ -113,6 +115,9 @@ class SecurityFunctionsTest extends TestCase
         }
     }
     
+    /**
+     * @group fast
+     */
     public function testSecureFilenameGeneration(): void
     {
         $filename1 = generateSecureFilename('jpg');
@@ -129,6 +134,9 @@ class SecurityFunctionsTest extends TestCase
         $this->assertEquals(40, strlen($filename1)); // img_ (4) + 32 hex + .jpg (4)
     }
     
+    /**
+     * @group fast
+     */
     public function testMimeTypeValidationValid(): void
     {
         // Create test files with valid MIME types
@@ -140,6 +148,9 @@ class SecurityFunctionsTest extends TestCase
         $this->assertEquals('image/png', getMimeType($pngFile));
     }
     
+    /**
+     * @group fast
+     */
     public function testMimeTypeValidationInvalid(): void
     {
         // Create test file with invalid MIME type  
@@ -151,6 +162,9 @@ class SecurityFunctionsTest extends TestCase
         getMimeType($phpFile);
     }
     
+    /**
+     * @group fast
+     */
     public function testExtensionMappingSecurity(): void
     {
         // Valid MIME types should return correct extensions
@@ -165,6 +179,9 @@ class SecurityFunctionsTest extends TestCase
         getExtension('application/x-php');
     }
     
+    /**
+     * @group fast
+     */
     public function testFileUploadSizeValidation(): void
     {
         // Test file within size limit
@@ -188,6 +205,11 @@ class SecurityFunctionsTest extends TestCase
         validateFileUpload($largeFile);
     }
     
+    /**
+     * Test file upload minimum size validation
+     *
+     * @group fast
+     */
     public function testFileUploadMinimumSize(): void
     {
         // Test file below minimum size
@@ -202,6 +224,11 @@ class SecurityFunctionsTest extends TestCase
         validateFileUpload($tinyFile);
     }
     
+    /**
+     * Test file upload error handling for various upload error codes
+     *
+     * @group fast
+     */
     public function testFileUploadErrorHandling(): void
     {
         // Test various upload errors
@@ -231,6 +258,9 @@ class SecurityFunctionsTest extends TestCase
         }
     }
     
+    /**
+     * @group slow
+     */
     public function testFilenameCollisionHandling(): void
     {
         // Generate multiple filenames - should all be unique
@@ -242,6 +272,9 @@ class SecurityFunctionsTest extends TestCase
         }
     }
     
+    /**
+     * @group slow
+     */
     public function testFilenameEntropy(): void
     {
         $filenames = [];
