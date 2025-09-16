@@ -108,6 +108,9 @@ class CodingStandardsChecker
         // Enhanced documentation checks
         $this->checkPHPDocCompleteness($filePath, $lines);
 
+        // Regression test validation
+        $this->checkRegressionTestStructure($filePath, $content, $lines);
+
         echo ".";
         if ($this->filesChecked % 50 === 0) {
             echo " $this->filesChecked\n";
@@ -478,6 +481,71 @@ class CodingStandardsChecker
     }
 
     /**
+     * Check regression test structure and issue linking
+     *
+     * @param string $filePath File path for error reporting
+     * @param string $content File content
+     * @param array $lines File lines
+     * @return void
+     */
+    private function checkRegressionTestStructure(string $filePath, string $content, array $lines): void
+    {
+        // Only check files in tests/regression/ directory
+        if (strpos($filePath, 'tests/regression/') === false) {
+            return;
+        }
+
+        // Skip template files
+        if (strpos($filePath, 'Template.php') !== false || strpos($filePath, 'README.md') !== false) {
+            return;
+        }
+
+        $filename = basename($filePath, '.php');
+
+        // Check filename pattern: Issue{Number}RegressionTest
+        if (!preg_match('/^Issue(\d+)RegressionTest$/', $filename, $matches)) {
+            $this->errors[] = "$filePath: Regression test filename must follow pattern Issue{Number}RegressionTest.php";
+            return;
+        }
+
+        $issueNumber = $matches[1];
+
+        // Check for required annotations
+        if (!preg_match('/@issue\s+' . preg_quote($issueNumber, '/') . '\b/', $content)) {
+            $this->errors[] = "$filePath: Missing @issue annotation. Add: @issue $issueNumber";
+        }
+
+        if (!preg_match('/@link\s+.*github\.com.*issues\/' . preg_quote($issueNumber, '/') . '\b/', $content)) {
+            $this->errors[] = "$filePath: Missing @link annotation. Add: @link https://github.com/unibrain1/elanregistry/issues/$issueNumber";
+        }
+
+        // Check for class name consistency
+        if (!preg_match('/class\s+Issue' . preg_quote($issueNumber, '/') . 'RegressionTest/', $content)) {
+            $this->errors[] = "$filePath: Class name must match filename: Issue{$issueNumber}RegressionTest";
+        }
+
+        // Check for test method naming pattern (warning only)
+        if (!preg_match('/testIssue' . preg_quote($issueNumber, '/') . '_/', $content)) {
+            $this->warnings[] = "$filePath: Consider using test method pattern: testIssue{$issueNumber}_SpecificBehavior()";
+        }
+
+        // Check for issue description in PHPDoc
+        if (!preg_match('/\*\s*(Description|GitHub Issue):\s*.*\b' . preg_quote($issueNumber, '/') . '\b/', $content)) {
+            $this->warnings[] = "$filePath: Consider adding issue description in PHPDoc comment";
+        }
+
+        // Check that test extends TestCase
+        if (!preg_match('/extends\s+TestCase/', $content)) {
+            $this->errors[] = "$filePath: Regression test must extend PHPUnit\\Framework\\TestCase";
+        }
+
+        // Check for proper namespace/use statements
+        if (!preg_match('/use\s+PHPUnit\\\Framework\\\TestCase/', $content)) {
+            $this->warnings[] = "$filePath: Consider using explicit PHPUnit\\Framework\\TestCase import";
+        }
+    }
+
+    /**
      * Print results summary
      *
      * @param bool $isStaged Whether this is for staged files
@@ -530,7 +598,9 @@ class CodingStandardsChecker
         echo "• Use specific exception types instead of generic Exception\n";
         echo "• Wrap risky operations (DB, file, JSON) in try-catch blocks\n";
         echo "• Optimize N+1 queries with JOINs or batch operations\n";
-        echo "• Cache expensive operations (API calls, aggregations, file scans)\n\n";
+        echo "• Cache expensive operations (API calls, aggregations, file scans)\n";
+        echo "• For regression tests: Add @issue and @link annotations\n";
+        echo "• Use regression test template: tests/regression/RegressionTestTemplate.php\n\n";
     }
 }
 

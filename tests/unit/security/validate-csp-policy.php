@@ -1,4 +1,7 @@
 <?php
+
+declare(strict_types=1);
+
 /**
  * CSP Policy Validation Tool
  * 
@@ -79,7 +82,7 @@ class CSPPolicyValidator {
     /**
      * Load CSP policy from security headers file
      */
-    private function loadCSPPolicy() {
+    private function loadCSPPolicy(): void {
         $securityHeadersFile = __DIR__ . '/../usersc/includes/security_headers.php';
         
         if (!file_exists($securityHeadersFile)) {
@@ -137,7 +140,7 @@ class CSPPolicyValidator {
     /**
      * Construct CSP policy by analyzing the security headers file
      */
-    private function constructPolicyFromFile($filePath) {
+    private function constructPolicyFromFile(string $filePath): ?string {
         $content = file_get_contents($filePath);
         if (!$content) {
             return '';
@@ -176,8 +179,10 @@ class CSPPolicyValidator {
     
     /**
      * Validate the CSP policy
+     *
+     * @return bool True if validation passes, false otherwise
      */
-    public function validate() {
+    public function validate(): bool {
         if (empty($this->cspPolicy)) {
             $this->errors[] = "No CSP policy found to validate";
             return false;
@@ -203,7 +208,7 @@ class CSPPolicyValidator {
     /**
      * Parse CSP policy into directive arrays
      */
-    private function parseCSPDirectives($policy) {
+    private function parseCSPDirectives(string $policy): array {
         $directives = [];
         $parts = explode(';', $policy);
         
@@ -224,7 +229,7 @@ class CSPPolicyValidator {
     /**
      * Validate a specific CSP directive
      */
-    private function validateDirective($directiveName, $requiredDomains, $directives) {
+    private function validateDirective(string $directiveName, array $requiredDomains, array $directives): void {
         echo "📋 Checking $directiveName directive...\n";
         
         if (!isset($directives[$directiveName])) {
@@ -270,7 +275,7 @@ class CSPPolicyValidator {
     /**
      * Validate basic security requirements
      */
-    private function validateSecurityRequirements($directives) {
+    private function validateSecurityRequirements(array $directives): void {
         echo "\n🔒 Checking security requirements...\n";
         
         // Check for 'self' in critical directives
@@ -301,7 +306,7 @@ class CSPPolicyValidator {
     /**
      * Generate validation report
      */
-    private function generateReport() {
+    private function generateReport(): void {
         echo "\n" . str_repeat("=", 60) . "\n";
         echo "📊 CSP VALIDATION REPORT\n";
         echo str_repeat("=", 60) . "\n";

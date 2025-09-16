@@ -14,7 +14,7 @@ if ($_POST['action'] == 'update_car') {
     $car_id = (int)$_POST['car_id'];
     $make = $_POST['make'];
 
-    // Direct database update without CSRF protection
+    // Direct database update without CSRF protection (but using prepared statement)
     $db->query("UPDATE cars SET make = ? WHERE id = ?", [$make, $car_id]);
 
     echo "Car updated successfully";

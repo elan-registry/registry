@@ -9,15 +9,50 @@
          backupGlobals="false">
     
     <testsuites>
-        <!-- Fast unit tests that can run with mocks (<30s) -->
+        <!-- Fast unit tests organized by domain (<30s) -->
         <testsuite name="Unit">
             <directory>tests/unit</directory>
             <exclude>tests/run_tests.php</exclude>
         </testsuite>
 
+
+        <!-- Unit tests by domain -->
+        <testsuite name="Unit.Cars">
+            <directory>tests/unit/cars</directory>
+        </testsuite>
+
+        <testsuite name="Unit.Users">
+            <directory>tests/unit/users</directory>
+        </testsuite>
+
+        <testsuite name="Unit.Security">
+            <directory>tests/unit/security</directory>
+        </testsuite>
+
+        <testsuite name="Unit.Uploads">
+            <directory>tests/unit/uploads</directory>
+        </testsuite>
+
+        <testsuite name="Unit.System">
+            <directory>tests/unit/system</directory>
+        </testsuite>
+
         <!-- Database integration tests (run separately with real DB) -->
         <testsuite name="Integration">
             <directory>tests/integration</directory>
+        </testsuite>
+
+        <!-- Integration tests by feature -->
+        <testsuite name="Integration.Database">
+            <directory>tests/integration/database</directory>
+        </testsuite>
+
+        <testsuite name="Integration.API">
+            <directory>tests/integration/api</directory>
+        </testsuite>
+
+        <testsuite name="Integration.Workflow">
+            <directory>tests/integration/workflow</directory>
         </testsuite>
 
         <!-- Issue-specific regression tests -->

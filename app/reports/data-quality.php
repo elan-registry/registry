@@ -141,7 +141,7 @@ function getDataQualityReports($db) {
     
     // Report 1: Missing Chassis Numbers
     $missingChassisQ = $db->query("
-        SELECT c.id, c.model, c.series, c.year, c.chassis, c.username, c.mtime,
+        SELECT c.id, c.model, c.series, c.year, c.chassis, c.mtime,
                u.fname, u.lname, u.email
         FROM cars c 
         LEFT JOIN car_user cu ON c.id = cu.car_id

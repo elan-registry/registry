@@ -7,8 +7,10 @@ use PHPUnit\Framework\TestCase;
 /**
  * Regression test for Issue #317: Core test infrastructure and organization
  *
- * GitHub Issue: #317
- * Description: Test infrastructure reorganization and fast test execution
+ * @issue 317
+ * @link https://github.com/unibrain1/elanregistry/issues/317
+ * @description Test infrastructure reorganization and fast test execution
+ * @category infrastructure
  *
  * This test ensures that the test infrastructure implemented in #317
  * continues to work correctly in future code changes.

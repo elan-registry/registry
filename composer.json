@@ -22,6 +22,17 @@
         "test:coverage": "vendor/bin/phpunit --testsuite=All --coverage-html=coverage",
         "test:unit": "vendor/bin/phpunit --testsuite=Unit",
         "test:integration": "vendor/bin/phpunit --testsuite=Integration",
-        "test:regression": "vendor/bin/phpunit --testsuite=Regression"
+        "test:regression": "vendor/bin/phpunit --testsuite=Regression",
+        "test:cars": "vendor/bin/phpunit --testsuite=Unit.Cars",
+        "test:users": "vendor/bin/phpunit --testsuite=Unit.Users",
+        "test:security": "vendor/bin/phpunit --testsuite=Unit.Security",
+        "test:uploads": "vendor/bin/phpunit --testsuite=Unit.Uploads",
+        "test:system": "vendor/bin/phpunit --testsuite=Unit.System",
+        "test:database": "vendor/bin/phpunit --testsuite=Integration.Database",
+        "test:api": "vendor/bin/phpunit --testsuite=Integration.API",
+        "test:workflow": "vendor/bin/phpunit --testsuite=Integration.Workflow",
+        "test:fast": "vendor/bin/phpunit --group=fast",
+        "test:slow": "vendor/bin/phpunit --group=slow",
+        "test:db": "vendor/bin/phpunit --group=database"
     }
 }
