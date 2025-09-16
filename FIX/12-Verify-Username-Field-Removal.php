@@ -391,11 +391,10 @@ $line = 1; // Where messages go
 
                             // Check for username column references
                             if (stripos($viewDef, '`username`') !== false || stripos($viewDef, 'username') !== false) {
-                                // Check if this is a deprecated view (usersview, users_carsview) with username
-                                if (in_array($viewName, ['usersview', 'users_carsview']) &&
-                                    (stripos($viewDef, 'cars.username') !== false || stripos($viewDef, 'cars_hist.username') !== false)) {
+                                // Check if this is a deprecated view (usersview, users_carsview)
+                                if (in_array($viewName, ['usersview', 'users_carsview'])) {
                                     $deprecatedViews++;
-                                    outputMessage($line++, "ℹ️ DEPRECATED: View '$viewName' contains deprecated username references but remains due to privilege limitations");
+                                    outputMessage($line++, "ℹ️ DEPRECATED: View '$viewName' contains username references but remains due to privilege limitations - not used by application");
                                 } elseif (stripos($viewDef, 'cars.username') !== false ||
                                     (stripos($viewDef, 'username') !== false && stripos($viewDef, 'users.username') === false && stripos($viewDef, 'u.username') === false)) {
                                     // Other views with cars.username references would still be concerning

@@ -383,21 +383,12 @@ $line = 1; // Where messages go
                                             // Remove from cars table if column exists
                                             if ($carsHasColumn) {
                                                 outputMessage($line++, "Step 5a: Dropping username column from cars table...", 65);
-                                                try {
-                                                    $dropResult = $db->query("ALTER TABLE cars DROP COLUMN username");
-                                                    if ($db->error()) {
-                                                        throw new Exception("Failed to drop username column from cars table: " . $db->errorString());
-                                                    }
-                                                    outputMessage($line++, "✅ Username column successfully removed from cars table", 70);
-                                                    $removedTables[] = 'cars';
-                                                } catch (Exception $e) {
-                                                    // Check if error is because column doesn't exist
-                                                    if (strpos($e->getMessage(), "check that column/key exists") !== false) {
-                                                        outputMessage($line++, "✅ Cars table username column already removed", 70);
-                                                    } else {
-                                                        throw $e; // Re-throw if it's a different error
-                                                    }
+                                                $dropResult = $db->query("ALTER TABLE cars DROP COLUMN username");
+                                                if ($db->error()) {
+                                                    throw new Exception("Failed to drop username column from cars table: " . $db->errorString());
                                                 }
+                                                outputMessage($line++, "✅ Username column successfully removed from cars table", 70);
+                                                $removedTables[] = 'cars';
                                             } else {
                                                 outputMessage($line++, "✅ Cars table username column already removed", 70);
                                             }
