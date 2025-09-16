@@ -13,13 +13,13 @@
    - Navigate to `/FIX/index.php` in browser
    - Run "07-Remove-Deprecated-Username-Column" script
    - Verify progress bar updates correctly (0% to 100%)
-   - Confirm successful removal of:
-     - Username columns from `cars` and `cars_hist` tables
-     - Unused database views (`usersview`, `users_carsview`)
+   - Confirm successful removal of username columns from `cars` and `cars_hist` tables
+   - **Note:** Database views (`usersview`, `users_carsview`) remain due to privilege limitations but are deprecated and unused
 
 2. **Verify with FIX/12** *(via web interface)*
    - Run "12-Verify-Username-Field-Removal" script
    - Confirm comprehensive verification passes
+   - Verify deprecated views are properly documented
 
 3. **Test Application Functionality**
    - Test car management in `/app/cars/manage.php`
@@ -32,6 +32,7 @@
 - ⏳ No username columns in database tables *(PENDING - requires FIX/07)*
 - ⏳ All database cleanup verified *(PENDING - requires FIX/12)*
 - ⏳ Application functionality fully tested *(PENDING - post-cleanup)*
+- ⚠️ Database views remain but are deprecated and unused *(privilege limitation)*
 
 ## 👤 User-Facing Changes
 
@@ -113,7 +114,7 @@
 ### Database & Administrative Tools
 
 [#319](https://github.com/unibrain1/elanregistry/issues/319) - [Bug]: Deprecated username field is still in use
-[#320](https://github.com/unibrain1/elanregistry/issues/320) - [Database]: Drop unused database views usersview and users_carsview
+[#320](https://github.com/unibrain1/elanregistry/issues/320) - [Database]: Drop unused database views usersview and users_carsview *(views remain due to privilege limitations but are deprecated)*
 [#308](https://github.com/unibrain1/elanregistry/issues/308) - FIX Script Index: Hide backup files and implement consistent backup file management
 
 This release represents a fundamental modernization of the Elan Registry's development and deployment infrastructure, establishing enterprise-grade practices for future development cycles.

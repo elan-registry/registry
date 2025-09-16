@@ -242,7 +242,9 @@ MODIFY COLUMN `redirect_uri_after_login` text DEFAULT NULL;
 -- 3. DATABASE VIEWS
 -- =============================================================================
 
--- Users view: Optimized view for user queries
+-- DEPRECATED VIEW: Users view (contains deprecated username references)
+-- NOTE: This view remains due to privilege limitations but should not be used
+-- All functionality moved to direct table queries via car_user junction table
 CREATE OR REPLACE VIEW `usersview` AS
 SELECT 
     u.id,
@@ -265,7 +267,9 @@ LEFT JOIN car_user cu ON u.id = cu.user_id AND cu.active = 1
 GROUP BY u.id, u.username, u.email, u.fname, u.lname, u.created, u.active,
          p.city, p.state, p.country, p.lat, p.lon, p.website;
 
--- Users cars view: Combined user-car relationship view
+-- DEPRECATED VIEW: Users cars view (contains deprecated username references)
+-- NOTE: This view remains due to privilege limitations but should not be used
+-- All functionality moved to direct table queries via car_user junction table
 CREATE OR REPLACE VIEW `users_carsview` AS
 SELECT 
     u.id as user_id,

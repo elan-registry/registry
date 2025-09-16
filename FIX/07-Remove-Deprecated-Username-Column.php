@@ -9,7 +9,8 @@ declare(strict_types=1);
  * Issue #319: Deprecated username field is still in use
  *
  * This script removes the deprecated username column from both the cars table and
- * cars_hist audit table, and drops unused database views that reference username.
+ * cars_hist audit table. NOTE: Database views (usersview, users_carsview) remain
+ * due to privilege limitations but are deprecated and unused by the application.
  * The username field is no longer used by the application. All car ownership
  * relationships are now properly handled through the car_user junction table.
  *
@@ -97,7 +98,7 @@ $line = 1; // Where messages go
                             </h2>
                         </div>
                         <div class="card-body">
-                            <p class="mb-3">This script removes the deprecated username field from cars and cars_hist tables, and drops unused database views that reference username. The username field is no longer used by the application as all car ownership relationships are now properly handled through the car_user junction table.</p>
+                            <p class="mb-3">This script removes the deprecated username field from cars and cars_hist tables. <strong>Note:</strong> Database views (usersview, users_carsview) remain due to privilege limitations but are deprecated and unused by the application. The username field is no longer used as all car ownership relationships are now properly handled through the car_user junction table.</p>
 
                             <div class="alert alert-info">
                                 <h5><i class="fa fa-info-circle"></i> What this script does:</h5>
@@ -314,9 +315,10 @@ $line = 1; // Where messages go
                                         $existingViews[] = $view->TABLE_NAME;
                                     }
 
-                                    if (!$carsHasColumn && !$histHasColumn && empty($existingViews)) {
-                                        outputMessage($line++, "✅ Username columns and views do not exist - migration already completed or unnecessary", 100);
-                                        echo "<div class='success-message'><strong>RESULT:</strong> No action needed - username columns and views not found</div>";
+                                    if (!$carsHasColumn && !$histHasColumn) {
+                                        $viewStatus = !empty($existingViews) ? " (deprecated views remain but are unused)" : "";
+                                        outputMessage($line++, "✅ Username columns do not exist - migration already completed$viewStatus", 100);
+                                        echo "<div class='success-message'><strong>RESULT:</strong> No action needed - username columns not found$viewStatus</div>";
                                     } else {
                                         outputMessage($line++, "✅ Found items to remove - cars: " . ($carsHasColumn ? "YES" : "NO") . ", cars_hist: " . ($histHasColumn ? "YES" : "NO") . ", views: " . implode(', ', $existingViews), 20);
 
@@ -433,29 +435,14 @@ $line = 1; // Where messages go
                                                 outputMessage($line++, "✅ Verified: username column removed from cars_hist table", 90);
                                             }
 
-                                            // Step 7: Drop unused database views
+                                            // Step 7: Document deprecated database views (cannot drop due to privilege limitations)
                                             if (!empty($existingViews)) {
-                                                outputMessage($line++, "=== Step 7: Dropping unused database views ===", 95);
+                                                outputMessage($line++, "=== Step 7: Documenting deprecated database views ===", 95);
                                                 foreach ($existingViews as $viewName) {
-                                                    outputMessage($line++, "Dropping view: $viewName", 96);
-                                                    $dropViewResult = $db->query("DROP VIEW IF EXISTS `$viewName`");
-                                                    if ($db->error()) {
-                                                        throw new Exception("Failed to drop view $viewName: " . $db->errorString());
-                                                    }
-                                                    outputMessage($line++, "✅ View $viewName successfully dropped", 98);
+                                                    outputMessage($line++, "⚠️ View '$viewName' remains but is deprecated and unused", 96);
                                                 }
-
-                                                // Verify views were dropped
-                                                $verifyViewsGone = $db->query("
-                                                    SELECT TABLE_NAME
-                                                    FROM information_schema.VIEWS
-                                                    WHERE TABLE_SCHEMA = DATABASE()
-                                                    AND TABLE_NAME IN ('usersview', 'users_carsview')
-                                                ");
-                                                if ($verifyViewsGone->count() > 0) {
-                                                    throw new Exception("Some views still exist after drop attempt");
-                                                }
-                                                outputMessage($line++, "✅ Verified: all target views successfully dropped", 99);
+                                                outputMessage($line++, "ℹ️ Views cannot be dropped due to SYSTEM_USER privilege requirement", 97);
+                                                outputMessage($line++, "✅ Views documented as deprecated - application no longer uses them", 99);
                                             }
 
                                             if ($allRemoved) {
@@ -475,7 +462,7 @@ $line = 1; // Where messages go
                                                 // Build completed items summary
                                                 $completedItems = [];
                                                 if (in_array('cars_hist', $removedTables)) $completedItems[] = 'cars_hist table';
-                                                if (!empty($existingViews)) $completedItems[] = count($existingViews) . ' database views';
+                                                if (!empty($existingViews)) $completedItems[] = count($existingViews) . ' database views (deprecated but remain due to privilege limitations)';
                                                 if (empty($completedItems)) $completedItems[] = 'no changes needed';
 
                                                 // Show completion summary using template function

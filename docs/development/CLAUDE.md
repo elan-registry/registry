@@ -63,7 +63,7 @@ This is a PHP web application for the Lotus Elan Registry hosted at <https://ela
 - MySQL database with comprehensive car registry schema
 - `cars` table for vehicle records with full audit trail via `cars_hist`
 - `car_user` junction table for car sharing between users
-- Views: `usersview`, `users_carsview` for complex queries
+- **DEPRECATED VIEWS**: `usersview`, `users_carsview` remain due to privilege limitations but are unused (contains deprecated username references)
 - Database triggers automatically maintain audit trails
 
 ### Key Application Files
