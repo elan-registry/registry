@@ -31,7 +31,7 @@ function getDataQualityReports($db) {
     
     // Owner Report 1: Car Owners Missing Critical Information
     $ownersWithMissingInfoQ = $db->query("
-        SELECT u.id, u.username, u.fname, u.lname, u.email, u.join_date, u.last_login,
+        SELECT u.id, u.fname, u.lname, u.email, u.join_date, u.last_login,
                p.city, p.state, p.country, p.lat, p.lon,
                COUNT(cu.car_id) as car_count,
                CASE WHEN u.fname IS NULL OR u.fname = '' THEN 1 ELSE 0 END +
@@ -53,7 +53,7 @@ function getDataQualityReports($db) {
             (p.city IS NULL OR p.city = '') OR
             (p.lat IS NULL OR p.lon IS NULL)
         )
-        GROUP BY u.id, u.username, u.fname, u.lname, u.email, u.join_date, u.last_login, p.city, p.state, p.country, p.lat, p.lon
+        GROUP BY u.id, u.fname, u.lname, u.email, u.join_date, u.last_login, p.city, p.state, p.country, p.lat, p.lon
         ORDER BY missing_count DESC, car_count DESC, u.last_login DESC
     ");
     $reports['owners_missing_info'] = [
@@ -68,7 +68,7 @@ function getDataQualityReports($db) {
     
     // Owner Report 2: Inactive Users with Cars
     $inactiveOwnersQ = $db->query("
-        SELECT u.id, u.username, u.fname, u.lname, u.email, u.join_date, u.last_login,
+        SELECT u.id, u.fname, u.lname, u.email, u.join_date, u.last_login,
                p.city, p.state, p.country,
                COUNT(cu.car_id) as car_count,
                DATEDIFF(NOW(), u.last_login) as days_since_login
@@ -80,7 +80,7 @@ function getDataQualityReports($db) {
             u.last_login = '0000-00-00 00:00:00' OR
             u.last_login < DATE_SUB(NOW(), INTERVAL 2 YEAR)
         )
-        GROUP BY u.id, u.username, u.fname, u.lname, u.email, u.join_date, u.last_login, p.city, p.state, p.country
+        GROUP BY u.id, u.fname, u.lname, u.email, u.join_date, u.last_login, p.city, p.state, p.country
         ORDER BY car_count DESC, u.join_date DESC
     ");
     $reports['inactive_owners'] = [
@@ -95,7 +95,7 @@ function getDataQualityReports($db) {
     
     // Owner Report 3: Users Without Cars
     $usersWithoutCarsQ = $db->query("
-        SELECT u.id, u.username, u.fname, u.lname, u.email, u.join_date, u.last_login,
+        SELECT u.id, u.fname, u.lname, u.email, u.join_date, u.last_login,
                p.city, p.state, p.country,
                DATEDIFF(NOW(), u.join_date) as days_since_join,
                CASE WHEN u.last_login IS NULL OR u.last_login = '0000-00-00 00:00:00' THEN 'Never' 
@@ -162,7 +162,7 @@ function getDataQualityReports($db) {
     // Report 2: Invalid Chassis Numbers (using centralized validator)
     $invalidChassisData = [];
     $chassisCheckQ = $db->query("
-        SELECT c.id, c.model, c.series, c.year, c.chassis, c.username, c.mtime,
+        SELECT c.id, c.model, c.series, c.year, c.chassis, c.mtime,
                u.fname, u.lname, u.email
         FROM cars c 
         LEFT JOIN car_user cu ON c.id = cu.car_id
@@ -194,7 +194,7 @@ function getDataQualityReports($db) {
     
     // Report 3: Invalid Model Data
     $invalidModelQ = $db->query("
-        SELECT c.id, c.model, c.series, c.year, c.chassis, c.username, c.mtime,
+        SELECT c.id, c.model, c.series, c.year, c.chassis, c.mtime,
                u.fname, u.lname, u.email
         FROM cars c 
         LEFT JOIN car_user cu ON c.id = cu.car_id
@@ -214,7 +214,7 @@ function getDataQualityReports($db) {
     
     // Report 4: Missing Series Data
     $missingSeriesQ = $db->query("
-        SELECT c.id, c.model, c.series, c.year, c.chassis, c.username, c.mtime,
+        SELECT c.id, c.model, c.series, c.year, c.chassis, c.mtime,
                u.fname, u.lname, u.email
         FROM cars c 
         LEFT JOIN car_user cu ON c.id = cu.car_id
@@ -234,9 +234,8 @@ function getDataQualityReports($db) {
     
     // Report 5: Multiple Critical Missing Fields
     $multipleMissingQ = $db->query("
-        SELECT c.id, c.model, c.series, c.year, c.chassis, c.username, c.mtime,
+        SELECT c.id, c.model, c.series, c.year, c.chassis, c.mtime,
                u.fname, u.lname, u.email,
-               CASE WHEN c.username IS NULL OR c.username = '' THEN 1 ELSE 0 END +
                CASE WHEN c.series IS NULL OR c.series = '' THEN 1 ELSE 0 END +
                CASE WHEN c.chassis IS NULL OR c.chassis = '' THEN 1 ELSE 0 END +
                CASE WHEN c.model = '||' THEN 1 ELSE 0 END as missing_count
@@ -256,39 +255,6 @@ function getDataQualityReports($db) {
         'impact' => 'Critical - Severely impacts display and functionality'
     ];
     
-    // Report 6: Deprecated Username Field Analysis
-    $deprecatedUsernameQ = $db->query("
-        SELECT COUNT(*) as total_cars, 
-               COUNT(CASE WHEN username IS NULL OR username = '' THEN 1 END) as missing_username,
-               COUNT(CASE WHEN username IS NOT NULL AND username != '' THEN 1 END) as has_username
-        FROM cars
-    ");
-    $usernameResults = $deprecatedUsernameQ->results();
-    $usernameStats = !empty($usernameResults) ? $usernameResults[0] : null;
-    
-    // Check car_user relationships
-    $carUserRelationsQ = $db->query("
-        SELECT COUNT(DISTINCT c.id) as cars_with_relations
-        FROM cars c 
-        INNER JOIN car_user cu ON c.id = cu.car_id
-        WHERE c.username IS NULL OR c.username = ''
-    ");
-    $relationResults = $carUserRelationsQ->results();
-    $relationStats = !empty($relationResults) ? $relationResults[0] : null;
-    
-    $reports['deprecated_username'] = [
-        'title' => 'Deprecated Username Field Analysis',
-        'description' => 'Analysis of legacy username field usage vs modern car_user relationships',
-        'icon' => 'fas fa-archive',
-        'severity' => 'info', 
-        'count' => $usernameStats ? $usernameStats->missing_username : 0,
-        'total_cars' => $usernameStats ? $usernameStats->total_cars : 0,
-        'cars_with_username' => $usernameStats ? $usernameStats->has_username : 0,
-        'cars_with_relations' => $relationStats ? $relationStats->cars_with_relations : 0,
-        'data' => [],
-        'impact' => 'Low - Field is deprecated but does not affect functionality'
-    ];
-    
     return $reports;
 }
 
@@ -299,7 +265,7 @@ $totalIssues = 0;
 $ownerIssues = 0;
 $carIssues = 0;
 foreach ($dataQualityReports as $key => $report) {
-    if ($key !== 'deprecated_username' && $key !== 'users_without_cars') { // Don't count these as critical "issues"
+    if ($key !== 'users_without_cars') { // Don't count these as critical "issues"
         $totalIssues += $report['count'];
         // Categorize issues
         if (in_array($key, ['owners_missing_info', 'inactive_owners', 'duplicate_emails'])) {
@@ -395,7 +361,6 @@ foreach ($dataQualityReports as $key => $report) {
                                             <?php if ($dataQualityReports['users_without_cars']['count'] > 20) { ?>
                                                 <li><i class="fas fa-arrow-right text-info"></i> Encourage car registration among new users</li>
                                             <?php } ?>
-                                            <li><i class="fas fa-arrow-right text-info"></i> Consider removing deprecated username field</li>
                                             <li><i class="fas fa-arrow-right text-info"></i> Set up regular data quality monitoring</li>
                                         </ul>
                                     </div>
@@ -412,7 +377,7 @@ foreach ($dataQualityReports as $key => $report) {
                     <h2 class="h4 mb-3 text-success"><i class="fas fa-car"></i> Car Quality Reports</h2>
                 </div>
                 <?php foreach ($dataQualityReports as $key => $report) { ?>
-                    <?php if (in_array($key, ['owners_missing_info', 'inactive_owners', 'users_without_cars', 'duplicate_emails', 'deprecated_username'])) continue; ?>
+                    <?php if (in_array($key, ['owners_missing_info', 'inactive_owners', 'users_without_cars', 'duplicate_emails'])) continue; ?>
                     <div class="col-lg-3 col-md-6 mb-3">
                         <div class="card registry-card border-<?= $report['severity'] ?> h-100">
                             <div class="card-body text-center">
@@ -462,7 +427,7 @@ foreach ($dataQualityReports as $key => $report) {
 
             <!-- Detailed Reports -->
             <?php foreach ($dataQualityReports as $key => $report) { ?>
-                <?php if ($report['count'] > 0 || $key === 'deprecated_username') { ?>
+                <?php if ($report['count'] > 0) { ?>
                     <div class="row mb-4" id="report-<?= $key ?>">
                         <div class="col-12">
                             <div class="card registry-card border-<?= $report['severity'] ?>">
@@ -482,34 +447,7 @@ foreach ($dataQualityReports as $key => $report) {
                                     <div class="card-body">
                                     <p class="card-text mb-3"><?= $report['description'] ?></p>
                                     
-                                    <?php if ($key === 'deprecated_username') { ?>
-                                        <!-- Special handling for deprecated username analysis -->
-                                        <div class="row">
-                                            <div class="col-md-4">
-                                                <div class="text-center p-3 border rounded">
-                                                    <h3 class="text-primary"><?= $report['total_cars'] ?></h3>
-                                                    <small class="text-muted">Total Cars</small>
-                                                </div>
-                                            </div>
-                                            <div class="col-md-4">
-                                                <div class="text-center p-3 border rounded">
-                                                    <h3 class="text-warning"><?= $report['count'] ?></h3>
-                                                    <small class="text-muted">Missing Username</small>
-                                                </div>
-                                            </div>
-                                            <div class="col-md-4">
-                                                <div class="text-center p-3 border rounded">
-                                                    <h3 class="text-success"><?= $report['cars_with_relations'] ?></h3>
-                                                    <small class="text-muted">With car_user Relations</small>
-                                                </div>
-                                            </div>
-                                        </div>
-                                        <div class="alert alert-info mt-3">
-                                            <h6 class="alert-heading"><i class="fas fa-info-circle"></i> Analysis Summary</h6>
-                                            <p class="mb-0">All <?= $report['cars_with_relations'] ?> cars without username have proper relationships in the car_user table. The username field appears to be deprecated and can be safely removed. See <a href="https://github.com/unibrain1/elanregistry/issues/238" target="_blank">GitHub Issue #238</a> for removal plan.</p>
-                                        </div>
-                                        
-                                    <?php } elseif ($report['count'] > 0) { ?>
+                                    <?php if ($report['count'] > 0) { ?>
                                         <?php if ($key === 'inactive_owners') { ?>
                                             <!-- Summary for inactive owners - no table shown -->
                                             <div class="alert alert-info">
@@ -616,7 +554,6 @@ foreach ($dataQualityReports as $key => $report) {
                                                                     <?php } else { ?>
                                                                         <span class="badge badge-warning">Missing Name</span>
                                                                     <?php } ?>
-                                                                    <br><small class="text-muted"><?= htmlspecialchars($owner->username) ?></small>
                                                                 </td>
                                                                 <td>
                                                                     <a href="mailto:<?= htmlspecialchars($owner->email) ?>" class="btn btn-sm btn-outline-secondary">
@@ -742,8 +679,6 @@ foreach ($dataQualityReports as $key => $report) {
                                                             <td>
                                                                 <?php if ($car->fname && $car->lname) { ?>
                                                                     <?= htmlspecialchars($car->fname . ' ' . $car->lname) ?>
-                                                                <?php } elseif ($car->username) { ?>
-                                                                    <?= htmlspecialchars($car->username) ?>
                                                                 <?php } else { ?>
                                                                     <span class="text-muted">No owner</span>
                                                                 <?php } ?>

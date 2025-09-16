@@ -75,7 +75,6 @@ if (Input::exists('post')) {
                     $targetUser = $userData[0];
                     $fields['user_id']   = $targetUser->id;
                     $fields['email']     = $targetUser->email ?? '';
-                    $fields['username']  = $targetUser->username ?? '';
                     $fields['fname']     = $targetUser->fname ?? '';
                     $fields['lname']     = $targetUser->lname ?? '';
                     $fields['join_date'] = $targetUser->join_date ?? date('Y-m-d G:i:s');
@@ -368,7 +367,6 @@ if (Input::exists('post')) {
                             'success' => true,
                             'user' => [
                                 'id' => $user->id,
-                                'username' => $user->username,
                                 'fname' => $user->fname,
                                 'lname' => $user->lname,
                                 'email' => $user->email,
@@ -1503,7 +1501,7 @@ $(document).ready(function() {
                 const joinDate = new Date(user.join_date).toLocaleDateString();
                 
                 $('#userInfo').html(
-                    `<strong>${userName}</strong> (${user.username})<br>` +
+                    `<strong>${userName}</strong><br>` +
                     `Email: ${user.email}<br>` +
                     `Location: ${location}<br>` +
                     `Member since: ${joinDate}`
@@ -1549,7 +1547,6 @@ $(document).ready(function() {
                 id: 83,
                 fname: 'No',
                 lname: 'Owner',
-                username: 'noowner',
                 email: 'noowner@example.com',
                 city: null,
                 state: null,
