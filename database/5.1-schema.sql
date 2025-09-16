@@ -177,16 +177,9 @@ CREATE TABLE `parts` (
 CREATE TABLE `fix_script_runs` (
   `id` int(11) NOT NULL AUTO_INCREMENT,
   `script_name` varchar(255) NOT NULL,
-  `run_date` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  `run_by` int(11) DEFAULT NULL,
-  `status` varchar(20) NOT NULL DEFAULT 'completed',
-  `notes` text DEFAULT NULL,
-  `execution_time` int(11) DEFAULT NULL,
+  `completed_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),
-  UNIQUE KEY `script_name` (`script_name`),
-  KEY `run_date` (`run_date`),
-  KEY `run_by` (`run_by`),
-  KEY `status` (`status`)
+  KEY `idx_script_name` (`script_name`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 -- =============================================================================

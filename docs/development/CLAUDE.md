@@ -16,6 +16,23 @@ This file provides essential guidance to Claude Code (claude.ai/code) when worki
 
 This is a PHP web application for the Lotus Elan Registry hosted at <https://elanregistry.org>. It's built on top of UserSpice (userspice.com) for user authentication and management, with custom car registry functionality.
 
+### 🔧 FIX Script Creation Guidelines
+
+**When creating FIX scripts, ALWAYS use the standardized template:**
+
+1. **Use Template**: Start with `FIX/_TEMPLATE_Fix-Script.php`
+2. **Sequential Naming**: Use format `##-Descriptive-Name.php` (e.g., `13-Fix-Something.php`)
+3. **UI Standards**: Maintain two-step process (description → start button → progress tracking)
+4. **Progress Tracking**: Use `outputMessage()` for progress updates and step indicators
+5. **Logging**: Use simple `INSERT INTO fix_script_runs (script_name) VALUES (?)` format
+6. **Database**: Always use proper transactions and error handling
+
+**Template Features:**
+- Professional UI with progress bars and status updates
+- Standardized completion summaries with statistics
+- Proper error handling and rollback capabilities
+- Consistent return navigation and logging
+
 ### Core Application Structure
 
 - `/app/` - Main application pages (car listings, details, forms, actions)

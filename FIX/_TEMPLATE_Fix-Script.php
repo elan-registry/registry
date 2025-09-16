@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 /**
  * [SCRIPT_NAME] Script
  *
@@ -15,6 +17,12 @@
  * 4. Use sequential numbering (01, 02, 03...) for proper execution order
  * 5. Return buttons automatically detect new window vs direct navigation
  * 6. See FIX/README.md for detailed instructions and best practices
+ *
+ * TEMPLATE USAGE:
+ * - Always use this template for consistent UI/UX across all FIX scripts
+ * - Replace [PLACEHOLDERS] with appropriate content for your script
+ * - Maintain the two-step process: description card + start button + progress tracking
+ * - Use outputMessage() for progress updates and addLogMessage() for detailed logging
  */
 ini_set('display_errors', 1);
 ini_set('display_startup_errors', 1);

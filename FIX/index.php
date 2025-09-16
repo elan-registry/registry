@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 /**
  * FIX Directory Index
  *
@@ -135,14 +137,14 @@ function getScriptRunStatus($scriptName) {
     try {
         // Check if this script has a completion record
         $result = $db->query("SELECT completed_at FROM fix_script_runs WHERE script_name = ? ORDER BY completed_at DESC LIMIT 1", [$scriptName]);
-        
+
         if ($result->count() > 0) {
             return [
                 'has_run' => true,
                 'last_run' => $result->first()->completed_at
             ];
         }
-        
+
         return ['has_run' => false, 'last_run' => null];
         
     } catch (Exception) {
