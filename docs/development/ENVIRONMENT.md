@@ -66,6 +66,12 @@ The Elan Registry uses **SecureEnvPHP** for encrypted environment variable manag
    composer require johnathanmiller/secure-env-php
    ```
 
+2. **MySQL Access** (MAMP Development):
+   ```bash
+   # MySQL CLI path for MAMP
+   /Applications/MAMP/Library/bin/mysql57/bin/mysql -h 127.0.0.1 -P 8889 -u claude -pClaude -D elanregi_spice
+   ```
+
 2. **Create Environment Variables**:
    ```bash
    # Create temporary plaintext .env file
