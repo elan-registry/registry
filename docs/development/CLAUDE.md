@@ -233,6 +233,18 @@ sessionValMessages($errors, $successes, null);
 
 This is a CRITICAL step that must NEVER be skipped when working on any code-related task.
 
+### Release Notes Requirements
+
+**ALWAYS update or create release notes when creating a pull request:**
+
+- **Update existing release notes** if the target milestone already has a RELEASE_NOTES_V[VERSION].md file
+- **Create new release notes** using the template at `docs/development/RELEASE_NOTES_TEMPLATE.md` if none exist
+- **Follow the standardized structure**: Required Actions → User-Facing Changes → Admin-Facing Changes → Issues Resolved
+- **Focus on impact and benefits**, not implementation details (those belong in GitHub issues)
+- **Include clear testing instructions** in the Required Actions section for any manual steps needed post-deployment
+
+**📋 See [RELEASE_NOTES_TEMPLATE.md](RELEASE_NOTES_TEMPLATE.md) for complete guidelines and structure**
+
 ## 🚀 Quick Deployment Reference
 
 **🚨 CRITICAL:** When deploying to production, always use the `prod` remote, NOT `origin`!
