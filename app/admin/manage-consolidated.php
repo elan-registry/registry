@@ -48,52 +48,42 @@ $pageTitle = 'Registry Management - ' . $validTabs[$activeTab];
 // Generate CSRF token for forms
 $csrfToken = Token::generate();
 
-// Get system status for header - cached for performance
-$cacheKey = 'admin_system_status';
-$systemStatus = apcu_exists($cacheKey) ? apcu_fetch($cacheKey) : null;
+// Get system status for header
+$systemStatus = [
+    'total_cars' => 0,
+    'total_users' => 0,
+    'pending_transfers' => 0,
+    'quality_issues' => 0,
+    'last_updated' => date('Y-m-d H:i:s')
+];
 
-if ($systemStatus === null) {
-    $systemStatus = [
-        'total_cars' => 0,
-        'total_users' => 0,
-        'pending_transfers' => 0,
-        'quality_issues' => 0,
-        'last_updated' => date('Y-m-d H:i:s')
-    ];
+try {
+    // Get basic counts for header display with prepared statements
+    $carCountStmt = $db->query("SELECT COUNT(*) as count FROM cars");
+    $carCount = $carCountStmt->first();
+    $systemStatus['total_cars'] = $carCount ? (int)$carCount->count : 0;
 
-    try {
-        // Get basic counts for header display with prepared statements
-        $carCountStmt = $db->query("SELECT COUNT(*) as count FROM cars");
-        $carCount = $carCountStmt->first();
-        $systemStatus['total_cars'] = $carCount ? (int)$carCount->count : 0;
+    $userCountStmt = $db->query("SELECT COUNT(*) as count FROM users WHERE active = ?", [1]);
+    $userCount = $userCountStmt->first();
+    $systemStatus['total_users'] = $userCount ? (int)$userCount->count : 0;
 
-        $userCountStmt = $db->query("SELECT COUNT(*) as count FROM users WHERE active = ?", [1]);
-        $userCount = $userCountStmt->first();
-        $systemStatus['total_users'] = $userCount ? (int)$userCount->count : 0;
-
-        // Check if transfer requests table exists
-        $transferCount = 0;
-        $tablesStmt = $db->query("SHOW TABLES LIKE ?", ['car_transfer_requests']);
-        $tables = $tablesStmt->results();
-        if (!empty($tables)) {
-            $transferStmt = $db->query("SELECT COUNT(*) as count FROM car_transfer_requests WHERE status = ?", ['pending']);
-            $transferResult = $transferStmt->first();
-            $transferCount = $transferResult ? (int)$transferResult->count : 0;
-        }
-        $systemStatus['pending_transfers'] = $transferCount;
-
-        // Cache for 5 minutes to improve performance
-        if (function_exists('apcu_store')) {
-            apcu_store($cacheKey, $systemStatus, 300);
-        }
-
-    } catch (PDOException $e) {
-        // Fail silently for header stats - main functionality should still work
-        error_log("Database error getting system status: " . $e->getMessage());
-    } catch (RuntimeException $e) {
-        // Handle database connection or other runtime errors
-        error_log("Runtime error getting system status: " . $e->getMessage());
+    // Check if transfer requests table exists
+    $transferCount = 0;
+    $tablesStmt = $db->query("SHOW TABLES LIKE ?", ['car_transfer_requests']);
+    $tables = $tablesStmt->results();
+    if (!empty($tables)) {
+        $transferStmt = $db->query("SELECT COUNT(*) as count FROM car_transfer_requests WHERE status = ?", ['pending']);
+        $transferResult = $transferStmt->first();
+        $transferCount = $transferResult ? (int)$transferResult->count : 0;
     }
+    $systemStatus['pending_transfers'] = $transferCount;
+
+} catch (PDOException $e) {
+    // Fail silently for header stats - main functionality should still work
+    error_log("Database error getting system status: " . $e->getMessage());
+} catch (RuntimeException $e) {
+    // Handle database connection or other runtime errors
+    error_log("Runtime error getting system status: " . $e->getMessage());
 }
 
 ?>
