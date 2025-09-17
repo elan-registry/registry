@@ -363,6 +363,16 @@ if (Input::exists('post')) {
 
                             $successes[] = "Transfer request approved successfully. Car ownership has been transferred to $targetName.";
                             logger($user->data()->id, 'CarTransfer', "Transfer request #{$transfer_id} approved - Car {$transfer->car_id} transferred to user {$transfer->requested_by_user_id}");
+
+                            // Send approval notification
+                            require_once '../../usersc/includes/transfer_email_notifications.php';
+                            $notificationSent = sendTransferResponseNotification($transfer_id, true, "Approved by admin user {$user->data()->id}", $transfer->current_owner_id);
+
+                            if ($notificationSent) {
+                                logger($user->data()->id, 'EmailSuccess', "Transfer approval notification sent for request #$transfer_id");
+                            } else {
+                                logger($user->data()->id, 'EmailError', "Failed to send transfer approval notification for request #$transfer_id");
+                            }
                         } else {
                             $errors[] = "Failed to process transfer for Car ID {$transfer->car_id}";
                             logger($user->data()->id, 'CarTransferError', "Transfer approval failed for request #{$transfer_id}");
@@ -393,6 +403,16 @@ if (Input::exists('post')) {
                     } else {
                         $successes[] = "Transfer request denied.";
                         logger($user->data()->id, 'CarTransfer', "Transfer request #{$transfer_id} denied by admin");
+
+                        // Send denial notification
+                        require_once '../../usersc/includes/transfer_email_notifications.php';
+                        $notificationSent = sendTransferResponseNotification($transfer_id, false, "Denied by admin user {$user->data()->id}");
+
+                        if ($notificationSent) {
+                            logger($user->data()->id, 'EmailSuccess', "Transfer denial notification sent for request #$transfer_id");
+                        } else {
+                            logger($user->data()->id, 'EmailError', "Failed to send transfer denial notification for request #$transfer_id");
+                        }
                     }
                     break;
 

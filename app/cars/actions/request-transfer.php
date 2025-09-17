@@ -126,11 +126,42 @@ try {
         throw new Exception('Failed to create transfer request');
     }
 
-    // Log the transfer request
-    logger($user->data()->id, 'CarTransfer', "Transfer request created for car ID {$existingCar->id}, chassis {$chassis}");
+    // Get the transfer request ID
+    $transferRequestId = $db->lastId();
+
+    // Validate that we got a valid ID
+    if ($transferRequestId <= 0) {
+        logger($user->data()->id, 'DatabaseError', "Failed to get transfer request ID from lastId()");
+        throw new Exception('Failed to retrieve transfer request ID');
+    }
+
+    // Log the transfer request creation
+    logger($user->data()->id, 'CarTransfer', "Transfer request created for car ID {$existingCar->id}, chassis {$chassis}, transfer request ID: {$transferRequestId}");
+
+    // Send email notifications
+    require_once '../../../usersc/includes/transfer_email_notifications.php';
+
+    // Send notification to current owner
+    $ownerNotificationSent = sendTransferRequestNotification($transferRequestId);
+
+    // Send alert to administrators
+    $adminAlertSent = sendTransferRequestAdminAlert($transferRequestId);
+
+    // Log email results
+    if ($ownerNotificationSent) {
+        logger($user->data()->id, 'EmailSuccess', "Transfer request notification sent to current owner for request #$transferRequestId");
+    } else {
+        logger($user->data()->id, 'EmailError', "Failed to send transfer request notification to current owner for request #$transferRequestId");
+    }
+
+    if ($adminAlertSent) {
+        logger($user->data()->id, 'EmailSuccess', "Transfer request admin alert sent for request #$transferRequestId");
+    } else {
+        logger($user->data()->id, 'EmailError', "Failed to send transfer request admin alert for request #$transferRequestId");
+    }
 
     $response['success'] = true;
-    $response['message'] = 'Transfer request submitted successfully';
+    $response['message'] = 'Transfer request submitted successfully. Notifications have been sent to the current owner and registry administrators.';
 
 } catch (Exception $e) {
     $response['message'] = $e->getMessage();

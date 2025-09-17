@@ -59,8 +59,13 @@ $chartJsSettingsFields = [
     'elan_chartjs_cdn' => ['type' => 'TEXT', 'default' => 'https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.js', 'description' => 'Chart.js CDN URL for statistics charts']
 ];
 
+// Email & Communication settings
+$emailSettingsFields = [
+    'elan_admin_emails' => ['type' => 'TEXT', 'default' => 'admin@elanregistry.org', 'description' => 'Comma-separated admin email addresses for system notifications and administrative alerts']
+];
+
 // Combine all settings fields for processing
-$allSettingsFields = array_merge($spamCleanupFields, $imageSettingsFields, $chartJsSettingsFields);
+$allSettingsFields = array_merge($spamCleanupFields, $imageSettingsFields, $chartJsSettingsFields, $emailSettingsFields);
 
 $fieldsToAdd = [];
 $fieldsToPopulate = [];
@@ -289,6 +294,33 @@ if (!empty($fieldsToPopulate)) {
                                 </div>
                                 <small class="form-text text-muted">How long to keep automated backups before cleanup</small>
                             </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Email & Communication -->
+                <div class="card no-padding border-primary">
+                    <div class="card-header bg-primary text-white">
+                        <h3 class="mb-1"><i class="fas fa-envelope"></i> Email & Communication</h3>
+                        <small class="text-light">Administrative email addresses and notification settings</small>
+                    </div>
+                    <div class="card-body">
+                        <div class="border rounded p-3 mb-0 bg-light">
+                            <h5 class="text-primary mb-3"><i class="fas fa-mail-bulk"></i> Administrative Notifications</h5>
+
+                            <div class="form-group mb-0">
+                                <label for="elan_admin_emails" class="font-weight-bold">
+                                    <i class="fas fa-users-cog"></i> Admin Email Addresses
+                                </label>
+                                <textarea rows="3" class="form-control ajxtxt" data-desc="Admin Email Addresses" name="elan_admin_emails" id="elan_admin_emails" placeholder="admin@elanregistry.org, manager@elanregistry.org"><?= $settings->elan_admin_emails ?? 'admin@elanregistry.org'; ?></textarea>
+                                <small class="form-text text-muted">
+                                    <i class="fas fa-info-circle"></i> Comma-separated email addresses for transfer requests, feedback, and administrative notifications
+                                </small>
+                            </div>
+                        </div>
+
+                        <div class="alert alert-info mb-0 mt-3">
+                            <small><i class="fas fa-info-circle"></i> <strong>Note:</strong> These addresses will receive transfer request notifications and other system alerts. Ensure all addresses are monitored regularly.</small>
                         </div>
                     </div>
                 </div>
