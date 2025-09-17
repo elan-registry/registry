@@ -65,8 +65,16 @@
 
 
                 <div id="chassis_taken" class="text-danger hidden">
-                    <strong>This chassis number is already in the registry. </strong>
-                    <br> Please contact the Registrar<br>
+                    <div class="alert alert-warning">
+                        <h6><i class="fas fa-exclamation-triangle"></i> Chassis Already Registered</h6>
+                        <p>This chassis number is already in the registry by another owner.</p>
+                        <div class="mt-3">
+                            <button type="button" class="btn btn-primary btn-sm" id="request_transfer_btn">
+                                <i class="fas fa-exchange-alt"></i> Request Ownership Transfer
+                            </button>
+                            <small class="text-muted d-block mt-2">This will notify the current owner and Registry Administrators of your transfer request.</small>
+                        </div>
+                    </div>
                 </div>
                 <div id="chassis_pre1970" class="hidden">
                     <strong>Before 1970</strong><br>The chassis number should be 4 digits. Do not enter the type (i.e. 26/0001 enter 0001)<br>

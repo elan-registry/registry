@@ -544,12 +544,12 @@ if (!empty($_GET)) {
                                                         <td><?= htmlspecialchars($record->operation ?? '') ?></td>
                                                         <td class="text-nowrap">
                                                             <?php
-                                                            if (!empty($record->mtime)) {
+                                                            if (!empty($record->timestamp)) {
                                                                 try {
-                                                                    $date = new DateTime($record->mtime);
+                                                                    $date = new DateTime($record->timestamp);
                                                                     echo $date->format('M j, Y g:i A');
                                                                 } catch (Exception $e) {
-                                                                    echo htmlspecialchars($record->mtime);
+                                                                    echo htmlspecialchars($record->timestamp);
                                                                 }
                                                             }
                                                             ?>
@@ -626,7 +626,7 @@ if (!empty($_GET)) {
                                 // Find first and last dates
                                 $firstDate = $lastDate = null;
                                 if ($historyCount > 0) {
-                                    $dates = array_map(function($h) { return $h->mtime; }, $carHistory);
+                                    $dates = array_map(function($h) { return $h->timestamp; }, $carHistory);
                                     $dates = array_filter($dates);
                                     if (!empty($dates)) {
                                         sort($dates);

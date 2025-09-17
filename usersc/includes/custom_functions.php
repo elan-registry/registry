@@ -38,3 +38,42 @@ include_once $abs_us_root . $us_url_root . 'usersc/classes/CarView.php';
 
 // Include Car exception autoloader
 include_once $abs_us_root . $us_url_root . 'usersc/includes/car_exceptions_autoloader.php';
+
+/**
+ * Get user details with profile information (city, state, country, location, website)
+ *
+ * This is a common operation across the application - getting complete user information
+ * including location data from the profiles table for car ownership transfers,
+ * reassignments, and display purposes.
+ *
+ * @param int $user_id The user ID to fetch
+ * @return object|null User object with profile data, or null if not found
+ */
+function getUserWithProfile($user_id) {
+    $db = DB::getInstance();
+
+    $userQ = $db->query(
+        "SELECT u.*, p.city, p.state, p.country, p.lat, p.lon, p.website
+         FROM users u
+         LEFT JOIN profiles p ON u.id = p.user_id
+         WHERE u.id = ?",
+        [(int)$user_id]
+    );
+
+    if ($userQ->count() > 0) {
+        $user = $userQ->first();
+
+        // Ensure all expected fields exist with defaults
+        $user->city = $user->city ?? '';
+        $user->state = $user->state ?? '';
+        $user->country = $user->country ?? '';
+        $user->website = $user->website ?? '';
+        $user->lat = $user->lat ?? null;
+        $user->lon = $user->lon ?? null;
+
+        return $user;
+    }
+
+    return null;
+}
+
