@@ -41,6 +41,12 @@ function sendTransferRequestNotification(int $transferRequestId): bool
         }
         $carData = $carQuery->first();
 
+        // Validate car data
+        if (!$carData || !isset($carData->id)) {
+            logger(0, 'EmailError', "Transfer request notification failed: Invalid car data for ID {$transferData->existing_car_id}");
+            return false;
+        }
+
         // Get current owner data using existing helper function
         $currentOwner = getUserWithProfile($carData->user_id);
         if (!$currentOwner) {
@@ -55,22 +61,22 @@ function sendTransferRequestNotification(int $transferRequestId): bool
             return false;
         }
 
-        // Build data objects for template using separate query results
+        // Build data objects for template using separate query results with null safety
         $carInfo = (object)[
-            'id' => $carData->id,
-            'year' => $carData->year,
-            'series' => $carData->series,
-            'variant' => $carData->variant,
-            'chassis' => $carData->chassis,
-            'color' => $carData->color,
-            'engine' => $carData->engine
+            'id' => $carData->id ?? 0,
+            'year' => $carData->year ?? '',
+            'series' => $carData->series ?? '',
+            'variant' => $carData->variant ?? '',
+            'chassis' => $carData->chassis ?? '',
+            'color' => $carData->color ?? '',
+            'engine' => $carData->engine ?? ''
         ];
 
         $transferRequest = (object)[
-            'id' => $transferData->id,
-            'submitted_comments' => $transferData->submitted_comments,
-            'request_date' => $transferData->request_date,
-            'expires_at' => $transferData->expires_at
+            'id' => $transferData->id ?? 0,
+            'submitted_comments' => $transferData->submitted_comments ?? '',
+            'request_date' => $transferData->request_date ?? '',
+            'expires_at' => $transferData->expires_at ?? ''
         ];
 
         // Generate email content
@@ -140,6 +146,12 @@ function sendTransferRequestAdminAlert(int $transferRequestId): bool
         }
         $carData = $carQuery->first();
 
+        // Validate car data
+        if (!$carData || !isset($carData->id)) {
+            logger(0, 'EmailError', "Transfer admin alert failed: Invalid car data for ID {$transferData->existing_car_id}");
+            return false;
+        }
+
         // Get current owner data using existing helper function
         $currentOwner = getUserWithProfile($carData->user_id);
         if (!$currentOwner) {
@@ -154,22 +166,22 @@ function sendTransferRequestAdminAlert(int $transferRequestId): bool
             return false;
         }
 
-        // Build data objects for template using separate query results
+        // Build data objects for template using separate query results with null safety
         $carInfo = (object)[
-            'id' => $carData->id,
-            'year' => $carData->year,
-            'series' => $carData->series,
-            'variant' => $carData->variant,
-            'chassis' => $carData->chassis,
-            'color' => $carData->color,
-            'engine' => $carData->engine
+            'id' => $carData->id ?? 0,
+            'year' => $carData->year ?? '',
+            'series' => $carData->series ?? '',
+            'variant' => $carData->variant ?? '',
+            'chassis' => $carData->chassis ?? '',
+            'color' => $carData->color ?? '',
+            'engine' => $carData->engine ?? ''
         ];
 
         $transferRequest = (object)[
-            'id' => $transferData->id,
-            'submitted_comments' => $transferData->submitted_comments,
-            'request_date' => $transferData->request_date,
-            'expires_at' => $transferData->expires_at
+            'id' => $transferData->id ?? 0,
+            'submitted_comments' => $transferData->submitted_comments ?? '',
+            'request_date' => $transferData->request_date ?? '',
+            'expires_at' => $transferData->expires_at ?? ''
         ];
 
         $reviewUrl = 'https://elanregistry.org/app/cars/manage.php#transfers';
@@ -244,15 +256,15 @@ function sendTransferResponseNotification(int $transferRequestId, bool $isApprov
             return false;
         }
 
-        // Build data objects for template using separate query results
+        // Build data objects for template using separate query results with null safety
         $carInfo = (object)[
-            'id' => $carData->id,
-            'year' => $carData->year,
-            'series' => $carData->series,
-            'variant' => $carData->variant,
-            'chassis' => $carData->chassis,
-            'color' => $carData->color,
-            'engine' => $carData->engine
+            'id' => $carData->id ?? 0,
+            'year' => $carData->year ?? '',
+            'series' => $carData->series ?? '',
+            'variant' => $carData->variant ?? '',
+            'chassis' => $carData->chassis ?? '',
+            'color' => $carData->color ?? '',
+            'engine' => $carData->engine ?? ''
         ];
 
         $transferRequest = (object)[
@@ -350,15 +362,15 @@ function sendTransferPreviousOwnerNotification(int $transferRequestId, bool $isA
             return false;
         }
 
-        // Build data objects for template using separate query results
+        // Build data objects for template using separate query results with null safety
         $carInfo = (object)[
-            'id' => $carData->id,
-            'year' => $carData->year,
-            'series' => $carData->series,
-            'variant' => $carData->variant,
-            'chassis' => $carData->chassis,
-            'color' => $carData->color,
-            'engine' => $carData->engine
+            'id' => $carData->id ?? 0,
+            'year' => $carData->year ?? '',
+            'series' => $carData->series ?? '',
+            'variant' => $carData->variant ?? '',
+            'chassis' => $carData->chassis ?? '',
+            'color' => $carData->color ?? '',
+            'engine' => $carData->engine ?? ''
         ];
 
         $transferRequest = (object)[

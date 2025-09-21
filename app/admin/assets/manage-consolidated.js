@@ -309,11 +309,11 @@ $(document).ready(function() {
     function initializeErrorHandling() {
         // Global AJAX error handler
         $(document).ajaxError(function(event, xhr, settings, thrownError) {
-            console.error('AJAX Error:', {
-                url: settings.url,
-                status: xhr.status,
-                error: thrownError
-            });
+            // console.error('AJAX Error:', {
+            //     url: settings.url,
+            //     status: xhr.status,
+            //     error: thrownError
+            // });
 
             // Show user-friendly error message
             showNotification('An error occurred. Please try again.', 'error');
@@ -372,7 +372,7 @@ $(document).ready(function() {
             // Log current tab for debugging
             const urlParams = new URLSearchParams(window.location.search);
             const activeTab = urlParams.get('tab') || 'car-mgmt';
-            console.log('Consolidated Interface - Active Tab:', activeTab);
+            // console.log('Consolidated Interface - Active Tab:', activeTab);
 
             // Add keyboard shortcut for quick tab switching (Ctrl/Cmd + number)
             $(document).on('keydown', function(e) {
@@ -405,13 +405,14 @@ $(document).ready(function() {
             initializeLazyLoading();
             initializeErrorHandling();
             initializeDevelopmentMode();
+            initializeCarManagement();
 
             // Mark initialization complete
             $('body').addClass('consolidated-interface-ready');
 
-            console.log('Consolidated Management Interface initialized successfully');
+            // console.log('Consolidated Management Interface initialized successfully');
         } catch (error) {
-            console.error('Error initializing Consolidated Management Interface:', error);
+            // console.error('Error initializing Consolidated Management Interface:', error);
         }
     }
 
@@ -460,4 +461,733 @@ function formatDate(dateString) {
  */
 function prefersReducedMotion() {
     return window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+}
+
+/**
+ * Initialize Car Management functionality for the car-mgmt tab
+ */
+function initializeCarManagement() {
+    // Initialize car management functionality for all tabs that might need it
+    // console.log('Initializing car management functionality...');
+
+    // Car management state
+    let selectedCar = null;
+    let selectedUser = null;
+    let selectedDeleteCar = null;
+
+    // Car lookup functionality
+    $('#lookupCarBtn').on('click', function() {
+        const carId = $('#reassign_car_id').val();
+        if (!carId) {
+            showMessage('Please enter a Car ID first', 'warning');
+            return;
+        }
+
+        const $btn = $(this);
+        const originalHtml = $btn.html();
+        $btn.prop('disabled', true);
+        $btn.html('<i class="fas fa-spinner fa-spin"></i>');
+
+        $.ajax({
+            url: window.location.href,
+            type: 'POST',
+            data: {
+                command: 'getCarDetails',
+                car_id: carId,
+                csrf: $('.reassign-form input[name="csrf"]').val()
+            },
+            dataType: 'json',
+            success: function(response) {
+                $btn.prop('disabled', false);
+                $btn.html(originalHtml);
+
+                if (!response.success) {
+                    showMessage('Error: ' + response.error, 'danger');
+                    $('#carDetails').hide();
+                    selectedCar = null;
+                    updateReassignButton();
+                    return;
+                }
+
+                selectedCar = response.car;
+                const car = response.car;
+                const ownerName = car.fname && car.lname ? `${car.fname} ${car.lname}` : 'Unknown Owner';
+
+                $('#carInfo').html(
+                    `<strong>${car.year || 'Unknown'} ${car.type || 'Unknown'}</strong><br>` +
+                    `Chassis: ${car.chassis || 'Unknown'} | Color: ${car.color || 'Unknown'}`
+                );
+                $('#currentOwner').text(`${ownerName} (${car.email || 'No email'})`);
+                $('#carDetails').show();
+                updateReassignButton();
+            },
+            error: function(xhr, status, error) {
+                $btn.prop('disabled', false);
+                $btn.html(originalHtml);
+                showMessage('Error fetching car details: ' + error, 'danger');
+                $('#carDetails').hide();
+                selectedCar = null;
+                updateReassignButton();
+            }
+        });
+    });
+
+    // User lookup functionality
+    $('#lookupUserBtn').on('click', function() {
+        const userId = $('#reassign_user_id').val();
+        if (!userId) {
+            showMessage('Please enter a User ID first', 'warning');
+            return;
+        }
+
+        const $btn = $(this);
+        const originalHtml = $btn.html();
+        $btn.prop('disabled', true);
+        $btn.html('<i class="fas fa-spinner fa-spin"></i>');
+
+        $.ajax({
+            url: window.location.href,
+            type: 'POST',
+            data: {
+                command: 'getUserDetails',
+                user_id: userId,
+                csrf: $('.reassign-form input[name="csrf"]').val()
+            },
+            dataType: 'json',
+            success: function(response) {
+                $btn.prop('disabled', false);
+                $btn.html(originalHtml);
+
+                if (!response.success) {
+                    showMessage('Error: ' + response.error, 'danger');
+                    $('#userDetails').hide();
+                    selectedUser = null;
+                    updateReassignButton();
+                    return;
+                }
+
+                selectedUser = response.user;
+                const user = response.user;
+                const userName = user.fname && user.lname ? `${user.fname} ${user.lname}` : 'Unknown Name';
+                const location = user.city && user.state ? `${user.city}, ${user.state} ${user.country}` : 'Unknown Location';
+                const joinDate = new Date(user.join_date).toLocaleDateString();
+
+                $('#userInfo').html(
+                    `<strong>${userName}</strong><br>` +
+                    `Email: ${user.email}<br>` +
+                    `Location: ${location}<br>` +
+                    `Member since: ${joinDate}`
+                );
+                $('#userDetails').show();
+                updateReassignButton();
+            },
+            error: function(xhr, status, error) {
+                $btn.prop('disabled', false);
+                $btn.html(originalHtml);
+                showMessage('Error fetching user details: ' + error, 'danger');
+                $('#userDetails').hide();
+                selectedUser = null;
+                updateReassignButton();
+            }
+        });
+    });
+
+    // Delete car lookup functionality
+    $('#lookupDeleteCarBtn').on('click', function() {
+        const carId = $('#delete_car_id').val();
+        if (!carId) {
+            showMessage('Please enter a Car ID first', 'warning');
+            return;
+        }
+
+        const $btn = $(this);
+        const originalHtml = $btn.html();
+        $btn.prop('disabled', true);
+        $btn.html('<i class="fas fa-spinner fa-spin"></i>');
+
+        $.ajax({
+            url: window.location.pathname + window.location.search,
+            type: 'POST',
+            data: {
+                command: 'getCarDetails',
+                car_id: carId,
+                csrf: $('.delete-form input[name="csrf"]').val()
+            },
+            dataType: 'json',
+            success: function(response) {
+                $btn.prop('disabled', false);
+                $btn.html(originalHtml);
+
+                if (!response.success) {
+                    showMessage('Error: ' + response.error, 'danger');
+                    $('#deleteCarDetails').hide();
+                    selectedDeleteCar = null;
+                    updateDeleteButton();
+                    return;
+                }
+
+                selectedDeleteCar = response.car;
+                const car = response.car;
+                const ownerName = car.fname && car.lname ? `${car.fname} ${car.lname}` : 'Unknown Owner';
+
+                $('#deleteCarInfo').html(
+                    `<strong>${car.year || 'Unknown'} ${car.type || 'Unknown'}</strong><br>` +
+                    `Chassis: ${car.chassis || 'Unknown'} | Color: ${car.color || 'Unknown'} | Series: ${car.series || 'Unknown'}`
+                );
+                $('#deleteCurrentOwner').text(`${ownerName} (${car.email || 'No email'})`);
+                $('#deleteCarDetails').show();
+                updateDeleteButton();
+            },
+            error: function(xhr, status, error) {
+                $btn.prop('disabled', false);
+                $btn.html(originalHtml);
+                showMessage('Error fetching car details: ' + error, 'danger');
+                $('#deleteCarDetails').hide();
+                selectedDeleteCar = null;
+                updateDeleteButton();
+            }
+        });
+    });
+
+    // No Owner checkbox functionality
+    $('#noOwnerCheckbox').on('change', function() {
+        const isChecked = $(this).is(':checked');
+        const $userIdField = $('#reassign_user_id');
+        const $lookupBtn = $('#lookupUserBtn');
+
+        if (isChecked) {
+            // Set No Owner data
+            selectedUser = {
+                id: 83,
+                fname: 'No',
+                lname: 'Owner',
+                email: 'noowner@example.com',
+                city: null,
+                state: null,
+                country: null,
+                join_date: '2023-01-01'
+            };
+
+            // Update UI
+            $userIdField.val('83').prop('disabled', true);
+            $lookupBtn.prop('disabled', true);
+            $('#userDetails').hide();
+            $('#noOwnerDetails').show();
+
+        } else {
+            // Clear No Owner data
+            selectedUser = null;
+            $userIdField.val('').prop('disabled', false).focus();
+            $lookupBtn.prop('disabled', false);
+            $('#userDetails').hide();
+            $('#noOwnerDetails').hide();
+        }
+
+        updateReassignButton();
+    });
+
+    // Input change handlers
+    $('#reassign_car_id').on('input', function() {
+        const value = $(this).val();
+
+        // Clear previous car details when typing
+        if (!value || (selectedCar && value != selectedCar.id)) {
+            $('#carDetails').hide();
+            selectedCar = null;
+        }
+        updateReassignButton();
+    }).on('keypress', function(e) {
+        if (e.which === 13) {
+            e.preventDefault();
+            $('#lookupCarBtn').click();
+        }
+    });
+
+    $('#reassign_user_id').on('input', function() {
+        const value = $(this).val();
+
+        // If field is cleared or different from 83, uncheck "No Owner"
+        if (!value || value !== '83') {
+            $('#noOwnerCheckbox').prop('checked', false);
+            $('#noOwnerDetails').hide();
+            selectedUser = null;
+        }
+
+        // Clear previous user details when typing
+        $('#userDetails').hide();
+        updateReassignButton();
+    }).on('keypress', function(e) {
+        if (e.which === 13) {
+            e.preventDefault();
+            $('#lookupUserBtn').click();
+        }
+    });
+
+    $('#delete_car_id').on('input', function() {
+        const value = $(this).val();
+
+        // Clear previous car details when typing
+        if (!value || (selectedDeleteCar && value != selectedDeleteCar.id)) {
+            $('#deleteCarDetails').hide();
+            selectedDeleteCar = null;
+        }
+        updateDeleteButton();
+    }).on('keypress', function(e) {
+        if (e.which === 13) {
+            e.preventDefault();
+            $('#lookupDeleteCarBtn').click();
+        }
+    });
+
+    $('#delete_confirmation').on('input', updateDeleteButton);
+
+    // Form submission handlers
+    $('.reassign-form').on('submit', function(e) {
+        e.preventDefault();
+
+        if (!selectedCar || !selectedUser) {
+            showMessage('Please lookup both car and user details before reassigning.', 'warning');
+            return false;
+        }
+
+        const carName = `${selectedCar.year || 'Unknown'} ${selectedCar.type || 'Unknown'} (${selectedCar.chassis || 'Unknown'})`;
+        const currentOwner = selectedCar.fname && selectedCar.lname ? `${selectedCar.fname} ${selectedCar.lname}` : 'Unknown Owner';
+        const newOwner = selectedUser.fname && selectedUser.lname ? `${selectedUser.fname} ${selectedUser.lname}` : 'Unknown Name';
+        const isNoOwner = selectedUser.id === 83;
+
+        // Populate modal with car details
+        $('#modal-car-details').html(
+            `<strong>${carName}</strong><br>` +
+            `<small class="text-muted">Current Owner: ${currentOwner}</small><br>` +
+            `<small class="text-muted">Email: ${selectedCar.email || 'No email'}</small>`
+        );
+
+        // Populate modal with user details
+        if (isNoOwner) {
+            $('#modal-user-details').html(
+                `<strong class="text-warning">No Owner</strong><br>` +
+                `<small class="text-muted">Registry placeholder account</small><br>` +
+                `<small class="text-muted">For cars without current owner information</small>`
+            );
+        } else {
+            const userLocation = selectedUser.city && selectedUser.state ?
+                `${selectedUser.city}, ${selectedUser.state} ${selectedUser.country}` : 'Unknown Location';
+            $('#modal-user-details').html(
+                `<strong>${newOwner}</strong><br>` +
+                `<small class="text-muted">Email: ${selectedUser.email}</small><br>` +
+                `<small class="text-muted">Location: ${userLocation}</small>`
+            );
+        }
+
+        // Store the form reference for later submission
+        reassignFormToSubmit = this;
+
+        // Show the modal
+        $('#reassignConfirmModal').modal('show');
+
+        return false;
+    });
+
+    $('.delete-form').on('submit', function(e) {
+        e.preventDefault();
+
+        const carId = $('#delete_car_id').val();
+        const confirmation = $('#delete_confirmation').val();
+
+        if (!selectedDeleteCar || !carId || confirmation !== 'DELETE') {
+            showMessage('Please lookup the car details first and type DELETE to confirm.', 'warning');
+            return false;
+        }
+
+        if (selectedDeleteCar.id != carId) {
+            showMessage('Please lookup the current car ID before proceeding.', 'warning');
+            return false;
+        }
+
+        const car = selectedDeleteCar;
+        const ownerName = car.fname && car.lname ? `${car.fname} ${car.lname}` : 'Unknown Owner';
+        const location = car.city && car.state ? `${car.city}, ${car.state} ${car.country}` : 'Unknown Location';
+        const createdDate = new Date(car.ctime).toLocaleDateString();
+        const modifiedDate = new Date(car.mtime).toLocaleDateString();
+
+        // Populate modal with car details
+        $('#modal-delete-car-details').html(
+            `<div class="row">` +
+                `<div class="col-md-6">` +
+                    `<h6 class="text-danger">Car Information</h6>` +
+                    `<p><strong>ID:</strong> ${car.id}</p>` +
+                    `<p><strong>Year:</strong> ${car.year || 'Unknown'}</p>` +
+                    `<p><strong>Type:</strong> ${car.type || 'Unknown'}</p>` +
+                    `<p><strong>Chassis:</strong> ${car.chassis || 'Unknown'}</p>` +
+                    `<p><strong>Color:</strong> ${car.color || 'Unknown'}</p>` +
+                    `<p><strong>Series:</strong> ${car.series || 'Unknown'}</p>` +
+                `</div>` +
+                `<div class="col-md-6">` +
+                    `<h6 class="text-danger">Owner Information</h6>` +
+                    `<p><strong>Owner:</strong> ${ownerName}</p>` +
+                    `<p><strong>Email:</strong> ${car.email || 'Unknown'}</p>` +
+                    `<p><strong>Location:</strong> ${location}</p>` +
+                    `<p><strong>Created:</strong> ${createdDate}</p>` +
+                    `<p><strong>Modified:</strong> ${modifiedDate}</p>` +
+                `</div>` +
+            `</div>`
+        );
+
+        // Store the form reference for later submission
+        deleteFormToSubmit = this;
+
+        // Clear confirmation field and disable button
+        $('#modal-delete-confirmation').val('');
+        $('#confirmDeleteBtn').prop('disabled', true);
+
+        // Show the modal
+        $('#deleteConfirmModal').modal('show');
+
+        return false;
+    });
+
+    // Transfer request action handlers
+    let transferFormToSubmit = null;
+
+    $('.transfer-action-form').on('submit', function(e) {
+        e.preventDefault();
+
+        const command = $(this).find('input[name="command"]').val();
+        const transferId = $(this).find('input[name="transfer_id"]').val();
+
+        // Store form for submission
+        transferFormToSubmit = this;
+
+        // Set up modal content based on action
+        if (command === 'approve_transfer') {
+            $('#transferActionModalHeader').removeClass('bg-danger').addClass('bg-success text-white');
+            $('#transferActionTitle').text('Approve Transfer Request');
+            $('#transferActionMessage').html(
+                `<div class="alert alert-success">` +
+                    `<i class="fas fa-check-circle"></i> <strong>Approve Transfer Request #${transferId}</strong>` +
+                `</div>`
+            );
+            $('#transferActionDetails').html(
+                `<p>This action will:</p>` +
+                `<ul>` +
+                    `<li><i class="fas fa-check text-success"></i> Transfer car ownership to the requesting user</li>` +
+                    `<li><i class="fas fa-check text-success"></i> Send approval notification emails</li>` +
+                    `<li><i class="fas fa-check text-success"></i> Update car ownership records</li>` +
+                    `<li><i class="fas fa-check text-success"></i> Log the transfer in car history</li>` +
+                `</ul>`
+            );
+            $('#confirmTransferActionBtn').removeClass('btn-danger').addClass('btn-success');
+            $('#confirmTransferActionText').text('Approve Transfer');
+
+        } else if (command === 'deny_transfer') {
+            $('#transferActionModalHeader').removeClass('bg-success').addClass('bg-danger text-white');
+            $('#transferActionTitle').text('Deny Transfer Request');
+            $('#transferActionMessage').html(
+                `<div class="alert alert-danger">` +
+                    `<i class="fas fa-times-circle"></i> <strong>Deny Transfer Request #${transferId}</strong>` +
+                `</div>`
+            );
+            $('#transferActionDetails').html(
+                `<p>This action will:</p>` +
+                `<ul>` +
+                    `<li><i class="fas fa-times text-danger"></i> Reject the transfer request</li>` +
+                    `<li><i class="fas fa-times text-danger"></i> Send denial notification emails</li>` +
+                    `<li><i class="fas fa-times text-danger"></i> Keep current car ownership unchanged</li>` +
+                    `<li><i class="fas fa-times text-danger"></i> Log the denial for record keeping</li>` +
+                `</ul>`
+            );
+            $('#confirmTransferActionBtn').removeClass('btn-success').addClass('btn-danger');
+            $('#confirmTransferActionText').text('Deny Transfer');
+        }
+
+        // Show the modal
+        $('#transferActionModal').modal('show');
+
+        return false;
+    });
+
+    // Helper functions
+    function updateReassignButton() {
+        const $btn = $('#reassignBtn');
+        const canReassign = selectedCar && selectedUser;
+        $btn.prop('disabled', !canReassign);
+
+        if (canReassign) {
+            $btn.removeClass('btn-secondary').addClass('btn-warning');
+        } else {
+            $btn.removeClass('btn-warning').addClass('btn-secondary');
+        }
+    }
+
+    function updateDeleteButton() {
+        const carId = $('#delete_car_id').val();
+        const confirmation = $('#delete_confirmation').val();
+        const $deleteBtn = $('#deleteBtn');
+
+        // Enable button only when car is looked up, confirmation matches, and IDs match
+        const carLookedUp = selectedDeleteCar && selectedDeleteCar.id == carId;
+        const confirmationValid = confirmation === 'DELETE';
+        const canDelete = carLookedUp && confirmationValid;
+
+        $deleteBtn.prop('disabled', !canDelete);
+
+        if (canDelete) {
+            $deleteBtn.removeClass('btn-secondary').addClass('btn-danger');
+        } else {
+            $deleteBtn.removeClass('btn-danger').addClass('btn-secondary');
+        }
+    }
+
+    function showMessage(message, type = 'info') {
+        const $messageContainer = $('#messageContainer');
+        if (!$messageContainer.length) return;
+
+        const alertClass = `alert alert-${type} alert-dismissible fade show`;
+        const alertHtml = `
+            <div class="${alertClass}" role="alert">
+                ${message}
+                <button type="button" class="close" data-dismiss="alert" aria-label="Close">
+                    <span aria-hidden="true">&times;</span>
+                </button>
+            </div>
+        `;
+
+        $messageContainer.html(alertHtml);
+
+        // Auto-dismiss after 5 seconds for non-error messages
+        if (type !== 'danger') {
+            setTimeout(() => {
+                const $alert = $messageContainer.find('.alert');
+                if ($alert.length) {
+                    $alert.removeClass('show');
+                    setTimeout(() => {
+                        $messageContainer.html('');
+                    }, 150);
+                }
+            }, 5000);
+        }
+    }
+
+    // Initialize form states
+    selectedCar = null;
+    selectedUser = null;
+    selectedDeleteCar = null;
+    updateReassignButton();
+    updateDeleteButton();
+
+    // Hide all detail boxes initially
+    $('#carDetails, #userDetails, #noOwnerDetails, #deleteCarDetails').hide();
+
+    // Modal handlers
+    let reassignFormToSubmit = null;
+    let deleteFormToSubmit = null;
+
+    // Reassignment modal confirm button
+    $('#confirmReassignBtn').on('click', function() {
+        if (reassignFormToSubmit) {
+            // Show loading state
+            const $btn = $('#reassignBtn');
+            $btn.prop('disabled', true);
+            $btn.html('<i class="fas fa-spinner fa-spin"></i> Reassigning...');
+
+            // Hide modal and submit form
+            $('#reassignConfirmModal').modal('hide');
+            reassignFormToSubmit.submit();
+        }
+    });
+
+    // Delete modal confirmation input handler
+    $('#modal-delete-confirmation').on('input', function() {
+        const $btn = $('#confirmDeleteBtn');
+        const confirmationText = $(this).val();
+
+        if (confirmationText === 'DELETE PERMANENTLY') {
+            $btn.prop('disabled', false);
+        } else {
+            $btn.prop('disabled', true);
+        }
+    });
+
+    // Delete modal confirm button
+    $('#confirmDeleteBtn').on('click', function() {
+        if (deleteFormToSubmit) {
+            // Show loading state
+            const $btn = $('#deleteBtn');
+            $btn.prop('disabled', true);
+            $btn.html('<i class="fas fa-spinner fa-spin"></i> Deleting...');
+
+            // Hide modal and submit form
+            $('#deleteConfirmModal').modal('hide');
+            deleteFormToSubmit.submit();
+        }
+    });
+
+    // Clear modal data when closed
+    $('#reassignConfirmModal').on('hidden.bs.modal', function() {
+        reassignFormToSubmit = null;
+    });
+
+    $('#deleteConfirmModal').on('hidden.bs.modal', function() {
+        deleteFormToSubmit = null;
+        $('#modal-delete-confirmation').val('');
+        $('#confirmDeleteBtn').prop('disabled', true);
+    });
+
+    // Transfer decision modal handlers
+    let transferDecisionData = null;
+
+    // Handle transfer approve button click
+    $(document).on('click', '.transfer-approve-btn', function() {
+        transferDecisionData = {
+            action: 'approve',
+            transferId: $(this).data('transfer-id'),
+            carYear: $(this).data('car-year'),
+            carType: $(this).data('car-type'),
+            carSeries: $(this).data('car-series'),
+            carChassis: $(this).data('car-chassis'),
+            carColor: $(this).data('car-color'),
+            currentOwner: $(this).data('current-owner'),
+            currentEmail: $(this).data('current-email'),
+            requesterName: $(this).data('requester-name'),
+            requesterEmail: $(this).data('requester-email'),
+            requestDate: $(this).data('request-date'),
+            expiresDate: $(this).data('expires-date'),
+            comments: $(this).data('comments')
+        };
+        showTransferDecisionModal(true);
+    });
+
+    // Handle transfer deny button click
+    $(document).on('click', '.transfer-deny-btn', function() {
+        transferDecisionData = {
+            action: 'deny',
+            transferId: $(this).data('transfer-id'),
+            carYear: $(this).data('car-year'),
+            carType: $(this).data('car-type'),
+            carSeries: $(this).data('car-series'),
+            carChassis: $(this).data('car-chassis'),
+            carColor: $(this).data('car-color'),
+            currentOwner: $(this).data('current-owner'),
+            currentEmail: $(this).data('current-email'),
+            requesterName: $(this).data('requester-name'),
+            requesterEmail: $(this).data('requester-email'),
+            requestDate: $(this).data('request-date'),
+            expiresDate: $(this).data('expires-date'),
+            comments: $(this).data('comments')
+        };
+        showTransferDecisionModal(false);
+    });
+
+    // Function to show transfer decision modal
+    function showTransferDecisionModal(isApprove) {
+        const data = transferDecisionData;
+
+        // Update modal header and colors based on action
+        if (isApprove) {
+            $('#transferDecisionModalHeader').removeClass('bg-danger').addClass('bg-success');
+            $('#transferDecisionTitle').text('Approve Transfer Request');
+            $('#transferDecisionMessage').removeClass('alert-danger').addClass('alert-success');
+            $('#transferDecisionMessageText').text('You are about to APPROVE this transfer request.');
+            $('#confirmTransferDecisionBtn').removeClass('btn-danger').addClass('btn-success');
+            $('#confirmTransferDecisionText').text('Approve Transfer');
+        } else {
+            $('#transferDecisionModalHeader').removeClass('bg-success').addClass('bg-danger');
+            $('#transferDecisionTitle').text('Deny Transfer Request');
+            $('#transferDecisionMessage').removeClass('alert-success').addClass('alert-danger');
+            $('#transferDecisionMessageText').text('You are about to DENY this transfer request.');
+            $('#confirmTransferDecisionBtn').removeClass('btn-success').addClass('btn-danger');
+            $('#confirmTransferDecisionText').text('Deny Transfer');
+        }
+
+        // Populate car details
+        const carDetails = `
+            <strong>${data.carYear} ${data.carType}</strong>
+            ${data.carSeries ? `<span class="badge badge-secondary badge-sm ml-1">${data.carSeries}</span>` : ''}
+            <br><small class="text-muted">
+                <i class="fas fa-barcode"></i> Chassis: ${data.carChassis}
+                ${data.carColor ? ` • Color: ${data.carColor}` : ''}
+            </small>
+        `;
+        $('#modal-transfer-car-details').html(carDetails);
+
+        // Populate current owner details
+        const currentOwnerDetails = `
+            <strong>${data.currentOwner}</strong><br>
+            <small class="text-muted"><i class="fas fa-envelope"></i> ${data.currentEmail}</small>
+        `;
+        $('#modal-current-owner-details').html(currentOwnerDetails);
+
+        // Populate requester details
+        const requesterDetails = `
+            <strong>${data.requesterName}</strong><br>
+            <small class="text-muted"><i class="fas fa-envelope"></i> ${data.requesterEmail}</small>
+        `;
+        $('#modal-requester-details').html(requesterDetails);
+
+        // Populate request information
+        const requestDetails = `
+            <strong>Request Date:</strong> ${new Date(data.requestDate).toLocaleDateString()}<br>
+            <strong>Expires:</strong> ${new Date(data.expiresDate).toLocaleDateString()}<br>
+            ${data.comments ? `<strong>Comments:</strong><br><em>"${data.comments}"</em>` : '<em>No comments provided</em>'}
+        `;
+        $('#modal-transfer-request-details').html(requestDetails);
+
+        // Update consequences based on action
+        const effects = isApprove ? `
+            <li><i class="fas fa-check text-success"></i> Transfer car ownership to requester</li>
+            <li><i class="fas fa-check text-success"></i> Send confirmation emails to both parties</li>
+            <li><i class="fas fa-check text-success"></i> Log the transfer in car history</li>
+            <li><i class="fas fa-check text-success"></i> Mark request as completed</li>
+            <li><i class="fas fa-exclamation-triangle text-warning"></i> This action cannot be undone easily</li>
+        ` : `
+            <li><i class="fas fa-times text-danger"></i> Reject the transfer request</li>
+            <li><i class="fas fa-times text-danger"></i> Send denial notification to requester</li>
+            <li><i class="fas fa-times text-danger"></i> Notify current owner of decision</li>
+            <li><i class="fas fa-check text-info"></i> Car ownership remains unchanged</li>
+            <li><i class="fas fa-info-circle text-info"></i> Request will be marked as denied</li>
+        `;
+        $('#transferDecisionEffects').html(effects);
+
+        // Show the modal
+        $('#transferDecisionModal').modal('show');
+    }
+
+    // Transfer decision modal confirm button
+    $('#confirmTransferDecisionBtn').on('click', function() {
+        if (transferDecisionData) {
+            // Show loading state
+            const $btn = $(this);
+            $btn.prop('disabled', true);
+            const originalHtml = $btn.html();
+            $btn.html('<i class="fas fa-spinner fa-spin"></i> Processing...');
+
+            // Create form and submit
+            const form = $('<form>', {
+                method: 'POST',
+                action: window.location.href
+            });
+
+            // Get CSRF token from an existing form on the page
+            const csrfToken = $('.reassign-form input[name="csrf"]').val() || $('input[name="csrf"]').first().val() || '';
+            form.append($('<input>', { type: 'hidden', name: 'csrf', value: csrfToken }));
+            form.append($('<input>', { type: 'hidden', name: 'command', value: transferDecisionData.action + '_transfer' }));
+            form.append($('<input>', { type: 'hidden', name: 'transfer_id', value: transferDecisionData.transferId }));
+
+            // Hide modal and submit form
+            $('#transferDecisionModal').modal('hide');
+            $('body').append(form);
+            form.submit();
+
+            // Re-enable after a timeout in case of network issues
+            setTimeout(() => {
+                $btn.prop('disabled', false);
+                $btn.html(originalHtml);
+            }, 10000);
+        }
+    });
+
+    // Clear transfer decision modal data when closed
+    $('#transferDecisionModal').on('hidden.bs.modal', function() {
+        transferDecisionData = null;
+    });
 }

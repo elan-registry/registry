@@ -138,30 +138,53 @@ try {
     // Log the transfer request creation
     logger($user->data()->id, 'CarTransfer', "Transfer request created for car ID {$existingCar->id}, chassis {$chassis}, transfer request ID: {$transferRequestId}");
 
-    // Send email notifications
-    require_once '../../../usersc/includes/transfer_email_notifications.php';
+    // Send email notifications with timeout protection
+    $emailMessages = [];
 
-    // Send notification to current owner
-    $ownerNotificationSent = sendTransferRequestNotification($transferRequestId);
+    try {
+        require_once '../../../usersc/includes/transfer_email_notifications.php';
 
-    // Send alert to administrators
-    $adminAlertSent = sendTransferRequestAdminAlert($transferRequestId);
+        // Set time limit for email operations
+        set_time_limit(60);
 
-    // Log email results
-    if ($ownerNotificationSent) {
-        logger($user->data()->id, 'EmailSuccess', "Transfer request notification sent to current owner for request #$transferRequestId");
-    } else {
-        logger($user->data()->id, 'EmailError', "Failed to send transfer request notification to current owner for request #$transferRequestId");
-    }
+        // Send notification to current owner with error handling
+        try {
+            $ownerNotificationSent = sendTransferRequestNotification($transferRequestId);
+            if ($ownerNotificationSent) {
+                logger($user->data()->id, 'EmailSuccess', "Transfer request notification sent to current owner for request #$transferRequestId");
+                $emailMessages[] = 'Current owner notified';
+            } else {
+                logger($user->data()->id, 'EmailError', "Failed to send transfer request notification to current owner for request #$transferRequestId");
+                $emailMessages[] = 'Owner notification failed';
+            }
+        } catch (Exception $emailEx) {
+            logger($user->data()->id, 'EmailError', "Owner notification exception for request #$transferRequestId: " . $emailEx->getMessage());
+            $emailMessages[] = 'Owner notification error';
+        }
 
-    if ($adminAlertSent) {
-        logger($user->data()->id, 'EmailSuccess', "Transfer request admin alert sent for request #$transferRequestId");
-    } else {
-        logger($user->data()->id, 'EmailError', "Failed to send transfer request admin alert for request #$transferRequestId");
+        // Send alert to administrators with error handling
+        try {
+            $adminAlertSent = sendTransferRequestAdminAlert($transferRequestId);
+            if ($adminAlertSent) {
+                logger($user->data()->id, 'EmailSuccess', "Transfer request admin alert sent for request #$transferRequestId");
+                $emailMessages[] = 'Administrators notified';
+            } else {
+                logger($user->data()->id, 'EmailError', "Failed to send transfer request admin alert for request #$transferRequestId");
+                $emailMessages[] = 'Admin notification failed';
+            }
+        } catch (Exception $emailEx) {
+            logger($user->data()->id, 'EmailError', "Admin notification exception for request #$transferRequestId: " . $emailEx->getMessage());
+            $emailMessages[] = 'Admin notification error';
+        }
+
+    } catch (Exception $generalEmailEx) {
+        logger($user->data()->id, 'EmailError', "General email error for request #$transferRequestId: " . $generalEmailEx->getMessage());
+        $emailMessages[] = 'Email system error';
     }
 
     $response['success'] = true;
-    $response['message'] = 'Transfer request submitted successfully. Notifications have been sent to the current owner and registry administrators.';
+    $emailStatus = !empty($emailMessages) ? ' Email status: ' . implode(', ', $emailMessages) . '.' : '';
+    $response['message'] = 'Transfer request submitted successfully.' . $emailStatus;
 
 } catch (Exception $e) {
     $response['message'] = $e->getMessage();
