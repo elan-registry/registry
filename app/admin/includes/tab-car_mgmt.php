@@ -8,6 +8,24 @@ declare(strict_types=1);
  * Migrated from existing manage.php with improved UX and AJAX features
  */
 
+// Check for car_id parameter from data quality integration
+$preloadCarId = isset($_GET['car_id']) ? (int)$_GET['car_id'] : null;
+$preloadCarData = null;
+
+if ($preloadCarId) {
+    // Pre-load car data for integration from data quality tab using Car class
+    try {
+        $preloadCarData = new Car($preloadCarId);
+        if (!$preloadCarData->data()) {
+            $preloadCarData = null; // Car not found
+        }
+    } catch (Exception $e) {
+        // Fail silently if car not found
+        $preloadCarData = null;
+        error_log("Car preload error: " . $e->getMessage());
+    }
+}
+
 // Get pending transfer requests with enhanced details
 $transferQuery = $db->query(
     'SELECT ctr.*,
@@ -421,3 +439,41 @@ try {
     </div>
 </div>
 
+<?php if ($preloadCarId && $preloadCarData): ?>
+<script>
+// Pre-populate car ID from data quality integration
+document.addEventListener("DOMContentLoaded", function() {
+    const carIdField = document.getElementById("reassign_car_id");
+    if (carIdField) {
+        carIdField.value = "<?= $preloadCarId ?>";
+
+        // Trigger lookup to display car details
+        const lookupBtn = document.getElementById("lookupCarBtn");
+        if (lookupBtn) {
+            lookupBtn.click();
+        }
+
+        // Scroll to the car management section
+        const reassignSection = document.querySelector(".reassign-form");
+        if (reassignSection) {
+            reassignSection.scrollIntoView({ behavior: "smooth", block: "center" });
+        }
+
+        // Show alert about data quality integration
+        const messageContainer = document.getElementById("messageContainer");
+        if (messageContainer) {
+            const alertDiv = document.createElement("div");
+            alertDiv.className = "alert alert-info alert-dismissible fade show";
+            alertDiv.innerHTML = `
+                <i class="fas fa-info-circle"></i> <strong>Data Quality Integration:</strong>
+                Car ID <?= $preloadCarId ?> has been pre-loaded from the Data Quality dashboard for editing.
+                <button type="button" class="close" data-dismiss="alert" aria-label="Close">
+                    <span aria-hidden="true">&times;</span>
+                </button>
+            `;
+            messageContainer.appendChild(alertDiv);
+        }
+    }
+});
+</script>
+<?php endif; ?>
