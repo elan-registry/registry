@@ -278,6 +278,21 @@ $qualityScore = $totalRecords > 0 ? max(0, 100 - (($totalIssues / $totalRecords)
 
 ?>
 
+<!-- Data Quality Header -->
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <div>
+        <h2 class="text-primary mb-1">
+            <i class="fas fa-chart-line"></i> Data Quality Reports
+        </h2>
+        <p class="text-muted mb-0">Monitor and improve registry data quality</p>
+    </div>
+    <div>
+        <a href="<?= $us_url_root ?>docs/admin/data-quality-guide.php" class="btn btn-outline-info" target="_blank" title="Data Quality Administrator Guide">
+            <i class="fas fa-question-circle"></i> Help Guide
+        </a>
+    </div>
+</div>
+
 <!-- Quality Metrics Dashboard -->
 <div class="row mb-4">
     <div class="col-lg-3 col-md-6 mb-3">
