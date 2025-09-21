@@ -144,6 +144,22 @@ function updateCarDetails(array &$car): void
             <div class="row justify-content-center">
                 <div class="col-xl-10 col-lg-11 col-md-12">
             <h2 id="heading" class="mt-4 mb-3 text-center">Fill all form fields to go to next step</h2>
+
+            <?php
+            // Show admin override warning if applicable
+            if (isset($cardetails['id']) && isset($user) && $user->isLoggedIn()) {
+                $editCarObj = new Car($cardetails['id']);
+                $isEditOwner = ($user->data()->id == $editCarObj->data()->user_id);
+                $hasEditAdminAccess = hasPerm([2, 3]); // Permission 2 = Administrator, 3 = Editor
+
+                if (!$isEditOwner && $hasEditAdminAccess) { ?>
+                    <div class="alert alert-warning text-center mb-4">
+                        <h5><i class="fas fa-shield-alt"></i> Administrative Override Active</h5>
+                        <p class="mb-0">You are editing a car that you do not own using Administrator/Editor privileges. All changes will be logged for audit purposes.</p>
+                    </div>
+            <?php }
+            } ?>
+
             <form id="editCar" name="editCar" method="post" enctype="multipart/form-data" novalidate>
                 <!-- progressbar -->
                 <ul id="progressbar" class="mb-4">

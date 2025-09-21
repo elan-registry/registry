@@ -511,7 +511,7 @@ $qualityScore = $totalRecords > 0 ? max(0, 100 - (($totalIssues / $totalRecords)
                                             <?php foreach ($report['data'] as $car) { ?>
                                             <tr>
                                                 <td>
-                                                    <button class="btn btn-sm btn-outline-primary" onclick="switchToCarManagementTab(<?= $car->id ?>)">
+                                                    <button class="btn btn-sm btn-outline-primary" onclick="openCarDetails(<?= $car->id ?>)">
                                                         <i class="fas fa-eye"></i> <?= $car->id ?>
                                                     </button>
                                                 </td>
@@ -532,7 +532,7 @@ $qualityScore = $totalRecords > 0 ? max(0, 100 - (($totalIssues / $totalRecords)
                                                     <?php } ?>
                                                 </td>
                                                 <td>
-                                                    <button type="button" class="btn btn-sm btn-outline-success" onclick="switchToCarManagementTab(<?= $car->id ?>)" title="Edit in Car Management">
+                                                    <button type="button" class="btn btn-sm btn-outline-success" onclick="openCarDetails(<?= $car->id ?>)" title="Edit Car Details">
                                                         <i class="fas fa-edit"></i> Edit
                                                     </button>
                                                     <button type="button" class="btn btn-sm btn-outline-info ml-1" data-toggle="modal" data-target="#chassisValidationModal">
@@ -579,9 +579,14 @@ $qualityScore = $totalRecords > 0 ? max(0, 100 - (($totalIssues / $totalRecords)
                                                         <?php } ?>
                                                     </td>
                                                     <td>
-                                                        <a href="mailto:<?= htmlspecialchars($owner->email) ?>" class="btn btn-sm btn-outline-secondary">
+                                                        <button type="button" class="btn btn-sm btn-outline-warning"
+                                                                onclick="openAdminContactModal(
+                                                                    {id: '<?= $owner->car_count ?? 'Multiple' ?>', year: '', model: '', chassis: '', series: ''},
+                                                                    {id: '<?= $owner->id ?>', name: '<?= htmlspecialchars(trim($owner->fname . ' ' . $owner->lname)) ?>', email: '<?= htmlspecialchars($owner->email) ?>'},
+                                                                    'Missing Information'
+                                                                )" title="Contact Owner via Registry">
                                                             <i class="fas fa-envelope"></i>
-                                                        </a>
+                                                        </button>
                                                     </td>
                                                     <td>
                                                         <?php if ($owner->city || $owner->state || $owner->country) { ?>
@@ -649,9 +654,15 @@ $qualityScore = $totalRecords > 0 ? max(0, 100 - (($totalIssues / $totalRecords)
                                                         <small><?= htmlspecialchars($duplicate->users_list) ?></small>
                                                     </td>
                                                     <td>
-                                                        <a href="mailto:<?= htmlspecialchars($duplicate->email) ?>" class="btn btn-sm btn-outline-secondary">
+                                                        <button type="button" class="btn btn-sm btn-outline-warning"
+                                                                onclick="openAdminContactModal(
+                                                                    {id: 'Multiple', year: '', model: '', chassis: '', series: ''},
+                                                                    {id: 'Multiple', name: 'Users with <?= htmlspecialchars($duplicate->email) ?>', email: '<?= htmlspecialchars($duplicate->email) ?>'},
+                                                                    'Duplicate Email Addresses',
+                                                                    '<?= htmlspecialchars($duplicate->email) ?>'
+                                                                )" title="Contact Users via Registry">
                                                             <i class="fas fa-envelope"></i> Contact
-                                                        </a>
+                                                        </button>
                                                     </td>
                                                 </tr>
                                             <?php } ?>
@@ -679,7 +690,7 @@ $qualityScore = $totalRecords > 0 ? max(0, 100 - (($totalIssues / $totalRecords)
                                             <?php foreach ($report['data'] as $car) { ?>
                                             <tr>
                                                 <td>
-                                                    <button class="btn btn-sm btn-outline-primary" onclick="switchToCarManagementTab(<?= $car->id ?>)">
+                                                    <button class="btn btn-sm btn-outline-primary" onclick="openCarDetails(<?= $car->id ?>)">
                                                         <?= $car->id ?>
                                                     </button>
                                                 </td>
@@ -717,7 +728,7 @@ $qualityScore = $totalRecords > 0 ? max(0, 100 - (($totalIssues / $totalRecords)
                                                     </td>
                                                 <?php } ?>
                                                 <td>
-                                                    <button type="button" class="btn btn-sm btn-outline-success" onclick="switchToCarManagementTab(<?= $car->id ?>)" title="Edit Car">
+                                                    <button type="button" class="btn btn-sm btn-outline-success" onclick="openCarDetails(<?= $car->id ?>)" title="Edit Car Details">
                                                         <i class="fas fa-edit"></i> Edit
                                                     </button>
                                                 </td>
@@ -845,11 +856,106 @@ $qualityScore = $totalRecords > 0 ? max(0, 100 - (($totalIssues / $totalRecords)
     </div>
 </div>
 
+<!-- Admin Contact Owner Modal -->
+<div class="modal fade" id="adminContactModal" tabindex="-1" role="dialog" aria-labelledby="adminContactModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg" role="document">
+        <div class="modal-content">
+            <div class="modal-header bg-warning text-dark">
+                <h5 class="modal-title" id="adminContactModalLabel">
+                    <i class="fas fa-shield-alt"></i> Administrator Contact Owner
+                </h5>
+                <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+                    <span aria-hidden="true">&times;</span>
+                </button>
+            </div>
+            <form id="adminContactForm" method="POST" action="<?= $us_url_root ?>app/admin/includes/process-admin-contact.php">
+                <div class="modal-body">
+                    <div class="alert alert-info">
+                        <i class="fas fa-info-circle"></i> <strong>Administrator Contact:</strong>
+                        This will send an email to the car owner.
+                    </div>
+
+                    <!-- Owner Information Display -->
+                    <div class="row mb-3">
+                        <div class="col-md-6">
+                            <h6 class="text-primary">Car Information</h6>
+                            <div class="bg-light p-3 rounded">
+                                <div id="contactCarInfo">
+                                    <!-- Populated by JavaScript -->
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <h6 class="text-primary">Owner Information</h6>
+                            <div class="bg-light p-3 rounded">
+                                <div id="contactOwnerInfo">
+                                    <!-- Populated by JavaScript -->
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Quality Issue Context -->
+                    <div class="mb-3">
+                        <label for="qualityIssue" class="form-label">
+                            <i class="fas fa-exclamation-triangle text-warning"></i> Data Quality Issue
+                        </label>
+                        <select class="form-control" id="qualityIssue" name="quality_issue">
+                            <option value="">Select the data quality issue (optional)</option>
+                            <option value="Missing Information">Missing Critical Information</option>
+                            <option value="Invalid Data">Invalid Data Entry</option>
+                            <option value="Duplicate Records">Duplicate Records</option>
+                            <option value="Duplicate Email Addresses">Duplicate Email Addresses</option>
+                            <option value="Missing Chassis">Missing Chassis Number</option>
+                            <option value="Invalid Chassis">Invalid Chassis Number</option>
+                            <option value="Missing Series">Missing Series Information</option>
+                            <option value="Other">Other Data Quality Issue</option>
+                        </select>
+                    </div>
+
+                    <!-- Message -->
+                    <div class="mb-3">
+                        <label for="adminMessage" class="form-label">
+                            <i class="fas fa-comment text-primary"></i> Your Message to Owner
+                        </label>
+                        <textarea class="form-control" id="adminMessage" name="message" rows="6"
+                                  placeholder="Enter your message to the car owner..." required></textarea>
+                        <div class="form-text">
+                            <small class="text-muted">
+                                <i class="fas fa-lightbulb"></i> <strong>Tip:</strong> Be specific about what information needs to be updated and why.
+                            </small>
+                        </div>
+                    </div>
+
+                    <!-- Hidden fields -->
+                    <input type="hidden" name="csrf" value="<?= Token::generate(); ?>" />
+                    <input type="hidden" name="action" value="admin_contact_owner" />
+                    <input type="hidden" name="car_id" id="contactCarId" value="" />
+                    <input type="hidden" name="owner_id" id="contactOwnerId" value="" />
+                    <input type="hidden" name="target_email" id="contactTargetEmail" value="" />
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-warning">
+                        <i class="fas fa-envelope"></i> Send Administrator Message
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
 <script>
 // Auto-refresh data every 5 minutes for live monitoring
 setTimeout(function() {
     location.reload();
 }, 300000);
+
+// Function to open car details page for editing
+function openCarDetails(carId) {
+    // Open car details page in new tab for editing
+    window.open('../cars/details.php?car_id=' + carId, '_blank');
+}
 
 // Function to switch to car management tab with specific car pre-loaded
 function switchToCarManagementTab(carId) {
@@ -861,6 +967,39 @@ function switchToCarManagementTab(carId) {
 function switchToUserManagementTab(userId) {
     // Switch to user management tab and pass user ID as parameter
     window.location.href = '?tab=user-mgmt&user_id=' + userId;
+}
+
+// Function to open admin contact modal for owner communication
+function openAdminContactModal(carData, ownerData, qualityIssue = '', targetEmail = '') {
+    // Populate car information
+    document.getElementById('contactCarInfo').innerHTML = `
+        <div><strong>Car ID:</strong> ${carData.id}</div>
+        <div><strong>Year/Model:</strong> ${carData.year || 'N/A'} ${carData.model || 'N/A'}</div>
+        <div><strong>Chassis:</strong> ${carData.chassis || 'Missing'}</div>
+        <div><strong>Series:</strong> ${carData.series || 'Missing'}</div>
+    `;
+
+    // Populate owner information
+    document.getElementById('contactOwnerInfo').innerHTML = `
+        <div><strong>Name:</strong> ${ownerData.name || 'Unknown'}</div>
+        <div><strong>Email:</strong> ${ownerData.email || 'Unknown'}</div>
+        <div><strong>User ID:</strong> ${ownerData.id || 'Unknown'}</div>
+    `;
+
+    // Set hidden field values
+    document.getElementById('contactCarId').value = carData.id;
+    document.getElementById('contactOwnerId').value = ownerData.id;
+    document.getElementById('contactTargetEmail').value = targetEmail || ownerData.email || '';
+
+    // Pre-populate quality issue if provided
+    if (qualityIssue) {
+        document.getElementById('qualityIssue').value = qualityIssue;
+    } else {
+        document.getElementById('qualityIssue').value = '';
+    }
+
+    // Show the modal
+    $('#adminContactModal').modal('show');
 }
 
 // Smooth scrolling to report sections

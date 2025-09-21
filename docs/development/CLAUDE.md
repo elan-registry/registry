@@ -46,7 +46,7 @@ This is a PHP web application for the Lotus Elan Registry hosted at <https://ela
 
 **CRITICAL:** When working with UserSpice-managed pages:
 
-1. **New Directories with PHP Files**: When adding new folders containing PHP files, update the `$path` array in `/z_us_root.php` to include the new directory path. This ensures proper path resolution and security monitoring.
+1. **New Directories with PHP Files**: When adding new folders containing PHP files, update the `$path` array in `/z_us_root.php` to include the new directory path. This ensures proper path resolution and security monitoring. !securePage($_SERVER['PHP_SELF']) directive, verify the directory is in the `$path` array in `/z_us_root.php`
 
    ```php
    // Example: Adding 'app/reports/api/' directory
