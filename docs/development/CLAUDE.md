@@ -66,6 +66,41 @@ This is a PHP web application for the Lotus Elan Registry hosted at <https://ela
 - **DEPRECATED VIEWS**: `usersview`, `users_carsview` remain due to privilege limitations but are unused (contains deprecated username references)
 - Database triggers automatically maintain audit trails
 
+### Class Architecture & Integration Patterns
+
+**Domain Classes follow established patterns from the Car class:**
+
+- **Location**: All custom classes in `/usersc/classes/`
+- **Naming**: PascalCase with descriptive business domain names (e.g., `ElanRegistryOwner`, `Car`, `CarView`)
+- **Database Integration**: Use `DB::getInstance()` singleton pattern
+- **Exception Handling**: Custom exceptions in `/usersc/exceptions/` with descriptive names
+- **Audit Logging**: All operations use `logger($userId, 'Category', 'Message')` pattern
+
+**Key Integration Functions:**
+
+- **`getUserWithProfile($userId)`**: Primary function for combined user+profile data access
+  - Located in `/usersc/includes/custom_functions.php`
+  - Returns user object with profile fields (city, state, country, lat, lon, website)
+  - Handles missing profile data with safe defaults
+  - Use this for all owner data access rather than separate queries
+
+**Data Access Patterns:**
+
+```php
+// ✅ PREFERRED: Use existing custom function
+$ownerData = getUserWithProfile($userId);
+
+// ✅ ACCEPTABLE: Direct query when custom function insufficient
+$userQ = $db->query("SELECT u.*, p.* FROM users u LEFT JOIN profiles p ON u.id = p.user_id WHERE u.id = ?", [$userId]);
+```
+
+**Geocoding Integration:**
+
+- **Location**: `/app/views/_geolocate.php`
+- **Usage**: Include file, sets `$fields['lat']` and `$fields['lon']` based on city/state/country
+- **Required Variables**: `$city`, `$state`, `$country` must be set before inclusion
+- **Integration**: Used in user_settings.php and should be used in ElanRegistryOwner class
+
 ### Key Application Files
 
 - `app/cars/index.php` - Searchable car listing with DataTables
@@ -167,6 +202,96 @@ npm run playwright:csp          # CSP validation tests
 - **CRITICAL**: Never commit credentials, API keys, or sensitive data to git
 - Use environment variables for all sensitive configuration
 
+### Owner Data Management Patterns
+
+**Use these patterns when working with owner/user data operations:**
+
+#### Owner Profile Access
+
+```php
+// ✅ PREFERRED: Use existing custom function for complete owner data
+$owner = getUserWithProfile($userId);
+if ($owner) {
+    echo "Owner: {$owner->fname} {$owner->lname}";
+    echo "Location: {$owner->city}, {$owner->state}, {$owner->country}";
+    echo "Coordinates: {$owner->lat}, {$owner->lon}";
+}
+
+// ✅ ACCEPTABLE: When you need additional owner context
+class ElanRegistryOwner {
+    public static function getOwnerProfile(int $userId): ?object {
+        return getUserWithProfile($userId);
+    }
+
+    public function getCarsOwned(): array {
+        return $this->_db->query("SELECT * FROM cars WHERE user_id = ?", [$this->_data->id])->results();
+    }
+}
+```
+
+#### Location Updates with Geocoding
+
+```php
+// ✅ CORRECT: Integrate with existing geocoding system
+public function updateLocation(array $locationData): bool {
+    // Set required variables for geocoding
+    $city = $locationData['city'];
+    $state = $locationData['state'];
+    $country = $locationData['country'];
+
+    // Include geocoding system
+    include($abs_us_root . $us_url_root . 'app/views/_geolocate.php');
+
+    // Update profile with geocoded coordinates
+    if (!empty($fields)) {
+        $updateFields = array_merge($locationData, $fields);
+        return $this->_db->update('profiles', $this->_profileId, $updateFields);
+    }
+
+    return false;
+}
+```
+
+#### Owner Search and Management Interface
+
+```php
+// ✅ CORRECT: Admin search functionality
+public function searchOwners(string $searchTerm): array {
+    $searchTerm = '%' . $searchTerm . '%';
+
+    return $this->_db->query(
+        "SELECT u.id, u.fname, u.lname, u.email, p.city, p.state, p.country
+         FROM users u
+         LEFT JOIN profiles p ON u.id = p.user_id
+         WHERE u.fname LIKE ? OR u.lname LIKE ? OR u.email LIKE ?
+            OR p.city LIKE ? OR p.state LIKE ?
+         ORDER BY u.lname, u.fname",
+        [$searchTerm, $searchTerm, $searchTerm, $searchTerm, $searchTerm]
+    )->results();
+}
+```
+
+#### Data Quality Integration
+
+```php
+// ✅ CORRECT: Profile completeness scoring
+public function getProfileQualityScore(): float {
+    $owner = $this->data();
+    $totalFields = 7;
+    $completedFields = 0;
+
+    if (!empty($owner->fname)) $completedFields++;
+    if (!empty($owner->lname)) $completedFields++;
+    if (!empty($owner->email)) $completedFields++;
+    if (!empty($owner->city)) $completedFields++;
+    if (!empty($owner->state)) $completedFields++;
+    if (!empty($owner->country)) $completedFields++;
+    if (!empty($owner->lat) && !empty($owner->lon)) $completedFields++;
+
+    return round(($completedFields / $totalFields) * 100, 1);
+}
+```
+
 ### Error Logging Standards
 
 **All error conditions MUST use UserSpice logger integration for centralized error visibility and audit trails.**
@@ -244,6 +369,83 @@ This is a CRITICAL step that must NEVER be skipped when working on any code-rela
 - **Include clear testing instructions** in the Required Actions section for any manual steps needed post-deployment
 
 **📋 See [RELEASE_NOTES_TEMPLATE.md](RELEASE_NOTES_TEMPLATE.md) for complete guidelines and structure**
+
+### ElanRegistry Terminology Standards
+
+**CRITICAL:** Consistent terminology is essential for code clarity and user experience.
+
+#### User vs Owner Terminology
+
+- **Users**: Authentication and session management context (UserSpice framework terminology)
+  - Use in UserSpice integration code
+  - Database table references (`users` table)
+  - Session management and permissions
+  - Authentication workflows
+
+- **Owners**: Car registry business domain context (ElanRegistry terminology)
+  - Use in UI elements and user-facing content
+  - Business logic and domain operations
+  - Car ownership and registry functionality
+  - Admin interfaces referring to registry participants
+
+#### Code Implementation Guidelines
+
+```php
+// ✅ CORRECT: UserSpice context
+$user = new User();
+if ($user->isLoggedIn()) {
+    // UserSpice authentication logic
+}
+
+// ✅ CORRECT: ElanRegistry context
+$owner = new ElanRegistryOwner($userId);
+$ownerProfile = $owner->getOwnerProfile();
+echo "Owner: " . $owner->data()->fname . " " . $owner->data()->lname;
+
+// ✅ CORRECT: Database operations use UserSpice table names
+$userQuery = $db->query("SELECT * FROM users WHERE id = ?", [$userId]);
+$profileQuery = $db->query("SELECT * FROM profiles WHERE user_id = ?", [$userId]);
+
+// ✅ CORRECT: UI elements use owner terminology
+echo "<h3>Owner Information</h3>";
+echo "<button>Contact Owner</button>";
+echo "<span>Owner Location: {$owner->city}, {$owner->state}</span>";
+```
+
+#### Integration Patterns
+
+**Use existing `getUserWithProfile()` function for combined data access:**
+
+```php
+// ✅ CORRECT: Leverage existing custom function
+$ownerData = getUserWithProfile($userId);
+if ($ownerData) {
+    echo "Owner: {$ownerData->fname} {$ownerData->lname}";
+    echo "Location: {$ownerData->city}, {$ownerData->state}";
+}
+```
+
+**Follow established Car class patterns for new domain classes:**
+
+```php
+// ✅ CORRECT: ElanRegistryOwner class follows Car class patterns
+class ElanRegistryOwner {
+    private $_db;
+    private $_data;
+
+    public function __construct(?int $id = null) {
+        $this->_db = DB::getInstance();
+        if ($id) {
+            $this->find($id);
+        }
+    }
+
+    public function create(array $fields): bool {
+        // Validation, sanitization, audit logging
+        // Follow Car class exception handling patterns
+    }
+}
+```
 
 ## 🚀 Quick Deployment Reference
 
