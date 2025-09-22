@@ -376,7 +376,7 @@ This is a CRITICAL step that must NEVER be skipped when working on any code-rela
 
 #### User vs Owner Terminology
 
-- **Users**: Authentication and session management context (UserSpice framework terminology)
+- **Users**: Authentication and session management context (UserSpice framework)
   - Use in UserSpice integration code
   - Database table references (`users` table)
   - Session management and permissions
@@ -404,7 +404,10 @@ echo "Owner: " . $owner->data()->fname . " " . $owner->data()->lname;
 
 // ✅ CORRECT: Database operations use UserSpice table names
 $userQuery = $db->query("SELECT * FROM users WHERE id = ?", [$userId]);
-$profileQuery = $db->query("SELECT * FROM profiles WHERE user_id = ?", [$userId]);
+$profileQuery = $db->query(
+    "SELECT * FROM profiles WHERE user_id = ?",
+    [$userId]
+);
 
 // ✅ CORRECT: UI elements use owner terminology
 echo "<h3>Owner Information</h3>";
