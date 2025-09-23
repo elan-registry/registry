@@ -33,6 +33,7 @@ use SecureEnvPHP\SecureEnvPHP;
 // Include classes in usersc
 
 include_once $abs_us_root . $us_url_root . 'usersc/classes/Car.php';
+include_once $abs_us_root . $us_url_root . 'usersc/classes/ElanRegistryOwner.php';
 include_once $abs_us_root . $us_url_root . 'usersc/classes/Resize.php';
 include_once $abs_us_root . $us_url_root . 'usersc/classes/CarView.php';
 
