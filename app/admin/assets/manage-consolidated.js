@@ -409,8 +409,6 @@ $(document).ready(function() {
 
             // Mark initialization complete
             $('body').addClass('consolidated-interface-ready');
-
-            // console.log('Consolidated Management Interface initialized successfully');
         } catch (error) {
             // console.error('Error initializing Consolidated Management Interface:', error);
         }
