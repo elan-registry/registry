@@ -2,49 +2,70 @@
 declare(strict_types=1);
 /**
  * tab-user_mgmt.php
- * User Management Tab Content
+ * Owner Management Tab Content
  *
- * Phase 1A: Placeholder content for user management functionality
- * Will be implemented in Phase 2 (Issue #269) as dedicated ElanRegistry interface
+ * Phase 2A: Functional ElanRegistry owner management interface
+ * Implements Issue #269 with ElanRegistryOwner class integration
  */
+
+// Get system status for statistics
+$systemStatus = [];
+if (isset($systemStatus) && is_array($systemStatus)) {
+    // Use existing system status if available
+} else {
+    // Calculate user statistics
+    $userCountQuery = $db->query("SELECT COUNT(*) as count FROM users");
+    $systemStatus['total_users'] = $userCountQuery->count() > 0 ? $userCountQuery->first()->count : 0;
+}
+
+// Handle direct owner ID parameter from data quality links
+$selectedOwnerId = null;
+if (isset($_GET['owner_id']) && is_numeric($_GET['owner_id'])) {
+    $selectedOwnerId = (int)$_GET['owner_id'];
+}
 ?>
 
-<div class="alert alert-warning">
-    <h4><i class="fas fa-users"></i> User Management - Phase 2 Development</h4>
-    <p class="mb-2">This tab will replace UserSpice admin interface limitations with dedicated ElanRegistry user management:</p>
-    <ul class="mb-2">
-        <li>Combined user + profile editing in single interface</li>
-        <li>Location fields with real-time geocoding integration</li>
-        <li>Car ownership overview and management</li>
-        <li>Data quality indicators for profile completeness</li>
-        <li>Direct links from data quality dashboard</li>
-    </ul>
-    <p class="mb-0"><strong>Current user management:</strong>
-        <a href="../../users/admin.php" class="btn btn-secondary btn-sm ml-2">
-            <i class="fas fa-external-link-alt"></i> UserSpice Admin
-        </a>
-    </p>
+<div class="alert alert-success">
+    <h4><i class="fas fa-users"></i> Owner Management Interface</h4>
+    <p class="mb-0">Search, edit, and manage owner profiles with data quality integration. <strong>✅ Issue #269 Implemented</strong></p>
 </div>
 
-<!-- Preview of user management interface -->
+<!-- Owner Search and Management Interface -->
 <div class="row mb-4">
     <div class="col-md-8">
         <div class="card">
             <div class="card-header">
-                <h5 class="mb-0"><i class="fas fa-search"></i> User Search & Management</h5>
+                <h5 class="mb-0"><i class="fas fa-search"></i> Owner Search & Management</h5>
             </div>
             <div class="card-body">
                 <div class="input-group mb-3">
-                    <input type="text" class="form-control" placeholder="Search users by name, email, or location..." disabled>
+                    <input type="text"
+                           id="ownerSearchInput"
+                           class="form-control"
+                           placeholder="Search owners by name, email, or location..."
+                           value="<?= $selectedOwnerId ? 'Loading owner ID ' . $selectedOwnerId . '...' : '' ?>">
                     <div class="input-group-append">
-                        <button class="btn btn-primary" type="button" disabled>
+                        <button class="btn btn-primary" type="button" id="ownerSearchBtn">
                             <i class="fas fa-search"></i> Search
+                        </button>
+                        <button class="btn btn-secondary" type="button" id="ownerClearBtn">
+                            <i class="fas fa-times"></i> Clear
                         </button>
                     </div>
                 </div>
-                <div class="text-center py-4">
-                    <i class="fas fa-cog fa-spin fa-3x text-muted mb-3"></i>
-                    <p class="text-muted">Enhanced user search and management coming in Phase 2</p>
+
+                <!-- Search Results Area -->
+                <div id="ownerSearchResults" class="mt-3">
+                    <?php if ($selectedOwnerId): ?>
+                        <div class="text-center py-2">
+                            <i class="fas fa-spinner fa-spin"></i> Loading owner information...
+                        </div>
+                    <?php else: ?>
+                        <div class="text-center py-4 text-muted">
+                            <i class="fas fa-users fa-2x mb-2"></i>
+                            <p>Search for owners to view and edit their profiles</p>
+                        </div>
+                    <?php endif; ?>
                 </div>
             </div>
         </div>
@@ -53,46 +74,246 @@ declare(strict_types=1);
     <div class="col-md-4">
         <div class="card border-info">
             <div class="card-header bg-info text-white">
-                <h6 class="mb-0"><i class="fas fa-chart-pie"></i> User Statistics</h6>
+                <h6 class="mb-0"><i class="fas fa-chart-pie"></i> Owner Statistics</h6>
             </div>
             <div class="card-body">
                 <div class="text-center">
                     <h3 class="text-primary"><?= number_format($systemStatus['total_users']) ?></h3>
-                    <p class="mb-0">Active Users</p>
+                    <p class="mb-1">Active Owners</p>
+                    <small class="text-muted">
+                        <i class="fas fa-link"></i>
+                        <a href="../../users/admin.php" target="_blank">UserSpice Admin</a>
+                    </small>
+                </div>
+            </div>
+        </div>
+
+        <!-- Data Quality Summary -->
+        <div class="card border-warning mt-3">
+            <div class="card-header bg-warning text-dark">
+                <h6 class="mb-0"><i class="fas fa-clipboard-check"></i> Data Quality</h6>
+            </div>
+            <div class="card-body">
+                <div class="text-center">
+                    <button class="btn btn-sm btn-outline-warning" onclick="switchToDataQualityTab()">
+                        <i class="fas fa-chart-line"></i> Quality Reports
+                    </button>
                 </div>
             </div>
         </div>
     </div>
 </div>
 
-<div class="card">
+<!-- Owner Profile Management Panel -->
+<div class="card" id="ownerProfilePanel" style="display: none;">
     <div class="card-header">
-        <h5 class="mb-0"><i class="fas fa-user-edit"></i> Profile Management</h5>
+        <h5 class="mb-0">
+            <i class="fas fa-user-edit"></i> Owner Profile Management
+            <span id="ownerProfileName" class="text-muted"></span>
+        </h5>
+        <div class="card-tools">
+            <button class="btn btn-sm btn-outline-secondary" onclick="closeOwnerProfile()">
+                <i class="fas fa-times"></i> Close
+            </button>
+        </div>
     </div>
     <div class="card-body">
         <div class="row">
-            <div class="col-md-6">
-                <h6 class="text-primary"><i class="fas fa-user"></i> Coming in Phase 2</h6>
-                <ul class="list-unstyled">
-                    <li><i class="fas fa-check text-muted"></i> Real-time profile editing</li>
-                    <li><i class="fas fa-check text-muted"></i> Location geocoding integration</li>
-                    <li><i class="fas fa-check text-muted"></i> Profile quality scoring</li>
-                    <li><i class="fas fa-check text-muted"></i> Data quality integration</li>
-                </ul>
+            <div class="col-md-8">
+                <!-- Owner Profile Form will be loaded here -->
+                <div id="ownerProfileForm">
+                    <div class="text-center py-3">
+                        <i class="fas fa-spinner fa-spin"></i> Loading profile...
+                    </div>
+                </div>
             </div>
-            <div class="col-md-6">
-                <h6 class="text-success"><i class="fas fa-car"></i> Car Ownership</h6>
-                <ul class="list-unstyled">
-                    <li><i class="fas fa-check text-muted"></i> Complete ownership history</li>
-                    <li><i class="fas fa-check text-muted"></i> Shared car management</li>
-                    <li><i class="fas fa-check text-muted"></i> Transfer history tracking</li>
-                    <li><i class="fas fa-check text-muted"></i> Direct car management links</li>
-                </ul>
+            <div class="col-md-4">
+                <!-- Owner Information Sidebar -->
+                <div id="ownerInfoSidebar">
+                    <div class="text-center py-3">
+                        <i class="fas fa-spinner fa-spin"></i> Loading information...
+                    </div>
+                </div>
             </div>
-        </div>
-        <div class="text-center mt-3">
-            <span class="badge badge-warning">Issue #269</span>
-            <span class="badge badge-info">Phase 2 Feature</span>
         </div>
     </div>
 </div>
+
+<!-- Scripts for Owner Management -->
+<script>
+// Owner Management JavaScript
+let currentOwnerId = null;
+let searchTimeout = null;
+
+// Initialize owner management
+$(document).ready(function() {
+    // Auto-load owner if ID provided in URL
+    <?php if ($selectedOwnerId): ?>
+        loadOwnerById(<?= $selectedOwnerId ?>);
+    <?php endif; ?>
+
+    // Setup search functionality
+    $('#ownerSearchInput').on('input', function() {
+        clearTimeout(searchTimeout);
+        const query = $(this).val().trim();
+
+        if (query.length >= 2) {
+            searchTimeout = setTimeout(() => searchOwners(query), 300);
+        } else if (query.length === 0) {
+            clearSearchResults();
+        }
+    });
+
+    $('#ownerSearchBtn').click(function() {
+        const query = $('#ownerSearchInput').val().trim();
+        if (query.length >= 2) {
+            searchOwners(query);
+        }
+    });
+
+    $('#ownerClearBtn').click(function() {
+        clearSearchResults();
+        closeOwnerProfile();
+    });
+
+    // Handle Enter key in search
+    $('#ownerSearchInput').keypress(function(e) {
+        if (e.which === 13) {
+            $('#ownerSearchBtn').click();
+        }
+    });
+});
+
+// Search owners functionality
+function searchOwners(query) {
+    $('#ownerSearchResults').html('<div class="text-center py-2"><i class="fas fa-spinner fa-spin"></i> Searching...</div>');
+
+    $.ajax({
+        url: 'includes/process-owner-search.php',
+        method: 'POST',
+        data: {
+            query: query,
+            csrf: '<?= Token::generate() ?>'
+        },
+        dataType: 'json',
+        success: function(response) {
+            if (response.success) {
+                displaySearchResults(response.owners);
+            } else {
+                $('#ownerSearchResults').html('<div class="alert alert-warning"><i class="fas fa-exclamation-triangle"></i> ' + response.message + '</div>');
+            }
+        },
+        error: function() {
+            $('#ownerSearchResults').html('<div class="alert alert-danger"><i class="fas fa-exclamation-circle"></i> Search failed. Please try again.</div>');
+        }
+    });
+}
+
+// Display search results
+function displaySearchResults(owners) {
+    if (owners.length === 0) {
+        $('#ownerSearchResults').html('<div class="alert alert-info"><i class="fas fa-info-circle"></i> No owners found matching your search.</div>');
+        return;
+    }
+
+    let html = '<div class="table-responsive"><table class="table table-hover"><thead><tr>';
+    html += '<th>Name</th><th>Email</th><th>Location</th><th>Data Quality</th><th>Actions</th>';
+    html += '</tr></thead><tbody>';
+
+    owners.forEach(function(owner) {
+        const qualityClass = owner.quality_score >= 80 ? 'success' : (owner.quality_score >= 60 ? 'warning' : 'danger');
+        const location = [owner.city, owner.state, owner.country].filter(Boolean).join(', ') || 'Not specified';
+
+        html += `<tr onclick="loadOwnerById(${owner.id})" style="cursor: pointer;">`;
+        html += `<td><strong>${owner.fname} ${owner.lname}</strong></td>`;
+        html += `<td>${owner.email}</td>`;
+        html += `<td>${location}</td>`;
+        html += `<td><span class="badge badge-${qualityClass}">${owner.quality_score}%</span></td>`;
+        html += `<td><button class="btn btn-sm btn-primary" onclick="event.stopPropagation(); loadOwnerById(${owner.id})"><i class="fas fa-edit"></i> Edit</button></td>`;
+        html += '</tr>';
+    });
+
+    html += '</tbody></table></div>';
+    $('#ownerSearchResults').html(html);
+}
+
+// Load owner by ID
+function loadOwnerById(ownerId) {
+    currentOwnerId = ownerId;
+    $('#ownerProfilePanel').show();
+
+    // Update URL without reload
+    const currentUrl = new URL(window.location);
+    currentUrl.searchParams.set('owner_id', ownerId);
+    window.history.replaceState({}, '', currentUrl);
+
+    // Load owner profile form
+    $.ajax({
+        url: 'includes/load-owner-profile.php',
+        method: 'POST',
+        data: {
+            owner_id: ownerId,
+            csrf: '<?= Token::generate() ?>'
+        },
+        success: function(response) {
+            $('#ownerProfileForm').html(response);
+        },
+        error: function() {
+            $('#ownerProfileForm').html('<div class="alert alert-danger">Failed to load owner profile.</div>');
+        }
+    });
+
+    // Load owner information sidebar
+    $.ajax({
+        url: 'includes/load-owner-info.php',
+        method: 'POST',
+        data: {
+            owner_id: ownerId,
+            csrf: '<?= Token::generate() ?>'
+        },
+        success: function(response) {
+            $('#ownerInfoSidebar').html(response);
+        },
+        error: function() {
+            $('#ownerInfoSidebar').html('<div class="alert alert-danger">Failed to load owner information.</div>');
+        }
+    });
+}
+
+// Clear search results
+function clearSearchResults() {
+    $('#ownerSearchInput').val('');
+    $('#ownerSearchResults').html('<div class="text-center py-4 text-muted"><i class="fas fa-users fa-2x mb-2"></i><p>Search for owners to view and edit their profiles</p></div>');
+}
+
+// Close owner profile panel
+function closeOwnerProfile() {
+    $('#ownerProfilePanel').hide();
+    currentOwnerId = null;
+
+    // Remove owner_id from URL
+    const currentUrl = new URL(window.location);
+    currentUrl.searchParams.delete('owner_id');
+    window.history.replaceState({}, '', currentUrl);
+}
+
+// Integration function for data quality tab
+function switchToDataQualityTab() {
+    // This function should be available from the main admin interface
+    if (typeof switchToTab === 'function') {
+        switchToTab('data_quality');
+    } else {
+        // Fallback - just show an alert
+        alert('Please use the Data Quality tab to view quality reports');
+    }
+}
+
+// Function to be called from data quality tab for direct owner editing
+function switchToUserManagementTab(ownerId) {
+    if (typeof switchToTab === 'function') {
+        switchToTab('user_mgmt');
+        // Wait for tab switch then load owner
+        setTimeout(() => loadOwnerById(ownerId), 100);
+    }
+}
+</script>

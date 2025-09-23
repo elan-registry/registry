@@ -594,6 +594,11 @@ $qualityScore = $totalRecords > 0 ? max(0, 100 - (($totalIssues / $totalRecords)
                                                         <?php } ?>
                                                     </td>
                                                     <td>
+                                                        <button type="button" class="btn btn-sm btn-outline-primary mr-1"
+                                                                onclick="switchToUserManagementTab(<?= $owner->id ?>)"
+                                                                title="Edit Owner Profile">
+                                                            <i class="fas fa-user-edit"></i>
+                                                        </button>
                                                         <button type="button" class="btn btn-sm btn-outline-warning"
                                                                 onclick="openAdminContactModal(
                                                                     {id: '<?= $owner->car_count ?? 'Multiple' ?>', year: '', model: '', chassis: '', series: ''},
