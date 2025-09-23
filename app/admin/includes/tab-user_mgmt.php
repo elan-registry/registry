@@ -9,12 +9,10 @@ declare(strict_types=1);
  */
 
 // Get system status for statistics
-$systemStatus = [];
-if (isset($systemStatus) && is_array($systemStatus)) {
-    // Use existing system status if available
-} else {
-    // Calculate user statistics
+if (!isset($systemStatus) || !is_array($systemStatus) || !isset($systemStatus['total_users'])) {
+    // Calculate user statistics if not already available
     $userCountQuery = $db->query("SELECT COUNT(*) as count FROM users");
+    $systemStatus = $systemStatus ?? [];
     $systemStatus['total_users'] = $userCountQuery->count() > 0 ? $userCountQuery->first()->count : 0;
 }
 
@@ -78,7 +76,7 @@ if (isset($_GET['owner_id']) && is_numeric($_GET['owner_id'])) {
             </div>
             <div class="card-body">
                 <div class="text-center">
-                    <h3 class="text-primary"><?= number_format($systemStatus['total_users']) ?></h3>
+                    <h3 class="text-primary"><?= number_format($systemStatus['total_users'] ?? 0) ?></h3>
                     <p class="mb-1">Active Owners</p>
                     <small class="text-muted">
                         <i class="fas fa-link"></i>
