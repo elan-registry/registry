@@ -206,6 +206,58 @@ npm run playwright:csp          # CSP validation tests
 
 **Use these patterns when working with owner/user data operations:**
 
+#### Geocoding System
+
+**Automatic Location Geocoding:**
+- Location updates automatically trigger Google Maps API geocoding
+- Coordinates are automatically populated when city/state/country is provided
+- Admin interface provides visual feedback for geocoding success/failure
+- Failed geocoding preserves existing coordinates and shows clear error messages
+
+```php
+// ✅ Location updates with automatic geocoding
+$owner = new ElanRegistryOwner($userId);
+$owner->update([
+    'id' => $userId,
+    'city' => 'Portland',
+    'state' => 'Oregon',
+    'country' => 'United States',
+    'csrf' => Token::generate()
+]);
+// Coordinates automatically populated via Google Maps API
+```
+
+**Geocoding Configuration:**
+- API key stored in settings table as `elan_google_geo_key`
+- Geocoding script: `app/views/_geolocate.php`
+- Coordinates rounded to 4 decimal places (~11 meter accuracy)
+- Failed requests are logged for troubleshooting
+
+#### Admin Interface Structure
+
+**Consolidated Management Interface:**
+- **Location**: `app/admin/manage-consolidated.php`
+- **Purpose**: Unified admin interface for all registry management tasks
+- **Tabs Available**:
+  - **Car/Owner Relationships**: Transfer requests and ownership management
+  - **Manage Cars**: Car data quality issues and duplicate detection
+  - **Owner Management**: Owner profiles with search and quality reports
+  - **System Maintenance**: Database cleanup and maintenance tasks
+  - **Settings**: Configuration management
+  - **Account Cleanup**: User account management
+
+**Quality Badge System:**
+- Dynamic badges show issue counts on relevant tabs
+- Owner Management tab shows owner-specific quality issues
+- Manage Cars tab shows car-specific quality issues
+- Badges update in real-time based on database state
+
+**Owner Management Features:**
+- Advanced search with UNION-based prioritization (exact matches first)
+- Real-time geocoding feedback with visual indicators
+- Profile quality scoring and completion tracking
+- Bulk location synchronization to owned cars
+
 #### Owner Profile Access
 
 ```php
