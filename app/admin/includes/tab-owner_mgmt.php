@@ -3,10 +3,6 @@ declare(strict_types=1);
 /**
  * tab-owner_mgmt.php
  * Manage OwnersTab Content
- *
- * Phase 2A: Functional ElanRegistry Manage Owners Interface
- * Implements Issue #269 with ElanRegistryOwner class integration
- * Includes owner quality reports for comprehensive management
  */
 
 // Get system status for statistics
@@ -158,7 +154,7 @@ function getOwnerQualityReports($db): array {
 
     $reports = [];
 
-    // Owner Report 1: Car Owners Missing Critical Information
+    // Owner Report: Car Owners Missing Critical Information
     $ownersWithMissingInfoQ = $db->query("
         SELECT u.id, u.fname, u.lname, u.email, u.join_date, u.last_login,
                p.city, p.state, p.country, p.lat, p.lon,
@@ -196,31 +192,8 @@ function getOwnerQualityReports($db): array {
     ];
 
 
-    // Owner Report 3: Users Without Cars
-    $usersWithoutCarsQ = $db->query("
-        SELECT u.id, u.fname, u.lname, u.email, u.join_date, u.last_login,
-               p.city, p.state, p.country,
-               DATEDIFF(NOW(), u.join_date) as days_since_join,
-               CASE WHEN u.last_login IS NULL OR u.last_login = '0000-00-00 00:00:00' THEN 'Never'
-                    ELSE DATE_FORMAT(u.last_login, '%M %d, %Y') END as last_login_formatted
-        FROM users u
-        LEFT JOIN car_user cu ON u.id = cu.userid
-        LEFT JOIN profiles p ON u.id = p.user_id
-        WHERE u.active = 1 AND cu.userid IS NULL
-        ORDER BY u.join_date DESC
-        LIMIT 50
-    ");
-    $reports['users_without_cars'] = [
-        'title' => 'Active Users Without Cars',
-        'description' => 'Active users who have registered but never added a car to the registry',
-        'icon' => 'fas fa-user-plus',
-        'severity' => 'info',
-        'count' => count($usersWithoutCarsQ->results()),
-        'data' => $usersWithoutCarsQ->results(),
-        'impact' => 'Low - Potential registry growth opportunity'
-    ];
 
-    // Owner Report 4: Duplicate Email Analysis
+    // Owner Report: Duplicate Email Analysis
     $duplicateEmailsQ = $db->query("
         SELECT email, COUNT(*) as user_count,
                GROUP_CONCAT(CONCAT(fname, ' ', lname, ' (ID:', id, ')') SEPARATOR ', ') as users_list
@@ -409,9 +382,21 @@ $dataQualityReports = getOwnerQualityReports($db);
                                                                     </td>
                                                                 <?php } ?>
                                                                 <td>
-                                                                    <button class="btn btn-sm btn-outline-primary" onclick="loadOwnerById(<?= $owner->id ?>)" title="Edit Owner">
+                                                                    <button type="button" class="btn btn-sm btn-outline-primary mr-1"
+                                                                            onclick="loadOwnerById(<?= $owner->id ?>)"
+                                                                            title="Edit Owner Profile">
                                                                         <i class="fas fa-edit"></i> Edit
                                                                     </button>
+                                                                    <?php if ($key === 'owners_missing_info') { ?>
+                                                                    <button type="button" class="btn btn-sm btn-outline-warning"
+                                                                            onclick="openAdminContactModal(
+                                                                                {id: '<?= $owner->car_count ?? 'Multiple' ?>', year: '', model: '', chassis: '', series: ''},
+                                                                                {id: '<?= $owner->id ?>', name: '<?= htmlspecialchars(trim($owner->fname . ' ' . $owner->lname)) ?>', email: '<?= htmlspecialchars($owner->email) ?>'},
+                                                                                'Missing Information'
+                                                                            )" title="Contact Owner via Registry">
+                                                                        <i class="fas fa-envelope"></i>
+                                                                    </button>
+                                                                    <?php } ?>
                                                                 </td>
                                                             </tr>
                                                         <?php } ?>

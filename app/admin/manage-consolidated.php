@@ -5,19 +5,20 @@ declare(strict_types=1);
  * manage-consolidated.php
  * Consolidated Management Interface
  *
- * Unified administrative interface that consolidates:
- * - Car management (reassignment, deletion, transfers)
- * - Data quality dashboard and reporting
- * - Duplicate detection and resolution
- * - User and profile management
- * - System maintenance and FIX scripts
- * - Registry settings and configuration
- * - Account cleanup and spam management
+ * Unified administrative interface with tabbed structure:
+ *
+ * TAB 1: Car/Owner Relationships - Car reassignment, deletion, and ownership transfers
+ * TAB 2: Manage Cars - Individual car management and bulk operations
+ * TAB 3: Manage Owners - User profile management and owner data administration
+ * TAB 4: System Maintenance - Database maintenance, FIX scripts, and system utilities
+ * TAB 5: Account Cleanup - User account cleanup information and spam management overview
+ * TAB 6: Settings - Complete ElanRegistry configuration (Google APIs, CDNs, media, email)
  *
  * @author Elan Registry Development Team
  * @copyright 2025
  * @issue #270 - Consolidated Management Interface
  * @issue #331 - Phase 1A: Create Unified Tabbed Interface Foundation
+ * @issue #335 - Phase 2A: Settings and Account Cleanup Migration
  */
 
 require_once '../../users/init.php';
@@ -50,9 +51,9 @@ $validTabs = [
     'car-mgmt' => 'Car/Owner Relationships',
     'manage-cars' => 'Manage Cars',
     'owner-mgmt' => 'Manage Owners',
+    'cleanup' => 'Owner Cleanup',
     'system' => 'System Maintenance',
-    'settings' => 'Settings',
-    'cleanup' => 'Account Cleanup'
+    'settings' => 'Settings'
 ];
 
 $activeTab = isset($_GET['tab']) && array_key_exists($_GET['tab'], $validTabs) ? $_GET['tab'] : 'car-mgmt';
@@ -536,19 +537,19 @@ if (Input::exists('post')) {
                                     </a>
                                 </li>
 
-                                <!-- Settings Tab -->
-                                <li class="nav-item">
-                                    <a class="nav-link <?= $activeTab === 'settings' ? 'active' : '' ?>"
-                                       href="?tab=settings" role="tab">
-                                        <i class="fas fa-cog"></i> Settings
-                                    </a>
-                                </li>
-
                                 <!-- Account Cleanup Tab -->
                                 <li class="nav-item">
                                     <a class="nav-link <?= $activeTab === 'cleanup' ? 'active' : '' ?>"
                                        href="?tab=cleanup" role="tab">
                                         <i class="fas fa-shield-alt"></i> Account Cleanup
+                                    </a>
+                                </li>
+
+                                <!-- Settings Tab -->
+                                <li class="nav-item">
+                                    <a class="nav-link <?= $activeTab === 'settings' ? 'active' : '' ?>"
+                                       href="?tab=settings" role="tab">
+                                        <i class="fas fa-cog"></i> Settings
                                     </a>
                                 </li>
 
@@ -772,6 +773,96 @@ if (Input::exists('post')) {
                     <i class="fas fa-check"></i> <span id="confirmTransferDecisionText">Confirm</span>
                 </button>
             </div>
+        </div>
+    </div>
+</div>
+
+<!-- Admin Contact Owner Modal -->
+<div class="modal fade" id="adminContactModal" tabindex="-1" role="dialog" aria-labelledby="adminContactModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg" role="document">
+        <div class="modal-content">
+            <div class="modal-header bg-warning text-dark">
+                <h5 class="modal-title" id="adminContactModalLabel">
+                    <i class="fas fa-shield-alt"></i> Administrator Contact Owner
+                </h5>
+                <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+                    <span aria-hidden="true">&times;</span>
+                </button>
+            </div>
+            <form id="adminContactForm" method="POST" action="<?= $us_url_root ?>app/admin/includes/process-admin-contact.php">
+                <div class="modal-body">
+                    <div class="alert alert-info">
+                        <i class="fas fa-info-circle"></i> <strong>Administrator Contact:</strong>
+                        This will send an email to the car owner.
+                    </div>
+
+                    <!-- Owner Information Display -->
+                    <div class="row mb-3">
+                        <div class="col-md-6">
+                            <h6 class="text-primary">Car Information</h6>
+                            <div class="bg-light p-3 rounded">
+                                <div id="contactCarInfo">
+                                    <!-- Populated by JavaScript -->
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <h6 class="text-primary">Owner Information</h6>
+                            <div class="bg-light p-3 rounded">
+                                <div id="contactOwnerInfo">
+                                    <!-- Populated by JavaScript -->
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Quality Issue Context -->
+                    <div class="mb-3">
+                        <label for="qualityIssue" class="form-label">
+                            <i class="fas fa-exclamation-triangle text-warning"></i> Data Quality Issue
+                        </label>
+                        <select class="form-control" id="qualityIssue" name="quality_issue">
+                            <option value="">Select the data quality issue (optional)</option>
+                            <option value="Missing Information">Missing Critical Information</option>
+                            <option value="Invalid Data">Invalid Data Entry</option>
+                            <option value="Duplicate Records">Duplicate Records</option>
+                            <option value="Duplicate Email Addresses">Duplicate Email Addresses</option>
+                            <option value="Missing Chassis">Missing Chassis Number</option>
+                            <option value="Invalid Chassis">Invalid Chassis Number</option>
+                            <option value="Missing Series">Missing Series Information</option>
+                            <option value="Car Registration Encouragement">Car Registration Encouragement</option>
+                            <option value="Other">Other Data Quality Issue</option>
+                        </select>
+                    </div>
+
+                    <!-- Message -->
+                    <div class="mb-3">
+                        <label for="adminMessage" class="form-label">
+                            <i class="fas fa-comment text-primary"></i> Your Message to Owner
+                        </label>
+                        <textarea class="form-control" id="adminMessage" name="message" rows="6"
+                                  placeholder="Enter your message to the car owner..." required></textarea>
+                        <div class="form-text">
+                            <small class="text-muted">
+                                <i class="fas fa-lightbulb"></i> <strong>Tip:</strong> Be specific about what information needs to be updated and why.
+                            </small>
+                        </div>
+                    </div>
+
+                    <!-- Hidden fields -->
+                    <input type="hidden" name="csrf" value="<?= Token::generate(); ?>" />
+                    <input type="hidden" name="action" value="admin_contact_owner" />
+                    <input type="hidden" name="car_id" id="contactCarId" value="" />
+                    <input type="hidden" name="owner_id" id="contactOwnerId" value="" />
+                    <input type="hidden" name="target_email" id="contactTargetEmail" value="" />
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-warning">
+                        <i class="fas fa-envelope"></i> Send Administrator Message
+                    </button>
+                </div>
+            </form>
         </div>
     </div>
 </div>

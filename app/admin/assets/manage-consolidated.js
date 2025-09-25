@@ -1181,3 +1181,50 @@ function initializeCarManagement() {
         transferDecisionData = null;
     });
 }
+
+// ==========================================================================
+// Global Admin Functions (Available across all tabs)
+// ==========================================================================
+
+/**
+ * Function to switch to owner management tab with specific user pre-loaded
+ */
+function switchToOwnerManagementTab(userId) {
+    // Switch to owner management tab and pass user ID as parameter
+    window.location.href = '?tab=owner-mgmt&owner_id=' + userId;
+}
+
+/**
+ * Function to open admin contact modal for owner communication
+ */
+function openAdminContactModal(carData, ownerData, qualityIssue = '', targetEmail = '') {
+    // Populate car information
+    document.getElementById('contactCarInfo').innerHTML = `
+        <div><strong>Car ID:</strong> ${carData.id}</div>
+        <div><strong>Year/Model:</strong> ${carData.year || 'N/A'} ${carData.model || 'N/A'}</div>
+        <div><strong>Chassis:</strong> ${carData.chassis || 'Missing'}</div>
+        <div><strong>Series:</strong> ${carData.series || 'Missing'}</div>
+    `;
+
+    // Populate owner information
+    document.getElementById('contactOwnerInfo').innerHTML = `
+        <div><strong>Name:</strong> ${ownerData.name || 'Unknown'}</div>
+        <div><strong>Email:</strong> ${ownerData.email || 'Unknown'}</div>
+        <div><strong>User ID:</strong> ${ownerData.id || 'Unknown'}</div>
+    `;
+
+    // Set hidden field values
+    document.getElementById('contactCarId').value = carData.id;
+    document.getElementById('contactOwnerId').value = ownerData.id;
+    document.getElementById('contactTargetEmail').value = targetEmail || ownerData.email || '';
+
+    // Pre-populate quality issue if provided
+    if (qualityIssue) {
+        document.getElementById('qualityIssue').value = qualityIssue;
+    } else {
+        document.getElementById('qualityIssue').value = '';
+    }
+
+    // Show the modal
+    $('#adminContactModal').modal('show');
+}
