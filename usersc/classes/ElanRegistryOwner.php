@@ -94,12 +94,12 @@ class ElanRegistryOwner
         }
 
         // CSRF Protection
-        if (!isset($fields['token']) || !Token::check($fields['token'])) {
+        if (!isset($fields['csrf']) || !Token::check($fields['csrf'])) {
             throw new OwnerCreationException('Invalid CSRF token provided');
         }
 
         // Remove token from fields array after validation
-        unset($fields['token']);
+        unset($fields['csrf']);
 
         // Validate required fields for both user and profile
         $this->validateRequiredFields($fields, ['fname', 'lname', 'email']);
@@ -171,13 +171,13 @@ class ElanRegistryOwner
         }
 
         // CSRF Protection
-        if (!isset($fields['token']) || !Token::check($fields['token'])) {
+        if (!isset($fields['csrf']) || !Token::check($fields['csrf'])) {
             logger($fields['id'] ?? 0, 'ValidationError', 'Owner update failed: Invalid CSRF token');
             throw new OwnerValidationException('Invalid CSRF token provided');
         }
 
         // Remove token from fields array after validation
-        unset($fields['token']);
+        unset($fields['csrf']);
 
         if (!is_numeric($fields['id']) || $fields['id'] <= 0) {
             throw new OwnerValidationException('Invalid owner ID provided for update');
@@ -204,7 +204,7 @@ class ElanRegistryOwner
 
             // Update user fields if any
             if (!empty($userFields)) {
-                $userFields['mtime'] = date('Y-m-d G:i:s');
+                // Note: users table doesn't have mtime field (UserSpice standard)
                 if (!$this->_db->update($this->userTableName, $userId, $userFields)) {
                     throw new OwnerUpdateException('Database error during user update: ' . $this->_db->errorString());
                 }
@@ -212,7 +212,7 @@ class ElanRegistryOwner
 
             // Update profile fields if any
             if (!empty($profileFields)) {
-                $profileFields['mtime'] = date('Y-m-d G:i:s');
+                // Note: profiles table doesn't have mtime field (UserSpice standard)
 
                 // Apply geocoding if location data changed
                 if (!empty($profileFields['city']) || !empty($profileFields['state']) || !empty($profileFields['country'])) {
@@ -351,19 +351,80 @@ class ElanRegistryOwner
      */
     public function searchOwners(string $searchTerm, int $limit = 50): array
     {
-        $searchTerm = '%' . trim($searchTerm) . '%';
+        $searchTerm = trim($searchTerm);
+        if (empty($searchTerm)) {
+            return [];
+        }
 
-        $searchQuery = $this->_db->query(
-            "SELECT u.id, u.fname, u.lname, u.email, p.city, p.state, p.country, p.lat, p.lon
-             FROM users u
-             LEFT JOIN profiles p ON u.id = p.user_id
-             WHERE u.fname LIKE ? OR u.lname LIKE ? OR u.email LIKE ?
-                OR p.city LIKE ? OR p.state LIKE ? OR p.country LIKE ?
-             ORDER BY u.lname, u.fname
-             LIMIT ?",
-            [$searchTerm, $searchTerm, $searchTerm, $searchTerm, $searchTerm, $searchTerm, $limit]
-        );
+        // Handle multi-word searches (e.g., "Greg Surcouf", "Portland Oregon")
+        $searchWords = array_filter(explode(' ', strtolower($searchTerm)));
 
+        if (count($searchWords) === 1) {
+            // Single word search - use original OR logic
+            $searchPattern = '%' . $searchWords[0] . '%';
+            $sql = "SELECT u.id, u.fname, u.lname, u.email, p.city, p.state, p.country, p.lat, p.lon
+                    FROM users u
+                    LEFT JOIN profiles p ON u.id = p.user_id
+                    WHERE LOWER(u.fname) LIKE ? OR LOWER(u.lname) LIKE ? OR LOWER(u.email) LIKE ?
+                       OR LOWER(p.city) LIKE ? OR LOWER(p.state) LIKE ? OR LOWER(p.country) LIKE ?
+                    ORDER BY u.lname, u.fname
+                    LIMIT " . (int)$limit;
+
+            $params = [$searchPattern, $searchPattern, $searchPattern, $searchPattern, $searchPattern, $searchPattern];
+
+        } else {
+            // Multi-word search - use UNION to prioritize exact matches over partial matches
+            $searchWords = array_filter(array_map(function($word) {
+                return trim($word, ', ');
+            }, $searchWords));
+
+            if (count($searchWords) < 2) {
+                // Fallback to single word search
+                $searchPattern = '%' . $searchWords[0] . '%';
+                $sql = "SELECT u.id, u.fname, u.lname, u.email, p.city, p.state, p.country, p.lat, p.lon
+                        FROM users u
+                        LEFT JOIN profiles p ON u.id = p.user_id
+                        WHERE LOWER(u.fname) LIKE ? OR LOWER(u.lname) LIKE ? OR LOWER(u.email) LIKE ?
+                           OR LOWER(p.city) LIKE ? OR LOWER(p.state) LIKE ? OR LOWER(p.country) LIKE ?
+                        ORDER BY u.lname, u.fname
+                        LIMIT " . (int)$limit;
+                $params = [$searchPattern, $searchPattern, $searchPattern, $searchPattern, $searchPattern, $searchPattern];
+            } else {
+                // Use UNION to prioritize exact matches
+                $word1 = strtolower($searchWords[0]);
+                $word2 = strtolower($searchWords[1]);
+
+                $sql = "
+                (SELECT u.id, u.fname, u.lname, u.email, p.city, p.state, p.country, p.lat, p.lon, 1 as priority
+                 FROM users u LEFT JOIN profiles p ON u.id = p.user_id
+                 WHERE (LOWER(u.fname) = ? AND LOWER(u.lname) = ?) OR (LOWER(u.fname) = ? AND LOWER(u.lname) = ?))
+                UNION
+                (SELECT u.id, u.fname, u.lname, u.email, p.city, p.state, p.country, p.lat, p.lon, 2 as priority
+                 FROM users u LEFT JOIN profiles p ON u.id = p.user_id
+                 WHERE ((LOWER(u.fname) = ? OR LOWER(u.lname) = ?) AND (LOWER(p.city) = ? OR LOWER(p.state) = ?))
+                    OR ((LOWER(u.fname) = ? OR LOWER(u.lname) = ?) AND (LOWER(p.city) = ? OR LOWER(p.state) = ?)))
+                UNION
+                (SELECT u.id, u.fname, u.lname, u.email, p.city, p.state, p.country, p.lat, p.lon, 3 as priority
+                 FROM users u LEFT JOIN profiles p ON u.id = p.user_id
+                 WHERE (LOWER(p.city) = ? AND LOWER(p.state) = ?) OR (LOWER(p.city) = ? AND LOWER(p.state) = ?))
+                ORDER BY priority, lname, fname
+                LIMIT " . (int)$limit;
+
+                $params = [
+                    // First UNION: exact name matches
+                    $word1, $word2,  // fname=word1 AND lname=word2
+                    $word2, $word1,  // fname=word2 AND lname=word1
+                    // Second UNION: name + location matches
+                    $word1, $word1, $word2, $word2,  // (fname=word1 OR lname=word1) AND (city=word2 OR state=word2)
+                    $word2, $word2, $word1, $word1,  // (fname=word2 OR lname=word2) AND (city=word1 OR state=word1)
+                    // Third UNION: location pairs
+                    $word1, $word2,  // city=word1 AND state=word2
+                    $word2, $word1   // city=word2 AND state=word1
+                ];
+            }
+        }
+
+        $searchQuery = $this->_db->query($sql, $params);
         return $searchQuery->count() > 0 ? $searchQuery->results() : [];
     }
 
@@ -389,7 +450,7 @@ class ElanRegistryOwner
         // Apply geocoding
         $geoFields = $this->applyGeocoding($locationData['city'], $locationData['state'], $locationData['country']);
         $updateFields = array_merge($locationData, $geoFields);
-        $updateFields['mtime'] = date('Y-m-d G:i:s');
+        // Note: profiles table doesn't have mtime field (UserSpice standard)
 
         if ($this->_db->update($this->profileTableName, $this->_data->id, $updateFields, 'user_id')) {
             // Reload owner data
@@ -556,7 +617,8 @@ class ElanRegistryOwner
      */
     private function sanitizeString(string $input, int $maxLength = 255): string
     {
-        $sanitized = filter_var(trim($input), FILTER_SANITIZE_STRING);
+        // Replace deprecated FILTER_SANITIZE_STRING with strip_tags and trim
+        $sanitized = strip_tags(trim($input));
         return substr($sanitized, 0, $maxLength);
     }
 

@@ -187,7 +187,12 @@ try {
                                     <?= htmlspecialchars($record->chassis) ?>
                                     <?= htmlspecialchars(($record->year ?? '') . ' ' . ($record->model ?? '')) ?><br>
                                 <?php endif; ?>
-                                <span class="text-muted"><?= date('M j, Y', strtotime($record->ctime ?? '')) ?></span>
+                                <span class="text-muted">
+                                    <?php
+                                    $timestamp = strtotime($record->ctime ?? '');
+                                    echo $timestamp !== false ? date('M j, Y', $timestamp) : 'Unknown date';
+                                    ?>
+                                </span>
                             </small>
                         </div>
                     <?php endforeach; ?>

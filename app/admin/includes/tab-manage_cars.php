@@ -1,11 +1,12 @@
 <?php
 declare(strict_types=1);
 /**
- * tab-data_quality.php
- * Data Quality Dashboard Tab Content
+ * tab-manage_cars.php
+ * Manage Cars Tab Content
  *
- * Phase 1C: Complete data quality reporting functionality integrated from data-quality.php
- * Provides comprehensive data quality analysis with actionable workflows
+ * Phase 2A: Car management and data quality reporting functionality
+ * Provides comprehensive car quality analysis with actionable workflows
+ * Includes duplicate detection and correction capabilities
  */
 
 // Import ChassisValidator for validation functionality
@@ -278,16 +279,16 @@ $qualityScore = $totalRecords > 0 ? max(0, 100 - (($totalIssues / $totalRecords)
 
 ?>
 
-<!-- Data Quality Header -->
+<!-- Manage Cars Header -->
 <div class="d-flex justify-content-between align-items-center mb-4">
     <div>
         <h2 class="text-primary mb-1">
-            <i class="fas fa-chart-line"></i> Data Quality Reports
+            <i class="fas fa-car"></i> Manage Cars
         </h2>
-        <p class="text-muted mb-0">Monitor and improve registry data quality</p>
+        <p class="text-muted mb-0">Monitor car data quality and detect duplicate registrations</p>
     </div>
     <div>
-        <a href="<?= $us_url_root ?>docs/admin/data-quality-guide.php" class="btn btn-outline-info" target="_blank" title="Data Quality Administrator Guide">
+        <a href="<?= $us_url_root ?>docs/admin/data-quality-guide.php" class="btn btn-outline-info" target="_blank" title="Car Management Guide">
             <i class="fas fa-question-circle"></i> Help Guide
         </a>
     </div>
@@ -441,36 +442,10 @@ $qualityScore = $totalRecords > 0 ? max(0, 100 - (($totalIssues / $totalRecords)
     <?php } ?>
 </div>
 
-<!-- Owner Quality Summary Cards -->
-<div class="row mb-4">
-    <div class="col-12">
-        <h2 class="h4 mb-3 text-primary"><i class="fas fa-users"></i> Owner Quality Reports</h2>
-    </div>
-    <?php foreach ($dataQualityReports as $key => $report) { ?>
-        <?php if (!in_array($key, ['owners_missing_info', 'inactive_owners', 'users_without_cars', 'duplicate_emails'])) continue; ?>
-        <div class="col-lg-3 col-md-6 mb-3">
-            <div class="card border-<?= $report['severity'] ?> h-100">
-                <div class="card-body text-center">
-                    <div class="text-<?= $report['severity'] ?> mb-3">
-                        <i class="<?= $report['icon'] ?>" style="font-size: 2.5rem;"></i>
-                    </div>
-                    <h5 class="card-title"><?= $report['title'] ?></h5>
-                    <h3 class="text-<?= $report['severity'] ?> mb-2"><?= $report['count'] ?></h3>
-                    <p class="card-text small text-muted"><?= $report['description'] ?></p>
-                    <?php if ($report['count'] > 0) { ?>
-                        <a href="#report-<?= $key ?>" class="btn btn-outline-<?= $report['severity'] ?> btn-sm">
-                            <i class="fas fa-eye"></i> View Details
-                        </a>
-                    <?php } ?>
-                </div>
-            </div>
-        </div>
-    <?php } ?>
-</div>
 
-<!-- Detailed Reports -->
+<!-- Detailed Car Reports -->
 <?php foreach ($dataQualityReports as $key => $report) { ?>
-    <?php if ($report['count'] > 0) { ?>
+    <?php if ($report['count'] > 0 && !in_array($key, ['owners_missing_info', 'inactive_owners', 'users_without_cars', 'duplicate_emails'])) { ?>
         <div class="row mb-4" id="report-<?= $key ?>">
             <div class="col-12">
                 <div class="card border-<?= $report['severity'] ?>">
@@ -595,9 +570,9 @@ $qualityScore = $totalRecords > 0 ? max(0, 100 - (($totalIssues / $totalRecords)
                                                     </td>
                                                     <td>
                                                         <button type="button" class="btn btn-sm btn-outline-primary mr-1"
-                                                                onclick="switchToUserManagementTab(<?= $owner->id ?>)"
+                                                                onclick="switchToOwnerManagementTab(<?= $owner->id ?>)"
                                                                 title="Edit Owner Profile">
-                                                            <i class="fas fa-user-edit"></i>
+                                                            <i class="fas fa-edit"></i> Edit
                                                         </button>
                                                         <button type="button" class="btn btn-sm btn-outline-warning"
                                                                 onclick="openAdminContactModal(
@@ -644,8 +619,8 @@ $qualityScore = $totalRecords > 0 ? max(0, 100 - (($totalIssues / $totalRecords)
                                                         </td>
                                                     <?php } ?>
                                                     <td>
-                                                        <button class="btn btn-sm btn-outline-primary" onclick="switchToUserManagementTab(<?= $owner->id ?>)" title="Manage Owner">
-                                                            <i class="fas fa-user-edit"></i>
+                                                        <button class="btn btn-sm btn-outline-primary" onclick="switchToOwnerManagementTab(<?= $owner->id ?>)" title="Edit Owner">
+                                                            <i class="fas fa-edit"></i> Edit
                                                         </button>
                                                     </td>
                                                 </tr>
@@ -983,10 +958,10 @@ function switchToCarManagementTab(carId) {
     window.location.href = '?tab=car-mgmt&car_id=' + carId;
 }
 
-// Function to switch to user management tab with specific user pre-loaded
-function switchToUserManagementTab(userId) {
-    // Switch to user management tab and pass user ID as parameter
-    window.location.href = '?tab=user-mgmt&user_id=' + userId;
+// Function to switch to owner management tab with specific user pre-loaded
+function switchToOwnerManagementTab(userId) {
+    // Switch to owner management tab and pass user ID as parameter
+    window.location.href = '?tab=owner-mgmt&owner_id=' + userId;
 }
 
 // Function to open admin contact modal for owner communication

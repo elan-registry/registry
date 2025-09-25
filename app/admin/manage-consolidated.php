@@ -47,10 +47,9 @@ if (isset($user) && $user->data() && $user->data()->id) {
 
 // Tab routing - determine which tab to show
 $validTabs = [
-    'car-mgmt' => 'Car Management',
-    'data-quality' => 'Data Quality',
-    'duplicates' => 'Duplicate Detection',
-    'user-mgmt' => 'User Management',
+    'car-mgmt' => 'Car/Owner Relationships',
+    'manage-cars' => 'Manage Cars',
+    'owner-mgmt' => 'Manage Owners',
     'system' => 'System Maintenance',
     'settings' => 'Settings',
     'cleanup' => 'Account Cleanup'
@@ -94,6 +93,7 @@ try {
 
     // Calculate quality issues for data quality tab
     $qualityIssues = 0;
+    $ownerIssues = 0;
 
     // Count missing chassis numbers
     $missingChassisStmt = $db->query("SELECT COUNT(*) as count FROM cars WHERE chassis IS NULL OR chassis = ''");
@@ -128,9 +128,29 @@ try {
         ) as duplicates
     ");
     $duplicateEmailsResult = $duplicateEmailsStmt->first();
-    $qualityIssues += $duplicateEmailsResult ? (int)$duplicateEmailsResult->count : 0;
+    $duplicateEmailCount = $duplicateEmailsResult ? (int)$duplicateEmailsResult->count : 0;
+    $qualityIssues += $duplicateEmailCount;
+    $ownerIssues += $duplicateEmailCount;
+
+    // Count owners missing information
+    $ownersWithMissingInfoStmt = $db->query("
+        SELECT COUNT(DISTINCT u.id) as count FROM users u
+        JOIN car_user cu ON u.id = cu.userid
+        LEFT JOIN profiles p ON u.id = p.user_id
+        WHERE u.active = 1 AND (
+            (u.fname IS NULL OR u.fname = '') OR
+            (u.lname IS NULL OR u.lname = '') OR
+            (p.city IS NULL OR p.city = '') OR
+            (p.lat IS NULL OR p.lon IS NULL)
+        )
+    ");
+    $ownersWithMissingInfoResult = $ownersWithMissingInfoStmt->first();
+    $ownerMissingInfoCount = $ownersWithMissingInfoResult ? (int)$ownersWithMissingInfoResult->count : 0;
+    $ownerIssues += $ownerMissingInfoCount;
+
 
     $systemStatus['quality_issues'] = $qualityIssues;
+    $systemStatus['owner_issues'] = $ownerIssues;
 
 } catch (PDOException $e) {
     // Fail silently for header stats - main functionality should still work
@@ -479,37 +499,32 @@ if (Input::exists('post')) {
                                 <li class="nav-item">
                                     <a class="nav-link <?= $activeTab === 'car-mgmt' ? 'active' : '' ?>"
                                        href="?tab=car-mgmt" role="tab">
-                                        <i class="fas fa-car"></i> Car Management
+                                        <i class="fas fa-car"></i> Car/Owner Relationships
                                         <?php if ($systemStatus['pending_transfers'] > 0) { ?>
                                             <span class="badge badge-info badge-sm ml-1"><?= $systemStatus['pending_transfers'] ?></span>
                                         <?php } ?>
                                     </a>
                                 </li>
 
-                                <!-- Data Quality Tab -->
+                                <!-- Manage Cars Tab -->
                                 <li class="nav-item">
-                                    <a class="nav-link <?= $activeTab === 'data-quality' ? 'active' : '' ?>"
-                                       href="?tab=data-quality" role="tab">
-                                        <i class="fas fa-clipboard-check"></i> Data Quality
+                                    <a class="nav-link <?= $activeTab === 'manage-cars' ? 'active' : '' ?>"
+                                       href="?tab=manage-cars" role="tab">
+                                        <i class="fas fa-clipboard-check"></i> Manage Cars
                                         <?php if ($systemStatus['quality_issues'] > 0) { ?>
                                             <span class="badge badge-warning badge-sm ml-1"><?= $systemStatus['quality_issues'] ?></span>
                                         <?php } ?>
                                     </a>
                                 </li>
 
-                                <!-- Duplicate Detection Tab -->
+                                <!-- Manage Owners Tab -->
                                 <li class="nav-item">
-                                    <a class="nav-link <?= $activeTab === 'duplicates' ? 'active' : '' ?>"
-                                       href="?tab=duplicates" role="tab">
-                                        <i class="fas fa-search"></i> Duplicate Detection
-                                    </a>
-                                </li>
-
-                                <!-- User Management Tab -->
-                                <li class="nav-item">
-                                    <a class="nav-link <?= $activeTab === 'user-mgmt' ? 'active' : '' ?>"
-                                       href="?tab=user-mgmt" role="tab">
-                                        <i class="fas fa-users"></i> User Management
+                                    <a class="nav-link <?= $activeTab === 'owner-mgmt' ? 'active' : '' ?>"
+                                       href="?tab=owner-mgmt" role="tab">
+                                        <i class="fas fa-users"></i> Manage Owners
+                                        <?php if ($systemStatus['owner_issues'] > 0) { ?>
+                                            <span class="badge badge-warning badge-sm ml-1"><?= $systemStatus['owner_issues'] ?></span>
+                                        <?php } ?>
                                     </a>
                                 </li>
 

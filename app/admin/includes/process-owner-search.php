@@ -55,7 +55,7 @@ try {
     }
 
     // Log search activity
-    logger($user->data()->id, 'OwnerActions', "Owner search performed: '{$query}' - {" . count($enhancedResults) . "} results");
+    logger($user->data()->id ?? 0, 'OwnerActions', "Owner search performed: '{$query}' - {" . count($enhancedResults) . "} results");
 
     echo json_encode([
         'success' => true,

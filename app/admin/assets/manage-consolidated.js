@@ -309,11 +309,6 @@ $(document).ready(function() {
     function initializeErrorHandling() {
         // Global AJAX error handler
         $(document).ajaxError(function(event, xhr, settings, thrownError) {
-            // console.error('AJAX Error:', {
-            //     url: settings.url,
-            //     status: xhr.status,
-            //     error: thrownError
-            // });
 
             // Show user-friendly error message
             showNotification('An error occurred. Please try again.', 'error');
@@ -372,7 +367,6 @@ $(document).ready(function() {
             // Log current tab for debugging
             const urlParams = new URLSearchParams(window.location.search);
             const activeTab = urlParams.get('tab') || 'car-mgmt';
-            // console.log('Consolidated Interface - Active Tab:', activeTab);
 
             // Add keyboard shortcut for quick tab switching (Ctrl/Cmd + number)
             $(document).on('keydown', function(e) {
@@ -410,7 +404,6 @@ $(document).ready(function() {
             // Mark initialization complete
             $('body').addClass('consolidated-interface-ready');
         } catch (error) {
-            // console.error('Error initializing Consolidated Management Interface:', error);
         }
     }
 
@@ -466,7 +459,6 @@ function prefersReducedMotion() {
  */
 function initializeCarManagement() {
     // Initialize car management functionality for all tabs that might need it
-    // console.log('Initializing car management functionality...');
 
     // Car management state
     let selectedCar = null;

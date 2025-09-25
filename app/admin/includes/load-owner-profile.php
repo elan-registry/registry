@@ -221,7 +221,7 @@ try {
                     </div>
                     <div class="col-md-4 text-right">
                         <small class="text-muted">
-                            Last updated: <?= $ownerData->mtime ?? 'Never' ?>
+                            User ID: <?= $ownerData->id ?> | Joined: <?= date('M j, Y', strtotime($ownerData->join_date)) ?>
                         </small>
                     </div>
                 </div>
@@ -230,6 +230,13 @@ try {
     </form>
 
     <script>
+    // Store original values for change detection
+    $(document).ready(function() {
+        $('#ownerProfileUpdateForm input, #ownerProfileUpdateForm select').each(function() {
+            $(this).data('original-value', $(this).val());
+        });
+    });
+
     // Handle form submission
     $('#ownerProfileUpdateForm').on('submit', function(e) {
         e.preventDefault();
@@ -241,6 +248,21 @@ try {
         // Show loading state
         submitBtn.html('<i class="fas fa-spinner fa-spin"></i> Saving...').prop('disabled', true);
 
+        // Add visual feedback for location fields if they're being updated
+        const locationFields = ['city', 'state', 'country'];
+        const hasLocationChanges = locationFields.some(field =>
+            $(this).find(`[name="${field}"]`).val() !== $(this).find(`[name="${field}"]`).data('original-value')
+        );
+
+        if (hasLocationChanges) {
+            locationFields.forEach(field => {
+                const fieldElement = $(this).find(`[name="${field}"]`);
+                if (fieldElement.val()) {
+                    fieldElement.addClass('border-info').attr('title', 'Location will be geocoded...');
+                }
+            });
+        }
+
         $.ajax({
             url: 'includes/process-owner-update.php',
             method: 'POST',
@@ -248,18 +270,41 @@ try {
             dataType: 'json',
             success: function(response) {
                 if (response.success) {
-                    // Show success message
+                    // Build success message
+                    let successMessage = '<i class="fas fa-check"></i> ' + response.message;
+
+                    // Add geocoding feedback if available
+                    let alertClass = 'alert-success';
+                    if (response.geocoding_success) {
+                        successMessage += '<br><div class="mt-2"><i class="fas fa-map-marker-alt text-success"></i> ' +
+                            '<strong class="text-success">' + response.geocoding_message + '</strong></div>';
+                    } else if (response.geocoding_failed) {
+                        successMessage += '<br><div class="mt-2"><i class="fas fa-exclamation-circle text-danger"></i> ' +
+                            '<strong class="text-danger">' + response.geocoding_message + '</strong></div>';
+                        alertClass = 'alert-warning'; // Mixed success (data saved) but geocoding failed
+                    } else if (response.geocoding_message) {
+                        successMessage += '<br><div class="mt-2"><i class="fas fa-exclamation-triangle text-warning"></i> ' +
+                            '<span class="text-warning">' + response.geocoding_message + '</span></div>';
+                        alertClass = 'alert-info';
+                    }
+
+                    // Show success message with geocoding feedback
                     $('#ownerProfileForm').prepend(
-                        '<div class="alert alert-success alert-dismissible fade show">' +
-                        '<i class="fas fa-check"></i> ' + response.message +
+                        '<div class="alert ' + alertClass + ' alert-dismissible fade show">' +
+                        successMessage +
                         '<button type="button" class="close" data-dismiss="alert">&times;</button>' +
                         '</div>'
                     );
 
+                    // Update coordinates display if geocoding was successful
+                    if (response.geocoding_success && response.new_coordinates) {
+                        updateCoordinatesDisplay(response.new_coordinates.lat, response.new_coordinates.lon);
+                    }
+
                     // Reload the profile form to show updated data
                     setTimeout(() => {
                         loadOwnerById(<?= $ownerId ?>);
-                    }, 1000);
+                    }, 2000); // Extended timeout to let user see the geocoding message
 
                     // Refresh search results if visible
                     const searchQuery = $('#ownerSearchInput').val();
@@ -285,6 +330,12 @@ try {
             },
             complete: function() {
                 submitBtn.html(originalText).prop('disabled', false);
+
+                // Clean up location field styling
+                const locationFields = ['city', 'state', 'country'];
+                locationFields.forEach(field => {
+                    $(`[name="${field}"]`).removeClass('border-info').removeAttr('title');
+                });
             }
         });
     });
@@ -333,6 +384,29 @@ try {
                 btn.html(originalText).prop('disabled', false);
             }
         });
+    }
+
+    // Function to update coordinates display immediately after successful geocoding
+    function updateCoordinatesDisplay(lat, lon) {
+        // Update existing coordinate fields if they exist
+        const latField = $('input[value="' + <?= json_encode($ownerData->lat ?? '') ?> + '"][readonly]');
+        const lonField = $('input[value="' + <?= json_encode($ownerData->lon ?? '') ?> + '"][readonly]');
+
+        if (latField.length) {
+            latField.val(lat).addClass('border-success').effect('highlight', {color: '#28a745'}, 1500);
+        }
+        if (lonField.length) {
+            lonField.val(lon).addClass('border-success').effect('highlight', {color: '#28a745'}, 1500);
+        }
+
+        // If coordinates section doesn't exist, replace the info message
+        const infoAlert = $('.alert-info:contains("Coordinates will be automatically generated")');
+        if (infoAlert.length) {
+            infoAlert.removeClass('alert-info').addClass('alert-success')
+                .html('<i class="fas fa-check-circle"></i> <strong>Coordinates generated successfully!</strong><br>' +
+                     'Latitude: <code>' + lat + '</code> | Longitude: <code>' + lon + '</code>')
+                .effect('highlight', {color: '#28a745'}, 2000);
+        }
     }
     </script>
 
