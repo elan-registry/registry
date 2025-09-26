@@ -18,6 +18,13 @@ if (!securePage($_SERVER['PHP_SELF'])) {
     die();
 }
 
+// Check if user should be redirected to new consolidated interface
+if (!isset($_GET['legacy']) && !isset($_GET['direct'])) {
+    // Redirect to the new consolidated admin interface
+    header('Location: ../app/admin/manage-consolidated.php?tab=system');
+    exit();
+}
+
 // Get list of files in the FIX directory
 $directory    = $abs_us_root . $us_url_root . 'FIX/';
 $all_items = scandir($directory);
@@ -199,6 +206,25 @@ function getScriptDescription($filename) {
                             <h2><strong>Administrative Cleanup</strong></h2>
                         </div>
                         <div class="card-body">
+                            <!-- New Consolidated Interface Notice -->
+                            <div class="alert alert-info">
+                                <h4><i class="fa fa-info-circle"></i> Enhanced Admin Interface Available</h4>
+                                <p class="mb-2">This legacy interface has been superseded by the new consolidated admin interface with enhanced features:</p>
+                                <ul class="mb-3">
+                                    <li>Real-time script status tracking</li>
+                                    <li>Enhanced backup management with health scoring</li>
+                                    <li>Schema validation and maintenance tools</li>
+                                    <li>Integrated dashboard with system health monitoring</li>
+                                </ul>
+                                <div class="text-center">
+                                    <a href="../app/admin/manage-consolidated.php?tab=system" class="btn btn-success">
+                                        <i class="fa fa-arrow-right"></i> Go to New Admin Interface
+                                    </a>
+                                    <small class="d-block mt-2 text-muted">
+                                        This legacy interface will remain available for direct script access
+                                    </small>
+                                </div>
+                            </div>
                             <!-- Display cleanup message if any -->
                             <?php if (!empty($cleanupMessage)): ?>
                                 <?= $cleanupMessage ?>
