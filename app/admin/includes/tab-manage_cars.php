@@ -131,7 +131,7 @@ function getDataQualityReports($db) {
     // Report 1: Missing Chassis Numbers
     $missingChassisQ = $db->query("
         SELECT c.id, c.model, c.series, c.year, c.chassis, c.mtime,
-               u.fname, u.lname, u.email
+               u.id as user_id, u.fname, u.lname, u.email
         FROM cars c
         LEFT JOIN car_user cu ON c.id = cu.car_id
         LEFT JOIN users u ON cu.userid = u.id
@@ -152,7 +152,7 @@ function getDataQualityReports($db) {
     $invalidChassisData = [];
     $chassisCheckQ = $db->query("
         SELECT c.id, c.model, c.series, c.year, c.chassis, c.mtime,
-               u.fname, u.lname, u.email
+               u.id as user_id, u.fname, u.lname, u.email
         FROM cars c
         LEFT JOIN car_user cu ON c.id = cu.car_id
         LEFT JOIN users u ON cu.userid = u.id
@@ -184,7 +184,7 @@ function getDataQualityReports($db) {
     // Report 3: Invalid Model Data
     $invalidModelQ = $db->query("
         SELECT c.id, c.model, c.series, c.year, c.chassis, c.mtime,
-               u.fname, u.lname, u.email
+               u.id as user_id, u.fname, u.lname, u.email
         FROM cars c
         LEFT JOIN car_user cu ON c.id = cu.car_id
         LEFT JOIN users u ON cu.userid = u.id
@@ -204,7 +204,7 @@ function getDataQualityReports($db) {
     // Report 4: Missing Series Data
     $missingSeriesQ = $db->query("
         SELECT c.id, c.model, c.series, c.year, c.chassis, c.mtime,
-               u.fname, u.lname, u.email
+               u.id as user_id, u.fname, u.lname, u.email
         FROM cars c
         LEFT JOIN car_user cu ON c.id = cu.car_id
         LEFT JOIN users u ON cu.userid = u.id
@@ -224,7 +224,7 @@ function getDataQualityReports($db) {
     // Report 5: Multiple Critical Missing Fields
     $multipleMissingQ = $db->query("
         SELECT c.id, c.model, c.series, c.year, c.chassis, c.mtime,
-               u.fname, u.lname, u.email,
+               u.id as user_id, u.fname, u.lname, u.email,
                CASE WHEN c.series IS NULL OR c.series = '' THEN 1 ELSE 0 END +
                CASE WHEN c.chassis IS NULL OR c.chassis = '' THEN 1 ELSE 0 END +
                CASE WHEN c.model = '||' THEN 1 ELSE 0 END as missing_count
@@ -249,33 +249,27 @@ function getDataQualityReports($db) {
 
 $dataQualityReports = getDataQualityReports($db);
 
-// Calculate overall statistics
-$totalIssues = 0;
-$ownerIssues = 0;
-$carIssues = 0;
-$criticalIssues = 0;
-$warningIssues = 0;
+// Calculate severity-specific counts for car issues only
+$carCriticalIssues = 0;
+$carWarningIssues = 0;
 foreach ($dataQualityReports as $key => $report) {
-    if ($key !== 'users_without_cars') { // Don't count these as critical "issues"
-        $totalIssues += $report['count'];
-        // Categorize issues
-        if (in_array($key, ['owners_missing_info', 'inactive_owners', 'duplicate_emails'])) {
-            $ownerIssues += $report['count'];
-        } else {
-            $carIssues += $report['count'];
-        }
-        // Severity counts
+    // Only count car-related issues, exclude owner/user issues
+    if (!in_array($key, ['owners_missing_info', 'inactive_owners', 'duplicate_emails', 'users_without_cars'])) {
+        // Severity counts for car issues only
         if ($report['severity'] === 'danger') {
-            $criticalIssues += $report['count'];
+            $carCriticalIssues += $report['count'];
         } elseif ($report['severity'] === 'warning') {
-            $warningIssues += $report['count'];
+            $carWarningIssues += $report['count'];
         }
     }
 }
 
-// Calculate quality health score (higher is better)
-$totalRecords = $systemStatus['total_cars'] + $systemStatus['total_users'];
-$qualityScore = $totalRecords > 0 ? max(0, 100 - (($totalIssues / $totalRecords) * 100)) : 100;
+// Car issues count is the sum of critical and warning issues
+$carIssues = $carCriticalIssues + $carWarningIssues;
+
+// Calculate car quality health score (higher is better)
+$totalCars = $systemStatus['total_cars'];
+$qualityScore = $totalCars > 0 ? max(0, 100 - (($carIssues / $totalCars) * 100)) : 100;
 
 ?>
 
@@ -287,138 +281,24 @@ $qualityScore = $totalRecords > 0 ? max(0, 100 - (($totalIssues / $totalRecords)
         </h2>
         <p class="text-muted mb-0">Monitor car data quality and detect duplicate registrations</p>
     </div>
-    <div>
-        <a href="<?= $us_url_root ?>docs/admin/data-quality-guide.php" class="btn btn-outline-info" target="_blank" title="Car Management Guide">
-            <i class="fas fa-question-circle"></i> Help Guide
-        </a>
-    </div>
 </div>
 
-<!-- Quality Metrics Dashboard -->
+
+
+<!-- Car Quality Summary Cards -->
 <div class="row mb-4">
+    <!-- Data Health Card -->
     <div class="col-lg-3 col-md-6 mb-3">
-        <div class="card border-<?= $qualityScore >= 80 ? 'success' : ($qualityScore >= 60 ? 'warning' : 'danger') ?>">
+        <div class="card border-<?= $qualityScore >= 80 ? 'success' : ($qualityScore >= 60 ? 'warning' : 'danger') ?> h-100">
             <div class="card-body text-center">
                 <div class="text-<?= $qualityScore >= 80 ? 'success' : ($qualityScore >= 60 ? 'warning' : 'danger') ?> mb-3">
                     <i class="fas fa-<?= $qualityScore >= 80 ? 'check-circle' : ($qualityScore >= 60 ? 'exclamation-triangle' : 'times-circle') ?>" style="font-size: 2.5rem;"></i>
                 </div>
-                <h5>Data Health</h5>
+                <h5 class="card-title">Data Health</h5>
                 <h3 class="text-<?= $qualityScore >= 80 ? 'success' : ($qualityScore >= 60 ? 'warning' : 'danger') ?> mb-2"><?= number_format($qualityScore, 1) ?>%</h3>
-                <p class="small text-muted">Overall quality score</p>
+                <p class="card-text small text-muted">Overall car data quality score</p>
             </div>
         </div>
-    </div>
-
-    <div class="col-lg-3 col-md-6 mb-3">
-        <div class="card border-warning">
-            <div class="card-body text-center">
-                <div class="text-warning mb-3">
-                    <i class="fas fa-exclamation-triangle" style="font-size: 2.5rem;"></i>
-                </div>
-                <h5>Warning Issues</h5>
-                <h3 class="text-warning mb-2"><?= number_format($warningIssues) ?></h3>
-                <p class="small text-muted">Records needing attention</p>
-            </div>
-        </div>
-    </div>
-
-    <div class="col-lg-3 col-md-6 mb-3">
-        <div class="card border-danger">
-            <div class="card-body text-center">
-                <div class="text-danger mb-3">
-                    <i class="fas fa-times-circle" style="font-size: 2.5rem;"></i>
-                </div>
-                <h5>Critical Issues</h5>
-                <h3 class="text-danger mb-2"><?= number_format($criticalIssues) ?></h3>
-                <p class="small text-muted">Require immediate action</p>
-            </div>
-        </div>
-    </div>
-
-    <div class="col-lg-3 col-md-6 mb-3">
-        <div class="card border-info">
-            <div class="card-body text-center">
-                <div class="text-info mb-3">
-                    <i class="fas fa-chart-line" style="font-size: 2.5rem;"></i>
-                </div>
-                <h5>Total Issues</h5>
-                <h3 class="text-info mb-2"><?= number_format($totalIssues) ?></h3>
-                <p class="small text-muted"><?= number_format($ownerIssues) ?> owner, <?= number_format($carIssues) ?> car</p>
-            </div>
-        </div>
-    </div>
-</div>
-
-<!-- Action Recommendations -->
-<?php if ($totalIssues > 0) { ?>
-    <div class="row mb-4">
-        <div class="col-12">
-            <div class="card border-info">
-                <div class="card-header bg-info text-white">
-                    <h4 class="mb-0">
-                        <i class="fas fa-lightbulb"></i> Recommended Actions
-                    </h4>
-                </div>
-                <div class="card-body">
-                    <div class="row">
-                        <div class="col-md-4">
-                            <h6><i class="fas fa-exclamation-triangle text-danger"></i> High Priority - Cars</h6>
-                            <ul class="list-unstyled ml-3">
-                                <?php if ($dataQualityReports['invalid_model']['count'] > 0) { ?>
-                                    <li><i class="fas fa-arrow-right text-danger"></i> Fix invalid model data (critical for display)</li>
-                                <?php } ?>
-                                <?php if ($dataQualityReports['multiple_missing']['count'] > 0) { ?>
-                                    <li><i class="fas fa-arrow-right text-danger"></i> Address cars with multiple missing fields</li>
-                                <?php } ?>
-                                <?php if ($dataQualityReports['invalid_chassis']['count'] > 0) { ?>
-                                    <li><i class="fas fa-arrow-right text-danger"></i> Fix invalid chassis numbers using validation override if needed</li>
-                                <?php } ?>
-                                <?php if ($dataQualityReports['missing_chassis']['count'] > 10) { ?>
-                                    <li><i class="fas fa-arrow-right text-warning"></i> Add chassis numbers for identification</li>
-                                <?php } ?>
-                            </ul>
-                        </div>
-                        <div class="col-md-4">
-                            <h6><i class="fas fa-users text-warning"></i> Owner Issues</h6>
-                            <ul class="list-unstyled ml-3">
-                                <?php if ($dataQualityReports['owners_missing_info']['count'] > 0) { ?>
-                                    <li><i class="fas fa-arrow-right text-warning"></i> Contact owners with missing profile information</li>
-                                <?php } ?>
-                                <?php if ($dataQualityReports['duplicate_emails']['count'] > 0) { ?>
-                                    <li><i class="fas fa-arrow-right text-warning"></i> Resolve duplicate email accounts</li>
-                                <?php } ?>
-                                <?php if ($dataQualityReports['inactive_owners']['count'] > 10) { ?>
-                                    <li><i class="fas fa-arrow-right text-info"></i> Re-engage inactive car owners</li>
-                                <?php } ?>
-                            </ul>
-                        </div>
-                        <div class="col-md-4">
-                            <h6><i class="fas fa-info-circle text-info"></i> General Improvements</h6>
-                            <ul class="list-unstyled ml-3">
-                                <?php if ($dataQualityReports['missing_series']['count'] > 0) { ?>
-                                    <li><i class="fas fa-arrow-right text-info"></i> Fill in missing series information</li>
-                                <?php } ?>
-                                <?php if ($dataQualityReports['users_without_cars']['count'] > 20) { ?>
-                                    <li><i class="fas fa-arrow-right text-info"></i> Encourage car registration among new users</li>
-                                <?php } ?>
-                                <li><i class="fas fa-arrow-right text-info"></i>
-                                    <button class="btn btn-sm btn-outline-info" onclick="location.reload()">
-                                        <i class="fas fa-sync"></i> Refresh Data
-                                    </button>
-                                </li>
-                            </ul>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
-<?php } ?>
-
-<!-- Car Quality Summary Cards -->
-<div class="row mb-4">
-    <div class="col-12">
-        <h2 class="h4 mb-3 text-success"><i class="fas fa-car"></i> Car Quality Reports</h2>
     </div>
     <?php foreach ($dataQualityReports as $key => $report) { ?>
         <?php if (in_array($key, ['owners_missing_info', 'inactive_owners', 'users_without_cars', 'duplicate_emails'])) continue; ?>
@@ -524,6 +404,14 @@ $qualityScore = $totalRecords > 0 ? max(0, 100 - (($totalIssues / $totalRecords)
                                                 <td>
                                                     <button type="button" class="btn btn-sm btn-outline-success" onclick="openCarDetails(<?= $car->id ?>)" title="Edit Car Details">
                                                         <i class="fas fa-edit"></i> Edit
+                                                    </button>
+                                                    <button type="button" class="btn btn-sm btn-outline-warning ml-1"
+                                                            onclick="openAdminContactModal(
+                                                                {id: '<?= $car->id ?>', year: '<?= htmlspecialchars($car->year) ?>', model: '<?= htmlspecialchars($car->model) ?>', chassis: '<?= htmlspecialchars($car->chassis) ?>', series: '<?= htmlspecialchars($car->series ?? '') ?>'},
+                                                                {id: '<?= $car->user_id ?? '' ?>', name: '<?= htmlspecialchars($car->fname && $car->lname ? $car->fname . ' ' . $car->lname : 'Unknown') ?>', email: '<?= htmlspecialchars($car->email ?? '') ?>'},
+                                                                'Invalid Chassis'
+                                                            )" title="Contact Owner via Registry">
+                                                        <i class="fas fa-envelope"></i>
                                                     </button>
                                                     <button type="button" class="btn btn-sm btn-outline-info ml-1" data-toggle="modal" data-target="#chassisValidationModal">
                                                         <i class="fas fa-info-circle"></i> Rules
@@ -725,6 +613,14 @@ $qualityScore = $totalRecords > 0 ? max(0, 100 - (($totalIssues / $totalRecords)
                                                 <td>
                                                     <button type="button" class="btn btn-sm btn-outline-success" onclick="openCarDetails(<?= $car->id ?>)" title="Edit Car Details">
                                                         <i class="fas fa-edit"></i> Edit
+                                                    </button>
+                                                    <button type="button" class="btn btn-sm btn-outline-warning ml-1"
+                                                            onclick="openAdminContactModal(
+                                                                {id: '<?= $car->id ?>', year: '<?= htmlspecialchars($car->year) ?>', model: '<?= htmlspecialchars($car->model) ?>', chassis: '<?= htmlspecialchars($car->chassis) ?>', series: '<?= htmlspecialchars($car->series ?? '') ?>'},
+                                                                {id: '<?= $car->user_id ?? '' ?>', name: '<?= htmlspecialchars($car->fname && $car->lname ? $car->fname . ' ' . $car->lname : 'Unknown') ?>', email: '<?= htmlspecialchars($car->email ?? '') ?>'},
+                                                                'Missing Information'
+                                                            )" title="Contact Owner via Registry">
+                                                        <i class="fas fa-envelope"></i>
                                                     </button>
                                                 </td>
                                             </tr>

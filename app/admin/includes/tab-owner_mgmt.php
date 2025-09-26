@@ -20,47 +20,16 @@ if (isset($_GET['owner_id']) && is_numeric($_GET['owner_id'])) {
 }
 ?>
 
-<div class="alert alert-success">
-    <h4><i class="fas fa-users"></i> Manage Owners Interface</h4>
-    <p class="mb-0">Search, edit, and manage owner profiles with data quality integration.</p>
-</div>
-
-<!-- Owner Statistics and Data Quality Summary -->
-<div class="row mb-4">
-    <div class="col-md-6">
-        <div class="card border-info">
-            <div class="card-header bg-info text-white">
-                <h6 class="mb-0"><i class="fas fa-chart-pie"></i> Owner Statistics</h6>
-            </div>
-            <div class="card-body">
-                <div class="text-center">
-                    <h3 class="text-primary"><?= number_format($systemStatus['total_users'] ?? 0) ?></h3>
-                    <p class="mb-1">Active Owners</p>
-                    <small class="text-muted">
-                        <i class="fas fa-link"></i>
-                        <a href="../../users/admin.php" target="_blank">UserSpice Admin</a>
-                    </small>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <div class="col-md-6">
-        <!-- Data Quality Summary -->
-        <div class="card border-warning">
-            <div class="card-header bg-warning text-dark">
-                <h6 class="mb-0"><i class="fas fa-clipboard-check"></i> Data Quality</h6>
-            </div>
-            <div class="card-body">
-                <div class="text-center">
-                    <button class="btn btn-sm btn-outline-warning" onclick="switchToDataQualityTab()">
-                        <i class="fas fa-chart-line"></i> Owner Quality Reports
-                    </button>
-                </div>
-            </div>
-        </div>
+<!-- Manage Owners Header -->
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <div>
+        <h2 class="text-primary mb-1">
+            <i class="fas fa-users"></i> Manage Owners
+        </h2>
+        <p class="text-muted mb-0">Monitor owner data quality and manage user profiles</p>
     </div>
 </div>
+
 
 <!-- Owner Search and Management Interface -->
 <div class="row mb-4">
@@ -218,41 +187,54 @@ function getOwnerQualityReports($db): array {
 
 // Get owner quality reports for display at bottom of page
 $dataQualityReports = getOwnerQualityReports($db);
+
+// Calculate owner quality statistics
+$totalOwners = $systemStatus['total_users'] ?? 0;
+$qualityIssues = 0;
+foreach ($dataQualityReports as $report) {
+    $qualityIssues += $report['count'];
+}
+$ownerQualityScore = $totalOwners > 0 ? max(0, 100 - (($qualityIssues / $totalOwners) * 100)) : 100;
 ?>
 
-<!-- Owner Quality Reports Section -->
+<!-- Owner Quality Summary Cards -->
 <div class="row mb-4">
-    <div class="col-12">
-        <div class="card">
-            <div class="card-header">
-                <h5 class="mb-0"><i class="fas fa-users"></i> Owner Quality Reports</h5>
+    <!-- Data Health Card -->
+    <div class="col-lg-3 col-md-6 mb-3">
+        <div class="card border-<?= $ownerQualityScore >= 80 ? 'success' : ($ownerQualityScore >= 60 ? 'warning' : 'danger') ?> h-100">
+            <div class="card-body text-center">
+                <div class="text-<?= $ownerQualityScore >= 80 ? 'success' : ($ownerQualityScore >= 60 ? 'warning' : 'danger') ?> mb-3">
+                    <i class="fas fa-<?= $ownerQualityScore >= 80 ? 'check-circle' : ($ownerQualityScore >= 60 ? 'exclamation-triangle' : 'times-circle') ?>" style="font-size: 2.5rem;"></i>
+                </div>
+                <h5 class="card-title">Data Health</h5>
+                <h3 class="text-<?= $ownerQualityScore >= 80 ? 'success' : ($ownerQualityScore >= 60 ? 'warning' : 'danger') ?> mb-2"><?= number_format($ownerQualityScore, 1) ?>%</h3>
+                <p class="card-text small text-muted">Overall owner data quality score</p>
             </div>
-            <div class="card-body">
-                <!-- Owner Quality Summary Cards -->
-                <div class="row mb-4">
-                    <?php foreach ($dataQualityReports as $key => $report) { ?>
-                        <?php if (!in_array($key, ['owners_missing_info', 'users_without_cars', 'duplicate_emails'])) continue; ?>
-                        <div class="col-lg-3 col-md-6 mb-3">
-                            <div class="card border-<?= $report['severity'] ?> h-100">
-                                <div class="card-body text-center">
-                                    <div class="text-<?= $report['severity'] ?> mb-3">
-                                        <i class="<?= $report['icon'] ?>" style="font-size: 2.5rem;"></i>
-                                    </div>
-                                    <h5 class="card-title"><?= $report['title'] ?></h5>
-                                    <h3 class="text-<?= $report['severity'] ?> mb-2"><?= $report['count'] ?></h3>
-                                    <p class="card-text small text-muted"><?= $report['description'] ?></p>
-                                    <?php if ($report['count'] > 0) { ?>
-                                        <a href="#owner-report-<?= $key ?>" class="btn btn-outline-<?= $report['severity'] ?> btn-sm">
-                                            <i class="fas fa-eye"></i> View Details
-                                        </a>
-                                    <?php } ?>
-                                </div>
-                            </div>
-                        </div>
+        </div>
+    </div>
+    <?php foreach ($dataQualityReports as $key => $report) { ?>
+        <?php if (!in_array($key, ['owners_missing_info', 'duplicate_emails'])) continue; ?>
+        <div class="col-lg-3 col-md-6 mb-3">
+            <div class="card border-<?= $report['severity'] ?> h-100">
+                <div class="card-body text-center">
+                    <div class="text-<?= $report['severity'] ?> mb-3">
+                        <i class="<?= $report['icon'] ?>" style="font-size: 2.5rem;"></i>
+                    </div>
+                    <h5 class="card-title"><?= $report['title'] ?></h5>
+                    <h3 class="text-<?= $report['severity'] ?> mb-2"><?= $report['count'] ?></h3>
+                    <p class="card-text small text-muted"><?= $report['description'] ?></p>
+                    <?php if ($report['count'] > 0) { ?>
+                        <a href="#owner-report-<?= $key ?>" class="btn btn-outline-<?= $report['severity'] ?> btn-sm">
+                            <i class="fas fa-eye"></i> View Details
+                        </a>
                     <?php } ?>
                 </div>
+            </div>
+        </div>
+    <?php } ?>
+</div>
 
-                <!-- Detailed Owner Reports -->
+<!-- Detailed Owner Reports -->
                 <?php foreach ($dataQualityReports as $key => $report) { ?>
                     <?php if (!in_array($key, ['owners_missing_info', 'users_without_cars', 'duplicate_emails']) || $report['count'] == 0) continue; ?>
                     <div class="row mb-4" id="owner-report-<?= $key ?>">

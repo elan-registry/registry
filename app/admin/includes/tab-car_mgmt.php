@@ -78,142 +78,70 @@ try {
     </div>
 </div>
 
-<!-- Transfer Request Management - Primary Section -->
+<!-- Transfer Request Management Section -->
 <div class="row mb-4">
     <div class="col-12">
-        <div class="card border-primary">
-            <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center">
-                <h5 class="mb-0">
-                    <i class="fas fa-exchange-alt"></i> Transfer Requests
-                    <span class="badge badge-light ml-2"><?= $transferStats['pending'] ?> pending</span>
-                </h5>
-                <div class="text-right">
-                    <small>
-                        <i class="fas fa-check-circle"></i> <?= $transferStats['completed_today'] ?> completed today &nbsp;
-                        <i class="fas fa-times-circle"></i> <?= $transferStats['denied_today'] ?> denied today
-                    </small>
-                </div>
+        <div class="card border-info">
+            <div class="card-header bg-info text-white">
+                <h5 class="mb-0"><i class="fas fa-exchange-alt"></i> Pending Transfer Requests</h5>
             </div>
             <div class="card-body">
-                <div class="alert alert-info mb-3">
-                    <i class="fas fa-info-circle"></i>
-                    <strong>Primary Workflow:</strong> Most car ownership changes now happen through self-serve transfer requests.
-                    Owners request transfers which are reviewed and approved/denied here.
-                </div>
-
                 <?php if (empty($transfers)): ?>
-                    <div class="text-center py-5">
-                        <i class="fas fa-check-circle text-success" style="font-size: 3rem;"></i>
-                        <h5 class="mt-3 text-success">No Pending Transfer Requests</h5>
-                        <p class="text-muted">All transfer requests have been processed.</p>
-                        <a href="../reports/data-quality.php" class="btn btn-outline-primary">
-                            <i class="fas fa-chart-line"></i> View Transfer Reports
-                        </a>
+                    <div class="alert alert-info">
+                        <i class="fas fa-info-circle"></i> No pending transfer requests at this time.
                     </div>
                 <?php else: ?>
                     <div class="table-responsive">
-                        <table class="table table-hover">
-                            <thead class="thead-light">
+                        <table class="table table-striped">
+                            <thead>
                                 <tr>
                                     <th>Request Date</th>
                                     <th>Car Details</th>
                                     <th>Current Owner</th>
                                     <th>Requesting User</th>
                                     <th>Expires</th>
-                                    <th class="text-center">Actions</th>
+                                    <th>Actions</th>
                                 </tr>
                             </thead>
                             <tbody>
                                 <?php foreach ($transfers as $transfer): ?>
-                                    <tr class="transfer-row" data-transfer-id="<?= $transfer->id ?>">
+                                    <tr>
+                                        <td><?= date('M j, Y', strtotime($transfer->request_date)) ?></td>
                                         <td>
-                                            <span class="font-weight-bold"><?= date('M j, Y', strtotime($transfer->request_date)) ?></span><br>
-                                            <small class="text-muted"><?= date('g:i A', strtotime($transfer->request_date)) ?></small>
-                                        </td>
-                                        <td>
-                                            <div class="car-info">
-                                                <strong><?= htmlspecialchars($transfer->year) ?> <?= htmlspecialchars($transfer->type) ?></strong>
-                                                <?php if ($transfer->series): ?>
-                                                    <span class="badge badge-secondary badge-sm"><?= htmlspecialchars($transfer->series) ?></span>
-                                                <?php endif; ?>
-                                                <br>
-                                                <small class="text-muted">
-                                                    <i class="fas fa-barcode"></i> <?= htmlspecialchars($transfer->chassis) ?>
-                                                    <?php if ($transfer->color): ?>
-                                                        &nbsp;• <?= htmlspecialchars($transfer->color) ?>
-                                                    <?php endif; ?>
-                                                </small>
-                                            </div>
-                                        </td>
-                                        <td>
-                                            <div class="user-info">
-                                                <strong><?= htmlspecialchars($transfer->current_fname . ' ' . $transfer->current_lname) ?></strong><br>
-                                                <small class="text-muted">
-                                                    <i class="fas fa-envelope"></i> <?= htmlspecialchars($transfer->current_email) ?>
-                                                </small>
-                                            </div>
-                                        </td>
-                                        <td>
-                                            <div class="user-info">
-                                                <strong><?= htmlspecialchars($transfer->requester_fname . ' ' . $transfer->requester_lname) ?></strong><br>
-                                                <small class="text-muted">
-                                                    <i class="fas fa-envelope"></i> <?= htmlspecialchars($transfer->requester_email) ?>
-                                                </small>
-                                            </div>
-                                        </td>
-                                        <td>
-                                            <?php
-                                            $expiresDate = new DateTime($transfer->expires_at);
-                                            $now = new DateTime();
-                                            $diff = $now->diff($expiresDate);
-                                            $isExpiringSoon = $diff->days <= 2;
-                                            ?>
-                                            <span class="<?= $isExpiringSoon ? 'text-warning font-weight-bold' : '' ?>">
-                                                <?= date('M j, Y', strtotime($transfer->expires_at)) ?>
-                                            </span>
-                                            <?php if ($isExpiringSoon): ?>
-                                                <br><small class="text-warning">
-                                                    <i class="fas fa-exclamation-triangle"></i> Expires soon
-                                                </small>
+                                            <strong><?= htmlspecialchars($transfer->year) ?> <?= htmlspecialchars($transfer->type) ?></strong><br>
+                                            <small>Chassis: <?= htmlspecialchars($transfer->chassis) ?></small>
+                                            <?php if ($transfer->color): ?>
+                                                <br><small>Color: <?= htmlspecialchars($transfer->color) ?></small>
                                             <?php endif; ?>
                                         </td>
-                                        <td class="text-center">
-                                            <div class="btn-group" role="group">
-                                                <button type="button" class="btn btn-success btn-sm transfer-approve-btn"
-                                                        title="Approve transfer request"
-                                                        data-transfer-id="<?= $transfer->id ?>"
-                                                        data-car-year="<?= htmlspecialchars($transfer->year) ?>"
-                                                        data-car-type="<?= htmlspecialchars($transfer->type) ?>"
-                                                        data-car-series="<?= htmlspecialchars($transfer->series) ?>"
-                                                        data-car-chassis="<?= htmlspecialchars($transfer->chassis) ?>"
-                                                        data-car-color="<?= htmlspecialchars($transfer->color) ?>"
-                                                        data-current-owner="<?= htmlspecialchars($transfer->current_fname . ' ' . $transfer->current_lname) ?>"
-                                                        data-current-email="<?= htmlspecialchars($transfer->current_email) ?>"
-                                                        data-requester-name="<?= htmlspecialchars($transfer->requester_fname . ' ' . $transfer->requester_lname) ?>"
-                                                        data-requester-email="<?= htmlspecialchars($transfer->requester_email) ?>"
-                                                        data-request-date="<?= htmlspecialchars($transfer->request_date) ?>"
-                                                        data-expires-date="<?= htmlspecialchars($transfer->expires_at) ?>"
-                                                        data-comments="<?= htmlspecialchars($transfer->submitted_comments ?? '') ?>">
+                                        <td>
+                                            <?= htmlspecialchars($transfer->current_fname . ' ' . $transfer->current_lname) ?><br>
+                                            <small><?= htmlspecialchars($transfer->current_email) ?></small>
+                                        </td>
+                                        <td>
+                                            <?= htmlspecialchars($transfer->requester_fname . ' ' . $transfer->requester_lname) ?><br>
+                                            <small><?= htmlspecialchars($transfer->requester_email) ?></small>
+                                        </td>
+                                        <td>
+                                            <?= date('M j, Y', strtotime($transfer->expires_at)) ?>
+                                        </td>
+                                        <td>
+                                            <form method="POST" style="display: inline;">
+                                                <input type="hidden" name="csrf" value="<?= Token::generate(); ?>" />
+                                                <input type="hidden" name="command" value="approve_transfer" />
+                                                <input type="hidden" name="transfer_id" value="<?= $transfer->id ?>" />
+                                                <button type="submit" class="btn btn-success btn-sm" onclick="return confirm('Approve this transfer request?')">
                                                     <i class="fas fa-check"></i> Approve
                                                 </button>
-                                                <button type="button" class="btn btn-danger btn-sm transfer-deny-btn"
-                                                        title="Deny transfer request"
-                                                        data-transfer-id="<?= $transfer->id ?>"
-                                                        data-car-year="<?= htmlspecialchars($transfer->year) ?>"
-                                                        data-car-type="<?= htmlspecialchars($transfer->type) ?>"
-                                                        data-car-series="<?= htmlspecialchars($transfer->series) ?>"
-                                                        data-car-chassis="<?= htmlspecialchars($transfer->chassis) ?>"
-                                                        data-car-color="<?= htmlspecialchars($transfer->color) ?>"
-                                                        data-current-owner="<?= htmlspecialchars($transfer->current_fname . ' ' . $transfer->current_lname) ?>"
-                                                        data-current-email="<?= htmlspecialchars($transfer->current_email) ?>"
-                                                        data-requester-name="<?= htmlspecialchars($transfer->requester_fname . ' ' . $transfer->requester_lname) ?>"
-                                                        data-requester-email="<?= htmlspecialchars($transfer->requester_email) ?>"
-                                                        data-request-date="<?= htmlspecialchars($transfer->request_date) ?>"
-                                                        data-expires-date="<?= htmlspecialchars($transfer->expires_at) ?>"
-                                                        data-comments="<?= htmlspecialchars($transfer->submitted_comments ?? '') ?>">
+                                            </form>
+                                            <form method="POST" style="display: inline;">
+                                                <input type="hidden" name="csrf" value="<?= Token::generate(); ?>" />
+                                                <input type="hidden" name="command" value="deny_transfer" />
+                                                <input type="hidden" name="transfer_id" value="<?= $transfer->id ?>" />
+                                                <button type="submit" class="btn btn-danger btn-sm" onclick="return confirm('Deny this transfer request?')">
                                                     <i class="fas fa-times"></i> Deny
                                                 </button>
-                                            </div>
+                                            </form>
                                         </td>
                                     </tr>
                                 <?php endforeach; ?>

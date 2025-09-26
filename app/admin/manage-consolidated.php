@@ -11,7 +11,7 @@ declare(strict_types=1);
  * TAB 2: Manage Cars - Individual car management and bulk operations
  * TAB 3: Manage Owners - User profile management and owner data administration
  * TAB 4: System Maintenance - Database maintenance, FIX scripts, and system utilities
- * TAB 5: Account Cleanup - User account cleanup information and spam management overview
+ * TAB 5: Owner Cleanup - User account cleanup information and spam management overview
  * TAB 6: Settings - Complete ElanRegistry configuration (Google APIs, CDNs, media, email)
  *
  * @author Elan Registry Development Team
@@ -89,20 +89,34 @@ try {
     }
     $systemStatus['pending_transfers'] = $transferCount;
 
-    // Calculate quality issues for data quality tab
-    $qualityIssues = 0;
+    // Calculate quality issues separated by type using basic counts
+    $carIssues = 0;
     $ownerIssues = 0;
 
-    // Count missing chassis numbers
+    // Car-specific critical issues only (for tab badge)
+    // Count missing chassis numbers (critical)
     $missingChassisStmt = $db->query("SELECT COUNT(*) as count FROM cars WHERE chassis IS NULL OR chassis = ''");
     $missingChassisResult = $missingChassisStmt->first();
-    $qualityIssues += $missingChassisResult ? (int)$missingChassisResult->count : 0;
+    $carIssues += $missingChassisResult ? (int)$missingChassisResult->count : 0;
 
-    // Count invalid model data
+    // Count invalid model data (critical)
     $invalidModelStmt = $db->query("SELECT COUNT(*) as count FROM cars WHERE model = '||' OR model LIKE '%test%' OR model LIKE '%placeholder%'");
     $invalidModelResult = $invalidModelStmt->first();
-    $qualityIssues += $invalidModelResult ? (int)$invalidModelResult->count : 0;
+    $carIssues += $invalidModelResult ? (int)$invalidModelResult->count : 0;
 
+    // Count cars with multiple critical missing fields (critical)
+    $multipleMissingStmt = $db->query("
+        SELECT COUNT(*) as count FROM cars
+        WHERE (CASE WHEN series IS NULL OR series = '' THEN 1 ELSE 0 END) +
+              (CASE WHEN chassis IS NULL OR chassis = '' THEN 1 ELSE 0 END) +
+              (CASE WHEN model = '||' THEN 1 ELSE 0 END) >= 2
+    ");
+    $multipleMissingResult = $multipleMissingStmt->first();
+    $carIssues += $multipleMissingResult ? (int)$multipleMissingResult->count : 0;
+
+    // Note: Missing series alone is informational, invalid chassis is warning - not included in critical count
+
+    // Owner-specific issues
     // Count owners missing critical information
     $ownersStmt = $db->query("
         SELECT COUNT(DISTINCT u.id) as count
@@ -117,7 +131,7 @@ try {
         )
     ");
     $ownersResult = $ownersStmt->first();
-    $qualityIssues += $ownersResult ? (int)$ownersResult->count : 0;
+    $ownerIssues += $ownersResult ? (int)$ownersResult->count : 0;
 
     // Count duplicate emails
     $duplicateEmailsStmt = $db->query("
@@ -127,28 +141,12 @@ try {
     ");
     $duplicateEmailsResult = $duplicateEmailsStmt->first();
     $duplicateEmailCount = $duplicateEmailsResult ? (int)$duplicateEmailsResult->count : 0;
-    $qualityIssues += $duplicateEmailCount;
     $ownerIssues += $duplicateEmailCount;
 
-    // Count owners missing information
-    $ownersWithMissingInfoStmt = $db->query("
-        SELECT COUNT(DISTINCT u.id) as count FROM users u
-        JOIN car_user cu ON u.id = cu.userid
-        LEFT JOIN profiles p ON u.id = p.user_id
-        WHERE u.active = 1 AND (
-            (u.fname IS NULL OR u.fname = '') OR
-            (u.lname IS NULL OR u.lname = '') OR
-            (p.city IS NULL OR p.city = '') OR
-            (p.lat IS NULL OR p.lon IS NULL)
-        )
-    ");
-    $ownersWithMissingInfoResult = $ownersWithMissingInfoStmt->first();
-    $ownerMissingInfoCount = $ownersWithMissingInfoResult ? (int)$ownersWithMissingInfoResult->count : 0;
-    $ownerIssues += $ownerMissingInfoCount;
-
-
-    $systemStatus['quality_issues'] = $qualityIssues;
+    // Store separated counts
+    $systemStatus['car_issues'] = $carIssues;
     $systemStatus['owner_issues'] = $ownerIssues;
+    $systemStatus['quality_issues'] = $carIssues + $ownerIssues; // Total for backwards compatibility
 
 } catch (PDOException $e) {
     // Fail silently for header stats - main functionality should still work
@@ -509,8 +507,8 @@ if (Input::exists('post')) {
                                     <a class="nav-link <?= $activeTab === 'manage-cars' ? 'active' : '' ?>"
                                        href="?tab=manage-cars" role="tab">
                                         <i class="fas fa-clipboard-check"></i> Manage Cars
-                                        <?php if ($systemStatus['quality_issues'] > 0) { ?>
-                                            <span class="badge badge-warning badge-sm ml-1"><?= $systemStatus['quality_issues'] ?></span>
+                                        <?php if ($systemStatus['car_issues'] > 0) { ?>
+                                            <span class="badge badge-warning badge-sm ml-1"><?= $systemStatus['car_issues'] ?></span>
                                         <?php } ?>
                                     </a>
                                 </li>
@@ -534,11 +532,11 @@ if (Input::exists('post')) {
                                     </a>
                                 </li>
 
-                                <!-- Account Cleanup Tab -->
+                                <!-- Owner Cleanup Tab -->
                                 <li class="nav-item">
                                     <a class="nav-link <?= $activeTab === 'cleanup' ? 'active' : '' ?>"
                                        href="?tab=cleanup" role="tab">
-                                        <i class="fas fa-shield-alt"></i> Account Cleanup
+                                        <i class="fas fa-shield-alt"></i> Owner Cleanup
                                     </a>
                                 </li>
 
