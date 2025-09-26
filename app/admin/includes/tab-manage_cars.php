@@ -244,6 +244,28 @@ function getDataQualityReports($db) {
         'impact' => 'Critical - Severely impacts display and functionality'
     ];
 
+    // Report 6: Duplicate Cars Detection
+    $duplicatesQ = $db->query("
+        SELECT a.* FROM cars a
+        JOIN (
+            SELECT type, chassis, COUNT(*)
+            FROM cars
+            WHERE chassis <> '' AND chassis IS NOT NULL
+            GROUP BY type, chassis
+            HAVING COUNT(*) > 1
+        ) b ON a.chassis = b.chassis AND a.type = b.type
+        ORDER BY a.chassis, a.type
+    ");
+    $reports['duplicate_cars'] = [
+        'title' => 'Duplicate Cars',
+        'description' => 'Cars with identical type and chassis number combinations',
+        'icon' => 'fas fa-copy',
+        'severity' => 'warning',
+        'count' => count($duplicatesQ->results()),
+        'data' => $duplicatesQ->results(),
+        'impact' => 'Medium - May indicate duplicate registrations or data entry errors'
+    ];
+
     return $reports;
 }
 
@@ -312,9 +334,15 @@ $qualityScore = $totalCars > 0 ? max(0, 100 - (($carIssues / $totalCars) * 100))
                     <h3 class="text-<?= $report['severity'] ?> mb-2"><?= $report['count'] ?></h3>
                     <p class="card-text small text-muted"><?= $report['description'] ?></p>
                     <?php if ($report['count'] > 0) { ?>
-                        <a href="#report-<?= $key ?>" class="btn btn-outline-<?= $report['severity'] ?> btn-sm">
-                            <i class="fas fa-eye"></i> View Details
-                        </a>
+                        <?php if ($key === 'duplicate_cars') { ?>
+                            <a href="#duplicateDetectionSection" class="btn btn-outline-<?= $report['severity'] ?> btn-sm">
+                                <i class="fas fa-eye"></i> View Details
+                            </a>
+                        <?php } else { ?>
+                            <a href="#report-<?= $key ?>" class="btn btn-outline-<?= $report['severity'] ?> btn-sm">
+                                <i class="fas fa-eye"></i> View Details
+                            </a>
+                        <?php } ?>
                     <?php } ?>
                 </div>
             </div>
@@ -325,7 +353,7 @@ $qualityScore = $totalCars > 0 ? max(0, 100 - (($carIssues / $totalCars) * 100))
 
 <!-- Detailed Car Reports -->
 <?php foreach ($dataQualityReports as $key => $report) { ?>
-    <?php if ($report['count'] > 0 && !in_array($key, ['owners_missing_info', 'inactive_owners', 'users_without_cars', 'duplicate_emails'])) { ?>
+    <?php if ($report['count'] > 0 && !in_array($key, ['owners_missing_info', 'inactive_owners', 'users_without_cars', 'duplicate_emails', 'duplicate_cars'])) { ?>
         <div class="row mb-4" id="report-<?= $key ?>">
             <div class="col-12">
                 <div class="card border-<?= $report['severity'] ?>">
@@ -836,6 +864,477 @@ $qualityScore = $totalCars > 0 ? max(0, 100 - (($carIssues / $totalCars) * 100))
     </div>
 </div>
 
+<!-- Duplicate Detection Section -->
+<?php if (isset($dataQualityReports['duplicate_cars']) && $dataQualityReports['duplicate_cars']['count'] > 0) { ?>
+<div class="row mt-4" id="duplicateDetectionSection">
+    <div class="col-12">
+        <div class="card border-warning">
+            <div class="card-header bg-dark" data-toggle="collapse" data-target="#collapse-duplicate-detection" aria-expanded="false" style="cursor: pointer;">
+                <div class="d-flex justify-content-between align-items-center">
+                    <h4 class="mb-0 text-white">
+                        <i class="fas fa-search text-warning"></i> Duplicate Detection & Management
+                        <span class="badge badge-warning ml-2"><?= $dataQualityReports['duplicate_cars']['count'] ?></span>
+                    </h4>
+                    <div class="d-flex align-items-center">
+                        <small class="text-light mr-3">Impact: Medium - May indicate duplicate registrations or data entry errors</small>
+                        <i class="fas fa-chevron-down text-light collapse-icon"></i>
+                    </div>
+                </div>
+            </div>
+            <div class="collapse" id="collapse-duplicate-detection">
+                <div class="card-body">
+                <!-- Merge Reason Explanations -->
+                <div class="alert alert-info mb-4">
+                    <h5 class="alert-heading"><i class="fas fa-info-circle"></i> Merge Reason Guide</h5>
+                    <div class="row">
+                        <div class="col-md-4 mb-3">
+                            <h6 class="text-danger"><i class="fas fa-clone"></i> Duplicate Car</h6>
+                            <p class="mb-0 small">Two identical records of the same physical car. One record will be removed and all history preserved in the remaining record.</p>
+                        </div>
+                        <div class="col-md-4 mb-3">
+                            <h6 class="text-primary"><i class="fas fa-arrow-right"></i> Keep Newer Record</h6>
+                            <p class="mb-0 small">Car sold to new owner who registered it again. <strong>Keep the newer record</strong> with current owner's information, merge history from older record.</p>
+                        </div>
+                        <div class="col-md-4 mb-3">
+                            <h6 class="text-primary"><i class="fas fa-arrow-left"></i> Keep Older Record</h6>
+                            <p class="mb-0 small">Car was sold but <strong>keep the original record</strong> as the primary entry. Transfer ownership information and merge newer record's history.</p>
+                        </div>
+                    </div>
+                    <hr class="mt-3 mb-2">
+                    <div class="row">
+                        <div class="col-md-8">
+                            <p class="mb-0 small text-muted"><strong>Note:</strong> All merge operations preserve complete history and create audit trail entries. The operation cannot be undone once completed.</p>
+                        </div>
+                        <div class="col-md-4 text-right">
+                            <small class="text-muted">
+                                <span class="badge badge-success badge-sm mr-1"><i class="fas fa-check"></i></span>Matching Fields
+                                <span class="badge badge-danger badge-sm ml-2"><i class="fas fa-exclamation-triangle"></i></span>Different Fields
+                            </small>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Duplicate Groups Container -->
+                <div id="duplicateGroups">
+                    <?php
+                    // Group duplicates by type and chassis number (exact matches)
+                    $duplicateCars = $dataQualityReports['duplicate_cars']['data'];
+                    $groupedDuplicates = [];
+                    foreach ($duplicateCars as $car) {
+                        $key = $car->chassis . '_' . $car->type;
+                        if (!isset($groupedDuplicates[$key])) {
+                            $groupedDuplicates[$key] = [];
+                        }
+                        $groupedDuplicates[$key][] = $car;
+                    }
+
+                    $groupIndex = 0;
+                    foreach ($groupedDuplicates as $chassis => $cars) {
+                        $groupIndex++;
+                    ?>
+                        <div class="duplicate-group card mb-4 border-warning">
+                            <div class="card-header bg-warning bg-opacity-10 d-flex justify-content-between align-items-center">
+                                <h5 class="mb-0">
+                                    <button class="btn btn-link text-decoration-none p-0" type="button" data-toggle="collapse" data-target="#group<?= $groupIndex ?>" aria-expanded="true">
+                                        <i class="fas fa-chevron-down"></i>
+                                        Group <?= $groupIndex ?>: <?= explode('_', $chassis)[1] ?>-<?= explode('_', $chassis)[0] ?>
+                                    </button>
+                                </h5>
+                                <div>
+                                    <span class="badge badge-warning"><?= count($cars) ?> matches</span>
+                                    <span class="badge badge-secondary">Confidence: High</span>
+                                </div>
+                            </div>
+                                <div class="collapse show" id="group<?= $groupIndex ?>">
+                                    <div class="card-body">
+                                        <form action="manage-consolidated.php" method="POST" class="merge-form">
+                                            <input type="hidden" name="command" value="merge" />
+                                            <input type="hidden" name="csrf" value="<?= Token::generate(); ?>" />
+
+                                            <!-- Car Comparison Cards -->
+                                            <div class="row">
+                                                <?php
+                                                // Sort cars by creation date - newest on the right
+                                                usort($cars, function($a, $b) {
+                                                    return strtotime($a->ctime) - strtotime($b->ctime);
+                                                });
+
+                                                // Create comparison data for highlighting differences
+                                                $vehicleFields = ['year', 'type', 'chassis', 'series', 'color'];
+                                                $ownerFields = ['fname', 'lname', 'email', 'city', 'state', 'country'];
+
+                                                $comparison = [];
+                                                foreach ($cars as $c) {
+                                                    foreach ($vehicleFields as $field) {
+                                                        $comparison['vehicle'][$field][] = $c->$field ?? '';
+                                                    }
+                                                    foreach ($ownerFields as $field) {
+                                                        $comparison['owner'][$field][] = $c->$field ?? '';
+                                                    }
+                                                }
+
+                                                // Determine if fields match or differ
+                                                $vehicleMatches = [];
+                                                $ownerMatches = [];
+                                                foreach ($vehicleFields as $field) {
+                                                    $values = array_unique($comparison['vehicle'][$field]);
+                                                    $vehicleMatches[$field] = count($values) === 1;
+                                                }
+                                                foreach ($ownerFields as $field) {
+                                                    $values = array_unique($comparison['owner'][$field]);
+                                                    $ownerMatches[$field] = count($values) === 1;
+                                                }
+
+                                                // Check if this is a perfect match (all fields identical)
+                                                $allVehicleMatch = array_reduce($vehicleMatches, function($carry, $match) { return $carry && $match; }, true);
+                                                $allOwnerMatch = array_reduce($ownerMatches, function($carry, $match) { return $carry && $match; }, true);
+                                                $isPerfectMatch = $allVehicleMatch && $allOwnerMatch;
+                                                ?>
+
+                                            <!-- Perfect Match Recommendation -->
+                                            <?php if ($isPerfectMatch) { ?>
+                                                <div class="alert alert-success mb-3">
+                                                    <h6 class="alert-heading mb-2">
+                                                        <i class="fas fa-bullseye text-success"></i> Perfect Match Detected
+                                                    </h6>
+                                                    <p class="mb-2">
+                                                        <strong>Recommendation:</strong> These cars have identical vehicle and owner information.
+                                                        This appears to be a duplicate entry of the same car.
+                                                    </p>
+                                                    <div class="d-flex align-items-center">
+                                                        <i class="fas fa-arrow-right text-success mr-2"></i>
+                                                        <strong>Suggested Action:</strong>
+                                                        <span class="badge badge-success ml-2">Merge as Duplicate</span>
+                                                    </div>
+                                                </div>
+                                            <?php } ?>
+
+                                            <!-- Merge Controls -->
+                                            <div class="mb-3">
+                                                <div class="row">
+                                                    <div class="col-md-8">
+                                                        <strong>Merge Reason:</strong>
+                                                        <div class="form-check form-check-inline">
+                                                            <input class="form-check-input" type="radio" name="reason[]" id="duplicate<?= $groupIndex ?>" value="duplicate" <?= $isPerfectMatch ? 'checked' : '' ?>>
+                                                            <label class="form-check-label" for="duplicate<?= $groupIndex ?>">
+                                                                <i class="fas fa-clone text-danger"></i> Duplicate Car
+                                                                <?php if ($isPerfectMatch) { ?>
+                                                                    <span class="badge badge-success badge-sm ml-1">Recommended</span>
+                                                                <?php } ?>
+                                                            </label>
+                                                        </div>
+                                                        <div class="form-check form-check-inline">
+                                                            <input class="form-check-input" type="radio" name="reason[]" id="newowner1_<?= $groupIndex ?>" value="newownerNewToOld">
+                                                            <label class="form-check-label" for="newowner1_<?= $groupIndex ?>">
+                                                                <i class="fas fa-arrow-right text-primary"></i> Keep Newer Record
+                                                            </label>
+                                                        </div>
+                                                        <div class="form-check form-check-inline">
+                                                            <input class="form-check-input" type="radio" name="reason[]" id="newowner2_<?= $groupIndex ?>" value="newownerOldToNew">
+                                                            <label class="form-check-label" for="newowner2_<?= $groupIndex ?>">
+                                                                <i class="fas fa-arrow-left text-primary"></i> Keep Older Record
+                                                            </label>
+                                                        </div>
+                                                    </div>
+                                                    <div class="col-md-4 text-right">
+                                                        <button type="submit" class="btn btn-danger btn-sm merge-btn" <?= $isPerfectMatch ? '' : 'disabled' ?>>
+                                                            <i class="fas fa-compress-arrows-alt"></i> Merge Selected
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            </div>
+
+                                            <!-- Car Comparison Cards -->
+                                            <div class="car-comparison-cards-row">
+                                                <?php
+
+                                                foreach ($cars as $index => $car) {
+                                                    $isNewer = $index === count($cars) - 1 && count($cars) > 1;
+                                                    $cardClass = $isNewer ? 'car-comparison-card newer-car' : 'car-comparison-card';
+                                                ?>
+                                                    <div class="col-lg-6 col-md-6 mb-3 d-flex">
+                                                        <div class="card <?= $cardClass ?> w-100">
+                                                            <div class="card-header d-flex justify-content-between align-items-center">
+                                                                <div class="form-check">
+                                                                    <input class="form-check-input car-select" type="checkbox" name="cars[]" value="<?= $car->id ?>" id="car<?= $car->id ?>">
+                                                                    <label class="form-check-label" for="car<?= $car->id ?>">
+                                                                        <strong>Car #<?= $car->id ?></strong>
+                                                                        <?php if ($isNewer) { ?>
+                                                                            <span class="badge badge-success badge-sm ml-1">NEWER</span>
+                                                                        <?php } ?>
+                                                                    </label>
+                                                                </div>
+                                                                <a class="btn btn-outline-primary btn-sm" target="_blank" href='<?= $us_url_root ?>app/cars/details.php?car_id=<?= $car->id ?>'>
+                                                                    <i class="fas fa-external-link-alt"></i> View Details
+                                                                </a>
+                                                            </div>
+
+                                                            <!-- Prominent Date Section -->
+                                                            <div class="card-header bg-light border-top-0 pt-2 pb-2">
+                                                                <div class="row text-center">
+                                                                    <div class="col-6">
+                                                                        <div class="timestamp-info">
+                                                                            <i class="fas fa-calendar-plus text-primary"></i>
+                                                                            <div class="timestamp-label">Created</div>
+                                                                            <div class="timestamp-value"><?= date('M j, Y', strtotime($car->ctime)) ?></div>
+                                                                            <div class="timestamp-time"><?= date('g:i A', strtotime($car->ctime)) ?></div>
+                                                                        </div>
+                                                                    </div>
+                                                                    <div class="col-6 border-left">
+                                                                        <div class="timestamp-info">
+                                                                            <i class="fas fa-edit text-warning"></i>
+                                                                            <div class="timestamp-label">Modified</div>
+                                                                            <div class="timestamp-value"><?= date('M j, Y', strtotime($car->mtime)) ?></div>
+                                                                            <div class="timestamp-time"><?= date('g:i A', strtotime($car->mtime)) ?></div>
+                                                                        </div>
+                                                                    </div>
+                                                                </div>
+                                                            </div>
+
+                                                            <div class="card-body">
+                                                                <div class="row">
+                                                                    <div class="col-sm-6">
+                                                                        <h6 class="text-primary">Vehicle Info</h6>
+                                                                        <p class="mb-1 <?= $vehicleMatches['year'] ? 'field-match' : 'field-differ' ?>">
+                                                                            <strong>Year:</strong>
+                                                                            <span class="field-value"><?= $car->year ?></span>
+                                                                            <?= !$vehicleMatches['year'] ? '<i class="fas fa-exclamation-triangle text-warning ml-1" title="Different values"></i>' : '<i class="fas fa-check text-success ml-1" title="Values match"></i>' ?>
+                                                                        </p>
+                                                                        <p class="mb-1">
+                                                                            <strong>Type:</strong> <?= $car->type ?>
+                                                                        </p>
+                                                                        <p class="mb-1">
+                                                                            <strong>Chassis:</strong> <?= $car->chassis ?>
+                                                                        </p>
+                                                                        <p class="mb-1 <?= $vehicleMatches['series'] ? 'field-match' : 'field-differ' ?>">
+                                                                            <strong>Series:</strong>
+                                                                            <span class="field-value"><?= $car->series ?></span>
+                                                                            <?= !$vehicleMatches['series'] ? '<i class="fas fa-exclamation-triangle text-warning ml-1" title="Different values"></i>' : '<i class="fas fa-check text-success ml-1" title="Values match"></i>' ?>
+                                                                        </p>
+                                                                        <p class="mb-1 <?= $vehicleMatches['color'] ? 'field-match' : 'field-differ' ?>">
+                                                                            <strong>Color:</strong>
+                                                                            <span class="field-value"><?= $car->color ?></span>
+                                                                            <?= !$vehicleMatches['color'] ? '<i class="fas fa-exclamation-triangle text-warning ml-1" title="Different values"></i>' : '<i class="fas fa-check text-success ml-1" title="Values match"></i>' ?>
+                                                                        </p>
+                                                                    </div>
+                                                                    <div class="col-sm-6">
+                                                                        <h6 class="text-success">Owner Info</h6>
+                                                                        <p class="mb-1 <?= $ownerMatches['fname'] && $ownerMatches['lname'] ? 'field-match' : 'field-differ' ?>">
+                                                                            <strong>Owner:</strong>
+                                                                            <span class="field-value"><?= $car->fname ?> <?= $car->lname ?></span>
+                                                                            <?= !($ownerMatches['fname'] && $ownerMatches['lname']) ? '<i class="fas fa-exclamation-triangle text-warning ml-1" title="Different values"></i>' : '<i class="fas fa-check text-success ml-1" title="Values match"></i>' ?>
+                                                                        </p>
+                                                                        <p class="mb-1 <?= $ownerMatches['email'] ? 'field-match' : 'field-differ' ?>">
+                                                                            <strong>Email:</strong>
+                                                                            <span class="field-value"><?= $car->email ?></span>
+                                                                            <?= !$ownerMatches['email'] ? '<i class="fas fa-exclamation-triangle text-warning ml-1" title="Different values"></i>' : '<i class="fas fa-check text-success ml-1" title="Values match"></i>' ?>
+                                                                        </p>
+                                                                        <p class="mb-1 <?= $ownerMatches['city'] && $ownerMatches['state'] && $ownerMatches['country'] ? 'field-match' : 'field-differ' ?>">
+                                                                            <strong>Location:</strong>
+                                                                            <span class="field-value"><?= $car->city ?>, <?= $car->state ?> <?= $car->country ?></span>
+                                                                            <?= !($ownerMatches['city'] && $ownerMatches['state'] && $ownerMatches['country']) ? '<i class="fas fa-exclamation-triangle text-warning ml-1" title="Different values"></i>' : '<i class="fas fa-check text-success ml-1" title="Values match"></i>' ?>
+                                                                        </p>
+                                                                    </div>
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                <?php } ?>
+                                            </div> <!-- Close car-comparison-cards-row -->
+                                        </form>
+                                    </div> <!-- Close card-body -->
+                                </div> <!-- Close collapse -->
+                            </div>
+                        </div> <!-- Close duplicate-group card -->
+                    <?php } ?>
+                </div>
+                </div> <!-- Close card-body -->
+            </div> <!-- Close collapse -->
+        </div> <!-- Close card -->
+    </div> <!-- Close col-12 -->
+</div> <!-- Close row -->
+<?php } ?>
+
+<style>
+.car-comparison-card {
+    transition: all 0.3s ease;
+    display: flex;
+    flex-direction: column;
+}
+
+.car-comparison-card .card-body {
+    flex: 1;
+}
+
+/* Fix cascading height issue - ensure all car cards have same minimum height */
+.car-comparison-cards-row {
+    display: flex;
+    flex-wrap: wrap;
+    margin: 0 -15px;
+}
+
+.car-comparison-cards-row > .col-lg-6 {
+    display: flex;
+    padding: 0 15px;
+    margin-bottom: 1rem;
+}
+
+.car-comparison-cards-row .car-comparison-card {
+    width: 100%;
+    min-height: 420px; /* Set consistent minimum height */
+}
+
+.car-comparison-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+}
+
+.car-comparison-card.selected {
+    border: 2px solid #007bff;
+    background-color: #f8f9ff;
+}
+
+.car-comparison-card.newer-car {
+    border-left: 4px solid #28a745;
+}
+
+.car-comparison-card.newer-car .card-header {
+    background-color: rgba(40, 167, 69, 0.05);
+}
+
+.duplicate-group {
+    transition: all 0.3s ease;
+}
+
+/* Prominent timestamp styles */
+.timestamp-info {
+    padding: 8px 4px;
+}
+
+.timestamp-label {
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: #6c757d;
+    text-transform: uppercase;
+    margin-bottom: 2px;
+}
+
+.timestamp-value {
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: #495057;
+    margin-bottom: 1px;
+}
+
+.timestamp-time {
+    font-size: 0.7rem;
+    color: #868e96;
+}
+
+/* Field comparison highlighting */
+.field-match {
+    background-color: rgba(40, 167, 69, 0.1);
+    border-left: 3px solid #28a745;
+    padding: 4px 8px;
+    margin: 2px 0;
+    border-radius: 4px;
+}
+
+.field-differ {
+    background-color: rgba(220, 53, 69, 0.1);
+    border-left: 3px solid #dc3545;
+    padding: 4px 8px;
+    margin: 2px 0;
+    border-radius: 4px;
+}
+
+.field-match .field-value {
+    font-weight: 500;
+    color: #155724;
+}
+
+.field-differ .field-value {
+    font-weight: 500;
+    color: #721c24;
+}
+
+.field-match i.fa-check {
+    font-size: 0.8rem;
+}
+
+.field-differ i.fa-exclamation-triangle {
+    font-size: 0.8rem;
+}
+
+.duplicate-group:hover {
+    box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+}
+
+.form-validation input.is-invalid {
+    border-color: #dc3545;
+}
+
+.form-validation input.is-valid {
+    border-color: #28a745;
+}
+
+.badge-lg {
+    font-size: 0.9rem;
+    padding: 0.5rem 0.75rem;
+}
+
+.bg-opacity-10 {
+    background-color: rgba(255, 193, 7, 0.1) !important;
+}
+
+.merge-btn:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+@media (max-width: 768px) {
+    .car-comparison-card .col-sm-6 {
+        margin-bottom: 1rem;
+    }
+
+    .form-check-inline {
+        display: block !important;
+        margin-bottom: 0.5rem;
+    }
+
+    .timestamp-info {
+        padding: 6px 2px;
+    }
+
+    .timestamp-label {
+        font-size: 0.7rem;
+    }
+
+    .timestamp-value {
+        font-size: 0.8rem;
+    }
+
+    .timestamp-time {
+        font-size: 0.65rem;
+    }
+
+    .badge-sm {
+        font-size: 0.7rem;
+        padding: 0.2rem 0.4rem;
+    }
+
+    .field-match, .field-differ {
+        padding: 3px 6px;
+        margin: 1px 0;
+    }
+
+    .field-match i.fa-check,
+    .field-differ i.fa-exclamation-triangle {
+        font-size: 0.7rem;
+    }
+}
+</style>
+
 <script>
 // Auto-refresh data every 5 minutes for live monitoring
 setTimeout(function() {
@@ -933,5 +1432,111 @@ $(document).ready(function() {
             $(this).css('background-color', '');
         }
     );
+});
+
+// Duplicate detection JavaScript functionality
+$(document).ready(function() {
+    // Enhanced merge functionality
+    $('.merge-form').each(function() {
+        const $form = $(this);
+        const $carCheckboxes = $form.find('.car-select');
+        const $reasonRadios = $form.find('input[name="reason[]"]');
+        const $mergeBtn = $form.find('.merge-btn');
+
+        // Enable/disable merge button based on selections
+        function updateMergeButton() {
+            const selectedCars = $carCheckboxes.filter(':checked').length;
+            const selectedReason = $reasonRadios.filter(':checked').length;
+
+            const canMerge = selectedCars === 2 && selectedReason === 1;
+            $mergeBtn.prop('disabled', !canMerge);
+
+            if (selectedCars > 2) {
+                $mergeBtn.text('Select exactly 2 cars to merge');
+                $mergeBtn.removeClass('btn-danger').addClass('btn-warning');
+            } else if (selectedCars === 2 && selectedReason === 1) {
+                $mergeBtn.html('<i class="fas fa-compress-arrows-alt"></i> Merge Selected');
+                $mergeBtn.removeClass('btn-warning').addClass('btn-danger');
+            } else {
+                $mergeBtn.html('<i class="fas fa-compress-arrows-alt"></i> Merge Selected');
+                $mergeBtn.removeClass('btn-warning').addClass('btn-danger');
+            }
+        }
+
+        // Visual feedback for selected cars
+        $carCheckboxes.on('change', function() {
+            const $card = $(this).closest('.car-comparison-card');
+            if ($(this).is(':checked')) {
+                $card.addClass('selected');
+            } else {
+                $card.removeClass('selected');
+            }
+            updateMergeButton();
+        });
+
+        $reasonRadios.on('change', updateMergeButton);
+
+        // Confirmation dialog for merge operations
+        $form.on('submit', function(e) {
+            const selectedCars = $carCheckboxes.filter(':checked');
+            const selectedReason = $reasonRadios.filter(':checked');
+
+            if (selectedCars.length !== 2 || selectedReason.length !== 1) {
+                e.preventDefault();
+                alert('Please select exactly 2 cars and 1 merge reason.');
+                return false;
+            }
+
+            const car1Id = $(selectedCars[0]).val();
+            const car2Id = $(selectedCars[1]).val();
+            const reason = selectedReason.val();
+
+            let reasonText = '';
+            switch(reason) {
+                case 'duplicate':
+                    reasonText = 'These are duplicate entries of the same car';
+                    break;
+                case 'newownerNewToOld':
+                    reasonText = 'Keep the newer record (current owner information)';
+                    break;
+                case 'newownerOldToNew':
+                    reasonText = 'Keep the older record (original registration)';
+                    break;
+            }
+
+            const confirmed = confirm(
+                `Are you sure you want to merge cars #${car1Id} and #${car2Id}?\n\n` +
+                `Reason: ${reasonText}\n\n` +
+                `This action cannot be undone. The history will be preserved, but one car record will be permanently deleted.`
+            );
+
+            if (!confirmed) {
+                e.preventDefault();
+                return false;
+            }
+        });
+
+        // Initialize button state
+        updateMergeButton();
+    });
+
+    // Collapsible group management
+    $('.duplicate-group [data-toggle="collapse"]').on('click', function() {
+        const $icon = $(this).find('i');
+        const isExpanded = $(this).attr('aria-expanded') === 'true';
+
+        setTimeout(function() {
+            if (isExpanded) {
+                $icon.removeClass('fa-chevron-down').addClass('fa-chevron-right');
+            } else {
+                $icon.removeClass('fa-chevron-right').addClass('fa-chevron-down');
+            }
+        }, 100);
+    });
+
+    // Enhanced tooltips and popovers (if Bootstrap supports them)
+    if (typeof $().tooltip === 'function') {
+        $('[data-toggle="tooltip"]').tooltip();
+    }
 });
 </script>

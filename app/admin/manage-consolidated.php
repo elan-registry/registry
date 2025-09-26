@@ -201,6 +201,96 @@ if (Input::exists('post')) {
                     }
                     break;
 
+                // Car merge
+                case "merge":
+                    // Validate input
+                    $cars = Input::get('cars');
+                    $reason = Input::get('reason');
+                    if (!$cars || !$reason) {
+                        $errors[] = 'Select 2 cars to merge and a reason';
+                        break;
+                    }
+
+                    if (count($cars) <> 2) {
+                        $errors[] = 'Select 2 cars to merge';
+                        break;
+                    }
+                    if (count($reason) <> 1) {
+                        $errors[] = 'Select 1 reason code';
+                        break;
+                    } else {
+                        // Build the reason string
+                        switch ($reason[0]) {
+                            case "duplicate":
+                                // Determine the newest car
+                                if ($cars[0] > $cars[1]) {
+                                    $new_car_id = $cars[0];
+                                    $old_car_id = $cars[1];
+                                } else {
+                                    $new_car_id = $cars[1];
+                                    $old_car_id = $cars[0];
+                                }
+                                $fields['comments'] = "Car $old_car_id is a duplicate of $new_car_id.  The history of $old_car_id has been merged with $new_car_id and $old_car_id deleted.";
+                                $fields['operation'] = "DUPLICATE";
+                                break;
+
+                            case "newownerNewToOld":
+                                // Determine the newest car
+                                if ($cars[0] > $cars[1]) {
+                                    $new_car_id = $cars[0];
+                                    $old_car_id = $cars[1];
+                                } else {
+                                    $new_car_id = $cars[1];
+                                    $old_car_id = $cars[0];
+                                }
+                                $fields['comments'] = "Car $old_car_id was sold to a new owner and the new owner created a record for the same car as $new_car_id. The history of $old_car_id has been merged with $new_car_id and $old_car_id deleted.";
+                                $fields['operation'] = "NEWOWNER";
+                                break;
+
+                            case "newownerOldToNew":
+                                if ($cars[0] > $cars[1]) {
+                                    $new_car_id = $cars[1];
+                                    $old_car_id = $cars[0];
+                                } else {
+                                    $new_car_id = $cars[0];
+                                    $old_car_id = $cars[1];
+                                }
+                                $fields['comments'] = "Car $old_car_id was sold to a new owner and the new owner created a record for the same car as $new_car_id. The history of $old_car_id has been merged with $new_car_id and $old_car_id deleted.";
+                                $fields['operation'] = "NEWOWNER";
+                                break;
+
+                            default:
+                                // This should never happen
+                                $fields['comments'] = "Car $old_car_id was merged with $new_car_id.  Car $old_car_id has been deleted.";
+                                $fields['operation'] = "DEFAULT";
+                                break;
+                        }
+                    }
+
+                    // Merge the history
+                    $db->query("UPDATE cars_hist SET car_id = ? WHERE car_id = ?", [$new_car_id, $old_car_id]);
+                    if ($db->error()) {
+                        $errors[] = $db->errorString();
+                        logger($currentUserId, "ElanRegistry", "FAILED: Merged CAR $old_car_id to CAR $new_car_id.");
+                    } else {
+                        // Unassign from the previous owner
+                        $db->query("DELETE FROM car_user WHERE car_id = ?", [$old_car_id]);
+
+                        // Remove old car
+                        $db->query("DELETE FROM cars WHERE id = ?", [$old_car_id]);
+
+                        // Add a record to the history with some information on the assignment
+                        $fields['car_id'] = $new_car_id;
+                        $fields['ctime'] = date('Y-m-d G:i:s'); // Set date of this record
+                        $fields['mtime'] = $fields['ctime'];
+
+                        $db->insert("cars_hist", $fields);
+
+                        $successes[] = $fields['comments'];
+                        logger($currentUserId, "ElanRegistry", $fields['comments']);
+                    }
+                    break;
+
                 // Car deletion
                 case "delete":
                     $car_id = (int) Input::get('car_id');
