@@ -98,7 +98,7 @@ try {
                 <div class="alert alert-info mb-3">
                     <i class="fas fa-info-circle"></i>
                     <strong>Primary Workflow:</strong> Most car ownership changes now happen through self-serve transfer requests.
-                    Users request transfers which are reviewed and approved/denied here.
+                    Owners request transfers which are reviewed and approved/denied here.
                 </div>
 
                 <?php if (empty($transfers)): ?>

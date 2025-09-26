@@ -16,9 +16,6 @@ declare(strict_types=1);
  *
  * @author Elan Registry Development Team
  * @copyright 2025
- * @issue #270 - Consolidated Management Interface
- * @issue #331 - Phase 1A: Create Unified Tabbed Interface Foundation
- * @issue #335 - Phase 2A: Settings and Account Cleanup Migration
  */
 
 require_once '../../users/init.php';
@@ -464,7 +461,7 @@ if (Input::exists('post')) {
                             <h1 class="h2 mb-2 text-gray-800">
                                 <i class="fas fa-cogs"></i> Registry Management
                             </h1>
-                            <p class="text-muted mb-0">Comprehensive administrative tools for car registry, data quality, and system maintenance</p>
+                            <p class="text-muted mb-0">Administrative tools for car registry, data quality, and system maintenance</p>
                         </div>
                         <div class="text-right">
                             <div class="mb-2">
