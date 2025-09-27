@@ -7,10 +7,13 @@ This directory contains organized documentation for the Lotus Elan Registry proj
 ### `/elanregistry/` - Lotus Elan Registry Documentation
 Product-specific documentation related to the Lotus Elan Registry application:
 - **PRD.md** - Product Requirements Document with feature specifications and business requirements
-- **DATABASE.md** - Complete database schema documentation and table relationships  
+- **DATABASE.md** - Complete database schema documentation and table relationships
 - **PRIVACY.md** - Privacy policy and data handling practices
 - **EMAIL_STYLING_GUIDELINES.md** - Email template styling standards and guidelines
 - **SPAM_CLEANUP_SYSTEM.md** - Automated user cleanup system documentation
+- **CAR_TRANSFER_USER_GUIDE.md** - Comprehensive user guide for car ownership transfer requests
+- **CAR_TRANSFER_FAQ.md** - Frequently asked questions about car transfer process
+- **EMAIL_TEMPLATE_UPDATES.md** - Recommended email template updates for transfer documentation
 
 ### `/development/` - Development Documentation
 Technical documentation for developers working on the project:
