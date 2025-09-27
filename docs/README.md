@@ -13,7 +13,9 @@ Product-specific documentation related to the Lotus Elan Registry application:
 - **SPAM_CLEANUP_SYSTEM.md** - Automated user cleanup system documentation
 - **CAR_TRANSFER_USER_GUIDE.md** - Comprehensive user guide for car ownership transfer requests
 - **CAR_TRANSFER_FAQ.md** - Frequently asked questions about car transfer process
-- **EMAIL_TEMPLATE_UPDATES.md** - Recommended email template updates for transfer documentation
+- **CAR_TRANSFER_ADMIN_GUIDE.md** - Complete administrator guide for managing car transfers
+- **CAR_TRANSFER_ADMIN_QUICK_REFERENCE.md** - Quick reference guide for daily admin operations
+- **CAR_TRANSFER_TROUBLESHOOTING.md** - Systematic troubleshooting procedures for transfer issues
 
 ### `/development/` - Development Documentation
 Technical documentation for developers working on the project:
