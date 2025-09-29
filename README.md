@@ -1,12 +1,12 @@
 # The Lotus Elan Registry
 
-A comprehensive online database for Lotus Elan and Lotus Elan +2 cars, hosted at [elanregistry.org](https://elanregistry.org).
+An online database for Lotus Elan and Lotus Elan +2 cars, hosted at [elanregistry.org](https://elanregistry.org).
 
-This registry covers the 1963-1973 Lotus Elan and 1967-1974 Lotus Elan +2, serving to preserve automotive history, trace the evolution of these iconic British sports cars, and facilitate communication between owners worldwide.
+This registry covers the 1963-1973 Lotus Elan and 1967-1974 Lotus Elan +2, serving to preserve automotive history, trace the evolution of these British sports cars, and facilitate communication between owners worldwide.
 
 ## History
 
-The Lotus Elan Registry began in January 2003 following a discussion on LotusElan.net asking "Does anybody know if there is a Lotus Elan register?" Starting with basic functionality, the registry has evolved into a comprehensive platform serving the global Elan community.
+The Lotus Elan Registry began in January 2003 following a discussion on LotusElan.net asking "Does anybody know if there is a Lotus Elan register?" Starting with basic functionality, the registry has evolved into a  platform serving the global Elan community.
 
 The registry represents the collaborative effort of many enthusiasts from the Elan mailing list and forums, who contributed testing, feedback, images, and suggestions that shaped the platform into what it is today.
 
@@ -14,7 +14,7 @@ The registry represents the collaborative effort of many enthusiasts from the El
 
 ## Features
 
-- **Comprehensive Car Database**: Detailed records of Elan and +2 vehicles with chassis numbers, specifications, and ownership history
+- **Car Database**: Detailed records of Elan and +2 vehicles with chassis numbers, specifications, and ownership history
 - **Interactive Maps**: Geographic visualization of car locations worldwide using Google Maps
 - **User Management**: Secure user accounts with profile management and car sharing capabilities
 - **Image Gallery**: Photo uploads and management for each vehicle
@@ -60,14 +60,21 @@ For detailed setup instructions including API key configuration, see the complet
 
 ### Documentation
 
-- **`CLAUDE.md`** - Complete development guide, coding standards, and deployment procedures
-- **`DATABASE.md`** - Database schema documentation and relationships
-- **`ENVIRONMENT.md`** - Environment configuration and security setup
-- **`PRIVACY.md`** - GDPR compliance and privacy policy details
+The project uses a well-organized documentation structure:
+
+- **Development Docs** (`docs/development/`) - Technical documentation for developers
+  - `CLAUDE.md` - AI assistant instructions and development guidelines
+  - `ENVIRONMENT.md` - Environment configuration and security setup
+  - `RELEASE_PLAN.md` - Development roadmap and release planning
+- **User Documentation** (`docs/faq/`) - End-user guides and FAQ
+  - Car transfer guides, privacy policy, and user help
+- **Admin Documentation** (`docs/faq/admin/`) - Administrative procedures
+  - Database schema, troubleshooting guides, and system maintenance
+- **Technical Docs** (`docs/technical/`) - Testing and implementation details
 
 ### Testing
 
-The project includes comprehensive automated testing:
+The project includes automated testing:
 
 ```bash
 # Run all tests
@@ -85,30 +92,30 @@ vendor/bin/phpunit tests/
 
 ### Development Workflow
 
-1. Review development guidelines in `CLAUDE.md`
+1. Review development guidelines in `docs/development/CLAUDE.md`
 2. Create feature branch from main
 3. Implement changes with appropriate tests
 4. Run full test suite before committing
 5. Update VERSION file for releases
-6. Deploy using production workflow documented in `CLAUDE.md`
+6. Deploy using production workflow documented in development docs
 
 ## Privacy & GDPR Compliance
 
 The registry maintains strict privacy standards and GDPR compliance:
 
 - **Privacy by Design**: Location data is intentionally imprecise for user privacy
-- **Data Protection**: Comprehensive privacy controls and user data management
+- **Data Protection**: Privacy controls and user data management
 - **Transparent Policies**: Clear privacy policy available at `/app/privacy.php`
 - **User Rights**: Full data access, correction, and deletion capabilities
-- **Secure Processing**: All data handling follows privacy regulations
 
-For complete privacy details, see `PRIVACY.md`.
+
+For complete privacy details, see `docs/faq/PRIVACY.md`.
 
 ## Contributing
 
 We welcome contributions from the Elan community! Before contributing:
 
-1. Read the development guidelines in `CLAUDE.md`
+1. Read the development guidelines in `docs/development/CLAUDE.md`
 2. Check existing GitHub issues for current development priorities
 3. Ensure all tests pass before submitting changes
 4. Follow the established coding standards and security practices

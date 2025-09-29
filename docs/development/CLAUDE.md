@@ -39,7 +39,8 @@ This is a PHP web application for the Lotus Elan Registry hosted at <https://ela
 - `/users/` - UserSpice authentication system
 - `/usersc/` - UserSpice customizations (templates, plugins, overrides)
 - `/userimages/` - User-uploaded car images organized by car ID
-- `/docs/` - Documentation organized by category (elanregistry/, development/, technical/)
+- `/docs/` - Documentation organized by category (faq/, faq/admin/, development/, technical/)
+- `/usersc/classes/` - Custom application classes and utilities
 - `/tests/` - PHPUnit and Playwright test files
 
 ### UserSpice Management Requirements
@@ -100,6 +101,25 @@ $userQ = $db->query("SELECT u.*, p.* FROM users u LEFT JOIN profiles p ON u.id =
 - **Usage**: Include file, sets `$fields['lat']` and `$fields['lon']` based on city/state/country
 - **Required Variables**: `$city`, `$state`, `$country` must be set before inclusion
 - **Integration**: Used in user_settings.php and should be used in ElanRegistryOwner class
+
+### Documentation System
+
+**Unified Documentation Viewer**: `/docs/view.php`
+
+- **Purpose**: Displays markdown documents with proper formatting and access control
+- **Features**: Security validation, XSS protection, responsive design, breadcrumb navigation
+- **Access Control**: Public documents in `/docs/faq/`, admin documents in `/docs/faq/admin/`
+
+**Documentation Utilities**:
+
+- **MarkdownParser** (`/usersc/classes/MarkdownParser.php`) - Converts markdown to HTML with security features
+- **DocumentConfig** (`/usersc/classes/DocumentConfig.php`) - Manages document metadata and access control
+
+**Key Documentation Files**:
+
+- User guides: `/docs/faq/CAR_TRANSFER_USER_GUIDE.md`, `/docs/faq/CAR_TRANSFER_FAQ.md`
+- Admin guides: `/docs/faq/admin/CAR_TRANSFER_ADMIN_GUIDE.md`, `/docs/faq/admin/DATABASE.md`
+- Development docs: `/docs/development/CLAUDE.md`, `/docs/development/ENVIRONMENT.md`
 
 ### Key Application Files
 

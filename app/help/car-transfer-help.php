@@ -1,53 +1,41 @@
+<?php
+/**
+ * Car Transfer Help Redirect
+ *
+ * This file redirects to the unified documentation system.
+ * The car transfer help content is now maintained in markdown format
+ * for consistency with the rest of the documentation.
+ *
+ * @package ElanRegistry
+ * @version 2.9.0
+ */
+
+// Redirect to the unified documentation system
+$redirectUrl = '../docs/view.php?doc=CAR_TRANSFER_USER_GUIDE.md';
+
+// Use JavaScript redirect to maintain browser history
+?>
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Car Transfer Request Help - Lotus Elan Registry</title>
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@4.5.3/dist/css/bootstrap.min.css">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/all.min.css">
+    <title>Redirecting to Car Transfer Guide - Lotus Elan Registry</title>
+    <meta http-equiv="refresh" content="0;url=<?= htmlspecialchars($redirectUrl, ENT_QUOTES, 'UTF-8') ?>">
 </head>
 <body>
-    <div class="container my-4">
-        <div class="row">
-            <div class="col-lg-8 mx-auto">
-                <div class="card">
-                    <div class="card-header bg-primary text-white">
-                        <h2 class="mb-0"><i class="fas fa-exchange-alt"></i> Car Transfer Request Help</h2>
-                    </div>
-                    <div class="card-body">
+    <div style="text-align: center; margin-top: 50px; font-family: Arial, sans-serif;">
+        <h2>Redirecting to Car Transfer Guide...</h2>
+        <p>You are being redirected to the updated documentation.</p>
+        <p>If you are not redirected automatically, <a href="<?= htmlspecialchars($redirectUrl, ENT_QUOTES, 'UTF-8') ?>">click here</a>.</p>
+    </div>
 
-                        <!-- Quick Start -->
-                        <div class="alert alert-info">
-                            <h5 class="alert-heading"><i class="fas fa-rocket"></i> Quick Start</h5>
-                            <p class="mb-0">Request ownership of a car that's currently registered to another member. Use this when you've purchased a car or there's been an ownership change.</p>
-                        </div>
-
-                        <!-- When to Use -->
-                        <h4><i class="fas fa-question-circle text-primary"></i> When to Use Transfer Requests</h4>
-                        <ul class="list-unstyled">
-                            <li class="mb-2"><i class="fas fa-check text-success"></i> You've purchased a car from another registry member</li>
-                            <li class="mb-2"><i class="fas fa-check text-success"></i> Car ownership has changed but registry shows previous owner</li>
-                            <li class="mb-2"><i class="fas fa-check text-success"></i> You need to claim ownership of a car with duplicate chassis entry</li>
-                            <li class="mb-2"><i class="fas fa-check text-success"></i> Private sale needs to be reflected in the registry</li>
-                        </ul>
-
-                        <!-- Quick Steps -->
-                        <h4><i class="fas fa-list-ol text-primary"></i> How to Request a Transfer</h4>
-                        <div class="row">
-                            <div class="col-md-6 mb-3">
-                                <div class="card border-primary">
-                                    <div class="card-body text-center">
-                                        <div class="text-primary mb-2">
-                                            <i class="fas fa-search fa-2x"></i>
-                                        </div>
-                                        <h6 class="card-title">1. Find the Car</h6>
-                                        <p class="card-text small">Search the registry and locate the car you want to transfer</p>
-                                    </div>
-                                </div>
-                            </div>
-                            <div class="col-md-6 mb-3">
-                                <div class="card border-success">
+    <script>
+        // Immediate redirect
+        window.location.href = '<?= htmlspecialchars($redirectUrl, ENT_QUOTES, 'UTF-8') ?>';
+    </script>
+</body>
+</html>
                                     <div class="card-body text-center">
                                         <div class="text-success mb-2">
                                             <i class="fas fa-mouse-pointer fa-2x"></i>
