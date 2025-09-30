@@ -85,6 +85,14 @@ $content = "
     <p><strong>Questions or concerns?</strong> Please contact the registry administrators at
     <a href=\"mailto:admin@elanregistry.org\">admin@elanregistry.org</a> if you have any questions about this decision.</p>
 
+    <h3>📚 Registry Resources</h3>
+    <p>Learn more about the transfer system and registry features:</p>
+    <ul>
+        <li><a href=\"{$us_url_root}docs/view.php?doc=CAR_TRANSFER_FAQ.md\">Transfer FAQ</a> - How the transfer system works</li>
+        <li><a href=\"{$us_url_root}docs/view.php?doc=CAR_TRANSFER_USER_GUIDE.md\">Transfer Guide</a> - Complete transfer process documentation</li>
+        <li><a href=\"{$us_url_root}docs/faq/index.php\">Registry Help</a> - All documentation and user guides</li>
+    </ul>
+
     <p>Thank you for using the Elan Registry transfer system.</p>
 ";
 

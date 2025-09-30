@@ -48,6 +48,15 @@ $content = "
 
     <p><strong>Questions or concerns?</strong> Please contact the registry administrators at
     <a href=\"mailto:admin@elanregistry.org\">admin@elanregistry.org</a> with any questions about this transfer request.</p>
+
+    <h3>📚 Transfer System Information</h3>
+    <p>Learn more about how car transfers work:</p>
+    <ul>
+        <li><a href=\"{$us_url_root}docs/view.php?doc=CAR_TRANSFER_FAQ.md\">Transfer FAQ</a> - How the transfer system works</li>
+        <li><a href=\"{$us_url_root}docs/view.php?doc=CAR_TRANSFER_USER_GUIDE.md\">Transfer User Guide</a> - Complete transfer process documentation</li>
+        <li><a href=\"{$us_url_root}docs/faq/index.php\">Registry Help</a> - All documentation and user guides</li>
+    </ul>
+    <p>These resources explain the transfer process, your rights as a current owner, and what to expect during the review.</p>
 ";
 
 // Generate the complete email

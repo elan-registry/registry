@@ -64,6 +64,15 @@ $content = "
         <li>Approve or deny the request through the admin panel</li>
     </ul>
 
+    <h3>📋 Administrative Resources</h3>
+    <p>Reference guides for handling transfer requests:</p>
+    <ul>
+        <li><a href=\"{$us_url_root}docs/view.php?doc=CAR_TRANSFER_ADMIN_GUIDE.md\">Transfer Admin Guide</a> - Complete administrative procedures</li>
+        <li><a href=\"{$us_url_root}docs/view.php?doc=CAR_TRANSFER_ADMIN_QUICK_REFERENCE.md\">Admin Quick Reference</a> - Daily tasks and quick fixes</li>
+        <li><a href=\"{$us_url_root}docs/view.php?doc=CAR_TRANSFER_TROUBLESHOOTING.md\">Troubleshooting Guide</a> - Common issues and solutions</li>
+        <li><a href=\"{$us_url_root}docs/faq/admin/index.php\">Admin Documentation</a> - All administrative guides</li>
+    </ul>
+
     <p><small><strong>Note:</strong> This request will automatically expire on " . date('M j, Y', strtotime($transferRequest->expires_at)) . " if no action is taken.</small></p>
 ";
 

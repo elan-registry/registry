@@ -43,6 +43,14 @@ if ($isApproved) {
         " . $emailTemplate->createButton('View Your Car', $carUrl, 'success') . "
 
         <p>Welcome to the ownership of this beautiful Lotus Elan! We encourage you to keep the registry updated with any changes or improvements to your car.</p>
+
+        <h3>📚 Helpful Resources</h3>
+        <p>Get familiar with managing your car in the registry:</p>
+        <ul>
+            <li><a href=\"{$us_url_root}docs/view.php?doc=CAR_TRANSFER_USER_GUIDE.md\">Car Transfer User Guide</a> - Complete guide for ownership transfers</li>
+            <li><a href=\"{$us_url_root}docs/view.php?doc=CAR_TRANSFER_FAQ.md\">Transfer FAQ</a> - Frequently asked questions about transfers</li>
+            <li><a href=\"{$us_url_root}docs/faq/index.php\">Registry Documentation</a> - All user guides and help resources</li>
+        </ul>
     ";
 } else {
     $statusStyle = 'alert';
@@ -61,6 +69,15 @@ if ($isApproved) {
         <p><strong>Questions about this decision?</strong> Please contact the registry administrators at
         <a href=\"mailto:admin@elanregistry.org\">admin@elanregistry.org</a> if you have additional information
         or documentation that supports your ownership claim.</p>
+
+        <h3>📚 Next Steps & Resources</h3>
+        <p>Learn more about the transfer process and requirements:</p>
+        <ul>
+            <li><a href=\"{$us_url_root}docs/view.php?doc=CAR_TRANSFER_FAQ.md\">Transfer FAQ</a> - Common questions about transfer requirements</li>
+            <li><a href=\"{$us_url_root}docs/view.php?doc=CAR_TRANSFER_USER_GUIDE.md\">Transfer User Guide</a> - Step-by-step transfer process</li>
+            <li><a href=\"{$us_url_root}docs/faq/index.php\">Registry Help</a> - Complete documentation and support</li>
+        </ul>
+        <p>These resources can help you understand transfer requirements and prepare a stronger case for a future request.</p>
     ";
 }
 
