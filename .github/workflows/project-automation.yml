@@ -211,7 +211,7 @@ jobs:
   release_notes_check:
     name: Check Release Notes for Version Tags
     runs-on: ubuntu-latest
-    if: github.event.pull_request && contains(github.event.pull_request.title, 'v2.') || contains(github.event.pull_request.title, 'v3.')
+    if: github.event.pull_request && (contains(github.event.pull_request.title, 'v2.') || contains(github.event.pull_request.title, 'v3.'))
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4

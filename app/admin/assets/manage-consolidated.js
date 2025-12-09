@@ -10,6 +10,27 @@ $(document).ready(function() {
     'use strict';
 
     // ==========================================================================
+    // Security Utilities
+    // ==========================================================================
+
+    /**
+     * Escape HTML to prevent XSS attacks
+     * @param {string} unsafe - Unsafe string that may contain HTML
+     * @return {string} - HTML-escaped safe string
+     */
+    function escapeHtml(unsafe) {
+        if (typeof unsafe !== 'string') {
+            return unsafe;
+        }
+        return unsafe
+            .replace(/&/g, "&amp;")
+            .replace(/</g, "&lt;")
+            .replace(/>/g, "&gt;")
+            .replace(/"/g, "&quot;")
+            .replace(/'/g, "&#039;");
+    }
+
+    // ==========================================================================
     // Tab Management and Navigation
     // ==========================================================================
 
@@ -854,7 +875,7 @@ function initializeCarManagement() {
             $('#transferActionTitle').text('Approve Transfer Request');
             $('#transferActionMessage').html(
                 `<div class="alert alert-success">` +
-                    `<i class="fas fa-check-circle"></i> <strong>Approve Transfer Request #${transferId}</strong>` +
+                    `<i class="fas fa-check-circle"></i> <strong>Approve Transfer Request #${escapeHtml(transferId)}</strong>` +
                 `</div>`
             );
             $('#transferActionDetails').html(
@@ -874,7 +895,7 @@ function initializeCarManagement() {
             $('#transferActionTitle').text('Deny Transfer Request');
             $('#transferActionMessage').html(
                 `<div class="alert alert-danger">` +
-                    `<i class="fas fa-times-circle"></i> <strong>Deny Transfer Request #${transferId}</strong>` +
+                    `<i class="fas fa-times-circle"></i> <strong>Deny Transfer Request #${escapeHtml(transferId)}</strong>` +
                 `</div>`
             );
             $('#transferActionDetails').html(
