@@ -76,6 +76,12 @@
 - Include specific action items with clear success criteria
 - Remove any sections that don't apply to the release
 
+### Release Requirements:
+- **MANDATORY**: Release notes must be created for ALL major (x.0.0) and minor (x.y.0) version releases
+- **MANDATORY**: GitHub releases must be created for ALL major and minor versions using `gh release create`
+- **Patch releases (x.y.z)**: Release notes and GitHub releases are optional but recommended for significant patches
+- **Git tags**: All feature versions (major.minor) must have corresponding git tags
+
 ### Formatting Guidelines:
 - Use consistent emoji headers for visual organization
 - Include links to relevant GitHub issues

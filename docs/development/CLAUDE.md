@@ -440,6 +440,24 @@ This is a CRITICAL step that must NEVER be skipped when working on any code-rela
 - **Focus on impact and benefits**, not implementation details (those belong in GitHub issues)
 - **Include clear testing instructions** in the Required Actions section for any manual steps needed post-deployment
 
+### Version Release Requirements
+
+**MANDATORY for ALL major (x.0.0) and minor (x.y.0) releases:**
+
+- **Release Notes**: Must create comprehensive release notes using the
+  template at `docs/development/RELEASE_NOTES_TEMPLATE.md`
+- **GitHub Release**: Must create GitHub release using `gh release create`
+  with appropriate title and description
+- **Git Tags**: All feature versions (major.minor) must have
+  corresponding git tags
+- **Documentation**: Release notes must be placed in `docs/releases/`
+  directory with standardized naming
+
+**Optional but recommended for patch releases (x.y.z):**
+
+- Release notes and GitHub releases for significant patches or security
+  fixes
+
 **📋 See [RELEASE_NOTES_TEMPLATE.md](RELEASE_NOTES_TEMPLATE.md) for complete guidelines and structure**
 
 ### ElanRegistry Terminology Standards
