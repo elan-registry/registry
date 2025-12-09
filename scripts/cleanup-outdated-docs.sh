@@ -4,6 +4,11 @@
 #
 # This script identifies files that exist on production but are outdated based on
 # the new documentation structure where release notes live in docs/releases/
+#
+# Usage:
+#   ./cleanup-outdated-docs.sh              # Run from project root
+#   ./cleanup-outdated-docs.sh --dry-run    # Preview without removing
+#   ./cleanup-outdated-docs.sh /path/to/project --dry-run
 
 set -e
 
@@ -14,13 +19,60 @@ YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
+# Parse arguments
+DRY_RUN=false
+CUSTOM_ROOT=""
+
+for arg in "$@"; do
+    case $arg in
+        --dry-run)
+            DRY_RUN=true
+            shift
+            ;;
+        --help|-h)
+            echo "Usage: $0 [PROJECT_ROOT] [--dry-run]"
+            echo ""
+            echo "Arguments:"
+            echo "  PROJECT_ROOT    Path to project root (default: auto-detect)"
+            echo "  --dry-run       Preview changes without removing files"
+            echo "  --help, -h      Show this help message"
+            echo ""
+            echo "Examples:"
+            echo "  $0                                    # Auto-detect, remove files"
+            echo "  $0 --dry-run                          # Auto-detect, preview only"
+            echo "  $0 /home/unibrain/elanregistry.org    # Specify path"
+            echo "  $0 /home/unibrain/elanregistry.org --dry-run  # Safe preview"
+            exit 0
+            ;;
+        *)
+            if [[ -d "$arg" ]]; then
+                CUSTOM_ROOT="$arg"
+            fi
+            shift
+            ;;
+    esac
+done
+
 # Script directory
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
+
+# Determine project root
+if [ -n "$CUSTOM_ROOT" ]; then
+    PROJECT_ROOT="$CUSTOM_ROOT"
+else
+    PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
+fi
 
 echo -e "${BLUE}═══════════════════════════════════════════════════════════${NC}"
 echo -e "${BLUE}  Outdated Documentation Cleanup Script${NC}"
 echo -e "${BLUE}═══════════════════════════════════════════════════════════${NC}"
+echo ""
+echo -e "${BLUE}Project Root:${NC} $PROJECT_ROOT"
+if [ "$DRY_RUN" = true ]; then
+    echo -e "${YELLOW}Mode:${NC} DRY RUN (preview only, no files will be removed)"
+else
+    echo -e "${YELLOW}Mode:${NC} LIVE (files will be removed)"
+fi
 echo ""
 
 # Define outdated files that should be removed
@@ -83,10 +135,15 @@ for file in "${OUTDATED_FILES[@]}"; do
             fi
         fi
 
-        # Remove the file
-        rm "$file"
-        echo -e "${RED}✗${NC} REMOVED: $file"
-        ((REMOVED_COUNT++))
+        # Remove the file (or preview in dry-run mode)
+        if [ "$DRY_RUN" = true ]; then
+            echo -e "${YELLOW}⚠${NC}  WOULD REMOVE: $file"
+            ((REMOVED_COUNT++))
+        else
+            rm "$file"
+            echo -e "${RED}✗${NC} REMOVED: $file"
+            ((REMOVED_COUNT++))
+        fi
         echo ""
     else
         echo -e "${GREEN}✓${NC} Already removed: $file"
@@ -98,7 +155,11 @@ echo ""
 echo -e "${BLUE}═══════════════════════════════════════════════════════════${NC}"
 echo -e "${BLUE}  Cleanup Summary${NC}"
 echo -e "${BLUE}═══════════════════════════════════════════════════════════${NC}"
-echo -e "${GREEN}Removed:${NC}         $REMOVED_COUNT files"
+if [ "$DRY_RUN" = true ]; then
+    echo -e "${YELLOW}Would remove:${NC}    $REMOVED_COUNT files"
+else
+    echo -e "${GREEN}Removed:${NC}         $REMOVED_COUNT files"
+fi
 echo -e "${YELLOW}Already missing:${NC} $MISSING_COUNT files"
 echo -e "${BLUE}Kept:${NC}            $KEPT_COUNT files"
 echo ""
@@ -131,4 +192,17 @@ else
 fi
 
 echo ""
-echo -e "${GREEN}✓ Cleanup complete!${NC}"
+if [ "$DRY_RUN" = true ]; then
+    echo -e "${GREEN}✓ Dry-run complete!${NC}"
+    if [ $REMOVED_COUNT -gt 0 ]; then
+        echo ""
+        echo -e "${YELLOW}To actually remove these files, run:${NC}"
+        if [ -n "$CUSTOM_ROOT" ]; then
+            echo "  $0 $CUSTOM_ROOT"
+        else
+            echo "  $0"
+        fi
+    fi
+else
+    echo -e "${GREEN}✓ Cleanup complete!${NC}"
+fi

@@ -40,39 +40,83 @@ moved or are no longer needed.
 **Usage:**
 
 ```bash
-# Run from project root
+# Preview what would be removed (safe dry-run)
+./scripts/cleanup-outdated-docs.sh --dry-run
+
+# Actually remove files (from current project)
 ./scripts/cleanup-outdated-docs.sh
 
-# Or from anywhere
-bash /path/to/scripts/cleanup-outdated-docs.sh
+# Run on production server (dry-run first!)
+./scripts/cleanup-outdated-docs.sh /home/unibrain/elanregistry.org --dry-run
+
+# Run on production server (live removal)
+./scripts/cleanup-outdated-docs.sh /home/unibrain/elanregistry.org
+
+# Get help
+./scripts/cleanup-outdated-docs.sh --help
 ```
+
+**Options:**
+
+- `--dry-run` - Preview changes without removing any files (RECOMMENDED FIRST)
+- `--help`, `-h` - Show usage information
+- `PROJECT_ROOT` - Specify custom project path (default: auto-detect)
 
 **Safety:**
 
+- **Always run with `--dry-run` first** to preview changes
 - Safe to run multiple times (idempotent)
 - Only removes specifically identified outdated files
 - Reports what it found and what it removed
 - Can be recovered with `git checkout HEAD -- <filename>` if needed
 
-**Example output:**
+**Example output (dry-run):**
 
 ```text
 ═══════════════════════════════════════════════════════════
   Outdated Documentation Cleanup Script
 ═══════════════════════════════════════════════════════════
 
+Project Root: /home/unibrain/elanregistry.org
+Mode: DRY RUN (preview only, no files will be removed)
+
 Checking for outdated files...
 
 Found outdated file: ./RELEASE_NOTES_V2.8.1.md
   → Moved to: ./docs/releases/RELEASE_NOTES_V2.8.1.md
-✗ REMOVED: ./RELEASE_NOTES_V2.8.1.md
+⚠  WOULD REMOVE: ./RELEASE_NOTES_V2.8.1.md
 
 ═══════════════════════════════════════════════════════════
   Cleanup Summary
 ═══════════════════════════════════════════════════════════
-Removed:         2 files
+Would remove:    2 files
 Already missing: 2 files
 Kept:            0 files
+
+✓ Dry-run complete!
+
+To actually remove these files, run:
+  ./scripts/cleanup-outdated-docs.sh /home/unibrain/elanregistry.org
+```
+
+**Production deployment workflow:**
+
+```bash
+# 1. SSH into production server
+ssh user@production-server
+
+# 2. Navigate to project directory
+cd /home/unibrain/elanregistry.org
+
+# 3. Run dry-run to preview changes
+./scripts/cleanup-outdated-docs.sh --dry-run
+
+# 4. Review output carefully
+
+# 5. If everything looks correct, run live removal
+./scripts/cleanup-outdated-docs.sh
+
+# 6. Verify cleanup completed successfully
 ```
 
 ## Other Scripts
