@@ -156,14 +156,23 @@ class MarkdownParser
      */
     private static function isSafeUrl(string $url): bool
     {
-        // Allow relative URLs and safe schemes
-        if (strpos($url, '/') === 0) {
-            return true; // Relative URL
+        // Allow anchor links (e.g., #section-id)
+        if (strpos($url, '#') === 0) {
+            return true;
         }
 
-        $scheme = parse_url($url, PHP_URL_SCHEME);
-        $safeSchemes = ['http', 'https', 'mailto'];
+        // Allow relative URLs
+        if (strpos($url, '/') === 0) {
+            return true;
+        }
 
+        // Check for safe URL schemes
+        $scheme = parse_url($url, PHP_URL_SCHEME);
+        if ($scheme === null) {
+            return false; // No scheme found, reject for safety
+        }
+
+        $safeSchemes = ['http', 'https', 'mailto'];
         return in_array(strtolower($scheme), $safeSchemes, true);
     }
 
