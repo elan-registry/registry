@@ -496,8 +496,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
  * @throws Exception If admin directory not found or not accessible
  */
 function scanAdminPages(): array {
+    global $abs_us_root, $us_url_root;
+
     $pages = [];
-    $baseDir = dirname(__DIR__); // Get project root
+    $baseDir = $abs_us_root . $us_url_root; // Use UserSpice root path
+    // Remove trailing slash if present
+    $baseDir = rtrim($baseDir, '/');
     $adminDir = $baseDir . '/app/admin';
 
     error_log("FIX Script: Base dir: " . $baseDir);
@@ -520,9 +524,9 @@ function scanAdminPages(): array {
 
         if ($file->isFile() && $file->getExtension() === 'php') {
             // Get path relative to project root
-            $baseDirPattern = $baseDir . DIRECTORY_SEPARATOR;
-            $fullPath = $file->getPathname();
-            $relativePath = str_replace($baseDirPattern, '', $fullPath);
+            $fullPath = str_replace('\\', '/', $file->getPathname()); // Normalize path separators
+            $baseDir = str_replace('\\', '/', $baseDir); // Normalize base dir too
+            $relativePath = str_replace($baseDir . '/', '', $fullPath);
             $pages[] = [
                 'file' => $relativePath,
                 'title' => generatePageTitle($relativePath)
