@@ -53,6 +53,21 @@ if (!securePage($_SERVER['PHP_SELF'])) {
                 </div>
             </div>
 
+            <!-- Chassis Validation Rules -->
+            <div class='col-lg-4 mb-4'>
+                <div class='card registry-card h-100'>
+                    <div class='card-header bg-warning text-dark'>
+                        <h5 class='mb-0'><i class='fas fa-barcode'></i> Chassis Validation Rules</h5>
+                    </div>
+                    <div class='card-body d-flex flex-column'>
+                        <p class='card-text'>Comprehensive guide to Lotus Elan chassis numbering formats and validation requirements. Detailed specifications for pre-1970, 1970 transition, and post-1970 formats.</p>
+                        <div class='mt-auto'>
+                            <a href='../chassis-validation.php' class='btn btn-warning btn-sm'><i class='fas fa-book-open'></i> View Rules</a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
             <!-- Car Transfer User Guide -->
             <div class='col-lg-4 mb-4'>
                 <div class='card registry-card h-100'>
