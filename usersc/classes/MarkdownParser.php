@@ -243,7 +243,7 @@ class MarkdownParser
     public static function sanitizeHtml(string $html): string
     {
         // Allow basic HTML tags but strip dangerous ones
-        $allowedTags = '<h1><h2><h3><h4><h5><h6><p><br><strong><em><a><ul><ol><li><pre><code><blockquote><table><thead><tbody><tr><th><td>';
+        $allowedTags = '<h1><h2><h3><h4><h5><h6><p><br><strong><em><a><ul><ol><li><pre><code><blockquote><table><thead><tbody><tr><th><td><img>';
 
         return strip_tags($html, $allowedTags);
     }
