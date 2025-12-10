@@ -25,12 +25,27 @@ class MarkdownParser
      */
     public static function toHtml(string $markdown): string
     {
-        // Headers
-        $markdown = preg_replace('/^# (.*)$/m', '<h1>$1</h1>', $markdown);
-        $markdown = preg_replace('/^## (.*)$/m', '<h2>$1</h2>', $markdown);
-        $markdown = preg_replace('/^### (.*)$/m', '<h3>$1</h3>', $markdown);
-        $markdown = preg_replace('/^#### (.*)$/m', '<h4>$1</h4>', $markdown);
-        $markdown = preg_replace('/^##### (.*)$/m', '<h5>$1</h5>', $markdown);
+        // Headers with ID attributes for anchor links
+        $markdown = preg_replace_callback('/^# (.*)$/m', function($matches) {
+            $id = self::generateHeaderId($matches[1]);
+            return '<h1 id="' . $id . '">' . $matches[1] . '</h1>';
+        }, $markdown);
+        $markdown = preg_replace_callback('/^## (.*)$/m', function($matches) {
+            $id = self::generateHeaderId($matches[1]);
+            return '<h2 id="' . $id . '">' . $matches[1] . '</h2>';
+        }, $markdown);
+        $markdown = preg_replace_callback('/^### (.*)$/m', function($matches) {
+            $id = self::generateHeaderId($matches[1]);
+            return '<h3 id="' . $id . '">' . $matches[1] . '</h3>';
+        }, $markdown);
+        $markdown = preg_replace_callback('/^#### (.*)$/m', function($matches) {
+            $id = self::generateHeaderId($matches[1]);
+            return '<h4 id="' . $id . '">' . $matches[1] . '</h4>';
+        }, $markdown);
+        $markdown = preg_replace_callback('/^##### (.*)$/m', function($matches) {
+            $id = self::generateHeaderId($matches[1]);
+            return '<h5 id="' . $id . '">' . $matches[1] . '</h5>';
+        }, $markdown);
 
         // Bold and italic
         $markdown = preg_replace('/\*\*(.*?)\*\*/', '<strong>$1</strong>', $markdown);
@@ -44,7 +59,9 @@ class MarkdownParser
                 $url = htmlspecialchars($matches[2], ENT_QUOTES, 'UTF-8');
                 // Only allow safe URL schemes
                 if (self::isSafeUrl($url)) {
-                    return '<a href="' . $url . '" target="_blank">' . $text . '</a>';
+                    // Don't open anchor links or relative URLs in new tab
+                    $target = (strpos($url, '#') === 0 || strpos($url, '/') === 0) ? '' : ' target="_blank"';
+                    return '<a href="' . $url . '"' . $target . '>' . $text . '</a>';
                 }
                 return $text; // Return just the text if URL is unsafe
             },
@@ -81,6 +98,32 @@ class MarkdownParser
         }
 
         return $markdown;
+    }
+
+    /**
+     * Generate a URL-safe ID from header text for anchor links
+     *
+     * @param string $headerText The header text to convert
+     * @return string A URL-safe ID
+     */
+    private static function generateHeaderId(string $headerText): string
+    {
+        // Convert to lowercase
+        $id = strtolower($headerText);
+
+        // Replace spaces and underscores with hyphens
+        $id = preg_replace('/[\s_]+/', '-', $id);
+
+        // Remove special characters except hyphens and alphanumeric
+        $id = preg_replace('/[^a-z0-9-]/', '', $id);
+
+        // Remove leading/trailing hyphens
+        $id = trim($id, '-');
+
+        // Collapse multiple hyphens
+        $id = preg_replace('/-+/', '-', $id);
+
+        return $id;
     }
 
     /**
