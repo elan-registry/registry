@@ -51,6 +51,21 @@ class MarkdownParser
         $markdown = preg_replace('/\*\*(.*?)\*\*/', '<strong>$1</strong>', $markdown);
         $markdown = preg_replace('/\*(.*?)\*/', '<em>$1</em>', $markdown);
 
+        // Images - must be processed BEFORE links since ![alt](url) contains link syntax
+        $markdown = preg_replace_callback(
+            '/!\[([^\]]*)\]\(([^)]+)\)/',
+            function ($matches) {
+                $alt = htmlspecialchars($matches[1], ENT_QUOTES, 'UTF-8');
+                $url = htmlspecialchars($matches[2], ENT_QUOTES, 'UTF-8');
+                // Only allow safe image URLs
+                if (self::isSafeUrl($url)) {
+                    return '<img src="' . $url . '" alt="' . $alt . '" class="img-fluid" />';
+                }
+                return $alt; // Return just the alt text if URL is unsafe
+            },
+            $markdown
+        );
+
         // Links with XSS protection
         $markdown = preg_replace_callback(
             '/\[([^\]]+)\]\(([^)]+)\)/',

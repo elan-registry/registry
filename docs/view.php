@@ -159,6 +159,15 @@ $breadcrumb = DocumentConfig::getBreadcrumb($documentData, $us_url_root);
     font-size: 1.1rem;
 }
 
+.document-content img {
+    max-width: 100%;
+    height: auto;
+    margin: 1.5rem 0;
+    border: 1px solid #dee2e6;
+    border-radius: 0.25rem;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
 .document-content h1 {
     color: <?= $isAdmin ? '#dc3545' : '#007bff' ?>;
     border-bottom: 2px solid <?= $isAdmin ? '#dc3545' : '#007bff' ?>;
