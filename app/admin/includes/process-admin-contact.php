@@ -1,4 +1,5 @@
 <?php
+declare(strict_types=1);
 /**
  * process-admin-contact.php
  * Processes admin-to-owner contact requests from data quality dashboard
@@ -27,7 +28,7 @@ $errors = [];
 $successes = [];
 
 // Security function to clean email content
-function clean_string($string) {
+function clean_string(string $string): string {
     $bad = array('content-type', 'bcc:', 'to:', 'cc:', 'href');
     return str_replace($bad, '', $string);
 }

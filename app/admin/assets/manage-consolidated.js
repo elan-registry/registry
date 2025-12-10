@@ -873,11 +873,12 @@ function initializeCarManagement() {
         if (command === 'approve_transfer') {
             $('#transferActionModalHeader').removeClass('bg-danger').addClass('bg-success text-white');
             $('#transferActionTitle').text('Approve Transfer Request');
-            $('#transferActionMessage').html(
-                `<div class="alert alert-success">` +
-                    `<i class="fas fa-check-circle"></i> <strong>Approve Transfer Request #${escapeHtml(transferId)}</strong>` +
-                `</div>`
+            const approveMessage = $('<div class="alert alert-success">').append(
+                $('<i class="fas fa-check-circle"></i>'),
+                ' ',
+                $('<strong>').text(`Approve Transfer Request #${transferId}`)
             );
+            $('#transferActionMessage').empty().append(approveMessage);
             $('#transferActionDetails').html(
                 `<p>This action will:</p>` +
                 `<ul>` +
@@ -893,11 +894,12 @@ function initializeCarManagement() {
         } else if (command === 'deny_transfer') {
             $('#transferActionModalHeader').removeClass('bg-success').addClass('bg-danger text-white');
             $('#transferActionTitle').text('Deny Transfer Request');
-            $('#transferActionMessage').html(
-                `<div class="alert alert-danger">` +
-                    `<i class="fas fa-times-circle"></i> <strong>Deny Transfer Request #${escapeHtml(transferId)}</strong>` +
-                `</div>`
+            const denyMessage = $('<div class="alert alert-danger">').append(
+                $('<i class="fas fa-times-circle"></i>'),
+                ' ',
+                $('<strong>').text(`Deny Transfer Request #${transferId}`)
             );
+            $('#transferActionMessage').empty().append(denyMessage);
             $('#transferActionDetails').html(
                 `<p>This action will:</p>` +
                 `<ul>` +
