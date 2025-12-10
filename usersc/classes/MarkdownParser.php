@@ -100,7 +100,7 @@ class MarkdownParser
 
             // Bullet lists
             if (preg_match('/^(\s*)- (.*)$/', $line, $matches)) {
-                $content = htmlspecialchars($matches[2], ENT_QUOTES, 'UTF-8');
+                $content = $matches[2]; // Don't escape - HTML tags already created from markdown
 
                 if (!$inList || $listType !== 'ul') {
                     if ($inList) {
@@ -115,7 +115,7 @@ class MarkdownParser
             }
             // Numbered lists
             elseif (preg_match('/^(\s*)\d+\. (.*)$/', $line, $matches)) {
-                $content = htmlspecialchars($matches[2], ENT_QUOTES, 'UTF-8');
+                $content = $matches[2]; // Don't escape - HTML tags already created from markdown
 
                 if (!$inList || $listType !== 'ol') {
                     if ($inList) {
