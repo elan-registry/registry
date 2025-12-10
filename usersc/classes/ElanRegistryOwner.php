@@ -85,7 +85,7 @@ class ElanRegistryOwner
      *
      * @param array $fields Key value pairs for owner data
      * @return bool True if owner is created
-     * @throws Exception If validation fails or database operation fails
+     * @throws OwnerCreationException If validation fails or database operation fails
      */
     public function create(array $fields = []): bool
     {
@@ -161,7 +161,8 @@ class ElanRegistryOwner
      *
      * @param array $fields Owner data to update
      * @return bool True if update succeeds
-     * @throws Exception If validation fails or database operation fails
+     * @throws OwnerValidationException If validation fails
+     * @throws OwnerUpdateException If database operation fails
      */
     public function update(array $fields = []): bool
     {
