@@ -12,7 +12,7 @@ declare(strict_types=1);
 require_once '../../usersc/classes/ChassisValidator.php';
 
 // Data Quality Reports Functions
-function getDataQualityReports($db) {
+function getDataQualityReports(object $db): array {
     $reports = [];
 
     // Owner Quality Reports

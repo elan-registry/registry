@@ -879,15 +879,16 @@ function initializeCarManagement() {
                 $('<strong>').text(`Approve Transfer Request #${transferId}`)
             );
             $('#transferActionMessage').empty().append(approveMessage);
-            $('#transferActionDetails').html(
-                `<p>This action will:</p>` +
-                `<ul>` +
-                    `<li><i class="fas fa-check text-success"></i> Transfer car ownership to the requesting user</li>` +
-                    `<li><i class="fas fa-check text-success"></i> Send approval notification emails</li>` +
-                    `<li><i class="fas fa-check text-success"></i> Update car ownership records</li>` +
-                    `<li><i class="fas fa-check text-success"></i> Log the transfer in car history</li>` +
-                `</ul>`
+            const approveDetails = $('<div>').append(
+                $('<p>').text('This action will:'),
+                $('<ul>').append(
+                    $('<li>').append($('<i class="fas fa-check text-success"></i>'), ' Transfer car ownership to the requesting user'),
+                    $('<li>').append($('<i class="fas fa-check text-success"></i>'), ' Send approval notification emails'),
+                    $('<li>').append($('<i class="fas fa-check text-success"></i>'), ' Update car ownership records'),
+                    $('<li>').append($('<i class="fas fa-check text-success"></i>'), ' Log the transfer in car history')
+                )
             );
+            $('#transferActionDetails').empty().append(approveDetails);
             $('#confirmTransferActionBtn').removeClass('btn-danger').addClass('btn-success');
             $('#confirmTransferActionText').text('Approve Transfer');
 
@@ -900,15 +901,16 @@ function initializeCarManagement() {
                 $('<strong>').text(`Deny Transfer Request #${transferId}`)
             );
             $('#transferActionMessage').empty().append(denyMessage);
-            $('#transferActionDetails').html(
-                `<p>This action will:</p>` +
-                `<ul>` +
-                    `<li><i class="fas fa-times text-danger"></i> Reject the transfer request</li>` +
-                    `<li><i class="fas fa-times text-danger"></i> Send denial notification emails</li>` +
-                    `<li><i class="fas fa-times text-danger"></i> Keep current car ownership unchanged</li>` +
-                    `<li><i class="fas fa-times text-danger"></i> Log the denial for record keeping</li>` +
-                `</ul>`
+            const denyDetails = $('<div>').append(
+                $('<p>').text('This action will:'),
+                $('<ul>').append(
+                    $('<li>').append($('<i class="fas fa-times text-danger"></i>'), ' Reject the transfer request'),
+                    $('<li>').append($('<i class="fas fa-times text-danger"></i>'), ' Send denial notification emails'),
+                    $('<li>').append($('<i class="fas fa-times text-danger"></i>'), ' Keep current car ownership unchanged'),
+                    $('<li>').append($('<i class="fas fa-times text-danger"></i>'), ' Log the denial for record keeping')
+                )
             );
+            $('#transferActionDetails').empty().append(denyDetails);
             $('#confirmTransferActionBtn').removeClass('btn-success').addClass('btn-danger');
             $('#confirmTransferActionText').text('Deny Transfer');
         }
