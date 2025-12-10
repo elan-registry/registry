@@ -30,6 +30,63 @@ ini_set('display_startup_errors', 1);
 error_reporting(E_ALL);
 
 require_once '../users/init.php';
+
+// Handle AJAX requests BEFORE loading template (which outputs HTML)
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
+    // Disable Xdebug HTML output for clean JSON responses
+    if (function_exists('xdebug_disable')) {
+        xdebug_disable();
+    }
+    // Disable error display for AJAX - errors will be logged instead
+    ini_set('display_errors', '0');
+
+    header('Content-Type: application/json');
+
+    if (!securePage($_SERVER['PHP_SELF'])) {
+        echo json_encode(['success' => false, 'message' => 'Access denied']);
+        exit;
+    }
+
+    $db = DB::getInstance();
+    $action = $_POST['action'];
+
+    // Debug logging using UserSpice logger
+    global $user;
+    $userId = $user->isLoggedIn() ? $user->data()->id : 0;
+    logger($userId, "FIX_SCRIPT", "Processing action: " . $action);
+
+    try {
+        switch ($action) {
+            case 'get_admin_pages':
+                $pages = scanAdminPages();
+                echo json_encode(['success' => true, 'pages' => $pages, 'count' => count($pages)]);
+                break;
+
+            case 'process_page':
+                $page = $_POST['page'] ?? '';
+                $title = $_POST['title'] ?? '';
+                logger($userId, "FIX_SCRIPT_DEBUG", "Processing page: {$page}, title: {$title}");
+                $result = processPagePermissions($page, $title);
+                logger($userId, "FIX_SCRIPT_DEBUG", "Result: " . json_encode($result));
+                echo json_encode($result);
+                break;
+
+            case 'log_operation':
+                $result = logScriptRun();
+                echo json_encode($result);
+                break;
+
+            default:
+                echo json_encode(['success' => false, 'message' => 'Unknown action']);
+        }
+    } catch (Exception $e) {
+        logger($userId, "FIX_SCRIPT_ERROR", "Error: " . $e->getMessage(), $e->getTraceAsString());
+        echo json_encode(['success' => false, 'message' => $e->getMessage(), 'trace' => $e->getTraceAsString()]);
+    }
+    exit;
+}
+
+// Not an AJAX request - load the UI template
 require_once $abs_us_root . $us_url_root . 'users/includes/template/prep.php';
 
 if (!securePage($_SERVER['PHP_SELF'])) {
@@ -350,13 +407,13 @@ $line = 1; // Where messages go
                 throw new Error(`HTTP ${response.status}: ${response.statusText}`);
             }
 
-            const result = await response.json();
+            const responseText = await response.text();
+            const result = JSON.parse(responseText);
 
             if (!result.success) {
                 throw new Error(result.message || 'Failed to get admin pages');
             }
 
-            outputMessage(`✓ Found ${result.count || 0} admin pages to process`, 'info');
             return result.pages || [];
         } catch (error) {
             outputMessage('✗ Error getting admin pages: ' + error.message, 'error');
@@ -371,7 +428,13 @@ $line = 1; // Where messages go
                 headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
                 body: `action=process_page&page=${encodeURIComponent(page.file)}&title=${encodeURIComponent(page.title)}`
             });
-            const result = await response.json();
+
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+            }
+
+            const responseText = await response.text();
+            const result = JSON.parse(responseText);
 
             if (result.success) {
                 if (result.action === 'added') {
@@ -440,8 +503,12 @@ $line = 1; // Where messages go
     }
 
     function goToReturn() {
-        // Detect if opened in new window/tab vs direct navigation
-        if (window.history.length <= 1 || window.opener) {
+        // If opened by another window (FIX menu), refresh it and close this window
+        // Otherwise navigate back to FIX menu
+        if (window.opener && !window.opener.closed) {
+            window.opener.location.reload();
+            window.close();
+        } else if (window.history.length <= 1) {
             window.close();
         } else {
             window.location.href = 'index.php';
@@ -450,46 +517,6 @@ $line = 1; // Where messages go
 </script>
 
 <?php
-
-// Handle AJAX requests
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
-    header('Content-Type: application/json');
-
-    $action = $_POST['action'];
-
-    // Debug logging using UserSpice logger
-    global $user;
-    $userId = $user->isLoggedIn() ? $user->data()->id : 0;
-    logger($userId, "FIX_SCRIPT", "Processing action: " . $action);
-
-    try {
-        switch ($action) {
-            case 'get_admin_pages':
-                $pages = scanAdminPages();
-                echo json_encode(['success' => true, 'pages' => $pages, 'count' => count($pages)]);
-                break;
-
-            case 'process_page':
-                $page = $_POST['page'] ?? '';
-                $title = $_POST['title'] ?? '';
-                $result = processPagePermissions($page, $title);
-                echo json_encode($result);
-                break;
-
-            case 'log_operation':
-                $result = logScriptRun();
-                echo json_encode($result);
-                break;
-
-            default:
-                echo json_encode(['success' => false, 'message' => 'Unknown action']);
-        }
-    } catch (Exception $e) {
-        logger($userId, "FIX_SCRIPT_ERROR", "Error: " . $e->getMessage(), $e->getTraceAsString());
-        echo json_encode(['success' => false, 'message' => $e->getMessage(), 'trace' => $e->getTraceAsString()]);
-    }
-    exit;
-}
 
 /**
  * Scan the admin directory for PHP pages
@@ -529,6 +556,13 @@ function scanAdminPages(): array {
             $fullPath = str_replace('\\', '/', $file->getPathname()); // Normalize path separators
             $baseDir = str_replace('\\', '/', $baseDir); // Normalize base dir too
             $relativePath = str_replace($baseDir . '/', '', $fullPath);
+
+            // Skip class files (not actual web pages)
+            if (strpos($relativePath, '/classes/') !== false) {
+                logger($userId, "FIX_SCRIPT_DEBUG", "Skipping class file: " . $relativePath);
+                continue;
+            }
+
             $pages[] = [
                 'file' => $relativePath,
                 'title' => generatePageTitle($relativePath)
