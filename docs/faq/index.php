@@ -38,6 +38,21 @@ if (!securePage($_SERVER['PHP_SELF'])) {
 
         <!-- Documentation Cards -->
         <div class='row mt-4'>
+            <!-- Add Car Guide -->
+            <div class='col-lg-4 mb-4'>
+                <div class='card registry-card h-100'>
+                    <div class='card-header bg-success text-white'>
+                        <h5 class='mb-0'><i class='fas fa-car'></i> How to Add Your Car</h5>
+                    </div>
+                    <div class='card-body d-flex flex-column'>
+                        <p class='card-text'>Step-by-step guide to registering your Lotus Elan or +2. Learn about chassis validation, photo uploads, and completing your car's profile.</p>
+                        <div class='mt-auto'>
+                            <a href='../view.php?doc=ADD_CAR_GUIDE.md' class='btn btn-success btn-sm'><i class='fas fa-book-open'></i> Read Guide</a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
             <!-- Car Transfer User Guide -->
             <div class='col-lg-4 mb-4'>
                 <div class='card registry-card h-100'>
@@ -97,7 +112,7 @@ if (!securePage($_SERVER['PHP_SELF'])) {
                                 <h5><i class='fas fa-user-plus text-primary'></i> New Users</h5>
                                 <ul class='list-unstyled'>
                                     <li class='mb-2'><i class='fas fa-check text-success'></i> <a href='<?= $us_url_root ?>users/join.php'>Create an account</a></li>
-                                    <li class='mb-2'><i class='fas fa-check text-success'></i> <a href='<?= $us_url_root ?>app/cars/add.php'>Add your car to the registry</a></li>
+                                    <li class='mb-2'><i class='fas fa-check text-success'></i> <a href='<?= $us_url_root ?>app/cars/edit.php'>Add your car to the registry</a></li>
                                     <li class='mb-2'><i class='fas fa-check text-success'></i> Upload photos of your Elan</li>
                                     <li class='mb-2'><i class='fas fa-check text-success'></i> Connect with other owners</li>
                                 </ul>
@@ -117,34 +132,7 @@ if (!securePage($_SERVER['PHP_SELF'])) {
             </div>
         </div>
 
-        <!-- Help Section -->
-        <div class='row mt-4'>
-            <div class='col-12'>
-                <div class='card registry-card'>
-                    <div class='card-header bg-warning text-dark'>
-                        <h3 class='mb-0'><i class='fas fa-headset'></i> Need More Help?</h3>
-                    </div>
-                    <div class='card-body'>
-                        <div class='row'>
-                            <div class='col-md-6'>
-                                <h5>Contact Registry Administrators</h5>
-                                <p>If you have questions that aren't answered in our documentation, please contact the registry administrators.</p>
-                                <p><strong>Email Subject Format:</strong> "Registry Help - [Your Issue]"<br>
-                                <strong>Include:</strong> Your account information, specific details about your issue, and any error messages you're seeing.</p>
-                            </div>
-                            <div class='col-md-6'>
-                                <h5>Community Resources</h5>
-                                <ul class='list-unstyled'>
-                                    <li class='mb-2'><i class='fas fa-external-link-alt'></i> <a href='http://www.lotuselan.net/' target='_blank'>LotusElan.Net Community</a></li>
-                                    <li class='mb-2'><i class='fas fa-external-link-alt'></i> <a href='http://www.lotuselansprint.com/' target='_blank'>Lotus Elan Sprint Site</a></li>
-                                    <li class='mb-2'><i class='fas fa-code-branch'></i> <a href='https://github.com/unibrain1/elanregistry' target='_blank'>GitHub Project</a></li>
-                                </ul>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
+
 
         <!-- Navigation Links -->
         <div class='row mt-4 mb-4'>
