@@ -219,17 +219,20 @@ class MarkdownParser
             return true;
         }
 
-        // Allow relative URLs
+        // Allow absolute paths (e.g., /docs/file.pdf)
         if (strpos($url, '/') === 0) {
             return true;
         }
 
-        // Check for safe URL schemes
+        // Check for URL scheme
         $scheme = parse_url($url, PHP_URL_SCHEME);
+
+        // If no scheme, it's a relative path (e.g., faq/screenshots/image.png) - allow it
         if ($scheme === null) {
-            return false; // No scheme found, reject for safety
+            return true;
         }
 
+        // If there is a scheme, only allow safe ones
         $safeSchemes = ['http', 'https', 'mailto'];
         return in_array(strtolower($scheme), $safeSchemes, true);
     }
