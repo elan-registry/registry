@@ -248,6 +248,26 @@ $breadcrumb = DocumentConfig::getBreadcrumb($documentData, $us_url_root);
 .breadcrumb {
     background-color: #f8f9fa;
     border-radius: 0.25rem;
+    padding: 0.75rem 1rem;
+}
+
+.breadcrumb-item a {
+    color: #007bff;
+    text-decoration: none;
+}
+
+.breadcrumb-item a:hover {
+    color: #0056b3;
+    text-decoration: underline;
+}
+
+.breadcrumb-item.active {
+    color: #495057;
+    font-weight: 500;
+}
+
+.breadcrumb-item + .breadcrumb-item::before {
+    color: #6c757d;
 }
 </style>
 
