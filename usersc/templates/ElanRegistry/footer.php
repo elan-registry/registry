@@ -1,4 +1,7 @@
 <?php
+
+declare(strict_types=1);
+
 require_once $abs_us_root . $us_url_root . 'usersc/templates/' . $settings->template . '/container_close.php'; //custom template container
 require_once $abs_us_root . $us_url_root . 'users/includes/page_footer.php';
 
@@ -11,7 +14,7 @@ require_once $abs_us_root . $us_url_root . 'app/version.php';
       <footer>
         <br>
         <div class="mb-2">
-          <a href="<?= $us_url_root ?>app/privacy.php" class="text-muted me-3">Privacy Policy</a>
+          <a href="<?= $us_url_root ?>docs/view.php?doc=PRIVACY.md" class="text-muted me-3">Privacy Policy</a>
         </div>
         &copy; <?php echo date("Y"); ?> <?= $settings->copyright; ?>
         <br>

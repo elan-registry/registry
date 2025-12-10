@@ -54,68 +54,29 @@ if (Input::exists('post')) {
                         break;
                     }
 
-                    // Get the new user details
-                    $userQ = $db->findById($user_id, "users");
-                    $userData = $userQ->results();
+                    try {
+                        // Use Car class transfer method
+                        $car = new Car($car_id);
 
-                    // Check if user was found
-                    if (empty($userData)) {
-                        $errors[] = "User ID $user_id not found";
-                        break;
+                        // Get target user name for proper history record
+                        $targetUser = getUserWithProfile($user_id);
+                        $targetName = $targetUser && $targetUser->fname && $targetUser->lname
+                            ? "{$targetUser->fname} {$targetUser->lname}"
+                            : "User ID $user_id";
+
+                        $reason = "Car was reassigned to $targetName (User ID: $user_id) by admin " . $user->data()->id;
+                        $transferSuccess = $car->transfer($user_id, $reason);
+
+                        if ($transferSuccess) {
+                            $successes[] = "Car ID $car_id successfully reassigned to $targetName";
+                            logger($user->data()->id, "ElanRegistry", "Car ID $car_id reassigned to User ID $user_id");
+                        } else {
+                            $errors[] = "Failed to reassign car ID $car_id";
+                        }
+                    } catch (Exception $e) {
+                        $errors[] = "Transfer failed: " . $e->getMessage();
+                        logger($user->data()->id, "ElanRegistry", "Car reassignment failed for Car ID $car_id: " . $e->getMessage());
                     }
-
-                    // Check if car exists
-                    $carQ = $db->query("SELECT id FROM cars WHERE id = ?", [$car_id]);
-                    if ($carQ->count() === 0) {
-                        $errors[] = "Car ID $car_id not found";
-                        break;
-                    }
-
-                    // Build fields array safely
-                    $targetUser = $userData[0];
-                    $fields['user_id']   = $targetUser->id;
-                    $fields['email']     = $targetUser->email ?? '';
-                    $fields['fname']     = $targetUser->fname ?? '';
-                    $fields['lname']     = $targetUser->lname ?? '';
-                    $fields['join_date'] = $targetUser->join_date ?? date('Y-m-d G:i:s');
-                    $fields['city']      = $targetUser->city ?? '';
-                    $fields['state']     = $targetUser->state ?? '';
-                    $fields['country']   = $targetUser->country ?? '';
-                    $fields['lat']       = $targetUser->lat ?? null;
-                    $fields['lon']       = $targetUser->lon ?? null;
-                    $fields['website']   = $targetUser->website ?? '';
-
-                    // Update the car details with the new owner
-                    $updateResult = $db->update('cars', $car_id, $fields);
-                    if ($db->error()) {
-                        $errors[] = "Failed to update car: " . $db->errorString();
-                        break;
-                    }
-
-                    // Update the cross reference table
-                    $db->query("UPDATE car_user SET userid = ? WHERE car_id = ?", [$user_id, $car_id]);
-                    if ($db->error()) {
-                        $errors[] = "Failed to update car-user relationship: " . $db->errorString();
-                        break;
-                    }
-
-                    // Add a record to the history with some information on the assignment
-                    $ownerName = $targetUser->fname && $targetUser->lname ? "{$targetUser->fname} {$targetUser->lname}" : "User ID $user_id";
-                    $fields['comments'] = "Car was reassigned to $ownerName (User ID: $user_id) by admin " . $user->data()->id;
-                    $fields['operation'] = "NEWOWNER";
-
-                    $fields['ctime'] = date('Y-m-d G:i:s'); // Set date of this record
-                    $fields['mtime'] = $fields['ctime'];
-
-                    $fields['car_id'] = $car_id;
-                    $historyResult = $db->insert("cars_hist", $fields);
-                    
-                    if ($db->error()) {
-                        $errors[] = "Warning: Failed to log history: " . $db->errorString();
-                    }
-
-                    $successes[] = "Car ID $car_id successfully reassigned to $ownerName (User ID: $user_id)";
-                    logger($user->data()->id, "ElanRegistry", "Car ID $car_id reassigned to User ID $user_id");
 
                     break;
 
@@ -317,47 +278,21 @@ if (Input::exists('post')) {
                 // Get user details for reassignment (AJAX endpoint)
                 case "getUserDetails":
                     // Clean output buffer and set JSON headers
-                    if (ob_get_level()) {
-                        ob_clean();
+                    while (ob_get_level()) {
+                        ob_end_clean();
                     }
                     header('Content-Type: application/json');
-                    
+
                     $user_id = (int) Input::get('user_id');
-                    
+
                     if (!$user_id) {
                         echo json_encode(['success' => false, 'error' => 'Invalid user ID']);
                         exit;
                     }
                     
                     try {
-                        $user = null;
-                        
-                        // Try multiple approaches to find the user
-                        // 1. First try users table (same as reassignment logic)
-                        $userQ = $db->findById($user_id, "users");
-                        $userData = $userQ->results();
-                        
-                        if (!empty($userData)) {
-                            $user = $userData[0];
-                        } else {
-                            // 2. Try direct users table query (for admin accounts that might not be in view)
-                            $userQ = $db->query("SELECT u.*, p.city, p.state, p.country FROM users u LEFT JOIN profiles p ON u.id = p.user_id WHERE u.id = ?", [$user_id]);
-                            if ($userQ->count() > 0) {
-                                $user = $userQ->first();
-                            }
-                        }
-                        
-                        // 3. Last resort: try just the users table without profile join
-                        if (!$user) {
-                            $userQ = $db->query("SELECT * FROM users WHERE id = ?", [$user_id]);
-                            if ($userQ->count() > 0) {
-                                $user = $userQ->first();
-                                // Set default values for missing profile fields
-                                $user->city = $user->city ?? '';
-                                $user->state = $user->state ?? '';
-                                $user->country = $user->country ?? '';
-                            }
-                        }
+                        // Use helper function to get user with profile data
+                        $user = getUserWithProfile($user_id);
                         
                         if (!$user) {
                             echo json_encode(['success' => false, 'error' => 'User not found']);
@@ -380,6 +315,106 @@ if (Input::exists('post')) {
                         echo json_encode(['success' => false, 'error' => 'Database error: ' . $e->getMessage()]);
                     }
                     exit;
+
+                // Approve transfer request
+                case "approve_transfer":
+                    $transfer_id = (int) Input::get('transfer_id');
+
+                    if (!$transfer_id) {
+                        $errors[] = 'Invalid transfer request ID';
+                        break;
+                    }
+
+                    // Get transfer request details
+                    $transferQuery = $db->query(
+                        'SELECT ctr.*, c.id as car_id, c.user_id as current_owner_id
+                         FROM car_transfer_requests ctr
+                         JOIN cars c ON ctr.existing_car_id = c.id
+                         WHERE ctr.id = ? AND ctr.status = "pending"',
+                        [$transfer_id]
+                    );
+
+                    if ($transferQuery->count() === 0) {
+                        $errors[] = 'Transfer request not found or already processed';
+                        break;
+                    }
+
+                    $transfer = $transferQuery->first();
+
+                    try {
+                        // Use Car class transfer method
+                        $car = new Car($transfer->car_id);
+
+                        // Get target user name for proper history record
+                        $targetUser = getUserWithProfile($transfer->requested_by_user_id);
+                        $targetName = $targetUser && $targetUser->fname && $targetUser->lname
+                            ? "{$targetUser->fname} {$targetUser->lname}"
+                            : "User ID {$transfer->requested_by_user_id}";
+
+                        $reason = "Car was reassigned to $targetName (User ID: {$transfer->requested_by_user_id}) by admin " . $user->data()->id;
+                        $transferSuccess = $car->transfer($transfer->requested_by_user_id, $reason);
+
+                        if ($transferSuccess) {
+                            // Update transfer request status
+                            $db->query(
+                                'UPDATE car_transfer_requests SET status = "completed", completed_date = NOW(), admin_notes = ? WHERE id = ?',
+                                ["Approved by admin user {$user->data()->id}", $transfer_id]
+                            );
+
+                            $successes[] = "Transfer request approved successfully. Car ownership has been transferred to $targetName.";
+                            logger($user->data()->id, 'CarTransfer', "Transfer request #{$transfer_id} approved - Car {$transfer->car_id} transferred to user {$transfer->requested_by_user_id}");
+
+                            // Send approval notification
+                            require_once '../../usersc/includes/transfer_email_notifications.php';
+                            $notificationSent = sendTransferResponseNotification($transfer_id, true, "Approved by admin user {$user->data()->id}", $transfer->current_owner_id);
+
+                            if ($notificationSent) {
+                                logger($user->data()->id, 'EmailSuccess', "Transfer approval notification sent for request #$transfer_id");
+                            } else {
+                                logger($user->data()->id, 'EmailError', "Failed to send transfer approval notification for request #$transfer_id");
+                            }
+                        } else {
+                            $errors[] = "Failed to process transfer for Car ID {$transfer->car_id}";
+                            logger($user->data()->id, 'CarTransferError', "Transfer approval failed for request #{$transfer_id}");
+                        }
+                    } catch (Exception $e) {
+                        $errors[] = "Transfer failed: " . $e->getMessage();
+                        logger($user->data()->id, 'CarTransferError', "Transfer approval failed for request #{$transfer_id}: " . $e->getMessage());
+                    }
+                    break;
+
+                // Deny transfer request
+                case "deny_transfer":
+                    $transfer_id = (int) Input::get('transfer_id');
+
+                    if (!$transfer_id) {
+                        $errors[] = 'Invalid transfer request ID';
+                        break;
+                    }
+
+                    // Update transfer request status
+                    $updateResult = $db->query(
+                        'UPDATE car_transfer_requests SET status = "denied", admin_notes = ?, completed_date = NOW() WHERE id = ? AND status = "pending"',
+                        ["Denied by admin user {$user->data()->id}", $transfer_id]
+                    );
+
+                    if ($db->error()) {
+                        $errors[] = "Failed to deny transfer request: " . $db->errorString();
+                    } else {
+                        $successes[] = "Transfer request denied.";
+                        logger($user->data()->id, 'CarTransfer', "Transfer request #{$transfer_id} denied by admin");
+
+                        // Send denial notification
+                        require_once '../../usersc/includes/transfer_email_notifications.php';
+                        $notificationSent = sendTransferResponseNotification($transfer_id, false, "Denied by admin user {$user->data()->id}");
+
+                        if ($notificationSent) {
+                            logger($user->data()->id, 'EmailSuccess', "Transfer denial notification sent for request #$transfer_id");
+                        } else {
+                            logger($user->data()->id, 'EmailError', "Failed to send transfer denial notification for request #$transfer_id");
+                        }
+                    }
+                    break;
 
                 // This will never happen (Yeah right)
                 default:
@@ -574,6 +609,99 @@ if (Input::exists('post')) {
                                 <input type="hidden" name="csrf" value="<?= Token::generate(); ?>" />
                                 <input type="hidden" name="command" value="delete" />
                             </form>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Transfer Request Management Section -->
+            <div class="row mb-4">
+                <div class="col-12">
+                    <div class="card border-info">
+                        <div class="card-header bg-info text-white">
+                            <h5 class="mb-0"><i class="fas fa-exchange-alt"></i> Pending Transfer Requests</h5>
+                        </div>
+                        <div class="card-body">
+                            <?php
+                            // Get pending transfer requests
+                            $transferQuery = $db->query(
+                                'SELECT ctr.*,
+                                        c.chassis, c.year, c.type, c.color,
+                                        current_owner.fname as current_fname, current_owner.lname as current_lname, current_owner.email as current_email,
+                                        requester.fname as requester_fname, requester.lname as requester_lname, requester.email as requester_email
+                                 FROM car_transfer_requests ctr
+                                 JOIN cars c ON ctr.existing_car_id = c.id
+                                 JOIN users current_owner ON c.user_id = current_owner.id
+                                 JOIN users requester ON ctr.requested_by_user_id = requester.id
+                                 WHERE ctr.status = "pending" AND ctr.expires_at > NOW()
+                                 ORDER BY ctr.request_date DESC'
+                            );
+                            $transfers = $transferQuery->results();
+                            ?>
+
+                            <?php if (empty($transfers)): ?>
+                                <div class="alert alert-info">
+                                    <i class="fas fa-info-circle"></i> No pending transfer requests at this time.
+                                </div>
+                            <?php else: ?>
+                                <div class="table-responsive">
+                                    <table class="table table-striped">
+                                        <thead>
+                                            <tr>
+                                                <th>Request Date</th>
+                                                <th>Car Details</th>
+                                                <th>Current Owner</th>
+                                                <th>Requesting User</th>
+                                                <th>Expires</th>
+                                                <th>Actions</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            <?php foreach ($transfers as $transfer): ?>
+                                                <tr>
+                                                    <td><?= date('M j, Y', strtotime($transfer->request_date)) ?></td>
+                                                    <td>
+                                                        <strong><?= htmlspecialchars($transfer->year) ?> <?= htmlspecialchars($transfer->type) ?></strong><br>
+                                                        <small>Chassis: <?= htmlspecialchars($transfer->chassis) ?></small>
+                                                        <?php if ($transfer->color): ?>
+                                                            <br><small>Color: <?= htmlspecialchars($transfer->color) ?></small>
+                                                        <?php endif; ?>
+                                                    </td>
+                                                    <td>
+                                                        <?= htmlspecialchars($transfer->current_fname . ' ' . $transfer->current_lname) ?><br>
+                                                        <small><?= htmlspecialchars($transfer->current_email) ?></small>
+                                                    </td>
+                                                    <td>
+                                                        <?= htmlspecialchars($transfer->requester_fname . ' ' . $transfer->requester_lname) ?><br>
+                                                        <small><?= htmlspecialchars($transfer->requester_email) ?></small>
+                                                    </td>
+                                                    <td>
+                                                        <?= date('M j, Y', strtotime($transfer->expires_at)) ?>
+                                                    </td>
+                                                    <td>
+                                                        <form method="POST" style="display: inline;">
+                                                            <input type="hidden" name="csrf" value="<?= Token::generate(); ?>" />
+                                                            <input type="hidden" name="command" value="approve_transfer" />
+                                                            <input type="hidden" name="transfer_id" value="<?= $transfer->id ?>" />
+                                                            <button type="submit" class="btn btn-success btn-sm" onclick="return confirm('Approve this transfer request?')">
+                                                                <i class="fas fa-check"></i> Approve
+                                                            </button>
+                                                        </form>
+                                                        <form method="POST" style="display: inline;">
+                                                            <input type="hidden" name="csrf" value="<?= Token::generate(); ?>" />
+                                                            <input type="hidden" name="command" value="deny_transfer" />
+                                                            <input type="hidden" name="transfer_id" value="<?= $transfer->id ?>" />
+                                                            <button type="submit" class="btn btn-danger btn-sm" onclick="return confirm('Deny this transfer request?')">
+                                                                <i class="fas fa-times"></i> Deny
+                                                            </button>
+                                                        </form>
+                                                    </td>
+                                                </tr>
+                                            <?php endforeach; ?>
+                                        </tbody>
+                                    </table>
+                                </div>
+                            <?php endif; ?>
                         </div>
                     </div>
                 </div>

@@ -6,7 +6,7 @@
  * Determines the root URL for Userspice and redirects to it.
  * Used for path resolution and navigation consistency.
  */
-$path = ['', 'users/', 'usersc/', 'app/', 'stories/', 'FIX/', 'scripts/', 'app/verify/', 'app/cars/', 'app/contact/', 'app/reports/', 'app/reports/api/', 'app/cars/actions/', 'stories/brian_walton/', 'stories/SGO_2F/', 'error/', 'docs/'];
+$path = ['', 'users/', 'usersc/', 'app/', 'stories/', 'FIX/', 'scripts/', 'app/verify/', 'app/cars/', 'app/contact/', 'app/reports/', 'app/reports/api/', 'app/cars/actions/', 'app/admin/', 'app/admin/includes/', 'stories/brian_walton/', 'stories/SGO_2F/', 'error/', 'docs/', 'docs/admin/', 'docs/faq/', 'docs/faq/admin/'];
 // Only add or remove values in the $path variable separated by commas above
 
 $abs_us_root = $_SERVER['DOCUMENT_ROOT'];

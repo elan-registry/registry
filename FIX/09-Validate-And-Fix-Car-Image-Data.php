@@ -236,8 +236,8 @@ $line = 1; // Where messages go
             ${stats}
         </div>
         <div class="text-center">
-            <button onclick="if(window.opener){window.opener.location.reload(); window.close();} else {window.location.href='index.php';}" class="btn btn-outline-primary">
-                <i class="fa fa-arrow-left"></i> Return to FIX Menu
+            <button onclick="if(window.opener){window.opener.location.reload(); window.close();} else {window.location.href='../app/admin/manage-consolidated.php?tab=system';}" class="btn btn-outline-primary">
+                <i class="fa fa-arrow-left"></i> Return to Admin Console
             </button>
         </div>
     `;
@@ -649,10 +649,13 @@ $line = 1; // Where messages go
     </div><!-- Container -->
 </div> <!-- page-wrapper -->
 
-<!-- Return to FIX Menu button -->
+<!-- Return to Admin Console button -->
 <div style="margin-top: 20px; text-align: center;">
-    <button onclick="if(window.opener){window.opener.location.reload(); window.close();} else {window.location.href='index.php';}" class="btn btn-outline-primary">
-        <i class="fa fa-arrow-left" aria-hidden="true"></i> Return to FIX Menu
+    <button onclick="if(window.opener){window.opener.location.reload(); window.close();} else {window.location.href='../app/admin/manage-consolidated.php?tab=system';}" class="btn btn-outline-primary">
+        <i class="fa fa-arrow-left" aria-hidden="true"></i> Return to Admin Console
+    </button>
+    <button onclick="window.location.href='index.php?legacy=1';" class="btn btn-outline-secondary ml-2">
+        <i class="fa fa-list" aria-hidden="true"></i> Legacy FIX Menu
     </button>
 </div>
 

@@ -1,35 +1,113 @@
 # Documentation Structure
 
-This directory contains organized documentation for the Lotus Elan Registry project.
+This directory contains organized documentation for the Lotus Elan Registry project, structured for different audiences and use cases.
+
+## Quick Navigation
+
+- **🔗 [Unified Document Viewer](view.php)** - Access all documentation through a single interface
+- **👥 [User FAQ](faq/index.php)** - End-user guides and frequently asked questions
+- **🔧 [Admin Documentation](faq/admin/index.php)** - Administrative procedures and technical guides
+- **💻 [Development Docs](development/)** - Technical documentation for developers
 
 ## Directory Organization
 
-### `/elanregistry/` - Lotus Elan Registry Documentation
-Product-specific documentation related to the Lotus Elan Registry application:
-- **PRD.md** - Product Requirements Document with feature specifications and business requirements
-- **DATABASE.md** - Complete database schema documentation and table relationships  
-- **PRIVACY.md** - Privacy policy and data handling practices
-- **EMAIL_STYLING_GUIDELINES.md** - Email template styling standards and guidelines
-- **SPAM_CLEANUP_SYSTEM.md** - Automated user cleanup system documentation
+### `/faq/` - User Documentation and FAQ
+
+**Audience:** End users, car owners, registry members
+**Access:** Public (no authentication required)
+
+- **[index.php](faq/index.php)** - Main FAQ and documentation portal for users
+- **[PRIVACY.md](view.php?doc=PRIVACY.md)** - Privacy policy and data handling practices
+- **[CAR_TRANSFER_USER_GUIDE.md](view.php?doc=CAR_TRANSFER_USER_GUIDE.md)** - Comprehensive user guide for car ownership transfer requests
+- **[CAR_TRANSFER_FAQ.md](view.php?doc=CAR_TRANSFER_FAQ.md)** - Frequently asked questions about car transfer process
+
+### `/faq/admin/` - Administrative Documentation
+
+**Audience:** Registry administrators, technical staff
+**Access:** Restricted (Administrator/Editor permissions required)
+
+#### Core Administrative Guides
+- **[index.php](faq/admin/index.php)** - Administrative documentation portal
+- **[CAR_TRANSFER_ADMIN_GUIDE.md](view.php?doc=CAR_TRANSFER_ADMIN_GUIDE.md)** - Complete administrator guide for managing car transfers
+- **[CAR_TRANSFER_ADMIN_QUICK_REFERENCE.md](view.php?doc=CAR_TRANSFER_ADMIN_QUICK_REFERENCE.md)** - Quick reference guide for daily admin operations
+- **[CAR_TRANSFER_TROUBLESHOOTING.md](view.php?doc=CAR_TRANSFER_TROUBLESHOOTING.md)** - Systematic troubleshooting procedures for transfer issues
+
+#### System Documentation
+- **[PRD.md](view.php?doc=PRD.md)** - Product Requirements Document with feature specifications and business requirements
+- **[DATABASE.md](view.php?doc=DATABASE.md)** - Complete database schema documentation and table relationships
+- **[EMAIL_STYLING_GUIDELINES.md](view.php?doc=EMAIL_STYLING_GUIDELINES.md)** - Email template styling standards and guidelines
+- **[SPAM_CLEANUP_SYSTEM.md](view.php?doc=SPAM_CLEANUP_SYSTEM.md)** - Automated user cleanup system documentation
 
 ### `/development/` - Development Documentation
-Technical documentation for developers working on the project:
-- **CLAUDE.md** - Instructions for Claude Code AI assistant (project architecture, commands, guidelines)
-- **ENVIRONMENT.md** - Environment setup, configuration variables, and deployment settings
-- **RELEASE_PLAN.md** - Development roadmap and release planning
 
-### `/technical/` - Technical Documentation  
-Deep technical documentation for testing, implementation details, and system architecture:
-- **TESTING.md** - Testing strategy, PHPUnit setup, and test execution guidelines
-- **PLAYWRIGHT_TESTING.md** - Browser testing with Playwright, test scenarios, and automation
+**Audience:** Developers, DevOps, AI assistants
+**Access:** Public (version controlled)
 
-## Root Level Documentation
+- **[CLAUDE.md](development/CLAUDE.md)** - Instructions for Claude Code AI assistant (project architecture, commands, guidelines)
+- **[ENVIRONMENT.md](development/ENVIRONMENT.md)** - Environment setup, configuration variables, and deployment settings
+- **[RELEASE_PLAN.md](development/RELEASE_PLAN.md)** - Development roadmap and release planning
+- **[CODING_STANDARDS.md](development/CODING_STANDARDS.md)** - Code quality requirements and standards
+- **[DEVELOPMENT_WORKFLOW.md](development/DEVELOPMENT_WORKFLOW.md)** - Detailed development processes
+- **[DEPLOYMENT.md](development/DEPLOYMENT.md)** - Production deployment procedures
 
-The following documentation remains at the project root for easy access:
-- **README.md** - Project overview, features, and quick start guide (about the Lotus Elan Registry)
+### `/technical/` - Technical Documentation
+
+**Audience:** QA engineers, technical leads, system architects
+**Access:** Public (version controlled)
+
+- **[TESTING.md](technical/TESTING.md)** - Testing strategy, PHPUnit setup, and test execution guidelines
+- **[PLAYWRIGHT_TESTING.md](technical/PLAYWRIGHT_TESTING.md)** - Browser testing with Playwright, test scenarios, and automation
+
+### `/releases/` - Release Documentation
+
+**Audience:** Project managers, stakeholders, users
+**Access:** Public
+
+- Version-specific release notes and change logs
+- Feature announcements and upgrade guides
+
+## Documentation System Features
+
+### Unified Document Viewer
+The `view.php` system provides:
+- ✅ **Consistent formatting** - All markdown documents rendered with unified styling
+- ✅ **Access control** - Admin documents protected by UserSpice permissions
+- ✅ **Security** - XSS protection and input validation
+- ✅ **Navigation** - Breadcrumb navigation and cross-references
+- ✅ **Mobile responsive** - Optimized for all device sizes
+
+### Content Management
+- **Markdown format** - Easy to write and maintain
+- **Version controlled** - Full change history in Git
+- **Categorized access** - Public vs. admin-only content
+- **Cross-referenced** - Automatic linking between related documents
+
+## Contributing to Documentation
+
+### Writing Guidelines
+1. **Use clear headings** - Structure content with meaningful headings
+2. **Include examples** - Provide code examples and screenshots where helpful
+3. **Link liberally** - Cross-reference related documentation
+4. **Keep current** - Update documentation when features change
+
+### File Organization
+- Place user-facing docs in `/faq/`
+- Place admin docs in `/faq/admin/`
+- Place technical docs in `/technical/` or `/development/`
+- Use descriptive filenames with consistent naming conventions
+
+### Access Control
+- Public documentation goes in `/faq/` (no authentication required)
+- Admin documentation goes in `/faq/admin/` (requires Administrator/Editor permissions)
+- Development documentation in `/development/` and `/technical/` is public but version-controlled
 
 ## External Documentation
 
 Plugin and vendor documentation remains in their respective directories:
+
 - `/usersc/plugins/*/README.md` - Individual plugin documentation
 - Third-party vendor documentation in `/vendor/` and `/node_modules/` directories
+
+---
+
+*For questions about the documentation system, see the [CAR_TRANSFER_FAQ.md](view.php?doc=CAR_TRANSFER_FAQ.md) or contact the administrators.*

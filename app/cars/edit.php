@@ -144,6 +144,22 @@ function updateCarDetails(array &$car): void
             <div class="row justify-content-center">
                 <div class="col-xl-10 col-lg-11 col-md-12">
             <h2 id="heading" class="mt-4 mb-3 text-center">Fill all form fields to go to next step</h2>
+
+            <?php
+            // Show admin override warning if applicable
+            if (isset($cardetails['id']) && isset($user) && $user->isLoggedIn()) {
+                $editCarObj = new Car($cardetails['id']);
+                $isEditOwner = ($user->data()->id == $editCarObj->data()->user_id);
+                $hasEditAdminAccess = hasPerm([2, 3]); // Permission 2 = Administrator, 3 = Editor
+
+                if (!$isEditOwner && $hasEditAdminAccess) { ?>
+                    <div class="alert alert-warning text-center mb-4">
+                        <h5><i class="fas fa-shield-alt"></i> Administrative Override Active</h5>
+                        <p class="mb-0">You are editing a car that you do not own using Administrator/Editor privileges. All changes will be logged for audit purposes.</p>
+                    </div>
+            <?php }
+            } ?>
+
             <form id="editCar" name="editCar" method="post" enctype="multipart/form-data" novalidate>
                 <!-- progressbar -->
                 <ul id="progressbar" class="mb-4">
@@ -343,6 +359,111 @@ function updateCarDetails(array &$car): void
         </div>
     </div>
 </div>
+
+<!-- Transfer Request Modals -->
+
+<!-- Transfer Validation Error Modal -->
+<div class="modal fade" id="transferValidationModal" tabindex="-1" role="dialog" aria-labelledby="transferValidationModalLabel" aria-hidden="true">
+    <div class="modal-dialog" role="document">
+        <div class="modal-content">
+            <div class="modal-header bg-warning text-dark">
+                <h5 class="modal-title" id="transferValidationModalLabel">
+                    <i class="fas fa-exclamation-triangle"></i> Missing Information
+                </h5>
+                <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+                    <span aria-hidden="true">&times;</span>
+                </button>
+            </div>
+            <div class="modal-body">
+                <p>Please ensure year, model, and chassis are selected before requesting transfer.</p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-primary" data-dismiss="modal">OK</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Transfer Confirmation Modal -->
+<div class="modal fade" id="transferConfirmModal" tabindex="-1" role="dialog" aria-labelledby="transferConfirmModalLabel" aria-hidden="true">
+    <div class="modal-dialog" role="document">
+        <div class="modal-content">
+            <div class="modal-header bg-info text-white">
+                <h5 class="modal-title" id="transferConfirmModalLabel">
+                    <i class="fas fa-exchange-alt"></i> Confirm Transfer Request
+                </h5>
+                <button type="button" class="close text-white" data-dismiss="modal" aria-label="Close">
+                    <span aria-hidden="true">&times;</span>
+                </button>
+            </div>
+            <div class="modal-body">
+                <p>Are you sure you want to request ownership transfer for this chassis number?</p>
+                <div class="alert alert-info">
+                    <small><i class="fas fa-info-circle"></i> The current owner and Registry Administrators will be notified of your request.</small>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-primary" id="confirmTransferBtn">
+                    <i class="fas fa-check"></i> Request Transfer
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Transfer Success Modal -->
+<div class="modal fade" id="transferSuccessModal" tabindex="-1" role="dialog" aria-labelledby="transferSuccessModalLabel" aria-hidden="true">
+    <div class="modal-dialog" role="document">
+        <div class="modal-content">
+            <div class="modal-header bg-success text-white">
+                <h5 class="modal-title" id="transferSuccessModalLabel">
+                    <i class="fas fa-check-circle"></i> Transfer Request Submitted
+                </h5>
+                <button type="button" class="close text-white" data-dismiss="modal" aria-label="Close">
+                    <span aria-hidden="true">&times;</span>
+                </button>
+            </div>
+            <div class="modal-body">
+                <p>Transfer request submitted successfully!</p>
+                <div class="alert alert-success">
+                    <small><i class="fas fa-envelope"></i> You will be notified when the current owner responds.</small>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-success" id="transferSuccessOkBtn">
+                    <i class="fas fa-arrow-left"></i> Return to Car Listings
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Transfer Error Modal -->
+<div class="modal fade" id="transferErrorModal" tabindex="-1" role="dialog" aria-labelledby="transferErrorModalLabel" aria-hidden="true">
+    <div class="modal-dialog" role="document">
+        <div class="modal-content">
+            <div class="modal-header bg-danger text-white">
+                <h5 class="modal-title" id="transferErrorModalLabel">
+                    <i class="fas fa-exclamation-circle"></i> Transfer Request Failed
+                </h5>
+                <button type="button" class="close text-white" data-dismiss="modal" aria-label="Close">
+                    <span aria-hidden="true">&times;</span>
+                </button>
+            </div>
+            <div class="modal-body">
+                <div class="alert alert-danger">
+                    <strong>Error:</strong> <span id="transferErrorMessage">There was an error processing your request.</span>
+                </div>
+                <p>Please try again or contact support if the problem persists.</p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-danger" data-dismiss="modal">Close</button>
+            </div>
+        </div>
+    </div>
+</div>
+
 <!--footers-->
 <?php
 require_once $abs_us_root . $us_url_root . 'users/includes/html_footer.php'; //custom template footer
@@ -949,7 +1070,66 @@ require_once $abs_us_root . $us_url_root . 'users/includes/html_footer.php'; //c
         }
     });
 
-    // Debug form submission removed - override functionality working
+    // Transfer Request Handler
+    $('#request_transfer_btn').click(function() {
+        const chassis = $('#chassis').val();
+        const year = validYear;
+        const model = validModel;
+
+        if (!chassis || !year || !model) {
+            $('#transferValidationModal').modal('show');
+            return;
+        }
+
+        // Show confirmation modal
+        $('#transferConfirmModal').modal('show');
+    });
+
+    // Handle transfer confirmation
+    $('#confirmTransferBtn').click(function() {
+        $('#transferConfirmModal').modal('hide');
+
+        // Disable button to prevent double-submission
+        $('#request_transfer_btn').prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i> Requesting...');
+
+        const chassis = $('#chassis').val();
+        const year = validYear;
+        const model = validModel;
+
+        $.ajax({
+            url: 'actions/request-transfer.php',
+            type: 'POST',
+            dataType: 'json',
+            data: {
+                'chassis': chassis,
+                'year': year,
+                'model': model,
+                'color': $('#color').val() || '',
+                'engine': $('#engine').val() || '',
+                'comments': $('#comments').val() || '',
+                'csrf': csrf
+            },
+            success: function(response) {
+                if (response.success) {
+                    $('#transferSuccessModal').modal('show');
+                } else {
+                    $('#transferErrorMessage').text(response.message);
+                    $('#transferErrorModal').modal('show');
+                    $('#request_transfer_btn').prop('disabled', false).html('<i class="fas fa-exchange-alt"></i> Request Ownership Transfer');
+                }
+            },
+            error: function() {
+                $('#transferErrorMessage').text('There was an error processing your request. Please try again.');
+                $('#transferErrorModal').modal('show');
+                $('#request_transfer_btn').prop('disabled', false).html('<i class="fas fa-exchange-alt"></i> Request Ownership Transfer');
+            }
+        });
+    });
+
+    // Handle success modal OK button
+    $('#transferSuccessOkBtn').click(function() {
+        window.location.href = '<?= $us_url_root ?>app/cars/';
+    });
 
     // End Car Validation
 </script>

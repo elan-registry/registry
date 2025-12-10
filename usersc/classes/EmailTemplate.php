@@ -1,0 +1,316 @@
+<?php
+declare(strict_types=1);
+
+/**
+ * EmailTemplate - Centralized Email Template System
+ *
+ * Provides consistent email formatting across all registry email functionality.
+ * Supports branded HTML emails with responsive design and customizable content.
+ *
+ * @author Elan Registry Team
+ * @copyright 2025
+ */
+
+class EmailTemplate
+{
+    private string $baseUrl;
+    private string $logoUrl;
+
+    public function __construct()
+    {
+        $this->baseUrl = 'https://elanregistry.org';
+        $this->logoUrl = $this->baseUrl . '/usersc/templates/ElanRegistry/assets/images/logo-72x72.png';
+    }
+
+    /**
+     * Generate a complete HTML email using the registry template
+     *
+     * @param string $subject Email subject line
+     * @param string $subtitle Header subtitle (e.g., "Owner to Owner Message")
+     * @param string $content Main content HTML (can include custom styling)
+     * @param array $options Optional customizations ['footer_text' => '', 'reply_to' => '']
+     * @return string Complete HTML email
+     */
+    public function render(string $subject, string $subtitle, string $content, array $options = []): string
+    {
+        $footerText = $options['footer_text'] ?? 'This is an automated message from the registry system.';
+        return $this->getBaseTemplate($subject, $subtitle, $content, $footerText);
+    }
+
+    /**
+     * Create a formatted message box for email content
+     *
+     * @param string $title Box title
+     * @param string $content Box content
+     * @param string $style 'default', 'message', 'alert', 'success'
+     * @return string HTML for message box
+     */
+    public function createMessageBox(string $title, string $content, string $style = 'default'): string
+    {
+        $styleClass = $this->getBoxStyleClass($style);
+        return "
+        <div class=\"{$styleClass}\">
+            <h3>{$title}</h3>
+            <div class=\"detail-section\">
+                {$content}
+            </div>
+        </div>";
+    }
+
+    /**
+     * Create a details row for displaying key-value information
+     *
+     * @param string $label Field label
+     * @param string $value Field value
+     * @return string HTML for detail row
+     */
+    public function createDetailRow(string $label, string $value): string
+    {
+        return "
+        <div class=\"detail-row\">
+            <div class=\"detail-label\">{$label}:</div>
+            <div class=\"detail-value\">" . htmlspecialchars($value) . "</div>
+        </div>";
+    }
+
+    /**
+     * Create an action button for emails
+     *
+     * @param string $text Button text
+     * @param string $url Button URL
+     * @param string $style 'primary', 'secondary', 'success', 'danger'
+     * @return string HTML for button
+     */
+    public function createButton(string $text, string $url, string $style = 'primary'): string
+    {
+        $buttonClass = 'btn btn-' . $style;
+        return "
+        <div class=\"text-center\">
+            <a href=\"{$url}\" class=\"{$buttonClass}\">
+                {$text}
+            </a>
+        </div>";
+    }
+
+    /**
+     * Get CSS class for message box style
+     */
+    private function getBoxStyleClass(string $style): string
+    {
+        switch ($style) {
+            case 'message':
+                return 'content-box content-box-message';
+            case 'alert':
+                return 'content-box content-box-alert';
+            case 'success':
+                return 'content-box content-box-success';
+            default:
+                return 'content-box';
+        }
+    }
+
+    /**
+     * Base HTML template with registry branding and CSS
+     */
+    private function getBaseTemplate(string $title, string $subtitle, string $content, string $footerText): string
+    {
+        return "<!DOCTYPE html>
+<html lang=\"en\">
+<head>
+    <meta charset=\"UTF-8\">
+    <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">
+    <title>Lotus Elan Registry - {$title}</title>
+    <style>
+        /* Base Styles */
+        body {
+            font-family: Arial, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            margin: 0;
+            padding: 0;
+            background-color: #f4f4f4;
+        }
+
+        .email-container {
+            max-width: 600px;
+            margin: 0 auto;
+            background-color: #ffffff;
+        }
+
+        /* Header Styles */
+        .header {
+            background-color: #029acf;
+            color: white;
+            padding: 20px;
+            text-align: center;
+        }
+
+        .logo {
+            width: 48px;
+            height: 48px;
+            margin-bottom: 10px;
+        }
+
+        /* Content Styles */
+        .content {
+            padding: 30px;
+        }
+
+        .content-box {
+            background-color: #f8f9fa;
+            border: 2px solid #029acf;
+            border-radius: 8px;
+            padding: 20px;
+            margin: 20px 0;
+        }
+
+        .content-box-message {
+            border-color: #469408;
+        }
+
+        .content-box-alert {
+            border-color: #dc3545;
+        }
+
+        .content-box-success {
+            border-color: #28a745;
+        }
+
+        .content-box h3 {
+            color: #029acf;
+            margin-top: 0;
+        }
+
+        .content-box-message h3 {
+            color: #469408;
+        }
+
+        .content-box-alert h3 {
+            color: #dc3545;
+        }
+
+        .content-box-success h3 {
+            color: #28a745;
+        }
+
+        .detail-section {
+            background-color: #fff;
+            border: 1px solid #dee2e6;
+            border-radius: 5px;
+            padding: 15px;
+            margin: 15px 0;
+        }
+
+        .detail-row {
+            display: flex;
+            margin-bottom: 10px;
+        }
+
+        .detail-label {
+            font-weight: bold;
+            min-width: 100px;
+            color: #469408;
+        }
+
+        .detail-value {
+            flex: 1;
+        }
+
+        .message-content {
+            background-color: #f8f9fa;
+            border-left: 4px solid #469408;
+            padding: 15px;
+            margin: 20px 0;
+            white-space: pre-wrap;
+        }
+
+        /* Button Styles */
+        .btn {
+            display: inline-block;
+            text-decoration: none;
+            padding: 12px 24px;
+            border-radius: 5px;
+            font-weight: bold;
+            text-align: center;
+            margin: 10px 5px;
+        }
+
+        .btn-primary {
+            background-color: #029acf;
+            color: #ffffff;
+        }
+
+        .btn-secondary {
+            background-color: #6c757d;
+            color: #ffffff;
+        }
+
+        .btn-success {
+            background-color: #28a745;
+            color: #ffffff;
+        }
+
+        .btn-danger {
+            background-color: #dc3545;
+            color: #ffffff;
+        }
+
+        /* Footer Styles */
+        .footer {
+            background-color: #f8f9fa;
+            padding: 20px;
+            text-align: center;
+            border-top: 1px solid #dee2e6;
+            color: #6b7280;
+            font-size: 14px;
+        }
+
+        /* Utility Classes */
+        .lotus-green { color: #469408; }
+        .lotus-blue { color: #029acf; }
+        .lotus-red { color: #dc3545; }
+        .text-center { text-align: center; }
+
+        /* Responsive Design */
+        @media only screen and (max-width: 600px) {
+            .content {
+                padding: 20px;
+            }
+            .detail-row {
+                flex-direction: column;
+            }
+            .detail-label {
+                min-width: auto;
+                margin-bottom: 5px;
+            }
+            .btn {
+                display: block;
+                margin: 10px 0;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class=\"email-container\">
+        <div class=\"header\">
+            <img src=\"{$this->logoUrl}\" alt=\"Lotus Logo\" class=\"logo\">
+            <h1>Lotus Elan Registry</h1>
+            <p>{$subtitle}</p>
+        </div>
+
+        <div class=\"content\">
+            {$content}
+        </div>
+
+        <div class=\"footer\">
+            <p><strong>The Lotus Elan Registry</strong></p>
+            <p><a href=\"{$this->baseUrl}\">{$this->baseUrl}</a></p>
+            <p>Preserving the legacy of Colin Chapman's masterpiece since 2003</p>
+            <hr style=\"border: none; border-top: 1px solid #dee2e6; margin: 15px 0;\">
+            <p><small>{$footerText}</small></p>
+        </div>
+    </div>
+</body>
+</html>";
+    }
+}

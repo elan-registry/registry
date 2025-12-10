@@ -207,3 +207,85 @@ jobs:
                 body: comment
               });
             }
+
+  release_notes_check:
+    name: Check Release Notes for Version Tags
+    runs-on: ubuntu-latest
+    if: github.event.pull_request && (contains(github.event.pull_request.title, 'v2.') || contains(github.event.pull_request.title, 'v3.'))
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: 📋 Check for release notes requirement
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const prTitle = context.payload.pull_request.title;
+            const prBody = context.payload.pull_request.body || '';
+
+            // Extract version from PR title (matches patterns like "v2.9.0", "v3.0.0", etc.)
+            const versionMatch = prTitle.match(/v(\d+)\.(\d+)\.(\d+)/);
+
+            if (versionMatch) {
+              const [fullVersion, major, minor, patch] = versionMatch;
+              const isFeatureVersion = patch === '0'; // Major or minor release
+
+              if (isFeatureVersion) {
+                console.log(`🔍 Feature version detected: ${fullVersion} (major.minor release)`);
+
+                // Check for release notes file in PR
+                const { data: files } = await github.rest.pulls.listFiles({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  pull_request_number: context.issue.number
+                });
+
+                const releaseNotesPattern = new RegExp(`docs/releases/.*${fullVersion}.*\\.md$`);
+                const hasReleaseNotes = files.some(file => releaseNotesPattern.test(file.filename));
+
+                if (!hasReleaseNotes) {
+                  // Create a review comment requiring release notes
+                  await github.rest.pulls.createReview({
+                    owner: context.repo.owner,
+                    repo: context.repo.repo,
+                    pull_request_number: context.issue.number,
+                    event: 'REQUEST_CHANGES',
+                    body: `🚨 **Release Notes Required**
+
+                    This PR appears to be for a feature version (${fullVersion}) but does not include release notes.
+
+                    **Required Actions:**
+                    1. Create release notes using the template: \`docs/development/RELEASE_NOTES_TEMPLATE.md\`
+                    2. Place the file in \`docs/releases/RELEASE_NOTES_V${major}.${minor}.${patch}.md\`
+                    3. After merging, create a GitHub release using: \`gh release create ${fullVersion}\`
+
+                    **Reference:** See [Version Release Requirements](docs/development/CLAUDE.md#version-release-requirements) for complete guidelines.
+
+                    Feature versions (major.minor releases like ${fullVersion}) MUST include comprehensive release notes and GitHub releases.`
+                  });
+
+                  // Set failure status
+                  process.exit(1);
+                } else {
+                  console.log(`✅ Release notes found for feature version ${fullVersion}`);
+
+                  // Create approval comment
+                  await github.rest.pulls.createReview({
+                    owner: context.repo.owner,
+                    repo: context.repo.repo,
+                    pull_request_number: context.issue.number,
+                    event: 'APPROVE',
+                    body: `✅ **Release Notes Check Passed**
+
+                    Release notes found for feature version ${fullVersion}.
+
+                    **Remember to create GitHub release after merging:**
+                    \`gh release create ${fullVersion} --title "Feature Release ${fullVersion}" --notes-file docs/releases/RELEASE_NOTES_V${major}.${minor}.${patch}.md\``
+                  });
+                }
+              } else {
+                console.log(`ℹ️ Patch version detected: ${fullVersion} - release notes optional`);
+              }
+            } else {
+              console.log(`ℹ️ No version pattern detected in PR title: "${prTitle}"`);
+            }

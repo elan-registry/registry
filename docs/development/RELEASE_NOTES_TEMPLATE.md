@@ -1,4 +1,5 @@
 # Elan Registry v[VERSION] Release Notes
+
 **Release Date:** [DATE]
 **Type:** [Patch/Minor/Major] Release - [Brief Description]
 
@@ -76,18 +77,32 @@
 - Include specific action items with clear success criteria
 - Remove any sections that don't apply to the release
 
-### Formatting Guidelines:
+### Release Requirements
+
+- **MANDATORY**: Release notes must be created for ALL major (x.0.0)
+  and minor (x.y.0) version releases
+- **MANDATORY**: GitHub releases must be created for ALL major and minor
+  versions using `gh release create`
+- **Patch releases (x.y.z)**: Release notes and GitHub releases are
+  optional but recommended for significant patches
+- **Git tags**: All feature versions (major.minor) must have
+  corresponding git tags
+
+### Formatting Guidelines
+
 - Use consistent emoji headers for visual organization
 - Include links to relevant GitHub issues
 - Use checkmarks (✅) for completed items, clocks (⏳) for pending
 - Bold important action items and feature names
 - Keep lists parallel in structure
 
-### Example Replacements:
+### Example Replacements
+
 - `[VERSION]` → `2.8.7`, `2.9.0`, `3.0.0`
 - `[DATE]` → `October 15, 2025`
 - `[Patch/Minor/Major]` → Choose based on semantic versioning
 - `[Brief Description]` → `Testing Infrastructure`, `User Experience`, etc.
 - `[ISSUE_NUMBER]` → Actual GitHub issue number
 
-**Delete this "Template Usage Notes" section when creating actual release notes.**
+**Delete this "Template Usage Notes" section when creating actual release
+notes.**

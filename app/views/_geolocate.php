@@ -1,5 +1,7 @@
 <?php
-require_once '../users/init.php';
+declare(strict_types=1);
+// Note: This file is included from ElanRegistryOwner class context
+// init.php is already loaded, so no need to require it again
 
 /* Sets variables
 $fields['lat']
@@ -28,11 +30,24 @@ if (!empty($city) && !empty($country)) {
     logger(1, 'Geocode', 'Insufficient location data provided for geocoding (city: ' . ($city ?? 'null') . ', country: ' . ($country ?? 'null') . ')');
 }
 
-function geocode($address)
+/**
+ * Geocode an address using Google Maps API
+ *
+ * @param string $address The address to geocode
+ * @return array|false Array with latitude and longitude, or false on failure
+ */
+function geocode(string $address): array|false
 {
     global $settings;
-    
-    // url encode the address
+
+    // Input validation
+    if (empty(trim($address))) {
+        logger(1, 'Geocode', 'Empty address provided to geocode function');
+        return false;
+    }
+
+    // Sanitize and encode the address
+    $address = htmlspecialchars(trim($address), ENT_QUOTES, 'UTF-8');
     $address = urlencode($address);
     logger(1, 'Geocode', 'Attempting to geocode: ' . $address);
 

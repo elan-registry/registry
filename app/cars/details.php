@@ -150,13 +150,38 @@ if (!empty($_GET)) {
                                 <div class="col-md-4 text-md-end">
                                     <?php
                                     if (isset($user) && $user->isLoggedIn()) {
-                                        if ($user->data()->id === $car->data()->user_id) { ?>
+                                        $isOwner = ($user->data()->id === $car->data()->user_id);
+                                        $isAdmin = hasPerm([1, 2], $user->data()->id); // Administrator (1) or Editor (2)
+
+                                        if ($isOwner) { ?>
                                             <form method="POST" action="<?= $us_url_root ?>app/cars/edit.php" class="d-inline">
                                                 <input type="hidden" name="csrf" value="<?= Token::generate(); ?>" />
                                                 <input type="hidden" name="action" value="updateCar" />
                                                 <input type="hidden" name="car_id" id="car_id" value="<?= $carData->id ?>" />
                                                 <button class="btn btn-light btn-lg" type="submit">
                                                     <i class="fas fa-edit"></i> Update Car
+                                                </button>
+                                            </form>
+                                        <?php } elseif ($isAdmin) { ?>
+                                            <div class="alert alert-warning mb-2">
+                                                <i class="fas fa-shield-alt"></i> <strong>Administrative Override:</strong>
+                                                You are editing a car that you do not own using Administrator/Editor privileges.
+                                            </div>
+                                            <form method="POST" action="<?= $us_url_root ?>app/cars/edit.php" class="d-inline me-2">
+                                                <input type="hidden" name="csrf" value="<?= Token::generate(); ?>" />
+                                                <input type="hidden" name="action" value="updateCar" />
+                                                <input type="hidden" name="car_id" id="car_id" value="<?= $carData->id ?>" />
+                                                <input type="hidden" name="admin_override" value="1" />
+                                                <button class="btn btn-warning btn-lg" type="submit">
+                                                    <i class="fas fa-edit"></i> Admin Edit Car
+                                                </button>
+                                            </form>
+                                            <form method="POST" action="<?= $us_url_root ?>app/contact/owner.php" class="d-inline">
+                                                <input type="hidden" name="csrf" value="<?= Token::generate(); ?>" />
+                                                <input type="hidden" name="action" value="contact_owner" />
+                                                <input type="hidden" name="car_id" id="car_id" value="<?= $carData->id ?>" />
+                                                <button class="btn btn-light btn-lg" type="submit">
+                                                    <i class="fas fa-envelope"></i> Contact Owner
                                                 </button>
                                             </form>
                                         <?php
@@ -544,12 +569,12 @@ if (!empty($_GET)) {
                                                         <td><?= htmlspecialchars($record->operation ?? '') ?></td>
                                                         <td class="text-nowrap">
                                                             <?php
-                                                            if (!empty($record->mtime)) {
+                                                            if (!empty($record->timestamp)) {
                                                                 try {
-                                                                    $date = new DateTime($record->mtime);
+                                                                    $date = new DateTime($record->timestamp);
                                                                     echo $date->format('M j, Y g:i A');
                                                                 } catch (Exception $e) {
-                                                                    echo htmlspecialchars($record->mtime);
+                                                                    echo htmlspecialchars($record->timestamp);
                                                                 }
                                                             }
                                                             ?>
@@ -626,7 +651,7 @@ if (!empty($_GET)) {
                                 // Find first and last dates
                                 $firstDate = $lastDate = null;
                                 if ($historyCount > 0) {
-                                    $dates = array_map(function($h) { return $h->mtime; }, $carHistory);
+                                    $dates = array_map(function($h) { return $h->timestamp; }, $carHistory);
                                     $dates = array_filter($dates);
                                     if (!empty($dates)) {
                                         sort($dates);

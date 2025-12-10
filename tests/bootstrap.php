@@ -30,6 +30,25 @@ if (file_exists($projectRoot . '/usersc/classes/Resize.php')) {
     require_once $projectRoot . '/usersc/classes/Resize.php';
 }
 
+// Load ElanRegistryOwner class for testing
+if (file_exists($projectRoot . '/usersc/classes/ElanRegistryOwner.php')) {
+    require_once $projectRoot . '/usersc/classes/ElanRegistryOwner.php';
+}
+
+// Load ElanRegistryOwner exceptions
+if (file_exists($projectRoot . '/usersc/exceptions/OwnerCreationException.php')) {
+    require_once $projectRoot . '/usersc/exceptions/OwnerCreationException.php';
+}
+if (file_exists($projectRoot . '/usersc/exceptions/OwnerValidationException.php')) {
+    require_once $projectRoot . '/usersc/exceptions/OwnerValidationException.php';
+}
+if (file_exists($projectRoot . '/usersc/exceptions/OwnerUpdateException.php')) {
+    require_once $projectRoot . '/usersc/exceptions/OwnerUpdateException.php';
+}
+if (file_exists($projectRoot . '/usersc/exceptions/OwnerNotFoundException.php')) {
+    require_once $projectRoot . '/usersc/exceptions/OwnerNotFoundException.php';
+}
+
 // Mock classes for testing if they don't exist
 if (!class_exists('Token')) {
     class Token {
@@ -355,6 +374,48 @@ if (!class_exists('Input')) {
         public static function clearMockData() {
             self::$mockData = [];
         }
+    }
+}
+
+// Mock getUserWithProfile function for ElanRegistryOwner testing
+if (!function_exists('getUserWithProfile')) {
+    /**
+     * Mock getUserWithProfile function for testing
+     */
+    function getUserWithProfile($user_id) {
+        global $mockUsers, $mockProfiles;
+
+        // Find user by ID
+        $user = null;
+        if (is_array($mockUsers)) {
+            foreach ($mockUsers as $mockUser) {
+                if ($mockUser->id == $user_id) {
+                    $user = $mockUser;
+                    break;
+                }
+            }
+        }
+
+        if (!$user) {
+            // Default mock user
+            $user = (object) [
+                'id' => $user_id,
+                'fname' => 'Test',
+                'lname' => 'User',
+                'email' => 'test@example.com',
+                'username' => 'testuser'
+            ];
+        }
+
+        // Add mock profile data
+        $user->city = 'Test City';
+        $user->state = 'Test State';
+        $user->country = 'Test Country';
+        $user->website = '';
+        $user->lat = null;
+        $user->lon = null;
+
+        return $user;
     }
 }
 

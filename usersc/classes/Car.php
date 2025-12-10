@@ -155,9 +155,11 @@ class Car
 
         // Filter fields to only include valid cars table columns
         $validCarFields = [
-            'id', 'user_id', 'year', 'model', 'series', 'variant', 'type', 
-            'chassis', 'color', 'engine', 'purchasedate', 'solddate', 
-            'website', 'comments', 'image', 'mtime'
+            'id', 'user_id', 'year', 'model', 'series', 'variant', 'type',
+            'chassis', 'color', 'engine', 'purchasedate', 'solddate',
+            'website', 'comments', 'image', 'mtime',
+            // Owner information fields
+            'email', 'fname', 'lname', 'join_date', 'city', 'state', 'country', 'lat', 'lon'
         ];
         
         $filteredFields = array_intersect_key($fields, array_flip($validCarFields));
@@ -556,7 +558,7 @@ class Car
      * 
      * @see https://github.com/unibrain1/elanregistry/issues/248 Issue #248: Replace direct DB access in car management
      */
-    public function transfer(int $newUserId, string $reason = 'Administrative transfer'): bool
+    public function transfer(int $newUserId, string $reason = 'Administrative transfer', string $operationType = 'NEWOWNER'): bool
     {
         global $user;
         
@@ -572,9 +574,9 @@ class Car
             throw new CarTransferException(CarErrorMessages::getMessage('user_auth_required', 'admin', ['operation' => 'car transfer']));
         }
 
-        // Validate new user exists
-        $targetUser = new User($newUserId);
-        if (!$targetUser->exists()) {
+        // Get complete user data with profile information
+        $targetUser = getUserWithProfile($newUserId);
+        if (!$targetUser) {
             $technicalMsg = CarErrorMessages::getTechnicalMessage('user_not_found', ['user_id' => $newUserId]);
             logger($user->data()->id ?? 0, 'CarTransfer', $technicalMsg);
             throw new Exception(CarErrorMessages::getMessage('user_not_found'));
@@ -587,19 +589,21 @@ class Car
             // Start transaction for data integrity
             $this->_db->query("START TRANSACTION");
 
-            // Prepare fields with new owner information
+            // Prepare fields with new owner information including profile data
             $updateFields = [
-                'user_id' => $newUserId,
-                'email' => $targetUser->data()->email ?? '',
-                'fname' => $targetUser->data()->fname ?? '',
-                'lname' => $targetUser->data()->lname ?? '',
-                'join_date' => $targetUser->data()->join_date ?? date('Y-m-d G:i:s'),
-                'city' => $targetUser->data()->city ?? '',
-                'state' => $targetUser->data()->state ?? '',
-                'country' => $targetUser->data()->country ?? '',
-                'lat' => $targetUser->data()->lat ?? null,
-                'lon' => $targetUser->data()->lon ?? null,
-                'website' => $targetUser->data()->website ?? ''
+                'id' => $carId,
+                'token' => Token::generate(), // Generate CSRF token for internal update
+                'user_id' => $targetUser->id,
+                'email' => $targetUser->email ?? '',
+                'fname' => $targetUser->fname ?? '',
+                'lname' => $targetUser->lname ?? '',
+                'join_date' => $targetUser->join_date ?? date('Y-m-d G:i:s'),
+                'city' => $targetUser->city ?? '',
+                'state' => $targetUser->state ?? '',
+                'country' => $targetUser->country ?? '',
+                'lat' => $targetUser->lat ?? null,
+                'lon' => $targetUser->lon ?? null,
+                'website' => $targetUser->website ?? ''
             ];
 
             // Use Car class update method to maintain validation and consistency
@@ -618,31 +622,57 @@ class Car
                 throw new Exception(CarErrorMessages::getAdminMessage('car_relationship_failed'));
             }
 
-            // Create audit trail entry
-            $ownerName = $targetUser->data()->fname && $targetUser->data()->lname 
-                ? "{$targetUser->data()->fname} {$targetUser->data()->lname}" 
-                : "User ID $newUserId";
-            
-            $historyFields = [
-                'car_id' => $carId,
-                'comments' => "Car $chassis was transferred to $ownerName (User ID: $newUserId) by admin " . $user->data()->id . ". Reason: $reason",
-                'operation' => 'TRANSFER',
-                'ctime' => date('Y-m-d G:i:s'),
-                'mtime' => date('Y-m-d G:i:s')
-            ];
-            
-            $historyInserted = $this->_db->insert('cars_hist', $historyFields);
-            if (!$historyInserted) {
-                $technicalMsg = CarErrorMessages::getTechnicalMessage('audit_trail_failed', ['operation' => 'car transfer']);
-                logger($user->data()->id ?? 0, 'CarTransfer', $technicalMsg);
-                throw new Exception(CarErrorMessages::getAdminMessage('audit_trail_failed', ['operation' => 'car transfer']));
-            }
+            // Note: History is automatically logged by database trigger on cars UPDATE
 
             // Commit transaction
             $this->_db->query("COMMIT");
-            
+
             // Refresh local data to reflect the changes
             $this->find($carId);
+
+            // Create specific operation history record (NEWOWNER for reassign, TRANSFER for approval)
+            // This is done AFTER commit and refresh to ensure we have the updated car data
+            $ownerName = $targetUser->fname && $targetUser->lname
+                ? "{$targetUser->fname} {$targetUser->lname}"
+                : "User ID $newUserId";
+
+            $historyFields = [
+                'operation' => $operationType,
+                'car_id' => $carId,
+                'comments' => $reason,
+                'ctime' => $this->_data->ctime ?? date('Y-m-d G:i:s'), // Use original car creation time
+                'mtime' => date('Y-m-d G:i:s'), // Current modification time
+                'model' => $this->_data->model ?? '',
+                'series' => $this->_data->series ?? '',
+                'variant' => $this->_data->variant ?? '',
+                'year' => $this->_data->year ?? '',
+                'type' => $this->_data->type ?? '',
+                'chassis' => $this->_data->chassis ?? '',
+                'color' => $this->_data->color ?? '',
+                'engine' => $this->_data->engine ?? '',
+                'purchasedate' => $this->_data->purchasedate ?? null,
+                'solddate' => $this->_data->solddate ?? null,
+                'image' => $this->_data->image ?? '',
+                'user_id' => $targetUser->id,
+                'email' => $targetUser->email ?? '',
+                'fname' => $targetUser->fname ?? '',
+                'lname' => $targetUser->lname ?? '',
+                'join_date' => $targetUser->join_date ?? null,
+                'city' => $targetUser->city ?? '',
+                'state' => $targetUser->state ?? '',
+                'country' => $targetUser->country ?? '',
+                'lat' => $targetUser->lat ?? null,
+                'lon' => $targetUser->lon ?? null,
+                'website' => $targetUser->website ?? ''
+            ];
+
+            $historyInserted = $this->_db->insert('cars_hist', $historyFields);
+            if (!$historyInserted) {
+                $technicalMsg = CarErrorMessages::getTechnicalMessage('audit_trail_failed', ['operation' => $operationType]);
+                logger($user->data()->id ?? 0, 'CarTransfer', $technicalMsg);
+                // Don't throw exception here since the main transaction is already committed
+                logger($user->data()->id ?? 0, 'CarTransfer', 'Warning: Transfer completed but history record creation failed');
+            }
 
             return true;
             
