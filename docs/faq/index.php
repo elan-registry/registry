@@ -114,41 +114,6 @@ if (!securePage($_SERVER['PHP_SELF'])) {
             </div>
         </div>
 
-        <!-- Getting Started Section -->
-        <div class='row mt-4'>
-            <div class='col-12'>
-                <div class='card registry-card'>
-                    <div class='card-header bg-success text-white'>
-                        <h3 class='mb-0'><i class='fas fa-rocket'></i> Getting Started</h3>
-                    </div>
-                    <div class='card-body'>
-                        <div class='row'>
-                            <div class='col-md-6'>
-                                <h5><i class='fas fa-user-plus text-primary'></i> New Users</h5>
-                                <ul class='list-unstyled'>
-                                    <li class='mb-2'><i class='fas fa-check text-success'></i> <a href='<?= $us_url_root ?>users/join.php'>Create an account</a></li>
-                                    <li class='mb-2'><i class='fas fa-check text-success'></i> <a href='<?= $us_url_root ?>app/cars/edit.php'>Add your car to the registry</a></li>
-                                    <li class='mb-2'><i class='fas fa-check text-success'></i> Upload photos of your Elan</li>
-                                    <li class='mb-2'><i class='fas fa-check text-success'></i> Connect with other owners</li>
-                                </ul>
-                            </div>
-                            <div class='col-md-6'>
-                                <h5><i class='fas fa-search text-primary'></i> Finding Cars</h5>
-                                <ul class='list-unstyled'>
-                                    <li class='mb-2'><i class='fas fa-check text-success'></i> <a href='<?= $us_url_root ?>app/cars/'>Browse all registered cars</a></li>
-                                    <li class='mb-2'><i class='fas fa-check text-success'></i> Search by chassis number or series</li>
-                                    <li class='mb-2'><i class='fas fa-check text-success'></i> View detailed car histories</li>
-                                    <li class='mb-2'><i class='fas fa-check text-success'></i> Contact current owners</li>
-                                </ul>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-
-
         <!-- Navigation Links -->
         <div class='row mt-4 mb-4'>
             <div class='col-12 text-center'>
