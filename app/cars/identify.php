@@ -33,9 +33,7 @@ require_once $abs_us_root . $us_url_root . 'users/includes/template/prep.php';
 					</div>
 					<div class="card-body">
 						<p>This is not a comprehensive list of differences between the cars, rather a quick guide to identifying a car. Like all manufacturers, there were running changes throughout the life of the Elan. In the case of Lotus, many of these changes were poorly documented. If in doubt, post a question to the <a href="http://www.lotuselan.net/forums/">LotusElan.net forum</a> and ask.</p>
-						<!-- Skip Navigation -->
-						<a class="visually-hidden-focusable btn btn-primary" href="#roadster">Skip to identification guide</a>
-						
+					
 						<!-- Navigation Pills -->
 						<ul class="nav nav-pills mb-3 justify-content-center" role="tablist">
 							<li class="nav-item" role="presentation"><a class="nav-link" href="#roadster" role="tab">Roadster</a></li>
