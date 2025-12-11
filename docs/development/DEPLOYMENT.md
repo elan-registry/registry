@@ -36,13 +36,25 @@ git push origin main && git push origin --tags
 
 ```bash
 origin git@github.com:unibrain1/elanregistry.git    # GitHub repository
-prod a2hosting:/home/unibrain/git/elanregistry.git  # LIVE PRODUCTION SERVER
+test   [test-server-path]                            # Test/staging server
+prod   a2hosting:/home/unibrain/git/elanregistry.git # LIVE PRODUCTION SERVER
 ```
 
 **🔄 Deployment Rule:**
 
 - `origin` = GitHub (development/backup)
+- `test` = Test/staging server for validation
 - `prod` = **LIVE WEBSITE** (elanregistry.org)
+
+**Testing Feature Branches:**
+
+```bash
+# Deploy feature branch to test server
+git push test feature/v2.9.1
+
+# Deploy tag to test server
+git push test v2.9.1
+```
 
 ## 🤖 Automated Pull Request Checks
 

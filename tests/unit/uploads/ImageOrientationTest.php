@@ -2,19 +2,19 @@
 
 declare(strict_types=1);
 
+use PHPUnit\Framework\TestCase;
+
 /**
  * Test for EXIF orientation handling in the Resize class
- * 
+ *
  * Tests the correctOrientation method functionality including:
  * - EXIF orientation detection and correction
- * - All 8 EXIF orientation values 
+ * - All 8 EXIF orientation values
  * - Privacy-preserving EXIF stripping
  * - Error handling for missing EXIF data
  */
 
-require_once __DIR__ . '/../tests/bootstrap.php';
-
-class ImageOrientationTest extends PHPUnit\Framework\TestCase
+class ImageOrientationTest extends TestCase
 {
     private $testImageDir;
     private $outputDir;

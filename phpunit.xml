@@ -9,14 +9,17 @@
          backupGlobals="false">
     
     <testsuites>
-        <!-- Fast unit tests organized by domain (<30s) -->
+        <!-- Combined unit test suite (all unit tests) -->
         <testsuite name="Unit">
-            <directory>tests/unit</directory>
-            <exclude>tests/run_tests.php</exclude>
+            <directory>tests/unit/cars</directory>
+            <directory>tests/unit/users</directory>
+            <directory>tests/unit/security</directory>
+            <directory>tests/unit/uploads</directory>
+            <directory>tests/unit/system</directory>
+            <directory>tests/unit/owners</directory>
         </testsuite>
 
-
-        <!-- Unit tests by domain -->
+        <!-- Individual unit test suites for selective testing -->
         <testsuite name="Unit.Cars">
             <directory>tests/unit/cars</directory>
         </testsuite>
@@ -35,6 +38,10 @@
 
         <testsuite name="Unit.System">
             <directory>tests/unit/system</directory>
+        </testsuite>
+
+        <testsuite name="Unit.Owners">
+            <directory>tests/unit/owners</directory>
         </testsuite>
 
         <!-- Database integration tests (run separately with real DB) -->

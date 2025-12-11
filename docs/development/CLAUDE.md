@@ -440,25 +440,18 @@ This is a CRITICAL step that must NEVER be skipped when working on any code-rela
 - **Focus on impact and benefits**, not implementation details (those belong in GitHub issues)
 - **Include clear testing instructions** in the Required Actions section for any manual steps needed post-deployment
 
-### Version Release Requirements
-
-**MANDATORY for ALL major (x.0.0) and minor (x.y.0) releases:**
-
-- **Release Notes**: Must create comprehensive release notes using the
-  template at `docs/development/RELEASE_NOTES_TEMPLATE.md`
-- **GitHub Release**: Must create GitHub release using `gh release create`
-  with appropriate title and description
-- **Git Tags**: All feature versions (major.minor) must have
-  corresponding git tags
-- **Documentation**: Release notes must be placed in `docs/releases/`
-  directory with standardized naming
-
-**Optional but recommended for patch releases (x.y.z):**
-
-- Release notes and GitHub releases for significant patches or security
-  fixes
-
 **📋 See [RELEASE_NOTES_TEMPLATE.md](RELEASE_NOTES_TEMPLATE.md) for complete guidelines and structure**
+
+### Version Release & Deployment
+
+**For complete release and deployment procedures, see [DEPLOYMENT.md](DEPLOYMENT.md).**
+
+**Quick Reference:**
+
+- **MANDATORY for major/minor releases**: Release notes, GitHub release, annotated git tags
+- **Optional for patch releases**: Release notes for significant patches or security fixes
+- **Remote configuration**: `origin` (GitHub), `test` (staging), `prod` (live production)
+- **Deployment commands**: See DEPLOYMENT.md for comprehensive workflows
 
 ### ElanRegistry Terminology Standards
 
@@ -542,17 +535,22 @@ class ElanRegistryOwner {
 
 ## 🚀 Quick Deployment Reference
 
-**🚨 CRITICAL:** When deploying to production, always use the `prod` remote, NOT `origin`!
+**🚨 CRITICAL:** When deploying, use the correct remote for each environment!
 
 ```bash
-# Push code to PRODUCTION SERVER (live site)
-git push prod main
-
 # Push to GitHub for repository backup
 git push origin main && git push origin --tags
+
+# Deploy to test server for validation
+git push test feature/v2.9.1
+git push test v2.9.1
+
+# Push code to PRODUCTION SERVER (live site)
+git push prod main
+git push prod --tags
 ```
 
-**📋 See [DEPLOYMENT.md](DEPLOYMENT.md) for complete deployment procedures**
+**📋 See [DEPLOYMENT.md](DEPLOYMENT.md) for complete release and deployment procedures**
 
 ## 📊 Current Development Status
 
