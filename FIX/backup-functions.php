@@ -365,3 +365,57 @@ function getBackupStatistics() {
 
     return $stats;
 }
+
+// Handle AJAX requests
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
+    require_once '../users/init.php';
+
+    header('Content-Type: application/json');
+
+    if (!securePage($_SERVER['PHP_SELF'])) {
+        echo json_encode(['success' => false, 'message' => 'Access denied']);
+        exit;
+    }
+
+    $action = $_POST['action'];
+
+    try {
+        switch ($action) {
+            case 'backup_tables':
+                // Parse table names from comma-separated string
+                $tablesParam = $_POST['tables'] ?? '';
+                $tables = array_map('trim', explode(',', $tablesParam));
+
+                // Validate table names (alphanumeric and underscore only)
+                foreach ($tables as $table) {
+                    if (!preg_match('/^[a-zA-Z0-9_]+$/', $table)) {
+                        throw new Exception("Invalid table name: {$table}");
+                    }
+                }
+
+                // Create backup
+                $backupPath = createStandardizedBackup(
+                    '14-update-admin-page-permissions',
+                    $tables,
+                    'automated',
+                    'development'
+                );
+
+                echo json_encode([
+                    'success' => true,
+                    'message' => 'Backup created successfully',
+                    'backup_path' => basename($backupPath)
+                ]);
+                break;
+
+            default:
+                echo json_encode(['success' => false, 'message' => 'Unknown action']);
+        }
+    } catch (Exception $e) {
+        echo json_encode([
+            'success' => false,
+            'message' => $e->getMessage()
+        ]);
+    }
+    exit;
+}
