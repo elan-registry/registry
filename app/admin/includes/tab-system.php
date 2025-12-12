@@ -138,11 +138,6 @@ foreach ($fixScripts as $script) {
         </h2>
         <p class="text-muted mb-0">FIX script management, database operations, and backup administration</p>
     </div>
-    <div>
-        <a href="../../FIX/" class="btn btn-outline-info" target="_blank" title="Legacy FIX Interface">
-            <i class="fas fa-external-link-alt"></i> Legacy Interface
-        </a>
-    </div>
 </div>
 
 <!-- Display cleanup message -->

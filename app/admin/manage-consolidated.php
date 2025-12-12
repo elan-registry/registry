@@ -48,6 +48,7 @@ $validTabs = [
     'car-mgmt' => 'Car/Owner Relationships',
     'manage-cars' => 'Manage Cars',
     'owner-mgmt' => 'Manage Owners',
+    'data-quality' => 'Data Quality',
     'cleanup' => 'Owner Cleanup',
     'system' => 'System Maintenance',
     'settings' => 'Settings'
@@ -614,11 +615,14 @@ if (Input::exists('post')) {
                                     </a>
                                 </li>
 
-                                <!-- System Maintenance Tab -->
+                                <!-- Data Quality Tab -->
                                 <li class="nav-item">
-                                    <a class="nav-link <?= $activeTab === 'system' ? 'active' : '' ?>"
-                                       href="?tab=system" role="tab">
-                                        <i class="fas fa-tools"></i> System Maintenance
+                                    <a class="nav-link <?= $activeTab === 'data-quality' ? 'active' : '' ?>"
+                                       href="?tab=data-quality" role="tab">
+                                        <i class="fas fa-chart-line"></i> Data Quality
+                                        <?php if ($systemStatus['quality_issues'] > 0) { ?>
+                                            <span class="badge badge-danger badge-sm ml-1"><?= $systemStatus['quality_issues'] ?></span>
+                                        <?php } ?>
                                     </a>
                                 </li>
 
@@ -627,6 +631,14 @@ if (Input::exists('post')) {
                                     <a class="nav-link <?= $activeTab === 'cleanup' ? 'active' : '' ?>"
                                        href="?tab=cleanup" role="tab">
                                         <i class="fas fa-shield-alt"></i> Owner Cleanup
+                                    </a>
+                                </li>
+
+                                <!-- System Maintenance Tab -->
+                                <li class="nav-item">
+                                    <a class="nav-link <?= $activeTab === 'system' ? 'active' : '' ?>"
+                                       href="?tab=system" role="tab">
+                                        <i class="fas fa-tools"></i> System Maintenance
                                     </a>
                                 </li>
 
