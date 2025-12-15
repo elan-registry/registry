@@ -414,8 +414,8 @@ foreach ($fixScripts as $script) {
     </div>
 </div>
 
-<!-- Backup System Integration -->
-<div class="card border-info">
+<!-- Backup System Integration  - Commented out github issue #364  -->
+<!-- <div class="card border-info">
     <div class="card-header bg-info text-white">
         <h5 class="mb-0"><i class="fas fa-shield-alt"></i> Integrated Backup Management</h5>
     </div>
@@ -479,12 +479,12 @@ foreach ($fixScripts as $script) {
         </div>
 
         <div class="text-center mt-3">
-            <a href="../../FIX/" class="btn btn-outline-info" target="_blank">
+            <a href="../../FIX/backups" class="btn btn-outline-info" target="_blank">
                 <i class="fas fa-folder-open"></i> View Backup Directory
             </a>
         </div>
     </div>
-</div>
+</div> -->
 
 <script>
 // Backup cleanup confirmation
