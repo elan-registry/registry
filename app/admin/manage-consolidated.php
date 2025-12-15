@@ -48,7 +48,6 @@ $validTabs = [
     'car-mgmt' => 'Car/Owner Relationships',
     'manage-cars' => 'Manage Cars',
     'owner-mgmt' => 'Manage Owners',
-    'data-quality' => 'Data Quality',
     'cleanup' => 'Owner Cleanup',
     'system' => 'System Maintenance',
     'settings' => 'Settings'
@@ -611,17 +610,6 @@ if (Input::exists('post')) {
                                         <i class="fas fa-users"></i> Manage Owners
                                         <?php if ($systemStatus['owner_issues'] > 0) { ?>
                                             <span class="badge badge-warning badge-sm ml-1"><?= $systemStatus['owner_issues'] ?></span>
-                                        <?php } ?>
-                                    </a>
-                                </li>
-
-                                <!-- Data Quality Tab -->
-                                <li class="nav-item">
-                                    <a class="nav-link <?= $activeTab === 'data-quality' ? 'active' : '' ?>"
-                                       href="?tab=data-quality" role="tab">
-                                        <i class="fas fa-chart-line"></i> Data Quality
-                                        <?php if ($systemStatus['quality_issues'] > 0) { ?>
-                                            <span class="badge badge-danger badge-sm ml-1"><?= $systemStatus['quality_issues'] ?></span>
                                         <?php } ?>
                                     </a>
                                 </li>
