@@ -47,7 +47,7 @@ class CarView
                 $path['extension'] . '" width="100" height="75" alt="elan" loading="lazy" class="img-fluid"> ';
         } else {
             $html = '<img loading="lazy" class="card-img-top" src="' .
-                $path['dirname'] . "/" . $path['filename'] . $resize . $thumbsize . $path['extension'] . '"';
+                $path['dirname'] . "/" . $path['filename'] . $resize . $thumbsize . "." .$path['extension'] . '"';
             $html .= ' sizes="50vw" ';
             $html .= ' srcset="';
             $html .= $path['dirname'] . "/" . $path['filename'] . '-resized-' . self::THUMBNAIL_SIZE . '.' . $path['extension'] . ' ' . self::THUMBNAIL_SIZE . 'w,';
