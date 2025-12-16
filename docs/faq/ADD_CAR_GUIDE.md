@@ -25,8 +25,8 @@ and uses a simple step-by-step wizard.
 - Your car's chassis number (see [Chassis Number
   Guide](#understanding-chassis-numbers) below)
 - Basic information about your car (year, model, color)
-- *Optional:* Engine number, purchase date, and history
-- *Optional:* Photos of your car (up to 6 photos, max 3 MB each)
+- _Optional:_ Engine number, purchase date, and history
+- _Optional:_ Photos of your car (up to 6 photos, max 3 MB each)
 
 ### Getting Started
 
@@ -44,7 +44,7 @@ and uses a simple step-by-step wizard.
 This is the most important step where you provide essential information
 about your car.
 
-### Required Fields (marked with *)
+### Required Fields (marked with \*)
 
 #### Year
 
@@ -64,7 +64,7 @@ about your car.
 
 #### Chassis Number
 
-- Enter your car's chassis number *without* the type prefix
+- Enter your car's chassis number _without_ the type prefix
 - **IMPORTANT:** Do not include the type (e.g., if your chassis is
   "26/0001", enter "0001")
 - The system validates your chassis number format based on the year
@@ -99,7 +99,7 @@ your entry to ensure accuracy.
 
 #### For Complete Format Details
 
-See the **[Chassis Validation Rules](../chassis-validation.php)** page
+See the **[Chassis Validation Rules](../docs/chassis-validation.php)** page
 for comprehensive information including:
 
 - Detailed format specifications for each period
