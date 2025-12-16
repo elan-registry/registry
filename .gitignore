@@ -95,6 +95,7 @@ yarn-error.log*
 /playwright-report/
 /playwright/.cache/
 .playwright.result.cache
+.playwright-mcp/
 
 ########################################
 # Tests & Backups
