@@ -44,6 +44,9 @@
 - **Document Formatting**: Fixed bold/italic text rendering in document viewer lists
 - **Better Error Messages**: Enhanced error messaging throughout the application
 - **Improved Contrast**: Better visibility for navigation elements
+- **Image Display Fix**: Resolved missing dot in resized image filenames causing 404 errors (CarView.php)
+  - Fixed broken URLs like `img-resized-100jpg` to properly generate `img-resized-100.jpg`
+  - Affects all car detail and listing page images
 
 ## 🔧 Admin-Facing Changes
 
@@ -67,12 +70,21 @@
   - Integration with existing `getUserWithProfile()` function
 - **Improved Error Logging**: Migrated from `error_log()` to UserSpice `logger()` integration for centralized error tracking
 - **Code Cleanup**: Removed unreferenced files and improved data-quality tab integration
+- **Type Safety Enhancements**: Added explicit type casting in manage-consolidated.php
+  - Improved type safety for car ID and user ID parameters
+  - Prevents potential type-related issues in database operations
+- **Legacy Code Removal**: Removed obsolete `app/cars/manage.php` (1814 lines)
+  - Functionality consolidated into manage-consolidated.php
+  - Reduces code duplication and maintenance burden
 
 ### Testing Infrastructure Enhancements
 - **PHPUnit 12 Compatibility**: Upgraded test infrastructure to support latest PHPUnit with PHP 8.2+
 - **Resolved Test Errors**: Fixed 12 of 16 test failures (75% improvement) in test suite
 - **Test Documentation**: Consolidated testing documentation for better developer experience
 - **Playwright Dependencies**: Updated to latest Playwright and test packages
+- **Pre-commit Hook Improvements**: Fixed SQL injection checker regex to avoid false positives
+  - Updated regex to only match variables inside query strings
+  - Prevents flagging proper prepared statements with parameter arrays
 
 ### Backup & Maintenance Improvements
 - **Enhanced FIX Script UI**: Standardized progress tracking and status updates across administrative scripts
@@ -99,8 +111,17 @@
 
 ## 📋 Issues Resolved in This Release
 
+### Critical Fixes
 [#364](https://github.com/unibrain1/elanregistry/issues/364) - Missing create tables and backup function in v2.9.1.rc1
+- **Parse Error Fix**: Resolved incomplete string in manage-consolidated.php causing syntax errors
+- **Image Display Fix**: Fixed missing dot in resized image filenames (CarView.php)
+
+### Dependency Updates
 [#353](https://github.com/unibrain1/elanregistry/issues/353) - Bump playwright and @playwright/test dependencies
+
+### Issues Created for Future Work
+[#374](https://github.com/unibrain1/elanregistry/issues/374) - Fix 9 failing unit tests in test suite
+[#375](https://github.com/unibrain1/elanregistry/issues/375) - Update hardcoded 600px image size references to 768px
 
 ### Code Quality & Architecture
 - **ElanRegistryOwner Class Refactoring**: Standardized owner data access following Car class patterns
@@ -127,6 +148,9 @@
 - **Chassis Validation Documentation**: Enhanced with visual examples
 - **Image Support**: Full markdown image rendering with security validation
 - **Navigation Improvements**: Fixed anchor links and table of contents
+- **Markdown Formatting**: Improved ADD_CAR_GUIDE.md formatting consistency
+  - Updated italic formatting from asterisks to underscores
+  - Fixed chassis validation link path
 
 ---
 
