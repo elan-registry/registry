@@ -61,7 +61,7 @@ $chartJsSettingsFields = [
 
 // Email & Communication settings
 $emailSettingsFields = [
-    'elan_admin_emails' => ['type' => 'TEXT', 'default' => 'admin@elanregistry.org', 'description' => 'Comma-separated admin email addresses for system notifications and administrative alerts']
+    'elan_admin_emails' => ['type' => 'TEXT', 'default' => 'registrar@elanregistry.org', 'description' => 'Comma-separated admin email addresses for system notifications and administrative alerts']
 ];
 
 // Combine all settings fields for processing
