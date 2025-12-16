@@ -28,6 +28,7 @@ class DocumentConfig
             'faq' => [
                 'path' => 'faq/',
                 'documents' => [
+                    'ADD_CAR_GUIDE.md',
                     'CAR_TRANSFER_USER_GUIDE.md',
                     'CAR_TRANSFER_FAQ.md',
                     'PRIVACY.md'
@@ -59,6 +60,13 @@ class DocumentConfig
     {
         return [
             // User documents
+            'ADD_CAR_GUIDE.md' => [
+                'title' => 'How to Add Your Car',
+                'icon' => 'fas fa-car',
+                'description' => 'Step-by-step guide to register your Lotus Elan or +2',
+                'breadcrumb' => 'Add Car Guide',
+                'category' => 'faq'
+            ],
             'CAR_TRANSFER_USER_GUIDE.md' => [
                 'title' => 'Car Transfer User Guide',
                 'icon' => 'fas fa-exchange-alt',
@@ -80,6 +88,7 @@ class DocumentConfig
                 'breadcrumb' => 'Privacy Policy',
                 'category' => 'faq'
             ],
+            
             // Admin documents
             'CAR_TRANSFER_ADMIN_GUIDE.md' => [
                 'title' => 'Car Transfer Administrator Guide',

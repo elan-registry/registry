@@ -51,9 +51,9 @@ class ElanRegistryOwnerTest extends TestCase
 
             $this->assertNotNull($ownerData);
             $this->assertEquals($userId, $ownerData->id);
-            $this->assertObjectHasAttribute('fname', $ownerData);
-            $this->assertObjectHasAttribute('lname', $ownerData);
-            $this->assertObjectHasAttribute('email', $ownerData);
+            $this->assertObjectHasProperty('fname', $ownerData);
+            $this->assertObjectHasProperty('lname', $ownerData);
+            $this->assertObjectHasProperty('email', $ownerData);
         } else {
             $this->markTestSkipped('No users available in database for testing');
         }

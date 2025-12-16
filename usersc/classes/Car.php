@@ -37,14 +37,22 @@ class Car
         global $user; // Get the logged in user
 
         $this->_db = DB::getInstance();
-        $settings = getSettings();  // Get global settings from plugin
+
+        // Get global settings from plugin with fallback
+        if (function_exists('getSettings')) {
+            $settings = getSettings();
+        } else {
+            // Fallback: Query settings table directly if plugin not available
+            $settingsQuery = $this->_db->query('SELECT * FROM settings WHERE id = ?', [1]);
+            $settings = $settingsQuery->count() > 0 ? $settingsQuery->first() : null;
+        }
 
         // Get the logged in user information
         if (isset($user) && $user->isLoggedIn()) {
             $this->_owner = $user->data(); // TODO this should be from the user/profile JOIN
         }
 
-        if ($id) {
+        if ($id && $settings) {
             $this->imageDir = $settings->elan_image_dir  . $id . '/';
             $this->find($id);
         }

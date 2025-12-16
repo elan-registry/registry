@@ -30,6 +30,63 @@ ini_set('display_startup_errors', 1);
 error_reporting(E_ALL);
 
 require_once '../users/init.php';
+
+// Handle AJAX requests BEFORE loading template (which outputs HTML)
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
+    // Disable Xdebug HTML output for clean JSON responses
+    if (function_exists('xdebug_disable')) {
+        xdebug_disable();
+    }
+    // Disable error display for AJAX - errors will be logged instead
+    ini_set('display_errors', '0');
+
+    header('Content-Type: application/json');
+
+    if (!securePage($_SERVER['PHP_SELF'])) {
+        echo json_encode(['success' => false, 'message' => 'Access denied']);
+        exit;
+    }
+
+    $db = DB::getInstance();
+    $action = $_POST['action'];
+
+    // Debug logging using UserSpice logger
+    global $user;
+    $userId = $user->isLoggedIn() ? $user->data()->id : 0;
+    logger($userId, "FIX_SCRIPT", "Processing action: " . $action);
+
+    try {
+        switch ($action) {
+            case 'get_admin_pages':
+                $pages = scanAdminPages();
+                echo json_encode(['success' => true, 'pages' => $pages, 'count' => count($pages)]);
+                break;
+
+            case 'process_page':
+                $page = $_POST['page'] ?? '';
+                $title = $_POST['title'] ?? '';
+                logger($userId, "FIX_SCRIPT_DEBUG", "Processing page: {$page}, title: {$title}");
+                $result = processPagePermissions($page, $title);
+                logger($userId, "FIX_SCRIPT_DEBUG", "Result: " . json_encode($result));
+                echo json_encode($result);
+                break;
+
+            case 'log_operation':
+                $result = logScriptRun();
+                echo json_encode($result);
+                break;
+
+            default:
+                echo json_encode(['success' => false, 'message' => 'Unknown action']);
+        }
+    } catch (Exception $e) {
+        logger($userId, "FIX_SCRIPT_ERROR", "Error: " . $e->getMessage(), $e->getTraceAsString());
+        echo json_encode(['success' => false, 'message' => $e->getMessage(), 'trace' => $e->getTraceAsString()]);
+    }
+    exit;
+}
+
+// Not an AJAX request - load the UI template
 require_once $abs_us_root . $us_url_root . 'users/includes/template/prep.php';
 
 if (!securePage($_SERVER['PHP_SELF'])) {
@@ -173,35 +230,30 @@ $line = 1; // Where messages go
                     <div class="card registry-card mb-4">
                         <div class="card-header">
                             <h2 class="mb-0">
-                                <i class="fa fa-list"></i> Results
+                                <i class="fa fa-bar-chart"></i> Summary
                             </h2>
                         </div>
-                        <div class="card-body">
-                            <div id="results" class="fix-results-container">
-                                <!-- Results will appear here -->
+                        <div class="card-body" id="summaryContent">
+                            <div class="text-muted">
+                                <em>Waiting for process to complete...</em>
                             </div>
                         </div>
                     </div>
                 </div>
             </div>
 
-            <!-- Summary Section -->
-            <div class="row" id="summarySection">
-                <div class="col-lg-12">
+            <!-- Progress Log Section -->
+            <div class="row mb-4" id="logSection">
+                <div class="col-12">
                     <div class="card registry-card">
                         <div class="card-header">
-                            <h2 class="mb-0">
-                                <i class="fa fa-check-circle"></i> Operation Complete
-                            </h2>
+                            <h3 class="mb-0">
+                                <i class="fa fa-list-alt"></i> Progress Log
+                            </h3>
                         </div>
-                        <div class="card-body">
-                            <div id="summaryContent">
-                                <!-- Summary will appear here -->
-                            </div>
-                            <div class="text-center mt-3">
-                                <button onclick="goToReturn()" class="btn btn-primary">
-                                    <i class="fa fa-arrow-left"></i> Return to FIX Menu
-                                </button>
+                        <div class="card-body fix-results-container" id="results">
+                            <div class="fix-status-line text-muted">
+                                <small><em>Initializing process...</em></small>
                             </div>
                         </div>
                     </div>
@@ -212,10 +264,17 @@ $line = 1; // Where messages go
     </div>
 </div>
 
+<!-- Close Window button -->
+<div style="margin-top: 20px; text-align: center;">
+    <button onclick="window.close();" class="btn btn-outline-primary">
+        <i class="fa fa-times" aria-hidden="true"></i> Close Window
+    </button>
+</div>
+
 <script>
-    // Hide progress and summary sections initially
+    // Hide progress and log sections initially
     document.getElementById('progressSection').style.display = 'none';
-    document.getElementById('summarySection').style.display = 'none';
+    document.getElementById('logSection').style.display = 'none';
 
     let startTime;
     let logMessages = [];
@@ -226,11 +285,13 @@ $line = 1; // Where messages go
         permissionsSet: 0,
         errors: 0
     };
+    let errorDetails = [];
 
     function startProcessing() {
-        // Hide description and show progress
+        // Hide description and show progress + log
         document.getElementById('descriptionSection').style.display = 'none';
         document.getElementById('progressSection').style.display = 'block';
+        document.getElementById('logSection').style.display = 'block';
 
         // Record start time
         startTime = new Date();
@@ -303,9 +364,13 @@ $line = 1; // Where messages go
             updateProgress(90, 'Finalizing...');
 
             // Step 4: Log the operation
-            outputMessage('Logging operation...', 'info');
-            await logOperation();
-            outputMessage('✓ Operation logged successfully', 'success');
+            outputMessage('Logging operation to fix_script_runs...', 'info');
+            const logResult = await logOperation();
+            if (logResult.success) {
+                outputMessage('✓ Operation logged successfully to fix_script_runs table', 'success');
+            } else {
+                outputMessage('⚠ Warning: Failed to log operation: ' + (logResult.message || 'Unknown error'), 'warning');
+            }
 
             updateProgress(100, 'Complete');
             outputMessage('✓ Admin page permission update completed successfully!', 'success');
@@ -350,13 +415,13 @@ $line = 1; // Where messages go
                 throw new Error(`HTTP ${response.status}: ${response.statusText}`);
             }
 
-            const result = await response.json();
+            const responseText = await response.text();
+            const result = JSON.parse(responseText);
 
             if (!result.success) {
                 throw new Error(result.message || 'Failed to get admin pages');
             }
 
-            outputMessage(`✓ Found ${result.count || 0} admin pages to process`, 'info');
             return result.pages || [];
         } catch (error) {
             outputMessage('✗ Error getting admin pages: ' + error.message, 'error');
@@ -371,7 +436,13 @@ $line = 1; // Where messages go
                 headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
                 body: `action=process_page&page=${encodeURIComponent(page.file)}&title=${encodeURIComponent(page.title)}`
             });
-            const result = await response.json();
+
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+            }
+
+            const responseText = await response.text();
+            const result = JSON.parse(responseText);
 
             if (result.success) {
                 if (result.action === 'added') {
@@ -392,6 +463,8 @@ $line = 1; // Where messages go
             }
         } catch (error) {
             stats.errors++;
+            const errorMsg = `${page.file}: ${error.message}`;
+            errorDetails.push(errorMsg);
             outputMessage(`✗ Error processing ${page.file}: ${error.message}`, 'error');
         }
     }
@@ -406,89 +479,45 @@ $line = 1; // Where messages go
     }
 
     function showSummary() {
-        document.getElementById('progressSection').style.display = 'none';
-        document.getElementById('summarySection').style.display = 'block';
-
         const endTime = new Date();
         const duration = ((endTime - startTime) / 1000).toFixed(1);
 
+        // Stop progress bar animation
+        const progressBar = document.getElementById('progressBar');
+        progressBar.classList.remove('progress-bar-animated');
+
         const summaryContent = document.getElementById('summaryContent');
-        summaryContent.innerHTML = `
-            <div class="row">
-                <div class="col-md-6">
-                    <h4><i class="fa fa-chart-bar"></i> Summary Statistics</h4>
-                    <table class="table table-striped">
-                        <tr><td><strong>Total Pages Processed:</strong></td><td>${stats.totalPages}</td></tr>
-                        <tr><td><strong>Pages Added:</strong></td><td>${stats.pagesAdded}</td></tr>
-                        <tr><td><strong>Pages Updated:</strong></td><td>${stats.pagesUpdated}</td></tr>
-                        <tr><td><strong>Permissions Set:</strong></td><td>${stats.permissionsSet}</td></tr>
-                        <tr><td><strong>Errors:</strong></td><td class="${stats.errors > 0 ? 'text-danger' : 'text-success'}">${stats.errors}</td></tr>
-                        <tr><td><strong>Duration:</strong></td><td>${duration} seconds</td></tr>
-                    </table>
-                </div>
-                <div class="col-md-6">
-                    <h4><i class="fa fa-info-circle"></i> Next Steps</h4>
-                    <ul>
-                        <li>All admin pages now have proper permission entries</li>
-                        <li>Permissions are set to Administrator (1) and Editor (2) levels</li>
-                        <li>Test admin access to verify proper functionality</li>
-                        <li>Check UserSpice admin panel for page management</li>
+        let errorSection = '';
+        if (stats.errors > 0 && errorDetails.length > 0) {
+            errorSection = `
+                <div class="alert alert-danger mt-3">
+                    <h5><i class="fa fa-exclamation-circle"></i> Errors (${stats.errors})</h5>
+                    <ul class="mb-0">
+                        ${errorDetails.map(err => `<li><small>${err}</small></li>`).join('')}
                     </ul>
                 </div>
-            </div>
-        `;
-    }
-
-    function goToReturn() {
-        // Detect if opened in new window/tab vs direct navigation
-        if (window.history.length <= 1 || window.opener) {
-            window.close();
-        } else {
-            window.location.href = 'index.php';
+            `;
         }
+
+        summaryContent.innerHTML = `
+            <div class="mb-3">
+                <h5><i class="fa fa-check-circle text-success"></i> Complete!</h5>
+                <small class="text-muted">Completed at: ${endTime.toLocaleTimeString()}</small>
+            </div>
+            <table class="table table-sm table-striped">
+                <tr><td><strong>Total Pages Processed:</strong></td><td>${stats.totalPages}</td></tr>
+                <tr><td><strong>Pages Added:</strong></td><td>${stats.pagesAdded}</td></tr>
+                <tr><td><strong>Pages Updated:</strong></td><td>${stats.pagesUpdated}</td></tr>
+                <tr><td><strong>Permissions Set:</strong></td><td>${stats.permissionsSet}</td></tr>
+                <tr><td><strong>Errors:</strong></td><td class="${stats.errors > 0 ? 'text-danger' : 'text-success'}">${stats.errors}</td></tr>
+                <tr><td><strong>Duration:</strong></td><td>${duration} seconds</td></tr>
+            </table>
+            ${errorSection}
+        `;
     }
 </script>
 
 <?php
-
-// Handle AJAX requests
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
-    header('Content-Type: application/json');
-
-    $action = $_POST['action'];
-
-    // Debug logging
-    error_log("FIX Script: Processing action: " . $action);
-
-    try {
-        switch ($action) {
-            case 'get_admin_pages':
-                $pages = scanAdminPages();
-                echo json_encode(['success' => true, 'pages' => $pages, 'count' => count($pages)]);
-                break;
-
-            case 'process_page':
-                $page = $_POST['page'] ?? '';
-                $title = $_POST['title'] ?? '';
-                $result = processPagePermissions($page, $title);
-                echo json_encode($result);
-                break;
-
-            case 'log_operation':
-                $result = logScriptRun();
-                echo json_encode($result);
-                break;
-
-            default:
-                echo json_encode(['success' => false, 'message' => 'Unknown action']);
-        }
-    } catch (Exception $e) {
-        error_log("FIX Script Error: " . $e->getMessage());
-        error_log("FIX Script Stack: " . $e->getTraceAsString());
-        echo json_encode(['success' => false, 'message' => $e->getMessage(), 'trace' => $e->getTraceAsString()]);
-    }
-    exit;
-}
 
 /**
  * Scan the admin directory for PHP pages
@@ -496,13 +525,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
  * @throws Exception If admin directory not found or not accessible
  */
 function scanAdminPages(): array {
+    global $abs_us_root, $us_url_root, $user;
+
+    $userId = $user->isLoggedIn() ? $user->data()->id : 0;
     $pages = [];
-    $baseDir = dirname(__DIR__); // Get project root
+    $baseDir = $abs_us_root . $us_url_root; // Use UserSpice root path
+    // Remove trailing slash if present
+    $baseDir = rtrim($baseDir, '/');
     $adminDir = $baseDir . '/app/admin';
 
-    error_log("FIX Script: Base dir: " . $baseDir);
-    error_log("FIX Script: Admin dir: " . $adminDir);
-    error_log("FIX Script: Admin dir exists: " . (is_dir($adminDir) ? 'YES' : 'NO'));
+    logger($userId, "FIX_SCRIPT_DEBUG", "Base dir: " . $baseDir);
+    logger($userId, "FIX_SCRIPT_DEBUG", "Admin dir: " . $adminDir);
+    logger($userId, "FIX_SCRIPT_DEBUG", "Admin dir exists: " . (is_dir($adminDir) ? 'YES' : 'NO'));
 
     if (!is_dir($adminDir)) {
         throw new Exception("Admin directory not found: {$adminDir}");
@@ -516,23 +550,30 @@ function scanAdminPages(): array {
     $fileCount = 0;
     foreach ($iterator as $file) {
         $fileCount++;
-        error_log("FIX Script: Found file: " . $file->getPathname());
+        logger($userId, "FIX_SCRIPT_DEBUG", "Found file: " . $file->getPathname());
 
         if ($file->isFile() && $file->getExtension() === 'php') {
             // Get path relative to project root
-            $baseDirPattern = $baseDir . DIRECTORY_SEPARATOR;
-            $fullPath = $file->getPathname();
-            $relativePath = str_replace($baseDirPattern, '', $fullPath);
+            $fullPath = str_replace('\\', '/', $file->getPathname()); // Normalize path separators
+            $baseDir = str_replace('\\', '/', $baseDir); // Normalize base dir too
+            $relativePath = str_replace($baseDir . '/', '', $fullPath);
+
+            // Skip class files (not actual web pages)
+            if (strpos($relativePath, '/classes/') !== false) {
+                logger($userId, "FIX_SCRIPT_DEBUG", "Skipping class file: " . $relativePath);
+                continue;
+            }
+
             $pages[] = [
                 'file' => $relativePath,
                 'title' => generatePageTitle($relativePath)
             ];
-            error_log("FIX Script: Added page: " . $relativePath);
+            logger($userId, "FIX_SCRIPT_DEBUG", "Added page: " . $relativePath);
         }
     }
 
-    error_log("FIX Script: Total files found: " . $fileCount);
-    error_log("FIX Script: PHP pages added: " . count($pages));
+    logger($userId, "FIX_SCRIPT_DEBUG", "Total files found: " . $fileCount);
+    logger($userId, "FIX_SCRIPT_DEBUG", "PHP pages added: " . count($pages));
 
     return $pages;
 }
@@ -597,10 +638,11 @@ function processPagePermissions(string $pagePath, string $title): array {
         $existingPage = $db->query("SELECT * FROM pages WHERE page = ?", [$pagePath]);
 
         if ($existingPage->count() > 0) {
-            // Update existing page title if needed
+            // Update existing page title and ensure it's private
             $pageData = $existingPage->first();
-            if ($pageData->page_title !== $title) {
-                $db->query("UPDATE pages SET page_title = ? WHERE page = ?", [$title, $pagePath]);
+
+            if ($pageData->title !== $title || $pageData->private != 1) {
+                $db->query("UPDATE pages SET title = ?, private = 1 WHERE page = ?", [$title, $pagePath]);
                 $action = 'updated';
             } else {
                 $action = 'exists';
@@ -608,7 +650,7 @@ function processPagePermissions(string $pagePath, string $title): array {
             $pageId = $pageData->id;
         } else {
             // Insert new page
-            $db->query("INSERT INTO pages (page, page_title, private) VALUES (?, ?, 1)", [$pagePath, $title]);
+            $db->query("INSERT INTO pages (page, title, private) VALUES (?, ?, 1)", [$pagePath, $title]);
             $pageId = $db->lastInsertId();
             $action = 'added';
         }

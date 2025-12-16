@@ -30,7 +30,7 @@ if (!function_exists('processSettingsAutoCreation')) {
 
         // Email & Communication settings
         $emailSettingsFields = [
-            'elan_admin_emails' => ['type' => 'TEXT', 'default' => 'admin@elanregistry.org', 'description' => 'Comma-separated admin email addresses for system notifications and administrative alerts']
+            'elan_admin_emails' => ['type' => 'TEXT', 'default' => 'registrar@elanregistry.org', 'description' => 'Comma-separated admin email addresses for system notifications and administrative alerts']
         ];
 
         // System Maintenance settings
@@ -364,7 +364,7 @@ $autoCreationMessages = processSettingsAutoCreation();
                                   data-desc="Admin Email Addresses"
                                   name="elan_admin_emails"
                                   id="elan_admin_emails"
-                                  placeholder="admin@elanregistry.org, manager@elanregistry.org"><?= htmlspecialchars($settings->elan_admin_emails ?? 'admin@elanregistry.org') ?></textarea>
+                                  placeholder="registrar@elanregistry.org, manager@elanregistry.org"><?= htmlspecialchars($settings->elan_admin_emails ?? 'registrar@elanregistry.org') ?></textarea>
                         <small class="form-text text-muted">
                             <i class="fas fa-info-circle"></i> Comma-separated email addresses for transfer requests, feedback, and administrative notifications
                         </small>

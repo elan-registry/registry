@@ -228,8 +228,10 @@ class CodingStandardsChecker
      */
     private function checkSQLSecurity(string $filePath, string $content): void
     {
-        // Check for potential SQL injection patterns
-        if (preg_match('/\$db\s*->\s*query\s*\(\s*["\'].*\$/', $content)) {
+        // Check for potential SQL injection patterns - variable concatenation inside query string
+        // This detects variables embedded directly in query strings (unsafe)
+        // versus using prepared statements with placeholders (safe)
+        if (preg_match('/\$db\s*->\s*query\s*\(\s*["\'][^"\']*\$[^"\']*["\']/', $content)) {
             $this->errors[] = "$filePath: Potential SQL injection - variable concatenation in query";
         }
 

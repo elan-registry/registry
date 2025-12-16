@@ -195,19 +195,21 @@ function buildCarDetails(array &$cardetails, ?int $carId = null): void
             $cardetails[$key] = $value;
         }
     } else {
-        $userQ = $db->findById($user->data()->id, "users")->results()[0];
+        $ownerId = $user->data()->id;
+        $owner = new ElanRegistryOwner($ownerId);
+        $ownerData = $owner->data();
 
         /*  Add the User/profile information to the record */
-        $cardetails['user_id']      = $userQ->id;
-        $cardetails['email']        = $userQ->email;
-        $cardetails['fname']        = $userQ->fname;
-        $cardetails['lname']        = $userQ->lname;
-        $cardetails['join_date']    = $userQ->join_date;
-        $cardetails['city']         = $userQ->city;
-        $cardetails['state']        = $userQ->state;
-        $cardetails['country']      = $userQ->country;
-        $cardetails['lat']          = $userQ->lat;
-        $cardetails['lon']          = $userQ->lon;
+        $cardetails['user_id']      = $ownerData->id;
+        $cardetails['email']        = $ownerData->email;
+        $cardetails['fname']        = $ownerData->fname;
+        $cardetails['lname']        = $ownerData->lname;
+        $cardetails['join_date']    = $ownerData->join_date;
+        $cardetails['city']         = $ownerData->city;
+        $cardetails['state']        = $ownerData->state;
+        $cardetails['country']      = $ownerData->country;
+        $cardetails['lat']          = $ownerData->lat;
+        $cardetails['lon']          = $ownerData->lon;
 
         $cardetails['id']           = null;
         $cardetails['year']         = null;

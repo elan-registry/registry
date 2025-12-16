@@ -1,304 +1,118 @@
-# Create a file in .claude/commands/
-# Example: .claude/commands/release.md
-
 ---
-description: Release a new version of the project with comprehensive workflow
+description: Release a new version with comprehensive workflow
 ---
 
-# How to release a new version of the project
+# Release Command - Quick Reference
 
-Follow this comprehensive release process to ensure proper versioning, changelog updates, and deployment.
+**📋 For complete release workflow, see [docs/development/DEPLOYMENT.md](../../docs/development/DEPLOYMENT.md)**
 
-## 1. Pre-Release Analysis
+## Quick Release Workflow
 
-### Check Current State
 ```bash
-# Verify you're on the main branch and up to date
-git checkout main
-git pull origin main
-git status
+# 1. Update VERSION file
+echo "v2.9.1" > VERSION
+
+# 2. Create release commit
+git add VERSION
+git commit -m "RELEASE: v2.9.1 - Brief description
+
+Major Features:
+- Feature 1
+- Feature 2
+
+Bug Fixes:
+- Fix 1
+- Fix 2
+
+🤖 Generated with [Claude Code](https://claude.com/claude-code)
+
+Co-Authored-By: Claude Sonnet 4.5 <noreply@anthropic.com>"
+
+# 3. Create annotated tag
+git tag -a v2.9.1 -m "Release v2.9.1: Brief Description
+
+Major Features:
+- Feature 1 with details
+- Feature 2 with details
+
+Bug Fixes:
+- Fix 1 with details
+- Fix 2 with details
+
+Documentation:
+- Doc updates
+
+Technical Changes:
+- Technical changes"
+
+# 4. Push to all remotes
+git push origin feature/v2.9.1 && git push origin v2.9.1    # GitHub
+git push test v2.9.1                                          # Test server
+git push prod main && git push prod v2.9.1                    # Production
+
+# 5. Create GitHub release (major/minor only)
+gh release create "v2.9.1" \
+  --title "Release v2.9.1: Brief Description" \
+  --generate-notes \
+  --verify-tag
 ```
 
-### Identify Last Release
-```bash
-# Find the last release tag
-git tag --sort=-version:refname | head -10Keys 
-git describe --tags --abbrev=0
+## Remote Configuration
 
-# Or check specific tag pattern
-git tag -l "v*" --sort=-version:refname | head -5
-```
+- **origin** - GitHub repository (backup/development)
+- **test** - Test/staging server for validation
+- **prod** - LIVE PRODUCTION SERVER (elanregistry.org)
 
-### Analyze Changes Since Last Release
+## Release Requirements
+
+**MANDATORY for major (x.0.0) and minor (x.y.0) releases:**
+
+- Release notes using template at `docs/development/RELEASE_NOTES_TEMPLATE.md`
+- GitHub release with `gh release create`
+- Annotated git tags
+- Documentation in `docs/releases/`
+
+**Optional for patch releases (x.y.z):**
+
+- Release notes for significant patches or security fixes
+
+## Pre-Release Analysis
+
 ```bash
-# Get commit history since last tag
+# Find last release tag
+git tag --sort=-version:refname | head -10
+
+# Analyze changes since last release
 LAST_TAG=$(git describe --tags --abbrev=0)
-echo "Changes since $LAST_TAG:"
-
-# Detailed commit log with files changed
 git log $LAST_TAG..HEAD --oneline --stat
-
-# Just commit messages for changelog
 git log $LAST_TAG..HEAD --pretty=format:"- %s (%h)"
-
-# Group by type (if using conventional commits)
-git log $LAST_TAG..HEAD --pretty=format:"%s" | grep -E "^(feat|fix|docs|style|refactor|test|chore)"
 ```
 
-### Analyze Impact and Determine Version Bump
-```bash
-# Count commits by type
-echo "=== COMMIT ANALYSIS ==="
-echo "Features (minor bump):"
-git log $LAST_TAG..HEAD --pretty=format:"%s" | grep -c "^feat"
-
-echo "Bug fixes (patch bump):"
-git log $LAST_TAG..HEAD --pretty=format:"%s" | grep -c "^fix"
-
-echo "Breaking changes (major bump):"
-git log $LAST_TAG..HEAD --grep="BREAKING CHANGE" --oneline | wc -l
-
-echo "Other changes:"
-git log $LAST_TAG..HEAD --pretty=format:"%s" | grep -v -E "^(feat|fix)" | wc -l
-```
-
-### Check Files Changed
-```bash
-# See which files have been modified
-git diff $LAST_TAG..HEAD --name-only
-
-# Focus on important files
-git diff $LAST_TAG..HEAD --name-only | grep -E "(package\.json|README\.md|VERSION)"
-
-# Check for dependency changes
-git diff $LAST_TAG..HEAD package.json
-```
-
-## 2. Version Determination
-
-Based on the analysis above, determine the new version following [Semantic Versioning](https://semver.org/):
+## Semantic Versioning
 
 - **Major (X.0.0)**: Breaking changes, incompatible API changes
 - **Minor (X.Y.0)**: New features, backwards compatible
 - **Patch (X.Y.Z)**: Bug fixes, backwards compatible
 
+## Rollback Commands
+
 ```bash
-# Get current version from package.json
-CURRENT_VERSION=$(node -p "require('./package.json').version")
-echo "Current version: $CURRENT_VERSION"
+# Delete tag from all remotes
+git tag -d "v2.9.1"
+git push origin :refs/tags/"v2.9.1"
+git push test :refs/tags/"v2.9.1"
+git push prod :refs/tags/"v2.9.1"
 
-# Calculate next version (replace with appropriate bump)
-# For patch: npm version patch --no-git-tag-version
-# For minor: npm version minor --no-git-tag-version
-# For major: npm version major --no-git-tag-version
+# Emergency production rollback
+PREVIOUS_TAG="v2.9.0"
+git push prod $PREVIOUS_TAG
+git push prod $PREVIOUS_TAG:refs/heads/main
 ```
 
-## 3. Update Documentation
+---
 
-### Update VERSION File
-```bash
-# Update VERSION file with new version number
-echo "vX.Y.Z" > VERSION
+**📖 Full Documentation:**
 
-# Verify new version
-cat VERSION
-```
-
-**Version Management:**
-- This project uses a static VERSION file instead of CHANGELOG.md
-- The VERSION file contains just the version number (e.g., v2.2.4)
-- Deployment timestamp comes from file modification time
-- All release notes are tracked in git commit messages and GitHub releases
-
-### Update README.md if needed
-```bash
-# Check if README needs updates for new features
-git diff $LAST_TAG..HEAD README.md
-
-# Update version badges, installation instructions, or feature lists if necessary
-```
-
-## 4. Version Bump and Tagging
-
-### Update Package Version
-```bash
-# Bump version in package.json (choose appropriate level)
-npm version patch --no-git-tag-version  # for patch
-# npm version minor --no-git-tag-version  # for minor
-# npm version major --no-git-tag-version  # for major
-
-# Verify new version
-NEW_VERSION=$(node -p "require('./package.json').version")
-echo "New version: $NEW_VERSION"
-```
-
-### Commit Release Changes
-```bash
-# Stage all release-related changes
-git add VERSION README.md
-
-# Create release commit with comprehensive description
-git commit -m "RELEASE: v$NEW_VERSION - [Brief description of changes]
-
-[Detailed description of what this release includes:
-- New features
-- Bug fixes  
-- Security improvements
-- Breaking changes (if any)]
-
-🤖 Generated with [Claude Code](https://claude.ai/code)
-
-Co-Authored-By: Claude <noreply@anthropic.com>"
-```
-
-### Create and Push Tag
-```bash
-# Create annotated tag with release notes
-git tag -a "v$NEW_VERSION" -m "Release v$NEW_VERSION
-
-$(git log $LAST_TAG..HEAD --pretty=format:"- %s (%h)" | head -20)"
-
-# Push commit and tag
-git push origin main
-git push origin "v$NEW_VERSION"
-```
-
-## 5. Build and Test
-
-### Run Full Test Suite
-```bash
-# Install dependencies
-npm ci
-
-# Run all tests
-npm run test
-npm run lint
-npm run type-check
-
-# Build project
-npm run build
-
-# Test build output
-npm run start  # or appropriate command to test build
-```
-
-## 6. Create GitHub Release
-
-### Using GitHub CLI
-```bash
-# Create GitHub release with auto-generated notes
-gh release create "v$NEW_VERSION" \
-  --title "Release v$NEW_VERSION" \
-  --generate-notes \
-  --verify-tag
-
-# Or create with custom notes
-gh release create "v$NEW_VERSION" \
-  --title "Release v$NEW_VERSION" \
-  --notes-file RELEASE_NOTES.md \
-  --verify-tag
-```
-
-### Manual Release Notes Template
-Create `RELEASE_NOTES.md`:
-```markdown
-## What's Changed
-
-### 🚀 Features
-- List new features
-
-### 🐛 Bug Fixes
-- List bug fixes
-
-### 📚 Documentation
-- Documentation updates
-
-### 🔧 Maintenance
-- Internal changes
-
-**Full Changelog**: https://github.com/USER/REPO/compare/PREVIOUS_TAG...v$NEW_VERSION
-```
-
-## 7. Post-Release Tasks
-
-### Verify Release
-```bash
-# Verify tag exists
-git tag -l "v$NEW_VERSION"
-
-# Verify GitHub release
-gh release view "v$NEW_VERSION"
-
-# Check if package published (if applicable)
-# npm view PACKAGE_NAME versions --json
-```
-
-### Update Development Branch (if using)
-```bash
-# If you have a development branch, merge back
-git checkout develop  # or your dev branch name
-git merge main
-git push origin develop
-```
-
-### Cleanup
-```bash
-# Remove backup files
-rm -f RELEASE_NOTES.md
-
-# Verify clean state
-git status
-```
-
-## 8. Communication
-
-- [ ] Update project documentation/wiki if needed
-- [ ] Notify team/users about the release
-- [ ] Update deployment environments
-- [ ] Monitor for any post-release issues
-
-## Useful Commands for Release Management
-
-### Find Specific Types of Changes
-```bash
-# Breaking changes
-git log $LAST_TAG..HEAD --grep="BREAKING CHANGE"
-
-# Security fixes
-git log $LAST_TAG..HEAD --grep="security\|Security\|CVE"
-
-# Performance improvements
-git log $LAST_TAG..HEAD --grep="perf\|performance\|optimize"
-```
-
-### Release Branch Workflow (Alternative)
-```bash
-# Create release branch for final preparations
-git checkout -b release/v$NEW_VERSION
-# Make final adjustments, then merge back to main
-```
-
-### Rollback if Needed
-```bash
-# Delete tag if something went wrong
-git tag -d "v$NEW_VERSION"
-git push origin :refs/tags/"v$NEW_VERSION"
-
-# Revert release commit
-git revert HEAD
-```
-
-## Best Practices
-
-- **Always test before releasing** - Run full test suite and manual testing
-- **Use semantic versioning** consistently
-- **Keep detailed commit messages** since they serve as our release notes
-- **Update VERSION file** for every release
-- **Coordinate releases** with team members
-- **Monitor post-release** for issues
-- **Use descriptive git tags** with comprehensive release notes
-- **Tag consistently** using the same format (e.g., v1.2.3)
-- **Deploy to production** using both code and tags: `git push prod main && git push prod --tags`
-
-Remember to follow your project's specific release guidelines and coordinate with your team before publishing releases.
-
+- [DEPLOYMENT.md](../../docs/development/DEPLOYMENT.md) - Complete release and deployment procedures
+- [RELEASE_NOTES_TEMPLATE.md](../../docs/development/RELEASE_NOTES_TEMPLATE.md) - Release notes template
+- [CLAUDE.md](../../docs/development/CLAUDE.md) - Development guidelines

@@ -6,10 +6,16 @@ on:
     # Focus on code files that need standards enforcement
     paths:
       - "**.php"
-      - "**.js" 
+      - "**.js"
       - "**.css"
       - "docs/development/**"
       - ".github/workflows/**"
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: 'PR number to review (optional - uses current branch if not specified)'
+        required: false
+        type: number
 
 jobs:
   claude-review:

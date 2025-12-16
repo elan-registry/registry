@@ -9,7 +9,7 @@ declare(strict_types=1);
  * Part of Phase 1D: Enhanced Database Management
  */
 
-require_once '../../../users/init.php';
+require_once '../../../../users/init.php';
 
 if (!securePage($_SERVER['PHP_SELF'])) {
     http_response_code(403);

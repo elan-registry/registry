@@ -47,7 +47,7 @@ $content = "
     </ul>
 
     <p><strong>Questions or concerns?</strong> Please contact the registry administrators at
-    <a href=\"mailto:admin@elanregistry.org\">admin@elanregistry.org</a> with any questions about this transfer request.</p>
+    <a href=\"mailto:registrar@elanregistry.org\">registrar@elanregistry.org</a> with any questions about this transfer request.</p>
 
     <h3>📚 Transfer System Information</h3>
     <p>Learn more about how car transfers work:</p>

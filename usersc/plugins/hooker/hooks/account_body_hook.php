@@ -5,17 +5,13 @@ global $user;
 
 // Get some interesting user information to display later
 
-$user_id = $user->data()->id;
 
-// USER ID is in $user_id .  Use the USER ID to get the user information from users table
-$userQ = $db->query("SELECT * FROM users WHERE id = ?", array($user_id));
-if ($userQ->count() > 0) {
-    $thatUser = $userQ->results();
-}
+$ownerId = $user->data()->id;
+$owner = new ElanRegistryOwner($ownerId);
+$ownerData = $owner->data();
 
-$signupdate = new DateTime($thatUser[0]->join_date);
-$lastlogin = new DateTime($thatUser[0]->last_login);
-
+$signupdate = new DateTime($ownerData->join_date);
+$lastlogin = new DateTime($ownerData->last_login);
 ?>
 
 <div class="card registry-card">
@@ -30,9 +26,9 @@ $lastlogin = new DateTime($thatUser[0]->last_login);
                 <small class="text-muted text-uppercase fw-bold">Full Name</small>
             </div>
             <p class="mb-0 ps-3">
-                <?= ucfirst($thatUser[0]->fname) . ' ' . ucfirst($thatUser[0]->lname) ?>
+                <?= ucfirst($ownerData->fname) . ' ' . ucfirst($ownerData->lname) ?>
                 <br>
-                <small class="text-muted">@<?= $thatUser[0]->username ?></small>
+                <small class="text-muted">@<?= $ownerData->username ?></small>
             </p>
         </div>
 
@@ -43,7 +39,7 @@ $lastlogin = new DateTime($thatUser[0]->last_login);
                 <small class="text-muted text-uppercase fw-bold">Email Address</small>
             </div>
             <p class="mb-0 ps-3">
-                <?= $thatUser[0]->email ?>
+                <?= $ownerData->email ?>
             </p>
         </div>
 
@@ -56,9 +52,9 @@ $lastlogin = new DateTime($thatUser[0]->last_login);
             <p class="mb-0 ps-3">
                 <?php 
                 $location = [];
-                if (!empty($thatUser[0]->city)) $location[] = html_entity_decode($thatUser[0]->city);
-                if (!empty($thatUser[0]->state)) $location[] = html_entity_decode($thatUser[0]->state);
-                if (!empty($thatUser[0]->country)) $location[] = html_entity_decode($thatUser[0]->country);
+                if (!empty($ownerData->city)) $location[] = html_entity_decode($ownerData->city);
+                if (!empty($ownerData->state)) $location[] = html_entity_decode($ownerData->state);
+                if (!empty($ownerData->country)) $location[] = html_entity_decode($ownerData->country);
                 echo !empty($location) ? implode(', ', $location) : '<span class="text-muted fst-italic">Not specified</span>';
                 ?>
             </p>
@@ -78,7 +74,7 @@ $lastlogin = new DateTime($thatUser[0]->last_login);
             <div class="col-6">
                 <i class="fas fa-chart-line text-info d-block mb-1"></i>
                 <small class="text-muted d-block">Total Logins</small>
-                <strong><?= number_format($thatUser[0]->logins) ?></strong>
+                <strong><?= number_format($ownerData->logins) ?></strong>
             </div>
         </div>
 

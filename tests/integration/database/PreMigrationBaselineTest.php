@@ -3,7 +3,10 @@
 declare(strict_types=1);
 
 // Load UserSpice framework for real database testing
-require_once dirname(__DIR__) . '/users/init.php';
+$initPath = dirname(__DIR__) . '/users/init.php';
+if (file_exists($initPath)) {
+    require_once $initPath;
+}
 
 use PHPUnit\Framework\TestCase;
 

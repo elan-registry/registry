@@ -180,14 +180,14 @@ if (Input::exists('post')) {
                     }
 
                     try {
-                        $car = new Car($car_id);
+                        $car = new Car((int)$car_id);
                         $targetUser = getUserWithProfile($user_id);
                         $targetName = $targetUser && $targetUser->fname && $targetUser->lname
                             ? "{$targetUser->fname} {$targetUser->lname}"
                             : "User ID $user_id";
 
                         $reason = "Car was reassigned to $targetName (User ID: $user_id) by admin " . $currentUserId;
-                        $transferSuccess = $car->transfer($user_id, $reason);
+                        $transferSuccess = $car->transfer((int) $user_id, $reason);
 
                         if ($transferSuccess) {
                             $successes[] = "Car ID $car_id successfully reassigned to $targetName";
@@ -431,7 +431,6 @@ if (Input::exists('post')) {
 
                     if (!$transfer_id) {
                         $errors[] = 'Invalid transfer request ID';
-                        break;
                     }
 
                     $transferQuery = $db->query(
@@ -450,14 +449,14 @@ if (Input::exists('post')) {
                     $transfer = $transferQuery->first();
 
                     try {
-                        $car = new Car($transfer->car_id);
+                        $car = new Car((int) $transfer->car_id);
                         $targetUser = getUserWithProfile($transfer->requested_by_user_id);
                         $targetName = $targetUser && $targetUser->fname && $targetUser->lname
                             ? "{$targetUser->fname} {$targetUser->lname}"
                             : "User ID {$transfer->requested_by_user_id}";
 
                         $reason = "Car was reassigned to $targetName (User ID: {$transfer->requested_by_user_id}) by admin " . $currentUserId;
-                        $transferSuccess = $car->transfer($transfer->requested_by_user_id, $reason);
+                        $transferSuccess = $car->transfer( (int) $transfer->requested_by_user_id, $reason);
 
                         if ($transferSuccess) {
                             $db->query(
@@ -470,7 +469,7 @@ if (Input::exists('post')) {
 
                             // Send approval notification
                             require_once '../../usersc/includes/transfer_email_notifications.php';
-                            $notificationSent = sendTransferResponseNotification($transfer_id, true, "Approved by admin user {$currentUserId}", $transfer->current_owner_id);
+                            $notificationSent = sendTransferResponseNotification($transfer_id, true, "Approved by admin user {$currentUserId}", (int) $transfer->current_owner_id);
 
                             if ($notificationSent) {
                                 logger($currentUserId, 'EmailSuccess', "Transfer approval notification sent for request #$transfer_id");
@@ -614,19 +613,19 @@ if (Input::exists('post')) {
                                     </a>
                                 </li>
 
-                                <!-- System Maintenance Tab -->
-                                <li class="nav-item">
-                                    <a class="nav-link <?= $activeTab === 'system' ? 'active' : '' ?>"
-                                       href="?tab=system" role="tab">
-                                        <i class="fas fa-tools"></i> System Maintenance
-                                    </a>
-                                </li>
-
                                 <!-- Owner Cleanup Tab -->
                                 <li class="nav-item">
                                     <a class="nav-link <?= $activeTab === 'cleanup' ? 'active' : '' ?>"
                                        href="?tab=cleanup" role="tab">
                                         <i class="fas fa-shield-alt"></i> Owner Cleanup
+                                    </a>
+                                </li>
+
+                                <!-- System Maintenance Tab -->
+                                <li class="nav-item">
+                                    <a class="nav-link <?= $activeTab === 'system' ? 'active' : '' ?>"
+                                       href="?tab=system" role="tab">
+                                        <i class="fas fa-tools"></i> System Maintenance
                                     </a>
                                 </li>
 

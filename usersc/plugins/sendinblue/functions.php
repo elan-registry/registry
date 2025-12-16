@@ -95,6 +95,7 @@ function sendinblue($to, $subject, $body, $to_name = "", $options = []){
 
     $sendSmtpEmail['attachment'] = $attachments;
   }
+    logger(1, 'SendinblueDebug', "About to send {$sendSmtpEmail}");
 
   try {
     $result = $apiInstance->sendTransacEmail($sendSmtpEmail);

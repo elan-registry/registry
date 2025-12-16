@@ -4,13 +4,14 @@ declare(strict_types=1);
 
 /**
  * PHPUnit Bootstrap File for Elan Registry Tests
- * 
+ *
  * Sets up the testing environment with UserSpice framework
  * and mocks for comprehensive testing.
  */
 
 // Set up testing environment
 define('TESTING', true);
+define('TESTING_UNIT_ONLY', true);
 
 // Set up basic paths
 $projectRoot = dirname(__DIR__);

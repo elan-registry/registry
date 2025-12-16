@@ -22,42 +22,42 @@ class EnhancedSchemaManager {
         'elan_image_thumbnail_sizes' => ['type' => 'TEXT', 'default' => '100,300,768,1024,2048', 'description' => 'Comma-separated thumbnail sizes in pixels']
     ];
 
-    // New table management capabilities
+    // New table management capabilities.  Will be created if missing when maintenance is run via ensureQualityTables
     private $requiredTables = [
-        'duplicate_detection_results' => [
-            'id' => 'INT(11) NOT NULL AUTO_INCREMENT PRIMARY KEY',
-            'detection_type' => 'ENUM("email", "profile", "car") NOT NULL',
-            'primary_record_id' => 'INT(11) NOT NULL',
-            'duplicate_record_id' => 'INT(11) NOT NULL',
-            'confidence_score' => 'DECIMAL(3,2) DEFAULT 0.00',
-            'status' => 'ENUM("pending", "resolved", "dismissed") DEFAULT "pending"',
-            'detected_at' => 'TIMESTAMP DEFAULT CURRENT_TIMESTAMP',
-            'resolved_at' => 'TIMESTAMP NULL',
-            'admin_notes' => 'TEXT NULL'
+        'car_transfer_requests' => [
+            'id'  => 'INT(11) NOT NULL AUTO_INCREMENT PRIMARY KEY',
+            'existing_car_id' => 'INT(11) NOT NULL',
+            'requested_by_user_id' => 'INT(11) NOT NULL',
+            'request_date'  => 'TIMESTAMP DEFAULT CURRENT_TIMESTAMP',
+            'status' => 'enum(\'pending\',\'approved\',\'denied\',\'completed\',\'expired\') NOT NULL DEFAULT \'pending\'',
+            'security_token' => 'VARCHAR(64) NOT NULL',
+            'expires_at' => 'TIMESTAMP NOT NULL DEFAULT \'0000-00-00 00:00:00\'',
+            'admin_notes' => 'TEXT NULL',
+            'current_owner_response_date' => 'TIMESTAMP NULL DEFAULT NULL',
+            'completed_date' => 'TIMESTAMP NULL DEFAULT NULL',
+            'denial_reason' => 'TEXT NULL',
+            'submitted_model'=> 'VARCHAR(30) NOT NULL',
+            'submitted_series'=> 'VARCHAR(12) NOT NULL',
+            'submitted_variant'=> 'VARCHAR(15) NOT NULL',
+            'submitted_year'=> 'VARCHAR(4) NOT NULL',
+            'submitted_type' => 'CHAR(3) NOT NULL',
+            'submitted_chassis'=> 'VARCHAR(15) NOT NULL',
+            'submitted_color'=> 'VARCHAR(25) DEFAULT NULL',
+            'submitted_engine'=> 'VARCHAR(15) DEFAULT NULL',
+            'submitted_purchasedate' => 'DATE DEFAULT NULL',
+            'submitted_solddate' => 'DATE DEFAULT NULL',
+            'submitted_comments'=> 'TEXT NULL',
+            'submitted_image' => 'TEXT NULL',
+            'submitted_email'=> 'VARCHAR(155) DEFAULT NULL',
+            'submitted_fname'=> 'VARCHAR(155) DEFAULT NULL',
+            'submitted_lname'=> 'VARCHAR(155) DEFAULT NULL',
+            'submitted_city'=> 'VARCHAR(100) DEFAULT NULL',
+            'submitted_state'=> 'VARCHAR(100) DEFAULT NULL',
+            'submitted_country'=> 'VARCHAR(100) DEFAULT NULL',
+            'submitted_website' => 'varchar(100) DEFAULT NULL',
+            'created_by' => 'INT(11) NOT NULL',
+            'modified_date' => 'TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP'
         ],
-        'user_profile_audit' => [
-            'id' => 'INT(11) NOT NULL AUTO_INCREMENT PRIMARY KEY',
-            'user_id' => 'INT(11) NOT NULL',
-            'field_name' => 'VARCHAR(100) NOT NULL',
-            'old_value' => 'TEXT NULL',
-            'new_value' => 'TEXT NULL',
-            'change_type' => 'ENUM("create", "update", "delete") NOT NULL',
-            'admin_id' => 'INT(11) NULL',
-            'change_reason' => 'VARCHAR(255) NULL',
-            'created_at' => 'TIMESTAMP DEFAULT CURRENT_TIMESTAMP',
-            'ip_address' => 'VARCHAR(45) NULL'
-        ],
-        'data_quality_metrics' => [
-            'id' => 'INT(11) NOT NULL AUTO_INCREMENT PRIMARY KEY',
-            'metric_type' => 'VARCHAR(50) NOT NULL',
-            'metric_name' => 'VARCHAR(100) NOT NULL',
-            'metric_value' => 'DECIMAL(10,2) NOT NULL',
-            'threshold_warning' => 'DECIMAL(10,2) NULL',
-            'threshold_critical' => 'DECIMAL(10,2) NULL',
-            'status' => 'ENUM("normal", "warning", "critical") DEFAULT "normal"',
-            'measured_at' => 'TIMESTAMP DEFAULT CURRENT_TIMESTAMP',
-            'context_data' => 'JSON NULL'
-        ]
     ];
 
     // Schema validation rules
@@ -279,6 +279,8 @@ class EnhancedSchemaManager {
      * Create backup before schema changes (integration with FIX backup system)
      */
     public function createSchemaBackup(string $operation): string {
+
+        
         if (function_exists('createStandardizedBackup')) {
             try {
                 return createStandardizedBackup(
@@ -307,11 +309,11 @@ class EnhancedSchemaManager {
         ];
 
         try {
-            // Create backup before maintenance
-            $backupPath = $this->createSchemaBackup('Schema Maintenance');
-            $results['backup_created'] = true;
-            $results['backup_path'] = $backupPath;
-            $results['operations'][] = 'Created maintenance backup';
+            // Create backup before maintenance - Commented out issue #364
+            // $backupPath = $this->createSchemaBackup('Schema Maintenance');
+            // $results['backup_created'] = true;
+            // $results['backup_path'] = $backupPath;
+            // $results['operations'][] = 'Created maintenance backup';
 
             // Perform settings auto-creation
             $settingsResult = $this->ensureSettingsFields();

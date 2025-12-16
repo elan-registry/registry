@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <phpunit xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-         xsi:noNamespaceSchemaLocation="https://schema.phpunit.de/10.5/phpunit.xsd"
+         xsi:noNamespaceSchemaLocation="https://schema.phpunit.de/12.0/phpunit.xsd"
          bootstrap="tests/bootstrap.php"
          colors="true"
          processIsolation="false"
@@ -9,32 +9,9 @@
          backupGlobals="false">
     
     <testsuites>
-        <!-- Fast unit tests organized by domain (<30s) -->
+        <!-- Combined unit test suite (all unit tests) -->
         <testsuite name="Unit">
             <directory>tests/unit</directory>
-            <exclude>tests/run_tests.php</exclude>
-        </testsuite>
-
-
-        <!-- Unit tests by domain -->
-        <testsuite name="Unit.Cars">
-            <directory>tests/unit/cars</directory>
-        </testsuite>
-
-        <testsuite name="Unit.Users">
-            <directory>tests/unit/users</directory>
-        </testsuite>
-
-        <testsuite name="Unit.Security">
-            <directory>tests/unit/security</directory>
-        </testsuite>
-
-        <testsuite name="Unit.Uploads">
-            <directory>tests/unit/uploads</directory>
-        </testsuite>
-
-        <testsuite name="Unit.System">
-            <directory>tests/unit/system</directory>
         </testsuite>
 
         <!-- Database integration tests (run separately with real DB) -->
@@ -89,12 +66,4 @@
             <file>usersc/classes/test_class.php</file>
         </exclude>
     </source>
-
-    <coverage>
-        <report>
-            <html outputDirectory="coverage/html"/>
-            <text outputFile="coverage/coverage.txt"/>
-            <clover outputFile="coverage/clover.xml"/>
-        </report>
-    </coverage>
 </phpunit>
