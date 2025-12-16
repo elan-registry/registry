@@ -430,7 +430,7 @@ if (Input::exists('post')) {
                     $transfer_id = (int) Input::get('transfer_id');
 
                     if (!$transfer_id) {
-                        $errors[] = 'Invalid transfer reque
+                        $errors[] = 'Invalid transfer request ID';
                     }
 
                     $transferQuery = $db->query(
