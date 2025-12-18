@@ -184,7 +184,7 @@ function sendTransferRequestAdminAlert(int $transferRequestId): bool
             'expires_at' => $transferData->expires_at ?? ''
         ];
 
-        $reviewUrl = 'https://elanregistry.org/app/cars/manage.php#transfers';
+        $reviewUrl = ' https://elanregistry.org/app/admin/manage-consolidated.php';
 
         // Generate email content
         ob_start();
