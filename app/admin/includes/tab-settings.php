@@ -244,7 +244,7 @@ $autoCreationMessages = processSettingsAutoCreation();
                     </div>
 
                     <div class="mt-3">
-                        <button type="button" class="btn btn-outline-info btn-sm" onclick="testGoogleServices()">
+                        <button type="button" class="btn btn-outline-info btn-sm" onclick="testGoogleServices(this)">
                             <i class="fas fa-flask"></i> Test API Keys
                         </button>
                     </div>
@@ -799,8 +799,9 @@ $(document).ready(function() {
 });
 
 // Test Google Services functionality
-function testGoogleServices() {
+function testGoogleServices(buttonElement) {
     console.log('[API Test] Starting Google Services API test');
+    console.log('[API Test] Button element passed:', buttonElement);
 
     const mapsKey = $('#elan_google_maps_key').val();
     const geoKey = $('#elan_google_geo_key').val();
@@ -814,13 +815,13 @@ function testGoogleServices() {
         return;
     }
 
-    // Show loading state
-    const btn = $('button[onclick="testGoogleServices()"]');
-    console.log('[API Test] Button found:', btn.length, 'element(s)');
+    // Wrap button element in jQuery
+    const btn = $(buttonElement);
+    console.log('[API Test] Button wrapped in jQuery:', btn.length, 'element(s)');
 
     if (btn.length === 0) {
-        console.error('[API Test] ERROR: Button not found! Cannot update UI state.');
-        alert('Error: Test button not found. Please refresh the page.');
+        console.error('[API Test] ERROR: Button element is invalid!');
+        alert('Error: Invalid button element. Please refresh the page.');
         return;
     }
 
