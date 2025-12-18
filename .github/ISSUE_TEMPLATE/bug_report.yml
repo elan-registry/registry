@@ -1,21 +1,14 @@
 name: 🐛 Bug Report
-description: File a bug report to help us improve the Elan Registry
+description: Report a bug to help us improve the Elan Registry
 title: "[Bug]: "
 labels: ["bug", "status: needs-planning"]
 assignees: []
 body:
-  - type: markdown
-    attributes:
-      value: |
-        Thanks for taking the time to fill out this bug report! Please provide as much detail as possible.
-
   - type: textarea
     id: what-happened
     attributes:
       label: What happened?
-      description: Describe what you were doing when the bug occurred
-      placeholder: Tell us what you see!
-      value: "A bug happened!"
+      description: Describe the bug and what you were doing when it occurred
     validations:
       required: true
 
@@ -24,7 +17,6 @@ body:
     attributes:
       label: Expected Behavior
       description: What did you expect to happen instead?
-      placeholder: Tell us what you expected!
     validations:
       required: true
 
@@ -32,12 +24,10 @@ body:
     id: reproduction-steps
     attributes:
       label: Steps to Reproduce
-      description: Please provide step-by-step instructions to reproduce the issue
       placeholder: |
         1. Go to '...'
         2. Click on '....'
-        3. Scroll down to '....'
-        4. See error
+        3. See error
     validations:
       required: true
 
@@ -45,19 +35,14 @@ body:
     id: url
     attributes:
       label: URL (if applicable)
-      description: Please provide the URL where the issue occurs
       placeholder: https://elanregistry.org/...
 
   - type: textarea
     id: environment
     attributes:
       label: Environment
-      description: Please provide details about your environment
-      placeholder: |
-        - Browser: Chrome 96.0.4664.110
-        - OS: macOS 12.1
-        - Device: Desktop/Mobile
-        - Screen resolution: 1920x1080
+      description: Browser, OS, device type
+      placeholder: "Chrome on macOS Desktop"
     validations:
       required: true
 
@@ -65,26 +50,16 @@ body:
     id: screenshots
     attributes:
       label: Screenshots/Additional Context
-      description: If applicable, add screenshots or additional context to help explain your problem
+      description: Add screenshots or additional details if helpful
 
   - type: dropdown
     id: priority
     attributes:
-      label: Priority Level
-      description: How critical is this bug?
+      label: Priority
       options:
-        - Low - Minor issue that doesn't affect core functionality
+        - Low - Minor issue
         - Medium - Affects functionality but has workarounds
         - High - Significantly impacts functionality
-        - Critical - Prevents core functionality or affects production
+        - Critical - Prevents core functionality
     validations:
       required: true
-
-  - type: checkboxes
-    id: terms
-    attributes:
-      label: Code of Conduct
-      description: By submitting this issue, you agree to follow our [Code of Conduct](https://example.com)
-      options:
-        - label: I agree to follow this project's Code of Conduct
-          required: true
