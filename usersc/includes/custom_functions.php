@@ -90,3 +90,24 @@ function isRegistryAdmin($userId = null) {
     return hasPerm([2, 3], $userId);
 }
 
+/**
+ * Get the base URL from database email settings with static caching
+ *
+ * Retrieves the base URL for the application from the email.verify_url database setting.
+ * Uses static caching to avoid repeated database queries per request.
+ * This ensures environment-aware URLs in emails and API calls.
+ *
+ * @return string Base URL (e.g., 'https://elanregistry.org' or 'http://localhost')
+ */
+function getBaseUrl() {
+    static $baseUrl = null;
+
+    if ($baseUrl === null) {
+        $db = DB::getInstance();
+        $result = $db->query("SELECT verify_url FROM email")->first();
+        $baseUrl = $result->verify_url ?? 'https://elanregistry.org'; // Fallback to production
+    }
+
+    return rtrim($baseUrl, '/'); // Remove trailing slash for consistency
+}
+

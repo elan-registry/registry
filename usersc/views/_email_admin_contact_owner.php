@@ -31,7 +31,7 @@
 <body>
     <div class="email-container">
         <div class="header">
-            <img src="https://elanregistry.org/usersc/templates/ElanRegistry/assets/images/logo-72x72.png" alt="Lotus Logo" class="logo">
+            <img src="<?php echo getBaseUrl(); ?>/usersc/templates/ElanRegistry/assets/images/logo-72x72.png" alt="Lotus Logo" class="logo">
             <h1>Lotus Elan Registry</h1>
             <p>Administrator Message</p>
         </div>
@@ -90,12 +90,12 @@
 
             <p><strong>You can reply directly to this email to respond to the Registry Administrator.</strong></p>
 
-            <p>If this message is regarding data quality in your car registration, please consider updating your car details at: <a href="https://elanregistry.org">https://elanregistry.org</a></p>
+            <p>If this message is regarding data quality in your car registration, please consider updating your car details at: <a href="<?php echo getBaseUrl(); ?>"><?php echo getBaseUrl(); ?></a></p>
         </div>
 
         <div class="footer">
             <p><strong>The Lotus Elan Registry</strong></p>
-            <p><a href="https://elanregistry.org">https://elanregistry.org</a></p>
+            <p><a href="<?php echo getBaseUrl(); ?>"><?php echo getBaseUrl(); ?></a></p>
             <p>Preserving the legacy of Colin Chapman's masterpiece since 2003</p>
             <hr style="border: none; border-top: 1px solid #dee2e6; margin: 15px 0;">
             <p><small>This message was sent by a Registry Administrator through the data quality management system.</small></p>

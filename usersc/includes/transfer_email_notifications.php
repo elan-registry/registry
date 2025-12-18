@@ -184,7 +184,7 @@ function sendTransferRequestAdminAlert(int $transferRequestId): bool
             'expires_at' => $transferData->expires_at ?? ''
         ];
 
-        $reviewUrl = ' https://elanregistry.org/app/admin/manage-consolidated.php';
+        $reviewUrl = getBaseUrl() . '/app/admin/manage-consolidated.php';
 
         // Generate email content
         ob_start();
@@ -273,7 +273,7 @@ function sendTransferResponseNotification(int $transferRequestId, bool $isApprov
             'completed_date' => $transferData->completed_date ?: date('Y-m-d H:i:s')
         ];
 
-        $carUrl = "https://elanregistry.org/app/cars/details.php?id=" . $carData->id;
+        $carUrl = getBaseUrl() . "/app/cars/details.php?id=" . $carData->id;
 
         // Generate email content
         ob_start();
