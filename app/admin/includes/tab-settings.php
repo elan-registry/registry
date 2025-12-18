@@ -370,6 +370,22 @@ $autoCreationMessages = processSettingsAutoCreation();
                         </small>
                     </div>
 
+                    <div class="form-group">
+                        <label for="elan_feedback_email" class="font-weight-bold">
+                            <i class="fas fa-comment-dots"></i> Feedback Email Address
+                        </label>
+                        <input type="text"
+                               class="form-control ajxtxt"
+                               data-desc="Feedback Email Address"
+                               name="elan_feedback_email"
+                               id="elan_feedback_email"
+                               value="<?= htmlspecialchars($settings->elan_feedback_email ?? 'registrar@elanregistry.org') ?>"
+                               placeholder="registrar@elanregistry.org">
+                        <small class="form-text text-muted">
+                            <i class="fas fa-info-circle"></i> Email address for receiving user feedback form submissions
+                        </small>
+                    </div>
+
                     <div class="mt-3">
                         <button type="button" class="btn btn-outline-primary btn-sm" onclick="testEmailConfiguration()">
                             <i class="fas fa-paper-plane"></i> Test Email Config

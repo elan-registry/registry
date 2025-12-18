@@ -111,3 +111,29 @@ function getBaseUrl() {
     return rtrim($baseUrl, '/'); // Remove trailing slash for consistency
 }
 
+/**
+ * Get admin email address(es) from settings
+ *
+ * Returns the configured admin email address(es) from the database settings,
+ * with a fallback to the default registrar email if not configured.
+ *
+ * @return string Admin email address(es), comma-separated if multiple
+ */
+function getAdminEmails(): string {
+    global $settings;
+    return $settings->elan_admin_emails ?? 'registrar@elanregistry.org';
+}
+
+/**
+ * Get feedback email address from settings
+ *
+ * Returns the configured feedback form email address from the database settings,
+ * with a fallback to the default registrar email if not configured.
+ *
+ * @return string Feedback email address
+ */
+function getFeedbackEmail(): string {
+    global $settings;
+    return $settings->elan_feedback_email ?? 'registrar@elanregistry.org';
+}
+

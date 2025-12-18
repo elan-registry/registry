@@ -87,7 +87,7 @@ function sendTransferRequestNotification(int $transferRequestId): bool
         // Send email to current owner
         $subject = "[ELANREGISTRY] Car Ownership Transfer Request - " . $carData->year . " " . $carData->series . " " . $carData->variant . " (Chassis: " . $carData->chassis . ")";
         $options = [
-            'reply' => 'registrar@elanregistry.org'
+            'reply' => getAdminEmails()
         ];
 
         $result = email($currentOwner->email, $subject, $emailBody, "", $options);
@@ -114,13 +114,13 @@ function sendTransferRequestNotification(int $transferRequestId): bool
  */
 function sendTransferRequestAdminAlert(int $transferRequestId): bool
 {
-    global $abs_us_root, $us_url_root, $settings;
+    global $abs_us_root, $us_url_root;
     $db = DB::getInstance();
 
 
     try {
         // Get admin email addresses from settings
-        $adminEmailsRaw = $settings->elan_admin_emails ?? 'registrar@elanregistry.org';
+        $adminEmailsRaw = getAdminEmails();
         $adminEmails = array_map('trim', explode(',', $adminEmailsRaw));
         $adminEmails = array_filter($adminEmails); // Remove empty values
 
@@ -194,7 +194,7 @@ function sendTransferRequestAdminAlert(int $transferRequestId): bool
         // Send email to all admins
         $subject = "[ELANREGISTRY] ADMIN ALERT: Transfer Request #$transferRequestId - " . $carData->year . " " . $carData->series . " (Chassis: " . $carData->chassis . ")";
         $options = [
-            'reply' => 'registrar@elanregistry.org'
+            'reply' => getAdminEmails()
         ];
 
         $successCount = 0;
@@ -284,7 +284,7 @@ function sendTransferResponseNotification(int $transferRequestId, bool $isApprov
         $status = $isApproved ? 'APPROVED' : 'DENIED';
         $subject = "[ELANREGISTRY] Transfer Request $status - " . $carData->year . " " . $carData->series . " " . $carData->variant . " (Chassis: " . $carData->chassis . ")";
         $options = [
-            'reply' => 'registrar@elanregistry.org'
+            'reply' => getAdminEmails()
         ];
 
         $result = email($requester->email, $subject, $emailBody, "", $options);
@@ -388,7 +388,7 @@ function sendTransferPreviousOwnerNotification(int $transferRequestId, bool $isA
         $status = $isApproved ? 'APPROVED' : 'DENIED';
         $subject = "[ELANREGISTRY] Transfer Decision: $status - " . $carData->year . " " . $carData->series . " " . $carData->variant . " (Chassis: " . $carData->chassis . ")";
         $options = [
-            'reply' => 'registrar@elanregistry.org'
+            'reply' => getAdminEmails()
         ];
 
         $result = email($previousOwner->email, $subject, $emailBody, "", $options);
