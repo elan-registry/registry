@@ -1,4 +1,5 @@
 <?php
+declare(strict_types=1);
 
 /**
  * car_details.php
@@ -151,7 +152,7 @@ if (!empty($_GET)) {
                                     <?php
                                     if (isset($user) && $user->isLoggedIn()) {
                                         $isOwner = ($user->data()->id === $car->data()->user_id);
-                                        $isAdmin = hasPerm([1, 2], $user->data()->id); // Administrator (1) or Editor (2)
+                                        $isAdmin = isRegistryAdmin($user->data()->id); // Administrator (2) or Editor (3)
 
                                         if ($isOwner) { ?>
                                             <form method="POST" action="<?= $us_url_root ?>app/cars/edit.php" class="d-inline">

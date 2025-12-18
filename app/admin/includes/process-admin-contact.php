@@ -18,7 +18,7 @@ if (!securePage($_SERVER['PHP_SELF'])) {
 }
 
 // Verify admin/editor permissions
-if (!hasPerm([1, 2])) { // Administrator (1) or Editor (2)
+if (!isRegistryAdmin()) { // Administrator (2) or Editor (3)
     logger($user->data()->id ?? 0, 'ElanRegistry', 'Unauthorized access attempt to admin contact system');
     Redirect::to($us_url_root . 'users/login.php');
 }

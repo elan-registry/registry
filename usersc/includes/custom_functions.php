@@ -1,4 +1,6 @@
 <?php
+declare(strict_types=1);
+
 /*
 UserSpice 4
 An Open Source PHP User Management System
@@ -76,5 +78,15 @@ function getUserWithProfile($user_id) {
     }
 
     return null;
+}
+
+/**
+ * Check if user has Registry admin or editor permissions
+ *
+ * @param int|null $userId User ID to check (defaults to current user)
+ * @return bool True if user is Administrator (2) or Editor (3)
+ */
+function isRegistryAdmin($userId = null) {
+    return hasPerm([2, 3], $userId);
 }
 

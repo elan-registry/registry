@@ -18,8 +18,8 @@ if (!securePage($_SERVER['PHP_SELF'])) {
     die();
 }
 
-// Admin permission check (Administrator or Editor roles)
-if (!hasPerm([1, 2])) {
+// Admin permission check (Administrator (2) or Editor (3) roles)
+if (!isRegistryAdmin()) {
     usError('Access denied. Administrator or Editor privileges required.');
     Redirect::to($us_url_root . 'users/login.php');
 }
