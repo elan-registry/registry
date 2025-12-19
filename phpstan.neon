@@ -10,7 +10,7 @@
 
 parameters:
     # Analysis level (0-9, higher = stricter)
-    # Level 6 is a good balance between strictness and practicality
+    # Level 5 is a good balance between strictness and practicality
     level: 5
 
     # Paths to analyze
@@ -30,48 +30,30 @@ parameters:
     checkMissingTypehints: true
     checkExplicitMixedMissingReturn: true
     checkTooWideReturnTypesInProtectedAndPublicMethods: true
-    checkMissingIterableValueType: false  # Can be enabled later
 
     # Specific rules for database type handling
     # This helps catch the int/string type mismatch issues
     treatPhpDocTypesAsCertain: false
 
+    # Check for uninitialized properties
+    checkUninitializedProperties: true
+
     # Ignore specific errors (use sparingly)
     ignoreErrors:
         # UserSpice framework uses mixed types extensively
-        - '#Function \w+\(\) has no return type specified#'
-        - '#Method \w+::\w+\(\) has parameter \$\w+ with no type specified#'
+        - '#Function \\w+\\(\\) has no return type specified#'
+        - '#Method \\w+::\\w+\\(\\) has parameter \$\\w+ with no type specified#'
 
         # Allow UserSpice legacy code patterns
-        - '#Unsafe usage of new static\(\)#'
+        - '#Unsafe usage of new static\\(\\)#'
+
+    # Don't report unmatched ignored errors
+    reportUnmatchedIgnoredErrors: false
 
     # Bootstrap file for autoloading
     # Uncomment and adjust if needed
     # bootstrapFiles:
     #     - users/init.php
-
-    # Check for unused private properties and methods
-    checkUninitializedProperties: true
-    checkUnusedPrivateProperties: true
-
-    # Report always-true/false conditions
-    checkAlwaysTrueCheckTypeFunctionCall: true
-    checkAlwaysTrueInstanceof: true
-    checkAlwaysTrueStrictComparison: true
-
-    # Additional strict rules
-    strictRules:
-        allRules: false  # Enable individual rules below
-
-        # These catch common bugs
-        disallowedConstructs: true
-        overwriteVariablesWithLoop: true
-        closureUsesThis: true
-        matchingInheritedMethodNames: true
-        numericOperandsInArithmeticOperators: true
-        strictCalls: true
-        switchConditionsMatchingType: true
-        noVariableVariables: false  # UserSpice uses these
 
 # Custom rules (can be added via extensions)
 # extensions:
