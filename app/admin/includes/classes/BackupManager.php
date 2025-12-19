@@ -40,12 +40,14 @@ class BackupManager {
     /**
      * Constructor
      *
+     * Note: PHP constructors cannot have return type declarations
+     *
      * @param mixed $database Database connection object
      * @param string $backupDirectory Base directory for backups
      * @param int|null $userId User ID for logging (optional)
-     * @return void
      */
-    public function __construct($database, string $backupDirectory, ?int $userId = null): void {
+    // phpcs:ignore Squiz.Commenting.FunctionComment.MissingReturn
+    public function __construct($database, string $backupDirectory, ?int $userId = null) {
         $this->db = $database;
         $this->backupBaseDir = rtrim($backupDirectory, '/') . '/';
         $this->logger = function($level, $category, $message) use ($userId) {

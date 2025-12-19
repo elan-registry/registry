@@ -80,12 +80,14 @@ class EnhancedSchemaManager {
     /**
      * Constructor
      *
+     * Note: PHP constructors cannot have return type declarations
+     *
      * @param mixed $database Database connection object
      * @param mixed $userSettings Settings object
      * @param int|null $userId User ID for logging (optional)
-     * @return void
      */
-    public function __construct($database, $userSettings, ?int $userId = null): void {
+    // phpcs:ignore Squiz.Commenting.FunctionComment.MissingReturn
+    public function __construct($database, $userSettings, ?int $userId = null) {
         $this->db = $database;
         $this->settings = $userSettings;
         $this->logger = function($level, $category, $message) use ($userId) {
