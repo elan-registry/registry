@@ -86,6 +86,9 @@ class CodingStandardsChecker
         // Check for strict types declaration
         $this->checkStrictTypes($filePath, $content);
 
+        // Check for database type casting in strict mode
+        $this->checkDatabaseTypeCasting($filePath, $content, $lines);
+
         // Check for function type declarations
         $this->checkFunctionTypes($filePath, $lines);
 
@@ -131,6 +134,55 @@ class CodingStandardsChecker
             // Only flag as error if it contains classes or functions (not just includes)
             if (preg_match('/\b(class|function)\s+\w+/', $content)) {
                 $this->errors[] = "$filePath: Missing declare(strict_types=1) declaration";
+            }
+        }
+    }
+
+    /**
+     * Check for proper type casting of database values in strict mode
+     *
+     * Detects database values (especially integer IDs) being passed to strict-typed
+     * function parameters without explicit type casting, which can cause TypeError
+     * when database returns strings instead of integers.
+     *
+     * @param string $filePath File path for error reporting
+     * @param string $content File content
+     * @param array $lines File lines
+     * @return void
+     */
+    private function checkDatabaseTypeCasting(string $filePath, string $content, array $lines): void
+    {
+        // Only check files with strict_types=1
+        if (strpos($content, 'declare(strict_types=1)') === false) {
+            return;
+        }
+
+        foreach ($lines as $lineNum => $line) {
+            $lineNumber = $lineNum + 1;
+
+            // Pattern 1: Direct database object property access to strict function
+            // Example: new ClassName(..., $user->data()->id, ...)
+            // Example: someFunction(..., $row->id, ...)
+            if (preg_match('/new\s+\w+\([^)]*\$\w+->(data\(\)->)?id[,\)]/', $line)) {
+                if (!preg_match('/\(int\)\s*\$\w+->(data\(\)->)?id/', $line)) {
+                    $this->warnings[] = "$filePath:$lineNumber: Database ID value may need explicit (int) cast in strict mode";
+                }
+            }
+
+            // Pattern 2: Function calls with database object properties
+            // Example: functionName($obj->user_id)
+            if (preg_match('/\w+\([^)]*\$\w+->\w+_id[,\)]/', $line)) {
+                if (!preg_match('/\(int\)\s*\$\w+->\w+_id/', $line)) {
+                    $this->warnings[] = "$filePath:$lineNumber: Database ID field may need explicit (int) cast in strict mode";
+                }
+            }
+
+            // Pattern 3: Database result->first() properties
+            // Example: $result->first()->id
+            if (preg_match('/\$\w+->first\(\)->\w+/', $line)) {
+                if (!preg_match('/\(int\)/', $line) && !preg_match('/\(float\)/', $line) && !preg_match('/\(bool\)/', $line)) {
+                    $this->warnings[] = "$filePath:$lineNumber: Database query result may need explicit type cast in strict mode (int/float/bool)";
+                }
             }
         }
     }
