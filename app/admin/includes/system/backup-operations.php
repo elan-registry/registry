@@ -31,7 +31,8 @@ $action = $_POST['action'] ?? '';
 try {
     // Initialize BackupManager
     $backupDir = $abs_us_root . $us_url_root . 'FIX/backups/';
-    $backupManager = new BackupManager($db, $backupDir, $user->data()->id);
+    // Cast user ID to int for strict type safety across different PHP/database configurations
+    $backupManager = new BackupManager($db, $backupDir, (int)$user->data()->id);
 
     switch ($action) {
         case 'create_manual_backup':

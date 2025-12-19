@@ -14,8 +14,9 @@ require_once 'classes/BackupManager.php';
 // No longer need FIX/backup-functions.php - all backup logic is in BackupManager class
 
 // Initialize enhanced managers
-$schemaManager = new EnhancedSchemaManager($db, $settings, $user->data()->id);
-$backupManager = new BackupManager($db, $abs_us_root . $us_url_root . 'FIX/backups/', $user->data()->id);
+// Cast user ID to int for strict type safety across different PHP/database configurations
+$schemaManager = new EnhancedSchemaManager($db, $settings, (int)$user->data()->id);
+$backupManager = new BackupManager($db, $abs_us_root . $us_url_root . 'FIX/backups/', (int)$user->data()->id);
 
 // Get list of FIX scripts
 $fixDirectory = $abs_us_root . $us_url_root . 'FIX/';
