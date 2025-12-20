@@ -58,7 +58,7 @@
                 <div class="message-content"><?= htmlspecialchars($message) ?></div>
             </div>
             
-            <p><strong>You can reply directly to this email to respond to <?= htmlspecialchars($from) ?>.</strong></p>
+            <p><strong>To respond to <?= htmlspecialchars($from) ?>, please reply using their email address shown above.</strong></p>
         </div>
         
         <div class="footer">

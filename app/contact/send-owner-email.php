@@ -1,4 +1,6 @@
 <?php
+declare(strict_types=1);
+
 /**
  * contact_owner_email.php
  * Processes contact owner requests and sends emails between users.
@@ -85,11 +87,6 @@ if (Input::exists('post')) {
             $fromEmail      =  $f['email'];
             $fromName       =  $f['fname'] . ' ' . $f['lname'];
 
-            $options        =  array(
-                'reply_name' => $fromName,
-                'reply'     => $fromEmail,
-            );
-
             $template       =  array(
                 'message'   => clean_string($message),
                 'from'      => $fromName,
@@ -99,7 +96,7 @@ if (Input::exists('post')) {
 
             $body = email_body('_email_contact_owner.php', $template);
 
-            $result = email($toEmail, $subject, $body, $options);
+            $result = email($toEmail, $subject, $body);
 
             // Log the email sending (no session message needed - we show "Message Sent" page)
             logger($user->data()->id, "ElanRegistry", "contact_owner_email.php from " . $fromEmail . " to " . $toEmail);

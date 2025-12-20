@@ -88,9 +88,9 @@
                 <div class="message-content"><?= htmlspecialchars($message) ?></div>
             </div>
 
-            <p><strong>You can reply directly to this email to respond to the Registry Administrator.</strong></p>
-
             <p>If this message is regarding data quality in your car registration, please consider updating your car details at: <a href="<?php echo getBaseUrl(); ?>"><?php echo getBaseUrl(); ?></a></p>
+
+            <p><small>To respond to this message, please visit the registry website or use the contact form.</small></p>
         </div>
 
         <div class="footer">

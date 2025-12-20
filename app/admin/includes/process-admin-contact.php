@@ -71,7 +71,7 @@ if (Input::exists('post')) {
                 $adminData = $db->query('SELECT id, email, fname, lname FROM users WHERE id = ?', [$user->data()->id])->first();
                 if (!$adminData) {
                     $errors[] = 'Admin user data not found';
-                    throw new Exception('Admin user not found');
+                    throw new RuntimeException('Admin user not found');
                 }
 
                 // Get owner data - handle special 'Multiple' case for duplicate emails
@@ -86,13 +86,13 @@ if (Input::exists('post')) {
                     ];
                     if (empty($ownerData->email)) {
                         $errors[] = 'Target email is required for multiple user contact';
-                        throw new Exception('Target email not provided for multiple users');
+                        throw new InvalidArgumentException('Target email not provided for multiple users');
                     }
                 } else {
                     $ownerData = $db->query('SELECT id, email, fname, lname FROM users WHERE id = ?', [$ownerId])->first();
                     if (!$ownerData) {
                         $errors[] = 'Owner user data not found (Owner ID: ' . $ownerId . ')';
-                        throw new Exception('Owner user not found');
+                        throw new RuntimeException('Owner user not found');
                     }
                 }
 
@@ -141,17 +141,11 @@ if (Input::exists('post')) {
                     $template['qualityIssue'] = $qualityIssue;
                 }
 
-                // Email options for reply-to
-                $options = [
-                    'reply_name' => $fromName,
-                    'reply' => $fromEmail,
-                ];
-
                 // Generate email body using template
                 $body = email_body('_email_admin_contact_owner.php', $template);
 
                 // Send email
-                $result = email($toEmail, $subject, $body, $options);
+                $result = email($toEmail, $subject, $body);
 
                 if ($result) {
                     // For duplicate accounts, show the email address instead of "Multiple Users"
@@ -168,7 +162,7 @@ if (Input::exists('post')) {
                     logger($user->data()->id, "ElanRegistry", "Failed admin contact email - Admin: {$fromEmail}, Owner: {$toEmail}");
                 }
 
-            } catch (Exception $e) {
+            } catch (RuntimeException | InvalidArgumentException $e) {
                 $errors[] = 'An error occurred while sending the message: ' . $e->getMessage();
                 logger($user->data()->id, "ElanRegistry", "Admin contact error: " . $e->getMessage());
             }
