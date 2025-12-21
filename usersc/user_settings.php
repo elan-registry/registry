@@ -41,21 +41,17 @@ $userId = $user->data()->id;
 
 $validation = new Validate();
 $userdetails = $user->data();
-// Get User Profile Information
-// This is a hack and should be fixed - Get the Profile ID
-$profileQ = $db->query("SELECT id FROM profiles WHERE user_id = ?", [$userId]);
-$profileId = $profileQ->results()[0]->id;
-// USER ID is in $user_id .  Use the USER ID to get the users Profile information
-$userQ = $db->query("SELECT * FROM profiles LEFT JOIN users ON user_id = users.id WHERE user_id = ?", [$userId]);
-if ($userQ->count() > 0) {
-    $profiledetails = $userQ->first();
 
+// Get User Profile Information
+$profiledetails = getUserWithProfile($userId);
+
+if ($profiledetails !== null) {
     /* Set the city, state, country for geolocation.  If there is an update of any of these values they will be overwritten */
     $city = $profiledetails->city;
     $state = $profiledetails->state;
     $country = $profiledetails->country;
 } else {
-    logger($user->data()->id, "User", "USER_SETTING(59) something is wrong with the user profile ");
+    logger($userId, "User", "USER_SETTING(59): Unable to load user profile");
 }
 
 // Get the country list
@@ -452,14 +448,11 @@ if (!empty($_POST)) {
 $user2 = new User();
 $userdetails = $user2->data();
 
-// Extend for profile
-$userQ2 = $db->query('SELECT * FROM profiles LEFT JOIN users ON user_id = users.id WHERE user_id = ?', [$userId]);
-if ($userQ2->count() > 0) {
-    $profiledetails = $userQ2->first();
-} else {
-    echo 'USER_SETTING(390) something is wrong with the user profile <br>';
+// Extend for profile - refresh profile data for display after update
+$profiledetails = getUserWithProfile($userId);
+if ($profiledetails === null) {
+    logger($userId, "User", "USER_SETTING: Unable to load user profile after update");
 }
-// End Extend
 
 ?>
 <div id="page-wrapper">
