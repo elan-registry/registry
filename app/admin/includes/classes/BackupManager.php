@@ -43,8 +43,10 @@ class BackupManager {
      * @param object $database Database connection object
      * @param string $backupDirectory Base directory for backups
      * @param int|null $userId User ID for logging (optional)
+     *
+     * Note: Constructors cannot declare return types in PHP
      */
-    // phpcs:ignore Squiz.Commenting.FunctionComment.MissingReturn
+    // phpcs:ignore Generic.CodeAnalysis.UnusedFunctionParameter.FoundInExtendedClass
     public function __construct(object $database, string $backupDirectory, ?int $userId = null) {
         $this->db = $database;
         $this->backupBaseDir = rtrim($backupDirectory, '/') . '/';
@@ -504,15 +506,15 @@ class BackupManager {
     }
 
     /**
-     * Generate SQL dump for a table
+     * Generate SQL dump for a table.
      *
-     * Creates a complete SQL dump including table structure (CREATE TABLE) 
+     * Creates a complete SQL dump including table structure (CREATE TABLE)
      * and data (INSERT statements). Validates table names to prevent SQL
-     * injection and handles missing tables gracefully.
+     * injection and handles missing tables gracefully with warnings.
      *
      * @param string $tableName Table name to dump (validated against injection)
      * @return string Complete SQL dump with CREATE and INSERT statements
-     * @throws BackupException If table name contains invalid characters
+     * @throws BackupException If table name contains invalid characters or SQL structure retrieval fails
      */
     private function generateTableDump(string $tableName): string {
         try {
