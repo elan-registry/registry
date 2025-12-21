@@ -282,20 +282,35 @@ if (!empty($_POST)) {
         //Update Website
         if ($profiledetails->website != $_POST['website']) {
             $website = Input::get('website');
-            $fields = ['website' => $website];
+            $fields = ['website' => trim($website)];
 
-            // Sanitize URL by removing illegal characters manually (replacing deprecated FILTER_SANITIZE_URL)
-            $fields['website'] = preg_replace('/[^a-zA-Z0-9\-._~:/?#[\]@!$&\'()*+,;=%]/', '', trim($fields['website']));
-
-            // Validate url
-            if (filter_var($fields['website'], FILTER_VALIDATE_URL)) {
+            // Allow empty website field (optional)
+            if (empty($fields['website'])) {
                 $db->update('profiles', $profileId, $fields);
-                $successes[] = 'website updated.';
-                logger($user->data()->id, 'User', "Changed website from $profiledetails->website to $website.");
+                $successes[] = 'Website cleared.';
+                logger($user->data()->id, 'User', "Cleared website field (was: $profiledetails->website).");
             } else {
-                echo "$website is not a valid URL";
-                //validation did not pass
-                $errors[] = "$website is not a valid URL";
+                // Sanitize URL by removing illegal characters manually (replacing deprecated FILTER_SANITIZE_URL)
+                $fields['website'] = preg_replace('/[^a-zA-Z0-9\-._~:/?#[\]@!$&\'()*+,;=%]/', '', $fields['website']);
+
+                // Smart URL validation: accept URLs with or without scheme
+                $urlToValidate = $fields['website'];
+                
+                // If no scheme is provided, prepend https:// for validation and storage
+                if (!preg_match('~^https?://~i', $urlToValidate)) {
+                    $urlToValidate = 'https://' . $urlToValidate;
+                    $fields['website'] = $urlToValidate; // Store with scheme
+                }
+
+                // Validate the URL structure
+                if (filter_var($urlToValidate, FILTER_VALIDATE_URL)) {
+                    $db->update('profiles', $profileId, $fields);
+                    $successes[] = 'Website updated.';
+                    logger($user->data()->id, 'User', "Changed website from $profiledetails->website to {$fields['website']}.");
+                } else {
+                    // Validation failed - provide helpful error message
+                    $errors[] = "Invalid website URL: '$website'. Please enter a valid website (e.g., example.com or https://example.com).";
+                }
             }
         } else {
             $state = $profiledetails->website;
@@ -511,8 +526,9 @@ if ($userQ2->count() > 0) {
                         </div>
 
                         <div class="form-group">
-                            <label>Website</label>
-                            <input class='form-control' type='text' name='website' value='<?= $profiledetails->website ?>' />
+                            <label>Website <small class="text-muted">(optional)</small></label>
+                            <input class='form-control' type='text' name='website' placeholder='example.com or https://example.com' value='<?= $profiledetails->website ?>' />
+                            <small class="form-text text-muted">Enter a website URL. You can use just the domain (example.com) or include the full URL (https://example.com).</small>
                         </div>
                         <!-- END Extend user_setttings.php with some PROFILE information -->
 

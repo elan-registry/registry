@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 /**
  * editCar.php - Car management endpoint
  * 
@@ -388,12 +390,27 @@ function updateSolddate(array &$cardetails): void
 
 function updateWebsite(array &$cardetails): void
 {
-    // Update 'website'
-    if (Input::get('website')) {
-        $cardetails['website'] = Input::get('website');
-        $successes[] = 'Website: ' . $cardetails['website'];
+    global $successes, $errors;
+    
+    // Get website value from form input
+    $website = Input::get('website') ?? '';
+    
+    // Use centralized validation helper
+    $validation = validateAndNormalizeUrl($website);
+    
+    if ($validation['valid']) {
+        // URL is valid, update car details
+        $cardetails['website'] = $validation['url'];
+        
+        // Log success message
+        if ($validation['url'] === null) {
+            $successes[] = 'Website: Cleared';
+        } else {
+            $successes[] = 'Website: ' . $validation['url'];
+        }
     } else {
-        $cardetails['website'] = null;
+        // URL validation failed, add error message
+        $errors[] = $validation['error'];
     }
 }
 

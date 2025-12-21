@@ -23,12 +23,13 @@
 </div>
 <!-- Website -->
 <div class='form-group row'>
-    <label for='website' class='col-md-3 col-xs-12  col-form-label'>Website</label>
+    <label for='website' class='col-md-3 col-xs-12 col-form-label'>Website <span class='text-muted'>(optional)</span></label>
     <div class='col-sm-9'>
         <div class='input-group-prepend'>
             <div class='input-group-text'><i aria-hidden='true' class='fas fa-palette'></i></div>
-            <input class='form-control' type='url' name='website' id='website' placeholder='<?= $carprompt['website'] ?>' value='<?= $cardetails['website'] ?>' />
+            <input class='form-control' type='url' name='website' id='website' placeholder='example.com or https://example.com' value='<?= $cardetails['website'] ?>' />
         </div>
+        <small id='websiteHelp' class='form-text text-muted'>Enter a website URL for this car. You can use a domain (example.com) or full URL (https://example.com)</small>
     </div>
 </div>
 <div class='form-group row'>
