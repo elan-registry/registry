@@ -89,13 +89,15 @@ The Elan Registry uses **SecureEnvPHP** for encrypted environment variable manag
    echo "DB_USER=your_username" >> .env
    echo "DB_PASS=your_password" >> .env
    echo "DB_NAME=your_database" >> .env
-   echo "MAPS_KEY=your_maps_key" >> .env
-   echo "GEO_ENCODE_KEY=your_geocoding_key" >> .env
    ```
 
 4. **Encrypt and Cleanup**:
    ```bash
    # Use SecureEnvPHP to encrypt (creates .env.enc and .env.key)
+   cd www
+   vendor/johnathanmiller/secure-env-php/bin/encrypt-env
+   # Select Y when prompted to create key file
+   
    # Remove plaintext file
    rm .env
    ```
