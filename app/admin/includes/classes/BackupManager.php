@@ -13,9 +13,9 @@ declare(strict_types=1);
 require_once __DIR__ . '/BackupException.php';
 
 class BackupManager {
-    private $db;
-    private $logger;
-    private $backupBaseDir;
+    private object $db;
+    private \Closure $logger;
+    private string $backupBaseDir;
 
     // Enhanced retention policies
     private $retentionPolicies = [
@@ -40,14 +40,12 @@ class BackupManager {
     /**
      * Constructor
      *
-     * Note: PHP constructors cannot have return type declarations
-     *
-     * @param mixed $database Database connection object
+     * @param object $database Database connection object
      * @param string $backupDirectory Base directory for backups
      * @param int|null $userId User ID for logging (optional)
      */
     // phpcs:ignore Squiz.Commenting.FunctionComment.MissingReturn
-    public function __construct($database, string $backupDirectory, ?int $userId = null) {
+    public function __construct(object $database, string $backupDirectory, ?int $userId = null) {
         $this->db = $database;
         $this->backupBaseDir = rtrim($backupDirectory, '/') . '/';
         $this->logger = function($level, $category, $message) use ($userId) {
@@ -150,7 +148,14 @@ class BackupManager {
     }
 
     /**
-     * Analyze backup retention status
+     * Analyze backup retention status across all backup types.
+     *
+     * Examines automated, manual, and rollback backups to determine retention compliance.
+     * Categorizes backups as within policy, approaching expiry, or expired based on
+     * configured retention policies and current timestamp.
+     *
+     * @return array Retention analysis with keys 'automated', 'manual', 'rollback' containing
+     *              status counts and oldest/newest file timestamps
      */
     private function analyzeRetention(): array {
         $analysis = [];
@@ -198,7 +203,16 @@ class BackupManager {
     }
 
     /**
-     * Calculate overall backup system health score
+     * Calculate overall backup system health score.
+     *
+     * Evaluates backup system health based on retention compliance, replication status,
+     * and storage metrics. Deducts points for expired backups, approaching expiry dates,
+     * missing replication targets, and excessive storage usage.
+     *
+     * @param array $stats Statistics array containing retention_analysis, replication,
+     *                     and storage data
+     *
+     * @return int Health score from 0-100, where 100 indicates optimal health
      */
     private function calculateHealthScore(array $stats): int {
         $score = 100;
@@ -233,7 +247,17 @@ class BackupManager {
     }
 
     /**
-     * Generate backup recommendations
+     * Generate backup system recommendations.
+     *
+     * Analyzes backup statistics and produces actionable recommendations for system
+     * administrators. Covers retention cleanup, replication issues, and storage
+     * optimization based on current conditions.
+     *
+     * @param array $stats Statistics array containing retention_analysis, replication,
+     *                     storage data, and health score
+     *
+     * @return array Array of recommendation strings describing actions to improve
+     *              backup system health
      */
     private function generateRecommendations(array $stats): array {
         $recommendations = [];
@@ -482,8 +506,13 @@ class BackupManager {
     /**
      * Generate SQL dump for a table
      *
-     * @param string $tableName Table to dump
-     * @return string SQL dump content
+     * Creates a complete SQL dump including table structure (CREATE TABLE) 
+     * and data (INSERT statements). Validates table names to prevent SQL
+     * injection and handles missing tables gracefully.
+     *
+     * @param string $tableName Table name to dump (validated against injection)
+     * @return string Complete SQL dump with CREATE and INSERT statements
+     * @throws BackupException If table name contains invalid characters
      */
     private function generateTableDump(string $tableName): string {
         try {
