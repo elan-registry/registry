@@ -4,20 +4,6 @@ title: "[Feature]: "
 labels: ["enhancement", "status: needs-planning"]
 assignees: []
 body:
-  - type: markdown
-    attributes:
-      value: |
-        Thanks for your interest in improving the Elan Registry! Please provide detailed information about your feature request.
-
-  - type: textarea
-    id: feature-description
-    attributes:
-      label: Feature Description
-      description: Provide a clear and concise description of the feature you'd like to see
-      placeholder: Describe the feature you want to add
-    validations:
-      required: true
-
   - type: textarea
     id: user-story
     attributes:
@@ -31,8 +17,7 @@ body:
     id: problem-solution
     attributes:
       label: Problem & Solution
-      description: What problem does this feature solve? How does it improve the user experience?
-      placeholder: Explain the problem this feature addresses and how it provides a solution
+      description: What problem does this solve and how?
     validations:
       required: true
 
@@ -40,7 +25,7 @@ body:
     id: acceptance-criteria
     attributes:
       label: Acceptance Criteria
-      description: Define what needs to be implemented for this feature to be considered complete
+      description: What needs to be implemented for this to be complete?
       placeholder: |
         - [ ] Criteria 1
         - [ ] Criteria 2
@@ -48,76 +33,35 @@ body:
     validations:
       required: true
 
-  - type: textarea
-    id: technical-requirements
-    attributes:
-      label: Technical Requirements
-      description: Any specific technical considerations or requirements?
-      placeholder: Database changes, API requirements, external integrations, etc.
-
   - type: dropdown
     id: component
     attributes:
       label: Component Area
-      description: Which part of the system does this feature relate to?
       options:
         - Database/Backend
-        - User Interface/Frontend  
+        - User Interface/Frontend
         - Admin Interface
-        - Google Maps Integration
-        - Image Handling
+        - Maps/Images
         - Performance/Security
-        - Documentation
-        - Testing
+        - Documentation/Testing
         - Other
-    validations:
-      required: true
-
-  - type: dropdown
-    id: effort-estimate
-    attributes:
-      label: Estimated Effort
-      description: How much effort do you think this feature would require?
-      options:
-        - XS (1-2 hours)
-        - S (Half day)
-        - M (1-2 days)
-        - L (3-5 days)
-        - XL (1+ weeks)
-        - Unsure
     validations:
       required: true
 
   - type: dropdown
     id: priority
     attributes:
-      label: Priority Level
-      description: How important is this feature?
+      label: Priority
       options:
-        - Low - Nice to have improvement
-        - Medium - Would improve user experience
+        - Low - Nice to have
+        - Medium - Would improve experience
         - High - Important for functionality
         - Critical - Essential for core operations
     validations:
       required: true
 
   - type: textarea
-    id: alternatives
-    attributes:
-      label: Alternative Solutions
-      description: Have you considered any alternative approaches to solving this problem?
-
-  - type: textarea
     id: additional-context
     attributes:
       label: Additional Context
-      description: Add any other context, screenshots, mockups, or examples about the feature request
-
-  - type: checkboxes
-    id: terms
-    attributes:
-      label: Code of Conduct
-      description: By submitting this issue, you agree to follow our [Code of Conduct](https://example.com)
-      options:
-        - label: I agree to follow this project's Code of Conduct
-          required: true
+      description: Technical requirements, alternatives, screenshots, mockups, etc.

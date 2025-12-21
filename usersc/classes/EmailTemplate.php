@@ -18,7 +18,7 @@ class EmailTemplate
 
     public function __construct()
     {
-        $this->baseUrl = 'https://elanregistry.org';
+        $this->baseUrl = getBaseUrl();
         $this->logoUrl = $this->baseUrl . '/usersc/templates/ElanRegistry/assets/images/logo-72x72.png';
     }
 

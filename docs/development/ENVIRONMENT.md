@@ -57,13 +57,6 @@ The Elan Registry uses **SecureEnvPHP** for encrypted environment variable manag
 - `DB_PASS` - Database password
 - `DB_NAME` - Database name (e.g., `elanregi_spice`)
 
-### Google Services API Keys
-
-**Usage**: `users/init.php:58-59`
-
-- `MAPS_KEY` - Google Maps JavaScript API key (enables interactive maps, car locations)
-- `GEO_ENCODE_KEY` - Google Geocoding API key (enables address geocoding)
-
 ## Setup & Configuration
 
 ### Development Setup
@@ -89,13 +82,15 @@ The Elan Registry uses **SecureEnvPHP** for encrypted environment variable manag
    echo "DB_USER=your_username" >> .env
    echo "DB_PASS=your_password" >> .env
    echo "DB_NAME=your_database" >> .env
-   echo "MAPS_KEY=your_maps_key" >> .env
-   echo "GEO_ENCODE_KEY=your_geocoding_key" >> .env
    ```
 
 4. **Encrypt and Cleanup**:
    ```bash
    # Use SecureEnvPHP to encrypt (creates .env.enc and .env.key)
+   cd www
+   vendor/johnathanmiller/secure-env-php/bin/encrypt-env
+   # Select Y when prompted to create key file
+
    # Remove plaintext file
    rm .env
    ```
@@ -123,7 +118,6 @@ use SecureEnvPHP\SecureEnvPHP;
 
 // Usage throughout application
 $host = getenv('DB_HOST');
-$maps_key = getenv('MAPS_KEY');
 ```
 
 ## Security Requirements

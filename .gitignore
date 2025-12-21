@@ -118,3 +118,6 @@ users/logs/*.log.php
 usersc/includes/totp_key.php
 usersc/plugins/plugins.ini.php
 **/.DS_Store
+docs/technical/DATABASE_SCHEMA_COMPARISON.md
+docs/technical/DATABASE_SCHEMA_MIGRATION_test_to_dev_COMPATIBLE.sql
+docs/technical/MIGRATION_VERIFICATION_REPORT.md

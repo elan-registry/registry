@@ -1,0 +1,60 @@
+# PHPStan Configuration for Elan Registry
+# Static analysis tool to catch type errors and bugs before runtime
+#
+# Usage:
+#   vendor/bin/phpstan analyse
+#   vendor/bin/phpstan analyse app/
+#   vendor/bin/phpstan analyse --level=6 app/admin/
+#
+# Documentation: https://phpstan.org/
+
+parameters:
+    # Analysis level (0-9, higher = stricter)
+    # Level 5 is a good balance between strictness and practicality
+    level: 5
+
+    # Paths to analyze
+    paths:
+        - app
+        - usersc/classes
+        - app/admin/includes/classes
+
+    # Paths to exclude
+    excludePaths:
+        - */vendor/*
+        - */node_modules/*
+        - */FIX/_ARCHIVE/*
+        - */tests/*
+
+    # Type checking strictness
+    checkMissingTypehints: true
+    checkExplicitMixedMissingReturn: true
+    checkTooWideReturnTypesInProtectedAndPublicMethods: true
+
+    # Specific rules for database type handling
+    # This helps catch the int/string type mismatch issues
+    treatPhpDocTypesAsCertain: false
+
+    # Check for uninitialized properties
+    checkUninitializedProperties: true
+
+    # Ignore specific errors (use sparingly)
+    ignoreErrors:
+        # UserSpice framework uses mixed types extensively
+        - '#Function \\w+\\(\\) has no return type specified#'
+        - '#Method \\w+::\\w+\\(\\) has parameter \$\\w+ with no type specified#'
+
+        # Allow UserSpice legacy code patterns
+        - '#Unsafe usage of new static\\(\\)#'
+
+    # Don't report unmatched ignored errors
+    reportUnmatchedIgnoredErrors: false
+
+    # Bootstrap file for autoloading
+    # Uncomment and adjust if needed
+    # bootstrapFiles:
+    #     - users/init.php
+
+# Custom rules (can be added via extensions)
+# extensions:
+#     # Add custom PHPStan extensions here

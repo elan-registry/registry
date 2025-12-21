@@ -1,4 +1,5 @@
 <?php
+declare(strict_types=1);
 
 /**
  * Re-geocode Null/Zero Coordinates Script
@@ -549,7 +550,7 @@ function geocodeAddress($address)
         curl_setopt($ch, CURLOPT_TIMEOUT, 10);
         curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, true);
         curl_setopt($ch, CURLOPT_USERAGENT, 'ElanRegistry/2.3');
-        curl_setopt($ch, CURLOPT_REFERER, 'https://elanregistry.org/');
+        curl_setopt($ch, CURLOPT_REFERER, getBaseUrl() . '/');
 
         $response = curl_exec($ch);
         $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
@@ -564,7 +565,7 @@ function geocodeAddress($address)
             'http' => [
                 'timeout' => 10,
                 'user_agent' => 'ElanRegistry/2.3',
-                'header' => "Referer: https://elanregistry.org/\r\n"
+                'header' => "Referer: " . getBaseUrl() . "/\r\n"
             ]
         ]);
 

@@ -269,8 +269,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
     }
 }
 
-// Include standardized backup functions
-require_once 'backup-functions.php';
+// Include standardized backup functions (compatibility wrapper)
+require_once $abs_us_root . $us_url_root . 'users/helpers/backup_functions.php';
 
 $line = 1; // Where messages go
 

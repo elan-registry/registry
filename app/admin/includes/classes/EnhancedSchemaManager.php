@@ -9,6 +9,8 @@ declare(strict_types=1);
  * Part of Phase 1D: FIX System Integration and Enhanced Database Management
  */
 
+require_once __DIR__ . '/SchemaException.php';
+
 class EnhancedSchemaManager {
     private $db;
     private $logger;
@@ -75,7 +77,17 @@ class EnhancedSchemaManager {
         ]
     ];
 
-    public function __construct($database, $userSettings, $userId = null) {
+    /**
+     * Constructor
+     *
+     * Note: PHP constructors cannot have return type declarations
+     *
+     * @param mixed $database Database connection object
+     * @param mixed $userSettings Settings object
+     * @param int|null $userId User ID for logging (optional)
+     */
+    // phpcs:ignore Squiz.Commenting.FunctionComment.MissingReturn
+    public function __construct($database, $userSettings, ?int $userId = null) {
         $this->db = $database;
         $this->settings = $userSettings;
         $this->logger = function($level, $category, $message) use ($userId) {
@@ -87,6 +99,8 @@ class EnhancedSchemaManager {
 
     /**
      * Enhanced settings auto-creation (extends existing functionality)
+     *
+     * @return array Array containing results with 'created', 'errors', and 'success' keys
      */
     public function ensureSettingsFields(): array {
         $results = [];
@@ -111,7 +125,7 @@ class EnhancedSchemaManager {
                 // Ensure default value is set for existing NULL entries
                 $this->db->query("UPDATE settings SET {$fieldName} = ? WHERE {$fieldName} IS NULL", [$fieldConfig['default']]);
 
-            } catch (Exception $e) {
+            } catch (SchemaException $e) {
                 $error = "Failed to create/update field {$fieldName}: " . $e->getMessage();
                 $errors[] = $error;
                 ($this->logger)(1, 'SchemaError', $error);
@@ -128,6 +142,8 @@ class EnhancedSchemaManager {
 
     /**
      * Create quality tracking tables
+     *
+     * @return array Array containing results with 'success', 'created_tables', 'results', and 'errors' keys
      */
     public function ensureQualityTables(): array {
         $results = [];
@@ -154,7 +170,7 @@ class EnhancedSchemaManager {
                     $results[] = "Created table: {$tableName}";
                 }
 
-            } catch (Exception $e) {
+            } catch (SchemaException $e) {
                 $error = "Failed to create table {$tableName}: " . $e->getMessage();
                 $errors[] = $error;
                 ($this->logger)(1, 'SchemaError', $error);
@@ -171,6 +187,8 @@ class EnhancedSchemaManager {
 
     /**
      * Validate database schema integrity
+     *
+     * @return array Array containing validation results with 'valid', 'issues', and 'health_score' keys
      */
     public function validateSchema(): array {
         $results = [
@@ -187,7 +205,7 @@ class EnhancedSchemaManager {
                     $results['valid'] = false;
                     $results['issues'][] = "Missing required table: {$table}";
                 }
-            } catch (Exception $e) {
+            } catch (SchemaException $e) {
                 $results['valid'] = false;
                 $results['issues'][] = "Error checking table {$table}: " . $e->getMessage();
             }
@@ -202,7 +220,7 @@ class EnhancedSchemaManager {
                         $results['recommendations'][] = "Consider adding index on {$table}.{$column} for better performance";
                     }
                 }
-            } catch (Exception $e) {
+            } catch (SchemaException $e) {
                 $results['issues'][] = "Error checking indexes for {$table}: " . $e->getMessage();
             }
         }
@@ -212,6 +230,8 @@ class EnhancedSchemaManager {
 
     /**
      * Get schema health status
+     *
+     * @return array Array containing health status with 'score', 'grade', 'issues', and 'last_maintenance' keys
      */
     public function getHealthStatus(): array {
         $status = [
@@ -227,7 +247,7 @@ class EnhancedSchemaManager {
                 'details' => $settingsCheck['success'] ? 'All fields present' : 'Issues detected',
                 'created_fields' => $settingsCheck['created_fields'] ?? 0
             ];
-        } catch (Exception $e) {
+        } catch (SchemaException $e) {
             $status['components']['settings_autocreation'] = [
                 'status' => 'error',
                 'details' => 'Check failed: ' . $e->getMessage()
@@ -243,7 +263,7 @@ class EnhancedSchemaManager {
                 'details' => $tablesCheck['success'] ? 'All tables present' : 'Issues detected',
                 'created_tables' => $tablesCheck['created_tables'] ?? 0
             ];
-        } catch (Exception $e) {
+        } catch (SchemaException $e) {
             $status['components']['quality_tables'] = [
                 'status' => 'error',
                 'details' => 'Check failed: ' . $e->getMessage()
@@ -264,7 +284,7 @@ class EnhancedSchemaManager {
             if (!$validation['valid']) {
                 $status['overall'] = 'warning';
             }
-        } catch (Exception $e) {
+        } catch (SchemaException $e) {
             $status['components']['schema_validation'] = [
                 'status' => 'error',
                 'details' => 'Validation failed: ' . $e->getMessage()
@@ -277,6 +297,10 @@ class EnhancedSchemaManager {
 
     /**
      * Create backup before schema changes (integration with FIX backup system)
+     *
+     * @param string $operation Operation name (e.g., "Schema Maintenance")
+     * @return string Path to the created backup file
+     * @throws SchemaException If backup creation fails
      */
     public function createSchemaBackup(string $operation): string {
 
@@ -289,17 +313,21 @@ class EnhancedSchemaManager {
                     'automated',
                     'development'
                 );
-            } catch (Exception $e) {
+            } catch (SchemaException $e) {
                 ($this->logger)(1, 'SchemaError', 'Backup creation failed: ' . $e->getMessage());
                 throw $e;
             }
         }
 
-        throw new Exception('Backup system not available');
+        throw new SchemaException('Backup system not available');
     }
 
     /**
      * Execute comprehensive schema maintenance
+     *
+     * @return array Array containing maintenance results with 'success', 'operations', 'backup_created',
+     *               'backup_path', 'created_fields', 'created_tables', and any errors
+     * @throws SchemaException If maintenance operations fail
      */
     public function performMaintenance(): array {
         $results = [
@@ -309,11 +337,11 @@ class EnhancedSchemaManager {
         ];
 
         try {
-            // Create backup before maintenance - Commented out issue #364
-            // $backupPath = $this->createSchemaBackup('Schema Maintenance');
-            // $results['backup_created'] = true;
-            // $results['backup_path'] = $backupPath;
-            // $results['operations'][] = 'Created maintenance backup';
+            // Create backup before maintenance
+            $backupPath = $this->createSchemaBackup('Schema Maintenance');
+            $results['backup_created'] = true;
+            $results['backup_path'] = $backupPath;
+            $results['operations'][] = 'Created maintenance backup';
 
             // Perform settings auto-creation
             $settingsResult = $this->ensureSettingsFields();
@@ -340,7 +368,7 @@ class EnhancedSchemaManager {
 
             ($this->logger)(1, 'SchemaManager', 'Schema maintenance completed successfully');
 
-        } catch (Exception $e) {
+        } catch (SchemaException $e) {
             $results['success'] = false;
             $results['error'] = $e->getMessage();
             ($this->logger)(1, 'SchemaError', 'Schema maintenance failed: ' . $e->getMessage());

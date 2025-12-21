@@ -8,25 +8,30 @@
 
 ## 📋 **Table of Contents**
 
-- [🎯 Overview](#-overview)
-- [🔧 PHP 8+ Requirements](#-php-8-requirements) 
-- [🏗️ Code Architecture](#️-code-architecture)
-- [🛡️ Security Standards](#️-security-standards)
-- [📝 Documentation Standards](#-documentation-standards)
-- [📂 File Organization](#-file-organization)
-- [🚀 Performance Guidelines](#-performance-guidelines)
-- [✅ Code Review Checklist](#-code-review-checklist)
+- [🎯 Overview](#overview)
+- [🔧 PHP 8+ Requirements](#php-8-requirements)
+- [🏗️ Code Architecture](#code-architecture)
+- [🛡️ Security Standards](#security-standards)
+- [📝 Documentation Standards](#documentation-standards)
+- [📂 File Organization](#file-organization)
+- [🚀 Performance Guidelines](#performance-guidelines)
+- [✅ Code Review Checklist](#code-review-checklist)
 
 ---
 
 ## 🎯 **Overview**
 
-This document establishes coding standards for the Elan Registry PHP web application to ensure consistency, maintainability, and security across the codebase.
+This document establishes coding standards for the Elan Registry PHP web
+application to ensure consistency, maintainability, and security across
+the codebase.
 
 ### **Core Principles**
+
 - **Security First**: All code must follow secure coding practices
+
 - **Type Safety**: Leverage PHP 8+ type system for better error prevention
 - **Consistency**: Uniform code style across all files  
+
 - **Documentation**: Comprehensive inline and external documentation
 - **Performance**: Optimize for both development and runtime efficiency
 
@@ -35,6 +40,7 @@ This document establishes coding standards for the Elan Registry PHP web applica
 ## 🔧 **PHP 8+ Requirements**
 
 ### **Strict Typing Declaration**
+
 All new PHP files **MUST** include strict typing:
 
 ```php
@@ -45,7 +51,8 @@ declare(strict_types=1);
 /**
  * Class or file description
  */
-```
+
+```text
 
 ### **Type Declarations**
 
@@ -69,7 +76,8 @@ public function updateCar($data, $userId)
 {
     // Legacy style - not allowed in new code
 }
-```
+
+```text
 
 #### **Property Type Declarations**
 Class properties **MUST** be typed:
@@ -83,7 +91,8 @@ class Car
     private array $allowedColumns = [];
     private readonly string $imageDir;
 }
-```
+
+```text
 
 #### **Union Types and Nullable Types**
 Use modern PHP 8+ type features:
@@ -97,7 +106,62 @@ private function findUser(int $id): ?User
 
 // Mixed type (use sparingly)
 private function handleLegacyData(mixed $data): array
-```
+
+```text
+
+#### **Strict Type Safety with Database Values**
+
+⚠️ **CRITICAL**: When using `declare(strict_types=1)`, database INTEGER colum
+ns may be returned as strings depending on PHP/MySQL configuration.
+
+**Always cast database values explicitly when passing to strict-typed parameters:**
+
+```php
+// ✅ CORRECT - Explicit type casting
+$schemaManager = new EnhancedSchemaManager($db, $settings, (int)$user->data()->id);
+$carId = (int)$dbRow->id;
+$count = (int)$result->first()->total;
+
+// ❌ WRONG - Missing cast in strict mode
+$schemaManager = new EnhancedSchemaManager($db, $settings, $user->data()->id);
+// TypeError: Argument #3 ($userId) must be of type ?int, string given
+
+```text
+
+**Common database value casts:**
+
+```php
+// Integer columns
+$userId = (int)$user->data()->id;
+$carId = (int)$row->car_id;
+$count = (int)$result->count;
+
+// Boolean columns (TINYINT)
+$isActive = (bool)$row->active;
+$isAdmin = (bool)$row->is_admin;
+
+// Float/Decimal columns
+$price = (float)$row->price;
+$latitude = (float)$row->lat;
+
+// Nullable integers
+$optionalId = $row->optional_id ? (int)$row->optional_id : null;
+
+```text
+
+**Why this is necessary:**
+
+```php
+// PDO/mysqli behavior varies by configuration:
+// - PHP 8.3.14 (dev): Returns int from INT columns
+// - PHP 8.2.29 (test): Returns string from INT columns
+//
+// With declare(strict_types=1), string ≠ int
+// Solution: Always cast explicitly for cross-environment compatibility
+
+```text
+
+**See also:** `/docs/technical/STRICT_TYPE_HANDLING.md` for comprehensive strategy.
 
 ### **Modern PHP Features**
 
@@ -120,14 +184,15 @@ class CarValidator
 {
     private $db;
     private $logger;
-    
+  
     public function __construct(DatabaseInterface $db, LoggerInterface $logger)
     {
         $this->db = $db;
         $this->logger = $logger;
     }
 }
-```
+
+```text
 
 #### **Named Arguments**
 Design methods to support named arguments:
@@ -149,7 +214,8 @@ $resize->resizeImage(
     height: 600,
     quality: 90
 );
-```
+
+```text
 
 ---
 
@@ -176,9 +242,11 @@ class CarValidationException extends Exception
 
 class ImageProcessingException extends Exception {}
 class CarCreationException extends Exception {}
-```
+
+```text
 
 #### **Exception Usage Pattern**
+
 ```php
 public function create(array $fields): bool
 {
@@ -203,7 +271,8 @@ public function create(array $fields): bool
         );
     }
 }
-```
+
+```text
 
 ### **Error Handling Patterns**
 
@@ -217,7 +286,7 @@ public function processImage(string $filepath): ProcessedImage
     if (!file_exists($filepath)) {
         throw new ImageNotFoundException("File not found: {$filepath}");
     }
-    
+  
     // Process and return result
     return new ProcessedImage($result);
 }
@@ -228,15 +297,17 @@ public function processImage(string $filepath): ProcessedImage|false
     if (!file_exists($filepath)) {
         return false; // Ambiguous error handling
     }
-    
+  
     return new ProcessedImage($result);
 }
-```
+
+```text
 
 ### **Method Naming and Structure**
 
 #### **Method Naming Conventions**
 - **Verbs**: `create()`, `update()`, `delete()`, `validate()`
+
 - **Boolean methods**: `exists()`, `isValid()`, `hasPermission()`
 - **Getters**: `data()`, `images()`, `history()` (not `getData()`)
 
@@ -250,7 +321,8 @@ public function validateChassisFormat(string $chassis): void
 public function chassisUpdate($chassis)
 public function checkChassis($chassis)
 public function getChassisValidation($chassis)
-```
+
+```text
 
 ---
 
@@ -263,16 +335,17 @@ All user input **MUST** be validated and sanitized:
 public function updateColor(array &$cardetails): void
 {
     $color = Input::get('color');
-    
+  
     // ✅ REQUIRED - Validate input
     if (empty($color) || strlen($color) > 50) {
         throw new ValidationException('Invalid color value');
     }
-    
+  
     // ✅ REQUIRED - Sanitize for output
     $cardetails['color'] = htmlspecialchars(trim($color), ENT_QUOTES, 'UTF-8');
 }
-```
+
+```text
 
 ### **Database Operations**
 Always use parameterized queries:
@@ -285,7 +358,7 @@ public function findByChassis(string $chassis): ?array
         'SELECT * FROM cars WHERE chassis = ? LIMIT 1',
         [$chassis]
     );
-    
+  
     return $query->first() ?: null;
 }
 
@@ -296,7 +369,8 @@ public function findByChassis(string $chassis): ?array
     $query = "SELECT * FROM cars WHERE chassis = '{$chassis}'";
     return $this->db->query($query);
 }
-```
+
+```text
 
 ### **CSRF Protection**
 All forms **MUST** include CSRF tokens:
@@ -308,10 +382,11 @@ if (!empty($_POST)) {
     if (!Token::check($token)) {
         throw new SecurityException('Invalid CSRF token');
     }
-    
+  
     // Process form data
 }
-```
+
+```text
 
 ### **File Upload Security**
 Implement comprehensive file validation:
@@ -323,24 +398,25 @@ public function validateFileUpload(array $file): void
     if ($file['error'] !== UPLOAD_ERR_OK) {
         throw new FileUploadException("Upload error: {$file['error']}");
     }
-    
+  
     // Size validation
     if ($file['size'] > self::MAX_FILE_SIZE) {
         throw new FileUploadException('File too large');
     }
-    
+  
     // MIME type validation
     $mimeType = $this->getMimeType($file['tmp_name']);
     if (!in_array($mimeType, self::ALLOWED_MIME_TYPES)) {
         throw new FileUploadException("Invalid file type: {$mimeType}");
     }
-    
+  
     // Verify upload integrity
     if (!is_uploaded_file($file['tmp_name'])) {
         throw new FileUploadException('Invalid file upload');
     }
 }
-```
+
+```text
 
 ---
 
@@ -352,10 +428,10 @@ All classes, methods, and properties **MUST** have PHPDoc blocks:
 ```php
 /**
  * Car management class for the Lotus Elan Registry
- * 
+ *
  * Handles car data operations including creation, updates, validation,
  * and relationship management with users and factory data.
- * 
+ *
  * @author Elan Registry Development Team
  * @version 2.7.1
  * @since 1.0.0
@@ -366,20 +442,20 @@ class Car
      * Maximum allowed chassis suffix length for validation
      */
     private const CHASSIS_SUFFIX_LENGTH = 5;
-    
+  
     /**
      * Update car color with validation and audit trail
-     * 
+     *
      * Validates color input, sanitizes for safe storage, and creates
      * an audit trail entry for the change.
-     * 
+     *
      * @param array $cardetails Car data array (passed by reference)
      * @param string $newColor The new color value to set
      * @return void
-     * 
+     *
      * @throws ValidationException If color value is invalid
      * @throws DatabaseException If database update fails
-     * 
+     *
      * @example
      * $car = new Car(123);
      * $car->updateColor($data, 'British Racing Green');
@@ -389,7 +465,8 @@ class Car
         // Implementation
     }
 }
-```
+
+```text
 
 ### **Inline Comments**
 Use inline comments for complex logic only:
@@ -403,7 +480,8 @@ $correctedImage = $this->correctOrientation($filename, $image);
 // ❌ POOR - Obvious code explanation
 // Set the color variable
 $color = Input::get('color');
-```
+
+```text
 
 ### **TODO and FIXME Comments**
 Use structured TODO/FIXME comments:
@@ -412,14 +490,16 @@ Use structured TODO/FIXME comments:
 // TODO: Issue #278 - Add type declarations to legacy functions
 // FIXME: Issue #240 - Optimize database query performance
 // NOTE: This workaround addresses PHP 8.1 compatibility issue
-```
+
+```text
 
 ---
 
 ## 📂 **File Organization**
 
 ### **Directory Structure**
-```
+
+```text
 /app/                          # Application pages and logic
   /cars/                       # Car-related functionality  
     /actions/                  # Form processing endpoints
@@ -443,24 +523,29 @@ Use structured TODO/FIXME comments:
   /playwright/                 # Browser tests
   
 /FIX/                          # Administrative maintenance scripts
-```
+
+```text
 
 ### **File Naming Conventions**
 
 #### **PHP Classes**
 - **PascalCase**: `Car.php`, `ImageProcessor.php`, `UserManager.php`
+
 - **One class per file**
 - **Descriptive names**: `CarValidationException.php` not `Exception.php`
 
 #### **Script Files**  
 - **snake_case**: `edit_car.php`, `send_email.php`
+
 - **Descriptive action names**: `validate-chassis.php` not `check.php`
 
 #### **Template Files**
 - **Purpose-based naming**: `car-details.php`, `user-profile.php`
+
 - **Consistent prefixes**: `_partial-name.php` for partials
 
 ### **Class Organization**
+
 ```php
 <?php
 
@@ -474,42 +559,44 @@ class ExampleClass
     // 1. Constants (public first, then private)
     public const PUBLIC_CONSTANT = 'value';
     private const PRIVATE_CONSTANT = 'value';
-    
+  
     // 2. Properties (public first, then protected, then private)
     public string $publicProperty;
     protected int $protectedProperty;
     private array $privateProperty = [];
-    
+  
     // 3. Constructor
     public function __construct() {}
-    
+  
     // 4. Public methods (alphabetical order preferred)
     public function create(): bool {}
     public function delete(): bool {}
     public function update(): bool {}
-    
+  
     // 5. Protected methods
     protected function validateInput(): void {}
-    
+  
     // 6. Private methods (alphabetical order preferred)
     private function saveToDatabase(): bool {}
     private function sendNotification(): void {}
 }
-```
+
+```text
 
 ---
 
 ## 🚀 **Performance Guidelines**
 
 ### **Database Optimization**
+
 ```php
 // ✅ GOOD - Single query with JOIN
 public function getCarWithOwner(int $carId): ?array
 {
     return $this->db->query(
-        'SELECT c.*, u.fname, u.lname 
-         FROM cars c 
-         JOIN users u ON c.user_id = u.id 
+        'SELECT c.*, u.fname, u.lname
+         FROM cars c
+         JOIN users u ON c.user_id = u.id
          WHERE c.id = ?',
         [$carId]
     )->first();
@@ -522,20 +609,22 @@ public function getCarWithOwner(int $carId): ?array
     $user = $this->db->query('SELECT * FROM users WHERE id = ?', [$car->user_id])->first();
     return array_merge($car, $user);
 }
-```
+
+```text
 
 ### **Caching Patterns**
+
 ```php
 // ✅ GOOD - Object caching to avoid repeated method calls
 public function displayCarDetails(int $carId): void
 {
     $car = new Car($carId);
-    
+  
     // Cache expensive operations
     $carData = $car->data();
     $factoryData = $car->factory();
     $carHistory = $car->history();
-    
+  
     // Use cached data in template
     $this->render('car-details', [
         'car' => $carData,
@@ -543,28 +632,31 @@ public function displayCarDetails(int $carId): void
         'history' => $carHistory
     ]);
 }
-```
+
+```text
 
 ### **Memory Management**
+
 ```php
 // ✅ GOOD - Process large datasets in chunks
 public function processLargeDataset(array $items): void
 {
     $chunks = array_chunk($items, 100);
-    
+  
     foreach ($chunks as $chunk) {
         $this->processBatch($chunk);
-        
+  
         // Free memory between chunks
         unset($chunk);
-        
+  
         // Optional: Force garbage collection for very large datasets
         if (memory_get_usage() > self::MEMORY_THRESHOLD) {
             gc_collect_cycles();
         }
     }
 }
-```
+
+```text
 
 ---
 
@@ -572,31 +664,41 @@ public function processLargeDataset(array $items): void
 
 ### **Security Checklist**
 - [ ] All user input is validated and sanitized
+
 - [ ] Database queries use parameterized statements  
 - [ ] CSRF tokens are validated on form submissions
+
 - [ ] File uploads include comprehensive validation
 - [ ] No sensitive information in error messages or logs
+
 - [ ] Authentication and authorization checks are present
 
 ### **Code Quality Checklist**
 - [ ] All functions have complete type declarations
+
 - [ ] Strict typing is enabled (`declare(strict_types=1)`)
 - [ ] Custom exceptions are used appropriately
+
 - [ ] Error handling follows established patterns
 - [ ] Code follows naming conventions
+
 - [ ] No code duplication (DRY principle)
 
 ### **Documentation Checklist**
 - [ ] All classes have PHPDoc headers
+
 - [ ] All public methods have complete PHPDoc blocks
 - [ ] Complex logic has inline comments
+
 - [ ] TODO/FIXME comments reference specific issues
 - [ ] README or documentation updated if needed
 
 ### **Performance Checklist**  
 - [ ] Database queries are optimized (no N+1 problems)
+
 - [ ] Expensive operations are cached when appropriate
 - [ ] Memory usage is considered for large datasets
+
 - [ ] File operations are optimized
 - [ ] No unnecessary object creation in loops
 
@@ -606,6 +708,7 @@ public function processLargeDataset(array $items): void
 
 - [PHP 8+ Type System Documentation](https://www.php.net/manual/en/language.types.declarations.php)
 - [PSR Standards](https://www.php-fig.org/psr/)
+
 - [UserSpice Framework Documentation](https://userspice.com/documentation/)
 - [OWASP Secure Coding Practices](https://owasp.org/www-project-secure-coding-practices-quick-reference-guide/)
 
@@ -615,4 +718,6 @@ public function processLargeDataset(array $items): void
 **Next Review:** December 2025  
 **Maintainer:** Elan Registry Development Team
 
-This document is a living standard that evolves with the codebase and PHP ecosystem. All developers must follow these standards for new code and gradually apply them to legacy code during maintenance.
+This document is a living standard that evolves with the codebase and PHP 
+ecosystem. All developers must follow these standards for new code and 
+gradually apply them to legacy code during maintenance.

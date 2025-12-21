@@ -67,7 +67,7 @@ if ($isApproved) {
         </ul>
 
         <p><strong>Questions about this decision?</strong> Please contact the registry administrators at
-        <a href=\"mailto:registrar@elanregistry.org\">registrar@elanregistry.org</a> if you have additional information
+        <a href=\"mailto:<?= htmlspecialchars(getAdminEmails()) ?>\"><?= htmlspecialchars(getAdminEmails()) ?></a> if you have additional information
         or documentation that supports your ownership claim.</p>
 
         <h3>📚 Next Steps & Resources</h3>

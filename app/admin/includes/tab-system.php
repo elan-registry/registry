@@ -8,14 +8,15 @@ declare(strict_types=1);
  * Integrates existing /FIX/ functionality into consolidated interface
  */
 
-// Include FIX system functionality and Enhanced Schema Manager
-require_once $abs_us_root . $us_url_root . 'FIX/backup-functions.php';
+// Include Enhanced Schema Manager and BackupManager
 require_once 'classes/EnhancedSchemaManager.php';
 require_once 'classes/BackupManager.php';
+// No longer need FIX/backup-functions.php - all backup logic is in BackupManager class
 
 // Initialize enhanced managers
-$schemaManager = new EnhancedSchemaManager($db, $settings, $user->data()->id);
-$backupManager = new BackupManager($db, $abs_us_root . $us_url_root . 'FIX/backups/', $user->data()->id);
+// Cast user ID to int for strict type safety across different PHP/database configurations
+$schemaManager = new EnhancedSchemaManager($db, $settings, (int)$user->data()->id);
+$backupManager = new BackupManager($db, $abs_us_root . $us_url_root . 'FIX/backups/', (int)$user->data()->id);
 
 // Get list of FIX scripts
 $fixDirectory = $abs_us_root . $us_url_root . 'FIX/';
@@ -414,8 +415,8 @@ foreach ($fixScripts as $script) {
     </div>
 </div>
 
-<!-- Backup System Integration  - Commented out github issue #364  -->
-<!-- <div class="card border-info">
+<!-- Backup System Integration  -->
+<div class="card border-info">
     <div class="card-header bg-info text-white">
         <h5 class="mb-0"><i class="fas fa-shield-alt"></i> Integrated Backup Management</h5>
     </div>
@@ -479,14 +480,91 @@ foreach ($fixScripts as $script) {
         </div>
 
         <div class="text-center mt-3">
-            <a href="../../FIX/backups" class="btn btn-outline-info" target="_blank">
-                <i class="fas fa-folder-open"></i> View Backup Directory
-            </a>
+            <button type="button" class="btn btn-success" onclick="createManualBackup()">
+                <i class="fas fa-save"></i> Create Manual Backup
+            </button>
+            <button type="button" class="btn btn-outline-info ml-2" onclick="listBackupFiles()">
+                <i class="fas fa-list"></i> List Backup Files
+            </button>
+        </div>
+
+        <div class="text-center mt-2">
+            <button type="button" class="btn btn-outline-warning btn-sm" onclick="performBackupCleanup()">
+                <i class="fas fa-broom"></i> Cleanup Old Backups
+            </button>
+            <button type="button" class="btn btn-outline-primary btn-sm ml-2" onclick="runSchemaValidation()">
+                <i class="fas fa-check-circle"></i> Validate Schema
+            </button>
+        </div>
+
+        <!-- Validation result container -->
+        <div id="validation-result-container" class="mt-2"></div>
+
+        <!-- Backup List Modal -->
+        <div class="modal fade" id="backupListModal" tabindex="-1" role="dialog">
+            <div class="modal-dialog modal-lg" role="document">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h5 class="modal-title"><i class="fas fa-database"></i> Backup Files</h5>
+                        <button type="button" class="close" data-dismiss="modal">
+                            <span>&times;</span>
+                        </button>
+                    </div>
+                    <div class="modal-body" id="backupListContent">
+                        <div class="text-center">
+                            <i class="fas fa-spinner fa-spin"></i> Loading backups...
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-dismiss="modal">Close</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Confirmation Modal (Reusable) -->
+        <div class="modal fade" id="confirmationModal" tabindex="-1" role="dialog">
+            <div class="modal-dialog" role="document">
+                <div class="modal-content">
+                    <div class="modal-header bg-warning text-dark">
+                        <h5 class="modal-title"><i class="fas fa-exclamation-triangle"></i> <span id="confirmTitle">Confirm Action</span></h5>
+                        <button type="button" class="close" data-dismiss="modal">
+                            <span>&times;</span>
+                        </button>
+                    </div>
+                    <div class="modal-body" id="confirmMessage">
+                        Are you sure?
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-dismiss="modal">Cancel</button>
+                        <button type="button" class="btn btn-primary" id="confirmButton">Confirm</button>
+                    </div>
+                </div>
+            </div>
         </div>
     </div>
-</div> -->
+</div>
 
 <script>
+// Helper function to show confirmation modal
+function showConfirmDialog(title, message, onConfirm) {
+    document.getElementById('confirmTitle').textContent = title;
+    document.getElementById('confirmMessage').innerHTML = message;
+
+    // Remove any existing click handlers
+    const confirmBtn = document.getElementById('confirmButton');
+    const newConfirmBtn = confirmBtn.cloneNode(true);
+    confirmBtn.parentNode.replaceChild(newConfirmBtn, confirmBtn);
+
+    // Add new click handler
+    document.getElementById('confirmButton').addEventListener('click', function() {
+        $('#confirmationModal').modal('hide');
+        onConfirm();
+    });
+
+    $('#confirmationModal').modal('show');
+}
+
 // Backup cleanup confirmation
 function confirmBackupCleanup() {
     const message = `⚠️ BACKUP CLEANUP CONFIRMATION\n\n` +
@@ -509,12 +587,280 @@ function dismissCleanupPrompt() {
     document.querySelector('.alert-warning').style.display = 'none';
 }
 
+// Create manual backup
+function createManualBackup() {
+    const message = `<p><strong>Create a manual backup of critical database tables?</strong></p>
+                    <p class="small mb-2">This will backup the following tables:</p>
+                    <ul class="small">
+                        <li>users</li>
+                        <li>cars</li>
+                        <li>car_user</li>
+                        <li>profiles</li>
+                        <li>settings</li>
+                        <li>car_history</li>
+                    </ul>`;
+
+    showConfirmDialog('Create Manual Backup', message, function() {
+        // Find the backup button
+        const btn = document.querySelector('button[onclick*="createManualBackup"]');
+        const originalHTML = btn ? btn.innerHTML : '';
+
+        if (btn) {
+            btn.disabled = true;
+            btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Creating backup...';
+        }
+
+        fetch('includes/system/backup-operations.php', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/x-www-form-urlencoded',
+            },
+            body: 'action=create_manual_backup&reason=admin-panel-backup'
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (btn) {
+                btn.disabled = false;
+                btn.innerHTML = originalHTML;
+            }
+
+            if (data.success) {
+                showAlert('success', '✓ Backup created successfully!',
+                         'File: ' + data.filename + '<br>Size: ' + data.size);
+                // Refresh after 2 seconds to update statistics
+                setTimeout(() => location.reload(), 2000);
+            } else {
+                let errorMsg = data.message || 'Unknown error';
+                if (data.error_details) {
+                    errorMsg += '<br><small class="text-muted">' +
+                               'Error in ' + data.error_details.file + ' at line ' + data.error_details.line +
+                               '<br>Check the logs for more details.</small>';
+                }
+                showAlert('danger', '✗ Backup creation failed', errorMsg);
+            }
+        })
+        .catch(error => {
+            if (btn) {
+                btn.disabled = false;
+                btn.innerHTML = originalHTML;
+            }
+            showAlert('danger', '✗ Error creating backup', error.message);
+        });
+    });
+}
+
+// Helper function to show alerts
+function showAlert(type, title, message) {
+    const alertDiv = document.createElement('div');
+    alertDiv.className = `alert alert-${type} alert-dismissible fade show mt-3`;
+    alertDiv.innerHTML = `
+        <strong>${title}</strong><br>
+        ${message}
+        <button type="button" class="close" data-dismiss="alert">
+            <span>&times;</span>
+        </button>
+    `;
+
+    const container = document.getElementById('validation-result-container');
+    container.innerHTML = '';
+    container.appendChild(alertDiv);
+
+    // Auto-remove after 5 seconds
+    setTimeout(() => {
+        if (alertDiv.parentNode) {
+            alertDiv.remove();
+        }
+    }, 5000);
+}
+
+// List backup files
+function listBackupFiles() {
+    $('#backupListModal').modal('show');
+
+    fetch('includes/system/backup-operations.php', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/x-www-form-urlencoded',
+        },
+        body: 'action=list_backups'
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            let html = '<div class="table-responsive"><table class="table table-sm table-striped">';
+            html += '<thead><tr><th>File</th><th>Type</th><th>Size</th><th>Created</th></tr></thead><tbody>';
+
+            const allBackups = [
+                ...data.backups.automated.map(b => ({...b, type: 'Automated'})),
+                ...data.backups.manual.map(b => ({...b, type: 'Manual'})),
+                ...data.backups.rollback.map(b => ({...b, type: 'Rollback'}))
+            ];
+
+            // Sort by created date, newest first
+            allBackups.sort((a, b) => new Date(b.created) - new Date(a.created));
+
+            if (allBackups.length === 0) {
+                html += '<tr><td colspan="4" class="text-center text-muted">No backup files found</td></tr>';
+            } else {
+                allBackups.forEach(backup => {
+                    html += `<tr>
+                        <td><small>${backup.filename}</small></td>
+                        <td><span class="badge badge-${backup.type === 'Automated' ? 'primary' : backup.type === 'Manual' ? 'info' : 'warning'}">${backup.type}</span></td>
+                        <td>${backup.size_formatted}</td>
+                        <td>${backup.created}</td>
+                    </tr>`;
+                });
+            }
+
+            html += '</tbody></table></div>';
+            document.getElementById('backupListContent').innerHTML = html;
+        } else {
+            document.getElementById('backupListContent').innerHTML =
+                '<div class="alert alert-danger">Error loading backups: ' + (data.message || 'Unknown error') + '</div>';
+        }
+    })
+    .catch(error => {
+        document.getElementById('backupListContent').innerHTML =
+            '<div class="alert alert-danger">Error: ' + error.message + '</div>';
+    });
+}
+
+// Perform backup cleanup
+function performBackupCleanup() {
+    // First, fetch the list of files that will be deleted
+    fetch('includes/system/backup-operations.php', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/x-www-form-urlencoded',
+        },
+        body: 'action=preview_cleanup'
+    })
+    .then(response => response.json())
+    .then(previewData => {
+        if (!previewData.success) {
+            showAlert('danger', '✗ Error', 'Failed to load cleanup preview');
+            return;
+        }
+
+        // Build file list HTML
+        let fileListHtml = '';
+
+        if (previewData.total_count === 0) {
+            fileListHtml = '<p class="text-success mb-0"><i class="fas fa-check-circle"></i> No files to delete. All backups are within retention policy.</p>';
+        } else {
+            fileListHtml = `<p class="mb-2"><strong>${previewData.total_count} file(s) will be deleted:</strong></p>`;
+
+            // Automated backups
+            if (previewData.files.automated.length > 0) {
+                fileListHtml += '<div class="mb-2"><strong class="text-primary">Automated Backups:</strong><ul class="small mb-1">';
+                previewData.files.automated.forEach(file => {
+                    fileListHtml += `<li>${file.filename} <span class="text-muted">(${file.age_days} days old, ${file.size_formatted})</span></li>`;
+                });
+                fileListHtml += '</ul></div>';
+            }
+
+            // Manual backups
+            if (previewData.files.manual.length > 0) {
+                fileListHtml += '<div class="mb-2"><strong class="text-primary">Manual Backups:</strong><ul class="small mb-1">';
+                previewData.files.manual.forEach(file => {
+                    fileListHtml += `<li>${file.filename} <span class="text-muted">(${file.age_days} days old, ${file.size_formatted})</span></li>`;
+                });
+                fileListHtml += '</ul></div>';
+            }
+
+            // Rollback backups
+            if (previewData.files.rollback.length > 0) {
+                fileListHtml += '<div class="mb-2"><strong class="text-primary">Rollback Backups:</strong><ul class="small mb-1">';
+                previewData.files.rollback.forEach(file => {
+                    fileListHtml += `<li>${file.filename} <span class="text-muted">(${file.age_days} days old, ${file.size_formatted})</span></li>`;
+                });
+                fileListHtml += '</ul></div>';
+            }
+        }
+
+        const message = `<div class="alert alert-warning mb-3">
+                            <i class="fas fa-exclamation-triangle"></i> <strong>Warning: This action cannot be undone!</strong>
+                         </div>
+                         ${fileListHtml}
+                         <p class="mt-3 mb-2 small text-muted">
+                             <strong>Retention Policies:</strong><br>
+                             • Automated: 7 days (dev) | Manual: 14 days (dev) | Rollback: 14 days (dev)
+                         </p>
+                         <p class="mb-2"><strong>Continue with cleanup?</strong></p>`;
+
+        // Only show confirmation if there are files to delete
+        if (previewData.total_count === 0) {
+            showAlert('info', 'No Cleanup Needed', fileListHtml);
+            return;
+        }
+
+        showConfirmDialog('Backup Cleanup Confirmation', message, function() {
+        // Find the cleanup button
+        const btn = document.querySelector('button[onclick*="performBackupCleanup"]');
+        const originalHTML = btn ? btn.innerHTML : '';
+
+        if (btn) {
+            btn.disabled = true;
+            btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Cleaning up...';
+        }
+
+        fetch('includes/system/backup-operations.php', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/x-www-form-urlencoded',
+            },
+            body: 'action=cleanup_backups'
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (btn) {
+                btn.disabled = false;
+                btn.innerHTML = originalHTML;
+            }
+
+            if (data.success) {
+                const totalDeleted = data.cleanup.automated.deleted + data.cleanup.manual.deleted + data.cleanup.rollback.deleted;
+                const resultMessage = `<p><strong>Files deleted:</strong></p>
+                                      <ul>
+                                          <li>Automated: ${data.cleanup.automated.deleted} of ${data.cleanup.automated.scanned}</li>
+                                          <li>Manual: ${data.cleanup.manual.deleted} of ${data.cleanup.manual.scanned}</li>
+                                          <li>Rollback: ${data.cleanup.rollback.deleted} of ${data.cleanup.rollback.scanned}</li>
+                                      </ul>
+                                      <p class="mb-0"><strong>Total: ${totalDeleted} files removed</strong></p>`;
+
+                showAlert('success', '✓ Cleanup completed successfully!', resultMessage);
+                // Refresh the page after 2 seconds to update statistics
+                setTimeout(() => location.reload(), 2000);
+            } else {
+                showAlert('danger', '✗ Cleanup failed', data.message || 'Unknown error');
+            }
+        })
+        .catch(error => {
+            if (btn) {
+                btn.disabled = false;
+                btn.innerHTML = originalHTML;
+            }
+            showAlert('danger', '✗ Error during cleanup', error.message);
+        });
+        });
+    })
+    .catch(error => {
+        showAlert('danger', '✗ Error loading cleanup preview', error.message);
+    });
+}
+
 // Schema validation using Enhanced Schema Manager
 function runSchemaValidation() {
-    const btn = event.target;
-    const originalHTML = btn.innerHTML;
-    btn.disabled = true;
-    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Validating...';
+    // Find the validation button
+    const btn = document.querySelector('button[onclick*="runSchemaValidation"]');
+    const originalHTML = btn ? btn.innerHTML : '';
+
+    if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Validating...';
+    }
+
+    const resultContainer = document.getElementById('validation-result-container');
 
     fetch('includes/system/schema-operations.php', {
         method: 'POST',
@@ -525,46 +871,38 @@ function runSchemaValidation() {
     })
     .then(response => response.json())
     .then(data => {
-        btn.disabled = false;
-        btn.innerHTML = originalHTML;
-
-        // Remove any existing result
-        const existingResult = document.querySelector('#validation-result');
-        if (existingResult) {
-            existingResult.remove();
+        if (btn) {
+            btn.disabled = false;
+            btn.innerHTML = originalHTML;
         }
 
-        // Show validation result
-        const alertDiv = document.createElement('div');
-        alertDiv.id = 'validation-result';
+        // Show validation result in the dedicated container
+        let alertDiv = '';
 
         if (data.success && data.validation.valid) {
-            alertDiv.className = 'alert alert-success mt-2';
-            alertDiv.innerHTML = '<i class="fas fa-check-circle"></i> Schema validation completed successfully. All components are healthy and operational.';
+            alertDiv = '<div class="alert alert-success"><i class="fas fa-check-circle"></i> Schema validation completed successfully. All components are healthy and operational.</div>';
         } else {
-            alertDiv.className = 'alert alert-warning mt-2';
             let issues = data.validation?.issues || ['Validation failed'];
-            alertDiv.innerHTML = `<i class="fas fa-exclamation-triangle"></i> Schema validation found issues:<ul class="mb-0 mt-2">${issues.map(issue => `<li>${issue}</li>`).join('')}</ul>`;
+            alertDiv = `<div class="alert alert-warning"><i class="fas fa-exclamation-triangle"></i> Schema validation found issues:<ul class="mb-0 mt-2">${issues.map(issue => `<li>${issue}</li>`).join('')}</ul></div>`;
         }
 
-        btn.parentNode.appendChild(alertDiv);
+        resultContainer.innerHTML = alertDiv;
 
         // Auto-remove after 8 seconds
         setTimeout(() => {
-            if (document.querySelector('#validation-result')) {
-                document.querySelector('#validation-result').remove();
-            }
+            resultContainer.innerHTML = '';
         }, 8000);
     })
     .catch(error => {
-        btn.disabled = false;
-        btn.innerHTML = originalHTML;
+        if (btn) {
+            btn.disabled = false;
+            btn.innerHTML = originalHTML;
+        }
 
-        const alertDiv = document.createElement('div');
-        alertDiv.id = 'validation-result';
-        alertDiv.className = 'alert alert-danger mt-2';
-        alertDiv.innerHTML = '<i class="fas fa-exclamation-circle"></i> Schema validation failed: ' + error.message;
-        btn.parentNode.appendChild(alertDiv);
+        const resultContainer = document.getElementById('validation-result-container');
+        if (resultContainer) {
+            resultContainer.innerHTML = '<div class="alert alert-danger"><i class="fas fa-exclamation-circle"></i> Schema validation failed: ' + error.message + '</div>';
+        }
 
         setTimeout(() => {
             if (document.querySelector('#validation-result')) {

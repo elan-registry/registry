@@ -11,7 +11,7 @@ declare(strict_types=1);
 require_once '../../../users/init.php';
 
 // Security check - admin permission required
-if (!$user->isLoggedIn() || !hasPerm([1, 2], $user->data()->id)) {
+if (!$user->isLoggedIn() || !isRegistryAdmin($user->data()->id)) {
     http_response_code(403);
     echo '<div class="alert alert-danger">Unauthorized access</div>';
     exit;

@@ -187,12 +187,12 @@ class DocumentConfig
             return true; // Public document
         }
 
-        // Check admin permissions (Administrator=1, Editor=2)
+        // Check admin permissions (Administrator=2, Editor=3)
         if (!$user->isLoggedIn()) {
             return false;
         }
 
-        return hasPerm([1, 2], $user->data()->id);
+        return isRegistryAdmin($user->data()->id);
     }
 
     /**

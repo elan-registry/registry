@@ -83,7 +83,7 @@ $content = "
             '<div class="message-content">' . htmlspecialchars($adminNotes) . '</div>', 'message') : '') . "
 
     <p><strong>Questions or concerns?</strong> Please contact the registry administrators at
-    <a href=\"mailto:registrar@elanregistry.org\">registrar@elanregistry.org</a> if you have any questions about this decision.</p>
+    <a href=\"mailto:<?= htmlspecialchars(getAdminEmails()) ?>\"><?= htmlspecialchars(getAdminEmails()) ?></a> if you have any questions about this decision.</p>
 
     <h3>📚 Registry Resources</h3>
     <p>Learn more about the transfer system and registry features:</p>

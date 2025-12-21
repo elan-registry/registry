@@ -86,11 +86,8 @@ function sendTransferRequestNotification(int $transferRequestId): bool
 
         // Send email to current owner
         $subject = "[ELANREGISTRY] Car Ownership Transfer Request - " . $carData->year . " " . $carData->series . " " . $carData->variant . " (Chassis: " . $carData->chassis . ")";
-        $options = [
-            'reply' => 'registrar@elanregistry.org'
-        ];
 
-        $result = email($currentOwner->email, $subject, $emailBody, "", $options);
+        $result = email($currentOwner->email, $subject, $emailBody);
 
         if ($result) {
             logger($transferData->requested_by_user_id, 'EmailSuccess', "Transfer request notification sent to current owner: {$currentOwner->email}");
@@ -114,13 +111,13 @@ function sendTransferRequestNotification(int $transferRequestId): bool
  */
 function sendTransferRequestAdminAlert(int $transferRequestId): bool
 {
-    global $abs_us_root, $us_url_root, $settings;
+    global $abs_us_root, $us_url_root;
     $db = DB::getInstance();
 
 
     try {
         // Get admin email addresses from settings
-        $adminEmailsRaw = $settings->elan_admin_emails ?? 'registrar@elanregistry.org';
+        $adminEmailsRaw = getAdminEmails();
         $adminEmails = array_map('trim', explode(',', $adminEmailsRaw));
         $adminEmails = array_filter($adminEmails); // Remove empty values
 
@@ -184,7 +181,7 @@ function sendTransferRequestAdminAlert(int $transferRequestId): bool
             'expires_at' => $transferData->expires_at ?? ''
         ];
 
-        $reviewUrl = 'https://elanregistry.org/app/cars/manage.php#transfers';
+        $reviewUrl = getBaseUrl() . '/app/admin/manage-consolidated.php';
 
         // Generate email content
         ob_start();
@@ -193,14 +190,11 @@ function sendTransferRequestAdminAlert(int $transferRequestId): bool
 
         // Send email to all admins
         $subject = "[ELANREGISTRY] ADMIN ALERT: Transfer Request #$transferRequestId - " . $carData->year . " " . $carData->series . " (Chassis: " . $carData->chassis . ")";
-        $options = [
-            'reply' => 'registrar@elanregistry.org'
-        ];
 
         $successCount = 0;
 
         foreach ($adminEmails as $adminEmail) {
-            $result = email($adminEmail, $subject, $emailBody, "", $options);
+            $result = email($adminEmail, $subject, $emailBody);
             if ($result) {
                 $successCount++;
             } else {
@@ -273,7 +267,7 @@ function sendTransferResponseNotification(int $transferRequestId, bool $isApprov
             'completed_date' => $transferData->completed_date ?: date('Y-m-d H:i:s')
         ];
 
-        $carUrl = "https://elanregistry.org/app/cars/details.php?id=" . $carData->id;
+        $carUrl = getBaseUrl() . "/app/cars/details.php?id=" . $carData->id;
 
         // Generate email content
         ob_start();
@@ -283,11 +277,7 @@ function sendTransferResponseNotification(int $transferRequestId, bool $isApprov
         // Send email to requester
         $status = $isApproved ? 'APPROVED' : 'DENIED';
         $subject = "[ELANREGISTRY] Transfer Request $status - " . $carData->year . " " . $carData->series . " " . $carData->variant . " (Chassis: " . $carData->chassis . ")";
-        $options = [
-            'reply' => 'registrar@elanregistry.org'
-        ];
-
-        $result = email($requester->email, $subject, $emailBody, "", $options);
+        $result = email($requester->email, $subject, $emailBody);
 
         $requesterNotificationSent = $result;
         if ($requesterNotificationSent) {
@@ -387,11 +377,8 @@ function sendTransferPreviousOwnerNotification(int $transferRequestId, bool $isA
         // Send email to previous owner
         $status = $isApproved ? 'APPROVED' : 'DENIED';
         $subject = "[ELANREGISTRY] Transfer Decision: $status - " . $carData->year . " " . $carData->series . " " . $carData->variant . " (Chassis: " . $carData->chassis . ")";
-        $options = [
-            'reply' => 'registrar@elanregistry.org'
-        ];
 
-        $result = email($previousOwner->email, $subject, $emailBody, "", $options);
+        $result = email($previousOwner->email, $subject, $emailBody);
 
         if ($result) {
             logger($transferData->requested_by_user_id, 'EmailSuccess', "Transfer decision notification ($status) sent to previous owner: {$previousOwner->email}");

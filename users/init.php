@@ -43,6 +43,11 @@ $GLOBALS['config'] = array(
         'username'     => getenv('DB_USER'),
         'password'     => getenv('DB_PASS'),
         'db'           => getenv('DB_NAME'),
+        // PDO options for proper type handling (PHP 8.1+ behavior)
+        // Returns integers as int (not string) for strict type compatibility
+        'options'      => array(
+            PDO::ATTR_STRINGIFY_FETCHES => false,  // Return integers as int, not string
+        ),
     ),
     'remember'        => array(
         'cookie_name'   => 'pmqesoxiw318374csb',

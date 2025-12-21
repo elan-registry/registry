@@ -1,4 +1,6 @@
 <?php
+declare(strict_types=1);
+
 /*
 UserSpice 4
 An Open Source PHP User Management System
@@ -76,5 +78,62 @@ function getUserWithProfile($user_id) {
     }
 
     return null;
+}
+
+/**
+ * Check if user has Registry admin or editor permissions
+ *
+ * @param int|null $userId User ID to check (defaults to current user)
+ * @return bool True if user is Administrator (2) or Editor (3)
+ */
+function isRegistryAdmin($userId = null) {
+    return hasPerm([2, 3], $userId);
+}
+
+/**
+ * Get the base URL from database email settings with static caching
+ *
+ * Retrieves the base URL for the application from the email.verify_url database setting.
+ * Uses static caching to avoid repeated database queries per request.
+ * This ensures environment-aware URLs in emails and API calls.
+ *
+ * @return string Base URL (e.g., 'https://elanregistry.org' or 'http://localhost')
+ */
+function getBaseUrl() {
+    static $baseUrl = null;
+
+    if ($baseUrl === null) {
+        $db = DB::getInstance();
+        $result = $db->query("SELECT verify_url FROM email")->first();
+        $baseUrl = $result->verify_url ?? 'https://elanregistry.org'; // Fallback to production
+    }
+
+    return rtrim($baseUrl, '/'); // Remove trailing slash for consistency
+}
+
+/**
+ * Get admin email address(es) from settings
+ *
+ * Returns the configured admin email address(es) from the database settings,
+ * with a fallback to the default registrar email if not configured.
+ *
+ * @return string Admin email address(es), comma-separated if multiple
+ */
+function getAdminEmails(): string {
+    global $settings;
+    return $settings->elan_admin_emails ?? 'registrar@elanregistry.org';
+}
+
+/**
+ * Get feedback email address from settings
+ *
+ * Returns the configured feedback form email address from the database settings,
+ * with a fallback to the default registrar email if not configured.
+ *
+ * @return string Feedback email address
+ */
+function getFeedbackEmail(): string {
+    global $settings;
+    return $settings->elan_feedback_email ?? 'registrar@elanregistry.org';
 }
 

@@ -18,6 +18,7 @@ if (!securePage($_SERVER['PHP_SELF'])) {
 
 // Include the Enhanced Schema Manager
 require_once '../classes/EnhancedSchemaManager.php';
+require_once '../classes/SchemaException.php';
 
 // Set content type for JSON responses
 header('Content-Type: application/json');
@@ -26,11 +27,12 @@ try {
     $action = $_POST['action'] ?? $_GET['action'] ?? null;
 
     if (!$action) {
-        throw new Exception('No action specified');
+        throw new SchemaException('No action specified');
     }
 
     // Initialize the schema manager
-    $schemaManager = new EnhancedSchemaManager($db, $settings, $user->data()->id);
+    // Cast user ID to int for strict type safety across different PHP/database configurations
+    $schemaManager = new EnhancedSchemaManager($db, $settings, (int)$user->data()->id);
 
     switch ($action) {
         case 'validate_schema':
@@ -68,7 +70,7 @@ try {
         case 'perform_maintenance':
             // CSRF token check for destructive operations
             if (!Token::check($_POST['csrf'] ?? '')) {
-                throw new Exception('Invalid CSRF token');
+                throw new SchemaException('Invalid CSRF token');
             }
 
             $result = $schemaManager->performMaintenance();
@@ -79,7 +81,7 @@ try {
             break;
 
         default:
-            throw new Exception('Unknown action: ' . $action);
+            throw new SchemaException('Unknown action: ' . $action);
     }
 
 } catch (Exception $e) {

@@ -1,4 +1,5 @@
 <?php
+declare(strict_types=1);
 
 /**
  * send_form_email.php
@@ -29,7 +30,7 @@ if (isset($_POST['email'])) {
     }
 
     // EDIT THE 2 LINES BELOW AS REQUIRED
-    $email_to = "elanregistry-admins@googlegroups.com";
+    $email_to = getFeedbackEmail();
     $email_subject = "[ELANREGISTRY] Feedback";
 
     function died($error)
@@ -98,14 +99,7 @@ if (isset($_POST['email'])) {
     // Generate email body using template
     $body = email_body('_email_feedback.php', $template);
 
-    $opts = array(
-        // 'from' => $email_from,  // If you change the from email address gmail thinks it's spam
-        // 'from_name'  => $name,
-        'reply_name'  => $name,
-        'reply' => $email_from
-    );
-
-    $email_sent = email($email_to, $email_subject, $body, $opts);
+    $email_sent = email($email_to, $email_subject, $body);
     if (!$email_sent) {
         logger(1, "Feedback form", "Error sending email");
     }
