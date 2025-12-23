@@ -234,10 +234,6 @@ try {
 
     logger($user->data()->id, 'BackupError', $errorDetails);
 
-    // Also log to PHP error log for debugging
-    error_log("BackupManager Error: " . $e->getMessage() . " in " . $e->getFile() . " on line " . $e->getLine());
-    error_log("Stack trace: " . $e->getTraceAsString());
-
     echo json_encode([
         'success' => false,
         'message' => $e->getMessage(),

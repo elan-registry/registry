@@ -150,10 +150,12 @@ try {
 
 } catch (PDOException $e) {
     // Fail silently for header stats - main functionality should still work
-    error_log("Database error getting system status: " . $e->getMessage());
+    logger($user->data()->id ?? 0, 'DatabaseError',
+        "Database error getting system status: " . $e->getMessage());
 } catch (RuntimeException $e) {
     // Handle database connection or other runtime errors
-    error_log("Runtime error getting system status: " . $e->getMessage());
+    logger($user->data()->id ?? 0, 'SystemError',
+        "Runtime error getting system status: " . $e->getMessage());
 }
 
 // Process form submissions for car management tab
