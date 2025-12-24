@@ -60,7 +60,8 @@ try {
         throw new RuntimeException('Failed to read document file');
     }
 } catch (Exception $e) {
-    error_log("Document read error: " . $e->getMessage());
+    logger($user->data()->id ?? 0, 'DocumentError',
+        "Document read error: " . $e->getMessage() . " | Path: " . ($documentData['path'] ?? 'unknown'));
     header('HTTP/1.0 500 Internal Server Error');
     die('Error reading document file.');
 }
