@@ -28,7 +28,7 @@ if (!isset($settings->elan_image_display_max_size)) {
     $settings->elan_image_display_max_size = 2048;
 }
 if (!isset($settings->elan_image_thumbnail_sizes)) {
-    $settings->elan_image_thumbnail_sizes = '100,300,600,1024,2048';
+    $settings->elan_image_thumbnail_sizes = '100,300,768,1024,2048';
 }
 
 // A place to put some messages
@@ -463,9 +463,9 @@ function uploadImages(array &$cardetails): void
     global $user;
 
     // Image resize dimensions from settings
-    $thumbnailSizesString = isset($settings->elan_image_thumbnail_sizes) && !empty($settings->elan_image_thumbnail_sizes) 
-        ? $settings->elan_image_thumbnail_sizes 
-        : '100,300,600,1024,2048'; // Default fallback
+    $thumbnailSizesString = isset($settings->elan_image_thumbnail_sizes) && !empty($settings->elan_image_thumbnail_sizes)
+        ? $settings->elan_image_thumbnail_sizes
+        : '100,300,768,1024,2048'; // Default fallback
     $thumbnailSizes = explode(',', $thumbnailSizesString);
     $imageSizes = array_map('intval', array_map('trim', $thumbnailSizes));
 
