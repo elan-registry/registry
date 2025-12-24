@@ -137,3 +137,68 @@ function getFeedbackEmail(): string {
     return $settings->elan_feedback_email ?? 'registrar@elanregistry.org';
 }
 
+/**
+ * Validate and normalize a website URL
+ *
+ * Centralized URL validation function used across the application for both user
+ * profiles and car listings. Handles:
+ * - URLs without schemes (auto-prepends https://)
+ * - URLs with http:// or https:// schemes
+ * - Empty/null values (allowed for optional website fields)
+ * - Invalid URL format detection
+ * - Character sanitization
+ *
+ * Examples:
+ * - Input: "example.com" → Output: "https://example.com"
+ * - Input: "www.example.com" → Output: "https://www.example.com"
+ * - Input: "https://example.com" → Output: "https://example.com"
+ * - Input: "http://example.com" → Output: "http://example.com"
+ * - Input: "" → Output: null (empty field allowed)
+ * - Input: "invalid!url" → Error message returned
+ *
+ * @param string $url The website URL to validate and normalize
+ * @return array Returns associative array with keys:
+ *               - 'valid' (bool): Whether the URL is valid
+ *               - 'url' (string|null): Normalized URL if valid, null if empty or invalid
+ *               - 'error' (string|null): Error message if invalid, null if valid
+ */
+function validateAndNormalizeUrl(string $url): array {
+    // Trim whitespace
+    $url = trim($url);
+    
+    // Allow empty values (optional field)
+    if ($url === '') {
+        return [
+            'valid' => true,
+            'url' => null,
+            'error' => null,
+        ];
+    }
+    
+    // Sanitize: remove or encode problematic characters
+    $url = preg_replace('/[<>"]/', '', $url);
+    
+    // Check if URL has a scheme (http:// or https://)
+    // Use regex pattern to detect schemes at the start
+    if (!preg_match('~^https?://~i', $url)) {
+        // No scheme detected, auto-prepend https://
+        $url = 'https://' . $url;
+    }
+    
+    // Validate the URL using PHP's built-in filter
+    if (!filter_var($url, FILTER_VALIDATE_URL)) {
+        return [
+            'valid' => false,
+            'url' => null,
+            'error' => "Invalid website URL: '" . htmlspecialchars(trim($url, 'https://')) . "'. Please enter a valid website (e.g., example.com or https://example.com).",
+        ];
+    }
+    
+    // URL is valid and normalized
+    return [
+        'valid' => true,
+        'url' => $url,
+        'error' => null,
+    ];
+}
+

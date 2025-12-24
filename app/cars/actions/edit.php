@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 /**
  * editCar.php - Car management endpoint
  * 
@@ -26,7 +28,7 @@ if (!isset($settings->elan_image_display_max_size)) {
     $settings->elan_image_display_max_size = 2048;
 }
 if (!isset($settings->elan_image_thumbnail_sizes)) {
-    $settings->elan_image_thumbnail_sizes = '100,300,600,1024,2048';
+    $settings->elan_image_thumbnail_sizes = '100,300,768,1024,2048';
 }
 
 // A place to put some messages
@@ -388,12 +390,27 @@ function updateSolddate(array &$cardetails): void
 
 function updateWebsite(array &$cardetails): void
 {
-    // Update 'website'
-    if (Input::get('website')) {
-        $cardetails['website'] = Input::get('website');
-        $successes[] = 'Website: ' . $cardetails['website'];
+    global $successes, $errors;
+    
+    // Get website value from form input
+    $website = Input::get('website') ?? '';
+    
+    // Use centralized validation helper
+    $validation = validateAndNormalizeUrl($website);
+    
+    if ($validation['valid']) {
+        // URL is valid, update car details
+        $cardetails['website'] = $validation['url'];
+        
+        // Log success message
+        if ($validation['url'] === null) {
+            $successes[] = 'Website: Cleared';
+        } else {
+            $successes[] = 'Website: ' . $validation['url'];
+        }
     } else {
-        $cardetails['website'] = null;
+        // URL validation failed, add error message
+        $errors[] = $validation['error'];
     }
 }
 
@@ -446,9 +463,9 @@ function uploadImages(array &$cardetails): void
     global $user;
 
     // Image resize dimensions from settings
-    $thumbnailSizesString = isset($settings->elan_image_thumbnail_sizes) && !empty($settings->elan_image_thumbnail_sizes) 
-        ? $settings->elan_image_thumbnail_sizes 
-        : '100,300,600,1024,2048'; // Default fallback
+    $thumbnailSizesString = isset($settings->elan_image_thumbnail_sizes) && !empty($settings->elan_image_thumbnail_sizes)
+        ? $settings->elan_image_thumbnail_sizes
+        : '100,300,768,1024,2048'; // Default fallback
     $thumbnailSizes = explode(',', $thumbnailSizesString);
     $imageSizes = array_map('intval', array_map('trim', $thumbnailSizes));
 

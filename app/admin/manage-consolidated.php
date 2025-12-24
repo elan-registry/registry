@@ -150,10 +150,12 @@ try {
 
 } catch (PDOException $e) {
     // Fail silently for header stats - main functionality should still work
-    error_log("Database error getting system status: " . $e->getMessage());
+    logger($user->data()->id ?? 0, 'DatabaseError',
+        "Database error getting system status: " . $e->getMessage());
 } catch (RuntimeException $e) {
     // Handle database connection or other runtime errors
-    error_log("Runtime error getting system status: " . $e->getMessage());
+    logger($user->data()->id ?? 0, 'SystemError',
+        "Runtime error getting system status: " . $e->getMessage());
 }
 
 // Process form submissions for car management tab
@@ -792,7 +794,7 @@ if (Input::exists('post')) {
         <div class="modal-content">
             <div class="modal-header" id="transferDecisionModalHeader">
                 <h5 class="modal-title" id="transferDecisionModalLabel">
-                    <i class="fas fa-exchange-alt"></i> <span id="transferDecisionTitle">Confirm Transfer Decision</span>
+                    <i class="fas fa-exchange-alt"></i> <span id="transferDecisionTitle">Administrator Transfer Decision</span>
                 </h5>
                 <button type="button" class="close" data-dismiss="modal" aria-label="Close">
                     <span aria-hidden="true">&times;</span>
@@ -800,12 +802,13 @@ if (Input::exists('post')) {
             </div>
             <div class="modal-body">
                 <div id="transferDecisionMessage" class="alert mb-3">
-                    <i class="fas fa-info-circle"></i> <span id="transferDecisionMessageText">Please confirm your decision on this transfer request.</span>
+                    <h6 class="alert-heading"><i class="fas fa-shield-alt"></i> Administrative Action Required</h6>
+                    <p class="mb-0"><span id="transferDecisionMessageText">Please review the transfer request details and confirm your decision.</span></p>
                 </div>
 
                 <div class="row">
                     <div class="col-md-6">
-                        <h6 class="text-primary"><i class="fas fa-car"></i> Car Details</h6>
+                        <h6 class="text-primary"><i class="fas fa-car"></i> Lotus Elan/+2 Details</h6>
                         <div id="modal-transfer-car-info" class="card border-primary">
                             <div class="card-body p-3">
                                 <div id="modal-transfer-car-details"></div>
@@ -813,9 +816,9 @@ if (Input::exists('post')) {
                         </div>
                     </div>
                     <div class="col-md-6">
-                        <h6 class="text-info"><i class="fas fa-users"></i> Transfer Parties</h6>
+                        <h6 class="text-info"><i class="fas fa-users"></i> Ownership Transfer Parties</h6>
                         <div class="mb-3">
-                            <strong class="text-muted">Current Owner:</strong>
+                            <strong class="text-muted"><i class="fas fa-user"></i> Current Registry Owner:</strong>
                             <div id="modal-current-owner-info" class="card border-secondary mt-1">
                                 <div class="card-body p-2">
                                     <div id="modal-current-owner-details"></div>
@@ -823,7 +826,7 @@ if (Input::exists('post')) {
                             </div>
                         </div>
                         <div>
-                            <strong class="text-success">Requesting User:</strong>
+                            <strong class="text-success"><i class="fas fa-user-plus"></i> Requesting New Owner:</strong>
                             <div id="modal-requester-info" class="card border-success mt-1">
                                 <div class="card-body p-2">
                                     <div id="modal-requester-details"></div>
@@ -834,7 +837,7 @@ if (Input::exists('post')) {
                 </div>
 
                 <div class="mt-3">
-                    <h6><i class="fas fa-calendar-alt"></i> Request Information</h6>
+                    <h6><i class="fas fa-calendar-alt"></i> Transfer Request Information</h6>
                     <div id="modal-transfer-request-info" class="card border-info">
                         <div class="card-body p-3">
                             <div id="modal-transfer-request-details"></div>
@@ -843,18 +846,22 @@ if (Input::exists('post')) {
                 </div>
 
                 <div class="mt-3" id="transferDecisionConsequences">
-                    <p class="mb-2"><strong>This action will:</strong></p>
+                    <p class="mb-2"><strong><i class="fas fa-info-circle"></i> Administrative Impact:</strong></p>
                     <ul class="list-unstyled" id="transferDecisionEffects">
                         <!-- Dynamic content based on approve/deny -->
                     </ul>
                 </div>
+
+                <div class="alert alert-warning mb-0">
+                    <small><i class="fas fa-exclamation-triangle"></i> <strong>Note:</strong> This decision will be logged in the car's history and notification emails will be sent to both the current owner and the requesting user.</small>
+                </div>
             </div>
             <div class="modal-footer">
                 <button type="button" class="btn btn-secondary" data-dismiss="modal">
-                    <i class="fas fa-times"></i> Cancel
+                    <i class="fas fa-times"></i> Cancel Decision
                 </button>
                 <button type="button" class="btn btn-primary" id="confirmTransferDecisionBtn">
-                    <i class="fas fa-check"></i> <span id="confirmTransferDecisionText">Confirm</span>
+                    <i class="fas fa-check"></i> <span id="confirmTransferDecisionText">Confirm Decision</span>
                 </button>
             </div>
         </div>
