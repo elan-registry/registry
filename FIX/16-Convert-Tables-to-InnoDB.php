@@ -39,6 +39,9 @@ declare(strict_types=1);
  * 6. No data loss - only storage engine conversion and date normalization
  */
 
+// UI Constants for progress output
+define('SECTION_SEPARATOR', '═══════════════════════════════════════════════════════');
+
 require_once '../users/init.php';
 require_once $abs_us_root . $us_url_root . 'users/includes/template/prep.php';
 require_once $abs_us_root . $us_url_root . 'app/admin/includes/classes/BackupManager.php';
@@ -162,9 +165,9 @@ $tablesToConvert = [
 
                     try {
                         // STEP 1: Create Backup
-                        logProgress('═══════════════════════════════════════════════════════', 'step');
+                        logProgress(SECTION_SEPARATOR, 'step');
                         logProgress('STEP 1: Creating Pre-Conversion Backup', 'step');
-                        logProgress('═══════════════════════════════════════════════════════', 'step');
+                        logProgress(SECTION_SEPARATOR, 'step');
 
                         $backupPath = $backupManager->createSchemaBackup('Convert Tables to InnoDB', $tablesToConvert);
                         $results['backup_path'] = $backupPath;
@@ -174,9 +177,9 @@ $tablesToConvert = [
 
                         // STEP 2: Fix Invalid Dates
                         logProgress('', 'info');
-                        logProgress('═══════════════════════════════════════════════════════', 'step');
+                        logProgress(SECTION_SEPARATOR, 'step');
                         logProgress('STEP 2: Fixing Invalid Date Values', 'step');
-                        logProgress('═══════════════════════════════════════════════════════', 'step');
+                        logProgress(SECTION_SEPARATOR, 'step');
 
                         // Set SQL mode to allow date manipulations
                         $db->query("SET sql_mode = ''");
@@ -262,9 +265,9 @@ $tablesToConvert = [
 
                         // STEP 3: Check Current Status
                         logProgress('', 'info');
-                        logProgress('═══════════════════════════════════════════════════════', 'step');
+                        logProgress(SECTION_SEPARATOR, 'step');
                         logProgress('STEP 3: Checking Current Table Status', 'step');
-                        logProgress('═══════════════════════════════════════════════════════', 'step');
+                        logProgress(SECTION_SEPARATOR, 'step');
 
                         foreach ($tablesToConvert as $table) {
                             $current = $db->query(
@@ -284,9 +287,9 @@ $tablesToConvert = [
 
                         // STEP 4: Convert Tables
                         logProgress('', 'info');
-                        logProgress('═══════════════════════════════════════════════════════', 'step');
+                        logProgress(SECTION_SEPARATOR, 'step');
                         logProgress('STEP 4: Converting Tables to InnoDB', 'step');
-                        logProgress('═══════════════════════════════════════════════════════', 'step');
+                        logProgress(SECTION_SEPARATOR, 'step');
 
                         foreach ($tablesToConvert as $table) {
                             // Validate table name to prevent SQL injection (whitelist approach)
@@ -309,7 +312,8 @@ $tablesToConvert = [
 
                             // Perform conversion (table names cannot use prepared statements, validated above)
                             logProgress("{$table}: Converting to InnoDB...", 'info');
-                            $db->query("ALTER TABLE `{$table}` ENGINE=InnoDB"); // phpcs:ignore Squiz.Strings.ConcatenationSpacing.PaddingFound
+                            // phpcs:ignore Squiz.Strings.ConcatenationSpacing.PaddingFound,WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- Table name validated against whitelist (L293-296)
+                            $db->query("ALTER TABLE `{$table}` ENGINE=InnoDB");
                             logger($user->data()->id, 'TableConversion', "Executed: ALTER TABLE `{$table}` ENGINE=InnoDB");
 
                             // Verify conversion
@@ -346,9 +350,9 @@ $tablesToConvert = [
 
                         // Display summary
                         logProgress('', 'info');
-                        logProgress('═══════════════════════════════════════════════════════', 'step');
+                        logProgress(SECTION_SEPARATOR, 'step');
                         logProgress('CONVERSION COMPLETE', 'step');
-                        logProgress('═══════════════════════════════════════════════════════', 'step');
+                        logProgress(SECTION_SEPARATOR, 'step');
                         logProgress("Dates Fixed: {$results['dates_fixed']}", 'success');
                         logProgress("Tables Converted: {$successCount}", 'success');
                         logProgress("Already InnoDB: {$alreadyCount}", 'info');

@@ -26,6 +26,10 @@ declare(strict_types=1);
  * - Clean error handling and reporting
  */
 
+// UI Constants for progress output
+define('SECTION_SEPARATOR', '═══════════════════════════════════════════════════════');
+define('LOG_CATEGORY_PLACEHOLDER', LOG_CATEGORY_PLACEHOLDER);
+
 require_once '../users/init.php';
 require_once $abs_us_root . $us_url_root . 'users/includes/template/prep.php';
 
@@ -39,7 +43,7 @@ if (!securePage($_SERVER['PHP_SELF'])) {
 // Set up custom error handler to log through UserSpice logger
 set_error_handler(function($errno, $errstr, $errfile, $errline) {
     if ($errno !== E_DEPRECATED) {
-        logger(isset($user) ? $user->data()->id : 0, '[LOG_CATEGORY]', "Error [$errno]: $errstr in $errfile:$errline");
+        logger(isset($user) ? $user->data()->id : 0, LOG_CATEGORY_PLACEHOLDER, "Error [$errno]: $errstr in $errfile:$errline");
     }
     return true;
 });
@@ -146,14 +150,14 @@ $db = DB::getInstance();
 
                     try {
                         // STEP 1: [STEP_1_NAME]
-                        logProgress('═══════════════════════════════════════════════════════', 'step');
+                        logProgress(SECTION_SEPARATOR, 'step');
                         logProgress('STEP 1: [STEP_1_DESCRIPTION]', 'step');
-                        logProgress('═══════════════════════════════════════════════════════', 'step');
+                        logProgress(SECTION_SEPARATOR, 'step');
 
                         // Example: Create backup
                         // $backupPath = $backupManager->createSchemaBackup('[OPERATION_NAME]', ['table1', 'table2']);
                         // logProgress('Backup created: ' . basename($backupPath), 'success');
-                        // logger($user->data()->id, '[LOG_CATEGORY]', "Backup created: {$backupPath}");
+                        // logger($user->data()->id, LOG_CATEGORY_PLACEHOLDER, "Backup created: {$backupPath}");
 
                         // [YOUR STEP 1 CODE HERE]
                         logProgress('Step 1 processing...', 'info');
@@ -163,9 +167,9 @@ $db = DB::getInstance();
 
                         // STEP 2: [STEP_2_NAME]
                         logProgress('', 'info');
-                        logProgress('═══════════════════════════════════════════════════════', 'step');
+                        logProgress(SECTION_SEPARATOR, 'step');
                         logProgress('STEP 2: [STEP_2_DESCRIPTION]', 'step');
-                        logProgress('═══════════════════════════════════════════════════════', 'step');
+                        logProgress(SECTION_SEPARATOR, 'step');
 
                         // [YOUR STEP 2 CODE HERE]
                         logProgress('Step 2 processing...', 'info');
@@ -179,9 +183,9 @@ $db = DB::getInstance();
 
                         // STEP 3: [STEP_3_NAME] (add more steps as needed)
                         logProgress('', 'info');
-                        logProgress('═══════════════════════════════════════════════════════', 'step');
+                        logProgress(SECTION_SEPARATOR, 'step');
                         logProgress('STEP 3: [STEP_3_DESCRIPTION]', 'step');
-                        logProgress('═══════════════════════════════════════════════════════', 'step');
+                        logProgress(SECTION_SEPARATOR, 'step');
 
                         // [YOUR STEP 3 CODE HERE]
                         logProgress('Step 3 processing...', 'info');
@@ -194,14 +198,14 @@ $db = DB::getInstance();
                             'completed_at' => date('Y-m-d H:i:s')
                         ]);
 
-                        logger($user->data()->id, '[LOG_CATEGORY]',
+                        logger($user->data()->id, LOG_CATEGORY_PLACEHOLDER,
                             "Script completed - Processed: {$results['processed']}, Errors: {$results['errors']}, Warnings: {$results['warnings']}");
 
                         // Display summary
                         logProgress('', 'info');
-                        logProgress('═══════════════════════════════════════════════════════', 'step');
+                        logProgress(SECTION_SEPARATOR, 'step');
                         logProgress('[COMPLETION_MESSAGE]', 'step');
-                        logProgress('═══════════════════════════════════════════════════════', 'step');
+                        logProgress(SECTION_SEPARATOR, 'step');
                         logProgress("Items Processed: {$results['processed']}", 'success');
                         if ($results['warnings'] > 0) {
                             logProgress("Warnings: {$results['warnings']}", 'warning');
@@ -217,7 +221,7 @@ $db = DB::getInstance();
 
                     } catch (Exception $e) {
                         logProgress('FATAL ERROR: ' . $e->getMessage(), 'error');
-                        logger($user->data()->id, '[LOG_CATEGORY]', 'Fatal error: ' . $e->getMessage());
+                        logger($user->data()->id, LOG_CATEGORY_PLACEHOLDER, 'Fatal error: ' . $e->getMessage());
                     }
 
                     ?></pre>
