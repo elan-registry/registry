@@ -12,7 +12,7 @@ class CarView
     // Image size constants to avoid magic numbers
     private const THUMBNAIL_SIZE = 100;
     private const IMAGE_SIZE_SMALL = 300;
-    private const IMAGE_SIZE_MEDIUM = 768;
+    private const IMAGE_SIZE_MEDIUM = 600;
     private const IMAGE_SIZE_LARGE = 1024;
     
     // Carousel configuration constants

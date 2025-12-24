@@ -1353,15 +1353,10 @@ function loadMapMarkers(map) {
                         </div>
                     `;
 
-          // Add hover listener for info window
-          marker.addListener("mouseover", () => {
+          // Add click listener for info window
+          marker.addListener("click", () => {
             infoWindow.setContent(infoContent);
             infoWindow.open(map, marker);
-          });
-
-          // Close info window when mouse leaves marker
-          marker.addListener("mouseout", () => {
-            infoWindow.close();
           });
         }
       });

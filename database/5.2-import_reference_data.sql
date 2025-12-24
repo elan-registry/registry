@@ -1,7 +1,7 @@
 -- ==================================================================
 -- ELAN REGISTRY - REFERENCE DATA IMPORT SCRIPT
 -- ==================================================================
--- This script populates the country table and Lotus Elan factory info
+-- This script populates the country and parts tables with complete data
 -- Run after schema.sql has been executed successfully
 -- ==================================================================
 
@@ -256,6 +256,73 @@ INSERT INTO `country` (`id`, `code`, `name`) VALUES
 (247, 'ZA', 'South Africa'),
 (248, 'ZM', 'Zambia'),
 (249, 'ZW', 'Zimbabwe');
+
+-- Import Lotus Elan parts catalog data
+-- This provides a foundation for the parts tracking feature
+INSERT INTO `parts` (`id`, `part_number`, `part_name`, `description`, `category`, `compatibility`, `notes`) VALUES
+-- Engine Parts
+(1, 'ENG-001', 'Complete Engine Block', 'Complete Engine Block - 1558cc', 'Engine', 'S1,S2', 'Reconditioned units available'),
+(2, 'ENG-002', 'Cylinder Head Assembly', 'Cylinder Head Assembly', 'Engine', 'S1,S2', 'Rebuilt with unleaded valve seats'),
+(3, 'ENG-003', 'Twin Cam Camshaft Set', 'Twin Cam Camshaft Set', 'Engine', 'S1,S2', 'New manufacture'),
+(4, 'ENG-004', 'Pistons Set (4) - Standard', 'Pistons Set (4) - Standard', 'Engine', 'S1,S2', 'High compression pistons available'),
+(5, 'ENG-005', 'Connecting Rod Set (4)', 'Connecting Rod Set (4)', 'Engine', 'S1,S2', 'Reconditioned and balanced'),
+
+-- Transmission Parts
+(6, 'TRANS-001', '4-Speed Gearbox Assembly', '4-Speed Gearbox Assembly', 'Transmission', 'S1,S2', 'Rebuilt units with warranty'),
+(7, 'TRANS-002', 'Clutch Kit Complete', 'Clutch Kit Complete', 'Transmission', 'S1,S2', 'Includes pressure plate, disc, bearing'),
+(8, 'TRANS-003', 'Flywheel - Standard', 'Flywheel - Standard', 'Transmission', 'S1,S2', 'Resurfaced and balanced'),
+(9, 'TRANS-004', 'Gearbox Mount', 'Gearbox Mount', 'Transmission', 'S1,S2', 'Polyurethane upgrade available'),
+
+-- Suspension Parts
+(10, 'SUSP-001', 'Front Shock Absorber Pair', 'Front Shock Absorber Pair', 'Suspension', 'S1,S2', 'Bilstein or Koni options'),
+(11, 'SUSP-002', 'Rear Shock Absorber Pair', 'Rear Shock Absorber Pair', 'Suspension', 'S1,S2', 'Adjustable damping available'),
+(12, 'SUSP-003', 'Front Spring Set', 'Front Spring Set', 'Suspension', 'S1,S2', 'Various spring rates available'),
+(13, 'SUSP-004', 'Rear Spring Set', 'Rear Spring Set', 'Suspension', 'S1,S2', 'Road and competition rates'),
+(14, 'SUSP-005', 'Front Wishbone Assembly', 'Front Wishbone Assembly', 'Suspension', 'S1,S2', 'Powder coated and bushed'),
+
+-- Body Parts
+(15, 'BODY-001', 'Fiberglass Body Tub', 'Fiberglass Body Tub', 'Body', 'S1,S2', 'White gel coat finish'),
+(16, 'BODY-002', 'Front Clamshell', 'Front Clamshell', 'Body', 'S1,S2', 'Includes headlight mounting'),
+(17, 'BODY-003', 'Rear Clamshell', 'Rear Clamshell', 'Body', 'S1,S2', 'Fits S1 and S2 models'),
+(18, 'BODY-004', 'Door Set (Pair)', 'Door Set (Pair)', 'Body', 'S1,S2', 'Complete with hinges and handles'),
+(19, 'BODY-005', 'Windscreen Assembly', 'Windscreen Assembly', 'Body', 'S1,S2', 'Laminated safety glass'),
+
+-- Interior Parts
+(20, 'INT-001', 'Seat Covers - Vinyl Black', 'Seat Covers - Vinyl Black', 'Interior', 'S1,S2', 'Original pattern reproduction'),
+(21, 'INT-002', 'Dashboard Assembly', 'Dashboard Assembly', 'Interior', 'S1,S2', 'Reconditioned with new veneers'),
+(22, 'INT-003', 'Steering Wheel - Wood Rim', 'Steering Wheel - Wood Rim', 'Interior', 'S1,S2', 'Various wood finishes available'),
+(23, 'INT-004', 'Carpet Set Complete', 'Carpet Set Complete', 'Interior', 'S1,S2', 'Black or brown options'),
+
+-- Electrical Parts
+(24, 'ELEC-001', 'Wiring Harness - Main', 'Wiring Harness - Main', 'Electrical', 'S1,S2', 'PVC or cloth wrapped options'),
+(25, 'ELEC-002', 'Alternator - 12V', 'Alternator - 12V', 'Electrical', 'S1,S2', 'Reconditioned Lucas units'),
+(26, 'ELEC-003', 'Starter Motor', 'Starter Motor', 'Electrical', 'S1,S2', 'Gear reduction type'),
+(27, 'ELEC-004', 'Headlight Unit Pair', 'Headlight Unit Pair', 'Electrical', 'S1,S2', '7 inch sealed beam units'),
+
+-- Brake Parts
+(28, 'BRAKE-001', 'Front Brake Disc Pair', 'Front Brake Disc Pair', 'Brakes', 'S1,S2', 'Ventilated discs available'),
+(29, 'BRAKE-002', 'Rear Brake Disc Pair', 'Rear Brake Disc Pair', 'Brakes', 'S1,S2', 'Solid disc type'),
+(30, 'BRAKE-003', 'Front Brake Pad Set', 'Front Brake Pad Set', 'Brakes', 'S1,S2', 'Competition pads available'),
+(31, 'BRAKE-004', 'Rear Brake Pad Set', 'Rear Brake Pad Set', 'Brakes', 'S1,S2', 'Standard friction material'),
+(32, 'BRAKE-005', 'Master Cylinder', 'Master Cylinder', 'Brakes', 'S1,S2', 'Reconditioned units available'),
+
+-- Cooling System
+(33, 'COOL-001', 'Radiator Assembly', 'Radiator Assembly', 'Cooling', 'S1,S2', 'Aluminum upgrade available'),
+(34, 'COOL-002', 'Water Pump', 'Water Pump', 'Cooling', 'S1,S2', 'New manufacture'),
+(35, 'COOL-003', 'Thermostat Housing', 'Thermostat Housing', 'Cooling', 'S1,S2', 'Aluminum housing available'),
+
+-- Fuel System
+(36, 'FUEL-001', 'Fuel Tank Assembly', 'Fuel Tank Assembly', 'Fuel System', 'S1,S2', 'Stainless steel available'),
+(37, 'FUEL-002', 'Fuel Pump - Mechanical', 'Fuel Pump - Mechanical', 'Fuel System', 'S1,S2', 'Reconditioned SU pump'),
+(38, 'FUEL-003', 'Carburetor Set - Weber 40DCOE', 'Carburetor Set - Weber 40DCOE', 'Fuel System', 'S1,S2', 'Complete with manifold'),
+
+-- Exhaust System
+(39, 'EXH-001', 'Exhaust Manifold', 'Exhaust Manifold', 'Exhaust', 'S1,S2', 'Stainless steel available'),
+(40, 'EXH-002', 'Silencer - Rear', 'Silencer - Rear', 'Exhaust', 'S1,S2', 'Stainless steel construction');
+
+-- Add index to improve query performance (indexes already exist in 5.1-schema.sql)
+-- CREATE INDEX idx_parts_category ON parts(category);
+-- CREATE INDEX idx_parts_compatibility ON parts(compatibility);
 
 -- Import Lotus Elan factory information data
 -- Complete production database from 1963-1974 (9,762 records)
@@ -10024,9 +10091,9 @@ INSERT INTO `elan_factory_info` (`id`, `year`, `month`, `batch`, `type`, `serial
 (9761, '', '', '', '', 'B', '', 'S', '271188E', '4', '', '1000-01-01', ''),
 (9762, '', '', '', '', '0000', '', '', '', '', '', '1000-01-01', 'Records from 0172 destroyed by flood at factory');
 -- Record successful completion
-INSERT INTO `fix_script_runs` (`script_name`, `status`, `notes`)
-VALUES ('database/5.2-import_reference_data.sql', 'completed', 'Complete reference data imported: 249 countries + 9,762 factory records')
-ON DUPLICATE KEY UPDATE
+INSERT INTO `fix_script_runs` (`script_name`, `status`, `notes`) 
+VALUES ('database/5.2-import_reference_data.sql', 'completed', 'Complete reference data imported: 249 countries + 40 parts + 9,762 factory records')
+ON DUPLICATE KEY UPDATE 
     run_date = CURRENT_TIMESTAMP,
     status = 'completed',
     notes = 'Reference data updated';
@@ -10034,4 +10101,5 @@ ON DUPLICATE KEY UPDATE
 -- Display completion summary
 SELECT 'Reference data import completed successfully!' as status,
        (SELECT COUNT(*) FROM country) as countries_imported,
+       (SELECT COUNT(*) FROM parts) as parts_imported,
        (SELECT COUNT(*) FROM elan_factory_info) as factory_records_imported;

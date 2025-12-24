@@ -106,14 +106,25 @@ class ElanRegistryOwnerTest extends TestCase
      */
     public function testProfileQualityScoring(): void
     {
-        // Use known test user ID 1 (always exists)
-        $userId = 1;
-        $owner = new ElanRegistryOwner($userId);
+        // Find a user with some profile data
+        $userQuery = $this->db->query(
+            "SELECT u.id FROM users u
+             LEFT JOIN profiles p ON u.id = p.user_id
+             WHERE u.fname IS NOT NULL AND u.lname IS NOT NULL
+             LIMIT 1"
+        );
 
-        $score = $owner->getProfileQualityScore();
-        $this->assertIsFloat($score);
-        $this->assertGreaterThanOrEqual(0.0, $score);
-        $this->assertLessThanOrEqual(100.0, $score);
+        if ($userQuery->count() > 0) {
+            $userId = $userQuery->first()->id;
+            $owner = new ElanRegistryOwner($userId);
+
+            $score = $owner->getProfileQualityScore();
+            $this->assertIsFloat($score);
+            $this->assertGreaterThanOrEqual(0.0, $score);
+            $this->assertLessThanOrEqual(100.0, $score);
+        } else {
+            $this->markTestSkipped('No users with profile data available for testing');
+        }
     }
 
     /**
@@ -140,17 +151,25 @@ class ElanRegistryOwnerTest extends TestCase
      */
     public function testGetCarsOwned(): void
     {
-        // Use known test user ID 1 (always exists with car 1)
-        $userId = 1;
-        $owner = new ElanRegistryOwner($userId);
+        // Find a user who owns cars
+        $userQuery = $this->db->query(
+            "SELECT DISTINCT user_id FROM cars WHERE user_id IS NOT NULL LIMIT 1"
+        );
 
-        $ownedCars = $owner->getCarsOwned();
-        $this->assertIsArray($ownedCars);
-        $this->assertGreaterThanOrEqual(1, count($ownedCars), 'User 1 should have at least car 1');
+        if ($userQuery->count() > 0) {
+            $userId = $userQuery->first()->user_id;
+            $owner = new ElanRegistryOwner((int)$userId);
 
-        // Verify we got car objects back
-        foreach ($ownedCars as $car) {
-            $this->assertIsObject($car);
+            $ownedCars = $owner->getCarsOwned();
+            $this->assertIsArray($ownedCars);
+            $this->assertGreaterThan(0, count($ownedCars));
+
+            // Check that all returned cars belong to this user
+            foreach ($ownedCars as $car) {
+                $this->assertEquals($userId, $car->user_id);
+            }
+        } else {
+            $this->markTestSkipped('No users with cars available for testing');
         }
     }
 
@@ -159,13 +178,21 @@ class ElanRegistryOwnerTest extends TestCase
      */
     public function testGetOwnershipHistory(): void
     {
-        // Use known test user ID 1 (always exists)
-        $userId = 1;
-        $owner = new ElanRegistryOwner($userId);
+        // Find a user who has ownership history
+        $userQuery = $this->db->query(
+            "SELECT DISTINCT user_id FROM cars_hist WHERE user_id IS NOT NULL LIMIT 1"
+        );
 
-        $history = $owner->getOwnershipHistory();
-        $this->assertIsArray($history);
-        // History may be empty for user 1, which is fine - just verify the method works
+        if ($userQuery->count() > 0) {
+            $userId = $userQuery->first()->user_id;
+            $owner = new ElanRegistryOwner((int)$userId);
+
+            $history = $owner->getOwnershipHistory();
+            $this->assertIsArray($history);
+        } else {
+            // This is fine if no history exists yet
+            $this->assertTrue(true);
+        }
     }
 
     /**

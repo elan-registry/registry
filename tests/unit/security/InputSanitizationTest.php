@@ -287,6 +287,6 @@ class InputSanitizationTest extends TestCase
         
         // Missing token
         Input::setMockData([]);
-        $this->assertFalse(Token::check(Input::get('csrf', '')));
+        $this->assertFalse(Token::check(Input::get('csrf')));
     }
 }

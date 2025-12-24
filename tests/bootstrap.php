@@ -398,12 +398,7 @@ if (!function_exists('getUserWithProfile')) {
         }
 
         if (!$user) {
-            // Return null for obviously invalid user IDs (like those used in negative tests)
-            if ($user_id > 900000) {
-                return null;
-            }
-
-            // Default mock user for normal testing
+            // Default mock user
             $user = (object) [
                 'id' => $user_id,
                 'fname' => 'Test',

@@ -1100,16 +1100,16 @@ function initializeCarManagement() {
         // Update modal header and colors based on action
         if (isApprove) {
             $('#transferDecisionModalHeader').removeClass('bg-danger').addClass('bg-success');
-            $('#transferDecisionTitle').text('Approve Elan Registry Transfer Request');
+            $('#transferDecisionTitle').text('Approve Transfer Request');
             $('#transferDecisionMessage').removeClass('alert-danger').addClass('alert-success');
-            $('#transferDecisionMessageText').text('You are about to APPROVE this Lotus Elan/+2 ownership transfer request in the Registry.');
+            $('#transferDecisionMessageText').text('You are about to APPROVE this transfer request.');
             $('#confirmTransferDecisionBtn').removeClass('btn-danger').addClass('btn-success');
             $('#confirmTransferDecisionText').text('Approve Transfer');
         } else {
             $('#transferDecisionModalHeader').removeClass('bg-success').addClass('bg-danger');
-            $('#transferDecisionTitle').text('Deny Elan Registry Transfer Request');
+            $('#transferDecisionTitle').text('Deny Transfer Request');
             $('#transferDecisionMessage').removeClass('alert-success').addClass('alert-danger');
-            $('#transferDecisionMessageText').text('You are about to DENY this Lotus Elan/+2 ownership transfer request in the Registry.');
+            $('#transferDecisionMessageText').text('You are about to DENY this transfer request.');
             $('#confirmTransferDecisionBtn').removeClass('btn-success').addClass('btn-danger');
             $('#confirmTransferDecisionText').text('Deny Transfer');
         }
@@ -1141,27 +1141,25 @@ function initializeCarManagement() {
 
         // Populate request information
         const requestDetails = `
-            <strong>Request Submitted:</strong> ${new Date(data.requestDate).toLocaleDateString()}<br>
+            <strong>Request Date:</strong> ${new Date(data.requestDate).toLocaleDateString()}<br>
             <strong>Expires:</strong> ${new Date(data.expiresDate).toLocaleDateString()}<br>
-            ${data.comments ? `<strong>Requester Comments:</strong><br><em>"${data.comments}"</em>` : '<em class="text-muted">No additional comments provided by requester</em>'}
+            ${data.comments ? `<strong>Comments:</strong><br><em>"${data.comments}"</em>` : '<em>No comments provided</em>'}
         `;
         $('#modal-transfer-request-details').html(requestDetails);
 
         // Update consequences based on action
         const effects = isApprove ? `
-            <li><i class="fas fa-check text-success"></i> Transfer Lotus Elan/+2 ownership in the Registry to the requesting user</li>
-            <li><i class="fas fa-check text-success"></i> Send confirmation emails to both the current owner and requesting user</li>
-            <li><i class="fas fa-check text-success"></i> Log the administrative approval in the car's history</li>
-            <li><i class="fas fa-check text-success"></i> Mark the transfer request as completed</li>
-            <li><i class="fas fa-check text-success"></i> Update all Registry records and statistics</li>
-            <li><i class="fas fa-exclamation-triangle text-warning"></i> This administrative action is permanent and cannot be easily undone</li>
+            <li><i class="fas fa-check text-success"></i> Transfer car ownership to requester</li>
+            <li><i class="fas fa-check text-success"></i> Send confirmation emails to both parties</li>
+            <li><i class="fas fa-check text-success"></i> Log the transfer in car history</li>
+            <li><i class="fas fa-check text-success"></i> Mark request as completed</li>
+            <li><i class="fas fa-exclamation-triangle text-warning"></i> This action cannot be undone easily</li>
         ` : `
-            <li><i class="fas fa-times text-danger"></i> Reject the ownership transfer request</li>
-            <li><i class="fas fa-times text-danger"></i> Send denial notification email to the requesting user</li>
-            <li><i class="fas fa-times text-danger"></i> Notify the current owner that the request was denied by an administrator</li>
-            <li><i class="fas fa-check text-info"></i> Car ownership in the Registry remains unchanged</li>
-            <li><i class="fas fa-check text-info"></i> Mark the transfer request as administratively denied</li>
-            <li><i class="fas fa-info-circle text-info"></i> The requesting user may submit a new request if they believe this was in error</li>
+            <li><i class="fas fa-times text-danger"></i> Reject the transfer request</li>
+            <li><i class="fas fa-times text-danger"></i> Send denial notification to requester</li>
+            <li><i class="fas fa-times text-danger"></i> Notify current owner of decision</li>
+            <li><i class="fas fa-check text-info"></i> Car ownership remains unchanged</li>
+            <li><i class="fas fa-info-circle text-info"></i> Request will be marked as denied</li>
         `;
         $('#transferDecisionEffects').html(effects);
 

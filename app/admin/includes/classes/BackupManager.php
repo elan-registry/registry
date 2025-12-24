@@ -46,14 +46,13 @@ class BackupManager {
      *
      * Note: Constructors cannot declare return types in PHP
      */
-    // phpcs:ignore Generic.CodeAnalysis.UnusedFunctionParameter.FoundInExtendedClass,Squiz.Commenting.FunctionComment.MissingReturn
+    // phpcs:ignore Generic.CodeAnalysis.UnusedFunctionParameter.FoundInExtendedClass
     public function __construct(object $database, string $backupDirectory, ?int $userId = null) {
         $this->db = $database;
         $this->backupBaseDir = rtrim($backupDirectory, '/') . '/';
-        $this->logger = function($logUserId, $category, $message) use ($userId) {
+        $this->logger = function($level, $category, $message) use ($userId) {
             if (function_exists('logger')) {
-                // Use passed userId if available, otherwise fall back to constructor userId or 0
-                logger($logUserId ?? $userId ?? 0, $category, $message);
+                logger($userId ?? 0, $category, $message);
             }
         };
     }
@@ -732,7 +731,8 @@ class BackupManager {
      */
     private function logBackupEvent(string $action, string $scriptName, string $type, string $environment, string $backupPath): void {
         $logMessage = sprintf(
-            "Backup %s - Script: %s, Type: %s, Environment: %s, File: %s",
+            "[%s] Backup %s - Script: %s, Type: %s, Environment: %s, File: %s",
+            date('Y-m-d H:i:s'),
             $action,
             $scriptName,
             $type,
@@ -740,7 +740,9 @@ class BackupManager {
             basename($backupPath)
         );
 
-        // Log via UserSpice logger only
+        error_log($logMessage);
+
+        // Also log via UserSpice logger if available
         ($this->logger)(1, 'BackupManager', $logMessage);
     }
 }

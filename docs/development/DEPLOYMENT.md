@@ -386,13 +386,8 @@ After each deployment, verify:
 
 - **Configuration**: Use credentials from `.env.local` file (see DEV_DB_* variables)
 - **Connection**: MAMP MySQL server on port 8889
-- **MAMP MySQL Path**: `/Applications/MAMP/Library/bin/mysql80/bin/mysql`
-- **Direct Command**:
-
-  ```bash
-  /Applications/MAMP/Library/bin/mysql80/bin/mysql \
-    -h localhost -P 8889 -u claude -p"claude" elanregi_spice
-  ```
+- **MAMP MySQL Path**: `/Applications/MAMP/Library/bin/mysql`
+- **Direct Command**: `/Applications/MAMP/Library/bin/mysql -h localhost -P 8889 -u claude -p"claude" elanregi_spice`
 
 ## 🛠️ Environment Variables
 

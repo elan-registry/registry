@@ -1,13 +1,10 @@
 <?php
-
-declare(strict_types=1);
-
 /**
  * Secure DataTables server-side processing endpoint
- *
+ * 
  * Replaces the vulnerable getList.php with secure implementation using Car class.
  * Uses prepared statements and input validation to prevent SQL injection.
- *
+ * 
  * @author Elan Registry Security Team
  * @copyright 2025
  */
@@ -88,9 +85,9 @@ if (Input::exists('post')) {
         
     } catch (Exception $e) {
         // Log error for debugging (don't expose to client)
-        logger($user->data()->id ?? 0, 'DataTablesError',
-            "DataTables error: " . $e->getMessage() . " | Trace: " . $e->getTraceAsString());
-
+        error_log("DataTables error: " . $e->getMessage());
+        error_log("DataTables error trace: " . $e->getTraceAsString());
+        
         http_response_code(500);
         echo json_encode([
             'error' => 'Server error occurred',

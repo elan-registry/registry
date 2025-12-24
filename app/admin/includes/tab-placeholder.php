@@ -50,6 +50,7 @@ declare(strict_types=1);
                     <?php
                     $tabDescriptions = [
                         'car-mgmt' => 'Car reassignment, deletion, and transfer request management',
+                        'data-quality' => 'Comprehensive data quality dashboard and reporting',
                         'duplicates' => 'Enhanced duplicate detection and resolution tools',
                         'user-mgmt' => 'User and profile management with geocoding integration',
                         'system' => 'FIX scripts, database management, and system maintenance',

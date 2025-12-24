@@ -16,7 +16,7 @@ class SerializedDataRemovalTest extends TestCase
     
     protected function setUp(): void
     {
-        $this->projectRoot = dirname(__DIR__, 3);
+        $this->projectRoot = dirname(__DIR__);
     }
     
     /**
@@ -26,19 +26,14 @@ class SerializedDataRemovalTest extends TestCase
     {
         $phpFiles = $this->getPHPFiles();
         $violationFiles = [];
-
+        
         foreach ($phpFiles as $file) {
             $content = file_get_contents($file);
-
-            // Remove JavaScript code within <script> tags to avoid false positives
-            // jQuery's .serialize() is safe, only PHP serialize() is a security risk
-            $phpOnlyContent = preg_replace('/<script\b[^>]*>(.*?)<\/script>/is', '', $content);
-
-            if (preg_match('/\bserialize\s*\(/', $phpOnlyContent)) {
+            if (preg_match('/\bserialize\s*\(/', $content)) {
                 $violationFiles[] = $file;
             }
         }
-
+        
         $this->assertEmpty(
             $violationFiles,
             'Found serialize() function calls in: ' . implode(', ', $violationFiles)
@@ -52,18 +47,14 @@ class SerializedDataRemovalTest extends TestCase
     {
         $phpFiles = $this->getPHPFiles();
         $violationFiles = [];
-
+        
         foreach ($phpFiles as $file) {
             $content = file_get_contents($file);
-
-            // Remove JavaScript code within <script> tags to avoid false positives
-            $phpOnlyContent = preg_replace('/<script\b[^>]*>(.*?)<\/script>/is', '', $content);
-
-            if (preg_match('/\bunserialize\s*\(/', $phpOnlyContent)) {
+            if (preg_match('/\bunserialize\s*\(/', $content)) {
                 $violationFiles[] = $file;
             }
         }
-
+        
         $this->assertEmpty(
             $violationFiles,
             'Found unserialize() function calls in: ' . implode(', ', $violationFiles)
