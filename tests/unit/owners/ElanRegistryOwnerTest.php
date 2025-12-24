@@ -151,25 +151,31 @@ class ElanRegistryOwnerTest extends TestCase
      */
     public function testGetCarsOwned(): void
     {
-        // Find a user who owns cars
-        $userQuery = $this->db->query(
-            "SELECT DISTINCT user_id FROM cars WHERE user_id IS NOT NULL LIMIT 1"
-        );
+        // Use known test user ID 1 (always exists with car 1)
+        $userId = 1;
 
-        if ($userQuery->count() > 0) {
-            $userId = $userQuery->first()->user_id;
-            $owner = new ElanRegistryOwner((int)$userId);
+        // Verify test data exists with proper structure
+        $carCheck = $this->db->query("SELECT * FROM cars WHERE user_id = ? LIMIT 1", [$userId]);
+        if ($carCheck->count() == 0) {
+            $this->markTestSkipped('Test data not available: User 1 should have cars but none found in test database');
+        }
 
-            $ownedCars = $owner->getCarsOwned();
-            $this->assertIsArray($ownedCars);
-            $this->assertGreaterThan(0, count($ownedCars));
+        // Verify the test data has valid user_id (not null)
+        $testCar = $carCheck->first();
+        if ($testCar->user_id === null) {
+            $this->markTestSkipped('Test database has invalid data: cars have null user_id');
+        }
 
-            // Check that all returned cars belong to this user
-            foreach ($ownedCars as $car) {
-                $this->assertEquals($userId, $car->user_id);
-            }
-        } else {
-            $this->markTestSkipped('No users with cars available for testing');
+        $owner = new ElanRegistryOwner($userId);
+
+        $ownedCars = $owner->getCarsOwned();
+        $this->assertIsArray($ownedCars);
+        $this->assertGreaterThanOrEqual(1, count($ownedCars), 'User 1 should have at least car 1');
+
+        // Check that all returned cars belong to this user
+        foreach ($ownedCars as $car) {
+            $this->assertNotNull($car->user_id, 'Car user_id should not be null');
+            $this->assertEquals($userId, $car->user_id);
         }
     }
 

@@ -16,7 +16,7 @@ class SerializedDataRemovalTest extends TestCase
     
     protected function setUp(): void
     {
-        $this->projectRoot = dirname(__DIR__);
+        $this->projectRoot = dirname(__DIR__, 3);
     }
     
     /**
