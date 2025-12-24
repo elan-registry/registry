@@ -1,4 +1,5 @@
 <?php
+declare(strict_types=1);
 
 /**
  * edit_car.php
@@ -368,17 +369,26 @@ function updateCarDetails(array &$car): void
         <div class="modal-content">
             <div class="modal-header bg-warning text-dark">
                 <h5 class="modal-title" id="transferValidationModalLabel">
-                    <i class="fas fa-exclamation-triangle"></i> Missing Information
+                    <i class="fas fa-exclamation-triangle"></i> Car Details Required for Transfer
                 </h5>
                 <button type="button" class="close" data-dismiss="modal" aria-label="Close">
                     <span aria-hidden="true">&times;</span>
                 </button>
             </div>
             <div class="modal-body">
-                <p>Please ensure year, model, and chassis are selected before requesting transfer.</p>
+                <p><strong>Please complete the required car details before requesting an ownership transfer.</strong></p>
+                <p>To initiate a transfer request in the Elan Registry, you must first provide:</p>
+                <ul class="mb-3">
+                    <li><i class="fas fa-calendar"></i> <strong>Year</strong> - Model year of the car</li>
+                    <li><i class="fas fa-car"></i> <strong>Model</strong> - Elan or +2 model variant</li>
+                    <li><i class="fas fa-barcode"></i> <strong>Chassis Number</strong> - The car's unique identifier</li>
+                </ul>
+                <p class="mb-0"><small class="text-muted">These details help us identify the existing car record in the Registry and notify the current owner of your transfer request.</small></p>
             </div>
             <div class="modal-footer">
-                <button type="button" class="btn btn-primary" data-dismiss="modal">OK</button>
+                <button type="button" class="btn btn-primary" data-dismiss="modal">
+                    <i class="fas fa-check"></i> OK, I'll Complete the Details
+                </button>
             </div>
         </div>
     </div>
@@ -390,22 +400,34 @@ function updateCarDetails(array &$car): void
         <div class="modal-content">
             <div class="modal-header bg-info text-white">
                 <h5 class="modal-title" id="transferConfirmModalLabel">
-                    <i class="fas fa-exchange-alt"></i> Confirm Transfer Request
+                    <i class="fas fa-exchange-alt"></i> Request Car Ownership Transfer
                 </h5>
                 <button type="button" class="close text-white" data-dismiss="modal" aria-label="Close">
                     <span aria-hidden="true">&times;</span>
                 </button>
             </div>
             <div class="modal-body">
-                <p>Are you sure you want to request ownership transfer for this chassis number?</p>
-                <div class="alert alert-info">
-                    <small><i class="fas fa-info-circle"></i> The current owner and Registry Administrators will be notified of your request.</small>
+                <p><strong>You are about to request ownership transfer of this Lotus Elan/+2 in the Registry.</strong></p>
+                <p>By submitting this request, you are indicating that you believe you are the rightful owner of this car.</p>
+
+                <div class="alert alert-info mb-3">
+                    <h6 class="alert-heading"><i class="fas fa-info-circle"></i> What Happens Next:</h6>
+                    <ul class="mb-0">
+                        <li>The current owner listed in the Registry will receive an email notification about your request</li>
+                        <li>Registry Administrators will be alerted to review the transfer</li>
+                        <li>You'll receive email updates when the owner or an administrator responds</li>
+                        <li>The request will expire automatically after 30 days if not acted upon</li>
+                    </ul>
                 </div>
+
+                <p class="mb-0"><small class="text-muted"><strong>Note:</strong> This is a formal request for the Elan Registry to transfer the car record to your account. Please ensure you have legitimate ownership before proceeding.</small></p>
             </div>
             <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-secondary" data-dismiss="modal">
+                    <i class="fas fa-times"></i> Cancel
+                </button>
                 <button type="button" class="btn btn-primary" id="confirmTransferBtn">
-                    <i class="fas fa-check"></i> Request Transfer
+                    <i class="fas fa-check"></i> Submit Transfer Request
                 </button>
             </div>
         </div>
@@ -418,21 +440,39 @@ function updateCarDetails(array &$car): void
         <div class="modal-content">
             <div class="modal-header bg-success text-white">
                 <h5 class="modal-title" id="transferSuccessModalLabel">
-                    <i class="fas fa-check-circle"></i> Transfer Request Submitted
+                    <i class="fas fa-check-circle"></i> Ownership Transfer Request Submitted
                 </h5>
                 <button type="button" class="close text-white" data-dismiss="modal" aria-label="Close">
                     <span aria-hidden="true">&times;</span>
                 </button>
             </div>
             <div class="modal-body">
-                <p>Transfer request submitted successfully!</p>
-                <div class="alert alert-success">
-                    <small><i class="fas fa-envelope"></i> You will be notified when the current owner responds.</small>
+                <div class="alert alert-success mb-3">
+                    <h6 class="alert-heading"><i class="fas fa-check-circle"></i> Request Successfully Submitted!</h6>
+                    <p class="mb-0">Your transfer request has been submitted to the Elan Registry and is now pending review.</p>
                 </div>
+
+                <h6><i class="fas fa-envelope"></i> Email Notifications Sent</h6>
+                <p>We have notified:</p>
+                <ul class="mb-3">
+                    <li>The current owner listed in the Registry for this Lotus Elan/+2</li>
+                    <li>Registry Administrators for oversight and review</li>
+                </ul>
+
+                <h6><i class="fas fa-hourglass-half"></i> What Happens Next</h6>
+                <p>Your request will remain pending for up to 30 days while we wait for:</p>
+                <ul class="mb-3">
+                    <li>The current owner to approve or deny your request, or</li>
+                    <li>A Registry Administrator to review and make a decision</li>
+                </ul>
+
+                <p><strong>You will receive an email notification</strong> as soon as a decision is made on your transfer request.</p>
+
+                <p class="mb-0"><small class="text-muted"><i class="fas fa-info-circle"></i> You can check the status of your request by viewing your car listings in the Registry.</small></p>
             </div>
             <div class="modal-footer">
                 <button type="button" class="btn btn-success" id="transferSuccessOkBtn">
-                    <i class="fas fa-arrow-left"></i> Return to Car Listings
+                    <i class="fas fa-arrow-left"></i> Return to My Car Listings
                 </button>
             </div>
         </div>
@@ -445,20 +485,40 @@ function updateCarDetails(array &$car): void
         <div class="modal-content">
             <div class="modal-header bg-danger text-white">
                 <h5 class="modal-title" id="transferErrorModalLabel">
-                    <i class="fas fa-exclamation-circle"></i> Transfer Request Failed
+                    <i class="fas fa-exclamation-circle"></i> Transfer Request Could Not Be Submitted
                 </h5>
                 <button type="button" class="close text-white" data-dismiss="modal" aria-label="Close">
                     <span aria-hidden="true">&times;</span>
                 </button>
             </div>
             <div class="modal-body">
-                <div class="alert alert-danger">
-                    <strong>Error:</strong> <span id="transferErrorMessage">There was an error processing your request.</span>
+                <div class="alert alert-danger mb-3">
+                    <h6 class="alert-heading"><i class="fas fa-times-circle"></i> Request Failed</h6>
+                    <p class="mb-0"><strong>Error:</strong> <span id="transferErrorMessage">There was an error processing your transfer request.</span></p>
                 </div>
-                <p>Please try again or contact support if the problem persists.</p>
+
+                <h6><i class="fas fa-question-circle"></i> Common Reasons for Transfer Request Errors:</h6>
+                <ul class="mb-3">
+                    <li><strong>Already Own This Car:</strong> You can't request a transfer for a car you already own in the Registry</li>
+                    <li><strong>Pending Request Exists:</strong> You may already have a pending transfer request for this chassis number</li>
+                    <li><strong>Invalid Chassis Number:</strong> The chassis number entered doesn't match any car in the Elan Registry</li>
+                    <li><strong>Network Issues:</strong> Your connection to the Registry server may have been interrupted</li>
+                </ul>
+
+                <p><strong>What to do:</strong></p>
+                <ul class="mb-3">
+                    <li>Review the error message above for specific details</li>
+                    <li>Check that you entered the correct chassis number</li>
+                    <li>Verify that you don't already own this car</li>
+                    <li>Try submitting your request again</li>
+                </ul>
+
+                <p class="mb-0"><small class="text-muted"><i class="fas fa-envelope"></i> If the problem continues, please contact the Registry Administrator at the email address in your account settings for assistance.</small></p>
             </div>
             <div class="modal-footer">
-                <button type="button" class="btn btn-danger" data-dismiss="modal">Close</button>
+                <button type="button" class="btn btn-danger" data-dismiss="modal">
+                    <i class="fas fa-times"></i> Close
+                </button>
             </div>
         </div>
     </div>
