@@ -28,7 +28,7 @@ declare(strict_types=1);
 
 // UI Constants for progress output
 define('SECTION_SEPARATOR', '═══════════════════════════════════════════════════════');
-define('LOG_CATEGORY_PLACEHOLDER', LOG_CATEGORY_PLACEHOLDER);
+define('LOG_CATEGORY_PLACEHOLDER', '[LOG_CATEGORY]');
 
 require_once '../users/init.php';
 require_once $abs_us_root . $us_url_root . 'users/includes/template/prep.php';
