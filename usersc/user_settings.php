@@ -458,11 +458,11 @@ if ($userQ2->count() > 0) {
                     <form name='updateAccount' action='user_settings.php' method='post'>
 
                         <div class="form-group">
-                            <label>Username</label>
+                            <label for="username">Username</label>
                             <?php if (($settings->change_un == 0) || (($settings->change_un == 2) && ($userdetails->un_changed == 1))) {
                             ?>
                                 <div class="input-group">
-                                    <input class='form-control' type='text' name='username' value='<?= $userdetails->username ?>' readonly />
+                                    <input class='form-control' type='text' id='username' name='username' value='<?= $userdetails->username ?>' readonly />
                                     <span class="input-group-addon" data-toggle="tooltip" title="<?php if ($settings->change_un == 0) {
                                                                                                     ?>The Administrator has disabled changing usernames.<?php
                                                                                                                                                     }
@@ -473,35 +473,35 @@ if ($userQ2->count() > 0) {
                             <?php
                             } else {
                             ?>
-                                <input class='form-control' type='text' name='username' value='<?= $userdetails->username ?>'>
+                                <input class='form-control' type='text' id='username' name='username' value='<?= $userdetails->username ?>'>
                             <?php
                             } ?>
                         </div>
 
                         <div class="form-group">
-                            <label>First Name</label>
-                            <input class='form-control' type='text' name='fname' value='<?= $userdetails->fname ?>' />
+                            <label for="fname">First Name</label>
+                            <input class='form-control' type='text' id='fname' name='fname' value='<?= $userdetails->fname ?>' />
                         </div>
 
                         <div class="form-group">
-                            <label>Last Name</label>
-                            <input class='form-control' type='text' name='lname' value='<?= $userdetails->lname ?>' />
+                            <label for="lname">Last Name</label>
+                            <input class='form-control' type='text' id='lname' name='lname' value='<?= $userdetails->lname ?>' />
                         </div>
                         <!-- Extend user_setttings.php with some PROFILE information -->
                         <div class="form-group">
-                            <label>City</label>
-                            <input class='form-control' type='text' name='city' value='<?= $profiledetails->city ?>' />
+                            <label for="city">City</label>
+                            <input class='form-control' type='text' id='city' name='city' value='<?= $profiledetails->city ?>' />
                         </div>
                         <div class="form-group">
-                            <label>State</label>
-                            <input class='form-control' type='text' name='state' value='<?= $profiledetails->state ?>' />
+                            <label for="state">State</label>
+                            <input class='form-control' type='text' id='state' name='state' value='<?= $profiledetails->state ?>' />
                         </div>
 
 
                         <div class="form-group">
-                            <label>Country <?= $profiledetails->country ?></label>
+                            <label for="country">Country <?= $profiledetails->country ?></label>
                             <?php
-                            echo "<select name='country'>";
+                            echo "<select id='country' name='country'>";
                             echo '<option selected>' . $profiledetails->country . '</option>';
                             foreach ($countrylist as $c) {
                                 echo "<option value=\"$c->name\">$c->name</option>";
@@ -511,14 +511,14 @@ if ($userQ2->count() > 0) {
                         </div>
 
                         <div class="form-group">
-                            <label>Website</label>
-                            <input class='form-control' type='text' name='website' value='<?= $profiledetails->website ?>' />
+                            <label for="website">Website</label>
+                            <input class='form-control' type='text' id='website' name='website' value='<?= $profiledetails->website ?>' />
                         </div>
                         <!-- END Extend user_setttings.php with some PROFILE information -->
 
                         <div class="form-group">
-                            <label>Email</label>
-                            <input class='form-control' type='text' name='email' value='<?= $userdetails->email ?>' />
+                            <label for="email">Email</label>
+                            <input class='form-control' type='text' id='email' name='email' value='<?= $userdetails->email ?>' />
                             <?php if (!IS_NULL($userdetails->email_new)) {
                             ?><br />
                                 <div class="alert alert-danger">
@@ -530,12 +530,12 @@ if ($userQ2->count() > 0) {
                         </div>
 
                         <div class="form-group">
-                            <label>Confirm Email</label>
-                            <input class='form-control' type='text' name='confemail' />
+                            <label for="confemail">Confirm Email</label>
+                            <input class='form-control' type='text' id='confemail' name='confemail' />
                         </div>
 
                         <div class="form-group">
-                            <label>New Password</label>
+                            <label for="password">New Password</label>
                             <div class="input-group" data-container="body">
                                 <span class="input-group-addon password_view_control" id="addon1"><span class="glyphicon glyphicon-eye-open"></span></span>
                                 <input class="form-control" type="password" autocomplete="off" name="password" id="password">
@@ -544,7 +544,7 @@ if ($userQ2->count() > 0) {
                         </div>
 
                         <div class="form-group">
-                            <label>Confirm Password</label>
+                            <label for="confirm">Confirm Password</label>
                             <div class="input-group" data-container="body">
                                 <span class="input-group-addon password_view_control" id="addon3"><span class="glyphicon glyphicon-eye-open"></span></span>
                                 <input type="password" autocomplete="off" id="confirm" name="confirm" class="form-control">
@@ -562,7 +562,7 @@ if ($userQ2->count() > 0) {
                         } ?>
 
                         <div class="form-group">
-                            <label>Old Password<?php if (!is_null($userdetails->password)) {
+                            <label for="old">Old Password<?php if (!is_null($userdetails->password)) {
                                                 ?>, required for changing password, email, or resetting PIN<?php
                                                                                                         } ?></label>
                             <div class="input-group" data-container="body">
