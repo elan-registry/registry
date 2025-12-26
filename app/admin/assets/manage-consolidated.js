@@ -1051,6 +1051,124 @@ function initializeCarManagement() {
     // Transfer decision modal handlers
     let transferDecisionData = null;
 
+    // Handle view transfer details button click
+    $(document).on('click', '.view-transfer-details', function() {
+        const $btn = $(this);
+        const data = {
+            transferId: $btn.data('transfer-id'),
+            carId: $btn.data('car-id'),
+            chassis: $btn.data('chassis'),
+            year: $btn.data('year'),
+            type: $btn.data('type'),
+            color: $btn.data('color'),
+            series: $btn.data('series'),
+            currentOwner: $btn.data('current-owner'),
+            currentEmail: $btn.data('current-email'),
+            requester: $btn.data('requester'),
+            requesterEmail: $btn.data('requester-email'),
+            requestDate: $btn.data('request-date'),
+            expiresAt: $btn.data('expires-at'),
+            comments: $btn.data('comments'),
+            submittedChassis: $btn.data('submitted-chassis'),
+            submittedYear: $btn.data('submitted-year'),
+            submittedModel: $btn.data('submitted-model'),
+            submittedColor: $btn.data('submitted-color'),
+            submittedEngine: $btn.data('submitted-engine')
+        };
+
+        showTransferDetailsModal(data);
+    });
+
+    // Function to show transfer details modal (view-only mode)
+    function showTransferDetailsModal(data) {
+        // Store data globally for action buttons
+        transferDecisionData = {
+            action: null, // Will be set when approve/deny is clicked
+            transferId: data.transferId,
+            carYear: data.year,
+            carType: data.type,
+            carSeries: data.series,
+            carChassis: data.chassis,
+            carColor: data.color,
+            currentOwner: data.currentOwner,
+            currentEmail: data.currentEmail,
+            requesterName: data.requester,
+            requesterEmail: data.requesterEmail,
+            requestDate: data.requestDate,
+            expiresDate: data.expiresAt,
+            comments: data.comments
+        };
+
+        // Update modal header for view-only mode
+        $('#transferDecisionModalHeader').removeClass('bg-success bg-danger').addClass('bg-info');
+        $('#transferDecisionTitle').text('Transfer Request Details');
+        $('#transferDecisionMessage').removeClass('alert-success alert-danger').addClass('alert-info');
+        $('#transferDecisionMessageText').html('<strong>Transfer Request Information:</strong> Review the details below and choose an action.');
+
+        // Populate car details
+        const carDetails = `
+            <strong>${data.year} ${data.type}</strong>
+            ${data.series ? `<span class="badge badge-secondary badge-sm ml-1">${data.series}</span>` : ''}
+            <br><small class="text-muted">
+                <i class="fas fa-barcode"></i> Chassis: ${data.chassis}
+                ${data.color ? ` • Color: ${data.color}` : ''}
+            </small>
+        `;
+        $('#modal-transfer-car-details').html(carDetails);
+
+        // Populate current owner details
+        const currentOwnerDetails = `
+            <strong>${data.currentOwner}</strong><br>
+            <small class="text-muted"><i class="fas fa-envelope"></i> ${data.currentEmail}</small>
+        `;
+        $('#modal-current-owner-details').html(currentOwnerDetails);
+
+        // Populate requester details
+        const requesterDetails = `
+            <strong>${data.requester}</strong><br>
+            <small class="text-muted"><i class="fas fa-envelope"></i> ${data.requesterEmail}</small>
+        `;
+        $('#modal-requester-details').html(requesterDetails);
+
+        // Populate request information with submitted data
+        let requestDetails = `
+            <div class="row">
+                <div class="col-md-6">
+                    <strong>Request Date:</strong> ${new Date(data.requestDate).toLocaleDateString()}<br>
+                    <strong>Expires:</strong> ${new Date(data.expiresAt).toLocaleDateString()}
+                </div>
+                <div class="col-md-6">
+                    <strong>Submitted Data:</strong><br>
+                    ${data.submittedYear ? `Year: ${data.submittedYear}<br>` : ''}
+                    ${data.submittedModel ? `Model: ${data.submittedModel}<br>` : ''}
+                    ${data.submittedChassis ? `Chassis: ${data.submittedChassis}<br>` : ''}
+                    ${data.submittedColor ? `Color: ${data.submittedColor}<br>` : ''}
+                    ${data.submittedEngine ? `Engine: ${data.submittedEngine}<br>` : ''}
+                </div>
+            </div>
+        `;
+        $('#modal-transfer-request-details').html(requestDetails);
+
+        // Show or hide comments section
+        if (data.comments && data.comments.trim() !== '') {
+            $('#modal-transfer-comments').text(data.comments);
+            $('#modal-transfer-comments-section').show();
+        } else {
+            $('#modal-transfer-comments-section').hide();
+        }
+
+        // Hide the action consequences section (not taking action in view mode)
+        $('#transferDecisionConsequences').hide();
+
+        // Show view mode buttons, hide confirm button
+        $('#transferViewModeButtons').show();
+        $('#confirmTransferDecisionBtn').hide();
+        $('#cancelButtonText').text('Close');
+
+        // Show the modal
+        $('#transferDecisionModal').modal('show');
+    }
+
     // Handle transfer approve button click
     $(document).on('click', '.transfer-approve-btn', function() {
         transferDecisionData = {
@@ -1099,16 +1217,16 @@ function initializeCarManagement() {
 
         // Update modal header and colors based on action
         if (isApprove) {
-            $('#transferDecisionModalHeader').removeClass('bg-danger').addClass('bg-success');
+            $('#transferDecisionModalHeader').removeClass('bg-danger bg-info').addClass('bg-success');
             $('#transferDecisionTitle').text('Approve Transfer Request');
-            $('#transferDecisionMessage').removeClass('alert-danger').addClass('alert-success');
+            $('#transferDecisionMessage').removeClass('alert-danger alert-info').addClass('alert-success');
             $('#transferDecisionMessageText').text('You are about to APPROVE this transfer request.');
             $('#confirmTransferDecisionBtn').removeClass('btn-danger').addClass('btn-success');
             $('#confirmTransferDecisionText').text('Approve Transfer');
         } else {
-            $('#transferDecisionModalHeader').removeClass('bg-success').addClass('bg-danger');
+            $('#transferDecisionModalHeader').removeClass('bg-success bg-info').addClass('bg-danger');
             $('#transferDecisionTitle').text('Deny Transfer Request');
-            $('#transferDecisionMessage').removeClass('alert-success').addClass('alert-danger');
+            $('#transferDecisionMessage').removeClass('alert-success alert-info').addClass('alert-danger');
             $('#transferDecisionMessageText').text('You are about to DENY this transfer request.');
             $('#confirmTransferDecisionBtn').removeClass('btn-success').addClass('btn-danger');
             $('#confirmTransferDecisionText').text('Deny Transfer');
@@ -1142,10 +1260,23 @@ function initializeCarManagement() {
         // Populate request information
         const requestDetails = `
             <strong>Request Date:</strong> ${new Date(data.requestDate).toLocaleDateString()}<br>
-            <strong>Expires:</strong> ${new Date(data.expiresDate).toLocaleDateString()}<br>
-            ${data.comments ? `<strong>Comments:</strong><br><em>"${data.comments}"</em>` : '<em>No comments provided</em>'}
+            <strong>Expires:</strong> ${new Date(data.expiresDate).toLocaleDateString()}
         `;
         $('#modal-transfer-request-details').html(requestDetails);
+
+        // Show or hide comments section
+        if (data.comments && data.comments.trim() !== '') {
+            $('#modal-transfer-comments').text(data.comments);
+            $('#modal-transfer-comments-section').show();
+        } else {
+            $('#modal-transfer-comments-section').hide();
+        }
+
+        // Show consequences section and confirm button (action mode)
+        $('#transferDecisionConsequences').show();
+        $('#confirmTransferDecisionBtn').show();
+        $('#transferViewModeButtons').hide();
+        $('#cancelButtonText').text('Cancel');
 
         // Update consequences based on action
         const effects = isApprove ? `
@@ -1166,6 +1297,22 @@ function initializeCarManagement() {
         // Show the modal
         $('#transferDecisionModal').modal('show');
     }
+
+    // Handle approve button click from details modal
+    $(document).on('click', '#approveTransferFromDetailsBtn', function() {
+        // Set action in stored data
+        transferDecisionData.action = 'approve';
+        // Show confirmation modal
+        showTransferDecisionModal(true);
+    });
+
+    // Handle deny button click from details modal
+    $(document).on('click', '#denyTransferFromDetailsBtn', function() {
+        // Set action in stored data
+        transferDecisionData.action = 'deny';
+        // Show confirmation modal
+        showTransferDecisionModal(false);
+    });
 
     // Transfer decision modal confirm button
     $('#confirmTransferDecisionBtn').on('click', function() {

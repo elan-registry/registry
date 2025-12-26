@@ -842,6 +842,15 @@ if (Input::exists('post')) {
                     </div>
                 </div>
 
+                <div class="mt-3" id="modal-transfer-comments-section" style="display: none;">
+                    <h6><i class="fas fa-comment-alt"></i> Requester's Comments</h6>
+                    <div class="card border-primary">
+                        <div class="card-body p-3">
+                            <div id="modal-transfer-comments" class="text-dark" style="white-space: pre-wrap;"></div>
+                        </div>
+                    </div>
+                </div>
+
                 <div class="mt-3" id="transferDecisionConsequences">
                     <p class="mb-2"><strong>This action will:</strong></p>
                     <ul class="list-unstyled" id="transferDecisionEffects">
@@ -851,8 +860,18 @@ if (Input::exists('post')) {
             </div>
             <div class="modal-footer">
                 <button type="button" class="btn btn-secondary" data-dismiss="modal">
-                    <i class="fas fa-times"></i> Cancel
+                    <i class="fas fa-times"></i> <span id="cancelButtonText">Cancel</span>
                 </button>
+                <!-- Action buttons for view mode -->
+                <div id="transferViewModeButtons" style="display: none;">
+                    <button type="button" class="btn btn-success" id="approveTransferFromDetailsBtn">
+                        <i class="fas fa-check-circle"></i> Approve Transfer
+                    </button>
+                    <button type="button" class="btn btn-danger" id="denyTransferFromDetailsBtn">
+                        <i class="fas fa-times-circle"></i> Deny Transfer
+                    </button>
+                </div>
+                <!-- Confirm button for decision mode -->
                 <button type="button" class="btn btn-primary" id="confirmTransferDecisionBtn">
                     <i class="fas fa-check"></i> <span id="confirmTransferDecisionText">Confirm</span>
                 </button>

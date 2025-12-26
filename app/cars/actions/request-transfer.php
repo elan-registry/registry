@@ -37,8 +37,13 @@ try {
     $engine = trim(Input::get('engine'));
     $comments = trim(Input::get('comments'));
 
+    // Validate comment length (server-side validation)
+    if (strlen($comments) > 1000) {
+        throw new CarTransferException('Transfer explanation must be 1000 characters or less');
+    }
+
     if (empty($chassis) || empty($year) || empty($model)) {
-        throw new Exception('Chassis, year, and model are required');
+        throw new CarTransferException('Chassis, year, and model are required');
     }
 
     // Parse model to get series, variant, type
