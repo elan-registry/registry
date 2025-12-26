@@ -438,6 +438,6 @@ If deployment fails:
 
 **📖 Related Documentation:**
 
-- [CLAUDE.md](CLAUDE.md) - Essential development guidance
+- [CLAUDE.md](../../CLAUDE.md) - Essential development guidance
 - [DEVELOPMENT_WORKFLOW.md](DEVELOPMENT_WORKFLOW.md) - Detailed development processes
 - [ENVIRONMENT.md](ENVIRONMENT.md) - Environment setup and configuration
