@@ -21,12 +21,12 @@ $response = ['success' => false, 'message' => ''];
 try {
     // Check CSRF token
     if (!Input::exists('post') || !Token::check(Input::get('csrf'))) {
-        throw new Exception('Invalid request token');
+        throw new CarTransferException('Invalid request token');
     }
 
     // Check authentication
     if (!$user->isLoggedIn()) {
-        throw new Exception('You must be logged in to request transfers');
+        throw new CarTransferException('You must be logged in to request transfers');
     }
 
     // Get and validate input
@@ -49,7 +49,7 @@ try {
     // Parse model to get series, variant, type
     $modelParts = explode('|', $model);
     if (count($modelParts) !== 3) {
-        throw new Exception('Invalid model format');
+        throw new CarTransferException('Invalid model format');
     }
 
     $series = $modelParts[0];
@@ -65,14 +65,14 @@ try {
     );
 
     if ($existingCarQuery->count() === 0) {
-        throw new Exception('No car found with this chassis number');
+        throw new CarTransferException('No car found with this chassis number');
     }
 
     $existingCar = $existingCarQuery->first();
 
     // Check if user is trying to transfer to themselves
     if ($existingCar->user_id == $user->data()->id) {
-        throw new Exception('You already own this car');
+        throw new CarTransferException('You already own this car');
     }
 
     // Check for existing pending transfer request
@@ -82,7 +82,7 @@ try {
     );
 
     if ($existingTransferQuery->count() > 0) {
-        throw new Exception('You already have a pending transfer request for this car');
+        throw new CarTransferException('You already have a pending transfer request for this car');
     }
 
     // Generate security token
@@ -128,7 +128,7 @@ try {
     );
 
     if (!$insertResult) {
-        throw new Exception('Failed to create transfer request');
+        throw new CarTransferException('Failed to create transfer request');
     }
 
     // Get the transfer request ID
@@ -137,7 +137,7 @@ try {
     // Validate that we got a valid ID
     if ($transferRequestId <= 0) {
         logger($user->data()->id, 'DatabaseError', "Failed to get transfer request ID from lastId()");
-        throw new Exception('Failed to retrieve transfer request ID');
+        throw new CarTransferException('Failed to retrieve transfer request ID');
     }
 
     // Log the transfer request creation
