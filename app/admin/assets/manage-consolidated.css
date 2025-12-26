@@ -485,6 +485,106 @@
 }
 
 /* ==========================================================================
+   Duplicate Email Groups (Owner Management Tab)
+   ========================================================================== */
+
+.duplicate-email-group {
+    transition: all 0.3s ease;
+}
+
+.owner-comparison-card {
+    transition: all 0.3s ease;
+    display: flex;
+    flex-direction: column;
+    border: 2px solid #dee2e6;
+}
+
+.owner-comparison-card.newer-owner {
+    border-color: #28a745;
+    box-shadow: 0 0 0 0.2rem rgba(40, 167, 69, 0.15);
+}
+
+.owner-comparison-card .card-body {
+    flex: 1;
+}
+
+/* Field comparison highlighting */
+.field-match {
+    background-color: rgba(40, 167, 69, 0.05);
+    padding: 0.25rem;
+    border-radius: 0.25rem;
+}
+
+.field-differ {
+    background-color: rgba(255, 193, 7, 0.1);
+    padding: 0.25rem;
+    border-radius: 0.25rem;
+}
+
+.field-value {
+    font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, Courier, monospace;
+    font-size: 0.9em;
+}
+
+/* Timestamp information styling */
+.timestamp-info {
+    padding: 0.25rem;
+}
+
+.timestamp-label {
+    font-size: 0.75rem;
+    color: #6c757d;
+    font-weight: 500;
+    margin-bottom: 0.25rem;
+}
+
+.timestamp-value {
+    font-size: 0.875rem;
+    font-weight: 600;
+    color: #495057;
+}
+
+.timestamp-time {
+    font-size: 0.7rem;
+    color: #6c757d;
+}
+
+/* Car list container */
+.car-list-container {
+    border: 1px solid #dee2e6;
+    border-radius: 0.25rem;
+    padding: 0;
+}
+
+.car-list-container .table {
+    margin-bottom: 0;
+}
+
+.car-list-container .table td,
+.car-list-container .table th {
+    padding: 0.5rem;
+    vertical-align: middle;
+}
+
+/* Warning background opacity */
+.bg-opacity-10 {
+    background-color: rgba(255, 193, 7, 0.1) !important;
+}
+
+/* Responsive adjustments for owner cards */
+@media (max-width: 991px) {
+    .owner-comparison-card {
+        margin-bottom: 1rem;
+    }
+}
+
+@media (min-width: 992px) {
+    .owner-comparison-card {
+        min-height: 500px;
+    }
+}
+
+/* ==========================================================================
    Dark Mode Support (Future Enhancement)
    ========================================================================== */
 
