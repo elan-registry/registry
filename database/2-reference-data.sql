@@ -4,6 +4,9 @@
 -- This script populates reference tables with essential data
 -- Run after 1-schema.sql has been executed successfully
 --
+-- ✅ SAFE TO RUN MULTIPLE TIMES
+-- Uses ON DUPLICATE KEY UPDATE to safely update existing records
+--
 -- Tables populated:
 -- - country: Complete list of countries (249 entries)
 -- - elan_factory_info: Factory production data (9,762 records)
@@ -259,7 +262,9 @@ INSERT INTO `country` (`id`, `name`) VALUES
 (246, 'Mayotte'),
 (247, 'South Africa'),
 (248, 'Zambia'),
-(249, 'Zimbabwe');
+(249, 'Zimbabwe')
+ON DUPLICATE KEY UPDATE
+  name = VALUES(name);
 
 -- Import Lotus Elan parts catalog data
 -- This provides a foundation for the parts tracking feature
@@ -10027,7 +10032,20 @@ INSERT INTO `elan_factory_info` (`id`, `year`, `month`, `batch`, `type`, `serial
 (9759, '70', '07', '', '', '9832', '', 'G', '21633', '4', '', '1970-07-07', ''),
 (9760, '', '', '', '', 'A', '', 'LP', '010', '4', '', '1000-01-01', ''),
 (9761, '', '', '', '', 'B', '', 'S', '271188E', '4', '', '1000-01-01', ''),
-(9762, '', '', '', '', '0000', '', '', '', '', '', '1000-01-01', 'Records from 0172 destroyed by flood at factory');
+(9762, '', '', '', '', '0000', '', '', '', '', '', '1000-01-01', 'Records from 0172 destroyed by flood at factory')
+ON DUPLICATE KEY UPDATE
+  year = VALUES(year),
+  month = VALUES(month),
+  batch = VALUES(batch),
+  type = VALUES(type),
+  serial = VALUES(serial),
+  suffix = VALUES(suffix),
+  engineletter = VALUES(engineletter),
+  enginenumber = VALUES(enginenumber),
+  gearbox = VALUES(gearbox),
+  color = VALUES(color),
+  builddate = VALUES(builddate),
+  note = VALUES(note);
 
 
 -- ==================================================================

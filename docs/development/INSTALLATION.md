@@ -230,15 +230,19 @@ be run in sequence:
 **⚠️ IMPORTANT:** The database installation scripts have different
 safety levels for re-execution:
 
-- **1-schema.sql**: ❌ **NOT SAFE** - Will fail if run multiple times
-  (tables already exist)
+- **1-schema.sql**: ❌ **NOT SAFE** - Will fail if run multiple times.
+  Creates tables, indexes, and triggers that cannot be recreated if
+  they already exist. Only run once on initial setup.
 - **2-reference-data.sql**: ✅ **SAFE** - Uses `ON DUPLICATE KEY UPDATE`
-- **3-configuration.sql**: ⚠️ **CAUTION** - Safe but resets menu
-  customizations
-- **4-sample-data.sql**: ✅ **SAFE** - Uses `ON DUPLICATE KEY UPDATE`
+  to safely update existing records. Can be run multiple times.
+- **3-configuration.sql**: ✅ **SAFE** - Uses `ON DUPLICATE KEY UPDATE`
+  and conditional logic. Can be run multiple times to update settings.
+- **4-sample-data.sql**: ✅ **SAFE** - Uses `ON DUPLICATE KEY UPDATE`.
+  Can be run multiple times (development/testing only).
 
-**Recommendation**: Run scripts in order (1 → 2 → 3 → 4). If you need
-to re-run script 1, restore from a UserSpice-only backup first.
+**Recommendation**: Run scripts in order (1 → 2 → 3 → 4). Only script
+1 (schema) must be run exactly once. Scripts 2, 3, and 4 can be safely
+re-run to update data or fix configuration issues.
 
 #### Step 1: Core Database Schema
 
@@ -286,8 +290,7 @@ mysql -u username -p database_name < database/2-reference-data.sql
 
 #### Step 3: Configuration Settings
 
-**⚠️ CAUTION: This script deletes and rebuilds menu configurations.
-Custom menu changes will be lost.**
+**✅ SAFE: This script can be run multiple times safely.**
 
 Apply essential Elan Registry configuration settings:
 
@@ -295,9 +298,6 @@ Apply essential Elan Registry configuration settings:
 # Apply essential configuration (settings, permissions, pages, menus, CDN resources)
 mysql -u username -p database_name < database/3-configuration.sql
 ```
-
-**Note**: While technically safe to re-run, this script will reset all
-menu customizations to defaults.
 
 **What this configures:**
 
