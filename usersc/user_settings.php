@@ -293,9 +293,8 @@ if (!empty($_POST)) {
                 $successes[] = 'website updated.';
                 logger($user->data()->id, 'User', "Changed website from $profiledetails->website to $website.");
             } else {
-                echo "$website is not a valid URL";
                 //validation did not pass
-                $errors[] = "$website is not a valid URL";
+                $errors[] = htmlspecialchars($website, ENT_QUOTES, 'UTF-8') . " is not a valid URL";
             }
         } else {
             $state = $profiledetails->website;
