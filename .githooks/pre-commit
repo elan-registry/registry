@@ -201,14 +201,9 @@ if [ -n "$CRITICAL_FILES" ]; then
         echo "   Run 'composer install' to enable pre-commit testing"
     else
         echo "Running: composer test:quick (unit tests with early failure)"
-        echo "⚠️  Note: Some tests are temporarily excluded pending fixes (see issue #388)"
 
-        # Exclude broken tests pending fixes - Issue #388
-        # These tests have pre-existing failures unrelated to current changes
-        EXCLUDE_PATTERN="InputSanitizationTest|SerializedDataRemovalTest|VerificationSecurityTest|ElanRegistryOwnerTest"
-
-        if vendor/bin/phpunit --testsuite=Unit --exclude-group broken --filter "!($EXCLUDE_PATTERN)" 2>&1; then
-            echo "✅ Unit tests passed (excluding known broken tests)!"
+        if vendor/bin/phpunit --testsuite=Unit --exclude-group broken 2>&1; then
+            echo "✅ Unit tests passed!"
         else
             echo ""
             echo "❌ COMMIT BLOCKED: Unit tests failed"

@@ -6,6 +6,8 @@ const { defineConfig, devices } = require('@playwright/test');
  */
 module.exports = defineConfig({
   testDir: './tests/playwright',
+  /* Exclude E2E tests (they use playwright.config.prod.js) */
+  testIgnore: '**/e2e/**',
   /* Run tests in files in parallel */
   fullyParallel: true,
   /* Fail the build on CI if you accidentally left test.only in the source code. */

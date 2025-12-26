@@ -93,9 +93,11 @@ yarn-error.log*
 ########################################
 /test-results/
 /playwright-report/
+/playwright-report-e2e/
 /playwright/.cache/
 .playwright.result.cache
 .playwright-mcp/
+tests/playwright/.auth/
 
 ########################################
 # Tests & Backups

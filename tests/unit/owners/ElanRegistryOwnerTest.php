@@ -13,18 +13,124 @@ class ElanRegistryOwnerTest extends TestCase
 {
     private $owner;
     private $db;
+    private $realPdo;
+    private $connected = false;
 
     protected function setUp(): void
     {
-        // Initialize test database connection
-        $this->db = DB::getInstance();
-        $this->owner = new ElanRegistryOwner();
+        // Try to connect to real database for integration testing
+        try {
+            $this->realPdo = new PDO(
+                'mysql:host=127.0.0.1;port=8889;dbname=elanregi_spice',
+                'claude',
+                'claude',
+                [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]
+            );
+            $this->connected = true;
+
+            // Create a DB wrapper that uses real PDO
+            $this->db = $this->createDbWrapper($this->realPdo);
+        } catch (PDOException $e) {
+            $this->connected = false;
+            // Fall back to mock DB
+            $this->db = DB::getInstance();
+        }
+
+        $this->owner = new ElanRegistryOwner(null, $this->db);
+    }
+
+    /**
+     * Create a DB wrapper that mimics the DB interface but uses real PDO
+     *
+     * @param PDO $pdo Database connection
+     * @return object DB wrapper instance
+     */
+    private function createDbWrapper(PDO $pdo): object
+    {
+        return new class($pdo) {
+            /** @var PDO */
+            private $pdo;
+
+            /**
+             * @param PDO $pdo
+             */
+            public function __construct(PDO $pdo)
+            {
+                $this->pdo = $pdo;
+            }
+
+            /**
+             * Execute a query and return results
+             *
+             * @param string $sql SQL query
+             * @param array<mixed> $params Query parameters
+             * @return object Query result object
+             */
+            public function query(string $sql, array $params = []): object
+            {
+                $stmt = $this->pdo->prepare($sql);
+                $stmt->execute($params);
+                $results = $stmt->fetchAll(PDO::FETCH_OBJ);
+
+                return new class($results) {
+                    /** @var array<object> */
+                    private $results;
+
+                    /**
+                     * @param array<object> $results
+                     */
+                    public function __construct(array $results)
+                    {
+                        $this->results = $results;
+                    }
+
+                    /**
+                     * Get count of results
+                     *
+                     * @return int
+                     */
+                    public function count(): int
+                    {
+                        return count($this->results);
+                    }
+
+                    /**
+                     * Get first result
+                     *
+                     * @return object|null
+                     */
+                    public function first(): ?object
+                    {
+                        return $this->results[0] ?? null;
+                    }
+
+                    /**
+                     * Get all results
+                     *
+                     * @return array<object>
+                     */
+                    public function results(): array
+                    {
+                        return $this->results;
+                    }
+                };
+            }
+        };
     }
 
     protected function tearDown(): void
     {
         // Clean up after tests
         $this->owner = null;
+        $this->realPdo = null;
+    }
+
+    /**
+     * Helper method to execute queries
+     */
+    private function query(string $sql, array $params = []): object
+    {
+        return $this->db->query($sql, $params);
     }
 
     /**
@@ -32,31 +138,21 @@ class ElanRegistryOwnerTest extends TestCase
      */
     public function testOwnerInstantiation(): void
     {
-        $owner = new ElanRegistryOwner();
+        $owner = new ElanRegistryOwner(null, $this->db);
         $this->assertInstanceOf(ElanRegistryOwner::class, $owner);
         $this->assertNull($owner->data());
     }
 
     /**
      * Test static getOwnerProfile method with valid user
+     *
+     * @group integration
+     * NOTE: This test has been moved to ElanRegistryOwnerIntegrationTest
+     * as it requires full application bootstrap and global functions.
      */
     public function testGetOwnerProfileWithValidUser(): void
     {
-        // Find a valid user in the database for testing
-        $userQuery = $this->db->query("SELECT id FROM users LIMIT 1");
-
-        if ($userQuery->count() > 0) {
-            $userId = $userQuery->first()->id;
-            $ownerData = ElanRegistryOwner::getOwnerProfile((int)$userId);
-
-            $this->assertNotNull($ownerData);
-            $this->assertEquals($userId, $ownerData->id);
-            $this->assertObjectHasProperty('fname', $ownerData);
-            $this->assertObjectHasProperty('lname', $ownerData);
-            $this->assertObjectHasProperty('email', $ownerData);
-        } else {
-            $this->markTestSkipped('No users available in database for testing');
-        }
+        $this->markTestSkipped('Moved to integration test suite - see ElanRegistryOwnerIntegrationTest');
     }
 
     /**
@@ -70,23 +166,14 @@ class ElanRegistryOwnerTest extends TestCase
 
     /**
      * Test owner loading with valid ID
+     *
+     * @group integration
+     * NOTE: This test has been moved to ElanRegistryOwnerIntegrationTest
+     * as it requires full application bootstrap.
      */
     public function testFindWithValidUser(): void
     {
-        // Find a valid user in the database for testing
-        $userQuery = $this->db->query("SELECT id FROM users LIMIT 1");
-
-        if ($userQuery->count() > 0) {
-            $userId = $userQuery->first()->id;
-            $owner = new ElanRegistryOwner();
-            $result = $owner->find((int)$userId);
-
-            $this->assertTrue($result);
-            $this->assertNotNull($owner->data());
-            $this->assertEquals($userId, $owner->data()->id);
-        } else {
-            $this->markTestSkipped('No users available in database for testing');
-        }
+        $this->markTestSkipped('Moved to integration test suite - see ElanRegistryOwnerIntegrationTest');
     }
 
     /**
@@ -94,7 +181,7 @@ class ElanRegistryOwnerTest extends TestCase
      */
     public function testFindWithInvalidUser(): void
     {
-        $owner = new ElanRegistryOwner();
+        $owner = new ElanRegistryOwner(null, $this->db);
         $result = $owner->find(999999);
 
         $this->assertFalse($result);
@@ -107,7 +194,7 @@ class ElanRegistryOwnerTest extends TestCase
     public function testProfileQualityScoring(): void
     {
         // Find a user with some profile data
-        $userQuery = $this->db->query(
+        $userQuery = $this->query(
             "SELECT u.id FROM users u
              LEFT JOIN profiles p ON u.id = p.user_id
              WHERE u.fname IS NOT NULL AND u.lname IS NOT NULL
@@ -116,7 +203,7 @@ class ElanRegistryOwnerTest extends TestCase
 
         if ($userQuery->count() > 0) {
             $userId = $userQuery->first()->id;
-            $owner = new ElanRegistryOwner($userId);
+            $owner = new ElanRegistryOwner($userId, $this->db);
 
             $score = $owner->getProfileQualityScore();
             $this->assertIsFloat($score);
@@ -133,11 +220,11 @@ class ElanRegistryOwnerTest extends TestCase
     public function testProfileCompletenessValidation(): void
     {
         // Find a user for testing
-        $userQuery = $this->db->query("SELECT id FROM users LIMIT 1");
+        $userQuery = $this->query("SELECT id FROM users LIMIT 1");
 
         if ($userQuery->count() > 0) {
             $userId = $userQuery->first()->id;
-            $owner = new ElanRegistryOwner($userId);
+            $owner = new ElanRegistryOwner($userId, $this->db);
 
             $missingFields = $owner->validateProfileCompleteness();
             $this->assertIsArray($missingFields);
@@ -148,29 +235,14 @@ class ElanRegistryOwnerTest extends TestCase
 
     /**
      * Test getting cars owned by owner
+     *
+     * @group integration
+     * NOTE: This test has been moved to ElanRegistryOwnerIntegrationTest
+     * as it requires full application bootstrap.
      */
     public function testGetCarsOwned(): void
     {
-        // Find a user who owns cars
-        $userQuery = $this->db->query(
-            "SELECT DISTINCT user_id FROM cars WHERE user_id IS NOT NULL LIMIT 1"
-        );
-
-        if ($userQuery->count() > 0) {
-            $userId = $userQuery->first()->user_id;
-            $owner = new ElanRegistryOwner((int)$userId);
-
-            $ownedCars = $owner->getCarsOwned();
-            $this->assertIsArray($ownedCars);
-            $this->assertGreaterThan(0, count($ownedCars));
-
-            // Check that all returned cars belong to this user
-            foreach ($ownedCars as $car) {
-                $this->assertEquals($userId, $car->user_id);
-            }
-        } else {
-            $this->markTestSkipped('No users with cars available for testing');
-        }
+        $this->markTestSkipped('Moved to integration test suite - see ElanRegistryOwnerIntegrationTest');
     }
 
     /**
@@ -179,13 +251,13 @@ class ElanRegistryOwnerTest extends TestCase
     public function testGetOwnershipHistory(): void
     {
         // Find a user who has ownership history
-        $userQuery = $this->db->query(
+        $userQuery = $this->query(
             "SELECT DISTINCT user_id FROM cars_hist WHERE user_id IS NOT NULL LIMIT 1"
         );
 
         if ($userQuery->count() > 0) {
             $userId = $userQuery->first()->user_id;
-            $owner = new ElanRegistryOwner((int)$userId);
+            $owner = new ElanRegistryOwner((int)$userId, $this->db);
 
             $history = $owner->getOwnershipHistory();
             $this->assertIsArray($history);
@@ -200,7 +272,7 @@ class ElanRegistryOwnerTest extends TestCase
      */
     public function testSearchOwners(): void
     {
-        $owner = new ElanRegistryOwner();
+        $owner = new ElanRegistryOwner(null, $this->db);
 
         // Search for a common name pattern
         $results = $owner->searchOwners('test', 10);
@@ -218,7 +290,7 @@ class ElanRegistryOwnerTest extends TestCase
     public function testFieldValidation(): void
     {
         // Test email validation
-        $owner = new ElanRegistryOwner();
+        $owner = new ElanRegistryOwner(null, $this->db);
 
         // Use reflection to test private validation methods
         $reflection = new ReflectionClass($owner);
@@ -241,7 +313,7 @@ class ElanRegistryOwnerTest extends TestCase
      */
     public function testStringSanitization(): void
     {
-        $owner = new ElanRegistryOwner();
+        $owner = new ElanRegistryOwner(null, $this->db);
 
         // Use reflection to test private sanitization method
         $reflection = new ReflectionClass($owner);
@@ -263,7 +335,7 @@ class ElanRegistryOwnerTest extends TestCase
      */
     public function testFieldExtraction(): void
     {
-        $owner = new ElanRegistryOwner();
+        $owner = new ElanRegistryOwner(null, $this->db);
 
         // Use reflection to test private extraction methods
         $reflection = new ReflectionClass($owner);

@@ -107,7 +107,7 @@ class VerificationSecurityTest extends TestCase
     public function testVerificationCodeFormat(): void
     {
         // Test MD5 hash format (32 hex characters)
-        $validCode = md5(uniqid(rand(), true));
+        $validCode = md5(uniqid((string)rand(), true));
         $this->assertEquals(32, strlen($validCode));
         $this->assertTrue(ctype_xdigit($validCode));
         
