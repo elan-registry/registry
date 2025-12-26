@@ -13,7 +13,7 @@
 -- Add new Elan Registry specific columns to settings table
 -- Note: These columns are already added by 1-schema.sql, this updates values
 
-UPDATE settings SET 
+UPDATE settings SET
   -- Basic Site Configuration
   site_name = 'Lotus Elan Registry',
   recaptcha = 0,
@@ -22,17 +22,17 @@ UPDATE settings SET
   copyright = 'Lotus Elan Registry and UniBrain',
   template = 'ElanRegistry',
   show_tos = 0,
-  
-  -- User Management & Authentication  
+
+  -- User Management & Authentication
   auto_assign_un = 1,
   permission_restriction = 1,
   session_manager = 1,
   reset_vericode_expiry = 90,
   email_login = 2,
-  
+
   -- System Administration
   backup_dest = 'backup/',
-  cron_ip = 'localhost',
+  cron_ip = '::1',
   container_open_class = 'container',
   redirect_uri_after_login = 'users/account.php',
   
@@ -45,7 +45,7 @@ UPDATE settings SET
   us_css3 = '../usersc/css/custom.css',
   
   -- System Configuration Defaults
-  elan_backup_age = 31,
+  elan_backup_age = 1,
   elan_image_dir = 'userimages/',
   elan_image_max = 6,
   
@@ -65,14 +65,14 @@ UPDATE settings SET
   elan_dropzone_js_cdn = '&lt;script src=&quot;https://cdn.jsdelivr.net/npm/dropzone@5.7.6/dist/min/dropzone.min.js&quot; integrity=&quot;sha256-jj9KUPHT4VOIR8ZhUcJB66aiEAwt+eLk+10MeVKSbio=&quot; crossorigin=&quot;anonymous&quot;&gt;&lt;/script&gt;',
   elan_dropzone_css_cdn = '&lt;link rel=&quot;stylesheet&quot; href=&quot;https://cdn.jsdelivr.net/npm/dropzone@5.7.6/dist/min/dropzone.min.css&quot; integrity=&quot;sha256-n/Cuyrm+v15Nim0mJ2ZrElHlCk8raJs/57WeCsIzDr4=&quot; crossorigin=&quot;anonymous&quot;&gt;',
   
-  -- SPAM Cleanup System Configuration (Safe defaults)
-  elan_spam_cleanup_enabled = 0,        -- Start disabled for safety
-  elan_spam_cleanup_dry_run = 1,        -- Start in dry-run mode
-  elan_spam_inactive_days = 30,         -- Conservative 30 days
-  elan_spam_grace_period_days = 7,      -- 7 day grace period
-  elan_spam_max_deletions = 50,         -- Maximum 50 deletions per run
+  -- SPAM Cleanup System Configuration (Development settings)
+  elan_spam_cleanup_enabled = 1,        -- Enabled for testing
+  elan_spam_cleanup_dry_run = 1,        -- Dry-run mode for safety
+  elan_spam_inactive_days = 2,          -- Short period for testing
+  elan_spam_grace_period_days = 1,      -- Short grace period for testing
+  elan_spam_max_deletions = 20,         -- Maximum 20 deletions per run
   elan_spam_max_percentage = 5.00,      -- Maximum 5% of users per run
-  elan_spam_email_notifications = 0,    -- Start with notifications disabled
+  elan_spam_email_notifications = 1,    -- Email notifications enabled
 
   -- Image Upload & Display Configuration
   elan_image_upload_max_size = 3.00,    -- Maximum upload size in MB
@@ -92,11 +92,11 @@ WHERE id = 1;
 -- ==================================================================
 
 -- Add Editor permission level (between User and Administrator)
-INSERT INTO permissions (id, name, descrip) 
-VALUES (3, 'Editor', 'Content Editor - Can manage registry content but not system settings')
-ON DUPLICATE KEY UPDATE 
-  name = 'Editor', 
-  descrip = 'Content Editor - Can manage registry content but not system settings';
+INSERT INTO permissions (id, name, descrip)
+VALUES (3, 'Editor', '')
+ON DUPLICATE KEY UPDATE
+  name = 'Editor',
+  descrip = '';
 
 -- ==================================================================  
 -- 3. PLACEHOLDER CONFIGURATIONS (REQUIRE MANUAL SETUP)
@@ -117,17 +117,25 @@ WHERE id = 1;
 -- 4. PLUGIN CONFIGURATION
 -- ==================================================================
 
--- Configure Hooker Plugin Hooks
+-- Configure Plugin Hooks (includes reCAPTCHA, autoassignun, hooker, getsettings)
 INSERT INTO `us_plugin_hooks` (`id`, `page`, `folder`, `position`, `hook`, `disabled`) VALUES
 (10, 'admin.php?view=user', 'hooker', 'form', 'hooks/user_form_hook.php', 0),
 (12, 'login.php', 'getsettings', 'bottom', 'hooks/loginbottom.php', 0),
+(13, 'login.php', 'recaptcha', 'post', 'hooks/loginpost.php', 0),
+(14, 'login.php', 'recaptcha', 'bottom', 'hooks/loginbottom.php', 0),
+(15, 'joinAttempt', 'recaptcha', 'body', 'hooks/joinattemptbody.php', 0),
+(16, 'join.php', 'recaptcha', 'bottom', 'hooks/joinbottom.php', 0),
+(17, 'forgot_password.php', 'recaptcha', 'post', 'hooks/forgotpasswordpost.php', 0),
+(18, 'forgot_password.php', 'recaptcha', 'bottom', 'hooks/forgotpasswordbottom.php', 0),
 (19, 'joinAttempt', 'autoassignun', 'body', 'hooks/username_replace.php', 0),
 (20, 'join.php', 'autoassignun', 'bottom', 'hooks/username_field_removal.php', 0),
 (23, 'account.php', 'hooker', 'body', 'hooks/account_body_hook.php', 0),
 (24, 'account.php', 'hooker', 'bottom', 'hooks/account_bottom_hook.php', 0),
 (25, 'admin.php?view=user', 'userspice_core', 'form', 'hooks/tags_admin_user_form.php', 0),
-(26, 'admin.php?view=user', 'userspice_core', 'post', 'hooks/tags_admin_user_post.php', 0)
--- NOTE: reCAPTCHA hooks removed since plugin is optional
+(26, 'admin.php?view=user', 'userspice_core', 'post', 'hooks/tags_admin_user_post.php', 0),
+(27, 'login', 'recaptcha', 'form', 'hooks/loginform.php', 1),
+(28, 'login', 'recaptcha', 'bottom', 'hooks/loginbottom.php', 1),
+(29, 'login', 'recaptcha', 'post', 'hooks/loginpost.php', 1)
 ON DUPLICATE KEY UPDATE
   page = VALUES(page),
   folder = VALUES(folder),
@@ -161,42 +169,67 @@ ON DUPLICATE KEY UPDATE
 
 -- Insert all Elan Registry specific pages
 INSERT INTO `pages` (`id`, `page`, `title`, `private`, `re_auth`, `core`) VALUES
-(241, 'app/cars/actions/check-chassis.php', NULL, 1, 0, 0),
-(242, 'app/cars/actions/edit.php', NULL, 1, 0, 0),
-(243, 'app/cars/actions/history.php', NULL, 1, 0, 0),
-(261, 'app/cars/actions/validateChassis.php', NULL, 1, 0, 0),
+(211, 'app/version.php', '', 0, 0, 0),
+(218, 'app/privacy.php', NULL, 0, 0, 0),
+(229, 'app/cars/index.php', NULL, 0, 0, 0),
 (230, 'app/cars/details.php', NULL, 0, 0, 0),
 (231, 'app/cars/edit.php', NULL, 1, 0, 0),
 (232, 'app/cars/factory.php', NULL, 0, 0, 0),
 (233, 'app/cars/identify.php', NULL, 0, 0, 0),
-(229, 'app/cars/index.php', NULL, 0, 0, 0),
-(234, 'app/cars/manage.php', NULL, 1, 0, 0),
+(235, 'app/cars/mapmarkers.xml.php', NULL, 0, 0, 0),
 (236, 'app/contact/index.php', NULL, 1, 0, 0),
 (237, 'app/contact/owner.php', NULL, 1, 0, 0),
 (238, 'app/contact/send-feedback.php', NULL, 1, 0, 0),
-(245, 'app/privacy.php', NULL, 0, 0, 0),
-(247, 'app/reports/data-quality.php', NULL, 0, 0, 0),
-(248, 'app/reports/statistics.php', NULL, 0, 0, 0)
-ON DUPLICATE KEY UPDATE 
+(239, 'app/contact/send-owner-email.php', NULL, 1, 0, 0),
+(240, 'app/reports/statistics.php', NULL, 0, 0, 0),
+(241, 'app/cars/actions/check-chassis.php', NULL, 1, 0, 0),
+(242, 'app/cars/actions/edit.php', NULL, 1, 0, 0),
+(243, 'app/cars/actions/history.php', NULL, 1, 0, 0),
+(261, 'app/cars/actions/validateChassis.php', NULL, 1, 0, 0),
+(278, 'app/reports/api/statistics-data.php', NULL, 0, 0, 0),
+(294, 'app/admin/manage-consolidated.php', 'Admin - Consolidated Management Interface', 1, 0, 0),
+(295, 'app/cars/actions/request-transfer.php', NULL, 1, 0, 0),
+(299, 'app/admin/includes/process-admin-contact.php', 'Admin - Process Contact Form', 1, 0, 0),
+(300, 'app/admin/includes/tab-car_mgmt.php', 'Admin - Car Management Tab', 1, 0, 0),
+(301, 'app/admin/includes/tab-cleanup.php', 'Admin - Cleanup Management Tab', 1, 0, 0),
+(304, 'app/admin/includes/tab-placeholder.php', 'Admin - Tab Placeholder', 1, 0, 0),
+(305, 'app/admin/includes/tab-settings.php', 'Admin - Settings Tab', 1, 0, 0),
+(306, 'app/admin/includes/tab-system.php', 'Admin - System Management Tab', 1, 0, 0),
+(309, 'app/admin/includes/load-owner-info.php', 'Admin - Load Owner Information', 1, 0, 0),
+(310, 'app/admin/includes/load-owner-profile.php', 'Admin - Load Owner Profile', 1, 0, 0),
+(311, 'app/admin/includes/process-owner-search.php', 'Admin - Owner Search Process', 1, 0, 0),
+(312, 'app/admin/includes/process-owner-sync-location.php', 'Admin - Owner Location Sync', 1, 0, 0),
+(313, 'app/admin/includes/process-owner-update.php', 'Admin - Owner Update Process', 1, 0, 0),
+(314, 'app/admin/includes/tab-manage_cars.php', 'Admin - Manage Cars Tab', 1, 0, 0),
+(315, 'app/admin/includes/tab-owner_mgmt.php', 'Admin - Owner Management Tab', 1, 0, 0),
+(328, 'app/admin/verify/_email_template.php', NULL, 1, 0, 0),
+(329, 'app/admin/verify/index.php', NULL, 1, 0, 0),
+(330, 'app/admin/verify/send_email.php', NULL, 1, 0, 0),
+(331, 'app/admin/verify/verify_car.php', NULL, 1, 0, 0),
+(337, 'app/admin/includes/system/schema-operations.php', NULL, 1, 0, 0)
+ON DUPLICATE KEY UPDATE
   title = VALUES(title),
   private = VALUES(private),
   re_auth = VALUES(re_auth),
   core = VALUES(core);
 
--- Insert permission-page relationships for Administrator and Editor permissions
--- Use LIMIT 1 to handle potential duplicates and IGNORE to skip if relationship already exists
-INSERT IGNORE INTO `permission_page_matches` (`permission_id`, `page_id`)
-SELECT 2, id FROM pages WHERE page = 'app/cars/manage.php' LIMIT 1;
-INSERT IGNORE INTO `permission_page_matches` (`permission_id`, `page_id`)
-SELECT 2, id FROM pages WHERE page = 'app/reports/data-quality.php' LIMIT 1;
-INSERT IGNORE INTO `permission_page_matches` (`permission_id`, `page_id`)
-SELECT 2, id FROM pages WHERE page = 'app/reports/statistics.php' LIMIT 1;
-INSERT IGNORE INTO `permission_page_matches` (`permission_id`, `page_id`)
-SELECT 3, id FROM pages WHERE page = 'users/login.php' LIMIT 1;
-INSERT IGNORE INTO `permission_page_matches` (`permission_id`, `page_id`)
-SELECT 3, id FROM pages WHERE page = 'users/index.php' LIMIT 1;
-INSERT IGNORE INTO `permission_page_matches` (`permission_id`, `page_id`)
-SELECT 3, id FROM pages WHERE page = 'app/reports/data-quality.php' LIMIT 1;
+-- Insert permission-page relationships
+-- Permission 1 = User, 2 = Administrator, 3 = Editor
+INSERT IGNORE INTO `permission_page_matches` (`permission_id`, `page_id`) VALUES
+-- User (permission_id = 1) - Standard user pages
+(1, 3), (1, 24), (1, 81), (1, 106), (1, 231), (1, 236), (1, 237), (1, 238), (1, 239),
+(1, 241), (1, 242), (1, 243), (1, 259), (1, 261), (1, 295),
+
+-- Administrator (permission_id = 2) - Full admin access
+(2, 68), (2, 157), (2, 256), (2, 280), (2, 283), (2, 294), (2, 299), (2, 300),
+(2, 301), (2, 304), (2, 305), (2, 306), (2, 308), (2, 309), (2, 310), (2, 311),
+(2, 312), (2, 313), (2, 314), (2, 315), (2, 317), (2, 327), (2, 331), (2, 336),
+
+-- Editor (permission_id = 3) - Content editor access
+(3, 3), (3, 4), (3, 157), (3, 256), (3, 283), (3, 294), (3, 299), (3, 300),
+(3, 301), (3, 304), (3, 305), (3, 306), (3, 308), (3, 309), (3, 310), (3, 311),
+(3, 312), (3, 313), (3, 314), (3, 315), (3, 317), (3, 327), (3, 328), (3, 329),
+(3, 330), (3, 331), (3, 336);
 
 -- ==================================================================
 -- 5. MENU SYSTEM CONFIGURATION
@@ -219,40 +252,41 @@ DELETE FROM menus; -- Remove ALL existing menus - complete replacement
 -- Insert Elan Registry menu items (CLASSIC MENU SYSTEM)
 INSERT INTO `menus` (`id`, `menu_title`, `parent`, `dropdown`, `logged_in`, `display_order`, `label`, `link`, `icon_class`) VALUES
 -- Core UserSpice menu items (required for structure)
-(2, 'main', -1, 1, 1, 140, 'Admin', '', ''),
+(2, 'main', -1, 1, 1, 140, 'Admin', '', 'fa fa-fw fa-cogs'),
 (3, 'main', 43, 0, 1, 110, '{{username}}', 'users/account.php', 'fa fa-fw fa-user'),
+(5, 'main', -1, 0, 0, 30, '{{register}}', 'users/join.php', 'fa fa-fw fa-plus-square'),
+(6, 'main', -1, 0, 0, 90, '{{login}}', 'users/login.php', 'fa fa-fw fa-sign-in-alt'),
 (9, 'main', 2, 0, 1, 60, '{{dashboard}}', 'users/admin.php', 'fa fa-fw fa-cogs'),
 (15, 'main', 43, 0, 1, 1000, '{{hr}}', '', ''),
 (16, 'main', 43, 0, 1, 99999, '{{logout}}', 'users/logout.php', 'fa fa-fw fa-sign-out'),
-
--- Main navigation items
-(25, 'main', -1, 0, 0, 20, 'List Cars!', 'app/cars/index.php', 'fa fa-fw fa-car'),
+(17, 'main', -1, 0, 0, 0, '{{home}}', '', 'fa fa-fw fa-home'),
+(25, 'main', -1, 0, 0, 20, 'List Cars', 'app/cars/index.php', 'fa fa-fw fa-car'),
+(29, 'main', 27, 0, 1, 1, 'List Cars', 'app/list_cars.php', ''),
+(31, 'main', 30, 1, 1, 99999, 'Dashboard', 'users/admin.php', ''),
+(34, 'main', 30, 1, 1, 99999, '{{logout}}', 'users/logout.php', 'fa fa-fw fa-sign-out'),
 (38, 'main', -1, 0, 1, 0, '{{home}}', '#', 'fa fa-fw fa-home'),
-(39, 'main', -1, 0, 1, 20, 'List Cars!', 'app/cars/index.php', 'fa fa-fw fa-car'),
+(39, 'main', -1, 0, 1, 20, 'List Cars', 'app/cars/index.php', 'fa fa-fw fa-car'),
+(41, 'main', 61, 0, 0, 10, 'Identification Guide', 'app/cars/identify.php', 'fa fa-fw fa-binoculars'),
 (42, 'main', -1, 0, 1, 30, 'Add Car', 'app/cars/edit.php', 'fa fa-fw fa-plus'),
 (43, 'main', -1, 1, 1, 99999, '{{account}}', '#', 'fa fa-fw fa-user'),
+(45, 'main', 2, 0, 1, 50, '{{hr}}', '#', ''),
 (47, 'main', -1, 0, 1, 80, 'Feedback', 'app/contact/index.php', 'fa fa-fw fa-comments'),
 (48, 'main', -1, 0, 0, 40, 'Statistics', 'app/reports/statistics.php', 'fa fa-fw fa-pie-chart'),
 (49, 'main', -1, 0, 1, 40, 'Statistics', 'app/reports/statistics.php', 'fa fa-fw fa-pie-chart'),
+(54, 'main', 61, 0, 0, 20, 'Factory Data', 'app/cars/factory.php', 'fa fa-fw fa-list-alt'),
 (61, 'main', -1, 1, 0, 50, 'Technical Resources', '#', 'fa fa-fw fa-tools'),
+(62, 'main', 61, 0, 1, 30, 'Reference Library - Tech Manuals', 'docs/reference-library.php', 'fa fa-fw fa-book'),
 (63, 'main', -1, 0, 0, 70, 'Car Stories', 'docs/car-stories.php', 'fa fa-fw fa-book-open'),
 (64, 'main', -1, 1, 1, 50, 'Technical Resources', '#', 'fa fa-fw fa-tools'),
-(68, 'main', -1, 0, 1, 70, 'Car Stories', 'docs/car-stories.php', 'fa fa-fw fa-book-open'),
-
--- Admin dropdown items (parent = 2)
-(44, 'main', 2, 0, 1, 1, 'Manage Cars', 'app/cars/manage.php', 'fa fa-fw fa-car'),
-(45, 'main', 2, 0, 1, 50, '{{hr}}', '#', ''),
-(53, 'main', 2, 0, 1, 10, 'Fixes', 'FIX/index.php', 'fa fa-fw fa-wrench'),
-(60, 'main', 2, 0, 1, 20, 'Data Quality', 'app/reports/data-quality.php', 'fa fa-fw fa-clipboard-check'),
-
--- Technical Resources dropdown items (parent = 61 for public, parent = 64 for logged in)
-(41, 'main', 61, 0, 0, 10, 'Identification Guide', 'app/cars/identify.php', 'fa fa-fw fa-binoculars'),
-(54, 'main', 61, 0, 0, 20, 'Factory Data', 'app/cars/factory.php', 'fa fa-fw fa-list-alt'),
-(62, 'main', 61, 0, 1, 30, 'Reference Library - Tech Manuals', 'docs/reference-library.php', 'fa fa-fw fa-book'),
 (65, 'main', 64, 0, 1, 10, 'Identification Guide', 'app/cars/identify.php', 'fa fa-fw fa-binoculars'),
 (66, 'main', 64, 0, 1, 20, 'Factory Data', 'app/cars/factory.php', 'fa fa-fw fa-list-alt'),
-(67, 'main', 64, 0, 1, 30, 'Reference Library - Tech Manuals', 'docs/reference-library.php', 'fa fa-fw fa-book')
-ON DUPLICATE KEY UPDATE 
+(67, 'main', 64, 0, 1, 30, 'Reference Library - Tech Manuals', 'docs/reference-library.php', 'fa fa-fw fa-book'),
+(68, 'main', -1, 0, 1, 70, 'Car Stories', 'docs/car-stories.php', 'fa fa-fw fa-book-open'),
+(71, 'main', 2, 0, 1, 1, 'Manage Registry', 'app/admin/manage-consolidated.php', 'fa fa-fw fa-car'),
+(72, 'main', -1, 0, 0, 85, 'FAQ', 'docs/faq/index.php', 'fa fa-fw fa-question-circle'),
+(73, 'main', -1, 0, 1, 85, 'FAQ', 'docs/faq/index.php', 'fa fa-fw fa-question-circle'),
+(74, 'main', 2, 0, 1, 5, 'Admin Guide', 'docs/faq/admin/index.php', 'fa fa-fw fa-question-circle')
+ON DUPLICATE KEY UPDATE
   menu_title = VALUES(menu_title),
   parent = VALUES(parent),
   dropdown = VALUES(dropdown),
@@ -263,49 +297,28 @@ ON DUPLICATE KEY UPDATE
   icon_class = VALUES(icon_class);
 
 -- Configure menu permissions via groups_menus
--- group_id 0 = Public, 2 = Administrator, 3 = Editor
+-- group_id 0 = Public/All Users, 1 = Editors, 2 = Administrator, 3 = Editor
 INSERT INTO `groups_menus` (`group_id`, `menu_id`) VALUES
--- Public menu items (group_id = 0)
-(0, 25),  -- List Cars (public)
-(0, 41),  -- Identification Guide
-(0, 48),  -- Statistics (public)
-(0, 54),  -- Factory Data
-(0, 61),  -- Technical Resources dropdown
-(0, 63),  -- Car Stories
+-- Public/All Users (group_id = 0) - Available to everyone (logged in and out)
+(0, 1), (0, 3), (0, 4), (0, 5), (0, 6), (0, 7), (0, 8), (0, 15), (0, 16),
+(0, 17), (0, 18), (0, 19), (0, 20), (0, 21), (0, 22), (0, 24), (0, 25),
+(0, 26), (0, 27), (0, 29), (0, 31), (0, 32), (0, 33), (0, 34), (0, 35),
+(0, 36), (0, 37), (0, 38), (0, 39), (0, 40), (0, 41), (0, 42), (0, 43),
+(0, 46), (0, 47), (0, 48), (0, 49), (0, 50), (0, 51), (0, 52), (0, 54),
+(0, 55), (0, 58), (0, 59), (0, 61), (0, 62), (0, 63), (0, 64), (0, 65),
+(0, 66), (0, 67), (0, 68), (0, 72), (0, 73),
 
--- Administrator menu items (group_id = 2)
-(2, 2),   -- Admin dropdown
-(2, 9),   -- Dashboard
-(2, 44),  -- Manage Cars
-(2, 45),  -- HR separator
-(2, 53),  -- Fixes
-(2, 60),  -- Data Quality
+-- Group 1 specific (if used)
+(1, 70),
 
--- Editor menu items (group_id = 3)
-(3, 2),   -- Admin dropdown (limited access)
-(3, 9),   -- Dashboard
-(3, 44),  -- Manage Cars
-(3, 45),  -- HR separator
-(3, 53),  -- Fixes
-(3, 60),  -- Data Quality
+-- Administrator (group_id = 2) - Admin-only menus
+(2, 2), (2, 9), (2, 10), (2, 11), (2, 12), (2, 13), (2, 14), (2, 30),
+(2, 44), (2, 45), (2, 53), (2, 60), (2, 69), (2, 71), (2, 74),
 
--- Common logged-in menu items (added to all user groups)
-(0, 3),   -- Username link in account dropdown
-(0, 15),  -- HR separator in account dropdown  
-(0, 16),  -- Logout
-(0, 38),  -- Home (logged in)
-(0, 39),  -- List Cars (logged in)
-(0, 42),  -- Add Car
-(0, 43),  -- Account dropdown
-(0, 47),  -- Feedback
-(0, 49),  -- Statistics (logged in)
-(0, 62),  -- Reference Library
-(0, 64),  -- Technical Resources (logged in)
-(0, 65),  -- Identification Guide (logged in)
-(0, 66),  -- Factory Data (logged in)
-(0, 67),  -- Reference Library (logged in)
-(0, 68)   -- Car Stories (logged in)
-ON DUPLICATE KEY UPDATE 
+-- Editor (group_id = 3) - Editor-level access
+(3, 2), (3, 9), (3, 10), (3, 44), (3, 45), (3, 53), (3, 60), (3, 69),
+(3, 71), (3, 74)
+ON DUPLICATE KEY UPDATE
   group_id = VALUES(group_id),
   menu_id = VALUES(menu_id);
 
