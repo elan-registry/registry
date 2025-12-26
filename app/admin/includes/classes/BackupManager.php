@@ -40,13 +40,16 @@ class BackupManager {
     /**
      * Constructor
      *
+     * Note: PHP constructors cannot have return type declarations per language specification
+     * @see https://www.php.net/manual/en/language.oop5.decon.php
+     *
      * @param object $database Database connection object
      * @param string $backupDirectory Base directory for backups
      * @param int|null $userId User ID for logging (optional)
-     *
-     * Note: Constructors cannot declare return types in PHP
+     * @return void Constructors do not return values
      */
     // phpcs:ignore Generic.CodeAnalysis.UnusedFunctionParameter.FoundInExtendedClass
+    // @codingStandardsIgnoreLine - Constructors cannot have return type declarations
     public function __construct(object $database, string $backupDirectory, ?int $userId = null) {
         $this->db = $database;
         $this->backupBaseDir = rtrim($backupDirectory, '/') . '/';
