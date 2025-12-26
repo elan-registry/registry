@@ -164,7 +164,7 @@ $cleanup = $backupManager->performEnhancedCleanup();
 
 **Backward Compatibility:**
 
-- Legacy FIX scripts can still use global functions via `/users/helpers/backup_functions.php`
+- Legacy FIX scripts can still use global functions via `/usersc/includes/backup_functions.php`
 - Compatibility wrapper delegates to BackupManager internally
 - Deprecated: `/FIX/backup-functions.php` (redirects to compatibility wrapper)
 

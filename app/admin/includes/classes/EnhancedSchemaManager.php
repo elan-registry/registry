@@ -313,8 +313,7 @@ class EnhancedSchemaManager {
                 return createStandardizedBackup(
                     'schema-' . strtolower(str_replace(' ', '-', $operation)),
                     ['settings', 'users', 'cars', 'car_user', 'profiles'],
-                    'automated',
-                    'development'
+                    'automated'
                 );
             } catch (SchemaException $e) {
                 ($this->logger)(1, 'SchemaError', 'Backup creation failed: ' . $e->getMessage());

@@ -9,15 +9,15 @@ declare(strict_types=1);
  *
  * This file remains for backward compatibility and redirects to the new locations:
  * - Core logic: app/admin/includes/classes/BackupManager.php
- * - Compatibility wrapper: users/helpers/backup_functions.php (for legacy FIX scripts)
+ * - Compatibility wrapper: usersc/includes/backup_functions.php (for legacy FIX scripts)
  *
  * @deprecated Since v2.9.2
  * @see BackupManager class for new code (OOP approach)
- * @see users/helpers/backup_functions.php for legacy function wrappers
+ * @see usersc/includes/backup_functions.php for legacy function wrappers
  */
 
 global $abs_us_root, $us_url_root;
 
 // Include the compatibility wrapper which provides all the original functions
-require_once $abs_us_root . $us_url_root . 'users/helpers/backup_functions.php';
+require_once $abs_us_root . $us_url_root . 'usersc/includes/backup_functions.php';
 
