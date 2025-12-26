@@ -1,6 +1,7 @@
 # Installation Guide
 
-This document provides step-by-step instructions for setting up the Lotus Elan Registry application on your server.
+This document provides step-by-step instructions for setting up the
+Lotus Elan Registry application on your server.
 
 ## Prerequisites
 
@@ -11,6 +12,7 @@ This document provides step-by-step instructions for setting up the Lotus Elan R
 - Git for version control
 
 **PHP Version Notes:**
+
 - Minimum: PHP 8.1 (basic functionality)
 - Recommended: PHP 8.2.29+ (full compatibility and PHPUnit 12 support)
 - Development Environment: PHP 8.2.29 (cli) verified working
@@ -20,23 +22,33 @@ This document provides step-by-step instructions for setting up the Lotus Elan R
 The Elan Registry requires several API keys for full functionality:
 
 **Essential for Core Features:**
-- **Google Maps API Key** - Required for map displays on car detail pages and statistics
-- **Google Geocoding API Key** - Required for location coordinate lookup during user registration
+
+- **Google Maps API Key** - Required for map displays on car detail
+  pages and statistics
+- **Google Geocoding API Key** - Required for location coordinate
+  lookup during user registration
 
 **Optional Services:**
-- **reCAPTCHA Keys (Site Key + Secret Key)** - Optional, needed only if you want spam protection on forms
-- **Brevo/Sendinblue API Key** - For email delivery (300 emails/day free tier)
+
+- **reCAPTCHA Keys (Site Key + Secret Key)** - Optional, needed only
+  if you want spam protection on forms
+- **Brevo/Sendinblue API Key** - For email delivery (300 emails/day
+  free tier)
   - Alternative: Standard SMTP configuration can be used instead
 
 **Development vs Production:**
-- **Development**: API keys can be stored in environment variables for testing
-- **Production**: API keys are stored securely in the database settings table
+
+- **Development**: API keys can be stored in environment variables for
+  testing
+- **Production**: API keys are stored securely in the database settings
+  table
 
 ### Email Service Requirements
 
 **Development Environment:**
 
-- **Mailtrap.io account** (recommended) - Free service for email testing without sending real emails
+- **Mailtrap.io account** (recommended) - Free service for email
+  testing without sending real emails
 
 **Production Environment (choose one):**
 
@@ -50,49 +62,66 @@ The Elan Registry requires several API keys for full functionality:
 
 The Elan Registry is built on top of UserSpice for user authentication and management.
 
-1. **Download UserSpice**: Visit [https://userspice.com](https://userspice.com) and download the latest stable release
-2. **Extract and Setup**: Extract UserSpice to your web server directory
-3. **Database Configuration**: Follow UserSpice installation wizard to configure database connection
-4. **Initial Setup**: Complete the UserSpice installation process and create an admin account
-5. **Verify Installation**: Ensure UserSpice is working correctly before proceeding
+1. **Download UserSpice**: Visit [https://userspice.com](https://userspice.com)
+   and download the latest stable release
+2. **Extract and Setup**: Extract UserSpice to your web server
+   directory
+3. **Database Configuration**: Follow UserSpice installation wizard to
+   configure database connection
+4. **Initial Setup**: Complete the UserSpice installation process and
+   create an admin account
+5. **Verify Installation**: Ensure UserSpice is working correctly
+   before proceeding
+6. **Get API Key**: Get annd Install an API key.  Navigate to the
+   General Settings Tab
 
 #### Required UserSpice Plugins
 
-After completing the base UserSpice installation, install and activate these required plugins:
+After completing the base UserSpice installation, install and activate
+these required plugins:
 
 **Required Plugins:**
 
-- **`Auto Assign Usernames`** - Hides username field and auto-assigns usernames on registration
-- **`getSettings Function`** - Provides global settings access via `getSettings()` function
+- **`Auto Assign Usernames`** - Hides username field and auto-assigns
+  usernames on registration
+- **`getSettings Function`** - Provides global settings access via
+  `getSettings()` function
 - **`hooker`** - Custom hooks system for code injection points
 
 **Optional Plugins:**
 
-- **`reCAPTCHA`** - Google reCAPTCHA v2/v3 integration for spam protection
+- **`reCAPTCHA`** - Google reCAPTCHA v2/v3 integration for spam
+  protection
   - **Note**: Requires Google reCAPTCHA account and API keys
   - **Alternative**: Can run without spam protection initially
-- **`Brevo Sendinblue`** - API-based email delivery replacing phpmailer (300 emails/day free)
+- **`Brevo Sendinblue`** - API-based email delivery replacing phpmailer
+  (300 emails/day free)
   - **Note**: Requires Brevo/Sendinblue account and API credentials
   - **Alternative**: Standard SMTP configuration can be used instead
 
 **Plugin Installation and Activation:**
 
-1. **Install and activate required plugins** through UserSpice Admin Panel → Plugin Manager:
+1. **Install and activate required plugins** through UserSpice Admin
+   Panel → Plugin Manager:
    - **`Auto Assign Usernames`**
    - **`getSettings Function`**
    - **`hooker`**
 
 2. **Optional plugins** can be installed and activated later as needed:
-   - **`reCAPTCHA`** - Install and activate when you have Google reCAPTCHA keys configured
-   - **`Brevo Sendinblue`** - Install and activate if you want API-based email delivery
+   - **`reCAPTCHA`** - Install and activate when you have Google
+     reCAPTCHA keys configured
+   - **`Brevo Sendinblue`** - Install and activate if you want
+     API-based email delivery
 
 **Plugin Manager Configuration:**
 
-After completing plugin installation and activation, your Plugin Manager should look like this:
+After completing plugin installation and activation, your Plugin Manager
+should look like this:
 
 ![Plugin Manager Configuration](images/plugin-manager-configuration.png)
 
 **Correct Plugin Status:**
+
 - ✅ **Auto Assign Usernames** - Active
 - ✅ **getSettings Function** - Active
 - ✅ **Hooker Plugin** - Active
@@ -101,7 +130,9 @@ After completing plugin installation and activation, your Plugin Manager should 
 
 ### 2. Clone the Elan Registry Repository
 
-The registry code sits on top of UserSpice without overwriting core UserSpice files. After cloning the registry, you will not be able to login until step 4, Configure Environment Variables, is complete.
+The registry code sits on top of UserSpice without overwriting core
+UserSpice files. After cloning the registry, you will not be able to
+login until step 4, Configure Environment Variables, is complete.
 
 ```bash
 # Navigate to your web server directory (where UserSpice is installed)
@@ -116,7 +147,8 @@ rm -rf temp_registry
 **Important Notes:**
 
 - The registry code is mostly contained in its own directory structure
-- The `usersc/` directory adds to the base UserSpice installation but does not overwrite core files
+- The `usersc/` directory adds to the base UserSpice installation but
+  does not overwrite core files
 - All customizations follow UserSpice's recommended override patterns
 
 ### 3. Install Dependencies
@@ -134,11 +166,14 @@ composer install
 
 ### 4. Configure Environment Variables
 
-The application uses encrypted environment variables for security. See [`ENVIRONMENT.md`](ENVIRONMENT.md) for detailed configuration.
+The application uses encrypted environment variables for security. See
+[`ENVIRONMENT.md`](ENVIRONMENT.md) for detailed configuration.
 
 #### Quick Setup
 
-Follow the [SecureEnvPHP documentation](https://github.com/johnathanmiller/secure-env-php) for complete instructions.
+Follow the
+[SecureEnvPHP documentation](https://github.com/johnathanmiller/secure-env-php)
+for complete instructions.
 
 1. **Create Environment Variables**:
 
@@ -177,116 +212,170 @@ Follow the [SecureEnvPHP documentation](https://github.com/johnathanmiller/secur
 
 #### 4.2 Test login
 
-Test to verify you can login to UserSpice with the encryted environment variables. There will be errors on the page.
+Test to verify you can login to UserSpice with the encryted environment
+variables. There will be errors on the page.
 
-### 5. Import Database Schema
+### 5. Database Setup
 
-**⚠️ IMPORTANT: Script Re-execution Safety**
+The Elan Registry database setup consists of 4 SQL scripts that must
+be run in sequence:
 
-The database installation scripts have different safety levels for re-execution:
+1. **1-schema.sql** - Core database structure (required)
+2. **2-reference-data.sql** - Country and factory data (required)
+3. **3-configuration.sql** - Settings and menus (required)
+4. **4-sample-data.sql** - Test user and car (optional, dev/test only)
 
-- **5.1-schema.sql**: ❌ **NOT SAFE** - Will fail if run multiple times (tables already exist)
-- **5.2-import_reference_data.sql**: ✅ **SAFE** - Uses `ON DUPLICATE KEY UPDATE`
-- **5.3-essential_config.sql**: ⚠️ **CAUTION** - Safe but resets menu customizations
-- **5.4-sample_user.sql**: ✅ **SAFE** - Uses `ON DUPLICATE KEY UPDATE`
+#### Script Re-execution Safety
 
-**Recommendation**: Run scripts in order once. If you need to re-run 5.1, restore from a UserSpice-only backup first.
+**⚠️ IMPORTANT:** The database installation scripts have different
+safety levels for re-execution:
 
-#### 5.1 Database Schema Update
+- **1-schema.sql**: ❌ **NOT SAFE** - Will fail if run multiple times
+  (tables already exist)
+- **2-reference-data.sql**: ✅ **SAFE** - Uses `ON DUPLICATE KEY UPDATE`
+- **3-configuration.sql**: ⚠️ **CAUTION** - Safe but resets menu
+  customizations
+- **4-sample-data.sql**: ✅ **SAFE** - Uses `ON DUPLICATE KEY UPDATE`
 
-**⚠️ WARNING: This script is NOT safe to run multiple times. It will fail if tables already exist.**
+**Recommendation**: Run scripts in order (1 → 2 → 3 → 4). If you need
+to re-run script 1, restore from a UserSpice-only backup first.
 
-Run the schema update script to add Elan Registry tables to your UserSpice installation:
+#### Step 1: Core Database Schema
+
+**⚠️ WARNING: This script is NOT safe to run multiple times. It will
+fail if tables already exist.**
+
+Run the schema script to transform your UserSpice installation into an
+Elan Registry database:
 
 ```bash
-# Import core database schema (adds 10 custom tables + enhanced profiles/settings)
-mysql -u username -p database_name < database/5.1-schema.sql
+# Import core database schema (creates 8 custom tables + enhances profiles/settings)
+mysql -u username -p database_name < database/1-schema.sql
 ```
 
-**Note**: If you need to re-run this script, you must first drop the Elan Registry tables or restore from a UserSpice-only backup.
+**What this creates:**
 
-#### 5.2 Reference Data Import
+- **8 new tables**: cars, cars_hist, car_user, car_user_hist,
+  car_transfer_requests, country, elan_factory_info, fix_script_runs
+- **Enhanced profiles**: Adds 6 geographic columns (city, state,
+  country, lat, lon, website)
+- **Enhanced settings**: Adds 33 Elan Registry configuration
+  columns
+- **Audit triggers**: Automatic change tracking for cars table
+- **Foreign keys**: Data integrity constraints
+
+**Note**: If you need to re-run this script, you must first drop the
+Elan Registry tables or restore from a UserSpice-only backup.
+
+#### Step 2: Reference Data Import
 
 **✅ SAFE: This script can be run multiple times safely.**
 
-Import complete country and parts reference data:
+Import complete country and factory production reference data:
 
 ```bash
-# Import reference data (249 countries + 40 Lotus Elan parts)
-mysql -u username -p database_name < database/5.2-import_reference_data.sql
+# Import reference data (249 countries + 9,762 factory records)
+mysql -u username -p database_name < database/2-reference-data.sql
 ```
 
 **What this includes:**
 
-- **Complete country list**: All 249 ISO country codes and names
-- **Lotus Elan parts catalog**: 40+ parts across all categories (engine, body, suspension, etc.)
-- **Performance indexes**: Optimized for search and filtering operations
-- **Supplier information**: Parts suppliers and availability status
+- **Complete country list**: All 249 ISO countries
+- **Factory production data**: 9,762 Lotus Elan factory build records
+- **Script tracking**: Records execution in fix_script_runs table
 
-#### 5.3 Essential Configuration
+#### Step 3: Configuration Settings
 
-**⚠️ CAUTION: This script deletes and rebuilds menu configurations. Custom menu changes will be lost.**
+**⚠️ CAUTION: This script deletes and rebuilds menu configurations.
+Custom menu changes will be lost.**
 
 Apply essential Elan Registry configuration settings:
 
 ```bash
-# Apply essential configuration (settings, permissions, CDN resources)
-mysql -u username -p database_name < database/5.3-essential_config.sql
+# Apply essential configuration (settings, permissions, pages, menus, CDN resources)
+mysql -u username -p database_name < database/3-configuration.sql
 ```
 
-**Note**: While technically safe to re-run, this script will reset all menu customizations to defaults.
+**Note**: While technically safe to re-run, this script will reset all
+menu customizations to defaults.
 
 **What this configures:**
 
 - **Site branding**: Lotus Elan Registry name and copyright
 - **User management**: Auto-assign usernames, enhanced permissions
-- **CDN resources**: 13 external library configurations with integrity hashes
-- **SPAM protection**: Cleanup system with safe defaults
+- **CDN resources**: 13 external library configurations (jQuery,
+  Bootstrap, Chart.js, DataTables, etc.)
+- **Image settings**: Upload limits (3 MB), display sizes, thumbnail
+  breakpoints
+- **SPAM protection**: Cleanup system with safe defaults (disabled by
+  default)
 - **Template setup**: ElanRegistry template configuration
-- **Editor permission**: Additional permission level between User and Administrator
-- **Menu system**: Classic Menu configuration (used by ElanRegistry template)
+- **Editor permission**: Additional permission level between User and
+  Administrator
+- **Page permissions**: Security configuration for all registry pages
+- **Menu system**: Complete navigation menu structure (Classic Menu
+  system)
 
-**⚠️ IMPORTANT:** This script includes placeholders for API keys that require manual setup:
+**⚠️ IMPORTANT:** Some settings require manual configuration after
+installation:
 
-- Google Maps and Geocoding API keys
-- reCAPTCHA site and secret keys
-- Brevo/Sendinblue email service credentials
+- **Google Maps API Key**: Required for map displays
+- **Google Geocoding API Key**: Required for location lookups
+- **Admin Emails**: Update `elan_admin_emails` setting with actual
+  administrator emails
+- **Optional**: reCAPTCHA keys (if using reCAPTCHA plugin)
+- **Optional**: Brevo/Sendinblue API credentials (if using email
+  plugin)
 
-#### 5.4 Sample User (Optional)
+#### Step 4: Sample Data (Optional - Development/Testing Only)
 
 **✅ SAFE: This script can be run multiple times safely.**
 
-Add a sample user for testing and demonstration:
+Add a sample user and car for testing and demonstration:
 
 ```bash
-# Add sample user with profile and permissions (optional)
-mysql -u username -p database_name < database/5.4-sample_user.sql
+# Add sample user with profile, car, and complete history (optional)
+mysql -u username -p database_name < database/4-sample-data.sql
 ```
 
+**⚠️ DEVELOPMENT/TESTING ONLY**: Do not run this script in production
+environments.
+
 **What this creates:**
-- **Sample user account**: `sample_user` with email `sample@elanregistry.org`
-- **Default password**: `password123` (change after first login)
+
+- **Sample user account**: `sample_user` with email
+  `sample@elanregistry.org`
+- **Default password**: `password123` (⚠️ change after first login!)
 - **Complete profile**: Portland, Oregon location with coordinates
-- **Sample car**: 1973 Lotus Elan S4 SE FHC (Car ID 1) with 3 high-quality images
-- **Standard permissions**: User-level access (can register cars, cannot access admin)
+  (45.51, -122.68)
+- **Sample car**: 1973 Lotus Elan S4 SE FHC (Chassis: 45/0123A)
+  - Complete restoration story with detailed comments
+  - 3 sample car images (from existing image library)
+  - Full ownership and history records
+- **Standard permissions**: User-level access (can register/edit cars,
+  cannot access admin features)
 - **Ready for testing**: Email verified and account active
 
 **Use for testing:**
+
 - Car registration, editing, and viewing workflows
 - Car image display and management functionality
 - Car ownership and sharing features between users
 - Location-based features and mapping
-- User permission restrictions
-- Contact and communication features
+- User permission restrictions and access control
+- Contact forms and owner communication features
+- Audit trail and history tracking
 
 #### Manual Configuration
 
-**A. Email Settings**
+##### A. Email Settings
 
 - SMTP configuration for transactional emails
-- **Brevo Sendinblue API configuration** (requires account signup and API credentials)
+- **Brevo Sendinblue API configuration** (requires account signup and
+  API credentials)
 - **Development**: Mailtrap.io recommended for email testing
-- **Production**: Brevo Sendinblue optional - other mail services can be used
+- **Production**: Brevo Sendinblue optional - other mail services can
+  be used
 
 - Configure UserSpice page permissions for all registry pages
 
@@ -385,8 +474,10 @@ After deployment, verify the following:
    - Ensure billing is enabled for Google Cloud project
 
 4. **Menu Navigation Issues**:
-   - The ElanRegistry template uses the Classic Menu system (`menus` table)
-   - If navigation menus are missing, verify the menu table is populated:
+   - The ElanRegistry template uses the Classic Menu system (`menus`
+     table)
+   - If navigation menus are missing, verify the menu table is
+     populated:
 
      ```sql
      SELECT COUNT(*) FROM menus; -- Should be ~33 items
@@ -400,13 +491,11 @@ After deployment, verify the following:
 
 ### Debug Environment Loading
 
-
 ```php
 // Check if variables loaded
 if (getenv('DB_HOST') === false) {
     error_log('Environment variables not loaded');
 }
-```
 ```
 
 ## Support

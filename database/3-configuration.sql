@@ -1,9 +1,9 @@
 -- ==================================================================
--- ELAN REGISTRY - ESSENTIAL CONFIGURATION SCRIPT (Section 5.3)
+-- ELAN REGISTRY - ESSENTIAL CONFIGURATION SCRIPT
 -- ==================================================================
--- This script configures a fresh UserSpice 5.9 installation with 
+-- This script configures a fresh UserSpice 5.9 installation with
 -- essential Elan Registry settings and configurations
--- Run AFTER 5.1-schema.sql and 5.2-import_reference_data.sql
+-- Run AFTER 1-schema.sql and 2-reference-data.sql
 -- ==================================================================
 
 -- ==================================================================
@@ -11,7 +11,7 @@
 -- ==================================================================
 
 -- Add new Elan Registry specific columns to settings table
--- Note: These columns are already added by 5.1-schema.sql, this updates values
+-- Note: These columns are already added by 1-schema.sql, this updates values
 
 UPDATE settings SET 
   -- Basic Site Configuration
@@ -71,8 +71,19 @@ UPDATE settings SET
   elan_spam_inactive_days = 30,         -- Conservative 30 days
   elan_spam_grace_period_days = 7,      -- 7 day grace period
   elan_spam_max_deletions = 50,         -- Maximum 50 deletions per run
-  elan_spam_max_percentage = 5.00,      -- Maximum 5% of users per run  
-  elan_spam_email_notifications = 0     -- Start with notifications disabled
+  elan_spam_max_percentage = 5.00,      -- Maximum 5% of users per run
+  elan_spam_email_notifications = 0,    -- Start with notifications disabled
+
+  -- Image Upload & Display Configuration
+  elan_image_upload_max_size = 3.00,    -- Maximum upload size in MB
+  elan_image_display_max_size = 2048,   -- Maximum display width in pixels
+  elan_image_thumbnail_sizes = '100,300,768,1024,2048',  -- Responsive thumbnail sizes
+
+  -- Chart.js CDN for Statistics (v4.4.0)
+  elan_chartjs_cdn = 'https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.js',
+
+  -- Administrative Notification Emails
+  elan_admin_emails = 'registrar@elanregistry.org'  -- Comma-separated admin emails for system notifications
 
 WHERE id = 1;
 
@@ -299,12 +310,10 @@ ON DUPLICATE KEY UPDATE
   menu_id = VALUES(menu_id);
 
 -- Record this configuration script completion
-INSERT INTO `fix_script_runs` (`script_name`, `status`, `notes`) 
-VALUES ('database/5.3-essential_config.sql', 'completed', 'Essential Elan Registry configuration: settings + permissions + 46 pages + 22 menus + security')
-ON DUPLICATE KEY UPDATE 
-run_date = CURRENT_TIMESTAMP,
-status = 'completed',
-notes = 'Schema update re-applied';
+INSERT INTO `fix_script_runs` (`script_name`)
+VALUES ('database/3-configuration.sql')
+ON DUPLICATE KEY UPDATE
+completed_at = CURRENT_TIMESTAMP;
 
 
 -- ==================================================================

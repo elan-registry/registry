@@ -45,10 +45,10 @@ Documentation:
 Technical Changes:
 - Technical changes"
 
-# 4. Push to all remotes
+# 4. Push to origin test remotes
+# do not push to prod
 git push origin feature/v2.9.1 && git push origin v2.9.1    # GitHub
-git push test v2.9.1                                          # Test server
-git push prod main && git push prod v2.9.1                    # Production
+git push test v2.9.1                                                           
 
 # 5. Create GitHub release (major/minor only)
 gh release create "v2.9.1" \
@@ -113,6 +113,9 @@ git push prod $PREVIOUS_TAG:refs/heads/main
 
 **📖 Full Documentation:**
 
-- [DEPLOYMENT.md](../../docs/development/DEPLOYMENT.md) - Complete release and deployment procedures
-- [RELEASE_NOTES_TEMPLATE.md](../../docs/development/RELEASE_NOTES_TEMPLATE.md) - Release notes template
-- [CLAUDE.md](../../docs/development/CLAUDE.md) - Development guidelines
+- [DEPLOYMENT.md](../../docs/development/DEPLOYMENT.md) -
+  Complete release and deployment procedures
+- [RELEASE_NOTES_TEMPLATE.md](../../docs/development/RELEASE_NOTES_TEMPLATE.md)
+  \- Release notes template
+- [CLAUDE.md](../../docs/development/CLAUDE.md) - Development
+  guidelines

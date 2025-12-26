@@ -1,8 +1,8 @@
 -- ==================================================================
--- ELAN REGISTRY - SAMPLE USER CONFIGURATION (Section 5.4)
+-- ELAN REGISTRY - SAMPLE USER CONFIGURATION
 -- ==================================================================
 -- This script adds a sample user based on the development admin user
--- Run AFTER 5.1-schema.sql, 5.2-import_reference_data.sql, and 5.3-essential_config.sql
+-- Run AFTER 1-schema.sql, 2-reference-data.sql, and 3-configuration.sql
 -- ==================================================================
 
 -- ==================================================================
@@ -213,61 +213,94 @@ INSERT INTO `cars` (
 -- ==================================================================
 
 -- Add car ownership record (sample_user owns car ID 1)
+-- NOTE: car_user table structure is simplified: id, userid, car_id, mtime
 INSERT INTO `car_user` (
-    `car_id`, 
-    `user_id`, 
-    `role`, 
-    `created_by`, 
-    `active`,
-    `created_date`
+    `userid`,
+    `car_id`,
+    `mtime`
 ) VALUES (
-    1,  -- Car ID 1
     2,  -- User ID 2 (sample_user)
-    'owner',  -- Owner role
-    2,  -- Created by sample_user
-    1,  -- Active relationship
+    1,  -- Car ID 1
     NOW()
-) ON DUPLICATE KEY UPDATE 
-    role = VALUES(role),
-    active = VALUES(active);
+) ON DUPLICATE KEY UPDATE
+    mtime = VALUES(mtime);
 
 -- ==================================================================
 -- 6. SAMPLE CAR HISTORY RECORD
 -- ==================================================================
 
 -- Add initial history record for the car (simulating the creation audit trail)
+-- NOTE: cars_hist stores complete snapshots of all car fields, not JSON
 INSERT INTO `cars_hist` (
-    `car_id`,
     `operation`,
-    `old_values`,
-    `new_values`,
-    `changed_by`,
-    `change_date`,
-    `reason`
+    `car_id`,
+    `ctime`,
+    `mtime`,
+    `ModifiedBy`,
+    `model`,
+    `series`,
+    `variant`,
+    `year`,
+    `type`,
+    `chassis`,
+    `color`,
+    `engine`,
+    `purchasedate`,
+    `comments`,
+    `image`,
+    `user_id`,
+    `email`,
+    `fname`,
+    `lname`,
+    `city`,
+    `state`,
+    `country`,
+    `lat`,
+    `lon`,
+    `website`,
+    `timestamp`
 ) VALUES (
-    1,  -- Car ID 1
     'INSERT',  -- Operation type
-    '{}',  -- No old values for INSERT
-    '{"model":"Lotus Elan","series":"S4","variant":"SE","year":"1973","type":"FHC","chassis":"45/0123A","color":"Signal Red","engine":"ABC123","purchasedate":"2020-01-15","comments":"Beautiful restored example with matching numbers. Recent full restoration completed in 2019."}',  -- New values as JSON
-    2,  -- Changed by sample_user (ID 2)
-    NOW(),  -- Changed at current time
-    'Initial car registration by sample user'
-) ON DUPLICATE KEY UPDATE 
+    1,  -- Car ID 1
+    NOW(),  -- Create time
+    NOW(),  -- Modify time
+    'sample_user',  -- Modified by
+    'Lotus Elan',
+    'S4',
+    'SE',
+    '1973',
+    'FHC',
+    '45/0123A',
+    'Signal Red',
+    'ABC123',
+    '2020-01-15',
+    'Beautiful restored example with matching numbers. Recent full restoration completed in 2019. Engine rebuilt with unleaded head conversion. Transmission rebuilt. All suspension bushings replaced. New interior and soft top. Car shows excellent and drives beautifully.',
+    '["img_5ff391578d9be6.04210270.jpg","img_60184d777af4d7.90737857.jpg","img_601c1c88b5aa67.07757198.jpg"]',
+    2,  -- User ID
+    'sample@elanregistry.org',
+    'Sample',
+    'User',
+    'Portland',
+    'Oregon',
+    'United States',
+    45.51,
+    -122.68,
+    'https://www.elanregistry.org/',
+    NOW()  -- Timestamp
+) ON DUPLICATE KEY UPDATE
     operation = VALUES(operation),
-    new_values = VALUES(new_values),
-    reason = VALUES(reason);
+    model = VALUES(model),
+    chassis = VALUES(chassis);
 
 -- ==================================================================
 -- 7. RECORD SUCCESSFUL COMPLETION
 -- ==================================================================
 
 -- Record this sample user and car creation
-INSERT INTO `fix_script_runs` (`script_name`, `status`, `notes`) 
-VALUES ('database/5.4-sample_user.sql', 'completed', 'Sample user created: sample_user (ID 2) with profile, permissions, and sample car (ID 1)')
-ON DUPLICATE KEY UPDATE 
-    run_date = CURRENT_TIMESTAMP,
-    status = 'completed',
-    notes = 'Sample user updated';
+INSERT INTO `fix_script_runs` (`script_name`)
+VALUES ('database/4-sample-data.sql')
+ON DUPLICATE KEY UPDATE
+    completed_at = CURRENT_TIMESTAMP;
 
 -- ==================================================================
 -- 8. VERIFICATION QUERIES
@@ -317,25 +350,26 @@ FROM cars WHERE id = 1;
 
 -- Display car ownership
 SELECT 'Sample car ownership:' as status;
-SELECT 
+SELECT
     cu.car_id,
-    cu.user_id,
+    cu.userid,
     u.username,
-    cu.role,
-    cu.active,
-    cu.created_date
+    cu.mtime
 FROM car_user cu
-JOIN users u ON cu.user_id = u.id
+JOIN users u ON cu.userid = u.id
 WHERE cu.car_id = 1;
 
 -- Display car history
 SELECT 'Sample car history:' as status;
-SELECT 
+SELECT
     car_id,
     operation,
-    changed_by,
-    change_date,
-    reason
+    ModifiedBy,
+    timestamp,
+    model,
+    series,
+    chassis,
+    color
 FROM cars_hist WHERE car_id = 1;
 
 -- Display permissions
