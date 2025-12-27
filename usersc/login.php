@@ -40,9 +40,13 @@ if($settings->totp > 0 && version_compare(PHP_VERSION, '8.2.0', '>=')) {
 $hooks = getMyHooks();
 if(isset($oauthHooks) && is_array($oauthHooks)) {
     $hooks = array_merge($hooks, $oauthHooks);
-} 
+}
 
 includeHook($hooks, 'pre');
+
+// Include security validation functions
+require_once $abs_us_root . $us_url_root . 'usersc/includes/security_validation.php';
+
 $emailSet = $db->query("SELECT * FROM email")->first();
 if (!isset($settings->no_passwords)) {
     $settings->no_passwords = 0;
@@ -287,7 +291,7 @@ if (!empty($_POST)) {
                                         require_once $abs_us_root . $us_url_root . 'usersc/scripts/custom_login_script.php';
                                     }
                                     if (!empty($dest)) {
-                                        $redirect = Input::get('redirect');
+                                        $redirect = validateRedirectParameter(Input::get('redirect'));
                                         if (!empty($redirect) || $redirect !== '') Redirect::to(html_entity_decode($redirect));
                                         else Redirect::to($dest);
                                     } else {
@@ -317,7 +321,7 @@ if (!empty($_POST)) {
 
                                 $dest = sanitizedDest('dest');
                                 $_SESSION[$currentSessionName . '_totp_final_dest'] = $dest;
-                                $_SESSION[$currentSessionName . '_totp_input_redirect'] = Input::get('redirect');
+                                $_SESSION[$currentSessionName . '_totp_input_redirect'] = validateRedirectParameter(Input::get('redirect'));
 
                                 // logger($tempUser->data()->id, "Login", "Valid credentials provided. Awaiting TOTP verification.");
 
@@ -347,7 +351,7 @@ if (!empty($_POST)) {
                                 require_once $abs_us_root . $us_url_root . 'usersc/scripts/custom_login_script.php';
                             }
                             if (!empty($dest)) {
-                                $redirect = Input::get('redirect');
+                                $redirect = validateRedirectParameter(Input::get('redirect'));
                                 if (!empty($redirect) || $redirect !== '') Redirect::to(html_entity_decode($redirect));
                                 else Redirect::to($dest);
                             } else {
@@ -487,7 +491,7 @@ if (empty($dest = sanitizedDest('dest'))) {
                             <div class="form-outline mb-4">
                                 <label class="form-label" for="username"><?= lang("SIGNIN_UORE") ?></label>
                                 <input type="text" id="username" name="username" class="form-control form-control-lg"
-                                    value="<?= isset($_POST['username']) ? hed($_POST['username']) : '' ?>"
+                                    value="<?= isset($_POST['username']) ? htmlspecialchars($_POST['username'], ENT_QUOTES, 'UTF-8') : '' ?>"
                                     required autocomplete="username">
                             </div>
 
@@ -518,7 +522,7 @@ if (empty($dest = sanitizedDest('dest'))) {
                             <?php endif; ?>
 
                             <?php includeHook($hooks, 'form'); ?>
-                            <input type="hidden" name="redirect" value="<?= Input::get('redirect') ?>" />
+                            <input type="hidden" name="redirect" value="<?= htmlspecialchars(validateRedirectParameter(Input::get('redirect')), ENT_QUOTES, 'UTF-8') ?>" />
                             <button class="submit col-12 btn btn-primary rounded submit px-3" id="next_button" type="submit">
                                 <i class="fa fa-sign-in"></i> <?= lang("SIGNIN_BUTTONTEXT") ?>
                             </button>
