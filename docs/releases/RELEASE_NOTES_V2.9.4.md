@@ -43,7 +43,7 @@ improvements with no database schema modifications.
 
 ## 📋 Issues Resolved in This Release
 
-### Security Fixes (3 issues)
+### Security Fixes (6 issues)
 
 - **XSS Vulnerability** (Commit: 0c11bfdb) - Fixed Cross-Site Scripting
   vulnerability in `user_settings.php`
@@ -57,6 +57,27 @@ improvements with no database schema modifications.
   - Hardened URL validation in Playwright tests against subdomain attacks
 - [#362](https://github.com/unibrain1/elanregistry/issues/362) - Fix SQL
   injection warnings in admin files
+- [#409](https://github.com/unibrain1/elanregistry/issues/409) - **HIGH
+  SEVERITY**: Fix XSS vulnerability in docs/embed.php (Commit: 46acecbf)
+  - Added comprehensive input validation for document parameter
+  - Implemented path traversal prevention
+  - Created PDF-only file extension whitelist
+  - Added file existence verification
+  - Applied proper HTML output escaping
+  - Added security event logging
+- [#410](https://github.com/unibrain1/elanregistry/issues/410) - **HIGH
+  SEVERITY**: Fix XSS vulnerability in usersc/login.php username parameter
+  (Commit: 46acecbf)
+  - Replaced hed() with explicit htmlspecialchars()
+  - Ensured strict output encoding with ENT_QUOTES and UTF-8
+- [#411](https://github.com/unibrain1/elanregistry/issues/411) - **CRITICAL
+  SEVERITY**: Fix SQL Injection in usersc/login.php redirect parameter (Commit:
+  46acecbf)
+  - Created validateRedirectParameter() function with comprehensive validation
+  - Blocked SQL injection patterns (randomblob, sleep, union, select, etc.)
+  - Blocked XSS patterns and path traversal attacks
+  - Implemented whitelist for allowed redirect paths
+  - Added security event logging
 
 ### Testing Infrastructure (2 issues)
 
@@ -168,12 +189,36 @@ improvements with no database schema modifications.
 - **Files**: Multiple admin interface files hardened
 - **Method**: Implemented prepared statements and parameterized queries
 
+### ZAP Security Scan Vulnerabilities (#409, #410, #411)
+
+**Issue #409 - docs/embed.php XSS (HIGH):**
+
+- **Fixed**: Cross-Site Scripting vulnerability in document viewer
+- **Attack Vector**: Malicious doc parameter injection
+- **Impact**: Prevented arbitrary script execution in user browsers
+- **Method**: Comprehensive input validation, whitelisting, output escaping
+
+**Issue #410 - usersc/login.php Username XSS (HIGH):**
+
+- **Fixed**: Reflected XSS in username field
+- **Attack Vector**: Malicious username parameter in POST request
+- **Impact**: Prevented credential harvesting and session hijacking
+- **Method**: Strict output encoding with htmlspecialchars()
+
+**Issue #411 - usersc/login.php SQL Injection (CRITICAL):**
+
+- **Fixed**: Time-based blind SQL injection in redirect parameter
+- **Attack Vector**: SQLite randomblob() payload for database extraction
+- **Impact**: Prevented complete database compromise
+- **Method**: Input validation, pattern blocking, whitelist enforcement
+
 ### Security Testing
 
 - ✅ GitGuardian Security Checks: Passed
 - ✅ CodeQL Analysis: Passed
 - ✅ XSS vulnerability tests: Passing
 - ✅ SQL injection tests: Passing
+- ✅ ZAP security scan vulnerabilities: Resolved (#409, #410, #411)
 
 ## 🧪 Testing Summary
 
@@ -267,6 +312,11 @@ git push prod v2.9.3:refs/heads/main
 - `tests/playwright/e2e/*.spec.js` - PR #408: URL validation hardening against
   subdomain attacks
 - Multiple admin files - SQL injection hardening
+- `docs/embed.php` - Issue #409: XSS vulnerability fix, input validation,
+  whitelisting, output escaping
+- `usersc/login.php` - Issues #410, #411: XSS and SQL injection fixes
+- `usersc/includes/security_validation.php` - NEW: Security validation functions
+  with strict types
 
 **Features:**
 
@@ -296,6 +346,8 @@ git push prod v2.9.3:refs/heads/main
 - **0c11bfdb** - Security: Fix XSS vulnerability in user_settings.php
 - **7bb38c01** - Security & Type Safety: Fix blocking issues (PR #408 - Part 1)
 - **cad39b94** - Security: Fix remaining blocking issues (PR #408 - Part 2)
+- **46acecbf** - Security: Fix critical XSS and SQL injection vulnerabilities
+  (Issues #409, #410, #411)
 - **124160e3** - Fix: Enhance duplicate emails interface (#367)
 - **b49b2fc9** - Add Playwright test suite and documentation
 - **ed036942** - Fix: Replace generic Exception with CarTransferException
@@ -315,12 +367,13 @@ git push prod v2.9.3:refs/heads/main
 
 ## 🎯 Success Criteria Met
 
-- ✅ All 12 issues/PRs resolved (11 issues + PR #408)
+- ✅ All 15 issues/PRs resolved (14 issues + PR #408)
 - ✅ Unit tests passing (100% success rate - 128 tests)
 - ✅ Playwright tests passing (100% success rate - 35 tests)
 - ✅ Security scans clean
-- ✅ XSS vulnerability patched (PR #408)
-- ✅ SQL injection warnings resolved
+- ✅ XSS vulnerabilities patched (PR #408, Issues #409, #410)
+- ✅ SQL injection vulnerabilities resolved (Issues #362, #411)
+- ✅ ZAP security scan findings addressed (Issues #409, #410, #411)
 - ✅ Type safety implemented (strict_types=1)
 - ✅ No breaking changes
 - ✅ Documentation restructured
@@ -356,11 +409,12 @@ git push prod v2.9.3:refs/heads/main
 
 ---
 
-**Summary:** This patch release resolves 12 issues/PRs focused on security
+**Summary:** This patch release resolves 15 issues/PRs focused on security
 hardening, code quality improvements, comprehensive testing infrastructure,
 and enhanced developer tooling. Critical XSS and SQL injection vulnerabilities
-have been addressed with strict type safety enforcement (PR #408). All tests
-passing with 100% success rate. Complete documentation restructure improves
+have been addressed with strict type safety enforcement (PR \#408, Issues \#409,
+\#410, \#411). ZAP security scan findings fully remediated. All tests passing
+with 100% success rate. Complete documentation restructure improves
 discoverability and maintainability.
 
 **Recommendation:** Ready for production deployment. No database migrations
