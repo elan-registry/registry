@@ -48,11 +48,13 @@ improvements with no database schema modifications.
 - **XSS Vulnerability** (Commit: 0c11bfdb) - Fixed Cross-Site Scripting
   vulnerability in `user_settings.php`
 - [#408](https://github.com/unibrain1/elanregistry/pull/408) - Security & Type
-  Safety: Critical fixes to user_settings.php
+  Safety: Critical fixes to user_settings.php and Playwright tests
   - Added `declare(strict_types=1)` for strict type enforcement
   - Fixed XSS vulnerability in error message handling
   - Added explicit type casting for all database values (int/string)
   - Type-safe logger calls throughout
+  - Fixed variable assignment error preventing data corruption
+  - Hardened URL validation in Playwright tests against subdomain attacks
 - [#362](https://github.com/unibrain1/elanregistry/issues/362) - Fix SQL
   injection warnings in admin files
 
@@ -153,6 +155,12 @@ improvements with no database schema modifications.
   enforcement
 - **Database Security**: All database IDs explicitly cast to prevent type
   juggling attacks
+- **Variable Scope**: Fixed critical variable assignment error (line 303)
+  preventing data corruption
+- **URL Validation**: Hardened Playwright tests against subdomain hijacking
+  attacks
+  - Replaced substring matching with proper URL parsing
+  - Validates hostname explicitly to prevent malicious domains
 
 ### SQL Injection Warnings Resolution (#362)
 
@@ -254,7 +262,10 @@ git push prod v2.9.3:refs/heads/main
 **Security:**
 
 - `usersc/user_settings.php` - PR #408: XSS vulnerability fix, strict type
-  enforcement, explicit type casting, form label improvements
+  enforcement, explicit type casting, variable scope fix, form label
+  improvements
+- `tests/playwright/e2e/*.spec.js` - PR #408: URL validation hardening against
+  subdomain attacks
 - Multiple admin files - SQL injection hardening
 
 **Features:**
@@ -283,6 +294,8 @@ git push prod v2.9.3:refs/heads/main
 ### Key Commits
 
 - **0c11bfdb** - Security: Fix XSS vulnerability in user_settings.php
+- **7bb38c01** - Security & Type Safety: Fix blocking issues (PR #408 - Part 1)
+- **cad39b94** - Security: Fix remaining blocking issues (PR #408 - Part 2)
 - **124160e3** - Fix: Enhance duplicate emails interface (#367)
 - **b49b2fc9** - Add Playwright test suite and documentation
 - **ed036942** - Fix: Replace generic Exception with CarTransferException
