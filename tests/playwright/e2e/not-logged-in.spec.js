@@ -63,9 +63,20 @@ test.describe('Internal Links Discovery and Testing (Not Logged In)', () => {
         const text = await link.textContent();
 
         // Filter for internal links (elanregistry.org or relative paths)
-        if (href && (href.includes('elanregistry.org') || href.startsWith('/'))) {
+        // Security: Use proper URL parsing to validate hostname, not substring matching
+        let isInternalLink = href && href.startsWith('/');
+        if (href && href.startsWith('http')) {
+          try {
+            const url = new URL(href);
+            isInternalLink = url.hostname === 'elanregistry.org' || url.hostname === 'www.elanregistry.org';
+          } catch (e) {
+            isInternalLink = false;
+          }
+        }
+
+        if (isInternalLink) {
           // Convert to relative path if it's a full URL
-          const relativePath = href.includes('elanregistry.org')
+          const relativePath = href.startsWith('http')
             ? new URL(href).pathname
             : href;
 
@@ -120,9 +131,20 @@ test.describe('Internal Links Discovery and Testing (Not Logged In)', () => {
       for (const link of contentLinks) {
         const href = await link.getAttribute('href');
 
-        if (href && (href.includes('elanregistry.org') || href.startsWith('/'))) {
+        // Security: Use proper URL parsing to validate hostname, not substring matching
+        let isInternalLink = href && href.startsWith('/');
+        if (href && href.startsWith('http')) {
+          try {
+            const url = new URL(href);
+            isInternalLink = url.hostname === 'elanregistry.org' || url.hostname === 'www.elanregistry.org';
+          } catch (e) {
+            isInternalLink = false;
+          }
+        }
+
+        if (isInternalLink) {
           // Convert to relative path if it's a full URL
-          const relativePath = href.includes('elanregistry.org')
+          const relativePath = href.startsWith('http')
             ? new URL(href).pathname
             : href;
           allInternalLinks.add(relativePath);

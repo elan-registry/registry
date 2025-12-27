@@ -300,7 +300,7 @@ if (!empty($_POST)) {
                 $errors[] = 'The provided website URL is not valid';
             }
         } else {
-            $state = $profiledetails->website;
+            $website = $profiledetails->website;
         }
 
         // END Extend user_setttings.php with some PROFILE information

@@ -173,8 +173,19 @@ test.describe('Internal Links Discovery and Testing (Logged In)', () => {
         const href = await link.getAttribute('href');
         const text = await link.textContent();
 
-        if (href && (href.includes('elanregistry.org') || href.startsWith('/'))) {
-          const relativePath = href.includes('elanregistry.org')
+        // Security: Use proper URL parsing to validate hostname, not substring matching
+        let isInternalLink = href && href.startsWith('/');
+        if (href && href.startsWith('http')) {
+          try {
+            const url = new URL(href);
+            isInternalLink = url.hostname === 'elanregistry.org' || url.hostname === 'www.elanregistry.org';
+          } catch (e) {
+            isInternalLink = false;
+          }
+        }
+
+        if (isInternalLink) {
+          const relativePath = href.startsWith('http')
             ? new URL(href).pathname
             : href;
 
@@ -225,8 +236,19 @@ test.describe('Internal Links Discovery and Testing (Logged In)', () => {
       for (const link of contentLinks) {
         const href = await link.getAttribute('href');
 
-        if (href && (href.includes('elanregistry.org') || href.startsWith('/'))) {
-          const relativePath = href.includes('elanregistry.org')
+        // Security: Use proper URL parsing to validate hostname, not substring matching
+        let isInternalLink = href && href.startsWith('/');
+        if (href && href.startsWith('http')) {
+          try {
+            const url = new URL(href);
+            isInternalLink = url.hostname === 'elanregistry.org' || url.hostname === 'www.elanregistry.org';
+          } catch (e) {
+            isInternalLink = false;
+          }
+        }
+
+        if (isInternalLink) {
+          const relativePath = href.startsWith('http')
             ? new URL(href).pathname
             : href;
           allInternalLinks.add(relativePath);
