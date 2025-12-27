@@ -123,3 +123,6 @@ usersc/plugins/plugins.ini.php
 docs/technical/DATABASE_SCHEMA_COMPARISON.md
 docs/technical/DATABASE_SCHEMA_MIGRATION_test_to_dev_COMPATIBLE.sql
 docs/technical/MIGRATION_VERIFICATION_REPORT.md
+
+# Issue 234 - Template Modernization Mockups
+issue-234-template-modernization/
