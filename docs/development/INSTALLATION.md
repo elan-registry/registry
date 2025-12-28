@@ -72,7 +72,7 @@ The Elan Registry is built on top of UserSpice for user authentication and manag
    create an admin account
 5. **Verify Installation**: Ensure UserSpice is working correctly
    before proceeding
-6. **Get API Key**: Get annd Install an API key.  Navigate to the
+6. **Get API Key**: Get and Install an API key.  Navigate to the
    General Settings Tab
 
 #### Required UserSpice Plugins
@@ -153,16 +153,39 @@ rm -rf temp_registry
 
 ### 3. Install Dependencies
 
-Install PHP dependencies using Composer:
+Install PHP dependencies using Composer. **The installation command differs
+between development and production environments.**
+
+#### Development Environment
 
 ```bash
-# Install main dependencies (primarily for encrypted environment variables)
+# Install all dependencies including dev dependencies (PHPUnit, PHPStan)
 composer install
 ```
 
-**Key Dependencies:**
+#### Production/Test Environments
+
+```bash
+# Install ONLY production dependencies (excludes PHPUnit, PHPStan, testing tools)
+composer install --no-dev --optimize-autoloader
+```
+
+**Important Notes:**
+
+- **`--no-dev`**: Skips development dependencies (testing frameworks,
+  code analysis tools)
+  - PHPUnit requires PHP 8.3+ but production servers may run PHP 8.2
+  - Development tools are not needed on production servers
+- **`--optimize-autoloader`**: Generates optimized class autoloader for better performance
+
+**Key Production Dependencies:**
 
 - `johnathanmiller/secure-env-php` - Encrypted environment variable management
+
+**Development-Only Dependencies (installed with `composer install`):**
+
+- `phpunit/phpunit` - Unit testing framework (requires PHP 8.3+)
+- `phpstan/phpstan` - Static analysis tool for code quality
 
 ### 4. Configure Environment Variables
 
@@ -415,6 +438,21 @@ npm run test:csp
 ```
 
 ## Production Deployment
+
+### Deployment Steps
+
+1. **Install Production Dependencies**:
+
+   ```bash
+   # On production/test servers, ALWAYS use --no-dev flag
+   composer install --no-dev --optimize-autoloader
+   ```
+
+   **Why `--no-dev` is critical for production:**
+   - Excludes testing frameworks (PHPUnit, PHPStan) that aren't needed in production
+   - PHPUnit 11.x requires PHP 8.3+, but production servers may run PHP 8.2
+   - Reduces vendor directory size and attack surface
+   - Improves autoloader performance
 
 ### Security Considerations
 
