@@ -1,47 +1,57 @@
 ########################################
 # IDE & Editor Files
 ########################################
-.vscode
+.vscode/
+.cursor/
 Elanegistry.sublime-project
 ElanRegistry.code-workspace
 *.swp
 *~
-.DS_Store
 
 ########################################
 # AI Development Tools (Personal)
 ########################################
 .mcp.json
 .aider*
-.cursor/
+.playwright-mcp/
 
 ########################################
-# System & Miscellaneous Files
+# Operating System Files
 ########################################
-.user.ini
-USER.INI
-error_log
-TODO
-.php_cs.cache
-.scannerwork/*
-.git
-.htaccess
-!usersc/plugins/hooker/hooks/.htaccess
-runme.php
+.DS_Store
+**/.DS_Store
 
 ########################################
-# Environment & Config Files
+# Environment & Configuration
 ########################################
+.env
 .env.enc
 .env.key
 .env.local
-.env
 .env.testing
+.user.ini
+USER.INI
+
+########################################
+# Build & Cache Files
+########################################
+.php_cs.cache
+.phpunit.cache
+.scannerwork/*
+error_log
 
 ########################################
 # Scripts & Utilities
 ########################################
 utilities
+runme.php
+scripts/playwright-auth-1password.sh
+
+########################################
+# Access Control
+########################################
+.htaccess
+!usersc/plugins/hooker/hooks/.htaccess
 
 ########################################
 # User Images (include .htaccess only)
@@ -81,10 +91,9 @@ install/*
 ########################################
 # Vendor & Dependencies
 ########################################
-vendor
-usersc/vendor
+vendor/
+usersc/vendor/
 usersc/composer.lock
-# Binary executables
 composer.phar
 *.phar
 
@@ -99,40 +108,47 @@ yarn-error.log*
 .yarn-integrity
 
 ########################################
-# Playwright
+# Testing
 ########################################
-/test-results/
-/playwright-report/
-/playwright-report-e2e/
-/playwright/.cache/
-.playwright.result.cache
-.playwright-mcp/
-tests/playwright/.auth/
-
-########################################
-# Tests & Backups
-########################################
-# Include test source files but exclude generated files
+# PHPUnit
 tests/.phpunit.result.cache
 tests/coverage/
 tests/temp/
 coverage/
-usersc/tests
-.phpunit.cache
+usersc/tests/
+
+# Playwright
+test-results/
+playwright-report/
+playwright-report-e2e/
+playwright/.cache/
+.playwright.result.cache
+tests/playwright/.auth/
+
+########################################
+# Backups & Archives
+########################################
 @backup*
 usupdate.zip
-
-# FIX script backups and rollbacks (runtime generated)
 FIX/backups/
 FIX/rollback_*.php
 
+########################################
+# Runtime Generated Files
+########################################
 users/logs/*.log.php
 usersc/includes/totp_key.php
 usersc/plugins/plugins.ini.php
-**/.DS_Store
+
+########################################
+# Documentation (Generated)
+########################################
 docs/technical/DATABASE_SCHEMA_COMPARISON.md
 docs/technical/DATABASE_SCHEMA_MIGRATION_test_to_dev_COMPATIBLE.sql
 docs/technical/MIGRATION_VERIFICATION_REPORT.md
 
-# Issue 234 - Template Modernization Mockups
+########################################
+# Temporary/Development
+########################################
+TODO
 issue-234-template-modernization/
