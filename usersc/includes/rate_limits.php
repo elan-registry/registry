@@ -8,9 +8,9 @@ or you can override certain limits individually. See below.
 
 */
 
-/* Recommended Reasonable Rate Limits
-   Uncomment the following code block to use these reasonable defaults.
-   
+// Recommended Reasonable Rate Limits (Enabled for Issue #418)
+// Production rate limits enabled to mitigate SQL timing attack vulnerabilities
+
 $rateLimits = [
     // Authentication attempts
     'login_attempt' => [
@@ -130,8 +130,6 @@ $rateLimits = [
         'total_window' => 300
     ]
 ];
-
-*/
 
 //You can also override individual limits with custom values.
 // $rateLimits['login_attempt']['ip_max'] = 50;
