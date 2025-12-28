@@ -80,13 +80,16 @@ class EnhancedSchemaManager {
     /**
      * Constructor
      *
-     * Note: PHP constructors cannot have return type declarations
+     * Note: PHP constructors cannot have return type declarations per language specification
+     * @see https://www.php.net/manual/en/language.oop5.decon.php
      *
      * @param mixed $database Database connection object
      * @param mixed $userSettings Settings object
      * @param int|null $userId User ID for logging (optional)
+     * @return void Constructors do not return values
      */
     // phpcs:ignore Squiz.Commenting.FunctionComment.MissingReturn
+    // @codingStandardsIgnoreLine - Constructors cannot have return type declarations
     public function __construct($database, $userSettings, ?int $userId = null) {
         $this->db = $database;
         $this->settings = $userSettings;
@@ -310,8 +313,7 @@ class EnhancedSchemaManager {
                 return createStandardizedBackup(
                     'schema-' . strtolower(str_replace(' ', '-', $operation)),
                     ['settings', 'users', 'cars', 'car_user', 'profiles'],
-                    'automated',
-                    'development'
+                    'automated'
                 );
             } catch (SchemaException $e) {
                 ($this->logger)(1, 'SchemaError', 'Backup creation failed: ' . $e->getMessage());

@@ -25,11 +25,12 @@ class ElanRegistryOwner
      * Instantiates the ElanRegistryOwner object.
      *
      * @param int|null $id Optional User ID. If given, the owner information will be populated.
+     * @param object|null $db Optional DB instance for testing. If not provided, uses DB::getInstance().
      * @return void
      */
-    public function __construct(?int $id = null)
+    public function __construct(?int $id = null, ?object $db = null)
     {
-        $this->_db = DB::getInstance();
+        $this->_db = $db ?? DB::getInstance();
 
         if ($id) {
             $this->find($id);

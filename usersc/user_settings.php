@@ -1,4 +1,7 @@
 <?php
+
+declare(strict_types=1);
+
 /*
 UserSpice 4
 An Open Source PHP User Management System
@@ -37,25 +40,25 @@ $emailR = $emailQ->first();
 
 $errors = [];
 $successes = [];
-$userId = $user->data()->id;
+$userId = (int)$user->data()->id;
 
 $validation = new Validate();
 $userdetails = $user->data();
 // Get User Profile Information
 // This is a hack and should be fixed - Get the Profile ID
 $profileQ = $db->query("SELECT id FROM profiles WHERE user_id = ?", [$userId]);
-$profileId = $profileQ->results()[0]->id;
+$profileId = (int)$profileQ->results()[0]->id;
 // USER ID is in $user_id .  Use the USER ID to get the users Profile information
 $userQ = $db->query("SELECT * FROM profiles LEFT JOIN users ON user_id = users.id WHERE user_id = ?", [$userId]);
 if ($userQ->count() > 0) {
     $profiledetails = $userQ->first();
 
     /* Set the city, state, country for geolocation.  If there is an update of any of these values they will be overwritten */
-    $city = $profiledetails->city;
-    $state = $profiledetails->state;
-    $country = $profiledetails->country;
+    $city = (string)$profiledetails->city;
+    $state = (string)$profiledetails->state;
+    $country = (string)$profiledetails->country;
 } else {
-    logger($user->data()->id, "User", "USER_SETTING(59) something is wrong with the user profile ");
+    logger((int)$user->data()->id, "User", "USER_SETTING(59) something is wrong with the user profile ");
 }
 
 // Get the country list
@@ -94,7 +97,7 @@ if (!empty($_POST)) {
                 }
                 $db->update('users', $userId, $fields);
                 $successes[] = 'Username updated.';
-                logger($user->data()->id, 'User', 'Changed username from $userdetails->username to $displayname.');
+                logger((int)$user->data()->id, 'User', 'Changed username from $userdetails->username to $displayname.');
             } else {
                 //validation did not pass
                 foreach ($validation->errors() as $error) {
@@ -119,7 +122,7 @@ if (!empty($_POST)) {
             if ($validation->passed()) {
                 $db->update('users', $userId, $fields);
                 $successes[] = 'First name updated.';
-                logger($user->data()->id, 'User', "Changed fname from $userdetails->fname to $fname.");
+                logger((int)$user->data()->id, 'User', "Changed fname from $userdetails->fname to $fname.");
             } else {
                 //validation did not pass
                 foreach ($validation->errors() as $error) {
@@ -144,7 +147,7 @@ if (!empty($_POST)) {
             if ($validation->passed()) {
                 $db->update('users', $userId, $fields);
                 $successes[] = 'Last name updated.';
-                logger($user->data()->id, 'User', "Changed lname from $userdetails->lname to $lname.");
+                logger((int)$user->data()->id, 'User', "Changed lname from $userdetails->lname to $lname.");
             } else {
                 //validation did not pass
                 foreach ($validation->errors() as $error) {
@@ -170,7 +173,7 @@ if (!empty($_POST)) {
             if ($validation->passed()) {
                 $db->update('profiles', $profileId, $fields);
                 $successes[] = 'City updated.';
-                logger($user->data()->id, 'User', "Changed city from $profiledetails->city to $city.");
+                logger((int)$user->data()->id, 'User', "Changed city from $profiledetails->city to $city.");
             } else {
                 //validation did not pass
                 foreach ($validation->errors() as $error) {
@@ -196,7 +199,7 @@ if (!empty($_POST)) {
             if ($validation->passed()) {
                 $db->update('profiles', $profileId, $fields);
                 $successes[] = 'State updated.';
-                logger($user->data()->id, 'User', "Changed state from $profiledetails->state to $state.");
+                logger((int)$user->data()->id, 'User', "Changed state from $profiledetails->state to $state.");
             } else {
                 //validation did not pass
                 foreach ($validation->errors() as $error) {
@@ -221,7 +224,7 @@ if (!empty($_POST)) {
             if ($validation->passed()) {
                 $db->update('profiles', $profileId, $fields);
                 $successes[] = 'Country updated.';
-                logger($user->data()->id, 'User', "Changed country from $profiledetails->country to $country.");
+                logger((int)$user->data()->id, 'User', "Changed country from $profiledetails->country to $country.");
             } else {
                 //validation did not pass
                 foreach ($validation->errors() as $error) {
@@ -239,7 +242,7 @@ if (!empty($_POST)) {
         if (!empty($fields)) {
             $db->update('profiles', $profileId, $fields);
             $successes[] = 'Lat/Lon updated.';
-            logger($user->data()->id, 'User', 'Successfully updated lat/lon: ' . json_encode($fields));
+            logger((int)$user->data()->id, 'User', 'Successfully updated lat/lon: ' . json_encode($fields));
             
             // BUGFIX #193: Sync location to all cars owned by this user
             $userCarsQuery = $db->query("SELECT id FROM cars WHERE user_id = ?", [$userId]);
@@ -257,12 +260,12 @@ if (!empty($_POST)) {
                 $carsUpdated = 0;
                 foreach ($userCars as $car) {
                     // Update each car with new location
-                    if ($db->update('cars', $car->id, $carFields)) {
+                    if ($db->update('cars', (int)$car->id, $carFields)) {
                         $carsUpdated++;
                         
                         // Add history record for location sync
                         $historyFields = $carFields;
-                        $historyFields['car_id'] = $car->id;
+                        $historyFields['car_id'] = (int)$car->id;
                         $historyFields['operation'] = 'LOCATION_SYNC';
                         $historyFields['comments'] = "Car location synchronized with owner profile update. City: $city, State: $state, Country: $country";
                         $historyFields['ctime'] = $carFields['mtime'];
@@ -272,11 +275,11 @@ if (!empty($_POST)) {
                 
                 if ($carsUpdated > 0) {
                     $successes[] = "Location synchronized to $carsUpdated car(s).";
-                    logger($user->data()->id, 'User', "Location sync: Updated $carsUpdated cars with new coordinates");
+                    logger((int)$user->data()->id, 'User', "Location sync: Updated $carsUpdated cars with new coordinates");
                 }
             }
         } else {
-            logger($user->data()->id, 'User', 'Geocoding failed - preserving existing lat/lon coordinates');
+            logger((int)$user->data()->id, 'User', 'Geocoding failed - preserving existing lat/lon coordinates');
         }
 
         //Update Website
@@ -291,14 +294,13 @@ if (!empty($_POST)) {
             if (filter_var($fields['website'], FILTER_VALIDATE_URL)) {
                 $db->update('profiles', $profileId, $fields);
                 $successes[] = 'website updated.';
-                logger($user->data()->id, 'User', "Changed website from $profiledetails->website to $website.");
+                logger((int)$user->data()->id, 'User', "Changed website from $profiledetails->website to $website.");
             } else {
-                echo "$website is not a valid URL";
                 //validation did not pass
-                $errors[] = "$website is not a valid URL";
+                $errors[] = 'The provided website URL is not valid';
             }
         } else {
-            $state = $profiledetails->website;
+            $website = $profiledetails->website;
         }
 
         // END Extend user_setttings.php with some PROFILE information
@@ -327,7 +329,7 @@ if (!empty($_POST)) {
                             if ($emailR->email_act == 0) {
                                 $db->update('users', $userId, $fields);
                                 $successes[] = 'Email updated.';
-                                logger($user->data()->id, 'User', "Changed email from $userdetails->email to $email.");
+                                logger((int)$user->data()->id, 'User', "Changed email from $userdetails->email to $email.");
                             }
                             if ($emailR->email_act == 1) {
                                 $vericode = randomstring(15);
@@ -350,7 +352,7 @@ if (!empty($_POST)) {
                                     $successes[] = 'Email request received. Please check your email to perform verification. Be sure to check your Spam and Junk folder as the verification link expires in $settings->join_vericode_expiry hours.';
                                 }
                                 if ($emailR->email_act == 1) {
-                                    logger($user->data()->id, 'User', "Requested change email from $userdetails->email to $email. Verification email sent.");
+                                    logger((int)$user->data()->id, 'User', "Requested change email from $userdetails->email to $email. Verification email sent.");
                                 }
                             }
                         } else {
@@ -387,7 +389,7 @@ if (!empty($_POST)) {
                         $new_password_hash = password_hash(Input::get('password'), PASSWORD_BCRYPT, ['cost' => 12]);
                         $user->update(['password' => $new_password_hash, 'force_pr' => 0, 'vericode' => randomstring(15),], $user->data()->id);
                         $successes[] = 'Password updated.';
-                        logger($user->data()->id, 'User', 'Updated password.');
+                        logger((int)$user->data()->id, 'User', 'Updated password.');
                         if ($settings->session_manager == 1) {
                             $passwordResetKillSessions = passwordResetKillSessions();
                             if (is_numeric($passwordResetKillSessions)) {
@@ -409,7 +411,7 @@ if (!empty($_POST)) {
                 }
                 if (!empty($_POST['resetPin']) && Input::get('resetPin') == 1) {
                     $user->update(['pin' => null]);
-                    logger($user->data()->id, 'User', 'Reset PIN');
+                    logger((int)$user->data()->id, 'User', 'Reset PIN');
                     $successes[] = 'Reset PIN';
                     $successes[] = 'You can set a new PIN the next time you require verification';
                 }
@@ -458,11 +460,11 @@ if ($userQ2->count() > 0) {
                     <form name='updateAccount' action='user_settings.php' method='post'>
 
                         <div class="form-group">
-                            <label>Username</label>
+                            <label for="username">Username</label>
                             <?php if (($settings->change_un == 0) || (($settings->change_un == 2) && ($userdetails->un_changed == 1))) {
                             ?>
                                 <div class="input-group">
-                                    <input class='form-control' type='text' name='username' value='<?= $userdetails->username ?>' readonly />
+                                    <input class='form-control' type='text' id='username' name='username' value='<?= $userdetails->username ?>' readonly />
                                     <span class="input-group-addon" data-toggle="tooltip" title="<?php if ($settings->change_un == 0) {
                                                                                                     ?>The Administrator has disabled changing usernames.<?php
                                                                                                                                                     }
@@ -473,35 +475,35 @@ if ($userQ2->count() > 0) {
                             <?php
                             } else {
                             ?>
-                                <input class='form-control' type='text' name='username' value='<?= $userdetails->username ?>'>
+                                <input class='form-control' type='text' id='username' name='username' value='<?= $userdetails->username ?>'>
                             <?php
                             } ?>
                         </div>
 
                         <div class="form-group">
-                            <label>First Name</label>
-                            <input class='form-control' type='text' name='fname' value='<?= $userdetails->fname ?>' />
+                            <label for="fname">First Name</label>
+                            <input class='form-control' type='text' id='fname' name='fname' value='<?= $userdetails->fname ?>' />
                         </div>
 
                         <div class="form-group">
-                            <label>Last Name</label>
-                            <input class='form-control' type='text' name='lname' value='<?= $userdetails->lname ?>' />
+                            <label for="lname">Last Name</label>
+                            <input class='form-control' type='text' id='lname' name='lname' value='<?= $userdetails->lname ?>' />
                         </div>
                         <!-- Extend user_setttings.php with some PROFILE information -->
                         <div class="form-group">
-                            <label>City</label>
-                            <input class='form-control' type='text' name='city' value='<?= $profiledetails->city ?>' />
+                            <label for="city">City</label>
+                            <input class='form-control' type='text' id='city' name='city' value='<?= $profiledetails->city ?>' />
                         </div>
                         <div class="form-group">
-                            <label>State</label>
-                            <input class='form-control' type='text' name='state' value='<?= $profiledetails->state ?>' />
+                            <label for="state">State</label>
+                            <input class='form-control' type='text' id='state' name='state' value='<?= $profiledetails->state ?>' />
                         </div>
 
 
                         <div class="form-group">
-                            <label>Country <?= $profiledetails->country ?></label>
+                            <label for="country">Country <?= $profiledetails->country ?></label>
                             <?php
-                            echo "<select name='country'>";
+                            echo "<select id='country' name='country'>";
                             echo '<option selected>' . $profiledetails->country . '</option>';
                             foreach ($countrylist as $c) {
                                 echo "<option value=\"$c->name\">$c->name</option>";
@@ -511,14 +513,14 @@ if ($userQ2->count() > 0) {
                         </div>
 
                         <div class="form-group">
-                            <label>Website</label>
-                            <input class='form-control' type='text' name='website' value='<?= $profiledetails->website ?>' />
+                            <label for="website">Website</label>
+                            <input class='form-control' type='text' id='website' name='website' value='<?= $profiledetails->website ?>' />
                         </div>
                         <!-- END Extend user_setttings.php with some PROFILE information -->
 
                         <div class="form-group">
-                            <label>Email</label>
-                            <input class='form-control' type='text' name='email' value='<?= $userdetails->email ?>' />
+                            <label for="email">Email</label>
+                            <input class='form-control' type='text' id='email' name='email' value='<?= $userdetails->email ?>' />
                             <?php if (!IS_NULL($userdetails->email_new)) {
                             ?><br />
                                 <div class="alert alert-danger">
@@ -530,12 +532,12 @@ if ($userQ2->count() > 0) {
                         </div>
 
                         <div class="form-group">
-                            <label>Confirm Email</label>
-                            <input class='form-control' type='text' name='confemail' />
+                            <label for="confemail">Confirm Email</label>
+                            <input class='form-control' type='text' id='confemail' name='confemail' />
                         </div>
 
                         <div class="form-group">
-                            <label>New Password</label>
+                            <label for="password">New Password</label>
                             <div class="input-group" data-container="body">
                                 <span class="input-group-addon password_view_control" id="addon1"><span class="glyphicon glyphicon-eye-open"></span></span>
                                 <input class="form-control" type="password" autocomplete="off" name="password" id="password">
@@ -544,7 +546,7 @@ if ($userQ2->count() > 0) {
                         </div>
 
                         <div class="form-group">
-                            <label>Confirm Password</label>
+                            <label for="confirm">Confirm Password</label>
                             <div class="input-group" data-container="body">
                                 <span class="input-group-addon password_view_control" id="addon3"><span class="glyphicon glyphicon-eye-open"></span></span>
                                 <input type="password" autocomplete="off" id="confirm" name="confirm" class="form-control">
@@ -562,7 +564,7 @@ if ($userQ2->count() > 0) {
                         } ?>
 
                         <div class="form-group">
-                            <label>Old Password<?php if (!is_null($userdetails->password)) {
+                            <label for="old">Old Password<?php if (!is_null($userdetails->password)) {
                                                 ?>, required for changing password, email, or resetting PIN<?php
                                                                                                         } ?></label>
                             <div class="input-group" data-container="body">

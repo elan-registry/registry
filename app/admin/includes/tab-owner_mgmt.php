@@ -185,6 +185,95 @@ function getOwnerQualityReports($db): array {
     return $reports;
 }
 
+/**
+ * Get detailed information for all owners with a duplicate email
+ *
+ * @param DB $db Database connection
+ * @param string $email The duplicate email address
+ * @return array Array of owner objects with profile and car count data
+ */
+function getDuplicateEmailDetails($db, $email): array {
+    // Get all users with this email, with car counts via LEFT JOIN
+    $ownersQ = $db->query("
+        SELECT
+            u.id, u.fname, u.lname, u.email, u.join_date, u.last_login,
+            p.city, p.state, p.country, p.lat, p.lon,
+            COUNT(DISTINCT cu.car_id) as car_count,
+            GROUP_CONCAT(DISTINCT c.id ORDER BY c.id SEPARATOR ',') as car_ids
+        FROM users u
+        LEFT JOIN profiles p ON u.id = p.user_id
+        LEFT JOIN car_user cu ON u.id = cu.userid
+        LEFT JOIN cars c ON cu.car_id = c.id
+        WHERE u.email = ? AND u.active = 1
+        GROUP BY u.id, u.fname, u.lname, u.email, u.join_date, u.last_login,
+                 p.city, p.state, p.country, p.lat, p.lon
+        ORDER BY u.join_date ASC
+    ", [$email]);
+
+    $owners = $ownersQ->results();
+
+    // Collect all car IDs from all owners for batch fetching
+    $allCarIds = [];
+    foreach ($owners as $owner) {
+        if ($owner->car_ids) {
+            $carIdsArray = explode(',', $owner->car_ids);
+            $allCarIds = array_merge($allCarIds, array_map('intval', $carIdsArray));
+        }
+    }
+
+    // Fetch all cars in one query if there are any
+    $carsById = [];
+    if (!empty($allCarIds)) {
+        $allCarIds = array_unique($allCarIds);
+        $allCarIds = array_filter($allCarIds, function($id) { return $id > 0; });
+
+        if (!empty($allCarIds)) {
+            // Build WHERE clause with prepared statement placeholders
+            $placeholderCount = count($allCarIds);
+            $placeholders = array_fill(0, $placeholderCount, '?');
+            $whereclause = implode(',', $placeholders);
+
+            // phpcs:disable - False positive: Using prepared statements correctly
+            $carsQ = $db->query(
+                "SELECT id, model, series, year, chassis, type
+                 FROM cars
+                 WHERE id IN (" . $whereclause . ")
+                 ORDER BY id ASC",
+                $allCarIds
+            );
+            // phpcs:enable
+
+            foreach ($carsQ->results() as $car) {
+                $carsById[$car->id] = $car;
+            }
+        }
+    }
+
+    // Assign cars to owners and calculate quality scores
+    foreach ($owners as $owner) {
+        $owner->cars = [];
+        if ($owner->car_ids) {
+            $carIdsArray = array_map('intval', explode(',', $owner->car_ids));
+            foreach ($carIdsArray as $carId) {
+                if (isset($carsById[$carId])) {
+                    $owner->cars[] = $carsById[$carId];
+                }
+            }
+        }
+
+        // Calculate profile quality score
+        $qualityScore = 100;
+        if (!$owner->fname || $owner->fname === '') $qualityScore -= 20;
+        if (!$owner->lname || $owner->lname === '') $qualityScore -= 20;
+        if (!$owner->city || $owner->city === '') $qualityScore -= 15;
+        if (!$owner->state || $owner->state === '') $qualityScore -= 10;
+        if (!$owner->lat || !$owner->lon) $qualityScore -= 20;
+        $owner->quality_score = max(0, $qualityScore);
+    }
+
+    return $owners;
+}
+
 // Get owner quality reports for display at bottom of page
 $dataQualityReports = getOwnerQualityReports($db);
 
@@ -264,37 +353,244 @@ $ownerQualityScore = $totalOwners > 0 ? max(0, 100 - (($qualityIssues / $totalOw
                                                 <p class="mb-0">These accounts may be abandoned or owners may have lost access. Consider reaching out via email to re-engage these users or verify if their cars should remain in the registry.</p>
                                             </div>
                                         <?php } elseif ($key === 'duplicate_emails') { ?>
-                                            <!-- Duplicate emails table -->
-                                            <div class="table-responsive">
-                                                <table class="table table-hover">
-                                                    <thead class="thead-light">
-                                                        <tr>
-                                                            <th>Email Address</th>
-                                                            <th>User Count</th>
-                                                            <th>Associated Users</th>
-                                                            <th>Actions</th>
-                                                        </tr>
-                                                    </thead>
-                                                    <tbody>
-                                                        <?php foreach ($report['data'] as $duplicate) { ?>
-                                                            <tr>
-                                                                <td><?= htmlspecialchars($duplicate->email) ?></td>
-                                                                <td>
-                                                                    <span class="badge badge-warning"><?= $duplicate->user_count ?></span>
-                                                                </td>
-                                                                <td>
-                                                                    <small><?= htmlspecialchars($duplicate->users_list) ?></small>
-                                                                </td>
-                                                                <td>
-                                                                    <button class="btn btn-sm btn-outline-primary" onclick="loadOwnerFromEmailList('<?= htmlspecialchars($duplicate->email) ?>')" title="Edit Owners">
-                                                                        <i class="fas fa-edit"></i> Edit
-                                                                    </button>
-                                                                </td>
-                                                            </tr>
-                                                        <?php } ?>
-                                                    </tbody>
-                                                </table>
+                                            <!-- Enhanced Duplicate Emails Interface -->
+                                            <div class="alert alert-info mb-4">
+                                                <h5 class="alert-heading"><i class="fas fa-info-circle"></i> Understanding Duplicate Emails</h5>
+                                                <p class="mb-2">Multiple user accounts sharing the same email address. This may indicate:</p>
+                                                <ul class="mb-0">
+                                                    <li><strong>Duplicate Accounts:</strong> User accidentally created multiple accounts</li>
+                                                    <li><strong>Shared Email:</strong> Multiple family members using one email</li>
+                                                    <li><strong>Account Transfer:</strong> Car was transferred but new account created</li>
+                                                </ul>
+                                                <hr class="mt-3 mb-2">
+                                                <div class="row">
+                                                    <div class="col-md-8">
+                                                        <p class="mb-0 small text-muted">
+                                                            <strong>Recommended Actions:</strong> Review owner details, check car ownership, contact owners to clarify situation, merge accounts if appropriate.
+                                                        </p>
+                                                    </div>
+                                                    <div class="col-md-4 text-right">
+                                                        <small class="text-muted">
+                                                            <span class="badge badge-success badge-sm mr-1"><i class="fas fa-check"></i></span>Matching Fields
+                                                            <span class="badge badge-danger badge-sm ml-2"><i class="fas fa-exclamation-triangle"></i></span>Different Fields
+                                                        </small>
+                                                    </div>
+                                                </div>
                                             </div>
+
+                                            <!-- Duplicate Email Groups Container -->
+                                            <div id="duplicateEmailGroups">
+                                                <?php
+                                                $groupIndex = 0;
+                                                foreach ($report['data'] as $duplicate) {
+                                                    $groupIndex++;
+
+                                                    // Get detailed owner information for this email
+                                                    $owners = getDuplicateEmailDetails($db, $duplicate->email);
+
+                                                    // Create comparison data for highlighting differences
+                                                    $ownerFields = ['fname', 'lname', 'city', 'state', 'country'];
+                                                    $comparison = [];
+                                                    foreach ($owners as $o) {
+                                                        foreach ($ownerFields as $field) {
+                                                            $comparison[$field][] = $o->$field ?? '';
+                                                        }
+                                                    }
+
+                                                    // Determine if fields match or differ
+                                                    $fieldMatches = [];
+                                                    foreach ($ownerFields as $field) {
+                                                        $values = array_unique(array_filter($comparison[$field]));
+                                                        $fieldMatches[$field] = count($values) <= 1;
+                                                    }
+                                                ?>
+                                                    <div class="duplicate-email-group card mb-4 border-warning">
+                                                        <div class="card-header bg-warning bg-opacity-10 d-flex justify-content-between align-items-center">
+                                                            <h5 class="mb-0">
+                                                                <button class="btn btn-link text-decoration-none p-0" type="button"
+                                                                        data-toggle="collapse" data-target="#emailGroup<?= $groupIndex ?>" aria-expanded="true">
+                                                                    <i class="fas fa-chevron-down"></i>
+                                                                    Group <?= $groupIndex ?>: <?= htmlspecialchars($duplicate->email) ?>
+                                                                </button>
+                                                            </h5>
+                                                            <div>
+                                                                <span class="badge badge-warning"><?= count($owners) ?> owners</span>
+                                                                <span class="badge badge-secondary">Total Cars: <?= array_sum(array_column($owners, 'car_count')) ?></span>
+                                                            </div>
+                                                        </div>
+
+                                                        <div class="collapse show" id="emailGroup<?= $groupIndex ?>">
+                                                            <div class="card-body">
+                                                                <!-- Owner Comparison Cards -->
+                                                                <div class="row">
+                                                                    <?php foreach ($owners as $index => $owner) {
+                                                                        $isNewer = $index === count($owners) - 1 && count($owners) > 1;
+                                                                        $cardClass = $isNewer ? 'owner-comparison-card newer-owner' : 'owner-comparison-card';
+                                                                        $qualityClass = $owner->quality_score >= 80 ? 'success' :
+                                                                                       ($owner->quality_score >= 60 ? 'warning' : 'danger');
+                                                                    ?>
+                                                                        <div class="col-lg-6 col-md-6 mb-3 d-flex">
+                                                                            <div class="card <?= $cardClass ?> w-100">
+                                                                                <!-- Card Header with Owner ID and Quality Score -->
+                                                                                <div class="card-header d-flex justify-content-between align-items-center">
+                                                                                    <div>
+                                                                                        <strong>Owner #<?= $owner->id ?></strong>
+                                                                                        <?php if ($isNewer) { ?>
+                                                                                            <span class="badge badge-success badge-sm ml-1">NEWER</span>
+                                                                                        <?php } ?>
+                                                                                    </div>
+                                                                                    <div>
+                                                                                        <span class="badge badge-<?= $qualityClass ?> badge-sm">
+                                                                                            Quality: <?= $owner->quality_score ?>%
+                                                                                        </span>
+                                                                                    </div>
+                                                                                </div>
+
+                                                                                <!-- Prominent Date Section -->
+                                                                                <div class="card-header bg-light border-top-0 pt-2 pb-2">
+                                                                                    <div class="row text-center">
+                                                                                        <div class="col-6">
+                                                                                            <div class="timestamp-info">
+                                                                                                <i class="fas fa-user-plus text-primary"></i>
+                                                                                                <div class="timestamp-label">Joined</div>
+                                                                                                <div class="timestamp-value"><?= date('M j, Y', strtotime($owner->join_date)) ?></div>
+                                                                                                <div class="timestamp-time"><?= date('g:i A', strtotime($owner->join_date)) ?></div>
+                                                                                            </div>
+                                                                                        </div>
+                                                                                        <div class="col-6 border-left">
+                                                                                            <div class="timestamp-info">
+                                                                                                <i class="fas fa-clock text-success"></i>
+                                                                                                <div class="timestamp-label">Last Login</div>
+                                                                                                <?php if ($owner->last_login && $owner->last_login !== '0000-00-00 00:00:00') { ?>
+                                                                                                    <div class="timestamp-value"><?= date('M j, Y', strtotime($owner->last_login)) ?></div>
+                                                                                                    <div class="timestamp-time"><?= date('g:i A', strtotime($owner->last_login)) ?></div>
+                                                                                                <?php } else { ?>
+                                                                                                    <div class="timestamp-value text-danger">Never</div>
+                                                                                                <?php } ?>
+                                                                                            </div>
+                                                                                        </div>
+                                                                                    </div>
+                                                                                </div>
+
+                                                                                <!-- Owner Details -->
+                                                                                <div class="card-body">
+                                                                                    <div class="row">
+                                                                                        <div class="col-sm-6">
+                                                                                            <h6 class="text-primary">Personal Info</h6>
+                                                                                            <p class="mb-1 <?= $fieldMatches['fname'] && $fieldMatches['lname'] ? 'field-match' : 'field-differ' ?>">
+                                                                                                <strong>Name:</strong>
+                                                                                                <span class="field-value">
+                                                                                                    <?= htmlspecialchars($owner->fname ?: 'Missing') ?>
+                                                                                                    <?= htmlspecialchars($owner->lname ?: 'Missing') ?>
+                                                                                                </span>
+                                                                                                <?= !($fieldMatches['fname'] && $fieldMatches['lname']) ?
+                                                                                                    '<i class="fas fa-exclamation-triangle text-warning ml-1" title="Different values"></i>' :
+                                                                                                    '<i class="fas fa-check text-success ml-1" title="Values match"></i>' ?>
+                                                                                            </p>
+                                                                                            <p class="mb-1">
+                                                                                                <strong>Email:</strong> <?= htmlspecialchars($owner->email) ?>
+                                                                                                <i class="fas fa-check text-success ml-1" title="Same email (expected)"></i>
+                                                                                            </p>
+                                                                                            <p class="mb-1 <?= $fieldMatches['city'] && $fieldMatches['state'] && $fieldMatches['country'] ? 'field-match' : 'field-differ' ?>">
+                                                                                                <strong>Location:</strong>
+                                                                                                <span class="field-value">
+                                                                                                    <?php
+                                                                                                    $locationParts = array_filter([$owner->city, $owner->state, $owner->country]);
+                                                                                                    echo htmlspecialchars(implode(', ', $locationParts) ?: 'Missing');
+                                                                                                    ?>
+                                                                                                </span>
+                                                                                                <?= !($fieldMatches['city'] && $fieldMatches['state'] && $fieldMatches['country']) ?
+                                                                                                    '<i class="fas fa-exclamation-triangle text-warning ml-1" title="Different values"></i>' :
+                                                                                                    '<i class="fas fa-check text-success ml-1" title="Values match"></i>' ?>
+                                                                                            </p>
+                                                                                            <p class="mb-1">
+                                                                                                <strong>Coordinates:</strong>
+                                                                                                <?php if ($owner->lat && $owner->lon) { ?>
+                                                                                                    <?= number_format($owner->lat, 4) ?>, <?= number_format($owner->lon, 4) ?>
+                                                                                                    <i class="fas fa-check text-success ml-1"></i>
+                                                                                                <?php } else { ?>
+                                                                                                    <span class="text-danger">Missing</span>
+                                                                                                    <i class="fas fa-times text-danger ml-1"></i>
+                                                                                                <?php } ?>
+                                                                                            </p>
+                                                                                        </div>
+
+                                                                                        <div class="col-sm-6">
+                                                                                            <h6 class="text-success">Car Ownership</h6>
+                                                                                            <?php if ($owner->car_count > 0) { ?>
+                                                                                                <p class="mb-2">
+                                                                                                    <span class="badge badge-success"><?= $owner->car_count ?> <?= $owner->car_count === 1 ? 'car' : 'cars' ?></span>
+                                                                                                </p>
+                                                                                                <div class="car-list-container" style="max-height: 200px; overflow-y: auto;">
+                                                                                                    <table class="table table-sm table-bordered mb-0">
+                                                                                                        <thead class="thead-light">
+                                                                                                            <tr>
+                                                                                                                <th>ID</th>
+                                                                                                                <th>Model</th>
+                                                                                                                <th>Chassis</th>
+                                                                                                            </tr>
+                                                                                                        </thead>
+                                                                                                        <tbody>
+                                                                                                            <?php foreach ($owner->cars as $car) { ?>
+                                                                                                                <tr>
+                                                                                                                    <td>
+                                                                                                                        <a href="<?= $us_url_root ?>app/cars/details.php?car_id=<?= $car->id ?>"
+                                                                                                                           target="_blank" class="badge badge-primary">
+                                                                                                                            <?= $car->id ?>
+                                                                                                                        </a>
+                                                                                                                    </td>
+                                                                                                                    <td>
+                                                                                                                        <small>
+                                                                                                                            <?= htmlspecialchars($car->year ?: '?') ?>
+                                                                                                                            <?= htmlspecialchars($car->type ?: '?') ?>
+                                                                                                                            <?php if ($car->series) { ?>
+                                                                                                                                <span class="badge badge-secondary badge-sm"><?= htmlspecialchars($car->series) ?></span>
+                                                                                                                            <?php } ?>
+                                                                                                                        </small>
+                                                                                                                    </td>
+                                                                                                                    <td><small><?= htmlspecialchars($car->chassis ?: 'Missing') ?></small></td>
+                                                                                                                </tr>
+                                                                                                            <?php } ?>
+                                                                                                        </tbody>
+                                                                                                    </table>
+                                                                                                </div>
+                                                                                            <?php } else { ?>
+                                                                                                <p class="mb-0">
+                                                                                                    <span class="badge badge-secondary">0 cars</span>
+                                                                                                </p>
+                                                                                            <?php } ?>
+                                                                                        </div>
+                                                                                    </div>
+
+                                                                                    <!-- Action Buttons -->
+                                                                                    <div class="mt-3 pt-3 border-top">
+                                                                                        <div class="d-flex justify-content-between">
+                                                                                            <button type="button" class="btn btn-sm btn-outline-primary"
+                                                                                                    onclick="loadOwnerById(<?= $owner->id ?>)"
+                                                                                                    title="Edit Owner Profile">
+                                                                                                <i class="fas fa-edit"></i> Edit Profile
+                                                                                            </button>
+                                                                                            <button type="button" class="btn btn-sm btn-outline-warning"
+                                                                                                    onclick="openAdminContactModal(
+                                                                                                        {id: '<?= $owner->car_count ?>', year: '', model: '', chassis: '', series: ''},
+                                                                                                        {id: '<?= $owner->id ?>', name: '<?= htmlspecialchars(trim(($owner->fname ?: '') . ' ' . ($owner->lname ?: ''))) ?>', email: '<?= htmlspecialchars($owner->email) ?>'},
+                                                                                                        'Duplicate Email Addresses'
+                                                                                                    )"
+                                                                                                    title="Contact Owner via Registry">
+                                                                                                <i class="fas fa-envelope"></i> Contact
+                                                                                            </button>
+                                                                                        </div>
+                                                                                    </div>
+                                                                                </div>
+                                                                            </div>
+                                                                        </div>
+                                                                    <?php } ?>
+                                                                </div> <!-- Close row -->
+                                                            </div> <!-- Close card-body -->
+                                                        </div> <!-- Close collapse -->
+                                                    </div> <!-- Close duplicate-email-group card -->
+                                                <?php } ?>
+                                            </div> <!-- Close duplicateEmailGroups -->
                                         <?php } else { ?>
                                             <!-- Owner report table -->
                                             <div class="table-responsive">
@@ -499,6 +795,11 @@ function displaySearchResults(owners) {
 function loadOwnerById(ownerId) {
     currentOwnerId = ownerId;
     $('#ownerProfilePanel').show();
+
+    // Scroll to the panel smoothly
+    $('html, body').animate({
+        scrollTop: $('#ownerProfilePanel').offset().top - 100
+    }, 500);
 
     // Update URL without reload
     const currentUrl = new URL(window.location);

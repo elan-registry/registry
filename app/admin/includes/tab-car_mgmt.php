@@ -126,6 +126,29 @@ try {
                                             <?= date('M j, Y', strtotime($transfer->expires_at)) ?>
                                         </td>
                                         <td>
+                                            <button type="button" class="btn btn-info btn-sm mb-1 view-transfer-details"
+                                                    data-transfer-id="<?= $transfer->id ?>"
+                                                    data-car-id="<?= $transfer->existing_car_id ?>"
+                                                    data-chassis="<?= htmlspecialchars($transfer->chassis) ?>"
+                                                    data-year="<?= htmlspecialchars($transfer->year) ?>"
+                                                    data-type="<?= htmlspecialchars($transfer->type) ?>"
+                                                    data-color="<?= htmlspecialchars($transfer->color ?? '') ?>"
+                                                    data-series="<?= htmlspecialchars($transfer->series ?? '') ?>"
+                                                    data-current-owner="<?= htmlspecialchars($transfer->current_fname . ' ' . $transfer->current_lname) ?>"
+                                                    data-current-email="<?= htmlspecialchars($transfer->current_email) ?>"
+                                                    data-requester="<?= htmlspecialchars($transfer->requester_fname . ' ' . $transfer->requester_lname) ?>"
+                                                    data-requester-email="<?= htmlspecialchars($transfer->requester_email) ?>"
+                                                    data-request-date="<?= htmlspecialchars($transfer->request_date) ?>"
+                                                    data-expires-at="<?= htmlspecialchars($transfer->expires_at) ?>"
+                                                    data-comments="<?= htmlspecialchars($transfer->submitted_comments ?? '') ?>"
+                                                    data-submitted-chassis="<?= htmlspecialchars($transfer->submitted_chassis ?? '') ?>"
+                                                    data-submitted-year="<?= htmlspecialchars($transfer->submitted_year ?? '') ?>"
+                                                    data-submitted-model="<?= htmlspecialchars($transfer->submitted_model ?? '') ?>"
+                                                    data-submitted-color="<?= htmlspecialchars($transfer->submitted_color ?? '') ?>"
+                                                    data-submitted-engine="<?= htmlspecialchars($transfer->submitted_engine ?? '') ?>">
+                                                <i class="fas fa-info-circle"></i> View Details
+                                            </button>
+                                            <br>
                                             <form method="POST" style="display: inline;">
                                                 <input type="hidden" name="csrf" value="<?= Token::generate(); ?>" />
                                                 <input type="hidden" name="command" value="approve_transfer" />

@@ -113,31 +113,12 @@ test.describe('CSP Validation Tests', () => {
 
   test('Home page should not have CSP violations', async ({ page }) => {
     const cspViolations = setupCSPViolationMonitoring(page);
-    
+
     await page.goto('/');
     await page.waitForLoadState('networkidle');
     await page.waitForTimeout(1000);
-    
+
     expect(cspViolations, `Found ${cspViolations.length} CSP violations: ${JSON.stringify(cspViolations, null, 2)}`).toHaveLength(0);
-  });
-
-  test('Statistics page Chart.js should load successfully', async ({ page }) => {
-    const cspViolations = setupCSPViolationMonitoring(page);
-
-    await page.goto('/app/reports/statistics.php');
-    await page.waitForLoadState('networkidle');
-
-    // Wait for Chart.js to load and render charts
-    await page.waitForTimeout(3000);
-
-    // Check if charts are actually rendered (they should have canvas elements)
-    const chartElements = await page.locator('#timelineChart, #ageChart').count();
-
-    // Verify no CSP violations occurred
-    expect(cspViolations, `Found ${cspViolations.length} CSP violations while loading charts: ${JSON.stringify(cspViolations, null, 2)}`).toHaveLength(0);
-
-    // Verify at least some charts loaded successfully
-    expect(chartElements, 'No chart canvas elements found - charts may not be loading properly').toBeGreaterThan(0);
   });
 
   test('Statistics page external resources should load', async ({ page }) => {

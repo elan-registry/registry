@@ -1,4 +1,5 @@
 <?php
+declare(strict_types=1);
 
 /**
  * edit_car.php
@@ -398,8 +399,33 @@ function updateCarDetails(array &$car): void
             </div>
             <div class="modal-body">
                 <p>Are you sure you want to request ownership transfer for this chassis number?</p>
-                <div class="alert alert-info">
+
+                <div class="alert alert-info mb-3">
                     <small><i class="fas fa-info-circle"></i> The current owner and Registry Administrators will be notified of your request.</small>
+                </div>
+
+                <!-- Transfer Comment Field -->
+                <div class="form-group">
+                    <label for="transfer_comments" class="font-weight-bold">
+                        <i class="fas fa-comment-alt"></i> Explanation for Transfer Request (Optional but Recommended)
+                    </label>
+                    <textarea
+                        class="form-control"
+                        id="transfer_comments"
+                        name="transfer_comments"
+                        rows="4"
+                        maxlength="1000"
+                        placeholder="Please explain why you believe you are the rightful owner. Include details such as:
+- When and from whom you purchased the car
+- Documentation you have (sales receipt, title, registration)
+- Current location of the vehicle
+- Any other relevant ownership information"
+                        style="resize: vertical;"
+                    ></textarea>
+                    <small class="form-text text-muted">
+                        <span id="transfer_comments_counter">0 / 1000 characters</span>
+                        <span class="ml-2"><i class="fas fa-info-circle"></i> Providing details helps expedite the review process.</span>
+                    </small>
                 </div>
             </div>
             <div class="modal-footer">
@@ -1092,6 +1118,15 @@ require_once $abs_us_root . $us_url_root . 'users/includes/html_footer.php'; //c
         // Disable button to prevent double-submission
         $('#request_transfer_btn').prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i> Requesting...');
 
+        // Validate transfer comments length
+        const transferComments = $('#transfer_comments').val();
+        if (transferComments.length > 1000) {
+            $('#transferErrorMessage').text('Transfer explanation must be 1000 characters or less.');
+            $('#transferErrorModal').modal('show');
+            $('#request_transfer_btn').prop('disabled', false).html('<i class="fas fa-exchange-alt"></i> Request Ownership Transfer');
+            return;
+        }
+
         const chassis = $('#chassis').val();
         const year = validYear;
         const model = validModel;
@@ -1106,7 +1141,7 @@ require_once $abs_us_root . $us_url_root . 'users/includes/html_footer.php'; //c
                 'model': model,
                 'color': $('#color').val() || '',
                 'engine': $('#engine').val() || '',
-                'comments': $('#comments').val() || '',
+                'comments': $('#transfer_comments').val() || '',
                 'csrf': csrf
             },
             success: function(response) {
@@ -1129,6 +1164,34 @@ require_once $abs_us_root . $us_url_root . 'users/includes/html_footer.php'; //c
     // Handle success modal OK button
     $('#transferSuccessOkBtn').click(function() {
         window.location.href = '<?= $us_url_root ?>app/cars/';
+    });
+
+    // Character counter for transfer comments
+    $('#transfer_comments').on('input', function() {
+        const currentLength = $(this).val().length;
+        const maxLength = 1000;
+        const remaining = maxLength - currentLength;
+
+        $('#transfer_comments_counter').text(currentLength + ' / ' + maxLength + ' characters');
+
+        // Visual feedback when approaching limit
+        if (remaining <= 100) {
+            $('#transfer_comments_counter').addClass('text-warning');
+        } else {
+            $('#transfer_comments_counter').removeClass('text-warning');
+        }
+
+        if (remaining <= 0) {
+            $('#transfer_comments_counter').addClass('text-danger').removeClass('text-warning');
+        } else {
+            $('#transfer_comments_counter').removeClass('text-danger');
+        }
+    });
+
+    // Reset transfer comment field when modal is closed
+    $('#transferConfirmModal').on('hidden.bs.modal', function() {
+        $('#transfer_comments').val('');
+        $('#transfer_comments_counter').text('0 / 1000 characters').removeClass('text-warning text-danger');
     });
 
     // End Car Validation

@@ -16,7 +16,7 @@ class SerializedDataRemovalTest extends TestCase
     
     protected function setUp(): void
     {
-        $this->projectRoot = dirname(__DIR__);
+        $this->projectRoot = dirname(dirname(dirname(__DIR__)));
     }
     
     /**
@@ -29,7 +29,8 @@ class SerializedDataRemovalTest extends TestCase
         
         foreach ($phpFiles as $file) {
             $content = file_get_contents($file);
-            if (preg_match('/\bserialize\s*\(/', $content)) {
+            // Check for serialize() but exclude jQuery's .serialize() method
+            if (preg_match('/\bserialize\s*\(/', $content) && !preg_match('/\.\s*serialize\s*\(/', $content)) {
                 $violationFiles[] = $file;
             }
         }

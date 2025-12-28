@@ -292,7 +292,7 @@ npm run test:security
 ---
 
 **📖 Related Documentation:**
-- [CLAUDE.md](CLAUDE.md) - Essential development guidance
+- [CLAUDE.md](../../CLAUDE.md) - Essential development guidance
 - [DEPLOYMENT.md](DEPLOYMENT.md) - Production deployment procedures
 - [CODING_STANDARDS.md](CODING_STANDARDS.md) - Comprehensive coding standards
 - [ENVIRONMENT.md](ENVIRONMENT.md) - Environment setup and configuration

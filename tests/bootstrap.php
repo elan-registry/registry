@@ -58,6 +58,9 @@ if (!class_exists('Token')) {
         }
         
         public static function check($token) {
+            if ($token === null || $token === '') {
+                return false;
+            }
             return strpos($token, 'test_csrf_token_') === 0;
         }
     }
@@ -220,30 +223,44 @@ if (!class_exists('Car') && (defined('TESTING_UNIT_ONLY') || !file_exists(dirnam
     }
 }
 
-// Always use mock DB class for testing to avoid database dependencies
+/**
+ * Mock DB class for testing to avoid database dependencies
+ */
 if (!class_exists('DB')) {
     class DB {
             private static $instance = null;
-            
+
+            /**
+             * Get singleton instance
+             *
+             * @return self
+             */
             public static function getInstance(): self {
                 if (self::$instance === null) {
                     self::$instance = new self();
                 }
                 return self::$instance;
             }
-            
+
+            /**
+             * Execute a database query
+             *
+             * @param string $sql SQL query
+             * @param array<mixed> $params Query parameters
+             * @return object Query result
+             */
             public function query(string $sql, array $params = []): object {
                 global $mockUsers, $mockProfiles, $mockCarUser, $mockCars;
-                
+
                 // Handle noowner user lookup
-                if (strpos($sql, 'SELECT id FROM users WHERE username = ?') !== false && 
+                if (strpos($sql, 'SELECT id FROM users WHERE username = ?') !== false &&
                     isset($params[0]) && $params[0] === 'noowner') {
                     $noOwnerUsers = array_filter($mockUsers ?: [], function($user) {
                         return $user->username === 'noowner';
                     });
                     return new MockQueryResult(array_values($noOwnerUsers));
                 }
-                
+
                 // Handle car_user queries
                 if (strpos($sql, 'SELECT carid FROM car_user WHERE userid = ?') !== false) {
                     $userId = $params[0] ?? null;
@@ -252,73 +269,130 @@ if (!class_exists('DB')) {
                     });
                     return new MockQueryResult(array_values($userCars));
                 }
-                
+
                 // Handle profile queries
                 if (strpos($sql, 'SELECT') !== false && strpos($sql, 'profiles') !== false) {
                     return new MockQueryResult($mockProfiles ?: []);
                 }
-                
-                // Default response
-                return new MockQueryResult();
+
+                // Default response - return empty array for unrecognized queries
+                return new MockQueryResult([]);
             }
-            
-            public function insert(string $table, array $fields): bool {
+
+            /**
+             * Insert a record
+             *
+             * @param string $table Table name
+             * @param array<string,mixed> $fields Field values
+             * @return int Mock insert ID
+             */
+            public function insert(string $table, array $fields): int {
                 return rand(1, 1000); // Mock insert ID
             }
-            
+
+            /**
+             * Update a record
+             *
+             * @param string $table Table name
+             * @param int $id Record ID
+             * @param array<string,mixed> $fields Field values
+             * @return bool Success status
+             */
             public function update(string $table, int $id, array $fields): bool {
                 return true;
             }
-            
+
+            /**
+             * Delete records
+             *
+             * @param string $table Table name
+             * @param array<string,mixed> $where Where conditions
+             * @return bool Success status
+             */
             public function delete(string $table, array $where): bool {
                 return true;
             }
-            
+
+            /**
+             * Find record by ID
+             *
+             * @param int $id Record ID
+             * @param string $table Table name
+             * @return object|null Query result
+             */
             public function findById(int $id, string $table): ?object {
                 return new MockQueryResult();
             }
         }
-        
+
+        /**
+         * Mock query result class
+         */
         class MockQueryResult {
+            /** @var array<object>|null */
             private $mockData;
-            
+
+            /**
+             * @param array<object>|null $data Mock data
+             */
             public function __construct($data = null) {
                 $this->mockData = $data;
             }
-            
+
+            /**
+             * Get all results
+             *
+             * @return array<object>
+             */
             public function results(): array {
                 if ($this->mockData !== null) {
                     return $this->mockData;
                 }
-                
+
                 // Use global mock data if available
                 global $mockUsers, $mockProfiles, $mockCarUser, $mockCars;
-                
+
                 // Default to user data if no specific mock is set
                 return [(object) [
                     'id' => 1,
-                    'fname' => 'Test', 
+                    'fname' => 'Test',
                     'lname' => 'User',
                     'email' => 'test@example.com'
                 ]];
             }
-            
+
+            /**
+             * Get first result
+             *
+             * @return object|null
+             */
             public function first(): ?object {
                 $results = $this->results();
                 return count($results) > 0 ? $results[0] : null;
             }
-            
+
+            /**
+             * Get result count
+             *
+             * @return int
+             */
             public function count(): int {
                 return count($this->results());
             }
         }
     }
 
-// Mock user object and authentication system
+/**
+ * Mock user object and authentication system
+ */
 if (!isset($user) || !is_object($user)) {
     class MockUser {
+        /** @var object */
         private $userData;
-        
+
+        /**
+         * Constructor
+         */
         public function __construct() {
             $this->userData = (object) [
                 'id' => 1,
@@ -328,11 +402,21 @@ if (!isset($user) || !is_object($user)) {
                 'lname' => 'User'
             ];
         }
-        
+
+        /**
+         * Get user data
+         *
+         * @return object
+         */
         public function data(): object {
             return $this->userData;
         }
 
+        /**
+         * Check if user is logged in
+         *
+         * @return bool
+         */
         public function isLoggedIn(): bool {
             return true;
         }
@@ -398,14 +482,8 @@ if (!function_exists('getUserWithProfile')) {
         }
 
         if (!$user) {
-            // Default mock user
-            $user = (object) [
-                'id' => $user_id,
-                'fname' => 'Test',
-                'lname' => 'User',
-                'email' => 'test@example.com',
-                'username' => 'testuser'
-            ];
+            // Return null for invalid user IDs (don't create synthetic users)
+            return null;
         }
 
         // Add mock profile data

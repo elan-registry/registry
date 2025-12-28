@@ -52,7 +52,7 @@ architecture:
 2. **Re-enabled backup creation** - Uncommented the backup creation code in
    `EnhancedSchemaManager::performMaintenance()`
 3. **Maintained backward compatibility** - Created compatibility wrapper at
-   `users/helpers/backup_functions.php` for legacy FIX scripts
+   `usersc/includes/backup_functions.php` for legacy FIX scripts
 
 **Impact**: Run Maintenance feature now works correctly, creating backups
 before performing schema operations.
@@ -67,7 +67,7 @@ before performing schema operations.
 
 **Files Created**:
 
-- `users/helpers/backup_functions.php` - Compatibility wrapper for legacy code
+- `usersc/includes/backup_functions.php` - Compatibility wrapper for legacy code
 - `docs/technical/BACKUP_SYSTEM.md` - Comprehensive backup system documentation
 
 ### Issue #364: Backup System Reliability Improved
@@ -328,7 +328,7 @@ redirects to the compatibility wrapper.
 **Migration Path**:
 
 1. **Recommended**: Update code to use BackupManager class directly
-2. **Backward Compatible**: Continue using global functions via `users/helpers/backup_functions.php`
+2. **Backward Compatible**: Continue using global functions via `usersc/includes/backup_functions.php`
 
 **Example Migration**:
 
@@ -506,7 +506,7 @@ None at this time.
 
 **Helper Functions**:
 
-- `users/helpers/backup_functions.php` - Backward compatibility wrapper for
+- `usersc/includes/backup_functions.php` - Backward compatibility wrapper for
   legacy FIX scripts
 
 **Tests**:

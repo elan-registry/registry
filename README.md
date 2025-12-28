@@ -63,9 +63,13 @@ For detailed setup instructions including API key configuration, see the complet
 The project uses a well-organized documentation structure:
 
 - **Development Docs** (`docs/development/`) - Technical documentation for developers
-  - `CLAUDE.md` - AI assistant instructions and development guidelines
+  - See root `CLAUDE.md` for AI assistant instructions and quick reference
+  - `ARCHITECTURE.md` - System architecture and class patterns
+  - `INTEGRATION.md` - UserSpice integration and custom functions
+  - `QUICK_START.md` - Setup and testing commands
+  - `STANDARDS.md` - Project-specific coding standards
   - `ENVIRONMENT.md` - Environment configuration and security setup
-  - `RELEASE_PLAN.md` - Development roadmap and release planning
+  - `FIX_SCRIPTS.md` - Database maintenance script guidelines
 - **User Documentation** (`docs/faq/`) - End-user guides and FAQ
   - Car transfer guides, privacy policy, and user help
 - **Admin Documentation** (`docs/faq/admin/`) - Administrative procedures
@@ -92,7 +96,7 @@ vendor/bin/phpunit tests/
 
 ### Development Workflow
 
-1. Review development guidelines in `docs/development/CLAUDE.md`
+1. Review development guidelines in root `CLAUDE.md`
 2. Create feature branch from main
 3. Implement changes with appropriate tests
 4. Run full test suite before committing

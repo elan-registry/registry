@@ -43,12 +43,19 @@ This directory contains organized documentation for the Lotus Elan Registry proj
 **Audience:** Developers, DevOps, AI assistants
 **Access:** Public (version controlled)
 
-- **[CLAUDE.md](development/CLAUDE.md)** - Instructions for Claude Code AI assistant (project architecture, commands, guidelines)
-- **[ENVIRONMENT.md](development/ENVIRONMENT.md)** - Environment setup, configuration variables, and deployment settings
-- **[RELEASE_PLAN.md](development/RELEASE_PLAN.md)** - Development roadmap and release planning
+- **[CLAUDE.md](../CLAUDE.md)** - Root instructions for Claude Code AI assistant (quick reference and index)
+- **[ARCHITECTURE.md](development/ARCHITECTURE.md)** - System architecture, database, and class patterns
+- **[INTEGRATION.md](development/INTEGRATION.md)** - UserSpice integration and custom functions
+- **[QUICK_START.md](development/QUICK_START.md)** - Development setup and testing commands
+- **[STANDARDS.md](development/STANDARDS.md)** - Project-specific coding standards and conventions
+- **[FIX_SCRIPTS.md](development/FIX_SCRIPTS.md)** - FIX script creation guidelines
 - **[CODING_STANDARDS.md](development/CODING_STANDARDS.md)** - Code quality requirements and standards
 - **[DEVELOPMENT_WORKFLOW.md](development/DEVELOPMENT_WORKFLOW.md)** - Detailed development processes
 - **[DEPLOYMENT.md](development/DEPLOYMENT.md)** - Production deployment procedures
+- **[ENVIRONMENT.md](development/ENVIRONMENT.md)** - Environment setup and configuration variables
+- **[INSTALLATION.md](development/INSTALLATION.md)** - Complete installation procedures
+- **[STATIC_ANALYSIS.md](development/STATIC_ANALYSIS.md)** - Code quality and static analysis tools
+- **[RELEASE_NOTES_TEMPLATE.md](development/RELEASE_NOTES_TEMPLATE.md)** - Template for creating release notes
 
 ### `/technical/` - Technical Documentation
 

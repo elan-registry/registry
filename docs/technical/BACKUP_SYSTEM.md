@@ -294,7 +294,7 @@ compatibility wrapper:
 
 ```php
 // Uses compatibility wrapper
-require_once $abs_us_root . $us_url_root . 'users/helpers/backup_functions.php';
+require_once $abs_us_root . $us_url_root . 'usersc/includes/backup_functions.php';
 
 // These global functions still work
 $backupPath = createStandardizedBackup(
@@ -436,7 +436,7 @@ chmod 755 FIX/backups/rollback/
 **Solution**: Include the compatibility wrapper:
 
 ```php
-require_once $abs_us_root . $us_url_root . 'users/helpers/backup_functions.php';
+require_once $abs_us_root . $us_url_root . 'usersc/includes/backup_functions.php';
 ```
 
 Or use BackupManager directly:
@@ -449,7 +449,7 @@ $backupManager = new BackupManager($db, $backupDir);
 ## Related Files
 
 - **Core Class**: `app/admin/includes/classes/BackupManager.php`
-- **Compatibility Wrapper**: `users/helpers/backup_functions.php`
+- **Compatibility Wrapper**: `usersc/includes/backup_functions.php`
 - **Deprecated**: `FIX/backup-functions.php` (redirects to compatibility wrapper)
 - **Admin Integration**: `app/admin/includes/tab-system.php`
 - **Schema Manager**: `app/admin/includes/classes/EnhancedSchemaManager.php`

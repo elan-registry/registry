@@ -15,22 +15,24 @@ declare(strict_types=1);
 // Ensure BackupManager class is available
 require_once __DIR__ . '/../../app/admin/includes/classes/BackupManager.php';
 
+// Define backup directory constant to avoid duplication
+define('BACKUP_DIR_PATH', 'FIX/backups/');
+
 /**
  * Create standardized backup (compatibility wrapper)
  *
  * @param string $scriptName Script identifier (kebab-case)
  * @param array $tables Tables to backup
  * @param string $type Type of backup: 'automated', 'manual', 'rollback'
- * @param string $environment Environment: 'development', 'test', 'production'
  * @return string Path to created backup file
  * @throws Exception If backup creation fails
  * @deprecated Use BackupManager class directly
  */
-function createStandardizedBackup($scriptName, $tables = [], $type = 'automated', $environment = 'development') {
+function createStandardizedBackup($scriptName, $tables = [], $type = 'automated') {
     global $db, $abs_us_root, $us_url_root;
 
     // Create BackupManager instance
-    $backupDir = $abs_us_root . $us_url_root . 'FIX/backups/';
+    $backupDir = $abs_us_root . $us_url_root . BACKUP_DIR_PATH;
     $backupManager = new BackupManager($db, $backupDir);
 
     // Delegate to BackupManager based on type
@@ -51,7 +53,7 @@ function createStandardizedBackup($scriptName, $tables = [], $type = 'automated'
 function getBackupStatistics() {
     global $db, $abs_us_root, $us_url_root;
 
-    $backupDir = $abs_us_root . $us_url_root . 'FIX/backups/';
+    $backupDir = $abs_us_root . $us_url_root . BACKUP_DIR_PATH;
     $backupManager = new BackupManager($db, $backupDir);
 
     $stats = $backupManager->getEnhancedBackupStatistics();
@@ -67,14 +69,13 @@ function getBackupStatistics() {
 /**
  * Clean up old backup files (compatibility wrapper)
  *
- * @param int|null $retentionDays Override retention days (optional)
  * @return array Summary of cleanup actions
  * @deprecated Use BackupManager::performEnhancedCleanup() instead
  */
-function cleanupOldBackups($retentionDays = null) {
+function cleanupOldBackups() {
     global $db, $abs_us_root, $us_url_root;
 
-    $backupDir = $abs_us_root . $us_url_root . 'FIX/backups/';
+    $backupDir = $abs_us_root . $us_url_root . BACKUP_DIR_PATH;
     $backupManager = new BackupManager($db, $backupDir);
 
     return $backupManager->performEnhancedCleanup();

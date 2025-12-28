@@ -501,27 +501,29 @@ Use structured TODO/FIXME comments:
 
 ```text
 /app/                          # Application pages and logic
-  /cars/                       # Car-related functionality  
+  /cars/                       # Car-related functionality
     /actions/                  # Form processing endpoints
     /views/                    # Display templates (future)
   /contact/                    # Contact and email functionality
   /reports/                    # Statistics and reporting
-  
+
 /usersc/                       # UserSpice customizations
   /classes/                    # PHP classes and business logic
   /templates/                  # UI templates and layouts
   /scripts/                    # UserSpice hooks and customizations
   /plugins/                    # Plugin configurations
-  
+
 /docs/                         # Documentation
   /development/                # Developer documentation
-  /elanregistry/               # Product documentation
+  /faq/                        # User/owner documentation
+  /faq/admin/                  # Admin documentation
   /technical/                  # Technical specifications
-  
+  /releases/                   # Release notes
+
 /tests/                        # Testing infrastructure
   /unit/                       # PHPUnit tests
   /playwright/                 # Browser tests
-  
+
 /FIX/                          # Administrative maintenance scripts
 
 ```text

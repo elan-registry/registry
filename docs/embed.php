@@ -9,9 +9,43 @@
 require_once '../users/init.php';
 require_once $abs_us_root . $us_url_root . 'users/includes/template/prep.php';
 
+// Validate and sanitize document parameter
+$document = '';
+$path_parts = [];
+$error_message = '';
+
 if (!empty($_GET['doc'])) {
-    $document = $_GET['doc'];
-    $path_parts = pathinfo($document);
+    $requested_doc = $_GET['doc'];
+
+    // Security: Prevent directory traversal attacks
+    if (strpos($requested_doc, '..') !== false ||
+        strpos($requested_doc, '/') !== false ||
+        strpos($requested_doc, '\\') !== false ||
+        strpos($requested_doc, 'http') === 0) {
+        logger(0, 'SecurityEvent', 'Invalid document path attempted: ' . $requested_doc);
+        $error_message = 'Invalid document path.';
+    } else {
+        // Sanitize the document name
+        $document = basename($requested_doc);
+
+        // Additional validation: only allow certain file extensions
+        $allowed_extensions = ['pdf', 'PDF'];
+        $path_parts = pathinfo($document);
+
+        if (!isset($path_parts['extension']) || !in_array($path_parts['extension'], $allowed_extensions)) {
+            logger(0, 'SecurityEvent', 'Invalid document type attempted: ' . $requested_doc);
+            $error_message = 'Invalid document type. Only PDF files are allowed.';
+            $document = '';
+        }
+
+        // Check if file actually exists
+        $file_path = $abs_us_root . $us_url_root . 'docs/assets/' . $document;
+        if (!empty($document) && !file_exists($file_path)) {
+            logger(0, 'SecurityEvent', 'Non-existent document requested: ' . $document);
+            $error_message = 'Document not found.';
+            $document = '';
+        }
+    }
 }
 
 ?>
@@ -20,10 +54,28 @@ if (!empty($_GET['doc'])) {
     <div class='container'>
         <div class='card card-default'>
             <div class='card-header'>
-                <h1> <?= $path_parts['filename']  ?></h1><a href="javascript:history.go(-1)">Back ...</a>
+                <h1><?= !empty($path_parts['filename']) ? htmlspecialchars($path_parts['filename'], ENT_QUOTES, 'UTF-8') : 'Document Viewer' ?></h1>
+                <a href="javascript:history.go(-1)">Back ...</a>
             </div>
             <div class='card-body'>
-                <iframe style='width:100%; height:100vw;' src='<?= $us_url_root ?>docs/assets/<?= $document ?>' title='<?= $document ?>' allowfullscreen></iframe>
+                <?php if (!empty($error_message)): ?>
+                    <div class="alert alert-danger" role="alert">
+                        <i class="fa fa-exclamation-triangle"></i>
+                        <?= htmlspecialchars($error_message, ENT_QUOTES, 'UTF-8') ?>
+                    </div>
+                    <p>Please <a href="javascript:history.go(-1)">go back</a> and try again.</p>
+                <?php elseif (!empty($document)): ?>
+                    <iframe style='width:100%; height:100vw;'
+                            src='<?= htmlspecialchars($us_url_root . 'docs/assets/' . $document, ENT_QUOTES, 'UTF-8') ?>'
+                            title='<?= htmlspecialchars($document, ENT_QUOTES, 'UTF-8') ?>'
+                            allowfullscreen></iframe>
+                <?php else: ?>
+                    <div class="alert alert-warning" role="alert">
+                        <i class="fa fa-info-circle"></i>
+                        No document specified.
+                    </div>
+                    <p>Please <a href="javascript:history.go(-1)">go back</a> and select a document.</p>
+                <?php endif; ?>
             </div>
         </div>
     </div> <!-- /.container -->
