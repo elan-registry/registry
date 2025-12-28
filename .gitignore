@@ -75,8 +75,11 @@ install/*
 # Vendor & Dependencies
 ########################################
 vendor
-composer.lock
 usersc/vendor
+usersc/composer.lock
+# Binary executables
+composer.phar
+*.phar
 
 ########################################
 # Node.js & NPM
