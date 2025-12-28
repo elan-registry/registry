@@ -3,14 +3,18 @@
 declare(strict_types=1);
 
 /**
- * Add Subresource Integrity (SRI) to CDN Resources
+ * Add Subresource Integrity (SRI) to CDN Resources & Upgrade DataTables
  *
- * Administrative script to add SRI hashes to external CDN resources for enhanced security.
+ * Administrative script to add SRI hashes to external CDN resources for enhanced security
+ * and upgrade DataTables from v1.10.23 to v1.11.3 to fix CVE-2021-23445.
+ *
  * Issue #413: Security: Add Subresource Integrity (SRI) to external resources
+ * ZAP Scan: Fixes vulnerable jQuery DataTables library (CVE-2021-23445)
  *
- * This script addresses ZAP scan findings by adding integrity and crossorigin attributes
- * to CDN resources that are missing them. SRI protects against CDN compromises by
- * ensuring that loaded resources haven't been tampered with.
+ * This script addresses ZAP scan findings by:
+ * - Adding integrity and crossorigin attributes to CDN resources
+ * - Upgrading DataTables from 1.10.23 to 1.11.3+ to fix security vulnerability
+ * - SRI protects against CDN compromises by ensuring resources haven't been tampered with
  *
  * DEPLOYMENT INSTRUCTIONS:
  * 1. This script updates settings table with new CDN configuration values
@@ -54,16 +58,17 @@ $db = DB::getInstance();
                     <div class="card registry-card">
                         <div class="card-header">
                             <h2 class="mb-0">
-                                <i class="fa fa-shield"></i> Add SRI to CDN Resources
+                                <i class="fa fa-shield"></i> Add SRI to CDN Resources & Upgrade DataTables
                             </h2>
                         </div>
                         <div class="card-body">
-                            <p class="mb-3">This script adds Subresource Integrity (SRI) hashes to external CDN resources to protect against CDN compromise attacks.</p>
+                            <p class="mb-3">This script adds Subresource Integrity (SRI) hashes to external CDN resources and upgrades DataTables from v1.10.23 to v1.11.3 to fix CVE-2021-23445.</p>
 
                             <div class="alert alert-info">
                                 <h5><i class="fa fa-info-circle"></i> What this script does:</h5>
                                 <ul class="mb-0">
                                     <li>Adds SRI integrity hash to jQuery CDN resource</li>
+                                    <li><strong>Upgrades DataTables from 1.10.23 to 1.11.3</strong> (fixes CVE-2021-23445)</li>
                                     <li>Adds SRI integrity hash and crossorigin to DataTables JS CDN resource</li>
                                     <li>Adds SRI integrity hash and crossorigin to DataTables CSS CDN resource</li>
                                     <li>Adds SRI integrity hash and crossorigin to Chart.js CDN resource</li>
@@ -157,38 +162,38 @@ $db = DB::getInstance();
                             $results['warnings']++;
                         }
 
-                        // STEP 2: Update DataTables JS CDN with SRI
+                        // STEP 2: Upgrade DataTables JS CDN to v1.11.3 with SRI (fixes CVE-2021-23445)
                         logProgress('', 'info');
                         logProgress(SECTION_SEPARATOR, 'step');
-                        logProgress('STEP 2: Add SRI to DataTables JS CDN', 'step');
+                        logProgress('STEP 2: Upgrade DataTables JS to v1.11.3 + Add SRI', 'step');
                         logProgress(SECTION_SEPARATOR, 'step');
 
-                        $datatables_js_cdn = '&lt;script type=&quot;text/javascript&quot; src=&quot;https://cdn.datatables.net/v/bs4/dt-1.10.23/fh-3.1.8/r-2.2.7/rg-1.1.2/sc-2.0.3/sb-1.0.1/sp-1.2.2/datatables.min.js&quot; integrity=&quot;sha384-h2Y5AMsTdjjl53ch8SbDdFYFySKrwgPysAAwPRBr2BY90rfChJaFTUhZs7dTOioY&quot; crossorigin=&quot;anonymous&quot;&gt;&lt;/script&gt;';
+                        $datatables_js_cdn = '&lt;script type=&quot;text/javascript&quot; src=&quot;https://cdn.datatables.net/v/bs4/dt-1.11.3/fh-3.1.8/r-2.2.7/rg-1.1.2/sc-2.0.3/sb-1.0.1/sp-1.2.2/datatables.min.js&quot; integrity=&quot;sha384-pUkSpEjhLIksI5FKAX4UkzoIdrf/DNbHJmyvHAnPNnssIJatoJ0VYL3M4OvrZiyo&quot; crossorigin=&quot;anonymous&quot;&gt;&lt;/script&gt;';
 
                         $db->query("UPDATE settings SET elan_datatables_js_cdn = ?", [$datatables_js_cdn]);
 
                         if ($db->count() > 0) {
-                            logProgress('Updated DataTables JS CDN with SRI hash', 'success');
-                            logger($user->data()->id, LOG_CATEGORY_PLACEHOLDER, "Updated DataTables JS CDN with SRI hash");
+                            logProgress('Upgraded DataTables JS to v1.11.3 with SRI hash (CVE-2021-23445 fixed)', 'success');
+                            logger($user->data()->id, LOG_CATEGORY_PLACEHOLDER, "Upgraded DataTables JS to v1.11.3 with SRI hash (CVE-2021-23445 fixed)");
                             $results['processed']++;
                         } else {
                             logProgress('DataTables JS CDN already up to date or no change made', 'warning');
                             $results['warnings']++;
                         }
 
-                        // STEP 3: Update DataTables CSS CDN with SRI
+                        // STEP 3: Upgrade DataTables CSS CDN to v1.11.3 with SRI
                         logProgress('', 'info');
                         logProgress(SECTION_SEPARATOR, 'step');
-                        logProgress('STEP 3: Add SRI to DataTables CSS CDN', 'step');
+                        logProgress('STEP 3: Upgrade DataTables CSS to v1.11.3 + Add SRI', 'step');
                         logProgress(SECTION_SEPARATOR, 'step');
 
-                        $datatables_css_cdn = '&lt;link rel=&quot;stylesheet&quot; type=&quot;text/css&quot; href=&quot;https://cdn.datatables.net/v/bs4/dt-1.10.23/fh-3.1.8/r-2.2.7/rg-1.1.2/sc-2.0.3/sb-1.0.1/sp-1.2.2/datatables.min.css&quot; integrity=&quot;sha384-4UUoayt4apMXIWiqDxLb+loJWI2AJOrZyQb+EnpCpORGK7o01zf0XuedsCLa34Uv&quot; crossorigin=&quot;anonymous&quot; /&gt;';
+                        $datatables_css_cdn = '&lt;link rel=&quot;stylesheet&quot; type=&quot;text/css&quot; href=&quot;https://cdn.datatables.net/v/bs4/dt-1.11.3/fh-3.1.8/r-2.2.7/rg-1.1.2/sc-2.0.3/sb-1.0.1/sp-1.2.2/datatables.min.css&quot; integrity=&quot;sha384-N6xm8BtUgmiJQhSqAMkzSd4wBrDAjrT5UiCCrTlkpbxLFl7SWl8WizprlOsn7MdJ&quot; crossorigin=&quot;anonymous&quot; /&gt;';
 
                         $db->query("UPDATE settings SET elan_datatables_css_cdn = ?", [$datatables_css_cdn]);
 
                         if ($db->count() > 0) {
-                            logProgress('Updated DataTables CSS CDN with SRI hash', 'success');
-                            logger($user->data()->id, LOG_CATEGORY_PLACEHOLDER, "Updated DataTables CSS CDN with SRI hash");
+                            logProgress('Upgraded DataTables CSS to v1.11.3 with SRI hash', 'success');
+                            logger($user->data()->id, LOG_CATEGORY_PLACEHOLDER, "Upgraded DataTables CSS to v1.11.3 with SRI hash");
                             $results['processed']++;
                         } else {
                             logProgress('DataTables CSS CDN already up to date or no change made', 'warning');
