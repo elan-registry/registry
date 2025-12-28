@@ -92,35 +92,15 @@ Production E2E tests use **session persistence** to avoid CAPTCHA challenges on 
 
 ### Prerequisites
 
-1. **1Password CLI** (recommended):
-   ```bash
-   brew install --cask 1password-cli
-   ```
-
-2. **Test Account Credentials** stored in 1Password at:
-   - Path: `op://ElanRegistry/elanregistry - test account/username`
-   - Path: `op://ElanRegistry/elanregistry - test account/password`
+**Test Account Credentials** - You'll need test account credentials set as
+environment variables
 
 ### Setup Process
 
-#### Option 1: Using 1Password (Recommended)
+Set your test credentials as environment variables and run the setup script:
 
 ```bash
-# Run the automated setup script
-./scripts/playwright-auth-1password.sh
-```
-
-This script will:
-1. Retrieve credentials from 1Password
-2. Launch a browser window
-3. Fill in login credentials
-4. Wait for you to solve any CAPTCHA
-5. Save authentication state to `tests/playwright/.auth/user.json`
-
-#### Option 2: Manual Environment Variables
-
-```bash
-# Set credentials manually
+# Set credentials
 export ELAN_USERNAME="your_test_username"
 export ELAN_PASSWORD="your_test_password"
 
@@ -217,15 +197,10 @@ jobs:
       - name: Install Playwright
         run: npx playwright install --with-deps chromium
 
-      - name: Setup 1Password
-        uses: 1password/load-secrets-action@v1
-        with:
-          export-env: true
-        env:
-          ELAN_USERNAME: op://ElanRegistry/elanregistry - test account/username
-          ELAN_PASSWORD: op://ElanRegistry/elanregistry - test account/password
-
       - name: Setup Auth State
+        env:
+          ELAN_USERNAME: ${{ secrets.ELAN_TEST_USERNAME }}
+          ELAN_PASSWORD: ${{ secrets.ELAN_TEST_PASSWORD }}
         run: node scripts/playwright-auth-setup.js
 
       - name: Run E2E Tests
@@ -246,7 +221,12 @@ jobs:
 ### Issue: "Auth file doesn't exist"
 **Solution**: Run authentication setup:
 ```bash
-./scripts/playwright-auth-1password.sh
+# Set your test credentials
+export ELAN_USERNAME="your_test_username"
+export ELAN_PASSWORD="your_test_password"
+
+# Run the setup script
+node scripts/playwright-auth-setup.js
 ```
 
 ### Issue: "Tests fail with login redirect"
@@ -257,15 +237,10 @@ jobs:
 **Cause**: Didn't solve CAPTCHA within 5 minutes
 **Solution**: Re-run setup and solve CAPTCHA promptly
 
-### Issue: "1Password CLI not found"
-**Solution**: Install 1Password CLI:
-```bash
-brew install --cask 1password-cli
-```
-
 ### Issue: "Tests fail on CI/CD"
 **Solution**:
-1. Ensure 1Password secrets are properly configured
+1. Ensure GitHub Secrets are properly configured (ELAN_TEST_USERNAME,
+   ELAN_TEST_PASSWORD)
 2. Verify auth setup runs before tests
 3. Check that Playwright browsers are installed
 
@@ -303,8 +278,7 @@ elan_registry/
 │       ├── functionality.test.js
 │       └── ... (other local tests)
 ├── scripts/
-│   ├── playwright-auth-setup.js
-│   └── playwright-auth-1password.sh
+│   └── playwright-auth-setup.js
 ├── playwright.config.js (local dev)
 ├── playwright.config.prod.js (E2E)
 └── package.json
@@ -333,7 +307,6 @@ elan_registry/
 
 - [Playwright Documentation](https://playwright.dev/)
 - [Testing Strategy](./TESTING.md)
-- [1Password CLI](https://developer.1password.com/docs/cli/)
 
 ---
 

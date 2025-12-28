@@ -9,6 +9,13 @@ ElanRegistry.code-workspace
 .DS_Store
 
 ########################################
+# AI Development Tools (Personal)
+########################################
+.mcp.json
+.aider*
+.cursor/
+
+########################################
 # System & Miscellaneous Files
 ########################################
 .user.ini

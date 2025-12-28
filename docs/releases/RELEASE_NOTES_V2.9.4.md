@@ -337,7 +337,6 @@ git push prod v2.9.3:refs/heads/main
 
 **Configuration:**
 
-- `.mcp.json` - Playwright MCP configuration
 - `.gitignore` - Exclude template mockups
 - Database setup files - Simplified naming
 
