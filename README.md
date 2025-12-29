@@ -77,19 +77,24 @@ complete installation guide in `docs/development/INSTALLATION.md`.
 
 The project uses a well-organized documentation structure:
 
-- **Development Docs** (`docs/development/`) - Technical documentation for developers
+- **Development Docs** (`docs/development/`) - Technical documentation for
+  developers
   - See root `CLAUDE.md` for AI assistant instructions and quick reference
-  - `ARCHITECTURE.md` - System architecture and class patterns
-  - `INTEGRATION.md` - UserSpice integration and custom functions
+  - `QUICK_REFERENCE.md` - Quick lookup for common tasks and commands
   - `QUICK_START.md` - Setup and testing commands
+  - `ARCHITECTURE.md` - System architecture and class patterns
+  - `DATABASE.md` - Complete database schema and table relationships
+  - `INTEGRATION.md` - UserSpice integration and custom functions
   - `PROJECT_CONVENTIONS.md` - Project-specific coding standards
   - `ENVIRONMENT.md` - Environment configuration and security setup
   - `FIX_SCRIPTS.md` - Database maintenance script guidelines
 - **User Documentation** (`docs/faq/`) - End-user guides and FAQ
   - Car transfer guides, privacy policy, and user help
 - **Admin Documentation** (`docs/faq/admin/`) - Administrative procedures
-  - Database schema, troubleshooting guides, and system maintenance
+  - Car transfer admin guides, troubleshooting, and system maintenance
 - **Testing Docs** (`docs/testing/`) - Testing strategy and test execution
+- **Product Requirements** (`docs/PRD.md`) - Feature specifications and
+  roadmap
 
 ### Testing
 
