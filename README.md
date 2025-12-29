@@ -1,22 +1,36 @@
 # The Lotus Elan Registry
 
-An online database for Lotus Elan and Lotus Elan +2 cars, hosted at [elanregistry.org](https://elanregistry.org).
+An online database for Lotus Elan and Lotus Elan +2 cars, hosted at
+[elanregistry.org](https://elanregistry.org).
 
-This registry covers the 1963-1973 Lotus Elan and 1967-1974 Lotus Elan +2, serving to preserve automotive history, trace the evolution of these British sports cars, and facilitate communication between owners worldwide.
+This registry covers the 1963-1973 Lotus Elan and 1967-1974 Lotus Elan +2,
+serving to preserve automotive history, trace the evolution of these British
+sports cars, and facilitate communication between owners worldwide.
 
 ## History
 
-The Lotus Elan Registry began in January 2003 following a discussion on LotusElan.net asking "Does anybody know if there is a Lotus Elan register?" Starting with basic functionality, the registry has evolved into a  platform serving the global Elan community.
+The Lotus Elan Registry began in January 2003 following a discussion on
+LotusElan.net asking "Does anybody know if there is a Lotus Elan register?"
+Starting with basic functionality, the registry has evolved into a platform
+serving the global Elan community.
 
-The registry represents the collaborative effort of many enthusiasts from the Elan mailing list and forums, who contributed testing, feedback, images, and suggestions that shaped the platform into what it is today.
+The registry represents the collaborative effort of many enthusiasts from the
+Elan mailing list and forums, who contributed testing, feedback, images, and
+suggestions that shaped the platform into what it is today.
 
-**Special thanks** to Ross, Tim, Gary, Ed, Terry, Peter, Jeff, Nicholas, Alan, Christian, Michael, Stan, Jason, and everyone else who has contributed to making this registry a place for enthusiasts to celebrate these remarkable British sports cars.
+**Special thanks** to Ross, Tim, Gary, Ed, Terry, Peter, Jeff, Nicholas, Alan,
+Christian, Michael, Stan, Jason, and everyone else who has contributed to
+making this registry a place for enthusiasts to celebrate these remarkable
+British sports cars.
 
 ## Features
 
-- **Car Database**: Detailed records of Elan and +2 vehicles with chassis numbers, specifications, and ownership history
-- **Interactive Maps**: Geographic visualization of car locations worldwide using Google Maps
-- **User Management**: Secure user accounts with profile management and car sharing capabilities
+- **Car Database**: Detailed records of Elan and +2 vehicles with chassis
+  numbers, specifications, and ownership history
+- **Interactive Maps**: Geographic visualization of car locations worldwide
+  using Google Maps
+- **User Management**: Secure user accounts with profile management and car
+  sharing capabilities
 - **Image Gallery**: Photo uploads and management for each vehicle
 - **Statistical Analysis**: Registry statistics with charts and data visualization
 - **Owner Communication**: Secure messaging system between car owners
@@ -54,7 +68,8 @@ The registry represents the collaborative effort of many enthusiasts from the El
 4. Configure environment variables (see `ENVIRONMENT.md`)
 5. Import database schema
 
-For detailed setup instructions including API key configuration, see the complete installation guide in `docs/development/INSTALLATION.md`.
+For detailed setup instructions including API key configuration, see the
+complete installation guide in `docs/development/INSTALLATION.md`.
 
 ## Development
 
@@ -67,14 +82,14 @@ The project uses a well-organized documentation structure:
   - `ARCHITECTURE.md` - System architecture and class patterns
   - `INTEGRATION.md` - UserSpice integration and custom functions
   - `QUICK_START.md` - Setup and testing commands
-  - `STANDARDS.md` - Project-specific coding standards
+  - `PROJECT_CONVENTIONS.md` - Project-specific coding standards
   - `ENVIRONMENT.md` - Environment configuration and security setup
   - `FIX_SCRIPTS.md` - Database maintenance script guidelines
 - **User Documentation** (`docs/faq/`) - End-user guides and FAQ
   - Car transfer guides, privacy policy, and user help
 - **Admin Documentation** (`docs/faq/admin/`) - Administrative procedures
   - Database schema, troubleshooting guides, and system maintenance
-- **Technical Docs** (`docs/technical/`) - Testing and implementation details
+- **Testing Docs** (`docs/testing/`) - Testing strategy and test execution
 
 ### Testing
 
@@ -112,14 +127,13 @@ The registry maintains strict privacy standards and GDPR compliance:
 - **Transparent Policies**: Clear privacy policy available at `/app/privacy.php`
 - **User Rights**: Full data access, correction, and deletion capabilities
 
-
 For complete privacy details, see `docs/faq/PRIVACY.md`.
 
 ## Contributing
 
 We welcome contributions from the Elan community! Before contributing:
 
-1. Read the development guidelines in `docs/development/CLAUDE.md`
+1. Read the development guidelines in `CLAUDE.md`
 2. Check existing GitHub issues for current development priorities
 3. Ensure all tests pass before submitting changes
 4. Follow the established coding standards and security practices
@@ -138,4 +152,5 @@ For registry support or questions:
 
 ---
 
-*Preserving the legacy of Lotus Elan and Elan +2 sports cars for current and future generations.*
+*Preserving the legacy of Lotus Elan and Elan +2 sports cars for current and
+future generations.*

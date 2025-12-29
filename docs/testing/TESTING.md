@@ -31,6 +31,25 @@ End-to-end browser automation tests (not included in core infrastructure):
 - **Purpose**: User workflows, UI validation, cross-browser testing
 - **Status**: Available but requires additional configuration
 
+**Test Suites:**
+- **navigation.test.js** - File reorganization and backward compatibility (301 redirects, breadcrumbs, navigation)
+- **security.test.js** - Security validations (CSRF tokens, session cookies, XSS prevention, input sanitization)
+- **functionality.test.js** - Core features (DataTables, car edit forms, chassis validation, contact forms, AJAX endpoints)
+- **ui-consistency.test.js** - Style consistency (card layouts, responsive design, button/form styling, mobile compatibility)
+- **maps-charts.test.js** - JavaScript integrations (Google Maps, Google Charts, map markers, statistics visualization)
+- **csp-validation.spec.js** - Content Security Policy validation
+- **ajax-endpoints.test.js** - AJAX endpoint testing
+- **login-functionality.test.js** - Login flow validation
+
+**Browser Coverage:**
+- Chromium (Desktop Chrome)
+- Firefox (Desktop Firefox)
+- WebKit (Desktop Safari)
+- Mobile Chrome (Pixel 5)
+- Mobile Safari (iPhone 12)
+
+See [PLAYWRIGHT_E2E.md](PLAYWRIGHT_E2E.md) for detailed two-tier testing strategy (local development vs production).
+
 ## Test Coverage
 
 ### CarUpdateTest.php
@@ -107,6 +126,18 @@ composer test:regression
 ```
 
 ### Browser (Playwright) Tests - REQUIRES SETUP
+
+**Prerequisites:**
+- Local development server running at `http://localhost:9999/elan_registry`
+- Playwright browsers installed
+
+**Installation:**
+```bash
+npm install
+npx playwright install
+```
+
+**Running Tests:**
 ```bash
 # UI tests require additional setup
 npm test  # Shows setup instructions
@@ -114,10 +145,28 @@ npm test  # Shows setup instructions
 # Once configured, Playwright tests are available:
 npm run playwright:install    # Install browsers
 npm run playwright:test       # Run all UI tests
-npm run playwright:security   # Security-focused tests
-npm run playwright:navigation # Navigation tests
-npm run playwright:functionality # Core functionality
+
+# Run specific test suites
+npm run test:security         # Security-focused tests
+npm run test:navigation       # Navigation and redirects
+npm run test:functionality    # Core functionality
+npm run test:ui               # UI consistency tests
+npm run test:maps             # Maps and charts
+
+# Debug mode
+npm run test:debug            # Opens browser with debugging tools
+npm run test:headed           # Run tests in headed mode (visible browser)
+
+# View test reports
+npm run test:report           # Opens HTML test report
 ```
+
+**Configuration:**
+- **Base URL**: `http://localhost:9999/elan_registry`
+- **Timeout**: 30 seconds per test
+- **Retries**: 2 on CI, 0 locally
+- **Screenshots**: Captured on failure
+- **Videos**: Recorded on failure
 
 ### Legacy Commands (Still Supported)
 ```bash

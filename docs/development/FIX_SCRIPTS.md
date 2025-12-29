@@ -1,18 +1,24 @@
 # FIX Script Creation Guidelines
 
-This document provides comprehensive guidelines for creating database maintenance scripts (FIX scripts) for the Lotus Elan Registry.
+This document provides comprehensive guidelines for creating database
+maintenance scripts (FIX scripts) for the Lotus Elan Registry.
 
 ## Overview
 
-FIX scripts are standardized database maintenance and data correction scripts that follow a consistent pattern for UI, error handling, and logging.
+FIX scripts are standardized database maintenance and data correction scripts
+that follow a consistent pattern for UI, error handling, and logging.
 
 ## When creating FIX scripts, ALWAYS use the standardized template
 
 1. **Use Template**: Start with `FIX/_TEMPLATE_Fix-Script.php`
-2. **Sequential Naming**: Use format `##-Descriptive-Name.php` (e.g., `13-Fix-Something.php`)
-3. **UI Standards**: Maintain two-step process (description → start button → progress tracking)
-4. **Progress Tracking**: Use `outputMessage()` for progress updates and step indicators
-5. **Logging**: Use simple `INSERT INTO fix_script_runs (script_name) VALUES (?)` format
+2. **Sequential Naming**: Use format `##-Descriptive-Name.php` (e.g.,
+   `13-Fix-Something.php`)
+3. **UI Standards**: Maintain two-step process (description → start button →
+   progress tracking)
+4. **Progress Tracking**: Use `outputMessage()` for progress updates and step
+   indicators
+5. **Logging**: Use simple `INSERT INTO fix_script_runs (script_name) VALUES
+   (?)` format
 6. **Database**: Always use proper transactions and error handling
 
 ## Template Features
@@ -107,5 +113,5 @@ if (Input::exists()) {
 
 - `/FIX/_TEMPLATE_Fix-Script.php` - The standardized template
 - `/FIX/README.md` - FIX scripts directory documentation
-- [STANDARDS.md](STANDARDS.md) - General coding standards
+- [PROJECT_CONVENTIONS.md](PROJECT_CONVENTIONS.md) - Project-specific coding standards
 - [CODING_STANDARDS.md](CODING_STANDARDS.md) - Comprehensive coding standards

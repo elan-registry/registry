@@ -120,7 +120,7 @@ if (!$user->isLoggedIn() || !hasPerm([2], $user->data()->id)) {
                         <p class='card-text'>Complete database documentation including table relationships, indexes, and data integrity constraints.</p>
                         <p class='small text-muted'>Schema diagrams • Relationship mapping</p>
                         <div class='mt-auto'>
-                            <a href='../../view.php?doc=DATABASE.md' class='btn btn-info btn-sm'><i class='fas fa-table'></i> View Schema</a>
+                            <a href='../../view.php?doc=development/DATABASE.md' class='btn btn-info btn-sm'><i class='fas fa-table'></i> View Schema</a>
                         </div>
                     </div>
                 </div>

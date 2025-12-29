@@ -278,7 +278,7 @@ parameters:
 ## References
 
 - **Coding Standards:** `/docs/development/CODING_STANDARDS.md`
-- **Strict Type Strategy:** `/docs/technical/STRICT_TYPE_HANDLING.md`
+- **Strict Type Strategy:** `/docs/development/STRICT_TYPE_HANDLING.md`
 - **PHPStan Documentation:** <https://phpstan.org/>
 - **PHP Type System:**
   <https://www.php.net/manual/en/language.types.declarations.php>

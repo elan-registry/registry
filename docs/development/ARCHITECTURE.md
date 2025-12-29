@@ -1,6 +1,9 @@
+<!-- markdownlint-disable MD013 -->
+
 # Architecture Guide
 
-This document provides comprehensive architecture information for the Lotus Elan Registry application.
+This document provides comprehensive architecture information for the Lotus
+Elan Registry application.
 
 ## Architecture Overview
 
@@ -12,7 +15,7 @@ This is a PHP web application for the Lotus Elan Registry hosted at <https://ela
 - `/users/` - UserSpice authentication system
 - `/usersc/` - UserSpice customizations (templates, plugins, overrides)
 - `/userimages/` - User-uploaded car images organized by car ID
-- `/docs/` - Documentation organized by category (faq/, faq/admin/, development/, technical/)
+- `/docs/` - Documentation organized by category (faq/, faq/admin/, development/, testing/)
 - `/usersc/classes/` - Custom application classes and utilities
 - `/tests/` - PHPUnit and Playwright test files
 
@@ -35,11 +38,103 @@ This is a PHP web application for the Lotus Elan Registry hosted at <https://ela
 
 ## Database Architecture
 
-- MySQL database with comprehensive car registry schema
-- `cars` table for vehicle records with full audit trail via `cars_hist`
-- `car_user` junction table for car sharing between users
-- **DEPRECATED VIEWS**: `usersview`, `users_carsview` remain due to privilege limitations but are unused (contains deprecated username references)
-- Database triggers automatically maintain audit trails
+> **For complete database schema documentation, see
+> [DATABASE.md](DATABASE.md)**
+
+### Core Database Components
+
+**User Management:**
+
+- `users` - UserSpice user accounts with authentication
+- `profiles` - Extended user information (location, bio, website)
+- One-to-one relationship between users and profiles
+
+**Car Registry:**
+
+- `cars` - Vehicle records with denormalized owner data for performance
+- `cars_hist` - Complete audit trail for all car changes (INSERT/UPDATE/DELETE)
+- `car_user` - Many-to-many junction table linking users to cars
+- `car_user_hist` - Audit trail for relationship changes
+- `car_transfer_requests` - Self-service ownership transfer workflow
+
+**Reference Data:**
+
+- `elan_factory_info` - Lotus Elan factory specifications and production data
+- `country` - Country reference data for location fields
+
+**System Tables:**
+
+- `audit` - UserSpice audit logging for user actions
+- `fix_script_runs` - Database maintenance script execution tracking
+
+### Database Features
+
+**Triggers** (automatic audit logging):
+
+> **For complete trigger documentation and implementation details, see
+> [DATABASE.md](DATABASE.md#database-triggers)**
+
+- `cars` table has 3 audit triggers (INSERT/UPDATE/DELETE)
+- Triggers can be bypassed with `@disable_triggers` variable
+- `car_user` changes logged via application code, not triggers
+
+**Data Synchronization:**
+
+- Owner data in `cars` table (email, fname, lname, city, state, country, lat,
+  lon, website) is automatically synchronized from user profiles
+- Location changes in user profiles trigger updates to all owned cars
+- Geocoding integration automatically populates coordinates from address data
+
+**Special Accounts:**
+
+> **For complete account details and GDPR cleanup processes, see
+> [DATABASE.md](DATABASE.md#special-system-accounts)**
+
+- `noowner` - Fallback owner for orphaned cars (GDPR compliance)
+- `admin` - Primary administrative account
+
+## Ownership Transfer System
+
+The application implements a self-service ownership transfer workflow that
+allows current owners to approve or deny transfer requests from new owners.
+
+### Transfer Workflow
+
+1. **Request Initiation**: New owner submits transfer request with car details
+   - System generates unique security token
+   - Request stored in `car_transfer_requests` table with status "pending"
+   - Token expires after configured time period
+
+2. **Current Owner Notification**: Current owner receives notification
+   - Can approve or deny the transfer request
+   - Response tracked with timestamp
+
+3. **Admin Review** (optional): Administrators can review pending requests
+   - View all transfer requests in admin consolidated interface
+   - Add administrative notes
+   - Manually approve, deny, or mark as completed
+
+4. **Transfer Completion**: On approval
+   - Car ownership transferred to new owner via `car_user` table
+   - Car data updated with submitted information
+   - Request status updated to "completed"
+   - All changes logged to audit trails
+
+### Transfer Request Data
+
+The `car_transfer_requests` table stores:
+
+- **Metadata**: Request ID, status, dates, security token
+- **User References**: Requesting user, current owner (via car ID)
+- **Submitted Data**: Complete snapshot of car data fields (15 fields)
+- **Administrative**: Notes, denial reasons, timestamps
+
+### Security Features
+
+- Unique security tokens prevent unauthorized access
+- Token expiration prevents stale requests
+- Admin oversight and manual intervention capability
+- Complete audit trail of all transfer actions
 
 ## Class Architecture & Integration Patterns
 
@@ -119,7 +214,7 @@ $cleanup = $backupManager->performEnhancedCleanup();
 - ✅ PREFERRED: Use BackupManager class directly (OOP approach)
 - ⚠️ LEGACY: Use compatibility wrapper functions (for old FIX scripts only)
 
-**See Also**: `/docs/technical/BACKUP_SYSTEM.md` for comprehensive documentation
+**See Also**: `/docs/development/BACKUP_SYSTEM.md` for comprehensive documentation
 
 ## Documentation System
 
@@ -137,8 +232,8 @@ $cleanup = $backupManager->performEnhancedCleanup();
 **Key Documentation Files**:
 
 - User guides: `/docs/faq/CAR_TRANSFER_USER_GUIDE.md`, `/docs/faq/CAR_TRANSFER_FAQ.md`
-- Admin guides: `/docs/faq/admin/CAR_TRANSFER_ADMIN_GUIDE.md`, `/docs/faq/admin/DATABASE.md`
-- Development docs: See root `/CLAUDE.md` for complete index
+- Admin guides: `/docs/faq/admin/CAR_TRANSFER_ADMIN_GUIDE.md`
+- Development docs: See `/CLAUDE.md` for complete index
 
 ## Key Application Files
 

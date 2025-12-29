@@ -1,213 +1,754 @@
 # CLAUDE.md
 
-This file provides essential guidance to Claude Code (claude.ai/code) when working with code in this repository.
-
-## Quick Summary
-
-This is a PHP web application for the Lotus Elan Registry (<https://elanregistry.org>) built on UserSpice with custom car registry functionality.
-
-**Key Commands:**
-
-```bash
-# Development Setup
-composer install                    # Install PHP dependencies
-npm install                         # Install Node dependencies
-./scripts/setup-git-hooks.sh        # Setup pre-commit checks (RECOMMENDED)
-
-# Testing
-composer test:quick                 # Fast unit tests (<30s)
-vendor/bin/phpunit tests/           # All PHP tests
-npm test                            # All UI tests (requires setup)
-
-# Deployment
-git push test main                  # Deploy to test environment
-git push prod main                  # Deploy to production
-```
+This file provides essential guidance to Claude Code (claude.ai/code) when
+working with code in this repository.
 
 ## 📋 Required Reading for All Sessions
 
 **CRITICAL:** Read these files at the start of every Claude Code session:
 
-### Essential Development Documentation
+- `CLAUDE.md` (this file) - Essential development guidance
+- `docs/development/CODING_STANDARDS.md` - Code quality requirements
+- `docs/development/DEVELOPMENT_WORKFLOW.md` - Detailed development processes
+- `docs/development/DEPLOYMENT.md` - Production deployment procedures
+- `docs/development/ENVIRONMENT.md` - Environment setup and configuration
 
-1. **[ARCHITECTURE.md](docs/development/ARCHITECTURE.md)** - System architecture, database, class patterns
-2. **[INTEGRATION.md](docs/development/INTEGRATION.md)** - UserSpice integration and custom functions
-3. **[QUICK_START.md](docs/development/QUICK_START.md)** - Setup, testing, and essential commands
-4. **[STANDARDS.md](docs/development/STANDARDS.md)** - Project-specific coding standards
-5. **[CODING_STANDARDS.md](docs/development/CODING_STANDARDS.md)** - Comprehensive code quality requirements
-6. **[DEVELOPMENT_WORKFLOW.md](docs/development/DEVELOPMENT_WORKFLOW.md)** - Detailed development processes
-7. **[DEPLOYMENT.md](docs/development/DEPLOYMENT.md)** - Production deployment procedures
-8. **[ENVIRONMENT.md](docs/development/ENVIRONMENT.md)** - Environment setup and configuration
+## 📖 Recommended Reading Path
 
-### Specialized Topics
+To avoid information overload, follow this structured learning path:
 
-- **[FIX_SCRIPTS.md](docs/development/FIX_SCRIPTS.md)** - Database maintenance script guidelines
-- **[TESTING.md](docs/technical/TESTING.md)** - Testing strategy and test execution
-- **[BACKUP_SYSTEM.md](docs/technical/BACKUP_SYSTEM.md)** - BackupManager class documentation
+**Day 1 - Essential Context (45 minutes):**
 
-## 🏗️ Quick Architecture Reference
+1. `CLAUDE.md` (this file) - Overview and quick reference (~15 min)
+2. `docs/development/QUICK_REFERENCE.md` - Common tasks lookup (~10 min)
+3. `docs/development/QUICK_START.md` - Setup and testing commands (~20 min)
 
-### Core Structure
+**Week 1 - Core Understanding (90 minutes):**
+
+1. `docs/development/ARCHITECTURE.md` - System architecture and patterns
+   (~30 min)
+2. `docs/development/DATABASE.md` - Database schema and relationships (~30
+   min)
+3. `docs/development/PROJECT_CONVENTIONS.md` - Project coding standards (~15
+   min)
+4. `docs/development/INTEGRATION.md` - UserSpice integration (~15 min)
+
+**As Needed - Specialized Topics:**
+
+- `docs/development/DEPLOYMENT.md` - When preparing releases
+- `docs/development/FIX_SCRIPTS.md` - When creating database maintenance
+  scripts
+- `docs/development/BACKUP_SYSTEM.md` - When using BackupManager class
+- `docs/testing/TESTING.md` - When writing or running tests
+- `docs/development/STRICT_TYPE_HANDLING.md` - When working with strict types
+
+**See [docs/README.md](docs/README.md) for complete documentation index**
+
+## 🏗️ Architecture Overview
+
+This is a PHP web application for the Lotus Elan Registry hosted at
+<https://elanregistry.org>. It's built on top of UserSpice (userspice.com)
+for user authentication and management, with custom car registry
+functionality.
+
+### 🔧 FIX Script Creation Guidelines
+
+**When creating FIX scripts, ALWAYS use the standardized template:**
+
+1. **Use Template**: Start with `FIX/_TEMPLATE_Fix-Script.php`
+2. **Sequential Naming**: Use format `##-Descriptive-Name.php` (e.g.,
+   `13-Fix-Something.php`)
+3. **UI Standards**: Maintain two-step process (description → start button →
+   progress tracking)
+4. **Progress Tracking**: Use `outputMessage()` for progress updates and step
+   indicators
+5. **Logging**: Use simple `INSERT INTO fix_script_runs (script_name) VALUES
+   (?)` format
+6. **Database**: Always use proper transactions and error handling
+
+**Template Features:**
+
+- Professional UI with progress bars and status updates
+- Standardized completion summaries with statistics
+- Proper error handling and rollback capabilities
+- Consistent return navigation and logging
+
+### Core Application Structure
+
+> **For complete application architecture, see
+> [ARCHITECTURE.md](docs/development/ARCHITECTURE.md)**
+
+**Quick Reference**:
 
 - `/app/` - Main application pages (car listings, details, forms, actions)
 - `/users/` - UserSpice authentication system
 - `/usersc/` - UserSpice customizations (templates, plugins, overrides)
-- `/usersc/classes/` - Custom application classes and utilities
-- `/docs/` - Documentation (faq/, faq/admin/, development/, technical/)
+- `/usersc/classes/` - Custom application classes
 - `/tests/` - PHPUnit and Playwright test files
 
-### Key Technologies
+### UserSpice Integration
 
-- **Backend**: PHP 8.1+ with UserSpice framework
-- **Database**: MySQL 8.0+ with comprehensive audit trails
-- **Frontend**: Bootstrap 4/5 with responsive design
-- **APIs**: Google Maps JavaScript API, Google Geocoding API
-- **Testing**: PHPUnit 12, Playwright
+> **For detailed UserSpice integration patterns, see
+> [INTEGRATION.md](docs/development/INTEGRATION.md)**
+
+**Critical Requirements**:
+
+- **New PHP Directories**: Update `$path` array in `/z_us_root.php` for new
+  directories containing PHP files
+- **Page Registration**: Pages using `securePage()` must be registered in
+  UserSpice admin panel with appropriate permissions
+
+### Database Architecture
+
+> **For complete database schema, see [DATABASE.md](docs/development/DATABASE.md)**
+> **For architecture patterns, see [ARCHITECTURE.md](docs/development/ARCHITECTURE.md)**
+
+**Quick Reference**:
+
+- MySQL 8.0+ with comprehensive audit trails
+- `cars`/`cars_hist` - Vehicle records with full audit trail
+- `car_user`/`car_user_hist` - Many-to-many user-car relationships with audit
+- `car_transfer_requests` - Self-service ownership transfer workflow
+- Database triggers automatically maintain audit trails (cars table only)
+
+### Class Architecture & Integration Patterns
+
+**Domain Classes follow established patterns from the Car class:**
+
+- **Location**: All custom classes in `/usersc/classes/`
+- **Naming**: PascalCase with descriptive business domain names (e.g.,
+  `ElanRegistryOwner`, `Car`, `CarView`)
+- **Database Integration**: Use `DB::getInstance()` singleton pattern
+- **Exception Handling**: Custom exceptions in `/usersc/exceptions/` with
+  descriptive names
+- **Audit Logging**: All operations use `logger($userId, 'Category',
+  'Message')` pattern
+
+**Key Integration Functions:**
+
+- **`getUserWithProfile($userId)`**: Primary function for combined
+  user+profile data access
+  - Located in `/usersc/includes/custom_functions.php`
+  - Returns user object with profile fields (city, state, country, lat, lon,
+    website)
+  - Handles missing profile data with safe defaults
+  - Use this for all owner data access rather than separate queries
+
+**Data Access Patterns:**
+
+```php
+// ✅ PREFERRED: Use existing custom function
+$ownerData = getUserWithProfile($userId);
+
+// ✅ ACCEPTABLE: Direct query when custom function insufficient
+$userQ = $db->query(
+    "SELECT u.*, p.* FROM users u LEFT JOIN profiles p
+     ON u.id = p.user_id WHERE u.id = ?",
+    [$userId]
+);
+```
+
+**Geocoding Integration:**
+
+- **Location**: `/app/views/_geolocate.php`
+- **Usage**: Include file, sets `$fields['lat']` and `$fields['lon']` based
+  on city/state/country
+- **Required Variables**: `$city`, `$state`, `$country` must be set before
+  inclusion
+- **Integration**: Used in user_settings.php and should be used in
+  ElanRegistryOwner class
+
+**BackupManager Integration (v2.9.2+):**
+
+- **Location**: `/app/admin/includes/classes/BackupManager.php`
+- **Purpose**: OOP-based database backup management system
+- **Usage**: Create backups before schema operations, manual backups, cleanup
+  old backups
+
+**Key Methods:**
+
+```php
+// Create backup before schema operations
+$backupManager = new BackupManager($db, $backupDir, $userId);
+$backupPath = $backupManager->createSchemaBackup(
+    'Operation Name',
+    ['users', 'cars']
+);
+
+// Create manual backup
+$backupPath = $backupManager->createManualBackup(
+    'Reason',
+    ['users'],
+    ['key' => 'value']
+);
+
+// Get statistics and perform cleanup
+$stats = $backupManager->getEnhancedBackupStatistics();
+$cleanup = $backupManager->performEnhancedCleanup();
+```
+
+**Backward Compatibility:**
+
+- Legacy FIX scripts can still use global functions via `/users/helpers/backup_functions.php`
+- Compatibility wrapper delegates to BackupManager internally
+- Deprecated: `/FIX/backup-functions.php` (redirects to compatibility wrapper)
+
+**For New Code:**
+
+- ✅ PREFERRED: Use BackupManager class directly (OOP approach)
+- ⚠️ LEGACY: Use compatibility wrapper functions (for old FIX scripts only)
+
+**See Also**: `/docs/development/BACKUP_SYSTEM.md` for comprehensive
+documentation
+
+### Documentation System
+
+**Unified Documentation Viewer**: `/docs/view.php`
+
+- **Purpose**: Displays markdown documents with proper formatting and access
+  control
+- **Features**: Security validation, XSS protection, responsive design,
+  breadcrumb navigation
+- **Access Control**: Public documents in `/docs/faq/`, admin documents in
+  `/docs/faq/admin/`
+
+**Documentation Utilities**:
+
+- **MarkdownParser** (`/usersc/classes/MarkdownParser.php`) - Converts
+  markdown to HTML with security features
+- **DocumentConfig** (`/usersc/classes/DocumentConfig.php`) - Manages
+  document metadata and access control
+
+**Key Documentation Files**:
+
+- User guides: `/docs/faq/CAR_TRANSFER_USER_GUIDE.md`,
+  `/docs/faq/CAR_TRANSFER_FAQ.md`
+- Admin guides: `/docs/faq/admin/CAR_TRANSFER_ADMIN_GUIDE.md`
+- Development docs: `/CLAUDE.md`,
+  `/docs/development/DATABASE.md`, `/docs/development/ENVIRONMENT.md`
+- Strategic docs: `/docs/PRD.md`
+
+### Key Application Files
+
+- `app/cars/index.php` - Searchable car listing with DataTables
+- `app/cars/details.php` - Individual car detail pages
+- `app/cars/edit.php` - Car editing forms
+- `app/reports/statistics.php` - Registry analytics & statistics with
+  Chart.js (tabbed interface)
+- `app/contact/send-owner-email.php` - Owner contact functionality
+
+## ⚙️ Development Setup
+
+### System Requirements
+
+- PHP 8.1+ required (8.2+ recommended for full PHPUnit 12 compatibility)
+- MySQL 8.0+
+- Uses `johnathanmiller/secure-env-php` for encrypted environment variable handling
+
+### Quick Start Commands
+
+```bash
+# Install PHP dependencies
+composer install
+
+# Install Node dependencies (for testing)
+npm install
+
+# Setup enhanced pre-commit quality checks (RECOMMENDED)
+./scripts/setup-git-hooks.sh
+
+# PHP test commands (core infrastructure)
+composer test:quick        # Unit tests only (<30s)
+composer test:medium       # Unit + Integration (<2min)
+composer test:full         # All PHP tests
+composer test:coverage     # Generate coverage report
+
+# UI testing (requires setup)
+npm test                   # Shows setup requirements
+npm run playwright:install # Install Playwright browsers
+npm run playwright:test    # Run UI tests (after setup)
+```
+
+### Testing
+
+```bash
+# PHP test suites (working)
+composer test:unit         # Fast unit tests
+composer test:integration  # Database integration tests
+composer test:regression   # Issue-specific regression tests
+
+# UI test suites (requires setup)
+npm run playwright:security       # Security-focused tests
+npm run playwright:ui             # UI consistency tests
+npm run playwright:navigation     # Navigation and redirects
+npm run playwright:functionality  # Core functionality
+npm run playwright:maps           # Maps and charts
+npm run playwright:csp            # CSP validation tests
+```
 
 ## 🔧 Essential Development Guidelines
+
+### Pre-commit Quality Checks (HIGHLY RECOMMENDED)
+
+**Setup once per developer:**
+
+```bash
+./scripts/setup-git-hooks.sh
+```
+
+**What it does:**
+
+- **Step 1**: PHP coding standards validation (security, types,
+  documentation)
+- **Step 2**: Markdown linting for documentation files
+- **Step 3**: Fast unit tests when critical files are modified
+- **Blocks commits** with violations and provides fix guidance
+- **No installation required** - uses existing tools and npx
+
+**Benefits:**
+
+- Prevents PR failures by catching issues locally
+- Maintains consistent code quality across the team
+- Provides immediate feedback with actionable fix suggestions
+
+**Bypass (emergency only):** `git commit --no-verify`
+
+### PHP 8+ Requirements
+
+- **PHP 8+ Type Declarations**: All functions must have complete parameter and
+  return type hints
+- **Strict Typing**: New files must include `declare(strict_types=1)`
+- **Custom Exceptions**: Use typed exception classes for proper error handling
+- **Security First**: Follow secure coding practices outlined in coding
+  standards
+- **Documentation**: Complete PHPDoc blocks required for all public methods
 
 ### Security Requirements
 
 - All forms must use CSRF tokens
 - Use prepared statements for SQL queries
-- Never commit credentials, API keys, or sensitive data
+- Input validation and sanitization required for all user inputs
+- Password hashing uses bcrypt
+- Secure session handling implemented
+- **CRITICAL**: Never commit credentials, API keys, or sensitive data to git
 - Use environment variables for all sensitive configuration
 
-### Code Quality Requirements
+### Owner Data Management Patterns
 
-**ALWAYS before completing any task:**
+**Use these patterns when working with owner/user data operations:**
 
-1. Run `mcp__ide__getDiagnostics` to check for linting/type errors
-2. Fix any diagnostics before considering task complete
-3. Run appropriate test suites for modified functionality
+#### Geocoding System
+
+**Automatic Location Geocoding:**
+
+- Location updates automatically trigger Google Maps API geocoding
+- Coordinates are automatically populated when city/state/country is provided
+- Admin interface provides visual feedback for geocoding success/failure
+- Failed geocoding preserves existing coordinates and shows clear error messages
+
+```php
+// ✅ Location updates with automatic geocoding
+$owner = new ElanRegistryOwner($userId);
+$owner->update([
+    'id' => $userId,
+    'city' => 'Portland',
+    'state' => 'Oregon',
+    'country' => 'United States',
+    'csrf' => Token::generate()
+]);
+// Coordinates automatically populated via Google Maps API
+```
+
+**Geocoding Configuration:**
+
+- API key stored in settings table as `elan_google_geo_key`
+- Geocoding script: `app/views/_geolocate.php`
+- Coordinates rounded to 4 decimal places (~11 meter accuracy)
+- Failed requests are logged for troubleshooting
+
+#### Admin Interface Structure
+
+**Consolidated Management Interface:**
+
+- **Location**: `app/admin/manage-consolidated.php`
+- **Purpose**: Unified admin interface for all registry management tasks
+- **Tabs Available**:
+  - **Car/Owner Relationships**: Transfer requests and ownership management
+  - **Manage Cars**: Car data quality issues and duplicate detection
+  - **Owner Management**: Owner profiles with search and quality reports
+  - **System Maintenance**: Database cleanup and maintenance tasks
+  - **Settings**: Configuration management
+  - **Account Cleanup**: User account management
+
+**Quality Badge System:**
+
+- Dynamic badges show issue counts on relevant tabs
+- Owner Management tab shows owner-specific quality issues
+- Manage Cars tab shows car-specific quality issues
+- Badges update in real-time based on database state
+
+**Owner Management Features:**
+
+- Advanced search with UNION-based prioritization (exact matches first)
+- Real-time geocoding feedback with visual indicators
+- Profile quality scoring and completion tracking
+- Bulk location synchronization to owned cars
+
+#### Owner Profile Access
+
+```php
+// ✅ PREFERRED: Use existing custom function for complete owner data
+$owner = getUserWithProfile($userId);
+if ($owner) {
+    echo "Owner: {$owner->fname} {$owner->lname}";
+    echo "Location: {$owner->city}, {$owner->state}, {$owner->country}";
+    echo "Coordinates: {$owner->lat}, {$owner->lon}";
+}
+
+// ✅ ACCEPTABLE: When you need additional owner context
+class ElanRegistryOwner {
+    public static function getOwnerProfile(int $userId): ?object {
+        return getUserWithProfile($userId);
+    }
+
+    public function getCarsOwned(): array {
+        return $this->_db->query("SELECT * FROM cars WHERE user_id = ?", [$this->_data->id])->results();
+    }
+}
+```
+
+#### Location Updates with Geocoding
+
+```php
+// ✅ CORRECT: Integrate with existing geocoding system
+public function updateLocation(array $locationData): bool {
+    // Set required variables for geocoding
+    $city = $locationData['city'];
+    $state = $locationData['state'];
+    $country = $locationData['country'];
+
+    // Include geocoding system
+    include($abs_us_root . $us_url_root . 'app/views/_geolocate.php');
+
+    // Update profile with geocoded coordinates
+    if (!empty($fields)) {
+        $updateFields = array_merge($locationData, $fields);
+        return $this->_db->update('profiles', $this->_profileId, $updateFields);
+    }
+
+    return false;
+}
+```
+
+#### Owner Search and Management Interface
+
+```php
+// ✅ CORRECT: Admin search functionality
+public function searchOwners(string $searchTerm): array {
+    $searchTerm = '%' . $searchTerm . '%';
+
+    return $this->_db->query(
+        "SELECT u.id, u.fname, u.lname, u.email,
+                p.city, p.state, p.country
+         FROM users u
+         LEFT JOIN profiles p ON u.id = p.user_id
+         WHERE u.fname LIKE ? OR u.lname LIKE ? OR u.email LIKE ?
+            OR p.city LIKE ? OR p.state LIKE ?
+         ORDER BY u.lname, u.fname",
+        [$searchTerm, $searchTerm, $searchTerm,
+         $searchTerm, $searchTerm]
+    )->results();
+}
+```
+
+#### Data Quality Integration
+
+```php
+// ✅ CORRECT: Profile completeness scoring
+public function getProfileQualityScore(): float {
+    $owner = $this->data();
+    $totalFields = 7;
+    $completedFields = 0;
+
+    if (!empty($owner->fname))
+        $completedFields++;
+    if (!empty($owner->lname))
+        $completedFields++;
+    if (!empty($owner->email))
+        $completedFields++;
+    if (!empty($owner->city))
+        $completedFields++;
+    if (!empty($owner->state))
+        $completedFields++;
+    if (!empty($owner->country))
+        $completedFields++;
+    if (!empty($owner->lat) && !empty($owner->lon))
+        $completedFields++;
+
+    return round(($completedFields / $totalFields) * 100, 1);
+}
+```
 
 ### Error Logging Standards
 
-**Use UserSpice logger for all error conditions:**
+**All error conditions MUST use UserSpice logger integration for centralized
+error visibility and audit trails.**
+
+#### Required Error Categories
+
+- `SystemError` - File operations, environment issues, general system failures
+- `ValidationError` - Input validation failures, invalid data, malformed requests
+- `FileError` - Upload/processing failures, image operations, file system issues
+- `DatabaseError` - Database operation failures, query errors, connection issues
+- `CarErrors` - Car-related error conditions
+- `CarActions` - Car-related user operations
+- `DatabaseMaintenance` - All database maintenance operations
+
+#### Error Logging Pattern
 
 ```php
-logger(
-    $user->data()->id ?? 0,
-    'ErrorCategory',  // SystemError, ValidationError, DatabaseError, etc.
-    'Descriptive error message'
-);
+// REQUIRED: Replace error_log() calls with UserSpice logger
+try {
+    // Operation that might fail
+    $result = riskyOperation();
+} catch (Exception $e) {
+    logger(
+        $user->data()->id ?? 0,
+        'ErrorCategory',
+        'Descriptive error message: ' . $e->getMessage()
+    );
+    throw new SpecificException('User-friendly message');
+}
+
+// For validation errors
+if (empty($requiredField)) {
+    logger(
+        $user->data()->id ?? 0,
+        'ValidationError',
+        'Required field missing: fieldName'
+    );
+    throw new ValidationException('Field is required');
+}
 ```
 
 ### Message Handling Standards
 
-**Use modern UserSpice session-based messaging:**
+**All error and success messages MUST use the modern UserSpice session-based
+messaging system for consistent UX.**
 
 ```php
-// Set messages
-usError('Error message');
-usSuccess('Success message');
+// Set error messages (instead of deprecated display_errors())
+if (!empty($errors)) {
+    foreach ($errors as $error) {
+        usError($error);
+    }
+}
 
-// Display all messages
+// Set success messages (instead of deprecated display_successes())
+if (!empty($successes)) {
+    foreach ($successes as $success) {
+        usSuccess($success);
+    }
+}
+
+// Display all messages (replaces manual Bootstrap alert HTML)
 sessionValMessages($errors, $successes, null);
 ```
 
-### Terminology Standards
+### Code Quality Requirements
 
-- **Users**: Authentication/session management (UserSpice framework context)
-- **Owners**: Car registry business domain (ElanRegistry context)
-- Use "users" for database tables and auth logic
-- Use "owners" for UI elements and business logic
+**ALWAYS run the following commands before completing any task:**
+
+- Run `mcp__ide__getDiagnostics` to check all files for diagnostics
+- Fix any linting or type errors before considering the task complete
+- Run appropriate test suites for modified functionality
+
+This is a CRITICAL step that must NEVER be skipped when working on any
+code-related task.
+
+### Release Notes Requirements
+
+**ALWAYS update or create release notes when creating a pull request:**
+
+- **Update existing release notes** if the target milestone already has a
+  RELEASE_NOTES_V[VERSION].md file
+- **Create new release notes** using the template at
+  `docs/development/RELEASE_NOTES_TEMPLATE.md` if none exist
+- **Follow the standardized structure**: Required Actions → User-Facing
+  Changes → Admin-Facing Changes → Issues Resolved
+- **Focus on impact and benefits**, not implementation details (those belong
+  in GitHub issues)
+- **Include clear testing instructions** in the Required Actions section for
+  any manual steps needed post-deployment
+
+**📋 See [RELEASE_NOTES_TEMPLATE.md](docs/development/RELEASE_NOTES_TEMPLATE.md) for complete guidelines and structure**
+
+### Version Release & Deployment
+
+**For complete release and deployment procedures, see [DEPLOYMENT.md](docs/development/DEPLOYMENT.md).**
+
+**Quick Reference:**
+
+- **MANDATORY for major/minor releases**: Release notes, GitHub release,
+  annotated git tags
+- **Optional for patch releases**: Release notes for significant patches or
+  security fixes
+- **Remote configuration**: `origin` (GitHub), `test` (staging), `prod` (live
+  production)
+- **Deployment commands**: See DEPLOYMENT.md for comprehensive workflows
+
+### ElanRegistry Terminology Standards
+
+**CRITICAL:** Consistent terminology is essential for code clarity and user experience.
+
+#### User vs Owner Terminology
+
+- **Users**: Authentication and session management context (UserSpice framework)
+  - Use in UserSpice integration code
+  - Database table references (`users` table)
+  - Session management and permissions
+  - Authentication workflows
+
+- **Owners**: Car registry business domain context (ElanRegistry terminology)
+  - Use in UI elements and user-facing content
+  - Business logic and domain operations
+  - Car ownership and registry functionality
+  - Admin interfaces referring to registry participants
+
+#### Code Implementation Guidelines
+
+```php
+// ✅ CORRECT: UserSpice context
+$user = new User();
+if ($user->isLoggedIn()) {
+    // UserSpice authentication logic
+}
+
+// ✅ CORRECT: ElanRegistry context
+$owner = new ElanRegistryOwner($userId);
+$ownerProfile = $owner->getOwnerProfile();
+echo "Owner: " . $owner->data()->fname . " " . $owner->data()->lname;
+
+// ✅ CORRECT: Database operations use UserSpice table names
+$userQuery = $db->query("SELECT * FROM users WHERE id = ?", [$userId]);
+$profileQuery = $db->query(
+    "SELECT * FROM profiles WHERE user_id = ?",
+    [$userId]
+);
+
+// ✅ CORRECT: UI elements use owner terminology
+echo "<h3>Owner Information</h3>";
+echo "<button>Contact Owner</button>";
+echo "<span>Owner Location: {$owner->city}, {$owner->state}</span>";
+```
+
+#### Integration Patterns
+
+**Use existing `getUserWithProfile()` function for combined data access:**
+
+```php
+// ✅ CORRECT: Leverage existing custom function
+$ownerData = getUserWithProfile($userId);
+if ($ownerData) {
+    echo "Owner: {$ownerData->fname} {$ownerData->lname}";
+    echo "Location: {$ownerData->city}, ";
+    echo "{$ownerData->state}";
+}
+```
+
+**Follow established Car class patterns for new domain classes:**
+
+```php
+// ✅ CORRECT: ElanRegistryOwner class follows Car class patterns
+class ElanRegistryOwner {
+    private $_db;
+    private $_data;
+
+    public function __construct(?int $id = null) {
+        $this->_db = DB::getInstance();
+        if ($id) {
+            $this->find($id);
+        }
+    }
+
+    public function create(array $fields): bool {
+        // Validation, sanitization, audit logging
+        // Follow Car class exception handling patterns
+    }
+}
+```
 
 ## 🚀 Quick Deployment Reference
 
-**🚨 CRITICAL:** Use the correct remote for each environment!
+**🚨 CRITICAL:** When deploying, use the correct remote for each environment!
 
 ```bash
 # Push to GitHub for repository backup
 git push origin main && git push origin --tags
 
 # Deploy to test server for validation
-git push test feature/branch-name
+git push test feature/v2.9.1
 git push test v2.9.1
 
-# Push to PRODUCTION SERVER (live site)
+# Push code to PRODUCTION SERVER (live site)
 git push prod main
 git push prod --tags
 ```
 
-**For complete deployment procedures, see [DEPLOYMENT.md](docs/development/DEPLOYMENT.md)**
+**📋 See [DEPLOYMENT.md](docs/development/DEPLOYMENT.md) for complete release and deployment
+procedures**
 
-## 📊 Documentation Structure
+## 📊 Current Development Status
 
-### User/Owner Documentation (`docs/faq/`)
+### ✅ Production Ready Features
 
-- **Public Access** - No authentication required
-- Car transfer guides, privacy policy, add car guide
-- Access via: `/docs/faq/index.php`
+- **Security**: Enterprise-grade security implementation with comprehensive
+  CSRF protection
+- **Testing**: 35/35 Playwright browser tests passing (100% success rate) plus
+  comprehensive PHPUnit security test suite
+- **PHP 8+ Compatibility**: Full compatibility with modern PHP versions,
+  comprehensive null handling
+- **Documentation**: Complete setup, development, and deployment documentation
 
-### Admin Documentation (`docs/faq/admin/`)
+### 📋 Active Development Areas
 
-- **Restricted Access** - Administrator/Editor permissions required
-- Admin guides, database schema, troubleshooting, PRD
-- Access via: `/docs/faq/admin/index.php`
+Current GitHub Issues are organized into development phases:
 
-### Developer Documentation (`docs/development/`)
+- **Phase 1 Critical Issues** - Bug fixes and stability improvements
+- **Phase 2-5** - Core enhancements, UX improvements, and optional features
 
-- **Public/Version Controlled** - For developers and maintainers
-- Architecture, integration, coding standards, deployment
-- This is where you'll find most technical documentation
+See GitHub Issues for detailed development roadmap and current work items.
 
-### Technical Documentation (`docs/technical/`)
+## 📊 Recent Major Changes
 
-- **Public/Version Controlled** - For QA and technical leads
-- Testing strategy, Playwright guides, backup system
+### Chart.js Migration (Issue #285) - v2.8.1
 
-### Release Documentation (`docs/releases/`)
+**Completed Migration from Google Charts to Chart.js:**
 
-- **Public** - For project managers and stakeholders
-- Version-specific release notes and change logs
+- **Statistics Page Enhanced**: Converted to tabbed interface with lazy loading
+  - Overview, Geographic, Production, Colors, Data Quality tabs
+  - 11+ interactive charts with Bootstrap theming
+  - Performance optimized with caching (1 day prod, 5 minutes dev)
+- **Analytics Page Consolidated**: All analytics features moved to statistics page
+- **Security Improved**: Removed Google Charts CSP dependencies
+- **Self-Hosted Solution**: Chart.js CDN configurable via Admin Panel
 
-## 📊 Production Status
+**Key Features:**
 
-### Production Ready Features
-
-- **Security**: Enterprise-grade security with comprehensive CSRF protection
-- **Testing**: 35/35 Playwright browser tests passing (100% success rate)
-- **PHP 8+ Compatibility**: Full compatibility with modern PHP versions
-- **Documentation**: Complete setup, development, and deployment docs
-
-See GitHub Issues for detailed development roadmap.
-
-## 💡 Quick Tips
-
-### Working with UserSpice
-
-- Add new PHP directories to `$path` array in `/z_us_root.php`
-- Pages using `securePage()` must be registered in UserSpice admin
-- Use existing `getUserWithProfile($userId)` for combined user+profile data
-
-### Working with Database
-
-- Use `DB::getInstance()` singleton pattern
-- All car operations have audit trails via `cars_hist` table
-- Use `logger()` for all database maintenance operations
-
-### Creating FIX Scripts
-
-- Start with `/FIX/_TEMPLATE_Fix-Script.php`
-- Use sequential naming: `##-Descriptive-Name.php`
-- Always use transactions and proper error handling
-- See [FIX_SCRIPTS.md](docs/development/FIX_SCRIPTS.md) for complete guidelines
-
-### Testing Strategy
-
-- **Unit tests**: Fast, isolated component testing
-- **Integration tests**: Database and component integration
-- **Regression tests**: Issue-specific bug prevention
-- **Playwright tests**: UI, navigation, security, functionality
-
-## 📖 Additional Resources
-
-- **Project Overview**: See [README.md](README.md)
-- **Installation Guide**: See [INSTALLATION.md](docs/development/INSTALLATION.md)
-- **Documentation Index**: See [docs/README.md](docs/README.md)
-- **Release Notes**: See [docs/releases/](docs/releases/)
+- Responsive Bootstrap-themed charts
+- Lazy loading for performance
+- Environment-based caching system
+- API endpoints for dynamic data loading
+- Comprehensive analytics dashboard
 
 ---
 
-**For detailed information on any topic, refer to the complete documentation files linked above.**
+**📖 For detailed information, see the complete documentation files:**
+
+- [DEVELOPMENT_WORKFLOW.md](docs/development/DEVELOPMENT_WORKFLOW.md) -
+  Development processes and workflows
+- [DEPLOYMENT.md](docs/development/DEPLOYMENT.md) - Production deployment
+  procedures
+- [CODING_STANDARDS.md](docs/development/CODING_STANDARDS.md) - Code quality
+  requirements
+- [ENVIRONMENT.md](docs/development/ENVIRONMENT.md) - Environment setup and configuration

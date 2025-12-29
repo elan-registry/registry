@@ -1,6 +1,7 @@
 # Environment Variables Documentation
 
-This document covers environment variables and environments used in the Elan Registry application.
+This document covers environment variables and environments used in the Elan
+Registry application.
 
 ## Environment URLs
 
@@ -10,34 +11,38 @@ The Elan Registry operates across three environments:
 - **Test:** `https://test.elanregistry.org`
 - **Production:** `https://elanregistry.org`
 
-Environment detection is performed using URL/hostname pattern matching for environment-specific configurations and behaviors.
+Environment detection is performed using URL/hostname pattern matching for
+environment-specific configurations and behaviors.
 
 ## Database Access
 
-### Local Development (MAMP)
+### Local Development (MAMP MySQL 8.0)
 
-MySQL binaries are located in MAMP installation:
-
-- **MySQL 8.0:** `/Applications/MAMP/Library/bin/mysql80/bin/mysql`
-- **MySQL 5.7:** `/Applications/MAMP/Library/bin/mysql57/bin/mysql`
-
-Access development database:
+Access the development database using MAMP's MySQL 8.0:
 
 ```bash
-/Applications/MAMP/Library/bin/mysql57/bin/mysql -u mysql57 -p
+# MySQL CLI access (credentials from .env.local file)
+/Applications/MAMP/Library/bin/mysql80/bin/mysql -h 127.0.0.1 -P 8889 \
+  -u [DB_USER from .env.local] -p \
+  -D [DB_NAME from .env.local]
+# Enter password from .env.local when prompted
 ```
 
-Access test database (remote):
+### Remote Database Access (Test/Production)
+
+Test and production databases require SSH tunnel or direct connection:
 
 ```bash
-# Test environment now uses https://test.elanregistry.org
-# Database access requires SSH tunnel or direct connection to A2 Hosting server
-# See deployment documentation for database connection details
+# Test environment: https://test.elanregistry.org
+# Production environment: https://elanregistry.org
+# Database credentials are in .env.local file
+# See DEPLOYMENT.md for SSH tunnel setup and connection details
 ```
 
 ## Overview
 
-The Elan Registry uses **SecureEnvPHP** for encrypted environment variable management, providing enhanced security for database credentials and API keys.
+The Elan Registry uses **SecureEnvPHP** for encrypted environment variable
+management, providing enhanced security for database credentials and API keys.
 
 ### Encryption System
 
@@ -67,12 +72,17 @@ The Elan Registry uses **SecureEnvPHP** for encrypted environment variable manag
    composer require johnathanmiller/secure-env-php
    ```
 
-2. **MySQL Access** (MAMP Development):
+2. **Get Database Credentials**:
 
-   ```bash
-   # MySQL CLI path for MAMP
-   /Applications/MAMP/Library/bin/mysql57/bin/mysql -h 127.0.0.1 -P 8889 -u claude -pclaude -D elanregi_spice
-   ```
+   Database credentials are stored in `.env.local` file (not committed to git).
+   This file should be provided separately and contains:
+
+   - Development database credentials
+   - Test database credentials
+   - Production database credentials (for deployments only)
+   - API keys and other sensitive configuration
+
+   See "Database Access" section above for connecting to databases.
 
 3. **Create Environment Variables**:
 
@@ -85,6 +95,7 @@ The Elan Registry uses **SecureEnvPHP** for encrypted environment variable manag
    ```
 
 4. **Encrypt and Cleanup**:
+
    ```bash
    # Use SecureEnvPHP to encrypt (creates .env.enc and .env.key)
    cd www
@@ -108,7 +119,8 @@ chown www-data:www-data .env.enc .env.key
 
 ## Code Usage
 
-Environment variables are loaded during application bootstrap and accessed via PHP's `getenv()`:
+Environment variables are loaded during application bootstrap and accessed via
+PHP's `getenv()`:
 
 ```php
 // Loading (in usersc/includes/custom_functions.php)
@@ -120,11 +132,27 @@ use SecureEnvPHP\SecureEnvPHP;
 $host = getenv('DB_HOST');
 ```
 
+## Credential Management
+
+### .env.local File
+
+The `.env.local` file contains all database credentials and API keys for all
+environments:
+
+- **Location**: Root directory (not committed to git)
+- **Distribution**: Shared separately via secure channels (1Password, encrypted
+  email, etc.)
+- **Format**: Plain text key-value pairs for reference
+- **Usage**: Source for creating `.env` file before encryption
+
+**Important**: Never commit `.env.local` to version control. Add to
+`.gitignore`.
+
 ## Security Requirements
 
 ### File Security
 
-- **Never commit** `.env.enc` or `.env.key` to version control
+- **Never commit** `.env.enc`, `.env.key`, or `.env.local` to version control
 - **Store `.env.key` separately** from application code in production
 - **Backup encryption key** securely and separately from application
 - **Restrict file permissions** to web server user only
