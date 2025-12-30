@@ -25,7 +25,7 @@ if (!function_exists('processSettingsAutoCreation')) {
 
         // Chart.js configuration settings
         $chartJsSettingsFields = [
-            'elan_chartjs_cdn' => ['type' => 'TEXT', 'default' => 'https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.js', 'description' => 'Chart.js CDN URL for statistics charts']
+            'elan_chartjs_cdn' => ['type' => 'TEXT', 'default' => '<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.js" integrity="sha384-FcQlsUOd0TJjROrBxhJdUhXTUgNJQxTMcxZe6nHbaEfFL1zjQ+bq/uRoBQxb0KMo" crossorigin="anonymous"></script>', 'description' => 'Chart.js CDN script tag with SRI hash for statistics charts']
         ];
 
         // Email & Communication settings
@@ -723,17 +723,16 @@ $autoCreationMessages = processSettingsAutoCreation();
                         <div class="col-md-12">
                             <div class="form-group mb-0">
                                 <label for="elan_chartjs_cdn" class="font-weight-bold">
-                                    <i class="fas fa-chart-pie"></i> Chart.js CDN URL
+                                    <i class="fas fa-chart-pie"></i> Chart.js CDN
                                 </label>
-                                <input type="text"
-                                       class="form-control ajxtxt"
-                                       data-desc="Chart.js CDN URL"
+                                <textarea class="form-control ajxtxt"
+                                       data-desc="Chart.js CDN"
                                        name="elan_chartjs_cdn"
                                        id="elan_chartjs_cdn"
-                                       value="<?= $settings->elan_chartjs_cdn ?? 'https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.js' ?>"
-                                       placeholder="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.js">
+                                       rows="3"
+                                       placeholder="<script src=&quot;https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.js&quot; integrity=&quot;sha384-...&quot; crossorigin=&quot;anonymous&quot;></script>"><?= $settings->elan_chartjs_cdn ?? '' ?></textarea>
                                 <small class="form-text text-muted">
-                                    <i class="fas fa-external-link-alt"></i> Chart.js library for statistics page charts
+                                    <i class="fas fa-external-link-alt"></i> Chart.js library for statistics page charts (full script tag with SRI hash)
                                     <a href="https://www.chartjs.org/docs/latest/getting-started/installation.html" target="_blank" class="ml-2">Get Chart.js</a>
                                 </small>
                             </div>

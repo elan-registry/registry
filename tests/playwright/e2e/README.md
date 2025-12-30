@@ -46,7 +46,7 @@ npm run test:e2e:logged-in
 
 ## Documentation
 
-See comprehensive guide: [`docs/technical/PLAYWRIGHT_E2E.md`](../../../docs/technical/PLAYWRIGHT_E2E.md)
+See comprehensive guide: [`docs/testing/PLAYWRIGHT_E2E.md`](../../../docs/testing/PLAYWRIGHT_E2E.md)
 
 ## When to Run
 

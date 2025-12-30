@@ -1,4 +1,7 @@
 <?php
+
+declare(strict_types=1);
+
 /**
  * statistics.php
  * Comprehensive analytics dashboard for the Elan Registry
@@ -246,7 +249,6 @@ window.statisticsRawData = {
 
 // Configuration
 window.statisticsConfig = {
-    chartjsUrl: '<?= $settings->elan_chartjs_cdn ?? "https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.min.js" ?>',
     mapsApiKey: '<?= $settings->elan_google_maps_key ?? "" ?>',
     baseUrl: '<?= $us_url_root ?>app/reports/',
     imageUrl: '<?= $us_url_root . $settings->elan_image_dir ?>'
@@ -254,7 +256,10 @@ window.statisticsConfig = {
 </script>
 
 <!-- Load Chart.js -->
-<script src="<?= $settings->elan_chartjs_cdn ?? 'https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.js' ?>"></script>
+<?php
+// Chart.js CDN - loaded from database setting with SRI hash
+echo isset($settings->elan_chartjs_cdn) ? html_entity_decode($settings->elan_chartjs_cdn) : '<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.js" integrity="sha384-FcQlsUOd0TJjROrBxhJdUhXTUgNJQxTMcxZe6nHbaEfFL1zjQ+bq/uRoBQxb0KMo" crossorigin="anonymous"></script>';
+?>
 
 <!-- Load Statistics JavaScript first -->
 <script src="<?= $us_url_root ?>app/assets/js/statistics.js?v=2.8.4-debug"></script>

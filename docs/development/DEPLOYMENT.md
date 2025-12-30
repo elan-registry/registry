@@ -1,6 +1,7 @@
 # Deployment Guide
 
-This document provides comprehensive deployment procedures for the Lotus Elan Registry application.
+This document provides comprehensive deployment procedures for the Lotus Elan
+Registry application.
 
 ## 🚀 Production Environment
 
@@ -13,7 +14,8 @@ This document provides comprehensive deployment procedures for the Lotus Elan Re
 
 ### 🚨 CRITICAL: Production Deployment Commands
 
-**⚠️ IMPORTANT:** When someone says "push to prod", always use the `prod` remote, NOT `origin`!
+**⚠️ IMPORTANT:** When someone says "push to prod", always use the `prod`
+remote, NOT `origin`!
 
 **Live Production Server:**
 
@@ -58,26 +60,29 @@ git push test v2.9.1
 
 ## 🤖 Automated Pull Request Checks
 
-All pull requests to the `main` branch are automatically validated through a comprehensive set of checks before merge is allowed. These checks ensure code quality, security, and project management compliance.
+All pull requests to the `main` branch are automatically validated through a
+comprehensive set of checks before merge is allowed. These checks ensure code
+quality, security, and project management compliance.
 
 ### Quick Reference: PR Check Status
 
-| Check Name | Purpose | Blocks Merge | Runs When |
-|------------|---------|--------------|-----------|
-| **CodeQL Analysis** | Security vulnerability scanning | ✅ Yes | All PRs to main |
+| Check Name | Purpose | Blocks | Runs When |
+| ---------- | ------- | ------ | --------- |
+| **CodeQL Analysis** | Security scanning | ✅ Yes | All PRs to main |
 | **GitGuardian Security** | Secret detection | ✅ Yes | All commits/PRs |
-| **Claude Code Review** | Coding standards enforcement | ✅ Yes | PHP/JS/CSS changes |
-| **Issue Management** | Auto-label and track issues | ❌ No | Issue events |
+| **Claude Code Review** | Coding standards | ✅ Yes | PHP/JS/CSS changes |
+| **Issue Management** | Auto-label issues | ❌ No | Issue events |
 | **PR Management** | Link PRs to issues | ❌ No | PR events |
-| **Phase Progress** | Milestone tracking | ❌ No | Issue closure |
 
 ### Security & Code Quality Checks
 
 #### 1. **CodeQL Analysis**
 
-- **What it does**: Static analysis for security vulnerabilities and code quality issues in JavaScript
+- **What it does**: Static analysis for security vulnerabilities and code
+  quality issues in JavaScript
 - **When it runs**: On every pull request to main branch
-- **Scope**: Analyzes JavaScript files for common vulnerabilities (XSS, injection attacks, etc.)
+- **Scope**: Analyzes JavaScript files for common vulnerabilities (XSS,
+  injection attacks, etc.)
 - **Pass criteria**: No critical security vulnerabilities detected
 - **Failure impact**: Blocks merge until vulnerabilities are resolved
 
@@ -108,7 +113,8 @@ All pull requests to the `main` branch are automatically validated through a com
 
 #### 4. **Issue Management Automation**
 
-- **What it does**: Automatically manages GitHub issues with labels, milestones, and status tracking
+- **What it does**: Automatically manages GitHub issues with labels,
+  milestones, and status tracking
 - **When it runs**: On issue creation, updates, and closure
 - **Key functions**:
   - **Auto-labeling**: New issues get `status: needs-planning`
@@ -127,17 +133,6 @@ All pull requests to the `main` branch are automatically validated through a com
   - **Auto-closure**: Closes linked issues when PR merges
   - **Draft handling**: Marks issues as "in-progress" for draft PRs
 - **Status flow**: `status: in-progress` → `status: needs-review` → issue closed
-
-#### 6. **Phase Progress Tracking**
-
-- **What it does**: Tracks milestone completion and celebrates progress
-- **When it runs**: When issues with milestones are closed
-- **Scope**: Milestone-based development phases (v2.8.1, etc.)
-- **Key functions**:
-  - **Progress calculation**: Tracks closed vs total issues in milestone
-  - **Completion celebrations**: Posts congratulatory comments at 100%
-  - **Phase reporting**: Logs milestone statistics
-- **Triggers**: Only when issues have assigned milestones
 
 ### Special Workflow Behaviors
 
@@ -173,17 +168,12 @@ All pull requests to the `main` branch are automatically validated through a com
 - **Resolution**: Address specific issues mentioned in review comments
 - **Reference**: Follow examples and standards in review feedback
 
-#### Project Automation Issues
-
-- **Cause**: Usually permissions or malformed issue references
-- **Impact**: Non-blocking, informational only
-- **Resolution**: Check issue numbers in PR description, verify GitHub permissions
-
 ## 🛠️ Local Development Tools
 
 ### Enhanced Pre-Commit Quality Checks
 
-A **comprehensive pre-commit hook** automatically validates code quality and runs fast tests before allowing commits.
+A **comprehensive pre-commit hook** automatically validates code quality and
+runs fast tests before allowing commits.
 
 #### Setup (One-time)
 
@@ -197,7 +187,8 @@ A **comprehensive pre-commit hook** automatically validates code quality and run
 **Three-Step Process:**
 
 1. **PHP Coding Standards Check** (runs for staged PHP files):
-   - **Enhanced Security Validation**: CSRF protection, SQL injection prevention, input validation
+   - **Enhanced Security Validation**: CSRF protection, SQL injection
+     prevention, input validation
    - **Type Safety**: Complete PHP 8+ type declarations, strict typing
    - **Documentation**: PHPDoc completeness with @param, @return, @throws
    - **Architecture**: Specific exception types, proper error handling
@@ -308,11 +299,15 @@ git commit --no-verify
 
 ### Step-by-Step Deployment
 
-1. **Update VERSION file and create matching git tag** (tag must exactly match VERSION content)
+1. **Update VERSION file and create matching git tag** (tag must exactly match
+   VERSION content)
 2. **Commit changes** with version bump and tag
-3. **Push to GitHub** for repository backup: `git push origin main && git push origin --tags`
-4. **🎯 DEPLOY TO PRODUCTION** (the important step): `git push prod main && git push prod --tags`
-5. **Verify deployment** by checking version display matches git tag on production site
+3. **Push to GitHub** for repository backup:
+   `git push origin main && git push origin --tags`
+4. **🎯 DEPLOY TO PRODUCTION** (the important step):
+   `git push prod main && git push prod --tags`
+5. **Verify deployment** by checking version display matches git tag on
+   production site
 6. **Complete post-deployment verification** (see checklist below)
 
 ### Git & Version Control
@@ -357,7 +352,8 @@ git commit --no-verify
 ### Google Maps API Configuration
 
 - **Problem:** File reorganization affects API referrer restrictions
-- **Solution:** Update Google Cloud Console API restrictions to include new file paths
+- **Solution:** Update Google Cloud Console API restrictions to include new
+  file paths
 - **Check:** Verify maps display correctly on statistics and detail pages
 
 ### UserSpice Page Permissions
@@ -384,10 +380,16 @@ After each deployment, verify:
 
 ### Database Access
 
-- **Configuration**: Use credentials from `.env.local` file (see DEV_DB_* variables)
+- **Configuration**: Use credentials from `.env.local` file (see
+  DEV_DB_* variables)
 - **Connection**: MAMP MySQL server on port 8889
 - **MAMP MySQL Path**: `/Applications/MAMP/Library/bin/mysql`
-- **Direct Command**: `/Applications/MAMP/Library/bin/mysql -h localhost -P 8889 -u claude -p"claude" elanregi_spice`
+- **Direct Command**:
+
+  ```bash
+  /Applications/MAMP/Library/bin/mysql -h localhost -P 8889 \
+    -u claude -p"claude" elanregi_spice
+  ```
 
 ## 🛠️ Environment Variables
 
@@ -396,18 +398,22 @@ After each deployment, verify:
 See comprehensive documentation in `docs/development/ENVIRONMENT.md`:
 
 - **Database credentials** (`DB_HOST`, `DB_USER`, `DB_PASS`, `DB_NAME`)
-- **Google API keys** - **Production**: Stored in database settings table; **Testing only**: Environment variables (`MAPS_KEY`, `GEO_ENCODE_KEY`)
+- **Google API keys** - **Production**: Stored in database settings table;
+  **Testing only**: Environment variables (`MAPS_KEY`, `GEO_ENCODE_KEY`)
 - All variables encrypted at rest using SecureEnvPHP
 
 ### UserSpice Plugins
 
 **Active Plugins:**
 
-- `Auto Assign Usernames` - Hides username field and auto-assigns usernames on registration
-- `getSettings Function` - Provides global settings access via getSettings() function
+- `Auto Assign Usernames` - Hides username field and auto-assigns usernames
+  on registration
+- `getSettings Function` - Provides global settings access via getSettings()
+  function
 - `hooker` - Custom hooks system for code injection points
 - `reCAPTCHA` - Google reCAPTCHA v2/v3 integration for spam protection
-- `Brevo Sendinblue` - API-based email delivery replacing phpmailer (300 emails/day free)
+- `Brevo Sendinblue` - API-based email delivery replacing phpmailer
+  (300 emails/day free)
 
 ## 🚨 Troubleshooting
 

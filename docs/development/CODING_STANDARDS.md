@@ -161,7 +161,7 @@ $optionalId = $row->optional_id ? (int)$row->optional_id : null;
 
 ```text
 
-**See also:** `/docs/technical/STRICT_TYPE_HANDLING.md` for comprehensive strategy.
+**See also:** `/docs/development/STRICT_TYPE_HANDLING.md` for comprehensive strategy.
 
 ### **Modern PHP Features**
 
@@ -517,7 +517,7 @@ Use structured TODO/FIXME comments:
   /development/                # Developer documentation
   /faq/                        # User/owner documentation
   /faq/admin/                  # Admin documentation
-  /technical/                  # Technical specifications
+  /testing/                    # Testing strategy and execution
   /releases/                   # Release notes
 
 /tests/                        # Testing infrastructure

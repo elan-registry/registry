@@ -550,4 +550,4 @@ For installation support or questions:
 - [SecureEnvPHP Documentation](https://github.com/johnathanmiller/secure-env-php)
 - [Google Maps API Documentation](https://developers.google.com/maps/documentation)
 - [Environment Configuration Guide](ENVIRONMENT.md)
-- [Development Guidelines](CLAUDE.md)
+- [Development Guidelines](../../CLAUDE.md)

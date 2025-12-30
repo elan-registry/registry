@@ -79,8 +79,8 @@ UPDATE settings SET
   elan_image_display_max_size = 2048,   -- Maximum display width in pixels
   elan_image_thumbnail_sizes = '100,300,768,1024,2048',  -- Responsive thumbnail sizes
 
-  -- Chart.js CDN for Statistics (v4.4.0)
-  elan_chartjs_cdn = 'https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.js',
+  -- Chart.js CDN for Statistics (v4.4.0) - Full script tag with SRI hash
+  elan_chartjs_cdn = '&lt;script src=&quot;https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.js&quot; integrity=&quot;sha384-FcQlsUOd0TJjROrBxhJdUhXTUgNJQxTMcxZe6nHbaEfFL1zjQ+bq/uRoBQxb0KMo&quot; crossorigin=&quot;anonymous&quot;&gt;&lt;/script&gt;',
 
   -- Administrative Notification Emails
   elan_admin_emails = 'registrar@elanregistry.org'  -- Comma-separated admin emails for system notifications
