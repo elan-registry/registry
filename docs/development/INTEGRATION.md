@@ -1,6 +1,191 @@
 # UserSpice Integration Guide
 
-This document provides comprehensive guidance on integrating with UserSpice and using existing integration patterns in the Lotus Elan Registry application.
+This document provides comprehensive guidance on integrating with UserSpice and
+using existing integration patterns in the Lotus Elan Registry application.
+
+## Official UserSpice Documentation
+
+For additional UserSpice features and detailed framework documentation, see:
+
+**UserSpice Knowledge Base**: <https://userspice.com/kb/>
+
+Topics covered in official documentation:
+
+- Core framework features and configuration
+- Advanced authentication patterns
+- Custom plugins and hooks
+- Database schema and migrations
+- User management and permissions
+- Email templates and notifications
+
+This guide focuses on **Elan Registry-specific integration patterns** and
+**common usage examples** for our application.
+
+---
+
+## Page Security and Access Control
+
+### SecurePage() Pattern
+
+**CRITICAL**: All pages requiring authentication or permission checks MUST
+include the `securePage()` check.
+
+#### Standard Implementation
+
+```php
+<?php
+require_once '../users/init.php';  // Initialize UserSpice
+
+// REQUIRED: Security check - place immediately after init.php
+if (!securePage($_SERVER['PHP_SELF'])) {
+    die();
+}
+
+// Rest of page code here
+?>
+```
+
+#### What securePage() Does
+
+1. **Checks if user is logged in** - Redirects to login if not authenticated
+2. **Checks page permissions** - Verifies user has required permission level
+3. **Validates page registration** - Ensures page is registered in UserSpice admin
+4. **Returns boolean** - `false` if access denied, `true` if access granted
+
+#### Page Registration Requirements
+
+**Step 1**: Register page in UserSpice Admin Panel
+
+1. Navigate to: **Admin Dashboard → Page Management**
+2. Add new page with full path (e.g., `app/cars/edit.php`)
+3. Set permission levels:
+   - `1` = Standard User
+   - `2` = Administrator
+   - Multiple levels can be assigned
+
+**Step 2**: Update z_us_root.php if in new directory
+
+If the page is in a new directory not yet included in UserSpice paths:
+
+```php
+// /z_us_root.php
+$path = [
+    '',
+    'users/',
+    'usersc/',
+    'app/',
+    'app/cars/',      // Add new directories here
+    'app/admin/',
+    'app/reports/',
+    // ... other paths
+];
+```
+
+#### Common Permission Levels
+
+- **Level 1** - Standard registered users (all authenticated users)
+- **Level 2** - Administrators (full access)
+- **Level 3** - Custom permission level (if configured)
+
+#### Permission Checks in Code
+
+For additional permission checks within a page:
+
+```php
+// Check if current user has admin permissions
+if (hasPerm([2], $user->data()->id)) {
+    // Admin-only code
+    echo '<a href="admin-function.php">Admin Panel</a>';
+}
+
+// Check for multiple permission levels
+if (hasPerm([2, 3], $user->data()->id)) {
+    // Admin or custom level
+}
+
+// Check for specific user
+if ($user->data()->id == $ownerId) {
+    // User is the owner of this resource
+}
+```
+
+#### Example: Public vs Protected Pages
+
+**Public Page** (no securePage required):
+
+```php
+<?php
+require_once '../users/init.php';
+// No securePage() - anyone can access
+?>
+<h1>Welcome to the Registry</h1>
+```
+
+**User-Only Page**:
+
+```php
+<?php
+require_once '../users/init.php';
+
+if (!securePage($_SERVER['PHP_SELF'])) {
+    die();
+}
+// Only authenticated users with permission level 1+ can access
+?>
+<h1>Your Cars</h1>
+```
+
+**Admin-Only Page**:
+
+```php
+<?php
+require_once '../users/init.php';
+
+if (!securePage($_SERVER['PHP_SELF'])) {
+    die();
+}
+
+// Additional admin check
+if (!hasPerm([2], $user->data()->id)) {
+    Redirect::to('index.php');
+}
+// Only administrators can access
+?>
+<h1>Admin Dashboard</h1>
+```
+
+#### Best Practices
+
+1. **Always use securePage()** on pages with sensitive data or operations
+2. **Place immediately after init.php** - before any other logic
+3. **Register pages before deploying** - unregistered pages will deny all access
+4. **Use hasPerm() for granular control** - within pages for specific features
+5. **Log permission denials** - for security auditing
+
+```php
+if (!hasPerm([2], $user->data()->id)) {
+    logger($user->data()->id, 'SecurityError',
+           'Unauthorized access attempt to admin function');
+    Redirect::to('index.php');
+}
+```
+
+#### Common Errors
+
+**Error**: "This page has a security feature which has not yet been configured"
+
+- **Cause**: Page not registered in UserSpice admin panel
+- **Fix**: Add page in Admin Dashboard → Page Management
+
+**Error**: Page redirects to login even when logged in
+
+- **Cause**: User lacks required permission level
+- **Fix**: Check user's permission level or adjust page permissions
+
+**Error**: securePage() not working
+
+- **Cause**: Path not in `$path` array in z_us_root.php
+- **Fix**: Add directory to `$path` array
 
 ## Owner Data Management Patterns
 

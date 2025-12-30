@@ -17,13 +17,13 @@ working with code in this repository.
 
 To avoid information overload, follow this structured learning path:
 
-**Day 1 - Essential Context (45 minutes):**
+**Essential Context:**
 
 1. `CLAUDE.md` (this file) - Overview and quick reference (~15 min)
 2. `docs/development/QUICK_REFERENCE.md` - Common tasks lookup (~10 min)
 3. `docs/development/QUICK_START.md` - Setup and testing commands (~20 min)
 
-**Week 1 - Core Understanding (90 minutes):**
+**Core Understanding:**
 
 1. `docs/development/ARCHITECTURE.md` - System architecture and patterns
    (~30 min)
@@ -38,6 +38,7 @@ To avoid information overload, follow this structured learning path:
 - `docs/development/DEPLOYMENT.md` - When preparing releases
 - `docs/development/FIX_SCRIPTS.md` - When creating database maintenance
   scripts
+- `docs/development/CLASSES.md` - When working with application classes
 - `docs/development/BACKUP_SYSTEM.md` - When using BackupManager class
 - `docs/testing/TESTING.md` - When writing or running tests
 - `docs/development/STRICT_TYPE_HANDLING.md` - When working with strict types
@@ -47,31 +48,9 @@ To avoid information overload, follow this structured learning path:
 ## 🏗️ Architecture Overview
 
 This is a PHP web application for the Lotus Elan Registry hosted at
-<https://elanregistry.org>. It's built on top of UserSpice (userspice.com)
+<https://elanregistry.org>. It's built on top of UserSpice <https://userspice.com>
 for user authentication and management, with custom car registry
 functionality.
-
-### 🔧 FIX Script Creation Guidelines
-
-**When creating FIX scripts, ALWAYS use the standardized template:**
-
-1. **Use Template**: Start with `FIX/_TEMPLATE_Fix-Script.php`
-2. **Sequential Naming**: Use format `##-Descriptive-Name.php` (e.g.,
-   `13-Fix-Something.php`)
-3. **UI Standards**: Maintain two-step process (description → start button →
-   progress tracking)
-4. **Progress Tracking**: Use `outputMessage()` for progress updates and step
-   indicators
-5. **Logging**: Use simple `INSERT INTO fix_script_runs (script_name) VALUES
-   (?)` format
-6. **Database**: Always use proper transactions and error handling
-
-**Template Features:**
-
-- Professional UI with progress bars and status updates
-- Standardized completion summaries with statistics
-- Proper error handling and rollback capabilities
-- Consistent return navigation and logging
 
 ### Core Application Structure
 
@@ -93,6 +72,14 @@ functionality.
 
 **Critical Requirements**:
 
+- **Page Security**: All protected pages must include security check:
+
+  ```php
+  if (!securePage($_SERVER['PHP_SELF'])) {
+      die();
+  }
+  ```
+
 - **New PHP Directories**: Update `$path` array in `/z_us_root.php` for new
   directories containing PHP files
 - **Page Registration**: Pages using `securePage()` must be registered in
@@ -111,18 +98,33 @@ functionality.
 - `car_transfer_requests` - Self-service ownership transfer workflow
 - Database triggers automatically maintain audit trails (cars table only)
 
+### 🔧 FIX Script Creation Guidelines
+
+> **For complete FIX script creation guidelines, see
+> [FIX_SCRIPTS.md](docs/development/FIX_SCRIPTS.md)**
+
+FIX scripts are one-time administrative scripts for database maintenance tasks,
+schema migrations, and data quality repairs.
+
+**Quick Reference:**
+
+- Use standardized template: `FIX/_TEMPLATE_Fix-Script.php`
+- Sequential naming: `##-Descriptive-Name.php`
+- Two-step UI process with progress tracking
+- Proper transaction handling and error logging
+
 ### Class Architecture & Integration Patterns
 
-**Domain Classes follow established patterns from the Car class:**
+> **For detailed class documentation, see [CLASSES.md](docs/development/CLASSES.md)**
 
-- **Location**: All custom classes in `/usersc/classes/`
-- **Naming**: PascalCase with descriptive business domain names (e.g.,
-  `ElanRegistryOwner`, `Car`, `CarView`)
-- **Database Integration**: Use `DB::getInstance()` singleton pattern
-- **Exception Handling**: Custom exceptions in `/usersc/exceptions/` with
-  descriptive names
-- **Audit Logging**: All operations use `logger($userId, 'Category',
-  'Message')` pattern
+**Quick Reference:**
+
+- **Core domain classes**: Car, CarView, ElanRegistryOwner, ChassisValidator
+- **Support classes**: BackupManager, Resize, EmailTemplate, MarkdownParser,
+  DocumentConfig
+- **Location**: All custom classes in `/usersc/classes/` and
+  `/app/admin/includes/classes/`
+- **Patterns**: DB singleton, custom exceptions, audit logging, strict typing
 
 **Key Integration Functions:**
 
@@ -186,17 +188,6 @@ $backupPath = $backupManager->createManualBackup(
 $stats = $backupManager->getEnhancedBackupStatistics();
 $cleanup = $backupManager->performEnhancedCleanup();
 ```
-
-**Backward Compatibility:**
-
-- Legacy FIX scripts can still use global functions via `/users/helpers/backup_functions.php`
-- Compatibility wrapper delegates to BackupManager internally
-- Deprecated: `/FIX/backup-functions.php` (redirects to compatibility wrapper)
-
-**For New Code:**
-
-- ✅ PREFERRED: Use BackupManager class directly (OOP approach)
-- ⚠️ LEGACY: Use compatibility wrapper functions (for old FIX scripts only)
 
 **See Also**: `/docs/development/BACKUP_SYSTEM.md` for comprehensive
 documentation
@@ -379,13 +370,6 @@ $owner->update([
   - **System Maintenance**: Database cleanup and maintenance tasks
   - **Settings**: Configuration management
   - **Account Cleanup**: User account management
-
-**Quality Badge System:**
-
-- Dynamic badges show issue counts on relevant tabs
-- Owner Management tab shows owner-specific quality issues
-- Manage Cars tab shows car-specific quality issues
-- Badges update in real-time based on database state
 
 **Owner Management Features:**
 

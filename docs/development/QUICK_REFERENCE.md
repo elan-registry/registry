@@ -137,11 +137,22 @@ $isValid = Token::check(Input::get('csrf'));
 // Input sanitization
 $clean = Input::get('field');  // Already sanitized by UserSpice
 
-// Secure page access
+// Secure page access (REQUIRED for all protected pages)
 if (!securePage($_SERVER['PHP_SELF'])) {
     die();
 }
+// Note: Page must be registered in UserSpice admin panel
+//       with appropriate permission levels
 ```
+
+**Page Security Requirements**:
+
+- All pages requiring authentication MUST include `securePage()` check
+- Place at top of file after `init.php` include
+- Page must be registered in UserSpice Admin Panel → Page Management
+- Set appropriate permission levels (1=User, 2=Admin, etc.)
+- `securePage()` checks both authentication and permissions
+- Returns `false` if user lacks access (then page should `die()`)
 
 ## UserSpice Integration
 
