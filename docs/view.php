@@ -155,8 +155,8 @@ $breadcrumb = DocumentConfig::getBreadcrumb($documentData, $us_url_root);
 
 <style>
 .document-content {
-    line-height: 1.6;
-    font-size: 1.1rem;
+    /* Typography inherits from Bootswatch Simplex theme (1rem font-size, 1.5 line-height) */
+    /* This ensures consistency with the rest of the site */
 }
 
 .document-content img {

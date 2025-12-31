@@ -53,6 +53,21 @@ if (!securePage($_SERVER['PHP_SELF'])) {
                 </div>
             </div>
 
+            <!-- Identification Guide -->
+            <div class='col-lg-4 mb-4'>
+                <div class='card registry-card h-100'>
+                    <div class='card-header bg-danger text-white'>
+                        <h5 class='mb-0'><i class='fas fa-search'></i> Identification Guide</h5>
+                    </div>
+                    <div class='card-body d-flex flex-column'>
+                        <p class='card-text'>Complete guide to identifying different Lotus Elan models and variants. Includes detailed descriptions and photos of Roadster, Coupe, Racing, and Plus 2 models.</p>
+                        <div class='mt-auto'>
+                            <a href='../view.php?doc=IDENTIFICATION_GUIDE.md' class='btn btn-danger btn-sm'><i class='fas fa-book-open'></i> View Guide</a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
             <!-- Chassis Validation Rules -->
             <div class='col-lg-4 mb-4'>
                 <div class='card registry-card h-100'>

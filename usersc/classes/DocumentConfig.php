@@ -31,7 +31,8 @@ class DocumentConfig
                     'ADD_CAR_GUIDE.md',
                     'CAR_TRANSFER_USER_GUIDE.md',
                     'CAR_TRANSFER_FAQ.md',
-                    'PRIVACY.md'
+                    'PRIVACY.md',
+                    'IDENTIFICATION_GUIDE.md'
                 ],
                 'requiresAdmin' => false
             ],
@@ -88,7 +89,14 @@ class DocumentConfig
                 'breadcrumb' => 'Privacy Policy',
                 'category' => 'faq'
             ],
-            
+            'IDENTIFICATION_GUIDE.md' => [
+                'title' => 'Lotus Elan Identification Guide',
+                'icon' => 'fas fa-search',
+                'description' => 'Complete guide to identifying Lotus Elan models and variants',
+                'breadcrumb' => 'Identification Guide',
+                'category' => 'faq'
+            ],
+
             // Admin documents
             'CAR_TRANSFER_ADMIN_GUIDE.md' => [
                 'title' => 'Car Transfer Administrator Guide',
