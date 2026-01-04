@@ -1,0 +1,176 @@
+#!/bin/bash
+
+#
+# Commit Message Validation Hook
+#
+# Validates commit messages follow project conventions:
+# - Reasonable length and format
+# - Optional: Issue references for non-trivial commits
+# - Prevents common mistakes
+#
+# To bypass: git commit --no-verify (not recommended)
+#
+
+set -e
+
+COMMIT_MSG_FILE=$1
+COMMIT_MSG=$(cat "$COMMIT_MSG_FILE")
+
+# Colors for output
+RED='\033[0;31m'
+YELLOW='\033[1;33m'
+GREEN='\033[0;32m'
+NC='\033[0m' # No Color
+
+echo "🔍 Validating commit message..."
+
+# Skip validation for merge commits
+if echo "$COMMIT_MSG" | grep -q "^Merge"; then
+    echo "✅ Merge commit - skipping validation"
+    exit 0
+fi
+
+# Skip validation for revert commits
+if echo "$COMMIT_MSG" | grep -q "^Revert"; then
+    echo "✅ Revert commit - skipping validation"
+    exit 0
+fi
+
+# Extract first line (subject)
+SUBJECT=$(echo "$COMMIT_MSG" | head -n1)
+
+# ============================================================================
+# Validation 1: Minimum Length
+# ============================================================================
+
+SUBJECT_LENGTH=${#SUBJECT}
+if [ $SUBJECT_LENGTH -lt 10 ]; then
+    echo ""
+    echo -e "${RED}❌ COMMIT BLOCKED: Commit message too short${NC}"
+    echo ""
+    echo "Subject: \"$SUBJECT\""
+    echo "Length: $SUBJECT_LENGTH characters (minimum: 10)"
+    echo ""
+    echo "🔧 Provide a more descriptive commit message:"
+    echo "   • Explain what the change does"
+    echo "   • Use complete sentences"
+    echo "   • Be specific about the change"
+    echo ""
+    echo "Examples:"
+    echo "   ✅ feat: add lightbox for car photo gallery (#127)"
+    echo "   ✅ fix: resolve CSRF validation in user settings (#234)"
+    echo "   ✅ docs: update deployment procedures"
+    echo ""
+    exit 1
+fi
+
+# ============================================================================
+# Validation 2: Maximum Length for Subject
+# ============================================================================
+
+if [ $SUBJECT_LENGTH -gt 72 ]; then
+    echo ""
+    echo -e "${YELLOW}⚠️  WARNING: Commit subject is long${NC}"
+    echo ""
+    echo "Subject length: $SUBJECT_LENGTH characters (recommended: <72)"
+    echo ""
+    echo "💡 Consider shortening the subject or moving details to the body:"
+    echo "   • Keep subject concise (what changed)"
+    echo "   • Add details in commit body (why it changed)"
+    echo ""
+    echo "Continuing anyway..."
+fi
+
+# ============================================================================
+# Validation 3: Subject Line Format (Soft Recommendation)
+# ============================================================================
+
+# Check if message starts with common prefixes
+if echo "$SUBJECT" | grep -qE "^(feat|fix|docs|refactor|test|chore|style|perf|ci|build|revert|hotfix|wip):"; then
+    echo -e "${GREEN}✅ Conventional commit format detected${NC}"
+else
+    # Check for issue reference anywhere in the message
+    if echo "$COMMIT_MSG" | grep -qE "#[0-9]+"; then
+        echo "✅ Issue reference found"
+    else
+        # Only warn for substantive commits (not docs/chore)
+        if ! echo "$SUBJECT" | grep -qiE "^(docs|chore|style):"; then
+            echo ""
+            echo -e "${YELLOW}💡 RECOMMENDATION: Reference related GitHub issue${NC}"
+            echo ""
+            echo "Current message:"
+            echo "   $SUBJECT"
+            echo ""
+            echo "Consider adding issue reference:"
+            echo "   $SUBJECT (#123)"
+            echo ""
+            echo "Or use conventional commit format:"
+            echo "   feat: $SUBJECT (#123)"
+            echo "   fix: $SUBJECT (#123)"
+            echo ""
+            echo "Continuing without issue reference..."
+            echo ""
+        fi
+    fi
+fi
+
+# ============================================================================
+# Validation 4: Prevent Common Mistakes
+# ============================================================================
+
+# Check for WIP commits (warn but allow)
+if echo "$SUBJECT" | grep -qiE "^(wip|todo|fixme|hack|temp)"; then
+    echo ""
+    echo -e "${YELLOW}⚠️  WARNING: Work-in-progress commit detected${NC}"
+    echo ""
+    echo "Subject: $SUBJECT"
+    echo ""
+    echo "💡 Ensure this is not accidentally pushed to main/production!"
+    echo "   • WIP commits are OK for personal branches"
+    echo "   • Clean up before creating pull requests"
+    echo ""
+fi
+
+# Check for all-caps commits (usually shouting or test commits)
+if echo "$SUBJECT" | grep -qE "^[A-Z ]+$"; then
+    echo ""
+    echo -e "${YELLOW}⚠️  WARNING: All-caps commit message${NC}"
+    echo ""
+    echo "Subject: $SUBJECT"
+    echo ""
+    echo "💡 Consider using normal sentence case for better readability"
+    echo ""
+fi
+
+# Check for trailing periods (style issue)
+if echo "$SUBJECT" | grep -q "\.$"; then
+    echo ""
+    echo -e "${YELLOW}ℹ️  Style note: Commit subjects typically don't end with periods${NC}"
+    echo ""
+fi
+
+# ============================================================================
+# Validation 5: Detect Potentially Sensitive Data
+# ============================================================================
+
+# Check for potential passwords or keys
+if echo "$COMMIT_MSG" | grep -qiE "(password|secret|key|token|api_key)="; then
+    echo ""
+    echo -e "${RED}❌ COMMIT BLOCKED: Potential sensitive data in commit message${NC}"
+    echo ""
+    echo "Detected pattern that looks like sensitive data:"
+    echo "$(echo "$COMMIT_MSG" | grep -iE "(password|secret|key|token|api_key)=")"
+    echo ""
+    echo "🚨 Never include passwords, API keys, or secrets in commit messages!"
+    echo ""
+    echo "🔧 Edit your commit message to remove sensitive data"
+    echo ""
+    exit 1
+fi
+
+# ============================================================================
+# Success
+# ============================================================================
+
+echo "✅ Commit message validation passed"
+exit 0
