@@ -1,213 +1,217 @@
 ---
-description: Release a new version with comprehensive workflow
+description: Automated release workflow with intelligent version analysis and comprehensive release notes generation
 ---
 
 # Release Command
 
-**Intelligent automated release workflow with commit analysis, version
-recommendation, and deployment guidance.**
+When the user runs `/release`, execute this comprehensive release workflow:
 
-## Quick Start
+## Phase 1: Pre-Flight Checks & Analysis
 
-```bash
-# Run the intelligent release script
-./scripts/release.sh
-```
+1. **Verify Prerequisites**
+   - Check we're on main branch: `git branch --show-current`
+   - Check for uncommitted changes: `git status --porcelain`
+   - Check sync with origin: compare `git rev-parse HEAD` with `git rev-parse origin/main`
+   - Verify tools: git, gh CLI, VS Code available
 
-The script will guide you through the complete release process:
+2. **Get Current State**
+   - Read VERSION file for current version
+   - Get last release tag: `git describe --tags --abbrev=0`
+   - Count commits since last release: `git rev-list --count [last_tag]..HEAD`
 
-## What the Script Does
+3. **Analyze Commits**
+   - Get commit breakdown:
+     - Breaking changes: grep for "BREAKING" or "breaking"
+     - Features: grep for "^[a-f0-9]+ (feat|feature):"
+     - Fixes: grep for "^[a-f0-9]+ (fix|hotfix|bug):"
+   - Get changed files: `git diff --name-only [last_tag]..HEAD`
+   - Get resolved issues: extract #NNN from commits
+   - Get merged PRs: `gh pr list --state merged --search "merged:>[last_release_date]"`
 
-### 1. **Pre-Flight Checks** (Automatic)
+4. **Recommend Version Bump**
+   - Breaking changes → major
+   - New features → minor
+   - Bug fixes only → patch
+   - Show recommendation with reasoning
+   - Ask user for approval or manual override
 
-- ✅ Verifies required tools (git, gh CLI, VS Code)
-- ✅ Confirms you're on main branch
-- ✅ Checks for uncommitted changes
-- ✅ Verifies sync with origin/main
-- ✅ Validates tag doesn't already exist
+## Phase 2: Generate Release Notes
 
-### 2. **Version Analysis** (Intelligent)
+**Use the Task tool to analyze changes and generate comprehensive release notes:**
 
-- 📊 Analyzes commits since last release
-- 🔍 Categorizes: features, fixes, breaking changes
-- 💡 Recommends version bump (patch/minor/major)
-- 👤 Asks for your approval or manual override
+1. **Analyze Repository Changes**
+   - Read recent commits and their full messages
+   - Get PR descriptions from GitHub
+   - Get issue details from GitHub
+   - Analyze changed files by category
+   - Detect patterns (migrations, dependencies, config, admin, user-facing, etc.)
 
-### 3. **Release Notes** (Hybrid)
+2. **Generate Complete Sections**
 
-- 📝 Auto-generates from template with populated sections
-- ✏️  Opens in VS Code for you to complete TODO sections
-- 📋 Includes: issues resolved, commit summaries, categorized changes
+   ### Required Actions After Deployment
 
-### 4. **Commit & Tag** (Automatic)
+   Detect and document:
+   - Database migrations (*.sql, FIX/*.php, migrations/)
+   - Dependency updates (composer.json, package.json changed)
+   - Configuration changes (.env files, settings)
+   - Breaking changes requiring manual intervention
+   - Script execution requirements
+   - Format: Clear numbered steps with commands
 
-- 📄 Updates VERSION file
-- 💾 Creates release commit with auto-generated message
-- 🏷️  Creates annotated git tag
+   ### User-Facing Changes
 
-### 5. **Push Confirmation** (Safety Check)
+   Extract and describe:
+   - New features from feat: commits with detailed descriptions
+   - Bug fixes from fix: commits with impact explanation
+   - UI/UX improvements from template/CSS/JS changes
+   - Workflow enhancements
+   - Format: Bullet points with clear benefit statements
 
-- 📊 Shows summary of what will be pushed
-- ❓ Asks: "Push to origin and create GitHub release?"
-- 🛡️  Gives you chance to review before pushing
+   ### Admin-Facing Changes
 
-### 6. **Push & Release** (Automatic if approved)
+   Identify and explain:
+   - Admin panel updates
+   - New administrative tools
+   - Cron job changes
+   - Monitoring/logging improvements
+   - Security enhancements
+   - Format: Bullet points with admin context
 
-- ⬆️  Pushes to origin/main
-- 🏷️  Pushes tag to origin
-- 🎉 Creates GitHub release with auto-generated notes
+   ### Issues Resolved
 
-### 7. **Deployment Instructions** (Copy-Paste Ready)
+   - List all #NNN issues with titles from GitHub
+   - Group by category if many issues
+   - Link to GitHub issue tracker
 
-- 🧪 Shows test deployment commands
-- ⚠️  Shows production deployment commands with warnings
-- 🔗 Provides links to GitHub release and release notes
+   ### Technical Summary
+
+   - Statistics: X commits, Y files changed
+   - Major technical changes
+   - Dependency updates
+   - Test coverage changes
+
+3. **Write Release Notes File**
+   - Create `docs/releases/RELEASE_NOTES_v[VERSION].md`
+   - Use proper markdown formatting
+   - Include all sections with complete content
+   - Add release metadata (date, type, version)
+
+4. **Present to User for Review**
+   - Show the generated release notes in the conversation
+   - Ask: "Review the release notes above. Reply with 'approve' to continue,
+     'edit' to modify, or provide specific changes."
+   - If user says 'edit', open in VS Code with: `code --wait [file]`
+   - Wait for user approval
+
+## Phase 3: Execute Release
+
+1. **Update VERSION File**
+   - Write new version to VERSION file
+   - Stage file: `git add VERSION`
+
+2. **Stage Release Notes**
+   - `git add docs/releases/RELEASE_NOTES_v[VERSION].md`
+
+3. **Create Release Commit**
+
+   ```bash
+   git commit -m "Release: v[VERSION] - [Type] Release
+
+   [Brief summary from release notes]
+
+   See docs/releases/RELEASE_NOTES_v[VERSION].md for complete details.
+
+   🤖 Generated with [Claude Code](https://claude.com/claude-code)
+
+   Co-Authored-By: Claude Sonnet 4.5 <noreply@anthropic.com>"
+   ```
+
+4. **Create Annotated Tag**
+
+   ```bash
+   git tag -a v[VERSION] -m "Release v[VERSION]: [Brief description]
+
+   [Key highlights from release notes]
+
+   Full release notes: docs/releases/RELEASE_NOTES_v[VERSION].md"
+   ```
+
+5. **Confirm Push**
+
+   - Show summary:
+
+     ```text
+     Ready to push:
+     - Commit: [hash] Release: v[VERSION]
+     - Tag: v[VERSION]
+     - Destination: origin/main
+     ```
+
+   - Ask: "Push to origin and create GitHub release? (yes/no)"
+
+6. **Push to Origin**
+   - `git push origin main`
+   - `git push origin v[VERSION]`
+
+7. **Create GitHub Release**
+
+   ```bash
+   gh release create v[VERSION] \
+     --title "Elan Registry v[VERSION]" \
+     --notes-file docs/releases/RELEASE_NOTES_v[VERSION].md
+   ```
+
+8. **Provide Deployment Instructions**
+
+   ```text
+   ═══════════════════════════════════════════════════════
+   Release v[VERSION] Created Successfully!
+   ═══════════════════════════════════════════════════════
+
+   📋 Next Steps:
+
+   1. Deploy to TEST server (recommended first):
+      git push test v[VERSION]
+      git push test main
+
+   2. Validate on test server (24-48 hours recommended)
+
+   3. Deploy to PRODUCTION when ready:
+      git push prod v[VERSION]
+      git push prod main
+
+   🔗 Links:
+   - GitHub Release: [URL]
+   - Release Notes: docs/releases/RELEASE_NOTES_v[VERSION].md
+
+   ⚠️  Remember to run any required actions listed in release notes!
+   ```
 
 ## Error Handling
 
-**Pre-Push Errors:** Automatic rollback
+**If any step fails:**
 
-- Deletes created tag
-- Undos commit
-- Removes created files
-- Returns to clean state
+- Stop immediately
+- Show clear error message
+- Provide recovery instructions
+- If commit/tag created but push failed:
+  - Keep local changes
+  - Show commands to complete or rollback
+- If push succeeded but GitHub release failed:
+  - Note what succeeded
+  - Show command to create release manually
 
-**Post-Push Errors:** Recovery instructions
+## Notes for Claude Code
 
-- Keeps what was successfully pushed
-- Shows manual commands to complete/fix
-
-## Example Session
-
-```bash
-$ ./scripts/release.sh
-
-═══════════════════════════════════════════════════════════
-Pre-Flight Checks
-═══════════════════════════════════════════════════════════
-
-✅ git: git version 2.39.0
-✅ gh: gh version 2.40.0
-✅ GitHub CLI: authenticated
-✅ VS Code: available
-✅ On main branch
-✅ No uncommitted changes
-✅ In sync with origin/main
-
-═══════════════════════════════════════════════════════════
-Version Analysis
-═══════════════════════════════════════════════════════════
-
-ℹ️  Current version: v2.9.4
-ℹ️  Analyzing changes since: v2.9.4
-
-Commit breakdown:
-  Breaking changes: 0
-  Features:         3
-  Fixes:            2
-  Other:            5
-
-ℹ️  Recommendation: minor (New features added)
-
-Approve recommended minor version bump? (y/n): y
-
-✅ Version bump type: minor
-ℹ️  New version: v2.9.5
-
-═══════════════════════════════════════════════════════════
-Creating Release Notes
-═══════════════════════════════════════════════════════════
-
-✅ Release notes draft created
-ℹ️  Opening in VS Code for review...
-[You complete TODO sections and save]
-✅ Release notes completed
-
-═══════════════════════════════════════════════════════════
-Ready to Push
-═══════════════════════════════════════════════════════════
-
-Summary:
-  Version: v2.9.4 → v2.9.5
-
-Push to origin and create GitHub release? (y/n): y
-
-✅ Pushed to origin/main
-✅ Pushed tag to origin
-✅ GitHub release created
-
-═══════════════════════════════════════════════════════════
-Release v2.9.5 Created Successfully!
-═══════════════════════════════════════════════════════════
-
-[Deployment instructions shown...]
-```
-
-## Remote Configuration
-
-- **origin** - GitHub repository (backup/development)
-- **test** - Test/staging server for validation
-- **prod** - LIVE PRODUCTION SERVER (elanregistry.org)
-
-## Release Requirements
-
-**MANDATORY for major (x.0.0) and minor (x.y.0) releases:**
-
-- Release notes using template at `docs/development/RELEASE_NOTES_TEMPLATE.md`
-- GitHub release with `gh release create`
-- Annotated git tags
-- Documentation in `docs/releases/`
-
-**Optional for patch releases (x.y.z):**
-
-- Release notes for significant patches or security fixes
-
-## Pre-Release Analysis
-
-```bash
-# Find last release tag
-git tag --sort=-version:refname | head -10
-
-# Analyze changes since last release
-LAST_TAG=$(git describe --tags --abbrev=0)
-git log $LAST_TAG..HEAD --oneline --stat
-git log $LAST_TAG..HEAD --pretty=format:"- %s (%h)"
-```
-
-## Semantic Versioning
-
-- **Major (X.0.0)**: Breaking changes, incompatible API changes
-- **Minor (X.Y.0)**: New features, backwards compatible
-- **Patch (X.Y.Z)**: Bug fixes, backwards compatible
-
-## Rollback Commands
-
-```bash
-# Set the version to rollback (REQUIRED)
-read -p "Enter version to rollback (e.g., v2.9.5): " VERSION
-echo "Rolling back version: $VERSION"
-
-# Delete tag from all remotes
-git tag -d "$VERSION"
-git push origin :refs/tags/"$VERSION"
-git push test :refs/tags/"$VERSION"
-# 🚨 CAREFUL: Only delete from prod if already pushed there
-git push prod :refs/tags/"$VERSION"
-
-# Emergency production rollback to previous version
-read -p "Enter previous stable version (e.g., v2.9.4): " PREVIOUS_TAG
-echo "Rolling back to: $PREVIOUS_TAG"
-git push prod $PREVIOUS_TAG
-git push prod $PREVIOUS_TAG:refs/heads/main
-```
-
----
-
-**📖 Full Documentation:**
-
-- [DEPLOYMENT.md](../../docs/development/DEPLOYMENT.md) -
-  Complete release and deployment procedures
-- [RELEASE_NOTES_TEMPLATE.md](../../docs/development/RELEASE_NOTES_TEMPLATE.md)
-  \- Release notes template
-- [CLAUDE.md](../../docs/development/CLAUDE.md) - Development
-  guidelines
+- **Always use Task tool** with subagent_type='general-purpose' for analyzing
+  repository changes and generating comprehensive release notes
+- **Be thorough**: Analyze ALL commits, PRs, and issues since last release
+- **Write complete content**: No TODO placeholders - generate full descriptions
+- **Use proper formatting**: Markdown, bullet points, code blocks where
+  appropriate
+- **Provide context**: Explain WHY changes matter, not just WHAT changed
+- **Group logically**: Related changes together, most important first
+- **Be specific**: Include PR numbers, issue numbers, commit hashes where
+  relevant
+- **User review required**: Always show generated notes and get approval before
+  proceeding

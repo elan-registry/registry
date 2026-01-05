@@ -14,7 +14,8 @@ ElanRegistry.code-workspace
 .mcp.json
 .aider*
 .playwright-mcp/
-.claude/
+.claude/*
+!.claude/commands/
 
 ########################################
 # Operating System Files
