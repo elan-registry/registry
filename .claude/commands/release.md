@@ -2,59 +2,145 @@
 description: Release a new version with comprehensive workflow
 ---
 
-# Release Command - Quick Reference
+# Release Command
 
-**📋 For complete release workflow, see [docs/development/DEPLOYMENT.md](../../docs/development/DEPLOYMENT.md)**
+**Intelligent automated release workflow with commit analysis, version
+recommendation, and deployment guidance.**
 
-## Quick Release Workflow
+## Quick Start
 
 ```bash
-# 1. Update VERSION file
-echo "v2.9.1" > VERSION
+# Run the intelligent release script
+./scripts/release.sh
+```
 
-# 2. Create release commit
-git add VERSION
-git commit -m "RELEASE: v2.9.1 - Brief description
+The script will guide you through the complete release process:
 
-Major Features:
-- Feature 1
-- Feature 2
+## What the Script Does
 
-Bug Fixes:
-- Fix 1
-- Fix 2
+### 1. **Pre-Flight Checks** (Automatic)
 
-🤖 Generated with [Claude Code](https://claude.com/claude-code)
+- ✅ Verifies required tools (git, gh CLI, VS Code)
+- ✅ Confirms you're on main branch
+- ✅ Checks for uncommitted changes
+- ✅ Verifies sync with origin/main
+- ✅ Validates tag doesn't already exist
 
-Co-Authored-By: Claude Sonnet 4.5 <noreply@anthropic.com>"
+### 2. **Version Analysis** (Intelligent)
 
-# 3. Create annotated tag
-git tag -a v2.9.1 -m "Release v2.9.1: Brief Description
+- 📊 Analyzes commits since last release
+- 🔍 Categorizes: features, fixes, breaking changes
+- 💡 Recommends version bump (patch/minor/major)
+- 👤 Asks for your approval or manual override
 
-Major Features:
-- Feature 1 with details
-- Feature 2 with details
+### 3. **Release Notes** (Hybrid)
 
-Bug Fixes:
-- Fix 1 with details
-- Fix 2 with details
+- 📝 Auto-generates from template with populated sections
+- ✏️  Opens in VS Code for you to complete TODO sections
+- 📋 Includes: issues resolved, commit summaries, categorized changes
 
-Documentation:
-- Doc updates
+### 4. **Commit & Tag** (Automatic)
 
-Technical Changes:
-- Technical changes"
+- 📄 Updates VERSION file
+- 💾 Creates release commit with auto-generated message
+- 🏷️  Creates annotated git tag
 
-# 4. Push to origin test remotes
-# do not push to prod
-git push origin feature/v2.9.1 && git push origin v2.9.1    # GitHub
-git push test v2.9.1                                                           
+### 5. **Push Confirmation** (Safety Check)
 
-# 5. Create GitHub release (major/minor only)
-gh release create "v2.9.1" \
-  --title "Release v2.9.1: Brief Description" \
-  --generate-notes \
-  --verify-tag
+- 📊 Shows summary of what will be pushed
+- ❓ Asks: "Push to origin and create GitHub release?"
+- 🛡️  Gives you chance to review before pushing
+
+### 6. **Push & Release** (Automatic if approved)
+
+- ⬆️  Pushes to origin/main
+- 🏷️  Pushes tag to origin
+- 🎉 Creates GitHub release with auto-generated notes
+
+### 7. **Deployment Instructions** (Copy-Paste Ready)
+
+- 🧪 Shows test deployment commands
+- ⚠️  Shows production deployment commands with warnings
+- 🔗 Provides links to GitHub release and release notes
+
+## Error Handling
+
+**Pre-Push Errors:** Automatic rollback
+
+- Deletes created tag
+- Undos commit
+- Removes created files
+- Returns to clean state
+
+**Post-Push Errors:** Recovery instructions
+
+- Keeps what was successfully pushed
+- Shows manual commands to complete/fix
+
+## Example Session
+
+```bash
+$ ./scripts/release.sh
+
+═══════════════════════════════════════════════════════════
+Pre-Flight Checks
+═══════════════════════════════════════════════════════════
+
+✅ git: git version 2.39.0
+✅ gh: gh version 2.40.0
+✅ GitHub CLI: authenticated
+✅ VS Code: available
+✅ On main branch
+✅ No uncommitted changes
+✅ In sync with origin/main
+
+═══════════════════════════════════════════════════════════
+Version Analysis
+═══════════════════════════════════════════════════════════
+
+ℹ️  Current version: v2.9.4
+ℹ️  Analyzing changes since: v2.9.4
+
+Commit breakdown:
+  Breaking changes: 0
+  Features:         3
+  Fixes:            2
+  Other:            5
+
+ℹ️  Recommendation: minor (New features added)
+
+Approve recommended minor version bump? (y/n): y
+
+✅ Version bump type: minor
+ℹ️  New version: v2.9.5
+
+═══════════════════════════════════════════════════════════
+Creating Release Notes
+═══════════════════════════════════════════════════════════
+
+✅ Release notes draft created
+ℹ️  Opening in VS Code for review...
+[You complete TODO sections and save]
+✅ Release notes completed
+
+═══════════════════════════════════════════════════════════
+Ready to Push
+═══════════════════════════════════════════════════════════
+
+Summary:
+  Version: v2.9.4 → v2.9.5
+
+Push to origin and create GitHub release? (y/n): y
+
+✅ Pushed to origin/main
+✅ Pushed tag to origin
+✅ GitHub release created
+
+═══════════════════════════════════════════════════════════
+Release v2.9.5 Created Successfully!
+═══════════════════════════════════════════════════════════
+
+[Deployment instructions shown...]
 ```
 
 ## Remote Configuration
@@ -97,14 +183,20 @@ git log $LAST_TAG..HEAD --pretty=format:"- %s (%h)"
 ## Rollback Commands
 
 ```bash
-# Delete tag from all remotes
-git tag -d "v2.9.1"
-git push origin :refs/tags/"v2.9.1"
-git push test :refs/tags/"v2.9.1"
-git push prod :refs/tags/"v2.9.1"
+# Set the version to rollback (REQUIRED)
+read -p "Enter version to rollback (e.g., v2.9.5): " VERSION
+echo "Rolling back version: $VERSION"
 
-# Emergency production rollback
-PREVIOUS_TAG="v2.9.0"
+# Delete tag from all remotes
+git tag -d "$VERSION"
+git push origin :refs/tags/"$VERSION"
+git push test :refs/tags/"$VERSION"
+# 🚨 CAREFUL: Only delete from prod if already pushed there
+git push prod :refs/tags/"$VERSION"
+
+# Emergency production rollback to previous version
+read -p "Enter previous stable version (e.g., v2.9.4): " PREVIOUS_TAG
+echo "Rolling back to: $PREVIOUS_TAG"
 git push prod $PREVIOUS_TAG
 git push prod $PREVIOUS_TAG:refs/heads/main
 ```
