@@ -386,7 +386,80 @@ if [ ! -f "$RELEASE_NOTES_TEMPLATE" ]; then
     exit 1
 fi
 
-# Create release notes from template
+# Analyze changes for intelligent release notes
+print_info "Analyzing changes for intelligent content generation..."
+
+# Get changed files
+CHANGED_FILES=$(git diff --name-only ${LAST_TAG}..HEAD)
+
+# Detect Required Actions
+REQUIRED_ACTIONS=""
+if echo "$CHANGED_FILES" | grep -q "\.sql$\|FIX/.*\.php$\|migrations/"; then
+    REQUIRED_ACTIONS="${REQUIRED_ACTIONS}- **Database changes detected**: Review and run any database migration scripts in \`FIX/\` directory
+"
+fi
+if echo "$CHANGED_FILES" | grep -q "composer\.json\|package\.json"; then
+    REQUIRED_ACTIONS="${REQUIRED_ACTIONS}- **Dependencies updated**: Run \`composer install\` and/or \`npm install\` after deployment
+"
+fi
+if echo "$CHANGED_FILES" | grep -q "\.env\."; then
+    REQUIRED_ACTIONS="${REQUIRED_ACTIONS}- **Configuration changes**: Review and update \`.env\` file with new settings
+"
+fi
+if git log ${LAST_TAG}..HEAD --all-match --grep="BREAKING" --grep="breaking" --oneline | grep -q .; then
+    REQUIRED_ACTIONS="${REQUIRED_ACTIONS}- **Breaking changes**: Review commit messages for migration requirements
+"
+fi
+
+# Detect User-Facing Changes
+USER_CHANGES=""
+if echo "$CHANGED_FILES" | grep -q "app/.*\.php$\|usersc/.*\.php$"; then
+    # Check for new features
+    FEATURE_COMMITS=$(git log ${LAST_TAG}..HEAD --oneline | grep -iE "^[a-f0-9]+ (feat|feature):" || echo "")
+    if [ -n "$FEATURE_COMMITS" ]; then
+        while IFS= read -r line; do
+            desc=$(echo "$line" | sed 's/^[a-f0-9]* feat[ure]*: *//' | sed 's/^/- **New**: /')
+            USER_CHANGES="${USER_CHANGES}${desc}
+"
+        done <<< "$FEATURE_COMMITS"
+    fi
+
+    # Check for bug fixes
+    FIX_COMMITS=$(git log ${LAST_TAG}..HEAD --oneline | grep -iE "^[a-f0-9]+ (fix|hotfix):" || echo "")
+    if [ -n "$FIX_COMMITS" ]; then
+        while IFS= read -r line; do
+            desc=$(echo "$line" | sed 's/^[a-f0-9]* \(fix\|hotfix\): *//' | sed 's/^/- **Fixed**: /')
+            USER_CHANGES="${USER_CHANGES}${desc}
+"
+        done <<< "$FIX_COMMITS"
+    fi
+fi
+
+if echo "$CHANGED_FILES" | grep -q "usersc/templates/.*\.php$\|\.css$\|\.js$"; then
+    USER_CHANGES="${USER_CHANGES}- **UI/UX improvements**: Interface updates and styling enhancements
+"
+fi
+
+# Detect Admin-Facing Changes
+ADMIN_CHANGES=""
+if echo "$CHANGED_FILES" | grep -q "app/admin/\|FIX/"; then
+    ADMIN_CHANGES="${ADMIN_CHANGES}- **Admin tools updated**: New administrative features or fixes in admin panel
+"
+fi
+if echo "$CHANGED_FILES" | grep -q "users/cron/\|scripts/"; then
+    ADMIN_CHANGES="${ADMIN_CHANGES}- **Background processes**: Updates to cron jobs or maintenance scripts
+"
+fi
+if echo "$CHANGED_FILES" | grep -q "docs/\|README"; then
+    ADMIN_CHANGES="${ADMIN_CHANGES}- **Documentation updates**: Improved guides and reference materials
+"
+fi
+if echo "$CHANGED_FILES" | grep -q "tests/\|\.github/workflows/"; then
+    ADMIN_CHANGES="${ADMIN_CHANGES}- **Development improvements**: Enhanced testing and CI/CD workflows
+"
+fi
+
+# Create release notes from template with intelligent content
 cat > "$RELEASE_NOTES_FILE" << EOF
 # Elan Registry $NEW_VERSION Release Notes
 
@@ -395,19 +468,42 @@ cat > "$RELEASE_NOTES_FILE" << EOF
 
 ## 🚨 REQUIRED ACTIONS AFTER DEPLOYMENT
 
-<!-- TODO: Add any required manual actions after deployment -->
-<!-- If none required, replace this section with: -->
-<!-- No manual actions required for this release. -->
+EOF
+
+if [ -n "$REQUIRED_ACTIONS" ]; then
+    echo "$REQUIRED_ACTIONS" >> "$RELEASE_NOTES_FILE"
+    echo "<!-- Review and modify the actions above as needed -->" >> "$RELEASE_NOTES_FILE"
+else
+    echo "No manual actions required for this release." >> "$RELEASE_NOTES_FILE"
+fi
+
+cat >> "$RELEASE_NOTES_FILE" << EOF
 
 ## 👤 User-Facing Changes
 
-<!-- TODO: Describe visible changes for end users -->
-<!-- Or state: No visible changes for end users. This is an internal release. -->
+EOF
+
+if [ -n "$USER_CHANGES" ]; then
+    echo "$USER_CHANGES" >> "$RELEASE_NOTES_FILE"
+    echo "<!-- Review and enhance descriptions above -->" >> "$RELEASE_NOTES_FILE"
+else
+    echo "No visible changes for end users. This is primarily an internal/maintenance release." >> "$RELEASE_NOTES_FILE"
+fi
+
+cat >> "$RELEASE_NOTES_FILE" << EOF
 
 ## 🔧 Admin-Facing Changes
 
-<!-- TODO: Describe changes for administrators -->
-<!-- Or remove this section if not applicable -->
+EOF
+
+if [ -n "$ADMIN_CHANGES" ]; then
+    echo "$ADMIN_CHANGES" >> "$RELEASE_NOTES_FILE"
+    echo "<!-- Add specific details about admin changes above -->" >> "$RELEASE_NOTES_FILE"
+else
+    echo "No specific changes for administrators in this release." >> "$RELEASE_NOTES_FILE"
+fi
+
+cat >> "$RELEASE_NOTES_FILE" << EOF
 
 ## 📋 Issues Resolved in This Release
 
