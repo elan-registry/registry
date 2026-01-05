@@ -64,6 +64,25 @@ British sports cars.
 For detailed setup instructions including API key configuration, see the
 complete installation guide in `docs/development/INSTALLATION.md`.
 
+### Developer Setup Checklist
+
+New developers should complete these steps to ensure a proper development
+environment:
+
+- [ ] Clone repository: `git clone https://github.com/unibrain1/elanregistry.git`
+- [ ] Install PHP dependencies: `composer install`
+- [ ] Install Node dependencies: `npm install`
+- [ ] **Setup git hooks** (CRITICAL): `./scripts/setup-git-hooks.sh`
+- [ ] Verify hooks are working: `./scripts/check-hooks-status.sh`
+- [ ] Run initial tests: `composer test:quick`
+- [ ] Configure local environment (`.env` file - see `ENVIRONMENT.md`)
+- [ ] Review coding standards: `docs/development/CODING_STANDARDS.md`
+- [ ] Read development workflow: `docs/development/DEVELOPMENT_WORKFLOW.md`
+
+**Important:** The git hooks setup is essential for maintaining code quality.
+It catches issues before they reach GitHub, saving time and preventing failed
+CI checks.
+
 ## Development
 
 ### Documentation

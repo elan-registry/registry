@@ -222,6 +222,221 @@ For Playwright browser tests that require authentication:
 - **File system permissions** for temporary file creation during upload tests
 - **UserSpice framework** mocked for isolated testing
 
+## 🪝 Git Hooks & Quality Gates
+
+The project uses automated git hooks to enforce code quality standards before commits reach the repository. This "shift left" approach catches issues early in the development cycle.
+
+### Hook Setup (Required for All Developers)
+
+**One-time setup:**
+
+```bash
+./scripts/setup-git-hooks.sh
+```
+
+**Verify installation:**
+
+```bash
+./scripts/check-hooks-status.sh
+```
+
+### Pre-commit Quality Checks
+
+Every commit triggers a 4-step validation process:
+
+**Step 1: PHP Coding Standards** (~5s)
+
+- Validates `declare(strict_types=1)` declaration
+- Checks complete type declarations (parameters + return types)
+- Enforces PHPDoc blocks on public methods
+- Validates CSRF protection with `Token::check()`
+- Prevents SQL injection (requires prepared statements)
+- Detects XSS vulnerabilities
+- Enforces custom exception usage (no generic `Exception`)
+- Validates proper error handling patterns
+
+**Blocking violations:**
+
+- Missing strict types declaration
+- Missing return type declarations
+- Missing PHPDoc blocks
+- Generic Exception usage
+- SQL concatenation instead of prepared statements
+- Unvalidated user input in sensitive operations
+
+**Step 2: Markdown Linting** (~2s)
+
+- Enforces consistent markdown formatting
+- Validates documentation quality
+- Checks for common formatting issues
+
+**Step 3: Regression Test Validation** (~1s)
+
+- Ensures regression tests follow naming pattern: `Issue{Number}RegressionTest.php`
+- Validates required annotations: `@issue`, `@link`
+- Enforces GitHub issue linking
+
+**Step 4: Fast Unit Tests** (<30s, conditional)
+
+- Runs when critical files modified (`.php`, `.json`, `phpunit.xml`)
+- Executes unit test suite only (no integration tests)
+- Uses `--exclude-group broken` to skip known issues
+- Skipped if `vendor/` not installed
+
+### Bypass Scenarios
+
+**Hook bypass is available but should be used sparingly.**
+
+#### ✅ Acceptable Bypass Scenarios
+
+**Emergency Hotfixes:**
+
+```bash
+# Critical production bug needs immediate fix
+git commit --no-verify -m "hotfix: resolve critical security issue (#456)"
+```
+
+**Rationale:** Fix first, clean up later. Create follow-up issue for standards compliance.
+
+**Non-Code Files:**
+
+```bash
+# Updating documentation that doesn't affect code quality
+git commit --no-verify -m "docs: update README screenshots"
+```
+
+**Rationale:** Images, binary files, or content where quality checks don't apply.
+
+**Hook System Issues:**
+
+```bash
+# Hooks are broken and preventing legitimate commits
+git commit --no-verify -m "fix: repair git hooks setup script"
+```
+
+**Rationale:** You can't fix the hooks if you can't commit!
+
+**Work-in-Progress Branches:**
+
+```bash
+# Personal experimental branch, will clean up before PR
+git commit --no-verify -m "wip: experimenting with new approach"
+```
+
+**Rationale:** Fast iteration on personal branches. **Must clean up before PR!**
+
+#### ❌ Unacceptable Bypass Scenarios
+
+**"Saving Time":**
+
+```bash
+# WRONG - Avoiding standards to commit faster
+git commit --no-verify -m "feat: add new feature"
+```
+
+**Why wrong:** You'll fix it in PR review anyway, wasting more time.
+
+**Regular Development:**
+
+```bash
+# WRONG - Bypassing because you don't want to add type hints
+git commit --no-verify -m "refactor: update user class"
+```
+
+**Why wrong:** Standards exist for a reason - code quality, security, maintainability.
+
+**"Just This Once":**
+
+```bash
+# WRONG - Planning to fix "later"
+git commit --no-verify -m "feat: complex feature without tests"
+```
+
+**Why wrong:** "Later" never comes. Fix it now while context is fresh.
+
+**Avoiding Learning:**
+
+```bash
+# WRONG - Don't understand the error, so skip it
+git commit --no-verify -m "update: various changes"
+```
+
+**Why wrong:** Error messages are educational. Read them, fix the issue, learn.
+
+### Best Practices for Hook Failures
+
+**When pre-commit blocks your commit:**
+
+1. **Read the error message carefully** - It tells you exactly what's wrong
+2. **Fix the issue** - Don't look for workarounds
+3. **Stage the fix:** `git add <file>`
+4. **Try again** - Hooks will re-validate
+
+**Example workflow:**
+
+```bash
+$ git commit -m "feat: add user profile"
+❌ COMMIT BLOCKED: Missing return type declaration
+
+# Read error, fix the code
+$ nano app/users/profile.php  # Add return type
+
+# Stage and retry
+$ git add app/users/profile.php
+$ git commit -m "feat: add user profile"
+✅ All checks passed!
+```
+
+### Troubleshooting Hooks
+
+**Hooks not running:**
+
+```bash
+# Check configuration
+git config core.hooksPath
+# Should output: .githooks
+
+# If wrong, run setup again
+./scripts/setup-git-hooks.sh
+```
+
+**Dependencies missing:**
+
+```bash
+# Install PHP dependencies (for unit tests)
+composer install
+
+# Install Node dependencies (for markdown linting)
+npm install
+```
+
+**Complete troubleshooting guide:** See `scripts/README.md`
+
+### Benefits of Pre-commit Hooks
+
+- ✅ **Catch issues early** - Before they reach GitHub
+- ✅ **Immediate feedback** - Know what's wrong in seconds
+- ✅ **Learn standards** - Error messages teach secure coding
+- ✅ **Prevent PR delays** - No back-and-forth with reviewers
+- ✅ **Consistent quality** - All commits meet minimum standards
+- ✅ **Time savings** - Fix once locally vs. multiple PR revisions
+
+### Hook Bypass Command Reference
+
+```bash
+# Bypass all pre-commit checks (use sparingly!)
+git commit --no-verify -m "message"
+
+# Alternative syntax
+git commit -n -m "message"
+
+# Check hook status
+./scripts/check-hooks-status.sh
+
+# Re-run hook setup
+./scripts/setup-git-hooks.sh
+```
+
 ## 🔐 Security & CSP Management
 
 The application implements a comprehensive Content Security Policy to prevent XSS attacks and unauthorized resource loading while supporting all required external services.
