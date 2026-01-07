@@ -1,4 +1,5 @@
 <?php
+declare(strict_types=1);
 
 /**
  * editCar.php - Car management endpoint
@@ -61,7 +62,7 @@ if (!empty($_POST)) {
                 }
                 break;
             case "updateCar":
-                buildCarDetails($cardetails, Input::get('car_id'));
+                buildCarDetails($cardetails, (int)Input::get('car_id'));
                 buildImageDetails($cardetails);
                 if (empty($errors)) {
                     uploadImages($cardetails); // On update I know the car number
@@ -71,11 +72,11 @@ if (!empty($_POST)) {
                 }
                 break;
             case "fetchImages":
-                $car_id = Input::get('carID');
+                $car_id = (int)Input::get('carID');
                 fetchImages($car_id);
                 break;
             case "removeImages":
-                $car_id = Input::get('carID');
+                $car_id = (int)Input::get('carID');
                 $file = Input::get('file');
                 removeImage($car_id, $file);
                 break;

@@ -1,4 +1,5 @@
 <?php
+declare(strict_types=1);
 
 // Get the car history
 require_once '../../../users/init.php';
@@ -10,7 +11,7 @@ if (!empty($_POST)) {
         include($abs_us_root . $us_url_root . 'usersc/scripts/token_error.php');
     } else {
         $draw = Input::get('draw');
-        $carID = Input::get('car_id');
+        $carID = (int)Input::get('car_id');
 
         if (empty($carID)) {
             logger($user->data()->id ?? 0, 'ValidationError', 'Car history requested without car ID');

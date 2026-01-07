@@ -73,7 +73,7 @@ if (Input::exists('post')) {
     } else {
 
         $action = Input::get('action');
-        $cardetails['id']  = Input::get('car_id');
+        $cardetails['id']  = Input::get('car_id') ? (int)Input::get('car_id') : null;
 
         if ($action === 'updateCar') {
             updateCarDetails($cardetails);
@@ -149,7 +149,7 @@ function updateCarDetails(array &$car): void
             <?php
             // Show admin override warning if applicable
             if (isset($cardetails['id']) && isset($user) && $user->isLoggedIn()) {
-                $editCarObj = new Car($cardetails['id']);
+                $editCarObj = new Car((int)$cardetails['id']);
                 $isEditOwner = ($user->data()->id == $editCarObj->data()->user_id);
                 $hasEditAdminAccess = hasPerm([2, 3]); // Permission 2 = Administrator, 3 = Editor
 
