@@ -47,7 +47,7 @@ error_log
 ########################################
 utilities
 runme.php
-scripts/playwright-auth-1password.sh
+scripts/playwright-auth-1password*.sh
 
 ########################################
 # Access Control
@@ -123,6 +123,7 @@ usersc/tests/
 test-results/
 playwright-report/
 playwright-report-e2e/
+playwright-report-e2e-test/
 playwright/.cache/
 .playwright.result.cache
 tests/playwright/.auth/

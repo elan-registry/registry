@@ -196,7 +196,7 @@ function buildCarDetails(array &$cardetails, ?int $carId = null): void
             $cardetails[$key] = $value;
         }
     } else {
-        $ownerId = $user->data()->id;
+        $ownerId = (int)$user->data()->id;
         $owner = new ElanRegistryOwner($ownerId);
         $ownerData = $owner->data();
 

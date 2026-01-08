@@ -2,9 +2,9 @@
 
 ## Overview
 
-The Elan Registry project uses a **two-tier Playwright testing strategy** to ensure comprehensive coverage across both local development and production environments.
+The Elan Registry project uses a **three-tier Playwright testing strategy** to ensure comprehensive coverage across local development, test/staging, and production environments.
 
-## Two-Tier Testing Architecture
+## Three-Tier Testing Architecture
 
 ### Tier 1: Local Development Tests
 **Location**: `tests/playwright/` (root level test files)
@@ -24,11 +24,23 @@ The Elan Registry project uses a **two-tier Playwright testing strategy** to ens
 - `ajax-endpoints.test.js` - AJAX endpoint testing
 - `debug-tabs.test.js` - Debug features
 
-### Tier 2: Production E2E Tests
+### Tier 2: Test Environment E2E Tests
+**Location**: `tests/playwright/e2e/`
+**Purpose**: Pre-production validation and staging verification
+**Environment**: Test/Staging (`https://test.elanregistry.org`)
+**When to run**: Before production releases, feature validation
+**Configuration**: `playwright.config.test.js`
+
+**Test Files**:
+- `not-logged-in.spec.js` - Public page accessibility and link validation
+- `logged-in.spec.js` - Authenticated user workflows and menu verification
+- `helpers.js` - Authentication utilities with session persistence
+
+### Tier 3: Production E2E Tests
 **Location**: `tests/playwright/e2e/`
 **Purpose**: Production user workflow validation
-**Environment**: Production (`https://elanregistry.org`) or staging
-**When to run**: CI/CD, pre-release, scheduled monitoring
+**Environment**: Production (`https://elanregistry.org`)
+**When to run**: CI/CD, post-release monitoring, scheduled health checks
 **Configuration**: `playwright.config.prod.js`
 
 **Test Files**:
@@ -64,6 +76,26 @@ npm run playwright:debug
 npm run playwright:report
 ```
 
+### Test Environment E2E Tests
+
+```bash
+# Run all test environment E2E tests
+npm run test:e2e:test
+
+# Run with browser visible
+npm run test:e2e:test:headed
+
+# Run with Playwright UI mode
+npm run test:e2e:test:ui
+
+# Run specific project
+npm run test:e2e:test:not-logged-in
+npm run test:e2e:test:logged-in
+
+# View test environment E2E report
+npm run test:e2e:test:report
+```
+
 ### Production E2E Tests
 
 ```bash
@@ -86,26 +118,47 @@ npm run test:e2e:report
 
 ---
 
+## Recommended Testing Workflow
+
+For safe, incremental validation of changes:
+
+1. **Local Development**: Run local tests during development (`npm run playwright:test`)
+2. **Test Environment**: Validate on test.elanregistry.org before production (`npm run test:e2e:test`)
+3. **Production**: Run production tests post-deployment for verification (`npm run test:e2e`)
+
+This three-tier approach ensures:
+- Rapid feedback during development
+- Safe pre-production validation
+- Production health monitoring
+
+---
+
 ## E2E Authentication Setup
 
-Production E2E tests use **session persistence** to avoid CAPTCHA challenges on every test run.
+E2E tests use **session persistence** to avoid CAPTCHA challenges on every test run. Separate authentication files are maintained for test and production environments.
 
 ### Prerequisites
 
-**Test Account Credentials** - You'll need test account credentials set as
-environment variables
+**1Password CLI** - Install and authenticate with 1Password CLI (`op`)
+
+**Account Credentials** - Stored in 1Password:
+- **Test Environment**: `op://ElanRegistry/Elanregistry - Test Admin/username`
+- **Production**: `op://ElanRegistry/elanregistry - test account/username`
 
 ### Setup Process
 
-Set your test credentials as environment variables and run the setup script:
+**For Test Environment (test.elanregistry.org):**
 
 ```bash
-# Set credentials
-export ELAN_USERNAME="your_test_username"
-export ELAN_PASSWORD="your_test_password"
+# Run the test environment setup script
+./scripts/playwright-auth-1password-test.sh
+```
 
-# Run the setup script
-node scripts/playwright-auth-setup.js
+**For Production (elanregistry.org):**
+
+```bash
+# Run the production setup script
+./scripts/playwright-auth-1password.sh
 ```
 
 #### What Happens During Setup
@@ -121,9 +174,11 @@ node scripts/playwright-auth-setup.js
 
 ### Session State Management
 
-- **Auth File**: `tests/playwright/.auth/user.json`
+- **Auth Files**:
+  - Test Environment: `tests/playwright/.auth/user-test.json`
+  - Production: `tests/playwright/.auth/user.json`
 - **Lifetime**: Sessions may expire; re-run setup if tests fail with login errors
-- **Security**: File is gitignored; never commit to repository
+- **Security**: Files are gitignored; never commit to repository
 - **CI/CD**: Store as encrypted secret or regenerate in pipeline
 
 ---
@@ -140,7 +195,9 @@ The E2E configuration defines two Playwright projects:
 ### logged-in Project
 - **Tests**: Authenticated user workflows
 - **Requires**: Authentication state file
-- **Conditional**: Only runs if `tests/playwright/.auth/user.json` exists
+  - Test environment: `tests/playwright/.auth/user-test.json`
+  - Production: `tests/playwright/.auth/user.json`
+- **Conditional**: Only runs if respective auth file exists
 
 If the auth file doesn't exist, logged-in tests are skipped automatically.
 
@@ -219,14 +276,16 @@ jobs:
 ## Troubleshooting
 
 ### Issue: "Auth file doesn't exist"
-**Solution**: Run authentication setup:
-```bash
-# Set your test credentials
-export ELAN_USERNAME="your_test_username"
-export ELAN_PASSWORD="your_test_password"
+**Solution**: Run authentication setup for the appropriate environment:
 
-# Run the setup script
-node scripts/playwright-auth-setup.js
+**Test Environment:**
+```bash
+./scripts/playwright-auth-1password-test.sh
+```
+
+**Production:**
+```bash
+./scripts/playwright-auth-1password.sh
 ```
 
 ### Issue: "Tests fail with login redirect"
@@ -273,14 +332,19 @@ elan_registry/
 │       │   ├── logged-in.spec.js
 │       │   └── helpers.js
 │       ├── .auth/
-│       │   └── user.json (gitignored)
+│       │   ├── user-test.json (gitignored, test env)
+│       │   └── user.json (gitignored, production)
 │       ├── security.test.js
 │       ├── functionality.test.js
 │       └── ... (other local tests)
 ├── scripts/
-│   └── playwright-auth-setup.js
+│   ├── playwright-auth-setup-test.js (test env)
+│   ├── playwright-auth-1password-test.sh (test env, gitignored)
+│   ├── playwright-auth-setup.js (production)
+│   └── playwright-auth-1password.sh (production, gitignored)
 ├── playwright.config.js (local dev)
-├── playwright.config.prod.js (E2E)
+├── playwright.config.test.js (test environment E2E)
+├── playwright.config.prod.js (production E2E)
 └── package.json
 ```
 
@@ -293,7 +357,8 @@ elan_registry/
 1. **New user-facing features**: Add to `logged-in.spec.js`
 2. **New public pages**: Add to `not-logged-in.spec.js`
 3. **Authentication changes**: Update `helpers.js`
-4. **Production URL changes**: Update `playwright.config.prod.js`
+4. **Test environment URL changes**: Update `playwright.config.test.js`
+5. **Production URL changes**: Update `playwright.config.prod.js`
 
 ### Session Maintenance
 
