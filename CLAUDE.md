@@ -35,6 +35,8 @@ To avoid information overload, follow this structured learning path:
 
 **As Needed - Specialized Topics:**
 
+- `docs/development/PAGE_LOADING_FLOW.md` - When debugging initialization or
+  understanding file loading sequence
 - `docs/development/DEPLOYMENT.md` - When preparing releases
 - `docs/development/FIX_SCRIPTS.md` - When creating database maintenance
   scripts

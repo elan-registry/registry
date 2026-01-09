@@ -84,6 +84,8 @@ Fundamental architecture and patterns:
 
 - **[ARCHITECTURE.md](development/ARCHITECTURE.md)** - System architecture,
   database, and class patterns
+- **[PAGE_LOADING_FLOW.md](development/PAGE_LOADING_FLOW.md)** - Complete
+  reference for page initialization and file loading sequence
 - **[DATABASE.md](development/DATABASE.md)** - Complete database schema
   documentation and table relationships
 - **[INTEGRATION.md](development/INTEGRATION.md)** - UserSpice integration
