@@ -153,36 +153,69 @@ rm -rf temp_registry
 
 ### 3. Install Dependencies
 
-Install PHP dependencies using Composer. **The installation command differs
-between development and production environments.**
+The project uses **dual composer setup**:
+- **Root `composer.json`**: Development dependencies (PHPUnit, PHPStan)
+- **`usersc/composer.json`**: Application runtime dependencies (SecureEnvPHP)
 
-#### Development Environment
+#### Automated Installation (Recommended)
 
+Use the automated installation script for both development and production:
+
+**Development:**
 ```bash
-# Install all dependencies including dev dependencies (PHPUnit, PHPStan)
-composer install
+./scripts/install-dependencies.sh --dev
 ```
 
-#### Production/Test Environments
-
+**Production:**
 ```bash
-# Install ONLY production dependencies (excludes PHPUnit, PHPStan, testing tools)
+./scripts/install-dependencies.sh --prod
+```
+
+The script will:
+- Install dependencies in both root and usersc directories
+- Verify successful installation
+- Provide detailed progress output
+- Handle errors gracefully
+
+#### Manual Installation (Alternative)
+
+If you prefer manual installation:
+
+**Development Environment:**
+```bash
+# Install root dependencies (dev tools)
+composer install
+
+# Install usersc dependencies (runtime)
+cd usersc
+composer install
+cd ..
+```
+
+**Production Environment:**
+```bash
+# Install root dependencies (skip dev tools)
+composer install --no-dev
+
+# Install usersc dependencies (runtime)
+cd usersc
 composer install --no-dev --optimize-autoloader
+cd ..
 ```
 
 **Important Notes:**
 
-- **`--no-dev`**: Skips development dependencies (testing frameworks,
-  code analysis tools)
+- **Dual Setup**: Both composer.json files must be installed for the application to work
+- **`--no-dev`**: Skips development dependencies (testing frameworks, code analysis tools)
   - PHPUnit requires PHP 8.3+ but production servers may run PHP 8.2
   - Development tools are not needed on production servers
 - **`--optimize-autoloader`**: Generates optimized class autoloader for better performance
 
-**Key Production Dependencies:**
+**Application Runtime Dependencies (usersc/vendor/):**
 
 - `johnathanmiller/secure-env-php` - Encrypted environment variable management
 
-**Development-Only Dependencies (installed with `composer install`):**
+**Development-Only Dependencies (root vendor/):**
 
 - `phpunit/phpunit` - Unit testing framework (requires PHP 8.3+)
 - `phpstan/phpstan` - Static analysis tool for code quality
@@ -211,11 +244,11 @@ for complete instructions.
 2. **Encrypt and Secure**:
 
    ```bash
-   # Execute vendor/bin/encrypt-env in your project directory
+   # Execute usersc/vendor/bin/encrypt-env in your project directory
    # Follow the command prompts to encrypt your .env file
    # Press enter to accept the default values in square brackets
    # Select Y when prompted to create key
-   vendor/bin/encrypt-env
+   usersc/vendor/bin/encrypt-env
 
    # Remove plaintext file for security
    rm .env
