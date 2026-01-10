@@ -1,11 +1,28 @@
 <?php
 
+declare(strict_types=1);
+
 /**
- * Exception thrown when car data validation fails
+ * CarValidationException
+ *
+ * Exception thrown when car data validation fails.
+ * Used when input data doesn't meet required validation rules
+ * (chassis number format, required fields, etc.).
+ *
+ * @package ElanRegistry
+ * @subpackage Exceptions
+ * @since v2.11.0
  */
 class CarValidationException extends Exception
 {
-    public function __construct(string $message = "Car data validation failed", int $code = 0, ?Throwable $previous = null)
+    /**
+     * Constructor
+     *
+     * @param string $message Exception message
+     * @param int $code Exception code (optional)
+     * @param Throwable|null $previous Previous exception for chaining (optional)
+     */
+    public function __construct(string $message = "Car validation failed", int $code = 0, ?Throwable $previous = null)
     {
         parent::__construct($message, $code, $previous);
     }
