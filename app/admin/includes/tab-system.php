@@ -8,9 +8,7 @@ declare(strict_types=1);
  * Integrates existing /FIX/ functionality into consolidated interface
  */
 
-// Include Enhanced Schema Manager and BackupManager
-require_once 'classes/EnhancedSchemaManager.php';
-require_once 'classes/BackupManager.php';
+// EnhancedSchemaManager and BackupManager auto-loaded via custom autoloader
 // No longer need FIX/backup-functions.php - all backup logic is in BackupManager class
 
 // Initialize enhanced managers

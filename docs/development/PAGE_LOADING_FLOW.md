@@ -55,7 +55,6 @@ users/init.php
 │   └─ Registers SPL autoloader for classes in:
 │       - users/classes/**/*.php (UserSpice core classes only)
 │       - Recursively searches from users/classes/ directory
-│       - Does NOT auto-load usersc/classes/* (requires explicit includes)
 │
 ├─ 1.2. Session Configuration
 │   ├─ Sets session name from config
@@ -73,17 +72,13 @@ users/init.php
 │   │   │   ├─ API keys (Google Maps, etc.)
 │   │   │   └─ Application secrets
 │   │   │
-│   │   ├─ Custom application classes (explicit loading required):
-│   │   │   ├─ usersc/classes/Car.php
-│   │   │   ├─ usersc/classes/ElanRegistryOwner.php
-│   │   │   ├─ usersc/classes/Resize.php
-│   │   │   ├─ usersc/classes/CarView.php
-│   │   │   └─ NOTE: SPL autoloader does not cover usersc/classes/
-│   │   │       These must be explicitly included or loaded manually
-│   │   │
-│   │   ├─ usersc/includes/car_exceptions_autoloader.php
-│   │   │   └─ Custom exception classes for validation
-│   │   │   └─ Provides autoloader specifically for custom exceptions
+│   │   ├─ usersc/classes/class.autoloader.php
+│   │   │   └─ Unified hybrid autoloader for all custom classes:
+│   │   │       ├─ PSR-4 for namespaced classes (fast path)
+│   │   │       ├─ Recursive iterator for non-namespaced classes
+│   │   │       ├─ Loads 10+ core classes on demand
+│   │   │       ├─ Loads 13 custom exception classes on demand
+│   │   │       └─ Prepended to SPL autoloader queue
 │   │   │
 │   │   └─ Custom helper functions:
 │   │       ├─ getUserWithProfile() - Combined user/profile data
@@ -227,24 +222,51 @@ users/init.php
 - `Validate` - Data validation
 - `Hash` - Password hashing (bcrypt)
 
-**Custom Application Classes** (explicitly loaded in step 1.3.1 from `usersc/classes/`):
+**Custom Application Classes** (auto-loaded in step 1.3.1 via
+`usersc/classes/class.autoloader.php`):
 
-- `Car` - Car data model with CRUD operations (explicitly loaded)
-- `ElanRegistryOwner` - Owner data model (explicitly loaded)
-- `Resize` - Image resizing and optimization (explicitly loaded)
-- `CarView` - Car display utilities (explicitly loaded)
-- `ChassisValidator` - VIN/chassis validation (loaded on-demand via custom
-  exception autoloader)
-- `BackupManager` - Database backup management (loaded on first use)
-- `EmailTemplate` - Email template rendering (loaded on first use)
-- `MarkdownParser` - Markdown to HTML conversion (loaded on first use)
-- `DocumentConfig` - Document metadata management (loaded on first use)
+**Core Classes:**
 
-**Important Note:** Classes in `usersc/classes/` that are not explicitly
-loaded in `custom_functions.php` will only be available if instantiated
-after the PHP class file is included elsewhere, or if a custom autoloader
-is set up for them. The main SPL autoloader only covers `users/classes/`
-directory.
+- `Car` - Car data model with CRUD operations (will become `ElanRegistry\Car`)
+- `ElanRegistryOwner` - Owner data model (will become `ElanRegistry\Owner`)
+- `CarView` - Car display utilities
+- `Resize` - Image resizing and optimization
+- `BackupManager` - Database backup management
+- `ChassisValidator` - VIN/chassis validation
+- `EmailTemplate` - Email template rendering
+- `MarkdownParser` - Markdown to HTML conversion (namespace:
+  ElanRegistry\Documentation)
+- `DocumentConfig` - Document metadata management (namespace:
+  ElanRegistry\Documentation)
+- `CarErrorMessages` - Centralized error message definitions
+
+**Custom Exceptions** (`usersc/classes/exceptions/`):
+
+- **Car exceptions:** `CarCreationException`, `CarNotFoundException`,
+  `CarValidationException`, `CarTransferException`, `CarMergeException`,
+  `CarDeletionException`
+- **Owner exceptions:** `OwnerCreationException`, `OwnerNotFoundException`,
+  `OwnerValidationException`, `OwnerUpdateException`
+- **System exceptions:** `ImageProcessingException`, `BackupException`,
+  `SchemaException`
+
+**Autoloader Details:**
+
+- **Location:** `usersc/classes/class.autoloader.php`
+- **Type:** Hybrid namespace-aware autoloader (PSR-4 + recursive scan)
+- **PSR-4 Support:** Handles namespaced classes (e.g., `ElanRegistry\Car`,
+  `ElanRegistry\Documentation\MarkdownParser`)
+- **Backward Compatibility:** Recursive iterator for non-namespaced classes
+- **Performance:** Cached iterator (< 1ms), direct path for namespaced
+  classes (< 0.1ms)
+- **Prepended to SPL queue:** Custom classes loaded before UserSpice fallback
+
+**Loading Mechanism:**
+
+All classes in `usersc/classes/**/*.php` are loaded automatically on first
+use. No explicit includes required in application code. The autoloader tries
+PSR-4 first (for namespaced classes), then falls back to recursive filename
+matching (for non-namespaced classes).
 
 ### Phase 2: Template Preparation (`users/includes/template/prep.php`)
 
@@ -311,24 +333,21 @@ Depending on `$settings->template` value (typically 'ElanRegistry'), loads from:
 ```text
 index.php (or other page-specific file)
 │
-├─ 3.1. Additional Includes
-│   └─ Page-specific class includes (if needed beyond autoloader)
-│       Example: require_once $abs_us_root . $us_url_root . 'usersc/classes/CarView.php';
-│
-├─ 3.2. Security Check
+├─ 3.1. Security Check
 │   └─ securePage($_SERVER['PHP_SELF'])
 │       ├─ Check if page requires authentication
 │       ├─ Verify user has required permissions
 │       └─ die() if unauthorized
 │
-├─ 3.3. Page Logic
+├─ 3.2. Page Logic
 │   ├─ Process form submissions
 │   ├─ Execute database queries
 │   ├─ Instantiate model classes (Car, ElanRegistryOwner, etc.)
+│   │   └─ All classes auto-loaded on first use (no requires needed)
 │   ├─ Business logic execution
 │   └─ Prepare data for display
 │
-└─ 3.4. HTML Output
+└─ 3.3. HTML Output
     └─ Render page-specific content within template structure
 ```
 

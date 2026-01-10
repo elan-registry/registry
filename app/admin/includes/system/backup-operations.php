@@ -8,7 +8,6 @@ declare(strict_types=1);
  */
 
 require_once '../../../../users/init.php';
-require_once '../classes/BackupManager.php';
 
 // Set JSON response header
 header('Content-Type: application/json');

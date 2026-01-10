@@ -28,19 +28,11 @@ if (file_exists($abs_us_root . $us_url_root . 'vendor/autoload.php')) {
     require_once $abs_us_root . $us_url_root . 'vendor/autoload.php';
 }
 
+// Load unified autoloader for all custom classes and exceptions
+require_once $abs_us_root . $us_url_root . 'usersc/classes/class.autoloader.php';
+
 use SecureEnvPHP\SecureEnvPHP;
-
 (new SecureEnvPHP())->parse($abs_us_root . $us_url_root . '.env.enc', $abs_us_root . $us_url_root . '.env.key');
-
-// Include classes in usersc
-
-include_once $abs_us_root . $us_url_root . 'usersc/classes/Car.php';
-include_once $abs_us_root . $us_url_root . 'usersc/classes/ElanRegistryOwner.php';
-include_once $abs_us_root . $us_url_root . 'usersc/classes/Resize.php';
-include_once $abs_us_root . $us_url_root . 'usersc/classes/CarView.php';
-
-// Include Car exception autoloader
-include_once $abs_us_root . $us_url_root . 'usersc/includes/car_exceptions_autoloader.php';
 
 /**
  * Get user details with profile information (city, state, country, location, website)

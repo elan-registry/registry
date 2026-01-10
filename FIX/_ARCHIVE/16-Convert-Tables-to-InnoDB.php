@@ -44,7 +44,7 @@ define('SECTION_SEPARATOR', '═════════════════
 
 require_once '../users/init.php';
 require_once $abs_us_root . $us_url_root . 'users/includes/template/prep.php';
-require_once $abs_us_root . $us_url_root . 'app/admin/includes/classes/BackupManager.php';
+// BackupManager auto-loaded via custom autoloader (now in usersc/classes/admin/)
 
 if (!securePage($_SERVER['PHP_SELF'])) {
     die();

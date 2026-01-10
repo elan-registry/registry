@@ -1,16 +1,18 @@
 <?php
+
+declare(strict_types=1);
+
 /**
  * Secure DataTables server-side processing endpoint
- * 
+ *
  * Replaces the vulnerable getList.php with secure implementation using Car class.
  * Uses prepared statements and input validation to prevent SQL injection.
- * 
+ *
  * @author Elan Registry Security Team
  * @copyright 2025
  */
 
 require_once '../../users/init.php';
-require_once $abs_us_root . $us_url_root . 'usersc/classes/Car.php';
 
 // Security: Only process POST requests
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {

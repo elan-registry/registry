@@ -9,8 +9,6 @@ declare(strict_types=1);
  * Part of Phase 1D: FIX System Integration and Enhanced Database Management
  */
 
-require_once __DIR__ . '/SchemaException.php';
-
 class EnhancedSchemaManager {
     private $db;
     private $logger;
