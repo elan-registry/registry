@@ -74,11 +74,137 @@
 - **Onboarding**: New developers can quickly understand the page loading sequence and initialization flow
 - **UserSpice Integration**: Added story paths to `z_us_root.php` configuration
 
+## 🔧 Infrastructure Changes
+
+### SecureEnvPHP Dependency Reorganization
+
+**Change:** Moved `johnathanmiller/secure-env-php` from root `vendor/` to `usersc/vendor/` for cleaner dependency management.
+
+**Why:** Separates development dependencies (PHPUnit, PHPStan in root) from application runtime dependencies (SecureEnvPHP in usersc).
+
+**Impact:** No user-facing changes. Cleaner code architecture following UserSpice patterns.
+
+### Dependency Lock File Management
+
+**Fixed:** `usersc/composer.lock` now tracked in version control for consistent dependency versions across all environments.
+
+**Why:** Both root and usersc lock files must be committed to ensure identical dependency versions in development, staging, and production. This prevents "works on my machine" issues and provides a complete audit trail of dependency changes.
+
+**Change:** Removed `usersc/composer.lock` from `.gitignore` (line 98).
+
+### Installation Script Added
+
+**New:** `scripts/install-dependencies.sh` - Automated dependency installation script
+
+**Features:**
+- Idempotent: Safe to run multiple times
+- Validates Composer availability
+- Verifies successful installation
+- Supports both development (`--dev`) and production (`--prod`) modes
+- Comprehensive progress feedback and error handling
+
+**Usage:**
+```bash
+# Development
+./scripts/install-dependencies.sh --dev
+
+# Production
+./scripts/install-dependencies.sh --prod
+```
+
+## 🚨 DEPLOYMENT SEQUENCE (CRITICAL)
+
+This release requires manual composer installation in the `usersc/` directory. **Follow these steps in exact order:**
+
+### Step 1: Deploy Code Changes
+Deploy the updated codebase as normal (git pull, etc.)
+
+### Step 2: Install usersc Dependencies (REQUIRED)
+
+**Option A: Automated Installation (Recommended)**
+```bash
+cd /path/to/elan_registry
+./scripts/install-dependencies.sh --prod
+```
+
+The installation script will:
+- Install dependencies in usersc/vendor/
+- Verify SecureEnvPHP package installation
+- Update root dependencies for production
+- Provide detailed progress and verification
+
+**Option B: Manual Installation**
+```bash
+cd /path/to/elan_registry/usersc
+composer install --no-dev --optimize-autoloader
+cd ..
+```
+
+**Verify installation succeeded:**
+```bash
+ls -la usersc/vendor/johnathanmiller/secure-env-php
+```
+You should see the SecureEnvPHP package directory.
+
+### Step 3: Update Root Dependencies (Manual Installation Only)
+
+**Note:** If you used the automated installation script (Option A), skip this step - it's already done.
+
+For manual installation (Option B):
+
+```bash
+cd /path/to/elan_registry
+composer update --no-dev
+```
+
+This removes SecureEnvPHP from root vendor/ (no longer needed).
+
+### Step 4: Verify Successful Login
+1. Access the site homepage
+2. Login with your admin account
+3. Verify no errors in error logs
+4. Confirm database connectivity works
+
+**This verifies environment variables are loading correctly.**
+
+### Step 5: Run FIX/18 Script
+After successful login verification:
+1. Navigate to `FIX/` directory via admin panel
+2. Run script `18-Update-Stories-Directory-Paths.php`
+3. Follow on-screen instructions
+
+### Verification Checklist
+- [ ] `usersc/vendor/` directory exists
+- [ ] `usersc/vendor/johnathanmiller/secure-env-php/` exists
+- [ ] Root `vendor/johnathanmiller/` does NOT exist
+- [ ] Site loads without errors
+- [ ] Can login successfully
+- [ ] Database operations work
+- [ ] FIX/18 script completed
+
+### Rollback Procedure (if needed)
+If issues occur:
+```bash
+git checkout composer.json usersc/includes/custom_functions.php users/init.php
+composer install
+```
+
+Then restart web server and test.
+
+### Support
+If you encounter issues during deployment, check:
+1. PHP error logs for specific error messages
+2. Verify `.env.enc` and `.env.key` files exist in root
+3. Check file permissions on `usersc/vendor/` directory
+4. Confirm composer installed successfully (no errors in output)
+
 ## 📋 Issues Resolved in This Release
 
 [#360](https://github.com/unibrain1/elanregistry/issues/360) - Move stories/ directory to docs/ for better organization
 
 [#426](https://github.com/unibrain1/elanregistry/issues/426) - Architecture: Create unified autoloader for usersc/classes directory
+
+[#427](https://github.com/unibrain1/elanregistry/issues/427) - Move SecureEnvPHP to usersc/vendor for cleaner dependency management
 
 ---
 

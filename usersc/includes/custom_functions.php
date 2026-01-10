@@ -22,17 +22,11 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 //Put your custom functions in this file and they will be automatically included.
 
-// Get encrypted environment variables
-// Need to include now because the init calls usersc/vendor/autoload.php after custom_functions.php
-if (file_exists($abs_us_root . $us_url_root . 'vendor/autoload.php')) {
-    require_once $abs_us_root . $us_url_root . 'vendor/autoload.php';
-}
-
 // Load unified autoloader for all custom classes and exceptions
 require_once $abs_us_root . $us_url_root . 'usersc/classes/class.autoloader.php';
 
-use SecureEnvPHP\SecureEnvPHP;
-(new SecureEnvPHP())->parse($abs_us_root . $us_url_root . '.env.enc', $abs_us_root . $us_url_root . '.env.key');
+// Note: SecureEnvPHP is autoloaded via helpers.php (usersc/vendor/autoload.php)
+// and parsed in users/init.php where environment variables are actually needed
 
 /**
  * Get user details with profile information (city, state, country, location, website)
