@@ -16,10 +16,6 @@ if (!securePage($_SERVER['PHP_SELF'])) {
     exit(json_encode(['success' => false, 'error' => 'Access denied']));
 }
 
-// Include the Enhanced Schema Manager
-require_once '../classes/EnhancedSchemaManager.php';
-require_once '../classes/SchemaException.php';
-
 // Set content type for JSON responses
 header('Content-Type: application/json');
 

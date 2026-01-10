@@ -26,29 +26,8 @@ if (!isset($_SESSION)) {
     $_SESSION = [];
 }
 
-// Load actual classes for testing
-if (file_exists($projectRoot . '/usersc/classes/Resize.php')) {
-    require_once $projectRoot . '/usersc/classes/Resize.php';
-}
-
-// Load ElanRegistryOwner class for testing
-if (file_exists($projectRoot . '/usersc/classes/ElanRegistryOwner.php')) {
-    require_once $projectRoot . '/usersc/classes/ElanRegistryOwner.php';
-}
-
-// Load ElanRegistryOwner exceptions
-if (file_exists($projectRoot . '/usersc/exceptions/OwnerCreationException.php')) {
-    require_once $projectRoot . '/usersc/exceptions/OwnerCreationException.php';
-}
-if (file_exists($projectRoot . '/usersc/exceptions/OwnerValidationException.php')) {
-    require_once $projectRoot . '/usersc/exceptions/OwnerValidationException.php';
-}
-if (file_exists($projectRoot . '/usersc/exceptions/OwnerUpdateException.php')) {
-    require_once $projectRoot . '/usersc/exceptions/OwnerUpdateException.php';
-}
-if (file_exists($projectRoot . '/usersc/exceptions/OwnerNotFoundException.php')) {
-    require_once $projectRoot . '/usersc/exceptions/OwnerNotFoundException.php';
-}
+// Load unified autoloader for all custom classes and exceptions
+require_once $projectRoot . '/usersc/classes/class.autoloader.php';
 
 // Mock classes for testing if they don't exist
 if (!class_exists('Token')) {

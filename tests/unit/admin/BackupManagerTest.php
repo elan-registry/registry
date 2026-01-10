@@ -4,9 +4,8 @@ declare(strict_types=1);
 
 use PHPUnit\Framework\TestCase;
 
-// Load BackupManager and dependencies
-require_once dirname(__DIR__, 3) . '/app/admin/includes/classes/BackupException.php';
-require_once dirname(__DIR__, 3) . '/app/admin/includes/classes/BackupManager.php';
+// BackupManager and BackupException auto-loaded via custom autoloader
+// (BackupManager now in usersc/classes/admin/, BackupException in usersc/classes/exceptions/)
 
 /**
  * Unit tests for BackupManager class

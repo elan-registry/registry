@@ -12,8 +12,8 @@ declare(strict_types=1);
  * @since v2.9.2
  */
 
-// Ensure BackupManager class is available
-require_once __DIR__ . '/../../app/admin/includes/classes/BackupManager.php';
+// BackupManager class auto-loaded via custom autoloader
+// (now located in usersc/classes/admin/BackupManager.php)
 
 // Define backup directory constant to avoid duplication
 define('BACKUP_DIR_PATH', 'FIX/backups/');

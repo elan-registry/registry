@@ -10,8 +10,6 @@ declare(strict_types=1);
  * Part of Phase 1D: Integrated Backup System
  */
 
-require_once __DIR__ . '/BackupException.php';
-
 class BackupManager {
     private object $db;
     private \Closure $logger;
