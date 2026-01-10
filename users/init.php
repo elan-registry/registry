@@ -35,6 +35,12 @@ for ($i = 1; $i < $self_path_length; $i++) {
 
 require_once $abs_us_root . $us_url_root . 'users/helpers/helpers.php';
 
+// Load encrypted environment variables
+// SecureEnvPHP autoloaded via helpers.php → usersc/vendor/autoload.php
+use SecureEnvPHP\SecureEnvPHP;
+
+(new SecureEnvPHP())->parse($abs_us_root . $us_url_root . '.env.enc', $abs_us_root . $us_url_root . '.env.key');
+
 // Set config
 $GLOBALS['config'] = array(
     'mysql'      => array(

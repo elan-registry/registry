@@ -95,7 +95,6 @@ install/*
 ########################################
 vendor/
 usersc/vendor/
-usersc/composer.lock
 composer.phar
 *.phar
 

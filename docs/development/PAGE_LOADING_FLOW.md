@@ -64,14 +64,6 @@ users/init.php
 ├─ 1.3. users/helpers/helpers.php
 │   │
 │   ├─ 1.3.1. usersc/includes/custom_functions.php
-│   │   ├─ vendor/autoload.php (Composer dependencies)
-│   │   │   └─ johnathanmiller/secure-env-php
-│   │   │
-│   │   ├─ .env.enc & .env.key (Encrypted environment variables)
-│   │   │   ├─ Database credentials
-│   │   │   ├─ API keys (Google Maps, etc.)
-│   │   │   └─ Application secrets
-│   │   │
 │   │   ├─ usersc/classes/class.autoloader.php
 │   │   │   └─ Unified hybrid autoloader for all custom classes:
 │   │   │       ├─ PSR-4 for namespaced classes (fast path)
@@ -82,8 +74,10 @@ users/init.php
 │   │   │
 │   │   └─ Custom helper functions:
 │   │       ├─ getUserWithProfile() - Combined user/profile data
-│   │       ├─ getOwnerName() - Format owner display names
-│   │       ├─ formatPhoneNumber() - US phone formatting
+│   │       ├─ isRegistryAdmin() - Check registry admin/editor permissions
+│   │       ├─ getBaseUrl() - Get environment-aware base URL
+│   │       ├─ getAdminEmails() - Get admin email addresses
+│   │       ├─ getFeedbackEmail() - Get feedback form email
 │   │       └─ Additional registry-specific utilities
 │   │
 │   ├─ 1.3.2. usersc/plugins/plugins.ini.php
@@ -140,8 +134,16 @@ users/init.php
 │       └─ usersc/plugins/[plugin_name]/functions.php
 │           └─ Plugin-specific helper functions
 │
+├─ 1.3.10. Load Environment Variables (back in users/init.php)
+│   └─ SecureEnvPHP class (autoloaded via step 1.3.6 → usersc/vendor/autoload.php)
+│       ├─ Parse .env.enc with .env.key
+│       └─ Environment variables available via getenv():
+│           ├─ DB_HOST, DB_USER, DB_PASS, DB_NAME
+│           ├─ Google Maps API keys (MAPS_KEY, GEO_ENCODE_KEY)
+│           └─ Application secrets
+│
 ├─ 1.4. Database Configuration
-│   ├─ Load encrypted database credentials from environment
+│   ├─ Load encrypted database credentials from environment (via getenv())
 │   ├─ Create $config array with connection parameters
 │   └─ Initialize DB singleton instance ($db)
 │
