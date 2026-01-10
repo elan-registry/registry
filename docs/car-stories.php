@@ -13,7 +13,7 @@ if (!securePage($_SERVER['PHP_SELF'])) {
     die();
 }
 
-$stories = $us_url_root . 'stories/';
+$stories = $us_url_root . 'docs/stories/';
 
 ?>
 <div class="page-wrapper">

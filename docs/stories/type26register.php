@@ -6,14 +6,14 @@
  * Displays an iframe of the archived type26register.com site.
  * Requires authentication and uses Bootstrap for layout.
  */
-require_once '../users/init.php';
+require_once '../../users/init.php';
 require_once $abs_us_root . $us_url_root . 'users/includes/template/prep.php';
 
 if (!securePage($_SERVER['PHP_SELF'])) {
     die();
 }
 
-$type26index = $us_url_root . "stories/type26register.com/index.html";
+$type26index = $us_url_root . "docs/stories/type26register.com/index.html";
 ?>
 <div id="page-wrapper">
     <div class="container">

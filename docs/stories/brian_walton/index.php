@@ -6,7 +6,7 @@
  * Displays the story and history of Brian Walton's unique works rally Elan.
  * Uses Bootstrap for layout and includes images and historical narrative.
  */
-require_once '../../users/init.php';
+require_once '../../../users/init.php';
 require_once $abs_us_root . $us_url_root . 'users/includes/template/prep.php';
 
 if (!securePage($_SERVER['PHP_SELF'])) {
