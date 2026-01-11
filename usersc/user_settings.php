@@ -235,14 +235,14 @@ if (!empty($_POST)) {
             $country = $profiledetails->country;
         }
 
-        // Update geolocation
-        include($abs_us_root . $us_url_root . 'app/views/_geolocate.php');
-        
+        // Update geolocation using ElanRegistryOwner helper
+        $geoResult = ElanRegistryOwner::geocodeAddress($city, $state, $country);
+
         // Only update coordinates if geocoding was successful
-        if (!empty($fields)) {
-            $db->update('profiles', $profileId, $fields);
+        if (!empty($geoResult)) {
+            $db->update('profiles', $profileId, $geoResult);
             $successes[] = 'Lat/Lon updated.';
-            logger((int)$user->data()->id, 'User', 'Successfully updated lat/lon: ' . json_encode($fields));
+            logger((int)$user->data()->id, 'User', 'Successfully updated lat/lon: ' . json_encode($geoResult));
             
             // BUGFIX #193: Sync location to all cars owned by this user
             $userCarsQuery = $db->query("SELECT id FROM cars WHERE user_id = ?", [$userId]);

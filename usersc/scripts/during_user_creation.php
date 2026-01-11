@@ -29,13 +29,12 @@ $db->update('profiles', ["user_id", "=", $theNewId], ['city' => $city]);
 $db->update('profiles', ["user_id", "=", $theNewId], ['state' => $state]);
 $db->update('profiles', ["user_id", "=", $theNewId], ['country' => $country]);
 
-//   Update geolocation
-$fields = [];
-include($abs_us_root . $us_url_root . 'app/views/_geolocate.php');
+// Update geolocation using ElanRegistryOwner helper
+$geoResult = ElanRegistryOwner::geocodeAddress($city, $state, $country);
 
 // Only update coordinates if geocoding was successful
-if (!empty($fields)) {
-    $db->update('profiles', ["user_id", "=", $theNewId], $fields);
+if (!empty($geoResult)) {
+    $db->update('profiles', ["user_id", "=", $theNewId], $geoResult);
 }
 
 // Even if you do not want to add additional fields to the the join form, this is a great opportunity to add this user to another database table.
