@@ -50,12 +50,15 @@ class UserspiceCustomAutoloader
      */
     public static function loader(string $className): void
     {
+        // This autoloader runs AFTER UserSpice autoloader (registered with append, not prepend)
+        // So UserSpice handles its own classes first, and we only handle custom classes
+
         // Try PSR-4 for namespaced classes first (fast path)
         if (static::loadNamespaced($className)) {
             return;
         }
 
-        // Fall back to recursive scan for non-namespaced classes
+        // Fall back to recursive scan for non-namespaced custom classes
         static::loadRecursive($className);
     }
 
@@ -146,9 +149,9 @@ class UserspiceCustomAutoloader
 
 // Register hybrid autoloader with SPL
 // - throw=true: Throw exceptions on registration error
-// - prepend=true: Add to front of autoloader queue (try custom classes first)
+// - prepend=false: Add to end of autoloader queue (let UserSpice handle its classes first)
 spl_autoload_register(
     'UserspiceCustomAutoloader::loader',
-    true,  // throw exceptions on error
-    true   // prepend to autoloader queue
+    true,   // throw exceptions on error
+    false   // append to autoloader queue (not prepend)
 );

@@ -22,9 +22,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 //Put your custom functions in this file and they will be automatically included.
 
-// Load unified autoloader for all custom classes and exceptions
-require_once $abs_us_root . $us_url_root . 'usersc/classes/class.autoloader.php';
-
+// Note: Custom class autoloader is loaded in users/init.php (after UserSpice autoloader)
 // Note: SecureEnvPHP is autoloaded via helpers.php (usersc/vendor/autoload.php)
 // and parsed in users/init.php where environment variables are actually needed
 
