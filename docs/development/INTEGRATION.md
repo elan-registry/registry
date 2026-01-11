@@ -216,7 +216,8 @@ $owner->update([
 **Geocoding Configuration:**
 
 - API key stored in settings table as `elan_google_geo_key`
-- Geocoding script: `app/views/_geolocate.php`
+- Geocoding class: `usersc/classes/LocationGeocoder.php` (internal-only)
+- Public API: `ElanRegistryOwner::geocodeAddress()` static method
 - Coordinates rounded to 4 decimal places (~11 meter accuracy)
 - Failed requests are logged for troubleshooting
 
@@ -274,19 +275,18 @@ class ElanRegistryOwner {
 ### Location Updates with Geocoding
 
 ```php
-// ✅ CORRECT: Integrate with existing geocoding system
+// ✅ CORRECT: Use ElanRegistryOwner geocoding API
 public function updateLocation(array $locationData): bool {
-    // Set required variables for geocoding
-    $city = $locationData['city'];
-    $state = $locationData['state'];
-    $country = $locationData['country'];
-
-    // Include geocoding system
-    include($abs_us_root . $us_url_root . 'app/views/_geolocate.php');
+    // Use static geocoding method
+    $geoResult = ElanRegistryOwner::geocodeAddress(
+        $locationData['city'],
+        $locationData['state'],
+        $locationData['country']
+    );
 
     // Update profile with geocoded coordinates
-    if (!empty($fields)) {
-        $updateFields = array_merge($locationData, $fields);
+    if (!empty($geoResult)) {
+        $updateFields = array_merge($locationData, $geoResult);
         return $this->_db->update('profiles', $this->_profileId, $updateFields);
     }
 

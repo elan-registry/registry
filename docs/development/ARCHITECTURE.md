@@ -170,10 +170,13 @@ $userQ = $db->query(
 
 **Geocoding Integration:**
 
-- **Location**: `/app/views/_geolocate.php`
-- **Usage**: Include file, sets `$fields['lat']` and `$fields['lon']` based on city/state/country
-- **Required Variables**: `$city`, `$state`, `$country` must be set before inclusion
-- **Integration**: Used in user_settings.php and should be used in ElanRegistryOwner class
+- **Class**: `LocationGeocoder` (`/usersc/classes/LocationGeocoder.php`)
+- **Usage**: Call `ElanRegistryOwner::geocodeAddress()` static method
+- **Returns**: Array with `lat`/`lon` keys, or empty array on failure
+- **Integration**: Used in `ElanRegistryOwner` class, `user_settings.php`, and
+  `during_user_creation.php`
+- **Note**: LocationGeocoder is internal-only; always use
+  `ElanRegistryOwner::geocodeAddress()`
 
 **BackupManager Integration (v2.9.2+):**
 
