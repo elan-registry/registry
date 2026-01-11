@@ -250,10 +250,10 @@ if (!empty($_POST)) {
                 $userCars = $userCarsQuery->results();
                 $carFields = [
                     'city' => $city,
-                    'state' => $state, 
+                    'state' => $state,
                     'country' => $country,
-                    'lat' => $fields['lat'],
-                    'lon' => $fields['lon'],
+                    'lat' => $geoResult['lat'],
+                    'lon' => $geoResult['lon'],
                     'mtime' => date('Y-m-d G:i:s')
                 ];
                 
