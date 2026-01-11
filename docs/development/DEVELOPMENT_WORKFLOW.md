@@ -9,7 +9,8 @@ The system maintains location synchronization between user profiles and car reco
 ### 1. New User Registration (`usersc/scripts/during_user_creation.php`)
 
 - User provides location information (city, state, country) during registration
-- Location is automatically geocoded using Google Maps API via `app/views/_geolocate.php`  
+- Location is automatically geocoded using Google Maps API via
+  `ElanRegistryOwner::geocodeAddress()`
 - Coordinates are stored in the `profiles` table linked to the user account
 
 ### 2. Car Creation (`app/cars/actions/edit.php`)

@@ -82,6 +82,40 @@ class ElanRegistryOwner
     }
 
     /**
+     * Geocode a location address to coordinates
+     *
+     * Public static helper method for geocoding that can be used from any context
+     * (forms, system operations, etc.) without requiring an ElanRegistryOwner instance.
+     *
+     * This is the ONLY public entry point for geocoding operations. LocationGeocoder
+     * is an internal implementation detail and should never be instantiated directly.
+     *
+     * @param string $city City name
+     * @param string $state State/province name
+     * @param string $country Country name
+     * @return array Array with 'lat' and 'lon' keys, or empty array on failure
+     */
+    public static function geocodeAddress(string $city, string $state, string $country): array
+    {
+        // Get API key from settings
+        $settings = getSettings();
+
+        if (empty($settings->elan_google_geo_key)) {
+            logger(0, 'Geocode', 'ElanRegistryOwner: Google Maps API key not configured');
+            return [];
+        }
+
+        // Create geocoder instance
+        $geocoder = new LocationGeocoder($settings->elan_google_geo_key);
+
+        // Attempt geocoding
+        $result = $geocoder->geocode($city, $state, $country);
+
+        // Return geocoding results or empty array if failed
+        return $result ?? [];
+    }
+
+    /**
      * Create a new owner (user + profile)
      *
      * @param array $fields Key value pairs for owner data
@@ -658,18 +692,7 @@ class ElanRegistryOwner
      */
     private function applyGeocoding(string $city, string $state, string $country): array
     {
-        global $abs_us_root, $us_url_root;
-
-        // Set variables required by geocoding script
-        $GLOBALS['city'] = $city;
-        $GLOBALS['state'] = $state;
-        $GLOBALS['country'] = $country;
-
-        // Include geocoding system (sets $fields array)
-        $fields = [];
-        include($abs_us_root . $us_url_root . 'app/views/_geolocate.php');
-
-        // Return geocoding results or empty array if failed
-        return !empty($fields) ? $fields : [];
+        // Delegate to static helper method
+        return self::geocodeAddress($city, $state, $country);
     }
 }

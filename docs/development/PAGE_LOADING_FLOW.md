@@ -1,7 +1,7 @@
 # Page Loading Flow Reference
 
-**Last Updated:** 2026-01-09
-**Version:** 2.10.2
+**Last Updated:** 2026-01-11
+**Version:** 2.11.0
 
 ## Purpose
 
@@ -51,27 +51,33 @@ This simple structure triggers the loading of 40-60+ PHP files in a specific ord
 ```text
 users/init.php
 │
-├─ 1.1. users/classes/class.autoloader.php
-│   └─ Registers SPL autoloader for classes in:
-│       - users/classes/**/*.php (UserSpice core classes only)
-│       - Recursively searches from users/classes/ directory
+├─ 1.1. users/classes/class.autoloader.php (Line 5)
+│   └─ Registers SPL autoloader for UserSpice core classes:
+│       ├─ Loaded with absolute path (__DIR__ . '/classes/class.autoloader.php')
+│       ├─ Recursively searches from users/classes/ directory
+│       ├─ Handles classes: Input, Server, DB, User, Token, Validate, etc.
+│       └─ Registered first in autoloader queue
 │
-├─ 1.2. Session Configuration
+├─ 1.2. Session Configuration (Lines 7-18)
 │   ├─ Sets session name from config
 │   ├─ Configures session cookie parameters
 │   └─ Starts PHP session
 │
-├─ 1.3. users/helpers/helpers.php
+├─ 1.3. Path Resolution (Lines 20-36)
+│   └─ Determines $abs_us_root and $us_url_root by searching for z_us_root.php
+│
+├─ 1.4. usersc/classes/class.autoloader.php (Lines 38-43)
+│   └─ Unified hybrid autoloader for all custom application classes:
+│       ├─ Loaded directly in init.php after path variables are set
+│       ├─ PSR-4 for namespaced classes (ElanRegistry\* namespace)
+│       ├─ Recursive iterator for non-namespaced classes (Car, ElanRegistryOwner, etc.)
+│       ├─ Loads 10+ core classes on demand
+│       ├─ Loads 13+ custom exception classes on demand
+│       └─ Appended to SPL autoloader queue (runs after UserSpice autoloader)
+│
+├─ 1.5. users/helpers/helpers.php (Line 45)
 │   │
-│   ├─ 1.3.1. usersc/includes/custom_functions.php
-│   │   ├─ usersc/classes/class.autoloader.php
-│   │   │   └─ Unified hybrid autoloader for all custom classes:
-│   │   │       ├─ PSR-4 for namespaced classes (fast path)
-│   │   │       ├─ Recursive iterator for non-namespaced classes
-│   │   │       ├─ Loads 10+ core classes on demand
-│   │   │       ├─ Loads 13 custom exception classes on demand
-│   │   │       └─ Prepended to SPL autoloader queue
-│   │   │
+│   ├─ 1.5.1. usersc/includes/custom_functions.php
 │   │   └─ Custom helper functions:
 │   │       ├─ getUserWithProfile() - Combined user/profile data
 │   │       ├─ isRegistryAdmin() - Check registry admin/editor permissions
@@ -80,13 +86,13 @@ users/init.php
 │   │       ├─ getFeedbackEmail() - Get feedback form email
 │   │       └─ Additional registry-specific utilities
 │   │
-│   ├─ 1.3.2. usersc/plugins/plugins.ini.php
+│   ├─ 1.5.2. usersc/plugins/plugins.ini.php
 │   │   └─ Parse plugin configuration to determine enabled plugins
 │   │
-│   ├─ 1.3.3. Plugin Override Files (for each enabled plugin)
+│   ├─ 1.5.3. Plugin Override Files (for each enabled plugin)
 │   │   └─ usersc/plugins/[plugin_name]/override.php
 │   │
-│   ├─ 1.3.4. UserSpice Helper Files
+│   ├─ 1.5.4. UserSpice Helper Files
 │   │   ├─ users/helpers/us_helpers.php
 │   │   │   └─ Core UserSpice utility functions
 │   │   │
@@ -111,61 +117,61 @@ users/init.php
 │   │   └─ users/helpers/dbmenu.php
 │   │       └─ Database-driven menu system
 │   │
-│   ├─ 1.3.5. Deprecated Functions
+│   ├─ 1.5.5. Deprecated Functions
 │   │   └─ usersc/includes/deprecated/*.php
 │   │       └─ All files in deprecated directory (glob pattern)
 │   │
-│   ├─ 1.3.6. Composer Autoloaders
+│   ├─ 1.5.6. Composer Autoloaders
 │   │   ├─ usersc/vendor/autoload.php (if exists)
-│   │   │   └─ Custom application Composer packages
+│   │   │   └─ Custom application Composer packages (SecureEnvPHP)
 │   │   │
 │   │   └─ users/vendor/autoload.php (if exists)
 │   │       └─ UserSpice framework Composer packages
 │   │
-│   ├─ 1.3.7. PHPMailer
+│   ├─ 1.5.7. PHPMailer
 │   │   └─ users/classes/phpmailer/PHPMailerAutoload.php
 │   │       └─ Email functionality (PHPMailer\PHPMailer\PHPMailer)
 │   │
-│   ├─ 1.3.8. Version Information
+│   ├─ 1.5.8. Version Information
 │   │   └─ users/includes/user_spice_ver.php
 │   │       └─ UserSpice version constants
 │   │
-│   └─ 1.3.9. Plugin Function Files (for each enabled plugin)
+│   └─ 1.5.9. Plugin Function Files (for each enabled plugin)
 │       └─ usersc/plugins/[plugin_name]/functions.php
 │           └─ Plugin-specific helper functions
 │
-├─ 1.3.10. Load Environment Variables (back in users/init.php)
-│   └─ SecureEnvPHP class (autoloaded via step 1.3.6 → usersc/vendor/autoload.php)
+├─ 1.6. Load Environment Variables (back in users/init.php, Lines 47-51)
+│   └─ SecureEnvPHP class (autoloaded via step 1.5.6 → usersc/vendor/autoload.php)
 │       ├─ Parse .env.enc with .env.key
 │       └─ Environment variables available via getenv():
 │           ├─ DB_HOST, DB_USER, DB_PASS, DB_NAME
 │           ├─ Google Maps API keys (MAPS_KEY, GEO_ENCODE_KEY)
 │           └─ Application secrets
 │
-├─ 1.4. Database Configuration
+├─ 1.7. Database Configuration
 │   ├─ Load encrypted database credentials from environment (via getenv())
 │   ├─ Create $config array with connection parameters
 │   └─ Initialize DB singleton instance ($db)
 │
-├─ 1.5. Session & Auto-Login Management
+├─ 1.8. Session & Auto-Login Management
 │   ├─ Check for remember-me cookie
 │   ├─ Validate session token
 │   └─ Auto-login if valid cookie exists
 │
-├─ 1.6. User Object Initialization
+├─ 1.9. User Object Initialization
 │   ├─ Create global $user object (User class instance)
 │   ├─ Load current user data if logged in
 │   └─ Set user permissions and roles
 │
-├─ 1.7. Timezone Configuration
+├─ 1.10. Timezone Configuration
 │   └─ Set default timezone (from settings or UTC)
 │
-└─ 1.8. users/includes/loader.php
+└─ 1.11. users/includes/loader.php
     │
-    ├─ 1.8.1. Settings Database Query
+    ├─ 1.11.1. Settings Database Query
     │   └─ Load all settings from database into $settings object
     │
-    ├─ 1.8.2. usersc/includes/security_headers.php
+    ├─ 1.11.2. usersc/includes/security_headers.php
     │   └─ Set HTTP security headers:
     │       ├─ Content-Security-Policy (CSP)
     │       ├─ Strict-Transport-Security (HSTS)

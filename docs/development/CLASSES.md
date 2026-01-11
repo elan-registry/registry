@@ -154,8 +154,71 @@ $results = ElanRegistryOwner::searchOwners('Portland');
 **Integration**:
 
 - Works with `getUserWithProfile($userId)` custom function
-- Integrates with `/app/views/_geolocate.php` for automatic geocoding
+- Provides `geocodeAddress()` static method for location geocoding
 - Used in admin consolidated management interface
+
+### LocationGeocoder
+
+**⚠️ INTERNAL USE ONLY - DO NOT USE DIRECTLY**
+
+**Location**: `/usersc/classes/LocationGeocoder.php`
+
+**Purpose**: Internal implementation class for geocoding. This class is an implementation detail of ElanRegistryOwner and should NEVER be instantiated directly.
+
+**Why this restriction**: LocationGeocoder is encapsulated within ElanRegistryOwner to provide a clean API and allow future implementation changes (caching, provider switching) without affecting calling code.
+
+**Runtime Protection**: Attempting to instantiate LocationGeocoder directly will throw a `GeocodingException` with a clear error message directing you to use `ElanRegistryOwner::geocodeAddress()` instead.
+
+**❌ WRONG - DO NOT DO THIS:**
+
+```php
+// NEVER instantiate LocationGeocoder directly - will throw exception!
+$geocoder = new LocationGeocoder($apiKey);  // ❌ Runtime error!
+```
+
+**✅ CORRECT - Use Public API:**
+
+```php
+// Forward geocoding (address → coordinates)
+$result = ElanRegistryOwner::geocodeAddress('Portland', 'Oregon', 'United States');
+if (!empty($result)) {
+    $lat = $result['lat'];  // 45.5152
+    $lon = $result['lon'];  // -122.6784
+}
+
+// For reverse geocoding, use LocationGeocoder methods via ElanRegistryOwner
+// (Future enhancement for Issue #245)
+```
+
+**Internal Methods** (via ElanRegistryOwner only):
+
+- `geocode(string $city, string $state, string $country): ?array` - Forward geocoding
+- `reverseGeocode(float $lat, float $lon): ?array` - Reverse geocoding (Issue #245)
+
+**Error Handling:**
+
+- Throws `GeocodingException` if instantiated outside ElanRegistryOwner (architectural enforcement)
+- Returns `null` on all error conditions (API failures, network issues, invalid data)
+- Logs all errors via UserSpice logger with 'Geocode' category
+- Validates input parameters and coordinates
+
+**Features:**
+
+- Configurable timeout (default: 10 seconds)
+- Configurable coordinate precision (default: 4 decimal places ≈ 11m accuracy)
+- cURL with file_get_contents fallback
+- Comprehensive error logging
+- SSL verification and proper HTTP headers
+
+**Integration:**
+
+- **Internal use only** - instantiated only by `ElanRegistryOwner::geocodeAddress()`
+- Not used directly by application code
+- Pure implementation detail hidden behind ElanRegistryOwner API
+
+**Public API:**
+
+- `ElanRegistryOwner::geocodeAddress($city, $state, $country)` - Use this method for all geocoding needs
 
 ### ChassisValidator
 
@@ -588,23 +651,23 @@ $owner = getUserWithProfile($userId);
 - `Token` - CSRF token generation/validation
 - `DB` - Database singleton
 
-### Geocoding Integration
+### Geocoding Integration (Deprecated)
 
-**Location**: `/app/views/_geolocate.php`
+**NOTE**: As of v2.11.0, geocoding is handled by the `LocationGeocoder` class. See LocationGeocoder section above.
+
+**Legacy Information** (for reference only):
+The previous implementation used a procedural include pattern via `/app/views/_geolocate.php`, which has been removed in favor of the OOP approach.
+
+**Current Usage**:
 
 ```php
-// Set variables before including
-$city = 'Portland';
-$state = 'Oregon';
-$country = 'United States';
+// Use ElanRegistryOwner static method for all geocoding
+$result = ElanRegistryOwner::geocodeAddress($city, $state, $country);
 
-// Include geocoding script
-include($abs_us_root . $us_url_root . 'app/views/_geolocate.php');
-
-// Use populated coordinates
-if (!empty($fields)) {
-    $lat = $fields['lat'];
-    $lon = $fields['lon'];
+// Check for successful geocoding
+if (!empty($result)) {
+    $lat = $result['lat'];
+    $lon = $result['lon'];
 }
 ```
 

@@ -62,9 +62,15 @@
 
 ### Architecture Improvements
 - **Unified Class Autoloading**: Consolidated all custom class loading into a single hybrid autoloader that supports both current non-namespaced classes and future namespaced classes
-- **Improved Code Organization**: Moved all exception classes to `usersc/classes/exceptions/` and admin utilities to `usersc/classes/admin/` for better structure
+- **Improved Code Organization**: Moved all exception classes to `usersc/classes/exceptions/` and admin utilities to `usersc/classes/` for better structure
 - **Reduced Code Complexity**: Eliminated 10+ explicit class includes across the codebase, replaced with automatic on-demand loading
 - **Future-Ready Architecture**: Enables gradual namespace migration (see issue #407) without breaking changes or code modifications
+- **LocationGeocoder Class**: Replaced procedural include pattern (`_geolocate.php`) with proper OOP architecture
+  - Runtime enforcement prevents direct instantiation outside ElanRegistryOwner
+  - Centralized geocoding through `ElanRegistryOwner::geocodeAddress()` static method
+  - Supports both forward (address → coordinates) and reverse (coordinates → address) geocoding
+  - Updated 3 integration points: `during_user_creation.php`, `user_settings.php`, `ElanRegistryOwner` class
+  - Removed legacy `app/views/_geolocate.php` file with no backward compatibility period
 
 ### Technical Benefits
 - **Performance**: PSR-4 fast path for namespaced classes (< 0.1ms), cached iterator for non-namespaced classes (< 1ms)
@@ -73,6 +79,10 @@
 - **Testing**: Comprehensive test suite (7 tests, 35 assertions) ensures reliability
 - **Onboarding**: New developers can quickly understand the page loading sequence and initialization flow
 - **UserSpice Integration**: Added story paths to `z_us_root.php` configuration
+- **Autoloader Stability**: Fixed path ambiguity in `users/init.php` preventing "Class 'Input' not found" errors
+  - Changed from relative to absolute path for UserSpice autoloader
+  - Custom autoloader now loads after UserSpice in correct sequence
+  - Moved admin classes (BackupManager, EnhancedSchemaManager) to `usersc/classes/` for consistent architecture
 
 ## 🔧 Infrastructure Changes
 
@@ -200,16 +210,27 @@ If you encounter issues during deployment, check:
 
 ## 📋 Issues Resolved in This Release
 
-[#360](https://github.com/unibrain1/elanregistry/issues/360) - Move stories/ directory to docs/ for better organization
+[#360](https://github.com/unibrain1/elanregistry/issues/360) - Move stories/
+directory to docs/ for better organization
 
-[#426](https://github.com/unibrain1/elanregistry/issues/426) - Architecture: Create unified autoloader for usersc/classes directory
+[#422](https://github.com/unibrain1/elanregistry/issues/422) - Create
+LocationGeocoder class to replace procedural geocoding pattern
 
-[#427](https://github.com/unibrain1/elanregistry/issues/427) - Move SecureEnvPHP to usersc/vendor for cleaner dependency management
+[#426](https://github.com/unibrain1/elanregistry/issues/426) - Architecture:
+Create unified autoloader for usersc/classes directory
+
+[#427](https://github.com/unibrain1/elanregistry/issues/427) - Move
+SecureEnvPHP to usersc/vendor for cleaner dependency management
 
 ---
 
 **Documentation Added**:
-- `docs/development/PAGE_LOADING_FLOW.md` - Complete reference for understanding file loading sequence and initialization phases
+
+- `docs/development/PAGE_LOADING_FLOW.md` - Complete reference for
+  understanding file loading sequence and initialization phases
 - Comprehensive documentation for all car stories and Type 26 archive content
 
-**Related Work**: This release establishes the foundation for [#407](https://github.com/unibrain1/elanregistry/issues/407) - a phased namespace migration strategy that will gradually modernize the codebase while maintaining backward compatibility.
+**Related Work**: This release establishes the foundation for
+[#407](https://github.com/unibrain1/elanregistry/issues/407) - a phased
+namespace migration strategy that will gradually modernize the codebase while
+maintaining backward compatibility.

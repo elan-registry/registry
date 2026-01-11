@@ -1,6 +1,8 @@
 <?php
 define('USERSPICE_ACTIVE_LOGGING', false);
-require_once 'classes/class.autoloader.php';
+
+// Load UserSpice core autoloader
+require_once __DIR__ . '/classes/class.autoloader.php';
 
 // Set secure session cookie parameters before starting session
 session_set_cookie_params([
@@ -31,6 +33,13 @@ for ($i = 1; $i < $self_path_length; $i++) {
     } else {
         $file_found = false;
     }
+}
+
+// Load custom application autoloader for usersc/classes/
+// Must be loaded after path variables are set and after UserSpice autoloader
+$customAutoloaderPath = $abs_us_root . $us_url_root . 'usersc/classes/class.autoloader.php';
+if (file_exists($customAutoloaderPath)) {
+    require_once $customAutoloaderPath;
 }
 
 require_once $abs_us_root . $us_url_root . 'users/helpers/helpers.php';

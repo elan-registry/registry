@@ -94,6 +94,7 @@ install/*
 # Vendor & Dependencies
 ########################################
 vendor/
+w/
 usersc/vendor/
 composer.phar
 *.phar
