@@ -42,6 +42,8 @@ To avoid information overload, follow this structured learning path:
   scripts
 - `docs/development/CLASSES.md` - When working with application classes
 - `docs/development/BACKUP_SYSTEM.md` - When using BackupManager class
+- `docs/development/DATATABLES.md` - When working with DataTables or updating
+  CDN configuration
 - `docs/testing/TESTING.md` - When writing or running tests
 - `docs/development/STRICT_TYPE_HANDLING.md` - When working with strict types
 
@@ -99,6 +101,31 @@ functionality.
 - `car_user`/`car_user_hist` - Many-to-many user-car relationships with audit
 - `car_transfer_requests` - Self-service ownership transfer workflow
 - Database triggers automatically maintain audit trails (cars table only)
+
+### DataTables Configuration
+
+> **For complete DataTables documentation, see
+> [DATATABLES.md](docs/development/DATATABLES.md)**
+
+We use DataTables for searchable, sortable, paginated table views of cars and
+factory data. As of v2.11.0, we load **only 3 extensions** for optimal
+performance.
+
+**Quick Reference:**
+
+- **Active Extensions**: DataTables Core (dt-1.10.23), FixedHeader (fh-3.1.8),
+  Responsive (r-2.2.7)
+- **Server-Side Processing**: All tables use AJAX-based server-side data
+  loading
+- **CDN Configuration**: Stored in `settings` table
+  (`elan_datatables_js_cdn`, `elan_datatables_css_cdn`)
+- **Used In**: `/app/cars/index.php` (car listing), `/app/cars/factory.php`
+  (factory data)
+- **Backend**: `/app/action/getDataTables.php` provides server-side data
+
+**Important**: Before adding new DataTables extensions, verify they support
+server-side processing. SearchPanes and SearchBuilder have poor UX with
+server-side tables without significant backend work.
 
 ### 🔧 FIX Script Creation Guidelines
 
