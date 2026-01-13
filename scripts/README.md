@@ -2,6 +2,16 @@
 
 Utility scripts for the Elan Registry project.
 
+## update-version.sh
+
+Updates VERSION file in development environment from git tags.
+
+**Usage:**
+
+```bash
+./scripts/update-version.sh
+```
+
 ## Cleanup Scripts
 
 ### cleanup-outdated-docs.sh
@@ -363,6 +373,34 @@ git status  # Verify files are in "Changes to be committed"
 - Operating system
 - Exact error message
 - Steps to reproduce
+
+## 6. Git Repository Setup
+
+### Current VERSION File
+
+**Decision:** Keep VERSION file in git for now, then add to .gitignore.
+
+**Rationale:**
+
+- Maintains backward compatibility during transition
+- Allows gradual rollout
+- Can be removed later if desired
+
+**Steps:**
+
+1. Add VERSION to `.gitignore`
+2. Commit .gitignore change
+3. VERSION file stops being tracked but remains in working directory
+4. Each environment generates its own VERSION file via hooks
+5. Developers use `./scripts/update-version.sh` to generate locally
+
+**Optional future cleanup:**
+
+```bash
+# Remove from git tracking (keeps file in working directory)
+git rm --cached VERSION
+git commit -m "CLEANUP: Stop tracking VERSION file (auto-generated)"
+```
 
 ## Other Scripts
 

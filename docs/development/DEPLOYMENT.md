@@ -23,7 +23,7 @@ remote, NOT `origin`!
 # Push code to PRODUCTION SERVER (live site)
 git push prod main
 
-# Push version tags to PRODUCTION SERVER  
+# Push version tags to PRODUCTION SERVER
 git push prod --tags
 ```
 
@@ -66,13 +66,13 @@ quality, security, and project management compliance.
 
 ### Quick Reference: PR Check Status
 
-| Check Name | Purpose | Blocks | Runs When |
-| ---------- | ------- | ------ | --------- |
-| **CodeQL Analysis** | Security scanning | ✅ Yes | All PRs to main |
-| **GitGuardian Security** | Secret detection | ✅ Yes | All commits/PRs |
-| **Claude Code Review** | Coding standards | ✅ Yes | PHP/JS/CSS changes |
-| **Issue Management** | Auto-label issues | ❌ No | Issue events |
-| **PR Management** | Link PRs to issues | ❌ No | PR events |
+| Check Name               | Purpose            | Blocks | Runs When          |
+| ------------------------ | ------------------ | ------ | ------------------ |
+| **CodeQL Analysis**      | Security scanning  | ✅ Yes | All PRs to main    |
+| **GitGuardian Security** | Secret detection   | ✅ Yes | All commits/PRs    |
+| **Claude Code Review**   | Coding standards   | ✅ Yes | PHP/JS/CSS changes |
+| **Issue Management**     | Auto-label issues  | ❌ No  | Issue events       |
+| **PR Management**        | Link PRs to issues | ❌ No  | PR events          |
 
 ### Security & Code Quality Checks
 
@@ -187,6 +187,7 @@ runs fast tests before allowing commits.
 **Three-Step Process:**
 
 1. **PHP Coding Standards Check** (runs for staged PHP files):
+
    - **Enhanced Security Validation**: CSRF protection, SQL injection
      prevention, input validation
    - **Type Safety**: Complete PHP 8+ type declarations, strict typing
@@ -195,6 +196,7 @@ runs fast tests before allowing commits.
    - **Performance**: N+1 query detection, caching opportunities
 
 2. **Markdown Lint Check** (runs for staged .md files):
+
    - **Formatting**: Header spacing, list indentation, line endings
    - **Standards**: Consistent markdown formatting across documentation
    - **Quality**: No trailing whitespace, proper blank line usage
@@ -299,16 +301,15 @@ git commit --no-verify
 
 ### Step-by-Step Deployment
 
-1. **Update VERSION file and create matching git tag** (tag must exactly match
-   VERSION content)
-2. **Commit changes** with version bump and tag
-3. **Push to GitHub** for repository backup:
-   `git push origin main && git push origin --tags`
-4. **🎯 DEPLOY TO PRODUCTION** (the important step):
-   `git push prod main && git push prod --tags`
-5. **Verify deployment** by checking version display matches git tag on
+1. **Create git tag** using `./scripts/bump-version.sh [patch|minor|major]`
+2. **Commit changes** (if any) before creating tag
+3. **Push to remotes** - deployment hooks automatically update VERSION file:
+   - GitHub: `git push origin main && git push origin --tags`
+   - Test: `git push test main && git push test --tags` (hook updates VERSION)
+   - Production: `git push prod main && git push prod --tags` (hook updates VERSION)
+4. **Verify deployment** by checking version display matches git tag on
    production site
-6. **Complete post-deployment verification** (see checklist below)
+5. **Complete post-deployment verification** (see checklist below)
 
 ### Git & Version Control
 
@@ -324,20 +325,33 @@ git commit --no-verify
 - Phase branches: `phase-{number}-{name}`
 - Hotfix branches: `hotfix/issue-{number}-brief-description`
 
-#### Version Management & Automated Release Process
+#### Version Management & Git Tag-Based Versioning
 
-**Version File Structure:**
+**Automated VERSION File Generation:**
 
-- Version information stored in `/VERSION` file in project root
-- `ApplicationVersion::get()` reads from this file (no git dependencies)
-- Production deployment timestamp shows file modification time
-- Format: `vX.Y.Z` (semantic versioning, e.g., `v2.3.4`)
+- VERSION file is **auto-generated during deployment** (not manually edited)
+- Git post-receive hooks run `git describe --tags > VERSION` on push
+- VERSION file added to `.gitignore` (not tracked in git)
+- Each environment generates its own VERSION file from its git repository
+- Format: `vX.Y.Z` or `vX.Y.Z-N-gHASH` (semantic versioning via git describe)
 
-**Automated Version Enforcement:**
+**Deployment Hooks:**
 
-- **Git Pre-Commit Hook**: Automatically enforces version updates on main branch
-- **Location**: `.git/hooks/pre-commit` (installed automatically)
-- **Rules**: VERSION file must be updated when committing code changes to main
+Test and production servers have post-receive hooks that automatically:
+
+1. Checkout latest code
+2. Run `git describe --tags`
+3. Write output to VERSION file
+
+**Development:**
+
+Run `./scripts/update-version.sh` to generate VERSION file locally after creating tags.
+
+**Version Display:**
+
+- `ApplicationVersion::get()` reads VERSION file (unchanged)
+- Deployment timestamp shows VERSION file modification time
+- Example output: `v2.9.1-rc1 (2025-12-14 10:30:00)`
 
 **Version Bump Helper Script:**
 
@@ -370,7 +384,8 @@ After each deployment, verify:
 - [ ] All redirected pages work and maintain proper permissions
 - [ ] New pages have appropriate UserSpice permission levels
 - [ ] Contact forms send to correct email addresses
-- [ ] Version information displays correctly in footer
+- [ ] VERSION file exists on server (created by deployment hook)
+- [ ] Deployment hooks executed successfully (check server logs)
 - [ ] Test critical user workflows (car registration, editing, contact forms)
 - [ ] Database connectivity and functionality
 - [ ] Email delivery system functioning
@@ -381,7 +396,7 @@ After each deployment, verify:
 ### Database Access
 
 - **Configuration**: Use credentials from `.env.local` file (see
-  DEV_DB_* variables)
+  DEV*DB*\* variables)
 - **Connection**: MAMP MySQL server on port 8889
 - **MAMP MySQL Path**: `/Applications/MAMP/Library/bin/mysql`
 - **Direct Command**:

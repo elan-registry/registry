@@ -11,8 +11,8 @@
 # VERSION: Bump to v2.3.5 - Security fixes and performance improvements
 #
 # ✅ CHECKLIST (delete lines that don't apply):
-# [ ] Updated VERSION file (required for code changes to main branch)
-# [ ] Created matching git tag (recommended for releases)
+# [ ] Created git tag for release (deployment hooks update VERSION file)
+# [ ] Pushed tags to all remotes (origin, test, prod)
 # [ ] Updated relevant documentation
 # [ ] Added/updated tests for new functionality
 # [ ] Verified no breaking changes
