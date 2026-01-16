@@ -3,34 +3,84 @@
 **Release Date:** January 9, 2026
 **Type:** Minor Release - Architecture, Documentation & Organization
 
+## ⚠️ PRE-DEPLOYMENT WARNING
+
+**This deployment will temporarily break functionality.** The new autoloader
+requires dependencies to be installed before the site will work correctly.
+
+**Recommended Approach:**
+1. Enable maintenance mode before deploying
+2. Deploy code changes
+3. Run `scripts/install-dependencies.sh --prod` immediately
+4. Verify site functionality
+5. Disable maintenance mode
+
+Skipping the dependency installation step will result in "Class not found"
+errors and site failures.
+
+---
+
 ## 🚨 REQUIRED ACTIONS AFTER DEPLOYMENT
 
-### Manual Navigation Menu Updates
+### 1. Install Dependencies & Activate Autoloader (FIRST STEP - CRITICAL)
 
-⚠️ Custom menu items pointing to old story URLs must be manually updated by admin
+⚠️ **This step MUST be completed immediately after code deployment, before
+any other verification steps.**
 
-1. **Update Custom Menu Items** *(via Admin Panel > Menus)*
-   - Check for custom menu items pointing to `/stories/...` URLs
-   - Update them to point to `/docs/stories/...` URLs
-   - Affected URLs:
-     - `/stories/SGO_2F/` → `/docs/stories/SGO_2F/`
-     - `/stories/brian_walton/` → `/docs/stories/brian_walton/`
-     - `/stories/type26register.php` → `/docs/stories/type26register.php`
-   - Confirm successful update:
-     - Menu items load correct pages
-     - No 404 errors when clicking menu links
+```bash
+cd /path/to/elan_registry
+./scripts/install-dependencies.sh --prod
+```
 
-### Autoloader Activation
+The script will:
+- Install dependencies in `usersc/vendor/`
+- Verify SecureEnvPHP package installation
+- Activate the new unified autoloader
+- Provide verification output
 
-✅ **No manual actions required** - The new autoloader activates automatically on deployment with zero configuration needed.
+**Without this step, the site will not function.**
+
+### 2. Run FIX Scripts (In Order)
+
+After installing dependencies, run these FIX scripts in sequence:
+
+**FIX Script #17** - Add SRI to CDN Resources
+- Navigate to: `/FIX/17-Add-SRI-To-CDN-Resources.php`
+- Adds Subresource Integrity hashes to CDN resources for security
+- Follow on-screen instructions
+
+**FIX Script #18** - Update Stories Directory Paths
+- Navigate to: `/FIX/18-Update-Stories-Directory-Paths.php`
+- Updates menu items from `/stories/` to `/docs/stories/` automatically
+- Updates page permissions for new paths
+- Handles: SGO_2F, brian_walton, type26register.php
+
+**FIX Script #19** - Optimize DataTables CDN
+- Navigate to: `/FIX/19-Add-Select-Extension-DataTables-CDN.php`
+- Removes 5 unused DataTables extensions
+- Creates database backup automatically
+
+**FIX Script #20** - Location Data Migration
+- Navigate to: `/FIX/20-Backfill-Location-Coordinates.php`
+- Select batch size: 10 (safe), 20 (default), or 25 (faster)
+- **Keep browser window open** - auto-redirects between batches
+- Estimated time: 8-15 minutes for 500-1000 profiles
+- Standardizes all location names and backfills missing coordinates
+
+### 3. Verify Site Functionality
+
+After completing all steps above, verify everything is working:
 
 **🎯 Success Criteria:**
-- ✅ Core navigation updated *(COMPLETED)*
-- ⏳ Custom menu items verified *(PENDING - requires admin review)*
+
+- ✅ All FIX scripts completed successfully
 - ✅ All custom classes load automatically without explicit requires
 - ✅ Existing functionality continues to work without modification
-- ✅ No breaking changes to current codebase
-- ✅ PAGE_LOADING_FLOW.md documentation available for developer reference
+- ✅ No "Class not found" errors in logs
+- ✅ Location picker working on registration/settings pages
+- ✅ DataTables pages load correctly
+- ✅ Story pages accessible at `/docs/stories/` paths
+- ✅ Menu items pointing to correct story URLs (handled by FIX #18)
 
 ## 👤 User-Facing Changes
 
