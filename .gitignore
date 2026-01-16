@@ -143,6 +143,7 @@ users/logs/*.log.php
 usersc/includes/totp_key.php
 usersc/plugins/plugins.ini.php
 usersc/cache/
+VERSION
 
 ########################################
 # Documentation (Generated)
