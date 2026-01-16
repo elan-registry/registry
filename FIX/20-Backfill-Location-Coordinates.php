@@ -564,13 +564,25 @@ if (!class_exists('LocationService')) {
                             logProgress("✅ Reverse geocoding complete!", 'success');
                         }
 
-                        // Log script completion
-                        $db->insert('fix_script_runs', [
-                            'script_name' => '20-Backfill-Location-Coordinates.php',
-                            'completed_at' => date('Y-m-d H:i:s')
-                        ]);
+                        // Ensure fix_script_runs table exists and log completion
+                        try {
+                            $db->query("CREATE TABLE IF NOT EXISTS fix_script_runs (
+                                id INT AUTO_INCREMENT PRIMARY KEY,
+                                script_name VARCHAR(255) NOT NULL,
+                                completed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                                INDEX idx_script_name (script_name)
+                            )");
 
-                        logger($user->data()->id, LOG_CATEGORY,
+                            $db->insert('fix_script_runs', [
+                                'script_name' => '20-Backfill-Location-Coordinates.php',
+                                'completed_at' => date('Y-m-d H:i:s')
+                            ]);
+                            logProgress("✅ Script completion logged to fix_script_runs", 'success');
+                        } catch (Exception $e) {
+                            logProgress("⚠️ Could not log to fix_script_runs: " . $e->getMessage(), 'warning');
+                        }
+
+                        logger((int)$user->data()->id, LOG_CATEGORY,
                             "Location migration completed - Profiles: {$cumulative_profiles_checked} checked, {$cumulative_profiles_updated} updated, {$cumulative_profiles_skipped} skipped | Cars: {$cumulative_cars_updated} synced | Errors: {$cumulative_geocoding_errors} | API Calls: {$cumulative_api_calls}");
 
                         // Display summary
