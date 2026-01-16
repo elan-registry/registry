@@ -132,71 +132,16 @@ try {
             <div class="card-header">
                 <h6 class="mb-0">
                     <i class="fas fa-map-marker-alt"></i> Location Information
-                    <small class="text-muted">(with automatic geocoding)</small>
                 </h6>
             </div>
             <div class="card-body">
-                <div class="row">
-                    <div class="col-md-4">
-                        <div class="form-group">
-                            <label for="city">City</label>
-                            <input type="text"
-                                   class="form-control <?= empty($ownerData->city) ? 'border-warning' : '' ?>"
-                                   id="city"
-                                   name="city"
-                                   value="<?= htmlspecialchars($ownerData->city ?? '') ?>">
-                        </div>
-                    </div>
-                    <div class="col-md-4">
-                        <div class="form-group">
-                            <label for="state">State/Province</label>
-                            <input type="text"
-                                   class="form-control <?= empty($ownerData->state) ? 'border-warning' : '' ?>"
-                                   id="state"
-                                   name="state"
-                                   value="<?= htmlspecialchars($ownerData->state ?? '') ?>">
-                        </div>
-                    </div>
-                    <div class="col-md-4">
-                        <div class="form-group">
-                            <label for="country">Country</label>
-                            <select class="form-control <?= empty($ownerData->country) ? 'border-warning' : '' ?>"
-                                    id="country"
-                                    name="country">
-                                <option value="">Select Country</option>
-                                <?php foreach ($countries as $country): ?>
-                                    <option value="<?= htmlspecialchars($country->name) ?>"
-                                            <?= ($ownerData->country ?? '') === $country->name ? 'selected' : '' ?>>
-                                        <?= htmlspecialchars($country->name) ?>
-                                    </option>
-                                <?php endforeach; ?>
-                            </select>
-                        </div>
-                    </div>
-                </div>
+                <p class="text-muted mb-3">
+                    <i class="fas fa-info-circle"></i>
+                    Use the GPS button or search for the owner's location below.
+                </p>
 
-                <!-- Coordinates Display -->
-                <?php if (!empty($ownerData->lat) && !empty($ownerData->lon)): ?>
-                    <div class="row">
-                        <div class="col-md-6">
-                            <div class="form-group">
-                                <label>Latitude</label>
-                                <input type="text" class="form-control" value="<?= $ownerData->lat ?>" readonly>
-                            </div>
-                        </div>
-                        <div class="col-md-6">
-                            <div class="form-group">
-                                <label>Longitude</label>
-                                <input type="text" class="form-control" value="<?= $ownerData->lon ?>" readonly>
-                            </div>
-                        </div>
-                    </div>
-                <?php else: ?>
-                    <div class="alert alert-info">
-                        <i class="fas fa-info-circle"></i>
-                        Coordinates will be automatically generated when location is saved.
-                    </div>
-                <?php endif; ?>
+                <!-- Location Picker Component -->
+                <div id="location-picker-admin" class="location-picker-container mb-3"></div>
 
                 <!-- Location Actions -->
                 <div class="mt-3">
@@ -235,6 +180,34 @@ try {
         $('#ownerProfileUpdateForm input, #ownerProfileUpdateForm select').each(function() {
             $(this).data('original-value', $(this).val());
         });
+
+        // Initialize Location Picker for admin
+        if (document.getElementById('location-picker-admin')) {
+            const urlRoot = '<?php echo $us_url_root ?? '/'; ?>';
+
+            const currentLocation = {
+                city: '<?= htmlspecialchars($ownerData->city ?? '', ENT_QUOTES) ?>',
+                state: '<?= htmlspecialchars($ownerData->state ?? '', ENT_QUOTES) ?>',
+                country: '<?= htmlspecialchars($ownerData->country ?? '', ENT_QUOTES) ?>',
+                lat: '<?= $ownerData->lat ?? '' ?>',
+                lon: '<?= $ownerData->lon ?? '' ?>'
+            };
+
+            const locationPicker = new LocationPicker({
+                containerId: 'location-picker-admin',
+                csrfToken: '<?= Token::generate() ?>',
+                urlRoot: urlRoot,
+                showGPS: true,
+                required: false
+            });
+
+            // Pre-populate with current location if available
+            if (currentLocation.city && currentLocation.country) {
+                const displayText = [currentLocation.city, currentLocation.state, currentLocation.country]
+                    .filter(Boolean).join(', ');
+                locationPicker.setLocation(currentLocation, displayText);
+            }
+        }
     });
 
     // Handle form submission
@@ -248,21 +221,6 @@ try {
         // Show loading state
         submitBtn.html('<i class="fas fa-spinner fa-spin"></i> Saving...').prop('disabled', true);
 
-        // Add visual feedback for location fields if they're being updated
-        const locationFields = ['city', 'state', 'country'];
-        const hasLocationChanges = locationFields.some(field =>
-            $(this).find(`[name="${field}"]`).val() !== $(this).find(`[name="${field}"]`).data('original-value')
-        );
-
-        if (hasLocationChanges) {
-            locationFields.forEach(field => {
-                const fieldElement = $(this).find(`[name="${field}"]`);
-                if (fieldElement.val()) {
-                    fieldElement.addClass('border-info').attr('title', 'Location will be geocoded...');
-                }
-            });
-        }
-
         $.ajax({
             url: 'includes/process-owner-update.php',
             method: 'POST',
@@ -270,41 +228,18 @@ try {
             dataType: 'json',
             success: function(response) {
                 if (response.success) {
-                    // Build success message
-                    let successMessage = '<i class="fas fa-check"></i> ' + response.message;
-
-                    // Add geocoding feedback if available
-                    let alertClass = 'alert-success';
-                    if (response.geocoding_success) {
-                        successMessage += '<br><div class="mt-2"><i class="fas fa-map-marker-alt text-success"></i> ' +
-                            '<strong class="text-success">' + response.geocoding_message + '</strong></div>';
-                    } else if (response.geocoding_failed) {
-                        successMessage += '<br><div class="mt-2"><i class="fas fa-exclamation-circle text-danger"></i> ' +
-                            '<strong class="text-danger">' + response.geocoding_message + '</strong></div>';
-                        alertClass = 'alert-warning'; // Mixed success (data saved) but geocoding failed
-                    } else if (response.geocoding_message) {
-                        successMessage += '<br><div class="mt-2"><i class="fas fa-exclamation-triangle text-warning"></i> ' +
-                            '<span class="text-warning">' + response.geocoding_message + '</span></div>';
-                        alertClass = 'alert-info';
-                    }
-
-                    // Show success message with geocoding feedback
+                    // Show success message
                     $('#ownerProfileForm').prepend(
-                        '<div class="alert ' + alertClass + ' alert-dismissible fade show">' +
-                        successMessage +
+                        '<div class="alert alert-success alert-dismissible fade show">' +
+                        '<i class="fas fa-check"></i> ' + response.message +
                         '<button type="button" class="close" data-dismiss="alert">&times;</button>' +
                         '</div>'
                     );
 
-                    // Update coordinates display if geocoding was successful
-                    if (response.geocoding_success && response.new_coordinates) {
-                        updateCoordinatesDisplay(response.new_coordinates.lat, response.new_coordinates.lon);
-                    }
-
                     // Reload the profile form to show updated data
                     setTimeout(() => {
                         loadOwnerById(<?= $ownerId ?>);
-                    }, 2000); // Extended timeout to let user see the geocoding message
+                    }, 1500);
 
                     // Refresh search results if visible
                     const searchQuery = $('#ownerSearchInput').val();
@@ -330,12 +265,6 @@ try {
             },
             complete: function() {
                 submitBtn.html(originalText).prop('disabled', false);
-
-                // Clean up location field styling
-                const locationFields = ['city', 'state', 'country'];
-                locationFields.forEach(field => {
-                    $(`[name="${field}"]`).removeClass('border-info').removeAttr('title');
-                });
             }
         });
     });
@@ -384,29 +313,6 @@ try {
                 btn.html(originalText).prop('disabled', false);
             }
         });
-    }
-
-    // Function to update coordinates display immediately after successful geocoding
-    function updateCoordinatesDisplay(lat, lon) {
-        // Update existing coordinate fields if they exist
-        const latField = $('input[value="' + <?= json_encode($ownerData->lat ?? '') ?> + '"][readonly]');
-        const lonField = $('input[value="' + <?= json_encode($ownerData->lon ?? '') ?> + '"][readonly]');
-
-        if (latField.length) {
-            latField.val(lat).addClass('border-success').effect('highlight', {color: '#28a745'}, 1500);
-        }
-        if (lonField.length) {
-            lonField.val(lon).addClass('border-success').effect('highlight', {color: '#28a745'}, 1500);
-        }
-
-        // If coordinates section doesn't exist, replace the info message
-        const infoAlert = $('.alert-info:contains("Coordinates will be automatically generated")');
-        if (infoAlert.length) {
-            infoAlert.removeClass('alert-info').addClass('alert-success')
-                .html('<i class="fas fa-check-circle"></i> <strong>Coordinates generated successfully!</strong><br>' +
-                     'Latitude: <code>' + lat + '</code> | Longitude: <code>' + lon + '</code>')
-                .effect('highlight', {color: '#28a745'}, 2000);
-        }
     }
     </script>
 

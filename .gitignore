@@ -142,6 +142,7 @@ FIX/rollback_*.php
 users/logs/*.log.php
 usersc/includes/totp_key.php
 usersc/plugins/plugins.ini.php
+usersc/cache/
 
 ########################################
 # Documentation (Generated)
@@ -154,4 +155,5 @@ docs/technical/MIGRATION_VERIFICATION_REPORT.md
 # Temporary/Development
 ########################################
 TODO
-issue-234-template-modernization/
+plans
+

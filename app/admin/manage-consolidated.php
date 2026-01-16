@@ -972,6 +972,12 @@ if (Input::exists('post')) {
 
 <?php require_once $abs_us_root . $us_url_root . 'users/includes/html_footer.php'; ?>
 
+<!-- Location Picker Styles -->
+<link rel="stylesheet" href="<?=$us_url_root?>app/assets/css/location-picker.css?v=2.11.2">
+
+<!-- Location Picker Script -->
+<script src="<?=$us_url_root?>app/assets/js/location-picker.js?v=2.11.2"></script>
+
 <!-- Include custom CSS and JavaScript -->
 <link rel="stylesheet" href="assets/manage-consolidated.css">
 <script src="assets/manage-consolidated.js"></script>

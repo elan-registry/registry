@@ -158,89 +158,99 @@ if (!empty($_POST)) {
             $lname = $userdetails->lname;
         }
         // Extend user_setttings.php with some PROFILE information
-        //Update City
-        if ($profiledetails->city != $_POST['city']) {
-            $city = ucfirst(Input::get('city'));
-            $fields = ['city' => $city];
+        // Update Location (city, state, country, lat, lon)
+        $locationChanged = false;
+        $newCity = Input::get('city');
+        $newState = Input::get('state');
+        $newCountry = Input::get('country');
+        $newLat = Input::get('lat');
+        $newLon = Input::get('lon');
+
+        // Check if any location field changed
+        if ($profiledetails->city != $newCity ||
+            $profiledetails->state != $newState ||
+            $profiledetails->country != $newCountry) {
+            $locationChanged = true;
+        }
+
+        if ($locationChanged) {
+            // Validate location fields
             $validation->check($_POST, [
                 'city' => [
                     'display' => 'City',
                     'required' => true,
                     'min' => 1,
-                    'max' => 25
-                ]
-            ]);
-            if ($validation->passed()) {
-                $db->update('profiles', $profileId, $fields);
-                $successes[] = 'City updated.';
-                logger((int)$user->data()->id, 'User', "Changed city from $profiledetails->city to $city.");
-            } else {
-                //validation did not pass
-                foreach ($validation->errors() as $error) {
-                    $errors[] = $error;
-                }
-            }
-        } else {
-            $city = $profiledetails->city;
-        }
-
-        //Update State
-        if ($profiledetails->state != $_POST['state']) {
-            $state = ucfirst(Input::get('state'));
-            $fields = ['state' => $state];
-            $validation->check($_POST, [
+                    'max' => 255
+                ],
                 'state' => [
                     'display' => 'State',
                     'required' => true,
                     'min' => 1,
-                    'max' => 25
-                ]
-            ]);
-            if ($validation->passed()) {
-                $db->update('profiles', $profileId, $fields);
-                $successes[] = 'State updated.';
-                logger((int)$user->data()->id, 'User', "Changed state from $profiledetails->state to $state.");
-            } else {
-                //validation did not pass
-                foreach ($validation->errors() as $error) {
-                    $errors[] = $error;
-                }
-            }
-        } else {
-            $state = $profiledetails->state;
-        }
-        //Update Country
-        if ($profiledetails->country != $_POST['country']) {
-            $country = ucfirst(Input::get('country'));
-            $fields = ['country' => $country];
-            $validation->check($_POST, [
+                    'max' => 255
+                ],
                 'country' => [
                     'display' => 'Country',
                     'required' => true,
                     'min' => 1,
-                    'max' => 25
+                    'max' => 255
                 ]
             ]);
+
             if ($validation->passed()) {
-                $db->update('profiles', $profileId, $fields);
-                $successes[] = 'Country updated.';
-                logger((int)$user->data()->id, 'User', "Changed country from $profiledetails->country to $country.");
+                // Build location update array
+                $locationFields = [
+                    'city' => ucfirst($newCity),
+                    'state' => ucfirst($newState),
+                    'country' => ucfirst($newCountry)
+                ];
+
+                // Add coordinates if provided by location picker
+                if (!empty($newLat) && !empty($newLon)) {
+                    $locationFields['lat'] = (float)$newLat;
+                    $locationFields['lon'] = (float)$newLon;
+                } else {
+                    // Fallback to old geocoding method if coordinates not provided
+                    /** @deprecated Fallback only - location picker should provide coordinates */
+                    $geoResult = ElanRegistryOwner::geocodeAddress($newCity, $newState, $newCountry);
+                    if (!empty($geoResult)) {
+                        $locationFields = array_merge($locationFields, $geoResult);
+                    }
+                }
+
+                // Update profile with all location data
+                $db->update('profiles', $profileId, $locationFields);
+
+                // Update local variables for car sync
+                $city = $locationFields['city'];
+                $state = $locationFields['state'];
+                $country = $locationFields['country'];
+                $geoResult = [
+                    'lat' => $locationFields['lat'] ?? null,
+                    'lon' => $locationFields['lon'] ?? null
+                ];
+
+                $successes[] = 'Location updated successfully.';
+                logger((int)$user->data()->id, 'User', "Updated location to: $city, $state, $country" .
+                    (isset($locationFields['lat']) ? " ({$locationFields['lat']}, {$locationFields['lon']})" : ''));
             } else {
-                //validation did not pass
+                // Validation did not pass
                 foreach ($validation->errors() as $error) {
                     $errors[] = $error;
                 }
+                $city = $profiledetails->city;
+                $state = $profiledetails->state;
+                $country = $profiledetails->country;
+                $geoResult = [];
             }
         } else {
+            $city = $profiledetails->city;
+            $state = $profiledetails->state;
             $country = $profiledetails->country;
+            $geoResult = [];
         }
 
-        // Update geolocation using ElanRegistryOwner helper
-        $geoResult = ElanRegistryOwner::geocodeAddress($city, $state, $country);
-
-        // Only update coordinates if geocoding was successful
-        if (!empty($geoResult)) {
-            $db->update('profiles', $profileId, $geoResult);
+        // Sync location to user's cars if coordinates are available
+        if (!empty($geoResult) && isset($geoResult['lat']) && isset($geoResult['lon'])) {
             $successes[] = 'Lat/Lon updated.';
             logger((int)$user->data()->id, 'User', 'Successfully updated lat/lon: ' . json_encode($geoResult));
             
@@ -491,25 +501,13 @@ if ($userQ2->count() > 0) {
                         </div>
                         <!-- Extend user_setttings.php with some PROFILE information -->
                         <div class="form-group">
-                            <label for="city">City</label>
-                            <input class='form-control' type='text' id='city' name='city' value='<?= $profiledetails->city ?>' />
-                        </div>
-                        <div class="form-group">
-                            <label for="state">State</label>
-                            <input class='form-control' type='text' id='state' name='state' value='<?= $profiledetails->state ?>' />
-                        </div>
-
-
-                        <div class="form-group">
-                            <label for="country">Country <?= $profiledetails->country ?></label>
-                            <?php
-                            echo "<select id='country' name='country'>";
-                            echo '<option selected>' . $profiledetails->country . '</option>';
-                            foreach ($countrylist as $c) {
-                                echo "<option value=\"$c->name\">$c->name</option>";
-                            }
-                            echo "</select>"; // Closing of list box
-                            ?>
+                            <label>Location</label>
+                            <p class="text-muted small">
+                                <i class="fas fa-info-circle"></i>
+                                Use GPS button on mobile or search for your location. Your location will be synchronized to all your registered cars.
+                            </p>
+                            <!-- Location Picker Component -->
+                            <div id="location-picker-settings" class="location-picker-container"></div>
                         </div>
 
                         <div class="form-group">
@@ -596,9 +594,59 @@ if ($userQ2->count() > 0) {
 <?php
 require_once $abs_us_root . $us_url_root . 'users/includes/html_footer.php'; //custom template footer
 ?>
+<!-- Location Picker Styles -->
+<link rel="stylesheet" href="<?=$us_url_root?>app/assets/css/location-picker.css?v=2.11.2">
+
+<!-- Location Picker Script -->
+<script src="<?=$us_url_root?>app/assets/js/location-picker.js?v=2.11.2"></script>
+
 <!-- Place any per-page javascript here -->
 <script>
     $(document).ready(function() {
+        // Initialize Location Picker for user settings
+        if (document.getElementById('location-picker-settings')) {
+            const urlRoot = '<?php echo $us_url_root; ?>';
+
+            const currentLocation = {
+                city: '<?= htmlspecialchars($profiledetails->city ?? '', ENT_QUOTES) ?>',
+                state: '<?= htmlspecialchars($profiledetails->state ?? '', ENT_QUOTES) ?>',
+                country: '<?= htmlspecialchars($profiledetails->country ?? '', ENT_QUOTES) ?>',
+                lat: '<?= $profiledetails->lat ?? '' ?>',
+                lon: '<?= $profiledetails->lon ?? '' ?>'
+            };
+
+            const locationPicker = new LocationPicker({
+                containerId: 'location-picker-settings',
+                csrfToken: '<?=Token::generate()?>',
+                urlRoot: urlRoot,
+                showGPS: true,
+                required: true
+            });
+
+            // Pre-populate with current location if available
+            if (currentLocation.city && currentLocation.country) {
+                const displayText = [currentLocation.city, currentLocation.state, currentLocation.country]
+                    .filter(Boolean).join(', ');
+                document.getElementById('location-picker-settings-input').value = displayText;
+
+                if (currentLocation.lat && currentLocation.lon) {
+                    document.getElementById('location-picker-settings-city').value = currentLocation.city;
+                    document.getElementById('location-picker-settings-state').value = currentLocation.state;
+                    document.getElementById('location-picker-settings-country').value = currentLocation.country;
+                    document.getElementById('location-picker-settings-lat').value = currentLocation.lat;
+                    document.getElementById('location-picker-settings-lon').value = currentLocation.lon;
+
+                    const selectedDiv = document.getElementById('location-picker-settings-selected');
+                    const selectedText = document.getElementById('location-picker-settings-selected-text');
+                    const coords = document.getElementById('location-picker-settings-coords');
+
+                    selectedText.textContent = displayText;
+                    coords.textContent = currentLocation.lat + ', ' + currentLocation.lon;
+                    selectedDiv.classList.remove('d-none');
+                }
+            }
+        }
+
         $('.password_view_control').hover(function() {
             $('#old').attr('type', 'text');
             $('#password').attr('type', 'text');

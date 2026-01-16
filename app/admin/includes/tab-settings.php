@@ -38,10 +38,9 @@ if (!function_exists('processSettingsAutoCreation')) {
             'elan_backup_age' => ['type' => 'INT(11)', 'default' => '30', 'description' => 'Backup retention period in days']
         ];
 
-        // Google Services settings
+        // Google Maps settings
         $googleSettingsFields = [
-            'elan_google_maps_key' => ['type' => 'TEXT', 'default' => '', 'description' => 'Google Maps API Key for car location maps'],
-            'elan_google_geo_key' => ['type' => 'TEXT', 'default' => '', 'description' => 'Google Geocoding API Key for address conversion']
+            'elan_google_maps_key' => ['type' => 'TEXT', 'default' => '', 'description' => 'Google Maps API Key for car location maps']
         ];
 
         // Additional Media settings
@@ -233,11 +232,11 @@ $autoCreationMessages = processSettingsAutoCreation();
 
     <div class="row">
         <div class="col-md-6">
-            <!-- Google Services Integration -->
+            <!-- Google Maps Integration -->
             <div class="card border-info mb-4">
                 <div class="card-header bg-info text-white">
-                    <h5 class="mb-0"><i class="fab fa-google"></i> Google Services Integration</h5>
-                    <small class="text-light">API keys for Maps, Geocoding, and other Google services</small>
+                    <h5 class="mb-0"><i class="fab fa-google"></i> Google Maps Integration</h5>
+                    <small class="text-light">API key for displaying car locations on maps</small>
                 </div>
                 <div class="card-body">
                     <div class="form-group">
@@ -257,26 +256,9 @@ $autoCreationMessages = processSettingsAutoCreation();
                         </small>
                     </div>
 
-                    <div class="form-group">
-                        <label for="elan_google_geo_key" class="font-weight-bold">
-                            <i class="fas fa-search-location"></i> Google Geocoding API Key
-                        </label>
-                        <input type="text"
-                               class="form-control ajxtxt"
-                               data-desc="Google Geocoding Key"
-                               name="elan_google_geo_key"
-                               id="elan_google_geo_key"
-                               value="<?= htmlspecialchars($settings->elan_google_geo_key ?? '') ?>"
-                               placeholder="AIzaSy...">
-                        <small class="form-text text-muted">
-                            <i class="fas fa-external-link-alt"></i> Converts addresses to coordinates for location sync
-                            <a href="https://console.cloud.google.com/apis/credentials" target="_blank" class="ml-2">Get API Key</a>
-                        </small>
-                    </div>
-
                     <div class="mt-3">
-                        <button type="button" class="btn btn-outline-info btn-sm" onclick="testGoogleServices(this)">
-                            <i class="fas fa-flask"></i> Test API Keys
+                        <button type="button" class="btn btn-outline-info btn-sm" onclick="testGoogleMapsAPI(this)">
+                            <i class="fas fa-flask"></i> Test Maps API Key
                         </button>
                     </div>
                 </div>
@@ -844,80 +826,49 @@ $(document).ready(function() {
     });
 });
 
-// Test Google Services functionality
-function testGoogleServices(buttonElement) {
-    console.log('[API Test] Starting Google Services API test');
-    console.log('[API Test] Button element passed:', buttonElement);
-
+// Test Google Maps API functionality
+function testGoogleMapsAPI(buttonElement) {
     const mapsKey = $('#elan_google_maps_key').val();
-    const geoKey = $('#elan_google_geo_key').val();
 
-    console.log('[API Test] Maps Key present:', !!mapsKey);
-    console.log('[API Test] Geo Key present:', !!geoKey);
-
-    if (!mapsKey && !geoKey) {
-        console.warn('[API Test] No API keys provided');
-        alert('Please enter at least one API key to test.');
+    if (!mapsKey) {
+        alert('Please enter a Google Maps API key to test.');
         return;
     }
 
-    // Wrap button element in jQuery
     const btn = $(buttonElement);
-    console.log('[API Test] Button wrapped in jQuery:', btn.length, 'element(s)');
-
     if (btn.length === 0) {
-        console.error('[API Test] ERROR: Button element is invalid!');
         alert('Error: Invalid button element. Please refresh the page.');
         return;
     }
 
     const originalText = btn.html();
-    console.log('[API Test] Original button HTML:', originalText);
     btn.html('<i class="fas fa-spinner fa-spin"></i> Testing...').prop('disabled', true);
-    console.log('[API Test] Button disabled, starting test...');
 
     // Remove any existing result message
     $('#apiTestResult').remove();
 
     // Helper functions
     function showSuccess(btn, originalText) {
-        console.log('[API Test] Showing success state');
-
-        // Reset button to original state
         btn.html(originalText).prop('disabled', false);
-
-        // Add success message next to button
         const successMsg = $('<span id="apiTestResult" class="ml-2 text-success font-weight-bold">' +
             '<i class="fas fa-check-circle"></i> Maps API Valid - Test Successful' +
             '</span>');
         btn.after(successMsg);
 
-        console.log('[API Test] Success message added to DOM');
-
-        // Remove message after 5 seconds
         setTimeout(() => {
             $('#apiTestResult').fadeOut(300, function() {
                 $(this).remove();
             });
-            console.log('[API Test] Test completed successfully');
         }, 5000);
     }
 
     function showError(btn, originalText, message) {
-        console.error('[API Test] Showing error state:', message);
-
-        // Reset button to original state
         btn.html(originalText).prop('disabled', false);
-
-        // Add error message next to button
         const errorMsg = $('<span id="apiTestResult" class="ml-2 text-danger font-weight-bold">' +
             '<i class="fas fa-times-circle"></i> ' + message +
             '</span>');
         btn.after(errorMsg);
 
-        console.log('[API Test] Error message added to DOM');
-
-        // Remove message after 7 seconds
         setTimeout(() => {
             $('#apiTestResult').fadeOut(300, function() {
                 $(this).remove();
@@ -925,103 +876,62 @@ function testGoogleServices(buttonElement) {
         }, 7000);
     }
 
-    // Test Maps API if key provided
-    if (mapsKey) {
-        console.log('[API Test] Testing Google Maps API');
-
-        // Check if Maps API already loaded
-        if (window.google && window.google.maps) {
-            console.log('[API Test] Google Maps API already loaded, test successful');
-            showSuccess(btn, originalText);
-            return;
-        }
-
-        // Add loading=async parameter per Google best practices (fixes console warning)
-        const testUrl = `https://maps.googleapis.com/maps/api/js?key=${mapsKey}&callback=testCallback&loading=async`;
-        console.log('[API Test] Loading Maps API from URL:', testUrl);
-
-        // Set up callback with timeout
-        let callbackExecuted = false;
-        const timeoutMs = 10000;
-
-        window.testCallback = function() {
-            if (callbackExecuted) return;
-            callbackExecuted = true;
-
-            console.log('[API Test] Google Maps API callback executed successfully');
-            showSuccess(btn, originalText);
-
-            // Clean up
-            setTimeout(() => {
-                if (window.testCallback) {
-                    delete window.testCallback;
-                    console.log('[API Test] Cleanup completed');
-                }
-            }, 2000);
-        };
-
-        // Create script tag to test the API
-        const script = document.createElement('script');
-        script.src = testUrl;
-        script.async = true;
-        script.defer = true;
-
-        script.onerror = function(error) {
-            if (callbackExecuted) return;
-            callbackExecuted = true;
-
-            console.error('[API Test] Maps API loading error:', error);
-            showError(btn, originalText, 'Maps API Error');
-
-            // Clean up
-            setTimeout(() => {
-                if (script.parentNode) {
-                    document.head.removeChild(script);
-                }
-                delete window.testCallback;
-            }, 2000);
-        };
-
-        // Set timeout for slow/failed responses
-        const timeout = setTimeout(() => {
-            if (!callbackExecuted) {
-                console.error('[API Test] Maps API test timeout after', timeoutMs, 'ms');
-                showError(btn, originalText, 'Test timeout');
-
-                // Clean up
-                if (script.parentNode) {
-                    document.head.removeChild(script);
-                }
-                delete window.testCallback;
-            }
-        }, timeoutMs);
-
-        console.log('[API Test] Appending script to document head');
-        document.head.appendChild(script);
-
-    } else {
-        // Just show completion for geocoding key (no direct test available)
-        console.log('[API Test] Only Geocoding key provided (no direct test available)');
-        setTimeout(() => {
-            // Reset button to original state
-            btn.html(originalText).prop('disabled', false);
-
-            // Add info message next to button
-            const infoMsg = $('<span id="apiTestResult" class="ml-2 text-info font-weight-bold">' +
-                '<i class="fas fa-info-circle"></i> Geocoding Key Saved (no direct test available)' +
-                '</span>');
-            btn.after(infoMsg);
-
-            console.log('[API Test] Info message added to DOM');
-
-            // Remove message after 5 seconds
-            setTimeout(() => {
-                $('#apiTestResult').fadeOut(300, function() {
-                    $(this).remove();
-                });
-            }, 5000);
-        }, 1000);
+    // Check if Maps API already loaded
+    if (window.google && window.google.maps) {
+        showSuccess(btn, originalText);
+        return;
     }
+
+    // Test Maps API by loading it
+    const testUrl = `https://maps.googleapis.com/maps/api/js?key=${mapsKey}&callback=testMapsCallback&loading=async`;
+
+    let callbackExecuted = false;
+    const timeoutMs = 10000;
+
+    window.testMapsCallback = function() {
+        if (callbackExecuted) return;
+        callbackExecuted = true;
+
+        showSuccess(btn, originalText);
+
+        setTimeout(() => {
+            if (window.testMapsCallback) {
+                delete window.testMapsCallback;
+            }
+        }, 2000);
+    };
+
+    const script = document.createElement('script');
+    script.src = testUrl;
+    script.async = true;
+    script.defer = true;
+
+    script.onerror = function(error) {
+        if (callbackExecuted) return;
+        callbackExecuted = true;
+
+        showError(btn, originalText, 'Maps API Error');
+
+        setTimeout(() => {
+            if (script.parentNode) {
+                document.head.removeChild(script);
+            }
+            delete window.testMapsCallback;
+        }, 2000);
+    };
+
+    const timeout = setTimeout(() => {
+        if (!callbackExecuted) {
+            showError(btn, originalText, 'Test timeout');
+
+            if (script.parentNode) {
+                document.head.removeChild(script);
+            }
+            delete window.testMapsCallback;
+        }
+    }, timeoutMs);
+
+    document.head.appendChild(script);
 }
 
 // Test Email Configuration

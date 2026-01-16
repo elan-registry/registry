@@ -5,6 +5,10 @@ declare(strict_types=1);
 /**
  * LocationGeocoder
  *
+ * @deprecated 2.11.0 Replaced by LocationService (OpenStreetMap-based).
+ *                    Scheduled for removal in v3.0.0 (Issue #433).
+ *                    Use LocationService for new implementations.
+ *
  * @internal This class is an internal implementation detail of ElanRegistryOwner.
  *           DO NOT instantiate directly. Use ElanRegistryOwner::geocodeAddress() instead.
  *
@@ -12,10 +16,22 @@ declare(strict_types=1);
  * Supports both forward geocoding (address → coordinates) and
  * reverse geocoding (coordinates → address).
  *
+ * DEPRECATION NOTICE:
+ * This class is deprecated as of v2.11.0 and will be removed in v3.0.0.
+ * The Elan Registry now uses LocationService with free OpenStreetMap APIs
+ * (Photon/Nominatim) instead of paid Google Geocoding API.
+ *
+ * Migration Path:
+ * - For new code: Use LocationService->searchLocation() or LocationService->reverseGeocode()
+ * - Existing code will continue to work via ElanRegistryOwner::geocodeAddress() fallback
+ * - All geocoding will be removed from backend in v3.0.0; coordinates come from frontend
+ *
  * @author Jim Boone
  * @version $Revision: 1.0 $
  * @access public
  * @since v2.11.0
+ * @see LocationService
+ * @see Issue #433
  */
 class LocationGeocoder
 {

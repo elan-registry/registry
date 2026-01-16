@@ -291,8 +291,27 @@ if ($settings->registration == 1) {
 includeHook($hooks, 'bottom');
 ?>
 
+<!-- Location Picker Styles -->
+<link rel="stylesheet" href="<?=$us_url_root?>app/assets/css/location-picker.css?v=2.11.2">
+
+<!-- Location Picker Script -->
+<script src="<?=$us_url_root?>app/assets/js/location-picker.js?v=2.11.2"></script>
+
 <script type="text/javascript">
     $(document).ready(function(){
+        // Initialize Location Picker for registration
+        if (document.getElementById('location-picker-registration')) {
+            const urlRoot = '<?php echo $us_url_root; ?>';
+
+            const locationPicker = new LocationPicker({
+                containerId: 'location-picker-registration',
+                csrfToken: '<?=Token::generate()?>',
+                urlRoot: urlRoot,
+                showGPS: true,
+                required: true
+            });
+        }
+
         $('.password_view_control').hover(function () {
             $('#password').attr('type', 'text');
             $('#confirm').attr('type', 'text');

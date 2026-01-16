@@ -24,18 +24,32 @@ if ($check < 1) {
 $city = Input::get('city');
 $state = Input::get('state');
 $country = Input::get('country');
+$lat = Input::get('lat');
+$lon = Input::get('lon');
 
-$db->update('profiles', ["user_id", "=", $theNewId], ['city' => $city]);
-$db->update('profiles', ["user_id", "=", $theNewId], ['state' => $state]);
-$db->update('profiles', ["user_id", "=", $theNewId], ['country' => $country]);
+// Build location update array
+$locationData = [
+    'city' => $city,
+    'state' => $state,
+    'country' => $country
+];
 
-// Update geolocation using ElanRegistryOwner helper
-$geoResult = ElanRegistryOwner::geocodeAddress($city, $state, $country);
-
-// Only update coordinates if geocoding was successful
-if (!empty($geoResult)) {
-    $db->update('profiles', ["user_id", "=", $theNewId], $geoResult);
+// Add coordinates if provided by location picker
+if (!empty($lat) && !empty($lon)) {
+    $locationData['lat'] = (float)$lat;
+    $locationData['lon'] = (float)$lon;
+} else {
+    // Fallback to old geocoding method if coordinates not provided
+    // (for backward compatibility or if location picker fails)
+    /** @deprecated Fallback only - location picker should provide coordinates */
+    $geoResult = ElanRegistryOwner::geocodeAddress($city, $state, $country);
+    if (!empty($geoResult)) {
+        $locationData = array_merge($locationData, $geoResult);
+    }
 }
+
+// Update profile with all location data at once
+$db->update('profiles', ["user_id", "=", $theNewId], $locationData);
 
 // Even if you do not want to add additional fields to the the join form, this is a great opportunity to add this user to another database table.
 // Get creative!

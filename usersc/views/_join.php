@@ -1,4 +1,6 @@
 <?php
+declare(strict_types=1);
+
 /*
 Enhanced Lotus Elan Registry Registration Page
 Customized for the Lotus Elan Registry with improved UX and registry-specific features
@@ -99,85 +101,11 @@ Based on UserSpice 5 registration system
               <p class="text-muted mb-3">
                 <i class="fas fa-info-circle"></i>
                 Your location helps other registry members find Elans in their area and assists with regional statistics.
-                This information will be used to geocode your car's location on our registry maps.
+                Use the GPS button on mobile or search for your location below.
               </p>
-              
-              <?php
-              // Get the country list for the enhanced location section
-              $city = Input::get('city') ?? '';
-              $state = Input::get('state') ?? '';
-              $country = Input::get('country') ?? '';
-              ?>
-              
-              <div class="row">
-                <div class="col-md-4 mb-3">
-                  <label for="city" class="form-label">City *</label>
-                  <div class="input-group">
-                    <span class="input-group-text"><i class="fas fa-building"></i></span>
-                    <input type="text" class="form-control" id="city" name="city" 
-                           placeholder="Enter your city"
-                           value="<?php if (!$form_valid && !empty($_POST)) echo htmlspecialchars($city); ?>" 
-                           required autocomplete="address-level2">
-                    <div class="invalid-feedback">Please enter your city.</div>
-                  </div>
-                </div>
-                
-                <div class="col-md-4 mb-3">
-                  <label for="state" class="form-label">State/Province *</label>
-                  <div class="input-group">
-                    <span class="input-group-text"><i class="fas fa-map"></i></span>
-                    <input type="text" class="form-control" id="state" name="state" 
-                           placeholder="State or Province"
-                           value="<?php if (!$form_valid && !empty($_POST)) echo htmlspecialchars($state); ?>" 
-                           required autocomplete="address-level1">
-                    <div class="invalid-feedback">Please enter your state or province.</div>
-                  </div>
-                </div>
-                
-                <div class="col-md-4 mb-3">
-                  <label for="country" class="form-label">Country *</label>
-                  <div class="input-group">
-                    <span class="input-group-text"><i class="fas fa-globe"></i></span>
-                    <select class="form-control form-select" id="country" name="country" required>
-                      <?php
-                      if (!$form_valid && !empty($_POST) && !empty($country)) {
-                          echo "<option selected value=\"" . htmlspecialchars($country) . "\">" . htmlspecialchars($country) . "</option>";
-                      } else {
-                          echo '<option value="">Select Country</option>';
-                      }
-                      
-                      // First, show popular countries from registry data
-                      if (!empty($popularCountries) && count($popularCountries) > 0) {
-                          foreach ($popularCountries as $popularCountry) {
-                              // Skip if already selected above
-                              if (!(!$form_valid && !empty($_POST) && $country == $popularCountry)) {
-                                  echo "<option value=\"" . htmlspecialchars($popularCountry) . "\">" . htmlspecialchars($popularCountry) . "</option>";
-                              }
-                          }
-                          echo '<option disabled style="color: #999;">────────────────</option>';
-                      }
-                      
-                      // Then show all other countries
-                      if (isset($countrylist)) {
-                          foreach ($countrylist as $c) {
-                              // Skip separator-like entries, empty names, or countries already in popular list
-                              if (!empty($c->name) && 
-                                  strpos($c->name, '────') === false && 
-                                  strpos($c->name, '---') === false &&
-                                  (empty($popularCountries) || !in_array($c->name, $popularCountries))) {
-                                  // Skip if already selected above
-                                  if (!(!$form_valid && !empty($_POST) && $country == $c->name)) {
-                                      echo "<option value=\"" . htmlspecialchars($c->name) . "\">" . htmlspecialchars($c->name) . "</option>";
-                                  }
-                              }
-                          }
-                      }
-                      ?>
-                    </select>
-                    <div class="invalid-feedback">Please select your country.</div>
-                  </div>
-                </div>
-              </div>
+
+              <!-- Location Picker Component -->
+              <div id="location-picker-registration" class="location-picker-container"></div>
             </div>
 
             <!-- Password Section -->
