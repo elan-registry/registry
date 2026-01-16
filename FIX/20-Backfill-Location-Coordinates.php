@@ -564,15 +564,8 @@ if (!class_exists('LocationService')) {
                             logProgress("✅ Reverse geocoding complete!", 'success');
                         }
 
-                        // Ensure fix_script_runs table exists and log completion
+                        // Log script completion
                         try {
-                            $db->query("CREATE TABLE IF NOT EXISTS fix_script_runs (
-                                id INT AUTO_INCREMENT PRIMARY KEY,
-                                script_name VARCHAR(255) NOT NULL,
-                                completed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                                INDEX idx_script_name (script_name)
-                            )");
-
                             $db->insert('fix_script_runs', [
                                 'script_name' => '20-Backfill-Location-Coordinates.php',
                                 'completed_at' => date('Y-m-d H:i:s')
