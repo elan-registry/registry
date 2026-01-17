@@ -13,7 +13,7 @@ declare(strict_types=1);
  * @subpackage Exceptions
  * @since v2.11.0
  */
-class ImageProcessingException extends Exception
+class ImageProcessingException extends ElanRegistryException
 {
     /**
      * Constructor
@@ -21,9 +21,38 @@ class ImageProcessingException extends Exception
      * @param string $message Exception message
      * @param int $code Exception code (optional)
      * @param Throwable|null $previous Previous exception for chaining (optional)
+     * @param string|null $userMessage User-friendly message (uses default if null)
      */
-    public function __construct(string $message = "Image processing failed", int $code = 0, ?Throwable $previous = null)
+    public function __construct(
+        string $message = "",
+        int $code = 0,
+        ?Throwable $previous = null,
+        ?string $userMessage = null
+    ) {
+        parent::__construct($message, $code, $previous, $userMessage);
+    }
+
+    /**
+     * @inheritDoc
+     */
+    protected static function getDefaultUserMessage(): string
     {
-        parent::__construct($message, $code, $previous);
+        return "Unable to process the image. Please try a different file.";
+    }
+
+    /**
+     * @inheritDoc
+     */
+    protected static function getDefaultLogCategory(): string
+    {
+        return 'FileError';
+    }
+
+    /**
+     * @inheritDoc
+     */
+    protected static function getDefaultHttpStatusCode(): int
+    {
+        return 500;
     }
 }

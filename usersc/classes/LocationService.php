@@ -25,11 +25,6 @@ declare(strict_types=1);
  */
 
 /**
- * Custom exception for location service errors
- */
-class LocationServiceException extends Exception {}
-
-/**
  * LocationService class for modern location collection
  */
 class LocationService

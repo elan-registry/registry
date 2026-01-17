@@ -13,7 +13,7 @@ declare(strict_types=1);
  * @subpackage Exceptions
  * @since v2.11.0
  */
-class OwnerNotFoundException extends Exception
+class OwnerNotFoundException extends ElanRegistryException
 {
     /**
      * Constructor
@@ -21,9 +21,38 @@ class OwnerNotFoundException extends Exception
      * @param string $message Exception message
      * @param int $code Exception code (optional)
      * @param Throwable|null $previous Previous exception for chaining (optional)
+     * @param string|null $userMessage User-friendly message (uses default if null)
      */
-    public function __construct(string $message = "Owner not found", int $code = 0, ?Throwable $previous = null)
+    public function __construct(
+        string $message = "",
+        int $code = 0,
+        ?Throwable $previous = null,
+        ?string $userMessage = null
+    ) {
+        parent::__construct($message, $code, $previous, $userMessage);
+    }
+
+    /**
+     * @inheritDoc
+     */
+    protected static function getDefaultUserMessage(): string
     {
-        parent::__construct($message, $code, $previous);
+        return "The requested owner was not found.";
+    }
+
+    /**
+     * @inheritDoc
+     */
+    protected static function getDefaultLogCategory(): string
+    {
+        return 'OwnerErrors';
+    }
+
+    /**
+     * @inheritDoc
+     */
+    protected static function getDefaultHttpStatusCode(): int
+    {
+        return 404;
     }
 }

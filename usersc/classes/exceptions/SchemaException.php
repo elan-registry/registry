@@ -1,30 +1,57 @@
 <?php
+
 declare(strict_types=1);
 
 /**
  * SchemaException
  *
- * Custom exception class for schema management errors
+ * Exception thrown when database schema operations fail.
+ * Used when schema migrations, alterations, or validations encounter errors.
  *
  * @package ElanRegistry
- * @subpackage Schema
+ * @subpackage Exceptions
  * @since v2.9.2
  */
-class SchemaException extends Exception {
+class SchemaException extends ElanRegistryException
+{
     /**
      * Constructor
      *
-     * Note: PHP constructors cannot have return type declarations per language specification
-     * @see https://www.php.net/manual/en/language.oop5.decon.php
-     *
      * @param string $message Exception message
      * @param int $code Exception code (optional)
-     * @param Exception|null $previous Previous exception for chaining (optional)
-     * @return void Constructors do not return values
+     * @param Throwable|null $previous Previous exception for chaining (optional)
+     * @param string|null $userMessage User-friendly message (uses default if null)
      */
-    // phpcs:ignore Generic.CodeAnalysis.UselessOverridingMethod.Found
-    // @codingStandardsIgnoreLine - Constructors cannot have return type declarations
-    public function __construct(string $message, int $code = 0, ?Exception $previous = null) {
-        parent::__construct($message, $code, $previous);
+    public function __construct(
+        string $message = "",
+        int $code = 0,
+        ?Throwable $previous = null,
+        ?string $userMessage = null
+    ) {
+        parent::__construct($message, $code, $previous, $userMessage);
+    }
+
+    /**
+     * @inheritDoc
+     */
+    protected static function getDefaultUserMessage(): string
+    {
+        return "A database schema operation failed. Please contact support.";
+    }
+
+    /**
+     * @inheritDoc
+     */
+    protected static function getDefaultLogCategory(): string
+    {
+        return 'DatabaseError';
+    }
+
+    /**
+     * @inheritDoc
+     */
+    protected static function getDefaultHttpStatusCode(): int
+    {
+        return 500;
     }
 }
