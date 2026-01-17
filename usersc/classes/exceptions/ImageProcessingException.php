@@ -45,7 +45,7 @@ class ImageProcessingException extends ElanRegistryException
      */
     protected static function getDefaultLogCategory(): string
     {
-        return 'FileError';
+        return LogCategories::LOG_CATEGORY_FILE_ERROR;
     }
 
     /**

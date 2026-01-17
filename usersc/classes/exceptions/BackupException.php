@@ -44,7 +44,7 @@ class BackupException extends ElanRegistryException
      */
     protected static function getDefaultLogCategory(): string
     {
-        return 'BackupError';
+        return LogCategories::LOG_CATEGORY_BACKUP_ERROR;
     }
 
     /**

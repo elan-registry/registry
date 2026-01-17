@@ -45,7 +45,7 @@ class CarTransferException extends ElanRegistryException
      */
     protected static function getDefaultLogCategory(): string
     {
-        return 'CarTransferError';
+        return LogCategories::LOG_CATEGORY_CAR_TRANSFER_ERROR;
     }
 
     /**

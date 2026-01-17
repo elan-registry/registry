@@ -45,7 +45,7 @@ class CarCreationException extends ElanRegistryException
      */
     protected static function getDefaultLogCategory(): string
     {
-        return 'CarErrors';
+        return LogCategories::LOG_CATEGORY_CAR_CREATION;
     }
 
     /**

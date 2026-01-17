@@ -45,7 +45,7 @@ class OwnerValidationException extends ElanRegistryException
      */
     protected static function getDefaultLogCategory(): string
     {
-        return 'ValidationError';
+        return LogCategories::LOG_CATEGORY_VALIDATION_ERROR;
     }
 
     /**
