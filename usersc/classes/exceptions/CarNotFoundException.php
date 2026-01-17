@@ -13,17 +13,35 @@ declare(strict_types=1);
  * @subpackage Exceptions
  * @since v2.11.0
  */
-class CarNotFoundException extends Exception
+class CarNotFoundException extends ElanRegistryException
 {
     /**
-     * Constructor
+     * Get default user message for car not found
      *
-     * @param string $message Exception message
-     * @param int $code Exception code (optional)
-     * @param Throwable|null $previous Previous exception for chaining (optional)
+     * @return string User-friendly error message
      */
-    public function __construct(string $message = "Car not found", int $code = 0, ?Throwable $previous = null)
+    protected function getDefaultUserMessage(): string
     {
-        parent::__construct($message, $code, $previous);
+        return "The car you're looking for could not be found. It may have been deleted or is no longer available.";
+    }
+
+    /**
+     * Get log category for car not found exceptions
+     *
+     * @return string Log category constant
+     */
+    protected function getDefaultLogCategory(): string
+    {
+        return LogCategories::LOG_CATEGORY_CAR_ERRORS;
+    }
+
+    /**
+     * Get HTTP status code for not found errors
+     *
+     * @return int HTTP 404 Not Found
+     */
+    protected function getDefaultHttpStatusCode(): int
+    {
+        return 404;
     }
 }

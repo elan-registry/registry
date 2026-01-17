@@ -1,30 +1,37 @@
 <?php
+
 declare(strict_types=1);
 
 /**
  * BackupException
  *
- * Custom exception class for backup-related errors
+ * Exception thrown when backup operations fail.
+ * Used when database backups, schema operations, or backup-related tasks
+ * encounter errors.
  *
  * @package ElanRegistry
- * @subpackage Backup
- * @since v2.9.2
+ * @subpackage Exceptions
+ * @since v2.11.0
  */
-class BackupException extends Exception {
+class BackupException extends ElanRegistryException
+{
     /**
-     * Constructor
+     * Get default user message for backup failures
      *
-     * Note: PHP constructors cannot have return type declarations per language specification
-     * @see https://www.php.net/manual/en/language.oop5.decon.php
-     *
-     * @param string $message Exception message
-     * @param int $code Exception code (optional)
-     * @param Exception|null $previous Previous exception for chaining (optional)
-     * @return void Constructors do not return values
+     * @return string User-friendly error message
      */
-    // phpcs:ignore Generic.CodeAnalysis.UselessOverridingMethod.Found
-    // @codingStandardsIgnoreLine - Constructors cannot have return type declarations
-    public function __construct(string $message, int $code = 0, ?Exception $previous = null) {
-        parent::__construct($message, $code, $previous);
+    protected function getDefaultUserMessage(): string
+    {
+        return "A backup operation failed. Please try again or contact support.";
+    }
+
+    /**
+     * Get log category for backup exceptions
+     *
+     * @return string Log category constant
+     */
+    protected function getDefaultLogCategory(): string
+    {
+        return LogCategories::LOG_CATEGORY_BACKUP_ERROR;
     }
 }

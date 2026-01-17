@@ -13,17 +13,25 @@ declare(strict_types=1);
  * @subpackage Exceptions
  * @since v2.11.0
  */
-class CarCreationException extends Exception
+class CarCreationException extends ElanRegistryException
 {
     /**
-     * Constructor
+     * Get default user message for car creation failures
      *
-     * @param string $message Exception message
-     * @param int $code Exception code (optional)
-     * @param Throwable|null $previous Previous exception for chaining (optional)
+     * @return string User-friendly error message
      */
-    public function __construct(string $message = "Car creation failed", int $code = 0, ?Throwable $previous = null)
+    protected function getDefaultUserMessage(): string
     {
-        parent::__construct($message, $code, $previous);
+        return "Unable to create the car record. Please try again or contact support.";
+    }
+
+    /**
+     * Get log category for car creation exceptions
+     *
+     * @return string Log category constant
+     */
+    protected function getDefaultLogCategory(): string
+    {
+        return LogCategories::LOG_CATEGORY_CAR_CREATION;
     }
 }

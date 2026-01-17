@@ -1,30 +1,37 @@
 <?php
+
 declare(strict_types=1);
 
 /**
  * SchemaException
  *
- * Custom exception class for schema management errors
+ * Exception thrown when database schema operations fail.
+ * Used when table creation, modification, or schema-related operations
+ * encounter errors.
  *
  * @package ElanRegistry
- * @subpackage Schema
- * @since v2.9.2
+ * @subpackage Exceptions
+ * @since v2.11.0
  */
-class SchemaException extends Exception {
+class SchemaException extends ElanRegistryException
+{
     /**
-     * Constructor
+     * Get default user message for schema operation failures
      *
-     * Note: PHP constructors cannot have return type declarations per language specification
-     * @see https://www.php.net/manual/en/language.oop5.decon.php
-     *
-     * @param string $message Exception message
-     * @param int $code Exception code (optional)
-     * @param Exception|null $previous Previous exception for chaining (optional)
-     * @return void Constructors do not return values
+     * @return string User-friendly error message
      */
-    // phpcs:ignore Generic.CodeAnalysis.UselessOverridingMethod.Found
-    // @codingStandardsIgnoreLine - Constructors cannot have return type declarations
-    public function __construct(string $message, int $code = 0, ?Exception $previous = null) {
-        parent::__construct($message, $code, $previous);
+    protected function getDefaultUserMessage(): string
+    {
+        return "A database operation failed. Please try again or contact support.";
+    }
+
+    /**
+     * Get log category for schema exceptions
+     *
+     * @return string Log category constant
+     */
+    protected function getDefaultLogCategory(): string
+    {
+        return LogCategories::LOG_CATEGORY_DATABASE_ERROR;
     }
 }

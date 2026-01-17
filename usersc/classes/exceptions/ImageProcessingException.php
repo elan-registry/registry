@@ -13,17 +13,25 @@ declare(strict_types=1);
  * @subpackage Exceptions
  * @since v2.11.0
  */
-class ImageProcessingException extends Exception
+class ImageProcessingException extends ElanRegistryException
 {
     /**
-     * Constructor
+     * Get default user message for image processing failures
      *
-     * @param string $message Exception message
-     * @param int $code Exception code (optional)
-     * @param Throwable|null $previous Previous exception for chaining (optional)
+     * @return string User-friendly error message
      */
-    public function __construct(string $message = "Image processing failed", int $code = 0, ?Throwable $previous = null)
+    protected function getDefaultUserMessage(): string
     {
-        parent::__construct($message, $code, $previous);
+        return "Unable to process the image. Please ensure it's a valid image file and try again.";
+    }
+
+    /**
+     * Get log category for image processing exceptions
+     *
+     * @return string Log category constant
+     */
+    protected function getDefaultLogCategory(): string
+    {
+        return LogCategories::LOG_CATEGORY_FILE_ERROR;
     }
 }

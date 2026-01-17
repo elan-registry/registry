@@ -50,7 +50,7 @@ $logMessage = sprintf(
 );
 
 if (function_exists('logger')) {
-    logger($userId, 'PageNotFound', $logMessage);
+    logger($userId, LogCategories::LOG_CATEGORY_PAGE_NOT_FOUND, $logMessage);
 }
 ?>
 <!DOCTYPE html>

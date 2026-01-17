@@ -13,17 +13,35 @@ declare(strict_types=1);
  * @subpackage Exceptions
  * @since v2.11.0
  */
-class OwnerValidationException extends Exception
+class OwnerValidationException extends ElanRegistryException
 {
     /**
-     * Constructor
+     * Get default user message for owner validation failures
      *
-     * @param string $message Exception message
-     * @param int $code Exception code (optional)
-     * @param Throwable|null $previous Previous exception for chaining (optional)
+     * @return string User-friendly error message
      */
-    public function __construct(string $message = "Owner validation failed", int $code = 0, ?Throwable $previous = null)
+    protected function getDefaultUserMessage(): string
     {
-        parent::__construct($message, $code, $previous);
+        return "The owner information you provided is incomplete or invalid. Please review and try again.";
+    }
+
+    /**
+     * Get log category for owner validation exceptions
+     *
+     * @return string Log category constant
+     */
+    protected function getDefaultLogCategory(): string
+    {
+        return LogCategories::LOG_CATEGORY_VALIDATION_ERROR;
+    }
+
+    /**
+     * Get HTTP status code for validation errors
+     *
+     * @return int HTTP 422 Unprocessable Entity
+     */
+    protected function getDefaultHttpStatusCode(): int
+    {
+        return 422;
     }
 }
