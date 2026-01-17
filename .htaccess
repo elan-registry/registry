@@ -1,6 +1,10 @@
 # Disable directory browsing for security
 Options -Indexes
 
+# Custom error pages
+ErrorDocument 403 /403.php
+ErrorDocument 404 /404.php
+
 # Security headers
 Header always set X-Frame-Options "SAMEORIGIN"
 Header always set X-Content-Type-Options "nosniff"
