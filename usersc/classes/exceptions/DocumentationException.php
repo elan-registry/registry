@@ -3,17 +3,16 @@
 declare(strict_types=1);
 
 /**
- * OwnerUpdateException
+ * DocumentationException
  *
- * Exception thrown when owner update operations fail.
- * Used when database update errors occur or validation fails during
- * owner record modifications.
+ * Exception thrown when documentation loading or rendering fails.
+ * Used by MarkdownParser and DocumentConfig classes.
  *
  * @package ElanRegistry
  * @subpackage Exceptions
- * @since v2.11.0
+ * @since v2.12.0
  */
-class OwnerUpdateException extends ElanRegistryException
+class DocumentationException extends ElanRegistryException
 {
     /**
      * Constructor
@@ -37,7 +36,7 @@ class OwnerUpdateException extends ElanRegistryException
      */
     protected static function getDefaultUserMessage(): string
     {
-        return "Unable to update the owner record. Please try again.";
+        return "Unable to load the requested documentation.";
     }
 
     /**
@@ -45,7 +44,7 @@ class OwnerUpdateException extends ElanRegistryException
      */
     protected static function getDefaultLogCategory(): string
     {
-        return 'OwnerErrors';
+        return 'SystemError';
     }
 
     /**

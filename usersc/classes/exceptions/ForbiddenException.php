@@ -3,17 +3,16 @@
 declare(strict_types=1);
 
 /**
- * OwnerUpdateException
+ * ForbiddenException
  *
- * Exception thrown when owner update operations fail.
- * Used when database update errors occur or validation fails during
- * owner record modifications.
+ * Exception thrown when user is authenticated but lacks permission.
+ * Use for authorization failures after successful authentication.
  *
  * @package ElanRegistry
  * @subpackage Exceptions
- * @since v2.11.0
+ * @since v2.12.0
  */
-class OwnerUpdateException extends ElanRegistryException
+class ForbiddenException extends ElanRegistryException
 {
     /**
      * Constructor
@@ -37,7 +36,7 @@ class OwnerUpdateException extends ElanRegistryException
      */
     protected static function getDefaultUserMessage(): string
     {
-        return "Unable to update the owner record. Please try again.";
+        return "You do not have permission to perform this action.";
     }
 
     /**
@@ -45,7 +44,7 @@ class OwnerUpdateException extends ElanRegistryException
      */
     protected static function getDefaultLogCategory(): string
     {
-        return 'OwnerErrors';
+        return 'SecurityError';
     }
 
     /**
@@ -53,6 +52,6 @@ class OwnerUpdateException extends ElanRegistryException
      */
     protected static function getDefaultHttpStatusCode(): int
     {
-        return 500;
+        return 403;
     }
 }
