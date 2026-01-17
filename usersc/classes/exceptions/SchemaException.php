@@ -44,7 +44,7 @@ class SchemaException extends ElanRegistryException
      */
     protected static function getDefaultLogCategory(): string
     {
-        return 'DatabaseError';
+        return LogCategories::LOG_CATEGORY_DATABASE_ERROR;
     }
 
     /**

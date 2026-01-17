@@ -507,40 +507,71 @@ public function getProfileQualityScore(): float {
 **All error conditions MUST use UserSpice logger integration for centralized
 error visibility and audit trails.**
 
-#### Required Error Categories
+#### Log Category Constants (v2.12.0+)
 
-- `SystemError` - File operations, environment issues, general system failures
-- `ValidationError` - Input validation failures, invalid data, malformed requests
-- `FileError` - Upload/processing failures, image operations, file system issues
-- `DatabaseError` - Database operation failures, query errors, connection issues
-- `CarErrors` - Car-related error conditions
-- `CarActions` - Car-related user operations
-- `DatabaseMaintenance` - All database maintenance operations
+All logger() calls MUST use standardized constants from the LogCategories class
+instead of hardcoded strings. This ensures consistency, prevents typos, and
+makes logging categories discoverable.
 
-#### Error Logging Pattern
+**Centralized Constants Location:** `usersc/classes/LogCategories.php`
+
+**140+ categories organized by functional domain:**
+- Car Management (CarActions, CarCreation, CarUpdate, CarDeletion, CarMerge, CarTransfer, etc.)
+- User/Owner Management (OwnerActions, UserDeletion, UserCreation, InactiveCleanup, etc.)
+- Authentication (Login, LoginFail, PasskeyAuth*, PasswordReset, TOTP*, etc.)
+- Database Operations (DatabaseError, DatabaseMaintenance, BackupManager, SchemaOperationError, etc.)
+- Email/Communications (EmailSuccess, EmailError, FeedbackForm, etc.)
+- System & File Operations (SystemError, FileError, ValidationError, ImageRemoval, etc.)
+- Admin & Management (AdminVerification, SettingsUpdate, UserManager, Logs, etc.)
+- Location & Geocoding (Geocode, LocationService, LocationReverse, etc.)
+- Access Control (AccessDenied, SecurePage, HasPerm, PageNotFound, etc.)
+- OAuth & External Auth (OAuthClient, OAuthServer, OAuthClientLogin, etc.)
+- And 4+ more functional domains
+
+**Discovery:** `grep "const LOG_CATEGORY" usersc/classes/LogCategories.php`
+
+#### Error Logging Pattern (with LogCategories)
 
 ```php
-// REQUIRED: Replace error_log() calls with UserSpice logger
+// ✅ CORRECT: Use LogCategories constants
 try {
     // Operation that might fail
     $result = riskyOperation();
 } catch (Exception $e) {
     logger(
         $user->data()->id ?? 0,
-        'ErrorCategory',
+        LogCategories::LOG_CATEGORY_SYSTEM_ERROR,
         'Descriptive error message: ' . $e->getMessage()
     );
     throw new SpecificException('User-friendly message');
 }
 
-// For validation errors
+// ✅ CORRECT: Validation error logging
 if (empty($requiredField)) {
     logger(
         $user->data()->id ?? 0,
-        'ValidationError',
+        LogCategories::LOG_CATEGORY_VALIDATION_ERROR,
         'Required field missing: fieldName'
     );
     throw new ValidationException('Field is required');
+}
+
+// ❌ INCORRECT: Never use hardcoded strings
+logger($user->data()->id, 'SystemError', 'message');  // Don't do this!
+```
+
+#### Using ElanRegistryException with LogCategories
+
+Domain-specific exceptions automatically use the correct LogCategories constant:
+
+```php
+// Exception automatically logs with correct category
+try {
+    throw new CarCreationException('Database insert failed');
+} catch (ElanRegistryException $e) {
+    // $e->getLogCategory() returns LogCategories::LOG_CATEGORY_CAR_CREATION
+    logger($user->data()->id, $e->getLogCategory(), $e->getMessage());
+    usError($e->getUserMessage());  // Safe for UI display
 }
 ```
 

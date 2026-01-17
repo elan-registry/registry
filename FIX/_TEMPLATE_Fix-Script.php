@@ -28,7 +28,14 @@ declare(strict_types=1);
 
 // UI Constants for progress output
 define('SECTION_SEPARATOR', '═══════════════════════════════════════════════════════');
-define('LOG_CATEGORY_PLACEHOLDER', '[LOG_CATEGORY]');
+
+// Log Category: Replace with appropriate LogCategories constant
+// Common options:
+// - LogCategories::LOG_CATEGORY_FIX_SCRIPT (general FIX script operations)
+// - LogCategories::LOG_CATEGORY_DATABASE_MAINTENANCE (database operations)
+// - LogCategories::LOG_CATEGORY_SYSTEM_MAINTENANCE (system maintenance tasks)
+// - Other: See LogCategories class for complete list
+define('LOG_CATEGORY_PLACEHOLDER', LogCategories::LOG_CATEGORY_FIX_SCRIPT);
 
 require_once '../users/init.php';
 require_once $abs_us_root . $us_url_root . 'users/includes/template/prep.php';
