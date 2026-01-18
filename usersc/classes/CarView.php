@@ -1,8 +1,10 @@
 <?php
 
+declare(strict_types=1);
+
 /**
  * CarView - Static utility class for car display and view functions
- * 
+ *
  * This class provides static methods for car display, image processing,
  * and HTML generation operations used across multiple pages.
  * Separated from data operations following proper MVC patterns.
@@ -12,7 +14,7 @@ class CarView
     // Image size constants to avoid magic numbers
     private const THUMBNAIL_SIZE = 100;
     private const IMAGE_SIZE_SMALL = 300;
-    private const IMAGE_SIZE_MEDIUM = 600;
+    private const IMAGE_SIZE_MEDIUM = 768;
     private const IMAGE_SIZE_LARGE = 1024;
     
     // Carousel configuration constants
@@ -20,7 +22,7 @@ class CarView
     private const CAROUSEL_MAX_ID = 9999;
     /**
      * Load and display a car picture with responsive image sizing
-     * 
+     *
      * @param array $image Image data array with path information
      * @param bool|null $thumbnail Whether to display as thumbnail (null = full size)
      * @return string HTML string for the image
@@ -32,9 +34,7 @@ class CarView
         if (empty($image) || !isset($image['path']) || empty($image['path'])) {
             throw new ImageProcessingException('Invalid image data provided');
         }
-        
-        global $us_url_root, $abs_us_root;
-        
+
         $thumbsize = self::THUMBNAIL_SIZE;
         $resize = '-resized-';
         $html = "<!--Start loadPicture -->";
@@ -63,7 +63,7 @@ class CarView
 
     /**
      * Display a responsive carousel for car images
-     * 
+     *
      * @param Car $car Car object with image data
      * @return string HTML string for the carousel
      */
@@ -125,6 +125,4 @@ class CarView
 
         return $html;
     }
-
 }
-
