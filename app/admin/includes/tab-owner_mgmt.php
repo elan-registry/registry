@@ -506,7 +506,7 @@ $ownerQualityScore = $totalOwners > 0 ? max(0, 100 - (($qualityIssues / $totalOw
                                                                                             <p class="mb-1">
                                                                                                 <strong>Coordinates:</strong>
                                                                                                 <?php if ($owner->lat && $owner->lon) { ?>
-                                                                                                    <?= number_format($owner->lat, 4) ?>, <?= number_format($owner->lon, 4) ?>
+                                                                                                    <?= number_format((float)$owner->lat, 4) ?>, <?= number_format((float)$owner->lon, 4) ?>
                                                                                                     <i class="fas fa-check text-success ml-1"></i>
                                                                                                 <?php } else { ?>
                                                                                                     <span class="text-danger">Missing</span>
