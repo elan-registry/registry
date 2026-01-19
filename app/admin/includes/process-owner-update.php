@@ -12,31 +12,31 @@ require_once '../../../users/init.php';
 
 // Security check - admin permission required
 if (!$user->isLoggedIn() || !isRegistryAdmin($user->data()->id)) {
-    http_response_code(403);
-    echo json_encode(['success' => false, 'message' => 'Unauthorized access']);
-    exit;
+    ApiResponse::forbidden('Unauthorized access')
+        ->withLogging(0, 'SecurityError', 'Unauthorized owner update attempt')
+        ->send();
 }
 
 // CSRF protection
 if (!isset($_POST['csrf']) || !Token::check($_POST['csrf'])) {
-    http_response_code(400);
-    echo json_encode(['success' => false, 'message' => 'Invalid CSRF token']);
-    exit;
+    ApiResponse::error('Invalid CSRF token', 400)
+        ->withLogging($user->data()->id, 'SecurityError', 'Invalid CSRF token in owner update')
+        ->send();
 }
 
 // Validate owner ID
 $ownerId = (int)($_POST['owner_id'] ?? 0);
 if ($ownerId <= 0) {
-    echo json_encode(['success' => false, 'message' => 'Invalid owner ID']);
-    exit;
+    ApiResponse::error('Invalid owner ID', 400)
+        ->send();
 }
 
 try {
     // Load existing owner
     $owner = new ElanRegistryOwner($ownerId);
     if (!$owner->data()) {
-        echo json_encode(['success' => false, 'message' => 'Owner not found']);
-        exit;
+        ApiResponse::notFound('Owner not found')
+            ->send();
     }
 
     // Prepare update fields
@@ -78,48 +78,54 @@ try {
         $newQualityScore = $updatedOwner->getProfileQualityScore();
         $missingFields = $updatedOwner->validateProfileCompleteness();
 
-        echo json_encode([
-            'success' => true,
-            'message' => 'Owner profile updated successfully!',
-            'quality_score' => $newQualityScore,
-            'missing_fields' => $missingFields
-        ]);
-
-        // Log the successful update
-        logger($user->data()->id, 'OwnerActions', "Updated owner profile for user ID {$ownerId} (Admin: {$user->data()->fname} {$user->data()->lname})");
+        ApiResponse::success('Owner profile updated successfully!')
+            ->withDataArray([
+                'quality_score' => $newQualityScore,
+                'missing_fields' => $missingFields
+            ])
+            ->withLogging(
+                $user->data()->id,
+                'OwnerActions',
+                "Updated owner profile for user ID {$ownerId} (Admin: {$user->data()->fname} {$user->data()->lname})"
+            )
+            ->send();
 
     } else {
-        echo json_encode([
-            'success' => false,
-            'message' => 'Failed to update owner profile. Please check your input and try again.'
-        ]);
+        ApiResponse::error(
+            'Failed to update owner profile. Please check your input and try again.',
+            400
+        )
+        ->send();
     }
 
 } catch (OwnerValidationException $e) {
-    // Validation error - return user-friendly message
-    echo json_encode([
-        'success' => false,
-        'message' => 'Validation error: ' . $e->getMessage()
-    ]);
-
-    logger($user->data()->id, 'ValidationError', "Owner update validation failed for user ID {$ownerId}: " . $e->getMessage());
+    ApiResponse::error(
+        'Validation error: ' . $e->getUserMessage(),
+        422
+    )
+    ->withLogging(
+        $user->data()->id,
+        $e->getLogCategory(),
+        "Owner update validation failed for user ID {$ownerId}: " . $e->getMessage()
+    )
+    ->send();
 
 } catch (OwnerUpdateException $e) {
-    // Update error - return user-friendly message
-    echo json_encode([
-        'success' => false,
-        'message' => 'Update failed: ' . $e->getMessage()
-    ]);
-
-    logger($user->data()->id, 'DatabaseError', "Owner update failed for user ID {$ownerId}: " . $e->getMessage());
+    ApiResponse::serverError('Update failed: ' . $e->getUserMessage())
+        ->withLogging(
+            $user->data()->id,
+            'DatabaseError',
+            "Owner update failed for user ID {$ownerId}: " . $e->getMessage()
+        )
+        ->send();
 
 } catch (Exception $e) {
-    // General error - log details but return generic message
-    logger($user->data()->id, 'SystemError', "Owner update system error for user ID {$ownerId}: " . $e->getMessage());
-
-    echo json_encode([
-        'success' => false,
-        'message' => 'An unexpected error occurred. Please try again.'
-    ]);
+    ApiResponse::serverError('An unexpected error occurred. Please try again.')
+        ->withLogging(
+            $user->data()->id,
+            'SystemError',
+            "Owner update system error for user ID {$ownerId}: " . $e->getMessage()
+        )
+        ->send();
 }
 ?>

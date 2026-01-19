@@ -12,23 +12,23 @@ require_once '../../../users/init.php';
 
 // Security check - admin permission required
 if (!$user->isLoggedIn() || !isRegistryAdmin($user->data()->id)) {
-    http_response_code(403);
-    echo json_encode(['success' => false, 'message' => 'Unauthorized access']);
-    exit;
+    ApiResponse::forbidden('Unauthorized access')
+        ->withLogging(0, 'SecurityError', 'Unauthorized owner search attempt')
+        ->send();
 }
 
 // CSRF protection
 if (!isset($_POST['csrf']) || !Token::check($_POST['csrf'])) {
-    http_response_code(400);
-    echo json_encode(['success' => false, 'message' => 'Invalid CSRF token']);
-    exit;
+    ApiResponse::error('Invalid CSRF token', 400)
+        ->withLogging($user->data()->id, 'SecurityError', 'Invalid CSRF token in owner search')
+        ->send();
 }
 
 // Validate input
 $query = trim($_POST['query'] ?? '');
 if (empty($query) || strlen($query) < 2) {
-    echo json_encode(['success' => false, 'message' => 'Search query must be at least 2 characters']);
-    exit;
+    ApiResponse::error('Search query must be at least 2 characters', 400)
+        ->send();
 }
 
 try {
@@ -54,23 +54,27 @@ try {
         ];
     }
 
-    // Log search activity
-    logger($user->data()->id ?? 0, 'OwnerActions', "Owner search performed: '{$query}' - {" . count($enhancedResults) . "} results");
-
-    echo json_encode([
-        'success' => true,
-        'owners' => $enhancedResults,
-        'total' => count($enhancedResults),
-        'query' => $query
-    ]);
+    // Return success response with search results
+    ApiResponse::success("Found " . count($enhancedResults) . " owner(s)")
+        ->withDataArray([
+            'owners' => $enhancedResults,
+            'total' => count($enhancedResults),
+            'query' => $query
+        ])
+        ->withLogging(
+            $user->data()->id,
+            'OwnerActions',
+            "Owner search performed: '{$query}' - " . count($enhancedResults) . " results"
+        )
+        ->send();
 
 } catch (Exception $e) {
-    logger($user->data()->id, 'SystemError', 'Owner search failed: ' . $e->getMessage());
-
-    http_response_code(500);
-    echo json_encode([
-        'success' => false,
-        'message' => 'Search failed. Please try again.'
-    ]);
+    ApiResponse::serverError('Search failed. Please try again.')
+        ->withLogging(
+            $user->data()->id,
+            'SystemError',
+            'Owner search failed: ' . $e->getMessage()
+        )
+        ->send();
 }
 ?>
