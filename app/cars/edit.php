@@ -232,7 +232,7 @@ function updateCarDetails(array &$car): void
                     <!-- End Image panel -->
                     <input type="hidden" name="csrf" id="csrf" value="<?= htmlspecialchars(Token::generate(), ENT_QUOTES, 'UTF-8'); ?>" />
                     <input type="hidden" name="action" id="action" value="<?= htmlspecialchars($action, ENT_QUOTES, 'UTF-8'); ?>" />
-                    <input type="hidden" name="car_id" id="car_id" value="<?= htmlspecialchars($cardetails['id'] ?? '', ENT_QUOTES, 'UTF-8'); ?>" />
+                    <input type="hidden" name="car_id" id="car_id" value="<?= htmlspecialchars((string)($cardetails['id'] ?? ''), ENT_QUOTES, 'UTF-8'); ?>" />
                     <input type="submit" name="submit" id="submit" class="btn btn-success" value="Add Car" />
                     <input type="button" name="previous" class="previous btn btn-danger" value="Previous" />
                 </fieldset>
