@@ -467,7 +467,7 @@ if (!class_exists('LocationService')) {
                                 logProgress("  Current: {$currentLocation}", 'info');
 
                                 try {
-                                    $reverseResult = $locationService->reverseGeocode((float)$profile->lat, (float)$profile->lon, $profile->user_id);
+                                    $reverseResult = $locationService->reverseGeocode((float)$profile->lat, (float)$profile->lon, (int)$profile->user_id);
 
                                     if (!empty($reverseResult)) {
                                         $cumulative_api_calls++;
