@@ -74,10 +74,6 @@ $GLOBALS['config'] = array(
     )
 );
 
-/* Set some API keys from the environment */
-$MAPS_KEY = getenv('MAPS_KEY');
-$GEO_ENCODE_KEY = getenv('GEO_ENCODE_KEY');
-
 //If you changed your UserSpice or UserCake database prefix
 //put it here.
 $db_table_prefix = "uc_";  //Old database prefix
