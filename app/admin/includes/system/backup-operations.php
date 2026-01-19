@@ -14,14 +14,17 @@ header('Content-Type: application/json');
 
 // Security check
 if (!securePage($_SERVER['PHP_SELF'])) {
-    echo json_encode(['success' => false, 'message' => 'Access denied']);
-    exit;
+    ApiResponse::forbidden('Access denied')
+        ->withLogging(0, 'SecurityError', 'Unauthorized backup operations access attempt')
+        ->send();
 }
 
 // Only administrators can perform backup operations
 if (!hasPerm([2], $user->data()->id)) {
-    echo json_encode(['success' => false, 'message' => 'Administrator access required']);
-    exit;
+    ApiResponse::forbidden('Administrator access required')
+        ->withLogging($user->data()->id, 'SecurityError',
+            'Non-admin attempted backup operations')
+        ->send();
 }
 
 // Get action
@@ -71,13 +74,15 @@ try {
             // Log successful backup
             logger($user->data()->id, 'BackupManager', "Manual backup completed: {$filename} ({$sizeFormatted})");
 
-            echo json_encode([
-                'success' => true,
-                'message' => 'Backup created successfully',
-                'filename' => $filename,
-                'size' => $sizeFormatted,
-                'path' => $backupPath
-            ]);
+            ApiResponse::success('Backup created successfully')
+                ->withDataArray([
+                    'filename' => $filename,
+                    'size' => $sizeFormatted,
+                    'path' => $backupPath
+                ])
+                ->withLogging($user->data()->id, 'BackupManager',
+                    "Manual backup completed via API: {$filename} ({$sizeFormatted})")
+                ->send();
             break;
 
         case 'list_backups':
@@ -122,16 +127,19 @@ try {
             // Get statistics
             $stats = $backupManager->getEnhancedBackupStatistics();
 
-            echo json_encode([
-                'success' => true,
-                'backups' => $backups,
-                'statistics' => [
-                    'automated' => $stats['automated'],
-                    'manual' => $stats['manual'],
-                    'rollback' => $stats['rollback'],
-                    'health_score' => $stats['health_score']
-                ]
-            ]);
+            ApiResponse::success('Backup list retrieved')
+                ->withDataArray([
+                    'backups' => $backups,
+                    'statistics' => [
+                        'automated' => $stats['automated'],
+                        'manual' => $stats['manual'],
+                        'rollback' => $stats['rollback'],
+                        'health_score' => $stats['health_score']
+                    ]
+                ])
+                ->withLogging($user->data()->id, 'BackupManager',
+                    'Backup list retrieved via API')
+                ->send();
             break;
 
         case 'preview_cleanup':
@@ -182,11 +190,14 @@ try {
                          count($filesToDelete['manual']) +
                          count($filesToDelete['rollback']);
 
-            echo json_encode([
-                'success' => true,
-                'files' => $filesToDelete,
-                'total_count' => $totalFiles
-            ]);
+            ApiResponse::success('Cleanup preview generated')
+                ->withDataArray([
+                    'files' => $filesToDelete,
+                    'total_count' => $totalFiles
+                ])
+                ->withLogging($user->data()->id, 'BackupManager',
+                    "Cleanup preview: {$totalFiles} files to delete")
+                ->send();
             break;
 
         case 'cleanup_backups':
@@ -207,19 +218,23 @@ try {
             // Log cleanup results
             logger($user->data()->id, 'BackupManager', "Backup cleanup completed: {$totalDeleted} of {$totalScanned} files deleted (Automated: {$cleanupResult['automated']['deleted']}, Manual: {$cleanupResult['manual']['deleted']}, Rollback: {$cleanupResult['rollback']['deleted']})");
 
-            echo json_encode([
-                'success' => true,
-                'message' => "Cleanup completed: {$totalDeleted} of {$totalScanned} files deleted",
-                'cleanup' => $cleanupResult,
-                'totals' => [
-                    'scanned' => $totalScanned,
-                    'deleted' => $totalDeleted
-                ]
-            ]);
+            ApiResponse::success("Cleanup completed: {$totalDeleted} of {$totalScanned} files deleted")
+                ->withDataArray([
+                    'cleanup' => $cleanupResult,
+                    'totals' => [
+                        'scanned' => $totalScanned,
+                        'deleted' => $totalDeleted
+                    ]
+                ])
+                ->withLogging($user->data()->id, 'BackupManager',
+                    "Backup cleanup completed via API: {$totalDeleted}/{$totalScanned} deleted")
+                ->send();
             break;
 
         default:
-            echo json_encode(['success' => false, 'message' => 'Invalid action']);
+            ApiResponse::error('Invalid action', 400)
+                ->withLogging($user->data()->id, 'BackupError', "Invalid backup action: {$action}")
+                ->send();
             break;
     }
 
@@ -237,15 +252,15 @@ try {
     error_log("BackupManager Error: " . $e->getMessage() . " in " . $e->getFile() . " on line " . $e->getLine());
     error_log("Stack trace: " . $e->getTraceAsString());
 
-    echo json_encode([
-        'success' => false,
-        'message' => $e->getMessage(),
-        'error_details' => [
-            'file' => basename($e->getFile()),
-            'line' => $e->getLine(),
-            'action' => $action
-        ]
-    ]);
+    ApiResponse::serverError($e->getMessage())
+        ->withDataArray([
+            'error_details' => [
+                'file' => basename($e->getFile()),
+                'line' => $e->getLine(),
+                'action' => $action
+            ]
+        ])
+        ->send();
 }
 
 /**

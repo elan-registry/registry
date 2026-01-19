@@ -12,8 +12,9 @@ declare(strict_types=1);
 require_once '../../../../users/init.php';
 
 if (!securePage($_SERVER['PHP_SELF'])) {
-    http_response_code(403);
-    exit(json_encode(['success' => false, 'error' => 'Access denied']));
+    ApiResponse::forbidden('Access denied')
+        ->withLogging(0, 'SecurityError', 'Unauthorized schema operations access attempt')
+        ->send();
 }
 
 // Set content type for JSON responses
@@ -33,34 +34,59 @@ try {
     switch ($action) {
         case 'validate_schema':
             $validation = $schemaManager->validateSchema();
-            echo json_encode([
-                'success' => true,
-                'validation' => $validation
-            ]);
+            ApiResponse::success('Schema validation completed')
+                ->withDataArray([
+                    'valid' => $validation['valid'],
+                    'issues' => $validation['issues'] ?? [],
+                    'recommendations' => $validation['recommendations'] ?? []
+                ])
+                ->withLogging($user->data()->id, 'DatabaseMaintenance',
+                    'Schema validation: ' . ($validation['valid'] ? 'PASSED' : 'FAILED'))
+                ->send();
             break;
 
         case 'get_health_status':
             $health = $schemaManager->getHealthStatus();
-            echo json_encode([
-                'success' => true,
-                'health' => $health
-            ]);
+            ApiResponse::success('Health status retrieved')
+                ->withDataArray([
+                    'overall' => $health['overall'],
+                    'components' => $health['components']
+                ])
+                ->withLogging($user->data()->id, 'DatabaseMaintenance',
+                    "Schema health check: {$health['overall']}")
+                ->send();
             break;
 
         case 'ensure_settings_fields':
             $result = $schemaManager->ensureSettingsFields();
-            echo json_encode([
-                'success' => $result['success'],
-                'result' => $result
-            ]);
+            $message = $result['success']
+                ? "Created {$result['created_fields']} settings fields"
+                : 'Settings fields check failed';
+
+            ApiResponse::success($message)
+                ->withDataArray([
+                    'created_fields' => $result['created_fields'],
+                    'results' => $result['results'],
+                    'errors' => $result['errors']
+                ])
+                ->withLogging($user->data()->id, 'DatabaseMaintenance', $message)
+                ->send();
             break;
 
         case 'ensure_quality_tables':
             $result = $schemaManager->ensureQualityTables();
-            echo json_encode([
-                'success' => $result['success'],
-                'result' => $result
-            ]);
+            $message = $result['success']
+                ? "Created {$result['created_tables']} quality tables"
+                : 'Quality tables check failed';
+
+            ApiResponse::success($message)
+                ->withDataArray([
+                    'created_tables' => $result['created_tables'],
+                    'results' => $result['results'],
+                    'errors' => $result['errors']
+                ])
+                ->withLogging($user->data()->id, 'DatabaseMaintenance', $message)
+                ->send();
             break;
 
         case 'perform_maintenance':
@@ -70,10 +96,19 @@ try {
             }
 
             $result = $schemaManager->performMaintenance();
-            echo json_encode([
-                'success' => $result['success'],
-                'result' => $result
-            ]);
+            $message = $result['success']
+                ? 'Schema maintenance completed successfully'
+                : 'Schema maintenance failed';
+
+            ApiResponse::success($message)
+                ->withDataArray([
+                    'operations' => $result['operations'],
+                    'backup_created' => $result['backup_created'],
+                    'backup_path' => $result['backup_path'] ?? null,
+                    'validation_issues' => $result['validation_issues'] ?? []
+                ])
+                ->withLogging($user->data()->id, 'DatabaseMaintenance', $message)
+                ->send();
             break;
 
         default:
@@ -81,14 +116,10 @@ try {
     }
 
 } catch (Exception $e) {
-    http_response_code(500);
-    echo json_encode([
-        'success' => false,
-        'error' => $e->getMessage()
-    ]);
+    // Keep existing logger() call for detailed error logging
+    logger($user->data()->id ?? 0, 'SchemaOperationError',
+        'Schema operation failed: ' . $e->getMessage());
 
-    // Log the error
-    if (function_exists('logger')) {
-        logger($user->data()->id ?? 0, 'SchemaOperationError', 'Schema operation failed: ' . $e->getMessage());
-    }
+    ApiResponse::serverError('Schema operation failed: ' . $e->getMessage())
+        ->send();
 }
