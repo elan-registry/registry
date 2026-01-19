@@ -33,14 +33,14 @@ function carousel(row, carid = null) {
 
     if (images.length === 1) {
         // 1 Image
-        return load_picture(images[0], true);
+        return load_picture(images[0], true, true);
     }
 
     var response = '<div id="slider"> <div id="myCarousel-' + id + '" class="carousel slide shadow"> <div class="carousel-inner"> <div class="carousel-inner"> ';
     var active = 'carousel-item active';
     for (slideNumber = 0; slideNumber < images.length; slideNumber++) {
         response += "<div class='" + active + "' data-slide-number='" + slideNumber + "'>";
-        response += load_picture(images[slideNumber]);
+        response += load_picture(images[slideNumber], false, slideNumber === 0);
         response += '</div>';
         active = 'carousel-item';
     }
@@ -53,7 +53,7 @@ function carousel(row, carid = null) {
     return response;
 }
 
-function load_picture(image, thumbnail = null) {
+function load_picture(image, thumbnail = null, isPrimary = false) {
     var html;
 
     const index = image.lastIndexOf('.');
@@ -64,11 +64,14 @@ function load_picture(image, thumbnail = null) {
     const responsiveSize = ELAN_CONFIG.RESPONSIVE_SIZE;
 
     if (thumbnail) {
-        html = '<img src="' + img_path + filename + '-resized-' + thumbnailSize + '.' + extension + '" width="' + thumbnailSize + '" alt="elan" loading="lazy" class="img-fluid"> ';
+        html = '<img src="' + img_path + filename + '-resized-' + thumbnailSize + '.' + extension + '" width="' + thumbnailSize + '" height="' + thumbnailSize + '" alt="elan" loading="lazy" class="img-fluid"> ';
     } else {
-        html = '<img loading="lazy" class="card-img-top" src="' + img_path + filename + '-resized-' + thumbnailSize + '.' + extension + '"';
+        // Only lazy load images that are not the primary (first) image in a carousel
+        const loadingAttr = isPrimary ? '' : 'loading="lazy" ';
+        html = '<img ' + loadingAttr + 'class="card-img-top" src="' + img_path + filename + '-resized-' + thumbnailSize + '.' + extension + '"';
         html += ' sizes="5vw" ';
         html += ' width="' + thumbnailSize + '" ';
+        html += ' height="' + thumbnailSize + '" ';
         html += 'srcset="';
         html += img_path + filename + '-resized-' + thumbnailSize + '.' + extension + ' ' + thumbnailSize + 'w,';
         html += img_path + filename + '-resized-' + responsiveSize + '.' + extension + ' ' + responsiveSize + 'w"';

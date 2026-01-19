@@ -25,10 +25,11 @@ class CarView
      *
      * @param array $image Image data array with path information
      * @param bool|null $thumbnail Whether to display as thumbnail (null = full size)
+     * @param bool $isPrimary Whether this is the primary (first) image - if true, eager load instead of lazy
      * @return string HTML string for the image
      * @throws ImageProcessingException If image data is invalid
      */
-    public static function loadPicture(array $image, ?bool $thumbnail = null): string
+    public static function loadPicture(array $image, ?bool $thumbnail = null, bool $isPrimary = false): string
     {
         // Input validation to prevent SonarQube issues
         if (empty($image) || !isset($image['path']) || empty($image['path'])) {
@@ -38,7 +39,7 @@ class CarView
         $thumbsize = self::THUMBNAIL_SIZE;
         $resize = '-resized-';
         $html = "<!--Start loadPicture -->";
-        
+
         $path = pathinfo($image['path']);
 
         if ($thumbnail) {
@@ -46,9 +47,12 @@ class CarView
                 $path['filename'] . $resize . $thumbsize . "." .
                 $path['extension'] . '" width="100" height="75" alt="elan" loading="lazy" class="img-fluid"> ';
         } else {
-            $html = '<img loading="lazy" class="card-img-top" src="' .
+            // Only lazy load images that are not the primary (first) image in a carousel
+            $loadingAttr = $isPrimary ? '' : 'loading="lazy" ';
+            $html = '<img ' . $loadingAttr . 'class="card-img-top" src="' .
                 $path['dirname'] . "/" . $path['filename'] . $resize . $thumbsize . "." .$path['extension'] . '"';
             $html .= ' sizes="50vw" ';
+            $html .= ' width="100" height="100" ';
             $html .= ' srcset="';
             $html .= $path['dirname'] . "/" . $path['filename'] . '-resized-' . self::THUMBNAIL_SIZE . '.' . $path['extension'] . ' ' . self::THUMBNAIL_SIZE . 'w,';
             $html .= $path['dirname'] . "/" . $path['filename'] . '-resized-' . self::IMAGE_SIZE_SMALL . '.' . $path['extension'] . ' ' . self::IMAGE_SIZE_SMALL . 'w,';
@@ -86,7 +90,7 @@ class CarView
         }
 
         if ($count === 1) {
-            $html .= self::loadPicture($carImages[0]);
+            $html .= self::loadPicture($carImages[0], false, true);
         } else {
             $html .= '<div id="slider"><div id="myCarousel-' . $carouselId .
                 '" class="carousel slide shadow"> <div class="carousel-inner"><div class="carousel-inner">';
@@ -95,7 +99,8 @@ class CarView
 
             foreach ($carImages as $key => $image) {
                 $html .= "<div class='" . $class . "' data-slide-number='" . $key . "'>";
-                $html .= self::loadPicture($image);
+                // First image is primary (above the fold) - eager load it
+                $html .= self::loadPicture($image, false, $key === 0);
                 $html .= '</div>';
                 $class = 'carousel-item';
             }
