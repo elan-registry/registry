@@ -12,74 +12,68 @@ require_once '../../../users/init.php';
 
 // Security check - admin permission required
 if (!$user->isLoggedIn() || !isRegistryAdmin($user->data()->id)) {
-    http_response_code(403);
-    echo json_encode(['success' => false, 'message' => 'Unauthorized access']);
-    exit;
+    ApiResponse::forbidden('Unauthorized access')
+        ->withLogging(0, 'SecurityError', 'Unauthorized location sync attempt')
+        ->send();
 }
 
 // CSRF protection
 if (!isset($_POST['csrf']) || !Token::check($_POST['csrf'])) {
-    http_response_code(400);
-    echo json_encode(['success' => false, 'message' => 'Invalid CSRF token']);
-    exit;
+    ApiResponse::error('Invalid CSRF token', 400)
+        ->withLogging($user->data()->id, 'SecurityError', 'Invalid CSRF token in location sync')
+        ->send();
 }
 
 // Validate owner ID
 $ownerId = (int)($_POST['owner_id'] ?? 0);
 if ($ownerId <= 0) {
-    echo json_encode(['success' => false, 'message' => 'Invalid owner ID']);
-    exit;
+    ApiResponse::error('Invalid owner ID', 400)
+        ->send();
 }
 
 try {
     // Load owner
     $owner = new ElanRegistryOwner($ownerId);
     if (!$owner->data()) {
-        echo json_encode(['success' => false, 'message' => 'Owner not found']);
-        exit;
+        ApiResponse::notFound('Owner not found')
+            ->send();
     }
 
     // Check if owner has location data
     $ownerData = $owner->data();
     if (empty($ownerData->lat) || empty($ownerData->lon)) {
-        echo json_encode([
-            'success' => false,
-            'message' => 'Owner location coordinates are missing. Please update the owner\'s location first.'
-        ]);
-        exit;
+        ApiResponse::error(
+            'Owner location coordinates are missing. Please update the owner\'s location first.',
+            400
+        )
+        ->send();
     }
 
     // Sync location to all owned cars
     $carsUpdated = $owner->syncLocationToCars();
 
     if ($carsUpdated > 0) {
-        echo json_encode([
-            'success' => true,
-            'message' => "Successfully synchronized location to {$carsUpdated} car(s).",
-            'cars_updated' => $carsUpdated
-        ]);
-
-        // Log the successful sync
-        logger(
-            $user->data()->id,
-            'OwnerActions',
-            "Admin synchronized location from owner ID {$ownerId} to {$carsUpdated} cars (Admin: {$user->data()->fname} {$user->data()->lname})"
-        );
+        ApiResponse::success("Successfully synchronized location to {$carsUpdated} car(s).")
+            ->withData('cars_updated', $carsUpdated)
+            ->withLogging(
+                $user->data()->id,
+                'OwnerActions',
+                "Admin synchronized location from owner ID {$ownerId} to {$carsUpdated} cars (Admin: {$user->data()->fname} {$user->data()->lname})"
+            )
+            ->send();
 
     } else {
-        echo json_encode([
-            'success' => false,
-            'message' => 'No cars found to update, or synchronization failed.'
-        ]);
+        ApiResponse::error('No cars found to update, or synchronization failed.', 400)
+            ->send();
     }
 
 } catch (Exception $e) {
-    // Log error and return generic message
-    logger($user->data()->id, 'SystemError', "Location sync error for owner ID {$ownerId}: " . $e->getMessage());
-
-    echo json_encode([
-        'success' => false,
-        'message' => 'Location synchronization failed. Please try again.'
-    ]);
+    ApiResponse::serverError('Location synchronization failed. Please try again.')
+        ->withLogging(
+            $user->data()->id,
+            'SystemError',
+            "Location sync error for owner ID {$ownerId}: " . $e->getMessage()
+        )
+        ->send();
 }
 ?>
