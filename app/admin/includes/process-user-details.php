@@ -1,0 +1,76 @@
+<?php
+declare(strict_types=1);
+/**
+ * process-user-details.php
+ * AJAX endpoint for retrieving user/owner details (reassignment confirmation)
+ *
+ * This endpoint provides owner information for admin operations including:
+ * - Car reassignment confirmation
+ * - Owner information verification
+ *
+ * Returns user data via ApiResponse JSON format with profile information
+ */
+
+require_once '../../../users/init.php';
+
+// Security check - admin permission required
+if (!$user->isLoggedIn() || !isRegistryAdmin($user->data()->id)) {
+    ApiResponse::forbidden('Unauthorized access')
+        ->withLogging(0, 'SecurityError', 'Unauthorized user details access attempt')
+        ->send();
+}
+
+// CSRF protection
+if (!isset($_POST['csrf']) || !Token::check($_POST['csrf'])) {
+    ApiResponse::error('Invalid CSRF token', 400)
+        ->withLogging($user->data()->id, 'SecurityError', 'Invalid CSRF token in user details request')
+        ->send();
+}
+
+// Validate user ID
+$userId = (int)($_POST['user_id'] ?? 0);
+if ($userId <= 0) {
+    ApiResponse::error('Invalid user ID', 400)
+        ->send();
+}
+
+try {
+    // Get user with profile data
+    $userWithProfile = getUserWithProfile($userId);
+
+    if (!$userWithProfile) {
+        ApiResponse::notFound('User not found')
+            ->withLogging(
+                $user->data()->id,
+                'OwnerErrors',
+                "User details lookup failed: User ID {$userId} not found"
+            )
+            ->send();
+    }
+
+    // Build user data response
+    $userData = [
+        'id' => $userWithProfile->id,
+        'fname' => $userWithProfile->fname,
+        'lname' => $userWithProfile->lname,
+        'email' => $userWithProfile->email,
+        'city' => $userWithProfile->city,
+        'state' => $userWithProfile->state,
+        'country' => $userWithProfile->country,
+        'join_date' => $userWithProfile->join_date
+    ];
+
+    ApiResponse::success('User details retrieved successfully')
+        ->withData('user', $userData)
+        ->send();
+
+} catch (Exception $e) {
+    ApiResponse::serverError('Database error occurred')
+        ->withLogging(
+            $user->data()->id,
+            'DatabaseError',
+            "User details query failed: " . $e->getMessage()
+        )
+        ->send();
+}
+?>
