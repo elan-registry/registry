@@ -500,10 +500,9 @@ function initializeCarManagement() {
         $btn.html('<i class="fas fa-spinner fa-spin"></i>');
 
         $.ajax({
-            url: window.location.href,
+            url: '/app/admin/includes/process-car-details.php',
             type: 'POST',
             data: {
-                command: 'getCarDetails',
                 car_id: carId,
                 csrf: $('.reassign-form input[name="csrf"]').val()
             },
@@ -513,7 +512,7 @@ function initializeCarManagement() {
                 $btn.html(originalHtml);
 
                 if (!response.success) {
-                    showMessage('Error: ' + response.error, 'danger');
+                    showMessage('Error: ' + response.message, 'danger');
                     $('#carDetails').hide();
                     selectedCar = null;
                     updateReassignButton();
@@ -557,10 +556,9 @@ function initializeCarManagement() {
         $btn.html('<i class="fas fa-spinner fa-spin"></i>');
 
         $.ajax({
-            url: window.location.href,
+            url: '/app/admin/includes/process-user-details.php',
             type: 'POST',
             data: {
-                command: 'getUserDetails',
                 user_id: userId,
                 csrf: $('.reassign-form input[name="csrf"]').val()
             },
@@ -570,7 +568,7 @@ function initializeCarManagement() {
                 $btn.html(originalHtml);
 
                 if (!response.success) {
-                    showMessage('Error: ' + response.error, 'danger');
+                    showMessage('Error: ' + response.message, 'danger');
                     $('#userDetails').hide();
                     selectedUser = null;
                     updateReassignButton();
@@ -617,10 +615,9 @@ function initializeCarManagement() {
         $btn.html('<i class="fas fa-spinner fa-spin"></i>');
 
         $.ajax({
-            url: window.location.pathname + window.location.search,
+            url: '/app/admin/includes/process-car-details.php',
             type: 'POST',
             data: {
-                command: 'getCarDetails',
                 car_id: carId,
                 csrf: $('.delete-form input[name="csrf"]').val()
             },
@@ -630,7 +627,7 @@ function initializeCarManagement() {
                 $btn.html(originalHtml);
 
                 if (!response.success) {
-                    showMessage('Error: ' + response.error, 'danger');
+                    showMessage('Error: ' + response.message, 'danger');
                     $('#deleteCarDetails').hide();
                     selectedDeleteCar = null;
                     updateDeleteButton();
