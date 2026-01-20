@@ -877,10 +877,10 @@ function runSchemaValidation() {
         // Show validation result in the dedicated container
         let alertDiv = '';
 
-        if (data.success && data.validation.valid) {
+        if (data.success && data.valid) {
             alertDiv = '<div class="alert alert-success"><i class="fas fa-check-circle"></i> Schema validation completed successfully. All components are healthy and operational.</div>';
         } else {
-            let issues = data.validation?.issues || ['Validation failed'];
+            let issues = data.issues || ['Validation failed'];
             alertDiv = `<div class="alert alert-warning"><i class="fas fa-exclamation-triangle"></i> Schema validation found issues:<ul class="mb-0 mt-2">${issues.map(issue => `<li>${issue}</li>`).join('')}</ul></div>`;
         }
 
@@ -948,11 +948,11 @@ function runSchemaMaintenance() {
 
         if (data.success) {
             alertDiv.className = 'alert alert-success mt-2';
-            let operations = data.result?.operations || ['Maintenance completed'];
+            let operations = data.operations || ['Maintenance completed'];
             alertDiv.innerHTML = `<i class="fas fa-check-circle"></i> Schema maintenance completed successfully:<ul class="mb-0 mt-2">${operations.map(op => `<li>${op}</li>`).join('')}</ul>`;
         } else {
             alertDiv.className = 'alert alert-danger mt-2';
-            alertDiv.innerHTML = `<i class="fas fa-exclamation-circle"></i> Schema maintenance failed: ${data.error || data.result?.error || 'Unknown error'}`;
+            alertDiv.innerHTML = `<i class="fas fa-exclamation-circle"></i> Schema maintenance failed: ${data.error || data.message || 'Unknown error'}`;
         }
 
         btn.parentNode.appendChild(alertDiv);
