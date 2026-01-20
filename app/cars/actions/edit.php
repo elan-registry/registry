@@ -184,7 +184,7 @@ function updateCar(array &$cardetails): void
     } catch (CarValidationException $e) {
         logger($user->data()->id, 'ValidationError', 'Car Update Validation Error: ' . $e->getMessage());
         $errors[] = 'Car Update Validation Error: ' . $e->getMessage();
-    } catch (Exception $e) {
+    } catch (ElanRegistryException $e) {
         logger($user->data()->id, 'CarErrors', 'Car Update Error: ' . $e->getMessage());
         $errors[] = 'Car Update Error: ' . $e->getMessage();
     }
@@ -214,7 +214,7 @@ function addCar(array &$cardetails): void
     } catch (CarValidationException $e) {
         logger($user->data()->id, 'ValidationError', 'Car Creation Validation Error: ' . $e->getMessage());
         $errors[] = 'Car Creation Validation Error: ' . $e->getMessage();
-    } catch (Exception $e) {
+    } catch (ElanRegistryException $e) {
         logger($user->data()->id, 'CarErrors', 'Car Creation Error: ' . $e->getMessage());
         $errors[] = 'Car Creation Error: ' . $e->getMessage();
     }
@@ -366,7 +366,7 @@ function updateChassis(array &$cardetails): void
         try {
             $validator = new ChassisValidator();
             $result = $validator->validate($chassis, $year, $model, $chassisOverride);
-        } catch (Exception $e) {
+        } catch (ElanRegistryException $e) {
             $errors[] = 'Chassis validation error: ' . $e->getMessage();
             return;
         }
@@ -385,6 +385,12 @@ function updateChassis(array &$cardetails): void
     }
 }
 
+/**
+ * Update car color from form input
+ *
+ * @param array $cardetails Car details array to update
+ * @return void
+ */
 function updateColor(array &$cardetails): void
 {
     // Update 'color'
@@ -396,6 +402,12 @@ function updateColor(array &$cardetails): void
     }
 }
 
+/**
+ * Update car engine number from form input
+ *
+ * @param array $cardetails Car details array to update
+ * @return void
+ */
 function updateEngine(array &$cardetails): void
 {
     // Update 'engine'
@@ -408,6 +420,12 @@ function updateEngine(array &$cardetails): void
     }
 }
 
+/**
+ * Update car purchase date from form input
+ *
+ * @param array $cardetails Car details array to update
+ * @return void
+ */
 function updatePurchasedate(array &$cardetails): void
 {
     // Update 'purchasedate'
@@ -420,6 +438,12 @@ function updatePurchasedate(array &$cardetails): void
     }
 }
 
+/**
+ * Update car sold date from form input
+ *
+ * @param array $cardetails Car details array to update
+ * @return void
+ */
 function updateSolddate(array &$cardetails): void
 {
     // Update 'solddate'
@@ -432,6 +456,12 @@ function updateSolddate(array &$cardetails): void
     }
 }
 
+/**
+ * Update car website URL from form input
+ *
+ * @param array $cardetails Car details array to update
+ * @return void
+ */
 function updateWebsite(array &$cardetails): void
 {
     // Update 'website'
@@ -443,6 +473,12 @@ function updateWebsite(array &$cardetails): void
     }
 }
 
+/**
+ * Update car comments from form input with chassis override audit trail
+ *
+ * @param array $cardetails Car details array to update
+ * @return void
+ */
 function updateComments(array &$cardetails): void
 {
     global $successes, $chassis_override_used;
@@ -469,6 +505,12 @@ function updateComments(array &$cardetails): void
     }
 }
 
+/**
+ * Build and encode image details from form input
+ *
+ * @param array $cardetails Car details array to update with image encoding
+ * @return void
+ */
 function buildImageDetails(array &$cardetails): void
 {
     // This needs to happen before processinging new files to the event the order changes
@@ -575,7 +617,7 @@ function uploadImages(array &$cardetails): void
                             $resizeObj = new Resize($filePath . $newFileName);
                             $resizeObj->resizeImage($size, $size, 'auto');
                             $resizeObj->saveImage($thumbname, 80);
-                        } catch (Exception $e) {
+                        } catch (ElanRegistryException $e) {
                             $resizeSuccess = false;
                             break;
                         }
@@ -596,7 +638,7 @@ function uploadImages(array &$cardetails): void
                             Input::get('car_id') . " File: " . $name . " Target: " . $newFileName
                     );
                 }
-            } catch (Exception $e) {
+            } catch (ElanRegistryException $e) {
                 // Log security violation and reject file
                 $errors[] = "File upload rejected: " . $e->getMessage();
                 logger(
