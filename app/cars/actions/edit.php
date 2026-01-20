@@ -51,65 +51,110 @@ if (!empty($_POST)) {
         $action = Input::get('action');
         switch ($action) {
             case "addCar":
-                buildCarDetails($cardetails);
-                buildImageDetails($cardetails);
-                if (empty($errors)) {
+                try {
+                    buildCarDetails($cardetails);
+                    buildImageDetails($cardetails);
+
+                    if (!empty($errors)) {
+                        ApiResponse::validationError(
+                            ['general' => $errors],
+                            'Cannot add car: validation errors'
+                        )->withLogging(
+                            $user->data()->id,
+                            'ValidationError',
+                            'Car creation validation failed: ' . json_encode($errors)
+                        )->send();
+                    }
+
                     uploadImages($cardetails);
                     addCar($cardetails);
                     mvTmpImages($cardetails);
-                } else {
-                    $errors[] = '<strong>ERROR:</strong> Add_Car: Cannot add record';
+
+                    // Blanks instead of NULL for display
+                    foreach ($cardetails as $key => $value) {
+                        if (is_null($value)) {
+                            $cardetails[$key] = "";
+                        }
+                    }
+
+                    ApiResponse::success('Car added successfully')
+                        ->withData('cardetails', $cardetails)
+                        ->withLogging(
+                            $user->data()->id,
+                            'CarActions',
+                            'Car added: ID ' . $cardetails['id']
+                        )->send();
+
+                } catch (ElanRegistryException $e) {
+                    ApiResponse::serverError('Failed to add car: ' . $e->getMessage())
+                        ->withLogging(
+                            $user->data()->id,
+                            'CarErrors',
+                            'Car add error: ' . $e->getMessage()
+                        )->send();
                 }
                 break;
+
             case "updateCar":
-                buildCarDetails($cardetails, (int)Input::get('car_id'));
-                buildImageDetails($cardetails);
-                if (empty($errors)) {
-                    uploadImages($cardetails); // On update I know the car number
+                try {
+                    buildCarDetails($cardetails, (int)Input::get('car_id'));
+                    buildImageDetails($cardetails);
+
+                    if (!empty($errors)) {
+                        ApiResponse::validationError(
+                            ['general' => $errors],
+                            'Cannot update car: validation errors'
+                        )->withLogging(
+                            $user->data()->id,
+                            'ValidationError',
+                            'Car update validation failed: ' . json_encode($errors)
+                        )->send();
+                    }
+
+                    uploadImages($cardetails);
                     updateCar($cardetails);
-                } else {
-                    $errors[] = '<strong>ERROR:</strong> Update_Car: Cannot add record';
+
+                    // Blanks instead of NULL for display
+                    foreach ($cardetails as $key => $value) {
+                        if (is_null($value)) {
+                            $cardetails[$key] = "";
+                        }
+                    }
+
+                    ApiResponse::success('Car updated successfully')
+                        ->withData('cardetails', $cardetails)
+                        ->withLogging(
+                            $user->data()->id,
+                            'CarActions',
+                            'Car updated: ID ' . $cardetails['id']
+                        )->send();
+
+                } catch (ElanRegistryException $e) {
+                    ApiResponse::serverError('Failed to update car: ' . $e->getMessage())
+                        ->withLogging(
+                            $user->data()->id,
+                            'CarErrors',
+                            'Car update error: ' . $e->getMessage()
+                        )->send();
                 }
                 break;
+
             case "fetchImages":
                 $car_id = (int)Input::get('carID');
                 fetchImages($car_id);
                 break;
+
             case "removeImages":
                 $car_id = (int)Input::get('carID');
                 $file = Input::get('file');
                 removeImage($car_id, $file);
                 break;
+
             default:
-                $errors[] = "No valid action";
+                ApiResponse::error('No valid action', 400)
+                    ->withLogging($user->data()->id, 'ValidationError', 'Invalid action: ' . $action)
+                    ->send();
         }
-
-        $response = array(
-            'status'     => (!empty($errors)) ? 'error' : 'success',
-            'action'     => $action,
-            'info'       => array_merge($successes, $errors),
-            'cardetails' => $cardetails
-        );
-        logger(
-            $user->data()->id,
-            "ElanRegistry: ",
-            "Action: " . $response['action'] .
-                " Status: " . $response['status'] . "  carID: " . $cardetails['id'] . " Messages: " .
-                json_encode($response['info']) . " Data: " . json_encode($response['cardetails'])
-        );
-
-        // Blanks instead of NULL for display
-        foreach ($response['cardetails'] as $key => $value) {
-            if (is_null($value)) {
-                $response['cardetails'][$key] = "";
-            }
-        }
-        
-        // Clean any unwanted output and send JSON response
-        ob_clean();
-        header('Content-Type: application/json');
-        echo json_encode($response);
-        exit;
     } // End Post with data
 }
 
@@ -139,7 +184,7 @@ function updateCar(array &$cardetails): void
     } catch (CarValidationException $e) {
         logger($user->data()->id, 'ValidationError', 'Car Update Validation Error: ' . $e->getMessage());
         $errors[] = 'Car Update Validation Error: ' . $e->getMessage();
-    } catch (Exception $e) {
+    } catch (ElanRegistryException $e) {
         logger($user->data()->id, 'CarErrors', 'Car Update Error: ' . $e->getMessage());
         $errors[] = 'Car Update Error: ' . $e->getMessage();
     }
@@ -169,7 +214,7 @@ function addCar(array &$cardetails): void
     } catch (CarValidationException $e) {
         logger($user->data()->id, 'ValidationError', 'Car Creation Validation Error: ' . $e->getMessage());
         $errors[] = 'Car Creation Validation Error: ' . $e->getMessage();
-    } catch (Exception $e) {
+    } catch (ElanRegistryException $e) {
         logger($user->data()->id, 'CarErrors', 'Car Creation Error: ' . $e->getMessage());
         $errors[] = 'Car Creation Error: ' . $e->getMessage();
     }
@@ -321,7 +366,7 @@ function updateChassis(array &$cardetails): void
         try {
             $validator = new ChassisValidator();
             $result = $validator->validate($chassis, $year, $model, $chassisOverride);
-        } catch (Exception $e) {
+        } catch (ElanRegistryException $e) {
             $errors[] = 'Chassis validation error: ' . $e->getMessage();
             return;
         }
@@ -340,6 +385,12 @@ function updateChassis(array &$cardetails): void
     }
 }
 
+/**
+ * Update car color from form input
+ *
+ * @param array $cardetails Car details array to update
+ * @return void
+ */
 function updateColor(array &$cardetails): void
 {
     // Update 'color'
@@ -351,6 +402,12 @@ function updateColor(array &$cardetails): void
     }
 }
 
+/**
+ * Update car engine number from form input
+ *
+ * @param array $cardetails Car details array to update
+ * @return void
+ */
 function updateEngine(array &$cardetails): void
 {
     // Update 'engine'
@@ -363,6 +420,12 @@ function updateEngine(array &$cardetails): void
     }
 }
 
+/**
+ * Update car purchase date from form input
+ *
+ * @param array $cardetails Car details array to update
+ * @return void
+ */
 function updatePurchasedate(array &$cardetails): void
 {
     // Update 'purchasedate'
@@ -375,6 +438,12 @@ function updatePurchasedate(array &$cardetails): void
     }
 }
 
+/**
+ * Update car sold date from form input
+ *
+ * @param array $cardetails Car details array to update
+ * @return void
+ */
 function updateSolddate(array &$cardetails): void
 {
     // Update 'solddate'
@@ -387,6 +456,12 @@ function updateSolddate(array &$cardetails): void
     }
 }
 
+/**
+ * Update car website URL from form input
+ *
+ * @param array $cardetails Car details array to update
+ * @return void
+ */
 function updateWebsite(array &$cardetails): void
 {
     // Update 'website'
@@ -398,6 +473,12 @@ function updateWebsite(array &$cardetails): void
     }
 }
 
+/**
+ * Update car comments from form input with chassis override audit trail
+ *
+ * @param array $cardetails Car details array to update
+ * @return void
+ */
 function updateComments(array &$cardetails): void
 {
     global $successes, $chassis_override_used;
@@ -424,6 +505,12 @@ function updateComments(array &$cardetails): void
     }
 }
 
+/**
+ * Build and encode image details from form input
+ *
+ * @param array $cardetails Car details array to update with image encoding
+ * @return void
+ */
 function buildImageDetails(array &$cardetails): void
 {
     // This needs to happen before processinging new files to the event the order changes
@@ -466,7 +553,7 @@ function uploadImages(array &$cardetails): void
         // Validate car ID is numeric to prevent directory traversal
         $carId = filter_var($cardetails['id'], FILTER_VALIDATE_INT);
         if ($carId === false || $carId <= 0) {
-            throw new Exception("Invalid car ID for file upload");
+            throw new ImageProcessingException("Invalid car ID for file upload");
         }
         $filePath = $targetFilePath . $carId . '/';
     }
@@ -474,16 +561,16 @@ function uploadImages(array &$cardetails): void
     // Ensure the path is within expected directory structure
     $realTargetPath = realpath($targetFilePath);
     $realFilePath = realpath(dirname($filePath));
-    
+
     if ($realFilePath === false || strpos($realFilePath, $realTargetPath) !== 0) {
-        throw new Exception("Invalid upload path detected");
+        throw new ImageProcessingException("Invalid upload path detected");
     }
 
     if (!is_dir($filePath)) {
         // Create directory with secure permissions (755)
         if (!mkdir($filePath, 0755, true)) {
             logger($user->data()->id, 'FileError', "Failed to create upload directory: " . $filePath);
-            throw new Exception("Failed to create upload directory");
+            throw new ImageProcessingException("Failed to create upload directory");
         }
     }
 
@@ -530,7 +617,7 @@ function uploadImages(array &$cardetails): void
                             $resizeObj = new Resize($filePath . $newFileName);
                             $resizeObj->resizeImage($size, $size, 'auto');
                             $resizeObj->saveImage($thumbname, 80);
-                        } catch (Exception $e) {
+                        } catch (ElanRegistryException $e) {
                             $resizeSuccess = false;
                             break;
                         }
@@ -551,7 +638,7 @@ function uploadImages(array &$cardetails): void
                             Input::get('car_id') . " File: " . $name . " Target: " . $newFileName
                     );
                 }
-            } catch (Exception $e) {
+            } catch (ElanRegistryException $e) {
                 // Log security violation and reject file
                 $errors[] = "File upload rejected: " . $e->getMessage();
                 logger(
@@ -568,45 +655,43 @@ function uploadImages(array &$cardetails): void
 
 /**
  * Fetch images for a specific car
- * 
+ *
  * @param int $car_id Car ID
  * @return void Outputs JSON response and exits
  */
 function fetchImages(int $car_id): void
 {
+    global $user;
+
     try {
         // Validate car ID
         if (empty($car_id) || $car_id <= 0) {
-            throw new Exception("Invalid car ID");
+            ApiResponse::error('Invalid car ID', 400)
+                ->withLogging($user->data()->id, 'ValidationError', 'fetchImages: Invalid car ID')
+                ->send();
         }
 
         $car = new Car($car_id);
-        
+
         // Check if car exists
         if (!$car->exists()) {
-            throw new Exception("Car not found");
+            ApiResponse::notFound('Car not found')
+                ->withLogging($user->data()->id, 'CarErrors', "fetchImages: Car not found: {$car_id}")
+                ->send();
         }
 
         $images = $car->images();
 
-        $response = [
-            'status' => 'success',
-            'images' => $images,
-        ];
-    } catch (Exception $e) {
-        // Return error response in JSON format
-        $response = [
-            'status' => 'error',
-            'message' => $e->getMessage(),
-            'images' => []
-        ];
-    }
+        ApiResponse::success('Images retrieved successfully')
+            ->withData('images', $images)
+            ->withLogging($user->data()->id, 'CarActions', "Images fetched for car: {$car_id}")
+            ->send();
 
-    // Clean any unwanted output and send JSON response
-    ob_clean();
-    header('Content-Type: application/json');
-    echo json_encode($response);
-    exit;
+    } catch (ElanRegistryException $e) {
+        ApiResponse::serverError('Failed to fetch images')
+            ->withLogging($user->data()->id, 'CarErrors', 'fetchImages error: ' . $e->getMessage())
+            ->send();
+    }
 }
 
 /**
@@ -648,13 +733,13 @@ function mvTmpImages(array &$cardetails): void
 
 /**
  * Remove an image from a car's image list
- * 
+ *
  * Uses Car class method to replace direct database access and ensure proper validation.
- * 
+ *
  * @param int $carID Car ID
  * @param string $file Image filename to remove
  * @return void Outputs JSON response and exits
- * 
+ *
  * @see https://github.com/unibrain1/elanregistry/issues/247 Issue #247: Fix removeImage() direct database access
  */
 function removeImage(int $carID, string $file): void
@@ -665,43 +750,42 @@ function removeImage(int $carID, string $file): void
         // Use Car class for proper validation and data handling
         $car = new Car($carID);
         if (!$car->exists()) {
-            throw new Exception('Car not found');
+            ApiResponse::notFound('Car not found')
+                ->withLogging($user->data()->id, 'CarErrors', "removeImage: Car not found: {$carID}")
+                ->send();
         }
 
         // Use Car class method to remove image
         $imageRemoved = $car->removeImage($file);
-        
+
         if ($imageRemoved) {
             // Log successful removal
-            logger($user->data()->id, "CarActions", "Image removed: carId: " . $carID . " image: " . $file);
-            
-            $response = [
-                'status' => 'success',
-                'count'   => count($car->images()),
-                'images' => array_column($car->images(), 'basename') // Return just filenames for compatibility
-            ];
+            ApiResponse::success('Image removed successfully')
+                ->withData('count', count($car->images()))
+                ->withData('images', array_column($car->images(), 'basename'))
+                ->withLogging(
+                    $user->data()->id,
+                    'CarActions',
+                    "Image removed: carId: {$carID}, image: {$file}"
+                )->send();
         } else {
             // Image not found in car's image list
-            logger($user->data()->id, "CarErrors", "ERROR: removeImage carId: " . $carID . " Image not found: " . $file);
-            $response = [
-                'status' => 'error',
-                'info'   => 'image not found'
-            ];
+            ApiResponse::error('Image not found', 404)
+                ->withLogging(
+                    $user->data()->id,
+                    'CarErrors',
+                    "removeImage: Image not found - carId: {$carID}, file: {$file}"
+                )->send();
         }
-    } catch (Exception $e) {
+    } catch (ElanRegistryException $e) {
         // Log error and return error response
-        logger($user->data()->id, "CarErrors", "ERROR: removeImage carId: " . $carID . " Error: " . $e->getMessage());
-        $response = [
-            'status' => 'error',
-            'info'   => 'Failed to remove image: ' . $e->getMessage()
-        ];
+        ApiResponse::serverError('Failed to remove image')
+            ->withLogging(
+                $user->data()->id,
+                'CarErrors',
+                "removeImage error: carId: {$carID}, error: " . $e->getMessage()
+            )->send();
     }
-    
-    // Clean any unwanted output and send JSON response
-    ob_clean();
-    header('Content-Type: application/json');
-    echo json_encode($response);
-    exit;
 }
 
 /**
@@ -722,10 +806,10 @@ function arrayReplaceValue(array &$array, $value, $replacement): void
 
 /**
  * Get file extension from MIME type
- * 
+ *
  * @param string $mimeType MIME type to convert
  * @return string File extension
- * @throws Exception If MIME type is not supported
+ * @throws ImageProcessingException If MIME type is not supported
  */
 function getExtension(string $mimeType): string
 {
@@ -737,26 +821,26 @@ function getExtension(string $mimeType): string
         'image/gif' => 'gif',
         'image/webp' => 'webp'
     ];
-    
+
     if (!isset($allowedExtensions[$mimeType])) {
-        throw new Exception("Unsupported file type: " . $mimeType);
+        throw new ImageProcessingException("Unsupported file type: " . $mimeType);
     }
-    
+
     return $allowedExtensions[$mimeType];
 }
 
 /**
  * Get MIME type of uploaded file with security validation
- * 
+ *
  * @param string $file File path to analyze
  * @return string MIME type
- * @throws Exception If unable to determine type or type is invalid
+ * @throws ImageProcessingException If unable to determine type or type is invalid
  */
 function getMimeType(string $file): string
 {
     // Secure MIME type detection with multiple validation layers
     $mimeType = false;
-    
+
     // Primary method: Use finfo (most reliable)
     if (function_exists('finfo_open')) {
         $finfo = finfo_open(FILEINFO_MIME_TYPE);
@@ -765,15 +849,15 @@ function getMimeType(string $file): string
     } elseif (function_exists('mime_content_type')) {
         $mimeType = mime_content_type($file);
     } else {
-        throw new Exception("Unable to determine file MIME type");
+        throw new ImageProcessingException("Unable to determine file MIME type");
     }
-    
+
     // Additional validation: Check if detected MIME type is in our allowlist
     $allowedTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp'];
     if (!in_array($mimeType, $allowedTypes, true)) {
-        throw new Exception("Invalid file type detected: " . $mimeType);
+        throw new ImageProcessingException("Invalid file type detected: " . $mimeType);
     }
-    
+
     return $mimeType;
 }
 
@@ -792,33 +876,33 @@ function generateSecureFilename(string $extension): string
 
 /**
  * Validate file upload security constraints
- * 
+ *
  * @param array $file File upload array from $_FILES
  * @param int $maxSize Maximum file size in bytes (default 5MB)
  * @return bool Always returns true if validation passes
- * @throws Exception If validation fails
+ * @throws ImageProcessingException If validation fails
  */
 function validateFileUpload(array $file, int $maxSize = 5242880): bool // Default 5MB
 {
     // Check for upload errors
     if ($file['error'] !== UPLOAD_ERR_OK) {
-        throw new Exception("File upload error: " . $file['error']);
+        throw new ImageProcessingException("File upload error: " . $file['error']);
     }
-    
+
     // Check file size (default 5MB limit)
     if ($file['size'] > $maxSize) {
-        throw new Exception("File too large. Maximum size: " . ($maxSize / 1024 / 1024) . "MB");
+        throw new ImageProcessingException("File too large. Maximum size: " . ($maxSize / 1024 / 1024) . "MB");
     }
-    
+
     // Verify the file was actually uploaded via HTTP POST
     if (!is_uploaded_file($file['tmp_name'])) {
-        throw new Exception("Invalid file upload");
+        throw new ImageProcessingException("Invalid file upload");
     }
-    
+
     // Additional security: Check for minimum file size (avoid empty files)
     if ($file['size'] < 100) {
-        throw new Exception("File too small - minimum 100 bytes required");
+        throw new ImageProcessingException("File too small - minimum 100 bytes required");
     }
-    
+
     return true;
 }

@@ -567,7 +567,7 @@ require_once $abs_us_root . $us_url_root . 'users/includes/html_footer.php'; //c
                             'action': 'fetchImages'
                         },
                         success: function(data) {
-                            if (data == null || data.status != 'success') {
+                            if (data == null || data.success !== true) {
                                 return;
                             }
                         $.each(data.images, function(key, value) {
@@ -683,10 +683,11 @@ require_once $abs_us_root . $us_url_root . 'users/includes/html_footer.php'; //c
             // Message may already be parsed by Dropzone due to Content-Type header
             const data = (typeof message === 'string') ? JSON.parse(message) : message;
 
-            if (data.status === 'success') {
+            // Pattern A: Check success boolean
+            if (data.success === true) {
                 window.location = '<?= $us_url_root ?>app/cars/details.php?car_id=' + data.cardetails.id;
             } else {
-
+                // Error case - show validation errors and repopulate form
                 // Advance the page progress indicator
                 $('#message').hide();
                 $('#progressbar li').eq($('fieldset').index(next_fs)).addClass('active');
@@ -712,18 +713,30 @@ require_once $abs_us_root . $us_url_root . 'users/includes/html_footer.php'; //c
                     duration: 500
                 });
                 setProgressBar(++current);
-                var html = "<table id='resultstable' class='table table-striped table-bordered table-sm text-wrap'>";
-                var statusDisplay = data.status === 'error' ? '<strong class="text-danger">ERROR</strong>' : data.status;
-                html += '<tr><td>Status</td><td>' + statusDisplay + '</td></tr>';
-                html += '<tr><td>Info</td><td><ul>';
-                data.info.forEach(function(element, index, names) {
-                    html += '<li>' + element + '</li>';
-                });
-                html += '<ul></td></tr>';
-                html += '</table>'
 
+                // Build error display table
+                var html = "<table id='resultstable' class='table table-striped table-bordered table-sm text-wrap'>";
+                html += '<tr><td>Status</td><td><strong class="text-danger">ERROR</strong></td></tr>';
+                html += '<tr><td>Message</td><td>' + (data.message || 'An error occurred') + '</td></tr>';
+
+                // Display validation errors if present
+                if (data.errors) {
+                    html += '<tr><td>Validation Errors</td><td><ul>';
+                    if (Array.isArray(data.errors.general)) {
+                        data.errors.general.forEach(function(error) {
+                            html += '<li>' + error + '</li>';
+                        });
+                    } else {
+                        for (var field in data.errors) {
+                            html += '<li><strong>' + field + ':</strong> ' + data.errors[field] + '</li>';
+                        }
+                    }
+                    html += '</ul></td></tr>';
+                }
+
+                html += '</table>';
                 $("#results").html(html);
-                
+
                 // Repopulate form fields with submitted values to prevent data loss
                 if (data.cardetails) {
                     // Repopulate Year dropdown
@@ -731,8 +744,8 @@ require_once $abs_us_root . $us_url_root . 'users/includes/html_footer.php'; //c
                         $('#year option[value=' + data.cardetails.year + ']').prop('selected', true);
                         $('#year').trigger('change');
                     }
-                    
-                    // Repopulate Model dropdown  
+
+                    // Repopulate Model dropdown
                     if (data.cardetails.model) {
                         var model = data.cardetails.model.replace(/\|/g, "\\\|")
                                                          .replace(/ /g, "\\\ ")
@@ -741,7 +754,7 @@ require_once $abs_us_root . $us_url_root . 'users/includes/html_footer.php'; //c
                         $('#model option[value=' + model + ']').prop('selected', true);
                         $('#model').trigger('change');
                     }
-                    
+
                     // Repopulate other fields as needed
                     if (data.cardetails.chassis) $('#chassis').val(data.cardetails.chassis);
                     if (data.cardetails.color) $('#color').val(data.cardetails.color);
