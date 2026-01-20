@@ -50,12 +50,63 @@ The system maintains location synchronization between user profiles and car reco
 
 - Uses Bootstrap 4/5 for responsive layout
 - Custom CSS in `usersc/templates/ElanRegistry/assets/css/`
-- Custom branding assets in `usersc/templates/ElanRegistry/assets/images/`
-  - Lotus-logo-40x40.png (main logo)
-  - logo-72x72.png (small logo)  
-  - favicon.ico (browser tab icon)
+- Custom branding assets in `usersc/templates/ElanRegistry/assets/images/` (v2.12.0+):
+  - **Logo assets** (load image in the size needed, never scale):
+    - `Lotus-logo-40x40.png` (3.5 KB) - Used in navigation/header
+    - `Lotus-logo-3000x3000.png` (673 KB) - Source file for generating other sizes
+    - `logo-72x72.png` (small logo alternate)
+  - `favicon.ico` (browser tab icon)
+  - **Note:** Always use right-sized images instead of loading large images and scaling via CSS
 - Template system via UserSpice with custom overrides
 - Card-based layout for consistent UI
+
+### CSS Minification Workflow (v2.12.0+)
+
+**Critical:** When modifying CSS, you MUST regenerate the minified version for production.
+
+**Files:**
+- **Source**: `usersc/templates/ElanRegistry/assets/css/consolidated.css` (edit this)
+- **Production**: `usersc/templates/ElanRegistry/assets/css/consolidated.min.css` (auto-generated, loaded by users)
+
+**Minification Steps:**
+
+1. **Edit source CSS:**
+   ```bash
+   # Edit the readable source file
+   vim usersc/templates/ElanRegistry/assets/css/consolidated.css
+   ```
+
+2. **Generate minified version (REQUIRED):**
+   ```bash
+   # Option A: Using npm csso-cli (RECOMMENDED)
+   npm install -g csso-cli  # Install once
+   csso-cli usersc/templates/ElanRegistry/assets/css/consolidated.css \
+     -o usersc/templates/ElanRegistry/assets/css/consolidated.min.css
+
+   # Option B: Online minifier
+   # 1. Visit https://cssminifier.com/
+   # 2. Paste consolidated.css content
+   # 3. Copy minified output → save as consolidated.min.css
+   ```
+
+3. **Verify in browser:**
+   - Hard refresh: `Cmd+Shift+R` (Mac) or `Ctrl+Shift+R` (Windows/Linux)
+   - Check DevTools Console for CSS errors
+   - Test all components that use modified styles
+
+4. **Commit BOTH files:**
+   ```bash
+   git add usersc/templates/ElanRegistry/assets/css/consolidated.{css,min.css}
+   git commit -m "Update registry CSS: [describe changes]"
+   ```
+
+**⚠️ Common Mistakes:**
+- ❌ Editing only the minified file (changes will be lost next minification)
+- ❌ Forgetting to regenerate minified version (users see stale CSS)
+- ❌ Not hard-refreshing browser (browser cache shows old CSS)
+- ✅ Always edit source → minify → test → commit both files
+
+**See also:** [docs/development/CSS_AND_ASSETS.md](CSS_AND_ASSETS.md) for comprehensive CSS management guide including SRI hashes, CDN updates, and performance optimization.
 
 ## 📧 Email Template Standards
 

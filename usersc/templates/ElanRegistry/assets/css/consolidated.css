@@ -1,15 +1,25 @@
 /**
- * Lotus Elan Registry - Simplified Theme Styles
- * Minimal CSS focusing only on what's actually needed
+ * Lotus Elan Registry - Consolidated Theme Styles
+ * Merged ElanRegistry.css + style.css with duplicates removed
+ * Version: 2.12.0
  */
 
-/* ========== ORIGINAL THEME ESSENTIALS ========== */
+/* ========== FORM VALIDATION STATES ========== */
 
-/* Form validation states */
-.is-invalid { color: red; }
-.is-valid { color: green; }
+.is-invalid {
+    color: red;
+}
 
-/* Carousel overrides */
+.is-valid {
+    color: green;
+}
+
+.hidden {
+    display: none;
+}
+
+/* ========== CAROUSEL OVERRIDES ========== */
+
 .list-inline {
     white-space: nowrap;
     overflow-x: auto;
@@ -28,7 +38,8 @@
     text-indent: initial;
 }
 
-/* Car images - prevent layout shift while preserving natural proportions */
+/* ========== IMAGE STYLING ========== */
+
 img.card-img-top {
     border: 5px solid transparent;
     border-radius: 8px;
@@ -38,7 +49,7 @@ img.card-img-top {
     object-fit: contain;
 }
 
-/* Thumbnail images - maintain consistent size for thumbnails only */
+/* Prevent layout shift for thumbnail images only */
 .carousel-indicators .img-fluid {
     aspect-ratio: 4/3;
     object-fit: cover;
@@ -46,18 +57,11 @@ img.card-img-top {
     height: 75px;
 }
 
-/* General fluid images - preserve natural aspect ratio */
+/* General fluid images preserve natural aspect ratio */
 .img-fluid:not(.carousel-indicators .img-fluid) {
     width: 100%;
     height: auto;
     object-fit: contain;
-}
-
-/* Polaroid images in identification guide - preserve aspect ratio */
-.polaroid {
-    object-fit: cover;
-    border-radius: 4px;
-    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
 }
 
 /* Photo placeholder styling */
@@ -138,18 +142,15 @@ img.card-img-top {
     max-width: none;
 }
 
-/* ========== STATISTICS PAGE ========== */
+/* ========== TABLE ENHANCEMENTS ========== */
 
-/* Statistics cards use Bootstrap grid with equal heights */
-
-/* ========== SPECIFIC COMPONENTS ========== */
-
-/* Table enhancements */
 .registry-table thead th {
     background-color: #f8f9fa;
     border-bottom: 2px solid #dee2e6;
     font-weight: 600;
 }
+
+/* ========== FORM COMPONENTS ========== */
 
 /* Form progress bar */
 .car-progress {
@@ -161,11 +162,9 @@ img.card-img-top {
     background-color: #bcd7a9;
 }
 
-/* ========== WIDTH UTILITIES (Only what we actually need) ========== */
+/* ========== WIDTH UTILITIES ========== */
 
 .w-15 { width: 15%; }
-.w-20 { width: 20%; }
-.w-30 { width: 30%; }
 .w-50 { width: 50%; }
 .w-85 { width: 85%; }
 
@@ -175,14 +174,13 @@ img.card-img-top {
     .page-wrapper {
         padding: 10px;
     }
-    
+
     .registry-card .card-body {
         padding: 1rem;
     }
-    
+
     .map-container,
     .map-container.map-container-small {
         height: 400px;
     }
-    
 }
