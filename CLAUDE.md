@@ -44,6 +44,8 @@ To avoid information overload, follow this structured learning path:
 - `docs/development/BACKUP_SYSTEM.md` - When using BackupManager class
 - `docs/development/DATATABLES.md` - When working with DataTables or updating
   CDN configuration
+- `docs/development/CSS_AND_ASSETS.md` - When modifying stylesheets or updating
+  CDN resources (includes CSS minification procedures)
 - `docs/testing/TESTING.md` - When writing or running tests
 - `docs/development/STRICT_TYPE_HANDLING.md` - When working with strict types
 
