@@ -51,7 +51,7 @@ The system maintains location synchronization between user profiles and car reco
 - Uses Bootstrap 4/5 for responsive layout
 - Custom CSS in `usersc/templates/ElanRegistry/assets/css/`
 - Custom branding assets in `usersc/templates/ElanRegistry/assets/images/`
-  - Lotus-logo-3000x3000.png (main logo)
+  - Lotus-logo-40x40.png (main logo)
   - logo-72x72.png (small logo)  
   - favicon.ico (browser tab icon)
 - Template system via UserSpice with custom overrides

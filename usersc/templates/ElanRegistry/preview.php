@@ -45,7 +45,7 @@ if (file_exists($abs_us_root . $us_url_root . 'usersc/templates/' . $settings->t
 
 <!-- Set your logo and the "header" of the navigation here -->
 <nav class="navbar navbar-expand-sm navbar-dark bg-dark">
-    <a href="<?= $us_url_root ?>"><img alt="Lotus Elan Registry" src="<?= $us_url_root ?>usersc/templates/ElanRegistry/assets/images/Lotus-logo-3000x3000.png" style="height: 40px;"></a>
+    <a href="<?= $us_url_root ?>"><img alt="Lotus Elan Registry" src="<?= $us_url_root ?>usersc/templates/ElanRegistry/assets/images/Lotus-logo-40x40.png" style="height: 40px;"></a>
     <button class="navbar-toggler" type="button" data-toggle="collapse" data-target="#navbarsExample03" aria-controls="navbarsExample03" aria-expanded="false" aria-label="Toggle navigation">
         <span class="navbar-toggler-icon"></span>
     </button>
