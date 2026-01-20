@@ -553,7 +553,7 @@ function uploadImages(array &$cardetails): void
         // Validate car ID is numeric to prevent directory traversal
         $carId = filter_var($cardetails['id'], FILTER_VALIDATE_INT);
         if ($carId === false || $carId <= 0) {
-            throw new Exception("Invalid car ID for file upload");
+            throw new ImageProcessingException("Invalid car ID for file upload");
         }
         $filePath = $targetFilePath . $carId . '/';
     }
@@ -561,16 +561,16 @@ function uploadImages(array &$cardetails): void
     // Ensure the path is within expected directory structure
     $realTargetPath = realpath($targetFilePath);
     $realFilePath = realpath(dirname($filePath));
-    
+
     if ($realFilePath === false || strpos($realFilePath, $realTargetPath) !== 0) {
-        throw new Exception("Invalid upload path detected");
+        throw new ImageProcessingException("Invalid upload path detected");
     }
 
     if (!is_dir($filePath)) {
         // Create directory with secure permissions (755)
         if (!mkdir($filePath, 0755, true)) {
             logger($user->data()->id, 'FileError', "Failed to create upload directory: " . $filePath);
-            throw new Exception("Failed to create upload directory");
+            throw new ImageProcessingException("Failed to create upload directory");
         }
     }
 
@@ -806,10 +806,10 @@ function arrayReplaceValue(array &$array, $value, $replacement): void
 
 /**
  * Get file extension from MIME type
- * 
+ *
  * @param string $mimeType MIME type to convert
  * @return string File extension
- * @throws Exception If MIME type is not supported
+ * @throws ImageProcessingException If MIME type is not supported
  */
 function getExtension(string $mimeType): string
 {
@@ -821,26 +821,26 @@ function getExtension(string $mimeType): string
         'image/gif' => 'gif',
         'image/webp' => 'webp'
     ];
-    
+
     if (!isset($allowedExtensions[$mimeType])) {
-        throw new Exception("Unsupported file type: " . $mimeType);
+        throw new ImageProcessingException("Unsupported file type: " . $mimeType);
     }
-    
+
     return $allowedExtensions[$mimeType];
 }
 
 /**
  * Get MIME type of uploaded file with security validation
- * 
+ *
  * @param string $file File path to analyze
  * @return string MIME type
- * @throws Exception If unable to determine type or type is invalid
+ * @throws ImageProcessingException If unable to determine type or type is invalid
  */
 function getMimeType(string $file): string
 {
     // Secure MIME type detection with multiple validation layers
     $mimeType = false;
-    
+
     // Primary method: Use finfo (most reliable)
     if (function_exists('finfo_open')) {
         $finfo = finfo_open(FILEINFO_MIME_TYPE);
@@ -849,15 +849,15 @@ function getMimeType(string $file): string
     } elseif (function_exists('mime_content_type')) {
         $mimeType = mime_content_type($file);
     } else {
-        throw new Exception("Unable to determine file MIME type");
+        throw new ImageProcessingException("Unable to determine file MIME type");
     }
-    
+
     // Additional validation: Check if detected MIME type is in our allowlist
     $allowedTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp'];
     if (!in_array($mimeType, $allowedTypes, true)) {
-        throw new Exception("Invalid file type detected: " . $mimeType);
+        throw new ImageProcessingException("Invalid file type detected: " . $mimeType);
     }
-    
+
     return $mimeType;
 }
 
@@ -876,33 +876,33 @@ function generateSecureFilename(string $extension): string
 
 /**
  * Validate file upload security constraints
- * 
+ *
  * @param array $file File upload array from $_FILES
  * @param int $maxSize Maximum file size in bytes (default 5MB)
  * @return bool Always returns true if validation passes
- * @throws Exception If validation fails
+ * @throws ImageProcessingException If validation fails
  */
 function validateFileUpload(array $file, int $maxSize = 5242880): bool // Default 5MB
 {
     // Check for upload errors
     if ($file['error'] !== UPLOAD_ERR_OK) {
-        throw new Exception("File upload error: " . $file['error']);
+        throw new ImageProcessingException("File upload error: " . $file['error']);
     }
-    
+
     // Check file size (default 5MB limit)
     if ($file['size'] > $maxSize) {
-        throw new Exception("File too large. Maximum size: " . ($maxSize / 1024 / 1024) . "MB");
+        throw new ImageProcessingException("File too large. Maximum size: " . ($maxSize / 1024 / 1024) . "MB");
     }
-    
+
     // Verify the file was actually uploaded via HTTP POST
     if (!is_uploaded_file($file['tmp_name'])) {
-        throw new Exception("Invalid file upload");
+        throw new ImageProcessingException("Invalid file upload");
     }
-    
+
     // Additional security: Check for minimum file size (avoid empty files)
     if ($file['size'] < 100) {
-        throw new Exception("File too small - minimum 100 bytes required");
+        throw new ImageProcessingException("File too small - minimum 100 bytes required");
     }
-    
+
     return true;
 }
