@@ -167,7 +167,7 @@ $db = DB::getInstance();
                         logProgress('STEP 1: Update Bootstrap 4.6.2 CSS CDN with minified version + SRI', 'step');
                         logProgress(SECTION_SEPARATOR, 'step');
 
-                        $bootstrap_css_cdn = '&lt;link rel=&quot;stylesheet&quot; href=&quot;https://cdn.jsdelivr.net/npm/bootstrap@4.6.2/dist/css/bootstrap.min.css&quot; integrity=&quot;sha384-xOolHGoW10Qjiw9/MqAA8CgvQ5sEFjJlEWqN4BnGWaHqNr3+Pm+GnGXH1lbYhHAhA&quot; crossorigin=&quot;anonymous&quot;&gt;&lt;/link&gt;';
+                        $bootstrap_css_cdn = '&lt;link rel=&quot;stylesheet&quot; href=&quot;https://cdn.jsdelivr.net/npm/bootstrap@4.6.2/dist/css/bootstrap.min.css&quot; integrity=&quot;sha384-xOolHFLEh07PJGoPkLv1IbcEPTNtaed2xpHsD9ESMhqIYd0nLMwNLD69Npy4HI+N&quot; crossorigin=&quot;anonymous&quot;&gt;&lt;/link&gt;';
 
                         try {
                             $db->query("UPDATE settings SET elan_bootstrap_css_cdn = ?", [$bootstrap_css_cdn]);
@@ -191,7 +191,7 @@ $db = DB::getInstance();
                         logProgress('STEP 2: Update jQuery 3.6.0 CDN with minified version + SRI', 'step');
                         logProgress(SECTION_SEPARATOR, 'step');
 
-                        $jquery_cdn = '&lt;script src=&quot;https://cdn.jsdelivr.net/npm/jquery@3.6.0/dist/jquery.min.js&quot; integrity=&quot;sha384-rOmzPsde4eJUqjHN/K7JkGwr+yx+wvrVzwf+N7jHQcFHt6S3CngSJtKA7LDN4PIB&quot; crossorigin=&quot;anonymous&quot;&gt;&lt;/script&gt;';
+                        $jquery_cdn = '&lt;script src=&quot;https://cdn.jsdelivr.net/npm/jquery@3.6.0/dist/jquery.min.js&quot; integrity=&quot;sha384-vtXRMe3mGCbOeY7l30aIg8H9p3GdeSe4IFlP6G8JMa7o7lXvnz3GFKzPxzJdPfGK&quot; crossorigin=&quot;anonymous&quot;&gt;&lt;/script&gt;';
 
                         try {
                             $db->query("UPDATE settings SET elan_jquery_cdn = ?", [$jquery_cdn]);
@@ -215,7 +215,7 @@ $db = DB::getInstance();
                         logProgress('STEP 3: Update Bootstrap 4.6.2 JS CDN with minified version + SRI', 'step');
                         logProgress(SECTION_SEPARATOR, 'step');
 
-                        $bootstrap_js_cdn = '&lt;script src=&quot;https://cdn.jsdelivr.net/npm/bootstrap@4.6.2/dist/js/bootstrap.min.js&quot; integrity=&quot;sha384-Atwg2Pk2yAcnidX2lXwUfAJhgxtHBWGvNuEvOwQ+OMvP0+IoM9u12sh9Z+cXShoP&quot; crossorigin=&quot;anonymous&quot;&gt;&lt;/script&gt;';
+                        $bootstrap_js_cdn = '&lt;script src=&quot;https://cdn.jsdelivr.net/npm/bootstrap@4.6.2/dist/js/bootstrap.min.js&quot; integrity=&quot;sha384-+sLIOodYLS7CIrQpBjl+C7nPvqq+FbNUBDunl/OZv93DB7Ln/533i8e/mZXLi/P+&quot; crossorigin=&quot;anonymous&quot;&gt;&lt;/script&gt;';
 
                         try {
                             $db->query("UPDATE settings SET elan_bootstrap_js_cdn = ?", [$bootstrap_js_cdn]);
@@ -239,7 +239,7 @@ $db = DB::getInstance();
                         logProgress('STEP 4: Update Popper.js 1.16.1 CDN with minified version + SRI', 'step');
                         logProgress(SECTION_SEPARATOR, 'step');
 
-                        $popper_cdn = '&lt;script src=&quot;https://cdn.jsdelivr.net/npm/popper.js@1.16.1/dist/umd/popper.min.js&quot; integrity=&quot;sha384-9/reFTGAW83EW2RiQ/2S8EPjQ/98mV9 gauge+0fy+j4rp+2y+ipppHeVsqjAWstQ&quot; crossorigin=&quot;anonymous&quot;&gt;&lt;/script&gt;';
+                        $popper_cdn = '&lt;script src=&quot;https://cdn.jsdelivr.net/npm/popper.js@1.16.1/dist/umd/popper.min.js&quot; integrity=&quot;sha384-9/reFTGAW83EW2RDu2S0VKaIzap3H66lZH81PoYlFhbGU+6BZp6G7niu735Sk7lN&quot; crossorigin=&quot;anonymous&quot;&gt;&lt;/script&gt;';
 
                         try {
                             $db->query("UPDATE settings SET elan_popper_cdn = ?", [$popper_cdn]);
