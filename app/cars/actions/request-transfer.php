@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 /**
  * request-transfer.php - Car Transfer Request Handler
  *
@@ -11,12 +13,6 @@
  */
 
 require_once '../../../users/init.php';
-
-// Set JSON content type
-header('Content-Type: application/json');
-
-// Initialize response
-$response = ['success' => false, 'message' => ''];
 
 try {
     // Check CSRF token
@@ -187,17 +183,23 @@ try {
         $emailMessages[] = 'Email system error';
     }
 
-    $response['success'] = true;
+    // Build email status message
     $emailStatus = !empty($emailMessages) ? ' Email status: ' . implode(', ', $emailMessages) . '.' : '';
-    $response['message'] = 'Transfer request submitted successfully.' . $emailStatus;
+
+    // Return success response
+    ApiResponse::success('Transfer request submitted successfully.' . $emailStatus)
+        ->withData('transfer_request_id', $transferRequestId)
+        ->withLogging($user->data()->id, 'CarTransfer', "Transfer request submitted for car ID {$existingCar->id}")
+        ->send();
+
+} catch (CarTransferException $e) {
+    ApiResponse::error($e->getUserMessage(), 400)
+        ->withLogging($user->data()->id, $e->getLogCategory(), 'Transfer request failed: ' . $e->getMessage())
+        ->send();
 
 } catch (Exception $e) {
-    $response['message'] = $e->getMessage();
-
-    // Log the error
-    logger($user->data()->id ?? 0, 'CarTransferError', 'Transfer request failed: ' . $e->getMessage());
+    ApiResponse::serverError('An unexpected error occurred while processing your transfer request.')
+        ->withLogging($user->data()->id ?? 0, 'SystemError', 'Transfer request system error: ' . $e->getMessage())
+        ->send();
 }
-
-// Output JSON response
-echo json_encode($response);
 ?>

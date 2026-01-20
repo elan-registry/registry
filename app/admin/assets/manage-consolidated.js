@@ -1311,7 +1311,7 @@ function initializeCarManagement() {
         showTransferDecisionModal(false);
     });
 
-    // Transfer decision modal confirm button
+    // Transfer decision modal confirm button - AJAX endpoint
     $('#confirmTransferDecisionBtn').on('click', function() {
         if (transferDecisionData) {
             // Show loading state
@@ -1320,28 +1320,44 @@ function initializeCarManagement() {
             const originalHtml = $btn.html();
             $btn.html('<i class="fas fa-spinner fa-spin"></i> Processing...');
 
-            // Create form and submit
-            const form = $('<form>', {
-                method: 'POST',
-                action: window.location.href
-            });
+            // Determine endpoint based on action
+            const endpoint = transferDecisionData.action === 'approve'
+                ? 'includes/process-transfer-approve.php'
+                : 'includes/process-transfer-deny.php';
 
-            // Get CSRF token from an existing form on the page
+            // Get CSRF token from existing form
             const csrfToken = $('.reassign-form input[name="csrf"]').val() || $('input[name="csrf"]').first().val() || '';
-            form.append($('<input>', { type: 'hidden', name: 'csrf', value: csrfToken }));
-            form.append($('<input>', { type: 'hidden', name: 'command', value: transferDecisionData.action + '_transfer' }));
-            form.append($('<input>', { type: 'hidden', name: 'transfer_id', value: transferDecisionData.transferId }));
 
-            // Hide modal and submit form
-            $('#transferDecisionModal').modal('hide');
-            $('body').append(form);
-            form.submit();
-
-            // Re-enable after a timeout in case of network issues
-            setTimeout(() => {
-                $btn.prop('disabled', false);
-                $btn.html(originalHtml);
-            }, 10000);
+            // Make AJAX request
+            $.ajax({
+                url: endpoint,
+                type: 'POST',
+                dataType: 'json',
+                data: {
+                    transfer_id: transferDecisionData.transferId,
+                    csrf: csrfToken
+                },
+                success: function(response) {
+                    $('#transferDecisionModal').modal('hide');
+                    if (response.success) {
+                        showNotification(response.message, 'success');
+                        // Reload page after brief delay to show notification
+                        setTimeout(() => window.location.reload(), 1500);
+                    } else {
+                        showNotification('Error: ' + response.message, 'danger');
+                        $btn.prop('disabled', false).html(originalHtml);
+                    }
+                },
+                error: function(xhr, status, error) {
+                    $('#transferDecisionModal').modal('hide');
+                    let errorMessage = 'An error occurred while processing the transfer request.';
+                    if (xhr.responseJSON && xhr.responseJSON.message) {
+                        errorMessage = xhr.responseJSON.message;
+                    }
+                    showNotification('Error: ' + errorMessage, 'danger');
+                    $btn.prop('disabled', false).html(originalHtml);
+                }
+            });
         }
     });
 
@@ -1354,6 +1370,36 @@ function initializeCarManagement() {
 // ==========================================================================
 // Global Admin Functions (Available across all tabs)
 // ==========================================================================
+
+/**
+ * Show a notification message to the user
+ * @param {string} message - The message to display
+ * @param {string} type - Bootstrap alert type (success, danger, info, warning)
+ */
+function showNotification(message, type = 'info') {
+    const $messageContainer = $('#messageContainer');
+    if (!$messageContainer.length) {
+        $('body').prepend('<div id="messageContainer" style="position: fixed; top: 70px; right: 20px; z-index: 9999; max-width: 400px;"></div>');
+    }
+    const alertClass = `alert alert-${type} alert-dismissible fade show`;
+    const alertHtml = `
+        <div class="${alertClass}" role="alert">
+            ${message}
+            <button type="button" class="close" data-dismiss="alert" aria-label="Close">
+                <span aria-hidden="true">&times;</span>
+            </button>
+        </div>
+    `;
+    $('#messageContainer').html(alertHtml);
+
+    // Auto-dismiss success messages after 5 seconds
+    if (type === 'success') {
+        setTimeout(() => {
+            $('#messageContainer .alert').removeClass('show');
+            setTimeout(() => $('#messageContainer').html(''), 150);
+        }, 5000);
+    }
+}
 
 /**
  * Function to switch to owner management tab with specific user pre-loaded
