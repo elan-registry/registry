@@ -51,65 +51,110 @@ if (!empty($_POST)) {
         $action = Input::get('action');
         switch ($action) {
             case "addCar":
-                buildCarDetails($cardetails);
-                buildImageDetails($cardetails);
-                if (empty($errors)) {
+                try {
+                    buildCarDetails($cardetails);
+                    buildImageDetails($cardetails);
+
+                    if (!empty($errors)) {
+                        ApiResponse::validationError(
+                            ['general' => $errors],
+                            'Cannot add car: validation errors'
+                        )->withLogging(
+                            $user->data()->id,
+                            'ValidationError',
+                            'Car creation validation failed: ' . json_encode($errors)
+                        )->send();
+                    }
+
                     uploadImages($cardetails);
                     addCar($cardetails);
                     mvTmpImages($cardetails);
-                } else {
-                    $errors[] = '<strong>ERROR:</strong> Add_Car: Cannot add record';
+
+                    // Blanks instead of NULL for display
+                    foreach ($cardetails as $key => $value) {
+                        if (is_null($value)) {
+                            $cardetails[$key] = "";
+                        }
+                    }
+
+                    ApiResponse::success('Car added successfully')
+                        ->withData('cardetails', $cardetails)
+                        ->withLogging(
+                            $user->data()->id,
+                            'CarActions',
+                            'Car added: ID ' . $cardetails['id']
+                        )->send();
+
+                } catch (ElanRegistryException $e) {
+                    ApiResponse::serverError('Failed to add car: ' . $e->getMessage())
+                        ->withLogging(
+                            $user->data()->id,
+                            'CarErrors',
+                            'Car add error: ' . $e->getMessage()
+                        )->send();
                 }
                 break;
+
             case "updateCar":
-                buildCarDetails($cardetails, (int)Input::get('car_id'));
-                buildImageDetails($cardetails);
-                if (empty($errors)) {
-                    uploadImages($cardetails); // On update I know the car number
+                try {
+                    buildCarDetails($cardetails, (int)Input::get('car_id'));
+                    buildImageDetails($cardetails);
+
+                    if (!empty($errors)) {
+                        ApiResponse::validationError(
+                            ['general' => $errors],
+                            'Cannot update car: validation errors'
+                        )->withLogging(
+                            $user->data()->id,
+                            'ValidationError',
+                            'Car update validation failed: ' . json_encode($errors)
+                        )->send();
+                    }
+
+                    uploadImages($cardetails);
                     updateCar($cardetails);
-                } else {
-                    $errors[] = '<strong>ERROR:</strong> Update_Car: Cannot add record';
+
+                    // Blanks instead of NULL for display
+                    foreach ($cardetails as $key => $value) {
+                        if (is_null($value)) {
+                            $cardetails[$key] = "";
+                        }
+                    }
+
+                    ApiResponse::success('Car updated successfully')
+                        ->withData('cardetails', $cardetails)
+                        ->withLogging(
+                            $user->data()->id,
+                            'CarActions',
+                            'Car updated: ID ' . $cardetails['id']
+                        )->send();
+
+                } catch (ElanRegistryException $e) {
+                    ApiResponse::serverError('Failed to update car: ' . $e->getMessage())
+                        ->withLogging(
+                            $user->data()->id,
+                            'CarErrors',
+                            'Car update error: ' . $e->getMessage()
+                        )->send();
                 }
                 break;
+
             case "fetchImages":
                 $car_id = (int)Input::get('carID');
                 fetchImages($car_id);
                 break;
+
             case "removeImages":
                 $car_id = (int)Input::get('carID');
                 $file = Input::get('file');
                 removeImage($car_id, $file);
                 break;
+
             default:
-                $errors[] = "No valid action";
+                ApiResponse::error('No valid action', 400)
+                    ->withLogging($user->data()->id, 'ValidationError', 'Invalid action: ' . $action)
+                    ->send();
         }
-
-        $response = array(
-            'status'     => (!empty($errors)) ? 'error' : 'success',
-            'action'     => $action,
-            'info'       => array_merge($successes, $errors),
-            'cardetails' => $cardetails
-        );
-        logger(
-            $user->data()->id,
-            "ElanRegistry: ",
-            "Action: " . $response['action'] .
-                " Status: " . $response['status'] . "  carID: " . $cardetails['id'] . " Messages: " .
-                json_encode($response['info']) . " Data: " . json_encode($response['cardetails'])
-        );
-
-        // Blanks instead of NULL for display
-        foreach ($response['cardetails'] as $key => $value) {
-            if (is_null($value)) {
-                $response['cardetails'][$key] = "";
-            }
-        }
-        
-        // Clean any unwanted output and send JSON response
-        ob_clean();
-        header('Content-Type: application/json');
-        echo json_encode($response);
-        exit;
     } // End Post with data
 }
 
@@ -568,45 +613,43 @@ function uploadImages(array &$cardetails): void
 
 /**
  * Fetch images for a specific car
- * 
+ *
  * @param int $car_id Car ID
  * @return void Outputs JSON response and exits
  */
 function fetchImages(int $car_id): void
 {
+    global $user;
+
     try {
         // Validate car ID
         if (empty($car_id) || $car_id <= 0) {
-            throw new Exception("Invalid car ID");
+            ApiResponse::error('Invalid car ID', 400)
+                ->withLogging($user->data()->id, 'ValidationError', 'fetchImages: Invalid car ID')
+                ->send();
         }
 
         $car = new Car($car_id);
-        
+
         // Check if car exists
         if (!$car->exists()) {
-            throw new Exception("Car not found");
+            ApiResponse::notFound('Car not found')
+                ->withLogging($user->data()->id, 'CarErrors', "fetchImages: Car not found: {$car_id}")
+                ->send();
         }
 
         $images = $car->images();
 
-        $response = [
-            'status' => 'success',
-            'images' => $images,
-        ];
-    } catch (Exception $e) {
-        // Return error response in JSON format
-        $response = [
-            'status' => 'error',
-            'message' => $e->getMessage(),
-            'images' => []
-        ];
-    }
+        ApiResponse::success('Images retrieved successfully')
+            ->withData('images', $images)
+            ->withLogging($user->data()->id, 'CarActions', "Images fetched for car: {$car_id}")
+            ->send();
 
-    // Clean any unwanted output and send JSON response
-    ob_clean();
-    header('Content-Type: application/json');
-    echo json_encode($response);
-    exit;
+    } catch (ElanRegistryException $e) {
+        ApiResponse::serverError('Failed to fetch images')
+            ->withLogging($user->data()->id, 'CarErrors', 'fetchImages error: ' . $e->getMessage())
+            ->send();
+    }
 }
 
 /**
@@ -648,13 +691,13 @@ function mvTmpImages(array &$cardetails): void
 
 /**
  * Remove an image from a car's image list
- * 
+ *
  * Uses Car class method to replace direct database access and ensure proper validation.
- * 
+ *
  * @param int $carID Car ID
  * @param string $file Image filename to remove
  * @return void Outputs JSON response and exits
- * 
+ *
  * @see https://github.com/unibrain1/elanregistry/issues/247 Issue #247: Fix removeImage() direct database access
  */
 function removeImage(int $carID, string $file): void
@@ -665,43 +708,42 @@ function removeImage(int $carID, string $file): void
         // Use Car class for proper validation and data handling
         $car = new Car($carID);
         if (!$car->exists()) {
-            throw new Exception('Car not found');
+            ApiResponse::notFound('Car not found')
+                ->withLogging($user->data()->id, 'CarErrors', "removeImage: Car not found: {$carID}")
+                ->send();
         }
 
         // Use Car class method to remove image
         $imageRemoved = $car->removeImage($file);
-        
+
         if ($imageRemoved) {
             // Log successful removal
-            logger($user->data()->id, "CarActions", "Image removed: carId: " . $carID . " image: " . $file);
-            
-            $response = [
-                'status' => 'success',
-                'count'   => count($car->images()),
-                'images' => array_column($car->images(), 'basename') // Return just filenames for compatibility
-            ];
+            ApiResponse::success('Image removed successfully')
+                ->withData('count', count($car->images()))
+                ->withData('images', array_column($car->images(), 'basename'))
+                ->withLogging(
+                    $user->data()->id,
+                    'CarActions',
+                    "Image removed: carId: {$carID}, image: {$file}"
+                )->send();
         } else {
             // Image not found in car's image list
-            logger($user->data()->id, "CarErrors", "ERROR: removeImage carId: " . $carID . " Image not found: " . $file);
-            $response = [
-                'status' => 'error',
-                'info'   => 'image not found'
-            ];
+            ApiResponse::error('Image not found', 404)
+                ->withLogging(
+                    $user->data()->id,
+                    'CarErrors',
+                    "removeImage: Image not found - carId: {$carID}, file: {$file}"
+                )->send();
         }
-    } catch (Exception $e) {
+    } catch (ElanRegistryException $e) {
         // Log error and return error response
-        logger($user->data()->id, "CarErrors", "ERROR: removeImage carId: " . $carID . " Error: " . $e->getMessage());
-        $response = [
-            'status' => 'error',
-            'info'   => 'Failed to remove image: ' . $e->getMessage()
-        ];
+        ApiResponse::serverError('Failed to remove image')
+            ->withLogging(
+                $user->data()->id,
+                'CarErrors',
+                "removeImage error: carId: {$carID}, error: " . $e->getMessage()
+            )->send();
     }
-    
-    // Clean any unwanted output and send JSON response
-    ob_clean();
-    header('Content-Type: application/json');
-    echo json_encode($response);
-    exit;
 }
 
 /**
