@@ -16,7 +16,7 @@ if ($navstyle == 'Default') {
 ?>
   <!-- Set your logo and the "header" of the navigation here -->
   <nav class="navbar navbar-expand-sm navbar-dark bg-dark">
-    <a href="<?= $us_url_root ?>"><img src="<?= $us_url_root ?>usersc/templates/ElanRegistry/assets/images/Lotus-logo-3000x3000.png" alt="Lotus Elan Registry" width="40" height="40" style="width: 40px; height: 40px;"></a>
+    <a href="<?= $us_url_root ?>"><img src="<?= $us_url_root ?>usersc/templates/ElanRegistry/assets/images/Lotus-logo-40x40.png" alt="Lotus Elan Registry" width="40" height="40" style="width: 40px; height: 40px;"></a>
     <button class="navbar-toggler" type="button" data-toggle="collapse" data-target="#navbarsExample03" aria-controls="navbarsExample03" aria-expanded="false" aria-label="Toggle navigation">
       <span class="navbar-toggler-icon"></span>
     </button>
@@ -127,7 +127,7 @@ if ($navstyle == 'Default') {
 
     <div class="" style="background-color: #023c73;">
       <div class="text-center">
-        <a style="left:-35px;position: relative;" href="<?= $us_url_root ?>"><img width="40" height="40" style="width: 40px; height: 40px;" alt="Lotus Elan Registry" src="<?= $us_url_root ?>usersc/templates/ElanRegistry/assets/images/Lotus-logo-3000x3000.png"></a>
+        <a style="left:-35px;position: relative;" href="<?= $us_url_root ?>"><img width="40" height="40" style="width: 40px; height: 40px;" alt="Lotus Elan Registry" src="<?= $us_url_root ?>usersc/templates/ElanRegistry/assets/images/Lotus-logo-40x40.png"></a>
       </div>
     </div>
   <?php }
@@ -204,7 +204,7 @@ if ($navstyle == 'Default') {
       </button>
       <div class="" style="background-color: #023c73;">
         <div class="text-center">
-          <a style="right:-35px;position: relative;" href="<?= $us_url_root ?>"><img width="40" height="40" style="width: 40px; height: 40px;" alt="Lotus Elan Registry" src="<?= $us_url_root ?>usersc/templates/ElanRegistry/assets/images/Lotus-logo-3000x3000.png"></a>
+          <a style="right:-35px;position: relative;" href="<?= $us_url_root ?>"><img width="40" height="40" style="width: 40px; height: 40px;" alt="Lotus Elan Registry" src="<?= $us_url_root ?>usersc/templates/ElanRegistry/assets/images/Lotus-logo-40x40.png"></a>
         </div>
       </div>
     <?php }
