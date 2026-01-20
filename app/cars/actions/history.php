@@ -10,49 +10,56 @@ if (!empty($_POST)) {
     if (!Token::check($token)) {
         include($abs_us_root . $us_url_root . 'usersc/scripts/token_error.php');
     } else {
-        $draw = Input::get('draw');
+        $draw = (int)Input::get('draw');
         $carID = (int)Input::get('car_id');
 
         if (empty($carID)) {
-            logger($user->data()->id ?? 0, 'ValidationError', 'Car history requested without car ID');
-            echo json_encode(array(
-                'draw' => $draw, 
-                'recordsTotal' => 0, 
-                'recordsFiltered' => 0, 
-                'history' => [],
-                'error' => 'Car ID not provided'
-            ));
-            return;
+            ApiResponse::error('Car ID not provided', 400)
+                ->withDataArray([
+                    'draw' => $draw,
+                    'recordsTotal' => 0,
+                    'recordsFiltered' => 0,
+                    'history' => []
+                ])
+                ->withLogging($user->data()->id ?? 0, 'ValidationError', 'Car history requested without car ID')
+                ->send();
         }
 
         try {
             $car = new Car($carID);
             if (!$car->exists()) {
-                logger($user->data()->id ?? 0, 'ValidationError', "Car history requested for non-existent car ID: $carID");
-                echo json_encode(array(
-                    'draw' => $draw, 
-                    'recordsTotal' => 0, 
-                    'recordsFiltered' => 0, 
-                    'history' => [],
-                    'error' => 'Car not found'
-                ));
-                return;
+                ApiResponse::notFound('Car not found')
+                    ->withDataArray([
+                        'draw' => $draw,
+                        'recordsTotal' => 0,
+                        'recordsFiltered' => 0,
+                        'history' => []
+                    ])
+                    ->withLogging($user->data()->id ?? 0, 'ValidationError', "Car history requested for non-existent car ID: $carID")
+                    ->send();
             }
 
             $carHist = $car->history();
             $count   = count($carHist);
-            $error   = ""; // Place holder for error messages.  If there is text in here it issues a pop-up.  Do not include if there is no error.
 
-            echo json_encode(array('draw' => $draw, 'recordsTotal' => $count, 'recordsFiltered' => $count, 'history' => $carHist));
-        } catch (Exception $e) {
-            logger($user->data()->id ?? 0, 'DatabaseError', "Failed to load car history for car ID $carID: " . $e->getMessage());
-            echo json_encode(array(
-                'draw' => $draw, 
-                'recordsTotal' => 0, 
-                'recordsFiltered' => 0, 
-                'history' => [],
-                'error' => 'Failed to load car history'
-            ));
+            ApiResponse::success('Car history retrieved')
+                ->withDataArray([
+                    'draw' => $draw,
+                    'recordsTotal' => $count,
+                    'recordsFiltered' => $count,
+                    'history' => $carHist
+                ])
+                ->send();
+        } catch (ElanRegistryException $e) {
+            ApiResponse::serverError('Failed to load car history')
+                ->withDataArray([
+                    'draw' => $draw,
+                    'recordsTotal' => 0,
+                    'recordsFiltered' => 0,
+                    'history' => []
+                ])
+                ->withLogging($user->data()->id ?? 0, 'DatabaseError', "Failed to load car history for car ID $carID: " . $e->getMessage())
+                ->send();
         }
     }
 }
