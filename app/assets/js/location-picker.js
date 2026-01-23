@@ -9,7 +9,7 @@
  * - Keyboard navigation support
  *
  * @package ElanRegistry
- * @version 2.11.0
+ * @version 2.12.0
  * @since 2.11.0
  * @link https://github.com/unibrain1/elanregistry/issues/245
  */
@@ -270,7 +270,7 @@
                 const data = await response.json();
 
                 if (!data.success) {
-                    throw new Error(data.error || 'Search failed');
+                    throw new Error(data.message || 'Search failed');
                 }
 
                 // Cache results
@@ -469,7 +469,7 @@
                 const data = await response.json();
 
                 if (!data.success) {
-                    throw new Error(data.error || 'Reverse geocoding failed');
+                    throw new Error(data.message || 'Reverse geocoding failed');
                 }
 
                 // Select the location
