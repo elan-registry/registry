@@ -1,4 +1,7 @@
 <?php
+
+declare(strict_types=1);
+
 /**
  * statistics-data.php
  * API endpoint for lazy-loading statistics tab data
@@ -10,37 +13,31 @@
  * @copyright 2025
  */
 
-// Clean output buffer to prevent any HTML from interfering with JSON
-ob_clean();
-
-// Suppress warnings/notices that might interfere with JSON output
-error_reporting(E_ERROR);
-ini_set('display_errors', 0);
-
 require_once '../../../users/init.php';
 require_once $abs_us_root . $us_url_root . 'app/classes/StatisticsDataService.php';
 
 // Security check
 if (!securePage($_SERVER['PHP_SELF'])) {
-    http_response_code(403);
-    die(json_encode(['error' => 'Unauthorized']));
+    ApiResponse::forbidden('Unauthorized access')
+        ->withLogging(0, 'SecurityError', 'Unauthorized statistics-data.php access attempt')
+        ->send();
 }
-
-// Set JSON header
-header('Content-Type: application/json');
 
 // Get requested tab
 $tab = $_GET['tab'] ?? '';
 
 if (empty($tab)) {
-    http_response_code(400);
-    die(json_encode(['error' => 'Tab parameter required']));
+    ApiResponse::error('Tab parameter required', 400)
+        ->withLogging($user->data()->id ?? 0, 'ValidationError', 'Statistics API called without tab parameter')
+        ->send();
 }
 
 // Initialize data service
 try {
     if (!isset($db)) {
-        throw new Exception('Database connection not available');
+        ApiResponse::serverError('Database connection not available')
+            ->withLogging($user->data()->id ?? 0, 'DatabaseError', 'Statistics API: Database connection not available')
+            ->send();
     }
     $dataService = new StatisticsDataService($db);
 
@@ -80,20 +77,25 @@ try {
             break;
 
         default:
-            http_response_code(400);
-            die(json_encode(['error' => 'Invalid tab parameter']));
+            ApiResponse::error('Invalid tab parameter', 400)
+                ->withData('tab', $tab)
+                ->withData('valid_tabs', ['geographic', 'production', 'colors', 'quality'])
+                ->withLogging($user->data()->id ?? 0, 'ValidationError', "Statistics API: Invalid tab '{$tab}'")
+                ->send();
     }
 
-    echo json_encode([
-        'success' => true,
-        'data' => $data,
-        'tab' => $tab
-    ]);
+    ApiResponse::success('Statistics data loaded')
+        ->withData('tab', $tab)
+        ->withData('data', $data)
+        ->send();
 
-} catch (Exception $e) {
-    http_response_code(500);
-    echo json_encode([
-        'success' => false,
-        'error' => 'Data retrieval failed: ' . $e->getMessage()
-    ]);
+} catch (Throwable $e) {
+    ApiResponse::serverError('Data retrieval failed')
+        ->withData('tab', $tab ?? 'unknown')
+        ->withLogging(
+            $user->data()->id ?? 0,
+            'DatabaseError',
+            "Statistics API error for tab '{$tab}': " . $e->getMessage()
+        )
+        ->send();
 }

@@ -199,7 +199,7 @@ function loadTabContent(tabName) {
         renderTabContent(tabName, response.data);
       } else {
         content.html(
-          `<div class="alert alert-danger">Error: ${response.error}</div>`
+          `<div class="alert alert-danger">Error: ${response.message}</div>`
         );
       }
     })
