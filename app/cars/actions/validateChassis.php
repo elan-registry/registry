@@ -9,6 +9,10 @@ declare(strict_types=1);
  * Provides centralized chassis validation via AJAX for frontend real-time feedback.
  * Returns JSON response with validation results and detailed error messages.
  *
+ * NOTE: This endpoint implements the ApiResponse pattern correctly and serves as
+ * the reference implementation for other endpoint migrations. See Issue #445 for
+ * details on the ApiResponse pattern standardization effort.
+ *
  * @author Elan Registry Team
  * @copyright 2025
  */
