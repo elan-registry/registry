@@ -137,7 +137,7 @@ try {
     }
 
     // Log the transfer request creation
-    logger($user->data()->id, 'CarTransfer', "Transfer request created for car ID {$existingCar->id}, chassis {$chassis}, transfer request ID: {$transferRequestId}");
+    logger($user->data()->id, LogCategories::LOG_CATEGORY_CAR_TRANSFER, "Transfer request created for car ID {$existingCar->id}, chassis {$chassis}, transfer request ID: {$transferRequestId}");
 
     // Send email notifications with timeout protection
     $emailMessages = [];
@@ -152,14 +152,14 @@ try {
         try {
             $ownerNotificationSent = sendTransferRequestNotification($transferRequestId);
             if ($ownerNotificationSent) {
-                logger($user->data()->id, 'EmailSuccess', "Transfer request notification sent to current owner for request #$transferRequestId");
+                logger($user->data()->id, LogCategories::LOG_CATEGORY_EMAIL_SUCCESS, "Transfer request notification sent to current owner for request #$transferRequestId");
                 $emailMessages[] = 'Current owner notified';
             } else {
-                logger($user->data()->id, 'EmailError', "Failed to send transfer request notification to current owner for request #$transferRequestId");
+                logger($user->data()->id, LogCategories::LOG_CATEGORY_EMAIL_ERROR, "Failed to send transfer request notification to current owner for request #$transferRequestId");
                 $emailMessages[] = 'Owner notification failed';
             }
         } catch (Exception $emailEx) {
-            logger($user->data()->id, 'EmailError', "Owner notification exception for request #$transferRequestId: " . $emailEx->getMessage());
+            logger($user->data()->id, LogCategories::LOG_CATEGORY_EMAIL_ERROR, "Owner notification exception for request #$transferRequestId: " . $emailEx->getMessage());
             $emailMessages[] = 'Owner notification error';
         }
 
@@ -167,19 +167,19 @@ try {
         try {
             $adminAlertSent = sendTransferRequestAdminAlert($transferRequestId);
             if ($adminAlertSent) {
-                logger($user->data()->id, 'EmailSuccess', "Transfer request admin alert sent for request #$transferRequestId");
+                logger($user->data()->id, LogCategories::LOG_CATEGORY_EMAIL_SUCCESS, "Transfer request admin alert sent for request #$transferRequestId");
                 $emailMessages[] = 'Administrators notified';
             } else {
-                logger($user->data()->id, 'EmailError', "Failed to send transfer request admin alert for request #$transferRequestId");
+                logger($user->data()->id, LogCategories::LOG_CATEGORY_EMAIL_ERROR, "Failed to send transfer request admin alert for request #$transferRequestId");
                 $emailMessages[] = 'Admin notification failed';
             }
         } catch (Exception $emailEx) {
-            logger($user->data()->id, 'EmailError', "Admin notification exception for request #$transferRequestId: " . $emailEx->getMessage());
+            logger($user->data()->id, LogCategories::LOG_CATEGORY_EMAIL_ERROR, "Admin notification exception for request #$transferRequestId: " . $emailEx->getMessage());
             $emailMessages[] = 'Admin notification error';
         }
 
     } catch (Exception $generalEmailEx) {
-        logger($user->data()->id, 'EmailError', "General email error for request #$transferRequestId: " . $generalEmailEx->getMessage());
+        logger($user->data()->id, LogCategories::LOG_CATEGORY_EMAIL_ERROR, "General email error for request #$transferRequestId: " . $generalEmailEx->getMessage());
         $emailMessages[] = 'Email system error';
     }
 

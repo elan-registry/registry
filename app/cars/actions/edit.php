@@ -185,7 +185,7 @@ function updateCar(array &$cardetails): void
         logger($user->data()->id, 'ValidationError', 'Car Update Validation Error: ' . $e->getMessage());
         $errors[] = 'Car Update Validation Error: ' . $e->getMessage();
     } catch (ElanRegistryException $e) {
-        logger($user->data()->id, 'CarErrors', 'Car Update Error: ' . $e->getMessage());
+        logger($user->data()->id, LogCategories::LOG_CATEGORY_CAR_ERRORS, 'Car Update Error: ' . $e->getMessage());
         $errors[] = 'Car Update Error: ' . $e->getMessage();
     }
 }
@@ -215,7 +215,7 @@ function addCar(array &$cardetails): void
         logger($user->data()->id, 'ValidationError', 'Car Creation Validation Error: ' . $e->getMessage());
         $errors[] = 'Car Creation Validation Error: ' . $e->getMessage();
     } catch (ElanRegistryException $e) {
-        logger($user->data()->id, 'CarErrors', 'Car Creation Error: ' . $e->getMessage());
+        logger($user->data()->id, LogCategories::LOG_CATEGORY_CAR_ERRORS, 'Car Creation Error: ' . $e->getMessage());
         $errors[] = 'Car Creation Error: ' . $e->getMessage();
     }
 }

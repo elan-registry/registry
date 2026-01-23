@@ -109,7 +109,7 @@ function updateCarDetails(array &$car): void
     global $user;
 
     if (empty($car['id'])) {
-        logger($user->data()->id, 'ElanRegistry', 'Empty car_id field in GET');
+        logger($user->data()->id, LogCategories::LOG_CATEGORY_CAR_ACTIONS, 'Empty car_id field in GET');
         return;
     }
 
@@ -121,14 +121,14 @@ function updateCarDetails(array &$car): void
     
     if (!$isOwner && !$hasAdminAccess) {
         // Security violation: User attempting to access car they don't own and don't have admin/editor access
-        logger($user->data()->id, 'ElanRegistry', 'Access denied for car edit - USER ' . $user->data()->id . ' CAR ' . $car['id'] . ' (not owner, no admin/editor perms)');
+        logger($user->data()->id, LogCategories::LOG_CATEGORY_CAR_ACTIONS, 'Access denied for car edit - USER ' . $user->data()->id . ' CAR ' . $car['id'] . ' (not owner, no admin/editor perms)');
         $user->logout();
         exit();
     }
     
     // Log admin/editor access for audit trail
     if (!$isOwner && $hasAdminAccess) {
-        logger($user->data()->id, 'ElanRegistry', 'Admin/Editor accessing car edit - USER ' . $user->data()->id . ' CAR ' . $car['id']);
+        logger($user->data()->id, LogCategories::LOG_CATEGORY_CAR_ACTIONS, 'Admin/Editor accessing car edit - USER ' . $user->data()->id . ' CAR ' . $car['id']);
     }
 
     foreach ($carQ->data() as $key => $value) {

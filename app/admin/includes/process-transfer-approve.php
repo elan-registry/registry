@@ -107,9 +107,9 @@ try {
         );
 
         if ($notificationSent) {
-            logger($user->data()->id, 'EmailSuccess', "Transfer approval notification sent for request #$transferId");
+            logger($user->data()->id, LogCategories::LOG_CATEGORY_EMAIL_SUCCESS, "Transfer approval notification sent for request #$transferId");
         } else {
-            logger($user->data()->id, 'EmailError', "Failed to send transfer approval notification for request #$transferId");
+            logger($user->data()->id, LogCategories::LOG_CATEGORY_EMAIL_ERROR, "Failed to send transfer approval notification for request #$transferId");
         }
     } catch (Exception $emailEx) {
         logger(

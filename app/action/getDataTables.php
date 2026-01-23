@@ -87,8 +87,8 @@ if (Input::exists('post')) {
         
     } catch (Exception $e) {
         // Log error for debugging (don't expose to client)
-        error_log("DataTables error: " . $e->getMessage());
-        error_log("DataTables error trace: " . $e->getTraceAsString());
+        logger(0, 'SystemError', "DataTables error: " . $e->getMessage());
+        logger(0, 'SystemError', "DataTables error trace: " . $e->getTraceAsString());
         
         http_response_code(500);
         echo json_encode([

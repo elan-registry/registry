@@ -65,7 +65,7 @@ try {
     }
 
     // Log successful denial
-    logger($user->data()->id, 'CarTransfer', "Transfer request #{$transferId} denied by admin");
+    logger($user->data()->id, LogCategories::LOG_CATEGORY_CAR_TRANSFER, "Transfer request #{$transferId} denied by admin");
 
     // Send denial notification email with error handling
     try {
@@ -77,9 +77,9 @@ try {
         );
 
         if ($notificationSent) {
-            logger($user->data()->id, 'EmailSuccess', "Transfer denial notification sent for request #$transferId");
+            logger($user->data()->id, LogCategories::LOG_CATEGORY_EMAIL_SUCCESS, "Transfer denial notification sent for request #$transferId");
         } else {
-            logger($user->data()->id, 'EmailError', "Failed to send transfer denial notification for request #$transferId");
+            logger($user->data()->id, LogCategories::LOG_CATEGORY_EMAIL_ERROR, "Failed to send transfer denial notification for request #$transferId");
         }
     } catch (Exception $emailEx) {
         logger(
