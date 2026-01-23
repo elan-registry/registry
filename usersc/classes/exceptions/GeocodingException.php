@@ -48,7 +48,7 @@ class GeocodingException extends ElanRegistryException
      */
     protected static function getDefaultLogCategory(): string
     {
-        return 'SystemError';
+        return LogCategories::LOG_CATEGORY_SYSTEM_ERROR;
     }
 
     /**

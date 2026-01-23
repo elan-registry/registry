@@ -191,13 +191,13 @@ if (Input::exists('post')) {
 
                         if ($transferSuccess) {
                             $successes[] = "Car ID $car_id successfully reassigned to $targetName";
-                            logger($currentUserId, "ElanRegistry", "Car ID $car_id reassigned to User ID $user_id");
+                            logger($currentUserId, LogCategories::LOG_CATEGORY_CAR_ACTIONS, "Car ID $car_id reassigned to User ID $user_id");
                         } else {
                             $errors[] = "Failed to reassign car ID $car_id";
                         }
                     } catch (Exception $e) {
                         $errors[] = "Transfer failed: " . $e->getMessage();
-                        logger($currentUserId, "ElanRegistry", "Car reassignment failed for Car ID $car_id: " . $e->getMessage());
+                        logger($currentUserId, LogCategories::LOG_CATEGORY_CAR_ACTIONS, "Car reassignment failed for Car ID $car_id: " . $e->getMessage());
                     }
                     break;
 
@@ -271,7 +271,7 @@ if (Input::exists('post')) {
                     $db->query("UPDATE cars_hist SET car_id = ? WHERE car_id = ?", [$new_car_id, $old_car_id]);
                     if ($db->error()) {
                         $errors[] = $db->errorString();
-                        logger($currentUserId, "ElanRegistry", "FAILED: Merged CAR $old_car_id to CAR $new_car_id.");
+                        logger($currentUserId, LogCategories::LOG_CATEGORY_CAR_MERGE, "FAILED: Merged CAR $old_car_id to CAR $new_car_id.");
                     } else {
                         // Unassign from the previous owner
                         $db->query("DELETE FROM car_user WHERE car_id = ?", [$old_car_id]);
@@ -287,7 +287,7 @@ if (Input::exists('post')) {
                         $db->insert("cars_hist", $fields);
 
                         $successes[] = $fields['comments'];
-                        logger($currentUserId, "ElanRegistry", $fields['comments']);
+                        logger($currentUserId, LogCategories::LOG_CATEGORY_CAR_MERGE, $fields['comments']);
                     }
                     break;
 
@@ -333,10 +333,10 @@ if (Input::exists('post')) {
 
                     if ($db->error()) {
                         $errors[] = "Failed to delete car: " . $db->errorString();
-                        logger($currentUserId, "ElanRegistry", "FAILED: Delete car ID $car_id - " . $db->errorString());
+                        logger($currentUserId, LogCategories::LOG_CATEGORY_CAR_DELETION, "FAILED: Delete car ID $car_id - " . $db->errorString());
                     } else {
                         $successes[] = "Car ID $car_id ({$carData->chassis}) has been permanently deleted";
-                        logger($currentUserId, "ElanRegistry", "SUCCESS: Deleted car ID $car_id ({$carData->chassis})");
+                        logger($currentUserId, LogCategories::LOG_CATEGORY_CAR_DELETION, "SUCCESS: Deleted car ID $car_id ({$carData->chassis})");
                     }
                     break;
             }

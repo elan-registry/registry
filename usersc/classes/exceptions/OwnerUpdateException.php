@@ -45,7 +45,7 @@ class OwnerUpdateException extends ElanRegistryException
      */
     protected static function getDefaultLogCategory(): string
     {
-        return 'OwnerErrors';
+        return LogCategories::LOG_CATEGORY_OWNER_ACTIONS;
     }
 
     /**

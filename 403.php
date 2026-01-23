@@ -50,7 +50,7 @@ $logMessage = sprintf(
 );
 
 if (function_exists('logger')) {
-    logger($userId, 'AccessDenied', $logMessage);
+    logger($userId, LogCategories::LOG_CATEGORY_ACCESS_DENIED, $logMessage);
 }
 ?>
 <!DOCTYPE html>

@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 /**
  *
  *  Car is a class for managing Car data
@@ -185,7 +187,7 @@ class Car
         
         // Log database errors for debugging
         if ($this->_db->error()) {
-            logger($fields['user_id'] ?? 0, 'CarUpdate', 'DB error string: ' . $this->_db->errorString());
+            logger($fields['user_id'] ?? 0, LogCategories::LOG_CATEGORY_CAR_UPDATE, 'DB error string: ' . $this->_db->errorString());
         }
         
         // Check if there was an actual database error vs UserSpice returning false for "no changes"
@@ -456,7 +458,7 @@ class Car
             }
         } catch (Exception $e) {
             $technicalMsg = CarErrorMessages::getTechnicalMessage('image_remove_failed', ['error' => $e->getMessage()]);
-            logger(0, 'ImageRemoval', $technicalMsg);
+            logger(0, LogCategories::LOG_CATEGORY_CAR_ACTIONS, $technicalMsg);
             throw new Exception(CarErrorMessages::getMessage('image_remove_failed'));
         }
     }
@@ -485,7 +487,7 @@ class Car
         // Ensure car exists
         if (!$this->exists()) {
             $technicalMsg = CarErrorMessages::getTechnicalMessage('car_not_found_delete', ['id' => 'unknown']);
-            logger(0, 'CarDeletion', $technicalMsg);
+            logger(0, LogCategories::LOG_CATEGORY_CAR_DELETION, $technicalMsg);
             throw new CarNotFoundException(CarErrorMessages::getMessage('car_not_found_delete'));
         }
 
@@ -513,7 +515,7 @@ class Car
             $historyInserted = $this->_db->insert('cars_hist', $historyFields);
             if (!$historyInserted) {
                 $technicalMsg = CarErrorMessages::getTechnicalMessage('audit_trail_failed', ['operation' => 'car deletion']);
-                logger($user->data()->id ?? 0, 'CarDeletion', $technicalMsg);
+                logger($user->data()->id ?? 0, LogCategories::LOG_CATEGORY_CAR_DELETION, $technicalMsg);
                 throw new Exception(CarErrorMessages::getAdminMessage('audit_trail_failed', ['operation' => 'car deletion']));
             }
 
@@ -521,7 +523,7 @@ class Car
             $carUserDeleted = $this->_db->query("DELETE FROM car_user WHERE car_id = ?", [$carId]);
             if ($this->_db->error()) {
                 $technicalMsg = CarErrorMessages::getTechnicalMessage('car_relationship_failed', ['error' => $this->_db->errorString()]);
-                logger($user->data()->id ?? 0, 'CarDeletion', $technicalMsg);
+                logger($user->data()->id ?? 0, LogCategories::LOG_CATEGORY_CAR_DELETION, $technicalMsg);
                 throw new Exception(CarErrorMessages::getAdminMessage('car_relationship_failed'));
             }
 
@@ -529,7 +531,7 @@ class Car
             $carDeleted = $this->_db->query("DELETE FROM cars WHERE id = ?", [$carId]);
             if ($this->_db->error()) {
                 $technicalMsg = CarErrorMessages::getTechnicalMessage('database_update_failed', ['error' => $this->_db->errorString()]);
-                logger($user->data()->id ?? 0, 'CarDeletion', $technicalMsg);
+                logger($user->data()->id ?? 0, LogCategories::LOG_CATEGORY_CAR_DELETION, $technicalMsg);
                 throw new Exception(CarErrorMessages::getAdminMessage('database_update_failed'));
             }
 
@@ -548,7 +550,7 @@ class Car
             // Rollback on any error
             $this->_db->query("ROLLBACK");
             $technicalMsg = CarErrorMessages::getTechnicalMessage('operation_failed', ['operation' => 'Car deletion', 'error' => $e->getMessage()]);
-            logger($user->data()->id ?? 0, 'CarDeletion', $technicalMsg);
+            logger($user->data()->id ?? 0, LogCategories::LOG_CATEGORY_CAR_DELETION, $technicalMsg);
             throw new Exception(CarErrorMessages::getMessage('operation_failed', 'admin'));
         }
     }
@@ -573,7 +575,7 @@ class Car
         // Ensure car exists
         if (!$this->exists()) {
             $technicalMsg = CarErrorMessages::getTechnicalMessage('car_not_found_transfer', ['id' => 'unknown']);
-            logger(0, 'CarTransfer', $technicalMsg);
+            logger(0, LogCategories::LOG_CATEGORY_CAR_TRANSFER, $technicalMsg);
             throw new Exception(CarErrorMessages::getMessage('car_not_found_transfer'));
         }
 
@@ -586,7 +588,7 @@ class Car
         $targetUser = getUserWithProfile($newUserId);
         if (!$targetUser) {
             $technicalMsg = CarErrorMessages::getTechnicalMessage('user_not_found', ['user_id' => $newUserId]);
-            logger($user->data()->id ?? 0, 'CarTransfer', $technicalMsg);
+            logger($user->data()->id ?? 0, LogCategories::LOG_CATEGORY_CAR_TRANSFER, $technicalMsg);
             throw new Exception(CarErrorMessages::getMessage('user_not_found'));
         }
 
@@ -618,7 +620,7 @@ class Car
             $updateSuccess = $this->update($updateFields);
             if (!$updateSuccess) {
                 $technicalMsg = CarErrorMessages::getTechnicalMessage('database_update_failed', ['error' => 'Car update method returned false']);
-                logger($user->data()->id ?? 0, 'CarTransfer', $technicalMsg);
+                logger($user->data()->id ?? 0, LogCategories::LOG_CATEGORY_CAR_TRANSFER, $technicalMsg);
                 throw new Exception(CarErrorMessages::getAdminMessage('database_update_failed'));
             }
 
@@ -626,7 +628,7 @@ class Car
             $relationshipUpdated = $this->_db->query("UPDATE car_user SET userid = ? WHERE car_id = ?", [$newUserId, $carId]);
             if ($this->_db->error()) {
                 $technicalMsg = CarErrorMessages::getTechnicalMessage('car_relationship_failed', ['error' => $this->_db->errorString()]);
-                logger($user->data()->id ?? 0, 'CarTransfer', $technicalMsg);
+                logger($user->data()->id ?? 0, LogCategories::LOG_CATEGORY_CAR_TRANSFER, $technicalMsg);
                 throw new Exception(CarErrorMessages::getAdminMessage('car_relationship_failed'));
             }
 
@@ -677,9 +679,9 @@ class Car
             $historyInserted = $this->_db->insert('cars_hist', $historyFields);
             if (!$historyInserted) {
                 $technicalMsg = CarErrorMessages::getTechnicalMessage('audit_trail_failed', ['operation' => $operationType]);
-                logger($user->data()->id ?? 0, 'CarTransfer', $technicalMsg);
+                logger($user->data()->id ?? 0, LogCategories::LOG_CATEGORY_CAR_TRANSFER, $technicalMsg);
                 // Don't throw exception here since the main transaction is already committed
-                logger($user->data()->id ?? 0, 'CarTransfer', 'Warning: Transfer completed but history record creation failed');
+                logger($user->data()->id ?? 0, LogCategories::LOG_CATEGORY_CAR_TRANSFER, 'Warning: Transfer completed but history record creation failed');
             }
 
             return true;
@@ -688,7 +690,7 @@ class Car
             // Rollback on any error
             $this->_db->query("ROLLBACK");
             $technicalMsg = CarErrorMessages::getTechnicalMessage('operation_failed', ['operation' => 'Car ownership transfer', 'error' => $e->getMessage()]);
-            logger($user->data()->id ?? 0, 'CarTransfer', $technicalMsg);
+            logger($user->data()->id ?? 0, LogCategories::LOG_CATEGORY_CAR_TRANSFER, $technicalMsg);
             throw new Exception(CarErrorMessages::getMessage('operation_failed', 'admin'));
         }
     }
@@ -714,7 +716,7 @@ class Car
         // Ensure this car exists
         if (!$this->exists()) {
             $technicalMsg = CarErrorMessages::getTechnicalMessage('car_not_found_merge', ['id' => 'target']);
-            logger(0, 'CarMerge', $technicalMsg);
+            logger(0, LogCategories::LOG_CATEGORY_CAR_MERGE, $technicalMsg);
             throw new Exception(CarErrorMessages::getMessage('car_not_found_merge'));
         }
 
@@ -727,14 +729,14 @@ class Car
         $oldCar = new Car($oldCarId);
         if (!$oldCar->exists()) {
             $technicalMsg = CarErrorMessages::getTechnicalMessage('merge_source_not_found', ['id' => $oldCarId]);
-            logger($user->data()->id ?? 0, 'CarMerge', $technicalMsg);
+            logger($user->data()->id ?? 0, LogCategories::LOG_CATEGORY_CAR_MERGE, $technicalMsg);
             throw new Exception(CarErrorMessages::getMessage('merge_source_not_found'));
         }
 
         // Prevent merging a car with itself
         if ($oldCarId === $this->_data->id) {
             $technicalMsg = CarErrorMessages::getTechnicalMessage('car_merge_self', ['id' => $oldCarId]);
-            logger($user->data()->id ?? 0, 'CarMerge', $technicalMsg);
+            logger($user->data()->id ?? 0, LogCategories::LOG_CATEGORY_CAR_MERGE, $technicalMsg);
             throw new Exception(CarErrorMessages::getMessage('car_merge_self'));
         }
 
@@ -750,7 +752,7 @@ class Car
             $historyTransferred = $this->_db->query("UPDATE cars_hist SET car_id = ? WHERE car_id = ?", [$newCarId, $oldCarId]);
             if ($this->_db->error()) {
                 $technicalMsg = CarErrorMessages::getTechnicalMessage('car_history_transfer_failed', ['error' => $this->_db->errorString()]);
-                logger($user->data()->id ?? 0, 'CarMerge', $technicalMsg);
+                logger($user->data()->id ?? 0, LogCategories::LOG_CATEGORY_CAR_MERGE, $technicalMsg);
                 throw new Exception(CarErrorMessages::getAdminMessage('car_history_transfer_failed'));
             }
 
@@ -758,7 +760,7 @@ class Car
             $carUserDeleted = $this->_db->query("DELETE FROM car_user WHERE car_id = ?", [$oldCarId]);
             if ($this->_db->error()) {
                 $technicalMsg = CarErrorMessages::getTechnicalMessage('car_relationship_failed', ['error' => $this->_db->errorString()]);
-                logger($user->data()->id ?? 0, 'CarMerge', $technicalMsg);
+                logger($user->data()->id ?? 0, LogCategories::LOG_CATEGORY_CAR_MERGE, $technicalMsg);
                 throw new Exception(CarErrorMessages::getAdminMessage('car_relationship_failed'));
             }
 
@@ -766,7 +768,7 @@ class Car
             $oldCarDeleted = $this->_db->query("DELETE FROM cars WHERE id = ?", [$oldCarId]);
             if ($this->_db->error()) {
                 $technicalMsg = CarErrorMessages::getTechnicalMessage('database_update_failed', ['error' => $this->_db->errorString()]);
-                logger($user->data()->id ?? 0, 'CarMerge', $technicalMsg);
+                logger($user->data()->id ?? 0, LogCategories::LOG_CATEGORY_CAR_MERGE, $technicalMsg);
                 throw new Exception(CarErrorMessages::getAdminMessage('database_update_failed'));
             }
 
@@ -782,7 +784,7 @@ class Car
             $historyInserted = $this->_db->insert('cars_hist', $historyFields);
             if (!$historyInserted) {
                 $technicalMsg = CarErrorMessages::getTechnicalMessage('audit_trail_failed', ['operation' => 'car merge']);
-                logger($user->data()->id ?? 0, 'CarMerge', $technicalMsg);
+                logger($user->data()->id ?? 0, LogCategories::LOG_CATEGORY_CAR_MERGE, $technicalMsg);
                 throw new Exception(CarErrorMessages::getAdminMessage('audit_trail_failed', ['operation' => 'car merge']));
             }
 
@@ -798,7 +800,7 @@ class Car
             // Rollback on any error
             $this->_db->query("ROLLBACK");
             $technicalMsg = CarErrorMessages::getTechnicalMessage('operation_failed', ['operation' => 'Car merge', 'error' => $e->getMessage()]);
-            logger($user->data()->id ?? 0, 'CarMerge', $technicalMsg);
+            logger($user->data()->id ?? 0, LogCategories::LOG_CATEGORY_CAR_MERGE, $technicalMsg);
             throw new Exception(CarErrorMessages::getMessage('operation_failed', 'admin'));
         }
     }
@@ -820,7 +822,7 @@ class Car
         // Ensure car exists
         if (!$this->exists()) {
             $technicalMsg = CarErrorMessages::getTechnicalMessage('car_not_found_verification', ['id' => 'unknown']);
-            logger(0, 'CarVerification', $technicalMsg);
+            logger(0, LogCategories::LOG_CATEGORY_CAR_VERIFICATION, $technicalMsg);
             throw new Exception(CarErrorMessages::getMessage('car_not_found_verification'));
         }
 
@@ -838,12 +840,12 @@ class Car
                 return true;
             } else {
                 $technicalMsg = CarErrorMessages::getTechnicalMessage('database_update_failed', ['error' => 'Database update returned false']);
-                logger(0, 'CarVerification', $technicalMsg);
+                logger(0, LogCategories::LOG_CATEGORY_CAR_VERIFICATION, $technicalMsg);
                 throw new Exception(CarErrorMessages::getMessage('database_update_failed'));
             }
         } catch (Exception $e) {
             $technicalMsg = CarErrorMessages::getTechnicalMessage('verification_code_failed', ['error' => $e->getMessage()]);
-            logger(0, 'CarVerification', $technicalMsg);
+            logger(0, LogCategories::LOG_CATEGORY_CAR_VERIFICATION, $technicalMsg);
             throw new Exception(CarErrorMessages::getMessage('verification_code_failed'));
         }
     }
@@ -864,7 +866,7 @@ class Car
         // Ensure car exists
         if (!$this->exists()) {
             $technicalMsg = CarErrorMessages::getTechnicalMessage('car_not_found_verify', ['id' => 'unknown']);
-            logger(0, 'CarVerification', $technicalMsg);
+            logger(0, LogCategories::LOG_CATEGORY_CAR_VERIFICATION, $technicalMsg);
             throw new Exception(CarErrorMessages::getMessage('car_not_found_verify'));
         }
 
@@ -878,12 +880,12 @@ class Car
                 return true;
             } else {
                 $technicalMsg = CarErrorMessages::getTechnicalMessage('database_update_failed', ['error' => 'Database update returned false']);
-                logger(0, 'CarVerification', $technicalMsg);
+                logger(0, LogCategories::LOG_CATEGORY_CAR_VERIFICATION, $technicalMsg);
                 throw new Exception(CarErrorMessages::getMessage('database_update_failed'));
             }
         } catch (Exception $e) {
             $technicalMsg = CarErrorMessages::getTechnicalMessage('verification_mark_failed', ['error' => $e->getMessage()]);
-            logger(0, 'CarVerification', $technicalMsg);
+            logger(0, LogCategories::LOG_CATEGORY_CAR_VERIFICATION, $technicalMsg);
             throw new Exception(CarErrorMessages::getMessage('verification_mark_failed'));
         }
     }
@@ -905,7 +907,7 @@ class Car
         // Ensure car exists
         if (!$this->exists()) {
             $technicalMsg = CarErrorMessages::getTechnicalMessage('car_not_found_sold', ['id' => 'unknown']);
-            logger(0, 'CarSold', $technicalMsg);
+            logger(0, LogCategories::LOG_CATEGORY_CAR_SOLD, $technicalMsg);
             throw new Exception(CarErrorMessages::getMessage('car_not_found_sold'));
         }
 
@@ -928,12 +930,12 @@ class Car
                 return true;
             } else {
                 $technicalMsg = CarErrorMessages::getTechnicalMessage('database_update_failed', ['error' => 'Database update returned false']);
-                logger(0, 'CarSold', $technicalMsg);
+                logger(0, LogCategories::LOG_CATEGORY_CAR_SOLD, $technicalMsg);
                 throw new Exception(CarErrorMessages::getMessage('database_update_failed'));
             }
         } catch (Exception $e) {
             $technicalMsg = CarErrorMessages::getTechnicalMessage('sold_mark_failed', ['error' => $e->getMessage()]);
-            logger(0, 'CarSold', $technicalMsg);
+            logger(0, LogCategories::LOG_CATEGORY_CAR_SOLD, $technicalMsg);
             throw new Exception(CarErrorMessages::getMessage('sold_mark_failed'));
         }
     }
@@ -970,7 +972,7 @@ class Car
             }
         } catch (Exception $e) {
             $technicalMsg = CarErrorMessages::getTechnicalMessage('unexpected_error', ['error' => $e->getMessage()]);
-            logger(0, 'CarVerification', $technicalMsg);
+            logger(0, LogCategories::LOG_CATEGORY_CAR_VERIFICATION, $technicalMsg);
             throw new Exception(CarErrorMessages::getMessage('unexpected_error'));
         }
     }
