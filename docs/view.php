@@ -20,10 +20,12 @@ require_once $abs_us_root . $us_url_root . 'usersc/classes/DocumentConfig.php';
 
 use ElanRegistry\Documentation\MarkdownParser;
 use ElanRegistry\Documentation\DocumentConfig;
+use DocumentationException;
 
 // Security check - ensure page access is authorized
 if (!securePage($_SERVER['PHP_SELF'])) {
-    die();
+    logger(0, 'SecurityError', 'Unauthorized documentation access attempt: ' . $_SERVER['PHP_SELF']);
+    Redirect::to($us_url_root . '403.php');
 }
 
 // Get and validate the document parameter with strict validation
@@ -31,15 +33,15 @@ $doc = $_GET['doc'] ?? '';
 
 // Security: Only allow alphanumeric, hyphens, underscores, and .md extension
 if (!preg_match('/^[a-zA-Z0-9_-]+\.md$/', $doc)) {
-    header('HTTP/1.0 400 Bad Request');
-    die('Invalid document format.');
+    logger($user->data()->id ?? 0, 'ValidationError', 'Invalid document format attempted: ' . $doc);
+    Redirect::to($us_url_root . '404.php');
 }
 
 // Validate document and get configuration
 $documentData = DocumentConfig::validateDocument($doc);
 if (!$documentData) {
-    header('HTTP/1.0 404 Not Found');
-    die('Document not found.');
+    logger($user->data()->id ?? 0, 'SystemError', 'Documentation not found: ' . $doc);
+    Redirect::to($us_url_root . '404.php');
 }
 
 // Check user permissions
@@ -49,20 +51,19 @@ if (!DocumentConfig::hasAccess($documentData, $user)) {
 
 // Verify file exists and is readable
 if (!file_exists($documentData['path']) || !is_readable($documentData['path'])) {
-    header('HTTP/1.0 404 Not Found');
-    die('Document file not found.');
+    logger($user->data()->id ?? 0, 'SystemError', 'Documentation file not accessible: ' . $documentData['path']);
+    Redirect::to($us_url_root . '404.php');
 }
 
 // Read the markdown content with error handling
 try {
     $markdownContent = file_get_contents($documentData['path']);
     if ($markdownContent === false) {
-        throw new RuntimeException('Failed to read document file');
+        throw new DocumentationException('Failed to read document file');
     }
-} catch (Exception $e) {
-    error_log("Document read error: " . $e->getMessage());
-    header('HTTP/1.0 500 Internal Server Error');
-    die('Error reading document file.');
+} catch (DocumentationException $e) {
+    logger($user->data()->id ?? 0, $e->getLogCategory(), 'Documentation read error: ' . $e->getMessage());
+    Redirect::to($us_url_root . '404.php');
 }
 
 // Convert markdown to HTML using the utility class
