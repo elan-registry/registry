@@ -673,6 +673,12 @@ class LogCategories
     // ========== ACCESS CONTROL & DIAGNOSTICS CATEGORIES ==========
 
     /**
+     * Security operations
+     * Used for general security-related events and checks
+     */
+    public const LOG_CATEGORY_SECURITY = 'Security';
+
+    /**
      * Access denied operations
      * Used when access is denied to protected resources
      */
