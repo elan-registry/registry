@@ -24,7 +24,6 @@ declare(strict_types=1);
 
 // UI Constants for progress output
 define('SECTION_SEPARATOR', '═══════════════════════════════════════════════════════');
-define('LOG_CATEGORY_MAINTENANCE', 'DatabaseMaintenance');
 
 require_once '../users/init.php';
 require_once $abs_us_root . $us_url_root . 'users/includes/template/prep.php';
@@ -36,7 +35,7 @@ if (!securePage($_SERVER['PHP_SELF'])) {
 // Set up custom error handler to log through UserSpice logger
 set_error_handler(function($errno, $errstr, $errfile, $errline) use ($user) {
     if ($errno !== E_DEPRECATED) {
-        logger(isset($user) ? $user->data()->id : 0, LOG_CATEGORY_MAINTENANCE, "Error [$errno]: $errstr in $errfile:$errline");
+        logger(isset($user) ? $user->data()->id : 0, LogCategories::LOG_CATEGORY_DATABASE_MAINTENANCE, "Error [$errno]: $errstr in $errfile:$errline");
     }
     return true;
 });
@@ -168,7 +167,7 @@ $db = DB::getInstance();
                             logProgress("Removed page entry for deleted file", 'success');
                             $results['pages_deleted'] = 1;
 
-                            logger($user->data()->id, LOG_CATEGORY_MAINTENANCE,
+                            logger($user->data()->id, LogCategories::LOG_CATEGORY_DATABASE_MAINTENANCE,
                                 "Deleted page entry for removed file: {$deletedPage->page}");
                         } else {
                             logProgress('Page entry already removed or does not exist', 'info');
@@ -206,7 +205,7 @@ $db = DB::getInstance();
                                     // Remove any permission restrictions
                                     $db->query("DELETE FROM permission_page_matches WHERE page_id = ?", [$page->id]);
 
-                                    logger($user->data()->id, LOG_CATEGORY_MAINTENANCE,
+                                    logger($user->data()->id, LogCategories::LOG_CATEGORY_DATABASE_MAINTENANCE,
                                         "Updated page '{$pagePath}' to public access");
                                 } else {
                                     logProgress("    Already public - no changes needed", 'info');
@@ -222,7 +221,7 @@ $db = DB::getInstance();
 
                                 $results['pages_created']++;
 
-                                logger($user->data()->id, LOG_CATEGORY_MAINTENANCE,
+                                logger($user->data()->id, LogCategories::LOG_CATEGORY_DATABASE_MAINTENANCE,
                                     "Created public page entry for '{$pagePath}'");
                             }
 
@@ -237,7 +236,7 @@ $db = DB::getInstance();
                             'completed_at' => date('Y-m-d H:i:s')
                         ]);
 
-                        logger($user->data()->id, LOG_CATEGORY_MAINTENANCE,
+                        logger($user->data()->id, LogCategories::LOG_CATEGORY_DATABASE_MAINTENANCE,
                             "Script completed - Pages deleted: {$results['pages_deleted']}, " .
                             "Pages created: {$results['pages_created']}, " .
                             "Pages updated: {$results['pages_updated']}");
@@ -266,7 +265,7 @@ $db = DB::getInstance();
 
                     } catch (Exception $e) {
                         logProgress('FATAL ERROR: ' . $e->getMessage(), 'error');
-                        logger($user->data()->id, LOG_CATEGORY_MAINTENANCE, 'Fatal error: ' . $e->getMessage());
+                        logger($user->data()->id, LogCategories::LOG_CATEGORY_DATABASE_MAINTENANCE, 'Fatal error: ' . $e->getMessage());
                     }
 
                     ?></pre>

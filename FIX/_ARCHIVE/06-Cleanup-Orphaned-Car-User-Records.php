@@ -197,14 +197,14 @@ $line = 1; // Where messages go
                                     }
                                     
                                     // Log the cleanup action
-                                    logger($user->data()->id, 'DatabaseMaintenance', "Cleaned up {$deletedCount} orphaned car_user records (Issue #35)");
+                                    logger($user->data()->id, LogCategories::LOG_CATEGORY_DATABASE_MAINTENANCE, "Cleaned up {$deletedCount} orphaned car_user records (Issue #35)");
                                 }
                                 
                                 // Record script completion
                                 try {
                                     $db->query("INSERT INTO fix_script_runs (script_name) VALUES (?)", [basename(__FILE__)]);
                                     logProgress("Script completion recorded in fix_script_runs table", 'success');
-                                    logger($user->data()->id, 'SystemMaintenance', "FIX script completed: " . basename(__FILE__));
+                                    logger($user->data()->id, LogCategories::LOG_CATEGORY_FIX_SCRIPT, "FIX script completed: " . basename(__FILE__));
                                 } catch (Exception $e) {
                                     logProgress("Warning: Could not record script completion: " . $e->getMessage(), 'warning');
                                 }
@@ -213,7 +213,7 @@ $line = 1; // Where messages go
                                 
                             } catch (Exception $e) {
                                 logProgress("Fatal error during cleanup: " . $e->getMessage(), 'error');
-                                logger($user->data()->id, 'DatabaseError', "Error during car_user cleanup: " . $e->getMessage());
+                                logger($user->data()->id, LogCategories::LOG_CATEGORY_DATABASE_ERROR, "Error during car_user cleanup: " . $e->getMessage());
                             }
                             ?>
                             

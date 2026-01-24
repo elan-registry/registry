@@ -219,7 +219,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
 
     if ($_POST['action'] === 'analyze') {
         // STEP 1: Analysis
-        logger($user->data()->id, 'PermissionFix', 'Starting permission analysis');
+        logger($user->data()->id, LogCategories::LOG_CATEGORY_PERMISSION_FIX, 'Starting permission analysis');
 
         try {
             $issues = analyzePermissions($db);
@@ -227,7 +227,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                           count($issues['add_editor']) + count($issues['add_admin_editor']) +
                           count($issues['set_private']);
 
-            logger($user->data()->id, 'PermissionFix', "Analysis completed, found {$totalIssues} issues");
+            logger($user->data()->id, LogCategories::LOG_CATEGORY_PERMISSION_FIX, "Analysis completed, found {$totalIssues} issues");
 
             echo json_encode([
                 'success' => true,
@@ -242,7 +242,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                 'issues' => $issues
             ]);
         } catch (Exception $e) {
-            logger($user->data()->id, 'PermissionFixError', "Analysis failed: " . $e->getMessage());
+            logger($user->data()->id, LogCategories::LOG_CATEGORY_PERMISSION_FIX_ERROR, "Analysis failed: " . $e->getMessage());
             echo json_encode([
                 'success' => false,
                 'error' => 'Analysis failed: ' . $e->getMessage()
@@ -845,7 +845,7 @@ require_once $abs_us_root . $us_url_root . 'users/includes/template/prep.php';
 
                                 $global_successes++;
                                 outputMessage($line++, "✅ Set to PRIVATE with Administrator + Editor: {$issue['page']}", $percentage);
-                                logger($user->data()->id, 'PermissionFix', "Set page to PRIVATE with Admin+Editor: {$issue['page']} (ID: {$issue['id']})");
+                                logger($user->data()->id, LogCategories::LOG_CATEGORY_PERMISSION_FIX, "Set page to PRIVATE with Admin+Editor: {$issue['page']} (ID: {$issue['id']})");
                             } catch (Exception $e) {
                                 outputMessage($line++, "✗ Failed to update {$issue['page']}: " . $e->getMessage(), $percentage);
                             }
@@ -870,7 +870,7 @@ require_once $abs_us_root . $us_url_root . 'users/includes/template/prep.php';
 
                                 $global_successes++;
                                 outputMessage($line++, "✅ Added User permission to: {$issue['page']}", $percentage);
-                                logger($user->data()->id, 'PermissionFix', "Added User permission to page: {$issue['page']} (ID: {$issue['id']})");
+                                logger($user->data()->id, LogCategories::LOG_CATEGORY_PERMISSION_FIX, "Added User permission to page: {$issue['page']} (ID: {$issue['id']})");
                             } catch (Exception $e) {
                                 outputMessage($line++, "✗ Failed to update {$issue['page']}: " . $e->getMessage(), $percentage);
                             }
@@ -903,7 +903,7 @@ require_once $abs_us_root . $us_url_root . 'users/includes/template/prep.php';
 
                                 $global_successes++;
                                 outputMessage($line++, "✅ Fixed permissions for: {$issue['page']}", $percentage);
-                                logger($user->data()->id, 'PermissionFix', "Removed User, ensured Admin+Editor for: {$issue['page']} (ID: {$issue['id']})");
+                                logger($user->data()->id, LogCategories::LOG_CATEGORY_PERMISSION_FIX, "Removed User, ensured Admin+Editor for: {$issue['page']} (ID: {$issue['id']})");
                             } catch (Exception $e) {
                                 outputMessage($line++, "✗ Failed to update {$issue['page']}: " . $e->getMessage(), $percentage);
                             }
@@ -931,7 +931,7 @@ require_once $abs_us_root . $us_url_root . 'users/includes/template/prep.php';
                                     ]);
                                     $global_successes++;
                                     outputMessage($line++, "✅ Added Editor permission to: {$issue['page']}", $percentage);
-                                    logger($user->data()->id, 'PermissionFix', "Added Editor permission to: {$issue['page']} (ID: {$issue['id']})");
+                                    logger($user->data()->id, LogCategories::LOG_CATEGORY_PERMISSION_FIX, "Added Editor permission to: {$issue['page']} (ID: {$issue['id']})");
                                 } else {
                                     $global_successes++;
                                     outputMessage($line++, "✓ Editor permission already exists for: {$issue['page']}", $percentage);
@@ -974,7 +974,7 @@ require_once $abs_us_root . $us_url_root . 'users/includes/template/prep.php';
 
                                 $global_successes++;
                                 outputMessage($line++, "✅ Added Administrator + Editor to: {$issue['page']}", $percentage);
-                                logger($user->data()->id, 'PermissionFix', "Added Administrator+Editor to: {$issue['page']} (ID: {$issue['id']})");
+                                logger($user->data()->id, LogCategories::LOG_CATEGORY_PERMISSION_FIX, "Added Administrator+Editor to: {$issue['page']} (ID: {$issue['id']})");
                             } catch (Exception $e) {
                                 outputMessage($line++, "✗ Failed to update {$issue['page']}: " . $e->getMessage(), $percentage);
                             }
@@ -998,7 +998,7 @@ require_once $abs_us_root . $us_url_root . 'users/includes/template/prep.php';
                     }
 
                     // Log completion
-                    logger($user->data()->id, 'DatabaseMaintenance', "Permission fix completed - Fixed: {$global_successes}/{$global_attempts} pages");
+                    logger($user->data()->id, LogCategories::LOG_CATEGORY_DATABASE_MAINTENANCE, "Permission fix completed - Fixed: {$global_successes}/{$global_attempts} pages");
 
                     // Record script completion
                     try {
@@ -1011,7 +1011,7 @@ require_once $abs_us_root . $us_url_root . 'users/includes/template/prep.php';
                 } catch (Exception $e) {
                     outputMessage($line++, "❌ ERROR during processing: " . $e->getMessage());
                     outputMessage($line++, "You can restore from backup if needed");
-                    logger($user->data()->id, 'DatabaseError', "Permission fix failed: " . $e->getMessage());
+                    logger($user->data()->id, LogCategories::LOG_CATEGORY_DATABASE_ERROR, "Permission fix failed: " . $e->getMessage());
                 }
 
                 outputMessage($line++, "");

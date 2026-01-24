@@ -379,13 +379,13 @@ $line = 1; // Where messages go
                                         addMessage($line++, "✅ Trigger functionality verification complete", 'success');
                                         
                                         // Log completion
-                                        logger($user->data()->id, 'DatabaseMaintenance', "Car history triggers fixed - Username column references removed (Issue #TBD)");
+                                        logger($user->data()->id, LogCategories::LOG_CATEGORY_DATABASE_MAINTENANCE, "Car history triggers fixed - Username column references removed (Issue #TBD)");
                                         
                                         // Record script completion
                                         try {
                                             $db->query("INSERT INTO fix_script_runs (script_name) VALUES (?)", [basename(__FILE__)]);
                                             addMessage($line++, "✅ Script completion recorded", 'success');
-                                            logger($user->data()->id, 'SystemMaintenance', "FIX script completed: " . basename(__FILE__));
+                                            logger($user->data()->id, LogCategories::LOG_CATEGORY_FIX_SCRIPT, "FIX script completed: " . basename(__FILE__));
                                         } catch (Exception $record_e) {
                                             addMessage($line++, "⚠️  Could not record script completion: " . $record_e->getMessage(), 'warning');
                                         }

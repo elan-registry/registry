@@ -29,14 +29,6 @@ declare(strict_types=1);
 // UI Constants for progress output
 define('SECTION_SEPARATOR', '═══════════════════════════════════════════════════════');
 
-// Log Category: Replace with appropriate LogCategories constant
-// Common options:
-// - LogCategories::LOG_CATEGORY_FIX_SCRIPT (general FIX script operations)
-// - LogCategories::LOG_CATEGORY_DATABASE_MAINTENANCE (database operations)
-// - LogCategories::LOG_CATEGORY_SYSTEM_MAINTENANCE (system maintenance tasks)
-// - Other: See LogCategories class for complete list
-define('LOG_CATEGORY_PLACEHOLDER', LogCategories::LOG_CATEGORY_FIX_SCRIPT);
-
 require_once '../users/init.php';
 require_once $abs_us_root . $us_url_root . 'users/includes/template/prep.php';
 
@@ -50,7 +42,7 @@ if (!securePage($_SERVER['PHP_SELF'])) {
 // Set up custom error handler to log through UserSpice logger
 set_error_handler(function($errno, $errstr, $errfile, $errline) {
     if ($errno !== E_DEPRECATED) {
-        logger(isset($user) ? $user->data()->id : 0, LOG_CATEGORY_PLACEHOLDER, "Error [$errno]: $errstr in $errfile:$errline");
+        logger(isset($user) ? $user->data()->id : 0, LogCategories::LOG_CATEGORY_FIX_SCRIPT, "Error [$errno]: $errstr in $errfile:$errline");
     }
     return true;
 });
@@ -164,7 +156,7 @@ $db = DB::getInstance();
                         // Example: Create backup
                         // $backupPath = $backupManager->createSchemaBackup('[OPERATION_NAME]', ['table1', 'table2']);
                         // logProgress('Backup created: ' . basename($backupPath), 'success');
-                        // logger($user->data()->id, LOG_CATEGORY_PLACEHOLDER, "Backup created: {$backupPath}");
+                        // logger($user->data()->id, LogCategories::LOG_CATEGORY_FIX_SCRIPT, "Backup created: {$backupPath}");
 
                         // [YOUR STEP 1 CODE HERE]
                         logProgress('Step 1 processing...', 'info');
@@ -205,7 +197,7 @@ $db = DB::getInstance();
                             'completed_at' => date('Y-m-d H:i:s')
                         ]);
 
-                        logger($user->data()->id, LOG_CATEGORY_PLACEHOLDER,
+                        logger($user->data()->id, LogCategories::LOG_CATEGORY_FIX_SCRIPT,
                             "Script completed - Processed: {$results['processed']}, Errors: {$results['errors']}, Warnings: {$results['warnings']}");
 
                         // Display summary
@@ -228,7 +220,7 @@ $db = DB::getInstance();
 
                     } catch (Exception $e) {
                         logProgress('FATAL ERROR: ' . $e->getMessage(), 'error');
-                        logger($user->data()->id, LOG_CATEGORY_PLACEHOLDER, 'Fatal error: ' . $e->getMessage());
+                        logger($user->data()->id, LogCategories::LOG_CATEGORY_FIX_SCRIPT, 'Fatal error: ' . $e->getMessage());
                     }
 
                     ?></pre>

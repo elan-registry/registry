@@ -15,14 +15,14 @@ header('Content-Type: application/json');
 // Security check
 if (!securePage($_SERVER['PHP_SELF'])) {
     ApiResponse::forbidden('Access denied')
-        ->withLogging(0, 'SecurityError', 'Unauthorized backup operations access attempt')
+        ->withLogging(0, LogCategories::LOG_CATEGORY_SECURITY, 'Unauthorized backup operations access attempt')
         ->send();
 }
 
 // Only administrators can perform backup operations
 if (!hasPerm([2], $user->data()->id)) {
     ApiResponse::forbidden('Administrator access required')
-        ->withLogging($user->data()->id, 'SecurityError',
+        ->withLogging($user->data()->id, LogCategories::LOG_CATEGORY_SECURITY,
             'Non-admin attempted backup operations')
         ->send();
 }
@@ -39,19 +39,19 @@ try {
     switch ($action) {
         case 'create_manual_backup':
             // Log backup initiation with details
-            logger($user->data()->id, 'BackupManager', "Manual backup initiated by {$user->data()->username}");
+            logger($user->data()->id, LogCategories::LOG_CATEGORY_BACKUP_MANAGER, "Manual backup initiated by {$user->data()->username}");
 
             // Get reason (default to Admin Panel Manual Backup)
             $reason = $_POST['reason'] ?? 'Admin Panel Manual Backup';
 
             // Log the reason for debugging
-            logger($user->data()->id, 'BackupDebug', "Backup reason: '{$reason}'");
+            logger($user->data()->id, LogCategories::LOG_CATEGORY_BACKUP_DEBUG, "Backup reason: '{$reason}'");
 
             // Critical tables for backup
             $criticalTables = ['users', 'cars', 'car_user', 'profiles', 'settings', 'car_history', 'fix_script_runs'];
 
             // Log tables being backed up
-            logger($user->data()->id, 'BackupDebug', "Tables to backup: " . implode(', ', $criticalTables));
+            logger($user->data()->id, LogCategories::LOG_CATEGORY_BACKUP_DEBUG, "Tables to backup: " . implode(', ', $criticalTables));
 
             // Create backup
             try {
@@ -62,7 +62,7 @@ try {
                 );
             } catch (Exception $e) {
                 // Log specific error from BackupManager
-                logger($user->data()->id, 'BackupError', "BackupManager threw exception: " . $e->getMessage() . " in " . $e->getFile() . " at line " . $e->getLine());
+                logger($user->data()->id, LogCategories::LOG_CATEGORY_BACKUP_ERROR, "BackupManager threw exception: " . $e->getMessage() . " in " . $e->getFile() . " at line " . $e->getLine());
                 throw $e; // Re-throw to be caught by outer try-catch
             }
 
@@ -72,7 +72,7 @@ try {
             $sizeFormatted = formatBytes($filesize);
 
             // Log successful backup
-            logger($user->data()->id, 'BackupManager', "Manual backup completed: {$filename} ({$sizeFormatted})");
+            logger($user->data()->id, LogCategories::LOG_CATEGORY_BACKUP_MANAGER, "Manual backup completed: {$filename} ({$sizeFormatted})");
 
             ApiResponse::success('Backup created successfully')
                 ->withDataArray([
@@ -80,14 +80,14 @@ try {
                     'size' => $sizeFormatted,
                     'path' => $backupPath
                 ])
-                ->withLogging($user->data()->id, 'BackupManager',
+                ->withLogging($user->data()->id, LogCategories::LOG_CATEGORY_BACKUP_MANAGER,
                     "Manual backup completed via API: {$filename} ({$sizeFormatted})")
                 ->send();
             break;
 
         case 'list_backups':
             // Log backup list request
-            logger($user->data()->id, 'BackupManager', "Backup list requested by {$user->data()->username}");
+            logger($user->data()->id, LogCategories::LOG_CATEGORY_BACKUP_MANAGER, "Backup list requested by {$user->data()->username}");
 
             $backups = [
                 'automated' => [],
@@ -137,7 +137,7 @@ try {
                         'health_score' => $stats['health_score']
                     ]
                 ])
-                ->withLogging($user->data()->id, 'BackupManager',
+                ->withLogging($user->data()->id, LogCategories::LOG_CATEGORY_BACKUP_MANAGER,
                     'Backup list retrieved via API')
                 ->send();
             break;
@@ -195,14 +195,14 @@ try {
                     'files' => $filesToDelete,
                     'total_count' => $totalFiles
                 ])
-                ->withLogging($user->data()->id, 'BackupManager',
+                ->withLogging($user->data()->id, LogCategories::LOG_CATEGORY_BACKUP_MANAGER,
                     "Cleanup preview: {$totalFiles} files to delete")
                 ->send();
             break;
 
         case 'cleanup_backups':
             // Log cleanup initiation
-            logger($user->data()->id, 'BackupManager', "Backup cleanup initiated by {$user->data()->username}");
+            logger($user->data()->id, LogCategories::LOG_CATEGORY_BACKUP_MANAGER, "Backup cleanup initiated by {$user->data()->username}");
 
             // Perform enhanced cleanup
             $cleanupResult = $backupManager->performEnhancedCleanup();
@@ -216,7 +216,7 @@ try {
                            $cleanupResult['rollback']['deleted'];
 
             // Log cleanup results
-            logger($user->data()->id, 'BackupManager', "Backup cleanup completed: {$totalDeleted} of {$totalScanned} files deleted (Automated: {$cleanupResult['automated']['deleted']}, Manual: {$cleanupResult['manual']['deleted']}, Rollback: {$cleanupResult['rollback']['deleted']})");
+            logger($user->data()->id, LogCategories::LOG_CATEGORY_BACKUP_MANAGER, "Backup cleanup completed: {$totalDeleted} of {$totalScanned} files deleted (Automated: {$cleanupResult['automated']['deleted']}, Manual: {$cleanupResult['manual']['deleted']}, Rollback: {$cleanupResult['rollback']['deleted']})");
 
             ApiResponse::success("Cleanup completed: {$totalDeleted} of {$totalScanned} files deleted")
                 ->withDataArray([
@@ -226,14 +226,14 @@ try {
                         'deleted' => $totalDeleted
                     ]
                 ])
-                ->withLogging($user->data()->id, 'BackupManager',
+                ->withLogging($user->data()->id, LogCategories::LOG_CATEGORY_BACKUP_MANAGER,
                     "Backup cleanup completed via API: {$totalDeleted}/{$totalScanned} deleted")
                 ->send();
             break;
 
         default:
             ApiResponse::error('Invalid action', 400)
-                ->withLogging($user->data()->id, 'BackupError', "Invalid backup action: {$action}")
+                ->withLogging($user->data()->id, LogCategories::LOG_CATEGORY_BACKUP_ERROR, "Invalid backup action: {$action}")
                 ->send();
             break;
     }
@@ -246,7 +246,7 @@ try {
     $errorDetails .= "Request params: " . json_encode($_POST) . "\n";
     $errorDetails .= "Stack trace:\n" . $e->getTraceAsString();
 
-    logger($user->data()->id, 'BackupError', $errorDetails);
+    logger($user->data()->id, LogCategories::LOG_CATEGORY_BACKUP_ERROR, $errorDetails);
 
     // Also log to PHP error log for debugging
     error_log("BackupManager Error: " . $e->getMessage() . " in " . $e->getFile() . " on line " . $e->getLine());

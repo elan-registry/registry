@@ -34,7 +34,6 @@ declare(strict_types=1);
 
 // UI Constants for progress output
 define('SECTION_SEPARATOR', '═══════════════════════════════════════════════════════');
-define('LOG_CATEGORY_PLACEHOLDER', 'PerformanceOptimization');
 
 require_once '../users/init.php';
 require_once $abs_us_root . $us_url_root . 'users/includes/template/prep.php';
@@ -46,7 +45,7 @@ if (!securePage($_SERVER['PHP_SELF'])) {
 // Set up custom error handler to log through UserSpice logger
 set_error_handler(function($errno, $errstr, $errfile, $errline) {
     if ($errno !== E_DEPRECATED) {
-        logger(isset($user) ? $user->data()->id : 0, LOG_CATEGORY_PLACEHOLDER, "Error [$errno]: $errstr in $errfile:$errline");
+        logger(isset($user) ? $user->data()->id : 0, LogCategories::LOG_CATEGORY_FIX_SCRIPT, "Error [$errno]: $errstr in $errfile:$errline");
     }
     return true;
 });
@@ -173,7 +172,7 @@ $db = DB::getInstance();
                             $db->query("UPDATE settings SET elan_bootstrap_css_cdn = ?", [$bootstrap_css_cdn]);
                             if ($db->count() > 0) {
                                 logProgress('Updated Bootstrap CSS CDN to v4.6.2 minified with SRI', 'success');
-                                logger($user->data()->id, LOG_CATEGORY_PLACEHOLDER, "Updated Bootstrap CSS CDN to v4.6.2 minified version with SRI hash");
+                                logger($user->data()->id, LogCategories::LOG_CATEGORY_FIX_SCRIPT, "Updated Bootstrap CSS CDN to v4.6.2 minified version with SRI hash");
                                 $results['processed']++;
                             } else {
                                 logProgress('Bootstrap CSS CDN already optimized or no change made', 'warning');
@@ -181,7 +180,7 @@ $db = DB::getInstance();
                             }
                         } catch (PDOException $e) {
                             logProgress("Error updating Bootstrap CSS CDN: " . $e->getMessage(), 'error');
-                            logger($user->data()->id, LOG_CATEGORY_PLACEHOLDER, "Database error updating Bootstrap CSS: " . $e->getMessage());
+                            logger($user->data()->id, LogCategories::LOG_CATEGORY_FIX_SCRIPT, "Database error updating Bootstrap CSS: " . $e->getMessage());
                             $results['errors']++;
                         }
 
@@ -197,7 +196,7 @@ $db = DB::getInstance();
                             $db->query("UPDATE settings SET elan_jquery_cdn = ?", [$jquery_cdn]);
                             if ($db->count() > 0) {
                                 logProgress('Updated jQuery CDN to v3.6.0 minified with SRI', 'success');
-                                logger($user->data()->id, LOG_CATEGORY_PLACEHOLDER, "Updated jQuery CDN to v3.6.0 minified version with SRI hash");
+                                logger($user->data()->id, LogCategories::LOG_CATEGORY_FIX_SCRIPT, "Updated jQuery CDN to v3.6.0 minified version with SRI hash");
                                 $results['processed']++;
                             } else {
                                 logProgress('jQuery CDN already optimized or no change made', 'warning');
@@ -205,7 +204,7 @@ $db = DB::getInstance();
                             }
                         } catch (PDOException $e) {
                             logProgress("Error updating jQuery CDN: " . $e->getMessage(), 'error');
-                            logger($user->data()->id, LOG_CATEGORY_PLACEHOLDER, "Database error updating jQuery: " . $e->getMessage());
+                            logger($user->data()->id, LogCategories::LOG_CATEGORY_FIX_SCRIPT, "Database error updating jQuery: " . $e->getMessage());
                             $results['errors']++;
                         }
 
@@ -221,7 +220,7 @@ $db = DB::getInstance();
                             $db->query("UPDATE settings SET elan_bootstrap_js_cdn = ?", [$bootstrap_js_cdn]);
                             if ($db->count() > 0) {
                                 logProgress('Updated Bootstrap JS CDN to v4.6.2 minified with SRI', 'success');
-                                logger($user->data()->id, LOG_CATEGORY_PLACEHOLDER, "Updated Bootstrap JS CDN to v4.6.2 minified version with SRI hash");
+                                logger($user->data()->id, LogCategories::LOG_CATEGORY_FIX_SCRIPT, "Updated Bootstrap JS CDN to v4.6.2 minified version with SRI hash");
                                 $results['processed']++;
                             } else {
                                 logProgress('Bootstrap JS CDN already optimized or no change made', 'warning');
@@ -229,7 +228,7 @@ $db = DB::getInstance();
                             }
                         } catch (PDOException $e) {
                             logProgress("Error updating Bootstrap JS CDN: " . $e->getMessage(), 'error');
-                            logger($user->data()->id, LOG_CATEGORY_PLACEHOLDER, "Database error updating Bootstrap JS: " . $e->getMessage());
+                            logger($user->data()->id, LogCategories::LOG_CATEGORY_FIX_SCRIPT, "Database error updating Bootstrap JS: " . $e->getMessage());
                             $results['errors']++;
                         }
 
@@ -245,7 +244,7 @@ $db = DB::getInstance();
                             $db->query("UPDATE settings SET elan_popper_cdn = ?", [$popper_cdn]);
                             if ($db->count() > 0) {
                                 logProgress('Updated Popper.js CDN to v1.16.1 minified with SRI', 'success');
-                                logger($user->data()->id, LOG_CATEGORY_PLACEHOLDER, "Updated Popper.js CDN to v1.16.1 minified version with SRI hash");
+                                logger($user->data()->id, LogCategories::LOG_CATEGORY_FIX_SCRIPT, "Updated Popper.js CDN to v1.16.1 minified version with SRI hash");
                                 $results['processed']++;
                             } else {
                                 logProgress('Popper.js CDN already optimized or no change made', 'warning');
@@ -253,7 +252,7 @@ $db = DB::getInstance();
                             }
                         } catch (PDOException $e) {
                             logProgress("Error updating Popper.js CDN: " . $e->getMessage(), 'error');
-                            logger($user->data()->id, LOG_CATEGORY_PLACEHOLDER, "Database error updating Popper.js: " . $e->getMessage());
+                            logger($user->data()->id, LogCategories::LOG_CATEGORY_FIX_SCRIPT, "Database error updating Popper.js: " . $e->getMessage());
                             $results['errors']++;
                         }
 
@@ -264,10 +263,10 @@ $db = DB::getInstance();
                                 'completed_at' => date('Y-m-d H:i:s')
                             ]);
                         } catch (PDOException $e) {
-                            logger($user->data()->id, LOG_CATEGORY_PLACEHOLDER, "Warning: Could not log script completion: " . $e->getMessage());
+                            logger($user->data()->id, LogCategories::LOG_CATEGORY_FIX_SCRIPT, "Warning: Could not log script completion: " . $e->getMessage());
                         }
 
-                        logger($user->data()->id, LOG_CATEGORY_PLACEHOLDER,
+                        logger($user->data()->id, LogCategories::LOG_CATEGORY_FIX_SCRIPT,
                             "Script completed - Processed: {$results['processed']}, Errors: {$results['errors']}, Warnings: {$results['warnings']}");
 
                         // Display summary
@@ -292,7 +291,7 @@ $db = DB::getInstance();
 
                     } catch (Exception $e) {
                         logProgress('FATAL ERROR: ' . $e->getMessage(), 'error');
-                        logger($user->data()->id, LOG_CATEGORY_PLACEHOLDER, 'Fatal error: ' . $e->getMessage());
+                        logger($user->data()->id, LogCategories::LOG_CATEGORY_FIX_SCRIPT, 'Fatal error: ' . $e->getMessage());
                     }
 
                     ?></pre>

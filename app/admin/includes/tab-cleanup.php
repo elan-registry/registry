@@ -34,7 +34,7 @@ try {
         'impact' => 'These users may be candidates for engagement outreach or cleanup consideration'
     ];
 } catch (Exception $e) {
-    logger($user->data()->id ?? 0, 'SystemError', 'Users without cars report failed: ' . $e->getMessage());
+    logger($user->data()->id ?? 0, LogCategories::LOG_CATEGORY_SYSTEM_ERROR, 'Users without cars report failed: ' . $e->getMessage());
     $usersWithoutCarsReport = [
         'title' => 'Active Users Without Cars',
         'description' => 'Report temporarily unavailable',
@@ -88,7 +88,7 @@ try {
     $cleanupStats['safety_status'] = $cleanupStats['spam_candidates'] > $safetyLimit ? 'warning' : 'safe';
 
 } catch (Exception $e) {
-    logger($user->data()->id ?? 0, 'SystemError', 'Cleanup stats calculation failed: ' . $e->getMessage());
+    logger($user->data()->id ?? 0, LogCategories::LOG_CATEGORY_SYSTEM_ERROR, 'Cleanup stats calculation failed: ' . $e->getMessage());
 }
 
 // Handle POST requests for cleanup operations
@@ -112,7 +112,7 @@ if (Input::exists('post')) {
                     "Dry run completed. Would delete {$cleanupStats['spam_candidates']} users." :
                     "Cleanup completed. Deleted {$cleanupStats['spam_candidates']} spam accounts.";
 
-                logger($user->data()->id, 'SpamCleanup',
+                logger($user->data()->id, LogCategories::LOG_CATEGORY_SPAM_CLEANUP,
                     ($dryRun ? 'DRY RUN: ' : '') . "Spam cleanup executed. Candidates: {$cleanupStats['spam_candidates']}");
 
                 usSuccess($message);

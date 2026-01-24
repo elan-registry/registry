@@ -26,7 +26,6 @@ declare(strict_types=1);
 
 // UI Constants for progress output
 define('SECTION_SEPARATOR', '═══════════════════════════════════════════════════════');
-define('LOG_CATEGORY_PLACEHOLDER', 'SecurityUpdate');
 
 require_once '../users/init.php';
 require_once $abs_us_root . $us_url_root . 'users/includes/template/prep.php';
@@ -38,7 +37,7 @@ if (!securePage($_SERVER['PHP_SELF'])) {
 // Set up custom error handler to log through UserSpice logger
 set_error_handler(function($errno, $errstr, $errfile, $errline) {
     if ($errno !== E_DEPRECATED) {
-        logger(isset($user) ? $user->data()->id : 0, LOG_CATEGORY_PLACEHOLDER, "Error [$errno]: $errstr in $errfile:$errline");
+        logger(isset($user) ? $user->data()->id : 0, LogCategories::LOG_CATEGORY_SETTINGS_UPDATE, "Error [$errno]: $errstr in $errfile:$errline");
     }
     return true;
 });
@@ -155,7 +154,7 @@ $db = DB::getInstance();
 
                         if ($db->count() > 0) {
                             logProgress('Updated jQuery CDN with SRI hash', 'success');
-                            logger($user->data()->id, LOG_CATEGORY_PLACEHOLDER, "Updated jQuery CDN with SRI hash");
+                            logger($user->data()->id, LogCategories::LOG_CATEGORY_SETTINGS_UPDATE, "Updated jQuery CDN with SRI hash");
                             $results['processed']++;
                         } else {
                             logProgress('jQuery CDN already up to date or no change made', 'warning');
@@ -174,7 +173,7 @@ $db = DB::getInstance();
 
                         if ($db->count() > 0) {
                             logProgress('Upgraded DataTables JS to v1.11.3 with SRI hash (CVE-2021-23445 fixed)', 'success');
-                            logger($user->data()->id, LOG_CATEGORY_PLACEHOLDER, "Upgraded DataTables JS to v1.11.3 with SRI hash (CVE-2021-23445 fixed)");
+                            logger($user->data()->id, LogCategories::LOG_CATEGORY_SETTINGS_UPDATE, "Upgraded DataTables JS to v1.11.3 with SRI hash (CVE-2021-23445 fixed)");
                             $results['processed']++;
                         } else {
                             logProgress('DataTables JS CDN already up to date or no change made', 'warning');
@@ -193,7 +192,7 @@ $db = DB::getInstance();
 
                         if ($db->count() > 0) {
                             logProgress('Upgraded DataTables CSS to v1.11.3 with SRI hash', 'success');
-                            logger($user->data()->id, LOG_CATEGORY_PLACEHOLDER, "Upgraded DataTables CSS to v1.11.3 with SRI hash");
+                            logger($user->data()->id, LogCategories::LOG_CATEGORY_SETTINGS_UPDATE, "Upgraded DataTables CSS to v1.11.3 with SRI hash");
                             $results['processed']++;
                         } else {
                             logProgress('DataTables CSS CDN already up to date or no change made', 'warning');
@@ -212,7 +211,7 @@ $db = DB::getInstance();
 
                         if ($db->count() > 0) {
                             logProgress('Updated Chart.js CDN with SRI hash', 'success');
-                            logger($user->data()->id, LOG_CATEGORY_PLACEHOLDER, "Updated Chart.js CDN with SRI hash");
+                            logger($user->data()->id, LogCategories::LOG_CATEGORY_SETTINGS_UPDATE, "Updated Chart.js CDN with SRI hash");
                             $results['processed']++;
                         } else {
                             logProgress('Chart.js CDN already up to date or no change made', 'warning');
@@ -225,7 +224,7 @@ $db = DB::getInstance();
                             'completed_at' => date('Y-m-d H:i:s')
                         ]);
 
-                        logger($user->data()->id, LOG_CATEGORY_PLACEHOLDER,
+                        logger($user->data()->id, LogCategories::LOG_CATEGORY_SETTINGS_UPDATE,
                             "Script completed - Processed: {$results['processed']}, Errors: {$results['errors']}, Warnings: {$results['warnings']}");
 
                         // Display summary
@@ -249,7 +248,7 @@ $db = DB::getInstance();
 
                     } catch (Exception $e) {
                         logProgress('FATAL ERROR: ' . $e->getMessage(), 'error');
-                        logger($user->data()->id, LOG_CATEGORY_PLACEHOLDER, 'Fatal error: ' . $e->getMessage());
+                        logger($user->data()->id, LogCategories::LOG_CATEGORY_SETTINGS_UPDATE, 'Fatal error: ' . $e->getMessage());
                     }
 
                     ?></pre>

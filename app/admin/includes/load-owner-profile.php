@@ -319,7 +319,7 @@ try {
     <?php
 
 } catch (Exception $e) {
-    logger($user->data()->id, 'SystemError', 'Owner profile load failed: ' . $e->getMessage());
+    logger($user->data()->id, LogCategories::LOG_CATEGORY_SYSTEM_ERROR, 'Owner profile load failed: ' . $e->getMessage());
     echo '<div class="alert alert-danger">Failed to load owner profile. Please try again.</div>';
 }
 ?>

@@ -60,7 +60,7 @@ try {
 
     $showCleanupPrompt = $oldBackupsCount > 0;
 } catch (Exception $e) {
-    logger($user->data()->id, 'SystemError', 'Enhanced backup stats failed: ' . $e->getMessage());
+    logger($user->data()->id, LogCategories::LOG_CATEGORY_SYSTEM_ERROR, 'Enhanced backup stats failed: ' . $e->getMessage());
     // Fallback to basic stats
     try {
         $backupStats = getBackupStatistics();
@@ -105,7 +105,7 @@ if (isset($_POST['cleanup_backups']) && $_POST['cleanup_backups'] === 'confirm')
         $backupStats = $backupManager->getEnhancedBackupStatistics();
         $showCleanupPrompt = false;
     } catch (Exception $e) {
-        logger($user->data()->id, 'SystemError', 'Enhanced backup cleanup failed: ' . $e->getMessage());
+        logger($user->data()->id, LogCategories::LOG_CATEGORY_SYSTEM_ERROR, 'Enhanced backup cleanup failed: ' . $e->getMessage());
         $cleanupMessage = "<div class='alert alert-danger'><i class='fas fa-exclamation-triangle'></i> Enhanced backup cleanup failed: " . htmlspecialchars($e->getMessage()) . "</div>";
     }
 }

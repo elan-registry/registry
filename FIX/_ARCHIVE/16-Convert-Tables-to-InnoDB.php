@@ -54,7 +54,7 @@ if (!securePage($_SERVER['PHP_SELF'])) {
 set_error_handler(function($errno, $errstr, $errfile, $errline) {
     global $user;
     if ($errno !== E_DEPRECATED) {
-        logger(isset($user) ? (int)$user->data()->id : 0, 'TableConversion', "Error [$errno]: $errstr in $errfile:$errline");
+        logger(isset($user) ? (int)$user->data()->id : 0, LogCategories::LOG_CATEGORY_DATABASE_MAINTENANCE, "Error [$errno]: $errstr in $errfile:$errline");
     }
     return true;
 });
@@ -174,7 +174,7 @@ $tablesToConvert = [
                         $results['backup_path'] = $backupPath;
                         logProgress('Backup created successfully', 'success');
                         logProgress('Backup location: ' . basename($backupPath), 'info');
-                        logger((int)$user->data()->id, 'TableConversion', "Pre-conversion backup created: {$backupPath}");
+                        logger((int)$user->data()->id, LogCategories::LOG_CATEGORY_DATABASE_MAINTENANCE, "Pre-conversion backup created: {$backupPath}");
 
                         // STEP 2: Fix Invalid Dates
                         logProgress('', 'info');
@@ -254,7 +254,7 @@ $tablesToConvert = [
 
                             if ($rowsAffected > 0) {
                                 logProgress("Fixed {$rowsAffected} invalid dates in {$fix['table']}.{$fix['field']}", 'success');
-                                logger((int)$user->data()->id, 'TableConversion', "Fixed {$rowsAffected} invalid dates in {$fix['table']}.{$fix['field']}");
+                                logger((int)$user->data()->id, LogCategories::LOG_CATEGORY_DATABASE_MAINTENANCE, "Fixed {$rowsAffected} invalid dates in {$fix['table']}.{$fix['field']}");
                             } else {
                                 logProgress("No invalid dates in {$fix['table']}.{$fix['field']}", 'info');
                             }
@@ -262,7 +262,7 @@ $tablesToConvert = [
 
                         $results['dates_fixed'] = $totalFixed;
                         logProgress("Date fixing complete: {$totalFixed} total dates corrected", 'success');
-                        logger((int)$user->data()->id, 'TableConversion', "Date fixing complete: {$totalFixed} total dates corrected");
+                        logger((int)$user->data()->id, LogCategories::LOG_CATEGORY_DATABASE_MAINTENANCE, "Date fixing complete: {$totalFixed} total dates corrected");
 
                         // STEP 3: Check Current Status
                         logProgress('', 'info');
@@ -315,7 +315,7 @@ $tablesToConvert = [
                             logProgress("{$table}: Converting to InnoDB...", 'info');
                             // phpcs:ignore Squiz.Strings.ConcatenationSpacing.PaddingFound,WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- Table name validated against whitelist (L293-296)
                             $db->query("ALTER TABLE `{$table}` ENGINE=InnoDB");
-                            logger((int)$user->data()->id, 'TableConversion', "Executed: ALTER TABLE `{$table}` ENGINE=InnoDB");
+                            logger((int)$user->data()->id, LogCategories::LOG_CATEGORY_DATABASE_MAINTENANCE, "Executed: ALTER TABLE `{$table}` ENGINE=InnoDB");
 
                             // Verify conversion
                             $verify = $db->query(
@@ -327,12 +327,12 @@ $tablesToConvert = [
                             if ($verify && strtoupper($verify->ENGINE) === 'INNODB') {
                                 $results['successful'][] = $table;
                                 logProgress("{$table}: Successfully converted to InnoDB", 'success');
-                                logger((int)$user->data()->id, 'TableConversion', "Successfully converted {$table} to InnoDB");
+                                logger((int)$user->data()->id, LogCategories::LOG_CATEGORY_DATABASE_MAINTENANCE, "Successfully converted {$table} to InnoDB");
                             } else {
                                 $currentEngine = $verify->ENGINE ?? 'unknown';
                                 $results['failed'][] = ['table' => $table, 'error' => "Still {$currentEngine}"];
                                 logProgress("{$table}: Conversion failed - still {$currentEngine}", 'error');
-                                logger((int)$user->data()->id, 'TableConversion', "Conversion failed for {$table}: Still {$currentEngine}");
+                                logger((int)$user->data()->id, LogCategories::LOG_CATEGORY_DATABASE_MAINTENANCE, "Conversion failed for {$table}: Still {$currentEngine}");
                             }
                         }
 
@@ -346,7 +346,7 @@ $tablesToConvert = [
                             'completed_at' => date('Y-m-d H:i:s')
                         ]);
 
-                        logger((int)$user->data()->id, 'TableConversion',
+                        logger((int)$user->data()->id, LogCategories::LOG_CATEGORY_DATABASE_MAINTENANCE,
                             "Conversion complete - Dates: {$results['dates_fixed']}, Converted: {$successCount}, Already InnoDB: {$alreadyCount}, Failed: {$failCount}");
 
                         // Display summary
@@ -371,7 +371,7 @@ $tablesToConvert = [
 
                     } catch (Exception $e) {
                         logProgress('FATAL ERROR: ' . $e->getMessage(), 'error');
-                        logger((int)$user->data()->id, 'TableConversion', 'Fatal error: ' . $e->getMessage());
+                        logger((int)$user->data()->id, LogCategories::LOG_CATEGORY_DATABASE_MAINTENANCE, 'Fatal error: ' . $e->getMessage());
                     }
 
                     ?></pre>
