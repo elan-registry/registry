@@ -22,7 +22,6 @@ declare(strict_types=1);
 
 // UI Constants for progress output
 define('SECTION_SEPARATOR', '═══════════════════════════════════════════════════════');
-define('LOG_CATEGORY_MAINTENANCE', 'DatabaseMaintenance');
 
 require_once '../users/init.php';
 require_once $abs_us_root . $us_url_root . 'users/includes/template/prep.php';
@@ -35,7 +34,7 @@ if (!securePage($_SERVER['PHP_SELF'])) {
 // Set up custom error handler to log through UserSpice logger
 set_error_handler(function($errno, $errstr, $errfile, $errline) use ($user) {
     if ($errno !== E_DEPRECATED) {
-        logger(isset($user) ? $user->data()->id : 0, LOG_CATEGORY_MAINTENANCE, "Error [$errno]: $errstr in $errfile:$errline");
+        logger(isset($user) ? $user->data()->id : 0, LogCategories::LOG_CATEGORY_DATABASE_MAINTENANCE, "Error [$errno]: $errstr in $errfile:$errline");
     }
     return true;
 });
@@ -190,7 +189,7 @@ $backupManager = new BackupManager($db, $abs_us_root . $us_url_root . 'backup/',
                             ['settings']
                         );
                         logProgress('Backup created: ' . basename($backupPath), 'success');
-                        logger($user->data()->id, LOG_CATEGORY_MAINTENANCE, "FIX #19: Backup created at {$backupPath}");
+                        logger($user->data()->id, LogCategories::LOG_CATEGORY_DATABASE_MAINTENANCE, "FIX #19: Backup created at {$backupPath}");
                         $results['processed']++;
 
                         // STEP 2: Update JavaScript CDN URL
@@ -217,7 +216,7 @@ $backupManager = new BackupManager($db, $abs_us_root . $us_url_root . 'backup/',
 
                         logProgress('JavaScript CDN URL updated successfully', 'success');
                         logProgress('Optimized to 3 extensions (was 8)', 'success');
-                        logger($user->data()->id, LOG_CATEGORY_MAINTENANCE, "FIX #19: Optimized DataTables JS CDN - removed 5 unused extensions");
+                        logger($user->data()->id, LogCategories::LOG_CATEGORY_DATABASE_MAINTENANCE, "FIX #19: Optimized DataTables JS CDN - removed 5 unused extensions");
                         $results['processed']++;
 
                         // STEP 3: Update CSS CDN URL
@@ -244,7 +243,7 @@ $backupManager = new BackupManager($db, $abs_us_root . $us_url_root . 'backup/',
 
                         logProgress('CSS CDN URL updated successfully', 'success');
                         logProgress('Optimized to 3 extensions (was 8)', 'success');
-                        logger($user->data()->id, LOG_CATEGORY_MAINTENANCE, "FIX #19: Optimized DataTables CSS CDN - removed 5 unused extensions");
+                        logger($user->data()->id, LogCategories::LOG_CATEGORY_DATABASE_MAINTENANCE, "FIX #19: Optimized DataTables CSS CDN - removed 5 unused extensions");
                         $results['processed']++;
 
                         // Log script completion
@@ -253,7 +252,7 @@ $backupManager = new BackupManager($db, $abs_us_root . $us_url_root . 'backup/',
                             'completed_at' => date('Y-m-d H:i:s')
                         ]);
 
-                        logger($user->data()->id, LOG_CATEGORY_MAINTENANCE,
+                        logger($user->data()->id, LogCategories::LOG_CATEGORY_DATABASE_MAINTENANCE,
                             "FIX #19 completed - Settings optimized: {$results['processed']}, Errors: {$results['errors']}");
 
                         // Display summary
@@ -284,7 +283,7 @@ $backupManager = new BackupManager($db, $abs_us_root . $us_url_root . 'backup/',
 
                     } catch (SchemaException $e) {
                         logProgress('FATAL ERROR: ' . $e->getMessage(), 'error');
-                        logger($user->data()->id, LOG_CATEGORY_MAINTENANCE, 'FIX #19 fatal error: ' . $e->getMessage());
+                        logger($user->data()->id, LogCategories::LOG_CATEGORY_DATABASE_MAINTENANCE, 'FIX #19 fatal error: ' . $e->getMessage());
                         $results['errors']++;
                     }
 

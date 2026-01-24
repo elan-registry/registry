@@ -535,13 +535,13 @@ $line = 1; // Where messages go
                 }
 
                 // Log the completion action with summary  
-                logger($user->data()->id, 'DatabaseOptimization', "Index optimization completed - Created: {$created_indexes}, Existing: {$existing_indexes}, Failed: {$failed_indexes} (Issue #Phase2)");
+                logger($user->data()->id, LogCategories::LOG_CATEGORY_DATABASE_MAINTENANCE, "Index optimization completed - Created: {$created_indexes}, Existing: {$existing_indexes}, Failed: {$failed_indexes} (Issue #Phase2)");
 
                     // Record script completion
                     try {
                         $db->query("INSERT INTO fix_script_runs (script_name) VALUES (?)", [basename(__FILE__)]);
                         outputMessage($line++, "✅ Script completion recorded");
-                        logger($user->data()->id, 'SystemMaintenance', "FIX script completed: " . basename(__FILE__));
+                        logger($user->data()->id, LogCategories::LOG_CATEGORY_FIX_SCRIPT, "FIX script completed: " . basename(__FILE__));
                     } catch (Exception $record_e) {
                         outputMessage($line++, "⚠️  Could not record script completion: " . $record_e->getMessage());
                     }
@@ -551,7 +551,7 @@ $line = 1; // Where messages go
                     outputMessage($line++, "Processing aborted - no changes made");
                     
                     // Log the error
-                    logger($user->data()->id, 'DatabaseError', "Index optimization failed: " . $e->getMessage() . " (Issue #Phase2)");
+                    logger($user->data()->id, LogCategories::LOG_CATEGORY_DATABASE_ERROR, "Index optimization failed: " . $e->getMessage() . " (Issue #Phase2)");
                 }
 
                 outputMessage($line++, "");

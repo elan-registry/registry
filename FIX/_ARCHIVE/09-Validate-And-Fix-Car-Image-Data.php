@@ -595,13 +595,13 @@ $line = 1; // Where messages go
                 outputMessage($line++, "✅ SUCCESS: Image data validation completed!");
 
                 // Log the completion action with summary
-                logger($user->data()->id, 'DatabaseMaintenance', "Car Image Data Validation completed - Fixed: {$global_successes}/{$global_attempts} cars (Issue #246)");
+                logger($user->data()->id, LogCategories::LOG_CATEGORY_DATABASE_MAINTENANCE, "Car Image Data Validation completed - Fixed: {$global_successes}/{$global_attempts} cars (Issue #246)");
 
                 // Record script completion
                 try {
                     $db->query("INSERT INTO fix_script_runs (script_name) VALUES (?)", [basename(__FILE__)]);
                     outputMessage($line++, "✅ Script completion recorded");
-                    logger($user->data()->id, 'SystemMaintenance', "FIX script completed: " . basename(__FILE__));
+                    logger($user->data()->id, LogCategories::LOG_CATEGORY_FIX_SCRIPT, "FIX script completed: " . basename(__FILE__));
                 } catch (Exception $record_e) {
                     outputMessage($line++, "⚠️  Could not record script completion: " . $record_e->getMessage());
                 }

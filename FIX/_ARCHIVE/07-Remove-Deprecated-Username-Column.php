@@ -445,7 +445,7 @@ $line = 1; // Where messages go
                                                 try {
                                                     $db->query("INSERT INTO fix_script_runs (script_name) VALUES (?)", [basename(__FILE__)]);
                                                     outputMessage($line++, "✅ Script completion recorded");
-                                                    logger($user->data()->id, 'DatabaseMaintenance', "Username field removal completed (Issue #319)");
+                                                    logger($user->data()->id, LogCategories::LOG_CATEGORY_DATABASE_MAINTENANCE, "Username field removal completed (Issue #319)");
                                                 } catch (Exception $record_e) {
                                                     outputMessage($line++, "⚠️  Could not record script completion: " . $record_e->getMessage());
                                                 }

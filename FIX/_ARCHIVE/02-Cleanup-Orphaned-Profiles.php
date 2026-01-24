@@ -447,13 +447,13 @@ $line = 1; // Where messages go
                 outputMessage($line++, "✅ Database cleanup completed successfully!", 100);
 
                 // Log the completion action with summary
-                logger($user->data()->id, 'DatabaseMaintenance', "Orphaned profiles cleanup completed - Processed: {$global_successes}/{$global_attempts} records (Issue #18)");
+                logger($user->data()->id, LogCategories::LOG_CATEGORY_DATABASE_MAINTENANCE, "Orphaned profiles cleanup completed - Processed: {$global_successes}/{$global_attempts} records (Issue #18)");
 
                 // Record script completion
                 try {
                     $db->query("INSERT INTO fix_script_runs (script_name) VALUES (?)", [basename(__FILE__)]);
                     outputMessage($line++, "✅ Script completion recorded");
-                    logger($user->data()->id, 'SystemMaintenance', "FIX script completed: " . basename(__FILE__));
+                    logger($user->data()->id, LogCategories::LOG_CATEGORY_FIX_SCRIPT, "FIX script completed: " . basename(__FILE__));
                 } catch (Exception $record_e) {
                     outputMessage($line++, "⚠️  Could not record script completion: " . $record_e->getMessage());
                 }

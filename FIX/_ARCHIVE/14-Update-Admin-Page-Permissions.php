@@ -53,7 +53,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
     // Debug logging using UserSpice logger
     global $user;
     $userId = $user->isLoggedIn() ? $user->data()->id : 0;
-    logger($userId, "FIX_SCRIPT", "Processing action: " . $action);
+    logger($userId, LogCategories::LOG_CATEGORY_FIX_SCRIPT, "Processing action: " . $action);
 
     try {
         switch ($action) {
@@ -65,9 +65,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
             case 'process_page':
                 $page = $_POST['page'] ?? '';
                 $title = $_POST['title'] ?? '';
-                logger($userId, "FIX_SCRIPT_DEBUG", "Processing page: {$page}, title: {$title}");
+                logger($userId, LogCategories::LOG_CATEGORY_FIX_SCRIPT, "Processing page: {$page}, title: {$title}");
                 $result = processPagePermissions($page, $title);
-                logger($userId, "FIX_SCRIPT_DEBUG", "Result: " . json_encode($result));
+                logger($userId, LogCategories::LOG_CATEGORY_FIX_SCRIPT, "Result: " . json_encode($result));
                 echo json_encode($result);
                 break;
 
@@ -80,7 +80,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                 echo json_encode(['success' => false, 'message' => 'Unknown action']);
         }
     } catch (Exception $e) {
-        logger($userId, "FIX_SCRIPT_ERROR", "Error: " . $e->getMessage(), $e->getTraceAsString());
+        logger($userId, LogCategories::LOG_CATEGORY_FIX_SCRIPT, "Error: " . $e->getMessage(), $e->getTraceAsString());
         echo json_encode(['success' => false, 'message' => $e->getMessage(), 'trace' => $e->getTraceAsString()]);
     }
     exit;
@@ -534,9 +534,9 @@ function scanAdminPages(): array {
     $baseDir = rtrim($baseDir, '/');
     $adminDir = $baseDir . '/app/admin';
 
-    logger($userId, "FIX_SCRIPT_DEBUG", "Base dir: " . $baseDir);
-    logger($userId, "FIX_SCRIPT_DEBUG", "Admin dir: " . $adminDir);
-    logger($userId, "FIX_SCRIPT_DEBUG", "Admin dir exists: " . (is_dir($adminDir) ? 'YES' : 'NO'));
+    logger($userId, LogCategories::LOG_CATEGORY_FIX_SCRIPT, "Base dir: " . $baseDir);
+    logger($userId, LogCategories::LOG_CATEGORY_FIX_SCRIPT, "Admin dir: " . $adminDir);
+    logger($userId, LogCategories::LOG_CATEGORY_FIX_SCRIPT, "Admin dir exists: " . (is_dir($adminDir) ? 'YES' : 'NO'));
 
     if (!is_dir($adminDir)) {
         throw new Exception("Admin directory not found: {$adminDir}");
@@ -550,7 +550,7 @@ function scanAdminPages(): array {
     $fileCount = 0;
     foreach ($iterator as $file) {
         $fileCount++;
-        logger($userId, "FIX_SCRIPT_DEBUG", "Found file: " . $file->getPathname());
+        logger($userId, LogCategories::LOG_CATEGORY_FIX_SCRIPT, "Found file: " . $file->getPathname());
 
         if ($file->isFile() && $file->getExtension() === 'php') {
             // Get path relative to project root
@@ -560,7 +560,7 @@ function scanAdminPages(): array {
 
             // Skip class files (not actual web pages)
             if (strpos($relativePath, '/classes/') !== false) {
-                logger($userId, "FIX_SCRIPT_DEBUG", "Skipping class file: " . $relativePath);
+                logger($userId, LogCategories::LOG_CATEGORY_FIX_SCRIPT, "Skipping class file: " . $relativePath);
                 continue;
             }
 
@@ -568,12 +568,12 @@ function scanAdminPages(): array {
                 'file' => $relativePath,
                 'title' => generatePageTitle($relativePath)
             ];
-            logger($userId, "FIX_SCRIPT_DEBUG", "Added page: " . $relativePath);
+            logger($userId, LogCategories::LOG_CATEGORY_FIX_SCRIPT, "Added page: " . $relativePath);
         }
     }
 
-    logger($userId, "FIX_SCRIPT_DEBUG", "Total files found: " . $fileCount);
-    logger($userId, "FIX_SCRIPT_DEBUG", "PHP pages added: " . count($pages));
+    logger($userId, LogCategories::LOG_CATEGORY_FIX_SCRIPT, "Total files found: " . $fileCount);
+    logger($userId, LogCategories::LOG_CATEGORY_FIX_SCRIPT, "PHP pages added: " . count($pages));
 
     return $pages;
 }

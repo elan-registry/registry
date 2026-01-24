@@ -364,7 +364,7 @@ $line = 1; // Where messages go
                     outputMessage($line++, "");
                     
                     // Log the backup failure
-                    logger($user->data()->id, 'DatabaseError', "Column standardization backup failed: " . $e->getMessage() . " (Issue #Phase2)");
+                    logger($user->data()->id, LogCategories::LOG_CATEGORY_DATABASE_ERROR, "Column standardization backup failed: " . $e->getMessage() . " (Issue #Phase2)");
                     goto script_end;
                 }
 
@@ -402,7 +402,7 @@ $line = 1; // Where messages go
                         outputMessage($line++, "🛑 No migration needed - database is already standardized");
                         
                         // Log that migration was already completed
-                        logger($user->data()->id, 'DatabaseMigration', "Column standardization skipped - migration already completed (Issue #Phase2)");
+                        logger($user->data()->id, LogCategories::LOG_CATEGORY_DATABASE_MAINTENANCE, "Column standardization skipped - migration already completed (Issue #Phase2)");
                         goto script_end;
                     }
                     
@@ -429,7 +429,7 @@ $line = 1; // Where messages go
                         outputMessage($line++, "🛑 No migration needed - database is already standardized");
                         
                         // Log that migration was already completed
-                        logger($user->data()->id, 'DatabaseMigration', "Column standardization skipped - migration already completed (Issue #Phase2)");
+                        logger($user->data()->id, LogCategories::LOG_CATEGORY_DATABASE_MAINTENANCE, "Column standardization skipped - migration already completed (Issue #Phase2)");
                         goto script_end;
                     }
                     
@@ -456,7 +456,7 @@ $line = 1; // Where messages go
                     outputMessage($line++, "");
                     
                     // Log the validation failure
-                    logger($user->data()->id, 'DatabaseError', "Column standardization pre-validation failed: " . $e->getMessage() . " (Issue #Phase2)");
+                    logger($user->data()->id, LogCategories::LOG_CATEGORY_DATABASE_ERROR, "Column standardization pre-validation failed: " . $e->getMessage() . " (Issue #Phase2)");
                     goto script_end;
                 }
 
@@ -493,7 +493,7 @@ $line = 1; // Where messages go
                         outputMessage($line++, "🔄 Transaction rolled back - no changes made");
                         
                         // Log the migration failure
-                        logger($user->data()->id, 'DatabaseError', "Column standardization migration failed: " . $e->getMessage() . " (Issue #Phase2)");
+                        logger($user->data()->id, LogCategories::LOG_CATEGORY_DATABASE_ERROR, "Column standardization migration failed: " . $e->getMessage() . " (Issue #Phase2)");
                     } catch (Exception $rollbackError) {
                         outputMessage($line++, "🚨 CRITICAL: Rollback failed - manual intervention required");
                     }
@@ -583,13 +583,13 @@ try {
                 outputMessage($line++, "✅ Migration process completed in {$executionTime} seconds");
 
                 // Log the completion action with summary
-                logger($user->data()->id, 'DatabaseMigration', "Column standardization completed - Tables migrated: {$global_successes}/{$global_attempts} in {$executionTime}s (Issue #Phase2)");
+                logger($user->data()->id, LogCategories::LOG_CATEGORY_DATABASE_MAINTENANCE, "Column standardization completed - Tables migrated: {$global_successes}/{$global_attempts} in {$executionTime}s (Issue #Phase2)");
 
                 // Record script completion
                 try {
                     $db->query("INSERT INTO fix_script_runs (script_name) VALUES (?)", [basename(__FILE__)]);
                     outputMessage($line++, "✅ Script completion recorded");
-                    logger($user->data()->id, 'SystemMaintenance', "FIX script completed: " . basename(__FILE__));
+                    logger($user->data()->id, LogCategories::LOG_CATEGORY_FIX_SCRIPT, "FIX script completed: " . basename(__FILE__));
                 } catch (Exception $record_e) {
                     outputMessage($line++, "⚠️  Could not record script completion: " . $record_e->getMessage());
                 }

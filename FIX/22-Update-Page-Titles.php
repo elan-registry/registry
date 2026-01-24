@@ -41,7 +41,7 @@ if (!securePage($_SERVER['PHP_SELF'])) {
 // Set up custom error handler to log through UserSpice logger
 set_error_handler(function($errno, $errstr, $errfile, $errline) {
     if ($errno !== E_DEPRECATED) {
-        logger(isset($user) ? $user->data()->id : 0, 'PageTitleUpdate', "Error [$errno]: $errstr in $errfile:$errline");
+        logger(isset($user) ? $user->data()->id : 0, LogCategories::LOG_CATEGORY_FIX_SCRIPT, "Error [$errno]: $errstr in $errfile:$errline");
     }
     return true;
 });
@@ -233,17 +233,17 @@ function extractPageHeading(string $pagePath): string {
                                 if (!empty($heading)) {
                                     $results['updated']++;
                                     logProgress("✓ {$page->page} → \"{$heading}\"", 'success');
-                                    logger($user->data()->id, 'PageTitleUpdate', "Updated title for {$page->page}: {$heading}");
+                                    logger($user->data()->id, LogCategories::LOG_CATEGORY_FIX_SCRIPT, "Updated title for {$page->page}: {$heading}");
                                 } else {
                                     $results['skipped']++;
                                     logProgress("→ {$page->page} (title empty)", 'info');
-                                    logger($user->data()->id, 'PageTitleUpdate', "Processed {$page->page} - no heading extracted");
+                                    logger($user->data()->id, LogCategories::LOG_CATEGORY_FIX_SCRIPT, "Processed {$page->page} - no heading extracted");
                                 }
 
                             } catch (Exception $e) {
                                 $results['errors']++;
                                 logProgress("✗ {$page->page}: " . $e->getMessage(), 'error');
-                                logger($user->data()->id, 'PageTitleUpdateError', "Failed to update {$page->page}: " . $e->getMessage());
+                                logger($user->data()->id, LogCategories::LOG_CATEGORY_FIX_SCRIPT, "Failed to update {$page->page}: " . $e->getMessage());
                             }
                         }
 
@@ -253,7 +253,7 @@ function extractPageHeading(string $pagePath): string {
                             'completed_at' => date('Y-m-d H:i:s')
                         ]);
 
-                        logger($user->data()->id, 'DatabaseMaintenance',
+                        logger($user->data()->id, LogCategories::LOG_CATEGORY_DATABASE_MAINTENANCE,
                             "Page titles updated - Processed: {$results['processed']}, Updated: {$results['updated']}, Skipped: {$results['skipped']}, Errors: {$results['errors']}");
 
                         // Display summary
@@ -272,7 +272,7 @@ function extractPageHeading(string $pagePath): string {
 
                     } catch (Exception $e) {
                         logProgress('FATAL ERROR: ' . $e->getMessage(), 'error');
-                        logger($user->data()->id, 'PageTitleUpdateError', 'Fatal error: ' . $e->getMessage());
+                        logger($user->data()->id, LogCategories::LOG_CATEGORY_FIX_SCRIPT, 'Fatal error: ' . $e->getMessage());
                     }
 
                     ?></pre>

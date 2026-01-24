@@ -391,7 +391,7 @@ $line = 1; // Where messages go
                     echo "<script>showCompletionSummary(`$final_stats`);</script>";
 
                     // Log final completion
-                    logger($user->data()->id, 'ThumbnailOptimization', "Thumbnail optimization completed (batched) - Total Processed: {$cumulative_processed}, Generated: {$cumulative_generated}, Removed: {$cumulative_removed}, Errors: {$cumulative_errors} (Issue #303)");
+                    logger($user->data()->id, LogCategories::LOG_CATEGORY_FIX_SCRIPT, "Thumbnail optimization completed (batched) - Total Processed: {$cumulative_processed}, Generated: {$cumulative_generated}, Removed: {$cumulative_removed}, Errors: {$cumulative_errors} (Issue #303)");
                     exit;
                 }
 
@@ -545,7 +545,7 @@ $line = 1; // Where messages go
                         ]);
 
                         // Log this batch completion
-                        logger($user->data()->id, 'ThumbnailOptimization', "Batch completed - Batch: " . (floor($offset / $batch_size) + 1) . ", Cars: {$global_processed}, Generated: {$global_generated}, Removed: {$global_removed}, Errors: {$global_errors} (Issue #303)");
+                        logger($user->data()->id, LogCategories::LOG_CATEGORY_FIX_SCRIPT, "Batch completed - Batch: " . (floor($offset / $batch_size) + 1) . ", Cars: {$global_processed}, Generated: {$global_generated}, Removed: {$global_removed}, Errors: {$global_errors} (Issue #303)");
 
                         // Auto-redirect to next batch after 2 seconds
                         echo "<script>
@@ -562,7 +562,7 @@ $line = 1; // Where messages go
                     outputMessage("✅ All batches completed! Thumbnail optimization finished!");
 
                     // Log the final completion
-                    logger($user->data()->id, 'ThumbnailOptimization', "Thumbnail optimization completed (batched) - Total Processed: {$cumulative_processed}, Generated: {$cumulative_generated}, Removed: {$cumulative_removed}, Errors: {$cumulative_errors} (Issue #303)");
+                    logger($user->data()->id, LogCategories::LOG_CATEGORY_FIX_SCRIPT, "Thumbnail optimization completed (batched) - Total Processed: {$cumulative_processed}, Generated: {$cumulative_generated}, Removed: {$cumulative_removed}, Errors: {$cumulative_errors} (Issue #303)");
 
                 } catch (Exception $e) {
                     // Update cumulative counters even if there's an error
@@ -598,10 +598,10 @@ $line = 1; // Where messages go
                             </button>
                         </div>";
 
-                        logger($user->data()->id, 'ThumbnailOptimization', "Batch timeout - Batch: " . (floor($offset / $batch_size) + 1) . ", Partial progress saved. Resume URL available. (Issue #303)");
+                        logger($user->data()->id, LogCategories::LOG_CATEGORY_FIX_SCRIPT, "Batch timeout - Batch: " . (floor($offset / $batch_size) + 1) . ", Partial progress saved. Resume URL available. (Issue #303)");
                     } else {
                         outputMessage("Processing aborted - partial changes may have been made");
-                        logger($user->data()->id, 'ThumbnailOptimization', "Thumbnail optimization failed: " . $e->getMessage() . " (Issue #303)");
+                        logger($user->data()->id, LogCategories::LOG_CATEGORY_FIX_SCRIPT, "Thumbnail optimization failed: " . $e->getMessage() . " (Issue #303)");
                     }
                 }
 

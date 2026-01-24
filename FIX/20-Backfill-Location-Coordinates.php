@@ -34,7 +34,6 @@ declare(strict_types=1);
 
 // UI Constants for progress output
 define('SECTION_SEPARATOR', '═══════════════════════════════════════════════════════');
-define('LOG_CATEGORY', 'DatabaseMaintenance');
 
 require_once '../users/init.php';
 require_once $abs_us_root . $us_url_root . 'users/includes/template/prep.php';
@@ -47,7 +46,7 @@ if (!securePage($_SERVER['PHP_SELF'])) {
 set_error_handler(function($errno, $errstr, $errfile, $errline) {
     global $user;
     if ($errno !== E_DEPRECATED) {
-        logger(isset($user) ? $user->data()->id : 0, LOG_CATEGORY, "Error [$errno]: $errstr in $errfile:$errline");
+        logger(isset($user) ? $user->data()->id : 0, LogCategories::LOG_CATEGORY_DATABASE_MAINTENANCE, "Error [$errno]: $errstr in $errfile:$errline");
     }
     return true;
 });
@@ -247,7 +246,7 @@ if (!class_exists('LocationService')) {
 
                             $backupPath = $backupManager->createSchemaBackup('Location Coordinate Backfill', ['profiles', 'cars']);
                             logProgress('Backup created: ' . basename($backupPath), 'success');
-                            logger($user->data()->id, LOG_CATEGORY, "Backup created before coordinate backfill: {$backupPath}");
+                            logger($user->data()->id, LogCategories::LOG_CATEGORY_DATABASE_MAINTENANCE, "Backup created before coordinate backfill: {$backupPath}");
                             $backup_created = 1;
                             logProgress('', 'info');
                         }
@@ -575,7 +574,7 @@ if (!class_exists('LocationService')) {
                             logProgress("⚠️ Could not log to fix_script_runs: " . $e->getMessage(), 'warning');
                         }
 
-                        logger((int)$user->data()->id, LOG_CATEGORY,
+                        logger((int)$user->data()->id, LogCategories::LOG_CATEGORY_DATABASE_MAINTENANCE,
                             "Location migration completed - Profiles: {$cumulative_profiles_checked} checked, {$cumulative_profiles_updated} updated, {$cumulative_profiles_skipped} skipped | Cars: {$cumulative_cars_updated} synced | Errors: {$cumulative_geocoding_errors} | API Calls: {$cumulative_api_calls}");
 
                         // Display summary
@@ -601,7 +600,7 @@ if (!class_exists('LocationService')) {
 
                     } catch (Exception $e) {
                         logProgress('FATAL ERROR: ' . $e->getMessage(), 'error');
-                        logger($user->data()->id, LOG_CATEGORY, 'Fatal error during coordinate backfill: ' . $e->getMessage());
+                        logger($user->data()->id, LogCategories::LOG_CATEGORY_DATABASE_MAINTENANCE, 'Fatal error during coordinate backfill: ' . $e->getMessage());
                     }
 
                     ?></pre>

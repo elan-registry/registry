@@ -465,7 +465,7 @@ $line = 1; // Where messages go
                         outputMessage($line++, "✅ All database objects are clean of username references");
 
                         // Log successful verification
-                        logger($user->data()->id, 'DatabaseMaintenance', "Username field removal verification passed (Issue #319)");
+                        logger($user->data()->id, LogCategories::LOG_CATEGORY_DATABASE_MAINTENANCE, "Username field removal verification passed (Issue #319)");
                     } else {
                         outputMessage($line++, "❌ VERIFICATION FAILED - Issues detected:");
                         foreach ($issues as $issue) {
@@ -473,14 +473,14 @@ $line = 1; // Where messages go
                         }
 
                         // Log verification failure
-                        logger($user->data()->id, 'DatabaseMaintenance', "Username field removal verification failed - " . count($issues) . " issues detected (Issue #319)");
+                        logger($user->data()->id, LogCategories::LOG_CATEGORY_DATABASE_MAINTENANCE, "Username field removal verification failed - " . count($issues) . " issues detected (Issue #319)");
                     }
 
                     // Record script completion
                     try {
                         $db->query("INSERT INTO fix_script_runs (script_name) VALUES (?)", [basename(__FILE__)]);
                         outputMessage($line++, "✅ Verification results recorded");
-                        logger($user->data()->id, 'SystemMaintenance', "FIX script completed: " . basename(__FILE__));
+                        logger($user->data()->id, LogCategories::LOG_CATEGORY_FIX_SCRIPT, "FIX script completed: " . basename(__FILE__));
                     } catch (Exception $record_e) {
                         outputMessage($line++, "⚠️  Could not record verification results: " . $record_e->getMessage());
                     }
@@ -490,7 +490,7 @@ $line = 1; // Where messages go
                     outputMessage($line++, "Verification aborted");
 
                     // Log the error
-                    logger($user->data()->id, 'DatabaseError', "Username field verification failed: " . $e->getMessage() . " (Issue #319)");
+                    logger($user->data()->id, LogCategories::LOG_CATEGORY_DATABASE_ERROR, "Username field verification failed: " . $e->getMessage() . " (Issue #319)");
                 }
 
                 outputMessage($line++, "");

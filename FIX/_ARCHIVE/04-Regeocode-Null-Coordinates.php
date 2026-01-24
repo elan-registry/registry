@@ -650,13 +650,13 @@ function displayFinalStatistics($carAttempts, $carSuccesses, $profileAttempts, $
     if ($totalSuccesses > 0) {
         outputMessage($line++, "✅ Successfully updated $totalSuccesses coordinate records");
         // Log the completion action with summary
-        logger($user->data()->id, 'DatabaseMaintenance', "Re-geocoding completed - Updated: {$totalSuccesses}/{$totalAttempts} coordinates");
+        logger($user->data()->id, LogCategories::LOG_CATEGORY_DATABASE_MAINTENANCE, "Re-geocoding completed - Updated: {$totalSuccesses}/{$totalAttempts} coordinates");
     } else if ($totalAttempts > 0) {
         outputMessage($line++, "⚠️  No coordinates were successfully updated");
-        logger($user->data()->id, 'DatabaseMaintenance', "Re-geocoding completed - No coordinates updated from {$totalAttempts} attempts");
+        logger($user->data()->id, LogCategories::LOG_CATEGORY_DATABASE_MAINTENANCE, "Re-geocoding completed - No coordinates updated from {$totalAttempts} attempts");
     } else {
         outputMessage($line++, "ℹ️  No records required re-geocoding");
-        logger($user->data()->id, 'DatabaseMaintenance', "Re-geocoding completed - No records required geocoding");
+        logger($user->data()->id, LogCategories::LOG_CATEGORY_DATABASE_MAINTENANCE, "Re-geocoding completed - No records required geocoding");
     }
 
     // Record script completion
@@ -664,7 +664,7 @@ function displayFinalStatistics($carAttempts, $carSuccesses, $profileAttempts, $
         global $db, $user;
         $db->query("INSERT INTO fix_script_runs (script_name) VALUES (?)", [basename(__FILE__)]);
         outputMessage($line++, "✓ Script completion recorded");
-        logger($user->data()->id, 'SystemMaintenance', "FIX script completed: " . basename(__FILE__));
+        logger($user->data()->id, LogCategories::LOG_CATEGORY_FIX_SCRIPT, "FIX script completed: " . basename(__FILE__));
     } catch (Exception) {
         // Create table if it doesn't exist
         try {

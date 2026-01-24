@@ -439,13 +439,13 @@ $line = 1; // Where messages go
                     try {
                         $db->query("INSERT INTO fix_script_runs (script_name) VALUES (?)", [basename(__FILE__)]);
                         outputMessage($line++, "✅ Script completion recorded");
-                        logger($user->data()->id, 'SystemMaintenance', "FIX script completed: " . basename(__FILE__));
+                        logger($user->data()->id, LogCategories::LOG_CATEGORY_FIX_SCRIPT, "FIX script completed: " . basename(__FILE__));
                     } catch (Exception $record_e) {
                         outputMessage($line++, "⚠️  Could not record script completion: " . $record_e->getMessage());
                     }
 
                     // Log the completion action with summary
-                    logger($user->data()->id, 'DatabaseMaintenance', "Duplicate history removal completed - Removed: {$global_successes}/{$global_attempts} records (Issue #202)");
+                    logger($user->data()->id, LogCategories::LOG_CATEGORY_DATABASE_MAINTENANCE, "Duplicate history removal completed - Removed: {$global_successes}/{$global_attempts} records (Issue #202)");
 
                     outputMessage($line++, "✅ Duplicate Removal completed successfully!");
 
@@ -454,7 +454,7 @@ $line = 1; // Where messages go
                     outputMessage($line++, "Processing aborted - no changes made");
                     
                     // Log the error
-                    logger($user->data()->id, 'DatabaseError', "Duplicate history removal failed: " . $e->getMessage() . " (Issue #202)");
+                    logger($user->data()->id, LogCategories::LOG_CATEGORY_DATABASE_ERROR, "Duplicate history removal failed: " . $e->getMessage() . " (Issue #202)");
                 }
 
                 outputMessage($line++, "");
