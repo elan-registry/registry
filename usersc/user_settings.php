@@ -58,7 +58,7 @@ if ($userQ->count() > 0) {
     $state = (string)$profiledetails->state;
     $country = (string)$profiledetails->country;
 } else {
-    logger((int)$user->data()->id, "User", "USER_SETTING(59) something is wrong with the user profile ");
+    logger((int)$user->data()->id, LogCategories::LOG_CATEGORY_USER, "USER_SETTING(59) something is wrong with the user profile ");
 }
 
 // Get the country list
@@ -97,7 +97,7 @@ if (!empty($_POST)) {
                 }
                 $db->update('users', $userId, $fields);
                 $successes[] = 'Username updated.';
-                logger((int)$user->data()->id, 'User', 'Changed username from $userdetails->username to $displayname.');
+                logger((int)$user->data()->id, LogCategories::LOG_CATEGORY_USER, 'Changed username from $userdetails->username to $displayname.');
             } else {
                 //validation did not pass
                 foreach ($validation->errors() as $error) {
@@ -122,7 +122,7 @@ if (!empty($_POST)) {
             if ($validation->passed()) {
                 $db->update('users', $userId, $fields);
                 $successes[] = 'First name updated.';
-                logger((int)$user->data()->id, 'User', "Changed fname from $userdetails->fname to $fname.");
+                logger((int)$user->data()->id, LogCategories::LOG_CATEGORY_USER, "Changed fname from $userdetails->fname to $fname.");
             } else {
                 //validation did not pass
                 foreach ($validation->errors() as $error) {
@@ -147,7 +147,7 @@ if (!empty($_POST)) {
             if ($validation->passed()) {
                 $db->update('users', $userId, $fields);
                 $successes[] = 'Last name updated.';
-                logger((int)$user->data()->id, 'User', "Changed lname from $userdetails->lname to $lname.");
+                logger((int)$user->data()->id, LogCategories::LOG_CATEGORY_USER, "Changed lname from $userdetails->lname to $lname.");
             } else {
                 //validation did not pass
                 foreach ($validation->errors() as $error) {
@@ -230,7 +230,7 @@ if (!empty($_POST)) {
                 ];
 
                 $successes[] = 'Location updated successfully.';
-                logger((int)$user->data()->id, 'User', "Updated location to: $city, $state, $country" .
+                logger((int)$user->data()->id, LogCategories::LOG_CATEGORY_USER, "Updated location to: $city, $state, $country" .
                     (isset($locationFields['lat']) ? " ({$locationFields['lat']}, {$locationFields['lon']})" : ''));
             } else {
                 // Validation did not pass
@@ -252,7 +252,7 @@ if (!empty($_POST)) {
         // Sync location to user's cars if coordinates are available
         if (!empty($geoResult) && isset($geoResult['lat']) && isset($geoResult['lon'])) {
             $successes[] = 'Lat/Lon updated.';
-            logger((int)$user->data()->id, 'User', 'Successfully updated lat/lon: ' . json_encode($geoResult));
+            logger((int)$user->data()->id, LogCategories::LOG_CATEGORY_USER, 'Successfully updated lat/lon: ' . json_encode($geoResult));
             
             // BUGFIX #193: Sync location to all cars owned by this user
             $userCarsQuery = $db->query("SELECT id FROM cars WHERE user_id = ?", [$userId]);
@@ -285,11 +285,11 @@ if (!empty($_POST)) {
                 
                 if ($carsUpdated > 0) {
                     $successes[] = "Location synchronized to $carsUpdated car(s).";
-                    logger((int)$user->data()->id, 'User', "Location sync: Updated $carsUpdated cars with new coordinates");
+                    logger((int)$user->data()->id, LogCategories::LOG_CATEGORY_USER, "Location sync: Updated $carsUpdated cars with new coordinates");
                 }
             }
         } else {
-            logger((int)$user->data()->id, 'User', 'Geocoding failed - preserving existing lat/lon coordinates');
+            logger((int)$user->data()->id, LogCategories::LOG_CATEGORY_USER, 'Geocoding failed - preserving existing lat/lon coordinates');
         }
 
         //Update Website
@@ -304,7 +304,7 @@ if (!empty($_POST)) {
             if (filter_var($fields['website'], FILTER_VALIDATE_URL)) {
                 $db->update('profiles', $profileId, $fields);
                 $successes[] = 'website updated.';
-                logger((int)$user->data()->id, 'User', "Changed website from $profiledetails->website to $website.");
+                logger((int)$user->data()->id, LogCategories::LOG_CATEGORY_USER, "Changed website from $profiledetails->website to $website.");
             } else {
                 //validation did not pass
                 $errors[] = 'The provided website URL is not valid';
@@ -339,7 +339,7 @@ if (!empty($_POST)) {
                             if ($emailR->email_act == 0) {
                                 $db->update('users', $userId, $fields);
                                 $successes[] = 'Email updated.';
-                                logger((int)$user->data()->id, 'User', "Changed email from $userdetails->email to $email.");
+                                logger((int)$user->data()->id, LogCategories::LOG_CATEGORY_USER, "Changed email from $userdetails->email to $email.");
                             }
                             if ($emailR->email_act == 1) {
                                 $vericode = randomstring(15);
@@ -362,7 +362,7 @@ if (!empty($_POST)) {
                                     $successes[] = 'Email request received. Please check your email to perform verification. Be sure to check your Spam and Junk folder as the verification link expires in $settings->join_vericode_expiry hours.';
                                 }
                                 if ($emailR->email_act == 1) {
-                                    logger((int)$user->data()->id, 'User', "Requested change email from $userdetails->email to $email. Verification email sent.");
+                                    logger((int)$user->data()->id, LogCategories::LOG_CATEGORY_USER, "Requested change email from $userdetails->email to $email. Verification email sent.");
                                 }
                             }
                         } else {
@@ -399,7 +399,7 @@ if (!empty($_POST)) {
                         $new_password_hash = password_hash(Input::get('password'), PASSWORD_BCRYPT, ['cost' => 12]);
                         $user->update(['password' => $new_password_hash, 'force_pr' => 0, 'vericode' => randomstring(15),], $user->data()->id);
                         $successes[] = 'Password updated.';
-                        logger((int)$user->data()->id, 'User', 'Updated password.');
+                        logger((int)$user->data()->id, LogCategories::LOG_CATEGORY_USER, 'Updated password.');
                         if ($settings->session_manager == 1) {
                             $passwordResetKillSessions = passwordResetKillSessions();
                             if (is_numeric($passwordResetKillSessions)) {
@@ -421,7 +421,7 @@ if (!empty($_POST)) {
                 }
                 if (!empty($_POST['resetPin']) && Input::get('resetPin') == 1) {
                     $user->update(['pin' => null]);
-                    logger((int)$user->data()->id, 'User', 'Reset PIN');
+                    logger((int)$user->data()->id, LogCategories::LOG_CATEGORY_USER, 'Reset PIN');
                     $successes[] = 'Reset PIN';
                     $successes[] = 'You can set a new PIN the next time you require verification';
                 }

@@ -29,7 +29,7 @@ if (!empty($_GET)) {
     // Validate that car exists
     if (!$car->exists()) {
         // Log car not found error
-        logger($user->data()->id ?? 0, 'ValidationError', "Car details requested for non-existent car ID: $carID");
+        logger($user->data()->id ?? 0, LogCategories::LOG_CATEGORY_VALIDATION_ERROR, "Car details requested for non-existent car ID: $carID");
         // Redirect to list if car not found
         Redirect::to($us_url_root . '/app/cars/index.php');
     }
@@ -49,7 +49,7 @@ if (!empty($_GET)) {
         try {
             $purchaseDate = new DateTime($carData->purchasedate);
         } catch (Exception $e) {
-            logger($user->data()->id ?? 0, 'SystemError', "Invalid purchase date format for car ID $carID: " . $carData->purchasedate);
+            logger($user->data()->id ?? 0, LogCategories::LOG_CATEGORY_SYSTEM_ERROR, "Invalid purchase date format for car ID $carID: " . $carData->purchasedate);
             $purchaseDate = null;
         }
     }
@@ -58,7 +58,7 @@ if (!empty($_GET)) {
         try {
             $soldDate = new DateTime($carData->solddate);
         } catch (Exception $e) {
-            logger($user->data()->id ?? 0, 'SystemError', "Invalid sold date format for car ID $carID: " . $carData->solddate);
+            logger($user->data()->id ?? 0, LogCategories::LOG_CATEGORY_SYSTEM_ERROR, "Invalid sold date format for car ID $carID: " . $carData->solddate);
             $soldDate = null;
         }
     }
@@ -67,14 +67,14 @@ if (!empty($_GET)) {
         try {
             $buildDate = new DateTime($factoryData->builddate);
         } catch (Exception $e) {
-            logger($user->data()->id ?? 0, 'SystemError', "Invalid build date format for car ID $carID: " . $factoryData->builddate);
+            logger($user->data()->id ?? 0, LogCategories::LOG_CATEGORY_SYSTEM_ERROR, "Invalid build date format for car ID $carID: " . $factoryData->builddate);
             $buildDate = null;
         }
     }
     
 } else {
     // Shouldn't be here unless someone is mangling the url
-    logger($user->data()->id ?? 0, 'ValidationError', 'Car details page accessed without car_id parameter');
+    logger($user->data()->id ?? 0, LogCategories::LOG_CATEGORY_VALIDATION_ERROR, 'Car details page accessed without car_id parameter');
     Redirect::to($us_url_root . '/app/cars/index.php');
 }
 ?>

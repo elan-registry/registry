@@ -182,7 +182,7 @@ function updateCar(array &$cardetails): void
             $errors[] = 'Update Car ERROR';
         }
     } catch (CarValidationException $e) {
-        logger($user->data()->id, 'ValidationError', 'Car Update Validation Error: ' . $e->getMessage());
+        logger($user->data()->id, LogCategories::LOG_CATEGORY_VALIDATION_ERROR, 'Car Update Validation Error: ' . $e->getMessage());
         $errors[] = 'Car Update Validation Error: ' . $e->getMessage();
     } catch (ElanRegistryException $e) {
         logger($user->data()->id, LogCategories::LOG_CATEGORY_CAR_ERRORS, 'Car Update Error: ' . $e->getMessage());
@@ -212,7 +212,7 @@ function addCar(array &$cardetails): void
             $errors[] = 'Car Create ERROR';
         }
     } catch (CarValidationException $e) {
-        logger($user->data()->id, 'ValidationError', 'Car Creation Validation Error: ' . $e->getMessage());
+        logger($user->data()->id, LogCategories::LOG_CATEGORY_VALIDATION_ERROR, 'Car Creation Validation Error: ' . $e->getMessage());
         $errors[] = 'Car Creation Validation Error: ' . $e->getMessage();
     } catch (ElanRegistryException $e) {
         logger($user->data()->id, LogCategories::LOG_CATEGORY_CAR_ERRORS, 'Car Creation Error: ' . $e->getMessage());
@@ -356,7 +356,7 @@ function updateChassis(array &$cardetails): void
         // Use centralized chassis validator
         $validatorPath = '../../../usersc/classes/ChassisValidator.php';
         if (!file_exists($validatorPath)) {
-            logger($user->data()->id, 'SystemError', 'ChassisValidator class file not found at: ' . realpath($validatorPath));
+            logger($user->data()->id, LogCategories::LOG_CATEGORY_SYSTEM_ERROR, 'ChassisValidator class file not found at: ' . realpath($validatorPath));
             $errors[] = 'ChassisValidator class file not found at: ' . realpath($validatorPath);
             return;
         }
@@ -569,7 +569,7 @@ function uploadImages(array &$cardetails): void
     if (!is_dir($filePath)) {
         // Create directory with secure permissions (755)
         if (!mkdir($filePath, 0755, true)) {
-            logger($user->data()->id, 'FileError', "Failed to create upload directory: " . $filePath);
+            logger($user->data()->id, LogCategories::LOG_CATEGORY_FILE_ERROR, "Failed to create upload directory: " . $filePath);
             throw new ImageProcessingException("Failed to create upload directory");
         }
     }
@@ -633,7 +633,7 @@ function uploadImages(array &$cardetails): void
                     $errors[] = "Photo failed to upload " . $name . " as " . $newFileName;
                     logger(
                         $user->data()->id,
-                        "FileError",
+                        LogCategories::LOG_CATEGORY_FILE_ERROR,
                         "ERROR: File upload failed for carId: " .
                             Input::get('car_id') . " File: " . $name . " Target: " . $newFileName
                     );
@@ -643,7 +643,7 @@ function uploadImages(array &$cardetails): void
                 $errors[] = "File upload rejected: " . $e->getMessage();
                 logger(
                     $user->data()->id,
-                    "FileError",
+                    LogCategories::LOG_CATEGORY_FILE_ERROR,
                     "SECURITY: File upload rejected for carId: " .
                         Input::get('car_id') . " File: " . $name . " Reason: " . $e->getMessage()
                 );

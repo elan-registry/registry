@@ -22,7 +22,7 @@ if (!empty($_GET['doc'])) {
         strpos($requested_doc, '/') !== false ||
         strpos($requested_doc, '\\') !== false ||
         strpos($requested_doc, 'http') === 0) {
-        logger(0, 'SecurityEvent', 'Invalid document path attempted: ' . $requested_doc);
+        logger(0, LogCategories::LOG_CATEGORY_SECURITY, 'Invalid document path attempted: ' . $requested_doc);
         $error_message = 'Invalid document path.';
     } else {
         // Sanitize the document name
@@ -33,7 +33,7 @@ if (!empty($_GET['doc'])) {
         $path_parts = pathinfo($document);
 
         if (!isset($path_parts['extension']) || !in_array($path_parts['extension'], $allowed_extensions)) {
-            logger(0, 'SecurityEvent', 'Invalid document type attempted: ' . $requested_doc);
+            logger(0, LogCategories::LOG_CATEGORY_SECURITY, 'Invalid document type attempted: ' . $requested_doc);
             $error_message = 'Invalid document type. Only PDF files are allowed.';
             $document = '';
         }
@@ -41,7 +41,7 @@ if (!empty($_GET['doc'])) {
         // Check if file actually exists
         $file_path = $abs_us_root . $us_url_root . 'docs/assets/' . $document;
         if (!empty($document) && !file_exists($file_path)) {
-            logger(0, 'SecurityEvent', 'Non-existent document requested: ' . $document);
+            logger(0, LogCategories::LOG_CATEGORY_SECURITY, 'Non-existent document requested: ' . $document);
             $error_message = 'Document not found.';
             $document = '';
         }

@@ -237,13 +237,13 @@ if (Input::exists()) {
                 include $abs_us_root.$us_url_root.'usersc/scripts/during_user_creation.php';
 
                 if ($act == 1 || $settings->no_passwords == 1) {
-                    logger($theNewId, 'User', 'Registration completed and verification email sent.');
+                    logger($theNewId, LogCategories::LOG_CATEGORY_USER, 'Registration completed and verification email sent.');
 
                     Redirect::to($us_url_root . "users/complete.php?action=thank_you_verify");
 
 
                 } else {
-                    logger($theNewId, 'User', 'Registration completed.');
+                    logger($theNewId, LogCategories::LOG_CATEGORY_USER, 'Registration completed.');
                     if (file_exists($abs_us_root.$us_url_root.'usersc/views/_joinThankYou.php')) {
 
                         Redirect::to($us_url_root . "users/complete.php?action=thank_you_join");

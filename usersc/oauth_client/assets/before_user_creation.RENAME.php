@@ -61,7 +61,7 @@ if (isset($responseData['tags']) && is_array($responseData['tags'])) {
 
 // Example: Log the attempt for security monitoring
 /*
-logger(1, "OAuth User Creation", "User creation attempt from: " . ($userData['email'] ?? 'unknown') . " via " . ($oSettings->client_name ?? 'OAuth'));
+logger(1, LogCategories::LOG_CATEGORY_OAUTH_CLIENT_REGISTRATION, "User creation attempt from: " . ($userData['email'] ?? 'unknown') . " via " . ($oSettings->client_name ?? 'OAuth'));
 */
 
 // Example: Set different default permission levels based on OAuth provider

@@ -89,15 +89,15 @@ try {
 
 } catch (DatabaseException $e) {
     // Log database-specific errors
-    logger($user->data()->id ?? 0, 'DatabaseError', 'Failed to fetch car data for map markers: ' . $e->getMessage());
+    logger($user->data()->id ?? 0, LogCategories::LOG_CATEGORY_DATABASE_ERROR, 'Failed to fetch car data for map markers: ' . $e->getMessage());
     echo '<?xml version="1.0" encoding="utf-8"?><markers></markers>';
 } catch (RuntimeException $e) {
     // Log runtime errors
-    logger($user->data()->id ?? 0, 'SystemError', 'Map markers data error: ' . $e->getMessage());
+    logger($user->data()->id ?? 0, LogCategories::LOG_CATEGORY_SYSTEM_ERROR, 'Map markers data error: ' . $e->getMessage());
     echo '<?xml version="1.0" encoding="utf-8"?><markers></markers>';
 } catch (Exception $e) {
     // Log unexpected errors with UserSpice logger integration
-    logger($user->data()->id ?? 0, 'SystemError', 'Map markers XML generation failed: ' . $e->getMessage());
+    logger($user->data()->id ?? 0, LogCategories::LOG_CATEGORY_SYSTEM_ERROR, 'Map markers XML generation failed: ' . $e->getMessage());
     echo '<?xml version="1.0" encoding="utf-8"?><markers></markers>';
 }
 

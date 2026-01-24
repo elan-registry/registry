@@ -18,7 +18,7 @@
   if($validation->passed()){
     $db->update('users',$userId,$fields);
     $successes[] = "First Name Updated";
-    logger($user->data()->id,"User Manager","Updated whatismyname for $userdetails->whatismyname from $userdetails->whatismyname to $whatismyname.");
+    logger($user->data()->id,LogCategories::LOG_CATEGORY_USER_MANAGER,"Updated whatismyname for $userdetails->whatismyname from $userdetails->whatismyname to $whatismyname.");
   }else{
     // Convert validation errors to UserSpice session messages (Issue #237)
     if (!empty($validation->errors())) {

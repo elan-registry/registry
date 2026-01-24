@@ -132,7 +132,7 @@ try {
 
     // Validate that we got a valid ID
     if ($transferRequestId <= 0) {
-        logger($user->data()->id, 'DatabaseError', "Failed to get transfer request ID from lastId()");
+        logger($user->data()->id, LogCategories::LOG_CATEGORY_DATABASE_ERROR, "Failed to get transfer request ID from lastId()");
         throw new CarTransferException('Failed to retrieve transfer request ID');
     }
 

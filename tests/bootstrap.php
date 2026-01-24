@@ -548,13 +548,13 @@ function mockUserDeletionCleanup($id) {
         $db->query('UPDATE cars SET user_id = ? WHERE user_id = ?', [$noOwnerUserId, $id]);
         
         // Log the cleanup for audit purposes
-        logger($id, 'UserDeletion', "Complete cleanup: reassigned $carCount cars to noowner user (ID: $noOwnerUserId)");
+        logger($id, LogCategories::LOG_CATEGORY_USER_DELETION, "Complete cleanup: reassigned $carCount cars to noowner user (ID: $noOwnerUserId)");
     } else {
         // Fallback if noowner doesn't exist
         $db->query('DELETE FROM profiles WHERE user_id = ?', [$id]);
         $db->query('DELETE FROM car_user WHERE userid = ?', [$id]);
         $db->query('UPDATE cars SET user_id = NULL WHERE user_id = ?', [$id]);
         
-        logger($id, 'UserDeletion', 'Fallback cleanup: noowner user not found, set cars to NULL');
+        logger($id, LogCategories::LOG_CATEGORY_USER_DELETION, 'Fallback cleanup: noowner user not found, set cars to NULL');
     }
 }

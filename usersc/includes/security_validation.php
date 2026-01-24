@@ -49,7 +49,7 @@ function validateRedirectParameter(string $redirect): string
     $redirect_lower = strtolower($redirect);
     foreach ($suspicious_patterns as $pattern) {
         if (strpos($redirect_lower, $pattern) !== false) {
-            logger(0, 'SecurityEvent', 'Suspicious redirect parameter blocked: ' . $redirect);
+            logger(0, LogCategories::LOG_CATEGORY_SECURITY, 'Suspicious redirect parameter blocked: ' . $redirect);
             return '';
         }
     }
@@ -72,7 +72,7 @@ function validateRedirectParameter(string $redirect): string
     }
 
     if (!$is_allowed) {
-        logger(0, 'SecurityEvent', 'Redirect to non-whitelisted path blocked: ' . $redirect);
+        logger(0, LogCategories::LOG_CATEGORY_SECURITY, 'Redirect to non-whitelisted path blocked: ' . $redirect);
         return '';
     }
 

@@ -83,7 +83,7 @@ class LocationGeocoder
     {
         // Input validation
         if (empty(trim($city)) || empty(trim($country))) {
-            logger(0, 'ValidationError', 'LocationGeocoder: City and country are required for geocoding');
+            logger(0, LogCategories::LOG_CATEGORY_VALIDATION_ERROR, 'LocationGeocoder: City and country are required for geocoding');
             return null;
         }
 
@@ -92,7 +92,7 @@ class LocationGeocoder
         $address = htmlspecialchars($address, ENT_QUOTES, 'UTF-8');
         $address = urlencode($address);
 
-        logger(0, 'Geocode', "LocationGeocoder: Attempting to geocode: {$address}");
+        logger(0, LogCategories::LOG_CATEGORY_GEOCODE, "LocationGeocoder: Attempting to geocode: {$address}");
 
         // Make API request
         $result = $this->makeApiRequest('address', $address);
@@ -106,7 +106,7 @@ class LocationGeocoder
         $lon = $result['results'][0]['geometry']['location']['lng'] ?? null;
 
         if ($lat === null || $lon === null) {
-            logger(0, 'Geocode', 'LocationGeocoder: API returned OK but coordinates are missing');
+            logger(0, LogCategories::LOG_CATEGORY_GEOCODE, 'LocationGeocoder: API returned OK but coordinates are missing');
             return null;
         }
 
@@ -114,7 +114,7 @@ class LocationGeocoder
         $lat = round($lat, $this->_decimalPlaces);
         $lon = round($lon, $this->_decimalPlaces);
 
-        logger(0, 'Geocode', "LocationGeocoder: Successfully geocoded to: {$lat}, {$lon}");
+        logger(0, LogCategories::LOG_CATEGORY_GEOCODE, "LocationGeocoder: Successfully geocoded to: {$lat}, {$lon}");
 
         return [
             'lat' => $lat,
@@ -133,12 +133,12 @@ class LocationGeocoder
     {
         // Input validation
         if ($lat < -90 || $lat > 90 || $lon < -180 || $lon > 180) {
-            logger(0, 'ValidationError', 'LocationGeocoder: Invalid coordinates for reverse geocoding');
+            logger(0, LogCategories::LOG_CATEGORY_VALIDATION_ERROR, 'LocationGeocoder: Invalid coordinates for reverse geocoding');
             return null;
         }
 
         $latlng = "{$lat},{$lon}";
-        logger(0, 'Geocode', "LocationGeocoder: Attempting reverse geocode: {$latlng}");
+        logger(0, LogCategories::LOG_CATEGORY_GEOCODE, "LocationGeocoder: Attempting reverse geocode: {$latlng}");
 
         // Make API request
         $result = $this->makeApiRequest('latlng', $latlng);
@@ -151,7 +151,7 @@ class LocationGeocoder
         $addressComponents = $result['results'][0]['address_components'] ?? [];
 
         if (empty($addressComponents)) {
-            logger(0, 'Geocode', 'LocationGeocoder: API returned OK but address components are missing');
+            logger(0, LogCategories::LOG_CATEGORY_GEOCODE, 'LocationGeocoder: API returned OK but address components are missing');
             return null;
         }
 
@@ -159,11 +159,11 @@ class LocationGeocoder
         $location = $this->parseAddressComponents($addressComponents);
 
         if ($location === null) {
-            logger(0, 'Geocode', 'LocationGeocoder: Failed to parse address components');
+            logger(0, LogCategories::LOG_CATEGORY_GEOCODE, 'LocationGeocoder: Failed to parse address components');
             return null;
         }
 
-        logger(0, 'Geocode', "LocationGeocoder: Successfully reverse geocoded to: {$location['city']}, {$location['state']}, {$location['country']}");
+        logger(0, LogCategories::LOG_CATEGORY_GEOCODE, "LocationGeocoder: Successfully reverse geocoded to: {$location['city']}, {$location['state']}, {$location['country']}");
 
         return $location;
     }
@@ -194,7 +194,7 @@ class LocationGeocoder
         $resp = json_decode($resp_json, true);
 
         if (json_last_error() !== JSON_ERROR_NONE) {
-            logger(0, 'Geocode', 'LocationGeocoder: JSON decode error: ' . json_last_error_msg());
+            logger(0, LogCategories::LOG_CATEGORY_GEOCODE, 'LocationGeocoder: JSON decode error: ' . json_last_error_msg());
             return null;
         }
 
@@ -204,7 +204,7 @@ class LocationGeocoder
             if (isset($resp['error_message'])) {
                 $error_msg .= ', error: ' . $resp['error_message'];
             }
-            logger(0, 'Geocode', $error_msg);
+            logger(0, LogCategories::LOG_CATEGORY_GEOCODE, $error_msg);
             return null;
         }
 
@@ -233,12 +233,12 @@ class LocationGeocoder
         curl_close($ch);
 
         if ($resp_json === false) {
-            logger(0, 'Geocode', 'LocationGeocoder: cURL request failed: ' . $curl_error);
+            logger(0, LogCategories::LOG_CATEGORY_GEOCODE, 'LocationGeocoder: cURL request failed: ' . $curl_error);
             return false;
         }
 
         if ($http_code !== 200) {
-            logger(0, 'Geocode', 'LocationGeocoder: HTTP error: ' . $http_code);
+            logger(0, LogCategories::LOG_CATEGORY_GEOCODE, 'LocationGeocoder: HTTP error: ' . $http_code);
             return false;
         }
 
@@ -264,7 +264,7 @@ class LocationGeocoder
         $resp_json = @file_get_contents($url, false, $context);
 
         if ($resp_json === false) {
-            logger(0, 'Geocode', 'LocationGeocoder: file_get_contents failed for geocoding request');
+            logger(0, LogCategories::LOG_CATEGORY_GEOCODE, 'LocationGeocoder: file_get_contents failed for geocoding request');
             return false;
         }
 

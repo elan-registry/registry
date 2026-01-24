@@ -90,7 +90,7 @@ class LocationService
 
         // Check rate limit
         if (!$this->checkRateLimit($userId)) {
-            logger($userId, 'LocationService', 'Rate limit exceeded for location search');
+            logger($userId, LogCategories::LOG_CATEGORY_LOCATION_SERVICE, 'Rate limit exceeded for location search');
             throw new LocationServiceException('Rate limit exceeded. Please try again in a moment.');
         }
 
@@ -110,7 +110,7 @@ class LocationService
                 return $results;
             }
         } catch (LocationServiceException $e) {
-            logger($userId, 'LocationService', 'Photon API failed: ' . $e->getMessage());
+            logger($userId, LogCategories::LOG_CATEGORY_LOCATION_SERVICE, 'Photon API failed: ' . $e->getMessage());
         }
 
         // Fallback to Nominatim
@@ -122,11 +122,11 @@ class LocationService
                 return $results;
             }
         } catch (LocationServiceException $e) {
-            logger($userId, 'LocationService', 'Nominatim API failed: ' . $e->getMessage());
+            logger($userId, LogCategories::LOG_CATEGORY_LOCATION_SERVICE, 'Nominatim API failed: ' . $e->getMessage());
         }
 
         // All services failed
-        logger($userId, 'LocationService', 'All location search services failed for query: ' . $query);
+        logger($userId, LogCategories::LOG_CATEGORY_LOCATION_SERVICE, 'All location search services failed for query: ' . $query);
         throw new LocationServiceException('Location search temporarily unavailable. Please try again later.');
     }
 
@@ -151,7 +151,7 @@ class LocationService
 
         // Check rate limit
         if (!$this->checkRateLimit($userId)) {
-            logger($userId, 'LocationService', 'Rate limit exceeded for reverse geocoding');
+            logger($userId, LogCategories::LOG_CATEGORY_LOCATION_SERVICE, 'Rate limit exceeded for reverse geocoding');
             throw new LocationServiceException('Rate limit exceeded. Please try again in a moment.');
         }
 
@@ -171,7 +171,7 @@ class LocationService
                 return $result;
             }
         } catch (LocationServiceException $e) {
-            logger($userId, 'LocationService', 'Nominatim reverse geocoding failed: ' . $e->getMessage());
+            logger($userId, LogCategories::LOG_CATEGORY_LOCATION_SERVICE, 'Nominatim reverse geocoding failed: ' . $e->getMessage());
             throw new LocationServiceException('Reverse geocoding temporarily unavailable. Please try again later.');
         }
 
