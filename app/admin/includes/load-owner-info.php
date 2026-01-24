@@ -259,7 +259,7 @@ try {
     <?php
 
 } catch (Exception $e) {
-    logger($user->data()->id, 'SystemError', 'Owner info load failed: ' . $e->getMessage());
+    logger($user->data()->id, LogCategories::LOG_CATEGORY_SYSTEM_ERROR, 'Owner info load failed: ' . $e->getMessage());
     echo '<div class="alert alert-danger">Failed to load owner information. Please try again.</div>';
 }
 ?>

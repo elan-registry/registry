@@ -156,15 +156,15 @@ if (Input::exists('post')) {
                     }
 
                     // Log the admin contact for audit trail
-                    logger($user->data()->id, "ElanRegistry", "Admin contact sent - Admin: {$fromEmail}, Owner: {$toEmail}, Car: {$carId}, Issue: {$qualityIssue}");
+                    logger($user->data()->id, LogCategories::LOG_CATEGORY_CAR_ACTIONS, "Admin contact sent - Admin: {$fromEmail}, Owner: {$toEmail}, Car: {$carId}, Issue: {$qualityIssue}");
                 } else {
                     $errors[] = 'Failed to send email. Please try again.';
-                    logger($user->data()->id, "ElanRegistry", "Failed admin contact email - Admin: {$fromEmail}, Owner: {$toEmail}");
+                    logger($user->data()->id, LogCategories::LOG_CATEGORY_CAR_ACTIONS, "Failed admin contact email - Admin: {$fromEmail}, Owner: {$toEmail}");
                 }
 
             } catch (RuntimeException | InvalidArgumentException $e) {
                 $errors[] = 'An error occurred while sending the message: ' . $e->getMessage();
-                logger($user->data()->id, "ElanRegistry", "Admin contact error: " . $e->getMessage());
+                logger($user->data()->id, LogCategories::LOG_CATEGORY_CAR_ACTIONS, "Admin contact error: " . $e->getMessage());
             }
         }
     } else {

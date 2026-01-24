@@ -30,7 +30,7 @@ if (Input::exists('get') && Input::get('code') && Input::get('action')) {
     // CSRF Protection: Validate token for state-changing operations
     if (!$token || !Token::check($token)) {
         echo "<h2>Security token validation failed</h2><br>";
-        logger(0, "Security", "CSRF token validation failed for car verification: " . $_SERVER['REQUEST_URI']);
+        logger(0, LogCategories::LOG_CATEGORY_SECURITY, "CSRF token validation failed for car verification: " . $_SERVER['REQUEST_URI']);
         header('refresh:5;url=' . $base_url . $us_url_root);
         exit;
     }
@@ -39,7 +39,7 @@ if (Input::exists('get') && Input::get('code') && Input::get('action')) {
     $carQ = $db->query('SELECT * FROM cars WHERE vericode = ?', [$code]);
     if ($db->count() != 1) {
         echo "<h2>Verification code not found or invalid</h2><br>";
-        logger(0, "Security", "Invalid verification code attempted: " . $code . " from IP: " . $_SERVER['REMOTE_ADDR']);
+        logger(0, LogCategories::LOG_CATEGORY_SECURITY, "Invalid verification code attempted: " . $code . " from IP: " . $_SERVER['REMOTE_ADDR']);
         header('refresh:5;url=' . $base_url . $us_url_root);
         exit;
     }
@@ -48,7 +48,7 @@ if (Input::exists('get') && Input::get('code') && Input::get('action')) {
     // Additional security: Check if verification code is not empty/null
     if (empty($car->vericode) || $car->vericode !== $code) {
         echo "<h2>Verification failed - security check</h2><br>";
-        logger($car->user_id, "Security", "Verification code security check failed for car ID: " . $car->id);
+        logger($car->user_id, LogCategories::LOG_CATEGORY_SECURITY, "Verification code security check failed for car ID: " . $car->id);
         header('refresh:5;url=' . $base_url . $us_url_root);
         exit;
     }
@@ -65,7 +65,7 @@ if (Input::exists('get') && Input::get('code') && Input::get('action')) {
             $db->update("cars_hist", $hist_id, ["operation" => "VERIFIED"]);
 
             // Log successful verification
-            logger($car->user_id, "Car Verification", "Car verified successfully - ID: " . $car->id . " Chassis: " . $car->chassis);
+            logger($car->user_id, LogCategories::LOG_CATEGORY_CAR_VERIFICATION, "Car verified successfully - ID: " . $car->id . " Chassis: " . $car->chassis);
 
             // Redirect to the car detail page
             $redirect = $base_url . $us_url_root . 'app/cars/details.php?car_id=' . $car->id;
@@ -73,9 +73,9 @@ if (Input::exists('get') && Input::get('code') && Input::get('action')) {
 
         case 'edit':
             $message = "<h3>Thank you for updating your car.  Taking you to the Login Screen where you can edit yor information...</h3>";
-            
+
             // Log edit request
-            logger($car->user_id, "Car Verification", "Car edit request via verification - ID: " . $car->id . " Chassis: " . $car->chassis);
+            logger($car->user_id, LogCategories::LOG_CATEGORY_CAR_VERIFICATION, "Car edit request via verification - ID: " . $car->id . " Chassis: " . $car->chassis);
             
             $redirect = $base_url . $us_url_root . 'usersc/account.php?';
             break;
@@ -90,7 +90,7 @@ if (Input::exists('get') && Input::get('code') && Input::get('action')) {
             $db->update("cars_hist", $hist_id, ["operation" => "VERIFIED SOLD", "comments" => "Owner reported car sold"]);
             
             // Log sold notification
-            logger($car->user_id, "Car Verification", "Car reported as sold via verification - ID: " . $car->id . " Chassis: " . $car->chassis);
+            logger($car->user_id, LogCategories::LOG_CATEGORY_CAR_VERIFICATION, "Car reported as sold via verification - ID: " . $car->id . " Chassis: " . $car->chassis);
             
             $redirect = $base_url . $us_url_root . 'app/cars/details.php?car_id=' . $car->id;
             break;

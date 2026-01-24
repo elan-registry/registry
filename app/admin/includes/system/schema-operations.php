@@ -117,7 +117,7 @@ try {
 
 } catch (Exception $e) {
     // Keep existing logger() call for detailed error logging
-    logger($user->data()->id ?? 0, 'SchemaOperationError',
+    logger($user->data()->id ?? 0, LogCategories::LOG_CATEGORY_SCHEMA_OPERATION_ERROR,
         'Schema operation failed: ' . $e->getMessage());
 
     ApiResponse::serverError('Schema operation failed: ' . $e->getMessage())

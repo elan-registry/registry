@@ -86,13 +86,13 @@ if (!function_exists('processSettingsAutoCreation')) {
             // Security: Validate field name to prevent SQL injection
             // 1. Must match safe identifier pattern
             if (!preg_match('/^[a-zA-Z_][a-zA-Z0-9_]*$/', $fieldName)) {
-                logger($user->data()->id ?? 0, 'SecurityError', "Invalid field name attempted: {$fieldName}");
+                logger($user->data()->id ?? 0, LogCategories::LOG_CATEGORY_SECURITY, "Invalid field name attempted: {$fieldName}");
                 continue;
             }
 
             // 2. Must exist in our whitelist of known fields
             if (!array_key_exists($fieldName, $allSettingsFields)) {
-                logger($user->data()->id ?? 0, 'SecurityError', "Field name not in whitelist: {$fieldName}");
+                logger($user->data()->id ?? 0, LogCategories::LOG_CATEGORY_SECURITY, "Field name not in whitelist: {$fieldName}");
                 continue;
             }
 
@@ -117,7 +117,7 @@ if (!function_exists('processSettingsAutoCreation')) {
                     }
                 }
             } catch (Exception $e) {
-                logger($user->data()->id ?? 0, 'SystemError', "Error checking field {$fieldName}: " . $e->getMessage());
+                logger($user->data()->id ?? 0, LogCategories::LOG_CATEGORY_SYSTEM_ERROR, "Error checking field {$fieldName}: " . $e->getMessage());
                 $fieldsToAdd[] = $fieldName;
             }
         }
@@ -129,7 +129,7 @@ if (!function_exists('processSettingsAutoCreation')) {
                     // Security: Re-validate field name (defense in depth)
                     if (!preg_match('/^[a-zA-Z_][a-zA-Z0-9_]*$/', $fieldName) ||
                         !array_key_exists($fieldName, $allSettingsFields)) {
-                        logger($user->data()->id ?? 0, 'SecurityError', "Invalid field name in fieldsToAdd: {$fieldName}");
+                        logger($user->data()->id ?? 0, LogCategories::LOG_CATEGORY_SECURITY, "Invalid field name in fieldsToAdd: {$fieldName}");
                         continue;
                     }
 
@@ -164,12 +164,12 @@ if (!function_exists('processSettingsAutoCreation')) {
                 }
 
                 if (!empty($fieldsToAdd)) {
-                    logger($user->data()->id, 'SettingsUpdate', 'Auto-created and populated settings fields: ' . implode(', ', $fieldsToAdd));
+                    logger($user->data()->id, LogCategories::LOG_CATEGORY_SETTINGS_UPDATE, 'Auto-created and populated settings fields: ' . implode(', ', $fieldsToAdd));
                     $messages[] = ['type' => 'success', 'message' => count($fieldsToAdd) . ' settings fields were automatically added and populated with default values.'];
                 }
             } catch (Exception $e) {
                 $messages[] = ['type' => 'danger', 'message' => 'Error creating settings fields: ' . $e->getMessage()];
-                logger($user->data()->id ?? 0, 'DatabaseError', 'Settings field creation failed: ' . $e->getMessage());
+                logger($user->data()->id ?? 0, LogCategories::LOG_CATEGORY_DATABASE_ERROR, 'Settings field creation failed: ' . $e->getMessage());
             }
         }
 
@@ -180,7 +180,7 @@ if (!function_exists('processSettingsAutoCreation')) {
                     // Security: Re-validate field name (defense in depth)
                     if (!preg_match('/^[a-zA-Z_][a-zA-Z0-9_]*$/', $fieldName) ||
                         !array_key_exists($fieldName, $allSettingsFields)) {
-                        logger($user->data()->id ?? 0, 'SecurityError', "Invalid field name in fieldsToPopulate: {$fieldName}");
+                        logger($user->data()->id ?? 0, LogCategories::LOG_CATEGORY_SECURITY, "Invalid field name in fieldsToPopulate: {$fieldName}");
                         continue;
                     }
 
@@ -191,11 +191,11 @@ if (!function_exists('processSettingsAutoCreation')) {
                     $db->query($updateSql, [$fieldConfig['default']]);
                 }
 
-                logger($user->data()->id, 'SettingsUpdate', 'Populated NULL settings fields with defaults: ' . implode(', ', $fieldsToPopulate));
+                logger($user->data()->id, LogCategories::LOG_CATEGORY_SETTINGS_UPDATE, 'Populated NULL settings fields with defaults: ' . implode(', ', $fieldsToPopulate));
                 $messages[] = ['type' => 'info', 'message' => count($fieldsToPopulate) . ' existing settings fields were populated with default values.'];
             } catch (Exception $e) {
                 $messages[] = ['type' => 'danger', 'message' => 'Error populating settings fields: ' . $e->getMessage()];
-                logger($user->data()->id ?? 0, 'DatabaseError', 'Settings field population failed: ' . $e->getMessage());
+                logger($user->data()->id ?? 0, LogCategories::LOG_CATEGORY_DATABASE_ERROR, 'Settings field population failed: ' . $e->getMessage());
             }
         }
 
