@@ -59,8 +59,8 @@ try {
     }
 
     $showCleanupPrompt = $oldBackupsCount > 0;
-} catch (Exception $e) {
-    logger($user->data()->id, LogCategories::LOG_CATEGORY_SYSTEM_ERROR, 'Enhanced backup stats failed: ' . $e->getMessage());
+} catch (BackupException $e) {
+    logger($user->data()->id, $e->getLogCategory(), 'Enhanced backup stats failed: ' . $e->getMessage());
     // Fallback to basic stats
     try {
         $backupStats = getBackupStatistics();
@@ -68,7 +68,7 @@ try {
         $backupStats['recommendations'] = [];
         $showCleanupPrompt = false;
         $oldBackupsCount = 0;
-    } catch (Exception $e2) {
+    } catch (BackupException $e2) {
         $backupStats = [
             'automated' => ['count' => 0, 'total_size' => 0],
             'manual' => ['count' => 0, 'total_size' => 0],
@@ -76,6 +76,7 @@ try {
             'health_score' => 50,
             'recommendations' => ['Backup system check needed']
         ];
+        logger($user->data()->id, $e2->getLogCategory(), 'Fallback backup stats also failed: ' . $e2->getMessage());
         $showCleanupPrompt = false;
         $oldBackupsCount = 0;
     }
@@ -104,8 +105,8 @@ if (isset($_POST['cleanup_backups']) && $_POST['cleanup_backups'] === 'confirm')
         // Refresh backup stats after cleanup
         $backupStats = $backupManager->getEnhancedBackupStatistics();
         $showCleanupPrompt = false;
-    } catch (Exception $e) {
-        logger($user->data()->id, LogCategories::LOG_CATEGORY_SYSTEM_ERROR, 'Enhanced backup cleanup failed: ' . $e->getMessage());
+    } catch (BackupException $e) {
+        logger($user->data()->id, $e->getLogCategory(), 'Enhanced backup cleanup failed: ' . $e->getMessage());
         $cleanupMessage = "<div class='alert alert-danger'><i class='fas fa-exclamation-triangle'></i> Enhanced backup cleanup failed: " . htmlspecialchars($e->getMessage()) . "</div>";
     }
 }
@@ -123,7 +124,8 @@ foreach ($fixScripts as $script) {
         } else {
             $scriptRunStatus[$script] = ['has_run' => false, 'last_run' => null];
         }
-    } catch (Exception $e) {
+    } catch (AdminOperationException $e) {
+        logger($user->data()->id, $e->getLogCategory(), "Failed to check script run status for {$script}: " . $e->getMessage());
         $scriptRunStatus[$script] = ['has_run' => false, 'last_run' => null];
     }
 }

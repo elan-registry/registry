@@ -258,8 +258,14 @@ try {
 
     <?php
 
+} catch (OwnerNotFoundException $e) {
+    logger($user->data()->id, $e->getLogCategory(), 'Owner not found: ' . $e->getMessage());
+    echo '<div class="alert alert-danger">Owner not found. Please check the ID and try again.</div>';
+} catch (ElanRegistryException $e) {
+    logger($user->data()->id, $e->getLogCategory(), 'Owner info load failed: ' . $e->getMessage());
+    echo '<div class="alert alert-danger">' . htmlspecialchars($e->getUserMessage()) . '</div>';
 } catch (Exception $e) {
-    logger($user->data()->id, LogCategories::LOG_CATEGORY_SYSTEM_ERROR, 'Owner info load failed: ' . $e->getMessage());
+    logger($user->data()->id, LogCategories::LOG_CATEGORY_SYSTEM_ERROR, 'Owner info load unexpected error: ' . $e->getMessage());
     echo '<div class="alert alert-danger">Failed to load owner information. Please try again.</div>';
 }
 ?>

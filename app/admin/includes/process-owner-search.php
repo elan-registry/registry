@@ -68,12 +68,20 @@ try {
         )
         ->send();
 
+} catch (OwnerSearchException $e) {
+    ApiResponse::serverError($e->getUserMessage())
+        ->withLogging(
+            $user->data()->id,
+            $e->getLogCategory(),
+            'Owner search failed: ' . $e->getMessage()
+        )
+        ->send();
 } catch (Exception $e) {
     ApiResponse::serverError('Search failed. Please try again.')
         ->withLogging(
             $user->data()->id,
-            'SystemError',
-            'Owner search failed: ' . $e->getMessage()
+            LogCategories::LOG_CATEGORY_SYSTEM_ERROR,
+            'Owner search unexpected error: ' . $e->getMessage()
         )
         ->send();
 }
