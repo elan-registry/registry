@@ -68,6 +68,7 @@ functionality.
 **Quick Reference**:
 
 - `/app/` - Main application pages (car listings, details, forms, actions)
+- `/error/` - Branded HTTP error pages (403, 404, 500, etc.)
 - `/users/` - UserSpice authentication system
 - `/usersc/` - UserSpice customizations (templates, plugins, overrides)
 - `/usersc/classes/` - Custom application classes
@@ -564,6 +565,41 @@ try {
   handling guide with 4 migration scenarios
 - [LOG_CATEGORIES.md](docs/development/LOG_CATEGORIES.md) - Complete list of
   140+ log categories
+
+### HTTP Error Pages
+
+**Location**: `/error/` directory
+
+**Available Pages**:
+
+- **403.php** - Forbidden (Access Denied)
+- **404.php** - Not Found (Page Not Found)
+- **500.php** - Generic error handler for 400, 401, 405, 408, 500, 502, 504
+
+**Configuration**: Configured in `.htaccess` via ErrorDocument directives
+
+**Features**:
+
+- Branded with Lotus Elan Registry styling
+- Detects and logs user authentication state
+- Logs error details to admin audit trail via logger()
+- Gracefully falls back when UserSpice unavailable
+- Responsive design matching main site
+- XSS-safe output with htmlspecialchars()
+
+**Error Code Mapping**:
+
+| Code | File | Category |
+| --- | --- | --- |
+| 400 | 500.php | Bad Request |
+| 401 | 500.php | Unauthorized |
+| 403 | 403.php | Forbidden |
+| 404 | 404.php | Not Found |
+| 405 | 500.php | Method Not Allowed |
+| 408 | 500.php | Request Timeout |
+| 500 | 500.php | Internal Server Error |
+| 502 | 500.php | Bad Gateway |
+| 504 | 500.php | Gateway Timeout |
 
 ### Frontend API Client (Pattern A - v2.12.0+)
 

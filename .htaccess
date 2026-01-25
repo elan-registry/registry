@@ -2,8 +2,15 @@
 Options -Indexes
 
 # Custom error pages
-ErrorDocument 403 /403.php
-ErrorDocument 404 /404.php
+ErrorDocument 400 /error/500.php
+ErrorDocument 401 /error/500.php
+ErrorDocument 403 /error/403.php
+ErrorDocument 404 /error/404.php
+ErrorDocument 405 /error/500.php
+ErrorDocument 408 /error/500.php
+ErrorDocument 500 /error/500.php
+ErrorDocument 502 /error/500.php
+ErrorDocument 504 /error/500.php
 
 # Security headers
 Header always set X-Frame-Options "SAMEORIGIN"
