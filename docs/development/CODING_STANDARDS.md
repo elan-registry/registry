@@ -398,22 +398,146 @@ public function validateFileUpload(array $file): void
     if ($file['error'] !== UPLOAD_ERR_OK) {
         throw new FileUploadException("Upload error: {$file['error']}");
     }
-  
+
     // Size validation
     if ($file['size'] > self::MAX_FILE_SIZE) {
         throw new FileUploadException('File too large');
     }
-  
+
     // MIME type validation
     $mimeType = $this->getMimeType($file['tmp_name']);
     if (!in_array($mimeType, self::ALLOWED_MIME_TYPES)) {
         throw new FileUploadException("Invalid file type: {$mimeType}");
     }
-  
+
     // Verify upload integrity
     if (!is_uploaded_file($file['tmp_name'])) {
         throw new FileUploadException('Invalid file upload');
     }
+}
+
+```text
+
+### **Error Logging Standards**
+
+**CRITICAL:** All error conditions MUST use UserSpice `logger()` function for centralized visibility and audit trails in the admin panel. Never use PHP `error_log()` in application code.
+
+#### **When to Use logger()**
+
+Use the `logger()` function for **all** error conditions in the application (web context):
+
+```php
+// ✅ REQUIRED - Use logger() for error conditions
+try {
+    $result = riskyOperation();
+} catch (Exception $e) {
+    logger(
+        $user->data()->id ?? 0,
+        LogCategories::LOG_CATEGORY_SYSTEM_ERROR,
+        'Operation failed: ' . $e->getMessage()
+    );
+    throw new OperationException('User-friendly message');
+}
+
+// ✅ REQUIRED - Use logger() for validation errors
+if (empty($requiredField)) {
+    logger(
+        $user->data()->id ?? 0,
+        LogCategories::LOG_CATEGORY_VALIDATION_ERROR,
+        'Required field missing: fieldName'
+    );
+    throw new ValidationException('Field is required');
+}
+
+// ❌ PROHIBITED - Never use error_log() in web context
+error_log("Error: " . $e->getMessage());  // Don't do this!
+
+```text
+
+#### **LogCategories Constants**
+
+All `logger()` calls **MUST** use standardized constants from the `LogCategories` class. Never use hardcoded strings.
+
+**Location:** `usersc/classes/LogCategories.php`
+
+**140+ categories organized by functional domain:**
+- Car Management (CarActions, CarCreation, CarUpdate, CarDeletion, CarTransfer, etc.)
+- User/Owner Management (OwnerActions, UserDeletion, UserCreation, etc.)
+- Authentication (Login, LoginFail, PasswordReset, etc.)
+- Database Operations (DatabaseError, DatabaseMaintenance, BackupManager, etc.)
+- Email/Communications (EmailSuccess, EmailError, etc.)
+- System & File Operations (SystemError, FileError, ValidationError, etc.)
+- Admin & Management (AdminVerification, SettingsUpdate, etc.)
+- And more functional domains
+
+```php
+// ✅ CORRECT - Use LogCategories constants
+logger($user->data()->id, LogCategories::LOG_CATEGORY_DATABASE_ERROR, 'Query failed');
+logger($user->data()->id, LogCategories::LOG_CATEGORY_CAR_CREATION, 'Car created successfully');
+logger($user->data()->id, LogCategories::LOG_CATEGORY_SYSTEM_ERROR, 'Backup failed');
+
+// ❌ INCORRECT - Never use hardcoded strings
+logger($user->data()->id, 'SystemError', 'message');  // Don't do this!
+
+```text
+
+**Discovery:** Find available constants:
+```bash
+grep "const LOG_CATEGORY" usersc/classes/LogCategories.php
+```
+
+#### **Exception: CLI Scripts**
+
+The `error_log()` function is **allowed** in CLI scripts (scripts/ directory) that
+run outside the web context:
+
+```php
+// ✅ ACCEPTABLE - CLI scripts may use error_log()
+// scripts/menu-sync.php
+if (!function_exists('logger')) {
+    error_log("Running outside web context");
+}
+
+```text
+
+#### **User ID Handling**
+
+Use safe user ID handling in exception contexts:
+
+```php
+// ✅ CORRECT - Safe user ID extraction with fallback
+logger(
+    $user->data()->id ?? 0,
+    LogCategories::LOG_CATEGORY_SYSTEM_ERROR,
+    'Error message'
+);
+
+// Also acceptable when user availability varies
+logger(
+    $currentUserId ?? $user->data()->id ?? 0,
+    LogCategories::LOG_CATEGORY_DATABASE_ERROR,
+    'Database error'
+);
+
+```text
+
+#### **Complete Error Details**
+
+Provide comprehensive error information for debugging:
+
+```php
+// ✅ GOOD - Complete error context
+catch (Exception $e) {
+    $errorDetails = "Operation failed\n";
+    $errorDetails .= "Error: " . $e->getMessage() . "\n";
+    $errorDetails .= "File: " . $e->getFile() . " (Line " . $e->getLine() . ")\n";
+    $errorDetails .= "Stack trace:\n" . $e->getTraceAsString();
+
+    logger(
+        $user->data()->id ?? 0,
+        LogCategories::LOG_CATEGORY_SYSTEM_ERROR,
+        $errorDetails
+    );
 }
 
 ```text

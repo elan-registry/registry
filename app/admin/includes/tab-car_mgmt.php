@@ -22,7 +22,8 @@ if ($preloadCarId) {
     } catch (Exception $e) {
         // Fail silently if car not found
         $preloadCarData = null;
-        error_log("Car preload error: " . $e->getMessage());
+        logger($user->data()->id ?? 0, LogCategories::LOG_CATEGORY_CAR_ERRORS,
+               "Car preload error: " . $e->getMessage());
     }
 }
 
