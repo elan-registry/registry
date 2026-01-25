@@ -27,7 +27,7 @@ function sendTransferRequestNotification(int $transferRequestId): bool
         // Get transfer request data using separate queries (more reliable than complex JOINs)
         $transferQuery = $db->query("SELECT * FROM car_transfer_requests WHERE id = ?", [$transferRequestId]);
         if ($transferQuery->count() === 0) {
-            logger(0, 'EmailError', "Transfer request notification failed: Request ID $transferRequestId not found");
+            logger(0, LogCategories::LOG_CATEGORY_EMAIL_ERROR, "Transfer request notification failed: Request ID $transferRequestId not found");
             return false;
         }
 
@@ -36,28 +36,28 @@ function sendTransferRequestNotification(int $transferRequestId): bool
         // Get car data
         $carQuery = $db->query("SELECT * FROM cars WHERE id = ?", [$transferData->existing_car_id]);
         if ($carQuery->count() === 0) {
-            logger(0, 'EmailError', "Transfer request notification failed: Car ID {$transferData->existing_car_id} not found");
+            logger(0, LogCategories::LOG_CATEGORY_EMAIL_ERROR, "Transfer request notification failed: Car ID {$transferData->existing_car_id} not found");
             return false;
         }
         $carData = $carQuery->first();
 
         // Validate car data
         if (!$carData || !isset($carData->id)) {
-            logger(0, 'EmailError', "Transfer request notification failed: Invalid car data for ID {$transferData->existing_car_id}");
+            logger(0, LogCategories::LOG_CATEGORY_EMAIL_ERROR, "Transfer request notification failed: Invalid car data for ID {$transferData->existing_car_id}");
             return false;
         }
 
         // Get current owner data using existing helper function
         $currentOwner = getUserWithProfile($carData->user_id);
         if (!$currentOwner) {
-            logger(0, 'EmailError', "Transfer request notification failed: Current owner ID {$carData->user_id} not found");
+            logger(0, LogCategories::LOG_CATEGORY_EMAIL_ERROR, "Transfer request notification failed: Current owner ID {$carData->user_id} not found");
             return false;
         }
 
         // Get requester data using existing helper function
         $requester = getUserWithProfile($transferData->requested_by_user_id);
         if (!$requester) {
-            logger(0, 'EmailError', "Transfer request notification failed: Requester ID {$transferData->requested_by_user_id} not found");
+            logger(0, LogCategories::LOG_CATEGORY_EMAIL_ERROR, "Transfer request notification failed: Requester ID {$transferData->requested_by_user_id} not found");
             return false;
         }
 
@@ -90,15 +90,15 @@ function sendTransferRequestNotification(int $transferRequestId): bool
         $result = email($currentOwner->email, $subject, $emailBody);
 
         if ($result) {
-            logger($transferData->requested_by_user_id, 'EmailSuccess', "Transfer request notification sent to current owner: {$currentOwner->email}");
+            logger($transferData->requested_by_user_id, LogCategories::LOG_CATEGORY_EMAIL_SUCCESS, "Transfer request notification sent to current owner: {$currentOwner->email}");
             return true;
         } else {
-            logger($transferData->requested_by_user_id, 'EmailError', "Failed to send transfer request notification to current owner: {$currentOwner->email}");
+            logger($transferData->requested_by_user_id, LogCategories::LOG_CATEGORY_EMAIL_ERROR, "Failed to send transfer request notification to current owner: {$currentOwner->email}");
             return false;
         }
 
     } catch (Exception $e) {
-        logger(0, 'EmailError', "Transfer request notification error: " . $e->getMessage());
+        logger(0, LogCategories::LOG_CATEGORY_EMAIL_ERROR, "Transfer request notification error: " . $e->getMessage());
         return false;
     }
 }
@@ -122,14 +122,14 @@ function sendTransferRequestAdminAlert(int $transferRequestId): bool
         $adminEmails = array_filter($adminEmails); // Remove empty values
 
         if (empty($adminEmails)) {
-            logger(0, 'EmailError', "No admin email addresses configured for transfer request alert");
+            logger(0, LogCategories::LOG_CATEGORY_EMAIL_ERROR, "No admin email addresses configured for transfer request alert");
             return false;
         }
 
         // Get transfer request data using separate queries (more reliable than complex JOINs)
         $transferQuery = $db->query("SELECT * FROM car_transfer_requests WHERE id = ?", [$transferRequestId]);
         if ($transferQuery->count() === 0) {
-            logger(0, 'EmailError', "Transfer admin alert failed: Request ID $transferRequestId not found");
+            logger(0, LogCategories::LOG_CATEGORY_EMAIL_ERROR, "Transfer admin alert failed: Request ID $transferRequestId not found");
             return false;
         }
 
@@ -138,28 +138,28 @@ function sendTransferRequestAdminAlert(int $transferRequestId): bool
         // Get car data
         $carQuery = $db->query("SELECT * FROM cars WHERE id = ?", [$transferData->existing_car_id]);
         if ($carQuery->count() === 0) {
-            logger(0, 'EmailError', "Transfer admin alert failed: Car ID {$transferData->existing_car_id} not found");
+            logger(0, LogCategories::LOG_CATEGORY_EMAIL_ERROR, "Transfer admin alert failed: Car ID {$transferData->existing_car_id} not found");
             return false;
         }
         $carData = $carQuery->first();
 
         // Validate car data
         if (!$carData || !isset($carData->id)) {
-            logger(0, 'EmailError', "Transfer admin alert failed: Invalid car data for ID {$transferData->existing_car_id}");
+            logger(0, LogCategories::LOG_CATEGORY_EMAIL_ERROR, "Transfer admin alert failed: Invalid car data for ID {$transferData->existing_car_id}");
             return false;
         }
 
         // Get current owner data using existing helper function
         $currentOwner = getUserWithProfile($carData->user_id);
         if (!$currentOwner) {
-            logger(0, 'EmailError', "Transfer admin alert failed: Current owner ID {$carData->user_id} not found");
+            logger(0, LogCategories::LOG_CATEGORY_EMAIL_ERROR, "Transfer admin alert failed: Current owner ID {$carData->user_id} not found");
             return false;
         }
 
         // Get requester data using existing helper function
         $requester = getUserWithProfile($transferData->requested_by_user_id);
         if (!$requester) {
-            logger(0, 'EmailError', "Transfer admin alert failed: Requester ID {$transferData->requested_by_user_id} not found");
+            logger(0, LogCategories::LOG_CATEGORY_EMAIL_ERROR, "Transfer admin alert failed: Requester ID {$transferData->requested_by_user_id} not found");
             return false;
         }
 
@@ -198,15 +198,15 @@ function sendTransferRequestAdminAlert(int $transferRequestId): bool
             if ($result) {
                 $successCount++;
             } else {
-                logger(0, 'EmailError', "Failed to send admin alert to: {$adminEmail}");
+                logger(0, LogCategories::LOG_CATEGORY_EMAIL_ERROR, "Failed to send admin alert to: {$adminEmail}");
             }
         }
 
-        logger($transferData->requested_by_user_id, 'EmailSuccess', "Transfer request admin alerts sent to $successCount administrators");
+        logger($transferData->requested_by_user_id, LogCategories::LOG_CATEGORY_EMAIL_SUCCESS, "Transfer request admin alerts sent to $successCount administrators");
         return $successCount > 0;
 
     } catch (Exception $e) {
-        logger(0, 'EmailError', "Transfer admin alert error: " . $e->getMessage());
+        logger(0, LogCategories::LOG_CATEGORY_EMAIL_ERROR, "Transfer admin alert error: " . $e->getMessage());
         return false;
     }
 }
@@ -229,7 +229,7 @@ function sendTransferResponseNotification(int $transferRequestId, bool $isApprov
         // Get transfer request data using separate queries (more reliable than complex JOINs)
         $transferQuery = $db->query("SELECT * FROM car_transfer_requests WHERE id = ?", [$transferRequestId]);
         if ($transferQuery->count() === 0) {
-            logger(0, 'EmailError', "Transfer response notification failed: Request ID $transferRequestId not found");
+            logger(0, LogCategories::LOG_CATEGORY_EMAIL_ERROR, "Transfer response notification failed: Request ID $transferRequestId not found");
             return false;
         }
 
@@ -238,7 +238,7 @@ function sendTransferResponseNotification(int $transferRequestId, bool $isApprov
         // Get car data
         $carQuery = $db->query("SELECT * FROM cars WHERE id = ?", [$transferData->existing_car_id]);
         if ($carQuery->count() === 0) {
-            logger(0, 'EmailError', "Transfer response notification failed: Car ID {$transferData->existing_car_id} not found");
+            logger(0, LogCategories::LOG_CATEGORY_EMAIL_ERROR, "Transfer response notification failed: Car ID {$transferData->existing_car_id} not found");
             return false;
         }
         $carData = $carQuery->first();
@@ -246,7 +246,7 @@ function sendTransferResponseNotification(int $transferRequestId, bool $isApprov
         // Get requester data using existing helper function
         $requester = getUserWithProfile($transferData->requested_by_user_id);
         if (!$requester) {
-            logger(0, 'EmailError', "Transfer response notification failed: Requester ID {$transferData->requested_by_user_id} not found");
+            logger(0, LogCategories::LOG_CATEGORY_EMAIL_ERROR, "Transfer response notification failed: Requester ID {$transferData->requested_by_user_id} not found");
             return false;
         }
 
@@ -281,9 +281,9 @@ function sendTransferResponseNotification(int $transferRequestId, bool $isApprov
 
         $requesterNotificationSent = $result;
         if ($requesterNotificationSent) {
-            logger($transferData->requested_by_user_id, 'EmailSuccess', "Transfer response notification ($status) sent to requester: {$requester->email}");
+            logger($transferData->requested_by_user_id, LogCategories::LOG_CATEGORY_EMAIL_SUCCESS, "Transfer response notification ($status) sent to requester: {$requester->email}");
         } else {
-            logger($transferData->requested_by_user_id, 'EmailError', "Failed to send transfer response notification to requester: {$requester->email}");
+            logger($transferData->requested_by_user_id, LogCategories::LOG_CATEGORY_EMAIL_ERROR, "Failed to send transfer response notification to requester: {$requester->email}");
         }
 
         // Also notify the previous owner as promised in the initial notification
@@ -293,7 +293,7 @@ function sendTransferResponseNotification(int $transferRequestId, bool $isApprov
         return $requesterNotificationSent || $previousOwnerNotificationSent;
 
     } catch (Exception $e) {
-        logger(0, 'EmailError', "Transfer response notification error: " . $e->getMessage());
+        logger(0, LogCategories::LOG_CATEGORY_EMAIL_ERROR, "Transfer response notification error: " . $e->getMessage());
         return false;
     }
 }
@@ -316,7 +316,7 @@ function sendTransferPreviousOwnerNotification(int $transferRequestId, bool $isA
         // Get transfer request data using separate queries (more reliable than complex JOINs)
         $transferQuery = $db->query("SELECT * FROM car_transfer_requests WHERE id = ?", [$transferRequestId]);
         if ($transferQuery->count() === 0) {
-            logger(0, 'EmailError', "Transfer previous owner notification failed: Request ID $transferRequestId not found");
+            logger(0, LogCategories::LOG_CATEGORY_EMAIL_ERROR, "Transfer previous owner notification failed: Request ID $transferRequestId not found");
             return false;
         }
 
@@ -325,7 +325,7 @@ function sendTransferPreviousOwnerNotification(int $transferRequestId, bool $isA
         // Get car data
         $carQuery = $db->query("SELECT * FROM cars WHERE id = ?", [$transferData->existing_car_id]);
         if ($carQuery->count() === 0) {
-            logger(0, 'EmailError', "Transfer previous owner notification failed: Car ID {$transferData->existing_car_id} not found");
+            logger(0, LogCategories::LOG_CATEGORY_EMAIL_ERROR, "Transfer previous owner notification failed: Car ID {$transferData->existing_car_id} not found");
             return false;
         }
         $carData = $carQuery->first();
@@ -341,14 +341,14 @@ function sendTransferPreviousOwnerNotification(int $transferRequestId, bool $isA
         }
 
         if (!$previousOwner) {
-            logger(0, 'EmailError', "Transfer previous owner notification failed: Previous owner not found");
+            logger(0, LogCategories::LOG_CATEGORY_EMAIL_ERROR, "Transfer previous owner notification failed: Previous owner not found");
             return false;
         }
 
         // Get requester data using existing helper function
         $requester = getUserWithProfile($transferData->requested_by_user_id);
         if (!$requester) {
-            logger(0, 'EmailError', "Transfer previous owner notification failed: Requester ID {$transferData->requested_by_user_id} not found");
+            logger(0, LogCategories::LOG_CATEGORY_EMAIL_ERROR, "Transfer previous owner notification failed: Requester ID {$transferData->requested_by_user_id} not found");
             return false;
         }
 
@@ -381,15 +381,15 @@ function sendTransferPreviousOwnerNotification(int $transferRequestId, bool $isA
         $result = email($previousOwner->email, $subject, $emailBody);
 
         if ($result) {
-            logger($transferData->requested_by_user_id, 'EmailSuccess', "Transfer decision notification ($status) sent to previous owner: {$previousOwner->email}");
+            logger($transferData->requested_by_user_id, LogCategories::LOG_CATEGORY_EMAIL_SUCCESS, "Transfer decision notification ($status) sent to previous owner: {$previousOwner->email}");
             return true;
         } else {
-            logger($transferData->requested_by_user_id, 'EmailError', "Failed to send transfer decision notification to previous owner: {$previousOwner->email}");
+            logger($transferData->requested_by_user_id, LogCategories::LOG_CATEGORY_EMAIL_ERROR, "Failed to send transfer decision notification to previous owner: {$previousOwner->email}");
             return false;
         }
 
     } catch (Exception $e) {
-        logger(0, 'EmailError', "Transfer previous owner notification error: " . $e->getMessage());
+        logger(0, LogCategories::LOG_CATEGORY_EMAIL_ERROR, "Transfer previous owner notification error: " . $e->getMessage());
         return false;
     }
 }

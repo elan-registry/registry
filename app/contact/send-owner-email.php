@@ -99,7 +99,7 @@ if (Input::exists('post')) {
             $result = email($toEmail, $subject, $body);
 
             // Log the email sending (no session message needed - we show "Message Sent" page)
-            logger($user->data()->id, "ElanRegistry", "contact_owner_email.php from " . $fromEmail . " to " . $toEmail);
+            logger($user->data()->id, LogCategories::LOG_CATEGORY_ELAN_REGISTRY, "contact_owner_email.php from " . $fromEmail . " to " . $toEmail);
         } else {
             $errors[] = 'Not enough parameters provided';
         }

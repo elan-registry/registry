@@ -101,9 +101,9 @@ if (isset($_POST['email'])) {
 
     $email_sent = email($email_to, $email_subject, $body);
     if (!$email_sent) {
-        logger(1, "Feedback form", "Error sending email");
+        logger(1, LogCategories::LOG_CATEGORY_FEEDBACK_FORM, "Error sending email");
     }
-    logger(1, "Feedback form", "Complete: sent to " . $email_to . " with subject '" . $email_subject . "'");
+    logger(1, LogCategories::LOG_CATEGORY_FEEDBACK_FORM, "Complete: sent to " . $email_to . " with subject '" . $email_subject . "'");
 }
 
 ?>

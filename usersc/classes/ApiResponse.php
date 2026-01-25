@@ -340,7 +340,7 @@ class ApiResponse
             if (function_exists('logger')) {
                 logger(
                     0,
-                    'SystemError',
+                    LogCategories::LOG_CATEGORY_SYSTEM_ERROR,
                     "ApiResponse: Headers already sent in {$file}:{$line}, cannot set response headers"
                 );
             }

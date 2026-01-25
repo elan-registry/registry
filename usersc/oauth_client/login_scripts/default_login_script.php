@@ -13,7 +13,7 @@
 // Check if this is a new user registration
 if (isset($log) && $log['new_user'] == 1) {
     // This is a new user created via OAuth
-    logger($userId ?? $theNewId, "OAuth Login Script", "New user welcomed via OAuth from: " . $oSettings->client_name);
+    logger($userId ?? $theNewId, LogCategories::LOG_CATEGORY_OAUTH_LOGIN_SCRIPT, "New user welcomed via OAuth from: " . $oSettings->client_name);
     
     // You could set a welcome message here
     // usSuccess("Welcome! Your account has been created successfully via " . $oSettings->client_name);
@@ -25,7 +25,7 @@ if (isset($log) && $log['new_user'] == 1) {
     // This is an existing user logging in via OAuth
     $loggedInUserId = $userId ?? $existingUser->id ?? $theNewId;
     if ($loggedInUserId) {
-        logger($loggedInUserId, "OAuth Login Script", "Existing user logged in via OAuth from: " . $oSettings->client_name);
+        logger($loggedInUserId, LogCategories::LOG_CATEGORY_OAUTH_LOGIN_SCRIPT, "Existing user logged in via OAuth from: " . $oSettings->client_name);
     }
     
     // You could set a welcome back message here
@@ -38,7 +38,7 @@ if (isset($responseData) && !empty($responseData)) {
     if ($loggedInUserId) {
         // Log any custom data from the OAuth server
         if (isset($responseData['custom_data'])) {
-            logger($loggedInUserId, "OAuth Custom Data", json_encode($responseData['custom_data']));
+            logger($loggedInUserId, LogCategories::LOG_CATEGORY_OAUTH_CUSTOM_DATA, json_encode($responseData['custom_data']));
         }
     }
 }

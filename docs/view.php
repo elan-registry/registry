@@ -24,7 +24,7 @@ use DocumentationException;
 
 // Security check - ensure page access is authorized
 if (!securePage($_SERVER['PHP_SELF'])) {
-    logger(0, 'SecurityError', 'Unauthorized documentation access attempt: ' . $_SERVER['PHP_SELF']);
+    logger(0, LogCategories::LOG_CATEGORY_SECURITY, 'Unauthorized documentation access attempt: ' . $_SERVER['PHP_SELF']);
     Redirect::to($us_url_root . '403.php');
 }
 
@@ -33,14 +33,14 @@ $doc = $_GET['doc'] ?? '';
 
 // Security: Only allow alphanumeric, hyphens, underscores, and .md extension
 if (!preg_match('/^[a-zA-Z0-9_-]+\.md$/', $doc)) {
-    logger($user->data()->id ?? 0, 'ValidationError', 'Invalid document format attempted: ' . $doc);
+    logger($user->data()->id ?? 0, LogCategories::LOG_CATEGORY_VALIDATION_ERROR, 'Invalid document format attempted: ' . $doc);
     Redirect::to($us_url_root . '404.php');
 }
 
 // Validate document and get configuration
 $documentData = DocumentConfig::validateDocument($doc);
 if (!$documentData) {
-    logger($user->data()->id ?? 0, 'SystemError', 'Documentation not found: ' . $doc);
+    logger($user->data()->id ?? 0, LogCategories::LOG_CATEGORY_SYSTEM_ERROR, 'Documentation not found: ' . $doc);
     Redirect::to($us_url_root . '404.php');
 }
 
@@ -51,7 +51,7 @@ if (!DocumentConfig::hasAccess($documentData, $user)) {
 
 // Verify file exists and is readable
 if (!file_exists($documentData['path']) || !is_readable($documentData['path'])) {
-    logger($user->data()->id ?? 0, 'SystemError', 'Documentation file not accessible: ' . $documentData['path']);
+    logger($user->data()->id ?? 0, LogCategories::LOG_CATEGORY_SYSTEM_ERROR, 'Documentation file not accessible: ' . $documentData['path']);
     Redirect::to($us_url_root . '404.php');
 }
 

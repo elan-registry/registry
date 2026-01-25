@@ -112,7 +112,7 @@ class ElanRegistryOwner
         $settings = getSettings();
 
         if (empty($settings->elan_google_geo_key)) {
-            logger(0, 'Geocode', 'ElanRegistryOwner: Google Maps API key not configured');
+            logger(0, LogCategories::LOG_CATEGORY_GEOCODE, 'ElanRegistryOwner: Google Maps API key not configured');
             return [];
         }
 
@@ -191,13 +191,13 @@ class ElanRegistryOwner
             $this->find($userId);
 
             // Log successful creation
-            logger($userId, 'OwnerActions', "Owner created: {$userFields['fname']} {$userFields['lname']} ({$userFields['email']})");
+            logger($userId, LogCategories::LOG_CATEGORY_OWNER_ACTIONS, "Owner created: {$userFields['fname']} {$userFields['lname']} ({$userFields['email']})");
 
             return true;
 
         } catch (Exception $e) {
             $this->_db->query("ROLLBACK");
-            logger(0, 'DatabaseError', 'Owner creation failed: ' . $e->getMessage());
+            logger(0, LogCategories::LOG_CATEGORY_DATABASE_ERROR, 'Owner creation failed: ' . $e->getMessage());
             throw $e;
         }
     }
@@ -213,13 +213,13 @@ class ElanRegistryOwner
     public function update(array $fields = []): bool
     {
         if (empty($fields) || !isset($fields['id'])) {
-            logger($fields['id'] ?? 0, 'ValidationError', 'Owner update failed: No data or ID provided');
+            logger($fields['id'] ?? 0, LogCategories::LOG_CATEGORY_VALIDATION_ERROR, 'Owner update failed: No data or ID provided');
             throw new OwnerValidationException('No data or ID provided for owner update');
         }
 
         // CSRF Protection
         if (!isset($fields['csrf']) || !Token::check($fields['csrf'])) {
-            logger($fields['id'] ?? 0, 'ValidationError', 'Owner update failed: Invalid CSRF token');
+            logger($fields['id'] ?? 0, LogCategories::LOG_CATEGORY_VALIDATION_ERROR, 'Owner update failed: Invalid CSRF token');
             throw new OwnerValidationException('Invalid CSRF token provided');
         }
 
@@ -294,13 +294,13 @@ class ElanRegistryOwner
 
             // Log successful update
             $fieldsUpdated = array_merge(array_keys($userFields), array_keys($profileFields));
-            logger($userId, 'OwnerActions', "Owner updated - fields: " . implode(', ', $fieldsUpdated));
+            logger($userId, LogCategories::LOG_CATEGORY_OWNER_ACTIONS, "Owner updated - fields: " . implode(', ', $fieldsUpdated));
 
             return true;
 
         } catch (Exception $e) {
             $this->_db->query("ROLLBACK");
-            logger($userId, 'DatabaseError', 'Owner update failed: ' . $e->getMessage());
+            logger($userId, LogCategories::LOG_CATEGORY_DATABASE_ERROR, 'Owner update failed: ' . $e->getMessage());
             throw $e;
         }
     }
@@ -510,7 +510,7 @@ class ElanRegistryOwner
             // Reload owner data
             $this->find($this->_data->id);
 
-            logger($this->_data->id, 'OwnerActions', "Location updated: {$locationData['city']}, {$locationData['state']}, {$locationData['country']}");
+            logger($this->_data->id, LogCategories::LOG_CATEGORY_OWNER_ACTIONS, "Location updated: {$locationData['city']}, {$locationData['state']}, {$locationData['country']}");
             return true;
         }
 
@@ -559,7 +559,7 @@ class ElanRegistryOwner
         }
 
         if ($carsUpdated > 0) {
-            logger($this->_data->id, 'OwnerActions', "Location synchronized to {$carsUpdated} car(s)");
+            logger($this->_data->id, LogCategories::LOG_CATEGORY_OWNER_ACTIONS, "Location synchronized to {$carsUpdated} car(s)");
         }
 
         return $carsUpdated;
