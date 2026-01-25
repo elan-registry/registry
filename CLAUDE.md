@@ -35,6 +35,8 @@ To avoid information overload, follow this structured learning path:
 
 **As Needed - Specialized Topics:**
 
+- `docs/development/ERROR_HANDLING.md` - When implementing error handling,
+  exceptions, or API responses
 - `docs/development/PAGE_LOADING_FLOW.md` - When debugging initialization or
   understanding file loading sequence
 - `docs/development/DEPLOYMENT.md` - When preparing releases
@@ -502,108 +504,66 @@ public function getProfileQualityScore(): float {
 }
 ```
 
-### Error Logging Standards
+### Error Handling Standards
 
-**All error conditions MUST use UserSpice logger integration for centralized
-error visibility and audit trails.**
+**All error conditions MUST use centralized error handling with typed exceptions,
+LogCategories constants, and proper user-friendly messages. See
+[ERROR_HANDLING.md](docs/development/ERROR_HANDLING.md) for comprehensive patterns.**
 
-#### Log Category Constants (v2.12.0+)
+**Quick Summary**:
 
-All logger() calls MUST use standardized constants from the LogCategories class
-instead of hardcoded strings. This ensures consistency, prevents typos, and
-makes logging categories discoverable.
+- **Backend**: Use ApiResponse for AJAX endpoints, typed exceptions for
+  domain errors, LogCategories for logging
+- **Frontend**: Use ElanRegistryAPI client, type-specific error handling,
+  NotificationHelper for user feedback
+- **Messages**: Separate technical messages (logs) from user-friendly messages
+  (UI display)
 
-**Centralized Constants Location:** `usersc/classes/LogCategories.php`
-
-**140+ categories organized by functional domain:**
-
-- Car Management (CarActions, CarCreation, CarUpdate, CarDeletion,
-  CarMerge, CarTransfer, etc.)
-- User/Owner Management (OwnerActions, UserDeletion, UserCreation,
-  InactiveCleanup, etc.)
-- Authentication (Login, LoginFail, PasskeyAuth*, PasswordReset, TOTP*, etc.)
-- Database Operations (DatabaseError, DatabaseMaintenance, BackupManager,
-  SchemaOperationError, etc.)
-- Email/Communications (EmailSuccess, EmailError, FeedbackForm, etc.)
-- System & File Operations (SystemError, FileError, ValidationError,
-  ImageRemoval, etc.)
-- Admin & Management (AdminVerification, SettingsUpdate, UserManager,
-  Logs, etc.)
-- Location & Geocoding (Geocode, LocationService, LocationReverse, etc.)
-- Access Control (AccessDenied, SecurePage, HasPerm, PageNotFound, etc.)
-- OAuth & External Auth (OAuthClient, OAuthServer, OAuthClientLogin, etc.)
-- And 4+ more functional domains
-
-**Discovery:** `grep "const LOG_CATEGORY" usersc/classes/LogCategories.php`
-
-#### Error Logging Pattern (with LogCategories)
+**Essential Pattern** (Backend):
 
 ```php
-// ✅ CORRECT: Use LogCategories constants
+// Use typed exceptions with separate technical/user messages
 try {
-    // Operation that might fail
-    $result = riskyOperation();
-} catch (Exception $e) {
-    logger(
-        $user->data()->id ?? 0,
-        LogCategories::LOG_CATEGORY_SYSTEM_ERROR,
-        'Descriptive error message: ' . $e->getMessage()
+    // Operation
+    throw new CarCreationException(
+        'Database constraint violation',  // Technical
+        0,
+        null,
+        'Unable to create car'  // User-safe
     );
-    throw new SpecificException('User-friendly message');
-}
-
-// ✅ CORRECT: Validation error logging
-if (empty($requiredField)) {
-    logger(
-        $user->data()->id ?? 0,
-        LogCategories::LOG_CATEGORY_VALIDATION_ERROR,
-        'Required field missing: fieldName'
-    );
-    throw new ValidationException('Field is required');
-}
-
-// ❌ INCORRECT: Never use hardcoded strings
-logger($user->data()->id, 'SystemError', 'message');  // Don't do this!
-```
-
-#### Using ElanRegistryException with LogCategories
-
-Domain-specific exceptions automatically use the correct LogCategories constant:
-
-```php
-// Exception automatically logs with correct category
-try {
-    throw new CarCreationException('Database insert failed');
 } catch (ElanRegistryException $e) {
-    // $e->getLogCategory() returns LogCategories::LOG_CATEGORY_CAR_CREATION
-    logger($user->data()->id, $e->getLogCategory(), $e->getMessage());
-    usError($e->getUserMessage());  // Safe for UI display
+    ApiResponse::serverError($e->getUserMessage())
+        ->withLogging($userId, $e->getLogCategory(), $e->getMessage())
+        ->send();
+}
+
+// Use LogCategories for all logging
+logger($userId, LogCategories::LOG_CATEGORY_CAR_CREATION, 'Car created');
+```
+
+**Essential Pattern** (Frontend):
+
+```javascript
+const api = new ElanRegistryAPI();
+
+try {
+    const result = await api.post('endpoint', data);
+    NotificationHelper.show(result.message, 'success');
+} catch (error) {
+    if (error instanceof ApiValidationError) {
+        NotificationHelper.showValidationErrors(error.errors);
+    } else {
+        NotificationHelper.show(error.message, 'error');
+    }
 }
 ```
 
-### Message Handling Standards
+**See Also**:
 
-**All error and success messages MUST use the modern UserSpice session-based
-messaging system for consistent UX.**
-
-```php
-// Set error messages (instead of deprecated display_errors())
-if (!empty($errors)) {
-    foreach ($errors as $error) {
-        usError($error);
-    }
-}
-
-// Set success messages (instead of deprecated display_successes())
-if (!empty($successes)) {
-    foreach ($successes as $success) {
-        usSuccess($success);
-    }
-}
-
-// Display all messages (replaces manual Bootstrap alert HTML)
-sessionValMessages($errors, $successes, null);
-```
+- [ERROR_HANDLING.md](docs/development/ERROR_HANDLING.md) - Complete error
+  handling guide with 4 migration scenarios
+- [LOG_CATEGORIES.md](docs/development/LOG_CATEGORIES.md) - Complete list of
+  140+ log categories
 
 ### Frontend API Client (Pattern A - v2.12.0+)
 
@@ -931,6 +891,10 @@ $.ajax({...});
 
 Existing jQuery.ajax() calls remain functional but should be migrated during
 Phase 2-3 when these endpoints are being modified for other reasons.
+
+**See Also**: [ERROR_HANDLING.md](docs/development/ERROR_HANDLING.md) for
+complete frontend error handling patterns, type-specific error handling, and
+backend API response format specifications.
 
 ### Code Quality Requirements
 

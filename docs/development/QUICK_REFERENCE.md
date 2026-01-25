@@ -111,21 +111,110 @@ if ($owner) {
 
 ### Error Handling
 
+#### Backend API Responses (AJAX Endpoints)
+
 ```php
-// Log errors
-logger(
-    $user->data()->id ?? 0,
-    'ErrorCategory',  // SystemError, ValidationError, etc.
-    'Error message'
-);
+// Success response with data
+ApiResponse::success('Operation successful')
+    ->withData('car_id', 123)
+    ->withLogging($userId, LogCategories::LOG_CATEGORY_CAR_CREATION, 'Car created')
+    ->send();
 
-// Set user messages
-usError('Error message');
-usSuccess('Success message');
+// Validation error (422)
+ApiResponse::validationError([
+    'email' => 'Invalid email format',
+    'name' => 'Name is required'
+])->send();
 
-// Display messages
-sessionValMessages($errors, $successes, null);
+// Not found (404)
+ApiResponse::notFound('Car not found')->send();
+
+// Forbidden (403)
+ApiResponse::forbidden('You lack permission')->send();
+
+// Unauthorized (401)
+ApiResponse::unauthorized('Authentication required')->send();
+
+// Server error (500)
+ApiResponse::serverError('An error occurred')
+    ->withLogging($userId, 'SystemError', $e->getMessage())
+    ->send();
 ```
+
+#### Exceptions (Typed Exceptions)
+
+```php
+// Throw typed exception with user message
+try {
+    throw new CarCreationException(
+        'Database constraint violation',  // Technical
+        0,
+        null,
+        'Unable to create car'  // User-friendly
+    );
+} catch (ElanRegistryException $e) {
+    ApiResponse::serverError($e->getUserMessage())
+        ->withLogging($userId, $e->getLogCategory(), $e->getMessage())
+        ->send();
+}
+
+// Handle validation exception
+try {
+    if (empty($data['vin'])) {
+        throw new CarValidationException('VIN is required');
+    }
+} catch (CarValidationException $e) {
+    ApiResponse::validationError(['vin' => $e->getUserMessage()])
+        ->send();
+}
+```
+
+#### Logging with LogCategories
+
+```php
+// ✅ CORRECT: Use LogCategories constants
+logger($userId, LogCategories::LOG_CATEGORY_CAR_CREATION, 'Car created successfully');
+logger($userId, LogCategories::LOG_CATEGORY_VALIDATION_ERROR, 'Email validation failed');
+logger($userId, LogCategories::LOG_CATEGORY_SYSTEM_ERROR, 'Database connection failed');
+
+// Find all available categories
+// grep "const LOG_CATEGORY" usersc/classes/LogCategories.php
+```
+
+#### Frontend Error Handling (JavaScript)
+
+```javascript
+// Basic API request
+const api = new ElanRegistryAPI();
+
+try {
+    const result = await api.post('app/action/update-car.php', {
+        car_id: 123,
+        year: 2020
+    });
+
+    NotificationHelper.show(result.message, 'success');
+
+} catch (error) {
+    if (error instanceof ApiValidationError) {
+        NotificationHelper.showValidationErrors(error.errors);
+    } else if (error instanceof ApiCancelledError) {
+        console.log('Request cancelled');
+    } else {
+        NotificationHelper.show(error.message, 'error');
+    }
+}
+
+// GET request
+const result = await api.get('app/action/search.php', {
+    query: 'Elan',
+    limit: 10
+});
+console.log(result.data);
+```
+
+**See Also**: [ERROR_HANDLING.md](ERROR_HANDLING.md) for complete error
+handling patterns and migration guide.
 
 ### Security
 
@@ -287,10 +376,12 @@ See [DEPLOYMENT.md](DEPLOYMENT.md) for complete release procedures.
 ```text
 CLAUDE.md                  # Start here - AI assistant guide
 docs/development/          # Technical documentation
+  ERROR_HANDLING.md       # Error handling patterns & migration
   QUICK_START.md          # Setup and testing
   ARCHITECTURE.md         # System architecture
   DATABASE.md             # Database schema
   PROJECT_CONVENTIONS.md  # Coding standards
+  LOG_CATEGORIES.md       # Complete logging categories
 docs/faq/                 # User documentation
 docs/faq/admin/           # Admin documentation
 docs/README.md            # Documentation index
