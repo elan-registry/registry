@@ -223,91 +223,123 @@ $resize->resizeImage(
 
 ### **Exception Handling**
 
-#### **Custom Exceptions**
-Use specific, typed exceptions:
+#### **ElanRegistryException Hierarchy** (v2.12.0+)
 
-```php
-// ✅ REQUIRED - Custom exception classes
-class CarValidationException extends Exception
-{
-    public function __construct(
-        string $message,
-        public readonly array $validationErrors = [],
-        int $code = 0,
-        ?Throwable $previous = null
-    ) {
-        parent::__construct($message, $code, $previous);
-    }
-}
+All exceptions **MUST** extend `ElanRegistryException` base class for proper
+categorization, logging, and user-friendly error messages.
 
-class ImageProcessingException extends Exception {}
-class CarCreationException extends Exception {}
+**Exception Types** (23 total for domain-specific errors):
 
-```text
+| Exception | HTTP | Category | Purpose |
+|-----------|------|----------|---------|
+| CarCreationException | 500 | CarCreation | Car record creation |
+| CarDeletionException | 500 | CarDeletion | Car deletion |
+| CarTransferException | 400 | CarTransferError | Ownership transfer |
+| CarValidationException | 422 | CarValidation | Car data validation |
+| CarNotFoundException | 404 | CarErrors | Car not found |
+| OwnerValidationException | 422 | OwnerValidation | Owner data validation |
+| OwnerNotFoundException | 404 | OwnerErrors | Owner not found |
+| ValidationException | 422 | ValidationError | Generic validation |
+| LocationServiceException | 400 | LocationService | Location API errors |
+| GeocodingException | 400 | Geocode | Google Maps errors |
+| ImageProcessingException | 500 | ImageRemoval | Image resize/upload |
+| SchemaException | 500 | SchemaOperationError | Database schema |
+| ForbiddenException | 403 | AccessDenied | Permission denied |
+| UnauthorizedException | 401 | AccessDenied | Auth required |
+| And 9 more domain-specific types | — | — | — |
+
+**See Also**: [ERROR_HANDLING.md](ERROR_HANDLING.md#exception-hierarchy) for
+complete exception reference and patterns.
 
 #### **Exception Usage Pattern**
 
 ```php
-public function create(array $fields): bool
-{
-    try {
-        $this->validate($fields);
-        return $this->saveToDatabase($fields);
-    } catch (ValidationException $e) {
-        // Re-throw with context
-        throw new CarCreationException(
-            "Failed to create car: {$e->getMessage()}",
-            previous: $e
-        );
-    } catch (DatabaseException $e) {
-        // Log and re-throw
-        $this->logger->error('Car creation failed', [
-            'fields' => $fields,
-            'error' => $e->getMessage()
-        ]);
-        throw new CarCreationException(
-            'Database error during car creation',
-            previous: $e
+// ✅ REQUIRED - Use typed exceptions with separate technical/user messages
+try {
+    if (empty($chassisData['vin'])) {
+        throw new CarValidationException(
+            'VIN field is required',  // Technical message for logs
+            0,
+            null,
+            'Please provide a vehicle identification number'  // User-safe
         );
     }
-}
 
-```text
+    // Attempt car creation
+    $car = new Car();
+    if (!$car->create($chassisData)) {
+        throw new CarCreationException('Database insert failed');
+    }
+
+} catch (CarValidationException $e) {
+    // Handle validation error (422)
+    ApiResponse::validationError(
+        ['vin' => $e->getUserMessage()]
+    )->withLogging($userId, $e->getLogCategory(), $e->getMessage())
+     ->send();
+
+} catch (ElanRegistryException $e) {
+    // Handle any domain error with correct HTTP code
+    ApiResponse::error($e->getUserMessage(), $e->getHttpStatusCode())
+        ->withLogging($userId, $e->getLogCategory(), $e->getMessage())
+        ->send();
+}
+```
 
 ### **Error Handling Patterns**
 
-#### **Function Return Values**
-Prefer exceptions over error return values:
+#### **API Response Requirements** (MANDATORY for AJAX endpoints)
+
+All AJAX endpoints **MUST** return Pattern A format via `ApiResponse` class:
 
 ```php
-// ✅ PREFERRED - Exceptions for errors
-public function processImage(string $filepath): ProcessedImage
-{
-    if (!file_exists($filepath)) {
-        throw new ImageNotFoundException("File not found: {$filepath}");
-    }
-  
-    // Process and return result
-    return new ProcessedImage($result);
+// ✅ REQUIRED - Use ApiResponse for all AJAX endpoints
+try {
+    // Operation
+    $result = processData($_POST);
+
+    ApiResponse::success('Operation successful')
+        ->withData('result', $result)
+        ->withLogging($userId, LogCategories::LOG_CATEGORY_CAR_CREATION, 'Car created')
+        ->send();
+
+} catch (ValidationException $e) {
+    ApiResponse::validationError(['field' => $e->getUserMessage()])
+        ->withLogging($userId, $e->getLogCategory(), $e->getMessage())
+        ->send();
 }
 
-// ❌ AVOID - Mixed return types for errors  
-public function processImage(string $filepath): ProcessedImage|false
-{
-    if (!file_exists($filepath)) {
-        return false; // Ambiguous error handling
-    }
-  
-    return new ProcessedImage($result);
-}
+// ❌ PROHIBITED - Direct JSON output
+echo json_encode(['success' => true, 'data' => $result]);
+exit;
+```
 
-```text
+**Factory Methods**: `success()`, `error()`, `validationError()`, `unauthorized()`,
+`forbidden()`, `notFound()`, `serverError()`.
+
+#### **Log Category Requirements** (MANDATORY)
+
+All `logger()` calls **MUST** use LogCategories constants (NEVER hardcoded
+strings):
+
+```php
+// ✅ REQUIRED - Use LogCategories constants
+logger($userId, LogCategories::LOG_CATEGORY_CAR_DELETION, 'Car deleted');
+
+// ❌ PROHIBITED - Hardcoded log strings
+logger($userId, 'CarDeletion', 'Car deleted');  // Don't do this!
+```
+
+**Discovery**: `grep "const LOG_CATEGORY" usersc/classes/LogCategories.php`
+
+**See Also**: [ERROR_HANDLING.md](ERROR_HANDLING.md#logcategories) for complete
+category reference (140+ categories).
 
 ### **Method Naming and Structure**
 
 #### **Method Naming Conventions**
-- **Verbs**: `create()`, `update()`, `delete()`, `validate()`
 
+- **Verbs**: `create()`, `update()`, `delete()`, `validate()`
 - **Boolean methods**: `exists()`, `isValid()`, `hasPermission()`
 - **Getters**: `data()`, `images()`, `history()` (not `getData()`)
 
@@ -833,7 +865,7 @@ NotificationHelper.showValidationErrors({
 NotificationHelper.show('Important message', 'warning', 0);
 ```
 
-### **Error Handling Patterns**
+### **Frontend Error Handling**
 
 ```javascript
 const api = new ElanRegistryAPI();
@@ -974,8 +1006,11 @@ public function processLargeDataset(array $items): void
 - [ ] All functions have complete type declarations
 
 - [ ] Strict typing is enabled (`declare(strict_types=1)`)
-- [ ] Custom exceptions are used appropriately
+- [ ] Typed exceptions extend ElanRegistryException (never generic Exception)
 
+- [ ] AJAX endpoints use ApiResponse (success/error/validationError/etc.)
+- [ ] All logger() calls use LogCategories constants (NO hardcoded strings)
+- [ ] User-friendly and technical messages separated in exceptions
 - [ ] Error handling follows established patterns
 - [ ] Code follows naming conventions
 
@@ -1003,6 +1038,10 @@ public function processLargeDataset(array $items): void
 
 ## 📚 **References**
 
+- [ERROR_HANDLING.md](ERROR_HANDLING.md) - Comprehensive error handling guide
+  with patterns and migration strategies
+- [LOG_CATEGORIES.md](LOG_CATEGORIES.md) - Complete reference of 140+
+  standardized log categories
 - [PHP 8+ Type System Documentation](https://www.php.net/manual/en/language.types.declarations.php)
 - [PSR Standards](https://www.php-fig.org/psr/)
 
