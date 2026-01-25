@@ -38,17 +38,15 @@ class BackupManager {
     /**
      * Constructor
      *
-     * Note: PHP constructors cannot have return type declarations per language specification
-     * @see https://www.php.net/manual/en/language.oop5.decon.php
+     * Note: PHP does not allow return type declarations on constructors per language specification
      *
      * @param object $database Database connection object
      * @param string $backupDirectory Base directory for backups
      * @param int|null $userId User ID for logging (optional)
-     * @return void Constructors do not return values
      */
-    // phpcs:ignore Generic.CodeAnalysis.UnusedFunctionParameter.FoundInExtendedClass
-    // @codingStandardsIgnoreLine - Constructors cannot have return type declarations
+    // phpcs:disable PSR2.Methods.MethodDeclaration.MissingReturnType
     public function __construct(object $database, string $backupDirectory, ?int $userId = null) {
+        // phpcs:enable PSR2.Methods.MethodDeclaration.MissingReturnType
         $this->db = $database;
         $this->backupBaseDir = rtrim($backupDirectory, '/') . '/';
         $this->logger = function($level, $category, $message) use ($userId) {
@@ -741,9 +739,7 @@ class BackupManager {
             basename($backupPath)
         );
 
-        error_log($logMessage);
-
-        // Also log via UserSpice logger if available
-        ($this->logger)(1, 'BackupManager', $logMessage);
+        // Log via UserSpice logger
+        ($this->logger)(1, LogCategories::LOG_CATEGORY_BACKUP_MANAGER, $logMessage);
     }
 }

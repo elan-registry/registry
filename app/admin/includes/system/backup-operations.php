@@ -248,10 +248,6 @@ try {
 
     logger($user->data()->id, LogCategories::LOG_CATEGORY_BACKUP_ERROR, $errorDetails);
 
-    // Also log to PHP error log for debugging
-    error_log("BackupManager Error: " . $e->getMessage() . " in " . $e->getFile() . " on line " . $e->getLine());
-    error_log("Stack trace: " . $e->getTraceAsString());
-
     ApiResponse::serverError($e->getMessage())
         ->withDataArray([
             'error_details' => [
