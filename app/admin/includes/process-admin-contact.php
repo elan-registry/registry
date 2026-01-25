@@ -71,7 +71,7 @@ if (Input::exists('post')) {
                 $adminData = $db->query('SELECT id, email, fname, lname FROM users WHERE id = ?', [$user->data()->id])->first();
                 if (!$adminData) {
                     $errors[] = 'Admin user data not found';
-                    throw new RuntimeException('Admin user not found');
+                    throw new AdminContactException('Admin user not found');
                 }
 
                 // Get owner data - handle special 'Multiple' case for duplicate emails
@@ -86,13 +86,13 @@ if (Input::exists('post')) {
                     ];
                     if (empty($ownerData->email)) {
                         $errors[] = 'Target email is required for multiple user contact';
-                        throw new InvalidArgumentException('Target email not provided for multiple users');
+                        throw new AdminContactException('Target email not provided for multiple users');
                     }
                 } else {
                     $ownerData = $db->query('SELECT id, email, fname, lname FROM users WHERE id = ?', [$ownerId])->first();
                     if (!$ownerData) {
                         $errors[] = 'Owner user data not found (Owner ID: ' . $ownerId . ')';
-                        throw new RuntimeException('Owner user not found');
+                        throw new AdminContactException('Owner user not found');
                     }
                 }
 
@@ -162,9 +162,9 @@ if (Input::exists('post')) {
                     logger($user->data()->id, LogCategories::LOG_CATEGORY_CAR_ACTIONS, "Failed admin contact email - Admin: {$fromEmail}, Owner: {$toEmail}");
                 }
 
-            } catch (RuntimeException | InvalidArgumentException $e) {
+            } catch (AdminContactException $e) {
                 $errors[] = 'An error occurred while sending the message: ' . $e->getMessage();
-                logger($user->data()->id, LogCategories::LOG_CATEGORY_CAR_ACTIONS, "Admin contact error: " . $e->getMessage());
+                logger($user->data()->id, $e->getLogCategory(), "Admin contact error: " . $e->getMessage());
             }
         }
     } else {

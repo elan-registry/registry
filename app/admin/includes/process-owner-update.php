@@ -119,12 +119,20 @@ try {
         )
         ->send();
 
+} catch (AdminOperationException $e) {
+    ApiResponse::serverError($e->getUserMessage())
+        ->withLogging(
+            $user->data()->id,
+            $e->getLogCategory(),
+            "Owner update error for user ID {$ownerId}: " . $e->getMessage()
+        )
+        ->send();
 } catch (Exception $e) {
     ApiResponse::serverError('An unexpected error occurred. Please try again.')
         ->withLogging(
             $user->data()->id,
-            'SystemError',
-            "Owner update system error for user ID {$ownerId}: " . $e->getMessage()
+            LogCategories::LOG_CATEGORY_SYSTEM_ERROR,
+            "Owner update unexpected error for user ID {$ownerId}: " . $e->getMessage()
         )
         ->send();
 }

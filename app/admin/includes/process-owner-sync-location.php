@@ -67,12 +67,28 @@ try {
             ->send();
     }
 
+} catch (LocationServiceException $e) {
+    ApiResponse::serverError($e->getUserMessage())
+        ->withLogging(
+            $user->data()->id,
+            $e->getLogCategory(),
+            "Location sync error for owner ID {$ownerId}: " . $e->getMessage()
+        )
+        ->send();
+} catch (AdminOperationException $e) {
+    ApiResponse::serverError($e->getUserMessage())
+        ->withLogging(
+            $user->data()->id,
+            $e->getLogCategory(),
+            "Location sync error for owner ID {$ownerId}: " . $e->getMessage()
+        )
+        ->send();
 } catch (Exception $e) {
     ApiResponse::serverError('Location synchronization failed. Please try again.')
         ->withLogging(
             $user->data()->id,
-            'SystemError',
-            "Location sync error for owner ID {$ownerId}: " . $e->getMessage()
+            LogCategories::LOG_CATEGORY_SYSTEM_ERROR,
+            "Location sync unexpected error for owner ID {$ownerId}: " . $e->getMessage()
         )
         ->send();
 }
