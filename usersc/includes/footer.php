@@ -20,3 +20,6 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 //This will go in every template.
 ?>
+
+<!-- ElanRegistry API Client - Pattern A standardized AJAX -->
+<script nonce="<?=htmlspecialchars($usespice_nonce ?? '')?>" src="<?=$us_url_root?>app/assets/js/api-client.js"></script>

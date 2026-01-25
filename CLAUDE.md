@@ -516,13 +516,19 @@ makes logging categories discoverable.
 **Centralized Constants Location:** `usersc/classes/LogCategories.php`
 
 **140+ categories organized by functional domain:**
-- Car Management (CarActions, CarCreation, CarUpdate, CarDeletion, CarMerge, CarTransfer, etc.)
-- User/Owner Management (OwnerActions, UserDeletion, UserCreation, InactiveCleanup, etc.)
+
+- Car Management (CarActions, CarCreation, CarUpdate, CarDeletion,
+  CarMerge, CarTransfer, etc.)
+- User/Owner Management (OwnerActions, UserDeletion, UserCreation,
+  InactiveCleanup, etc.)
 - Authentication (Login, LoginFail, PasskeyAuth*, PasswordReset, TOTP*, etc.)
-- Database Operations (DatabaseError, DatabaseMaintenance, BackupManager, SchemaOperationError, etc.)
+- Database Operations (DatabaseError, DatabaseMaintenance, BackupManager,
+  SchemaOperationError, etc.)
 - Email/Communications (EmailSuccess, EmailError, FeedbackForm, etc.)
-- System & File Operations (SystemError, FileError, ValidationError, ImageRemoval, etc.)
-- Admin & Management (AdminVerification, SettingsUpdate, UserManager, Logs, etc.)
+- System & File Operations (SystemError, FileError, ValidationError,
+  ImageRemoval, etc.)
+- Admin & Management (AdminVerification, SettingsUpdate, UserManager,
+  Logs, etc.)
 - Location & Geocoding (Geocode, LocationService, LocationReverse, etc.)
 - Access Control (AccessDenied, SecurePage, HasPerm, PageNotFound, etc.)
 - OAuth & External Auth (OAuthClient, OAuthServer, OAuthClientLogin, etc.)
@@ -598,6 +604,333 @@ if (!empty($successes)) {
 // Display all messages (replaces manual Bootstrap alert HTML)
 sessionValMessages($errors, $successes, null);
 ```
+
+### Frontend API Client (Pattern A - v2.12.0+)
+
+**All AJAX endpoints use Pattern A response format. The ElanRegistryAPI client
+provides standardized, secure communication with automatic CSRF token injection
+and centralized error handling.**
+
+#### Pattern A Response Format (Backend)
+
+All backend API endpoints MUST return Pattern A format via the ApiResponse class:
+
+```json
+{
+  "success": true|false,
+  "message": "Human-readable message",
+  "optional_data": "additional fields as needed"
+}
+```
+
+**Response Status Codes:**
+
+- **200 OK**: Successful request - check `success` property
+- **400 Bad Request**: Malformed request
+- **401 Unauthorized**: User not authenticated
+- **403 Forbidden**: User lacks required permissions
+- **404 Not Found**: Endpoint or resource not found
+- **422 Unprocessable Entity**: Validation error with `errors` object
+  containing field-level errors
+- **500 Internal Server Error**: Server error
+
+#### ElanRegistryAPI Usage (Required for New Code)
+
+**MANDATORY for all NEW AJAX endpoints created after v2.12.0:**
+
+```javascript
+// ✅ CORRECT: Use ElanRegistryAPI for new AJAX endpoints
+const api = new ElanRegistryAPI();
+
+try {
+    const result = await api.post('app/action/update-car.php', {
+        car_id: 123,
+        year: 2020
+    });
+
+    // Success - Pattern A guarantees success property
+    NotificationHelper.show(result.message, 'success');
+
+    // Process additional data
+    if (result.data) {
+        console.log('Updated car:', result.data);
+    }
+
+} catch (error) {
+    // Handle specific error types
+    if (error instanceof ApiValidationError) {
+        // Field-level validation errors
+        NotificationHelper.showValidationErrors(error.errors);
+    } else if (error instanceof ApiCancelledError) {
+        // Request was cancelled
+        console.log('Request cancelled');
+    } else {
+        // General API error
+        NotificationHelper.show(error.message, 'error');
+    }
+}
+```
+
+#### Basic Usage Patterns
+
+**Simple GET Request:**
+
+```javascript
+const api = new ElanRegistryAPI();
+
+try {
+    const result = await api.get('app/action/search-cars.php', {
+        query: 'Elan',
+        limit: 10
+    });
+
+    console.log('Results:', result.data);
+} catch (error) {
+    NotificationHelper.show(error.message, 'error');
+}
+```
+
+**POST with Loading State:**
+
+```javascript
+const api = new ElanRegistryAPI();
+const $btn = $('#submitBtn');
+
+// Show loading state
+$btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i> Loading...');
+
+try {
+    const result = await api.post('app/action/process-form.php', {
+        name: 'John Doe',
+        email: 'john@example.com'
+    });
+
+    NotificationHelper.show(result.message, 'success');
+
+    // Refresh page or update UI
+    if (result.redirect) {
+        window.location.href = result.redirect;
+    }
+
+} catch (error) {
+    if (error instanceof ApiValidationError) {
+        NotificationHelper.showValidationErrors(error.errors);
+    } else {
+        NotificationHelper.show(error.message, 'error');
+    }
+} finally {
+    // Restore button state
+    $btn.prop('disabled', false).html('Submit');
+}
+```
+
+**Request Cancellation:**
+
+```javascript
+const api = new ElanRegistryAPI();
+let searchRequestId = null;
+
+// Search with auto-cancel on new search
+async function search(query) {
+    // Cancel previous search if still pending
+    if (searchRequestId) {
+        api.cancel(searchRequestId);
+    }
+
+    try {
+        const result = await api.request(
+            'app/action/search.php',
+            {
+                method: 'GET',
+                params: { q: query },
+                requestId: (searchRequestId = api.generateRequestId())
+            }
+        );
+
+        console.log('Results:', result.data);
+    } catch (error) {
+        if (error instanceof ApiCancelledError) {
+            console.log('Search cancelled');
+        } else {
+            NotificationHelper.show(error.message, 'error');
+        }
+    }
+}
+```
+
+#### Global Availability
+
+The API client is automatically loaded on every page via footer.php:
+
+```javascript
+// Available globally without instantiation:
+window.ElanRegistryAPI    // Class for creating new instances
+window.NotificationHelper // Utility class for user feedback
+window.ApiError           // Error class
+window.ApiValidationError // Validation error class
+window.ApiCancelledError  // Cancellation error class
+
+// Create API instance:
+const api = new ElanRegistryAPI();
+```
+
+#### CSRF Token Management
+
+The API client automatically handles CSRF tokens:
+
+1. **Automatic Detection** - Token extracted from:
+   - `<input name="csrf">` field (primary)
+   - `<input id="csrf">` field (fallback)
+
+2. **Automatic Injection** - Token added to:
+   - FormData body for POST/PUT/DELETE
+   - X-CSRF-Token header for all requests
+
+3. **Manual Override**
+
+```javascript
+const api = new ElanRegistryAPI({
+    csrfToken: 'custom-token-value'
+});
+```
+
+#### Custom Error Handling
+
+**ApiValidationError** - For 422 validation failures:
+
+```javascript
+catch (error) {
+    if (error instanceof ApiValidationError) {
+        // error.errors = { field_name: 'Error message' }
+        NotificationHelper.showValidationErrors(error.errors);
+
+        // Or handle manually:
+        Object.entries(error.errors).forEach(([field, message]) => {
+            const input = document.querySelector(`[name="${field}"]`);
+            if (input) {
+                input.classList.add('is-invalid');
+            }
+        });
+    }
+}
+```
+
+**ApiError** - For HTTP and network errors:
+
+```javascript
+catch (error) {
+    if (error instanceof ApiError) {
+        // error.status = HTTP status code
+        // error.response = Response body object
+
+        if (error.status === 401) {
+            // User not authenticated - redirect to login
+            window.location.href = '/users/?view=login';
+        } else if (error.status === 403) {
+            NotificationHelper.show('You do not have permission to perform this action', 'error');
+        } else {
+            NotificationHelper.show(error.message, 'error');
+        }
+    }
+}
+```
+
+**ApiCancelledError** - For cancelled requests:
+
+```javascript
+catch (error) {
+    if (error instanceof ApiCancelledError) {
+        console.log('Request cancelled:', error.requestId);
+        // Silently ignore or log for debugging
+    }
+}
+```
+
+#### Migration from jQuery.ajax()
+
+**Before (jQuery.ajax):**
+
+```javascript
+$.ajax({
+    url: 'app/action/update-car.php',
+    type: 'POST',
+    data: { car_id: 123 },
+    success: function(response) {
+        if (response.success) {
+            alert(response.message);
+        } else {
+            alert('Error: ' + response.message);
+        }
+    },
+    error: function(xhr) {
+        alert('Request failed');
+    }
+});
+```
+
+**After (ElanRegistryAPI):**
+
+```javascript
+const api = new ElanRegistryAPI();
+
+try {
+    const result = await api.post('app/action/update-car.php', {
+        car_id: 123
+    });
+
+    NotificationHelper.show(result.message, 'success');
+} catch (error) {
+    NotificationHelper.show(error.message, 'error');
+}
+```
+
+#### Configuration Options
+
+```javascript
+// Custom configuration
+const api = new ElanRegistryAPI({
+    baseUrl: '/',           // Base URL for relative endpoints
+    timeout: 30000,         // Request timeout (ms) - default 30s
+    csrfToken: 'token'      // Manual CSRF token
+});
+
+// Use:
+api.post('app/endpoint.php', data);
+```
+
+#### Compatibility
+
+**Browser Requirements:**
+
+- Fetch API (all modern browsers)
+- AbortController (all modern browsers)
+- URLSearchParams (all modern browsers)
+- FormData (all modern browsers)
+
+**Framework Compatibility:**
+
+- Works with jQuery-based pages
+- Works with vanilla JavaScript pages
+- Compatible with Bootstrap 5 alerts
+
+**Migration Strategy:**
+
+- **Phase 1**: New endpoints use ElanRegistryAPI
+- **Phase 2**: Opportunistic migration of high-traffic endpoints
+- **Phase 3**: Systematic migration of remaining endpoints
+
+#### Legacy jQuery.ajax() Code
+
+**ACCEPTABLE for existing code only:**
+
+```javascript
+// ⚠️ Only acceptable for existing endpoints
+// DO NOT use for new code - use ElanRegistryAPI instead
+$.ajax({...});
+```
+
+Existing jQuery.ajax() calls remain functional but should be migrated during
+Phase 2-3 when these endpoints are being modified for other reasons.
 
 ### Code Quality Requirements
 
