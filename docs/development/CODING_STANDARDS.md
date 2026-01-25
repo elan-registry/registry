@@ -711,6 +711,177 @@ class ExampleClass
 
 ---
 
+## 🌐 **Frontend AJAX Standards (v2.12.0+)**
+
+### **Pattern A Response Format**
+
+All backend AJAX endpoints **MUST** return Pattern A format using the ApiResponse class:
+
+```php
+<?php
+// ✅ REQUIRED - Use ApiResponse for all new endpoints
+use App\Classes\ApiResponse;
+
+try {
+    $data = validateAndProcess($_POST);
+
+    // Successful response
+    ApiResponse::success('Operation completed successfully', [
+        'id' => $data->id,
+        'message' => 'Saved successfully'
+    ]);
+
+} catch (ValidationException $e) {
+    // Validation error (422) - includes field errors
+    ApiResponse::validationError(
+        'Please correct the errors below',
+        [
+            'email' => 'Invalid email format',
+            'password' => 'Password too short'
+        ]
+    );
+
+} catch (Exception $e) {
+    // General error
+    ApiResponse::error('An error occurred: ' . $e->getMessage());
+}
+```
+
+**Response Format:**
+
+```json
+{
+  "success": true|false,
+  "message": "Human-readable message",
+  "errors": { "field": "error message" },
+  "data": "additional fields as needed"
+}
+```
+
+### **ElanRegistryAPI Usage (Required for New Code)**
+
+**MANDATORY for all NEW AJAX endpoints created after v2.12.0:**
+
+```javascript
+// ✅ CORRECT - Use ElanRegistryAPI
+const api = new ElanRegistryAPI();
+
+try {
+    const result = await api.post('app/action/endpoint.php', {
+        car_id: 123,
+        field: 'value'
+    });
+
+    NotificationHelper.show(result.message, 'success');
+
+    // Process additional data
+    if (result.data) {
+        console.log('Result:', result.data);
+    }
+
+} catch (error) {
+    if (error instanceof ApiValidationError) {
+        NotificationHelper.showValidationErrors(error.errors);
+    } else {
+        NotificationHelper.show(error.message, 'error');
+    }
+}
+```
+
+**Features:**
+
+- ✅ Automatic CSRF token injection
+- ✅ Fetch API with async/await
+- ✅ Request cancellation support (AbortController)
+- ✅ Custom error classes (ApiError, ApiValidationError, ApiCancelledError)
+- ✅ XSS-safe notification display
+- ✅ Field-level validation error handling
+
+### **Migration of Existing Code**
+
+**ACCEPTABLE for existing endpoints only:**
+
+```javascript
+// ⚠️ Only for legacy code - DO NOT use for new endpoints
+$.ajax({...});  // Legacy jQuery - acceptable only for existing code
+```
+
+**Migration Timeline:**
+
+- **Phase 1 (v2.12.0)**: New endpoints MUST use ElanRegistryAPI
+- **Phase 2 (v2.13.0)**: Opportunistic migration of high-traffic endpoints
+- **Phase 3 (v2.14.0)**: Systematic migration of remaining endpoints
+
+### **Notification Standards**
+
+Use NotificationHelper for all user feedback:
+
+```javascript
+// Display success message
+NotificationHelper.show('Operation completed successfully', 'success');
+
+// Display error message
+NotificationHelper.show('An error occurred', 'error');
+
+// Display field validation errors
+NotificationHelper.showValidationErrors({
+    'email': 'Invalid email format',
+    'phone': 'Invalid phone number'
+});
+
+// Persistent notification (no auto-hide)
+NotificationHelper.show('Important message', 'warning', 0);
+```
+
+### **Error Handling Patterns**
+
+```javascript
+const api = new ElanRegistryAPI();
+
+try {
+    const result = await api.post('app/endpoint.php', data);
+    // Success handling...
+
+} catch (error) {
+    // Type-specific error handling
+    if (error instanceof ApiValidationError) {
+        // 422 - Validation errors
+        NotificationHelper.showValidationErrors(error.errors);
+
+    } else if (error instanceof ApiCancelledError) {
+        // Request was cancelled - typically silent
+        console.log('Request cancelled');
+
+    } else if (error instanceof ApiError) {
+        // HTTP error or network error
+        if (error.status === 401) {
+            // Redirect to login
+            window.location.href = '/users/?view=login';
+        } else if (error.status === 403) {
+            NotificationHelper.show('Permission denied', 'error');
+        } else {
+            NotificationHelper.show(error.message, 'error');
+        }
+    }
+}
+```
+
+### **CSRF Token Handling**
+
+The API client automatically handles CSRF tokens. Include in all forms:
+
+```html
+<!-- ✅ REQUIRED - CSRF field in forms -->
+<form id="myForm">
+    <input type="hidden" name="csrf" value="<?php echo Token::generate(); ?>">
+    <!-- Form fields -->
+</form>
+```
+
+The ElanRegistryAPI will automatically extract and inject this token into all requests.
+
+---
+
 ## 🚀 **Performance Guidelines**
 
 ### **Database Optimization**
