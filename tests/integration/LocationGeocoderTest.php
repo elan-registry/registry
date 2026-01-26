@@ -2,277 +2,292 @@
 
 declare(strict_types=1);
 
-use PHPUnit\Framework\TestCase;
+require_once __DIR__ . '/IntegrationTestCase.php';
 
 /**
- * LocationGeocoderTest
+ * LocationGeocoderTest / LocationServiceTest
  *
- * Integration tests for LocationGeocoder class functionality including runtime enforcement,
- * forward geocoding, and integration with real database locations.
+ * Integration tests for location geocoding services using OpenStreetMap APIs:
+ * - Forward geocoding (address → coordinates) via Photon/Nominatim
+ * - Reverse geocoding (coordinates → address) via Nominatim
+ * - Input validation
+ * - Rate limiting
+ * - Coordinate precision
+ * - Error handling
  *
- * These tests require database connection and Google Maps API key.
+ * LocationService is the modern replacement for deprecated LocationGeocoder.
+ * Uses free OpenStreetMap APIs (Photon/Nominatim) instead of Google Maps.
  *
- * NOTE: Most tests will skip when run via PHPUnit due to bootstrap conflicts with UserSpice.
- * Tests that pass in standard PHPUnit run:
- * - testDirectInstantiationThrowsException (runtime enforcement)
- * - testEmptyApiKeyValidation (API key validation)
- *
- * To run the full integration tests with real geocoding:
- * 1. Create a standalone test script that loads users/init.php
- * 2. Run tests manually outside PHPUnit environment
- * 3. Or test manually via the application (user registration, settings, owner management)
+ * Tests assume user ID 1 for rate limiting and logging context.
  *
  * @group Integration
  * @group Geocoding
  */
-class LocationGeocoderTest extends TestCase
+class LocationGeocoderTest extends IntegrationTestCase
 {
-    private static ?PDO $pdo = null;
-    private static array $testLocations = [];
-    private static bool $connected = false;
-    private static ?string $apiKey = null;
+    protected const TEST_USER_ID = 1;
+    private LocationService $service;
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+        $this->requireDatabase();
+        $this->service = new LocationService();
+    }
 
     /**
-     * Set up database connection and fetch 10 random locations for testing
+     * Test that LocationService class exists and has required methods
      */
-    public static function setUpBeforeClass(): void
+    public function testLocationServiceClassStructure(): void
     {
-        // Initialize UserSpice environment for integration tests
-        $projectRoot = dirname(dirname(__DIR__));
+        $this->assertTrue(class_exists(LocationService::class), 'LocationService class exists');
 
-        // Try to load UserSpice init - may fail if running with unit test bootstrap
+        $reflection = new ReflectionClass(LocationService::class);
+        $this->assertTrue($reflection->hasMethod('searchLocation'), 'searchLocation method exists');
+        $this->assertTrue($reflection->hasMethod('reverseGeocode'), 'reverseGeocode method exists');
+        $this->assertTrue($reflection->hasMethod('validateCoordinates'), 'validateCoordinates method exists');
+    }
+
+    /**
+     * Test forward geocoding with valid address
+     * Tests: Portland, Oregon, United States → coordinates via Photon/Nominatim
+     */
+    public function testForwardGeocodingPortland(): void
+    {
+
         try {
-            if (!class_exists('ElanRegistryOwner')) {
-                @require_once $projectRoot . '/users/init.php';
-            }
-        } catch (Throwable $e) {
-            // Initialization failed - tests will be skipped
+            $results = $this->service->searchLocation('Portland Oregon', self::TEST_USER_ID, 5);
+        } catch (LocationServiceException $e) {
+            $this->markTestSkipped('Location service unavailable: ' . $e->getMessage());
         }
 
-        // Try to connect to real database
+        $this->assertIsArray($results, "Search should return array");
+        $this->assertNotEmpty($results, "Should find Portland results");
+
+        // Check first result structure
+        $result = $results[0];
+        $this->assertArrayHasKey('lat', $result, "Result should have latitude");
+        $this->assertArrayHasKey('lon', $result, "Result should have longitude");
+        $this->assertArrayHasKey('city', $result, "Result should have city");
+        $this->assertArrayHasKey('country', $result, "Result should have country");
+
+        // Verify data types
+        $this->assertIsNumeric($result['lat'], "Latitude should be numeric");
+        $this->assertIsNumeric($result['lon'], "Longitude should be numeric");
+
+        // Verify Portland, OR is in reasonable bounds
+        // Portland, OR is approximately at 45.52°N, 122.68°W
+        $this->assertGreaterThan(45, $result['lat'], "Portland latitude should be > 45");
+        $this->assertLessThan(46, $result['lat'], "Portland latitude should be < 46");
+        $this->assertLessThan(-122, $result['lon'], "Portland longitude should be < -122");
+        $this->assertGreaterThan(-123, $result['lon'], "Portland longitude should be > -123");
+
+        echo "\n✓ Forward geocoding successful: Portland → ({$result['lat']}, {$result['lon']})\n";
+    }
+
+    /**
+     * Test forward geocoding with London, UK
+     */
+    public function testForwardGeocodingLondon(): void
+    {
+
         try {
-            self::$pdo = new PDO(
-                'mysql:host=127.0.0.1;port=8889;dbname=elanregi_spice',
-                'claude',
-                'claude',
-                [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]
-            );
-            self::$connected = true;
-
-            // Fetch Google Maps API key from settings if getSettings function available
-            if (function_exists('getSettings')) {
-                $settings = getSettings();
-                if (isset($settings->elan_google_geo_key)) {
-                    self::$apiKey = $settings->elan_google_geo_key;
-                }
-            } else {
-                // Fallback: fetch directly from database
-                $stmt = self::$pdo->query("SELECT elan_google_geo_key FROM settings LIMIT 1");
-                $settings = $stmt->fetch(PDO::FETCH_OBJ);
-                if ($settings && !empty($settings->elan_google_geo_key)) {
-                    self::$apiKey = $settings->elan_google_geo_key;
-                }
-            }
-
-            // Fetch 10 random locations from profiles table with complete location data
-            $stmt = self::$pdo->query(
-                "SELECT DISTINCT p.city, p.state, p.country
-                 FROM profiles p
-                 WHERE p.city IS NOT NULL AND p.city != ''
-                   AND p.state IS NOT NULL AND p.state != ''
-                   AND p.country IS NOT NULL AND p.country != ''
-                 ORDER BY RAND()
-                 LIMIT 10"
-            );
-
-            self::$testLocations = $stmt->fetchAll(PDO::FETCH_OBJ);
-        } catch (PDOException $e) {
-            self::$connected = false;
+            $results = $this->service->searchLocation('London United Kingdom', self::TEST_USER_ID, 5);
+        } catch (LocationServiceException $e) {
+            $this->markTestSkipped('Location service unavailable: ' . $e->getMessage());
         }
+
+        $this->assertNotEmpty($results, "Should find London results");
+
+        $result = $results[0];
+
+        // London is approximately at 51.51°N, 0.13°W
+        $this->assertGreaterThan(51, $result['lat'], "London latitude should be > 51");
+        $this->assertLessThan(52, $result['lat'], "London latitude should be < 52");
+        $this->assertGreaterThan(-1, $result['lon'], "London longitude should be > -1");
+        $this->assertLessThan(1, $result['lon'], "London longitude should be < 1");
+
+        echo "\n✓ Forward geocoding successful: London → ({$result['lat']}, {$result['lon']})\n";
     }
 
     /**
-     * Test that LocationGeocoder throws exception when instantiated directly
-     *
-     * @test
+     * Test reverse geocoding with valid coordinates
+     * Tests: 45.52°N, 122.68°W (Portland, OR) → address
      */
-    public function testDirectInstantiationThrowsException(): void
+    public function testReverseGeocodingPortland(): void
     {
-        $this->expectException(GeocodingException::class);
-        $this->expectExceptionMessage('LocationGeocoder is an internal implementation detail');
 
-        // This should throw an exception because we're not calling from ElanRegistryOwner
-        new LocationGeocoder('test-api-key');
+        $lat = 45.52;
+        $lon = -122.68;
+
+        try {
+            $result = $this->service->reverseGeocode($lat, $lon, self::TEST_USER_ID);
+        } catch (LocationServiceException $e) {
+            $this->markTestSkipped('Location service unavailable: ' . $e->getMessage());
+        }
+
+        $this->assertIsArray($result, "Reverse geocode should return array");
+        $this->assertArrayHasKey('lat', $result, "Result should have latitude");
+        $this->assertArrayHasKey('lon', $result, "Result should have longitude");
+        $this->assertArrayHasKey('city', $result, "Result should have city");
+        $this->assertArrayHasKey('country', $result, "Result should have country");
+
+        // Verify coordinates match input
+        $this->assertEquals(45.52, $result['lat'], "Latitude should match input");
+        $this->assertEquals(-122.68, $result['lon'], "Longitude should match input");
+
+        // Should identify Portland, Oregon area
+        $this->assertNotEmpty($result['city'], "Should identify city");
+        $this->assertNotEmpty($result['country'], "Should identify country");
+
+        echo "\n✓ Reverse geocoding successful: (45.52, -122.68) → {$result['city']}, {$result['country']}\n";
     }
 
     /**
-     * Test that LocationGeocoder throws exception with empty API key
-     *
-     * Even though we can't instantiate directly, this tests the exception handling
-     * via reflection to ensure the validation is in place.
-     *
-     * @test
+     * Test reverse geocoding with London coordinates
      */
-    public function testEmptyApiKeyValidation(): void
+    public function testReverseGeocodingLondon(): void
     {
-        // Use reflection to bypass the caller check temporarily
-        $reflection = new ReflectionClass(LocationGeocoder::class);
-        $constructor = $reflection->getConstructor();
 
-        // We can't directly test this without mocking the backtrace,
-        // so we test it via ElanRegistryOwner which is the proper way
-        $this->assertTrue(true, 'API key validation is handled in constructor');
+        $lat = 51.51;
+        $lon = -0.13;
+
+        try {
+            $result = $this->service->reverseGeocode($lat, $lon, self::TEST_USER_ID);
+        } catch (LocationServiceException $e) {
+            $this->markTestSkipped('Location service unavailable: ' . $e->getMessage());
+        }
+
+        $this->assertArrayHasKey('city', $result, "Should identify city");
+        $this->assertArrayHasKey('country', $result, "Should identify country");
+
+        echo "\n✓ Reverse geocoding successful: (51.51, -0.13) → {$result['city']}, {$result['country']}\n";
     }
 
     /**
-     * Test ElanRegistryOwner::geocodeAddress() with real database locations
-     *
-     * @test
-     * @dataProvider realLocationProvider
+     * Test coordinate validation
      */
-    public function testForwardGeocodingWithRealLocations(string $city, string $state, string $country): void
+    public function testCoordinateValidation(): void
     {
-        // Skip if UserSpice environment not fully loaded
-        if (!class_exists('ElanRegistryOwner') || !function_exists('getSettings')) {
-            $this->markTestSkipped('UserSpice environment not available');
-        }
 
-        // Skip if database not connected or no API key
-        if (!self::$connected) {
-            $this->markTestSkipped('Database connection not available');
-        }
-        if (empty(self::$apiKey)) {
-            $this->markTestSkipped('Google Maps API key not configured');
-        }
+        // Valid coordinates
+        $this->assertTrue(
+            $this->service->validateCoordinates(45.52, -122.68),
+            "Valid coordinates should pass"
+        );
 
-        // Test geocoding via the public API
-        $result = ElanRegistryOwner::geocodeAddress($city, $state, $country);
+        $this->assertTrue(
+            $this->service->validateCoordinates(51.51, -0.13),
+            "Valid London coordinates should pass"
+        );
 
-        // Assert result structure
-        $this->assertIsArray($result, "Geocoding should return an array");
+        // Invalid latitude
+        $this->assertFalse(
+            $this->service->validateCoordinates(91.0, 0.0),
+            "Latitude > 90 should fail"
+        );
 
-        // If geocoding succeeded, verify the structure
-        if (!empty($result)) {
-            $this->assertArrayHasKey('lat', $result, "Result should contain 'lat' key");
-            $this->assertArrayHasKey('lon', $result, "Result should contain 'lon' key");
-            $this->assertIsFloat($result['lat'], "Latitude should be a float");
-            $this->assertIsFloat($result['lon'], "Longitude should be a float");
+        $this->assertFalse(
+            $this->service->validateCoordinates(-91.0, 0.0),
+            "Latitude < -90 should fail"
+        );
 
-            // Verify coordinates are within valid ranges
-            $this->assertGreaterThanOrEqual(-90, $result['lat'], "Latitude should be >= -90");
-            $this->assertLessThanOrEqual(90, $result['lat'], "Latitude should be <= 90");
-            $this->assertGreaterThanOrEqual(-180, $result['lon'], "Longitude should be >= -180");
-            $this->assertLessThanOrEqual(180, $result['lon'], "Longitude should be <= 180");
+        // Invalid longitude
+        $this->assertFalse(
+            $this->service->validateCoordinates(0.0, 181.0),
+            "Longitude > 180 should fail"
+        );
 
-            // Verify precision (should be rounded to 4 decimal places)
-            $latPrecision = strlen(substr(strrchr((string)$result['lat'], "."), 1));
-            $lonPrecision = strlen(substr(strrchr((string)$result['lon'], "."), 1));
-            $this->assertLessThanOrEqual(4, $latPrecision, "Latitude precision should be <= 4 decimal places");
-            $this->assertLessThanOrEqual(4, $lonPrecision, "Longitude precision should be <= 4 decimal places");
-        }
+        $this->assertFalse(
+            $this->service->validateCoordinates(0.0, -181.0),
+            "Longitude < -180 should fail"
+        );
+
+        echo "\n✓ Coordinate validation working correctly\n";
     }
 
     /**
-     * Test geocoding with invalid input
-     *
-     * @test
+     * Test search with too short query
      */
-    public function testForwardGeocodingWithInvalidInput(): void
+    public function testSearchWithShortQuery(): void
     {
-        // Skip if UserSpice environment not fully loaded
-        if (!class_exists('ElanRegistryOwner') || !function_exists('getSettings')) {
-            $this->markTestSkipped('UserSpice environment not available');
-        }
 
-        // Empty city - should return empty array
-        $result = ElanRegistryOwner::geocodeAddress('', 'Oregon', 'United States');
-        $this->assertEmpty($result, "Empty city should return empty array");
+        $this->expectException(LocationServiceException::class);
+        $this->expectExceptionMessage('at least 2 characters');
 
-        // Empty country - should return empty array
-        $result = ElanRegistryOwner::geocodeAddress('Portland', 'Oregon', '');
-        $this->assertEmpty($result, "Empty country should return empty array");
-
-        // All empty - should return empty array
-        $result = ElanRegistryOwner::geocodeAddress('', '', '');
-        $this->assertEmpty($result, "All empty parameters should return empty array");
+        $this->service->searchLocation('A', self::TEST_USER_ID);
     }
 
     /**
-     * Test geocoding with missing API key
-     *
-     * @test
+     * Test reverse geocode with invalid coordinates
      */
-    public function testGeocodingWithMissingApiKey(): void
+    public function testReverseGeocodeWithInvalidCoordinates(): void
     {
-        // Skip if UserSpice environment not fully loaded
-        if (!class_exists('ElanRegistryOwner') || !function_exists('getSettings')) {
-            $this->markTestSkipped('UserSpice environment not available');
-        }
 
-        // Test with missing API key scenario
-        // Note: We can't actually modify settings in tests, so this tests the logic
-        $result = ElanRegistryOwner::geocodeAddress('Portland', 'Oregon', 'United States');
-
-        // Result structure depends on whether API key is configured
-        $this->assertIsArray($result, "Should return an array even with API issues");
+        // Invalid latitude
+        $this->expectException(LocationServiceException::class);
+        $this->service->reverseGeocode(91.0, 0.0, self::TEST_USER_ID);
     }
 
     /**
-     * Test that geocodeAddress returns empty array on API failures
-     *
-     * @test
+     * Test coordinate precision (should be 4 decimal places)
      */
-    public function testGeocodingHandlesApiFailuresGracefully(): void
+    public function testCoordinatePrecision(): void
     {
-        // Skip if UserSpice environment not fully loaded
-        if (!class_exists('ElanRegistryOwner') || !function_exists('getSettings')) {
-            $this->markTestSkipped('UserSpice environment not available');
+
+        try {
+            $results = $this->service->searchLocation('Portland Oregon', self::TEST_USER_ID, 1);
+        } catch (LocationServiceException $e) {
+            $this->markTestSkipped('Location service unavailable: ' . $e->getMessage());
         }
 
-        // Test with nonsense location that will likely fail or return unexpected results
-        $result = ElanRegistryOwner::geocodeAddress('XYZ123Invalid', 'ZZZ', 'NonexistentCountry999');
+        $result = $results[0];
+        $latStr = (string)$result['lat'];
+        $lonStr = (string)$result['lon'];
 
-        // Should return empty array or valid coordinates array
-        $this->assertIsArray($result, "Should return an array");
-
-        // If it returns data, it should have the correct structure
-        if (!empty($result)) {
-            $this->assertArrayHasKey('lat', $result);
-            $this->assertArrayHasKey('lon', $result);
+        // Count decimal places
+        if (strpos($latStr, '.') !== false) {
+            $latDecimals = strlen(substr(strrchr($latStr, '.'), 1));
+            $this->assertLessThanOrEqual(4, $latDecimals, "Latitude should have ≤ 4 decimal places");
         }
+
+        if (strpos($lonStr, '.') !== false) {
+            $lonDecimals = strlen(substr(strrchr($lonStr, '.'), 1));
+            $this->assertLessThanOrEqual(4, $lonDecimals, "Longitude should have ≤ 4 decimal places");
+        }
+
+        echo "\n✓ Coordinates properly rounded to 4 decimal places (~11m accuracy)\n";
     }
 
     /**
-     * Data provider for real locations from database
-     *
-     * @return array
+     * Test that search returns expected result structure
      */
-    public static function realLocationProvider(): array
+    public function testSearchResultStructure(): void
     {
-        // Initialize if needed
-        if (empty(self::$testLocations)) {
-            self::setUpBeforeClass();
+
+        try {
+            $results = $this->service->searchLocation('Paris France', self::TEST_USER_ID, 1);
+        } catch (LocationServiceException $e) {
+            $this->markTestSkipped('Location service unavailable: ' . $e->getMessage());
         }
 
-        // Convert database results to test data format
-        $testData = [];
-        foreach (self::$testLocations as $location) {
-            $testData[] = [
-                $location->city,
-                $location->state,
-                $location->country
-            ];
+        $this->assertNotEmpty($results, "Should return results");
+
+        $result = $results[0];
+
+        // Verify all expected fields are present
+        $expectedFields = ['city', 'state', 'country', 'lat', 'lon', 'display'];
+        foreach ($expectedFields as $field) {
+            $this->assertArrayHasKey($field, $result, "Result should have '{$field}' field");
         }
 
-        // If no real locations available, provide some defaults
-        if (empty($testData)) {
-            $testData = [
-                ['Portland', 'Oregon', 'United States'],
-                ['London', '', 'United Kingdom'],
-                ['Sydney', 'New South Wales', 'Australia'],
-            ];
-        }
+        // Verify types
+        $this->assertIsString($result['city'], "City should be string");
+        $this->assertIsString($result['country'], "Country should be string");
+        $this->assertIsNumeric($result['lat'], "Latitude should be numeric");
+        $this->assertIsNumeric($result['lon'], "Longitude should be numeric");
 
-        return $testData;
+        echo "\n✓ Search result structure is correct\n";
     }
+
 }

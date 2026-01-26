@@ -2,9 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Tests\Integration;
-
-use PHPUnit\Framework\TestCase;
+require_once __DIR__ . '/IntegrationTestCase.php';
 
 /**
  * Integration tests for Statistics API endpoints
@@ -15,10 +13,8 @@ use PHPUnit\Framework\TestCase;
  * @author Elan Registry Development Team
  * @copyright 2025
  */
-class StatisticsApiTest extends TestCase
+class StatisticsApiTest extends IntegrationTestCase
 {
-    private $db;
-    private $connected = false;
     private $testCarId;
     private $testUserId;
 
@@ -27,28 +23,16 @@ class StatisticsApiTest extends TestCase
      */
     protected function setUp(): void
     {
-        // Try to connect to database
-        try {
-            $this->db = new \PDO(
-                'mysql:host=127.0.0.1;port=8889;dbname=elanregi_spice',
-                'claude',
-                'claude',
-                [\PDO::ATTR_ERRMODE => \PDO::ERRMODE_EXCEPTION]
-            );
-            $this->connected = true;
+        parent::setUp();
+        $this->requireDatabase();
 
-            // Find test car data
-            $carStmt = $this->db->query("SELECT id FROM cars LIMIT 1");
-            $car = $carStmt->fetch(\PDO::FETCH_OBJ);
-            $this->testCarId = $car ? $car->id : null;
+        // Find test car data
+        $car = $this->db->query("SELECT id FROM cars LIMIT 1")->first();
+        $this->testCarId = $car ? $car->id : null;
 
-            // Find test user data
-            $userStmt = $this->db->query("SELECT id FROM users WHERE active = 1 LIMIT 1");
-            $user = $userStmt->fetch(\PDO::FETCH_OBJ);
-            $this->testUserId = $user ? $user->id : null;
-        } catch (\PDOException $e) {
-            $this->connected = false;
-        }
+        // Find test user data
+        $user = $this->db->query("SELECT id FROM users WHERE active = 1 LIMIT 1")->first();
+        $this->testUserId = $user ? $user->id : null;
     }
 
     // =========================================================================
@@ -60,21 +44,15 @@ class StatisticsApiTest extends TestCase
      */
     public function testGeographicTabDataStructure(): void
     {
-        if (!$this->connected) {
-            $this->markTestSkipped('Database not available');
-        }
-
         // Verify required fields exist in database for geographic data
-        $countryStmt = $this->db->query("SELECT DISTINCT country FROM cars WHERE country IS NOT NULL AND country != '' LIMIT 1");
-        $countryResult = $countryStmt->fetch(\PDO::FETCH_OBJ);
+        $countryResult = $this->db->query("SELECT DISTINCT country FROM cars WHERE country IS NOT NULL AND country != '' LIMIT 1")->first();
         $this->assertNotNull($countryResult, "Should have cars with country data");
 
         // Verify US states data exists
-        $usStateStmt = $this->db->query(
+        $usStateResult = $this->db->query(
             "SELECT DISTINCT state FROM cars
              WHERE country = 'United States' AND state IS NOT NULL AND state != '' LIMIT 1"
-        );
-        $usStateResult = $usStateStmt->fetch(\PDO::FETCH_OBJ);
+        )->first();
         $this->assertNotNull($usStateResult, "Should have cars with US state data");
     }
 
@@ -83,17 +61,13 @@ class StatisticsApiTest extends TestCase
      */
     public function testGeographicTabCountryDistribution(): void
     {
-        if (!$this->connected) {
-            $this->markTestSkipped('Database not available');
-        }
 
         // Verify country distribution data can be retrieved
-        $stmt = $this->db->query(
+        $results = $this->db->query(
             "SELECT country, COUNT(*) as count FROM cars
              WHERE country IS NOT NULL AND country != ''
              GROUP BY country ORDER BY count DESC"
-        );
-        $results = $stmt->fetchAll(\PDO::FETCH_OBJ);
+        )->results();
         $this->assertNotEmpty($results, "Should have country distribution data");
     }
 
@@ -102,17 +76,13 @@ class StatisticsApiTest extends TestCase
      */
     public function testGeographicTabUsStateDistribution(): void
     {
-        if (!$this->connected) {
-            $this->markTestSkipped('Database not available');
-        }
 
         // Verify US state distribution data exists
-        $stmt = $this->db->query(
+        $results = $this->db->query(
             "SELECT state, COUNT(*) as count FROM cars
              WHERE country = 'United States' AND state IS NOT NULL AND state != ''
              GROUP BY state ORDER BY count DESC"
-        );
-        $results = $stmt->fetchAll(\PDO::FETCH_OBJ);
+        )->results();
         // May be empty if no US cars, but query should work
         $this->assertIsArray($results, "Should be able to query US states");
     }
@@ -126,18 +96,13 @@ class StatisticsApiTest extends TestCase
      */
     public function testProductionTabDataStructure(): void
     {
-        if (!$this->connected) {
-            $this->markTestSkipped('Database not available');
-        }
 
         // Verify type data exists
-        $typeStmt = $this->db->query("SELECT DISTINCT type FROM cars WHERE type IS NOT NULL AND type != ''");
-        $typeResults = $typeStmt->fetchAll(\PDO::FETCH_OBJ);
+        $typeResults = $this->db->query("SELECT DISTINCT type FROM cars WHERE type IS NOT NULL AND type != ''")->results();
         $this->assertNotEmpty($typeResults, "Should have car type data");
 
         // Verify series data exists
-        $seriesStmt = $this->db->query("SELECT DISTINCT series FROM cars WHERE series IS NOT NULL AND series != ''");
-        $seriesResults = $seriesStmt->fetchAll(\PDO::FETCH_OBJ);
+        $seriesResults = $this->db->query("SELECT DISTINCT series FROM cars WHERE series IS NOT NULL AND series != ''")->results();
         $this->assertNotEmpty($seriesResults, "Should have car series data");
     }
 
@@ -146,17 +111,13 @@ class StatisticsApiTest extends TestCase
      */
     public function testProductionTabProductionByYear(): void
     {
-        if (!$this->connected) {
-            $this->markTestSkipped('Database not available');
-        }
 
         // Verify production by year data
-        $stmt = $this->db->query(
+        $results = $this->db->query(
             "SELECT year, COUNT(*) as count FROM cars
              WHERE year IS NOT NULL AND year != ''
              GROUP BY year ORDER BY year"
-        );
-        $results = $stmt->fetchAll(\PDO::FETCH_OBJ);
+        )->results();
         $this->assertNotEmpty($results, "Should have production year data");
     }
 
@@ -165,17 +126,13 @@ class StatisticsApiTest extends TestCase
      */
     public function testProductionTabSeriesCounts(): void
     {
-        if (!$this->connected) {
-            $this->markTestSkipped('Database not available');
-        }
 
         // Verify series counts
-        $stmt = $this->db->query(
+        $results = $this->db->query(
             "SELECT series, COUNT(*) as count FROM cars
              WHERE series IS NOT NULL AND series != ''
              GROUP BY series ORDER BY count DESC"
-        );
-        $results = $stmt->fetchAll(\PDO::FETCH_OBJ);
+        )->results();
         $this->assertNotEmpty($results, "Should have series count data");
     }
 
@@ -188,13 +145,9 @@ class StatisticsApiTest extends TestCase
      */
     public function testColorsTabDataStructure(): void
     {
-        if (!$this->connected) {
-            $this->markTestSkipped('Database not available');
-        }
 
         // Verify color data exists
-        $colorStmt = $this->db->query("SELECT DISTINCT color FROM cars WHERE color IS NOT NULL AND color != ''");
-        $colorResults = $colorStmt->fetchAll(\PDO::FETCH_OBJ);
+        $colorResults = $this->db->query("SELECT DISTINCT color FROM cars WHERE color IS NOT NULL AND color != ''")->results();
         $this->assertNotEmpty($colorResults, "Should have car color data");
     }
 
@@ -203,17 +156,13 @@ class StatisticsApiTest extends TestCase
      */
     public function testColorsTabColorByYear(): void
     {
-        if (!$this->connected) {
-            $this->markTestSkipped('Database not available');
-        }
 
         // Verify color by year data
-        $stmt = $this->db->query(
+        $results = $this->db->query(
             "SELECT color, year, COUNT(*) as count FROM cars
              WHERE color IS NOT NULL AND color != '' AND year IS NOT NULL AND year != ''
              GROUP BY color, year"
-        );
-        $results = $stmt->fetchAll(\PDO::FETCH_OBJ);
+        )->results();
         // May be empty but query should work
         $this->assertIsArray($results, "Should be able to query color by year");
     }
@@ -223,17 +172,13 @@ class StatisticsApiTest extends TestCase
      */
     public function testColorsTabColorBySeries(): void
     {
-        if (!$this->connected) {
-            $this->markTestSkipped('Database not available');
-        }
 
         // Verify color by series data
-        $stmt = $this->db->query(
+        $results = $this->db->query(
             "SELECT color, series, COUNT(*) as count FROM cars
              WHERE color IS NOT NULL AND color != '' AND series IS NOT NULL AND series != ''
              GROUP BY color, series"
-        );
-        $results = $stmt->fetchAll(\PDO::FETCH_OBJ);
+        )->results();
         // May be empty but query should work
         $this->assertIsArray($results, "Should be able to query color by series");
     }
@@ -247,12 +192,9 @@ class StatisticsApiTest extends TestCase
      */
     public function testQualityTabDataCompleteness(): void
     {
-        if (!$this->connected) {
-            $this->markTestSkipped('Database not available');
-        }
 
         // Verify we can calculate completeness metrics
-        $stmt = $this->db->query(
+        $result = $this->db->query(
             "SELECT
                 COUNT(*) as total_cars,
                 COUNT(CASE WHEN year IS NOT NULL AND year != '' THEN 1 END) as cars_with_year,
@@ -260,8 +202,7 @@ class StatisticsApiTest extends TestCase
                 COUNT(CASE WHEN series IS NOT NULL AND series != '' THEN 1 END) as cars_with_series,
                 COUNT(CASE WHEN color IS NOT NULL AND color != '' THEN 1 END) as cars_with_color
              FROM cars"
-        );
-        $result = $stmt->fetch(\PDO::FETCH_OBJ);
+        )->first();
         $this->assertNotNull($result, "Should retrieve quality metrics");
         $this->assertGreaterThan(0, $result->total_cars, "Should have cars in database");
     }
@@ -295,12 +236,9 @@ class StatisticsApiTest extends TestCase
      */
     public function testDatabaseConnectionValidation(): void
     {
-        if (!$this->connected) {
-            $this->markTestSkipped('Database not available');
-        }
 
         $this->assertNotNull($this->db, "Database connection should be available");
-        $this->assertTrue($this->connected, "Database connection flag should be set");
+        $this->assertTrue($this->databaseConnected, "Database connection flag should be set");
     }
 
     // =========================================================================

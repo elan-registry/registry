@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-use PHPUnit\Framework\TestCase;
+require_once __DIR__ . '/../IntegrationTestCase.php';
 
 /**
  * Test Infrastructure Validation
@@ -10,7 +10,7 @@ use PHPUnit\Framework\TestCase;
  * Simple integration test to verify our test infrastructure works
  * and demonstrate successful test execution for Issue #317
  */
-final class TestInfrastructureValidationTest extends TestCase
+final class TestInfrastructureValidationTest extends IntegrationTestCase
 {
     /**
      * Test that PHP is working correctly
@@ -27,7 +27,7 @@ final class TestInfrastructureValidationTest extends TestCase
      */
     public function testFileSystemAccess(): void
     {
-        $projectRoot = dirname(__DIR__, 2);
+        $projectRoot = dirname(__DIR__, 3);
 
         // Test that we can access project files
         $this->assertDirectoryExists($projectRoot . '/app');
@@ -41,7 +41,7 @@ final class TestInfrastructureValidationTest extends TestCase
      */
     public function testTestDirectoryStructure(): void
     {
-        $testsDir = dirname(__DIR__);
+        $testsDir = dirname(__DIR__, 2);
 
         $this->assertDirectoryExists($testsDir . '/unit');
         $this->assertDirectoryExists($testsDir . '/integration');
@@ -54,7 +54,7 @@ final class TestInfrastructureValidationTest extends TestCase
      */
     public function testConfigurationFiles(): void
     {
-        $projectRoot = dirname(__DIR__, 2);
+        $projectRoot = dirname(__DIR__, 3);
 
         $this->assertFileExists($projectRoot . '/phpunit.xml');
         $this->assertFileExists($projectRoot . '/playwright.config.js');

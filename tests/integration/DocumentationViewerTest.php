@@ -2,9 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Tests\Integration;
-
-use PHPUnit\Framework\TestCase;
+require_once __DIR__ . '/IntegrationTestCase.php';
 
 /**
  * DocumentationViewerTest
@@ -18,10 +16,9 @@ use PHPUnit\Framework\TestCase;
  * - File read errors
  * - Unauthorized access attempts
  *
- * @package Tests\Integration
  * @since v2.12.0
  */
-class DocumentationViewerTest extends TestCase
+class DocumentationViewerTest extends IntegrationTestCase
 {
     /**
      * Base path to documentation files

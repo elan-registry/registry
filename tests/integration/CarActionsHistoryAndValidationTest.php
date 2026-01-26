@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-use PHPUnit\Framework\TestCase;
+require_once __DIR__ . '/IntegrationTestCase.php';
 
 /**
  * Integration tests for Car Actions endpoints: history.php and validateChassis.php
@@ -14,7 +14,7 @@ use PHPUnit\Framework\TestCase;
  * @group integration
  * @group car-actions
  */
-final class CarActionsHistoryAndValidationTest extends TestCase
+final class CarActionsHistoryAndValidationTest extends IntegrationTestCase
 {
     /**
      * Test that history endpoint returns ApiResponse success format with DataTables structure

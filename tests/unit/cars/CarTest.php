@@ -21,7 +21,7 @@ final class CarTest extends TestCase
      */
     public function testFind(): void
     {
-        $car = Car::find(1);
+        $car = new Car(1);
         $this->assertInstanceOf(Car::class, $car);
         $this->assertIsObject($car->data());
         $this->assertEquals(1, $car->data()->id);

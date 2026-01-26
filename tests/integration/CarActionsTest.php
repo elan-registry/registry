@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-use PHPUnit\Framework\TestCase;
+require_once __DIR__ . '/IntegrationTestCase.php';
 
 /**
  * Integration tests for car action endpoints
@@ -16,7 +16,7 @@ use PHPUnit\Framework\TestCase;
  * @group integration
  * @group car-actions
  */
-final class CarActionsTest extends TestCase
+final class CarActionsTest extends IntegrationTestCase
 {
     /**
      * Test that addCar action returns ApiResponse success format (not Pattern B)

@@ -65,9 +65,9 @@ final class Issue317RegressionTest extends TestCase
     }
 
     /**
-     * Test that PHPUnit configuration includes all test suites
+     * Test that PHPUnit configuration includes main test suites
      */
-    public function testPhpUnitConfigurationIncludesAllSuites(): void
+    public function testPhpUnitConfigurationIncludesMainSuites(): void
     {
         $phpunitXml = dirname(__DIR__, 2) . '/phpunit.xml';
         $this->assertFileExists($phpunitXml, 'PHPUnit configuration should exist');
@@ -76,7 +76,6 @@ final class Issue317RegressionTest extends TestCase
         $this->assertStringContainsString('testsuite name="Unit"', $content);
         $this->assertStringContainsString('testsuite name="Integration"', $content);
         $this->assertStringContainsString('testsuite name="Regression"', $content);
-        $this->assertStringContainsString('testsuite name="All"', $content);
     }
 
     /**

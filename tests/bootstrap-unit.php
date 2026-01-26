@@ -3,34 +3,23 @@
 declare(strict_types=1);
 
 /**
- * PHPUnit Bootstrap File for Elan Registry Tests
+ * PHPUnit Bootstrap File for Unit Tests
  *
- * DEPRECATED: This file is kept for backwards compatibility only.
- * New test runs should use the specific bootstrap files:
+ * Sets up the testing environment with MOCKS ONLY.
+ * No UserSpice framework or database.
+ * Use this for: tests/unit/* and tests/regression/*
  *
- * - tests/bootstrap-unit.php for unit tests (with mocks)
- * - tests/bootstrap-integration.php for integration tests (with UserSpice)
- *
- * Or use the specific phpunit configuration files:
- * - phpunit-unit.xml for unit tests
- * - phpunit-integration.xml for integration tests
- *
- * Usage:
- *   composer test:unit              # Fast unit tests only
- *   composer test:integration       # Integration tests requiring database
- *   composer test:full              # Both unit and integration tests
+ * For integration tests, use: tests/bootstrap-integration.php
  */
 
-// Default behavior: load unit test bootstrap for backwards compatibility
-// This allows: vendor/bin/phpunit to work without additional config
-// For explicit control, use phpunit-unit.xml or phpunit-integration.xml
+// Set up testing environment - MOCKS ONLY
+define('TESTING', true);
+define('TESTING_UNIT_ONLY', true);
+define('UNIT_TEST_SUITE', true);
 
-$bootstrapUnit = dirname(__FILE__) . '/bootstrap-unit.php';
-if (file_exists($bootstrapUnit)) {
-    require_once $bootstrapUnit;
-} else {
-    echo "ERROR: tests/bootstrap-unit.php not found\n";
-    exit(1);
+// Prevent any integration test code from loading
+if (defined('INTEGRATION_TEST_SUITE')) {
+    die("ERROR: bootstrap-unit.php cannot be used with INTEGRATION_TEST_SUITE defined");
 }
 
 // Set up basic paths
@@ -46,8 +35,89 @@ if (!isset($_SESSION)) {
     $_SESSION = [];
 }
 
-// Load unified autoloader for all custom classes and exceptions
-require_once $projectRoot . '/usersc/classes/class.autoloader.php';
+// ============================================================================
+// CRITICAL: Define mock Car class FIRST, before any autoloading
+// This must happen before any code that might trigger the autoloader
+// ============================================================================
+if (!class_exists('Car')) {
+    class Car {
+        private $data;
+        private static $nextId = 1000;
+
+        /**
+         * Constructor - matches real Car class signature
+         * @param int|null $id Optional car ID to load
+         */
+        public function __construct(?int $id = null) {
+            // Initialize default data
+            if ($id === null) {
+                // Generate new ID for unsaved car
+                $id = self::$nextId++;
+            }
+
+            $this->data = (object) [
+                'id' => $id,
+                'user_id' => 1,
+                'year' => '1973',
+                'model' => 'Elan S4',
+                'series' => 'S4',
+                'variant' => 'SE',
+                'type' => 'FHC',
+                'chassis' => 'TEST123456',
+                'color' => 'Red',
+                'engine' => 'ABC123',
+                'image' => null,
+                'ctime' => date('Y-m-d H:i:s'),
+                'mtime' => date('Y-m-d H:i:s')
+            ];
+        }
+
+        public static function find(int $id): ?self {
+            return new self($id);
+        }
+
+        /**
+         * Get car data object
+         * @return object|null Car data or null if not found
+         */
+        public function data(): ?object {
+            return $this->data;
+        }
+
+        /**
+         * Create car with data
+         * @param array $data Car data
+         * @return bool Success status
+         */
+        public function create(array $data): bool {
+            foreach ($data as $key => $value) {
+                $this->data->$key = $value;
+            }
+            return true;
+        }
+
+        /**
+         * Update car with data
+         * @param array $data Car data
+         * @return bool Success status
+         */
+        public function update(array $data): bool {
+            foreach ($data as $key => $value) {
+                if ($key !== 'id') {  // Never update ID
+                    $this->data->$key = $value;
+                }
+            }
+            return true;
+        }
+    }
+}
+
+// For unit tests, we need to prevent loading real classes that require database
+// We'll load the autoloader but prevent real class instantiation
+// by defining mock classes before the autoloader tries to include them
+
+// First, define mock classes BEFORE loading autoloader
+// so autoloader won't try to load the real ones
 
 // Mock classes for testing if they don't exist
 if (!class_exists('Token')) {
@@ -152,73 +222,6 @@ if (!function_exists('validateFileUpload')) {
         }
         
         return true;
-    }
-}
-
-// Mock Car class if not loaded from UserSpice
-// Only use mock for pure unit tests to avoid conflicts
-if (!class_exists('Car') && (defined('TESTING_UNIT_ONLY') || !file_exists(dirname(__DIR__) . '/usersc/classes/Car.php'))) {
-    class Car {
-        private $data;
-        private static $nextId = 1000;
-        
-        public function __construct() {
-            $this->data = (object) [
-                'id' => self::$nextId++,
-                'user_id' => 1,
-                'year' => '1973',
-                'series' => 'S4',
-                'variant' => 'SE',
-                'type' => 'FHC',
-                'chassis' => 'TEST123456',
-                'color' => 'Red',
-                'engine' => 'ABC123',
-                'email' => 'test@example.com',
-                'fname' => 'Test',
-                'lname' => 'User',
-                'city' => 'Test City',
-                'state' => 'Test State',
-                'country' => 'Test Country'
-            ];
-        }
-        
-        public static function find(int $id): ?self {
-            $car = new self();
-            $car->data->id = $id;
-            return $car;
-        }
-
-        /**
-         * Get car data object
-         * @return object Car data
-         */
-        public function data(): object {
-            return $this->data;
-        }
-
-        /**
-         * Create car with data
-         * @param array $data Car data
-         * @return bool Success status
-         */
-        public function create(array $data): bool {
-            foreach ($data as $key => $value) {
-                $this->data->$key = $value;
-            }
-            return true;
-        }
-        
-        /**
-         * Update car with data
-         * @param array $data Car data
-         * @return bool Success status
-         */
-        public function update(array $data): bool {
-            foreach ($data as $key => $value) {
-                $this->data->$key = $value;
-            }
-            return true;
-        }
     }
 }
 
@@ -443,6 +446,10 @@ if (!class_exists('DB')) {
         }
     }
 
+// Load unified autoloader for all custom classes and exceptions
+// This must come AFTER mock classes are defined so the mocks take precedence
+require_once $projectRoot . '/usersc/classes/class.autoloader.php';
+
 /**
  * Mock user object and authentication system
  */
@@ -523,8 +530,41 @@ if (!class_exists('Input')) {
     }
 }
 
-// getUserWithProfile is provided by UserSpice or integration tests don't use mock
-// Removed to avoid conflicts with real framework declarations
+// Mock getUserWithProfile function for unit tests only
+if (!function_exists('getUserWithProfile')) {
+    /**
+     * Mock getUserWithProfile function for testing
+     */
+    function getUserWithProfile($user_id) {
+        global $mockUsers, $mockProfiles;
+
+        // Find user by ID
+        $user = null;
+        if (is_array($mockUsers)) {
+            foreach ($mockUsers as $mockUser) {
+                if ($mockUser->id == $user_id) {
+                    $user = $mockUser;
+                    break;
+                }
+            }
+        }
+
+        if (!$user) {
+            // Return null for invalid user IDs (don't create synthetic users)
+            return null;
+        }
+
+        // Add mock profile data
+        $user->city = 'Test City';
+        $user->state = 'Test State';
+        $user->country = 'Test Country';
+        $user->website = '';
+        $user->lat = null;
+        $user->lon = null;
+
+        return $user;
+    }
+}
 
 // Mock functions for user deletion testing - only for unit tests
 if (!function_exists('deleteUsers')) {

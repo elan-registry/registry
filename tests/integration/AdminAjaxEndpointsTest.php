@@ -1,9 +1,7 @@
 <?php
 declare(strict_types=1);
 
-namespace Tests\Integration;
-
-use PHPUnit\Framework\TestCase;
+require_once __DIR__ . '/IntegrationTestCase.php';
 
 /**
  * Integration tests for Admin AJAX endpoints
@@ -11,10 +9,8 @@ use PHPUnit\Framework\TestCase;
  * Tests process-car-details.php and process-user-details.php
  * Validates ApiResponse pattern implementation, security checks, and error handling
  */
-class AdminAjaxEndpointsTest extends TestCase
+class AdminAjaxEndpointsTest extends IntegrationTestCase
 {
-    private $db;
-    private $connected = false;
     private $testCarId;
     private $testUserId;
 
@@ -23,28 +19,16 @@ class AdminAjaxEndpointsTest extends TestCase
      */
     protected function setUp(): void
     {
-        // Try to connect to database
-        try {
-            $this->db = new \PDO(
-                'mysql:host=127.0.0.1;port=8889;dbname=elanregi_spice',
-                'claude',
-                'claude',
-                [\PDO::ATTR_ERRMODE => \PDO::ERRMODE_EXCEPTION]
-            );
-            $this->connected = true;
+        parent::setUp();
+        $this->requireDatabase();
 
-            // Find test car data
-            $carStmt = $this->db->query("SELECT id FROM cars LIMIT 1");
-            $car = $carStmt->fetch(\PDO::FETCH_OBJ);
-            $this->testCarId = $car ? $car->id : null;
+        // Find test car data
+        $car = $this->db->query("SELECT id FROM cars LIMIT 1")->first();
+        $this->testCarId = $car ? $car->id : null;
 
-            // Find test user data
-            $userStmt = $this->db->query("SELECT id FROM users WHERE active = 1 LIMIT 1");
-            $user = $userStmt->fetch(\PDO::FETCH_OBJ);
-            $this->testUserId = $user ? $user->id : null;
-        } catch (\PDOException $e) {
-            $this->connected = false;
-        }
+        // Find test user data
+        $user = $this->db->query("SELECT id FROM users WHERE active = 1 LIMIT 1")->first();
+        $this->testUserId = $user ? $user->id : null;
     }
 
     // =========================================================================
@@ -56,14 +40,9 @@ class AdminAjaxEndpointsTest extends TestCase
      */
     public function testGetCarDetailsWithValidId(): void
     {
-        if (!$this->connected || !$this->testCarId) {
-            $this->markTestSkipped('Database or test data not available');
-        }
 
         // Verify test car exists
-        $carStmt = $this->db->prepare("SELECT * FROM cars WHERE id = ?");
-        $carStmt->execute([$this->testCarId]);
-        $car = $carStmt->fetch(\PDO::FETCH_OBJ);
+        $car = $this->db->query("SELECT * FROM cars WHERE id = ?", [$this->testCarId])->first();
 
         $this->assertNotNull($car, "Test car should exist");
         $this->assertIsObject($car);
@@ -76,14 +55,9 @@ class AdminAjaxEndpointsTest extends TestCase
      */
     public function testGetCarDetailsWithInvalidId(): void
     {
-        if (!$this->connected) {
-            $this->markTestSkipped('Database not available');
-        }
 
         // Test with non-existent ID
-        $carStmt = $this->db->prepare("SELECT * FROM cars WHERE id = ?");
-        $carStmt->execute([99999]);
-        $result = $carStmt->fetchAll(\PDO::FETCH_OBJ);
+        $result = $this->db->query("SELECT * FROM cars WHERE id = ?", [99999])->results();
 
         $this->assertEmpty($result, "Query should return no results for non-existent car");
     }
@@ -93,14 +67,9 @@ class AdminAjaxEndpointsTest extends TestCase
      */
     public function testGetCarDetailsWithZeroId(): void
     {
-        if (!$this->connected) {
-            $this->markTestSkipped('Database not available');
-        }
 
         // Verify that ID 0 is never a valid car
-        $carStmt = $this->db->prepare("SELECT * FROM cars WHERE id = ?");
-        $carStmt->execute([0]);
-        $result = $carStmt->fetchAll(\PDO::FETCH_OBJ);
+        $result = $this->db->query("SELECT * FROM cars WHERE id = ?", [0])->results();
 
         $this->assertEmpty($result, "Car ID 0 should never exist");
     }
@@ -110,13 +79,8 @@ class AdminAjaxEndpointsTest extends TestCase
      */
     public function testGetCarDetailsReturnsAllRequiredFields(): void
     {
-        if (!$this->connected || !$this->testCarId) {
-            $this->markTestSkipped('Database or test data not available');
-        }
 
-        $carStmt = $this->db->prepare("SELECT * FROM cars WHERE id = ?");
-        $carStmt->execute([$this->testCarId]);
-        $car = $carStmt->fetch(\PDO::FETCH_OBJ);
+        $car = $this->db->query("SELECT * FROM cars WHERE id = ?", [$this->testCarId])->first();
 
         $requiredFields = [
             'id', 'year', 'type', 'chassis', 'color', 'series',
@@ -138,14 +102,9 @@ class AdminAjaxEndpointsTest extends TestCase
      */
     public function testGetUserDetailsWithValidId(): void
     {
-        if (!$this->connected || !$this->testUserId) {
-            $this->markTestSkipped('Database or test data not available');
-        }
 
         // Verify test user exists
-        $userStmt = $this->db->prepare("SELECT * FROM users WHERE id = ?");
-        $userStmt->execute([$this->testUserId]);
-        $user = $userStmt->fetch(\PDO::FETCH_OBJ);
+        $user = $this->db->query("SELECT * FROM users WHERE id = ?", [$this->testUserId])->first();
 
         $this->assertNotNull($user, "Test user should exist");
         $this->assertIsObject($user);
@@ -158,14 +117,9 @@ class AdminAjaxEndpointsTest extends TestCase
      */
     public function testGetUserDetailsWithNonExistentId(): void
     {
-        if (!$this->connected) {
-            $this->markTestSkipped('Database not available');
-        }
 
         // Test with non-existent ID
-        $userStmt = $this->db->prepare("SELECT * FROM users WHERE id = ?");
-        $userStmt->execute([99999]);
-        $result = $userStmt->fetchAll(\PDO::FETCH_OBJ);
+        $result = $this->db->query("SELECT * FROM users WHERE id = ?", [99999])->results();
 
         $this->assertEmpty($result, "Query should return no results for non-existent user");
     }
@@ -175,14 +129,9 @@ class AdminAjaxEndpointsTest extends TestCase
      */
     public function testGetUserDetailsWithZeroId(): void
     {
-        if (!$this->connected) {
-            $this->markTestSkipped('Database not available');
-        }
 
         // Verify that ID 0 is never a valid user
-        $userStmt = $this->db->prepare("SELECT * FROM users WHERE id = ?");
-        $userStmt->execute([0]);
-        $result = $userStmt->fetchAll(\PDO::FETCH_OBJ);
+        $result = $this->db->query("SELECT * FROM users WHERE id = ?", [0])->results();
 
         $this->assertEmpty($result, "User ID 0 should never exist");
     }
@@ -192,13 +141,8 @@ class AdminAjaxEndpointsTest extends TestCase
      */
     public function testGetUserDetailsReturnsAllRequiredFields(): void
     {
-        if (!$this->connected || !$this->testUserId) {
-            $this->markTestSkipped('Database or test data not available');
-        }
 
-        $userStmt = $this->db->prepare("SELECT * FROM users WHERE id = ?");
-        $userStmt->execute([$this->testUserId]);
-        $user = $userStmt->fetch(\PDO::FETCH_OBJ);
+        $user = $this->db->query("SELECT * FROM users WHERE id = ?", [$this->testUserId])->first();
 
         $requiredFields = ['id', 'fname', 'lname', 'email', 'join_date'];
 
@@ -354,13 +298,8 @@ class AdminAjaxEndpointsTest extends TestCase
      */
     public function testCarDataConsistency(): void
     {
-        if (!$this->connected || !$this->testCarId) {
-            $this->markTestSkipped('Database or test data not available');
-        }
 
-        $carStmt = $this->db->prepare("SELECT * FROM cars WHERE id = ?");
-        $carStmt->execute([$this->testCarId]);
-        $car = $carStmt->fetch(\PDO::FETCH_OBJ);
+        $car = $this->db->query("SELECT * FROM cars WHERE id = ?", [$this->testCarId])->first();
 
         $this->assertNotNull($car, "Car should exist in database");
         $this->assertEquals($this->testCarId, $car->id, "Car ID should match");
@@ -371,13 +310,8 @@ class AdminAjaxEndpointsTest extends TestCase
      */
     public function testUserDataConsistency(): void
     {
-        if (!$this->connected || !$this->testUserId) {
-            $this->markTestSkipped('Database or test data not available');
-        }
 
-        $userStmt = $this->db->prepare("SELECT * FROM users WHERE id = ?");
-        $userStmt->execute([$this->testUserId]);
-        $user = $userStmt->fetch(\PDO::FETCH_OBJ);
+        $user = $this->db->query("SELECT * FROM users WHERE id = ?", [$this->testUserId])->first();
 
         $this->assertNotNull($user, "User should exist in database");
         $this->assertEquals($this->testUserId, $user->id, "User ID should match");

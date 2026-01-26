@@ -9,6 +9,8 @@
   },
   "scripts": {
     "test": "echo '\n📋 Available Tests:\n\n  PHP Unit Tests (128 tests):\n    composer test:quick\n\n  E2E Tests - Production (24 tests):\n    npm run test:e2e              # All E2E tests on elanregistry.org\n    npm run test:e2e:not-logged-in  # Public pages only\n    npm run test:e2e:logged-in      # Authenticated user tests\n\n  E2E Tests - Test Environment (24 tests):\n    npm run test:e2e:test         # All E2E tests on test.elanregistry.org\n    npm run test:e2e:test:not-logged-in  # Public pages only\n    npm run test:e2e:test:logged-in      # Authenticated user tests\n\n  Local Playwright Tests - Localhost (16 tests, requires MAMP):\n    npm run playwright:test       # All local tests\n    npm run playwright:security   # Security tests (2)\n    npm run playwright:maps       # Maps & charts (8)\n    npm run playwright:csp        # CSP validation (6)\n\n  Note: Local tests require web server at http://localhost:9999/elan_registry\n'",
+    "test:quick": "npm run playwright:security",
+    "test:smoke": "npm run playwright:test",
     "playwright:install": "npx playwright install",
     "playwright:test": "playwright test",
     "playwright:security": "playwright test tests/playwright/security.test.js",

@@ -116,6 +116,7 @@ yarn-error.log*
 tests/.phpunit.result.cache
 tests/coverage/
 tests/temp/
+tests/integration/database/reports/
 coverage/
 usersc/tests/
 
