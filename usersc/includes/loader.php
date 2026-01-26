@@ -11,3 +11,6 @@ Because it is used in parser files and api calls,
 DO NOT EVER use it to do anything that will echo text to the screen
 or it will break important functionality.
 */
+
+// Load server globals for environment detection and URL construction
+require_once $abs_us_root . $us_url_root . 'usersc/includes/server_globals.php';
