@@ -932,6 +932,64 @@ Phase 2-3 when these endpoints are being modified for other reasons.
 complete frontend error handling patterns, type-specific error handling, and
 backend API response format specifications.
 
+### Server Environment Globals
+
+As of v2.13.0, server environment variables are available as validated globals
+initialized in Phase 1.11.12 (see PAGE_LOADING_FLOW.md). All globals are
+initialized using the Server class which provides comprehensive sanitization
+and validation.
+
+**Available Globals**:
+
+- `$scheme` - 'http' or 'https'
+- `$is_https` - Boolean for quick HTTPS checks
+- `$host` - Domain name (validated, no port)
+- `$method` - HTTP request method (GET, POST, etc.)
+- `$request_uri` - Request URI (control chars stripped)
+- `$current_url` - Full URL (scheme://host/path?query)
+- `$current_origin` - Origin only (scheme://host)
+- `$referer` - HTTP referer (sanitized, optional)
+- `$user_agent` - User agent string (sanitized, max 512 chars)
+- `$php_self` - Current script path (for securePage)
+- `$remote_addr` - Client IP address (for logging)
+
+**Usage Patterns**:
+
+```php
+// ✅ PREFERRED: Use global variables
+if (!securePage($php_self)) {
+    die();
+}
+
+logger($userId, LogCategories::LOG_CATEGORY_LOGIN,
+    "Login from {$remote_addr} via {$method}");
+
+if (!$is_https) {
+    // Redirect to HTTPS
+    header("Location: https://{$host}{$request_uri}");
+    exit;
+}
+
+// Set CORS headers with proper origin
+header("Access-Control-Allow-Origin: {$current_origin}");
+
+// ❌ AVOID: Direct $_SERVER access
+if (!securePage($_SERVER['PHP_SELF'])) {  // OLD PATTERN
+    die();
+}
+
+// ❌ AVOID: Unvalidated server variables
+$scheme = $_SERVER['REQUEST_SCHEME'] ?? 'http';  // OLD PATTERN
+```
+
+**Security Features**:
+
+- All globals validated via Server::get()
+- Control character stripping (\x00-\x1F, \x7F)
+- CRLF injection prevention on URIs
+- Hostname validation (DNS label rules)
+- Safe defaults for missing values
+
 ### Code Quality Requirements
 
 **ALWAYS run the following commands before completing any task:**

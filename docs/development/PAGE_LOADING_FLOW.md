@@ -207,15 +207,44 @@ users/init.php
     ├─ 1.8.9. Password Reset Enforcement
     │   └─ Check if user must reset password
     │
-    ├─ 1.8.10. Page Title Lookup
+    ├─ 1.11.10. Page Title Lookup
     │   └─ Query database for page title metadata
     │
-    └─ 1.8.11. Custom Loader (if exists)
-        └─ usersc/includes/loader.php
-            └─ Custom initialization code
+    ├─ 1.11.11. Custom Loader (if exists)
+    │   └─ usersc/includes/loader.php
+    │       └─ Custom initialization code
+    │
+    └─ 1.11.12. Server Globals Initialization
+        └─ usersc/includes/server_globals.php
+            └─ Provides validated global variables:
+                ├─ $scheme - HTTP scheme ('http' or 'https')
+                ├─ $is_https - Boolean for HTTPS detection
+                ├─ $host - Domain name (validated via Server::get)
+                ├─ $method - HTTP request method (GET, POST, etc.)
+                ├─ $request_uri - Request URI (sanitized)
+                ├─ $current_url - Full URL (scheme://host/path?query)
+                ├─ $current_origin - Origin only (scheme://host)
+                ├─ $referer - HTTP referer (sanitized)
+                ├─ $user_agent - User agent string (max 512 chars)
+                ├─ $php_self - Current script path
+                └─ $remote_addr - Client IP address
 ```
 
 **Key Classes Available After Phase 1:**
+
+**Server Environment Globals** (available after Phase 1.11.12):
+
+- `$scheme` - HTTP scheme detection ('http' or 'https')
+- `$is_https` - Boolean for quick HTTPS checks
+- `$host` - Validated hostname (from HTTP_HOST)
+- `$method` - HTTP request method (GET, POST, etc.)
+- `$request_uri` - Sanitized request URI (path + query)
+- `$current_url` - Full constructed URL (scheme://host/path?query)
+- `$current_origin` - Scheme + host for CORS and redirects
+- `$php_self` - Current script path (for securePage)
+- `$remote_addr` - Client IP address (for logging)
+- `$referer` - HTTP referer (sanitized, user-controlled)
+- `$user_agent` - User agent string (sanitized, max 512 chars)
 
 **UserSpice Core Classes** (auto-loaded via SPL autoloader from `users/classes/`):
 
