@@ -5,8 +5,9 @@
  */
 require_once $abs_us_root . $us_url_root . 'app/version.php';
 
-// Get current page info for dynamic meta tags
-$current_url = 'https://' . $_SERVER['HTTP_HOST'] . $_SERVER['REQUEST_URI'];
+// Server global $current_url already available from server_globals.php
+// loaded in Phase 1.11.12 (usersc/includes/loader.php)
+// Uses validated Server::getScheme() and Server::get('HTTP_HOST') with proper sanitization
 $site_title = $settings->site_name ?? 'Lotus Elan Registry';
 $site_description = 'Registry for the Lotus Elan (1963-1973) and Elan Plus 2 (1967-1974). Document your classic British sports car, connect with owners, and preserve automotive history.';
 $og_image = $us_url_root . 'usersc/templates/ElanRegistry/assets/images/og-lotus-elan.jpg';
@@ -21,6 +22,7 @@ $og_image = $us_url_root . 'usersc/templates/ElanRegistry/assets/images/og-lotus
 <meta name="author" content="Jim Boone">
 <meta name="version" content="<?= ApplicationVersion::get(); ?>">
 <meta name="robots" content="index, follow">
+<?php if (!empty($host)): ?>
 <link rel="canonical" href="<?= htmlspecialchars($current_url, ENT_QUOTES, 'UTF-8') ?>">
 
 <!-- Open Graph / Facebook -->
@@ -41,6 +43,7 @@ $og_image = $us_url_root . 'usersc/templates/ElanRegistry/assets/images/og-lotus
 <meta name="twitter:description" content="<?= htmlspecialchars($site_description, ENT_QUOTES, 'UTF-8') ?>">
 <meta name="twitter:image" content="<?= htmlspecialchars($og_image, ENT_QUOTES, 'UTF-8') ?>">
 <meta name="twitter:image:alt" content="Lotus Elan Registry - Classic British Sports Car Documentation">
+<?php endif; ?>
 
 <!-- Favicon and Icons -->
 <link rel="shortcut icon" href="<?= $us_url_root ?>usersc/templates/ElanRegistry/assets/images/favicon.ico">

@@ -99,10 +99,9 @@ header("Content-Security-Policy: " .
 The strict-transport-security header is a security enhancement that restricts web browsers to access web servers solely over HTTPS. This ensures the connection cannot be establish through an insecure HTTP connection which could be susceptible to attacks.
 */
 
-// Check if we're running over HTTPS
-$is_https = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') || 
-            $_SERVER['SERVER_PORT'] == 443 || 
-            (isset($_SERVER['HTTP_X_FORWARDED_PROTO']) && $_SERVER['HTTP_X_FORWARDED_PROTO'] === 'https');
+// Server global $is_https already available from server_globals.php
+// loaded in Phase 1.11.12 (usersc/includes/loader.php)
+// Uses validated Server::getScheme() with proper proxy handling
 
 if ($is_https) {
     header("Strict-Transport-Security: max-age=31536000; includeSubDomains; preload");
