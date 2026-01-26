@@ -121,3 +121,6 @@ function getFeedbackEmail(): string {
     return $settings->elan_feedback_email ?? 'registrar@elanregistry.org';
 }
 
+
+// We need server globals in custom functions as it's used early in the load process.
+require_once $abs_us_root . $us_url_root . 'usersc/includes/server_globals.php';
