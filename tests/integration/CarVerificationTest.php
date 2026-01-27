@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-use PHPUnit\Framework\TestCase;
+require_once __DIR__ . '/IntegrationTestCase.php';
 
 /**
  * Test cases for Car verification functionality
@@ -10,15 +10,18 @@ use PHPUnit\Framework\TestCase;
  * Tests cover verification code management, verification status tracking,
  * and sold status marking with date validation.
  *
- * @group fast
+ * @group integration
  */
-final class CarVerificationTest extends TestCase
+final class CarVerificationTest extends IntegrationTestCase
 {
     private $testCarId;
-    private $db;
+    protected $db;
 
     protected function setUp(): void
     {
+        parent::setUp();
+        $this->requireDatabase();
+
         $this->testCarId = 1;
         $this->db = DB::getInstance();
     }

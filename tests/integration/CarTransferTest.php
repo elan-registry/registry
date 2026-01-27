@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-use PHPUnit\Framework\TestCase;
+require_once __DIR__ . '/IntegrationTestCase.php';
 
 /**
  * Test cases for Car transfer functionality
@@ -10,17 +10,20 @@ use PHPUnit\Framework\TestCase;
  * Tests cover car ownership transfer operations with user validation,
  * transaction handling, relationship updates, and profile data copying.
  *
- * @group fast
+ * @group integration
  */
-final class CarTransferTest extends TestCase
+final class CarTransferTest extends IntegrationTestCase
 {
     private $testCarId;
     private $testUserId;
     private $targetUserId;
-    private $db;
+    protected $db;
 
     protected function setUp(): void
     {
+        parent::setUp();
+        $this->requireDatabase();
+
         $this->testCarId = 1;
         $this->testUserId = 1;
         $this->targetUserId = 2;

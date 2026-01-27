@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-use PHPUnit\Framework\TestCase;
+require_once __DIR__ . '/IntegrationTestCase.php';
 
 /**
  * Test cases for Car DataTables functionality
@@ -10,14 +10,17 @@ use PHPUnit\Framework\TestCase;
  * Tests cover server-side DataTables data processing including searching,
  * sorting, pagination, and security validation.
  *
- * @group fast
+ * @group integration
  */
-final class CarDataTablesTest extends TestCase
+final class CarDataTablesTest extends IntegrationTestCase
 {
-    private $db;
+    protected $db;
 
     protected function setUp(): void
     {
+        parent::setUp();
+        $this->requireDatabase();
+
         $this->db = DB::getInstance();
     }
 

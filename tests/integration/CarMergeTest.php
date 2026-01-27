@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-use PHPUnit\Framework\TestCase;
+require_once __DIR__ . '/IntegrationTestCase.php';
 
 /**
  * Test cases for Car merge functionality
@@ -10,16 +10,19 @@ use PHPUnit\Framework\TestCase;
  * Tests cover car merging operations with history transfer, deletion,
  * transaction handling, and validation.
  *
- * @group fast
+ * @group integration
  */
-final class CarMergeTest extends TestCase
+final class CarMergeTest extends IntegrationTestCase
 {
     private $testCarId;
     private $testMergeCarId;
-    private $db;
+    protected $db;
 
     protected function setUp(): void
     {
+        parent::setUp();
+        $this->requireDatabase();
+
         $this->testCarId = 1;
         $this->testMergeCarId = 2;
         $this->db = DB::getInstance();

@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-use PHPUnit\Framework\TestCase;
+require_once __DIR__ . '/IntegrationTestCase.php';
 
 /**
  * Test cases for Car deletion functionality
@@ -10,16 +10,19 @@ use PHPUnit\Framework\TestCase;
  * Tests cover car deletion operations with CSRF protection, transaction handling,
  * audit trail creation, and error scenarios.
  *
- * @group fast
+ * @group integration
  */
-final class CarDeletionTest extends TestCase
+final class CarDeletionTest extends IntegrationTestCase
 {
     private $testCarId;
     private $testUserId;
-    private $db;
+    protected $db;
 
     protected function setUp(): void
     {
+        parent::setUp();
+        $this->requireDatabase();
+
         $this->testCarId = 1;
         $this->testUserId = 1;
         $this->db = DB::getInstance();
