@@ -128,6 +128,7 @@ final class CarBasicMethodsTest extends TestCase
         $car = new Car($this->testCarId);
         $owner = $car->owner();
 
+        $this->assertNotNull($owner);
         if (!empty($owner)) {
             $this->assertTrue(is_array($owner) || is_object($owner));
         }

@@ -55,28 +55,54 @@ if (!class_exists('Car')) {
             if ($id === null) {
                 // Generate new ID for unsaved car
                 $id = self::$nextId++;
+
+                $this->data = (object) [
+                    'id' => $id,
+                    'user_id' => 1,
+                    'year' => '1973',
+                    'model' => 'Elan S4',
+                    'series' => 'S4',
+                    'variant' => 'SE',
+                    'type' => 'FHC',
+                    'chassis' => 'TEST123456',
+                    'color' => 'Red',
+                    'engine' => 'ABC123',
+                    'image' => null,
+                    'verification_code' => null,
+                    'last_verified' => null,
+                    'solddate' => null,
+                    'ctime' => date('Y-m-d H:i:s'),
+                    'mtime' => date('Y-m-d H:i:s')
+                ];
+
+                self::$cars[$id] = $this->data;
+            } else {
+                // Load existing car if it exists, otherwise create with default data
+                if (isset(self::$cars[$id])) {
+                    $this->data = self::$cars[$id];
+                } else {
+                    $this->data = (object) [
+                        'id' => $id,
+                        'user_id' => 1,
+                        'year' => '1973',
+                        'model' => 'Elan S4',
+                        'series' => 'S4',
+                        'variant' => 'SE',
+                        'type' => 'FHC',
+                        'chassis' => 'TEST123456',
+                        'color' => 'Red',
+                        'engine' => 'ABC123',
+                        'image' => null,
+                        'verification_code' => null,
+                        'last_verified' => null,
+                        'solddate' => null,
+                        'ctime' => date('Y-m-d H:i:s'),
+                        'mtime' => date('Y-m-d H:i:s')
+                    ];
+                    self::$cars[$id] = $this->data;
+                }
             }
 
-            $this->data = (object) [
-                'id' => $id,
-                'user_id' => 1,
-                'year' => '1973',
-                'model' => 'Elan S4',
-                'series' => 'S4',
-                'variant' => 'SE',
-                'type' => 'FHC',
-                'chassis' => 'TEST123456',
-                'color' => 'Red',
-                'engine' => 'ABC123',
-                'image' => null,
-                'verification_code' => null,
-                'last_verified' => null,
-                'solddate' => null,
-                'ctime' => date('Y-m-d H:i:s'),
-                'mtime' => date('Y-m-d H:i:s')
-            ];
-
-            self::$cars[$id] = $this->data;
             $this->history = [];
         }
 
@@ -249,15 +275,15 @@ if (!class_exists('Car')) {
          */
         public function merge(int $oldCarId, string $reason = 'Administrative merge'): bool {
             if (!$this->exists()) {
-                throw new Exception('Car not found');
+                throw new CarMergeException('Car not found');
             }
 
             if ($oldCarId === $this->data->id) {
-                throw new Exception('Cannot merge car with itself');
+                throw new CarMergeException('Cannot merge car with itself');
             }
 
             if (!isset(self::$cars[$oldCarId])) {
-                throw new Exception('Source car not found');
+                throw new CarMergeException('Source car not found');
             }
 
             unset(self::$cars[$oldCarId]);

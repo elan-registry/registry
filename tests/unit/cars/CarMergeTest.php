@@ -98,6 +98,8 @@ final class CarMergeTest extends TestCase
     public function testMergeTransfersHistoryRecords(): void
     {
         $car = new Car($this->testCarId);
+        // Ensure old car exists for this test
+        $oldCar = new Car($this->testMergeCarId);
         $oldCarId = $this->testMergeCarId;
 
         // Create a history record for the old car to verify transfer
