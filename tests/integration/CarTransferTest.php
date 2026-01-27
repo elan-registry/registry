@@ -44,7 +44,7 @@ final class CarTransferTest extends IntegrationTestCase
         // Create unique test car for this test
         try {
             $this->testCarId = $this->createTestCar($this->testUserId, [
-                'chassis' => 'TEST-TRANSFER-' . microtime(true)
+                'chassis' => 'TR' . uniqid()
             ]);
         } catch (RuntimeException $e) {
             $this->markTestSkipped('Could not create test car: ' . $e->getMessage());
