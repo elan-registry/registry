@@ -51,13 +51,11 @@ if (!class_exists('Car')) {
          * @param int|null $id Optional car ID to load
          */
         public function __construct(?int $id = null) {
-            // Initialize default data
-            if ($id === null) {
-                // Generate new ID for unsaved car
-                $id = self::$nextId++;
+            $this->history = [];
 
+            if ($id === null) {
+                // Create new empty car with default data but NO ID (unsaved car)
                 $this->data = (object) [
-                    'id' => $id,
                     'user_id' => 1,
                     'year' => '1973',
                     'model' => 'Elan S4',
@@ -74,36 +72,15 @@ if (!class_exists('Car')) {
                     'ctime' => date('Y-m-d H:i:s'),
                     'mtime' => date('Y-m-d H:i:s')
                 ];
-
-                self::$cars[$id] = $this->data;
             } else {
-                // Load existing car if it exists, otherwise create with default data
+                // Try to load existing car from mock database
                 if (isset(self::$cars[$id])) {
                     $this->data = self::$cars[$id];
                 } else {
-                    $this->data = (object) [
-                        'id' => $id,
-                        'user_id' => 1,
-                        'year' => '1973',
-                        'model' => 'Elan S4',
-                        'series' => 'S4',
-                        'variant' => 'SE',
-                        'type' => 'FHC',
-                        'chassis' => 'TEST123456',
-                        'color' => 'Red',
-                        'engine' => 'ABC123',
-                        'image' => null,
-                        'verification_code' => null,
-                        'last_verified' => null,
-                        'solddate' => null,
-                        'ctime' => date('Y-m-d H:i:s'),
-                        'mtime' => date('Y-m-d H:i:s')
-                    ];
-                    self::$cars[$id] = $this->data;
+                    // Car doesn't exist - leave data as null
+                    $this->data = null;
                 }
             }
-
-            $this->history = [];
         }
 
         /**
@@ -187,7 +164,18 @@ if (!class_exists('Car')) {
             if (!$filename || !$this->exists()) {
                 return false;
             }
-            return true;
+
+            // Check if image actually exists in the car's images
+            $images = $this->images();
+            foreach ($images as $image) {
+                if (isset($image['basename']) && $image['basename'] === $filename) {
+                    // Image found - remove it
+                    return true;
+                }
+            }
+
+            // Image not found in car's images
+            return false;
         }
 
         /**
@@ -208,6 +196,11 @@ if (!class_exists('Car')) {
          * @return bool Success status
          */
         public function create(array $data): bool {
+            // Assign ID if not already set
+            if (!isset($this->data->id)) {
+                $this->data->id = self::$nextId++;
+            }
+
             foreach ($data as $key => $value) {
                 if ($key !== 'token') {
                     $this->data->$key = $value;
@@ -223,12 +216,40 @@ if (!class_exists('Car')) {
          * @return bool Success status
          */
         public function update(array $data): bool {
+            // Validate CSRF token
             if (!isset($data['token']) || !Token::check($data['token'])) {
                 throw new CarValidationException('Invalid CSRF token provided');
             }
 
+            // Validate ID if provided
+            if (isset($data['id']) && (!is_int($data['id']) || $data['id'] <= 0)) {
+                throw new CarValidationException('Invalid car ID provided');
+            }
+
+            // Initialize data if null
+            if ($this->data === null) {
+                $this->data = (object) [
+                    'id' => $data['id'] ?? self::$nextId++,
+                    'user_id' => 1,
+                    'year' => '1973',
+                    'model' => 'Elan S4',
+                    'series' => 'S4',
+                    'variant' => 'SE',
+                    'type' => 'FHC',
+                    'chassis' => 'TEST123456',
+                    'color' => 'Red',
+                    'engine' => 'ABC123',
+                    'image' => null,
+                    'verification_code' => null,
+                    'last_verified' => null,
+                    'solddate' => null,
+                    'ctime' => date('Y-m-d H:i:s'),
+                    'mtime' => date('Y-m-d H:i:s')
+                ];
+            }
+
             foreach ($data as $key => $value) {
-                if ($key !== 'id' && $key !== 'token') {
+                if ($key !== 'token') {
                     $this->data->$key = $value;
                 }
             }
@@ -343,8 +364,9 @@ if (!class_exists('Car')) {
          * Find car by verification code (static)
          */
         public static function findByVerificationCode(string $verificationCode): ?Car {
+            // Return null for empty verification code (matches real behavior)
             if (empty($verificationCode)) {
-                throw new Exception('Verification code cannot be empty');
+                return null;
             }
 
             foreach (self::$cars as $car) {
@@ -375,7 +397,49 @@ if (!class_exists('Car')) {
             }
             return $cars;
         }
+
+        /**
+         * Reset mock database (for test isolation)
+         */
+        public static function resetMockDatabase(): void {
+            self::$cars = [];
+            self::$nextId = 1000;
+            self::initializeTestData();
+        }
+
+        /**
+         * Initialize test data in mock database
+         */
+        private static function initializeTestData(): void {
+            // Create some test cars for user ID 1 (commonly used in tests)
+            for ($i = 1; $i <= 5; $i++) {
+                $car = (object)[
+                    'id' => $i,
+                    'user_id' => 1,
+                    'year' => (1970 + $i),
+                    'model' => 'Elan S' . $i,
+                    'series' => 'S' . $i,
+                    'variant' => 'SE',
+                    'type' => 'FHC',
+                    'chassis' => 'TEST' . str_pad((string)$i, 5, '0', STR_PAD_LEFT),
+                    'color' => 'Red',
+                    'engine' => 'ENG' . str_pad((string)$i, 3, '0', STR_PAD_LEFT),
+                    'image' => null,
+                    'verification_code' => null,
+                    'last_verified' => null,
+                    'solddate' => null,
+                    'ctime' => date('Y-m-d H:i:s'),
+                    'mtime' => date('Y-m-d H:i:s')
+                ];
+                self::$cars[$i] = $car;
+            }
+        }
     }
+}
+
+// Initialize test data when the mock Car class is loaded
+if (class_exists('Car')) {
+    Car::resetMockDatabase();
 }
 
 // For unit tests, we need to prevent loading real classes that require database
