@@ -38,17 +38,22 @@ final class CarDatabaseOperationsTest extends IntegrationTestCase
 
         $GLOBALS['user'] = $user;
 
-        // Ensure car_user relationship exists for test car
-        // Car ID 1 needs a relationship to user ID 1 for some tests
-        if (!$this->db->query('SELECT * FROM car_user WHERE car_id = 1 AND userid = 1')->count()) {
-            $this->db->insert('car_user', [
-                'car_id' => 1,
-                'userid' => 1
+        $this->testUserId = 1;
+
+        // Create unique test car for this test
+        try {
+            $this->testCarId = $this->createTestCar($this->testUserId, [
+                'chassis' => 'TEST-DB-' . microtime(true)
             ]);
+        } catch (RuntimeException $e) {
+            $this->markTestSkipped('Could not create test car: ' . $e->getMessage());
         }
 
-        $this->testCarId = 1;
-        $this->testUserId = 1;
+        // Ensure car_user relationship exists
+        $this->db->insert('car_user', [
+            'car_id' => $this->testCarId,
+            'userid' => $this->testUserId
+        ]);
     }
 
     protected function tearDown(): void
@@ -386,13 +391,14 @@ final class CarDatabaseOperationsTest extends IntegrationTestCase
         $this->assertTrue($result);
 
         // Retrieve from database
+        // Note: Database column is 'vericode', not 'verification_code'
         $query = $this->db->query(
-            'SELECT verification_code FROM cars WHERE id = ?',
+            'SELECT vericode FROM cars WHERE id = ?',
             [$this->testCarId]
         );
         $result = $query->first();
 
-        $this->assertEquals($verificationCode, $result->verification_code);
+        $this->assertEquals($verificationCode, $result->vericode);
     }
 
     /**

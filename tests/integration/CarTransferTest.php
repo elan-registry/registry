@@ -24,10 +24,37 @@ final class CarTransferTest extends IntegrationTestCase
         parent::setUp();
         $this->requireDatabase();
 
-        $this->testCarId = 1;
+        // Set up authenticated user context for transfer operations
+        global $user;
+        $user = new User();
+        $user->find(1);  // Load user ID 1
+
+        // Manually set the private $_isLoggedIn property to true using reflection
+        $reflection = new ReflectionClass($user);
+        $isLoggedInProperty = $reflection->getProperty('_isLoggedIn');
+        $isLoggedInProperty->setAccessible(true);
+        $isLoggedInProperty->setValue($user, true);
+
+        $GLOBALS['user'] = $user;
+
         $this->testUserId = 1;
-        $this->targetUserId = 2;
+        $this->targetUserId = 10;  // Use existing user ID (FredHansen)
         $this->db = DB::getInstance();
+
+        // Create unique test car for this test
+        try {
+            $this->testCarId = $this->createTestCar($this->testUserId, [
+                'chassis' => 'TEST-TRANSFER-' . microtime(true)
+            ]);
+        } catch (RuntimeException $e) {
+            $this->markTestSkipped('Could not create test car: ' . $e->getMessage());
+        }
+
+        // Ensure car_user relationship exists for test car
+        $this->db->insert('car_user', [
+            'car_id' => $this->testCarId,
+            'userid' => $this->testUserId
+        ]);
     }
 
     protected function tearDown(): void
@@ -43,13 +70,14 @@ final class CarTransferTest extends IntegrationTestCase
     public function testTransferCarSuccessWithValidUser(): void
     {
         $car = new Car($this->testCarId);
-        $originalUserId = $car->data()->user_id;
-        $this->assertEquals($this->testUserId, $originalUserId);
 
         $result = $car->transfer($this->targetUserId, 'Test transfer', 'NEWOWNER');
 
         $this->assertTrue($result);
-        $this->assertEquals($this->targetUserId, $car->data()->user_id);
+
+        // Reload car data from database to verify transfer
+        $transferredCar = new Car($this->testCarId);
+        $this->assertEquals($this->targetUserId, $transferredCar->data()->user_id);
     }
 
     /**

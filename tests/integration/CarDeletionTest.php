@@ -23,9 +23,36 @@ final class CarDeletionTest extends IntegrationTestCase
         parent::setUp();
         $this->requireDatabase();
 
-        $this->testCarId = 1;
+        // Set up authenticated user context for deletion operations
+        global $user;
+        $user = new User();
+        $user->find(1);  // Load user ID 1
+
+        // Manually set the private $_isLoggedIn property to true using reflection
+        $reflection = new ReflectionClass($user);
+        $isLoggedInProperty = $reflection->getProperty('_isLoggedIn');
+        $isLoggedInProperty->setAccessible(true);
+        $isLoggedInProperty->setValue($user, true);
+
+        $GLOBALS['user'] = $user;
+
         $this->testUserId = 1;
         $this->db = DB::getInstance();
+
+        // Create unique test car for this test
+        try {
+            $this->testCarId = $this->createTestCar($this->testUserId, [
+                'chassis' => 'TEST-DELETE-' . microtime(true)
+            ]);
+        } catch (RuntimeException $e) {
+            $this->markTestSkipped('Could not create test car: ' . $e->getMessage());
+        }
+
+        // Ensure car_user relationship exists
+        $this->db->insert('car_user', [
+            'car_id' => $this->testCarId,
+            'userid' => $this->testUserId
+        ]);
     }
 
     protected function tearDown(): void

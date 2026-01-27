@@ -23,9 +23,43 @@ final class CarMergeTest extends IntegrationTestCase
         parent::setUp();
         $this->requireDatabase();
 
-        $this->testCarId = 1;
-        $this->testMergeCarId = 2;
+        // Set up authenticated user context for merge operations
+        global $user;
+        $user = new User();
+        $user->find(1);  // Load user ID 1
+
+        // Manually set the private $_isLoggedIn property to true using reflection
+        $reflection = new ReflectionClass($user);
+        $isLoggedInProperty = $reflection->getProperty('_isLoggedIn');
+        $isLoggedInProperty->setAccessible(true);
+        $isLoggedInProperty->setValue($user, true);
+
+        $GLOBALS['user'] = $user;
+
         $this->db = DB::getInstance();
+
+        // Create unique test cars for this test
+        try {
+            $this->testCarId = $this->createTestCar(1, [
+                'chassis' => 'TEST-MERGE-' . microtime(true) . '-1'
+            ]);
+            $this->testMergeCarId = $this->createTestCar(1, [
+                'chassis' => 'TEST-MERGE-' . microtime(true) . '-2'
+            ]);
+        } catch (RuntimeException $e) {
+            $this->markTestSkipped('Could not create test cars: ' . $e->getMessage());
+        }
+
+        // Ensure car_user relationships exist
+        $this->db->insert('car_user', [
+            'car_id' => $this->testCarId,
+            'userid' => 1
+        ]);
+
+        $this->db->insert('car_user', [
+            'car_id' => $this->testMergeCarId,
+            'userid' => 1
+        ]);
     }
 
     protected function tearDown(): void

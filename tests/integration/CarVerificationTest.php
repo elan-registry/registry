@@ -22,8 +22,16 @@ final class CarVerificationTest extends IntegrationTestCase
         parent::setUp();
         $this->requireDatabase();
 
-        $this->testCarId = 1;
         $this->db = DB::getInstance();
+
+        // Create unique test car for this test
+        try {
+            $this->testCarId = $this->createTestCar(1, [
+                'chassis' => 'TEST-VERIFY-' . microtime(true)
+            ]);
+        } catch (RuntimeException $e) {
+            $this->markTestSkipped('Could not create test car: ' . $e->getMessage());
+        }
     }
 
     protected function tearDown(): void
@@ -45,9 +53,9 @@ final class CarVerificationTest extends IntegrationTestCase
 
         $this->assertTrue($result);
 
-        // Verify code was set in database
+        // Verify code was set in database (column is 'vericode', not 'verification_code')
         $carData = new Car($this->testCarId);
-        $this->assertEquals($verificationCode, $carData->data()->verification_code);
+        $this->assertEquals($verificationCode, $carData->data()->vericode);
     }
 
     /**

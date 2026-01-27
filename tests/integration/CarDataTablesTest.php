@@ -77,7 +77,7 @@ final class CarDataTablesTest extends IntegrationTestCase
             'order' => [['column' => 0, 'dir' => 'asc']],
             'columns' => [
                 ['data' => 'id', 'searchable' => 'true', 'orderable' => 'true'],
-                ['data' => 'code', 'searchable' => 'true', 'orderable' => 'true'],
+                ['data' => 'year', 'searchable' => 'true', 'orderable' => 'true'],
             ]
         ];
 
