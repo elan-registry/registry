@@ -168,13 +168,32 @@ if (!isset($GLOBALS['user']) || $GLOBALS['user'] === null) {
     }
 }
 
-// Try to verify database connection, but don't fail if it doesn't work
+// Try to verify database connection and reinitialize $db if configuration was fixed
 try {
     if (class_exists('DB')) {
+        // Reset the DB singleton cache to force reconnection with corrected config
+        // The DB class caches the PDO connection, so we need to clear it to force a new one
+        $reflectionClass = new ReflectionClass('DB');
+        $instanceProperty = $reflectionClass->getProperty('_instance');
+        $instanceProperty->setAccessible(true);
+        // For static properties in PHP 8.1+, use static context
+        if (PHP_VERSION_ID >= 80100) {
+            // PHP 8.1+: Set static property directly via reflection
+            DB::class; // Ensure class is loaded
+            $instanceProperty->setValue(null);
+        }
+        fwrite(STDERR, "NOTE: Reset DB singleton cache for reinitialization\n");
+
+        // Now create a fresh DB instance with the corrected configuration
         $testDb = DB::getInstance();
         $result = $testDb->query("SELECT 1");
         fwrite(STDERR, "NOTE: Database connection verified for integration tests\n");
+
+        // Re-initialize the global $db after configuration fixes
+        // This ensures $db in tests uses the corrected configuration
+        $GLOBALS['db'] = DB::getInstance();
+        fwrite(STDERR, "NOTE: Re-initialized global \$db for integration tests\n");
     }
 } catch (Throwable $e) {
-    fwrite(STDERR, "NOTE: Database not available - integration tests will skip gracefully\n");
+    fwrite(STDERR, "NOTE: Database reconnection attempt failed: {$e->getMessage()}\n");
 }

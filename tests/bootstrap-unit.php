@@ -42,7 +42,9 @@ if (!isset($_SESSION)) {
 if (!class_exists('Car')) {
     class Car {
         private $data;
+        private $history;
         private static $nextId = 1000;
+        private static $cars = [];
 
         /**
          * Constructor - matches real Car class signature
@@ -67,13 +69,50 @@ if (!class_exists('Car')) {
                 'color' => 'Red',
                 'engine' => 'ABC123',
                 'image' => null,
+                'verification_code' => null,
+                'last_verified' => null,
+                'solddate' => null,
                 'ctime' => date('Y-m-d H:i:s'),
                 'mtime' => date('Y-m-d H:i:s')
             ];
+
+            self::$cars[$id] = $this->data;
+            $this->history = [];
         }
 
-        public static function find(int $id): ?self {
-            return new self($id);
+        /**
+         * Find car by ID (instance method)
+         */
+        public function find(?int $id = null): bool {
+            if ($id === null) {
+                return $this->findAll();
+            }
+
+            if (!isset(self::$cars[$id])) {
+                $this->data = null;
+                return false;
+            }
+
+            $this->data = self::$cars[$id];
+            return true;
+        }
+
+        /**
+         * Find all cars
+         */
+        public function findAll(): bool {
+            if (empty(self::$cars)) {
+                return false;
+            }
+            $this->data = reset(self::$cars);
+            return true;
+        }
+
+        /**
+         * Check if car exists
+         */
+        public function exists(): bool {
+            return $this->data !== null && isset($this->data->id);
         }
 
         /**
@@ -85,14 +124,70 @@ if (!class_exists('Car')) {
         }
 
         /**
+         * Get car history
+         */
+        public function history(): ?array {
+            return !empty($this->history) ? $this->history : null;
+        }
+
+        /**
+         * Get factory data
+         */
+        public function factory(): ?object {
+            return null;
+        }
+
+        /**
+         * Get owner data
+         */
+        public function owner() {
+            return [];
+        }
+
+        /**
+         * Get car images
+         */
+        public function images(): array {
+            if ($this->data && $this->data->image) {
+                return json_decode($this->data->image, true) ?: [];
+            }
+            return [];
+        }
+
+        /**
+         * Remove image
+         */
+        public function removeImage(string $filename): bool {
+            if (!$filename || !$this->exists()) {
+                return false;
+            }
+            return true;
+        }
+
+        /**
+         * Get DataTables data
+         */
+        public function getDataTablesData(array $request, string $table = 'cars'): array {
+            return [
+                'draw' => $request['draw'] ?? 1,
+                'recordsTotal' => 10,
+                'recordsFiltered' => 10,
+                'data' => []
+            ];
+        }
+
+        /**
          * Create car with data
          * @param array $data Car data
          * @return bool Success status
          */
         public function create(array $data): bool {
             foreach ($data as $key => $value) {
-                $this->data->$key = $value;
+                if ($key !== 'token') {
+                    $this->data->$key = $value;
+                }
             }
+            self::$cars[$this->data->id] = $this->data;
             return true;
         }
 
@@ -102,12 +197,157 @@ if (!class_exists('Car')) {
          * @return bool Success status
          */
         public function update(array $data): bool {
+            if (!isset($data['token']) || !Token::check($data['token'])) {
+                throw new CarValidationException('Invalid CSRF token provided');
+            }
+
             foreach ($data as $key => $value) {
-                if ($key !== 'id') {  // Never update ID
+                if ($key !== 'id' && $key !== 'token') {
                     $this->data->$key = $value;
                 }
             }
+            if (isset($data['id'])) {
+                self::$cars[$data['id']] = $this->data;
+            }
             return true;
+        }
+
+        /**
+         * Delete car
+         */
+        public function delete(string $reason = 'Administrative deletion', ?string $token = null): bool {
+            if ($token !== null && !Token::check($token)) {
+                throw new CarDeletionException('Invalid CSRF token provided');
+            }
+
+            if (!$this->exists()) {
+                throw new CarNotFoundException('Car not found');
+            }
+
+            $id = $this->data->id;
+            unset(self::$cars[$id]);
+            $this->data = null;
+            return true;
+        }
+
+        /**
+         * Transfer car to new owner
+         */
+        public function transfer(int $newUserId, string $reason = 'Administrative transfer', string $operationType = 'NEWOWNER'): bool {
+            if (!$this->exists()) {
+                throw new Exception('Car not found');
+            }
+
+            $this->data->user_id = $newUserId;
+            self::$cars[$this->data->id] = $this->data;
+            $this->history[] = ['operation' => $operationType, 'reason' => $reason];
+            return true;
+        }
+
+        /**
+         * Merge with another car
+         */
+        public function merge(int $oldCarId, string $reason = 'Administrative merge'): bool {
+            if (!$this->exists()) {
+                throw new Exception('Car not found');
+            }
+
+            if ($oldCarId === $this->data->id) {
+                throw new Exception('Cannot merge car with itself');
+            }
+
+            if (!isset(self::$cars[$oldCarId])) {
+                throw new Exception('Source car not found');
+            }
+
+            unset(self::$cars[$oldCarId]);
+            $this->history[] = ['operation' => 'MERGE', 'reason' => $reason];
+            return true;
+        }
+
+        /**
+         * Set verification code
+         */
+        public function setVerificationCode(string $verificationCode): bool {
+            if (strlen($verificationCode) < 5) {
+                throw new Exception('Verification code too short');
+            }
+
+            if (!$this->exists()) {
+                throw new Exception('Car not found');
+            }
+
+            $this->data->verification_code = $verificationCode;
+            self::$cars[$this->data->id] = $this->data;
+            return true;
+        }
+
+        /**
+         * Mark car as verified
+         */
+        public function markVerified(): bool {
+            if (!$this->exists()) {
+                throw new Exception('Car not found');
+            }
+
+            $this->data->last_verified = date('Y-m-d H:i:s');
+            self::$cars[$this->data->id] = $this->data;
+            return true;
+        }
+
+        /**
+         * Mark car as sold
+         */
+        public function markSold(?string $soldDate = null): bool {
+            if (!$this->exists()) {
+                throw new Exception('Car not found');
+            }
+
+            $soldDate = $soldDate ?: date('Y-m-d');
+            if (!strtotime($soldDate)) {
+                throw new Exception('Invalid date format');
+            }
+
+            $this->data->solddate = $soldDate . ' ' . date('H:i:s');
+            self::$cars[$this->data->id] = $this->data;
+            return true;
+        }
+
+        /**
+         * Find car by verification code (static)
+         */
+        public static function findByVerificationCode(string $verificationCode): ?Car {
+            if (empty($verificationCode)) {
+                throw new Exception('Verification code cannot be empty');
+            }
+
+            foreach (self::$cars as $car) {
+                if (isset($car->verification_code) && $car->verification_code === $verificationCode) {
+                    $instance = new self();
+                    $instance->data = $car;
+                    return $instance;
+                }
+            }
+            return null;
+        }
+
+        /**
+         * Find cars by owner (static)
+         */
+        public static function findByOwner(int $ownerID): array {
+            if ($ownerID <= 0) {
+                return [];
+            }
+
+            $cars = [];
+            foreach (self::$cars as $car) {
+                if ($car->user_id === $ownerID) {
+                    $instance = new self();
+                    $instance->data = $car;
+                    $cars[] = $instance;
+                }
+            }
+            return $cars;
         }
     }
 }
@@ -125,12 +365,139 @@ if (!class_exists('Token')) {
         public static function generate() {
             return 'test_csrf_token_' . uniqid();
         }
-        
+
         public static function check($token) {
             if ($token === null || $token === '') {
                 return false;
             }
             return strpos($token, 'test_csrf_token_') === 0;
+        }
+    }
+}
+
+// Define exception classes for testing
+if (!class_exists('CarValidationException')) {
+    class CarValidationException extends Exception {}
+}
+
+if (!class_exists('CarCreationException')) {
+    class CarCreationException extends Exception {}
+}
+
+if (!class_exists('CarDeletionException')) {
+    class CarDeletionException extends Exception {}
+}
+
+if (!class_exists('CarTransferException')) {
+    class CarTransferException extends Exception {}
+}
+
+if (!class_exists('CarMergeException')) {
+    class CarMergeException extends Exception {}
+}
+
+if (!class_exists('CarNotFoundException')) {
+    class CarNotFoundException extends Exception {}
+}
+
+if (!class_exists('ImageProcessingException')) {
+    class ImageProcessingException extends Exception {}
+}
+
+if (!class_exists('LogCategories')) {
+    class LogCategories {
+        const LOG_CATEGORY_CAR_CREATION = 'car_creation';
+        const LOG_CATEGORY_CAR_DELETION = 'car_deletion';
+        const LOG_CATEGORY_CAR_TRANSFER = 'car_transfer';
+        const LOG_CATEGORY_CAR_MERGE = 'car_merge';
+        const LOG_CATEGORY_CAR_VERIFICATION = 'car_verification';
+        const LOG_CATEGORY_VALIDATION_ERROR = 'validation_error';
+        const LOG_CATEGORY_DATABASE_ERROR = 'database_error';
+        const LOG_CATEGORY_FILE_ERROR = 'file_error';
+    }
+}
+
+// Mock logger function
+if (!function_exists('logger')) {
+    function logger($userId, $category, $message) {
+        // Mock logger - do nothing in tests
+    }
+}
+
+// Mock getUserWithProfile function
+if (!function_exists('getUserWithProfile')) {
+    function getUserWithProfile($userId) {
+        return (object) [
+            'id' => $userId,
+            'fname' => 'Test',
+            'lname' => 'User',
+            'email' => 'test@example.com',
+            'city' => 'Test City',
+            'state' => 'Test State',
+            'country' => 'Test Country',
+            'lat' => '0.0000',
+            'lon' => '0.0000',
+            'website' => ''
+        ];
+    }
+}
+
+// Mock DB class
+if (!class_exists('DB')) {
+    class DB {
+        private static $instance;
+
+        public static function getInstance() {
+            if (self::$instance === null) {
+                self::$instance = new self();
+            }
+            return self::$instance;
+        }
+
+        public function query($sql, $params = []) {
+            return new QueryResult([]);
+        }
+
+        public function insert($table, $data) {
+            return true;
+        }
+
+        public function update($table, $id, $data) {
+            return true;
+        }
+
+        public function error() {
+            return false;
+        }
+
+        public function errorString() {
+            return '';
+        }
+
+        public function lastId() {
+            return 1;
+        }
+    }
+}
+
+if (!class_exists('QueryResult')) {
+    class QueryResult {
+        private $results;
+
+        public function __construct($results) {
+            $this->results = $results;
+        }
+
+        public function count() {
+            return count($this->results);
+        }
+
+        public function first() {
+            return reset($this->results);
+        }
+
+        public function results() {
+            return $this->results;
         }
     }
 }

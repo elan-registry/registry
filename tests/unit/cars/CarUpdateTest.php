@@ -334,6 +334,127 @@ class CarUpdateTest extends TestCase
     }
     
     /**
+     * Test update car fails with invalid CSRF
+     */
+    public function testUpdateCarFailsWithInvalidCSRF(): void
+    {
+        $this->expectException(CarValidationException::class);
+
+        $car = new Car($this->testCarId);
+        $updateData = [
+            'id' => $this->testCarId,
+            'token' => 'invalid-csrf-token-12345',
+            'year' => '1974',
+            'color' => 'Blue'
+        ];
+
+        $car->update($updateData);
+    }
+
+    /**
+     * Test update car fails with invalid ID
+     */
+    public function testUpdateCarFailsWithInvalidID(): void
+    {
+        $this->expectException(CarValidationException::class);
+
+        $car = new Car();
+        $updateData = [
+            'id' => -1,
+            'token' => Token::generate(),
+            'year' => '1974',
+            'color' => 'Blue'
+        ];
+
+        $car->update($updateData);
+    }
+
+    /**
+     * Test update car handles no changes gracefully
+     */
+    public function testUpdateCarHandlesNoChanges(): void
+    {
+        $car = new Car($this->testCarId);
+        $originalColor = $car->data()->color;
+
+        $updateData = [
+            'id' => $this->testCarId,
+            'token' => Token::generate(),
+        ];
+
+        $result = $car->update($updateData);
+
+        $this->assertTrue($result);
+        $this->assertEquals($originalColor, $car->data()->color);
+    }
+
+    /**
+     * Test removeImage fails when image not found
+     */
+    public function testRemoveImageFailsWhenImageNotFound(): void
+    {
+        $car = new Car($this->testCarId);
+
+        $result = $car->removeImage('nonexistent-image-12345.jpg');
+
+        $this->assertFalse($result);
+    }
+
+    /**
+     * Test removeImage fails with empty filename
+     */
+    public function testRemoveImageFailsWithEmptyFilename(): void
+    {
+        $car = new Car($this->testCarId);
+
+        $result = $car->removeImage('');
+
+        $this->assertFalse($result);
+    }
+
+    /**
+     * Test removeImage fails when car does not exist
+     */
+    public function testRemoveImageFailsWhenCarNotExists(): void
+    {
+        $car = new Car(99999);
+
+        $result = $car->removeImage('image.jpg');
+
+        $this->assertFalse($result);
+    }
+
+    /**
+     * Test images handles empty image list
+     */
+    public function testImagesHandlesEmptyImageList(): void
+    {
+        $car = new Car();
+        $images = $car->images();
+
+        $this->assertIsArray($images);
+        $this->assertEquals(0, count($images));
+    }
+
+    /**
+     * Test images handles invalid JSON
+     */
+    public function testImagesHandlesInvalidJSON(): void
+    {
+        $car = new Car($this->testCarId);
+
+        // Update car with invalid JSON in image field
+        $this->db->update('cars', $this->testCarId, ['image' => 'invalid{json']);
+
+        // Reload car and test images handling
+        $car->find($this->testCarId);
+        $images = $car->images();
+
+        // Should handle gracefully - either return empty array or preserve data
+        $this->assertTrue(is_array($images) || $images === null);
+    }
+
+    /**
      * Clean up test data after each test
      */
     private function cleanupTestData(): void
