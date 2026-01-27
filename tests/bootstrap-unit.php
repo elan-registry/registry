@@ -402,46 +402,8 @@ if (!class_exists('Token')) {
 }
 
 // Define exception classes for testing
-if (!class_exists('CarValidationException')) {
-    class CarValidationException extends Exception {}
-}
-
-if (!class_exists('CarCreationException')) {
-    class CarCreationException extends Exception {}
-}
-
-if (!class_exists('CarDeletionException')) {
-    class CarDeletionException extends Exception {}
-}
-
-if (!class_exists('CarTransferException')) {
-    class CarTransferException extends Exception {}
-}
-
-if (!class_exists('CarMergeException')) {
-    class CarMergeException extends Exception {}
-}
-
-if (!class_exists('CarNotFoundException')) {
-    class CarNotFoundException extends Exception {}
-}
-
-if (!class_exists('ImageProcessingException')) {
-    class ImageProcessingException extends Exception {}
-}
-
-if (!class_exists('LogCategories')) {
-    class LogCategories {
-        const LOG_CATEGORY_CAR_CREATION = 'car_creation';
-        const LOG_CATEGORY_CAR_DELETION = 'car_deletion';
-        const LOG_CATEGORY_CAR_TRANSFER = 'car_transfer';
-        const LOG_CATEGORY_CAR_MERGE = 'car_merge';
-        const LOG_CATEGORY_CAR_VERIFICATION = 'car_verification';
-        const LOG_CATEGORY_VALIDATION_ERROR = 'validation_error';
-        const LOG_CATEGORY_DATABASE_ERROR = 'database_error';
-        const LOG_CATEGORY_FILE_ERROR = 'file_error';
-    }
-}
+// Exception classes and LogCategories are now real classes loaded via autoloader
+// No longer using mock implementations - allows tests to verify actual exception behavior
 
 // Mock logger function
 if (!function_exists('logger')) {
