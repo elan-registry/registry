@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 /**
  * CarErrorMessages
  *
@@ -11,9 +13,9 @@
  * - Admin: More detailed messages for administrative operations
  * - Technical: Full details for logging/debugging
  *
- * @author Elan Registry Admin
- * @version 1.0
- * @see https://github.com/unibrain1/elanregistry/issues/261
+ * @package ElanRegistry
+ * @since   2.9.0
+ * @see     https://github.com/unibrain1/elanregistry/issues/261
  */
 class CarErrorMessages
 {
@@ -22,7 +24,7 @@ class CarErrorMessages
      *
      * @param string $errorKey Error message key
      * @param string $context Additional context (user|admin|technical)
-     * @param array $params Parameters for message interpolation
+     * @param array<string, string|int> $params Parameters for message interpolation
      * @return string User-friendly error message
      */
     public static function getMessage(string $errorKey, string $context = 'user', array $params = []): string
@@ -38,7 +40,7 @@ class CarErrorMessages
         
         // Replace parameters in message
         foreach ($params as $key => $value) {
-            $message = str_replace('{' . $key . '}', $value, $message);
+            $message = str_replace('{' . $key . '}', (string) $value, $message);
         }
         
         return $message;
@@ -48,7 +50,7 @@ class CarErrorMessages
      * Get technical error message for logging
      *
      * @param string $errorKey Error message key
-     * @param array $params Parameters for message interpolation
+     * @param array<string, string|int> $params Parameters for message interpolation
      * @return string Technical error message for logging
      */
     public static function getTechnicalMessage(string $errorKey, array $params = []): string
@@ -60,7 +62,7 @@ class CarErrorMessages
      * Get admin error message with more context
      *
      * @param string $errorKey Error message key
-     * @param array $params Parameters for message interpolation
+     * @param array<string, string|int> $params Parameters for message interpolation
      * @return string Admin error message
      */
     public static function getAdminMessage(string $errorKey, array $params = []): string
@@ -71,7 +73,7 @@ class CarErrorMessages
     /**
      * Error message definitions
      *
-     * @return array Multi-dimensional array of error messages by context
+     * @return array<string, array{user: string, admin: string, technical: string}> Error messages keyed by error code
      */
     private static function getMessages(): array
     {
