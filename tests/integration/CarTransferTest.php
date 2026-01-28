@@ -211,7 +211,7 @@ final class CarTransferTest extends IntegrationTestCase
      */
     public function testTransferRequiresAuthenticatedUser(): void
     {
-        $this->expectException(CarTransferException::class);
+        $this->expectException(CarPermissionException::class);
 
         $car = new Car($this->testCarId);
 

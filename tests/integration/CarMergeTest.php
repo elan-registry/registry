@@ -226,7 +226,7 @@ final class CarMergeTest extends IntegrationTestCase
      */
     public function testMergeRequiresAuthenticatedUser(): void
     {
-        $this->expectException(CarMergeException::class);
+        $this->expectException(CarPermissionException::class);
 
         $car = new Car($this->testCarId);
 

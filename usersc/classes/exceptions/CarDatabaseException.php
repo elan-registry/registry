@@ -3,17 +3,17 @@
 declare(strict_types=1);
 
 /**
- * CarCreationException
+ * CarDatabaseException
  *
- * Exception thrown when car creation operations fail.
- * Used when database insertion or validation errors occur during
- * new car record creation.
+ * Exception thrown when car-related database operations fail.
+ * Used for insert, update, delete, and transaction failures
+ * in the Car class.
  *
  * @package ElanRegistry
  * @subpackage Exceptions
- * @since v2.11.0
+ * @since v2.14.0
  */
-class CarCreationException extends CarException
+class CarDatabaseException extends CarException
 {
     /**
      * Constructor
@@ -37,7 +37,7 @@ class CarCreationException extends CarException
      */
     protected static function getDefaultUserMessage(): string
     {
-        return "Unable to create the car record. Please try again.";
+        return "A database error occurred while processing the car record.";
     }
 
     /**
@@ -45,7 +45,7 @@ class CarCreationException extends CarException
      */
     protected static function getDefaultLogCategory(): string
     {
-        return LogCategories::LOG_CATEGORY_CAR_CREATION;
+        return LogCategories::LOG_CATEGORY_DATABASE_ERROR;
     }
 
     /**

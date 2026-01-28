@@ -264,7 +264,7 @@ if (!empty($_POST)) {
                     'country' => $country,
                     'lat' => $geoResult['lat'],
                     'lon' => $geoResult['lon'],
-                    'mtime' => date('Y-m-d G:i:s')
+                    'mtime' => date(AppConstants::DATETIME_FORMAT)
                 ];
                 
                 $carsUpdated = 0;

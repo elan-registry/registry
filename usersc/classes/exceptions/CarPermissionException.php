@@ -3,17 +3,16 @@
 declare(strict_types=1);
 
 /**
- * CarCreationException
+ * CarPermissionException
  *
- * Exception thrown when car creation operations fail.
- * Used when database insertion or validation errors occur during
- * new car record creation.
+ * Exception thrown when a car operation is denied due to
+ * insufficient permissions or authentication failures.
  *
  * @package ElanRegistry
  * @subpackage Exceptions
- * @since v2.11.0
+ * @since v2.14.0
  */
-class CarCreationException extends CarException
+class CarPermissionException extends CarException
 {
     /**
      * Constructor
@@ -37,7 +36,7 @@ class CarCreationException extends CarException
      */
     protected static function getDefaultUserMessage(): string
     {
-        return "Unable to create the car record. Please try again.";
+        return "You do not have permission to perform this car operation.";
     }
 
     /**
@@ -45,7 +44,7 @@ class CarCreationException extends CarException
      */
     protected static function getDefaultLogCategory(): string
     {
-        return LogCategories::LOG_CATEGORY_CAR_CREATION;
+        return LogCategories::LOG_CATEGORY_ACCESS_DENIED;
     }
 
     /**
@@ -53,6 +52,6 @@ class CarCreationException extends CarException
      */
     protected static function getDefaultHttpStatusCode(): int
     {
-        return 500;
+        return 403;
     }
 }

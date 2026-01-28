@@ -223,13 +223,14 @@ $resize->resizeImage(
 
 ### **Exception Handling**
 
-All exceptions **MUST** extend `ElanRegistryException` base class (23 domain-specific types). Each exception carries an HTTP status code, log category, and separate technical/user-friendly messages.
+All exceptions **MUST** extend `ElanRegistryException` base class (26 domain-specific types). Each exception carries an HTTP status code, log category, and separate technical/user-friendly messages.
 
 **Key rules:**
 
 - Never throw generic `Exception` - use typed exceptions (e.g., `CarValidationException`, `CarCreationException`)
+- Domain base classes group related exceptions (e.g., `CarException` for all car operations)
 - Separate technical messages (for logs) from user-safe messages (for UI)
-- Catch with `ElanRegistryException` as fallback after specific types
+- Catch with domain base class (e.g., `CarException`) or `ElanRegistryException` as fallback after specific types
 
 **See [ERROR_HANDLING.md](ERROR_HANDLING.md#exception-hierarchy)** for the complete exception hierarchy table, usage patterns, and migration guide.
 
