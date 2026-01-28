@@ -12,7 +12,6 @@ declare(strict_types=1);
 class EnhancedSchemaManager {
     private $db;
     private $logger;
-    private $settings;
 
     // Existing settings auto-creation (preserved and enhanced)
     private $settingsFields = [
@@ -82,15 +81,13 @@ class EnhancedSchemaManager {
      * @see https://www.php.net/manual/en/language.oop5.decon.php
      *
      * @param object $database Database connection object
-     * @param object $userSettings Settings object
      * @param int|null $userId User ID for logging (optional)
      * @return void Constructors do not return values
      */
     // phpcs:ignore Squiz.Commenting.FunctionComment.MissingReturn
     // @codingStandardsIgnoreLine - Constructors cannot have return type declarations
-    public function __construct(object $database, object $userSettings, ?int $userId = null) {
+    public function __construct(object $database, ?int $userId = null) {
         $this->db = $database;
-        $this->settings = $userSettings;
         $this->logger = function($level, $category, $message) use ($userId) {
             if (function_exists('logger')) {
                 logger($userId ?? 0, $category, $message);

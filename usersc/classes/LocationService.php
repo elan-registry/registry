@@ -30,12 +30,6 @@ declare(strict_types=1);
 class LocationService
 {
     /**
-     * @var DB Database instance
-     * @suppress PhanUnusedPrivateProperty Reserved for future use
-     */
-    private DB $_db;
-
-    /**
      * @var string Photon API base URL
      */
     private const PHOTON_API_URL = 'https://photon.komoot.io/api';
@@ -65,7 +59,6 @@ class LocationService
      */
     public function __construct()
     {
-        $this->_db = DB::getInstance();
     }
 
     /**

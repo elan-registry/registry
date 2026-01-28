@@ -669,57 +669,6 @@ class BackupManager {
     }
 
     /**
-     * Find backup file for rollback purposes
-     *
-     * @param string $scriptName Script identifier
-     * @param string $environment Environment
-     * @param \DateTime|null $beforeDate Find backup before this date (optional)
-     * @return string|null Path to backup file or null if not found
-     */
-    private function findBackupForRollback(string $scriptName, string $environment, ?\DateTime $beforeDate = null): ?string {
-        $backupDirs = [
-            $this->backupBaseDir . 'automated/',
-            $this->backupBaseDir . 'manual/',
-            $this->backupBaseDir . 'rollback/'
-        ];
-
-        $candidates = [];
-
-        foreach ($backupDirs as $dir) {
-            if (!is_dir($dir)) {
-                continue;
-            }
-
-            $pattern = "*_{$scriptName}_{$environment}_*.sql";
-            $files = glob($dir . $pattern);
-
-            foreach ($files as $file) {
-                $mtime = filemtime($file);
-
-                if ($beforeDate && $mtime >= $beforeDate->getTimestamp()) {
-                    continue;
-                }
-
-                $candidates[] = [
-                    'file' => $file,
-                    'time' => $mtime
-                ];
-            }
-        }
-
-        if (empty($candidates)) {
-            return null;
-        }
-
-        // Sort by modification time, newest first
-        usort($candidates, function($a, $b) {
-            return $b['time'] - $a['time'];
-        });
-
-        return $candidates[0]['file'];
-    }
-
-    /**
      * Log backup event (creation or deletion)
      *
      * @param string $action 'created' or 'deleted'

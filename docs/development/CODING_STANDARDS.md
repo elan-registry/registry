@@ -118,13 +118,13 @@ ns may be returned as strings depending on PHP/MySQL configuration.
 
 ```php
 // ✅ CORRECT - Explicit type casting
-$schemaManager = new EnhancedSchemaManager($db, $settings, (int)$user->data()->id);
+$schemaManager = new EnhancedSchemaManager($db, (int)$user->data()->id);
 $carId = (int)$dbRow->id;
 $count = (int)$result->first()->total;
 
 // ❌ WRONG - Missing cast in strict mode
-$schemaManager = new EnhancedSchemaManager($db, $settings, $user->data()->id);
-// TypeError: Argument #3 ($userId) must be of type ?int, string given
+$schemaManager = new EnhancedSchemaManager($db, $user->data()->id);
+// TypeError: Argument #2 ($userId) must be of type ?int, string given
 
 ```text
 
