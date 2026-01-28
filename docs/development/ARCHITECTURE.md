@@ -41,57 +41,11 @@ This is a PHP web application for the Lotus Elan Registry hosted at <https://ela
 > **For complete database schema documentation, see
 > [DATABASE.md](DATABASE.md)**
 
-### Core Database Components
+Key tables: `cars`/`cars_hist` (vehicle records with audit), `car_user`/`car_user_hist` (ownership relationships), `car_transfer_requests` (transfer workflow), `users`/`profiles` (owner data), `elan_factory_info` (factory specs).
 
-**User Management:**
+The `cars` table has 3 audit triggers (INSERT/UPDATE/DELETE). Owner data is automatically synchronized from user profiles to car records.
 
-- `users` - UserSpice user accounts with authentication
-- `profiles` - Extended user information (location, bio, website)
-- One-to-one relationship between users and profiles
-
-**Car Registry:**
-
-- `cars` - Vehicle records with denormalized owner data for performance
-- `cars_hist` - Complete audit trail for all car changes (INSERT/UPDATE/DELETE)
-- `car_user` - Many-to-many junction table linking users to cars
-- `car_user_hist` - Audit trail for relationship changes
-- `car_transfer_requests` - Self-service ownership transfer workflow
-
-**Reference Data:**
-
-- `elan_factory_info` - Lotus Elan factory specifications and production data
-- `country` - Country reference data for location fields
-
-**System Tables:**
-
-- `audit` - UserSpice audit logging for user actions
-- `fix_script_runs` - Database maintenance script execution tracking
-
-### Database Features
-
-**Triggers** (automatic audit logging):
-
-> **For complete trigger documentation and implementation details, see
-> [DATABASE.md](DATABASE.md#database-triggers)**
-
-- `cars` table has 3 audit triggers (INSERT/UPDATE/DELETE)
-- Triggers can be bypassed with `@disable_triggers` variable
-- `car_user` changes logged via application code, not triggers
-
-**Data Synchronization:**
-
-- Owner data in `cars` table (email, fname, lname, city, state, country, lat,
-  lon, website) is automatically synchronized from user profiles
-- Location changes in user profiles trigger updates to all owned cars
-- Geocoding integration automatically populates coordinates from address data
-
-**Special Accounts:**
-
-> **For complete account details and GDPR cleanup processes, see
-> [DATABASE.md](DATABASE.md#special-system-accounts)**
-
-- `noowner` - Fallback owner for orphaned cars (GDPR compliance)
-- `admin` - Primary administrative account
+**See [DATABASE.md](DATABASE.md)** for complete schema, triggers, special accounts, and data synchronization details.
 
 ## Ownership Transfer System
 
@@ -138,86 +92,11 @@ The `car_transfer_requests` table stores:
 
 ## Class Architecture & Integration Patterns
 
-**Domain Classes follow established patterns from the Car class:**
+Domain classes in `/usersc/classes/` follow PascalCase naming, use `DB::getInstance()` singleton, custom exceptions in `/usersc/exceptions/`, and `logger()` for audit logging.
 
-- **Location**: All custom classes in `/usersc/classes/`
-- **Naming**: PascalCase with descriptive business domain names (e.g., `ElanRegistryOwner`, `Car`, `CarView`)
-- **Database Integration**: Use `DB::getInstance()` singleton pattern
-- **Exception Handling**: Custom exceptions in `/usersc/exceptions/` with descriptive names
-- **Audit Logging**: All operations use `logger($userId, 'Category', 'Message')` pattern
+**Key function:** `getUserWithProfile($userId)` in `/usersc/includes/custom_functions.php` - primary function for combined user+profile data access with safe defaults.
 
-**Key Integration Functions:**
-
-- **`getUserWithProfile($userId)`**: Primary function for combined user+profile data access
-  - Located in `/usersc/includes/custom_functions.php`
-  - Returns user object with profile fields (city, state, country, lat, lon, website)
-  - Handles missing profile data with safe defaults
-  - Use this for all owner data access rather than separate queries
-
-**Data Access Patterns:**
-
-```php
-// ✅ PREFERRED: Use existing custom function
-$ownerData = getUserWithProfile($userId);
-
-// ✅ ACCEPTABLE: Direct query when custom function insufficient
-$userQ = $db->query(
-    "SELECT u.*, p.* FROM users u LEFT JOIN profiles p
-     ON u.id = p.user_id WHERE u.id = ?",
-    [$userId]
-);
-```
-
-**Geocoding Integration:**
-
-- **Class**: `LocationGeocoder` (`/usersc/classes/LocationGeocoder.php`)
-- **Usage**: Call `ElanRegistryOwner::geocodeAddress()` static method
-- **Returns**: Array with `lat`/`lon` keys, or empty array on failure
-- **Integration**: Used in `ElanRegistryOwner` class, `user_settings.php`, and
-  `during_user_creation.php`
-- **Note**: LocationGeocoder is internal-only; always use
-  `ElanRegistryOwner::geocodeAddress()`
-
-**BackupManager Integration (v2.9.2+):**
-
-- **Location**: `/app/admin/includes/classes/BackupManager.php`
-- **Purpose**: OOP-based database backup management system
-- **Usage**: Create backups before schema operations, manual backups, cleanup old backups
-
-**Key Methods:**
-
-```php
-// Create backup before schema operations
-$backupManager = new BackupManager($db, $backupDir, $userId);
-$backupPath = $backupManager->createSchemaBackup(
-    'Operation Name',
-    ['users', 'cars']
-);
-
-// Create manual backup
-$backupPath = $backupManager->createManualBackup(
-    'Reason',
-    ['users'],
-    ['key' => 'value']
-);
-
-// Get statistics and perform cleanup
-$stats = $backupManager->getEnhancedBackupStatistics();
-$cleanup = $backupManager->performEnhancedCleanup();
-```
-
-**Backward Compatibility:**
-
-- Legacy FIX scripts can still use global functions via `/usersc/includes/backup_functions.php`
-- Compatibility wrapper delegates to BackupManager internally
-- Deprecated: `/FIX/backup-functions.php` (redirects to compatibility wrapper)
-
-**For New Code:**
-
-- ✅ PREFERRED: Use BackupManager class directly (OOP approach)
-- ⚠️ LEGACY: Use compatibility wrapper functions (for old FIX scripts only)
-
-**See Also**: `/docs/development/BACKUP_SYSTEM.md` for comprehensive documentation
+**See [CLASSES.md](CLASSES.md)** for complete class documentation, **[INTEGRATION.md](INTEGRATION.md)** for UserSpice integration and owner data patterns, and **[BACKUP_SYSTEM.md](BACKUP_SYSTEM.md)** for BackupManager API.
 
 ## Documentation System
 
