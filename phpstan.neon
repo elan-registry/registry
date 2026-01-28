@@ -51,7 +51,7 @@ parameters:
 
         # UserSpice classes/functions loaded at runtime via init.php
         - '#unknown class (DB|Token|Input|User|Redirect)#'
-        - '#invalid type (DB|Token|Input|User|Redirect)#'
+        - '#invalid (return )?type (DB|Token|Input|User|Redirect)#'
         - '#Function \w+ not found#'
 
         # Car class uses class_alias for backward compatibility (issue #407)
