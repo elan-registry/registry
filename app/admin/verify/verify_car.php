@@ -58,7 +58,7 @@ if (Input::exists('get') && Input::get('code') && Input::get('action')) {
             $message =  "<h2>Thank you for verifying your car</h2><p>Taking you to the details...</p>";
 
             // Update last_verified time
-            $db->update("cars", $car->id, ["last_verified" =>  date('Y-m-d G:i:s')]);
+            $db->update("cars", $car->id, ["last_verified" =>  date(AppConstants::DATETIME_FORMAT)]);
             // Update the History record to show verified
             // Find the history record
             $hist_id = $db->query('SELECT car_id, id, MAX(timestamp) AS max FROM cars_hist where car_id = ? GROUP BY id, car_id ORDER BY `max` DESC LIMIT 1', [$car->id])->first()->id;
@@ -83,7 +83,7 @@ if (Input::exists('get') && Input::get('code') && Input::get('action')) {
         case 'sold':
             $message =  "<h2>Thank you for letting me know you sold the car.  I'll update the records.</h2><p>Taking you to the details...</p>";
 
-            $db->update("cars", $car->id, ["last_verified" =>  date('Y-m-d G:i:s')]);
+            $db->update("cars", $car->id, ["last_verified" =>  date(AppConstants::DATETIME_FORMAT)]);
             // Update the History record to show verified
             // Find the history record
             $hist_id = $db->query('SELECT car_id, id, MAX(timestamp) AS max FROM cars_hist where car_id = ? GROUP BY id, car_id ORDER BY `max` DESC LIMIT 1', [$car->id])->first()->id;

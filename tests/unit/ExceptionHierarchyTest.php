@@ -25,6 +25,8 @@ class ExceptionHierarchyTest extends TestCase
         'CarDeletionException',
         'CarMergeException',
         'CarTransferException',
+        'CarDatabaseException',
+        'CarPermissionException',
         'OwnerNotFoundException',
         'OwnerCreationException',
         'OwnerValidationException',
@@ -286,6 +288,7 @@ class ExceptionHierarchyTest extends TestCase
     {
         $this->assertEquals(401, (new UnauthorizedException())->getHttpStatusCode());
         $this->assertEquals(403, (new ForbiddenException())->getHttpStatusCode());
+        $this->assertEquals(403, (new CarPermissionException())->getHttpStatusCode());
     }
 
     /**
@@ -297,6 +300,7 @@ class ExceptionHierarchyTest extends TestCase
         $this->assertEquals(500, (new CarDeletionException())->getHttpStatusCode());
         $this->assertEquals(500, (new CarMergeException())->getHttpStatusCode());
         $this->assertEquals(500, (new CarTransferException())->getHttpStatusCode());
+        $this->assertEquals(500, (new CarDatabaseException())->getHttpStatusCode());
         $this->assertEquals(500, (new OwnerCreationException())->getHttpStatusCode());
         $this->assertEquals(500, (new OwnerUpdateException())->getHttpStatusCode());
         $this->assertEquals(500, (new ImageProcessingException())->getHttpStatusCode());
@@ -364,6 +368,8 @@ class ExceptionHierarchyTest extends TestCase
             'CarDeletionException' => ['CarDeletionException', 'CarDeletion'],
             'CarMergeException' => ['CarMergeException', 'CarMerge'],
             'CarTransferException' => ['CarTransferException', 'CarTransferError'],
+            'CarDatabaseException' => ['CarDatabaseException', 'DatabaseError'],
+            'CarPermissionException' => ['CarPermissionException', 'AccessDenied'],
             'OwnerNotFoundException' => ['OwnerNotFoundException', 'OwnerActions'],
             'OwnerCreationException' => ['OwnerCreationException', 'OwnerActions'],
             'OwnerValidationException' => ['OwnerValidationException', 'ValidationError'],
@@ -394,6 +400,8 @@ class ExceptionHierarchyTest extends TestCase
             'CarDeletionException' => ['CarDeletionException', 500],
             'CarMergeException' => ['CarMergeException', 500],
             'CarTransferException' => ['CarTransferException', 500],
+            'CarDatabaseException' => ['CarDatabaseException', 500],
+            'CarPermissionException' => ['CarPermissionException', 403],
             'OwnerNotFoundException' => ['OwnerNotFoundException', 404],
             'OwnerCreationException' => ['OwnerCreationException', 500],
             'OwnerValidationException' => ['OwnerValidationException', 422],

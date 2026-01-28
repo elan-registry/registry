@@ -13,7 +13,7 @@ declare(strict_types=1);
  * @subpackage Exceptions
  * @since v2.11.0
  */
-class CarMergeException extends ElanRegistryException
+class CarMergeException extends CarException
 {
     /**
      * Constructor

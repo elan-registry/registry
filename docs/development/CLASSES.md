@@ -63,11 +63,23 @@ $car->delete($userId);
 - `car_images` - Associated images
 - `elan_factory_info` - Factory build information
 
-**Exception Handling**:
+**Constants**:
 
-- `CarNotFoundException` - Car ID not found
-- `CarValidationException` - Invalid car data
-- `CarDatabaseException` - Database operation failures
+- `CHASSIS_SUFFIX_LENGTH` - Length of chassis suffix for factory lookup
+- `DATETIME_FORMAT` - Standard datetime format (`Y-m-d G:i:s`)
+- `SQL_START_TRANSACTION`, `SQL_COMMIT`, `SQL_ROLLBACK` - Transaction SQL
+- `OPERATION_DELETE`, `OPERATION_MERGE` - History operation names
+
+**Exception Handling** (all extend `CarException`):
+
+- `CarNotFoundException` - Car ID not found (404)
+- `CarValidationException` - Invalid car data (422)
+- `CarDatabaseException` - Database operation failures (500)
+- `CarPermissionException` - Permission/auth denied (403)
+- `CarCreationException` - Car creation failures (500)
+- `CarDeletionException` - Car deletion failures (500)
+- `CarMergeException` - Car merge failures (500)
+- `CarTransferException` - Ownership transfer failures (500)
 
 ### CarView
 
@@ -159,15 +171,21 @@ $results = ElanRegistryOwner::searchOwners('Portland');
 
 ### LocationGeocoder
 
-**⚠️ INTERNAL USE ONLY - DO NOT USE DIRECTLY**
+> **INTERNAL USE ONLY** — Do not use directly.
 
 **Location**: `/usersc/classes/LocationGeocoder.php`
 
-**Purpose**: Internal implementation class for geocoding. This class is an implementation detail of ElanRegistryOwner and should NEVER be instantiated directly.
+**Purpose**: Internal implementation class for geocoding. This class is an
+implementation detail of ElanRegistryOwner and should NEVER be instantiated
+directly.
 
-**Why this restriction**: LocationGeocoder is encapsulated within ElanRegistryOwner to provide a clean API and allow future implementation changes (caching, provider switching) without affecting calling code.
+**Why this restriction**: LocationGeocoder is encapsulated within
+ElanRegistryOwner to provide a clean API and allow future implementation
+changes (caching, provider switching) without affecting calling code.
 
-**Runtime Protection**: Attempting to instantiate LocationGeocoder directly will throw a `GeocodingException` with a clear error message directing you to use `ElanRegistryOwner::geocodeAddress()` instead.
+**Runtime Protection**: Attempting to instantiate LocationGeocoder directly
+will throw a `GeocodingException` with a clear error message directing you
+to use `ElanRegistryOwner::geocodeAddress()` instead.
 
 **❌ WRONG - DO NOT DO THIS:**
 

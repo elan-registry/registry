@@ -283,7 +283,7 @@ if (Input::exists('post')) {
 
                         // Add a record to the history with some information on the assignment
                         $fields['car_id'] = $new_car_id;
-                        $fields['ctime'] = date('Y-m-d G:i:s'); // Set date of this record
+                        $fields['ctime'] = date(AppConstants::DATETIME_FORMAT); // Set date of this record
                         $fields['mtime'] = $fields['ctime'];
 
                         $db->insert("cars_hist", $fields);
@@ -322,7 +322,7 @@ if (Input::exists('post')) {
                     $fields['car_id'] = $car_id;
                     $fields['comments'] = "Car ID $car_id ({$carData->chassis}) permanently deleted by admin " . $currentUserId . ". Reason: Administrative deletion via consolidated management.";
                     $fields['operation'] = "DELETE";
-                    $fields['ctime'] = date('Y-m-d G:i:s');
+                    $fields['ctime'] = date(AppConstants::DATETIME_FORMAT);
                     $fields['mtime'] = $fields['ctime'];
 
                     $db->insert("cars_hist", $fields);

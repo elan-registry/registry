@@ -13,7 +13,7 @@ declare(strict_types=1);
  * @subpackage Exceptions
  * @since v2.11.0
  */
-class CarTransferException extends ElanRegistryException
+class CarTransferException extends CarException
 {
     /**
      * Constructor

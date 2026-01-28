@@ -125,16 +125,19 @@ handling and logging.
   - Log category (from LogCategories constants)
   - HTTP status code (for API responses)
 
-**Exception Types** (23 total):
+**Exception Types** (26 total):
 
 | Exception | HTTP | Category | Purpose |
 | --- | --- | --- | --- |
+| **CarException** (abstract) | 500 | CarErrors | Base for all car exceptions |
 | CarCreationException | 500 | CarCreation | Car creation |
+| CarDatabaseException | 500 | DatabaseError | Car database operations |
 | CarDeletionException | 500 | CarDeletion | Car deletion |
-| CarTransferException | 400 | CarTransferError | Ownership transfer |
-| CarValidationException | 422 | CarValidation | Car data validation |
-| CarMergeException | 400 | CarMerge | Car merge operation |
+| CarMergeException | 500 | CarMerge | Car merge operation |
 | CarNotFoundException | 404 | CarErrors | Car not found |
+| CarPermissionException | 403 | AccessDenied | Car permission denied |
+| CarTransferException | 500 | CarTransferError | Ownership transfer |
+| CarValidationException | 422 | ValidationError | Car data validation |
 | OwnerCreationException | 500 | OwnerCreation | Owner creation |
 | OwnerUpdateException | 500 | OwnerUpdate | Owner profile update |
 | OwnerValidationException | 422 | OwnerValidation | Owner data validation |

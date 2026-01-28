@@ -161,7 +161,7 @@ class ElanRegistryOwner
             $profileFields = $this->extractProfileFields($fields);
 
             // Create user record
-            $userFields['join_date'] = date('Y-m-d G:i:s');
+            $userFields['join_date'] = date(AppConstants::DATETIME_FORMAT);
             $userFields['vericode'] = randomstring(15);
 
             if (!$this->_db->insert($this->userTableName, $userFields)) {
@@ -172,7 +172,7 @@ class ElanRegistryOwner
 
             // Create profile record
             $profileFields['user_id'] = $userId;
-            $profileFields['ctime'] = date('Y-m-d G:i:s');
+            $profileFields['ctime'] = date(AppConstants::DATETIME_FORMAT);
 
             // Apply geocoding if location data provided
             if (!empty($profileFields['city']) && !empty($profileFields['state']) && !empty($profileFields['country'])) {
@@ -540,7 +540,7 @@ class ElanRegistryOwner
             'country' => $this->_data->country,
             'lat' => $this->_data->lat,
             'lon' => $this->_data->lon,
-            'mtime' => date('Y-m-d G:i:s')
+            'mtime' => date(AppConstants::DATETIME_FORMAT)
         ];
 
         foreach ($ownedCars as $car) {

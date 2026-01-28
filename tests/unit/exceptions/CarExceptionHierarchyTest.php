@@ -1,0 +1,158 @@
+<?php
+
+declare(strict_types=1);
+
+use PHPUnit\Framework\TestCase;
+
+/**
+ * Test cases for the CarException hierarchy
+ *
+ * Verifies that all car-related exceptions properly extend CarException,
+ * which in turn extends ElanRegistryException, maintaining backward
+ * compatibility with existing catch blocks.
+ *
+ * @group unit
+ * @group exceptions
+ */
+class CarExceptionHierarchyTest extends TestCase
+{
+    /**
+     * All car exception classes that should extend CarException
+     */
+    private const CAR_EXCEPTION_CLASSES = [
+        'CarNotFoundException',
+        'CarCreationException',
+        'CarValidationException',
+        'CarDeletionException',
+        'CarMergeException',
+        'CarTransferException',
+        'CarDatabaseException',
+        'CarPermissionException',
+    ];
+
+    /**
+     * Test that CarException is abstract and cannot be instantiated
+     */
+    public function testCarExceptionIsAbstract(): void
+    {
+        $reflection = new ReflectionClass('CarException');
+        $this->assertTrue(
+            $reflection->isAbstract(),
+            'CarException must be abstract'
+        );
+    }
+
+    /**
+     * Test that CarException extends ElanRegistryException
+     */
+    public function testCarExceptionExtendsElanRegistryException(): void
+    {
+        $this->assertTrue(
+            is_subclass_of('CarException', 'ElanRegistryException'),
+            'CarException should extend ElanRegistryException'
+        );
+    }
+
+    /**
+     * Test that all car exceptions extend CarException
+     *
+     * @param string $className Exception class name to test
+     * @dataProvider carExceptionClassProvider
+     */
+    public function testCarExceptionExtendsCarException(string $className): void
+    {
+        $this->assertTrue(
+            is_subclass_of($className, 'CarException'),
+            "{$className} should extend CarException"
+        );
+    }
+
+    /**
+     * Test backward compatibility - all car exceptions are still instanceof ElanRegistryException
+     *
+     * @param string $className Exception class name to test
+     * @dataProvider carExceptionClassProvider
+     */
+    public function testBackwardCompatibilityWithElanRegistryException(string $className): void
+    {
+        $exception = new $className();
+        $this->assertInstanceOf(
+            ElanRegistryException::class,
+            $exception,
+            "{$className} should be instanceof ElanRegistryException for backward compatibility"
+        );
+    }
+
+    /**
+     * Test backward compatibility - all car exceptions are instanceof CarException
+     *
+     * @param string $className Exception class name to test
+     * @dataProvider carExceptionClassProvider
+     */
+    public function testAllCarExceptionsAreInstanceOfCarException(string $className): void
+    {
+        $exception = new $className();
+        $this->assertInstanceOf(
+            CarException::class,
+            $exception,
+            "{$className} should be instanceof CarException"
+        );
+    }
+
+    /**
+     * Test CarDatabaseException defaults
+     */
+    public function testCarDatabaseExceptionDefaults(): void
+    {
+        $exception = new CarDatabaseException();
+
+        $this->assertEquals(500, $exception->getHttpStatusCode());
+        $this->assertEquals('DatabaseError', $exception->getLogCategory());
+        $this->assertNotEmpty($exception->getUserMessage());
+    }
+
+    /**
+     * Test CarPermissionException defaults
+     */
+    public function testCarPermissionExceptionDefaults(): void
+    {
+        $exception = new CarPermissionException();
+
+        $this->assertEquals(403, $exception->getHttpStatusCode());
+        $this->assertEquals('AccessDenied', $exception->getLogCategory());
+        $this->assertNotEmpty($exception->getUserMessage());
+    }
+
+    /**
+     * Test that CarException catch block catches all car exceptions
+     */
+    public function testCarExceptionCatchBlockCatchesAllCarExceptions(): void
+    {
+        foreach (self::CAR_EXCEPTION_CLASSES as $className) {
+            $caught = false;
+            try {
+                throw new $className('Test');
+            } catch (CarException $e) {
+                $caught = true;
+            }
+            $this->assertTrue(
+                $caught,
+                "{$className} should be caught by catch (CarException)"
+            );
+        }
+    }
+
+    /**
+     * Data provider for car exception classes
+     *
+     * @return array<string, array<int, string>>
+     */
+    public static function carExceptionClassProvider(): array
+    {
+        $data = [];
+        foreach (self::CAR_EXCEPTION_CLASSES as $class) {
+            $data[$class] = [$class];
+        }
+        return $data;
+    }
+}
