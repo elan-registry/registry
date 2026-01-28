@@ -5,12 +5,14 @@ declare(strict_types=1);
 use PHPUnit\Framework\TestCase;
 
 /**
- * Test cases for car update functionality (editCar.php)
- * 
- * Tests cover CRUD operations, validation, security, and file uploads
- * for the car registry system.
+ * Car CRUD operations tests
+ *
+ * Tests cover create, read, update, delete operations including
+ * validation, security, file uploads, and image management.
+ *
+ * @group fast
  */
-class CarUpdateTest extends TestCase
+final class CarCrudTest extends TestCase
 {
     private $testCarId;
     private $testUserId;
