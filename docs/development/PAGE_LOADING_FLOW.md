@@ -637,7 +637,7 @@ Debug mode shows:
 - **[ARCHITECTURE.md](ARCHITECTURE.md)** - Overall system architecture
 - **[INTEGRATION.md](INTEGRATION.md)** - UserSpice integration patterns
 - **[CLASSES.md](CLASSES.md)** - Custom application classes
-- **[PROJECT_CONVENTIONS.md](PROJECT_CONVENTIONS.md)** - Coding standards
+- **[CODING_STANDARDS.md](CODING_STANDARDS.md)** - Coding standards
 - **[QUICK_REFERENCE.md](QUICK_REFERENCE.md)** - Common tasks lookup
 
 ## Revision History

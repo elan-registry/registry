@@ -73,10 +73,8 @@ Essential documents for getting started:
   assistant (quick reference and index)
 - **[QUICK_REFERENCE.md](development/QUICK_REFERENCE.md)** - Quick reference
   for common tasks and commands
-- **[QUICK_START.md](development/QUICK_START.md)** - Development setup and
-  testing commands
 - **[INSTALLATION.md](development/INSTALLATION.md)** - Complete installation
-  procedures
+  and setup procedures
 
 #### 📚 CORE DOCUMENTATION
 
@@ -90,10 +88,8 @@ Fundamental architecture and patterns:
   documentation and table relationships
 - **[INTEGRATION.md](development/INTEGRATION.md)** - UserSpice integration
   and custom functions
-- **[PROJECT_CONVENTIONS.md](development/PROJECT_CONVENTIONS.md)** -
-  Project-specific coding standards and conventions
 - **[CODING_STANDARDS.md](development/CODING_STANDARDS.md)** - Code quality
-  requirements and standards
+  requirements, standards, and project conventions
 - **[STRICT_TYPE_HANDLING.md](development/STRICT_TYPE_HANDLING.md)** - PHP
   strict type handling patterns and solutions
 
@@ -109,6 +105,16 @@ Specific workflows and advanced topics:
   guidelines
 - **[BACKUP_SYSTEM.md](development/BACKUP_SYSTEM.md)** - BackupManager class
   API and usage patterns
+- **[ERROR_HANDLING.md](development/ERROR_HANDLING.md)** - Error handling
+  patterns, API responses, and frontend integration
+- **[CLASSES.md](development/CLASSES.md)** - Custom application class
+  documentation and patterns
+- **[CSS_AND_ASSETS.md](development/CSS_AND_ASSETS.md)** - Stylesheets, CDN
+  resources, and CSS minification
+- **[DATATABLES.md](development/DATATABLES.md)** - DataTables configuration
+  and server-side processing
+- **[ENVIRONMENT.md](development/ENVIRONMENT.md)** - Environment setup and
+  configuration
 - **[STATIC_ANALYSIS.md](development/STATIC_ANALYSIS.md)** - Code quality and
   static analysis tools
 - **[RELEASE_NOTES_TEMPLATE.md](development/RELEASE_NOTES_TEMPLATE.md)** -
