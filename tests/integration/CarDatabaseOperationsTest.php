@@ -133,7 +133,14 @@ final class CarDatabaseOperationsTest extends IntegrationTestCase
      */
     public function testCarDeletionRemovesFromDatabase(): void
     {
-        $this->markTestSkipped('Car::delete() has a bug: cars_hist table has NOT NULL columns (model, series, variant, year, type, chassis) that delete() does not provide. This will be fixed during Car.php refactoring. See Issue #248.');
+        $car = new Car($this->testCarId);
+        $result = $car->delete('Integration test deletion');
+
+        $this->assertTrue($result);
+
+        // Verify car no longer exists in database
+        $query = $this->db->query('SELECT * FROM cars WHERE id = ?', [$this->testCarId]);
+        $this->assertEquals(0, $query->count());
     }
 
     /**
@@ -143,7 +150,17 @@ final class CarDatabaseOperationsTest extends IntegrationTestCase
      */
     public function testCarDeletionCreatesAuditTrail(): void
     {
-        $this->markTestSkipped('Car::delete() has a bug: cars_hist table has NOT NULL columns (model, series, variant, year, type, chassis) that delete() does not provide. This will be fixed during Car.php refactoring. See Issue #248.');
+        $car = new Car($this->testCarId);
+        $result = $car->delete('Integration test audit trail');
+
+        $this->assertTrue($result);
+
+        // Verify audit trail record exists
+        $historyQuery = $this->db->query(
+            "SELECT * FROM cars_hist WHERE car_id = ? AND operation = 'DELETE'",
+            [$this->testCarId]
+        );
+        $this->assertGreaterThan(0, $historyQuery->count());
     }
 
     /**
@@ -205,7 +222,26 @@ final class CarDatabaseOperationsTest extends IntegrationTestCase
      */
     public function testCarMergeTransfersHistoryRecords(): void
     {
-        $this->markTestSkipped('Car::merge() has a bug: cars_hist table has NOT NULL columns (model, series, variant, year, type, chassis) that merge() does not provide. This will be fixed during Car.php refactoring. See Issue #248.');
+        // Create a second test car to merge from
+        $mergeCarId = $this->createTestCar($this->testUserId, [
+            'chassis' => 'DB' . uniqid()
+        ]);
+        $this->db->insert('car_user', [
+            'car_id' => $mergeCarId,
+            'userid' => $this->testUserId
+        ]);
+
+        $car = new Car($this->testCarId);
+        $result = $car->merge($mergeCarId, 'Integration test merge');
+
+        $this->assertTrue($result);
+
+        // Verify merge audit trail exists
+        $historyQuery = $this->db->query(
+            "SELECT * FROM cars_hist WHERE car_id = ? AND operation = 'MERGE'",
+            [$this->testCarId]
+        );
+        $this->assertGreaterThan(0, $historyQuery->count());
     }
 
     /**

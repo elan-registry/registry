@@ -74,7 +74,10 @@ final class CarMergeTest extends IntegrationTestCase
      */
     public function testMergeCarSuccessWithValidOldCar(): void
     {
-        $this->markTestSkipped('Car::merge() has a bug: cars_hist table has NOT NULL columns (model, series, variant, year, type, chassis) that merge() does not provide. This will be fixed during Car.php refactoring. See Issue #248.');
+        $car = new Car($this->testCarId);
+        $result = $car->merge($this->testMergeCarId, 'Test merge success');
+
+        $this->assertTrue($result);
     }
 
     /**
@@ -123,7 +126,17 @@ final class CarMergeTest extends IntegrationTestCase
      */
     public function testMergeTransfersHistoryRecords(): void
     {
-        $this->markTestSkipped('Car::merge() has a bug: cars_hist table has NOT NULL columns (model, series, variant, year, type, chassis) that merge() does not provide. This will be fixed during Car.php refactoring. See Issue #248.');
+        $car = new Car($this->testCarId);
+        $result = $car->merge($this->testMergeCarId, 'Test merge history transfer');
+
+        $this->assertTrue($result);
+
+        // Verify history records were transferred to surviving car
+        $historyQuery = $this->db->query(
+            "SELECT * FROM cars_hist WHERE car_id = ? AND operation = 'MERGE'",
+            [$this->testCarId]
+        );
+        $this->assertGreaterThan(0, $historyQuery->count());
     }
 
     /**
@@ -133,7 +146,16 @@ final class CarMergeTest extends IntegrationTestCase
      */
     public function testMergeDeletesOldCar(): void
     {
-        $this->markTestSkipped('Car::merge() has a bug: cars_hist table has NOT NULL columns (model, series, variant, year, type, chassis) that merge() does not provide. This will be fixed during Car.php refactoring. See Issue #248.');
+        $oldCarId = $this->testMergeCarId;
+
+        $car = new Car($this->testCarId);
+        $result = $car->merge($oldCarId, 'Test merge deletes old car');
+
+        $this->assertTrue($result);
+
+        // Verify old car no longer exists
+        $query = $this->db->query('SELECT * FROM cars WHERE id = ?', [$oldCarId]);
+        $this->assertEquals(0, $query->count());
     }
 
     /**
@@ -143,7 +165,17 @@ final class CarMergeTest extends IntegrationTestCase
      */
     public function testMergeCreatesAuditTrail(): void
     {
-        $this->markTestSkipped('Car::merge() has a bug: cars_hist table has NOT NULL columns (model, series, variant, year, type, chassis) that merge() does not provide. This will be fixed during Car.php refactoring. See Issue #248.');
+        $car = new Car($this->testCarId);
+        $result = $car->merge($this->testMergeCarId, 'Test merge audit trail');
+
+        $this->assertTrue($result);
+
+        // Verify audit trail record exists with MERGE operation
+        $historyQuery = $this->db->query(
+            "SELECT * FROM cars_hist WHERE car_id = ? AND operation = 'MERGE'",
+            [$this->testCarId]
+        );
+        $this->assertGreaterThan(0, $historyQuery->count());
     }
 
     /**
@@ -175,7 +207,16 @@ final class CarMergeTest extends IntegrationTestCase
      */
     public function testMergeRemovesOldCarRelationships(): void
     {
-        $this->markTestSkipped('Car::merge() has a bug: cars_hist table has NOT NULL columns (model, series, variant, year, type, chassis) that merge() does not provide. This will be fixed during Car.php refactoring. See Issue #248.');
+        $oldCarId = $this->testMergeCarId;
+
+        $car = new Car($this->testCarId);
+        $result = $car->merge($oldCarId, 'Test merge removes relationships');
+
+        $this->assertTrue($result);
+
+        // Verify old car's relationships were removed
+        $query = $this->db->query('SELECT * FROM car_user WHERE car_id = ?', [$oldCarId]);
+        $this->assertEquals(0, $query->count());
     }
 
     /**
