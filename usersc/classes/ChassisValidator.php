@@ -285,7 +285,7 @@ class ChassisValidator
     /**
      * Get validation rules summary for display
      * 
-     * @return array<string, array<string, string>>
+     * @return array<string, array<int|string, string>>
      */
     public static function getValidationRules(): array 
     {
