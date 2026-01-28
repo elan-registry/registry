@@ -630,7 +630,7 @@ class ElanRegistryOwner
                 case 'website':
                     if (!empty($value)) {
                         // Sanitize URL by removing illegal characters
-                        $sanitized = preg_replace('/[^a-zA-Z0-9\-._~:/?#[\]@!$&\'()*+,;=%]/', '', trim($value));
+                        $sanitized = preg_replace('/[^a-zA-Z0-9\-._~:\/?#\[\]@!$&\'()*+,;=%]/', '', trim($value));
                         if (filter_var($sanitized, FILTER_VALIDATE_URL)) {
                             $validatedFields[$key] = $sanitized;
                         } else {
