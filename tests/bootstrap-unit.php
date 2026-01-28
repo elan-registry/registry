@@ -142,8 +142,10 @@ if (!class_exists('Car')) {
 
         /**
          * Get owner data
+         *
+         * @return array<mixed>
          */
-        public function owner() {
+        public function owner(): array {
             return [];
         }
 
@@ -282,7 +284,7 @@ if (!class_exists('Car')) {
          */
         public function transfer(int $newUserId, string $reason = 'Administrative transfer', string $operationType = 'NEWOWNER'): bool {
             if (!$this->exists()) {
-                throw new Exception('Car not found');
+                throw new CarNotFoundException('Car not found');
             }
 
             $this->data->user_id = $newUserId;
@@ -317,11 +319,11 @@ if (!class_exists('Car')) {
          */
         public function setVerificationCode(string $verificationCode): bool {
             if (strlen($verificationCode) < 5) {
-                throw new Exception('Verification code too short');
+                throw new CarValidationException('Verification code too short');
             }
 
             if (!$this->exists()) {
-                throw new Exception('Car not found');
+                throw new CarNotFoundException('Car not found');
             }
 
             $this->data->verification_code = $verificationCode;
@@ -334,7 +336,7 @@ if (!class_exists('Car')) {
          */
         public function markVerified(): bool {
             if (!$this->exists()) {
-                throw new Exception('Car not found');
+                throw new CarNotFoundException('Car not found');
             }
 
             $this->data->last_verified = date('Y-m-d H:i:s');
@@ -347,12 +349,12 @@ if (!class_exists('Car')) {
          */
         public function markSold(?string $soldDate = null): bool {
             if (!$this->exists()) {
-                throw new Exception('Car not found');
+                throw new CarNotFoundException('Car not found');
             }
 
             $soldDate = $soldDate ?: date('Y-m-d');
             if (!strtotime($soldDate)) {
-                throw new Exception('Invalid date format');
+                throw new CarValidationException('Invalid date format');
             }
 
             $this->data->solddate = $soldDate . ' ' . date('H:i:s');
@@ -504,59 +506,178 @@ if (!function_exists('getUserWithProfile')) {
 
 // Mock DB class
 if (!class_exists('DB')) {
+    /**
+     * Mock DB class for unit tests (simple variant)
+     */
     class DB {
+        /** @var self|null */
         private static $instance;
 
-        public static function getInstance() {
+        /**
+         * Get singleton instance
+         *
+         * @return self
+         */
+        public static function getInstance(): self {
             if (self::$instance === null) {
                 self::$instance = new self();
             }
             return self::$instance;
         }
 
-        public function query($sql, $params = []) {
+        /**
+         * Execute a query
+         *
+         * @param string $sql SQL query
+         * @param array<mixed> $params Query parameters
+         * @return QueryResult
+         */
+        public function query(string $sql, array $params = []): QueryResult {
             return new QueryResult([]);
         }
 
-        public function insert($table, $data) {
+        /**
+         * Get a record by column/value
+         *
+         * @param string $table Table name
+         * @param array<mixed> $where Where conditions
+         * @return QueryResult
+         */
+        public function get(string $table, array $where): QueryResult {
+            $id = $where[2] ?? 1;
+            return new QueryResult([(object) [
+                'id' => $id,
+                'user_id' => 1,
+                'year' => '1973',
+                'model' => 'Elan S4',
+                'series' => 'S4',
+                'variant' => 'SE',
+                'type' => 'FHC',
+                'chassis' => 'TEST123456',
+                'color' => 'Red',
+                'engine' => 'ABC123',
+                'image' => null,
+                'email' => 'test@example.com',
+                'fname' => 'Test',
+                'lname' => 'User',
+                'join_date' => '2024-01-01',
+                'city' => 'Test City',
+                'state' => 'TS',
+                'country' => 'US',
+                'lat' => '0.0',
+                'lon' => '0.0',
+                'vericode' => null,
+                'last_verified' => null,
+                'solddate' => null,
+                'purchasedate' => null,
+                'ctime' => date('Y-m-d H:i:s'),
+                'mtime' => date('Y-m-d H:i:s'),
+                'website' => '',
+                'comments' => ''
+            ]]);
+        }
+
+        /**
+         * Find all records in a table
+         *
+         * @param string $table Table name
+         * @return QueryResult
+         */
+        public function findAll(string $table): QueryResult {
+            return new QueryResult([]);
+        }
+
+        /**
+         * Insert a record
+         *
+         * @param string $table Table name
+         * @param array<string, mixed> $data Field values
+         * @return bool
+         */
+        public function insert(string $table, array $data): bool {
             return true;
         }
 
-        public function update($table, $id, $data) {
+        /**
+         * Update a record
+         *
+         * @param string $table Table name
+         * @param int $id Record ID
+         * @param array<string, mixed> $data Field values
+         * @return bool
+         */
+        public function update(string $table, int $id, array $data): bool {
             return true;
         }
 
-        public function error() {
+        /**
+         * Check for database errors
+         *
+         * @return bool
+         */
+        public function error(): bool {
             return false;
         }
 
-        public function errorString() {
+        /**
+         * Get error string
+         *
+         * @return string
+         */
+        public function errorString(): string {
             return '';
         }
 
-        public function lastId() {
+        /**
+         * Get last insert ID
+         *
+         * @return int
+         */
+        public function lastId(): int {
             return 1;
         }
     }
 }
 
 if (!class_exists('QueryResult')) {
+    /**
+     * Mock query result class for unit tests (simple variant)
+     */
     class QueryResult {
-        private $results;
+        /** @var array<mixed> */
+        private array $results;
 
-        public function __construct($results) {
+        /**
+         * @param array<mixed> $results Mock data
+         */
+        public function __construct(array $results) {
             $this->results = $results;
         }
 
-        public function count() {
+        /**
+         * Get result count
+         *
+         * @return int
+         */
+        public function count(): int {
             return count($this->results);
         }
 
-        public function first() {
+        /**
+         * Get first result
+         *
+         * @return object|false
+         */
+        public function first(): object|false {
             return reset($this->results);
         }
 
-        public function results() {
+        /**
+         * Get all results
+         *
+         * @return array<mixed>
+         */
+        public function results(): array {
             return $this->results;
         }
     }
@@ -579,7 +700,7 @@ if (!function_exists('getMimeType')) {
      */
     function getMimeType(string $filepath): string {
         if (!file_exists($filepath)) {
-            throw new Exception('File does not exist');
+            throw new ImageProcessingException('File does not exist');
         }
         
         $finfo = finfo_open(FILEINFO_MIME_TYPE);
@@ -594,7 +715,7 @@ if (!function_exists('getMimeType')) {
         ];
         
         if (!in_array($mimeType, $allowedMimes)) {
-            throw new Exception('Invalid file type detected: ' . $mimeType);
+            throw new ImageProcessingException('Invalid file type detected: ' . $mimeType);
         }
         
         return $mimeType;
@@ -614,7 +735,7 @@ if (!function_exists('getExtension')) {
         ];
         
         if (!isset($extensionMap[$mimeType])) {
-            throw new Exception('Unsupported file type: ' . $mimeType);
+            throw new ImageProcessingException('Unsupported file type: ' . $mimeType);
         }
         
         return $extensionMap[$mimeType];
@@ -628,7 +749,7 @@ if (!function_exists('validateFileUpload')) {
     function validateFileUpload(array $file): bool {
         // Check for upload errors
         if ($file['error'] !== UPLOAD_ERR_OK) {
-            throw new Exception('File upload error: ' . $file['error']);
+            throw new ImageProcessingException('File upload error: ' . $file['error']);
         }
         
         // Check file size limits
@@ -636,16 +757,16 @@ if (!function_exists('validateFileUpload')) {
         $minSize = 100; // 100 bytes
         
         if ($file['size'] > $maxSize) {
-            throw new Exception('File too large. Maximum size is ' . ($maxSize / 1024 / 1024) . 'MB');
+            throw new ImageProcessingException('File too large. Maximum size is ' . ($maxSize / 1024 / 1024) . 'MB');
         }
         
         if ($file['size'] < $minSize) {
-            throw new Exception('File too small. Minimum size is ' . $minSize . ' bytes');
+            throw new ImageProcessingException('File too small. Minimum size is ' . $minSize . ' bytes');
         }
         
         // Validate that uploaded file exists
         if (!is_uploaded_file($file['tmp_name']) && !file_exists($file['tmp_name'])) {
-            throw new Exception('Invalid file upload');
+            throw new ImageProcessingException('Invalid file upload');
         }
         
         return true;
