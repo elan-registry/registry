@@ -155,8 +155,11 @@ class CodingStandardsChecker
     {
         // Skip if it's not a new file or if it's a template/include file
         if (strpos($content, 'declare(strict_types=1)') === false) {
-            // Only flag as error if it contains classes or functions (not just includes)
-            if (preg_match('/\b(class|function)\s+\w+/', $content)) {
+            // Only flag if it contains PHP class definitions or PHP function declarations
+            // Use stricter pattern to avoid matching JavaScript functions in <script> tags
+            if (preg_match('/^\s*(abstract\s+|final\s+)?class\s+\w+/m', $content) ||
+                preg_match('/^\s*(public|private|protected)\s+function\s+\w+/m', $content) ||
+                preg_match('/^function\s+\w+/m', $content)) {
                 $this->errors[] = "$filePath: Missing declare(strict_types=1) declaration";
             }
         }
@@ -177,10 +180,12 @@ class CodingStandardsChecker
         foreach ($lines as $lineNum => $line) {
             $lineNumber = $lineNum + 1;
 
-            // Check for functions without return types
-            if (preg_match('/\b(public|private|protected|function)\s+function\s+(\w+)\s*\([^)]*\)\s*\{/', $line)) {
-                if (!preg_match('/:\s*(void|int|string|bool|array|object|float|\w+(\|\w+)*)\s*\{/', $line)) {
-                    $this->errors[] = "$filePath:$lineNumber: Function missing return type declaration";
+            // Check for functions without return types (skip constructors - they can't have return types)
+            if (preg_match('/\b(public|private|protected|function)\s+function\s+(\w+)\s*\([^)]*\)\s*\{/', $line, $funcMatches)) {
+                if ($funcMatches[2] !== '__construct' && $funcMatches[2] !== '__destruct') {
+                    if (!preg_match('/:\s*(void|int|string|bool|array|object|float|self|static|mixed|never|\?\w+|\w+(\|\w+)*)\s*\{/', $line)) {
+                        $this->errors[] = "$filePath:$lineNumber: Function missing return type declaration";
+                    }
                 }
             }
 

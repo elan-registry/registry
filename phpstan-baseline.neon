@@ -1,0 +1,67 @@
+parameters:
+	ignoreErrors:
+		-
+			message: '#^If condition is always false\.$#'
+			identifier: if.alwaysFalse
+			count: 3
+			path: usersc/classes/Car.php
+
+		-
+			message: '#^Property ElanRegistryOwner\:\:\$_profileData is unused\.$#'
+			identifier: property.unused
+			count: 1
+			path: usersc/classes/ElanRegistryOwner.php
+
+		-
+			message: '#^Regex pattern is invalid\: Unknown modifier ''\?'' in pattern\: /\[\^a\-zA\-Z0\-9\\\-\._~\:/\?\#\[\\\]@\!\$&''\(\)\*\+,;\=%%\]/$#'
+			identifier: regexp.pattern
+			count: 1
+			path: usersc/classes/ElanRegistryOwner.php
+
+		-
+			message: '#^Property EnhancedSchemaManager\:\:\$settings is never read, only written\.$#'
+			identifier: property.onlyWritten
+			count: 1
+			path: usersc/classes/EnhancedSchemaManager.php
+
+		-
+			message: '#^Property LocationService\:\:\$_db is never read, only written\.$#'
+			identifier: property.onlyWritten
+			count: 1
+			path: usersc/classes/LocationService.php
+
+		-
+			message: '#^Parameter \#3 \$quality of function imagepng expects int, float given\.$#'
+			identifier: argument.type
+			count: 1
+			path: usersc/classes/Resize.php
+
+		-
+			message: '#^Variable \$optimalHeight might not be defined\.$#'
+			identifier: variable.undefined
+			count: 1
+			path: usersc/classes/Resize.php
+
+		-
+			message: '#^Variable \$optimalWidth might not be defined\.$#'
+			identifier: variable.undefined
+			count: 1
+			path: usersc/classes/Resize.php
+
+		-
+			message: '#^Method BackupManager\:\:findBackupForRollback\(\) is unused\.$#'
+			identifier: method.unused
+			count: 1
+			path: usersc/classes/admin/BackupManager.php
+
+		-
+			message: '#^Property EnhancedSchemaManager\:\:\$settings is never read, only written\.$#'
+			identifier: property.onlyWritten
+			count: 1
+			path: usersc/classes/admin/EnhancedSchemaManager.php
+
+		-
+			message: '#^Unsafe usage of new static\(\)\.$#'
+			identifier: new.static
+			count: 1
+			path: usersc/classes/exceptions/ElanRegistryException.php
