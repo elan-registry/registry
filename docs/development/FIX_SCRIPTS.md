@@ -113,5 +113,4 @@ if (Input::exists()) {
 
 - `/FIX/_TEMPLATE_Fix-Script.php` - The standardized template
 - `/FIX/README.md` - FIX scripts directory documentation
-- [PROJECT_CONVENTIONS.md](PROJECT_CONVENTIONS.md) - Project-specific coding standards
-- [CODING_STANDARDS.md](CODING_STANDARDS.md) - Comprehensive coding standards
+- [CODING_STANDARDS.md](CODING_STANDARDS.md) - Coding standards and conventions

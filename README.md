@@ -95,11 +95,11 @@ CI checks.
   developers
   - See root `CLAUDE.md` for AI assistant instructions and quick reference
   - `QUICK_REFERENCE.md` - Quick lookup for common tasks and commands
-  - `QUICK_START.md` - Setup and testing commands
+  - `INSTALLATION.md` - Setup, installation, and testing commands
   - `ARCHITECTURE.md` - System architecture and class patterns
   - `DATABASE.md` - Complete database schema and table relationships
   - `INTEGRATION.md` - UserSpice integration and custom functions
-  - `PROJECT_CONVENTIONS.md` - Project-specific coding standards
+  - `CODING_STANDARDS.md` - Coding standards and conventions
   - `ENVIRONMENT.md` - Environment configuration and security setup
   - `FIX_SCRIPTS.md` - Database maintenance script guidelines
 - **Testing Docs** (`docs/testing/`) - Testing strategy and test execution

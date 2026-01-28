@@ -3,7 +3,7 @@
 This file provides essential guidance to Claude Code (claude.ai/code) when
 working with code in this repository.
 
-## 📋 Required Reading for All Sessions
+## Required Reading for All Sessions
 
 **CRITICAL:** Read these files at the start of every Claude Code session:
 
@@ -13,1177 +13,174 @@ working with code in this repository.
 - `docs/development/DEPLOYMENT.md` - Production deployment procedures
 - `docs/development/ENVIRONMENT.md` - Environment setup and configuration
 
-## 📖 Recommended Reading Path
-
-To avoid information overload, follow this structured learning path:
+## Recommended Reading Path
 
 **Essential Context:**
 
-1. `CLAUDE.md` (this file) - Overview and quick reference (~15 min)
-2. `docs/development/QUICK_REFERENCE.md` - Common tasks lookup (~10 min)
-3. `docs/development/QUICK_START.md` - Setup and testing commands (~20 min)
+1. `CLAUDE.md` (this file) - Overview and quick reference
+2. `docs/development/QUICK_REFERENCE.md` - Common tasks lookup
+3. `docs/development/INSTALLATION.md` - Setup and testing commands
 
 **Core Understanding:**
 
 1. `docs/development/ARCHITECTURE.md` - System architecture and patterns
-   (~30 min)
-2. `docs/development/DATABASE.md` - Database schema and relationships (~30
-   min)
-3. `docs/development/PROJECT_CONVENTIONS.md` - Project coding standards (~15
-   min)
-4. `docs/development/INTEGRATION.md` - UserSpice integration (~15 min)
+2. `docs/development/DATABASE.md` - Database schema and relationships
+3. `docs/development/CODING_STANDARDS.md` - Coding standards and conventions
+4. `docs/development/INTEGRATION.md` - UserSpice integration
 
 **As Needed - Specialized Topics:**
 
-- `docs/development/ERROR_HANDLING.md` - When implementing error handling,
-  exceptions, or API responses
-- `docs/development/PAGE_LOADING_FLOW.md` - When debugging initialization or
-  understanding file loading sequence
-- `docs/development/DEPLOYMENT.md` - When preparing releases
-- `docs/development/FIX_SCRIPTS.md` - When creating database maintenance
-  scripts
-- `docs/development/CLASSES.md` - When working with application classes
-- `docs/development/BACKUP_SYSTEM.md` - When using BackupManager class
-- `docs/development/DATATABLES.md` - When working with DataTables or updating
-  CDN configuration
-- `docs/development/CSS_AND_ASSETS.md` - When modifying stylesheets or updating
-  CDN resources (includes CSS minification procedures)
-- `docs/testing/TESTING.md` - When writing or running tests
-- `docs/development/STRICT_TYPE_HANDLING.md` - When working with strict types
+- `docs/development/ERROR_HANDLING.md` - Error handling, exceptions, API responses
+- `docs/development/PAGE_LOADING_FLOW.md` - Initialization and file loading sequence
+- `docs/development/CLASSES.md` - Application class documentation
+- `docs/development/BACKUP_SYSTEM.md` - BackupManager class
+- `docs/development/DATATABLES.md` - DataTables configuration
+- `docs/development/CSS_AND_ASSETS.md` - Stylesheets and CDN resources
+- `docs/development/FIX_SCRIPTS.md` - Database maintenance scripts
+- `docs/development/STRICT_TYPE_HANDLING.md` - Strict type handling
+- `docs/testing/TESTING.md` - Writing and running tests
 
 **See [docs/README.md](docs/README.md) for complete documentation index**
 
-## 🏗️ Architecture Overview
+## Architecture Overview
 
 This is a PHP web application for the Lotus Elan Registry hosted at
-<https://elanregistry.org>. It's built on top of UserSpice <https://userspice.com>
-for user authentication and management, with custom car registry
-functionality.
+<https://elanregistry.org>. Built on UserSpice (<https://userspice.com>) for
+authentication, with custom car registry functionality.
 
-### Core Application Structure
-
-> **For complete application architecture, see
+> **For complete architecture, see
 > [ARCHITECTURE.md](docs/development/ARCHITECTURE.md)**
 
-**Quick Reference**:
+**Directory Structure:**
 
 - `/app/` - Main application pages (car listings, details, forms, actions)
-- `/error/` - Branded HTTP error pages (403, 404, 500, etc.)
+- `/error/` - Branded HTTP error pages (403, 404, 500)
 - `/users/` - UserSpice authentication system
 - `/usersc/` - UserSpice customizations (templates, plugins, overrides)
 - `/usersc/classes/` - Custom application classes
 - `/tests/` - PHPUnit and Playwright test files
 
-### UserSpice Integration
+**Key Integration Points:**
 
-> **For detailed UserSpice integration patterns, see
-> [INTEGRATION.md](docs/development/INTEGRATION.md)**
+- **Page Security**: All protected pages require `securePage($php_self)` check.
+  See [INTEGRATION.md](docs/development/INTEGRATION.md).
+- **New PHP Directories**: Update `$path` array in `/z_us_root.php`
+- **Database**: MySQL 8.0+ with audit trails via triggers.
+  See [DATABASE.md](docs/development/DATABASE.md).
+- **Classes**: Car, CarView, ElanRegistryOwner, ChassisValidator, and support
+  classes. See [CLASSES.md](docs/development/CLASSES.md).
 
-**Critical Requirements**:
-
-- **Page Security**: All protected pages must include security check:
-
-  ```php
-  if (!securePage($_SERVER['PHP_SELF'])) {
-      die();
-  }
-  ```
-
-- **New PHP Directories**: Update `$path` array in `/z_us_root.php` for new
-  directories containing PHP files
-- **Page Registration**: Pages using `securePage()` must be registered in
-  UserSpice admin panel with appropriate permissions
-
-### Database Architecture
-
-> **For complete database schema, see [DATABASE.md](docs/development/DATABASE.md)**
-> **For architecture patterns, see [ARCHITECTURE.md](docs/development/ARCHITECTURE.md)**
-
-**Quick Reference**:
-
-- MySQL 8.0+ with comprehensive audit trails
-- `cars`/`cars_hist` - Vehicle records with full audit trail
-- `car_user`/`car_user_hist` - Many-to-many user-car relationships with audit
-- `car_transfer_requests` - Self-service ownership transfer workflow
-- Database triggers automatically maintain audit trails (cars table only)
-
-### DataTables Configuration
-
-> **For complete DataTables documentation, see
-> [DATATABLES.md](docs/development/DATATABLES.md)**
-
-We use DataTables for searchable, sortable, paginated table views of cars and
-factory data. As of v2.11.0, we load **only 3 extensions** for optimal
-performance.
-
-**Quick Reference:**
-
-- **Active Extensions**: DataTables Core (dt-1.10.23), FixedHeader (fh-3.1.8),
-  Responsive (r-2.2.7)
-- **Server-Side Processing**: All tables use AJAX-based server-side data
-  loading
-- **CDN Configuration**: Stored in `settings` table
-  (`elan_datatables_js_cdn`, `elan_datatables_css_cdn`)
-- **Used In**: `/app/cars/index.php` (car listing), `/app/cars/factory.php`
-  (factory data)
-- **Backend**: `/app/action/getDataTables.php` provides server-side data
-
-**Important**: Before adding new DataTables extensions, verify they support
-server-side processing. SearchPanes and SearchBuilder have poor UX with
-server-side tables without significant backend work.
-
-### 🔧 FIX Script Creation Guidelines
-
-> **For complete FIX script creation guidelines, see
-> [FIX_SCRIPTS.md](docs/development/FIX_SCRIPTS.md)**
-
-FIX scripts are one-time administrative scripts for database maintenance tasks,
-schema migrations, and data quality repairs.
-
-**Quick Reference:**
-
-- Use standardized template: `FIX/_TEMPLATE_Fix-Script.php`
-- Sequential naming: `##-Descriptive-Name.php`
-- Two-step UI process with progress tracking
-- Proper transaction handling and error logging
-
-### Class Architecture & Integration Patterns
-
-> **For detailed class documentation, see [CLASSES.md](docs/development/CLASSES.md)**
-
-**Quick Reference:**
-
-- **Core domain classes**: Car, CarView, ElanRegistryOwner, ChassisValidator
-- **Support classes**: BackupManager, Resize, EmailTemplate, MarkdownParser,
-  DocumentConfig
-- **Location**: All custom classes in `/usersc/classes/` and
-  `/app/admin/includes/classes/`
-- **Patterns**: DB singleton, custom exceptions, audit logging, strict typing
-
-**Key Integration Functions:**
-
-- **`getUserWithProfile($userId)`**: Primary function for combined
-  user+profile data access
-  - Located in `/usersc/includes/custom_functions.php`
-  - Returns user object with profile fields (city, state, country, lat, lon,
-    website)
-  - Handles missing profile data with safe defaults
-  - Use this for all owner data access rather than separate queries
-
-**Data Access Patterns:**
-
-```php
-// ✅ PREFERRED: Use existing custom function
-$ownerData = getUserWithProfile($userId);
-
-// ✅ ACCEPTABLE: Direct query when custom function insufficient
-$userQ = $db->query(
-    "SELECT u.*, p.* FROM users u LEFT JOIN profiles p
-     ON u.id = p.user_id WHERE u.id = ?",
-    [$userId]
-);
-```
-
-**Geocoding Integration:**
-
-- **Class**: `LocationGeocoder` (`/usersc/classes/LocationGeocoder.php`)
-- **Usage**: Call `ElanRegistryOwner::geocodeAddress()` static method
-- **Returns**: Array with lat/lon keys, or empty array on failure
-- **Integration**: Used in ElanRegistryOwner class, user_settings.php, and during_user_creation.php
-- **Note**: LocationGeocoder is internal-only; always use ElanRegistryOwner::geocodeAddress()
-
-**BackupManager Integration (v2.9.2+):**
-
-- **Location**: `/app/admin/includes/classes/BackupManager.php`
-- **Purpose**: OOP-based database backup management system
-- **Usage**: Create backups before schema operations, manual backups, cleanup
-  old backups
-
-**Key Methods:**
-
-```php
-// Create backup before schema operations
-$backupManager = new BackupManager($db, $backupDir, $userId);
-$backupPath = $backupManager->createSchemaBackup(
-    'Operation Name',
-    ['users', 'cars']
-);
-
-// Create manual backup
-$backupPath = $backupManager->createManualBackup(
-    'Reason',
-    ['users'],
-    ['key' => 'value']
-);
-
-// Get statistics and perform cleanup
-$stats = $backupManager->getEnhancedBackupStatistics();
-$cleanup = $backupManager->performEnhancedCleanup();
-```
-
-**See Also**: `/docs/development/BACKUP_SYSTEM.md` for comprehensive
-documentation
-
-### Documentation System
-
-**Unified Documentation Viewer**: `/docs/view.php`
-
-- **Purpose**: Displays markdown documents with proper formatting and access
-  control
-- **Features**: Security validation, XSS protection, responsive design,
-  breadcrumb navigation
-- **Access Control**: Public documents in `/docs/faq/`, admin documents in
-  `/docs/faq/admin/`
-
-**Documentation Utilities**:
-
-- **MarkdownParser** (`/usersc/classes/MarkdownParser.php`) - Converts
-  markdown to HTML with security features
-- **DocumentConfig** (`/usersc/classes/DocumentConfig.php`) - Manages
-  document metadata and access control
-
-**Key Documentation Files**:
-
-- User guides: `/docs/faq/CAR_TRANSFER_USER_GUIDE.md`,
-  `/docs/faq/CAR_TRANSFER_FAQ.md`
-- Admin guides: `/docs/faq/admin/CAR_TRANSFER_ADMIN_GUIDE.md`
-- Development docs: `/CLAUDE.md`,
-  `/docs/development/DATABASE.md`, `/docs/development/ENVIRONMENT.md`
-- Strategic docs: `/docs/PRD.md`
-
-### Key Application Files
-
-- `app/cars/index.php` - Searchable car listing with DataTables
-- `app/cars/details.php` - Individual car detail pages
-- `app/cars/edit.php` - Car editing forms
-- `app/reports/statistics.php` - Registry analytics & statistics with
-  Chart.js (tabbed interface)
-- `app/contact/send-owner-email.php` - Owner contact functionality
-
-## ⚙️ Development Setup
+## Development Setup
 
 ### System Requirements
 
-- PHP 8.1+ required (8.2+ recommended for full PHPUnit 12 compatibility)
+- PHP 8.1+ required (8.2+ recommended)
 - MySQL 8.0+
-- Uses `johnathanmiller/secure-env-php` for encrypted environment variable handling
+- Uses `johnathanmiller/secure-env-php` for encrypted environment variables
 
 ### Quick Start Commands
 
 ```bash
-# Install PHP dependencies
-composer install
+composer install                # PHP dependencies
+npm install                     # Node dependencies (for testing)
+./scripts/setup-git-hooks.sh    # Pre-commit quality checks (RECOMMENDED)
 
-# Install Node dependencies (for testing)
-npm install
+# PHP testing
+composer test:quick             # Unit tests only (<30s)
+composer test:medium            # Unit + Integration (<2min)
+composer test:full              # All PHP tests
+composer test:coverage          # Coverage report
 
-# Setup enhanced pre-commit quality checks (RECOMMENDED)
-./scripts/setup-git-hooks.sh
-
-# PHP test commands (core infrastructure)
-composer test:quick        # Unit tests only (<30s)
-composer test:medium       # Unit + Integration (<2min)
-composer test:full         # All PHP tests
-composer test:coverage     # Generate coverage report
-
-# UI testing (requires setup)
-npm test                   # Shows setup requirements
-npm run playwright:install # Install Playwright browsers
-npm run playwright:test    # Run UI tests (after setup)
+# UI testing
+npm run playwright:install      # Install browsers
+npm run playwright:test         # Run UI tests
 ```
 
-### Testing
+### Pre-commit Quality Checks
 
 ```bash
-# PHP test suites (working)
-composer test:unit         # Fast unit tests
-composer test:integration  # Database integration tests
-composer test:regression   # Issue-specific regression tests
-
-# UI test suites (requires setup)
-npm run playwright:security       # Security-focused tests
-npm run playwright:ui             # UI consistency tests
-npm run playwright:navigation     # Navigation and redirects
-npm run playwright:functionality  # Core functionality
-npm run playwright:maps           # Maps and charts
-npm run playwright:csp            # CSP validation tests
+./scripts/setup-git-hooks.sh    # Setup once per developer
 ```
 
-## 🔧 Essential Development Guidelines
+Validates PHP coding standards, runs markdown linting, and executes unit tests
+on critical file changes. Bypass with `git commit --no-verify` (emergency only).
 
-### Pre-commit Quality Checks (HIGHLY RECOMMENDED)
-
-**Setup once per developer:**
-
-```bash
-./scripts/setup-git-hooks.sh
-```
-
-**What it does:**
-
-- **Step 1**: PHP coding standards validation (security, types,
-  documentation)
-- **Step 2**: Markdown linting for documentation files
-- **Step 3**: Fast unit tests when critical files are modified
-- **Blocks commits** with violations and provides fix guidance
-- **No installation required** - uses existing tools and npx
-
-**Benefits:**
-
-- Prevents PR failures by catching issues locally
-- Maintains consistent code quality across the team
-- Provides immediate feedback with actionable fix suggestions
-
-**Bypass (emergency only):** `git commit --no-verify`
+## Essential Development Guidelines
 
 ### PHP 8+ Requirements
 
-- **PHP 8+ Type Declarations**: All functions must have complete parameter and
-  return type hints
-- **Strict Typing**: New files must include `declare(strict_types=1)`
-- **Custom Exceptions**: Use typed exception classes for proper error handling
-- **Security First**: Follow secure coding practices outlined in coding
-  standards
-- **Documentation**: Complete PHPDoc blocks required for all public methods
+- All functions must have complete parameter and return type hints
+- New files must include `declare(strict_types=1)`
+- Use typed exception classes for error handling
+- Complete PHPDoc blocks required for all public methods
+- See [CODING_STANDARDS.md](docs/development/CODING_STANDARDS.md) for full details
 
 ### Security Requirements
 
 - All forms must use CSRF tokens
-- Use prepared statements for SQL queries
-- Input validation and sanitization required for all user inputs
-- Password hashing uses bcrypt
-- Secure session handling implemented
-- **CRITICAL**: Never commit credentials, API keys, or sensitive data to git
-- Use environment variables for all sensitive configuration
+- Use prepared statements for all SQL queries
+- Input validation and sanitization for all user inputs
+- **CRITICAL**: Never commit credentials, API keys, or sensitive data
+- Use environment variables for sensitive configuration
 
-### Owner Data Management Patterns
+### Error Handling
 
-**Use these patterns when working with owner/user data operations:**
-
-#### Geocoding System
-
-**Automatic Location Geocoding:**
-
-- Location updates automatically trigger Google Maps API geocoding
-- Coordinates are automatically populated when city/state/country is provided
-- Admin interface provides visual feedback for geocoding success/failure
-- Failed geocoding preserves existing coordinates and shows clear error messages
-
-```php
-// ✅ Location updates with automatic geocoding
-$owner = new ElanRegistryOwner($userId);
-$owner->update([
-    'id' => $userId,
-    'city' => 'Portland',
-    'state' => 'Oregon',
-    'country' => 'United States',
-    'csrf' => Token::generate()
-]);
-// Coordinates automatically populated via Google Maps API
-```
-
-**Geocoding Configuration:**
-
-- API key stored in settings table as `elan_google_geo_key`
-- Geocoding class: `usersc/classes/LocationGeocoder.php` (internal-only)
-- Public API: `ElanRegistryOwner::geocodeAddress()` static method
-- Coordinates rounded to 4 decimal places (~11 meter accuracy)
-- Failed requests are logged for troubleshooting
-
-#### Admin Interface Structure
-
-**Consolidated Management Interface:**
-
-- **Location**: `app/admin/manage-consolidated.php`
-- **Purpose**: Unified admin interface for all registry management tasks
-- **Tabs Available**:
-  - **Car/Owner Relationships**: Transfer requests and ownership management
-  - **Manage Cars**: Car data quality issues and duplicate detection
-  - **Owner Management**: Owner profiles with search and quality reports
-  - **System Maintenance**: Database cleanup and maintenance tasks
-  - **Settings**: Configuration management
-  - **Account Cleanup**: User account management
-
-**Owner Management Features:**
-
-- Advanced search with UNION-based prioritization (exact matches first)
-- Real-time geocoding feedback with visual indicators
-- Profile quality scoring and completion tracking
-- Bulk location synchronization to owned cars
-
-#### Owner Profile Access
-
-```php
-// ✅ PREFERRED: Use existing custom function for complete owner data
-$owner = getUserWithProfile($userId);
-if ($owner) {
-    echo "Owner: {$owner->fname} {$owner->lname}";
-    echo "Location: {$owner->city}, {$owner->state}, {$owner->country}";
-    echo "Coordinates: {$owner->lat}, {$owner->lon}";
-}
-
-// ✅ ACCEPTABLE: When you need additional owner context
-class ElanRegistryOwner {
-    public static function getOwnerProfile(int $userId): ?object {
-        return getUserWithProfile($userId);
-    }
-
-    public function getCarsOwned(): array {
-        return $this->_db->query("SELECT * FROM cars WHERE user_id = ?", [$this->_data->id])->results();
-    }
-}
-```
-
-#### Location Updates with Geocoding
-
-```php
-// ✅ CORRECT: Use ElanRegistryOwner geocoding API
-public function updateLocation(array $locationData): bool {
-    // Use static geocoding method
-    $geoResult = ElanRegistryOwner::geocodeAddress(
-        $locationData['city'],
-        $locationData['state'],
-        $locationData['country']
-    );
-
-    // Update profile with geocoded coordinates
-    if (!empty($geoResult)) {
-        $updateFields = array_merge($locationData, $geoResult);
-        return $this->_db->update('profiles', $this->_profileId, $updateFields);
-    }
-
-    return false;
-}
-```
-
-#### Owner Search and Management Interface
-
-```php
-// ✅ CORRECT: Admin search functionality
-public function searchOwners(string $searchTerm): array {
-    $searchTerm = '%' . $searchTerm . '%';
-
-    return $this->_db->query(
-        "SELECT u.id, u.fname, u.lname, u.email,
-                p.city, p.state, p.country
-         FROM users u
-         LEFT JOIN profiles p ON u.id = p.user_id
-         WHERE u.fname LIKE ? OR u.lname LIKE ? OR u.email LIKE ?
-            OR p.city LIKE ? OR p.state LIKE ?
-         ORDER BY u.lname, u.fname",
-        [$searchTerm, $searchTerm, $searchTerm,
-         $searchTerm, $searchTerm]
-    )->results();
-}
-```
-
-#### Data Quality Integration
-
-```php
-// ✅ CORRECT: Profile completeness scoring
-public function getProfileQualityScore(): float {
-    $owner = $this->data();
-    $totalFields = 7;
-    $completedFields = 0;
-
-    if (!empty($owner->fname))
-        $completedFields++;
-    if (!empty($owner->lname))
-        $completedFields++;
-    if (!empty($owner->email))
-        $completedFields++;
-    if (!empty($owner->city))
-        $completedFields++;
-    if (!empty($owner->state))
-        $completedFields++;
-    if (!empty($owner->country))
-        $completedFields++;
-    if (!empty($owner->lat) && !empty($owner->lon))
-        $completedFields++;
-
-    return round(($completedFields / $totalFields) * 100, 1);
-}
-```
-
-### Error Handling Standards
-
-**All error conditions MUST use centralized error handling with typed exceptions,
-LogCategories constants, and proper user-friendly messages. See
-[ERROR_HANDLING.md](docs/development/ERROR_HANDLING.md) for comprehensive patterns.**
-
-**Quick Summary**:
-
-- **Backend**: Use ApiResponse for AJAX endpoints, typed exceptions for
-  domain errors, LogCategories for logging
-- **Frontend**: Use ElanRegistryAPI client, type-specific error handling,
-  NotificationHelper for user feedback
-- **Messages**: Separate technical messages (logs) from user-friendly messages
-  (UI display)
-
-**Essential Pattern** (Backend):
-
-```php
-// Use typed exceptions with separate technical/user messages
-try {
-    // Operation
-    throw new CarCreationException(
-        'Database constraint violation',  // Technical
-        0,
-        null,
-        'Unable to create car'  // User-safe
-    );
-} catch (ElanRegistryException $e) {
-    ApiResponse::serverError($e->getUserMessage())
-        ->withLogging($userId, $e->getLogCategory(), $e->getMessage())
-        ->send();
-}
-
-// Use LogCategories for all logging
-logger($userId, LogCategories::LOG_CATEGORY_CAR_CREATION, 'Car created');
-```
-
-**Essential Pattern** (Frontend):
-
-```javascript
-const api = new ElanRegistryAPI();
-
-try {
-    const result = await api.post('endpoint', data);
-    NotificationHelper.show(result.message, 'success');
-} catch (error) {
-    if (error instanceof ApiValidationError) {
-        NotificationHelper.showValidationErrors(error.errors);
-    } else {
-        NotificationHelper.show(error.message, 'error');
-    }
-}
-```
-
-**See Also**:
-
-- [ERROR_HANDLING.md](docs/development/ERROR_HANDLING.md) - Complete error
-  handling guide with 4 migration scenarios
-- [LOG_CATEGORIES.md](docs/development/LOG_CATEGORIES.md) - Complete list of
-  140+ log categories
-
-### HTTP Error Pages
-
-**Location**: `/error/` directory
-
-**Available Pages**:
-
-- **403.php** - Forbidden (Access Denied)
-- **404.php** - Not Found (Page Not Found)
-- **500.php** - Generic error handler for 400, 401, 405, 408, 500, 502, 504
-
-**Configuration**: Configured in `.htaccess` via ErrorDocument directives
-
-**Features**:
-
-- Branded with Lotus Elan Registry styling
-- Detects and logs user authentication state
-- Logs error details to admin audit trail via logger()
-- Gracefully falls back when UserSpice unavailable
-- Responsive design matching main site
-- XSS-safe output with htmlspecialchars()
-
-**Error Code Mapping**:
-
-| Code | File | Category |
-| --- | --- | --- |
-| 400 | 500.php | Bad Request |
-| 401 | 500.php | Unauthorized |
-| 403 | 403.php | Forbidden |
-| 404 | 404.php | Not Found |
-| 405 | 500.php | Method Not Allowed |
-| 408 | 500.php | Request Timeout |
-| 500 | 500.php | Internal Server Error |
-| 502 | 500.php | Bad Gateway |
-| 504 | 500.php | Gateway Timeout |
+Use centralized error handling with typed exceptions, LogCategories constants,
+and ApiResponse for AJAX endpoints.
+See [ERROR_HANDLING.md](docs/development/ERROR_HANDLING.md) for patterns.
 
 ### Frontend API Client (Pattern A - v2.12.0+)
 
-**All AJAX endpoints use Pattern A response format. The ElanRegistryAPI client
-provides standardized, secure communication with automatic CSRF token injection
-and centralized error handling.**
+All new AJAX endpoints must use `ElanRegistryAPI` client with Pattern A
+response format (`{success, message, ...}`). Available globally via `footer.php`.
+See [ERROR_HANDLING.md](docs/development/ERROR_HANDLING.md) for usage patterns
+and migration guide from jQuery.ajax().
 
-#### Pattern A Response Format (Backend)
+### Server Environment Globals (v2.13.0+)
 
-All backend API endpoints MUST return Pattern A format via the ApiResponse class:
+Validated server globals available: `$scheme`, `$is_https`, `$host`, `$method`,
+`$request_uri`, `$current_url`, `$current_origin`, `$php_self`, `$remote_addr`.
+Use these instead of direct `$_SERVER` access.
+See [PAGE_LOADING_FLOW.md](docs/development/PAGE_LOADING_FLOW.md) for details.
 
-```json
-{
-  "success": true|false,
-  "message": "Human-readable message",
-  "optional_data": "additional fields as needed"
-}
-```
+### Code Quality
 
-**Response Status Codes:**
-
-- **200 OK**: Successful request - check `success` property
-- **400 Bad Request**: Malformed request
-- **401 Unauthorized**: User not authenticated
-- **403 Forbidden**: User lacks required permissions
-- **404 Not Found**: Endpoint or resource not found
-- **422 Unprocessable Entity**: Validation error with `errors` object
-  containing field-level errors
-- **500 Internal Server Error**: Server error
-
-#### ElanRegistryAPI Usage (Required for New Code)
-
-**MANDATORY for all NEW AJAX endpoints created after v2.12.0:**
-
-```javascript
-// ✅ CORRECT: Use ElanRegistryAPI for new AJAX endpoints
-const api = new ElanRegistryAPI();
-
-try {
-    const result = await api.post('app/action/update-car.php', {
-        car_id: 123,
-        year: 2020
-    });
-
-    // Success - Pattern A guarantees success property
-    NotificationHelper.show(result.message, 'success');
-
-    // Process additional data
-    if (result.data) {
-        console.log('Updated car:', result.data);
-    }
-
-} catch (error) {
-    // Handle specific error types
-    if (error instanceof ApiValidationError) {
-        // Field-level validation errors
-        NotificationHelper.showValidationErrors(error.errors);
-    } else if (error instanceof ApiCancelledError) {
-        // Request was cancelled
-        console.log('Request cancelled');
-    } else {
-        // General API error
-        NotificationHelper.show(error.message, 'error');
-    }
-}
-```
-
-#### Basic Usage Patterns
-
-**Simple GET Request:**
-
-```javascript
-const api = new ElanRegistryAPI();
-
-try {
-    const result = await api.get('app/action/search-cars.php', {
-        query: 'Elan',
-        limit: 10
-    });
-
-    console.log('Results:', result.data);
-} catch (error) {
-    NotificationHelper.show(error.message, 'error');
-}
-```
-
-**POST with Loading State:**
-
-```javascript
-const api = new ElanRegistryAPI();
-const $btn = $('#submitBtn');
-
-// Show loading state
-$btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i> Loading...');
-
-try {
-    const result = await api.post('app/action/process-form.php', {
-        name: 'John Doe',
-        email: 'john@example.com'
-    });
-
-    NotificationHelper.show(result.message, 'success');
-
-    // Refresh page or update UI
-    if (result.redirect) {
-        window.location.href = result.redirect;
-    }
-
-} catch (error) {
-    if (error instanceof ApiValidationError) {
-        NotificationHelper.showValidationErrors(error.errors);
-    } else {
-        NotificationHelper.show(error.message, 'error');
-    }
-} finally {
-    // Restore button state
-    $btn.prop('disabled', false).html('Submit');
-}
-```
-
-**Request Cancellation:**
-
-```javascript
-const api = new ElanRegistryAPI();
-let searchRequestId = null;
-
-// Search with auto-cancel on new search
-async function search(query) {
-    // Cancel previous search if still pending
-    if (searchRequestId) {
-        api.cancel(searchRequestId);
-    }
-
-    try {
-        const result = await api.request(
-            'app/action/search.php',
-            {
-                method: 'GET',
-                params: { q: query },
-                requestId: (searchRequestId = api.generateRequestId())
-            }
-        );
-
-        console.log('Results:', result.data);
-    } catch (error) {
-        if (error instanceof ApiCancelledError) {
-            console.log('Search cancelled');
-        } else {
-            NotificationHelper.show(error.message, 'error');
-        }
-    }
-}
-```
-
-#### Global Availability
-
-The API client is automatically loaded on every page via footer.php:
-
-```javascript
-// Available globally without instantiation:
-window.ElanRegistryAPI    // Class for creating new instances
-window.NotificationHelper // Utility class for user feedback
-window.ApiError           // Error class
-window.ApiValidationError // Validation error class
-window.ApiCancelledError  // Cancellation error class
-
-// Create API instance:
-const api = new ElanRegistryAPI();
-```
-
-#### CSRF Token Management
-
-The API client automatically handles CSRF tokens:
-
-1. **Automatic Detection** - Token extracted from:
-   - `<input name="csrf">` field (primary)
-   - `<input id="csrf">` field (fallback)
-
-2. **Automatic Injection** - Token added to:
-   - FormData body for POST/PUT/DELETE
-   - X-CSRF-Token header for all requests
-
-3. **Manual Override**
-
-```javascript
-const api = new ElanRegistryAPI({
-    csrfToken: 'custom-token-value'
-});
-```
-
-#### Custom Error Handling
-
-**ApiValidationError** - For 422 validation failures:
-
-```javascript
-catch (error) {
-    if (error instanceof ApiValidationError) {
-        // error.errors = { field_name: 'Error message' }
-        NotificationHelper.showValidationErrors(error.errors);
-
-        // Or handle manually:
-        Object.entries(error.errors).forEach(([field, message]) => {
-            const input = document.querySelector(`[name="${field}"]`);
-            if (input) {
-                input.classList.add('is-invalid');
-            }
-        });
-    }
-}
-```
-
-**ApiError** - For HTTP and network errors:
-
-```javascript
-catch (error) {
-    if (error instanceof ApiError) {
-        // error.status = HTTP status code
-        // error.response = Response body object
-
-        if (error.status === 401) {
-            // User not authenticated - redirect to login
-            window.location.href = '/users/?view=login';
-        } else if (error.status === 403) {
-            NotificationHelper.show('You do not have permission to perform this action', 'error');
-        } else {
-            NotificationHelper.show(error.message, 'error');
-        }
-    }
-}
-```
-
-**ApiCancelledError** - For cancelled requests:
-
-```javascript
-catch (error) {
-    if (error instanceof ApiCancelledError) {
-        console.log('Request cancelled:', error.requestId);
-        // Silently ignore or log for debugging
-    }
-}
-```
-
-#### Migration from jQuery.ajax()
-
-**Before (jQuery.ajax):**
-
-```javascript
-$.ajax({
-    url: 'app/action/update-car.php',
-    type: 'POST',
-    data: { car_id: 123 },
-    success: function(response) {
-        if (response.success) {
-            alert(response.message);
-        } else {
-            alert('Error: ' + response.message);
-        }
-    },
-    error: function(xhr) {
-        alert('Request failed');
-    }
-});
-```
-
-**After (ElanRegistryAPI):**
-
-```javascript
-const api = new ElanRegistryAPI();
-
-try {
-    const result = await api.post('app/action/update-car.php', {
-        car_id: 123
-    });
-
-    NotificationHelper.show(result.message, 'success');
-} catch (error) {
-    NotificationHelper.show(error.message, 'error');
-}
-```
-
-#### Configuration Options
-
-```javascript
-// Custom configuration
-const api = new ElanRegistryAPI({
-    baseUrl: '/',           // Base URL for relative endpoints
-    timeout: 30000,         // Request timeout (ms) - default 30s
-    csrfToken: 'token'      // Manual CSRF token
-});
-
-// Use:
-api.post('app/endpoint.php', data);
-```
-
-#### Compatibility
-
-**Browser Requirements:**
-
-- Fetch API (all modern browsers)
-- AbortController (all modern browsers)
-- URLSearchParams (all modern browsers)
-- FormData (all modern browsers)
-
-**Framework Compatibility:**
-
-- Works with jQuery-based pages
-- Works with vanilla JavaScript pages
-- Compatible with Bootstrap 5 alerts
-
-**Migration Strategy:**
-
-- **Phase 1**: New endpoints use ElanRegistryAPI
-- **Phase 2**: Opportunistic migration of high-traffic endpoints
-- **Phase 3**: Systematic migration of remaining endpoints
-
-#### Legacy jQuery.ajax() Code
-
-**ACCEPTABLE for existing code only:**
-
-```javascript
-// ⚠️ Only acceptable for existing endpoints
-// DO NOT use for new code - use ElanRegistryAPI instead
-$.ajax({...});
-```
-
-Existing jQuery.ajax() calls remain functional but should be migrated during
-Phase 2-3 when these endpoints are being modified for other reasons.
-
-**See Also**: [ERROR_HANDLING.md](docs/development/ERROR_HANDLING.md) for
-complete frontend error handling patterns, type-specific error handling, and
-backend API response format specifications.
-
-### Server Environment Globals
-
-As of v2.13.0, server environment variables are available as validated globals
-initialized in Phase 1.11.12 (see PAGE_LOADING_FLOW.md). All globals are
-initialized using the Server class which provides comprehensive sanitization
-and validation.
-
-**Available Globals**:
-
-- `$scheme` - 'http' or 'https'
-- `$is_https` - Boolean for quick HTTPS checks
-- `$host` - Domain name (validated, no port)
-- `$method` - HTTP request method (GET, POST, etc.)
-- `$request_uri` - Request URI (control chars stripped)
-- `$current_url` - Full URL (scheme://host/path?query)
-- `$current_origin` - Origin only (scheme://host)
-- `$referer` - HTTP referer (sanitized, optional)
-- `$user_agent` - User agent string (sanitized, max 512 chars)
-- `$php_self` - Current script path (for securePage)
-- `$remote_addr` - Client IP address (for logging)
-
-**Usage Patterns**:
-
-```php
-// ✅ PREFERRED: Use global variables
-if (!securePage($php_self)) {
-    die();
-}
-
-logger($userId, LogCategories::LOG_CATEGORY_LOGIN,
-    "Login from {$remote_addr} via {$method}");
-
-if (!$is_https) {
-    // Redirect to HTTPS
-    header("Location: https://{$host}{$request_uri}");
-    exit;
-}
-
-// Set CORS headers with proper origin
-header("Access-Control-Allow-Origin: {$current_origin}");
-
-// ❌ AVOID: Direct $_SERVER access
-if (!securePage($_SERVER['PHP_SELF'])) {  // OLD PATTERN
-    die();
-}
-
-// ❌ AVOID: Unvalidated server variables
-$scheme = $_SERVER['REQUEST_SCHEME'] ?? 'http';  // OLD PATTERN
-```
-
-**Security Features**:
-
-- All globals validated via Server::get()
-- Control character stripping (\x00-\x1F, \x7F)
-- CRLF injection prevention on URIs
-- Hostname validation (DNS label rules)
-- Safe defaults for missing values
-
-### Code Quality Requirements
-
-**ALWAYS run the following commands before completing any task:**
+**ALWAYS run before completing any task:**
 
 - Run `mcp__ide__getDiagnostics` to check all files for diagnostics
 - Fix any linting or type errors before considering the task complete
 - Run appropriate test suites for modified functionality
 
-This is a CRITICAL step that must NEVER be skipped when working on any
-code-related task.
+### Release Notes
 
-### Release Notes Requirements
+Update or create release notes when creating a pull request using the template
+at `docs/development/RELEASE_NOTES_TEMPLATE.md`.
 
-**ALWAYS update or create release notes when creating a pull request:**
+### Terminology Standards
 
-- **Update existing release notes** if the target milestone already has a
-  RELEASE_NOTES_V[VERSION].md file
-- **Create new release notes** using the template at
-  `docs/development/RELEASE_NOTES_TEMPLATE.md` if none exist
-- **Follow the standardized structure**: Required Actions → User-Facing
-  Changes → Admin-Facing Changes → Issues Resolved
-- **Focus on impact and benefits**, not implementation details (those belong
-  in GitHub issues)
-- **Include clear testing instructions** in the Required Actions section for
-  any manual steps needed post-deployment
+- **Users**: Authentication/session context (UserSpice framework, `users` table)
+- **Owners**: Car registry business domain (UI elements, business logic)
+- Use `getUserWithProfile($userId)` for combined user+profile data access
+- See [CLASSES.md](docs/development/CLASSES.md) for ElanRegistryOwner patterns
 
-**📋 See [RELEASE_NOTES_TEMPLATE.md](docs/development/RELEASE_NOTES_TEMPLATE.md) for complete guidelines and structure**
+## Quick Deployment Reference
 
-### Version Release & Deployment
-
-**For complete release and deployment procedures, see [DEPLOYMENT.md](docs/development/DEPLOYMENT.md).**
-
-**Quick Reference:**
-
-- **MANDATORY for major/minor releases**: Release notes, GitHub release,
-  annotated git tags
-- **Optional for patch releases**: Release notes for significant patches or
-  security fixes
-- **Remote configuration**: `origin` (GitHub), `test` (staging), `prod` (live
-  production)
-- **Deployment commands**: See DEPLOYMENT.md for comprehensive workflows
-
-### ElanRegistry Terminology Standards
-
-**CRITICAL:** Consistent terminology is essential for code clarity and user experience.
-
-#### User vs Owner Terminology
-
-- **Users**: Authentication and session management context (UserSpice framework)
-  - Use in UserSpice integration code
-  - Database table references (`users` table)
-  - Session management and permissions
-  - Authentication workflows
-
-- **Owners**: Car registry business domain context (ElanRegistry terminology)
-  - Use in UI elements and user-facing content
-  - Business logic and domain operations
-  - Car ownership and registry functionality
-  - Admin interfaces referring to registry participants
-
-#### Code Implementation Guidelines
-
-```php
-// ✅ CORRECT: UserSpice context
-$user = new User();
-if ($user->isLoggedIn()) {
-    // UserSpice authentication logic
-}
-
-// ✅ CORRECT: ElanRegistry context
-$owner = new ElanRegistryOwner($userId);
-$ownerProfile = $owner->getOwnerProfile();
-echo "Owner: " . $owner->data()->fname . " " . $owner->data()->lname;
-
-// ✅ CORRECT: Database operations use UserSpice table names
-$userQuery = $db->query("SELECT * FROM users WHERE id = ?", [$userId]);
-$profileQuery = $db->query(
-    "SELECT * FROM profiles WHERE user_id = ?",
-    [$userId]
-);
-
-// ✅ CORRECT: UI elements use owner terminology
-echo "<h3>Owner Information</h3>";
-echo "<button>Contact Owner</button>";
-echo "<span>Owner Location: {$owner->city}, {$owner->state}</span>";
-```
-
-#### Integration Patterns
-
-**Use existing `getUserWithProfile()` function for combined data access:**
-
-```php
-// ✅ CORRECT: Leverage existing custom function
-$ownerData = getUserWithProfile($userId);
-if ($ownerData) {
-    echo "Owner: {$ownerData->fname} {$ownerData->lname}";
-    echo "Location: {$ownerData->city}, ";
-    echo "{$ownerData->state}";
-}
-```
-
-**Follow established Car class patterns for new domain classes:**
-
-```php
-// ✅ CORRECT: ElanRegistryOwner class follows Car class patterns
-class ElanRegistryOwner {
-    private $_db;
-    private $_data;
-
-    public function __construct(?int $id = null) {
-        $this->_db = DB::getInstance();
-        if ($id) {
-            $this->find($id);
-        }
-    }
-
-    public function create(array $fields): bool {
-        // Validation, sanitization, audit logging
-        // Follow Car class exception handling patterns
-    }
-}
-```
-
-## 🚀 Quick Deployment Reference
-
-**🚨 CRITICAL:** When deploying, use the correct remote for each environment!
+**Use the correct remote for each environment:**
 
 ```bash
-# Push to GitHub for repository backup
-git push origin main && git push origin --tags
-
-# Deploy to test server for validation
-git push test feature/v2.9.1
-git push test v2.9.1
-
-# Push code to PRODUCTION SERVER (live site)
-git push prod main
-git push prod --tags
+git push origin main && git push origin --tags   # GitHub
+git push test feature/v2.9.1                      # Staging
+git push prod main && git push prod --tags        # PRODUCTION
 ```
 
-**📋 See [DEPLOYMENT.md](docs/development/DEPLOYMENT.md) for complete release and deployment
-procedures**
-
-## 📊 Current Development Status
-
-### ✅ Production Ready Features
-
-- **Security**: Enterprise-grade security implementation with comprehensive
-  CSRF protection
-- **Testing**: 35/35 Playwright browser tests passing (100% success rate) plus
-  comprehensive PHPUnit security test suite
-- **PHP 8+ Compatibility**: Full compatibility with modern PHP versions,
-  comprehensive null handling
-- **Documentation**: Complete setup, development, and deployment documentation
-
-### 📋 Active Development Areas
-
-Current GitHub Issues are organized into development phases:
-
-- **Phase 1 Critical Issues** - Bug fixes and stability improvements
-- **Phase 2-5** - Core enhancements, UX improvements, and optional features
-
-See GitHub Issues for detailed development roadmap and current work items.
-
-## 📊 Recent Major Changes
-
-### Chart.js Migration (Issue #285) - v2.8.1
-
-**Completed Migration from Google Charts to Chart.js:**
-
-- **Statistics Page Enhanced**: Converted to tabbed interface with lazy loading
-  - Overview, Geographic, Production, Colors, Data Quality tabs
-  - 11+ interactive charts with Bootstrap theming
-  - Performance optimized with caching (1 day prod, 5 minutes dev)
-- **Analytics Page Consolidated**: All analytics features moved to statistics page
-- **Security Improved**: Removed Google Charts CSP dependencies
-- **Self-Hosted Solution**: Chart.js CDN configurable via Admin Panel
-
-**Key Features:**
-
-- Responsive Bootstrap-themed charts
-- Lazy loading for performance
-- Environment-based caching system
-- API endpoints for dynamic data loading
-- Comprehensive analytics dashboard
+See [DEPLOYMENT.md](docs/development/DEPLOYMENT.md) for complete procedures.
 
 ---
 
-**📖 For detailed information, see the complete documentation files:**
+**For detailed information, see:**
 
-- [DEVELOPMENT_WORKFLOW.md](docs/development/DEVELOPMENT_WORKFLOW.md) -
-  Development processes and workflows
-- [DEPLOYMENT.md](docs/development/DEPLOYMENT.md) - Production deployment
-  procedures
+- [ARCHITECTURE.md](docs/development/ARCHITECTURE.md) - System architecture
 - [CODING_STANDARDS.md](docs/development/CODING_STANDARDS.md) - Code quality
-  requirements
-- [ENVIRONMENT.md](docs/development/ENVIRONMENT.md) - Environment setup and configuration
+- [ERROR_HANDLING.md](docs/development/ERROR_HANDLING.md) - Error handling and API patterns
+- [DEPLOYMENT.md](docs/development/DEPLOYMENT.md) - Release and deployment
+- [ENVIRONMENT.md](docs/development/ENVIRONMENT.md) - Environment setup

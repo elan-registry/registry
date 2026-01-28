@@ -223,68 +223,15 @@ $resize->resizeImage(
 
 ### **Exception Handling**
 
-#### **ElanRegistryException Hierarchy** (v2.12.0+)
+All exceptions **MUST** extend `ElanRegistryException` base class (23 domain-specific types). Each exception carries an HTTP status code, log category, and separate technical/user-friendly messages.
 
-All exceptions **MUST** extend `ElanRegistryException` base class for proper
-categorization, logging, and user-friendly error messages.
+**Key rules:**
 
-**Exception Types** (23 total for domain-specific errors):
+- Never throw generic `Exception` - use typed exceptions (e.g., `CarValidationException`, `CarCreationException`)
+- Separate technical messages (for logs) from user-safe messages (for UI)
+- Catch with `ElanRegistryException` as fallback after specific types
 
-| Exception | HTTP | Category | Purpose |
-|-----------|------|----------|---------|
-| CarCreationException | 500 | CarCreation | Car record creation |
-| CarDeletionException | 500 | CarDeletion | Car deletion |
-| CarTransferException | 400 | CarTransferError | Ownership transfer |
-| CarValidationException | 422 | CarValidation | Car data validation |
-| CarNotFoundException | 404 | CarErrors | Car not found |
-| OwnerValidationException | 422 | OwnerValidation | Owner data validation |
-| OwnerNotFoundException | 404 | OwnerErrors | Owner not found |
-| ValidationException | 422 | ValidationError | Generic validation |
-| LocationServiceException | 400 | LocationService | Location API errors |
-| GeocodingException | 400 | Geocode | Google Maps errors |
-| ImageProcessingException | 500 | ImageRemoval | Image resize/upload |
-| SchemaException | 500 | SchemaOperationError | Database schema |
-| ForbiddenException | 403 | AccessDenied | Permission denied |
-| UnauthorizedException | 401 | AccessDenied | Auth required |
-| And 9 more domain-specific types | — | — | — |
-
-**See Also**: [ERROR_HANDLING.md](ERROR_HANDLING.md#exception-hierarchy) for
-complete exception reference and patterns.
-
-#### **Exception Usage Pattern**
-
-```php
-// ✅ REQUIRED - Use typed exceptions with separate technical/user messages
-try {
-    if (empty($chassisData['vin'])) {
-        throw new CarValidationException(
-            'VIN field is required',  // Technical message for logs
-            0,
-            null,
-            'Please provide a vehicle identification number'  // User-safe
-        );
-    }
-
-    // Attempt car creation
-    $car = new Car();
-    if (!$car->create($chassisData)) {
-        throw new CarCreationException('Database insert failed');
-    }
-
-} catch (CarValidationException $e) {
-    // Handle validation error (422)
-    ApiResponse::validationError(
-        ['vin' => $e->getUserMessage()]
-    )->withLogging($userId, $e->getLogCategory(), $e->getMessage())
-     ->send();
-
-} catch (ElanRegistryException $e) {
-    // Handle any domain error with correct HTTP code
-    ApiResponse::error($e->getUserMessage(), $e->getHttpStatusCode())
-        ->withLogging($userId, $e->getLogCategory(), $e->getMessage())
-        ->send();
-}
-```
+**See [ERROR_HANDLING.md](ERROR_HANDLING.md#exception-hierarchy)** for the complete exception hierarchy table, usage patterns, and migration guide.
 
 ### **Error Handling Patterns**
 

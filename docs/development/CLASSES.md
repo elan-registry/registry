@@ -274,54 +274,9 @@ if ($result['valid']) {
 
 **Location**: `/app/admin/includes/classes/BackupManager.php`
 
-**Purpose**: Database backup management with retention policies and schema
-operation integration.
+Database backup management with retention policies, schema operation integration, and environment-aware cleanup. Throws `BackupException` on failures.
 
-**Key Features**:
-
-- Automated schema operation backups
-- Manual backup creation
-- Retention policy enforcement
-- Backup statistics and reporting
-- Enhanced cleanup operations
-- Environment-aware retention (prod vs dev)
-
-**Common Usage**:
-
-```php
-// Initialize
-$backupManager = new BackupManager($db, $backupDir, $userId);
-
-// Create backup before schema operation
-$backupPath = $backupManager->createSchemaBackup(
-    'Add new column to cars table',
-    ['cars', 'cars_hist']
-);
-
-// Create manual backup
-$backupPath = $backupManager->createManualBackup(
-    'Pre-release backup',
-    ['users', 'cars', 'profiles'],
-    ['version' => '2.10.0']
-);
-
-// Get statistics
-$stats = $backupManager->getEnhancedBackupStatistics();
-
-// Perform cleanup based on retention policies
-$cleanup = $backupManager->performEnhancedCleanup();
-```
-
-**Retention Policies**:
-
-- Production automated: 30 days
-- Development automated: 7 days
-- Manual backups: 90 days
-- Schema operation backups: 90 days
-
-**Exception Handling**:
-
-- `BackupException` - Backup operation failures
+**See [BACKUP_SYSTEM.md](BACKUP_SYSTEM.md)** for complete API reference, usage examples, and retention policies.
 
 ### Resize
 
