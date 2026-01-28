@@ -126,6 +126,14 @@ class Resize
 
     ## --------------------------------------------------------
 
+    /**
+     * Resize the image to the given dimensions using the specified method
+     *
+     * @param int $newWidth Target width in pixels
+     * @param int $newHeight Target height in pixels
+     * @param string $option Resize method: exact, portrait, landscape, auto, or crop
+     * @return void
+     */
     public function resizeImage(int $newWidth, int $newHeight, string $option = "auto"): void
     {
         // *** Get optimal width and height - based on $option
@@ -265,6 +273,13 @@ class Resize
 
     ## --------------------------------------------------------
 
+    /**
+     * Save the resized image to the specified path
+     *
+     * @param string $savePath File path to save the image to
+     * @param int $imageQuality Image quality from 0 to 100
+     * @return void
+     */
     public function saveImage(string $savePath, int $imageQuality = 100): void
     {
         // *** Get extension
