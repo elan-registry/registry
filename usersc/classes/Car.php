@@ -186,13 +186,13 @@ class Car
         $updateResult = $this->_db->update($this->tableName, $carId, $filteredFields);
         
         // Log database errors for debugging
-        if ($this->_db->error()) {
-            logger($fields['user_id'] ?? 0, LogCategories::LOG_CATEGORY_CAR_UPDATE, 'DB error string: ' . $this->_db->errorString());
+        if (!$updateResult) {
+            logger($fields['user_id'] ?? 0, LogCategories::LOG_CATEGORY_CAR_UPDATE, 'DB update returned false (may indicate no changes)');
         }
-        
+
         // Check if there was an actual database error vs UserSpice returning false for "no changes"
-        if (!$updateResult && $this->_db->error()) {
-            logger($fields['user_id'] ?? 0, LogCategories::LOG_CATEGORY_DATABASE_ERROR, 'Car update failed: ' . $this->_db->errorString());
+        if (!$updateResult) {
+            logger($fields['user_id'] ?? 0, LogCategories::LOG_CATEGORY_DATABASE_ERROR, 'Car update failed: query returned false');
             throw new CarValidationException('Database update failed - check logs for details');
         } else {
             // UserSpice returned false but no error means "no changes needed" - treat as success
@@ -532,16 +532,16 @@ class Car
 
             // Remove car-user relationships
             $carUserDeleted = $this->_db->query("DELETE FROM car_user WHERE car_id = ?", [$carId]);
-            if ($this->_db->error()) {
-                $technicalMsg = CarErrorMessages::getTechnicalMessage('car_relationship_failed', ['error' => $this->_db->errorString()]);
+            if (!$carUserDeleted) {
+                $technicalMsg = CarErrorMessages::getTechnicalMessage('car_relationship_failed', ['error' => 'query returned false']);
                 logger($user->data()->id ?? 0, LogCategories::LOG_CATEGORY_CAR_DELETION, $technicalMsg);
                 throw new Exception(CarErrorMessages::getAdminMessage('car_relationship_failed'));
             }
 
             // Remove the car record itself
             $carDeleted = $this->_db->query("DELETE FROM cars WHERE id = ?", [$carId]);
-            if ($this->_db->error()) {
-                $technicalMsg = CarErrorMessages::getTechnicalMessage('database_update_failed', ['error' => $this->_db->errorString()]);
+            if (!$carDeleted) {
+                $technicalMsg = CarErrorMessages::getTechnicalMessage('database_update_failed', ['error' => 'query returned false']);
                 logger($user->data()->id ?? 0, LogCategories::LOG_CATEGORY_CAR_DELETION, $technicalMsg);
                 throw new Exception(CarErrorMessages::getAdminMessage('database_update_failed'));
             }
@@ -637,8 +637,8 @@ class Car
 
             // Update the car_user relationship table
             $relationshipUpdated = $this->_db->query("UPDATE car_user SET userid = ? WHERE car_id = ?", [$newUserId, $carId]);
-            if ($this->_db->error()) {
-                $technicalMsg = CarErrorMessages::getTechnicalMessage('car_relationship_failed', ['error' => $this->_db->errorString()]);
+            if (!$relationshipUpdated) {
+                $technicalMsg = CarErrorMessages::getTechnicalMessage('car_relationship_failed', ['error' => 'query returned false']);
                 logger($user->data()->id ?? 0, LogCategories::LOG_CATEGORY_CAR_TRANSFER, $technicalMsg);
                 throw new Exception(CarErrorMessages::getAdminMessage('car_relationship_failed'));
             }
@@ -761,24 +761,24 @@ class Car
 
             // Transfer all history records from old car to new car
             $historyTransferred = $this->_db->query("UPDATE cars_hist SET car_id = ? WHERE car_id = ?", [$newCarId, $oldCarId]);
-            if ($this->_db->error()) {
-                $technicalMsg = CarErrorMessages::getTechnicalMessage('car_history_transfer_failed', ['error' => $this->_db->errorString()]);
+            if (!$historyTransferred) {
+                $technicalMsg = CarErrorMessages::getTechnicalMessage('car_history_transfer_failed', ['error' => 'query returned false']);
                 logger($user->data()->id ?? 0, LogCategories::LOG_CATEGORY_CAR_MERGE, $technicalMsg);
                 throw new Exception(CarErrorMessages::getAdminMessage('car_history_transfer_failed'));
             }
 
             // Remove car-user relationships for old car
             $carUserDeleted = $this->_db->query("DELETE FROM car_user WHERE car_id = ?", [$oldCarId]);
-            if ($this->_db->error()) {
-                $technicalMsg = CarErrorMessages::getTechnicalMessage('car_relationship_failed', ['error' => $this->_db->errorString()]);
+            if (!$carUserDeleted) {
+                $technicalMsg = CarErrorMessages::getTechnicalMessage('car_relationship_failed', ['error' => 'query returned false']);
                 logger($user->data()->id ?? 0, LogCategories::LOG_CATEGORY_CAR_MERGE, $technicalMsg);
                 throw new Exception(CarErrorMessages::getAdminMessage('car_relationship_failed'));
             }
 
             // Delete the old car record
             $oldCarDeleted = $this->_db->query("DELETE FROM cars WHERE id = ?", [$oldCarId]);
-            if ($this->_db->error()) {
-                $technicalMsg = CarErrorMessages::getTechnicalMessage('database_update_failed', ['error' => $this->_db->errorString()]);
+            if (!$oldCarDeleted) {
+                $technicalMsg = CarErrorMessages::getTechnicalMessage('database_update_failed', ['error' => 'query returned false']);
                 logger($user->data()->id ?? 0, LogCategories::LOG_CATEGORY_CAR_MERGE, $technicalMsg);
                 throw new Exception(CarErrorMessages::getAdminMessage('database_update_failed'));
             }

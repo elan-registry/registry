@@ -1,12 +1,6 @@
 parameters:
 	ignoreErrors:
 		-
-			message: '#^If condition is always false\.$#'
-			identifier: if.alwaysFalse
-			count: 3
-			path: usersc/classes/Car.php
-
-		-
 			message: '#^Property ElanRegistryOwner\:\:\$_profileData is unused\.$#'
 			identifier: property.unused
 			count: 1
