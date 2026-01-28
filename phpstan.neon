@@ -17,7 +17,6 @@ parameters:
     paths:
         - app
         - usersc/classes
-        - app/admin/includes/classes
 
     # Paths to exclude
     excludePaths:
