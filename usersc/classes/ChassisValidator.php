@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 /**
  * ChassisValidator.php
  * Centralized Lotus Elan chassis number validation system
@@ -16,7 +18,7 @@ class ChassisValidator
 {
     /**
      * Validation result structure
-     * @var array
+     * @var array{valid: bool, chassis: string, error_reason: string, format_type: string, override_used: bool}
      */
     private $result = [
         'valid' => false,
@@ -54,7 +56,7 @@ class ChassisValidator
      * @param int $year The car year
      * @param string $model The model string (contains series, variant, type)
      * @param bool $allowOverride Whether to allow validation override
-     * @return array Validation result
+     * @return array{valid: bool, chassis: string, error_reason: string, format_type: string, override_used: bool} Validation result
      */
     public function validate(string $chassis, int $year, string $model, bool $allowOverride = false): array 
     {
@@ -261,11 +263,11 @@ class ChassisValidator
      * Get valid letter codes for model series
      * 
      * @param string $series
-     * @return array
+     * @return array{codes: list<string>, type: string, description: string}
      */
     private function getValidSuffixes(string $series): array 
     {
-        if (strpos($series, '+2') !== false) {
+        if (str_contains($series, '+2')) {
             return [
                 'codes' => self::LETTER_CODES['plus2'],
                 'type' => '+2',
@@ -283,7 +285,7 @@ class ChassisValidator
     /**
      * Get validation rules summary for display
      * 
-     * @return array
+     * @return array<string, array<int|string, string>>
      */
     public static function getValidationRules(): array 
     {
