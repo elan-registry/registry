@@ -68,51 +68,26 @@ fi
 # Validation 2: Maximum Length for Subject
 # ============================================================================
 
-if [ $SUBJECT_LENGTH -gt 72 ]; then
+# Raised from 72 to 100 - modern tools handle longer subjects well
+if [ $SUBJECT_LENGTH -gt 100 ]; then
     echo ""
-    echo -e "${YELLOW}⚠️  WARNING: Commit subject is long${NC}"
+    echo -e "${YELLOW}⚠️  Subject is long ($SUBJECT_LENGTH chars, recommend <100)${NC}"
+    echo "   Consider moving details to the commit body."
     echo ""
-    echo "Subject length: $SUBJECT_LENGTH characters (recommended: <72)"
-    echo ""
-    echo "💡 Consider shortening the subject or moving details to the body:"
-    echo "   • Keep subject concise (what changed)"
-    echo "   • Add details in commit body (why it changed)"
-    echo ""
-    echo "Continuing anyway..."
 fi
 
 # ============================================================================
 # Validation 3: Subject Line Format (Soft Recommendation)
 # ============================================================================
 
-# Check if message starts with common prefixes
+# Check if message starts with common prefixes (silent success)
 if echo "$SUBJECT" | grep -qE "^(feat|fix|docs|refactor|test|chore|style|perf|ci|build|revert|hotfix|wip):"; then
-    echo -e "${GREEN}✅ Conventional commit format detected${NC}"
-else
-    # Check for issue reference anywhere in the message
-    if echo "$COMMIT_MSG" | grep -qE "#[0-9]+"; then
-        echo "✅ Issue reference found"
-    else
-        # Only warn for substantive commits (not docs/chore)
-        if ! echo "$SUBJECT" | grep -qiE "^(docs|chore|style):"; then
-            echo ""
-            echo -e "${YELLOW}💡 RECOMMENDATION: Reference related GitHub issue${NC}"
-            echo ""
-            echo "Current message:"
-            echo "   $SUBJECT"
-            echo ""
-            echo "Consider adding issue reference:"
-            echo "   $SUBJECT (#123)"
-            echo ""
-            echo "Or use conventional commit format:"
-            echo "   feat: $SUBJECT (#123)"
-            echo "   fix: $SUBJECT (#123)"
-            echo ""
-            echo "Continuing without issue reference..."
-            echo ""
-        fi
-    fi
+    : # Conventional commit format - no output needed
+elif echo "$COMMIT_MSG" | grep -qE "#[0-9]+"; then
+    : # Issue reference found - no output needed
 fi
+# NOTE: Removed verbose recommendation about issue references.
+# Developers know their workflow; no need to nag on every commit.
 
 # ============================================================================
 # Validation 4: Prevent Common Mistakes
@@ -120,34 +95,15 @@ fi
 
 # Check for WIP commits (warn but allow)
 if echo "$SUBJECT" | grep -qiE "^(wip|todo|fixme|hack|temp)"; then
-    echo ""
-    echo -e "${YELLOW}⚠️  WARNING: Work-in-progress commit detected${NC}"
-    echo ""
-    echo "Subject: $SUBJECT"
-    echo ""
-    echo "💡 Ensure this is not accidentally pushed to main/production!"
-    echo "   • WIP commits are OK for personal branches"
-    echo "   • Clean up before creating pull requests"
-    echo ""
+    echo -e "${YELLOW}⚠️  WIP commit - don't forget to clean up before merging to main${NC}"
 fi
 
 # Check for all-caps commits (usually shouting or test commits)
 if echo "$SUBJECT" | grep -qE "^[A-Z ]+$"; then
-    echo ""
-    echo -e "${YELLOW}⚠️  WARNING: All-caps commit message${NC}"
-    echo ""
-    echo "Subject: $SUBJECT"
-    echo ""
-    echo "💡 Consider using normal sentence case for better readability"
-    echo ""
+    echo -e "${YELLOW}ℹ️  All-caps detected - consider sentence case for readability${NC}"
 fi
 
-# Check for trailing periods (style issue)
-if echo "$SUBJECT" | grep -q "\.$"; then
-    echo ""
-    echo -e "${YELLOW}ℹ️  Style note: Commit subjects typically don't end with periods${NC}"
-    echo ""
-fi
+# NOTE: Removed trailing period warning - too trivial to mention
 
 # ============================================================================
 # Validation 5: Detect Potentially Sensitive Data

@@ -4,10 +4,17 @@
 # Pre-commit hook to enforce coding standards
 #
 # This hook runs before each commit and prevents commits that violate
-# the Elan Registry coding standards. It only checks staged PHP files.
+# the Elan Registry coding standards. It only checks staged files.
 #
 # To install: git config core.hooksPath .githooks
 # To bypass: git commit --no-verify (use sparingly!)
+#
+# Checks performed:
+#   1. PHP Coding Standards (security, types, documentation)
+#   2. Markdown Linting (formatting)
+#   3. Regression Test Issue Linking (traceability)
+#   4. Unit Tests (if critical files changed)
+#   5. JavaScript Linting (if JS files changed and ESLint available)
 #
 
 set -e
@@ -17,12 +24,13 @@ echo "🔍 Running pre-commit quality checks..."
 # Get list of staged files by type
 STAGED_PHP_FILES=$(git diff --cached --name-only --diff-filter=ACM | grep '\.php$' || true)
 STAGED_MD_FILES=$(git diff --cached --name-only --diff-filter=ACM | grep '\.md$' || true)
+STAGED_JS_FILES=$(git diff --cached --name-only --diff-filter=ACM | grep -E '\.js$' | grep -v '\.min\.js$' || true)
 STAGED_REGRESSION_TESTS=$(git diff --cached --name-only --diff-filter=ACM | grep '^tests/regression/.*\.php$' || true)
 
 # Check if any critical files are modified (tests, core classes, etc.)
 CRITICAL_FILES=$(git diff --cached --name-only --diff-filter=ACM | grep -E '\.(php|json)$|phpunit\.xml' || true)
 
-if [ -z "$STAGED_PHP_FILES" ] && [ -z "$STAGED_MD_FILES" ] && [ -z "$CRITICAL_FILES" ] && [ -z "$STAGED_REGRESSION_TESTS" ]; then
+if [ -z "$STAGED_PHP_FILES" ] && [ -z "$STAGED_MD_FILES" ] && [ -z "$STAGED_JS_FILES" ] && [ -z "$CRITICAL_FILES" ] && [ -z "$STAGED_REGRESSION_TESTS" ]; then
     echo "✅ No relevant files staged, skipping quality checks"
     exit 0
 fi
@@ -47,37 +55,24 @@ done
 
 # Step 1: Run coding standards checker on staged PHP files
 echo ""
-echo "📋 Step 1: PHP Coding Standards Check"
-echo "====================================="
+echo "📋 Step 1: PHP Coding Standards"
 if [ -n "$STAGED_PHP_FILES" ]; then
     if php scripts/check-coding-standards.php "$TEMP_DIR" --staged; then
-        echo "✅ PHP coding standards check passed!"
+        echo "✅ Passed"
     else
         echo ""
-        echo "❌ COMMIT BLOCKED: PHP coding standards violations found"
-        echo ""
-        echo "🔧 To fix these issues:"
-        echo "1. Review the errors above"
-        echo "2. Fix the issues in your working directory"
-        echo "3. Stage the fixes with 'git add'"
-        echo "4. Try committing again"
-        echo ""
-        echo "🚨 To bypass this check (NOT recommended):"
-        echo "   git commit --no-verify"
-        echo ""
+        echo "❌ COMMIT BLOCKED: Fix the issues above, stage fixes, and try again."
+        echo "   Bypass (not recommended): git commit --no-verify"
         exit 1
     fi
 else
-    echo "⏭️  No PHP files staged, skipping PHP coding standards check"
+    echo "⏭️  No PHP files staged"
 fi
 
 # Step 2: Run markdown linting on staged MD files
 echo ""
-echo "📝 Step 2: Markdown Lint Check"
-echo "==============================="
+echo "📝 Step 2: Markdown Lint"
 if [ -n "$STAGED_MD_FILES" ]; then
-    echo "🔍 Linting markdown files..."
-
     # Create list of staged markdown files for linting
     MD_FILES_LIST=""
     for FILE in $STAGED_MD_FILES; do
@@ -87,149 +82,107 @@ if [ -n "$STAGED_MD_FILES" ]; then
     done
 
     if npx markdownlint-cli2 $MD_FILES_LIST 2>/dev/null; then
-        echo "✅ Markdown lint check passed!"
+        echo "✅ Passed"
     else
         echo ""
-        echo "❌ COMMIT BLOCKED: Markdown lint issues found"
-        echo ""
-        echo "🔧 To fix markdown issues:"
-        echo "1. Review the markdown lint errors above"
-        echo "2. Fix formatting issues in your .md files"
-        echo "3. Common fixes:"
-        echo "   • Add blank lines around headers"
-        echo "   • Fix list indentation"
-        echo "   • Ensure proper line endings"
-        echo "   • Remove trailing whitespace"
-        echo "4. Stage the fixes with 'git add'"
-        echo "5. Try committing again"
-        echo ""
-        echo "📖 For markdown rules: https://github.com/DavidAnson/markdownlint/blob/main/doc/Rules.md"
-        echo ""
-        echo "🚨 To bypass this check (NOT recommended):"
-        echo "   git commit --no-verify"
-        echo ""
+        echo "❌ COMMIT BLOCKED: Fix markdown issues above, stage fixes, and try again."
+        echo "   Rules: https://github.com/DavidAnson/markdownlint/blob/main/doc/Rules.md"
         exit 1
     fi
 else
-    echo "⏭️  No markdown files staged, skipping markdown lint check"
+    echo "⏭️  No markdown files staged"
 fi
 
 # Step 3: Validate regression test issue linking
 echo ""
-echo "🔗 Step 3: Regression Test Issue Validation"
-echo "==========================================="
+echo "🔗 Step 3: Regression Test Validation"
 if [ -n "$STAGED_REGRESSION_TESTS" ]; then
-    echo "🔍 Validating regression test issue linking..."
-
     REGRESSION_ERRORS=0
 
     for TEST_FILE in $STAGED_REGRESSION_TESTS; do
         if [ -n "$TEST_FILE" ]; then
-            echo "  • Checking $TEST_FILE"
-
-            # Get staged version of the file
             STAGED_CONTENT=$(git show ":$TEST_FILE")
-
-            # Extract filename without path and extension
             FILENAME=$(basename "$TEST_FILE" .php)
 
             # Check filename pattern: Issue{Number}RegressionTest
             if [[ ! "$FILENAME" =~ ^Issue[0-9]+RegressionTest$ ]]; then
-                echo "    ❌ Invalid filename pattern. Must be: Issue{Number}RegressionTest.php"
+                echo "  ❌ $TEST_FILE: Invalid filename. Must be: Issue{Number}RegressionTest.php"
                 REGRESSION_ERRORS=$((REGRESSION_ERRORS + 1))
                 continue
             fi
 
-            # Extract issue number from filename
             ISSUE_NUMBER=$(echo "$FILENAME" | sed 's/Issue\([0-9]*\)RegressionTest/\1/')
 
-            # Check for required annotations
             if ! echo "$STAGED_CONTENT" | grep -q "@issue $ISSUE_NUMBER"; then
-                echo "    ❌ Missing @issue annotation. Add: @issue $ISSUE_NUMBER"
+                echo "  ❌ $TEST_FILE: Missing @issue $ISSUE_NUMBER annotation"
                 REGRESSION_ERRORS=$((REGRESSION_ERRORS + 1))
             fi
 
             if ! echo "$STAGED_CONTENT" | grep -q "@link.*github.com.*issues/$ISSUE_NUMBER"; then
-                echo "    ❌ Missing @link annotation. Add: @link https://github.com/unibrain1/elanregistry/issues/$ISSUE_NUMBER"
+                echo "  ❌ $TEST_FILE: Missing @link annotation"
                 REGRESSION_ERRORS=$((REGRESSION_ERRORS + 1))
-            fi
-
-            # Check for test method naming pattern
-            if ! echo "$STAGED_CONTENT" | grep -q "testIssue${ISSUE_NUMBER}_"; then
-                echo "    ⚠️  Consider using test method pattern: testIssue${ISSUE_NUMBER}_SpecificBehavior()"
-            fi
-
-            if [ $REGRESSION_ERRORS -eq 0 ]; then
-                echo "    ✅ Issue linking validation passed"
             fi
         fi
     done
 
     if [ $REGRESSION_ERRORS -gt 0 ]; then
         echo ""
-        echo "❌ COMMIT BLOCKED: Regression test validation failed"
-        echo ""
-        echo "🔧 To fix regression test issues:"
-        echo "1. Ensure filename follows pattern: Issue{Number}RegressionTest.php"
-        echo "2. Add required PHPDoc annotations:"
-        echo "   * @issue {number}"
-        echo "   * @link https://github.com/unibrain1/elanregistry/issues/{number}"
-        echo "3. Consider test method naming: testIssue{Number}_SpecificBehavior()"
-        echo "4. Use the regression test template in tests/regression/RegressionTestTemplate.php"
-        echo ""
-        echo "🚨 To bypass this check (NOT recommended):"
-        echo "   git commit --no-verify"
-        echo ""
+        echo "❌ COMMIT BLOCKED: Fix issues above. Use template: tests/regression/RegressionTestTemplate.php"
         exit 1
     else
-        echo "✅ Regression test validation passed!"
+        echo "✅ Passed"
     fi
 else
-    echo "⏭️  No regression tests staged, skipping validation"
+    echo "⏭️  No regression tests staged"
 fi
 
 # Step 4: Run fast unit tests (if critical files changed)
 echo ""
-echo "🧪 Step 4: Fast Unit Tests"
-echo "=========================="
+echo "🧪 Step 4: Unit Tests"
 if [ -n "$CRITICAL_FILES" ]; then
-    echo "🔍 Critical files detected, running fast unit tests..."
-
-    # Check if composer and vendor directory exist
     if [ ! -f "composer.json" ] || [ ! -d "vendor" ]; then
-        echo "⚠️  Skipping tests: composer dependencies not installed"
-        echo "   Run 'composer install' to enable pre-commit testing"
+        echo "⚠️  Skipping: composer dependencies not installed"
     else
-        echo "Running: composer test:quick (unit tests with early failure)"
-
         if vendor/bin/phpunit --testsuite=Unit --exclude-group broken 2>&1; then
-            echo "✅ Unit tests passed!"
+            echo "✅ Passed"
         else
             echo ""
-            echo "❌ COMMIT BLOCKED: Unit tests failed"
-            echo ""
-            echo "🔧 To fix test failures:"
-            echo "1. Review the test output above"
-            echo "2. Fix the failing tests"
-            echo "3. Run 'composer test:quick' to verify fixes"
-            echo "4. Stage your fixes and try committing again"
-            echo ""
-            echo "🧪 For more detailed testing:"
-            echo "   composer test:medium  # Include integration tests"
-            echo "   composer test:full    # Run all tests"
-            echo ""
-            echo "🚨 To bypass this check (NOT recommended):"
-            echo "   git commit --no-verify"
-            echo ""
+            echo "❌ COMMIT BLOCKED: Fix failing tests. Run 'composer test:quick' to verify."
             exit 1
         fi
     fi
 else
-    echo "⏭️  No critical files changed, skipping unit tests"
+    echo "⏭️  No critical files changed"
+fi
+
+# Step 5: Run ESLint on staged JS files (if available)
+echo ""
+echo "📜 Step 5: JavaScript Lint"
+if [ -n "$STAGED_JS_FILES" ]; then
+    # Check if eslint is available
+    if [ -f "node_modules/.bin/eslint" ] || command -v eslint &> /dev/null; then
+        # Create list of staged JS files
+        JS_FILES_LIST=""
+        for FILE in $STAGED_JS_FILES; do
+            if [ -n "$FILE" ]; then
+                JS_FILES_LIST="$JS_FILES_LIST $FILE"
+            fi
+        done
+
+        if npx eslint $JS_FILES_LIST 2>/dev/null; then
+            echo "✅ Passed"
+        else
+            echo ""
+            echo "⚠️  ESLint issues found (not blocking). Run 'npm run lint' to see details."
+        fi
+    else
+        echo "⏭️  ESLint not installed (optional: npm install)"
+    fi
+else
+    echo "⏭️  No JavaScript files staged"
 fi
 
 # All checks passed
 echo ""
 echo "🎉 All pre-commit checks passed!"
-echo "🚀 Commit allowed!"
 exit 0
