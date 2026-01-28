@@ -154,6 +154,9 @@ class Resize
     private function getDimensions(int $newWidth, int $newHeight, string $option): array
     {
 
+        $optimalWidth = $newWidth;
+        $optimalHeight = $newHeight;
+
         switch ($option) {
             case 'exact':
                 $optimalWidth = $newWidth;
@@ -290,7 +293,7 @@ class Resize
                 $invertScaleQuality = 9 - $scaleQuality;
 
                 if (imagetypes() & IMG_PNG) {
-                    imagepng($this->imageResized, $savePath, $invertScaleQuality);
+                    imagepng($this->imageResized, $savePath, (int) $invertScaleQuality);
                 }
                 break;
 

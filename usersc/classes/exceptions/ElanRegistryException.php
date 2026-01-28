@@ -12,6 +12,7 @@ declare(strict_types=1);
  *
  * All domain-specific exceptions MUST extend this class.
  *
+ * @phpstan-consistent-constructor
  * @package ElanRegistry
  * @subpackage Exceptions
  * @since v2.12.0
