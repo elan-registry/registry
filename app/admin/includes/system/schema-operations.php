@@ -29,7 +29,7 @@ try {
 
     // Initialize the schema manager
     // Cast user ID to int for strict type safety across different PHP/database configurations
-    $schemaManager = new EnhancedSchemaManager($db, $settings, (int)$user->data()->id);
+    $schemaManager = new EnhancedSchemaManager($db, (int)$user->data()->id);
 
     switch ($action) {
         case 'validate_schema':

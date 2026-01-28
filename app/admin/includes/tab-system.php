@@ -13,7 +13,7 @@ declare(strict_types=1);
 
 // Initialize enhanced managers
 // Cast user ID to int for strict type safety across different PHP/database configurations
-$schemaManager = new EnhancedSchemaManager($db, $settings, (int)$user->data()->id);
+$schemaManager = new EnhancedSchemaManager($db, (int)$user->data()->id);
 $backupManager = new BackupManager($db, $abs_us_root . $us_url_root . 'FIX/backups/', (int)$user->data()->id);
 
 // Get list of FIX scripts
