@@ -24,7 +24,7 @@ class CarErrorMessages
      *
      * @param string $errorKey Error message key
      * @param string $context Additional context (user|admin|technical)
-     * @param array<string, string> $params Parameters for message interpolation
+     * @param array<string, string|int> $params Parameters for message interpolation
      * @return string User-friendly error message
      */
     public static function getMessage(string $errorKey, string $context = 'user', array $params = []): string
@@ -40,7 +40,7 @@ class CarErrorMessages
         
         // Replace parameters in message
         foreach ($params as $key => $value) {
-            $message = str_replace('{' . $key . '}', $value, $message);
+            $message = str_replace('{' . $key . '}', (string) $value, $message);
         }
         
         return $message;
@@ -50,7 +50,7 @@ class CarErrorMessages
      * Get technical error message for logging
      *
      * @param string $errorKey Error message key
-     * @param array<string, string> $params Parameters for message interpolation
+     * @param array<string, string|int> $params Parameters for message interpolation
      * @return string Technical error message for logging
      */
     public static function getTechnicalMessage(string $errorKey, array $params = []): string
@@ -62,7 +62,7 @@ class CarErrorMessages
      * Get admin error message with more context
      *
      * @param string $errorKey Error message key
-     * @param array<string, string> $params Parameters for message interpolation
+     * @param array<string, string|int> $params Parameters for message interpolation
      * @return string Admin error message
      */
     public static function getAdminMessage(string $errorKey, array $params = []): string
