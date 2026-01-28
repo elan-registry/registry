@@ -21,7 +21,7 @@ if (!empty($_POST)) {
                     'recordsFiltered' => 0,
                     'history' => []
                 ])
-                ->withLogging($user->data()->id ?? 0, 'ValidationError', 'Car history requested without car ID')
+                ->withLogging($user->data()->id ?? 0, LogCategories::LOG_CATEGORY_VALIDATION_ERROR, 'Car history requested without car ID')
                 ->send();
         }
 
@@ -35,7 +35,7 @@ if (!empty($_POST)) {
                         'recordsFiltered' => 0,
                         'history' => []
                     ])
-                    ->withLogging($user->data()->id ?? 0, 'ValidationError', "Car history requested for non-existent car ID: $carID")
+                    ->withLogging($user->data()->id ?? 0, LogCategories::LOG_CATEGORY_VALIDATION_ERROR, "Car history requested for non-existent car ID: $carID")
                     ->send();
             }
 
@@ -58,7 +58,7 @@ if (!empty($_POST)) {
                     'recordsFiltered' => 0,
                     'history' => []
                 ])
-                ->withLogging($user->data()->id ?? 0, 'DatabaseError', "Failed to load car history for car ID $carID: " . $e->getMessage())
+                ->withLogging($user->data()->id ?? 0, LogCategories::LOG_CATEGORY_DATABASE_ERROR, "Failed to load car history for car ID $carID: " . $e->getMessage())
                 ->send();
         }
     }

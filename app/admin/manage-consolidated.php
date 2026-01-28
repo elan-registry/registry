@@ -804,4 +804,5 @@ if (Input::exists('post')) {
 
 <!-- Include custom CSS and JavaScript -->
 <link rel="stylesheet" href="assets/manage-consolidated.css">
+<script>window.elanUrlRoot = '<?= $us_url_root ?>';</script>
 <script src="assets/manage-consolidated.js"></script>

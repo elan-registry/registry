@@ -499,46 +499,38 @@ function initializeCarManagement() {
         $btn.prop('disabled', true);
         $btn.html('<i class="fas fa-spinner fa-spin"></i>');
 
-        $.ajax({
-            url: '/app/admin/includes/process-car-details.php',
-            type: 'POST',
-            data: {
-                car_id: carId,
-                csrf: $('.reassign-form input[name="csrf"]').val()
-            },
-            dataType: 'json',
-            success: function(response) {
-                $btn.prop('disabled', false);
-                $btn.html(originalHtml);
+        new ElanRegistryAPI().post((window.elanUrlRoot || '/') + 'app/admin/includes/process-car-details.php', {
+            car_id: carId
+        }).then(function(response) {
+            $btn.prop('disabled', false);
+            $btn.html(originalHtml);
 
-                if (!response.success) {
-                    showMessage('Error: ' + response.message, 'danger');
-                    $('#carDetails').hide();
-                    selectedCar = null;
-                    updateReassignButton();
-                    return;
-                }
-
-                selectedCar = response.car;
-                const car = response.car;
-                const ownerName = car.fname && car.lname ? `${car.fname} ${car.lname}` : 'Unknown Owner';
-
-                $('#carInfo').html(
-                    `<strong>${car.year || 'Unknown'} ${car.type || 'Unknown'}</strong><br>` +
-                    `Chassis: ${car.chassis || 'Unknown'} | Color: ${car.color || 'Unknown'}`
-                );
-                $('#currentOwner').text(`${ownerName} (${car.email || 'No email'})`);
-                $('#carDetails').show();
-                updateReassignButton();
-            },
-            error: function(xhr, status, error) {
-                $btn.prop('disabled', false);
-                $btn.html(originalHtml);
-                showMessage('Error fetching car details: ' + error, 'danger');
+            if (!response.success) {
+                showMessage('Error: ' + response.message, 'danger');
                 $('#carDetails').hide();
                 selectedCar = null;
                 updateReassignButton();
+                return;
             }
+
+            selectedCar = response.car;
+            const car = response.car;
+            const ownerName = car.fname && car.lname ? `${car.fname} ${car.lname}` : 'Unknown Owner';
+
+            $('#carInfo').html(
+                `<strong>${car.year || 'Unknown'} ${car.type || 'Unknown'}</strong><br>` +
+                `Chassis: ${car.chassis || 'Unknown'} | Color: ${car.color || 'Unknown'}`
+            );
+            $('#currentOwner').text(`${ownerName} (${car.email || 'No email'})`);
+            $('#carDetails').show();
+            updateReassignButton();
+        }).catch(function(error) {
+            $btn.prop('disabled', false);
+            $btn.html(originalHtml);
+            showMessage('Error fetching car details: ' + (error.message || error), 'danger');
+            $('#carDetails').hide();
+            selectedCar = null;
+            updateReassignButton();
         });
     });
 
@@ -555,49 +547,41 @@ function initializeCarManagement() {
         $btn.prop('disabled', true);
         $btn.html('<i class="fas fa-spinner fa-spin"></i>');
 
-        $.ajax({
-            url: '/app/admin/includes/process-user-details.php',
-            type: 'POST',
-            data: {
-                user_id: userId,
-                csrf: $('.reassign-form input[name="csrf"]').val()
-            },
-            dataType: 'json',
-            success: function(response) {
-                $btn.prop('disabled', false);
-                $btn.html(originalHtml);
+        new ElanRegistryAPI().post((window.elanUrlRoot || '/') + 'app/admin/includes/process-user-details.php', {
+            user_id: userId
+        }).then(function(response) {
+            $btn.prop('disabled', false);
+            $btn.html(originalHtml);
 
-                if (!response.success) {
-                    showMessage('Error: ' + response.message, 'danger');
-                    $('#userDetails').hide();
-                    selectedUser = null;
-                    updateReassignButton();
-                    return;
-                }
-
-                selectedUser = response.user;
-                const user = response.user;
-                const userName = user.fname && user.lname ? `${user.fname} ${user.lname}` : 'Unknown Name';
-                const location = user.city && user.state ? `${user.city}, ${user.state} ${user.country}` : 'Unknown Location';
-                const joinDate = new Date(user.join_date).toLocaleDateString();
-
-                $('#userInfo').html(
-                    `<strong>${userName}</strong><br>` +
-                    `Email: ${user.email}<br>` +
-                    `Location: ${location}<br>` +
-                    `Member since: ${joinDate}`
-                );
-                $('#userDetails').show();
-                updateReassignButton();
-            },
-            error: function(xhr, status, error) {
-                $btn.prop('disabled', false);
-                $btn.html(originalHtml);
-                showMessage('Error fetching user details: ' + error, 'danger');
+            if (!response.success) {
+                showMessage('Error: ' + response.message, 'danger');
                 $('#userDetails').hide();
                 selectedUser = null;
                 updateReassignButton();
+                return;
             }
+
+            selectedUser = response.user;
+            const user = response.user;
+            const userName = user.fname && user.lname ? `${user.fname} ${user.lname}` : 'Unknown Name';
+            const location = user.city && user.state ? `${user.city}, ${user.state} ${user.country}` : 'Unknown Location';
+            const joinDate = new Date(user.join_date).toLocaleDateString();
+
+            $('#userInfo').html(
+                `<strong>${userName}</strong><br>` +
+                `Email: ${user.email}<br>` +
+                `Location: ${location}<br>` +
+                `Member since: ${joinDate}`
+            );
+            $('#userDetails').show();
+            updateReassignButton();
+        }).catch(function(error) {
+            $btn.prop('disabled', false);
+            $btn.html(originalHtml);
+            showMessage('Error fetching user details: ' + (error.message || error), 'danger');
+            $('#userDetails').hide();
+            selectedUser = null;
+            updateReassignButton();
         });
     });
 
@@ -614,46 +598,38 @@ function initializeCarManagement() {
         $btn.prop('disabled', true);
         $btn.html('<i class="fas fa-spinner fa-spin"></i>');
 
-        $.ajax({
-            url: '/app/admin/includes/process-car-details.php',
-            type: 'POST',
-            data: {
-                car_id: carId,
-                csrf: $('.delete-form input[name="csrf"]').val()
-            },
-            dataType: 'json',
-            success: function(response) {
-                $btn.prop('disabled', false);
-                $btn.html(originalHtml);
+        new ElanRegistryAPI().post((window.elanUrlRoot || '/') + 'app/admin/includes/process-car-details.php', {
+            car_id: carId
+        }).then(function(response) {
+            $btn.prop('disabled', false);
+            $btn.html(originalHtml);
 
-                if (!response.success) {
-                    showMessage('Error: ' + response.message, 'danger');
-                    $('#deleteCarDetails').hide();
-                    selectedDeleteCar = null;
-                    updateDeleteButton();
-                    return;
-                }
-
-                selectedDeleteCar = response.car;
-                const car = response.car;
-                const ownerName = car.fname && car.lname ? `${car.fname} ${car.lname}` : 'Unknown Owner';
-
-                $('#deleteCarInfo').html(
-                    `<strong>${car.year || 'Unknown'} ${car.type || 'Unknown'}</strong><br>` +
-                    `Chassis: ${car.chassis || 'Unknown'} | Color: ${car.color || 'Unknown'} | Series: ${car.series || 'Unknown'}`
-                );
-                $('#deleteCurrentOwner').text(`${ownerName} (${car.email || 'No email'})`);
-                $('#deleteCarDetails').show();
-                updateDeleteButton();
-            },
-            error: function(xhr, status, error) {
-                $btn.prop('disabled', false);
-                $btn.html(originalHtml);
-                showMessage('Error fetching car details: ' + error, 'danger');
+            if (!response.success) {
+                showMessage('Error: ' + response.message, 'danger');
                 $('#deleteCarDetails').hide();
                 selectedDeleteCar = null;
                 updateDeleteButton();
+                return;
             }
+
+            selectedDeleteCar = response.car;
+            const car = response.car;
+            const ownerName = car.fname && car.lname ? `${car.fname} ${car.lname}` : 'Unknown Owner';
+
+            $('#deleteCarInfo').html(
+                `<strong>${car.year || 'Unknown'} ${car.type || 'Unknown'}</strong><br>` +
+                `Chassis: ${car.chassis || 'Unknown'} | Color: ${car.color || 'Unknown'} | Series: ${car.series || 'Unknown'}`
+            );
+            $('#deleteCurrentOwner').text(`${ownerName} (${car.email || 'No email'})`);
+            $('#deleteCarDetails').show();
+            updateDeleteButton();
+        }).catch(function(error) {
+            $btn.prop('disabled', false);
+            $btn.html(originalHtml);
+            showMessage('Error fetching car details: ' + (error.message || error), 'danger');
+            $('#deleteCarDetails').hide();
+            selectedDeleteCar = null;
+            updateDeleteButton();
         });
     });
 
@@ -1321,42 +1297,32 @@ function initializeCarManagement() {
             $btn.html('<i class="fas fa-spinner fa-spin"></i> Processing...');
 
             // Determine endpoint based on action
+            const urlRoot = window.elanUrlRoot || '/';
             const endpoint = transferDecisionData.action === 'approve'
-                ? 'includes/process-transfer-approve.php'
-                : 'includes/process-transfer-deny.php';
-
-            // Get CSRF token from existing form
-            const csrfToken = $('.reassign-form input[name="csrf"]').val() || $('input[name="csrf"]').first().val() || '';
+                ? urlRoot + 'app/admin/includes/process-transfer-approve.php'
+                : urlRoot + 'app/admin/includes/process-transfer-deny.php';
 
             // Make AJAX request
-            $.ajax({
-                url: endpoint,
-                type: 'POST',
-                dataType: 'json',
-                data: {
-                    transfer_id: transferDecisionData.transferId,
-                    csrf: csrfToken
-                },
-                success: function(response) {
-                    $('#transferDecisionModal').modal('hide');
-                    if (response.success) {
-                        showNotification(response.message, 'success');
-                        // Reload page after brief delay to show notification
-                        setTimeout(() => window.location.reload(), 1500);
-                    } else {
-                        showNotification('Error: ' + response.message, 'danger');
-                        $btn.prop('disabled', false).html(originalHtml);
-                    }
-                },
-                error: function(xhr, status, error) {
-                    $('#transferDecisionModal').modal('hide');
-                    let errorMessage = 'An error occurred while processing the transfer request.';
-                    if (xhr.responseJSON && xhr.responseJSON.message) {
-                        errorMessage = xhr.responseJSON.message;
-                    }
-                    showNotification('Error: ' + errorMessage, 'danger');
+            new ElanRegistryAPI().post(endpoint, {
+                transfer_id: transferDecisionData.transferId
+            }).then(function(response) {
+                $('#transferDecisionModal').modal('hide');
+                if (response.success) {
+                    showNotification(response.message, 'success');
+                    // Reload page after brief delay to show notification
+                    setTimeout(() => window.location.reload(), 1500);
+                } else {
+                    showNotification('Error: ' + response.message, 'danger');
                     $btn.prop('disabled', false).html(originalHtml);
                 }
+            }).catch(function(error) {
+                $('#transferDecisionModal').modal('hide');
+                let errorMessage = 'An error occurred while processing the transfer request.';
+                if (error.message) {
+                    errorMessage = error.message;
+                }
+                showNotification('Error: ' + errorMessage, 'danger');
+                $btn.prop('disabled', false).html(originalHtml);
             });
         }
     });

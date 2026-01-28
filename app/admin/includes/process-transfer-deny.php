@@ -19,14 +19,14 @@ require_once '../../../users/init.php';
 // Security check - admin permission required
 if (!$user->isLoggedIn() || !isRegistryAdmin($user->data()->id)) {
     ApiResponse::forbidden('Unauthorized access')
-        ->withLogging(0, 'SecurityError', 'Unauthorized transfer denial attempt')
+        ->withLogging(0, LogCategories::LOG_CATEGORY_ACCESS_DENIED, 'Unauthorized transfer denial attempt')
         ->send();
 }
 
 // CSRF protection
 if (!isset($_POST['csrf']) || !Token::check($_POST['csrf'])) {
     ApiResponse::error('Invalid CSRF token', 400)
-        ->withLogging($user->data()->id, 'SecurityError', 'Invalid CSRF token in transfer denial')
+        ->withLogging($user->data()->id, LogCategories::LOG_CATEGORY_SECURITY, 'Invalid CSRF token in transfer denial')
         ->send();
 }
 
@@ -48,7 +48,7 @@ try {
 
     if ($transferQuery->count() === 0) {
         ApiResponse::notFound('Transfer request not found or already processed')
-            ->withLogging($user->data()->id, 'CarTransferError', "Transfer denial failed: request #{$transferId} not found or not pending")
+            ->withLogging($user->data()->id, LogCategories::LOG_CATEGORY_CAR_TRANSFER_ERROR, "Transfer denial failed: request #{$transferId} not found or not pending")
             ->send();
     }
 
@@ -84,7 +84,7 @@ try {
     } catch (Exception $emailEx) {
         logger(
             $user->data()->id,
-            'EmailError',
+            LogCategories::LOG_CATEGORY_EMAIL_ERROR,
             "Email error during transfer denial for request #$transferId: " . $emailEx->getMessage()
         );
     }
@@ -94,7 +94,7 @@ try {
         ->withData('transfer_id', $transferId)
         ->withLogging(
             $user->data()->id,
-            'CarTransfer',
+            LogCategories::LOG_CATEGORY_CAR_TRANSFER,
             "Transfer denial processed by admin for request #{$transferId}"
         )
         ->send();
@@ -112,7 +112,7 @@ try {
     ApiResponse::serverError('An unexpected error occurred while processing the transfer.')
         ->withLogging(
             $user->data()->id,
-            'SystemError',
+            LogCategories::LOG_CATEGORY_SYSTEM_ERROR,
             "Transfer denial system error for request #{$transferId}: " . $e->getMessage()
         )
         ->send();

@@ -1,0 +1,160 @@
+<?php
+
+declare(strict_types=1);
+
+use PHPUnit\Framework\TestCase;
+
+/**
+ * Test that car-related PHP endpoints use LogCategories constants
+ * instead of hardcoded string literals in withLogging() and logger() calls.
+ *
+ * @group system
+ * @group logging
+ */
+class LogCategoriesUsageTest extends TestCase
+{
+    /**
+     * Car-related PHP files that should use LogCategories constants
+     * for all logging category parameters.
+     */
+    private const CAR_ENDPOINT_FILES = [
+        'app/cars/actions/check-chassis.php',
+        'app/cars/actions/edit.php',
+        'app/cars/actions/history.php',
+        'app/cars/actions/validateChassis.php',
+        'app/admin/includes/process-transfer-approve.php',
+        'app/admin/includes/process-transfer-deny.php',
+        'app/admin/includes/process-car-details.php',
+    ];
+
+    private string $rootDir;
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+        $this->rootDir = dirname(__DIR__, 3);
+    }
+
+    /**
+     * @dataProvider carEndpointFilesProvider
+     */
+    public function testNoHardcodedWithLoggingStrings(string $relativePath): void
+    {
+        $filePath = $this->rootDir . '/' . $relativePath;
+        if (!file_exists($filePath)) {
+            $this->markTestSkipped("File not found: $relativePath");
+        }
+
+        $content = file_get_contents($filePath);
+
+        // Match withLogging calls that use string literals for the category parameter
+        // Pattern: ->withLogging(anything, 'SomeString', anything)
+        // The category is the second argument after the user ID
+        $pattern = '/->withLogging\s*\([^,]+,\s*[\'"][A-Za-z]+[\'"]/';
+
+        $matches = [];
+        preg_match_all($pattern, $content, $matches);
+
+        $this->assertEmpty(
+            $matches[0],
+            sprintf(
+                "File %s contains hardcoded string literals in withLogging() calls. " .
+                "Use LogCategories constants instead.\nFound: %s",
+                $relativePath,
+                implode(', ', $matches[0])
+            )
+        );
+    }
+
+    /**
+     * @dataProvider carEndpointFilesProvider
+     */
+    public function testNoHardcodedLoggerStrings(string $relativePath): void
+    {
+        $filePath = $this->rootDir . '/' . $relativePath;
+        if (!file_exists($filePath)) {
+            $this->markTestSkipped("File not found: $relativePath");
+        }
+
+        $content = file_get_contents($filePath);
+
+        // Match logger() calls that use string literals for the category parameter
+        // Pattern: logger(anything, 'SomeString', anything)
+        $pattern = '/\blogger\s*\([^,]+,\s*[\'"][A-Za-z]+[\'"]/';
+
+        $matches = [];
+        preg_match_all($pattern, $content, $matches);
+
+        $this->assertEmpty(
+            $matches[0],
+            sprintf(
+                "File %s contains hardcoded string literals in logger() calls. " .
+                "Use LogCategories constants instead.\nFound: %s",
+                $relativePath,
+                implode(', ', $matches[0])
+            )
+        );
+    }
+
+    /**
+     * Test that check-chassis.php uses ApiResponse pattern
+     */
+    public function testCheckChassisUsesApiResponse(): void
+    {
+        $filePath = $this->rootDir . '/app/cars/actions/check-chassis.php';
+        if (!file_exists($filePath)) {
+            $this->markTestSkipped('check-chassis.php not found');
+        }
+
+        $content = file_get_contents($filePath);
+
+        $this->assertStringContainsString('ApiResponse::', $content, 'check-chassis.php should use ApiResponse');
+        $this->assertStringNotContainsString("echo 'taken'", $content, 'check-chassis.php should not echo plain text');
+        $this->assertStringNotContainsString("echo 'not_taken'", $content, 'check-chassis.php should not echo plain text');
+    }
+
+    /**
+     * Test that car-related JS files use ElanRegistryAPI instead of $.ajax
+     */
+    public function testEditPhpJsUsesElanRegistryAPI(): void
+    {
+        $filePath = $this->rootDir . '/app/cars/edit.php';
+        if (!file_exists($filePath)) {
+            $this->markTestSkipped('edit.php not found');
+        }
+
+        $content = file_get_contents($filePath);
+
+        // Should not contain $.ajax for car-related AJAX calls
+        $this->assertStringNotContainsString('$.ajax', $content, 'edit.php should use ElanRegistryAPI instead of $.ajax');
+        $this->assertStringContainsString('new ElanRegistryAPI()', $content, 'edit.php should use new ElanRegistryAPI()');
+    }
+
+    /**
+     * Test that manage-consolidated.js uses ElanRegistryAPI instead of $.ajax
+     */
+    public function testManageConsolidatedJsUsesElanRegistryAPI(): void
+    {
+        $filePath = $this->rootDir . '/app/admin/assets/manage-consolidated.js';
+        if (!file_exists($filePath)) {
+            $this->markTestSkipped('manage-consolidated.js not found');
+        }
+
+        $content = file_get_contents($filePath);
+
+        $this->assertStringNotContainsString('$.ajax', $content, 'manage-consolidated.js should use ElanRegistryAPI instead of $.ajax');
+        $this->assertStringContainsString('new ElanRegistryAPI()', $content, 'manage-consolidated.js should use new ElanRegistryAPI()');
+    }
+
+    /**
+     * Data provider for car endpoint files
+     */
+    public static function carEndpointFilesProvider(): array
+    {
+        $data = [];
+        foreach (self::CAR_ENDPOINT_FILES as $file) {
+            $data[$file] = [$file];
+        }
+        return $data;
+    }
+}
