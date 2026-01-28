@@ -413,6 +413,14 @@ if (!class_exists('Car')) {
         private static function initializeTestData(): void {
             // Create some test cars for user ID 1 (commonly used in tests)
             for ($i = 1; $i <= 5; $i++) {
+                // Car ID 1 has an image for carousel tests
+                $imageData = null;
+                if ($i === 1) {
+                    $imageData = json_encode([
+                        ['path' => '/userimages/cars/test-car-1.jpg', 'basename' => 'test-car-1.jpg']
+                    ]);
+                }
+
                 $car = (object)[
                     'id' => $i,
                     'user_id' => 1,
@@ -424,7 +432,7 @@ if (!class_exists('Car')) {
                     'chassis' => 'TEST' . str_pad((string)$i, 5, '0', STR_PAD_LEFT),
                     'color' => 'Red',
                     'engine' => 'ENG' . str_pad((string)$i, 3, '0', STR_PAD_LEFT),
-                    'image' => null,
+                    'image' => $imageData,
                     'verification_code' => null,
                     'last_verified' => null,
                     'solddate' => null,
@@ -1038,6 +1046,38 @@ if (!function_exists('getSettings')) {
             'elan_datatables_js_cdn' => 'https://cdn.datatables.net/1.10.23/js/jquery.dataTables.min.js',
             'elan_datatables_css_cdn' => 'https://cdn.datatables.net/1.10.23/css/jquery.dataTables.min.css'
         ];
+    }
+}
+
+// Mock getBaseUrl function - needed by EmailTemplate
+if (!function_exists('getBaseUrl')) {
+    /**
+     * Mock getBaseUrl function for testing
+     * Returns a test base URL
+     */
+    function getBaseUrl(): string
+    {
+        return 'https://test.elanregistry.org';
+    }
+}
+
+// Mock isRegistryAdmin function - needed by DocumentConfig::hasAccess()
+if (!function_exists('isRegistryAdmin')) {
+    /**
+     * Mock isRegistryAdmin function for testing
+     * Uses global $mockIsRegistryAdmin to control behavior
+     */
+    function isRegistryAdmin(int $userId): bool
+    {
+        global $mockIsRegistryAdmin;
+
+        // If explicitly set in test, use that value
+        if (isset($mockIsRegistryAdmin)) {
+            return (bool) $mockIsRegistryAdmin;
+        }
+
+        // Default: user ID 1 is admin
+        return $userId === 1;
     }
 }
 
