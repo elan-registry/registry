@@ -505,11 +505,22 @@ class Car
 
             // Create audit trail entry before deletion
             $historyFields = [
+                'operation' => 'DELETE',
                 'car_id' => $carId,
                 'comments' => "Car ID $carId ($chassis) permanently deleted by admin " . $user->data()->id . ". Reason: $reason",
-                'operation' => 'DELETE',
-                'ctime' => date('Y-m-d G:i:s'),
-                'mtime' => date('Y-m-d G:i:s')
+                'ctime' => $this->_data->ctime ?? date('Y-m-d G:i:s'),
+                'mtime' => date('Y-m-d G:i:s'),
+                'model' => $this->_data->model ?? '',
+                'series' => $this->_data->series ?? '',
+                'variant' => $this->_data->variant ?? '',
+                'year' => $this->_data->year ?? '',
+                'type' => $this->_data->type ?? '',
+                'chassis' => $this->_data->chassis ?? '',
+                'color' => $this->_data->color ?? '',
+                'engine' => $this->_data->engine ?? '',
+                'purchasedate' => $this->_data->purchasedate ?? null,
+                'solddate' => $this->_data->solddate ?? null,
+                'image' => $this->_data->image ?? ''
             ];
             
             $historyInserted = $this->_db->insert('cars_hist', $historyFields);
@@ -774,11 +785,22 @@ class Car
 
             // Create audit trail entry for the merge operation
             $historyFields = [
+                'operation' => 'MERGE',
                 'car_id' => $newCarId,
                 'comments' => "Car $oldChassis (ID: $oldCarId) was merged into car $newChassis (ID: $newCarId) by admin " . $user->data()->id . ". Reason: $reason",
-                'operation' => 'MERGE',
-                'ctime' => date('Y-m-d G:i:s'),
-                'mtime' => date('Y-m-d G:i:s')
+                'ctime' => $this->_data->ctime ?? date('Y-m-d G:i:s'),
+                'mtime' => date('Y-m-d G:i:s'),
+                'model' => $this->_data->model ?? '',
+                'series' => $this->_data->series ?? '',
+                'variant' => $this->_data->variant ?? '',
+                'year' => $this->_data->year ?? '',
+                'type' => $this->_data->type ?? '',
+                'chassis' => $this->_data->chassis ?? '',
+                'color' => $this->_data->color ?? '',
+                'engine' => $this->_data->engine ?? '',
+                'purchasedate' => $this->_data->purchasedate ?? null,
+                'solddate' => $this->_data->solddate ?? null,
+                'image' => $this->_data->image ?? ''
             ];
             
             $historyInserted = $this->_db->insert('cars_hist', $historyFields);
