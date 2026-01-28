@@ -17,7 +17,6 @@ class ElanRegistryOwner
 {
     private $_db;
     private $_data;
-    private $_profileData;
     private $userTableName = 'users';
     private $profileTableName = 'profiles';
 

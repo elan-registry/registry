@@ -12,7 +12,6 @@ declare(strict_types=1);
 class EnhancedSchemaManager {
     private $db;
     private $logger;
-    private $settings;
 
     // Existing settings auto-creation (preserved and enhanced)
     private $settingsFields = [
@@ -90,7 +89,6 @@ class EnhancedSchemaManager {
     // @codingStandardsIgnoreLine - Constructors cannot have return type declarations
     public function __construct($database, $userSettings, ?int $userId = null) {
         $this->db = $database;
-        $this->settings = $userSettings;
         $this->logger = function($level, $category, $message) use ($userId) {
             if (function_exists('logger')) {
                 logger($userId ?? 0, $category, $message);
