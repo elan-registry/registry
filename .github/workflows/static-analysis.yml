@@ -1,0 +1,92 @@
+name: Static Analysis
+
+on:
+  pull_request:
+    types: [opened, synchronize]
+    paths:
+      - "**.php"
+      - "phpstan.neon"
+      - "composer.json"
+      - "composer.lock"
+  push:
+    branches: [main]
+    paths:
+      - "**.php"
+      - "phpstan.neon"
+  workflow_dispatch:
+
+jobs:
+  phpstan:
+    name: PHPStan Analysis
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: "8.2"
+          extensions: mbstring, xml, ctype, iconv, intl, pdo_mysql
+          coverage: none
+          tools: composer:v2
+
+      - name: Get composer cache directory
+        id: composer-cache
+        run: echo "dir=$(composer config cache-files-dir)" >> $GITHUB_OUTPUT
+
+      - name: Cache composer dependencies
+        uses: actions/cache@v4
+        with:
+          path: ${{ steps.composer-cache.outputs.dir }}
+          key: ${{ runner.os }}-composer-${{ hashFiles('**/composer.lock') }}
+          restore-keys: ${{ runner.os }}-composer-
+
+      - name: Install dependencies
+        run: composer install --no-progress --prefer-dist --optimize-autoloader
+
+      - name: Run PHPStan
+        run: vendor/bin/phpstan analyse --error-format=github --no-progress
+
+  coding-standards:
+    name: PHP Coding Standards Check
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: "8.2"
+          coverage: none
+
+      # Note: Running without --strict because the existing codebase has
+      # acceptable warnings. Strict mode is used in pre-commit hooks for
+      # developers actively working on files.
+      - name: Run coding standards checker
+        run: php scripts/check-coding-standards.php app usersc/classes
+
+  eslint:
+    name: JavaScript Lint Check
+    runs-on: ubuntu-latest
+    # ESLint is advisory - don't block PRs on JS lint issues
+    continue-on-error: true
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run ESLint
+        run: npm run lint

@@ -1,3 +1,6 @@
+includes:
+    - phpstan-baseline.neon
+
 # PHPStan Configuration for Elan Registry
 # Static analysis tool to catch type errors and bugs before runtime
 #
@@ -13,11 +16,10 @@ parameters:
     # Level 5 is a good balance between strictness and practicality
     level: 5
 
-    # Paths to analyze
+    # Paths to analyze - limited to class files to avoid UserSpice globals in page files
     paths:
-        - app
         - usersc/classes
-        - app/admin/includes/classes
+        - app/classes
 
     # Paths to exclude
     excludePaths:
@@ -46,6 +48,13 @@ parameters:
 
         # Allow UserSpice legacy code patterns
         - '#Unsafe usage of new static\\(\\)#'
+
+        # UserSpice classes/functions loaded at runtime via init.php
+        - '#unknown class (DB|Token|Input|User|Redirect)#'
+        - '#Function \w+ not found#'
+
+        # Database query results return mixed object types
+        - '#Cannot access property .+ on array\|object#'
 
     # Don't report unmatched ignored errors
     reportUnmatchedIgnoredErrors: false

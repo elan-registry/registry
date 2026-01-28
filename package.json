@@ -30,7 +30,9 @@
     "test:e2e:test:ui": "playwright test --config=playwright.config.test.js --ui",
     "test:e2e:test:not-logged-in": "playwright test --config=playwright.config.test.js --project=not-logged-in",
     "test:e2e:test:logged-in": "playwright test --config=playwright.config.test.js --project=logged-in",
-    "test:e2e:test:report": "playwright show-report playwright-report-e2e-test"
+    "test:e2e:test:report": "playwright show-report playwright-report-e2e-test",
+    "lint": "eslint 'app/**/*.js'",
+    "lint:fix": "eslint 'app/**/*.js' --fix"
   },
   "repository": {
     "type": "git",
@@ -45,6 +47,7 @@
   },
   "homepage": "https://github.com/unibrain1/elanregistry#readme",
   "devDependencies": {
-    "@playwright/test": "^1.56.1"
+    "@playwright/test": "^1.56.1",
+    "eslint": "^9.0.0"
   }
 }
