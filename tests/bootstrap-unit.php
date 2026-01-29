@@ -994,6 +994,58 @@ if (!class_exists('DB')) {
         }
     }
 
+// Load type helper functions (dbInt, dbIntOrNull, currentUserId)
+// Defined here directly since custom_functions.php requires server_globals.php
+// which depends on the Server class and full framework initialization
+if (!function_exists('dbInt')) {
+    function dbInt(mixed $value, string $property = 'id'): int
+    {
+        if (is_object($value)) {
+            if (!isset($value->$property)) {
+                throw new InvalidArgumentException("Property '$property' does not exist on object");
+            }
+            $value = $value->$property;
+        }
+        if ($value === null || $value === '') {
+            throw new InvalidArgumentException("Cannot convert empty value to int (property: $property)");
+        }
+        if (!is_numeric($value)) {
+            throw new InvalidArgumentException("Cannot convert non-numeric value to int (property: $property): $value");
+        }
+        return (int) $value;
+    }
+}
+
+if (!function_exists('dbIntOrNull')) {
+    function dbIntOrNull(mixed $value, string $property = 'id'): ?int
+    {
+        if (is_object($value)) {
+            if (!isset($value->$property)) {
+                return null;
+            }
+            $value = $value->$property;
+        }
+        if ($value === null || $value === '') {
+            return null;
+        }
+        if (!is_numeric($value)) {
+            throw new InvalidArgumentException("Cannot convert non-numeric value to int (property: $property): $value");
+        }
+        return (int) $value;
+    }
+}
+
+if (!function_exists('currentUserId')) {
+    function currentUserId(): int
+    {
+        global $user;
+        if (!isset($user) || !$user->isLoggedIn()) {
+            throw new RuntimeException('No user is currently logged in');
+        }
+        return (int) $user->data()->id;
+    }
+}
+
 // Load unified autoloader for all custom classes and exceptions
 // This must come AFTER mock classes are defined so the mocks take precedence
 require_once $projectRoot . '/usersc/classes/class.autoloader.php';

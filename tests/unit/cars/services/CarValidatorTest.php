@@ -140,11 +140,158 @@ final class CarValidatorTest extends TestCase
         $this->validator->validateAndSanitizeFields($fields, true);
     }
 
+    public function testValidateAndSanitizeFieldsRequiresModelWhenRequireAll(): void
+    {
+        $this->expectException(CarValidationException::class);
+        $this->expectExceptionMessage('Model is required');
+
+        $fields = ['model' => ''];
+        $this->validator->validateAndSanitizeFields($fields, true);
+    }
+
+    public function testValidateAndSanitizeFieldsRequiresYearWhenRequireAll(): void
+    {
+        $this->expectException(CarValidationException::class);
+        $this->expectExceptionMessage('Year is required');
+
+        $fields = ['year' => ''];
+        $this->validator->validateAndSanitizeFields($fields, true);
+    }
+
+    public function testValidateAndSanitizeFieldsRejectsInvalidWebsiteUrl(): void
+    {
+        $this->expectException(CarValidationException::class);
+        $this->expectExceptionMessage('Invalid website URL format');
+
+        $fields = ['website' => 'not-a-url'];
+        $this->validator->validateAndSanitizeFields($fields, false);
+    }
+
+    public function testValidateAndSanitizeFieldsAcceptsValidWebsiteUrl(): void
+    {
+        $fields = ['website' => 'https://example.com'];
+        $result = $this->validator->validateAndSanitizeFields($fields, false);
+        $this->assertEquals('https://example.com', $result['website']);
+    }
+
+    public function testValidateAndSanitizeFieldsRejectsInvalidUserId(): void
+    {
+        $this->expectException(CarValidationException::class);
+        $this->expectExceptionMessage('Invalid user ID');
+
+        $fields = ['user_id' => 'abc'];
+        $this->validator->validateAndSanitizeFields($fields, false);
+    }
+
+    public function testValidateAndSanitizeFieldsRejectsNegativeUserId(): void
+    {
+        $this->expectException(CarValidationException::class);
+        $this->expectExceptionMessage('Invalid user ID');
+
+        $fields = ['user_id' => '-5'];
+        $this->validator->validateAndSanitizeFields($fields, false);
+    }
+
+    public function testValidateAndSanitizeFieldsAcceptsValidUserId(): void
+    {
+        $fields = ['user_id' => '42'];
+        $result = $this->validator->validateAndSanitizeFields($fields, false);
+        $this->assertSame(42, $result['user_id']);
+    }
+
     public function testValidateAndSanitizeFieldsPassesThroughUnknownFields(): void
     {
         $fields = ['custom_field' => 'value'];
         $result = $this->validator->validateAndSanitizeFields($fields, false);
         $this->assertEquals('value', $result['custom_field']);
+    }
+
+    // ============================================================
+    // Full positive case: valid inputs return sanitized array
+    // ============================================================
+
+    public function testValidateAndSanitizeFieldsReturnsFullSanitizedArray(): void
+    {
+        $fields = [
+            'chassis' => 'ABC123',
+            'model' => 'Elan S4',
+            'year' => '1970',
+            'email' => 'owner@example.com',
+            'website' => 'https://example.com',
+            'purchasedate' => '2020-06-15',
+            'user_id' => '7',
+            'lat' => '51.5',
+            'lon' => '-0.1',
+            'city' => 'London',
+            'color' => 'Red',
+            'comments' => 'Well maintained',
+        ];
+
+        $result = $this->validator->validateAndSanitizeFields($fields, true);
+
+        $this->assertEquals('ABC123', $result['chassis']);
+        $this->assertEquals('Elan S4', $result['model']);
+        $this->assertSame(1970, $result['year']);
+        $this->assertEquals('owner@example.com', $result['email']);
+        $this->assertEquals('https://example.com', $result['website']);
+        $this->assertEquals('2020-06-15', $result['purchasedate']);
+        $this->assertSame(7, $result['user_id']);
+        $this->assertSame(51.5, $result['lat']);
+        $this->assertSame(-0.1, $result['lon']);
+        $this->assertEquals('London', $result['city']);
+        $this->assertEquals('Red', $result['color']);
+        $this->assertEquals('Well maintained', $result['comments']);
+    }
+
+    // ============================================================
+    // Exception type verification: all throws are CarValidationException
+    // ============================================================
+
+    /**
+     * Verify every validation error path throws CarValidationException
+     * (extends ElanRegistryException), never generic Exception.
+     *
+     * @param array<string, mixed> $fields
+     * @dataProvider invalidFieldsProvider
+     */
+    public function testAllValidationErrorsThrowCarValidationException(array $fields, bool $requireAll): void
+    {
+        try {
+            $this->validator->validateAndSanitizeFields($fields, $requireAll);
+            $this->fail('Expected CarValidationException was not thrown');
+        } catch (\Exception $e) {
+            $this->assertInstanceOf(
+                CarValidationException::class,
+                $e,
+                'Validation error must throw CarValidationException, got ' . get_class($e)
+            );
+            $this->assertInstanceOf(
+                ElanRegistryException::class,
+                $e,
+                'CarValidationException must extend ElanRegistryException'
+            );
+        }
+    }
+
+    /**
+     * @return array<string, array{0: array<string, mixed>, 1: bool}>
+     */
+    public static function invalidFieldsProvider(): array
+    {
+        return [
+            'chassis required' => [['chassis' => ''], true],
+            'chassis too short' => [['chassis' => 'AB'], false],
+            'model required' => [['model' => ''], true],
+            'year required' => [['year' => ''], true],
+            'year too high' => [['year' => '2024'], false],
+            'year too low' => [['year' => '1900'], false],
+            'invalid email' => [['email' => 'bad'], false],
+            'invalid website' => [['website' => 'bad'], false],
+            'invalid date' => [['purchasedate' => '15/01/2023'], false],
+            'invalid coordinate' => [['lat' => '999'], false],
+            'invalid user_id' => [['user_id' => 'abc'], false],
+            'negative user_id' => [['user_id' => '-1'], false],
+        ];
     }
 
     // ============================================================

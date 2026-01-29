@@ -20,6 +20,76 @@ This causes `TypeError` when passing database values to strict-typed function pa
 
 - `EnhancedSchemaManager::__construct(?int $userId)` - Fixed with explicit cast
 - `BackupManager::__construct(?int $userId)` - Fixed with explicit cast
+- Type helper functions (`dbInt()`, `dbIntOrNull()`, `currentUserId()`) added to custom_functions.php
+
+## Type Helper Functions (v2.14.0+)
+
+Three helper functions in `usersc/includes/custom_functions.php` provide safe PDO string-to-int conversion:
+
+**`dbInt(mixed $value, string $property = 'id'): int`**
+
+Extracts an integer value from a database object or scalar. Throws `InvalidArgumentException` if the value cannot be converted to a non-zero integer.
+
+```php
+// Extract int from database result object
+$userId = dbInt($carData, 'user_id');
+$carId = dbInt($row, 'id');
+
+// Error cases - throws InvalidArgumentException
+dbInt($row, 'null_field');      // null value
+dbInt($row, 'zero_field');      // zero value
+dbInt($row, 'invalid_field');   // non-numeric string
+```
+
+**`dbIntOrNull(mixed $value, string $property = 'id'): ?int`**
+
+Same as `dbInt()` but returns null for empty/null values instead of throwing an exception. Throws `InvalidArgumentException` only on non-numeric, non-null values.
+
+```php
+// Nullable variant - returns null for empty/null
+$optionalId = dbIntOrNull($row, 'optional_id');
+$managerId = dbIntOrNull($carData, 'manager_id');
+
+// Returns null for null/empty
+dbIntOrNull($row, 'null_field');     // Returns null
+dbIntOrNull($row, 'zero_field');     // Returns null
+
+// Error case - throws InvalidArgumentException
+dbIntOrNull($row, 'invalid_field');  // non-numeric string
+```
+
+**`currentUserId(): int`**
+
+Shorthand for `(int) $user->data()->id` with built-in login check. Throws `RuntimeException` if no user is logged in.
+
+```php
+// Current user ID shorthand
+$adminId = currentUserId();
+$loggedInUser = currentUserId();
+
+// Error case - throws RuntimeException
+currentUserId();  // When not logged in
+```
+
+**Usage Examples:**
+
+Before:
+
+```php
+$userId = getUserWithProfile($carData->user_id);
+$carId = (int) $row->id;
+$createdById = (int) $user->data()->id;
+```
+
+After:
+
+```php
+$userId = getUserWithProfile(dbInt($carData, 'user_id'));
+$carId = dbInt($row, 'id');
+$createdById = currentUserId();
+```
+
+These helpers ensure safe type conversion with explicit error handling, replacing scattered `(int)` casts with semantic intent.
 
 ## Systematic Solutions
 
@@ -169,6 +239,7 @@ parameters:
 ## Recommended Implementation Plan
 
 1. **Short-term (Completed):** Add explicit casts where needed ✅
+   - Type helper functions (`dbInt()`, `dbIntOrNull()`, `currentUserId()`) available for object properties
 2. **Medium-term:** Extend DB class with `queryTyped()` method
 3. **Long-term:** Migrate to typed DTOs for critical data
 4. **Ongoing:** Add linting rules to pre-commit hook
