@@ -18,7 +18,7 @@ declare(strict_types=1);
 require_once '../../users/init.php';
 
 // Only allow POST requests
-if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+if ($method !== 'POST') {
     ApiResponse::error('Method not allowed', 405)->send();
 }
 
