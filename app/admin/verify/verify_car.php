@@ -2,7 +2,7 @@
 require_once '../../users/init.php';
 require_once $abs_us_root . $us_url_root . 'users/includes/template/prep.php';
 
-if (!securePage($_SERVER['PHP_SELF'])) {
+if (!securePage($php_self)) {
     die();
 }
 
@@ -30,7 +30,7 @@ if (Input::exists('get') && Input::get('code') && Input::get('action')) {
     // CSRF Protection: Validate token for state-changing operations
     if (!$token || !Token::check($token)) {
         echo "<h2>Security token validation failed</h2><br>";
-        logger(0, LogCategories::LOG_CATEGORY_SECURITY, "CSRF token validation failed for car verification: " . $_SERVER['REQUEST_URI']);
+        logger(0, LogCategories::LOG_CATEGORY_SECURITY, "CSRF token validation failed for car verification: " . $request_uri);
         header('refresh:5;url=' . $base_url . $us_url_root);
         exit;
     }
@@ -39,7 +39,7 @@ if (Input::exists('get') && Input::get('code') && Input::get('action')) {
     $carQ = $db->query('SELECT * FROM cars WHERE vericode = ?', [$code]);
     if ($db->count() != 1) {
         echo "<h2>Verification code not found or invalid</h2><br>";
-        logger(0, LogCategories::LOG_CATEGORY_SECURITY, "Invalid verification code attempted: " . $code . " from IP: " . $_SERVER['REMOTE_ADDR']);
+        logger(0, LogCategories::LOG_CATEGORY_SECURITY, "Invalid verification code attempted: " . $code . " from IP: " . $remote_addr);
         header('refresh:5;url=' . $base_url . $us_url_root);
         exit;
     }
