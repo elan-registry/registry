@@ -15,8 +15,8 @@ const { expect } = require('@playwright/test');
  * @param {boolean} skipRecaptcha - Skip reCAPTCHA handling for testing (default: false)
  */
 async function login(page, username = process.env.TEST_USERNAME || 'test@example.com', password = process.env.TEST_PASSWORD || 'defaultTestPass', skipRecaptcha = false) {
-  // Navigate to login page using baseURL
-  await page.goto('/users/login.php');
+  // Navigate to login page directly (skip /users/login.php 302 redirect)
+  await page.goto('usersc/login.php', { waitUntil: 'networkidle' });
   
   // Wait for login form to load
   await page.waitForSelector('input[name="username"], input[name="email"]', { timeout: 10000 });

@@ -17,8 +17,7 @@ async function loginAndSaveState(page, username, password) {
 
   console.log('Logging in and saving authentication state...');
 
-  await page.goto('/users/login.php');
-  await page.waitForLoadState('networkidle');
+  await page.goto('usersc/login.php', { waitUntil: 'networkidle' });
 
   // Fill in login form - adjust selectors based on actual form
   await page.fill('input[name="username"], input[type="text"]', username);
@@ -45,8 +44,7 @@ async function loginAndSaveState(page, username, password) {
  * Simple login function for tests that don't use session persistence
  */
 async function login(page, username, password) {
-  await page.goto('/users/login.php');
-  await page.waitForLoadState('networkidle');
+  await page.goto('usersc/login.php', { waitUntil: 'networkidle' });
 
   await page.fill('input[name="username"], input[type="text"]', username);
   await page.fill('input[name="password"], input[type="password"]', password);

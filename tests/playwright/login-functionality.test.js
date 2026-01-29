@@ -25,7 +25,7 @@ const INVALID_CREDENTIALS = {
 test.describe('Login Functionality', () => {
   
   test('reCAPTCHA integration verification', async ({ page }) => {
-    await page.goto('/users/login.php');
+    await page.goto('usersc/login.php', { waitUntil: 'networkidle' });
     await page.waitForLoadState('networkidle');
     
     // Check if reCAPTCHA is present
@@ -59,7 +59,7 @@ test.describe('Login Functionality', () => {
   });
 
   test('successful login with valid credentials', async ({ page }) => {
-    await page.goto('/users/login.php');
+    await page.goto('usersc/login.php', { waitUntil: 'networkidle' });
     
     // Check if reCAPTCHA is present
     const recaptchaElement = await page.locator('.g-recaptcha').count();
@@ -99,7 +99,7 @@ test.describe('Login Functionality', () => {
   });
 
   test('failed login with invalid password', async ({ page }) => {
-    await page.goto('/users/login.php');
+    await page.goto('usersc/login.php', { waitUntil: 'networkidle' });
     
     // Fill in credentials with wrong password
     await page.fill('input[name="username"], input[name="email"]', VALID_CREDENTIALS.username);
@@ -125,7 +125,7 @@ test.describe('Login Functionality', () => {
   });
 
   test('failed login with invalid username', async ({ page }) => {
-    await page.goto('/users/login.php');
+    await page.goto('usersc/login.php', { waitUntil: 'networkidle' });
     
     // Fill in credentials with wrong username
     await page.fill('input[name="username"], input[name="email"]', INVALID_CREDENTIALS.wrongUsername);
@@ -147,7 +147,7 @@ test.describe('Login Functionality', () => {
   });
 
   test('form validation with empty fields', async ({ page }) => {
-    await page.goto('/users/login.php');
+    await page.goto('usersc/login.php', { waitUntil: 'networkidle' });
     
     // Try to submit with empty username
     await page.fill('input[name="password"]', VALID_CREDENTIALS.password);
@@ -252,7 +252,7 @@ test.describe('Login Functionality', () => {
   });
 
   test('CSRF token handling', async ({ page }) => {
-    await page.goto('/users/login.php');
+    await page.goto('usersc/login.php', { waitUntil: 'networkidle' });
     
     // Check if CSRF token field exists
     const csrfToken = await page.locator('input[name="csrf_token"], input[name="_token"]').count();
@@ -270,7 +270,7 @@ test.describe('Login Functionality', () => {
   });
 
   test('login form accessibility', async ({ page }) => {
-    await page.goto('/users/login.php');
+    await page.goto('usersc/login.php', { waitUntil: 'networkidle' });
     
     // Check for form labels and accessibility
     const usernameField = page.locator('input[name="username"], input[name="email"]').first();
@@ -327,7 +327,7 @@ test.describe('Login Form Responsiveness', () => {
   for (const viewport of viewports) {
     test(`login form displays correctly on ${viewport.name}`, async ({ page }) => {
       await page.setViewportSize({ width: viewport.width, height: viewport.height });
-      await page.goto('/users/login.php');
+      await page.goto('usersc/login.php', { waitUntil: 'networkidle' });
       
       // Check form elements are visible and properly sized
       const usernameField = page.locator('input[name="username"], input[name="email"]').first();
