@@ -965,7 +965,7 @@ class Car
             
             if ($result->count() > 0) {
                 $carData = $result->first();
-                $car = new Car($carData->id);
+                $car = new Car((int) $carData->id);
                 return $car->exists() ? $car : null;
             } else {
                 return null;
@@ -1001,7 +1001,7 @@ class Car
         $cars = [];
 
         foreach ($carQ as $key => $car) {
-            $cars[$key] = new Car($car->id);
+            $cars[$key] = new Car((int) $car->id);
         }
         
         return $cars;
@@ -1322,7 +1322,7 @@ class Car
                 case 'lat':
                 case 'lon':
                     if (!empty($value)) {
-                        if (!is_numeric($value) || abs($value) > 180) {
+                        if (!is_numeric($value) || abs((float) $value) > 180) {
                             throw new Exception("Invalid {$key} coordinate");
                         }
                         $validatedFields[$key] = (float)$value;

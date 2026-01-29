@@ -58,10 +58,11 @@ $GLOBALS['config'] = array(
         'username'     => getenv('DB_USER'),
         'password'     => getenv('DB_PASS'),
         'db'           => getenv('DB_NAME'),
-        // PDO options for proper type handling (PHP 8.1+ behavior)
-        // Returns integers as int (not string) for strict type compatibility
+        // PDO options: match production driver behavior
+        // Production returns strings from DB; setting true here ensures
+        // type bugs (string passed to int parameter) surface in dev/test
         'options'      => array(
-            PDO::ATTR_STRINGIFY_FETCHES => false,  // Return integers as int, not string
+            PDO::ATTR_STRINGIFY_FETCHES => true,
         ),
     ),
     'remember'        => array(
