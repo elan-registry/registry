@@ -59,9 +59,12 @@ $GLOBALS['config'] = array(
         'password'     => getenv('DB_PASS'),
         'db'           => getenv('DB_NAME'),
         // PDO options: match production driver behavior
-        // Production returns strings from DB; setting true here ensures
-        // type bugs (string passed to int parameter) surface in dev/test
+        // MYSQL_ATTR_INIT_COMMAND disables strict SQL mode (required for
+        // UserSpice INSERT statements that omit columns without defaults)
+        // ATTR_STRINGIFY_FETCHES matches production driver which returns
+        // strings from DB, so type bugs surface in dev/test
         'options'      => array(
+            PDO::MYSQL_ATTR_INIT_COMMAND => "SET SESSION sql_mode = ''",
             PDO::ATTR_STRINGIFY_FETCHES => true,
         ),
     ),
