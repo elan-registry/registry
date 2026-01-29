@@ -175,7 +175,7 @@ final class CarTransferTest extends IntegrationTestCase
         $this->assertTrue($result);
 
         // Verify that car now has target user's profile data
-        $updatedCar = new Car($car->data()->id);
+        $updatedCar = new Car((int) $car->data()->id);
         $this->assertEquals($targetUser->fname ?? '', $updatedCar->data()->fname);
         $this->assertEquals($targetUser->lname ?? '', $updatedCar->data()->lname);
         $this->assertEquals($targetUser->email ?? '', $updatedCar->data()->email);
@@ -198,7 +198,7 @@ final class CarTransferTest extends IntegrationTestCase
             $car->transfer(99999, 'Test transfer', 'NEWOWNER');
         } catch (Exception $e) {
             // After failed transfer, car should still have original owner
-            $carReloaded = new Car($car->data()->id);
+            $carReloaded = new Car((int) $car->data()->id);
             $this->assertEquals($originalUserId, $carReloaded->data()->user_id);
             throw $e;
         }
@@ -267,7 +267,7 @@ final class CarTransferTest extends IntegrationTestCase
 
         // Verify that car now has target user's location data
         $targetUser = getUserWithProfile($this->targetUserId);
-        $updatedCar = new Car($car->data()->id);
+        $updatedCar = new Car((int) $car->data()->id);
 
         $this->assertEquals($targetUser->city ?? '', $updatedCar->data()->city);
         $this->assertEquals($targetUser->state ?? '', $updatedCar->data()->state);
