@@ -464,7 +464,7 @@ class Car
         $this->getAdministrationService()->delete(
             $this->_data,
             $reason,
-            $user->data()->id,
+            (int) $user->data()->id,
             $this->getRepository()
         );
 
@@ -507,7 +507,7 @@ class Car
             $newUserId,
             $reason,
             $operationType,
-            $user->data()->id,
+            (int) $user->data()->id,
             $this->getRepository(),
             function (array $fields) use ($self): bool {
                 return $self->update($fields);
@@ -547,7 +547,7 @@ class Car
             $this->_data,
             $oldCarId,
             $reason,
-            $user->data()->id,
+            (int) $user->data()->id,
             $this->getRepository()
         );
 
