@@ -175,7 +175,7 @@ class Car
         $filteredFields = array_intersect_key($fields, array_flip($validCarFields));
         
         // Extract ID for update method and remove from fields array
-        $carId = $filteredFields['id'];
+        $carId = (int) $filteredFields['id'];
         unset($filteredFields['id']);
         
         // Remove empty fields that might cause issues with UserSpice
@@ -496,7 +496,7 @@ class Car
             throw new CarDeletionException(CarErrorMessages::getMessage('user_auth_required', 'admin', ['operation' => 'car deletion']));
         }
 
-        $carId = $this->_data->id;
+        $carId = (int) $this->_data->id;
         $chassis = $this->_data->chassis ?? 'Unknown';
 
         try {
@@ -592,7 +592,7 @@ class Car
             throw new Exception(CarErrorMessages::getMessage('user_not_found'));
         }
 
-        $carId = $this->_data->id;
+        $carId = (int) $this->_data->id;
         $chassis = $this->_data->chassis ?? 'Unknown';
 
         try {
@@ -1207,7 +1207,7 @@ class Car
     {
         foreach ($requiredFields as $field) {
             if (!isset($fields[$field]) || empty(trim($fields[$field]))) {
-                throw new Exception("Required field '{$field}' is missing or empty");
+                throw new CarValidationException("Required field '{$field}' is missing or empty");
             }
         }
     }
@@ -1230,10 +1230,10 @@ class Car
                     if (!empty($value)) {
                         $validatedFields[$key] = $this->sanitizeString($value, 50);
                         if (strlen($validatedFields[$key]) < 3) {
-                            throw new Exception('Chassis number must be at least 3 characters long');
+                            throw new CarValidationException('Chassis number must be at least 3 characters long');
                         }
                     } elseif ($requireAll) {
-                        throw new Exception('Chassis number is required');
+                        throw new CarValidationException('Chassis number is required');
                     }
                     break;
                     
@@ -1241,18 +1241,18 @@ class Car
                     if (!empty($value)) {
                         $validatedFields[$key] = $this->sanitizeString($value, 100);
                     } elseif ($requireAll) {
-                        throw new Exception('Model is required');
+                        throw new CarValidationException('Model is required');
                     }
                     break;
                     
                 case 'year':
                     if (!empty($value)) {
                         if (!is_numeric($value) || $value < 1963 || $value > 1974) {
-                            throw new Exception('Year must be between 1963 and 1974 (Lotus Elan production years)');
+                            throw new CarValidationException('Year must be between 1963 and 1974 (Lotus Elan production years)');
                         }
                         $validatedFields[$key] = (int)$value;
                     } elseif ($requireAll) {
-                        throw new Exception('Year is required');
+                        throw new CarValidationException('Year is required');
                     }
                     break;
                     
@@ -1277,7 +1277,7 @@ class Car
                     if (!empty($value)) {
                         $date = DateTime::createFromFormat('Y-m-d', $value);
                         if (!$date || $date->format('Y-m-d') !== $value) {
-                            throw new Exception("Invalid date format for {$key}. Use YYYY-MM-DD format");
+                            throw new CarValidationException("Invalid date format for {$key}. Use YYYY-MM-DD format");
                         }
                         $validatedFields[$key] = $value;
                     }
@@ -1286,7 +1286,7 @@ class Car
                 case 'email':
                     if (!empty($value)) {
                         if (!filter_var($value, FILTER_VALIDATE_EMAIL)) {
-                            throw new Exception('Invalid email address format');
+                            throw new CarValidationException('Invalid email address format');
                         }
                         $validatedFields[$key] = filter_var($value, FILTER_SANITIZE_EMAIL);
                     }
@@ -1295,7 +1295,7 @@ class Car
                 case 'website':
                     if (!empty($value)) {
                         if (!filter_var($value, FILTER_VALIDATE_URL)) {
-                            throw new Exception('Invalid website URL format');
+                            throw new CarValidationException('Invalid website URL format');
                         }
                         $validatedFields[$key] = filter_var($value, FILTER_SANITIZE_URL);
                     }
@@ -1304,7 +1304,7 @@ class Car
                 case 'user_id':
                     if (!empty($value)) {
                         if (!is_numeric($value) || $value <= 0) {
-                            throw new Exception('Invalid user ID');
+                            throw new CarValidationException('Invalid user ID');
                         }
                         $validatedFields[$key] = (int)$value;
                     }
@@ -1323,7 +1323,7 @@ class Car
                 case 'lon':
                     if (!empty($value)) {
                         if (!is_numeric($value) || abs((float) $value) > 180) {
-                            throw new Exception("Invalid {$key} coordinate");
+                            throw new CarValidationException("Invalid {$key} coordinate");
                         }
                         $validatedFields[$key] = (float)$value;
                     }

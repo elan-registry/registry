@@ -92,6 +92,13 @@ if (!empty($_POST)) {
                             'CarErrors',
                             'Car add error: ' . $e->getMessage()
                         )->send();
+                } catch (\Exception $e) {
+                    ApiResponse::serverError('Failed to add car: ' . $e->getMessage())
+                        ->withLogging(
+                            $user->data()->id,
+                            'CarErrors',
+                            'Car add unexpected error: ' . $e->getMessage()
+                        )->send();
                 }
                 break;
 
@@ -135,6 +142,13 @@ if (!empty($_POST)) {
                             $user->data()->id,
                             'CarErrors',
                             'Car update error: ' . $e->getMessage()
+                        )->send();
+                } catch (\Exception $e) {
+                    ApiResponse::serverError('Failed to update car: ' . $e->getMessage())
+                        ->withLogging(
+                            $user->data()->id,
+                            'CarErrors',
+                            'Car update unexpected error: ' . $e->getMessage()
                         )->send();
                 }
                 break;
