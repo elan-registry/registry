@@ -1,12 +1,7 @@
-# Elan Registry v2.12.0-rc2 Release Notes
+# Elan Registry v2.12.0 Release Notes
 
 **Release Date:** January 29, 2026
-**Type:** Minor Release - Error Handling & Infrastructure Modernization (Release Candidate 2)
-
-**RELEASE CANDIDATE NOTICE:**
-This is Release Candidate 2 (RC2) for v2.12.0. Deploy to test server only for
-validation testing. Production deployment should wait until final release after
-3-7 day testing period.
+**Type:** Minor Release - Error Handling & Infrastructure Modernization
 
 ## Changes Since RC1
 
@@ -59,6 +54,14 @@ validation testing. Production deployment should wait until final release after
 
 ## REQUIRED ACTIONS AFTER DEPLOYMENT
 
+### Update UserSpice Plugins
+
+The following plugins must be updated to their latest versions after deployment:
+
+1. **Sendinblue** — Update to latest version for email delivery compatibility
+2. **Hooker** — Update to latest version (includes account hook int cast fixes)
+3. **reCAPTCHA** — Update to latest version for spam protection
+
 ### Database and System Updates: Run FIX Scripts
 
 FIX scripts must be run after deployment via FIX/index.php admin interface.
@@ -79,54 +82,6 @@ FIX scripts must be run after deployment via FIX/index.php admin interface.
 
 - FIX scripts executed successfully via FIX/index.php
 - CDN resources loading with SRI integrity verification
-
-### RC1 Testing Focus (3-7 Day Validation Period)
-
-**Critical Test Areas:**
-
-1. **Admin AJAX Operations** (11 endpoints migrated)
-   - Owner profile updates and search
-   - Car management operations
-   - System maintenance operations
-   - Verify success/error messages display correctly
-   - Check UserSpice logs for proper error logging
-
-2. **Location Services** (Issue #245)
-   - Test location autocomplete during registration
-   - Verify reverse geocoding functionality
-   - Confirm coordinates are saved correctly
-   - Test location sync from profiles to cars
-
-3. **Car Management Operations**
-   - Car creation, editing, deletion workflows
-   - Ownership transfer request/approve/reject
-   - Chassis validation
-   - Car history retrieval
-
-4. **Error Handling Verification**
-   - Trigger validation errors (empty required fields)
-   - Test permission denied scenarios (non-admin accessing admin pages)
-   - Verify 403/404 error pages display correctly
-   - Check that errors are logged to UserSpice logs with correct categories
-
-5. **Frontend Error Handling**
-   - Test AJAX error scenarios (network failures, timeouts)
-   - Verify error messages display via NotificationHelper
-   - Test request cancellation (rapid searches)
-   - Confirm CSRF token injection working
-
-6. **Performance Monitoring**
-   - Measure page load times before/after FIX/23
-   - Check CDN resource loading in browser Network tab
-   - Verify SRI integrity checks passing
-   - Monitor PHP error logs for any new warnings
-
-**Regression Testing:**
-
-- All existing functionality continues to work
-- No new PHP warnings or errors in logs
-- All Playwright E2E tests passing
-- PHPUnit test suites passing
 
 ## User-Facing Changes
 
