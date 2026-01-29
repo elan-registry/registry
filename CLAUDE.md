@@ -38,6 +38,7 @@ working with code in this repository.
 - `docs/development/CSS_AND_ASSETS.md` - Stylesheets and CDN resources
 - `docs/development/FIX_SCRIPTS.md` - Database maintenance scripts
 - `docs/development/STRICT_TYPE_HANDLING.md` - Strict type handling
+- `docs/development/USERSPICE_FUNCTIONS.md` - UserSpice framework functions reference (check before building custom solutions)
 - `docs/testing/TESTING.md` - Writing and running tests
 
 **See [docs/README.md](docs/README.md) for complete documentation index**
@@ -114,6 +115,14 @@ on critical file changes. Bypass with `git commit --no-verify` (emergency only).
 - Use typed exception classes for error handling
 - Complete PHPDoc blocks required for all public methods
 - See [CODING_STANDARDS.md](docs/development/CODING_STANDARDS.md) for full details
+
+### UserSpice Framework
+
+Before implementing custom functionality, check
+`docs/development/USERSPICE_FUNCTIONS.md` for existing UserSpice functions that
+may already provide the needed capability. Avoid duplicating framework
+functionality. Key areas: authentication, permissions, database operations,
+input handling, session management, CSRF protection, and email.
 
 ### Security Requirements
 
