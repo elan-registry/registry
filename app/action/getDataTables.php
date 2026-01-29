@@ -15,7 +15,7 @@ declare(strict_types=1);
 require_once '../../users/init.php';
 
 // Security: Only process POST requests
-if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+if ($method !== 'POST') {
     http_response_code(405);
     exit(json_encode(['error' => 'Method not allowed']));
 }
