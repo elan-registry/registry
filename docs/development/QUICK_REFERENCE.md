@@ -82,6 +82,12 @@ See [CODING_STANDARDS.md](CODING_STANDARDS.md)
 `logger($userId, LogCategories::LOG_CATEGORY_*, 'message')`
 See [LOG_CATEGORIES.md](LOG_CATEGORIES.md)
 
+**Server Globals (v2.13.0+):**
+Use `$is_https`, `$host`, `$method`, `$current_url`, `$current_origin`,
+`$php_self`, `$remote_addr` instead of `$_SERVER`. For values not covered,
+use `Server::get('KEY', 'default')`.
+See [PAGE_LOADING_FLOW.md](PAGE_LOADING_FLOW.md)
+
 **New PHP Directories:**
 Add path to `$path` array in `/z_us_root.php`, register pages in UserSpice admin
 See [INTEGRATION.md](INTEGRATION.md)
@@ -89,7 +95,7 @@ See [INTEGRATION.md](INTEGRATION.md)
 ## Troubleshooting
 
 | Problem | Solution |
-|---------|----------|
+| --- | --- |
 | `securePage()` redirecting to login | Register page in UserSpice admin; add dir to `z_us_root.php` `$path` array |
 | Database triggers not firing | Only `cars` table has triggers; other tables use app-level logging |
 | Tests failing | Check PHP 8.1+; run `composer install` && `npm install` |
