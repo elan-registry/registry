@@ -59,7 +59,7 @@ test.describe('Elan Registry - All Pages (Not Logged In)', () => {
       expectedText: 'FAQ & User Guides',
     },
     {
-      path: '/users/login.php',
+      path: 'usersc/login.php',
       name: 'Log In',
       selector: '.modal-header',
       expectedText: 'Please Log In',
@@ -111,7 +111,7 @@ test.describe('Internal Links Discovery and Testing (Not Logged In)', () => {
     { path: '/docs/reference-library.php', name: 'Reference Library' },
     { path: '/docs/car-stories.php', name: 'Car Stories' },
     { path: '/docs/faq/index.php', name: 'FAQ' },
-    { path: '/users/login.php', name: 'Log In' },
+    { path: 'usersc/login.php', name: 'Log In' },
   ];
 
   test('find all internal links across all pages (excluding header)', async ({ page }) => {

@@ -104,7 +104,7 @@ test.describe('CSP Validation Tests', () => {
   test('Login page should not have CSP violations', async ({ page }) => {
     const cspViolations = setupCSPViolationMonitoring(page);
     
-    await page.goto('/users/login.php');
+    await page.goto('usersc/login.php', { waitUntil: 'networkidle' });
     await page.waitForLoadState('networkidle');
     await page.waitForTimeout(1000);
     
