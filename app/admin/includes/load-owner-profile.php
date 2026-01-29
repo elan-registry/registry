@@ -214,59 +214,49 @@ try {
     $('#ownerProfileUpdateForm').on('submit', function(e) {
         e.preventDefault();
 
-        const formData = $(this).serialize();
+        const formDataObj = {};
+        $(this).serializeArray().forEach(function(item) {
+            formDataObj[item.name] = item.value;
+        });
         const submitBtn = $(this).find('button[type="submit"]');
         const originalText = submitBtn.html();
 
         // Show loading state
         submitBtn.html('<i class="fas fa-spinner fa-spin"></i> Saving...').prop('disabled', true);
 
-        $.ajax({
-            url: 'includes/process-owner-update.php',
-            method: 'POST',
-            data: formData,
-            dataType: 'json',
-            success: function(response) {
-                if (response.success) {
-                    // Show success message
-                    $('#ownerProfileForm').prepend(
-                        '<div class="alert alert-success alert-dismissible fade show">' +
-                        '<i class="fas fa-check"></i> ' + response.message +
-                        '<button type="button" class="close" data-dismiss="alert">&times;</button>' +
-                        '</div>'
-                    );
-
-                    // Reload the profile form to show updated data
-                    setTimeout(() => {
-                        loadOwnerById(<?= $ownerId ?>);
-                    }, 1500);
-
-                    // Refresh search results if visible
-                    const searchQuery = $('#ownerSearchInput').val();
-                    if (searchQuery.length >= 2) {
-                        searchOwners(searchQuery);
-                    }
-                } else {
-                    $('#ownerProfileForm').prepend(
-                        '<div class="alert alert-danger alert-dismissible fade show">' +
-                        '<i class="fas fa-exclamation-triangle"></i> ' + response.message +
-                        '<button type="button" class="close" data-dismiss="alert">&times;</button>' +
-                        '</div>'
-                    );
-                }
-            },
-            error: function() {
+        new ElanRegistryAPI()
+            .post('includes/process-owner-update.php', formDataObj)
+            .then(function(response) {
+                // Show success message
                 $('#ownerProfileForm').prepend(
-                    '<div class="alert alert-danger alert-dismissible fade show">' +
-                    '<i class="fas fa-exclamation-circle"></i> Update failed. Please try again.' +
+                    '<div class="alert alert-success alert-dismissible fade show">' +
+                    '<i class="fas fa-check"></i> ' + response.message +
                     '<button type="button" class="close" data-dismiss="alert">&times;</button>' +
                     '</div>'
                 );
-            },
-            complete: function() {
+
+                // Reload the profile form to show updated data
+                setTimeout(() => {
+                    loadOwnerById(<?= $ownerId ?>);
+                }, 1500);
+
+                // Refresh search results if visible
+                const searchQuery = $('#ownerSearchInput').val();
+                if (searchQuery.length >= 2) {
+                    searchOwners(searchQuery);
+                }
+            })
+            .catch(function(error) {
+                $('#ownerProfileForm').prepend(
+                    '<div class="alert alert-danger alert-dismissible fade show">' +
+                    '<i class="fas fa-exclamation-circle"></i> ' + (error.message || 'Update failed. Please try again.') +
+                    '<button type="button" class="close" data-dismiss="alert">&times;</button>' +
+                    '</div>'
+                );
+            })
+            .finally(function() {
                 submitBtn.html(originalText).prop('disabled', false);
-            }
-        });
+            });
     });
 
     // Sync location to cars function
@@ -276,43 +266,27 @@ try {
 
         btn.html('<i class="fas fa-spinner fa-spin"></i> Syncing...').prop('disabled', true);
 
-        $.ajax({
-            url: 'includes/process-owner-sync-location.php',
-            method: 'POST',
-            data: {
-                owner_id: ownerId,
-                csrf: '<?= Token::generate() ?>'
-            },
-            dataType: 'json',
-            success: function(response) {
-                if (response.success) {
-                    $('#ownerProfileForm').prepend(
-                        '<div class="alert alert-success alert-dismissible fade show">' +
-                        '<i class="fas fa-check"></i> ' + response.message +
-                        '<button type="button" class="close" data-dismiss="alert">&times;</button>' +
-                        '</div>'
-                    );
-                } else {
-                    $('#ownerProfileForm').prepend(
-                        '<div class="alert alert-warning alert-dismissible fade show">' +
-                        '<i class="fas fa-exclamation-triangle"></i> ' + response.message +
-                        '<button type="button" class="close" data-dismiss="alert">&times;</button>' +
-                        '</div>'
-                    );
-                }
-            },
-            error: function() {
+        new ElanRegistryAPI()
+            .post('includes/process-owner-sync-location.php', { owner_id: ownerId })
+            .then(function(response) {
                 $('#ownerProfileForm').prepend(
-                    '<div class="alert alert-danger alert-dismissible fade show">' +
-                    '<i class="fas fa-exclamation-circle"></i> Sync failed. Please try again.' +
+                    '<div class="alert alert-success alert-dismissible fade show">' +
+                    '<i class="fas fa-check"></i> ' + response.message +
                     '<button type="button" class="close" data-dismiss="alert">&times;</button>' +
                     '</div>'
                 );
-            },
-            complete: function() {
+            })
+            .catch(function(error) {
+                $('#ownerProfileForm').prepend(
+                    '<div class="alert alert-danger alert-dismissible fade show">' +
+                    '<i class="fas fa-exclamation-circle"></i> ' + (error.message || 'Sync failed. Please try again.') +
+                    '<button type="button" class="close" data-dismiss="alert">&times;</button>' +
+                    '</div>'
+                );
+            })
+            .finally(function() {
                 btn.html(originalText).prop('disabled', false);
-            }
-        });
+            });
     }
     </script>
 

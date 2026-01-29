@@ -762,6 +762,7 @@ $(document).ready(function() {
             'token': "<?= Token::generate() ?>",
         };
 
+        // @deprecated - migrate to ElanRegistryAPI (Issue #481)
         $.ajax({
                 type: 'POST',
                 url: '../../users/parsers/admin_settings.php',
@@ -788,6 +789,7 @@ $(document).ready(function() {
             'token': "<?= Token::generate() ?>",
         };
 
+        // @deprecated - migrate to ElanRegistryAPI (Issue #481)
         $.ajax({
                 type: 'POST',
                 url: '../../users/parsers/admin_settings.php',
@@ -814,6 +816,7 @@ $(document).ready(function() {
             'token': "<?= Token::generate() ?>",
         };
 
+        // @deprecated - migrate to ElanRegistryAPI (Issue #481)
         $.ajax({
                 type: 'POST',
                 url: '../../users/parsers/admin_settings.php',

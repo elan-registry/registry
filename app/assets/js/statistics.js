@@ -188,27 +188,17 @@ function loadTabContent(tabName) {
 
   spinner.show();
 
-  $.ajax({
-    url: `${window.statisticsConfig.baseUrl}api/statistics-data.php`,
-    method: "GET",
-    data: { tab: tabName },
-    dataType: "json"
-  })
-    .done(function (response) {
-      if (response.success) {
-        renderTabContent(tabName, response.data);
-      } else {
-        content.html(
-          `<div class="alert alert-danger">Error: ${response.message}</div>`
-        );
-      }
+  new ElanRegistryAPI()
+    .get(`${window.statisticsConfig.baseUrl}api/statistics-data.php`, { tab: tabName })
+    .then(function (response) {
+      renderTabContent(tabName, response.data);
     })
-    .fail(function (xhr, status, error) {
+    .catch(function (error) {
       content.html(
-        `<div class="alert alert-danger">Failed to load data: ${error}</div>`
+        `<div class="alert alert-danger">Failed to load data: ${error.message || error}</div>`
       );
     })
-    .always(function () {
+    .finally(function () {
       spinner.hide();
     });
 }

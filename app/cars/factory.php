@@ -170,17 +170,13 @@ echo html_entity_decode($settings->elan_datatables_css_cdn);
       }
 
       // Make AJAX request to find car by chassis
-      $.ajax({
-        url: '../action/getDataTables.php',
-        method: 'POST',
-        data: {
+      new ElanRegistryAPI()
+        .post('../action/getDataTables.php', {
           table: 'findCarByChassis',
-          chassis: chassis,
-          csrf: csrf
-        },
-        dataType: 'json',
-        success: function(response) {
-          if (response.success && response.car_id) {
+          chassis: chassis
+        })
+        .then(function(response) {
+          if (response.car_id) {
             // Car exists - create link to car details
             const detailsUrl = us_url_root + 'app/cars/details.php?car_id=' + response.car_id;
             container.html(
@@ -196,16 +192,15 @@ echo html_entity_decode($settings->elan_datatables_css_cdn);
               '</span>'
             );
           }
-        },
-        error: function(xhr, status, error) {
+        })
+        .catch(function() {
           // Registry check failed - handle silently
           container.html(
             '<span class="text-danger small">' +
             '<i class="fas fa-exclamation-triangle"></i> Check failed' +
             '</span>'
           );
-        }
-      });
+        });
     });
   }
 
