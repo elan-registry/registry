@@ -56,7 +56,7 @@ if (!class_exists('Car')) {
             if ($id === null) {
                 // Create new empty car with default data but NO ID (unsaved car)
                 $this->data = (object) [
-                    'user_id' => 1,
+                    'user_id' => '1',
                     'year' => '1973',
                     'model' => 'Elan S4',
                     'series' => 'S4',
@@ -200,7 +200,7 @@ if (!class_exists('Car')) {
         public function create(array $data): bool {
             // Assign ID if not already set
             if (!isset($this->data->id)) {
-                $this->data->id = self::$nextId++;
+                $this->data->id = (string) self::$nextId++;
             }
 
             foreach ($data as $key => $value) {
@@ -231,8 +231,8 @@ if (!class_exists('Car')) {
             // Initialize data if null
             if ($this->data === null) {
                 $this->data = (object) [
-                    'id' => $data['id'] ?? self::$nextId++,
-                    'user_id' => 1,
+                    'id' => (string) ($data['id'] ?? self::$nextId++),
+                    'user_id' => '1',
                     'year' => '1973',
                     'model' => 'Elan S4',
                     'series' => 'S4',
@@ -391,7 +391,7 @@ if (!class_exists('Car')) {
 
             $cars = [];
             foreach (self::$cars as $car) {
-                if ($car->user_id === $ownerID) {
+                if ($car->user_id == $ownerID) {
                     $instance = new self();
                     $instance->data = $car;
                     $cars[] = $instance;
@@ -424,9 +424,9 @@ if (!class_exists('Car')) {
                 }
 
                 $car = (object)[
-                    'id' => $i,
-                    'user_id' => 1,
-                    'year' => (1970 + $i),
+                    'id' => (string) $i,
+                    'user_id' => '1',
+                    'year' => (string) (1970 + $i),
                     'model' => 'Elan S' . $i,
                     'series' => 'S' . $i,
                     'variant' => 'SE',
@@ -490,7 +490,7 @@ if (!function_exists('logger')) {
 if (!function_exists('getUserWithProfile')) {
     function getUserWithProfile($userId) {
         return (object) [
-            'id' => $userId,
+            'id' => (string) $userId,
             'fname' => 'Test',
             'lname' => 'User',
             'email' => 'test@example.com',
@@ -546,8 +546,8 @@ if (!class_exists('DB')) {
         public function get(string $table, array $where): QueryResult {
             $id = $where[2] ?? 1;
             return new QueryResult([(object) [
-                'id' => $id,
-                'user_id' => 1,
+                'id' => (string) $id,
+                'user_id' => '1',
                 'year' => '1973',
                 'model' => 'Elan S4',
                 'series' => 'S4',
@@ -847,8 +847,8 @@ if (!class_exists('DB')) {
 
                 // Return mock query result with a car object
                 return new MockQueryResult([(object) [
-                    'id' => $id,
-                    'user_id' => 1,
+                    'id' => (string) $id,
+                    'user_id' => '1',
                     'year' => '1973',
                     'series' => 'S4',
                     'variant' => 'SE',
@@ -870,7 +870,7 @@ if (!class_exists('DB')) {
             public function insert(string $table, array $fields): bool {
                 // Track created record for later retrieval
                 $id = $this->nextId++;
-                $record = (object) array_merge($fields, ['id' => $id]);
+                $record = (object) array_merge($fields, ['id' => (string) $id]);
                 $this->recordsCreated[$id] = $record;
                 return true;
             }
@@ -966,7 +966,7 @@ if (!class_exists('DB')) {
 
                 // Default to user data if no specific mock is set
                 return [(object) [
-                    'id' => 1,
+                    'id' => '1',
                     'fname' => 'Test',
                     'lname' => 'User',
                     'email' => 'test@example.com'
@@ -1011,7 +1011,7 @@ if (!isset($user) || !is_object($user)) {
          */
         public function __construct() {
             $this->userData = (object) [
-                'id' => 1,
+                'id' => '1',
                 'username' => 'testuser',
                 'email' => 'test@example.com',
                 'fname' => 'Test',
@@ -1161,7 +1161,7 @@ if (!function_exists('getSettings')) {
     function getSettings($id = 1) {
         // Return mock settings object
         return (object) [
-            'id' => $id,
+            'id' => (string) $id,
             'elan_image_dir' => '/userimages/',
             'elan_google_geo_key' => 'mock_api_key',
             'elan_datatables_js_cdn' => 'https://cdn.datatables.net/1.10.23/js/jquery.dataTables.min.js',
