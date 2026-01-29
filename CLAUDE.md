@@ -147,10 +147,58 @@ and migration guide from jQuery.ajax().
 
 ### Server Environment Globals (v2.13.0+)
 
-Validated server globals available: `$scheme`, `$is_https`, `$host`, `$method`,
-`$request_uri`, `$current_url`, `$current_origin`, `$php_self`, `$remote_addr`.
-Use these instead of direct `$_SERVER` access.
-See [PAGE_LOADING_FLOW.md](docs/development/PAGE_LOADING_FLOW.md) for details.
+Use validated server globals instead of direct `$_SERVER` access. These are
+initialized in `usersc/includes/server_globals.php` (Phase 1.11.12) and
+available on every page after `init.php`.
+
+**Available globals:**
+
+| Variable          | Type     | Description                          |
+|-------------------|----------|--------------------------------------|
+| `$scheme`         | `string` | HTTP scheme ('http' or 'https')      |
+| `$is_https`       | `bool`   | Whether request is HTTPS             |
+| `$host`           | `string` | Validated hostname (no port)         |
+| `$method`         | `string` | HTTP method (GET, POST, etc.)        |
+| `$request_uri`    | `string` | Sanitized URI (path + query)         |
+| `$current_url`    | `string` | Full URL (scheme://host/path?query)  |
+| `$current_origin` | `string` | Origin (scheme://host) for CORS      |
+| `$php_self`       | `string` | Script path (for securePage)         |
+| `$remote_addr`    | `string` | Client IP address                    |
+| `$referer`        | `string` | HTTP referer (user-controlled)       |
+| `$user_agent`     | `string` | User agent (sanitized, max 512 chars)|
+
+**Correct usage:**
+
+```php
+// HTTPS detection
+if ($is_https) { /* secure context */ }
+
+// Form method check
+if ($method === 'POST') { /* process form */ }
+
+// Build URLs using origin
+$redirect = $current_origin . '/app/cars/details.php?id=' . $carId;
+
+// Logging with IP
+logger($userId, LogCategories::LOG_CATEGORY_LOGIN, "Login from $remote_addr");
+```
+
+**What NOT to do:**
+
+```php
+// WRONG: Direct $_SERVER access
+$host = $_SERVER['HTTP_HOST'];           // Use $host instead
+$uri  = $_SERVER['REQUEST_URI'];         // Use $request_uri instead
+$ip   = $_SERVER['REMOTE_ADDR'];         // Use $remote_addr instead
+$ssl  = $_SERVER['HTTPS'] === 'on';      // Use $is_https instead
+
+// WRONG: Constructing URLs manually from $_SERVER
+$url = $_SERVER['REQUEST_SCHEME'] . '://' . $_SERVER['HTTP_HOST'];
+// Use $current_origin or $current_url instead
+```
+
+See [PAGE_LOADING_FLOW.md](docs/development/PAGE_LOADING_FLOW.md) for loading
+sequence details.
 
 ### Code Quality
 

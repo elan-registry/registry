@@ -1,7 +1,7 @@
 # Page Loading Flow Reference
 
-**Last Updated:** 2026-01-11
-**Version:** 2.11.0
+**Last Updated:** 2026-01-28
+**Version:** 2.13.0
 
 ## Purpose
 
@@ -457,16 +457,55 @@ users/includes/html_footer.php
 After initialization, these global variables are available throughout
 the application:
 
-| Variable       | Type       | Purpose                       | After     |
-|----------------|------------|-------------------------------|-----------|
-| `$db`          | `DB`       | Database singleton instance   | Phase 1.4 |
-| `$user`        | `User`     | Current user object           | Phase 1.6 |
-| `$settings`    | `stdClass` | Site settings from database   | Phase 1.8 |
-| `$abs_us_root` | `string`   | Absolute filesystem root path | Phase 1   |
-| `$us_url_root` | `string`   | Relative URL root path        | Phase 1   |
-| `$lang`        | `array`    | Language strings              | Phase 1.8 |
-| `$usplugins`   | `array`    | Enabled plugins config        | Phase 1.3 |
-| `$config`      | `array`    | Database and system config    | Phase 1.4 |
+| Variable          | Type       | Purpose                               | After          |
+|-------------------|------------|---------------------------------------|----------------|
+| `$db`             | `DB`       | Database singleton instance           | Phase 1.4      |
+| `$user`           | `User`     | Current user object                   | Phase 1.6      |
+| `$settings`       | `stdClass` | Site settings from database           | Phase 1.8      |
+| `$abs_us_root`    | `string`   | Absolute filesystem root path         | Phase 1        |
+| `$us_url_root`    | `string`   | Relative URL root path                | Phase 1        |
+| `$lang`           | `array`    | Language strings                      | Phase 1.8      |
+| `$usplugins`      | `array`    | Enabled plugins config                | Phase 1.3      |
+| `$config`         | `array`    | Database and system config            | Phase 1.4      |
+| `$scheme`         | `string`   | HTTP scheme ('http' or 'https')       | Phase 1.11.12  |
+| `$is_https`       | `bool`     | Whether request is HTTPS              | Phase 1.11.12  |
+| `$host`           | `string`   | Validated hostname (no port)          | Phase 1.11.12  |
+| `$method`         | `string`   | HTTP request method (GET, POST, etc.) | Phase 1.11.12  |
+| `$request_uri`    | `string`   | Sanitized request URI (path + query)  | Phase 1.11.12  |
+| `$current_url`    | `string`   | Full URL (scheme://host/path?query)   | Phase 1.11.12  |
+| `$current_origin` | `string`   | Origin (scheme://host) for CORS       | Phase 1.11.12  |
+| `$php_self`       | `string`   | Current script path (for securePage)  | Phase 1.11.12  |
+| `$remote_addr`    | `string`   | Client IP address                     | Phase 1.11.12  |
+| `$referer`        | `string`   | HTTP referer (user-controlled)        | Phase 1.11.12  |
+| `$user_agent`     | `string`   | User agent string (max 512 chars)     | Phase 1.11.12  |
+
+### Server Globals Usage Examples
+
+Use the validated server globals instead of direct `$_SERVER` access:
+
+```php
+// HTTPS check
+if ($is_https) {
+    // secure context
+}
+
+// Method check for form handling
+if ($method === 'POST') {
+    // process form
+}
+
+// Build redirect URL
+$redirect = $current_origin . '/app/cars/details.php?id=' . $carId;
+
+// Log with IP
+logger($userId, LogCategories::LOG_CATEGORY_LOGIN, "Login from $remote_addr");
+
+// Security check (already done by framework, but available)
+securePage($php_self);
+```
+
+**Do NOT access `$_SERVER` directly.** Use the globals above or `Server::get()`
+for any values not covered by the globals.
 
 ## Common Integration Points
 
@@ -644,11 +683,12 @@ Debug mode shows:
 
 ## Revision History
 
-| Version | Date       | Changes                                    |
-|---------|------------|--------------------------------------------|
-| 1.0.0   | 2026-01-09 | Initial documentation of page loading flow |
+| Version | Date       | Changes                                          |
+|---------|------------|--------------------------------------------------|
+| 1.0.0   | 2026-01-09 | Initial documentation of page loading flow       |
+| 1.1.0   | 2026-01-28 | Add server globals to critical variables table   |
 
 ---
 
 **Note:** This document reflects the loading sequence for UserSpice 5.x and Elan
-Registry v2.10.2. File paths and loading order may vary in different versions.
+Registry v2.13.0. File paths and loading order may vary in different versions.
