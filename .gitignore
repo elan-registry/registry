@@ -50,10 +50,9 @@ runme.php
 scripts/playwright-auth-1password*.sh
 
 ########################################
-# Access Control
+# Access Control (environment-specific)
 ########################################
-.htaccess
-!usersc/plugins/hooker/hooks/.htaccess
+docs/stories/.htaccess
 
 ########################################
 # User Images (include .htaccess only)
@@ -133,8 +132,16 @@ tests/playwright/.auth/
 # Backups & Archives
 ########################################
 @backup*
+backup/
 usupdate.zip
-FIX/backups/
+FIX/backups/**/
+!FIX/backups/automated/
+!FIX/backups/manual/
+!FIX/backups/rollback/
+FIX/backups/automated/*
+FIX/backups/manual/*
+FIX/backups/rollback/*
+!FIX/backups/**/.gitkeep
 FIX/rollback_*.php
 
 ########################################
@@ -152,6 +159,11 @@ VERSION
 docs/technical/DATABASE_SCHEMA_COMPARISON.md
 docs/technical/DATABASE_SCHEMA_MIGRATION_test_to_dev_COMPATIBLE.sql
 docs/technical/MIGRATION_VERIFICATION_REPORT.md
+
+########################################
+# Screenshots
+########################################
+screenshots/
 
 ########################################
 # Temporary/Development
