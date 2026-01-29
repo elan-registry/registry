@@ -1,12 +1,61 @@
-# Elan Registry v2.12.0-rc1 Release Notes
+# Elan Registry v2.12.0-rc2 Release Notes
 
-**Release Date:** January 25, 2026
-**Type:** Minor Release - Error Handling & Infrastructure Modernization (Release Candidate 1)
+**Release Date:** January 29, 2026
+**Type:** Minor Release - Error Handling & Infrastructure Modernization (Release Candidate 2)
 
 **RELEASE CANDIDATE NOTICE:**
-This is Release Candidate 1 (RC1) for v2.12.0. Deploy to test server only for
+This is Release Candidate 2 (RC2) for v2.12.0. Deploy to test server only for
 validation testing. Production deployment should wait until final release after
 3-7 day testing period.
+
+## Changes Since RC1
+
+### Bug Fixes (RC2)
+
+- **Fix strict type errors from PDO string returns**: Added `(int)` casts
+  throughout `Car.php` where DB results (strings) were passed to typed `int`
+  parameters (`__construct`, `find`, `findByOwner`, `findByVerificationCode`,
+  `update`, `delete`, `transfer`). Also cast `abs()` argument to `(float)`,
+  widened `ApiResponse::withLogging()` to accept `int|string`, and cast user
+  IDs in account hook files.
+- **Fix Dropzone JSON parse errors**: Car validation methods threw generic
+  `Exception` but the action handler only caught `ElanRegistryException`,
+  causing uncaught fatal errors that returned HTML instead of JSON. Replaced
+  11 generic `Exception` throws with `CarValidationException` and added
+  `catch(\Exception)` fallback in `actions/edit.php`.
+- **Restore MySQL sql_mode setting**: Custom PDO options in `init.php`
+  replaced the DB class default which included
+  `SET SESSION sql_mode = ''`. Without this, MySQL 8 strict mode rejects
+  INSERTs for columns without default values (e.g., `logins` during account
+  creation).
+- **Fix transfer email notification paths**: Relative path
+  `../../usersc/includes/transfer_email_notifications.php` resolved
+  incorrectly from `app/admin/includes/`. Replaced with absolute
+  `$abs_us_root . $us_url_root` paths in both `process-transfer-approve.php`
+  and `process-transfer-deny.php`.
+
+### PDO Configuration (RC2)
+
+- **`ATTR_STRINGIFY_FETCHES => true`**: Dev/test now matches production driver
+  behavior where all DB values are returned as strings. This surfaces type
+  bugs during development that would otherwise only appear in production.
+
+### Files Changed (RC2)
+
+- `usersc/classes/Car.php` — int casts, CarValidationException throws
+- `usersc/classes/ApiResponse.php` — withLogging accepts int|string
+- `app/cars/actions/edit.php` — catch(\Exception) fallback
+- `app/cars/edit.php` — car_id string cast for htmlspecialchars
+- `users/init.php` — PDO options (STRINGIFY_FETCHES + MYSQL_ATTR_INIT_COMMAND)
+- `usersc/plugins/hooker/hooks/account_body_hook.php` — user ID int cast
+- `usersc/plugins/hooker/hooks/account_bottom_hook.php` — user ID int cast
+- `app/admin/includes/process-transfer-approve.php` — absolute require path
+- `app/admin/includes/process-transfer-deny.php` — absolute require path
+
+### Open Issues (RC2)
+
+- [#533](https://github.com/unibrain1/elanregistry/issues/533) — Dropzone
+  form: validation errors not displayed to user on 422 response
 
 ## REQUIRED ACTIONS AFTER DEPLOYMENT
 
