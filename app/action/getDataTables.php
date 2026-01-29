@@ -58,18 +58,21 @@ if (Input::exists('post')) {
         if ($table === 'findCarByChassis') {
             $chassis = Input::get('chassis');
             if (empty($chassis)) {
-                echo json_encode(['success' => false, 'error' => 'Chassis number required']);
-                exit;
+                ApiResponse::error('Chassis number required')
+                    ->send();
             }
-            
+
             $carQuery = $db->query("SELECT id FROM cars WHERE chassis = ? LIMIT 1", [$chassis]);
             if ($carQuery->count() > 0) {
                 $car = $carQuery->first();
-                echo json_encode(['success' => true, 'car_id' => $car->id]);
+                ApiResponse::success('Car found')
+                    ->withData('car_id', $car->id)
+                    ->send();
             } else {
-                echo json_encode(['success' => false]);
+                ApiResponse::success('No car found for this chassis number')
+                    ->withData('car_id', null)
+                    ->send();
             }
-            exit;
         }
         
         // Validate table parameter

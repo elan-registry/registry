@@ -742,25 +742,14 @@ $(document).ready(function() {
 function searchOwners(query) {
     $('#ownerSearchResults').html('<div class="text-center py-2"><i class="fas fa-spinner fa-spin"></i> Searching...</div>');
 
-    $.ajax({
-        url: 'includes/process-owner-search.php',
-        method: 'POST',
-        data: {
-            query: query,
-            csrf: '<?= Token::generate() ?>'
-        },
-        dataType: 'json',
-        success: function(response) {
-            if (response.success) {
-                displaySearchResults(response.owners);
-            } else {
-                $('#ownerSearchResults').html('<div class="alert alert-warning"><i class="fas fa-exclamation-triangle"></i> ' + response.message + '</div>');
-            }
-        },
-        error: function() {
+    new ElanRegistryAPI()
+        .post('includes/process-owner-search.php', { query: query })
+        .then(function(response) {
+            displaySearchResults(response.owners);
+        })
+        .catch(function() {
             $('#ownerSearchResults').html('<div class="alert alert-danger"><i class="fas fa-exclamation-circle"></i> Search failed. Please try again.</div>');
-        }
-    });
+        });
 }
 
 // Display search results
