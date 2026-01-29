@@ -15,7 +15,7 @@ require_once '../users/init.php';
 require_once $abs_us_root . $us_url_root . 'users/includes/template/prep.php';
 require_once '../usersc/classes/ChassisValidator.php';
 
-if (!securePage($_SERVER['PHP_SELF'])) {
+if (!securePage($php_self)) {
     die();
 }
 

@@ -37,7 +37,7 @@ include the `securePage()` check.
 require_once '../users/init.php';  // Initialize UserSpice
 
 // REQUIRED: Security check - place immediately after init.php
-if (!securePage($_SERVER['PHP_SELF'])) {
+if (!securePage($php_self)) {
     die();
 }
 
@@ -127,7 +127,7 @@ require_once '../users/init.php';
 <?php
 require_once '../users/init.php';
 
-if (!securePage($_SERVER['PHP_SELF'])) {
+if (!securePage($php_self)) {
     die();
 }
 // Only authenticated users with permission level 1+ can access
@@ -141,7 +141,7 @@ if (!securePage($_SERVER['PHP_SELF'])) {
 <?php
 require_once '../users/init.php';
 
-if (!securePage($_SERVER['PHP_SELF'])) {
+if (!securePage($php_self)) {
     die();
 }
 

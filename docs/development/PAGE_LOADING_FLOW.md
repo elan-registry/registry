@@ -26,7 +26,7 @@ require_once 'users/init.php';
 require_once $abs_us_root . $us_url_root . 'users/includes/template/prep.php';
 
 // Security check
-if (!securePage($_SERVER['PHP_SELF'])) {
+if (!securePage($php_self)) {
     die();
 }
 
@@ -371,7 +371,7 @@ Depending on `$settings->template` value (typically 'ElanRegistry'), loads from:
 index.php (or other page-specific file)
 │
 ├─ 3.1. Security Check
-│   └─ securePage($_SERVER['PHP_SELF'])
+│   └─ securePage($php_self)
 │       ├─ Check if page requires authentication
 │       ├─ Verify user has required permissions
 │       └─ die() if unauthorized

@@ -15,7 +15,7 @@ require_once '../../users/init.php';
 require_once $abs_us_root . $us_url_root . 'users/includes/template/prep.php';
 ?>
 
-<?php if (!securePage($_SERVER['PHP_SELF'])) {
+<?php if (!securePage($php_self)) {
     die();
 } ?>
 
@@ -125,7 +125,7 @@ if (isset($_POST['email'])) {
                             //Redirect back to where they came from
                             <?php 
                             $referrer = Input::get('referrer');
-                            if ($referrer && filter_var($referrer, FILTER_VALIDATE_URL) && strpos($referrer, $_SERVER['HTTP_HOST']) !== false) {
+                            if ($referrer && filter_var($referrer, FILTER_VALIDATE_URL) && strpos($referrer, $host) !== false) {
                                 echo "window.location.href = '" . htmlspecialchars($referrer, ENT_QUOTES, 'UTF-8') . "';";
                             } else {
                                 echo "window.location.href = '" . $us_url_root . "';";

@@ -15,7 +15,7 @@ require_once $abs_us_root . $us_url_root . 'users/includes/template/prep.php';
 require_once $abs_us_root . $us_url_root . 'usersc/classes/CarView.php';
 
 // Security check - ensure page access is authorized
-if (!securePage($_SERVER['PHP_SELF'])) {
+if (!securePage($php_self)) {
 	die();
 }
 

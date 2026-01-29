@@ -11,7 +11,7 @@ declare(strict_types=1);
 
 require_once '../../../../users/init.php';
 
-if (!securePage($_SERVER['PHP_SELF'])) {
+if (!securePage($php_self)) {
     ApiResponse::forbidden('Access denied')
         ->withLogging(0, 'SecurityError', 'Unauthorized schema operations access attempt')
         ->send();

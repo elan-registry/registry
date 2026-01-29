@@ -12,7 +12,7 @@
 require_once '../../users/init.php';
 require_once $abs_us_root.$us_url_root.'users/includes/template/prep.php';
 
-if (!securePage($_SERVER['PHP_SELF'])) {
+if (!securePage($php_self)) {
     die();
 } ?>
 
@@ -82,7 +82,7 @@ if (!securePage($_SERVER['PHP_SELF'])) {
 					<input type="hidden" name="name" value="<?= htmlspecialchars($user->data()->fname . ' ' . $user->data()->lname, ENT_QUOTES, 'UTF-8') ?>" />
 					<input type="hidden" name="email" value="<?= htmlspecialchars($user->data()->email, ENT_QUOTES, 'UTF-8') ?>" />
 					<input type="hidden" name="csrf" value="<?= htmlspecialchars(Token::generate(), ENT_QUOTES, 'UTF-8'); ?>" />
-					<input type="hidden" name="referrer" value="<?= htmlspecialchars($_SERVER['HTTP_REFERER'] ?? $us_url_root, ENT_QUOTES, 'UTF-8'); ?>" />
+					<input type="hidden" name="referrer" value="<?= htmlspecialchars($referer ?: $us_url_root, ENT_QUOTES, 'UTF-8'); ?>" />
 
 					<!-- Submit Button -->
 					<div class="d-grid gap-2 d-md-flex justify-content-md-end">
