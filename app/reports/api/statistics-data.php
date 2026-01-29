@@ -17,7 +17,7 @@ require_once '../../../users/init.php';
 require_once $abs_us_root . $us_url_root . 'app/classes/StatisticsDataService.php';
 
 // Security check
-if (!securePage($_SERVER['PHP_SELF'])) {
+if (!securePage($php_self)) {
     ApiResponse::forbidden('Unauthorized access')
         ->withLogging(0, 'SecurityError', 'Unauthorized statistics-data.php access attempt')
         ->send();

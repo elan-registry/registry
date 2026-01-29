@@ -13,7 +13,7 @@ require_once '../../../../users/init.php';
 header('Content-Type: application/json');
 
 // Security check
-if (!securePage($_SERVER['PHP_SELF'])) {
+if (!securePage($php_self)) {
     ApiResponse::forbidden('Access denied')
         ->withLogging(0, LogCategories::LOG_CATEGORY_SECURITY, 'Unauthorized backup operations access attempt')
         ->send();

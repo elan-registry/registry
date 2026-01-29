@@ -152,7 +152,7 @@ if (!empty($_POST)) {
                         // Record successful TOTP verification and clear failed attempts
                         handleAuthSuccess('totp_verify', $tempUserId, null, [], [
                             'method' => $useBackup ? 'backup_code' : 'authenticator_app',
-                            'user_agent' => $_SERVER['HTTP_USER_AGENT'] ?? ''
+                            'user_agent' => $user_agent ?? ''
                         ]);
                         
                         // Complete the login process
@@ -210,7 +210,7 @@ if (!empty($_POST)) {
                         // TOTP verification failed
                         handleAuthFailure('totp_verify', $tempUserId, null, [], [
                             'method' => $useBackup ? 'backup_code' : 'authenticator_app',
-                            'user_agent' => $_SERVER['HTTP_USER_AGENT'] ?? ''
+                            'user_agent' => $user_agent ?? ''
                         ]);
                         // logger($tempUserId, "VerifyTOTP", "TOTP verification failed for user ID: $tempUserId");
                         // Keep the TOTP form displayed for retry
@@ -273,7 +273,7 @@ if (!empty($_POST)) {
                                     // Record successful login with TOTP
                                     handleAuthSuccess('login_attempt', $tempUser->data()->id, $username, [], [
                                         'method' => 'inline_totp',
-                                        'user_agent' => $_SERVER['HTTP_USER_AGENT'] ?? ''
+                                        'user_agent' => $user_agent ?? ''
                                     ]);
 
                                     $user = $tempUser; // Set user object for further processing
@@ -303,7 +303,7 @@ if (!empty($_POST)) {
                                     // Invalid TOTP code
                                     handleAuthFailure('totp_verify', $tempUser->data()->id, null, [], [
                                         'method' => 'inline_totp',
-                                        'user_agent' => $_SERVER['HTTP_USER_AGENT'] ?? ''
+                                        'user_agent' => $user_agent ?? ''
                                     ]);
                                     unset($_SESSION[$currentSessionName]);
                                     $errors[] = lang("2FA_ERR_INVALID_CODE");
@@ -335,7 +335,7 @@ if (!empty($_POST)) {
                             // Record successful login
                             handleAuthSuccess('login_attempt', $tempUser->data()->id, $username, [], [
                                 'method' => 'standard_login',
-                                'user_agent' => $_SERVER['HTTP_USER_AGENT'] ?? ''
+                                'user_agent' => $user_agent ?? ''
                             ]);
                             $user = $tempUser; // Set user object for further processing
 
@@ -364,7 +364,7 @@ if (!empty($_POST)) {
                         // Record failed login attempt
                         handleAuthFailure('login_attempt', $userId, $username, [], [
                             'username_attempted' => $username,
-                            'user_agent' => $_SERVER['HTTP_USER_AGENT'] ?? ''
+                            'user_agent' => $user_agent ?? ''
                         ]);
                         
                         $eventhooks = getMyHooks(['page' => 'loginFail']);

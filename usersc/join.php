@@ -206,7 +206,7 @@ if (Input::exists()) {
                 handleAuthSuccess('registration_attempt', $theNewId, $email, [], [
                     'username' => $username,
                     'email' => $email,
-                    'user_agent' => $_SERVER['HTTP_USER_AGENT'] ?? ''
+                    'user_agent' => $user_agent ?? ''
                 ]);
 
                 includeHook($hooks, 'post');
@@ -224,7 +224,7 @@ if (Input::exists()) {
                     'username_attempted' => $username,
                     'email_attempted' => $email,
                     'error' => $e->getMessage(),
-                    'user_agent' => $_SERVER['HTTP_USER_AGENT'] ?? ''
+                    'user_agent' => $user_agent ?? ''
                 ]);
                 
                 if ($eventhooks = getMyHooks(['page' => 'joinFail'])) {
@@ -261,7 +261,7 @@ if (Input::exists()) {
           'username_attempted' => $username ?? '',
           'email_attempted' => $email ?? '',
           'validation_errors' => $validation->_errors,
-          'user_agent' => $_SERVER['HTTP_USER_AGENT'] ?? ''
+          'user_agent' => $user_agent ?? ''
       ]);
       
       foreach($validation->_errors as $e){

@@ -422,7 +422,7 @@ master account, bans, admin status, public/private access. Logs unauthorized
 attempts.
 
 ```php
-if (!securePage($_SERVER['PHP_SELF'])) { die(); }
+if (!securePage($php_self)) { die(); }
 ```
 
 ### hasPerm($permissions, $id = null, $masterCheck = true)
@@ -653,7 +653,7 @@ Returns current folder name (one level).
 
 ### currentFile()
 
-Returns current file via `$_SERVER['PHP_SELF']`.
+Returns current file via `$php_self`.
 
 ### currentPageId($uri)
 
