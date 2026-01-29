@@ -274,7 +274,12 @@ class ElanRegistryAPI {
      * @returns {string} Complete URL
      */
     buildUrl(endpoint, params = {}) {
-        const url = new URL(endpoint, this.baseUrl);
+        // Resolve base URL: use window.location.origin for relative base paths
+        let base = this.baseUrl;
+        if (typeof window !== 'undefined' && (!base || base === '/')) {
+            base = window.location.origin + '/';
+        }
+        const url = new URL(endpoint, base);
 
         Object.keys(params).forEach(key => {
             if (params[key] !== null && params[key] !== undefined) {

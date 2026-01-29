@@ -61,7 +61,7 @@ if (!empty($_POST)) {
                             'Cannot add car: validation errors'
                         )->withLogging(
                             $user->data()->id,
-                            'ValidationError',
+                            LogCategories::LOG_CATEGORY_VALIDATION_ERROR,
                             'Car creation validation failed: ' . json_encode($errors)
                         )->send();
                     }
@@ -81,7 +81,7 @@ if (!empty($_POST)) {
                         ->withData('cardetails', $cardetails)
                         ->withLogging(
                             $user->data()->id,
-                            'CarActions',
+                            LogCategories::LOG_CATEGORY_CAR_ACTIONS,
                             'Car added: ID ' . $cardetails['id']
                         )->send();
 
@@ -89,7 +89,7 @@ if (!empty($_POST)) {
                     ApiResponse::serverError('Failed to add car: ' . $e->getMessage())
                         ->withLogging(
                             $user->data()->id,
-                            'CarErrors',
+                            LogCategories::LOG_CATEGORY_CAR_ERRORS,
                             'Car add error: ' . $e->getMessage()
                         )->send();
                 }
@@ -106,7 +106,7 @@ if (!empty($_POST)) {
                             'Cannot update car: validation errors'
                         )->withLogging(
                             $user->data()->id,
-                            'ValidationError',
+                            LogCategories::LOG_CATEGORY_VALIDATION_ERROR,
                             'Car update validation failed: ' . json_encode($errors)
                         )->send();
                     }
@@ -125,7 +125,7 @@ if (!empty($_POST)) {
                         ->withData('cardetails', $cardetails)
                         ->withLogging(
                             $user->data()->id,
-                            'CarActions',
+                            LogCategories::LOG_CATEGORY_CAR_ACTIONS,
                             'Car updated: ID ' . $cardetails['id']
                         )->send();
 
@@ -133,7 +133,7 @@ if (!empty($_POST)) {
                     ApiResponse::serverError('Failed to update car: ' . $e->getMessage())
                         ->withLogging(
                             $user->data()->id,
-                            'CarErrors',
+                            LogCategories::LOG_CATEGORY_CAR_ERRORS,
                             'Car update error: ' . $e->getMessage()
                         )->send();
                 }
@@ -152,7 +152,7 @@ if (!empty($_POST)) {
 
             default:
                 ApiResponse::error('No valid action', 400)
-                    ->withLogging($user->data()->id, 'ValidationError', 'Invalid action: ' . $action)
+                    ->withLogging($user->data()->id, LogCategories::LOG_CATEGORY_VALIDATION_ERROR, 'Invalid action: ' . $action)
                     ->send();
         }
     } // End Post with data
@@ -667,7 +667,7 @@ function fetchImages(int $car_id): void
         // Validate car ID
         if (empty($car_id) || $car_id <= 0) {
             ApiResponse::error('Invalid car ID', 400)
-                ->withLogging($user->data()->id, 'ValidationError', 'fetchImages: Invalid car ID')
+                ->withLogging($user->data()->id, LogCategories::LOG_CATEGORY_VALIDATION_ERROR, 'fetchImages: Invalid car ID')
                 ->send();
         }
 
@@ -676,7 +676,7 @@ function fetchImages(int $car_id): void
         // Check if car exists
         if (!$car->exists()) {
             ApiResponse::notFound('Car not found')
-                ->withLogging($user->data()->id, 'CarErrors', "fetchImages: Car not found: {$car_id}")
+                ->withLogging($user->data()->id, LogCategories::LOG_CATEGORY_CAR_ERRORS, "fetchImages: Car not found: {$car_id}")
                 ->send();
         }
 
@@ -684,12 +684,12 @@ function fetchImages(int $car_id): void
 
         ApiResponse::success('Images retrieved successfully')
             ->withData('images', $images)
-            ->withLogging($user->data()->id, 'CarActions', "Images fetched for car: {$car_id}")
+            ->withLogging($user->data()->id, LogCategories::LOG_CATEGORY_CAR_ACTIONS, "Images fetched for car: {$car_id}")
             ->send();
 
     } catch (ElanRegistryException $e) {
         ApiResponse::serverError('Failed to fetch images')
-            ->withLogging($user->data()->id, 'CarErrors', 'fetchImages error: ' . $e->getMessage())
+            ->withLogging($user->data()->id, LogCategories::LOG_CATEGORY_CAR_ERRORS, 'fetchImages error: ' . $e->getMessage())
             ->send();
     }
 }
@@ -751,7 +751,7 @@ function removeImage(int $carID, string $file): void
         $car = new Car($carID);
         if (!$car->exists()) {
             ApiResponse::notFound('Car not found')
-                ->withLogging($user->data()->id, 'CarErrors', "removeImage: Car not found: {$carID}")
+                ->withLogging($user->data()->id, LogCategories::LOG_CATEGORY_CAR_ERRORS, "removeImage: Car not found: {$carID}")
                 ->send();
         }
 
@@ -765,7 +765,7 @@ function removeImage(int $carID, string $file): void
                 ->withData('images', array_column($car->images(), 'basename'))
                 ->withLogging(
                     $user->data()->id,
-                    'CarActions',
+                    LogCategories::LOG_CATEGORY_CAR_ACTIONS,
                     "Image removed: carId: {$carID}, image: {$file}"
                 )->send();
         } else {
@@ -773,7 +773,7 @@ function removeImage(int $carID, string $file): void
             ApiResponse::error('Image not found', 404)
                 ->withLogging(
                     $user->data()->id,
-                    'CarErrors',
+                    LogCategories::LOG_CATEGORY_CAR_ERRORS,
                     "removeImage: Image not found - carId: {$carID}, file: {$file}"
                 )->send();
         }
@@ -782,7 +782,7 @@ function removeImage(int $carID, string $file): void
         ApiResponse::serverError('Failed to remove image')
             ->withLogging(
                 $user->data()->id,
-                'CarErrors',
+                LogCategories::LOG_CATEGORY_CAR_ERRORS,
                 "removeImage error: carId: {$carID}, error: " . $e->getMessage()
             )->send();
     }

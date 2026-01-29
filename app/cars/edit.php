@@ -557,19 +557,13 @@ require_once $abs_us_root . $us_url_root . 'users/includes/html_footer.php'; //c
                 
                 // Only load existing images if we have a valid car ID (editing mode)
                 if (car_id && car_id !== '') {
-                    $.ajax({
-                        url: 'actions/edit.php',
-                        type: 'POST',
-                        dataType: 'json',
-                        data: {
-                            'carID': car_id,
-                            'csrf': csrf,
-                            'action': 'fetchImages'
-                        },
-                        success: function(data) {
-                            if (data == null || data.success !== true) {
-                                return;
-                            }
+                    new ElanRegistryAPI().post('<?= $us_url_root ?>app/cars/actions/edit.php', {
+                        carID: car_id,
+                        action: 'fetchImages'
+                    }).then(function(data) {
+                        if (data == null || data.success !== true) {
+                            return;
+                        }
                         $.each(data.images, function(key, value) {
                             var mockFile = {
                                 path: value.path,
@@ -591,11 +585,8 @@ require_once $abs_us_root . $us_url_root . 'users/includes/html_footer.php'; //c
 
                             thisDropzone.files.push(mockFile);
                         });
-
-                        },
-                        error: function(xhr, status, error) {
-                            // Failed to fetch images - handle silently
-                        }
+                    }).catch(function() {
+                        // Failed to fetch images - handle silently
                     });
                 }
 
@@ -1014,30 +1005,17 @@ require_once $abs_us_root . $us_url_root . 'users/includes/html_footer.php'; //c
         }
 
         // Call centralized validation via AJAX
-        $.ajax({
-            url: 'actions/validateChassis.php',
-            type: 'POST',
-            dataType: 'json',
-            headers: {
-                'X-Requested-With': 'XMLHttpRequest'
-            },
-            data: {
-                'chassis': _chassis,
-                'year': validYear,
-                'model': validModel,
-                'allow_override': overrideEnabled ? 'true' : 'false',
-                'csrf': csrf
-            },
-            success: function(result) {
-                validChassis = result.valid ? _chassis : '';
-                updateChassisUI(result.valid, result.error_reason || '');
-                
-                // Debug logging removed - validation working correctly
-            },
-            error: function(xhr, status, error) {
-                validChassis = overrideEnabled ? _chassis : '';
-                updateChassisUI(validChassis !== '', 'Validation service temporarily unavailable');
-            }
+        new ElanRegistryAPI().post('<?= $us_url_root ?>app/cars/actions/validateChassis.php', {
+            chassis: _chassis,
+            year: validYear,
+            model: validModel,
+            allow_override: overrideEnabled ? 'true' : 'false'
+        }).then(function(result) {
+            validChassis = result.valid ? _chassis : '';
+            updateChassisUI(result.valid, result.error_reason || '');
+        }).catch(function() {
+            validChassis = overrideEnabled ? _chassis : '';
+            updateChassisUI(validChassis !== '', 'Validation service temporarily unavailable');
         });
     });
 
@@ -1075,30 +1053,23 @@ require_once $abs_us_root . $us_url_root . 'users/includes/html_footer.php'; //c
      * Check if chassis number is already taken (for new cars)
      */
     function checkChassisAvailability() {
-        $.ajax({
-            url: 'actions/check-chassis.php',
-            type: 'post',
-            data: {
-                'command': 'chassis_check',
-                'year': validYear,
-                'model': validModel,
-                'chassis': validChassis,
-                'csrf': csrf,
-            },
-            success: function(response) {
-                if (response === 'taken') {
-                    validChassis = '';
-                    updateChassisUI(false, 'This chassis number is already registered');
-                    $('#chassis_taken').show();
-                } else if (response === 'not_taken') {
-                    $('#chassis_taken').hide();
-                    $('#color').prop('disabled', false);
-                    $('#engine').prop('disabled', false);
-                }
-            },
-            error: function(response) {
-                // Chassis availability check failed - handle silently
+        new ElanRegistryAPI().post('<?= $us_url_root ?>app/cars/actions/check-chassis.php', {
+            command: 'chassis_check',
+            year: validYear,
+            model: validModel,
+            chassis: validChassis
+        }).then(function(response) {
+            if (response.taken) {
+                validChassis = '';
+                updateChassisUI(false, 'This chassis number is already registered');
+                $('#chassis_taken').show();
+            } else {
+                $('#chassis_taken').hide();
+                $('#color').prop('disabled', false);
+                $('#engine').prop('disabled', false);
             }
+        }).catch(function() {
+            // Chassis availability check failed - handle silently
         });
     }
 
@@ -1144,33 +1115,25 @@ require_once $abs_us_root . $us_url_root . 'users/includes/html_footer.php'; //c
         const year = validYear;
         const model = validModel;
 
-        $.ajax({
-            url: 'actions/request-transfer.php',
-            type: 'POST',
-            dataType: 'json',
-            data: {
-                'chassis': chassis,
-                'year': year,
-                'model': model,
-                'color': $('#color').val() || '',
-                'engine': $('#engine').val() || '',
-                'comments': $('#transfer_comments').val() || '',
-                'csrf': csrf
-            },
-            success: function(response) {
-                if (response.success) {
-                    $('#transferSuccessModal').modal('show');
-                } else {
-                    $('#transferErrorMessage').text(response.message);
-                    $('#transferErrorModal').modal('show');
-                    $('#request_transfer_btn').prop('disabled', false).html('<i class="fas fa-exchange-alt"></i> Request Ownership Transfer');
-                }
-            },
-            error: function() {
-                $('#transferErrorMessage').text('There was an error processing your request. Please try again.');
+        new ElanRegistryAPI().post('<?= $us_url_root ?>app/cars/actions/request-transfer.php', {
+            chassis: chassis,
+            year: year,
+            model: model,
+            color: $('#color').val() || '',
+            engine: $('#engine').val() || '',
+            comments: $('#transfer_comments').val() || ''
+        }).then(function(response) {
+            if (response.success) {
+                $('#transferSuccessModal').modal('show');
+            } else {
+                $('#transferErrorMessage').text(response.message);
                 $('#transferErrorModal').modal('show');
                 $('#request_transfer_btn').prop('disabled', false).html('<i class="fas fa-exchange-alt"></i> Request Ownership Transfer');
             }
+        }).catch(function() {
+            $('#transferErrorMessage').text('There was an error processing your request. Please try again.');
+            $('#transferErrorModal').modal('show');
+            $('#request_transfer_btn').prop('disabled', false).html('<i class="fas fa-exchange-alt"></i> Request Ownership Transfer');
         });
     });
 

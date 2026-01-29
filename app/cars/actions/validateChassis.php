@@ -23,7 +23,7 @@ require_once '../../../users/init.php';
 $validatorPath = '../../../usersc/classes/ChassisValidator.php';
 if (!file_exists($validatorPath)) {
     ApiResponse::serverError('ChassisValidator class file not found')
-        ->withLogging($user->data()->id ?? 0, 'SystemError', "ChassisValidator file not found at: " . realpath($validatorPath))
+        ->withLogging($user->data()->id ?? 0, LogCategories::LOG_CATEGORY_SYSTEM_ERROR, "ChassisValidator file not found at: " . realpath($validatorPath))
         ->send();
 }
 
@@ -76,6 +76,6 @@ try {
             'format_type' => '',
             'override_used' => false
         ])
-        ->withLogging($user->data()->id ?? 0, 'ValidationError', "ChassisValidator error: " . $e->getMessage())
+        ->withLogging($user->data()->id ?? 0, LogCategories::LOG_CATEGORY_VALIDATION_ERROR, "ChassisValidator error: " . $e->getMessage())
         ->send();
 }

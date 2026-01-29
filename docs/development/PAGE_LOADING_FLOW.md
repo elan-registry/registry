@@ -441,6 +441,8 @@ users/includes/html_footer.php
 │
 ├─ 4.3. Custom Footer (if exists)
 │   └─ usersc/includes/footer.php
+│       ├─ ElanRegistryAPI client (app/assets/js/api-client.js)
+│       │   └─ Global window.ElanRegistryAPI instance with auto CSRF injection
 │       └─ Custom footer code, analytics, tracking
 │
 └─ 4.4. UserSpice Footer Scripts

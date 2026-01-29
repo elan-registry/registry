@@ -16,14 +16,14 @@ require_once '../../../users/init.php';
 // Security check - admin permission required
 if (!$user->isLoggedIn() || !isRegistryAdmin($user->data()->id)) {
     ApiResponse::forbidden('Unauthorized access')
-        ->withLogging(0, 'SecurityError', 'Unauthorized car details access attempt')
+        ->withLogging(0, LogCategories::LOG_CATEGORY_ACCESS_DENIED, 'Unauthorized car details access attempt')
         ->send();
 }
 
 // CSRF protection
 if (!isset($_POST['csrf']) || !Token::check($_POST['csrf'])) {
     ApiResponse::error('Invalid CSRF token', 400)
-        ->withLogging($user->data()->id, 'SecurityError', 'Invalid CSRF token in car details request')
+        ->withLogging($user->data()->id, LogCategories::LOG_CATEGORY_SECURITY, 'Invalid CSRF token in car details request')
         ->send();
 }
 
@@ -42,7 +42,7 @@ try {
         ApiResponse::notFound('Car not found')
             ->withLogging(
                 $user->data()->id,
-                'CarErrors',
+                LogCategories::LOG_CATEGORY_CAR_ERRORS,
                 "Car details lookup failed: Car ID {$carId} not found"
             )
             ->send();
@@ -76,7 +76,7 @@ try {
     ApiResponse::serverError('Database error occurred')
         ->withLogging(
             $user->data()->id,
-            'DatabaseError',
+            LogCategories::LOG_CATEGORY_DATABASE_ERROR,
             "Car details query failed: " . $e->getMessage()
         )
         ->send();
