@@ -206,17 +206,17 @@ class ApiResponse
     /**
      * Set a pending log entry to be executed when send() is called
      *
-     * @param int    $userId   User ID for logging
+     * @param int|string $userId User ID for logging (auto-cast to int)
      * @param string $category Log category (e.g., 'OwnerActions', 'SecurityError')
      * @param string $message  Log message
      *
      * @return self New ApiResponse instance with pending log
      */
-    public function withLogging(int $userId, string $category, string $message): self
+    public function withLogging(int|string $userId, string $category, string $message): self
     {
         $clone = clone $this;
         $clone->pendingLog = [
-            'userId' => $userId,
+            'userId' => (int) $userId,
             'category' => $category,
             'message' => $message,
         ];

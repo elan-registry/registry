@@ -113,7 +113,7 @@ function updateCarDetails(array &$car): void
         return;
     }
 
-    $carQ = new Car($car['id']);
+    $carQ = new Car((int) $car['id']);
 
     // Security: Verify user ownership or admin/editor permissions
     $isOwner = ($user->data()->id == $carQ->data()->user_id);

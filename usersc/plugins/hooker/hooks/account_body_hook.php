@@ -6,7 +6,7 @@ global $user;
 // Get some interesting user information to display later
 
 
-$ownerId = $user->data()->id;
+$ownerId = (int) $user->data()->id;
 $owner = new ElanRegistryOwner($ownerId);
 $ownerData = $owner->data();
 

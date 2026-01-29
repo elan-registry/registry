@@ -633,7 +633,7 @@ class Car
             $carData = $repo->findByVerificationCode($verificationCode);
 
             if ($carData !== null) {
-                $car = new Car($carData->id);
+                $car = new Car((int) $carData->id);
                 return $car->exists() ? $car : null;
             } else {
                 return null;
@@ -664,7 +664,7 @@ class Car
         $cars = [];
 
         foreach ($carResults as $key => $car) {
-            $cars[$key] = new Car($car->id);
+            $cars[$key] = new Car((int) $car->id);
         }
 
         return $cars;

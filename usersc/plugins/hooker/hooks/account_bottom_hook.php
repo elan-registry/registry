@@ -7,7 +7,7 @@ global $user;
 
 // Get some interesting user information to display later
 
-$user_id = $user->data()->id;
+$user_id = (int) $user->data()->id;
 
 // USER ID is in $user_id .  Use the USER ID to get the user information from users table
 $userQ = $db->query("SELECT * FROM users WHERE id = ?", array($user_id));
