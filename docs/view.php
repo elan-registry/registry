@@ -23,8 +23,8 @@ use ElanRegistry\Documentation\DocumentConfig;
 use DocumentationException;
 
 // Security check - ensure page access is authorized
-if (!securePage($_SERVER['PHP_SELF'])) {
-    logger(0, LogCategories::LOG_CATEGORY_SECURITY, 'Unauthorized documentation access attempt: ' . $_SERVER['PHP_SELF']);
+if (!securePage($php_self)) {
+    logger(0, LogCategories::LOG_CATEGORY_SECURITY, 'Unauthorized documentation access attempt: ' . $php_self);
     Redirect::to($us_url_root . '403.php');
 }
 

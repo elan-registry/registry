@@ -32,21 +32,22 @@ try {
     $isLoggedIn = false;
 }
 
+// Ensure server globals are available (may not be if init.php failed)
+if (!isset($request_uri)) {
+    require_once __DIR__ . '/users/classes/Server.php';
+    require_once __DIR__ . '/usersc/includes/server_globals.php';
+}
+
 // Log the 403 error for administrator review
 $userId = ($isLoggedIn && isset($userData->id)) ? (int)$userData->id : 0;
-$requestUri = $_SERVER['REQUEST_URI'] ?? 'unknown';
-$referer = $_SERVER['HTTP_REFERER'] ?? 'direct';
-$ipAddress = $_SERVER['REMOTE_ADDR'] ?? 'unknown';
-$method = $_SERVER['REQUEST_METHOD'] ?? 'unknown';
-$userAgent = $_SERVER['HTTP_USER_AGENT'] ?? 'unknown';
 
 $logMessage = sprintf(
     "403 Forbidden | URI: %s | Referer: %s | IP: %s | Method: %s | User-Agent: %s",
-    $requestUri,
-    $referer,
-    $ipAddress,
+    $request_uri,
+    $referer ?: 'direct',
+    $remote_addr,
     $method,
-    substr($userAgent, 0, 150)
+    substr($user_agent, 0, 150)
 );
 
 if (function_exists('logger')) {
