@@ -239,7 +239,7 @@ class Car
         ];
         $filteredFields = array_intersect_key($fields, array_flip($validCarFields));
 
-        $carId = $filteredFields['id'];
+        $carId = (int) $filteredFields['id'];
         unset($filteredFields['id']);
 
         $filteredFields = array_filter($filteredFields, function ($value) {
@@ -464,7 +464,7 @@ class Car
         $this->getAdministrationService()->delete(
             $this->_data,
             $reason,
-            (int) $user->data()->id,
+            currentUserId(),
             $this->getRepository()
         );
 
@@ -507,7 +507,7 @@ class Car
             $newUserId,
             $reason,
             $operationType,
-            (int) $user->data()->id,
+            currentUserId(),
             $this->getRepository(),
             function (array $fields) use ($self): bool {
                 return $self->update($fields);
@@ -547,7 +547,7 @@ class Car
             $this->_data,
             $oldCarId,
             $reason,
-            (int) $user->data()->id,
+            currentUserId(),
             $this->getRepository()
         );
 

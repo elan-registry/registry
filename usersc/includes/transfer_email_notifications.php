@@ -48,14 +48,14 @@ function sendTransferRequestNotification(int $transferRequestId): bool
         }
 
         // Get current owner data using existing helper function
-        $currentOwner = getUserWithProfile($carData->user_id);
+        $currentOwner = getUserWithProfile(dbInt($carData, 'user_id'));
         if (!$currentOwner) {
             logger(0, LogCategories::LOG_CATEGORY_EMAIL_ERROR, "Transfer request notification failed: Current owner ID {$carData->user_id} not found");
             return false;
         }
 
         // Get requester data using existing helper function
-        $requester = getUserWithProfile($transferData->requested_by_user_id);
+        $requester = getUserWithProfile(dbInt($transferData, 'requested_by_user_id'));
         if (!$requester) {
             logger(0, LogCategories::LOG_CATEGORY_EMAIL_ERROR, "Transfer request notification failed: Requester ID {$transferData->requested_by_user_id} not found");
             return false;
@@ -150,14 +150,14 @@ function sendTransferRequestAdminAlert(int $transferRequestId): bool
         }
 
         // Get current owner data using existing helper function
-        $currentOwner = getUserWithProfile($carData->user_id);
+        $currentOwner = getUserWithProfile(dbInt($carData, 'user_id'));
         if (!$currentOwner) {
             logger(0, LogCategories::LOG_CATEGORY_EMAIL_ERROR, "Transfer admin alert failed: Current owner ID {$carData->user_id} not found");
             return false;
         }
 
         // Get requester data using existing helper function
-        $requester = getUserWithProfile($transferData->requested_by_user_id);
+        $requester = getUserWithProfile(dbInt($transferData, 'requested_by_user_id'));
         if (!$requester) {
             logger(0, LogCategories::LOG_CATEGORY_EMAIL_ERROR, "Transfer admin alert failed: Requester ID {$transferData->requested_by_user_id} not found");
             return false;
@@ -244,7 +244,7 @@ function sendTransferResponseNotification(int $transferRequestId, bool $isApprov
         $carData = $carQuery->first();
 
         // Get requester data using existing helper function
-        $requester = getUserWithProfile($transferData->requested_by_user_id);
+        $requester = getUserWithProfile(dbInt($transferData, 'requested_by_user_id'));
         if (!$requester) {
             logger(0, LogCategories::LOG_CATEGORY_EMAIL_ERROR, "Transfer response notification failed: Requester ID {$transferData->requested_by_user_id} not found");
             return false;
@@ -337,7 +337,7 @@ function sendTransferPreviousOwnerNotification(int $transferRequestId, bool $isA
         } else {
             // For denied transfers, or approved transfers without previous owner ID,
             // the car owner should still be the original owner
-            $previousOwner = getUserWithProfile($carData->user_id);
+            $previousOwner = getUserWithProfile(dbInt($carData, 'user_id'));
         }
 
         if (!$previousOwner) {
@@ -346,7 +346,7 @@ function sendTransferPreviousOwnerNotification(int $transferRequestId, bool $isA
         }
 
         // Get requester data using existing helper function
-        $requester = getUserWithProfile($transferData->requested_by_user_id);
+        $requester = getUserWithProfile(dbInt($transferData, 'requested_by_user_id'));
         if (!$requester) {
             logger(0, LogCategories::LOG_CATEGORY_EMAIL_ERROR, "Transfer previous owner notification failed: Requester ID {$transferData->requested_by_user_id} not found");
             return false;

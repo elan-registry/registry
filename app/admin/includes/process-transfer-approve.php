@@ -66,7 +66,7 @@ try {
     }
 
     // Get target user details
-    $targetUser = getUserWithProfile($transfer->requested_by_user_id);
+    $targetUser = getUserWithProfile(dbInt($transfer, 'requested_by_user_id'));
     $targetName = $targetUser && $targetUser->fname && $targetUser->lname
         ? "{$targetUser->fname} {$targetUser->lname}"
         : "User ID {$transfer->requested_by_user_id}";
