@@ -59,7 +59,8 @@ if (!empty($_POST)) {
                         ApiResponse::validationError(
                             ['general' => $errors],
                             'Cannot add car: validation errors'
-                        )->withLogging(
+                        )->withData('cardetails', $cardetails)
+                        ->withLogging(
                             $user->data()->id,
                             LogCategories::LOG_CATEGORY_VALIDATION_ERROR,
                             'Car creation validation failed: ' . json_encode($errors)
@@ -111,7 +112,8 @@ if (!empty($_POST)) {
                         ApiResponse::validationError(
                             ['general' => $errors],
                             'Cannot update car: validation errors'
-                        )->withLogging(
+                        )->withData('cardetails', $cardetails)
+                        ->withLogging(
                             $user->data()->id,
                             LogCategories::LOG_CATEGORY_VALIDATION_ERROR,
                             'Car update validation failed: ' . json_encode($errors)
