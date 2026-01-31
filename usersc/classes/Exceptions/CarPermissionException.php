@@ -2,21 +2,22 @@
 
 declare(strict_types=1);
 
+namespace ElanRegistry\Exceptions;
+
+use LogCategories;
+use Throwable;
+
 /**
- * GeocodingException
+ * CarPermissionException
  *
- * Exception thrown when geocoding operations fail.
- * Used when Google Maps API calls fail, return invalid data,
- * or when network/API key issues occur.
- *
- * Also thrown when LocationGeocoder is instantiated directly
- * instead of through ElanRegistryOwner::geocodeAddress().
+ * Exception thrown when a car operation is denied due to
+ * insufficient permissions or authentication failures.
  *
  * @package ElanRegistry
  * @subpackage Exceptions
- * @since v2.11.0
+ * @since v2.14.0
  */
-class GeocodingException extends ElanRegistryException
+class CarPermissionException extends CarException
 {
     /**
      * Constructor
@@ -40,7 +41,7 @@ class GeocodingException extends ElanRegistryException
      */
     protected static function getDefaultUserMessage(): string
     {
-        return "Unable to geocode the location. Please verify your address.";
+        return "You do not have permission to perform this car operation.";
     }
 
     /**
@@ -48,7 +49,7 @@ class GeocodingException extends ElanRegistryException
      */
     protected static function getDefaultLogCategory(): string
     {
-        return LogCategories::LOG_CATEGORY_SYSTEM_ERROR;
+        return LogCategories::LOG_CATEGORY_ACCESS_DENIED;
     }
 
     /**
@@ -56,6 +57,6 @@ class GeocodingException extends ElanRegistryException
      */
     protected static function getDefaultHttpStatusCode(): int
     {
-        return 500;
+        return 403;
     }
 }

@@ -4,10 +4,10 @@ declare(strict_types=1);
 
 namespace ElanRegistry\Car;
 
-use CarNotFoundException;
-use CarValidationException;
-use CarDatabaseException;
 use CarErrorMessages;
+use ElanRegistry\Exceptions\CarDatabaseException;
+use ElanRegistry\Exceptions\CarNotFoundException;
+use ElanRegistry\Exceptions\CarValidationException;
 use LogCategories;
 use AppConstants;
 use DateTime;

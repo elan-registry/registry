@@ -2,6 +2,11 @@
 
 declare(strict_types=1);
 
+namespace ElanRegistry\Exceptions;
+
+use Exception;
+use Throwable;
+
 /**
  * ElanRegistryException - Abstract base class for all ElanRegistry exceptions
  *

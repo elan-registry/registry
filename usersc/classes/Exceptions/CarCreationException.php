@@ -2,18 +2,23 @@
 
 declare(strict_types=1);
 
+namespace ElanRegistry\Exceptions;
+
+use LogCategories;
+use Throwable;
+
 /**
- * OwnerValidationException
+ * CarCreationException
  *
- * Exception thrown when owner data validation fails.
- * Used when input data doesn't meet required validation rules
- * (email format, required fields, profile data, etc.).
+ * Exception thrown when car creation operations fail.
+ * Used when database insertion or validation errors occur during
+ * new car record creation.
  *
  * @package ElanRegistry
  * @subpackage Exceptions
  * @since v2.11.0
  */
-class OwnerValidationException extends ElanRegistryException
+class CarCreationException extends CarException
 {
     /**
      * Constructor
@@ -37,7 +42,7 @@ class OwnerValidationException extends ElanRegistryException
      */
     protected static function getDefaultUserMessage(): string
     {
-        return "The owner information provided is invalid. Please check your input.";
+        return "Unable to create the car record. Please try again.";
     }
 
     /**
@@ -45,7 +50,7 @@ class OwnerValidationException extends ElanRegistryException
      */
     protected static function getDefaultLogCategory(): string
     {
-        return LogCategories::LOG_CATEGORY_VALIDATION_ERROR;
+        return LogCategories::LOG_CATEGORY_CAR_CREATION;
     }
 
     /**
@@ -53,6 +58,6 @@ class OwnerValidationException extends ElanRegistryException
      */
     protected static function getDefaultHttpStatusCode(): int
     {
-        return 422;
+        return 500;
     }
 }

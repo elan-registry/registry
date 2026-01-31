@@ -1,5 +1,9 @@
 <?php
 declare(strict_types=1);
+
+use ElanRegistry\Exceptions\AdminOperationException;
+use ElanRegistry\Exceptions\BackupException;
+
 /**
  * tab-system.php
  * System Maintenance Tab Content

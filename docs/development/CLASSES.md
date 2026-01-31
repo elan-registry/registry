@@ -5,9 +5,10 @@ Complete reference for all custom classes in the Elan Registry application.
 ## Overview
 
 All custom classes are located in `/usersc/classes/` (application classes) and
-`/app/admin/includes/classes/` (admin-specific classes). Classes follow
-established design patterns with consistent database integration, exception
-handling, and audit logging.
+`/app/admin/includes/classes/` (admin-specific classes). Exception classes use
+the `ElanRegistry\Exceptions` namespace and are located in
+`/usersc/classes/Exceptions/`. Classes follow established design patterns with
+consistent database integration, exception handling, and audit logging.
 
 ## Core Domain Classes
 
@@ -72,6 +73,8 @@ $car->delete($userId);
 
 **Exception Handling** (all extend `CarException`):
 
+All exception classes are in the `ElanRegistry\Exceptions` namespace:
+
 - `CarNotFoundException` - Car ID not found (404)
 - `CarValidationException` - Invalid car data (422)
 - `CarDatabaseException` - Database operation failures (500)
@@ -80,6 +83,19 @@ $car->delete($userId);
 - `CarDeletionException` - Car deletion failures (500)
 - `CarMergeException` - Car merge failures (500)
 - `CarTransferException` - Ownership transfer failures (500)
+
+**Usage**:
+
+```php
+use ElanRegistry\Exceptions\CarNotFoundException;
+use ElanRegistry\Exceptions\CarValidationException;
+
+try {
+    $car = new Car($carId);
+} catch (CarNotFoundException $e) {
+    // Handle not found
+}
+```
 
 ### CarView
 
@@ -506,11 +522,11 @@ class MyClass {
 
 ### Exception Handling Pattern
 
-Custom exceptions in `/usersc/exceptions/`:
+Custom exceptions in `/usersc/classes/Exceptions/` with `ElanRegistry\Exceptions` namespace:
 
 ```php
-// Define exception
-class MyCustomException extends Exception {}
+// Import exception at top of file
+use ElanRegistry\Exceptions\MyCustomException;
 
 // Use in class
 try {

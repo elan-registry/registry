@@ -4,6 +4,10 @@ declare(strict_types=1);
 
 namespace Tests\Unit\Exceptions;
 
+use ElanRegistry\Exceptions\AdminContactException;
+use ElanRegistry\Exceptions\AdminOperationException;
+use ElanRegistry\Exceptions\ElanRegistryException;
+use ElanRegistry\Exceptions\OwnerSearchException;
 use PHPUnit\Framework\TestCase;
 
 /**
@@ -20,10 +24,10 @@ class AdminExceptionsTest extends TestCase
     public function testAdminContactException(): void
     {
         $message = 'Admin user not found';
-        $exception = new \AdminContactException($message);
+        $exception = new AdminContactException($message);
 
-        $this->assertInstanceOf(\AdminContactException::class, $exception);
-        $this->assertInstanceOf(\ElanRegistryException::class, $exception);
+        $this->assertInstanceOf(AdminContactException::class, $exception);
+        $this->assertInstanceOf(ElanRegistryException::class, $exception);
         $this->assertEquals($message, $exception->getMessage());
         $this->assertEquals(
             'An error occurred while sending the message. Please try again.',
@@ -41,7 +45,7 @@ class AdminExceptionsTest extends TestCase
         $technicalMessage = 'Database connection timeout';
         $userMessage = 'We encountered a temporary issue. Please try again.';
 
-        $exception = \AdminContactException::withUserMessage(
+        $exception = AdminContactException::withUserMessage(
             $technicalMessage,
             $userMessage
         );
@@ -57,10 +61,10 @@ class AdminExceptionsTest extends TestCase
     public function testAdminOperationException(): void
     {
         $message = 'Failed to load owner profile';
-        $exception = new \AdminOperationException($message);
+        $exception = new AdminOperationException($message);
 
-        $this->assertInstanceOf(\AdminOperationException::class, $exception);
-        $this->assertInstanceOf(\ElanRegistryException::class, $exception);
+        $this->assertInstanceOf(AdminOperationException::class, $exception);
+        $this->assertInstanceOf(ElanRegistryException::class, $exception);
         $this->assertEquals($message, $exception->getMessage());
         $this->assertEquals(
             'An error occurred during the operation. Please try again.',
@@ -76,10 +80,10 @@ class AdminExceptionsTest extends TestCase
     public function testOwnerSearchException(): void
     {
         $message = 'Search query too short';
-        $exception = new \OwnerSearchException($message);
+        $exception = new OwnerSearchException($message);
 
-        $this->assertInstanceOf(\OwnerSearchException::class, $exception);
-        $this->assertInstanceOf(\ElanRegistryException::class, $exception);
+        $this->assertInstanceOf(OwnerSearchException::class, $exception);
+        $this->assertInstanceOf(ElanRegistryException::class, $exception);
         $this->assertEquals($message, $exception->getMessage());
         $this->assertEquals('Search failed. Please try again.', $exception->getUserMessage());
         $this->assertEquals('OwnerActions', $exception->getLogCategory());
@@ -94,8 +98,8 @@ class AdminExceptionsTest extends TestCase
         $caughtCorrectly = false;
 
         try {
-            throw new \AdminContactException('Test error');
-        } catch (\AdminContactException $e) {
+            throw new AdminContactException('Test error');
+        } catch (AdminContactException $e) {
             $caughtCorrectly = true;
         }
 
@@ -110,10 +114,10 @@ class AdminExceptionsTest extends TestCase
         $caughtCorrectly = false;
 
         try {
-            throw new \AdminOperationException('Test error');
-        } catch (\ElanRegistryException $e) {
+            throw new AdminOperationException('Test error');
+        } catch (ElanRegistryException $e) {
             $caughtCorrectly = true;
-            $this->assertInstanceOf(\AdminOperationException::class, $e);
+            $this->assertInstanceOf(AdminOperationException::class, $e);
         }
 
         $this->assertTrue($caughtCorrectly, 'AdminOperationException should be catchable as ElanRegistryException');
@@ -125,7 +129,7 @@ class AdminExceptionsTest extends TestCase
     public function testExceptionChaining(): void
     {
         $previous = new \Exception('Original error');
-        $exception = new \AdminContactException(
+        $exception = new AdminContactException(
             'Contact operation failed',
             0,
             $previous

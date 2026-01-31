@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use ElanRegistry\Car\CarVerificationManager;
+use ElanRegistry\Exceptions\CarValidationException;
 use PHPUnit\Framework\TestCase;
 
 /**

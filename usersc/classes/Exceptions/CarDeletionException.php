@@ -2,18 +2,23 @@
 
 declare(strict_types=1);
 
+namespace ElanRegistry\Exceptions;
+
+use LogCategories;
+use Throwable;
+
 /**
- * AdminContactException
+ * CarDeletionException
  *
- * Exception thrown when admin-to-owner contact operations fail.
- * Used for errors in the admin messaging system including email sending,
- * user data retrieval, and validation failures.
+ * Exception thrown when car deletion operations fail.
+ * Used when database deletion errors occur or when attempting to
+ * delete cars with active dependencies.
  *
  * @package ElanRegistry
  * @subpackage Exceptions
- * @since v2.12.0
+ * @since v2.11.0
  */
-class AdminContactException extends ElanRegistryException
+class CarDeletionException extends CarException
 {
     /**
      * Constructor
@@ -37,7 +42,7 @@ class AdminContactException extends ElanRegistryException
      */
     protected static function getDefaultUserMessage(): string
     {
-        return "An error occurred while sending the message. Please try again.";
+        return "Unable to delete the car record. Please try again.";
     }
 
     /**
@@ -45,7 +50,7 @@ class AdminContactException extends ElanRegistryException
      */
     protected static function getDefaultLogCategory(): string
     {
-        return LogCategories::LOG_CATEGORY_CAR_ACTIONS;
+        return LogCategories::LOG_CATEGORY_CAR_DELETION;
     }
 
     /**

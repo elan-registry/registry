@@ -2,18 +2,23 @@
 
 declare(strict_types=1);
 
+namespace ElanRegistry\Exceptions;
+
+use LogCategories;
+use Throwable;
+
 /**
- * OwnerNotFoundException
+ * CarValidationException
  *
- * Exception thrown when a requested owner cannot be found in the database.
- * Used throughout the ElanRegistryOwner class when operations are attempted
- * on non-existent owner records.
+ * Exception thrown when car data validation fails.
+ * Used when input data doesn't meet required validation rules
+ * (chassis number format, required fields, etc.).
  *
  * @package ElanRegistry
  * @subpackage Exceptions
  * @since v2.11.0
  */
-class OwnerNotFoundException extends ElanRegistryException
+class CarValidationException extends CarException
 {
     /**
      * Constructor
@@ -37,7 +42,7 @@ class OwnerNotFoundException extends ElanRegistryException
      */
     protected static function getDefaultUserMessage(): string
     {
-        return "The requested owner was not found.";
+        return "The car information provided is invalid. Please check your input.";
     }
 
     /**
@@ -45,7 +50,7 @@ class OwnerNotFoundException extends ElanRegistryException
      */
     protected static function getDefaultLogCategory(): string
     {
-        return LogCategories::LOG_CATEGORY_OWNER_ACTIONS;
+        return LogCategories::LOG_CATEGORY_VALIDATION_ERROR;
     }
 
     /**
@@ -53,6 +58,6 @@ class OwnerNotFoundException extends ElanRegistryException
      */
     protected static function getDefaultHttpStatusCode(): int
     {
-        return 404;
+        return 422;
     }
 }

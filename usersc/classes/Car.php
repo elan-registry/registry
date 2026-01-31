@@ -5,16 +5,16 @@ declare(strict_types=1);
 namespace ElanRegistry\Car;
 
 use AppConstants;
-use CarCreationException;
-use CarDatabaseException;
-use CarDeletionException;
 use CarErrorMessages;
-use CarNotFoundException;
-use CarPermissionException;
-use CarValidationException;
 use DB;
+use ElanRegistry\Exceptions\CarCreationException;
+use ElanRegistry\Exceptions\CarDatabaseException;
+use ElanRegistry\Exceptions\CarDeletionException;
+use ElanRegistry\Exceptions\CarNotFoundException;
+use ElanRegistry\Exceptions\CarPermissionException;
+use ElanRegistry\Exceptions\CarValidationException;
+use ElanRegistry\Exceptions\ImageProcessingException;
 use Exception;
-use ImageProcessingException;
 use LogCategories;
 use Token;
 

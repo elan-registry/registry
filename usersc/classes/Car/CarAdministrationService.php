@@ -4,15 +4,15 @@ declare(strict_types=1);
 
 namespace ElanRegistry\Car;
 
-use CarDeletionException;
-use CarNotFoundException;
-use CarValidationException;
-use CarDatabaseException;
-use CarTransferException;
-use CarMergeException;
-use CarErrorMessages;
-use LogCategories;
 use AppConstants;
+use CarErrorMessages;
+use ElanRegistry\Exceptions\CarDatabaseException;
+use ElanRegistry\Exceptions\CarDeletionException;
+use ElanRegistry\Exceptions\CarMergeException;
+use ElanRegistry\Exceptions\CarNotFoundException;
+use ElanRegistry\Exceptions\CarTransferException;
+use ElanRegistry\Exceptions\CarValidationException;
+use LogCategories;
 use Token;
 
 /**

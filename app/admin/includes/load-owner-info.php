@@ -1,5 +1,9 @@
 <?php
 declare(strict_types=1);
+
+use ElanRegistry\Exceptions\ElanRegistryException;
+use ElanRegistry\Exceptions\OwnerNotFoundException;
+
 /**
  * load-owner-info.php
  * AJAX endpoint for loading owner information sidebar

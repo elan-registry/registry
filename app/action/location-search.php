@@ -1,6 +1,8 @@
 <?php
 declare(strict_types=1);
 
+use ElanRegistry\Exceptions\LocationServiceException;
+
 /**
  * AJAX Endpoint: Location Search
  *

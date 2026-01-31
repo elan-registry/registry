@@ -2,18 +2,22 @@
 
 declare(strict_types=1);
 
+namespace ElanRegistry\Exceptions;
+
+use Throwable;
+
 /**
- * CarTransferException
+ * ValidationException
  *
- * Exception thrown when car ownership transfer operations fail.
- * Used during the car transfer workflow when database updates,
- * validation, or user permission checks fail.
+ * Generic exception for validation failures not specific to Cars or Owners.
+ * Use domain-specific exceptions (CarValidationException, OwnerValidationException)
+ * when the context is clear.
  *
  * @package ElanRegistry
  * @subpackage Exceptions
- * @since v2.11.0
+ * @since v2.12.0
  */
-class CarTransferException extends CarException
+class ValidationException extends ElanRegistryException
 {
     /**
      * Constructor
@@ -37,7 +41,7 @@ class CarTransferException extends CarException
      */
     protected static function getDefaultUserMessage(): string
     {
-        return "Unable to transfer the car. Please try again.";
+        return "The information provided is invalid. Please check your input.";
     }
 
     /**
@@ -45,7 +49,7 @@ class CarTransferException extends CarException
      */
     protected static function getDefaultLogCategory(): string
     {
-        return LogCategories::LOG_CATEGORY_CAR_TRANSFER_ERROR;
+        return 'ValidationError';
     }
 
     /**
@@ -53,6 +57,6 @@ class CarTransferException extends CarException
      */
     protected static function getDefaultHttpStatusCode(): int
     {
-        return 500;
+        return 422;
     }
 }

@@ -1,6 +1,9 @@
 <?php
 declare(strict_types=1);
 
+use ElanRegistry\Exceptions\CarValidationException;
+use ElanRegistry\Exceptions\ElanRegistryException;
+
 /**
  * editCar.php - Car management endpoint
  * 

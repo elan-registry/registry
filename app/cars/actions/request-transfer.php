@@ -2,6 +2,8 @@
 
 declare(strict_types=1);
 
+use ElanRegistry\Exceptions\CarTransferException;
+
 /**
  * request-transfer.php - Car Transfer Request Handler
  *

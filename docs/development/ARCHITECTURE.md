@@ -92,7 +92,7 @@ The `car_transfer_requests` table stores:
 
 ## Class Architecture & Integration Patterns
 
-Domain classes in `/usersc/classes/` follow PascalCase naming, use `DB::getInstance()` singleton, custom exceptions in `/usersc/exceptions/`, and `logger()` for audit logging.
+Domain classes in `/usersc/classes/` follow PascalCase naming, use `DB::getInstance()` singleton, custom exceptions in `/usersc/classes/Exceptions/` with the `ElanRegistry\Exceptions` namespace, and `logger()` for audit logging.
 
 **Key function:** `getUserWithProfile($userId)` in `/usersc/includes/custom_functions.php` - primary function for combined user+profile data access with safe defaults.
 

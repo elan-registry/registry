@@ -2,6 +2,16 @@
 
 declare(strict_types=1);
 
+use ElanRegistry\Exceptions\CarCreationException;
+use ElanRegistry\Exceptions\CarDatabaseException;
+use ElanRegistry\Exceptions\CarDeletionException;
+use ElanRegistry\Exceptions\CarException;
+use ElanRegistry\Exceptions\CarMergeException;
+use ElanRegistry\Exceptions\CarNotFoundException;
+use ElanRegistry\Exceptions\CarPermissionException;
+use ElanRegistry\Exceptions\CarTransferException;
+use ElanRegistry\Exceptions\CarValidationException;
+use ElanRegistry\Exceptions\ElanRegistryException;
 use PHPUnit\Framework\TestCase;
 
 /**
@@ -20,14 +30,14 @@ class CarExceptionHierarchyTest extends TestCase
      * All car exception classes that should extend CarException
      */
     private const CAR_EXCEPTION_CLASSES = [
-        'CarNotFoundException',
-        'CarCreationException',
-        'CarValidationException',
-        'CarDeletionException',
-        'CarMergeException',
-        'CarTransferException',
-        'CarDatabaseException',
-        'CarPermissionException',
+        CarNotFoundException::class,
+        CarCreationException::class,
+        CarValidationException::class,
+        CarDeletionException::class,
+        CarMergeException::class,
+        CarTransferException::class,
+        CarDatabaseException::class,
+        CarPermissionException::class,
     ];
 
     /**
@@ -35,7 +45,7 @@ class CarExceptionHierarchyTest extends TestCase
      */
     public function testCarExceptionIsAbstract(): void
     {
-        $reflection = new ReflectionClass('CarException');
+        $reflection = new ReflectionClass(CarException::class);
         $this->assertTrue(
             $reflection->isAbstract(),
             'CarException must be abstract'
@@ -48,7 +58,7 @@ class CarExceptionHierarchyTest extends TestCase
     public function testCarExceptionExtendsElanRegistryException(): void
     {
         $this->assertTrue(
-            is_subclass_of('CarException', 'ElanRegistryException'),
+            is_subclass_of(CarException::class, ElanRegistryException::class),
             'CarException should extend ElanRegistryException'
         );
     }
@@ -62,7 +72,7 @@ class CarExceptionHierarchyTest extends TestCase
     public function testCarExceptionExtendsCarException(string $className): void
     {
         $this->assertTrue(
-            is_subclass_of($className, 'CarException'),
+            is_subclass_of($className, CarException::class),
             "{$className} should extend CarException"
         );
     }

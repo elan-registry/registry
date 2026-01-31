@@ -2,7 +2,7 @@
 declare(strict_types=1);
 
 /**
- * car_details.php
+ * details.php
  * Displays detailed information about a specific car in the registry.
  *
  * Shows car data, owner info, factory info, images, location map, and update history.
@@ -513,7 +513,7 @@ if (!empty($_GET)) {
                                 </div>
                                 
                                 <div class="table-responsive">
-                                    <table class="table table-striped table-bordered table-hover table-sm w-100" aria-describedby="History of car updates">
+                                    <table id="carHistoryTable" class="table table-striped table-bordered table-hover table-sm w-100" aria-describedby="History of car updates">
                                         <thead class="thead-dark">
                                             <tr>
                                                 <th scope="col" class="text-nowrap">
@@ -558,76 +558,6 @@ if (!empty($_GET)) {
                                             </tr>
                                         </thead>
                                         <tbody>
-                                            <?php if (empty($carHistory)): ?>
-                                                <tr>
-                                                    <td colspan="17" class="text-center text-muted py-4">
-                                                        <i class="fas fa-info-circle"></i> No history available
-                                                    </td>
-                                                </tr>
-                                            <?php else: ?>
-                                                <?php foreach ($carHistory as $record): ?>
-                                                    <tr>
-                                                        <td><?= htmlspecialchars($record->operation ?? '') ?></td>
-                                                        <td class="text-nowrap">
-                                                            <?php
-                                                            if (!empty($record->timestamp)) {
-                                                                try {
-                                                                    $date = new DateTime($record->timestamp);
-                                                                    echo $date->format('M j, Y g:i A');
-                                                                } catch (Exception $e) {
-                                                                    echo htmlspecialchars($record->timestamp);
-                                                                }
-                                                            }
-                                                            ?>
-                                                        </td>
-                                                        <td><?= htmlspecialchars($record->year ?? '') ?></td>
-                                                        <td><?= htmlspecialchars($record->type ?? '') ?></td>
-                                                        <td><?= htmlspecialchars($record->chassis ?? '') ?></td>
-                                                        <td><?= htmlspecialchars($record->series ?? '') ?></td>
-                                                        <td><?= htmlspecialchars($record->variant ?? '') ?></td>
-                                                        <td><?= htmlspecialchars($record->color ?? '') ?></td>
-                                                        <td><?= htmlspecialchars($record->engine ?? '') ?></td>
-                                                        <td class="text-nowrap">
-                                                            <?php
-                                                            if (!empty($record->purchasedate)) {
-                                                                try {
-                                                                    $date = new DateTime($record->purchasedate);
-                                                                    echo $date->format('M j, Y');
-                                                                } catch (Exception $e) {
-                                                                    echo htmlspecialchars($record->purchasedate);
-                                                                }
-                                                            }
-                                                            ?>
-                                                        </td>
-                                                        <td class="text-nowrap">
-                                                            <?php
-                                                            if (!empty($record->solddate)) {
-                                                                try {
-                                                                    $date = new DateTime($record->solddate);
-                                                                    echo $date->format('M j, Y');
-                                                                } catch (Exception $e) {
-                                                                    echo htmlspecialchars($record->solddate);
-                                                                }
-                                                            }
-                                                            ?>
-                                                        </td>
-                                                        <td>
-                                                            <?php if (!empty($record->comments)): ?>
-                                                                <small><?= nl2br(htmlspecialchars($record->comments)) ?></small>
-                                                            <?php endif; ?>
-                                                        </td>
-                                                        <td>
-                                                            <?php if (!empty($record->image)): ?>
-                                                                <?= CarView::displayCarousel($car) ?>
-                                                            <?php endif; ?>
-                                                        </td>
-                                                        <td><?= htmlspecialchars($record->fname ?? '') ?></td>
-                                                        <td><?= htmlspecialchars($record->city ?? '') ?></td>
-                                                        <td><?= htmlspecialchars($record->state ?? '') ?></td>
-                                                        <td><?= htmlspecialchars($record->country ?? '') ?></td>
-                                                    </tr>
-                                                <?php endforeach; ?>
-                                            <?php endif; ?>
                                         </tbody>
                                     </table>
                                 </div>
@@ -762,6 +692,17 @@ window.ELAN_CONFIG = {
 };
 </script>
 <script src='<?= $us_url_root ?>app/assets/js/imagedisplay.js'></script>
+<script src='<?= $us_url_root ?>app/assets/js/highlightDifferences.js'></script>
+<script>
+const img_root = '<?= $us_url_root . $settings->elan_image_dir ?>';
+window.carDetailsConfig = {
+    carId: <?= (int)$carData->id ?>,
+    csrf: '<?= Token::generate() ?>'
+};
+</script>
+<script src='<?= $us_url_root ?>app/assets/js/car_details.js'></script>
+
+
 
 <?php 
 $hasValidLocation = (!empty($carData->lat) && !empty($carData->lon) &&
@@ -772,7 +713,7 @@ $hasValidLocation = (!empty($carData->lat) && !empty($carData->lon) &&
 <?php if ($hasValidLocation) { ?>
 <!-- Google Maps for car location -->
 <script>
-function initMap() {
+window.initMap = function() {
     const carLocation = {
         lat: <?= (float)$carData->lat ?>,
         lng: <?= (float)$carData->lon ?>
@@ -792,7 +733,7 @@ function initMap() {
             title: "Car Location"
         });
     }
-}
+};
 </script>
 <script async defer src="https://maps.googleapis.com/maps/api/js?key=<?= $settings->elan_google_maps_key ?>&callback=initMap"></script>
 <?php } ?>

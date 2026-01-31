@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use ElanRegistry\Exceptions\ImageProcessingException;
 use PHPUnit\Framework\TestCase;
 
 /**
