@@ -1,7 +1,7 @@
 name: Claude Code Review
 
 on:
-  pull_request_target:
+  pull_request:
     types: [opened, synchronize]
     # Focus on code files that need standards enforcement
     paths:
