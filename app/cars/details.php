@@ -713,7 +713,7 @@ $hasValidLocation = (!empty($carData->lat) && !empty($carData->lon) &&
 <?php if ($hasValidLocation) { ?>
 <!-- Google Maps for car location -->
 <script>
-function initMap() {
+window.initMap = function() {
     const carLocation = {
         lat: <?= (float)$carData->lat ?>,
         lng: <?= (float)$carData->lon ?>
@@ -733,7 +733,7 @@ function initMap() {
             title: "Car Location"
         });
     }
-}
+};
 </script>
 <script async defer src="https://maps.googleapis.com/maps/api/js?key=<?= $settings->elan_google_maps_key ?>&callback=initMap"></script>
 <?php } ?>
