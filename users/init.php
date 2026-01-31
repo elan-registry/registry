@@ -9,7 +9,7 @@ session_set_cookie_params([
     'lifetime' => 0,           // Session cookie (expires when browser closes)
     'path' => '/',             // Available across entire site
     'domain' => '',            // Use default domain
-    'secure' => isset($_SERVER['HTTPS']), // Only send over HTTPS if available
+    'secure' => Server::get('HTTPS') !== '', // Only send over HTTPS if available
     'httponly' => true,        // Prevent JavaScript access to session cookie
     'samesite' => 'Strict'     // CSRF protection - only send with same-site requests
 ]);
@@ -17,9 +17,10 @@ session_set_cookie_params([
 ini_set('session.cookie_httponly', 1);
 session_start();
 
-$abs_us_root = $_SERVER['DOCUMENT_ROOT'];
+// Use Server::get() for validated, sanitized server variables
+$abs_us_root = Server::get('DOCUMENT_ROOT', '');
 
-$self_path = explode("/", $_SERVER['PHP_SELF']);
+$self_path = explode("/", Server::get('PHP_SELF', '/'));
 $self_path_length = count($self_path);
 $file_found = false;
 
@@ -113,4 +114,7 @@ if ($user->isLoggedIn()) {
 $timezone_string = 'America/Los_Angeles';
 date_default_timezone_set($timezone_string);
 
+// Forces SSL verification in cURL requests to UserSpice API
+// Will most likely break on localhost or self-signed certificates
+define('EXTRA_CURL_SECURITY', true);
 require_once $abs_us_root . $us_url_root . "users/includes/loader.php";
