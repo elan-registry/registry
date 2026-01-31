@@ -1,4 +1,4 @@
-  <script>
+
       $(document).ready(function () {
         highlightDifferences();
       });
@@ -36,4 +36,3 @@
           });
         });
       }
-    </script>
