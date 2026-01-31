@@ -9,9 +9,9 @@
 $path = ['', 'users/', 'usersc/', 'app/', 'FIX/', 'app/admin/verify/', 'app/cars/', 'app/contact/', 'app/reports/', 'app/reports/api/', 'app/cars/actions/', 'app/admin/', 'app/admin/includes/', 'error/', 'docs/', 'docs/admin/', 'docs/faq/', 'docs/faq/admin/', 'docs/stories/', 'docs/stories/brian_walton/', 'docs/stories/SGO_2F/'];
 // Only add or remove values in the $path variable separated by commas above
 
-$abs_us_root = $_SERVER['DOCUMENT_ROOT'];
+$abs_us_root = Server::get('DOCUMENT_ROOT');
 
-$self_path = explode("/", $_SERVER['PHP_SELF']);
+$self_path = explode("/", Server::get('PHP_SELF'));
 $self_path_length = count($self_path);
 $file_found = false;
 
