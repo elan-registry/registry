@@ -5,7 +5,8 @@
 
 ## 🚨 REQUIRED ACTIONS AFTER DEPLOYMENT
 
-### [Action Category]: [Brief Description]
+### [Action Category] - [Brief Description]
+
 **⚠️ [Warning/Note about manual steps required]**
 
 1. **[Action 1]** *(via [method/interface]*
@@ -25,6 +26,7 @@
    - [Step 2 details]
 
 **🎯 Success Criteria:**
+
 - ✅ [Completed item] *(COMPLETED)*
 - ⏳ [Pending item] *(PENDING - requires [action])*
 - ⏳ [Pending item] *(PENDING - requires [action])*
@@ -34,43 +36,50 @@
 [Describe visible changes for end users, or state "No visible changes for end users" if this is an internal release]
 
 ### [Feature Category] (if applicable)
+
 - **[Feature 1]**: [Brief description of user benefit]
 - **[Feature 2]**: [Brief description of user benefit]
 
 ### [Bug Fixes] (if applicable)
+
 - **Fixed [issue]**: [Brief description of what was fixed]
 - **Improved [feature]**: [Brief description of improvement]
 
 ## 🔧 Admin-Facing Changes
 
 ### [Admin Feature Category]
+
 - **[Change 1]**: [Brief description of admin-facing improvement]
 - **[Change 2]**: [Brief description of admin-facing improvement]
 - **[Change 3]**: [Brief description of admin-facing improvement]
 
 ### [Admin Tools/Interface] (if applicable)
+
 - **[Tool/Interface name]**: [Brief description of changes]
 - **[Feature]**: [Brief description of enhancement]
 
 ## 📋 Issues Resolved in This Release
 
-[#ISSUE_NUMBER](https://github.com/unibrain1/elanregistry/issues/ISSUE_NUMBER) - [Issue Title]
+Closes #ISSUE_NUMBER - [Issue Title]
 
-[#ISSUE_NUMBER](https://github.com/unibrain1/elanregistry/issues/ISSUE_NUMBER) - [Issue Title]
+Closes #ISSUE_NUMBER - [Issue Title]
 
-[#ISSUE_NUMBER](https://github.com/unibrain1/elanregistry/issues/ISSUE_NUMBER) - [Issue Title]
+Closes #ISSUE_NUMBER - [Issue Title]
 
 ---
 
 ## 📝 Template Usage Notes
 
-### Section Guidelines:
+### Section Guidelines
+
 - **Required Actions**: Always include if manual steps are needed post-deployment
 - **User-Facing Changes**: Focus on what end users will notice
 - **Admin-Facing Changes**: Focus on administrative tools and interfaces
-- **Issues Resolved**: Simple list with links to GitHub issues
+- **Issues Resolved**: Use GitHub closing keywords (`Closes #NNN`) so issues
+  are auto-closed when the release PR merges into `main`
 
-### Content Guidelines:
+### Content Guidelines
+
 - Keep descriptions brief and focused on impact/benefit
 - Detailed technical changes belong in the GitHub issues themselves
 - Use bullet points for easy scanning

@@ -134,6 +134,28 @@ quality, security, and project management compliance.
   - **Draft handling**: Marks issues as "in-progress" for draft PRs
 - **Status flow**: `status: in-progress` → `status: needs-review` → issue closed
 
+### Milestone Release PRs
+
+When merging a milestone branch (e.g., `milestone/v2.14.0`) into `main`, the
+release PR body **must** include GitHub closing keywords for all issues resolved
+in that milestone. Individual PRs merged into the milestone branch target the
+milestone branch — not `main` — so their closing keywords won't trigger
+auto-closure. Only the final release PR merged into `main` will auto-close
+issues.
+
+**Example release PR body:**
+
+```markdown
+## Issues Resolved
+
+Closes #533 - Dropzone validation error display
+Closes #534 - Mock DB string return types
+Closes #535 - Car validation exception test coverage
+```
+
+Use `Closes`, `Fixes`, or `Resolves` followed by `#NNN`. See the
+[Release Notes Template](RELEASE_NOTES_TEMPLATE.md) for the full format.
+
 ### Special Workflow Behaviors
 
 #### Version Check Behavior
