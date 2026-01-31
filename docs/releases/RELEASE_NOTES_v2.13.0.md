@@ -5,8 +5,22 @@
 
 ## 🚨 REQUIRED ACTIONS AFTER DEPLOYMENT
 
-**No manual actions required** - This is an architecture and code quality
-release with no database schema changes or FIX scripts.
+### Apply UserSpice 6.0.3 Update
+
+Download and apply the UserSpice 6.0.3 update to the `users/` directory.
+See <https://userspice.com> for update instructions.
+
+### Run FIX/24 - Regenerate Optimized Thumbnails
+
+Updates the thumbnail size setting from 600 to 768 and regenerates all
+optimized thumbnails at the new size. Run once after deployment:
+
+```text
+https://your-site.com/FIX/24-Regenerate-Optimized-Thumbnails.php
+```
+
+The script processes images in batches with timeout management. Safe to
+re-run if interrupted — tracks completion in `fix_script_runs` table.
 
 ## 👤 User-Facing Changes
 
@@ -16,10 +30,24 @@ release with no database schema changes or FIX scripts.
   validation errors on the car edit form were not displayed to users when the
   server returned a 422 response. Users now see proper error messages when
   form validation fails, improving the editing experience.
+- **Fixed Registration Page Error**: Resolved TypeError on the join page
+  caused by the autoassignun plugin expecting username form elements that
+  don't exist in the custom registration view.
+- **Fixed Verification Email Link**: Added missing `user_id` parameter to
+  the email verification link sent during registration.
+- **Fixed Thumbnail Generation Using Wrong Size**: The `uploadImages()`
+  function was missing `global $settings`, causing it to always use the
+  hardcoded 600px fallback instead of the configured 768px size.
+- **Fixed Error Page Paths**: Corrected `__DIR__` relative paths in 403
+  and 404 error pages that were looking for includes in the wrong directory.
 
-**No other visible changes for end users** - This release focuses on internal
-architecture improvements, code quality enhancements, and developer experience
-that do not affect user-facing functionality.
+### Improvements
+
+- **Redirect After Login**: Users who are redirected to the login page from
+  a protected page are now returned to their original destination after
+  successful login, instead of always landing on the account page.
+- **Optimized Thumbnail Size**: Increased mid-range thumbnail from 600px
+  to 768px for better display quality on modern screens.
 
 ## 🔧 Admin-Facing Changes
 
@@ -67,7 +95,8 @@ that do not affect user-facing functionality.
 ### Server Globals Migration (Issues #485-490)
 
 Migrated all direct `$_SERVER` access to centralized, validated server globals
-via `usersc/includes/server_globals.php`. Provides 11 validated globals with
+via `usersc/includes/server_globals.php`. Includes core framework files
+`users/init.php` and `z_us_root.php`. Provides 11 validated globals with
 security features including CRLF injection prevention and hostname validation.
 See [CLAUDE.md](../../CLAUDE.md) and
 [PAGE_LOADING_FLOW.md](../development/PAGE_LOADING_FLOW.md) for usage patterns.
@@ -114,6 +143,15 @@ helper functions. Updated test mocks to match real PDO behavior. See
 - Streamlined documentation, simplified pre-commit hooks, cleaned up .gitignore
 - Fixed Playwright auth helper and test path resolution
 - PHPUnit updated to 11.5.50
+- Migrated `users/init.php` and `z_us_root.php` to `Server::get()` pattern
+- Fixed thumbnail size fallback default (600 to 768)
+- Fixed missing `global $settings` in `uploadImages()` causing wrong thumbnail size
+- Fixed `__DIR__` paths in error/403.php and error/404.php
+- Fixed autoassignun plugin compatibility in custom join view
+- Fixed missing `user_id` in verification email params
+- Migrated `validateChassis.php` AJAX check to `Server::get()` pattern
+- Archived FIX scripts 17-23 to `FIX/_ARCHIVE/`
+- Added FIX/24 for thumbnail regeneration at new size
 
 ---
 
@@ -134,13 +172,20 @@ git checkout v2.13.0
 
 No composer installation required - all changes are code-level improvements.
 
+#### Step 3: Run FIX/24
+
+Navigate to `FIX/24-Regenerate-Optimized-Thumbnails.php` in your browser.
+This updates the thumbnail size setting and regenerates optimized images.
+
+#### Step 4: Verify Deployment
+
 ```bash
 # Verify site loads correctly
 # Check error logs for any warnings
 # Test car edit form validation
 ```
 
-#### Step 3: Monitor Logs
+#### Step 5: Monitor Logs
 
 - Check UserSpice logs for any errors
 - Monitor PHP error logs for TypeErrors
@@ -167,6 +212,9 @@ After deployment, verify:
 - [ ] Owner management operations work
 - [ ] No TypeErrors in PHP error logs
 - [ ] UserSpice logs show proper categorization
+- [ ] Redirect after login returns to original page
+- [ ] FIX/24 completed successfully (check fix_script_runs table)
+- [ ] Thumbnails display at correct sizes
 
 ---
 
@@ -221,8 +269,8 @@ fixes, jQuery to ElanRegistryAPI migration, PHPStan improvements, and
 documentation streamlining. Zero breaking changes - full backward
 compatibility maintained. All tests passing.
 
-**Recommendation:** Deploy to production. No database migrations or FIX
-scripts required. Monitor logs for 24-48 hours post-deployment.
+**Recommendation:** Deploy to production. Run FIX/24 after deployment to
+update thumbnail sizes. Monitor logs for 24-48 hours post-deployment.
 
 **Full Changelog:**
 <https://github.com/unibrain1/elanregistry/compare/v2.12.0...v2.13.0>
