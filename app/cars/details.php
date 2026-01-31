@@ -513,7 +513,7 @@ if (!empty($_GET)) {
                                 </div>
                                 
                                 <div class="table-responsive">
-                                    <table class="table table-striped table-bordered table-hover table-sm w-100" aria-describedby="History of car updates">
+                                    <table id="carHistoryTable" class="table table-striped table-bordered table-hover table-sm w-100" aria-describedby="History of car updates">
                                         <thead class="thead-dark">
                                             <tr>
                                                 <th scope="col" class="text-nowrap">
@@ -762,6 +762,9 @@ window.ELAN_CONFIG = {
 };
 </script>
 <script src='<?= $us_url_root ?>app/assets/js/imagedisplay.js'></script>
+<script src='<?= $us_url_root ?>app/assets/js/highlightDifferences.js'></script>
+
+
 
 <?php 
 $hasValidLocation = (!empty($carData->lat) && !empty($carData->lon) &&
