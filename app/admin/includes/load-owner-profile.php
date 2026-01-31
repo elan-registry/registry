@@ -225,7 +225,7 @@ try {
         submitBtn.html('<i class="fas fa-spinner fa-spin"></i> Saving...').prop('disabled', true);
 
         new ElanRegistryAPI()
-            .post('includes/process-owner-update.php', formDataObj)
+            .post('<?= $us_url_root ?>app/admin/includes/process-owner-update.php', formDataObj)
             .then(function(response) {
                 // Show success message
                 $('#ownerProfileForm').prepend(
@@ -267,7 +267,7 @@ try {
         btn.html('<i class="fas fa-spinner fa-spin"></i> Syncing...').prop('disabled', true);
 
         new ElanRegistryAPI()
-            .post('includes/process-owner-sync-location.php', { owner_id: ownerId })
+            .post('<?= $us_url_root ?>app/admin/includes/process-owner-sync-location.php', { owner_id: ownerId })
             .then(function(response) {
                 $('#ownerProfileForm').prepend(
                     '<div class="alert alert-success alert-dismissible fade show">' +
