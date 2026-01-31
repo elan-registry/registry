@@ -36,7 +36,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
  * @param int $user_id The user ID to fetch
  * @return object|null User object with profile data, or null if not found
  */
-function getUserWithProfile($user_id) {
+function getUserWithProfile(int $user_id): ?object {
     $db = DB::getInstance();
 
     $userQ = $db->query(
@@ -70,7 +70,7 @@ function getUserWithProfile($user_id) {
  * @param int|null $userId User ID to check (defaults to current user)
  * @return bool True if user is Administrator (2) or Editor (3)
  */
-function isRegistryAdmin($userId = null) {
+function isRegistryAdmin(?int $userId = null): bool {
     return hasPerm([2, 3], $userId);
 }
 
@@ -83,7 +83,7 @@ function isRegistryAdmin($userId = null) {
  *
  * @return string Base URL (e.g., 'https://elanregistry.org' or 'http://localhost')
  */
-function getBaseUrl() {
+function getBaseUrl(): string {
     static $baseUrl = null;
 
     if ($baseUrl === null) {
