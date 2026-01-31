@@ -1,5 +1,9 @@
 <?php
 declare(strict_types=1);
+
+use ElanRegistry\Exceptions\AdminOperationException;
+use ElanRegistry\Exceptions\LocationServiceException;
+
 /**
  * process-owner-sync-location.php
  * AJAX endpoint for syncing owner location to owned cars

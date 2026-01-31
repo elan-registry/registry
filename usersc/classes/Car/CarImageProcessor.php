@@ -4,9 +4,9 @@ declare(strict_types=1);
 
 namespace ElanRegistry\Car;
 
-use ImageProcessingException;
-use CarDatabaseException;
 use CarErrorMessages;
+use ElanRegistry\Exceptions\CarDatabaseException;
+use ElanRegistry\Exceptions\ImageProcessingException;
 use LogCategories;
 use DB;
 

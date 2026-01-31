@@ -435,7 +435,7 @@ class StatisticsApiTest extends IntegrationTestCase
      */
     public function testStatisticsDataServiceExists(): void
     {
-        $filePath = __DIR__ . '/../../app/classes/StatisticsDataService.php';
+        $filePath = __DIR__ . '/../../usersc/classes/StatisticsDataService.php';
         try {
             if (!file_exists($filePath)) {
                 $this->markTestSkipped('StatisticsDataService file not found');

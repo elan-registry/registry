@@ -2,18 +2,23 @@
 
 declare(strict_types=1);
 
+namespace ElanRegistry\Exceptions;
+
+use LogCategories;
+use Throwable;
+
 /**
- * OwnerUpdateException
+ * OwnerCreationException
  *
- * Exception thrown when owner update operations fail.
- * Used when database update errors occur or validation fails during
- * owner record modifications.
+ * Exception thrown when owner creation operations fail.
+ * Used when database insertion or validation errors occur during
+ * new owner record creation.
  *
  * @package ElanRegistry
  * @subpackage Exceptions
  * @since v2.11.0
  */
-class OwnerUpdateException extends ElanRegistryException
+class OwnerCreationException extends ElanRegistryException
 {
     /**
      * Constructor
@@ -37,7 +42,7 @@ class OwnerUpdateException extends ElanRegistryException
      */
     protected static function getDefaultUserMessage(): string
     {
-        return "Unable to update the owner record. Please try again.";
+        return "Unable to create the owner record. Please try again.";
     }
 
     /**

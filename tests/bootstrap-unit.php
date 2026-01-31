@@ -2,6 +2,12 @@
 
 declare(strict_types=1);
 
+use ElanRegistry\Exceptions\CarDeletionException;
+use ElanRegistry\Exceptions\CarMergeException;
+use ElanRegistry\Exceptions\CarNotFoundException;
+use ElanRegistry\Exceptions\CarValidationException;
+use ElanRegistry\Exceptions\ImageProcessingException;
+
 /**
  * PHPUnit Bootstrap File for Unit Tests
  *

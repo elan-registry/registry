@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace ElanRegistry\Car;
 
-use CarValidationException;
+use ElanRegistry\Exceptions\CarValidationException;
 use DB;
 
 /**

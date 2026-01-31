@@ -2,17 +2,22 @@
 
 declare(strict_types=1);
 
+namespace ElanRegistry\Exceptions;
+
+use LogCategories;
+use Throwable;
+
 /**
- * CarPermissionException
+ * SchemaException
  *
- * Exception thrown when a car operation is denied due to
- * insufficient permissions or authentication failures.
+ * Exception thrown when database schema operations fail.
+ * Used when schema migrations, alterations, or validations encounter errors.
  *
  * @package ElanRegistry
  * @subpackage Exceptions
- * @since v2.14.0
+ * @since v2.9.2
  */
-class CarPermissionException extends CarException
+class SchemaException extends ElanRegistryException
 {
     /**
      * Constructor
@@ -36,7 +41,7 @@ class CarPermissionException extends CarException
      */
     protected static function getDefaultUserMessage(): string
     {
-        return "You do not have permission to perform this car operation.";
+        return "A database schema operation failed. Please contact support.";
     }
 
     /**
@@ -44,7 +49,7 @@ class CarPermissionException extends CarException
      */
     protected static function getDefaultLogCategory(): string
     {
-        return LogCategories::LOG_CATEGORY_ACCESS_DENIED;
+        return LogCategories::LOG_CATEGORY_DATABASE_ERROR;
     }
 
     /**
@@ -52,6 +57,6 @@ class CarPermissionException extends CarException
      */
     protected static function getDefaultHttpStatusCode(): int
     {
-        return 403;
+        return 500;
     }
 }

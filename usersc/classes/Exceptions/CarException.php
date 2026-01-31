@@ -2,6 +2,10 @@
 
 declare(strict_types=1);
 
+namespace ElanRegistry\Exceptions;
+
+use LogCategories;
+
 /**
  * CarException - Abstract base class for all Car domain exceptions
  *

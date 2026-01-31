@@ -2,17 +2,23 @@
 
 declare(strict_types=1);
 
+namespace ElanRegistry\Exceptions;
+
+use LogCategories;
+use Throwable;
+
 /**
- * BackupException
+ * OwnerUpdateException
  *
- * Exception thrown when backup operations fail.
- * Used when backup creation, restoration, or cleanup operations encounter errors.
+ * Exception thrown when owner update operations fail.
+ * Used when database update errors occur or validation fails during
+ * owner record modifications.
  *
  * @package ElanRegistry
  * @subpackage Exceptions
- * @since v2.9.2
+ * @since v2.11.0
  */
-class BackupException extends ElanRegistryException
+class OwnerUpdateException extends ElanRegistryException
 {
     /**
      * Constructor
@@ -36,7 +42,7 @@ class BackupException extends ElanRegistryException
      */
     protected static function getDefaultUserMessage(): string
     {
-        return "A backup operation failed. Please contact support.";
+        return "Unable to update the owner record. Please try again.";
     }
 
     /**
@@ -44,7 +50,7 @@ class BackupException extends ElanRegistryException
      */
     protected static function getDefaultLogCategory(): string
     {
-        return LogCategories::LOG_CATEGORY_BACKUP_ERROR;
+        return LogCategories::LOG_CATEGORY_OWNER_ACTIONS;
     }
 
     /**

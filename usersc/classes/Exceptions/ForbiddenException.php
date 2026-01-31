@@ -2,18 +2,21 @@
 
 declare(strict_types=1);
 
+namespace ElanRegistry\Exceptions;
+
+use Throwable;
+
 /**
- * CarDeletionException
+ * ForbiddenException
  *
- * Exception thrown when car deletion operations fail.
- * Used when database deletion errors occur or when attempting to
- * delete cars with active dependencies.
+ * Exception thrown when user is authenticated but lacks permission.
+ * Use for authorization failures after successful authentication.
  *
  * @package ElanRegistry
  * @subpackage Exceptions
- * @since v2.11.0
+ * @since v2.12.0
  */
-class CarDeletionException extends CarException
+class ForbiddenException extends ElanRegistryException
 {
     /**
      * Constructor
@@ -37,7 +40,7 @@ class CarDeletionException extends CarException
      */
     protected static function getDefaultUserMessage(): string
     {
-        return "Unable to delete the car record. Please try again.";
+        return "You do not have permission to perform this action.";
     }
 
     /**
@@ -45,7 +48,7 @@ class CarDeletionException extends CarException
      */
     protected static function getDefaultLogCategory(): string
     {
-        return LogCategories::LOG_CATEGORY_CAR_DELETION;
+        return 'SecurityError';
     }
 
     /**
@@ -53,6 +56,6 @@ class CarDeletionException extends CarException
      */
     protected static function getDefaultHttpStatusCode(): int
     {
-        return 500;
+        return 403;
     }
 }

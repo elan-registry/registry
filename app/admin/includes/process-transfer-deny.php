@@ -2,6 +2,8 @@
 
 declare(strict_types=1);
 
+use ElanRegistry\Exceptions\CarTransferException;
+
 /**
  * process-transfer-deny.php
  * AJAX endpoint for denying car transfer requests

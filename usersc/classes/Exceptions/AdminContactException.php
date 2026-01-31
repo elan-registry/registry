@@ -2,18 +2,23 @@
 
 declare(strict_types=1);
 
+namespace ElanRegistry\Exceptions;
+
+use LogCategories;
+use Throwable;
+
 /**
- * CarCreationException
+ * AdminContactException
  *
- * Exception thrown when car creation operations fail.
- * Used when database insertion or validation errors occur during
- * new car record creation.
+ * Exception thrown when admin-to-owner contact operations fail.
+ * Used for errors in the admin messaging system including email sending,
+ * user data retrieval, and validation failures.
  *
  * @package ElanRegistry
  * @subpackage Exceptions
- * @since v2.11.0
+ * @since v2.12.0
  */
-class CarCreationException extends CarException
+class AdminContactException extends ElanRegistryException
 {
     /**
      * Constructor
@@ -37,7 +42,7 @@ class CarCreationException extends CarException
      */
     protected static function getDefaultUserMessage(): string
     {
-        return "Unable to create the car record. Please try again.";
+        return "An error occurred while sending the message. Please try again.";
     }
 
     /**
@@ -45,7 +50,7 @@ class CarCreationException extends CarException
      */
     protected static function getDefaultLogCategory(): string
     {
-        return LogCategories::LOG_CATEGORY_CAR_CREATION;
+        return LogCategories::LOG_CATEGORY_CAR_ACTIONS;
     }
 
     /**

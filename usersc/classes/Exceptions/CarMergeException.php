@@ -2,18 +2,23 @@
 
 declare(strict_types=1);
 
+namespace ElanRegistry\Exceptions;
+
+use LogCategories;
+use Throwable;
+
 /**
- * CarValidationException
+ * CarMergeException
  *
- * Exception thrown when car data validation fails.
- * Used when input data doesn't meet required validation rules
- * (chassis number format, required fields, etc.).
+ * Exception thrown when car merge operations fail.
+ * Used when attempting to merge duplicate car records encounters
+ * errors or data conflicts.
  *
  * @package ElanRegistry
  * @subpackage Exceptions
  * @since v2.11.0
  */
-class CarValidationException extends CarException
+class CarMergeException extends CarException
 {
     /**
      * Constructor
@@ -37,7 +42,7 @@ class CarValidationException extends CarException
      */
     protected static function getDefaultUserMessage(): string
     {
-        return "The car information provided is invalid. Please check your input.";
+        return "Unable to merge the car records. Please try again.";
     }
 
     /**
@@ -45,7 +50,7 @@ class CarValidationException extends CarException
      */
     protected static function getDefaultLogCategory(): string
     {
-        return LogCategories::LOG_CATEGORY_VALIDATION_ERROR;
+        return LogCategories::LOG_CATEGORY_CAR_MERGE;
     }
 
     /**
@@ -53,6 +58,6 @@ class CarValidationException extends CarException
      */
     protected static function getDefaultHttpStatusCode(): int
     {
-        return 422;
+        return 500;
     }
 }

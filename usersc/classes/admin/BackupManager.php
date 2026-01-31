@@ -1,6 +1,8 @@
 <?php
 declare(strict_types=1);
 
+use ElanRegistry\Exceptions\BackupException;
+
 /**
  * BackupManager.php
  * Enhanced Backup Management for Admin Interface

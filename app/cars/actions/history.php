@@ -1,6 +1,8 @@
 <?php
 declare(strict_types=1);
 
+use ElanRegistry\Exceptions\ElanRegistryException;
+
 // Get the car history
 require_once '../../../users/init.php';
 
