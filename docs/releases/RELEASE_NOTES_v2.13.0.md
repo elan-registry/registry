@@ -1,6 +1,6 @@
 # Elan Registry v2.13.0 Release Notes
 
-**Release Date:** January 30, 2026
+**Release Date:** January 31, 2026
 **Type:** Minor Release - Architecture Modernization & Code Quality
 
 ## 🚨 REQUIRED ACTIONS AFTER DEPLOYMENT
@@ -51,13 +51,22 @@ re-run if interrupted — tracks completion in `fix_script_runs` table.
 
 ## 🔧 Admin-Facing Changes
 
-### Improved Error Reporting
-
+- **Fixed Enhanced Cleanup CSRF Failure**: The backup cleanup form was
+  missing a CSRF token, causing all cleanup submissions to redirect to the
+  token error page.
+- **Fixed Owner Profile Update 404**: AJAX endpoints for owner profile
+  updates, owner search, and location sync were resolving to the wrong URL
+  due to missing `$us_url_root` prefix in `ElanRegistryAPI` calls.
+- **Fixed Transfer Approve/Deny Buttons**: Inline Approve and Deny buttons
+  on the car management tab were using form POSTs with no server-side handler.
+  Converted to use the existing AJAX confirmation modal flow.
 - **Better Form Validation Feedback**: Car edit form now properly displays
   validation errors to admins, making it easier to understand and correct
-  form submission issues
+  form submission issues.
 - **Enhanced Logging**: Improved error logging across admin AJAX endpoints
-  for better troubleshooting and audit trails
+  for better troubleshooting and audit trails.
+- **Added robots.txt**: Allows search engine crawling of public pages while
+  blocking AI training bots and sensitive directories.
 
 ## 📋 Issues Resolved in This Release
 
@@ -150,6 +159,10 @@ helper functions. Updated test mocks to match real PDO behavior. See
 - Fixed autoassignun plugin compatibility in custom join view
 - Fixed missing `user_id` in verification email params
 - Migrated `validateChassis.php` AJAX check to `Server::get()` pattern
+- Fixed AJAX endpoint URL resolution in admin owner management pages
+- Fixed missing CSRF token in Enhanced Cleanup form
+- Converted transfer Approve/Deny to AJAX confirmation modal flow
+- Added `robots.txt` blocking AI scrapers and sensitive directories
 - Archived FIX scripts 17-23 to `FIX/_ARCHIVE/`
 - Added FIX/24 for thumbnail regeneration at new size
 
@@ -215,6 +228,11 @@ After deployment, verify:
 - [ ] Redirect after login returns to original page
 - [ ] FIX/24 completed successfully (check fix_script_runs table)
 - [ ] Thumbnails display at correct sizes
+- [ ] Registration page loads without JS errors
+- [ ] Owner profile save works from admin panel
+- [ ] Transfer Approve/Deny buttons work from car management tab
+- [ ] Enhanced Cleanup runs successfully from system tab
+- [ ] robots.txt accessible at site root
 
 ---
 
