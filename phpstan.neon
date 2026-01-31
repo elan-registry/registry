@@ -19,7 +19,6 @@ parameters:
     # Paths to analyze - limited to class files to avoid UserSpice globals in page files
     paths:
         - usersc/classes
-        - app/classes
 
     # Paths to exclude
     excludePaths:

@@ -33,7 +33,7 @@ if (isset($_POST['email'])) {
     $email_to = getFeedbackEmail();
     $email_subject = "[ELANREGISTRY] Feedback";
 
-    function died($error)
+    function died($error): void
     {
         // your error code can go here
         echo "We are very sorry, but there were error(s) found with the form you submitted. ";
@@ -76,7 +76,7 @@ if (isset($_POST['email'])) {
         died($error_message);
     }
 
-    function cleanString($string)
+    function cleanString($string): string
     {
         $bad = array("content-type", "bcc:", "to:", "cc:", "href");
         return str_replace($bad, "", $string);

@@ -468,11 +468,11 @@ if (class_exists('Car')) {
 // Mock classes for testing if they don't exist
 if (!class_exists('Token')) {
     class Token {
-        public static function generate() {
+        public static function generate(): string {
             return 'test_csrf_token_' . uniqid();
         }
 
-        public static function check($token) {
+        public static function check(mixed $token): bool {
             if ($token === null || $token === '') {
                 return false;
             }
@@ -487,14 +487,14 @@ if (!class_exists('Token')) {
 
 // Mock logger function
 if (!function_exists('logger')) {
-    function logger($userId, $category, $message) {
+    function logger($userId, $category, $message): void {
         // Mock logger - do nothing in tests
     }
 }
 
 // Mock getUserWithProfile function
 if (!function_exists('getUserWithProfile')) {
-    function getUserWithProfile($userId) {
+    function getUserWithProfile($userId): object {
         return (object) [
             'id' => (string) $userId,
             'fname' => 'Test',
@@ -1102,7 +1102,7 @@ if (!isset($user) || !is_object($user)) {
 
 // Mock securePage function - only for unit tests
 if (!function_exists('securePage')) {
-    function securePage($page) {
+    function securePage($page): bool {
         return true; // Always allow access in tests
     }
 }
@@ -1112,25 +1112,25 @@ if (!class_exists('Input')) {
     class Input {
         private static $mockData = [];
         
-        public static function get($key, $default = null) {
+        public static function get($key, $default = null): mixed {
             if (!empty(self::$mockData)) {
                 return self::$mockData[$key] ?? $default;
             }
             return $_POST[$key] ?? $_GET[$key] ?? $default;
         }
         
-        public static function exists($method = 'post') {
+        public static function exists($method = 'post'): bool {
             if (!empty(self::$mockData)) {
                 return !empty(self::$mockData);
             }
             return $method === 'post' ? !empty($_POST) : !empty($_GET);
         }
         
-        public static function setMockData($data) {
+        public static function setMockData($data): void {
             self::$mockData = $data;
         }
         
-        public static function clearMockData() {
+        public static function clearMockData(): void {
             self::$mockData = [];
         }
     }
@@ -1141,7 +1141,7 @@ if (!function_exists('getUserWithProfile')) {
     /**
      * Mock getUserWithProfile function for testing
      */
-    function getUserWithProfile($user_id) {
+    function getUserWithProfile($user_id): ?object {
         global $mockUsers, $mockProfiles;
 
         // Find user by ID
@@ -1177,7 +1177,7 @@ if (!function_exists('deleteUsers')) {
     /**
      * Mock deleteUsers function for testing
      */
-    function deleteUsers($users) {
+    function deleteUsers($users): int {
         global $mockDeletedUsers, $db;
         $mockDeletedUsers = $users;
 
@@ -1196,7 +1196,7 @@ if (!function_exists('logger')) {
     /**
      * Mock logger function for audit tracking
      */
-    function logger($userId, $category, $message) {
+    function logger($userId, $category, $message): bool {
         global $mockLogEntries;
         if (!isset($mockLogEntries)) {
             $mockLogEntries = [];
@@ -1216,7 +1216,7 @@ if (!function_exists('getSettings')) {
     /**
      * Mock getSettings function for testing
      */
-    function getSettings($id = 1) {
+    function getSettings($id = 1): object {
         // Return mock settings object
         return (object) [
             'id' => (string) $id,
@@ -1263,7 +1263,7 @@ if (!function_exists('isRegistryAdmin')) {
 /**
  * Mock user deletion cleanup process
  */
-function mockUserDeletionCleanup($id) {
+function mockUserDeletionCleanup($id): void {
     global $mockLogEntries;
     $db = DB::getInstance();
     

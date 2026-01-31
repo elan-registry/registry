@@ -1,3 +1,4 @@
+/* global highlightDifferences */
 /**
  * car_details.js
  * JavaScript functionality for the car details page

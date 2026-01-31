@@ -12,7 +12,7 @@ $autoCreationMessages = [];
 
 // Only perform auto-creation logic, not the full form rendering
 if (!function_exists('processSettingsAutoCreation')) {
-    function processSettingsAutoCreation() {
+    function processSettingsAutoCreation(): array {
         global $db, $user, $settings;
 
 

@@ -25,7 +25,7 @@ $subject = 'elanregistry.org - Owner to Owner Contact';
 $errors = [];
 $successes = [];
 
-function died($error)
+function died($error): void
 {
     // your error code can go here
     echo 'We are very sorry, but there were error(s) found with the form you submitted. ';
@@ -36,7 +36,7 @@ function died($error)
 }
 
 // Make sure no one tries to add header like keywords
-function clean_string($string)
+function clean_string($string): string
 {
     $bad = array('content-type', 'bcc:', 'to:', 'cc:', 'href');
     return str_replace($bad, '', $string);

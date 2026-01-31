@@ -373,7 +373,7 @@ class LocationService
      * @param string|null $userAgent Optional user agent
      * @return string|false Response body or false on failure
      */
-    private function makeHttpRequest(string $url, ?string $userAgent = null)
+    private function makeHttpRequest(string $url, ?string $userAgent = null): string|false
     {
         // Try cURL first
         if (function_exists('curl_init')) {
@@ -463,7 +463,7 @@ class LocationService
      * @return mixed|null Cached value or null if not found
      * @suppress PhanUndeclaredFunction APCu functions only called when available
      */
-    private function getCache(string $key)
+    private function getCache(string $key): mixed
     {
         // Try APCu first
         if (function_exists('apcu_fetch')) {
