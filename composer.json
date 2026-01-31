@@ -36,6 +36,8 @@
         "test:cars": "vendor/bin/phpunit -c phpunit-unit.xml tests/unit/cars",
         "test:users": "vendor/bin/phpunit -c phpunit-unit.xml tests/unit/users",
         "test:fast": "vendor/bin/phpunit -c phpunit-unit.xml --group=fast",
-        "test:slow": "vendor/bin/phpunit -c phpunit-unit.xml --group=slow"
+        "test:slow": "vendor/bin/phpunit -c phpunit-unit.xml --group=slow",
+        "check": "php scripts/check-coding-standards.php . && vendor/bin/phpstan analyse --no-progress --memory-limit=512M && npx eslint app/assets/js/",
+        "check:php": "php scripts/check-coding-standards.php . && vendor/bin/phpstan analyse --no-progress --memory-limit=512M"
     }
 }

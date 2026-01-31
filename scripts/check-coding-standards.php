@@ -155,11 +155,13 @@ class CodingStandardsChecker
     {
         // Skip if it's not a new file or if it's a template/include file
         if (strpos($content, 'declare(strict_types=1)') === false) {
+            // Strip <script> blocks to avoid matching JavaScript functions
+            $phpOnly = $this->stripScriptBlocks($content);
+
             // Only flag if it contains PHP class definitions or PHP function declarations
-            // Use stricter pattern to avoid matching JavaScript functions in <script> tags
-            if (preg_match('/^\s*(abstract\s+|final\s+)?class\s+\w+/m', $content) ||
-                preg_match('/^\s*(public|private|protected)\s+function\s+\w+/m', $content) ||
-                preg_match('/^function\s+\w+/m', $content)) {
+            if (preg_match('/^\s*(abstract\s+|final\s+)?class\s+\w+/m', $phpOnly) ||
+                preg_match('/^\s*(public|private|protected)\s+function\s+\w+/m', $phpOnly) ||
+                preg_match('/^function\s+\w+/m', $phpOnly)) {
                 $this->errors[] = "$filePath: Missing declare(strict_types=1) declaration";
             }
         }
@@ -177,8 +179,22 @@ class CodingStandardsChecker
      */
     private function checkFunctionTypes(string $filePath, array $lines): void
     {
+        $inScript = false;
+
         foreach ($lines as $lineNum => $line) {
             $lineNumber = $lineNum + 1;
+
+            // Track <script> blocks to skip JavaScript functions
+            if (preg_match('/<script\b/i', $line)) {
+                $inScript = true;
+            }
+            if (preg_match('/<\/script>/i', $line)) {
+                $inScript = false;
+                continue;
+            }
+            if ($inScript) {
+                continue;
+            }
 
             // Check for functions without return types (skip constructors - they can't have return types)
             if (preg_match('/\bfunction\s+(\w+)\s*\([^)]*\)/', $line, $funcMatches)) {
@@ -214,10 +230,23 @@ class CodingStandardsChecker
     private function checkPHPDocBlocks(string $filePath, array $lines): void
     {
         $inClass = false;
+        $inScript = false;
         $lastDocBlockEnd = -10; // Track where last docblock ended
 
         foreach ($lines as $lineNum => $line) {
             $lineNumber = $lineNum + 1;
+
+            // Track <script> blocks to skip JavaScript
+            if (preg_match('/<script\b/i', $line)) {
+                $inScript = true;
+            }
+            if (preg_match('/<\/script>/i', $line)) {
+                $inScript = false;
+                continue;
+            }
+            if ($inScript) {
+                continue;
+            }
 
             if (preg_match('/^class\s+\w+/', trim($line))) {
                 $inClass = true;
@@ -454,6 +483,17 @@ class CodingStandardsChecker
         if (!preg_match('/use\s+PHPUnit\\\Framework\\\TestCase/', $content)) {
             $this->warnings[] = "$filePath: Consider using explicit PHPUnit\\Framework\\TestCase import";
         }
+    }
+
+    /**
+     * Strip <script> blocks from content to avoid false positives on JavaScript
+     *
+     * @param string $content File content
+     * @return string Content with script blocks removed
+     */
+    private function stripScriptBlocks(string $content): string
+    {
+        return preg_replace('/<script\b[^>]*>.*?<\/script>/is', '', $content) ?? $content;
     }
 
     /**
