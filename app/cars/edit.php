@@ -28,7 +28,7 @@ if (!isset($settings->elan_image_display_max_size)) {
     $settings->elan_image_display_max_size = 2048;
 }
 if (!isset($settings->elan_image_thumbnail_sizes)) {
-    $settings->elan_image_thumbnail_sizes = '100,300,600,1024,2048';
+    $settings->elan_image_thumbnail_sizes = '100,300,768,1024,2048';
 }
 
 $maximages = $settings->elan_image_max;
