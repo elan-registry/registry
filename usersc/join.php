@@ -209,6 +209,7 @@ if (Input::exists()) {
                     'user_agent' => $user_agent ?? ''
                 ]);
 
+                $params['user_id'] = $theNewId;
                 includeHook($hooks, 'post');
                 if ($act == 1 || $settings->no_passwords == 1) {
                     //Verify email address settings

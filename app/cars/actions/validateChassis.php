@@ -30,8 +30,7 @@ if (!file_exists($validatorPath)) {
 require_once $validatorPath;
 
 // Ensure this is an AJAX request
-if (!isset($_SERVER['HTTP_X_REQUESTED_WITH']) ||
-    strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) !== 'xmlhttprequest') {
+if (strtolower(Server::get('HTTP_X_REQUESTED_WITH', '')) !== 'xmlhttprequest') {
     ApiResponse::error('Bad Request: AJAX only', 400)->send();
 }
 
