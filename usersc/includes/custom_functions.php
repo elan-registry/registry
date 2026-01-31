@@ -36,7 +36,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
  * @param int $user_id The user ID to fetch
  * @return object|null User object with profile data, or null if not found
  */
-function getUserWithProfile($user_id) {
+function getUserWithProfile(int $user_id): ?object {
     $db = DB::getInstance();
 
     $userQ = $db->query(
@@ -70,7 +70,7 @@ function getUserWithProfile($user_id) {
  * @param int|null $userId User ID to check (defaults to current user)
  * @return bool True if user is Administrator (2) or Editor (3)
  */
-function isRegistryAdmin($userId = null) {
+function isRegistryAdmin(?int $userId = null): bool {
     return hasPerm([2, 3], $userId);
 }
 
@@ -83,7 +83,7 @@ function isRegistryAdmin($userId = null) {
  *
  * @return string Base URL (e.g., 'https://elanregistry.org' or 'http://localhost')
  */
-function getBaseUrl() {
+function getBaseUrl(): string {
     static $baseUrl = null;
 
     if ($baseUrl === null) {
@@ -119,6 +119,88 @@ function getAdminEmails(): string {
 function getFeedbackEmail(): string {
     global $settings;
     return $settings->elan_feedback_email ?? 'registrar@elanregistry.org';
+}
+
+
+/**
+ * Extract an integer value from a database result object or scalar
+ *
+ * Handles PDO's inconsistent string/int returns for INTEGER columns
+ * across different PHP versions and configurations.
+ *
+ * @param mixed $value Database result object or scalar value
+ * @param string $property Property name to extract from objects (default: 'id')
+ * @return int The integer value
+ * @throws InvalidArgumentException If the value cannot be converted to int
+ */
+function dbInt(mixed $value, string $property = 'id'): int
+{
+    if (is_object($value)) {
+        if (!isset($value->$property)) {
+            throw new InvalidArgumentException("Property '$property' does not exist on object");
+        }
+        $value = $value->$property;
+    }
+
+    if ($value === null || $value === '') {
+        throw new InvalidArgumentException("Cannot convert empty value to int (property: $property)");
+    }
+
+    if (!is_numeric($value)) {
+        throw new InvalidArgumentException("Cannot convert non-numeric value to int (property: $property): $value");
+    }
+
+    return (int) $value;
+}
+
+/**
+ * Extract a nullable integer value from a database result object or scalar
+ *
+ * Same as dbInt() but returns null for null/empty values instead of throwing.
+ *
+ * @param mixed $value Database result object or scalar value
+ * @param string $property Property name to extract from objects (default: 'id')
+ * @return int|null The integer value, or null if empty/null
+ * @throws InvalidArgumentException If the value is non-null and non-numeric
+ */
+function dbIntOrNull(mixed $value, string $property = 'id'): ?int
+{
+    if (is_object($value)) {
+        if (!isset($value->$property)) {
+            return null;
+        }
+        $value = $value->$property;
+    }
+
+    if ($value === null || $value === '') {
+        return null;
+    }
+
+    if (!is_numeric($value)) {
+        throw new InvalidArgumentException("Cannot convert non-numeric value to int (property: $property): $value");
+    }
+
+    return (int) $value;
+}
+
+/**
+ * Get the current logged-in user's ID as an integer
+ *
+ * Provides a type-safe shorthand for (int) $user->data()->id with
+ * a login check to avoid errors when no user is authenticated.
+ *
+ * @return int The current user's ID
+ * @throws RuntimeException If no user is logged in
+ */
+function currentUserId(): int
+{
+    global $user;
+
+    if (!isset($user) || !$user->isLoggedIn()) {
+        throw new RuntimeException('No user is currently logged in');
+    }
+
+    return (int) $user->data()->id;
 }
 
 

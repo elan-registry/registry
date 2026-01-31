@@ -743,7 +743,7 @@ function searchOwners(query) {
     $('#ownerSearchResults').html('<div class="text-center py-2"><i class="fas fa-spinner fa-spin"></i> Searching...</div>');
 
     new ElanRegistryAPI()
-        .post('includes/process-owner-search.php', { query: query })
+        .post('<?= $us_url_root ?>app/admin/includes/process-owner-search.php', { query: query })
         .then(function(response) {
             displaySearchResults(response.owners);
         })

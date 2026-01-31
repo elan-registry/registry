@@ -213,6 +213,7 @@ foreach ($fixScripts as $script) {
         </div>
     <?php endif; ?>
     <form method="post" style="display: inline;">
+        <input type="hidden" name="csrf" value="<?= Token::generate(); ?>">
         <button type="button" class="btn btn-warning btn-sm" onclick="confirmBackupCleanup()">
             <i class="fas fa-trash"></i> Enhanced Cleanup
         </button>

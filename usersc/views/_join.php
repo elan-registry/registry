@@ -25,6 +25,10 @@ Based on UserSpice 5 registration system
         </div>
       </div>
 
+      <!-- Hidden username elements expected by autoassignun plugin -->
+      <label id="username-label" style="display:none"></label>
+      <input type="hidden" id="username" name="username">
+
       <?php includeHook($hooks, 'body'); ?>
 
       <!-- Registration Form -->

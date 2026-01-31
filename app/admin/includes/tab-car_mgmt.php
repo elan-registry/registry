@@ -150,22 +150,38 @@ try {
                                                 <i class="fas fa-info-circle"></i> View Details
                                             </button>
                                             <br>
-                                            <form method="POST" style="display: inline;">
-                                                <input type="hidden" name="csrf" value="<?= Token::generate(); ?>" />
-                                                <input type="hidden" name="command" value="approve_transfer" />
-                                                <input type="hidden" name="transfer_id" value="<?= $transfer->id ?>" />
-                                                <button type="submit" class="btn btn-success btn-sm" onclick="return confirm('Approve this transfer request?')">
-                                                    <i class="fas fa-check"></i> Approve
-                                                </button>
-                                            </form>
-                                            <form method="POST" style="display: inline;">
-                                                <input type="hidden" name="csrf" value="<?= Token::generate(); ?>" />
-                                                <input type="hidden" name="command" value="deny_transfer" />
-                                                <input type="hidden" name="transfer_id" value="<?= $transfer->id ?>" />
-                                                <button type="submit" class="btn btn-danger btn-sm" onclick="return confirm('Deny this transfer request?')">
-                                                    <i class="fas fa-times"></i> Deny
-                                                </button>
-                                            </form>
+                                            <button type="button" class="btn btn-success btn-sm transfer-approve-btn"
+                                                    data-transfer-id="<?= $transfer->id ?>"
+                                                    data-car-year="<?= htmlspecialchars($transfer->year) ?>"
+                                                    data-car-type="<?= htmlspecialchars($transfer->type) ?>"
+                                                    data-car-series="<?= htmlspecialchars($transfer->series ?? '') ?>"
+                                                    data-car-chassis="<?= htmlspecialchars($transfer->chassis) ?>"
+                                                    data-car-color="<?= htmlspecialchars($transfer->color ?? '') ?>"
+                                                    data-current-owner="<?= htmlspecialchars($transfer->current_fname . ' ' . $transfer->current_lname) ?>"
+                                                    data-current-email="<?= htmlspecialchars($transfer->current_email) ?>"
+                                                    data-requester-name="<?= htmlspecialchars($transfer->requester_fname . ' ' . $transfer->requester_lname) ?>"
+                                                    data-requester-email="<?= htmlspecialchars($transfer->requester_email) ?>"
+                                                    data-request-date="<?= htmlspecialchars($transfer->request_date) ?>"
+                                                    data-expires-date="<?= htmlspecialchars($transfer->expires_at) ?>"
+                                                    data-comments="<?= htmlspecialchars($transfer->submitted_comments ?? '') ?>">
+                                                <i class="fas fa-check"></i> Approve
+                                            </button>
+                                            <button type="button" class="btn btn-danger btn-sm transfer-deny-btn"
+                                                    data-transfer-id="<?= $transfer->id ?>"
+                                                    data-car-year="<?= htmlspecialchars($transfer->year) ?>"
+                                                    data-car-type="<?= htmlspecialchars($transfer->type) ?>"
+                                                    data-car-series="<?= htmlspecialchars($transfer->series ?? '') ?>"
+                                                    data-car-chassis="<?= htmlspecialchars($transfer->chassis) ?>"
+                                                    data-car-color="<?= htmlspecialchars($transfer->color ?? '') ?>"
+                                                    data-current-owner="<?= htmlspecialchars($transfer->current_fname . ' ' . $transfer->current_lname) ?>"
+                                                    data-current-email="<?= htmlspecialchars($transfer->current_email) ?>"
+                                                    data-requester-name="<?= htmlspecialchars($transfer->requester_fname . ' ' . $transfer->requester_lname) ?>"
+                                                    data-requester-email="<?= htmlspecialchars($transfer->requester_email) ?>"
+                                                    data-request-date="<?= htmlspecialchars($transfer->request_date) ?>"
+                                                    data-expires-date="<?= htmlspecialchars($transfer->expires_at) ?>"
+                                                    data-comments="<?= htmlspecialchars($transfer->submitted_comments ?? '') ?>">
+                                                <i class="fas fa-times"></i> Deny
+                                            </button>
                                         </td>
                                     </tr>
                                 <?php endforeach; ?>

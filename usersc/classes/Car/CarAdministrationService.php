@@ -48,7 +48,7 @@ class CarAdministrationService
         int $adminUserId,
         CarRepository $repo
     ): bool {
-        $carId = $carData->id;
+        $carId = (int) $carData->id;
         $chassis = $carData->chassis ?? 'Unknown';
 
         try {
@@ -139,7 +139,7 @@ class CarAdministrationService
             throw new CarValidationException(CarErrorMessages::getMessage('user_not_found'));
         }
 
-        $carId = $carData->id;
+        $carId = (int) $carData->id;
 
         try {
             $repo->beginTransaction();
@@ -250,7 +250,7 @@ class CarAdministrationService
         int $adminUserId,
         CarRepository $repo
     ): bool {
-        if ($oldCarId === $targetCarData->id) {
+        if ($oldCarId === (int) $targetCarData->id) {
             $technicalMsg = CarErrorMessages::getTechnicalMessage('car_merge_self', ['id' => $oldCarId]);
             logger($adminUserId, LogCategories::LOG_CATEGORY_CAR_MERGE, $technicalMsg);
             throw new CarValidationException(CarErrorMessages::getMessage('car_merge_self'));
@@ -263,7 +263,7 @@ class CarAdministrationService
             throw new CarNotFoundException(CarErrorMessages::getMessage('merge_source_not_found'));
         }
 
-        $newCarId = $targetCarData->id;
+        $newCarId = (int) $targetCarData->id;
         $newChassis = $targetCarData->chassis ?? 'Unknown';
         $oldChassis = $oldCarData->chassis ?? 'Unknown';
 

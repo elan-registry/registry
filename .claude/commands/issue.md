@@ -43,7 +43,7 @@ Before creating a branch or entering plan mode, ask these questions ONE AT A TIM
    Does this naming work for you, or would you prefer a different name?"
 
 2. **Base branch**: "Which branch should I create the new branch from?
-   (default: main)"
+   (default: develop if it exists or main if it does not)"
 
 Wait for answers before proceeding.
 
@@ -207,13 +207,13 @@ would you prefer a different name?
 
 User: That's fine
 
-You: Which branch should I create this from? (default: main)
+You: Which branch should I create this from? (default: develop)
 
-User: main
+User: develop
 
 You: [creates branch]
 
-Created branch `issue-423-car-data-export` from `main`.
+Created branch `issue/423-car-data-export` from `develop`.
 
 I'm entering plan mode to research and create an implementation plan. I'll ask
 clarifying questions as I explore the codebase.

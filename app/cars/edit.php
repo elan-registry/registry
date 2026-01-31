@@ -28,7 +28,7 @@ if (!isset($settings->elan_image_display_max_size)) {
     $settings->elan_image_display_max_size = 2048;
 }
 if (!isset($settings->elan_image_thumbnail_sizes)) {
-    $settings->elan_image_thumbnail_sizes = '100,300,600,1024,2048';
+    $settings->elan_image_thumbnail_sizes = '100,300,768,1024,2048';
 }
 
 $maximages = $settings->elan_image_max;
@@ -670,6 +670,89 @@ require_once $abs_us_root . $us_url_root . 'users/includes/html_footer.php'; //c
             formData.append('comments', $('#comments').val());
         });
 
+        /**
+         * Display validation errors in the results fieldset and repopulate form fields.
+         * Used by both successmultiple (200 with success:false) and error (422) handlers.
+         */
+        function displayValidationErrors(data) {
+            // Advance the page progress indicator
+            $('#message').hide();
+            $('#progressbar li').eq($('fieldset').index(next_fs)).addClass('active');
+
+            //show the next fieldset
+            next_fs.show();
+            //hide the current fieldset with style
+            current_fs.animate({
+                opacity: 0
+            }, {
+                step: function(now) {
+                    // for making fielset appear animation
+                    opacity = 1 - now;
+
+                    current_fs.css({
+                        'display': 'none',
+                        'position': 'relative'
+                    });
+                    next_fs.css({
+                        'opacity': opacity
+                    });
+                },
+                duration: 500
+            });
+            setProgressBar(++current);
+
+            // Build error display table
+            var html = "<table id='resultstable' class='table table-striped table-bordered table-sm text-wrap'>";
+            html += '<tr><td>Status</td><td><strong class="text-danger">ERROR</strong></td></tr>';
+            html += '<tr><td>Message</td><td>' + (data.message || 'An error occurred') + '</td></tr>';
+
+            // Display validation errors if present
+            if (data.errors) {
+                html += '<tr><td>Validation Errors</td><td><ul>';
+                if (Array.isArray(data.errors.general)) {
+                    data.errors.general.forEach(function(error) {
+                        html += '<li>' + error + '</li>';
+                    });
+                } else {
+                    for (var field in data.errors) {
+                        html += '<li><strong>' + field + ':</strong> ' + data.errors[field] + '</li>';
+                    }
+                }
+                html += '</ul></td></tr>';
+            }
+
+            html += '</table>';
+            $("#results").html(html);
+
+            // Repopulate form fields with submitted values to prevent data loss
+            if (data.cardetails) {
+                // Repopulate Year dropdown
+                if (data.cardetails.year) {
+                    $('#year option[value=' + data.cardetails.year + ']').prop('selected', true);
+                    $('#year').trigger('change');
+                }
+
+                // Repopulate Model dropdown
+                if (data.cardetails.model) {
+                    var model = data.cardetails.model.replace(/\|/g, "\\\|")
+                                                     .replace(/ /g, "\\\ ")
+                                                     .replace(/\//g, "\\\/")
+                                                     .replace(/\+/g, "\\\+");
+                    $('#model option[value=' + model + ']').prop('selected', true);
+                    $('#model').trigger('change');
+                }
+
+                // Repopulate other fields as needed
+                if (data.cardetails.chassis) $('#chassis').val(data.cardetails.chassis);
+                if (data.cardetails.color) $('#color').val(data.cardetails.color);
+                if (data.cardetails.engine) $('#engine').val(data.cardetails.engine);
+                if (data.cardetails.comments) $('#comments').val(data.cardetails.comments);
+                if (data.cardetails.website) $('#website').val(data.cardetails.website);
+                if (data.cardetails.purchasedate) $('#purchasedate').val(data.cardetails.purchasedate);
+                if (data.cardetails.solddate) $('#solddate').val(data.cardetails.solddate);
+            }
+        }
+
         myDropzone.on("successmultiple", function(file, message) {
             // Message may already be parsed by Dropzone due to Content-Type header
             const data = (typeof message === 'string') ? JSON.parse(message) : message;
@@ -678,87 +761,22 @@ require_once $abs_us_root . $us_url_root . 'users/includes/html_footer.php'; //c
             if (data.success === true) {
                 window.location = '<?= $us_url_root ?>app/cars/details.php?car_id=' + data.cardetails.id;
             } else {
-                // Error case - show validation errors and repopulate form
-                // Advance the page progress indicator
-                $('#message').hide();
-                $('#progressbar li').eq($('fieldset').index(next_fs)).addClass('active');
-
-                //show the next fieldset
-                next_fs.show();
-                //hide the current fieldset with style
-                current_fs.animate({
-                    opacity: 0
-                }, {
-                    step: function(now) {
-                        // for making fielset appear animation
-                        opacity = 1 - now;
-
-                        current_fs.css({
-                            'display': 'none',
-                            'position': 'relative'
-                        });
-                        next_fs.css({
-                            'opacity': opacity
-                        });
-                    },
-                    duration: 500
-                });
-                setProgressBar(++current);
-
-                // Build error display table
-                var html = "<table id='resultstable' class='table table-striped table-bordered table-sm text-wrap'>";
-                html += '<tr><td>Status</td><td><strong class="text-danger">ERROR</strong></td></tr>';
-                html += '<tr><td>Message</td><td>' + (data.message || 'An error occurred') + '</td></tr>';
-
-                // Display validation errors if present
-                if (data.errors) {
-                    html += '<tr><td>Validation Errors</td><td><ul>';
-                    if (Array.isArray(data.errors.general)) {
-                        data.errors.general.forEach(function(error) {
-                            html += '<li>' + error + '</li>';
-                        });
-                    } else {
-                        for (var field in data.errors) {
-                            html += '<li><strong>' + field + ':</strong> ' + data.errors[field] + '</li>';
-                        }
-                    }
-                    html += '</ul></td></tr>';
-                }
-
-                html += '</table>';
-                $("#results").html(html);
-
-                // Repopulate form fields with submitted values to prevent data loss
-                if (data.cardetails) {
-                    // Repopulate Year dropdown
-                    if (data.cardetails.year) {
-                        $('#year option[value=' + data.cardetails.year + ']').prop('selected', true);
-                        $('#year').trigger('change');
-                    }
-
-                    // Repopulate Model dropdown
-                    if (data.cardetails.model) {
-                        var model = data.cardetails.model.replace(/\|/g, "\\\|")
-                                                         .replace(/ /g, "\\\ ")
-                                                         .replace(/\//g, "\\\/")
-                                                         .replace(/\+/g, "\\\+");
-                        $('#model option[value=' + model + ']').prop('selected', true);
-                        $('#model').trigger('change');
-                    }
-
-                    // Repopulate other fields as needed
-                    if (data.cardetails.chassis) $('#chassis').val(data.cardetails.chassis);
-                    if (data.cardetails.color) $('#color').val(data.cardetails.color);
-                    if (data.cardetails.engine) $('#engine').val(data.cardetails.engine);
-                    if (data.cardetails.comments) $('#comments').val(data.cardetails.comments);
-                    if (data.cardetails.website) $('#website').val(data.cardetails.website);
-                    if (data.cardetails.purchasedate) $('#purchasedate').val(data.cardetails.purchasedate);
-                    if (data.cardetails.solddate) $('#solddate').val(data.cardetails.solddate);
-                }
+                displayValidationErrors(data);
             }
         });
 
         myDropzone.on("error", function(data, msg, xhr) {
+            if (xhr && xhr.responseText) {
+                try {
+                    var jsonData = JSON.parse(xhr.responseText);
+                    if (jsonData.success === false) {
+                        displayValidationErrors(jsonData);
+                        return;
+                    }
+                } catch (e) {
+                    // Not JSON, fall through to generic display
+                }
+            }
             $("#message").show().html('<div class="alert alert-primary">' + msg + '</div>');
         });
 

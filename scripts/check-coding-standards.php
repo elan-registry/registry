@@ -181,18 +181,24 @@ class CodingStandardsChecker
             $lineNumber = $lineNum + 1;
 
             // Check for functions without return types (skip constructors - they can't have return types)
-            if (preg_match('/\b(public|private|protected|function)\s+function\s+(\w+)\s*\([^)]*\)\s*\{/', $line, $funcMatches)) {
-                if ($funcMatches[2] !== '__construct' && $funcMatches[2] !== '__destruct') {
-                    if (!preg_match('/:\s*(void|int|string|bool|array|object|float|self|static|mixed|never|\?\w+|\w+(\|\w+)*)\s*\{/', $line)) {
+            if (preg_match('/\bfunction\s+(\w+)\s*\([^)]*\)/', $line, $funcMatches)) {
+                if ($funcMatches[1] !== '__construct' && $funcMatches[1] !== '__destruct') {
+                    if (!preg_match('/\)\s*:\s*(void|int|string|bool|array|object|float|self|static|mixed|never|\?\w+|\w+(\|\w+)*)/', $line)) {
                         $this->errors[] = "$filePath:$lineNumber: Function missing return type declaration";
                     }
                 }
             }
 
-            // Check for function parameters without types
-            if (preg_match('/function\s+\w+\s*\([^)]*\$\w+(?!\s*:)/', $line)) {
-                if (!preg_match('/\$\w+\s*=\s*/', $line)) { // Skip default parameters
-                    $this->warnings[] = "$filePath:$lineNumber: Function parameter may be missing type declaration";
+            // Check for function parameters without types (including those with defaults)
+            if (preg_match('/function\s+\w+\s*\(([^)]*)\)/', $line, $paramMatches) && !empty(trim($paramMatches[1]))) {
+                $params = array_map('trim', explode(',', $paramMatches[1]));
+                foreach ($params as $param) {
+                    // A typed param starts with a type (e.g., "int $x", "?string $y", "Foo|Bar $z")
+                    // An untyped param starts directly with $ (e.g., "$x", "$x = null")
+                    if (preg_match('/^\$/', $param)) {
+                        $this->warnings[] = "$filePath:$lineNumber: Function parameter may be missing type declaration";
+                        break; // One warning per function is enough
+                    }
                 }
             }
         }

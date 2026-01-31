@@ -149,6 +149,26 @@ $optionalId = $row->optional_id ? (int)$row->optional_id : null;
 
 ```text
 
+**Type helper functions (preferred for object properties):**
+
+```php
+// Extract int from database result object — throws on invalid input
+$userId = dbInt($carData, 'user_id');
+$carId = dbInt($row, 'id');
+
+// Nullable variant — returns null for empty/null values
+$optionalId = dbIntOrNull($row, 'optional_id');
+
+// Current user ID shorthand — throws RuntimeException if not logged in
+$adminId = currentUserId();
+```
+
+These helpers are defined in `usersc/includes/custom_functions.php`.
+Use `dbInt()` when extracting integer properties from PDO result objects.
+Use direct `(int)` casts for simple scalar conversions.
+
+```text
+
 **Why this is necessary:**
 
 ```php

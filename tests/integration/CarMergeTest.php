@@ -194,7 +194,7 @@ final class CarMergeTest extends IntegrationTestCase
             $car->merge(99999, 'Test merge');
         } catch (Exception $e) {
             // After failed merge, original car should still exist
-            $carReloaded = new Car($car->data()->id);
+            $carReloaded = new Car((int) $car->data()->id);
             $this->assertTrue($carReloaded->exists());
             throw $e;
         }
