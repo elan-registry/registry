@@ -20,6 +20,10 @@ $statusCode = (int)($_SERVER['REDIRECT_STATUS'] ?? http_response_code() ?? 500);
 // Set proper HTTP response code
 http_response_code($statusCode);
 
+// Anti-clickjacking headers (set explicitly in case init.php fails to load)
+header("X-Frame-Options: SAMEORIGIN");
+header("Content-Security-Policy: frame-ancestors 'self'");
+
 // Try to initialize UserSpice session for personalized navigation
 $isLoggedIn = false;
 $userName = '';
