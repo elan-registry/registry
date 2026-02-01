@@ -16,6 +16,7 @@ ElanRegistry.code-workspace
 .playwright-mcp/
 .claude/*
 !.claude/commands/
+!.claude/agents/
 
 ########################################
 # Operating System Files

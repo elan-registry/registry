@@ -1,0 +1,3 @@
+# Agent prompt files have YAML frontmatter and long description strings
+# that don't conform to standard markdown linting rules
+.claude/agents/
