@@ -113,6 +113,21 @@ if (!securePage($php_self)) {
                 </div>
             </div>
 
+            <!-- Paint Colors Guide -->
+            <div class='col-lg-4 mb-4'>
+                <div class='card registry-card h-100'>
+                    <div class='card-header bg-danger text-white' style='background-color: #8e44ad !important;'>
+                        <h5 class='mb-0'><i class='fas fa-palette'></i> Paint Colors Guide</h5>
+                    </div>
+                    <div class='card-body d-flex flex-column'>
+                        <p class='card-text'>Complete reference to Lotus Elan and Plus 2 factory paint colors, codes, date ranges, and supplier cross-references for restoration.</p>
+                        <div class='mt-auto'>
+                            <a href='paint-colors.php' class='btn btn-sm' style='background-color: #8e44ad; color: white;'><i class='fas fa-book-open'></i> View Guide</a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
             <!-- Privacy Policy -->
             <div class='col-lg-4 mb-4'>
                 <div class='card registry-card h-100'>

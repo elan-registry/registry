@@ -1,3 +1,4 @@
+/* exported MENU, populateMain, populateSub */
 var MENU = [];
 MENU[0] = []; // 
 MENU[1] = []; // 1963

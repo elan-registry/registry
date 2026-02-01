@@ -98,7 +98,7 @@ class NotificationHelper {
         } else {
             // Fallback if UserSpice toast functions not available
             console.warn('UserSpice toast function not available:', usFunction);
-            console.log(`[${type}] ${message}`);
+            console.warn(`[${type}] ${message}`);
         }
     }
 
@@ -350,7 +350,7 @@ class ElanRegistryAPI {
                 if (contentType && contentType.includes('application/json')) {
                     try {
                         errorData = await response.json();
-                    } catch (e) {
+                    } catch (_e) {
                         // Ignore JSON parsing errors
                     }
                 }
@@ -381,7 +381,7 @@ class ElanRegistryAPI {
                 const text = await response.text();
                 try {
                     data = JSON.parse(text);
-                } catch (e) {
+                } catch (_e) {
                     // If not JSON, treat as plain text response
                     data = { success: true, message: text };
                 }

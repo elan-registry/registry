@@ -44,7 +44,7 @@ function getUserWithProfile(int $user_id): ?object {
          FROM users u
          LEFT JOIN profiles p ON u.id = p.user_id
          WHERE u.id = ?",
-        [(int)$user_id]
+        [$user_id]
     );
 
     if ($userQ->count() > 0) {
@@ -67,10 +67,10 @@ function getUserWithProfile(int $user_id): ?object {
 /**
  * Check if user has Registry admin or editor permissions
  *
- * @param int|null $userId User ID to check (defaults to current user)
+ * @param int|string|null $userId User ID to check (defaults to current user)
  * @return bool True if user is Administrator (2) or Editor (3)
  */
-function isRegistryAdmin(?int $userId = null): bool {
+function isRegistryAdmin(int|string|null $userId = null): bool {
     return hasPerm([2, 3], $userId);
 }
 

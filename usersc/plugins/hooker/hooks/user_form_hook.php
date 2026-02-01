@@ -17,7 +17,7 @@ if ($userQ->count() > 0) {
 	$thatUser = $userQ->results();
 }
 
-$carQ = $db->query("SELECT * FROM cars WHERE user_id = ?", array($user_id));
+$carQ = $db->query("SELECT c.* FROM cars c INNER JOIN car_user cu ON c.id = cu.car_id WHERE cu.userid = ?", array($user_id));
 if ($carQ->count() > 0) {
 	$thatCar = $carQ->results();
 }

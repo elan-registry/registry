@@ -36,6 +36,12 @@ abstract class IntegrationTestCase extends TestCase
     protected $db;
     protected $databaseConnected = false;
 
+    /** @var int[] Car IDs created during this test, cleaned up in tearDown */
+    private array $createdCarIds = [];
+
+    /** @var int[] User IDs created during this test, cleaned up in tearDown */
+    private array $createdUserIds = [];
+
     /**
      * Set up test environment
      * Initializes database connection
@@ -43,6 +49,9 @@ abstract class IntegrationTestCase extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
+
+        $this->createdCarIds = [];
+        $this->createdUserIds = [];
 
         // Get real DB instance (loaded by bootstrap-integration.php)
         try {
@@ -57,6 +66,36 @@ abstract class IntegrationTestCase extends TestCase
             $this->databaseConnected = false;
             // Don't fail yet - let requireDatabase() handle it
         }
+    }
+
+    /**
+     * Clean up all test-created cars and users
+     */
+    protected function tearDown(): void
+    {
+        if ($this->databaseConnected) {
+            // Delete cars first (depend on users via car_user)
+            foreach ($this->createdCarIds as $carId) {
+                try {
+                    $this->db->query("DELETE FROM car_user WHERE car_id = ?", [$carId]);
+                    $this->db->query("DELETE FROM cars_hist WHERE car_id = ?", [$carId]);
+                    $this->db->delete('cars', ['id', '=', $carId]);
+                } catch (RuntimeException $e) {
+                    // Ignore cleanup errors
+                }
+            }
+
+            // Then delete users
+            foreach ($this->createdUserIds as $userId) {
+                try {
+                    $this->db->delete('users', ['id', '=', $userId]);
+                } catch (RuntimeException $e) {
+                    // Ignore cleanup errors
+                }
+            }
+        }
+
+        parent::tearDown();
     }
 
     /**
@@ -104,12 +143,14 @@ abstract class IntegrationTestCase extends TestCase
             throw new RuntimeException("Failed to create test user: {$this->db->errorString()}");
         }
 
-        $userId = $this->db->lastId();
+        $userId = (int) $this->db->lastId();
         if (!$userId) {
             throw new RuntimeException("Failed to get inserted user ID");
         }
 
-        return (int)$userId;
+        $this->createdUserIds[] = $userId;
+
+        return $userId;
     }
 
     /**
@@ -153,12 +194,20 @@ abstract class IntegrationTestCase extends TestCase
             throw new RuntimeException("Failed to create test car: {$this->db->errorString()}");
         }
 
-        $carId = $this->db->lastId();
+        $carId = (int) $this->db->lastId();
         if (!$carId) {
             throw new RuntimeException("Failed to get inserted car ID");
         }
 
-        return (int)$carId;
+        // Insert into car_user junction table
+        $junctionResult = $this->db->insert('car_user', ['userid' => $userId, 'car_id' => $carId]);
+        if (!$junctionResult) {
+            throw new RuntimeException("Failed to create car_user record: {$this->db->errorString()}");
+        }
+
+        $this->createdCarIds[] = $carId;
+
+        return $carId;
     }
 
     /**
@@ -175,6 +224,8 @@ abstract class IntegrationTestCase extends TestCase
 
         try {
             $this->db->delete('users', ['id', '=', $userId]);
+            // Remove from tracking so tearDown doesn't double-delete
+            $this->createdUserIds = array_values(array_diff($this->createdUserIds, [$userId]));
             return true;
         } catch (RuntimeException $e) {
             return false;
@@ -194,7 +245,11 @@ abstract class IntegrationTestCase extends TestCase
         }
 
         try {
+            $this->db->query("DELETE FROM car_user WHERE car_id = ?", [$carId]);
+            $this->db->query("DELETE FROM cars_hist WHERE car_id = ?", [$carId]);
             $this->db->delete('cars', ['id', '=', $carId]);
+            // Remove from tracking so tearDown doesn't double-delete
+            $this->createdCarIds = array_values(array_diff($this->createdCarIds, [$carId]));
             return true;
         } catch (RuntimeException $e) {
             return false;

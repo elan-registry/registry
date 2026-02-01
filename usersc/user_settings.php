@@ -255,7 +255,7 @@ if (!empty($_POST)) {
             logger((int)$user->data()->id, LogCategories::LOG_CATEGORY_USER, 'Successfully updated lat/lon: ' . json_encode($geoResult));
             
             // BUGFIX #193: Sync location to all cars owned by this user
-            $userCarsQuery = $db->query("SELECT id FROM cars WHERE user_id = ?", [$userId]);
+            $userCarsQuery = $db->query("SELECT car_id AS id FROM car_user WHERE userid = ?", [$userId]);
             if ($userCarsQuery->count() > 0) {
                 $userCars = $userCarsQuery->results();
                 $carFields = [

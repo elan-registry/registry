@@ -1,3 +1,4 @@
+/* exported formatNumber, formatDate, prefersReducedMotion, initializeCarManagement, showNotification, switchToOwnerManagementTab, openAdminContactModal */
 /**
  * manage-consolidated.js
  * Consolidated Management Interface JavaScript
@@ -18,7 +19,7 @@ $(document).ready(function() {
      * @param {string} unsafe - Unsafe string that may contain HTML
      * @return {string} - HTML-escaped safe string
      */
-    function escapeHtml(unsafe) {
+    function _escapeHtml(unsafe) {
         if (typeof unsafe !== 'string') {
             return unsafe;
         }
@@ -387,7 +388,7 @@ $(document).ready(function() {
 
             // Log current tab for debugging
             const urlParams = new URLSearchParams(window.location.search);
-            const activeTab = urlParams.get('tab') || 'car-mgmt';
+            const _activeTab = urlParams.get('tab') || 'car-mgmt';
 
             // Add keyboard shortcut for quick tab switching (Ctrl/Cmd + number)
             $(document).on('keydown', function(e) {
@@ -424,7 +425,7 @@ $(document).ready(function() {
 
             // Mark initialization complete
             $('body').addClass('consolidated-interface-ready');
-        } catch (error) {
+        } catch (_error) {
         }
     }
 
@@ -675,7 +676,7 @@ function initializeCarManagement() {
         const value = $(this).val();
 
         // Clear previous car details when typing
-        if (!value || (selectedCar && value != selectedCar.id)) {
+        if (!value || (selectedCar && value !== selectedCar.id)) {
             $('#carDetails').hide();
             selectedCar = null;
         }
@@ -711,7 +712,7 @@ function initializeCarManagement() {
         const value = $(this).val();
 
         // Clear previous car details when typing
-        if (!value || (selectedDeleteCar && value != selectedDeleteCar.id)) {
+        if (!value || (selectedDeleteCar && value !== selectedDeleteCar.id)) {
             $('#deleteCarDetails').hide();
             selectedDeleteCar = null;
         }
@@ -783,7 +784,7 @@ function initializeCarManagement() {
             return false;
         }
 
-        if (selectedDeleteCar.id != carId) {
+        if (selectedDeleteCar.id !== carId) {
             showMessage('Please lookup the current car ID before proceeding.', 'warning');
             return false;
         }
@@ -831,7 +832,7 @@ function initializeCarManagement() {
     });
 
     // Transfer request action handlers
-    let transferFormToSubmit = null;
+    let _transferFormToSubmit = null;
 
     $('.transfer-action-form').on('submit', function(e) {
         e.preventDefault();
@@ -840,7 +841,7 @@ function initializeCarManagement() {
         const transferId = $(this).find('input[name="transfer_id"]').val();
 
         // Store form for submission
-        transferFormToSubmit = this;
+        _transferFormToSubmit = this;
 
         // Set up modal content based on action
         if (command === 'approve_transfer') {
@@ -913,7 +914,7 @@ function initializeCarManagement() {
         const $deleteBtn = $('#deleteBtn');
 
         // Enable button only when car is looked up, confirmation matches, and IDs match
-        const carLookedUp = selectedDeleteCar && selectedDeleteCar.id == carId;
+        const carLookedUp = selectedDeleteCar && selectedDeleteCar.id === carId;
         const confirmationValid = confirmation === 'DELETE';
         const canDelete = carLookedUp && confirmationValid;
 

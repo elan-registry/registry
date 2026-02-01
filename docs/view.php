@@ -20,7 +20,6 @@ require_once $abs_us_root . $us_url_root . 'usersc/classes/DocumentConfig.php';
 
 use ElanRegistry\Documentation\MarkdownParser;
 use ElanRegistry\Documentation\DocumentConfig;
-use ElanRegistry\Exceptions\DocumentationException;
 
 // Security check - ensure page access is authorized
 if (!securePage($php_self)) {

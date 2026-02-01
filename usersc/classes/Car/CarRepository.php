@@ -147,7 +147,7 @@ class CarRepository
      */
     public function findByOwner(int $ownerId): array
     {
-        return $this->db->query("SELECT id FROM cars WHERE user_id = ?", [$ownerId])->results();
+        return $this->db->query("SELECT car_id AS id FROM car_user WHERE userid = ?", [$ownerId])->results();
     }
 
     /**
