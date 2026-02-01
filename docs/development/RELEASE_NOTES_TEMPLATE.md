@@ -3,106 +3,87 @@
 **Release Date:** [DATE]
 **Type:** [Patch/Minor/Major] Release - [Brief Description]
 
-## 🚨 REQUIRED ACTIONS AFTER DEPLOYMENT
+## Required Actions After Deployment
 
-### [Action Category]: [Brief Description]
-**⚠️ [Warning/Note about manual steps required]**
+[Describe any manual steps needed after deployment, or "None" if no action
+required. Include SQL migrations, configuration changes, dependency updates,
+or script execution. Use numbered steps with commands.]
 
-1. **[Action 1]** *(via [method/interface]*
-   - [Step 1 details]
-   - [Step 2 details]
-   - [Step 3 details]
-   - Confirm successful [outcome]:
-     - [Expected result 1]
-     - [Expected result 2]
+## User-Facing Changes
 
-2. **[Action 2]** *(via [method/interface]*
-   - [Step 1 details]
-   - [Step 2 details]
+### New Features
 
-3. **[Action 3]**
-   - [Step 1 details]
-   - [Step 2 details]
+- **[Feature Name]** ([#NNN](https://github.com/unibrain1/elanregistry/issues/NNN)): One-line description of the feature and its benefit to users.
 
-**🎯 Success Criteria:**
-- ✅ [Completed item] *(COMPLETED)*
-- ⏳ [Pending item] *(PENDING - requires [action])*
-- ⏳ [Pending item] *(PENDING - requires [action])*
+### Improvements
 
-## 👤 User-Facing Changes
+- **[Improvement Name]** ([#NNN](https://github.com/unibrain1/elanregistry/issues/NNN)): One-line description of the improvement and its benefit.
 
-[Describe visible changes for end users, or state "No visible changes for end users" if this is an internal release]
+### Bug Fixes
 
-### [Feature Category] (if applicable)
-- **[Feature 1]**: [Brief description of user benefit]
-- **[Feature 2]**: [Brief description of user benefit]
+- **[Fix Name]** ([#NNN](https://github.com/unibrain1/elanregistry/issues/NNN)): One-line description of what was fixed.
 
-### [Bug Fixes] (if applicable)
-- **Fixed [issue]**: [Brief description of what was fixed]
-- **Improved [feature]**: [Brief description of improvement]
+## Technical Changes
 
-## 🔧 Admin-Facing Changes
+- **[Change Name]** ([#NNN](https://github.com/unibrain1/elanregistry/issues/NNN)): One-line description of the technical change.
 
-### [Admin Feature Category]
-- **[Change 1]**: [Brief description of admin-facing improvement]
-- **[Change 2]**: [Brief description of admin-facing improvement]
-- **[Change 3]**: [Brief description of admin-facing improvement]
+## Issues Resolved
 
-### [Admin Tools/Interface] (if applicable)
-- **[Tool/Interface name]**: [Brief description of changes]
-- **[Feature]**: [Brief description of enhancement]
+- [#NNN](https://github.com/unibrain1/elanregistry/issues/NNN) — Issue title
+- [#NNN](https://github.com/unibrain1/elanregistry/issues/NNN) — Issue title
 
-## 📋 Issues Resolved in This Release
+## Summary
 
-[#ISSUE_NUMBER](https://github.com/unibrain1/elanregistry/issues/ISSUE_NUMBER) - [Issue Title]
-
-[#ISSUE_NUMBER](https://github.com/unibrain1/elanregistry/issues/ISSUE_NUMBER) - [Issue Title]
-
-[#ISSUE_NUMBER](https://github.com/unibrain1/elanregistry/issues/ISSUE_NUMBER) - [Issue Title]
+[One to two sentences: total issues resolved, PRs merged, key themes.]
 
 ---
 
-## 📝 Template Usage Notes
+## Template Instructions
 
-### Section Guidelines:
-- **Required Actions**: Always include if manual steps are needed post-deployment
-- **User-Facing Changes**: Focus on what end users will notice
-- **Admin-Facing Changes**: Focus on administrative tools and interfaces
-- **Issues Resolved**: Simple list with links to GitHub issues
+**Delete everything below the `---` line when creating actual release notes.**
 
-### Content Guidelines:
-- Keep descriptions brief and focused on impact/benefit
-- Detailed technical changes belong in the GitHub issues themselves
-- Use bullet points for easy scanning
-- Include specific action items with clear success criteria
-- Remove any sections that don't apply to the release
+### For AI Agents
+
+When generating release notes:
+
+1. **Gather all changes** from the milestone: closed issues, merged PRs, and
+   commits since the last release tag.
+2. **User-Facing Changes** should focus on the benefit to the user, not
+   implementation details. Each item is one line. Remove subsections (New
+   Features, Improvements, Bug Fixes) if they have no entries.
+3. **Technical Changes** are one line each with an issue/PR link. These cover
+   code quality, refactoring, CI/CD, test infrastructure, and internal
+   improvements that don't directly affect users.
+4. **Issues Resolved** lists every closed issue in the milestone, sorted by
+   issue number. Use the format `- [#NNN](URL) — Title`.
+5. **Required Actions** should only appear when there are actual post-deployment
+   steps (SQL migrations, config changes, dependency installs). Otherwise state
+   "None".
+6. **Be concise.** No multi-line descriptions. No verbose explanations. Link to
+   the issue/PR for details.
+7. **No emoji** in section headers.
+
+### Section Guidelines
+
+| Section | Purpose | Style |
+| ------- | ------- | ----- |
+| Required Actions | Post-deploy manual steps | Numbered steps with commands |
+| User-Facing Changes | What users will notice | Benefit-focused, one line each |
+| Technical Changes | Internal improvements | Brief, one line each with link |
+| Issues Resolved | Complete closure list | Sorted by issue number |
+| Summary | Quick overview | 1–2 sentences |
 
 ### Release Requirements
 
-- **MANDATORY**: Release notes must be created for ALL major (x.0.0)
-  and minor (x.y.0) version releases
-- **MANDATORY**: GitHub releases must be created for ALL major and minor
-  versions using `gh release create`
-- **Patch releases (x.y.z)**: Release notes and GitHub releases are
-  optional but recommended for significant patches
-- **Git tags**: All feature versions (major.minor) must have
-  corresponding git tags
+- **Mandatory** for all major (x.0.0) and minor (x.y.0) releases
+- **Optional** for patch releases (x.y.z), recommended for significant patches
+- All releases must have corresponding git tags
+- GitHub releases must be created with `gh release create`
 
-### Formatting Guidelines
+### Placeholder Reference
 
-- Use consistent emoji headers for visual organization
-- Include links to relevant GitHub issues
-- Use checkmarks (✅) for completed items, clocks (⏳) for pending
-- Bold important action items and feature names
-- Keep lists parallel in structure
-
-### Example Replacements
-
-- `[VERSION]` → `2.8.7`, `2.9.0`, `3.0.0`
-- `[DATE]` → `October 15, 2025`
-- `[Patch/Minor/Major]` → Choose based on semantic versioning
-- `[Brief Description]` → `Testing Infrastructure`, `User Experience`, etc.
-- `[ISSUE_NUMBER]` → Actual GitHub issue number
-
-**Delete this "Template Usage Notes" section when creating actual release
-notes.**
+- `[VERSION]` → `2.14.0`, `3.0.0`
+- `[DATE]` → `February 1, 2026`
+- `[Patch/Minor/Major]` → Based on semantic versioning
+- `[Brief Description]` → `Data Quality & Validation`, `Security Hardening`
+- `[#NNN]` → Actual GitHub issue/PR number
