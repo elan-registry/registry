@@ -548,7 +548,7 @@ $lockFile = $abs_us_root . $us_url_root . 'FIX/.lock_image_repair';
 try {
     // Acquire process lock FIRST THING
     if (!isset($_GET['start'])) {
-        acquireProcessLock($lockFile, $user->data()->id);
+        acquireProcessLock($lockFile, (int)$user->data()->id);
     }
 
 } catch (AdminOperationException $e) {
@@ -989,7 +989,7 @@ else:
                         'completed_at' => date('Y-m-d H:i:s')
                     ]);
 
-                    logger($user->data()->id, LogCategories::LOG_CATEGORY_FIX_SCRIPT,
+                    logger((int)$user->data()->id, LogCategories::LOG_CATEGORY_FIX_SCRIPT,
                         "Image verification & repair completed - Renamed: {$fixResults['files_renamed']}, " .
                         "Recovered: {$fixResults['files_recovered']}, Thumbnails: {$fixResults['thumbs_generated']}, " .
                         "Errors: {$fixResults['errors']}"
