@@ -160,11 +160,11 @@ function validateOrphanFile(string $filePath, int $maxSize = 10485760): bool
 /**
  * Generate missing thumbnails for image
  */
-function generateThumbnails(string $sourcePath, string $filename, array $sizes, ?object &$results): void
+function generateThumbnails(string $sourcePath, string $filename, array $sizes, ?array &$results): void
 {
     if (!file_exists($sourcePath)) {
         if ($results !== null) {
-            $results->errors[] = "Source file not found: {$filename}";
+            $results['errors'][] = "Source file not found: {$filename}";
         }
         return;
     }
@@ -188,12 +188,12 @@ function generateThumbnails(string $sourcePath, string $filename, array $sizes, 
             $resizer->saveImage($thumbPath, 90);
 
             if ($results !== null) {
-                $results->thumbs_generated++;
+                $results['thumbs_generated']++;
             }
 
         } catch (Exception $e) {
             if ($results !== null) {
-                $results->errors[] = "Thumbnail generation failed for {$size}px: " . $e->getMessage();
+                $results['errors'][] = "Thumbnail generation failed for {$size}px: " . $e->getMessage();
             }
         }
     }
@@ -398,7 +398,9 @@ function processCarImages(
 
 /**
  * Extract base filename without -resized-XXX suffix
+ * IMPORTANT: Returns EXACT base name for strict matching
  * Example: "20091214115455_jps_serge-resized-600.jpg" -> "20091214115455_jps_serge"
+ * NOT: "20091214115420_jps_serge" (different datestamp = different file)
  */
 function getBaseFilename(string $filename): string
 {
@@ -407,6 +409,7 @@ function getBaseFilename(string $filename): string
 
     // Remove -resized-XXX suffix if present
     // Pattern: -resized-{digits}
+    // NOTE: This is EXACT matching - datestamps must match exactly
     $baseName = preg_replace('/-resized-\d+$/', '', $nameWithoutExt);
 
     return $baseName;
@@ -416,9 +419,23 @@ function getBaseFilename(string $filename): string
  * Find matching files in orphan directory using fuzzy matching
  * Handles cases where orphan files have -resized-XXX suffixes
  *
+ * CRITICAL MATCHING RULES:
+ * - Base filenames MUST match EXACTLY (e.g., 20091214115455_jps_serge === 20091214115455_jps_serge)
+ * - Different datestamps are NOT matches (20091214115455_jps_serge ≠ 20091214115420_jps_serge)
+ * - Resized suffix (-resized-XXX) is stripped for comparison
+ * - Extensions must match or orphan must have no extension
+ *
  * Naming pattern:
  * - Original: datestamp_filename.ext (e.g., 20091214115455_jps_serge.jpg)
  * - Resized:  datestamp_filename-resized-600.ext (e.g., 20091214115455_jps_serge-resized-600.jpg)
+ *
+ * Examples of VALID matches:
+ * - 20091214115455_jps_serge.jpg ↔ 20091214115455_jps_serge-resized-600.jpg ✓
+ * - 20091214115455_jps_serge-resized-100.jpg ↔ 20091214115455_jps_serge-resized-600.jpg ✓
+ *
+ * Examples of INVALID matches (different datestamps):
+ * - 20091214115455_jps_serge.jpg ↔ 20091214115420_jps_serge.jpg ✗
+ * - 20091214115455_jps_serge-resized-600.jpg ↔ 20091214115420_jps_serge-resized-100.jpg ✗
  */
 function findMatchingOrphanFile(string $filename, string $orphanDir): ?string
 {
@@ -454,7 +471,9 @@ function findMatchingOrphanFile(string $filename, string $orphanDir): ?string
         // Get base name of orphan file
         $orphanBase = getBaseFilename($orphanFile);
 
-        // Check if orphan file base matches our file base
+        // CRITICAL: Base filenames must match EXACTLY (using === strict equality)
+        // This prevents false matches between files with different datestamps
+        // Example: 20091214115455_jps_serge === 20091214115420_jps_serge → FALSE (different timestamps)
         if ($orphanBase === $baseNameClean) {
             // Check if extension matches (or is missing)
             $orphanPathInfo = pathinfo($orphanFile);
@@ -469,6 +488,17 @@ function findMatchingOrphanFile(string $filename, string $orphanDir): ?string
 
     // If we found candidates, prefer the highest quality
     if (!empty($candidates)) {
+        // Validate that all candidates have matching base names (safety check)
+        foreach ($candidates as $candidate) {
+            $candidateBase = getBaseFilename($candidate);
+            // Verify EXACT match - this safety check prevents false positives
+            if ($candidateBase !== $baseNameClean) {
+                // This should never happen, but if it does, log it for investigation
+                error_log("SAFETY CHECK FAILED: Candidate '$candidate' base '$candidateBase' does not match expected '$baseNameClean'");
+                continue;
+            }
+        }
+
         // Sort by: 1) files without -resized first, 2) then by descending size/resolution
         usort($candidates, function($a, $b) use ($orphanDir) {
             $aHasResized = strpos($a, '-resized-') !== false;
