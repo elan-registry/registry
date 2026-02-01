@@ -7,7 +7,6 @@ declare(strict_types=1);
 
 // Initialize UserSpice and security
 require_once '../users/init.php';
-$user = currentUser();
 securePage($php_self);
 
 // Essential imports
