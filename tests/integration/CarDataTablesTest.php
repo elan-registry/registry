@@ -26,7 +26,7 @@ final class CarDataTablesTest extends IntegrationTestCase
 
     protected function tearDown(): void
     {
-        // Clean up any test data if needed
+        parent::tearDown();
     }
 
     /**

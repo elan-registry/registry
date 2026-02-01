@@ -42,7 +42,7 @@ class CarTransferWorkflowTest extends IntegrationTestCase
 
     protected function tearDown(): void
     {
-        $this->db = null;
+        parent::tearDown();
     }
 
     // =========================================================================
