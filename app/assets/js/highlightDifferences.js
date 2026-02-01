@@ -1,3 +1,4 @@
+/* exported highlightDifferences */
 /**
  * highlightDifferences.js
  * Highlights cell differences between consecutive rows in the car history table.

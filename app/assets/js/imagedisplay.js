@@ -1,6 +1,7 @@
+/* exported carousel, load_picture */
 /**
  * Image Display JavaScript
- * 
+ *
  * Handles carousel and image display functionality for car images.
  * Uses globally configured thumbnail sizes from ELAN_CONFIG.
  */
@@ -14,17 +15,19 @@ if (typeof ELAN_CONFIG === 'undefined') {
 }
 
 function carousel(row, carid = null) {
-    if (carid == null) {
-        carid = row['id']
+    var effectiveCarId = carid;
+    if (effectiveCarId == null) {
+        effectiveCarId = row['id'];
     }
 
-    img_path = img_root + carid + '/';
+    img_path = img_root + effectiveCarId + '/';
 
     // Images can be csv or JSON
+    var images;
     try {
         images = JSON.parse(row['image']);
-    } catch (e) {
-        var images = row['image'].split(',');
+    } catch (_e) {
+        images = row['image'].split(',');
     }
 
     var slideNumber;

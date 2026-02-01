@@ -360,9 +360,9 @@
             }
 
             // Filter and rank results
-            results = this.filterAndRankResults(results);
+            const filteredResults = this.filterAndRankResults(results);
 
-            resultsContainer.innerHTML = results.map(location => `
+            resultsContainer.innerHTML = filteredResults.map(location => `
                 <button type="button"
                         class="list-group-item list-group-item-action"
                         data-location='${this.escapeAttribute(JSON.stringify(location))}'
@@ -630,7 +630,7 @@
             try {
                 const cached = sessionStorage.getItem(key);
                 return cached ? JSON.parse(cached) : null;
-            } catch (e) {
+            } catch (_e) {
                 return null;
             }
         }

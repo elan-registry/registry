@@ -8,11 +8,16 @@ on:
       - "phpstan.neon"
       - "composer.json"
       - "composer.lock"
+      - "**.js"
+      - "eslint.config.mjs"
+      - ".github/workflows/static-analysis.yml"
   push:
     branches: [main]
     paths:
       - "**.php"
       - "phpstan.neon"
+      - "**.js"
+      - "eslint.config.mjs"
   workflow_dispatch:
 
 jobs:
@@ -97,9 +102,6 @@ jobs:
   eslint:
     name: JavaScript Lint Check
     runs-on: ubuntu-latest
-    # ESLint is advisory - don't block PRs on JS lint issues
-    continue-on-error: true
-
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
