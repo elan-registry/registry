@@ -97,14 +97,12 @@ jobs:
   eslint:
     name: JavaScript Lint Check
     runs-on: ubuntu-latest
-    # Advisory — don't block PRs on JS lint issues
+    # ESLint is advisory - don't block PRs on JS lint issues
     continue-on-error: true
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -115,23 +113,5 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      # Only lint JS files changed in this PR (or push).
-      - name: Run ESLint on changed files
-        run: |
-          if [ "${{ github.event_name }}" = "pull_request" ]; then
-            BASE=$(git merge-base "${{ github.event.pull_request.base.sha }}" HEAD)
-          else
-            BASE="${{ github.event.before }}"
-          fi
-
-          CHANGED_JS=$(git diff --name-only --diff-filter=ACMR "$BASE"..HEAD -- '*.js' '*.mjs' '*.cjs' || true)
-
-          if [ -z "$CHANGED_JS" ]; then
-            echo "No JavaScript files changed — skipping."
-            exit 0
-          fi
-
-          echo "Linting changed JavaScript files:"
-          echo "$CHANGED_JS"
-
-          npx eslint $CHANGED_JS
+      - name: Run ESLint
+        run: npm run lint
