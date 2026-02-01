@@ -1,0 +1,11 @@
+{
+  "schedule": "weekly",
+  "ignoredFiles": [
+    "userimages/**",
+    ".playwright-mcp/**",
+    "test-results/**",
+    "playwright-report/**"
+  ],
+  "aggressiveCompression": false,
+  "compressWiki": false
+}
