@@ -817,6 +817,84 @@ else:
             .car-progress { height: 25px; }
             .progress-bar { min-width: 50px; font-weight: bold; }
         </style>
+        <script>
+            let processStarted = false;
+
+            function updateProgress(current, total, statusMessage) {
+                if (total === 0) return;
+                const percentage = Math.round((current / total) * 100);
+                const progressBar = document.getElementById('progressBar');
+                if (progressBar) {
+                    progressBar.style.width = percentage + '%';
+                    progressBar.setAttribute('aria-valuenow', percentage);
+                    progressBar.textContent = percentage + '%';
+                }
+
+                if (statusMessage) {
+                    const statusElement = document.getElementById('currentStatus');
+                    if (statusElement) {
+                        const statusIcon = percentage >= 100 ?
+                            '<i class="fas fa-check-circle text-success"></i>' :
+                            '<i class="fas fa-spinner fa-spin"></i>';
+                        statusElement.innerHTML = statusIcon + ' ' + statusMessage;
+                    }
+                }
+            }
+
+            function addLogMessage(message) {
+                const container = document.getElementById('resultsContainer');
+                if (!container) return;
+                const line = document.createElement('div');
+                line.className = 'fix-status-line';
+
+                if (message.includes('✅')) {
+                    line.className += ' text-success';
+                } else if (message.includes('❌') || message.includes('✗')) {
+                    line.className += ' text-danger';
+                } else if (message.includes('⚠️') || message.includes('warning')) {
+                    line.className += ' text-warning';
+                } else if (message.includes('ℹ️')) {
+                    line.className += ' text-info';
+                }
+
+                line.innerHTML = message;
+                container.appendChild(line);
+                container.scrollTop = container.scrollHeight;
+            }
+
+            function startProcessing() {
+                if (processStarted) return;
+                processStarted = true;
+                const batchSize = document.getElementById('batchSize').value;
+                document.getElementById('descriptionSection').style.display = 'none';
+                document.getElementById('progressSection').style.display = '';
+                document.getElementById('logSection').style.display = '';
+
+                const now = new Date();
+                document.getElementById('startTimeText').textContent = now.toLocaleString();
+
+                const params = new URLSearchParams(window.location.search);
+                params.set('start', '1');
+                params.set('batch_size', batchSize);
+                window.location.href = window.location.pathname + '?' + params.toString();
+            }
+
+            window.addEventListener('load', function() {
+                if (new URLSearchParams(window.location.search).get('start') === '1') {
+                    processStarted = true;
+                    const descSection = document.getElementById('descriptionSection');
+                    if (descSection) descSection.style.display = 'none';
+                    const progSection = document.getElementById('progressSection');
+                    if (progSection) progSection.style.display = '';
+                    const logSection = document.getElementById('logSection');
+                    if (logSection) logSection.style.display = '';
+
+                    const now = new Date();
+                    const timeText = document.getElementById('startTimeText');
+                    if (timeText) timeText.textContent = now.toLocaleString();
+                }
+            });
+        </script>
     </head>
     <body class="p-4">
         <div class="well">
