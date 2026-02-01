@@ -76,6 +76,7 @@ header("Content-Security-Policy: " .
         "https://cloudflareinsights.com " .
         "https://static.cloudflareinsights.com; " .
     "frame-src 'self' https://www.google.com; " .
+    "frame-ancestors 'self'; " .
     "object-src 'none'; " .
     "base-uri 'self'"
 );
