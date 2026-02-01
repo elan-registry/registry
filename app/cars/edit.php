@@ -1024,6 +1024,7 @@ require_once $abs_us_root . $us_url_root . 'users/includes/html_footer.php'; //c
 
         // Call centralized validation via AJAX
         new ElanRegistryAPI().post('<?= $us_url_root ?>app/cars/actions/validateChassis.php', {
+            csrf: $('#csrf').val(),
             chassis: _chassis,
             year: validYear,
             model: validModel,
@@ -1072,6 +1073,7 @@ require_once $abs_us_root . $us_url_root . 'users/includes/html_footer.php'; //c
      */
     function checkChassisAvailability() {
         new ElanRegistryAPI().post('<?= $us_url_root ?>app/cars/actions/check-chassis.php', {
+            csrf: $('#csrf').val(),
             command: 'chassis_check',
             year: validYear,
             model: validModel,
@@ -1134,6 +1136,7 @@ require_once $abs_us_root . $us_url_root . 'users/includes/html_footer.php'; //c
         const model = validModel;
 
         new ElanRegistryAPI().post('<?= $us_url_root ?>app/cars/actions/request-transfer.php', {
+            csrf: $('#csrf').val(),
             chassis: chassis,
             year: year,
             model: model,
