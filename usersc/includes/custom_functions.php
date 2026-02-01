@@ -33,10 +33,10 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
  * including location data from the profiles table for car ownership transfers,
  * reassignments, and display purposes.
  *
- * @param int|string $user_id The user ID to fetch
+ * @param int $user_id The user ID to fetch
  * @return object|null User object with profile data, or null if not found
  */
-function getUserWithProfile(int|string $user_id): ?object {
+function getUserWithProfile(int $user_id): ?object {
     $db = DB::getInstance();
 
     $userQ = $db->query(
@@ -44,7 +44,7 @@ function getUserWithProfile(int|string $user_id): ?object {
          FROM users u
          LEFT JOIN profiles p ON u.id = p.user_id
          WHERE u.id = ?",
-        [(int)$user_id]
+        [$user_id]
     );
 
     if ($userQ->count() > 0) {
