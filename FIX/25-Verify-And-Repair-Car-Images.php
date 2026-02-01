@@ -730,7 +730,7 @@ else:
 
                             // Verify images for this car
                             $issues = verifyCarImages(
-                                $car->id,
+                                (int)$car->id,
                                 $car->image,
                                 $imageDir,
                                 $orphanDir,
@@ -739,7 +739,7 @@ else:
 
                             if (!empty($issues)) {
                                 foreach ($issues as $issue) {
-                                    $allIssues[] = array_merge(['car_id' => $car->id], $issue);
+                                    $allIssues[] = array_merge(['car_id' => (int)$car->id], $issue);
                                     $batchIssueCount++;
                                 }
                                 logProgress("  Found " . count($issues) . " issue(s)", 'warning');
@@ -919,7 +919,7 @@ else:
                         // Process with transaction
                         try {
                             $result = processCarImages(
-                                $carId,
+                                (int)$carId,
                                 $fixableIssues,
                                 $imageDir,
                                 $orphanDir,
