@@ -397,8 +397,28 @@ function processCarImages(
 }
 
 /**
+ * Extract base filename without -resized-XXX suffix
+ * Example: "20091214115455_jps_serge-resized-600.jpg" -> "20091214115455_jps_serge"
+ */
+function getBaseFilename(string $filename): string
+{
+    $pathInfo = pathinfo($filename);
+    $nameWithoutExt = $pathInfo['filename'];
+
+    // Remove -resized-XXX suffix if present
+    // Pattern: -resized-{digits}
+    $baseName = preg_replace('/-resized-\d+$/', '', $nameWithoutExt);
+
+    return $baseName;
+}
+
+/**
  * Find matching files in orphan directory using fuzzy matching
  * Handles cases where orphan files have -resized-XXX suffixes
+ *
+ * Naming pattern:
+ * - Original: datestamp_filename.ext (e.g., 20091214115455_jps_serge.jpg)
+ * - Resized:  datestamp_filename-resized-600.ext (e.g., 20091214115455_jps_serge-resized-600.jpg)
  */
 function findMatchingOrphanFile(string $filename, string $orphanDir): ?string
 {
@@ -408,9 +428,10 @@ function findMatchingOrphanFile(string $filename, string $orphanDir): ?string
         return $filename;
     }
 
-    // Try fuzzy matching for resized versions
+    // Get base filename without extension and -resized suffix
     $pathInfo = pathinfo($filename);
     $baseNameWithoutExt = $pathInfo['filename'];
+    $baseNameClean = getBaseFilename($filename);
     $ext = $pathInfo['extension'] ?? '';
 
     // List all files in orphan directory
@@ -423,15 +444,18 @@ function findMatchingOrphanFile(string $filename, string $orphanDir): ?string
         return null;
     }
 
-    // Look for files that start with the base name
+    // Look for files matching the base name
     $candidates = [];
     foreach ($orphanFiles as $orphanFile) {
         if ($orphanFile === '.' || $orphanFile === '..') {
             continue;
         }
 
-        // Check if orphan file starts with the base name
-        if (strpos($orphanFile, $baseNameWithoutExt) === 0) {
+        // Get base name of orphan file
+        $orphanBase = getBaseFilename($orphanFile);
+
+        // Check if orphan file base matches our file base
+        if ($orphanBase === $baseNameClean) {
             // Check if extension matches (or is missing)
             $orphanPathInfo = pathinfo($orphanFile);
             $orphanExt = $orphanPathInfo['extension'] ?? '';
@@ -443,19 +467,34 @@ function findMatchingOrphanFile(string $filename, string $orphanDir): ?string
         }
     }
 
-    // If we found candidates, prefer the highest quality (look for largest file or no -resized suffix)
+    // If we found candidates, prefer the highest quality
     if (!empty($candidates)) {
-        // Sort by: 1) files without -resized first, 2) then by descending size
+        // Sort by: 1) files without -resized first, 2) then by descending size/resolution
         usort($candidates, function($a, $b) use ($orphanDir) {
             $aHasResized = strpos($a, '-resized-') !== false;
             $bHasResized = strpos($b, '-resized-') !== false;
 
-            // Prefer non-resized files
+            // Prefer non-resized files (original quality)
             if ($aHasResized !== $bHasResized) {
                 return $aHasResized ? 1 : -1;
             }
 
-            // Both resized or both not - compare by size (larger first)
+            // Both resized or both not - compare by resolution or size
+            if ($aHasResized && $bHasResized) {
+                // Extract resolution from -resized-XXX
+                preg_match('/-resized-(\d+)/', $a, $aMatch);
+                preg_match('/-resized-(\d+)/', $b, $bMatch);
+
+                $aRes = $aMatch[1] ?? 0;
+                $bRes = $bMatch[1] ?? 0;
+
+                // If resolutions differ, prefer higher resolution
+                if ($aRes !== $bRes) {
+                    return $bRes - $aRes;
+                }
+            }
+
+            // Same resolution - compare by file size (larger first)
             $aSize = @filesize($orphanDir . $a);
             $bSize = @filesize($orphanDir . $b);
             return $bSize - $aSize;
