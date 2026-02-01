@@ -667,10 +667,10 @@ if (!$isStarting && !$isFix):
                     <div class="card registry-card mb-4">
                         <div class="card-header">
                             <h2 class="mb-0">
-                                <i class="fas fa-cogs"></i> Progress
+                                ⚙️ Progress
                             </h2>
                             <small class="text-muted">
-                                <i class="fas fa-clock"></i> Started: <span id="startTimeText"></span>
+                                🕐 Started: <span id="startTimeText"></span>
                             </small>
                         </div>
                         <div class="card-body">
@@ -684,7 +684,7 @@ if (!$isStarting && !$isFix):
                                     aria-valuemax="100">0%</div>
                             </div>
                             <div id="currentStatus" class="text-muted small">
-                                <i class="fas fa-spinner fa-spin"></i> Initializing...
+                                ⏳ Initializing...
                             </div>
                         </div>
                     </div>
@@ -693,7 +693,7 @@ if (!$isStarting && !$isFix):
                     <div class="card registry-card mb-4">
                         <div class="card-header">
                             <h2 class="mb-0">
-                                <i class="fas fa-chart-bar"></i> Summary
+                                📊 Summary
                             </h2>
                         </div>
                         <div class="card-body" id="summaryContent">
@@ -711,7 +711,7 @@ if (!$isStarting && !$isFix):
                     <div class="card registry-card">
                         <div class="card-header">
                             <h3 class="mb-0">
-                                <i class="fas fa-list"></i> Progress Log
+                                📋 Progress Log
                             </h3>
                         </div>
                         <div class="card-body fix-results-container" id="resultsContainer">
@@ -737,8 +737,8 @@ if (!$isStarting && !$isFix):
                     if (statusMessage) {
                         const statusElement = document.getElementById('currentStatus');
                         const statusIcon = percentage >= 100 ?
-                            '<i class="fas fa-check-circle text-success"></i>' :
-                            '<i class="fas fa-spinner fa-spin"></i>';
+                            '✅' :
+                            '⏳';
                         statusElement.innerHTML = statusIcon + ' ' + statusMessage;
                     }
                 }
@@ -806,7 +806,6 @@ else:
     <head>
         <title>Image Verification & Repair - Processing</title>
         <link href="https://cdn.jsdelivr.net/npm/bootstrap@4.6.0/dist/css/bootstrap.min.css" rel="stylesheet">
-        <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/all.min.css" rel="stylesheet">
         <style>
             body { background: #f5f5f5; }
             .well { background: white; padding: 2rem; border-radius: 8px; margin: 2rem auto; }
@@ -834,8 +833,8 @@ else:
                     const statusElement = document.getElementById('currentStatus');
                     if (statusElement) {
                         const statusIcon = percentage >= 100 ?
-                            '<i class="fas fa-check-circle text-success"></i>' :
-                            '<i class="fas fa-spinner fa-spin"></i>';
+                            '✅' :
+                            '⏳';
                         statusElement.innerHTML = statusIcon + ' ' + statusMessage;
                     }
                 }
@@ -898,7 +897,7 @@ else:
     </head>
     <body class="p-4">
         <div class="well">
-            <h1><i class="fas fa-images"></i> Verify and Repair Car Images</h1>
+            <h1>🖼️ Verify and Repair Car Images</h1>
 
             <?php
             // Get parameters with bounds validation
@@ -923,13 +922,79 @@ else:
             $allIssues = isset($_GET['all_issues']) ? json_decode($_GET['all_issues'], true) : [];
 
             if ($isStarting && !$isFix):
-                // REPORT PHASE
+                // REPORT PHASE - Show progress sections and start processing
                 ?>
-                    <?php
-                    ob_flush();
-                    flush();
+                <!-- Progress Section -->
+                <div class="row mb-4" id="progressSection">
+                    <div class="col-lg-6 col-md-6">
+                        <div class="card registry-card mb-4">
+                            <div class="card-header">
+                                <h2 class="mb-0">
+                                    ⚙️ Progress
+                                </h2>
+                                <small class="text-muted">
+                                    🕐 Started: <span id="startTimeText"></span>
+                                </small>
+                            </div>
+                            <div class="card-body">
+                                <div class="progress car-progress mb-2">
+                                    <div class="progress-bar progress-bar-striped progress-bar-animated bg-success"
+                                        id="progressBar"
+                                        role="progressbar"
+                                        style="width: 0%;"
+                                        aria-valuenow="0"
+                                        aria-valuemin="0"
+                                        aria-valuemax="100">0%</div>
+                                </div>
+                                <div id="currentStatus" class="text-muted small">
+                                    ⏳ Scanning...
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-lg-6 col-md-6">
+                        <div class="card registry-card mb-4">
+                            <div class="card-header">
+                                <h2 class="mb-0">
+                                    📊 Summary
+                                </h2>
+                            </div>
+                            <div class="card-body" id="summaryContent">
+                                <div class="text-muted">
+                                    <em>Processing...</em>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
 
-                    logProgress("Starting verification scan...", 'step');
+                <!-- Progress Log Section -->
+                <div class="row mb-4" id="logSection">
+                    <div class="col-12">
+                        <div class="card registry-card">
+                            <div class="card-header">
+                                <h3 class="mb-0">
+                                    📋 Progress Log
+                                </h3>
+                            </div>
+                            <div class="card-body fix-results-container" id="resultsContainer">
+                                <div class="fix-status-line text-muted">
+                                    <small><em>Initializing process...</em></small>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <script>
+                    document.getElementById('startTimeText').textContent = new Date().toLocaleString();
+                </script>
+
+                <?php
+                ob_flush();
+                flush();
+
+                logProgress("Starting verification scan...", 'step');
                     logProgress("Batch size: {$batchSize} cars, Offset: {$offset}", 'info');
 
                     // Get all cars with images
