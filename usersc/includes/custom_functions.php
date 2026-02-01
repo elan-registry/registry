@@ -33,10 +33,10 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
  * including location data from the profiles table for car ownership transfers,
  * reassignments, and display purposes.
  *
- * @param int $user_id The user ID to fetch
+ * @param int|string $user_id The user ID to fetch
  * @return object|null User object with profile data, or null if not found
  */
-function getUserWithProfile(int $user_id): ?object {
+function getUserWithProfile(int|string $user_id): ?object {
     $db = DB::getInstance();
 
     $userQ = $db->query(
@@ -67,10 +67,10 @@ function getUserWithProfile(int $user_id): ?object {
 /**
  * Check if user has Registry admin or editor permissions
  *
- * @param int|null $userId User ID to check (defaults to current user)
+ * @param int|string|null $userId User ID to check (defaults to current user)
  * @return bool True if user is Administrator (2) or Editor (3)
  */
-function isRegistryAdmin(?int $userId = null): bool {
+function isRegistryAdmin(int|string|null $userId = null): bool {
     return hasPerm([2, 3], $userId);
 }
 

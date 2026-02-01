@@ -1,38 +1,41 @@
+/**
+ * highlightDifferences.js
+ * Highlights cell differences between consecutive rows in the car history table.
+ * Called from car_details.js on DataTables draw event.
+ */
+function highlightDifferences() {
+  const $rows = $("#carHistoryTable tbody tr");
 
-      $(document).ready(function () {
-        highlightDifferences();
-      });
+  $rows.each(function (index) {
+    // Skip baseline row (last/oldest)
+    if (index === $rows.length - 1) {
+      return;
+    }
 
-      function highlightDifferences() {
-        const $rows = $("#carHistoryTable tbody tr");
+    const $currentRow = $(this);
+    const $prevRow = $rows.eq(index + 1);
+    const currentCells = $currentRow.find("td");
+    const prevCells = $prevRow.find("td");
 
-        $rows.each(function (index) {
-          // Skip baseline row (last/oldest)
-          if (index === $rows.length - 1) {
-            return;
-          }
+    // Compare each cell (skip Operation at index 0 and Date Modified at index 1)
+    currentCells.each(function (cellIndex) {
+      if (cellIndex <= 1) return;
 
-          const $currentRow = $(this);
-          const $prevRow = $rows.eq(index + 1);
-          const currentCells = $currentRow.find("td");
-          const prevCells = $prevRow.find("td");
+      const currentVal = $(this).text().trim();
+      const prevVal = prevCells.eq(cellIndex).text().trim();
 
-          // Compare each cell (skip Date column at index 0)
-          currentCells.each(function (cellIndex) {
-            if (cellIndex === 0) return;
+      if (currentVal === prevVal) return;
 
-            const currentVal = $(this).text().trim();
-            const prevVal = prevCells.eq(cellIndex).text().trim();
+      // Remove any previous highlight classes before applying new ones
+      $(this).removeClass("table-success table-danger table-info");
 
-            if (currentVal === prevVal) return;
-
-            if (currentVal !== "" && prevVal === "") {
-              $(this).addClass("diff-new");
-            } else if (currentVal === "" && prevVal !== "") {
-              $(this).addClass("diff-deleted");
-            } else if (currentVal !== "" && prevVal !== "") {
-              $(this).addClass("diff-changed");
-            }
-          });
-        });
+      if (currentVal !== "" && prevVal === "") {
+        $(this).addClass("table-success");
+      } else if (currentVal === "" && prevVal !== "") {
+        $(this).addClass("table-danger");
+      } else if (currentVal !== "" && prevVal !== "") {
+        $(this).addClass("table-info");
       }
+    });
+  });
+}
