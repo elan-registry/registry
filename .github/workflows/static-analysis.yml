@@ -8,11 +8,16 @@ on:
       - "phpstan.neon"
       - "composer.json"
       - "composer.lock"
+      - "**.js"
+      - "eslint.config.mjs"
+      - ".github/workflows/static-analysis.yml"
   push:
     branches: [main]
     paths:
       - "**.php"
       - "phpstan.neon"
+      - "**.js"
+      - "eslint.config.mjs"
   workflow_dispatch:
 
 jobs:
