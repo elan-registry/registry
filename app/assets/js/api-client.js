@@ -252,8 +252,13 @@ class ElanRegistryAPI {
         // Resolve base URL: use window.location.origin for relative base paths
         let base = this.baseUrl;
         if (typeof window !== 'undefined' && (!base || base === '/')) {
-            base = window.location.origin + '/';
+            // Construct origin if window.location.origin is not available
+            const origin = window.location.origin ||
+                          (window.location.protocol + '//' + window.location.host);
+            base = origin + '/';
+            console.log('[DEBUG API buildUrl] Resolved base URL:', base);
         }
+        console.log('[DEBUG API buildUrl] Using base:', base, 'endpoint:', endpoint);
         const url = new URL(endpoint, base);
 
         Object.keys(params).forEach(key => {
