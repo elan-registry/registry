@@ -316,7 +316,10 @@ class ElanRegistryOwner
         }
 
         $carsQuery = $this->_db->query(
-            "SELECT * FROM cars WHERE user_id = ? ORDER BY model, year",
+            "SELECT c.* FROM cars c
+             INNER JOIN car_user cu ON c.id = cu.car_id
+             WHERE cu.userid = ?
+             ORDER BY c.model, c.year",
             [$this->_data->id]
         );
 

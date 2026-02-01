@@ -73,7 +73,14 @@ class Car
         }
 
         if (isset($user) && $user->isLoggedIn()) {
-            $this->_owner = getUserWithProfile((int) $user->data()->id);
+            static $cachedOwner = null;
+            static $cachedOwnerId = null;
+            $currentUserId = (int) $user->data()->id;
+            if ($cachedOwnerId !== $currentUserId) {
+                $cachedOwner = getUserWithProfile($currentUserId);
+                $cachedOwnerId = $currentUserId;
+            }
+            $this->_owner = $cachedOwner;
         }
 
         if ($id && $settings) {

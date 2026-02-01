@@ -58,8 +58,7 @@ final class CarDatabaseOperationsTest extends IntegrationTestCase
 
     protected function tearDown(): void
     {
-        // Clean up any test-specific data if needed
-        // Keep main test fixtures intact for other tests
+        parent::tearDown();
     }
 
     /**
