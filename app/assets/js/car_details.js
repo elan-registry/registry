@@ -1,3 +1,5 @@
+/* exported initializeHistoryTable */
+/* global highlightDifferences, carousel */
 /**
  * car_details.js
  * JavaScript functionality for the car details page
