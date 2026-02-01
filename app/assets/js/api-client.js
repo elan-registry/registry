@@ -210,28 +210,18 @@ class ElanRegistryAPI {
         // Check for CSRF input with name attribute (most common)
         let csrfInput = document.querySelector('input[name="csrf"]');
         if (csrfInput) {
-            const token = csrfInput.value || '';
-            console.log('[DEBUG API] Found CSRF token via name attribute, length:', token.length);
-            return token;
+            return csrfInput.value || '';
         }
 
         // Check for CSRF input with id attribute
         csrfInput = document.getElementById('csrf');
         if (csrfInput) {
-            const token = csrfInput.value || '';
-            console.log('[DEBUG API] Found CSRF token via id attribute, length:', token.length);
-            return token;
+            return csrfInput.value || '';
         }
 
         // Check for data attribute
         const token = document.documentElement.getAttribute('data-csrf-token');
-        if (token) {
-            console.log('[DEBUG API] Found CSRF token via data attribute, length:', token.length);
-            return token;
-        }
-
-        console.warn('[DEBUG API] No CSRF token found in DOM!');
-        return '';
+        return token || '';
     }
 
     /**
@@ -249,7 +239,7 @@ class ElanRegistryAPI {
      * @returns {string} Complete URL
      */
     buildUrl(endpoint, params = {}) {
-        // Build URL - use string concatenation to avoid new URL() issues with base URL
+        // Build URL - use string concatenation to avoid new URL() constructor issues
         let url = endpoint;
 
         // If endpoint is relative (doesn't start with http:// or https://), prepend origin
@@ -257,12 +247,6 @@ class ElanRegistryAPI {
             // Construct origin from window.location
             const origin = window.location.origin ||
                           (window.location.protocol + '//' + window.location.host);
-
-            console.log('[DEBUG API buildUrl] Constructing URL from origin:', {
-                origin: origin,
-                endpoint: endpoint,
-                isAbsolute: endpoint.startsWith('/')
-            });
 
             // If endpoint doesn't start with /, add it
             if (!endpoint.startsWith('/')) {
@@ -288,7 +272,6 @@ class ElanRegistryAPI {
             }
         }
 
-        console.log('[DEBUG API buildUrl] FINAL URL:', url);
         return url;
     }
 
@@ -332,10 +315,8 @@ class ElanRegistryAPI {
 
             // Add CSRF token for POST/PUT/DELETE requests
             if (['POST', 'PUT', 'DELETE'].includes(method.toUpperCase())) {
-                console.log('[DEBUG API] POST/PUT/DELETE request, csrfToken present:', !!this.csrfToken);
                 if (this.csrfToken) {
                     fetchOptions.headers['X-CSRF-Token'] = this.csrfToken;
-                    console.log('[DEBUG API] Added X-CSRF-Token header');
                 }
 
                 // Add data if present
@@ -348,7 +329,6 @@ class ElanRegistryAPI {
                             formData.append(key, value);
                         });
                     } else if (typeof options.data === 'object') {
-                        console.log('[DEBUG API] Adding form data fields:', Object.keys(options.data));
                         Object.keys(options.data).forEach(key => {
                             const value = options.data[key];
 
@@ -360,9 +340,6 @@ class ElanRegistryAPI {
                                 });
                             } else {
                                 formData.append(key, value);
-                                if (key === 'csrf') {
-                                    console.log('[DEBUG API] Added csrf field to FormData, length:', value.length);
-                                }
                             }
                         });
                     }
@@ -370,9 +347,6 @@ class ElanRegistryAPI {
                     // Add CSRF token to form data as well
                     if (this.csrfToken) {
                         formData.append('csrf', this.csrfToken);
-                        console.log('[DEBUG API] Added csrf to FormData (from auto-detected token)');
-                    } else {
-                        console.log('[DEBUG API] NOT adding csrf to FormData (this.csrfToken is empty)');
                     }
 
                     fetchOptions.body = formData;
@@ -380,23 +354,12 @@ class ElanRegistryAPI {
             }
 
             // Make the request
-            const url = this.buildUrl(endpoint, options.params || {});
-            console.log('[DEBUG API] Making fetch request:', {
-                url: url,
-                method: method,
-                headers: fetchOptions.headers,
-                hasBody: !!fetchOptions.body
-            });
-
-            const response = await fetch(url, fetchOptions);
+            const response = await fetch(
+                this.buildUrl(endpoint, options.params || {}),
+                fetchOptions
+            );
 
             clearTimeout(timeoutId);
-
-            console.log('[DEBUG API] Response received:', {
-                status: response.status,
-                statusText: response.statusText,
-                contentType: response.headers.get('content-type')
-            });
 
             // Handle HTTP errors
             if (!response.ok) {
