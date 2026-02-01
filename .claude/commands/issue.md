@@ -22,6 +22,7 @@ one senior-test-engineer per test suite type).
 | **Plan** | `Plan` | `sonnet` | Design implementation strategy, identify critical files, evaluate trade-offs. |
 | **Software Developer** | `software-developer` | `sonnet` | **Primary coding agent.** Write and update application code. |
 | **Senior Architect** | `senior-architect` | `sonnet` | Architectural review, security audit, GDPR compliance, code review. |
+| **Senior Product Manager** | `senior-product-manager` | `sonnet` | Issue refinement, scope definition, acceptance criteria, milestone planning. |
 | **Senior Test Engineer** | `senior-test-engineer` | `sonnet` | Test strategy, writing PHPUnit/Playwright tests, debugging failures. |
 | **Technical Documentation Writer** | `technical-documentation-writer` | `haiku` | Create/update docs, README, CLAUDE.md, API docs, release notes. |
 | **General Purpose** | `general-purpose` | `haiku` | Multi-step research, web searches, complex analysis. |
@@ -33,7 +34,9 @@ model set in their `.claude/agents/*.md` frontmatter.
 
 **Agent selection guidance:**
 
-- **Always invoke**: Explore (for initial research), senior-architect (for review)
+- **Always invoke**: Explore (for initial research), senior-product-manager
+  (for issue refinement in Step 6, and proactively for issue creation,
+  prioritization, and replanning), senior-architect (for review)
 - **Always invoke for code changes**: software-developer (for implementation),
   senior-test-engineer (for tests)
 - **Invoke when docs/config/public API changes**: technical-documentation-writer
@@ -124,16 +127,43 @@ Example: For a transfer system issue, launch parallel Explore agents for:
 
 Wait for Explore results before proceeding to questions.
 
-### Step 6: Interview Mode - Ask Questions Throughout
+### Step 6: Interview Mode - Issue Refinement and Questions
 
-Read the issue and Explore results, then interview me using AskUserQuestion.
+Before asking human interview questions, **launch the senior-product-manager
+agent** via the Task tool to analyze the issue for completeness and refinement
+needs.
 
-Ask about: technical implementation, UI/UX, concerns and tradeoffs. When
-providing options, tell me what is the best known practice or the industry
-standard.
+**Provide the PM agent with:**
+
+- The full issue details (title, description, labels, milestone, acceptance criteria if present)
+- The Explore results from Step 5
+- Any obvious scope, clarity, or dependency concerns
+
+**Ask the PM agent to evaluate:**
+
+1. Is this issue well-defined and ready for implementation?
+2. What's missing or unclear (acceptance criteria, edge cases, scope boundaries)?
+3. Does this issue need decomposition? If so, how should it be split?
+4. What questions should the orchestrator ask the user to refine this issue?
+5. Is the milestone assignment and priority appropriate?
+6. Are there dependencies on other issues or systems?
+
+**Wait for the PM agent's assessment before proceeding.**
+
+After receiving the PM agent's recommendations, interview the user using
+AskUserQuestion. Incorporate the PM agent's suggested questions along with
+your own technical, UI/UX, and implementation questions.
+
+Ask about: scope clarity, acceptance criteria, edge cases, technical
+implementation, UI/UX, concerns and tradeoffs. When providing options, tell
+me what is the best known practice or the industry standard.
 
 Make sure the questions are not obvious. Be very in-depth and continue until
 it is complete.
+
+**If the PM agent recommends issue decomposition or significant scope
+changes**, discuss this with the user before proceeding to plan mode. The
+user may want to update the issue or create new issues before implementation.
 
 ### Step 7: Enter Plan Mode and Ask Questions Throughout
 
@@ -366,7 +396,14 @@ Let me explore the relevant areas of the codebase first...
 
 [waits for Explore results]
 
-Based on the research, I have some questions...
+Now let me get product management input on this issue...
+
+[launches senior-product-manager agent via Task tool to assess issue quality,
+ completeness, scope, and recommend refinement questions]
+
+[waits for PM assessment]
+
+Based on the PM agent's feedback and the research, I have some questions...
 
 I see we have export functionality in `/app/reports/`. I found two approaches:
 1. Add export buttons to existing car listing pages
