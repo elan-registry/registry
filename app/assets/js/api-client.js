@@ -249,34 +249,47 @@ class ElanRegistryAPI {
      * @returns {string} Complete URL
      */
     buildUrl(endpoint, params = {}) {
-        // Resolve base URL: use window.location.origin for relative base paths
-        let base = this.baseUrl;
-        console.log('[DEBUG API buildUrl] INITIAL - baseUrl:', this.baseUrl, 'endpoint:', endpoint);
-        console.log('[DEBUG API buildUrl] window check:', typeof window !== 'undefined');
-        console.log('[DEBUG API buildUrl] base value:', base, 'is empty?', !base, 'is slash?', base === '/');
+        // Build URL - use string concatenation to avoid new URL() issues with base URL
+        let url = endpoint;
 
-        if (typeof window !== 'undefined' && (!base || base === '/')) {
-            // Construct origin if window.location.origin is not available
-            console.log('[DEBUG API buildUrl] Attempting to resolve origin...');
-            console.log('[DEBUG API buildUrl]   window.location.origin:', window.location.origin);
-            console.log('[DEBUG API buildUrl]   window.location.protocol:', window.location.protocol);
-            console.log('[DEBUG API buildUrl]   window.location.host:', window.location.host);
-
+        // If endpoint is relative (doesn't start with http:// or https://), prepend origin
+        if (!endpoint.match(/^https?:\/\//)) {
+            // Construct origin from window.location
             const origin = window.location.origin ||
                           (window.location.protocol + '//' + window.location.host);
-            base = origin + '/';
-            console.log('[DEBUG API buildUrl] Resolved base URL:', base);
-        }
-        console.log('[DEBUG API buildUrl] FINAL - Using base:', base, 'endpoint:', endpoint);
-        const url = new URL(endpoint, base);
 
-        Object.keys(params).forEach(key => {
-            if (params[key] !== null && params[key] !== undefined) {
-                url.searchParams.append(key, params[key]);
+            console.log('[DEBUG API buildUrl] Constructing URL from origin:', {
+                origin: origin,
+                endpoint: endpoint,
+                isAbsolute: endpoint.startsWith('/')
+            });
+
+            // If endpoint doesn't start with /, add it
+            if (!endpoint.startsWith('/')) {
+                url = '/' + endpoint;
+            } else {
+                url = endpoint;
             }
-        });
 
-        return url.toString();
+            url = origin + url;
+        }
+
+        // Add query parameters
+        if (Object.keys(params).length > 0) {
+            const queryParams = new URLSearchParams();
+            Object.keys(params).forEach(key => {
+                if (params[key] !== null && params[key] !== undefined) {
+                    queryParams.append(key, params[key]);
+                }
+            });
+            const queryString = queryParams.toString();
+            if (queryString) {
+                url += (url.includes('?') ? '&' : '?') + queryString;
+            }
+        }
+
+        console.log('[DEBUG API buildUrl] FINAL URL:', url);
+        return url;
     }
 
     /**
