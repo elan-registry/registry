@@ -71,7 +71,7 @@ jobs:
       - name: Run coding standards checker on changed files
         run: |
           if [ "${{ github.event_name }}" = "pull_request" ]; then
-            BASE="${{ github.event.pull_request.base.sha }}"
+            BASE=$(git merge-base "${{ github.event.pull_request.base.sha }}" HEAD)
           else
             BASE="${{ github.event.before }}"
           fi
@@ -117,7 +117,7 @@ jobs:
       - name: Run ESLint on changed files
         run: |
           if [ "${{ github.event_name }}" = "pull_request" ]; then
-            BASE="${{ github.event.pull_request.base.sha }}"
+            BASE=$(git merge-base "${{ github.event.pull_request.base.sha }}" HEAD)
           else
             BASE="${{ github.event.before }}"
           fi
