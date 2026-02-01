@@ -210,18 +210,28 @@ class ElanRegistryAPI {
         // Check for CSRF input with name attribute (most common)
         let csrfInput = document.querySelector('input[name="csrf"]');
         if (csrfInput) {
-            return csrfInput.value || '';
+            const token = csrfInput.value || '';
+            console.log('[DEBUG API] Found CSRF token via name attribute, length:', token.length);
+            return token;
         }
 
         // Check for CSRF input with id attribute
         csrfInput = document.getElementById('csrf');
         if (csrfInput) {
-            return csrfInput.value || '';
+            const token = csrfInput.value || '';
+            console.log('[DEBUG API] Found CSRF token via id attribute, length:', token.length);
+            return token;
         }
 
         // Check for data attribute
         const token = document.documentElement.getAttribute('data-csrf-token');
-        return token || '';
+        if (token) {
+            console.log('[DEBUG API] Found CSRF token via data attribute, length:', token.length);
+            return token;
+        }
+
+        console.warn('[DEBUG API] No CSRF token found in DOM!');
+        return '';
     }
 
     /**
@@ -295,8 +305,10 @@ class ElanRegistryAPI {
 
             // Add CSRF token for POST/PUT/DELETE requests
             if (['POST', 'PUT', 'DELETE'].includes(method.toUpperCase())) {
+                console.log('[DEBUG API] POST/PUT/DELETE request, csrfToken present:', !!this.csrfToken);
                 if (this.csrfToken) {
                     fetchOptions.headers['X-CSRF-Token'] = this.csrfToken;
+                    console.log('[DEBUG API] Added X-CSRF-Token header');
                 }
 
                 // Add data if present
@@ -309,6 +321,7 @@ class ElanRegistryAPI {
                             formData.append(key, value);
                         });
                     } else if (typeof options.data === 'object') {
+                        console.log('[DEBUG API] Adding form data fields:', Object.keys(options.data));
                         Object.keys(options.data).forEach(key => {
                             const value = options.data[key];
 
@@ -320,6 +333,9 @@ class ElanRegistryAPI {
                                 });
                             } else {
                                 formData.append(key, value);
+                                if (key === 'csrf') {
+                                    console.log('[DEBUG API] Added csrf field to FormData, length:', value.length);
+                                }
                             }
                         });
                     }
@@ -327,6 +343,9 @@ class ElanRegistryAPI {
                     // Add CSRF token to form data as well
                     if (this.csrfToken) {
                         formData.append('csrf', this.csrfToken);
+                        console.log('[DEBUG API] Added csrf to FormData (from auto-detected token)');
+                    } else {
+                        console.log('[DEBUG API] NOT adding csrf to FormData (this.csrfToken is empty)');
                     }
 
                     fetchOptions.body = formData;
@@ -334,12 +353,23 @@ class ElanRegistryAPI {
             }
 
             // Make the request
-            const response = await fetch(
-                this.buildUrl(endpoint, options.params || {}),
-                fetchOptions
-            );
+            const url = this.buildUrl(endpoint, options.params || {});
+            console.log('[DEBUG API] Making fetch request:', {
+                url: url,
+                method: method,
+                headers: fetchOptions.headers,
+                hasBody: !!fetchOptions.body
+            });
+
+            const response = await fetch(url, fetchOptions);
 
             clearTimeout(timeoutId);
+
+            console.log('[DEBUG API] Response received:', {
+                status: response.status,
+                statusText: response.statusText,
+                contentType: response.headers.get('content-type')
+            });
 
             // Handle HTTP errors
             if (!response.ok) {

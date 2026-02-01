@@ -1015,7 +1015,7 @@ require_once $abs_us_root . $us_url_root . 'users/includes/html_footer.php'; //c
     $('#chassis').blur(function() {
         const _chassis = $('#chassis').val();
         const overrideEnabled = $('#chassis_override').is(':checked');
-        
+
         // Skip validation if empty chassis
         if (!_chassis || !validYear || !validModel) {
             validChassis = '';
@@ -1023,17 +1023,34 @@ require_once $abs_us_root . $us_url_root . 'users/includes/html_footer.php'; //c
             return;
         }
 
+        // DEBUG: Log CSRF token retrieval
+        const csrfToken = $('#csrf').val();
+        console.log('[DEBUG] Chassis validation starting:', {
+            chassis: _chassis,
+            year: validYear,
+            model: validModel,
+            csrfToken: csrfToken ? `[present, length=${csrfToken.length}]` : '[MISSING]',
+            override: overrideEnabled
+        });
+
         // Call centralized validation via AJAX
         new ElanRegistryAPI().post('<?= $us_url_root ?>app/cars/actions/validateChassis.php', {
-            csrf: $('#csrf').val(),
+            csrf: csrfToken,
             chassis: _chassis,
             year: validYear,
             model: validModel,
             allow_override: overrideEnabled ? 'true' : 'false'
         }).then(function(result) {
+            console.log('[DEBUG] Chassis validation success:', result);
             validChassis = result.valid ? _chassis : '';
             updateChassisUI(result.valid, result.error_reason || '');
-        }).catch(function() {
+        }).catch(function(error) {
+            console.error('[DEBUG] Chassis validation failed:', {
+                errorName: error.name,
+                errorMessage: error.message,
+                errorStatus: error.status,
+                errorResponse: error.response
+            });
             validChassis = overrideEnabled ? _chassis : '';
             updateChassisUI(validChassis !== '', 'Validation service temporarily unavailable');
         });
