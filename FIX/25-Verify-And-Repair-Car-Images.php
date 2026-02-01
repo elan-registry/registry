@@ -861,6 +861,30 @@ else:
                 container.scrollTop = container.scrollHeight;
             }
 
+            function updateSummary(stats) {
+                const summaryContent = document.getElementById('summaryContent');
+                if (!summaryContent) return;
+                summaryContent.innerHTML = `
+                    <div class="mb-3">
+                        <h5>📊 Current Stats</h5>
+                        <div class="row">
+                            <div class="col-6">
+                                <small><strong>Cars Processed:</strong></small><br/>
+                                <span style="font-size: 1.2em; color: #007bff;">${stats.processed || 0}</span>
+                            </div>
+                            <div class="col-6">
+                                <small><strong>Issues Found:</strong></small><br/>
+                                <span style="font-size: 1.2em; color: #ffc107;">${stats.issues || 0}</span>
+                            </div>
+                        </div>
+                    </div>
+                    <hr/>
+                    <div class="text-muted small">
+                        <em>Updated in real-time...</em>
+                    </div>
+                `;
+            }
+
             function startProcessing() {
                 if (processStarted) return;
                 processStarted = true;
@@ -871,6 +895,9 @@ else:
 
                 const now = new Date();
                 document.getElementById('startTimeText').textContent = now.toLocaleString();
+
+                // Initialize summary
+                updateSummary({processed: 0, issues: 0});
 
                 const params = new URLSearchParams(window.location.search);
                 params.set('start', '1');
@@ -1073,7 +1100,10 @@ else:
 
                         logProgress("Batch processed: {$batchIssueCount} issues found", 'info');
                         ?>
-                        <script>updateProgress(<?php echo $percentageComplete; ?>, 100, 'Batch Complete: <?php echo $newTotalProcessed; ?>/<?php echo $totalCarsInDb; ?> cars processed');</script>
+                        <script>
+                            updateProgress(<?php echo $percentageComplete; ?>, 100, 'Batch Complete: <?php echo $newTotalProcessed; ?>/<?php echo $totalCarsInDb; ?> cars processed');
+                            updateSummary({processed: <?php echo $newTotalProcessed; ?>, issues: <?php echo $newTotalIssues; ?>});
+                        </script>
                         <?php
 
                         // Check for next batch
