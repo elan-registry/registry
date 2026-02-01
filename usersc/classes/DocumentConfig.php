@@ -32,7 +32,8 @@ class DocumentConfig
                     'CAR_TRANSFER_USER_GUIDE.md',
                     'CAR_TRANSFER_FAQ.md',
                     'PRIVACY.md',
-                    'IDENTIFICATION_GUIDE.md'
+                    'IDENTIFICATION_GUIDE.md',
+                    'PAINT_COLORS_GUIDE.md'
                 ],
                 'requiresAdmin' => false
             ],
@@ -94,6 +95,14 @@ class DocumentConfig
                 'icon' => 'fas fa-search',
                 'description' => 'Complete guide to identifying Lotus Elan models and variants',
                 'breadcrumb' => 'Identification Guide',
+                'category' => 'faq'
+            ],
+
+            'PAINT_COLORS_GUIDE.md' => [
+                'title' => 'Lotus Elan & Plus 2 Paint Colors Guide',
+                'icon' => 'fas fa-palette',
+                'description' => 'Complete reference to factory paint colors and codes',
+                'breadcrumb' => 'Paint Colors Guide',
                 'category' => 'faq'
             ],
 

@@ -87,6 +87,9 @@ class MarkdownParser
         $markdown = preg_replace('/```(.*?)```/s', '<pre><code>$1</code></pre>', $markdown);
         $markdown = preg_replace('/`([^`]+)`/', '<code>$1</code>', $markdown);
 
+        // Process tables
+        $markdown = self::processTables($markdown);
+
         // Process lists
         $markdown = self::processLists($markdown);
 
@@ -102,6 +105,8 @@ class MarkdownParser
             '/<\/ul><\/p>/' => '</ul>',
             '/<p><ol>/' => '<ol>',
             '/<\/ol><\/p>/' => '</ol>',
+            '/<p><table/' => '<table',
+            '/<\/table><\/p>/' => '</table>',
             '/<p><pre>/' => '<pre>',
             '/<\/pre><\/p>/' => '</pre>',
             '/<p><\/p>/' => '',
@@ -139,6 +144,79 @@ class MarkdownParser
         $id = preg_replace('/-+/', '-', $id);
 
         return $id;
+    }
+
+    /**
+     * Process markdown tables
+     *
+     * Converts pipe-delimited markdown tables to HTML tables with Bootstrap styling.
+     *
+     * @param string $markdown The markdown content
+     * @return string Processed content with HTML tables
+     */
+    private static function processTables(string $markdown): string
+    {
+        $lines = explode("\n", $markdown);
+        $result = [];
+        $i = 0;
+        $lineCount = count($lines);
+
+        while ($i < $lineCount) {
+            $line = $lines[$i];
+
+            // Detect a table: current line has pipes and next line is a separator row
+            if (
+                strpos($line, '|') !== false
+                && isset($lines[$i + 1])
+                && preg_match('/^\|[\s:]*-+[\s:]*/', $lines[$i + 1])
+            ) {
+                // Parse header row
+                $headers = self::parseTableRow($line);
+
+                // Skip separator row
+                $i += 2;
+
+                $html = '<table class="table table-bordered table-striped">';
+                $html .= '<thead><tr>';
+                foreach ($headers as $header) {
+                    $html .= '<th>' . trim($header) . '</th>';
+                }
+                $html .= '</tr></thead><tbody>';
+
+                // Parse body rows
+                while ($i < $lineCount && strpos($lines[$i], '|') !== false && trim($lines[$i]) !== '') {
+                    $cells = self::parseTableRow($lines[$i]);
+                    $html .= '<tr>';
+                    foreach ($cells as $cell) {
+                        $html .= '<td>' . trim($cell) . '</td>';
+                    }
+                    $html .= '</tr>';
+                    $i++;
+                }
+
+                $html .= '</tbody></table>';
+                $result[] = $html;
+                continue;
+            }
+
+            $result[] = $line;
+            $i++;
+        }
+
+        return implode("\n", $result);
+    }
+
+    /**
+     * Parse a single markdown table row into cells
+     *
+     * @param string $row The table row string
+     * @return array<string> Array of cell contents
+     */
+    private static function parseTableRow(string $row): array
+    {
+        // Remove leading/trailing pipes and split
+        $row = trim($row, '| ');
+        return array_map('trim', explode('|', $row));
     }
 
     /**
