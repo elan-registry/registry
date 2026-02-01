@@ -162,6 +162,10 @@ function updateCarDetails(array &$car): void
             } ?>
 
             <form id="editCar" name="editCar" method="post" enctype="multipart/form-data" novalidate>
+                <!-- CSRF Token (must be early for AJAX validation) -->
+                <input type="hidden" name="csrf" id="csrf" value="<?= htmlspecialchars(Token::generate(), ENT_QUOTES, 'UTF-8'); ?>" />
+                <input type="hidden" name="action" id="action" value="<?= htmlspecialchars($action, ENT_QUOTES, 'UTF-8'); ?>" />
+                <input type="hidden" name="car_id" id="car_id" value="<?= htmlspecialchars((string)($cardetails['id'] ?? ''), ENT_QUOTES, 'UTF-8'); ?>" />
                 <!-- progressbar -->
                 <ul id="progressbar" class="mb-4">
                     <li class="active" id="cardetails"><strong>Car Details</strong></li>
@@ -230,9 +234,6 @@ function updateCarDetails(array &$car): void
                         </div>
                     </div>
                     <!-- End Image panel -->
-                    <input type="hidden" name="csrf" id="csrf" value="<?= htmlspecialchars(Token::generate(), ENT_QUOTES, 'UTF-8'); ?>" />
-                    <input type="hidden" name="action" id="action" value="<?= htmlspecialchars($action, ENT_QUOTES, 'UTF-8'); ?>" />
-                    <input type="hidden" name="car_id" id="car_id" value="<?= htmlspecialchars((string)($cardetails['id'] ?? ''), ENT_QUOTES, 'UTF-8'); ?>" />
                     <input type="submit" name="submit" id="submit" class="btn btn-success" value="Add Car" />
                     <input type="button" name="previous" class="previous btn btn-danger" value="Previous" />
                 </fieldset>
