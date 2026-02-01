@@ -613,10 +613,15 @@ function verifyCarImages(
             continue;
         }
 
-        // Check for extensionless file
-        if (strpos($filename, '.') === false) {
-            $ext = detectImageExtension($filePath);
-            if ($ext === null) {
+        // Check for extensionless or invalid extension file
+        $pathInfo = pathinfo($filePath);
+        $ext = $pathInfo['extension'] ?? '';
+        $validImageExtensions = ['jpg', 'jpeg', 'png', 'gif'];
+
+        // Consider file extensionless if: no extension OR extension is not a valid image extension
+        if (empty($ext) || !in_array(strtolower($ext), $validImageExtensions, true)) {
+            $detectedExt = detectImageExtension($filePath);
+            if ($detectedExt === null) {
                 $issues[] = [
                     'type' => 'undetectable',
                     'file' => $filename,
@@ -626,16 +631,14 @@ function verifyCarImages(
                 $issues[] = [
                     'type' => 'no_extension',
                     'file' => $filename,
-                    'message' => "Can be renamed to .{$ext}"
+                    'message' => "Can be renamed to .{$detectedExt}"
                 ];
             }
             continue;
         }
 
         // Check for missing thumbnails
-        $pathInfo = pathinfo($filePath);
         $baseName = $pathInfo['filename'];
-        $ext = $pathInfo['extension'];
         $missingThumbs = [];
 
         foreach ($thumbnailSizes as $size) {
