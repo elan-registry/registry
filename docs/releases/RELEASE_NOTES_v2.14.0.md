@@ -16,6 +16,10 @@ None required for changes included so far.
   server-side processing. Changed fields are now highlighted for easier visual
   comparison between history records.
 
+### Bug Fixes
+
+- **Toast Notification Fix** ([#536](https://github.com/unibrain1/elanregistry/issues/536)): Toasts repositioned to top-right with unified styling and proper z-index
+
 ## 🔧 Technical Changes
 
 ### Code Quality
@@ -29,6 +33,7 @@ None required for changes included so far.
 
 - **Class Consolidation** ([#529](https://github.com/unibrain1/elanregistry/issues/529)): Namespaced exception classes, consolidated
   class file locations, and removed duplicates.
+- **Unified Toast System** ([#536](https://github.com/unibrain1/elanregistry/issues/536)): BS4-compatible toast overrides with `pre_footer.php` hook; `NotificationHelper` delegates to UserSpice toasts. Tagged `@todo #234` for BS5 removal.
 
 ## 📋 Milestone Issues
 
@@ -37,6 +42,7 @@ None required for changes included so far.
 - [#322](https://github.com/unibrain1/elanregistry/issues/322) — ENHANCEMENT: Fix car history table date ordering and highlight changed fields
 - [#369](https://github.com/unibrain1/elanregistry/issues/369) — FIX: Add strict types and specific exceptions to edit.php (already resolved)
 - [#529](https://github.com/unibrain1/elanregistry/issues/529) — Consolidate class file locations and remove duplicates
+- [#536](https://github.com/unibrain1/elanregistry/issues/536) — Toast notifications overlap page heading and UI elements
 
 ### Open
 
@@ -50,5 +56,4 @@ None required for changes included so far.
 - [#390](https://github.com/unibrain1/elanregistry/issues/390) — Implement custom reply-to email addresses in SendInBlue plugin
 - [#467](https://github.com/unibrain1/elanregistry/issues/467) — Improve location terminology for international inclusivity
 - [#514](https://github.com/unibrain1/elanregistry/issues/514) — Remove deprecated imagedestroy() call in Resize.php
-- [#536](https://github.com/unibrain1/elanregistry/issues/536) — Toast notifications overlap page heading and UI elements
 - [#543](https://github.com/unibrain1/elanregistry/issues/543) — Create apple-touch-icon assets

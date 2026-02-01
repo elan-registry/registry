@@ -85,55 +85,20 @@ class NotificationHelper {
      * @param {number} duration - Display duration in milliseconds (0 = persistent)
      */
     static show(message, type = 'info', duration = 5000) {
-        // Escape HTML to prevent XSS
-        const escapedMessage = this.escapeHtml(message);
+        // Delegate to UserSpice toast functions for unified notification system
+        const usFunction = {
+            'success': 'usSuccess',
+            'error': 'usError',
+            'warning': 'usInfo',
+            'info': 'usInfo'
+        }[type] || 'usInfo';
 
-        // Create toast container if it doesn't exist
-        let toastContainer = document.getElementById('elan-toast-container');
-        if (!toastContainer) {
-            toastContainer = document.createElement('div');
-            toastContainer.id = 'elan-toast-container';
-            toastContainer.setAttribute('style', `
-                position: fixed;
-                top: 20px;
-                right: 20px;
-                z-index: 9999;
-                max-width: 400px;
-            `);
-            document.body.appendChild(toastContainer);
-        }
-
-        // Determine Bootstrap alert class
-        const alertClass = {
-            'success': 'alert-success',
-            'error': 'alert-danger',
-            'warning': 'alert-warning',
-            'info': 'alert-info'
-        }[type] || 'alert-info';
-
-        // Create toast element
-        const toastDiv = document.createElement('div');
-        toastDiv.setAttribute('role', 'alert');
-        toastDiv.setAttribute('aria-live', 'assertive');
-        toastDiv.setAttribute('aria-atomic', 'true');
-        toastDiv.className = `alert ${alertClass} alert-dismissible fade show`;
-        toastDiv.setAttribute('style', `
-            margin-bottom: 10px;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-        `);
-
-        toastDiv.innerHTML = `
-            ${escapedMessage}
-            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
-        `;
-
-        toastContainer.appendChild(toastDiv);
-
-        // Auto-hide if duration specified
-        if (duration > 0) {
-            setTimeout(() => {
-                toastDiv.remove();
-            }, duration);
+        if (typeof window[usFunction] === 'function') {
+            window[usFunction](message);
+        } else {
+            // Fallback if UserSpice toast functions not available
+            console.warn('UserSpice toast function not available:', usFunction);
+            console.log(`[${type}] ${message}`);
         }
     }
 

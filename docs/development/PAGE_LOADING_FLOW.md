@@ -1,7 +1,7 @@
 # Page Loading Flow Reference
 
-**Last Updated:** 2026-01-28
-**Version:** 2.13.0
+**Last Updated:** 2026-01-31
+**Version:** 2.14.0
 
 ## Purpose
 
@@ -343,16 +343,9 @@ users/includes/template/prep.php
 │       ├─ User menu (login/logout, account)
 │       └─ Mobile responsive menu toggle
 │
-├─ 2.4. usersc/templates/{template}/container_open.php
-│   └─ Main content container:
-│       └─ <div class="container"> or page wrapper divs
-│
-└─ 2.5. System Messages
-    └─ usersc/includes/system_messages_header.php (or users/ fallback)
-        └─ Display error and success messages:
-            ├─ Session-based messages (usError, usSuccess)
-            ├─ Bootstrap alert styling
-            └─ Auto-dismiss after configured time
+└─ 2.4. usersc/templates/{template}/container_open.php
+    └─ Main content container:
+        └─ <div class="container"> or page wrapper divs
 ```
 
 **Template-Specific Files:**
@@ -418,22 +411,48 @@ if (!hasPerm([2], $userId)) {
 
 ### Phase 4: Footer & Cleanup (`users/includes/html_footer.php`)
 
-**Purpose:** Close HTML structure, load footer scripts, execute plugin hooks
+**Purpose:** Close HTML structure, load toast system, footer scripts, plugin hooks
 
 ```text
 users/includes/html_footer.php
 │
 ├─ 4.1. usersc/templates/{template}/footer.php
-│   └─ Footer content:
-│       ├─ Footer HTML (copyright, links, etc.)
-│       ├─ Closing main container divs
-│       ├─ JavaScript includes (footer):
-│       │   ├─ DataTables JS
-│       │   ├─ Chart.js
-│       │   ├─ Google Maps API
-│       │   ├─ Page-specific JavaScript
-│       │   └─ Custom application scripts
-│       └─ </body> and </html> closing tags
+│   │   (e.g., usersc/templates/ElanRegistry/footer.php)
+│   │
+│   ├─ 4.1.1. usersc/templates/{template}/container_close.php
+│   │   └─ Close main content container divs
+│   │
+│   ├─ 4.1.2. users/includes/page_footer.php
+│   │   │   *** Toast notification system loaded here ***
+│   │   │
+│   │   ├─ 4.1.2a. usersc/includes/pre_footer.php (if exists)
+│   │   │   └─ Pre-footer hook (v2.14.0+):
+│   │   │       └─ Includes toast container HTML + CSS:
+│   │   │           └─ usersc/includes/system_messages_header.php
+│   │   │               (or users/ fallback)
+│   │   │               ├─ #us-toast-container div (position-fixed)
+│   │   │               ├─ Toast positioning (default: top-right)
+│   │   │               ├─ z-index: 1090 (Bootstrap 5 toast layer)
+│   │   │               └─ Toast CSS (color bars, close button, layout)
+│   │   │
+│   │   └─ 4.1.2b. usersc/includes/system_messages_footer.php
+│   │       (or users/ fallback)
+│   │       └─ Toast notification JavaScript:
+│   │           ├─ userSpiceMessage() - Core toast creation function
+│   │           ├─ Window globals: usSuccess(), usError(), usInfo(),
+│   │           │   usPrimary(), usDark()
+│   │           ├─ HTML sanitization (allowlisted tags only)
+│   │           ├─ Bootstrap Toast API integration (6s auto-hide)
+│   │           └─ Emit PHP session messages as toasts on page load
+│   │
+│   ├─ 4.1.3. Footer HTML (copyright, version, links)
+│   │
+│   └─ 4.1.4. JavaScript includes (footer):
+│       ├─ DataTables JS
+│       ├─ Chart.js
+│       ├─ Google Maps API
+│       ├─ Page-specific JavaScript
+│       └─ Custom application scripts
 │
 ├─ 4.2. Plugin Footer Hooks (for each enabled plugin)
 │   └─ usersc/plugins/{plugin_name}/footer.php
@@ -442,7 +461,8 @@ users/includes/html_footer.php
 ├─ 4.3. Custom Footer (if exists)
 │   └─ usersc/includes/footer.php
 │       ├─ ElanRegistryAPI client (app/assets/js/api-client.js)
-│       │   └─ Global window.ElanRegistryAPI instance with auto CSRF injection
+│       │   ├─ Global window.ElanRegistryAPI instance with auto CSRF injection
+│       │   └─ NotificationHelper (delegates to usSuccess/usError/usInfo)
 │       └─ Custom footer code, analytics, tracking
 │
 └─ 4.4. UserSpice Footer Scripts
@@ -451,6 +471,26 @@ users/includes/html_footer.php
         ├─ Bootstrap popover initialization
         └─ Bootstrap tooltip initialization
 ```
+
+**Toast System Architecture (v2.14.0+):**
+
+The toast notification system has two components loaded in sequence during
+Phase 4.1.2:
+
+1. **Container (system_messages_header.php)** — outputs the `#us-toast-container`
+   div with positioning CSS. Loaded via `pre_footer.php` hook. Without this,
+   toast JS falls back to `document.body` and toasts render unstyled/unpositioned.
+
+2. **JavaScript (system_messages_footer.php)** — defines `usSuccess()`,
+   `usError()`, etc. Looks for `#us-toast-container`; uses `document.body` as
+   fallback if container is missing.
+
+Both files support UserSpice's custom override pattern: if the file exists in
+`usersc/includes/`, it is used instead of the `users/includes/` version.
+
+**Important:** `NotificationHelper.show()` in `api-client.js` delegates to the
+UserSpice toast functions (`usSuccess`, `usError`, `usInfo`). There is a single
+unified toast system — do not create separate notification containers.
 
 ## Critical Global Variables
 
@@ -687,8 +727,9 @@ Debug mode shows:
 |---------|------------|--------------------------------------------------|
 | 1.0.0   | 2026-01-09 | Initial documentation of page loading flow       |
 | 1.1.0   | 2026-01-28 | Add server globals to critical variables table   |
+| 1.2.0   | 2026-01-31 | Fix Phase 2.5/4 toast system documentation; document pre_footer.php hook, system_messages_header/footer loading sequence, and unified toast architecture (Issue #536) |
 
 ---
 
 **Note:** This document reflects the loading sequence for UserSpice 5.x and Elan
-Registry v2.13.0. File paths and loading order may vary in different versions.
+Registry v2.14.0. File paths and loading order may vary in different versions.
