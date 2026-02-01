@@ -37,7 +37,7 @@ class Resize
      * Correct image orientation based on EXIF data
      * Handles all 8 EXIF orientation values and strips EXIF data for privacy
      */
-    private function correctOrientation(string $fileName, $image)
+    private function correctOrientation(string $fileName, GdImage $image): GdImage
     {
         // Only process JPEG files for EXIF orientation
         $extension = strtolower(strrchr($fileName, '.'));
@@ -101,7 +101,7 @@ class Resize
 
     ## --------------------------------------------------------
 
-    private function openImage(string $file)
+    private function openImage(string $file): GdImage|false
     {
         // *** Get extension
         $extension = strtolower(strrchr($file, '.'));
@@ -318,8 +318,6 @@ class Resize
                 // *** No extension - No save.
                 break;
         }
-
-        imagedestroy($this->imageResized);
     }
 
     ## --------------------------------------------------------
