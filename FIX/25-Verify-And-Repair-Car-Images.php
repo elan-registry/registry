@@ -312,11 +312,13 @@ function processCarImages(
 
                 // Case 2: Recover from orphan directory
                 case 'recoverable':
-                    $orphanPath = $orphanDir . $issue['file'];
+                    // Use matched orphan file if fuzzy matching found one
+                    $orphanFilename = $issue['orphan_match'] ?? $issue['file'];
+                    $orphanPath = $orphanDir . $orphanFilename;
 
                     // SECURITY CRITICAL: Validate orphan file before copying
                     if (!validateOrphanFile($orphanPath, $maxFileSize)) {
-                        throw new ImageProcessingException("Orphan file failed validation: {$issue['file']} (may be corrupted or malicious)");
+                        throw new ImageProcessingException("Orphan file failed validation: {$orphanFilename} (may be corrupted or malicious)");
                     }
 
                     $destPath = $imageDir . $carId . '/' . $issue['file'];
@@ -328,7 +330,7 @@ function processCarImages(
 
                     // Copy from orphan (not move - preserve backup)
                     if (!copy($orphanPath, $destPath)) {
-                        throw new ImageProcessingException("Failed to copy from orphan: {$issue['file']}");
+                        throw new ImageProcessingException("Failed to copy from orphan: {$orphanFilename}");
                     }
 
                     // Verify copy integrity
@@ -395,6 +397,77 @@ function processCarImages(
 }
 
 /**
+ * Find matching files in orphan directory using fuzzy matching
+ * Handles cases where orphan files have -resized-XXX suffixes
+ */
+function findMatchingOrphanFile(string $filename, string $orphanDir): ?string
+{
+    // Try exact match first
+    $exactPath = $orphanDir . $filename;
+    if (file_exists($exactPath)) {
+        return $filename;
+    }
+
+    // Try fuzzy matching for resized versions
+    $pathInfo = pathinfo($filename);
+    $baseNameWithoutExt = $pathInfo['filename'];
+    $ext = $pathInfo['extension'] ?? '';
+
+    // List all files in orphan directory
+    if (!is_dir($orphanDir)) {
+        return null;
+    }
+
+    $orphanFiles = @scandir($orphanDir);
+    if ($orphanFiles === false) {
+        return null;
+    }
+
+    // Look for files that start with the base name
+    $candidates = [];
+    foreach ($orphanFiles as $orphanFile) {
+        if ($orphanFile === '.' || $orphanFile === '..') {
+            continue;
+        }
+
+        // Check if orphan file starts with the base name
+        if (strpos($orphanFile, $baseNameWithoutExt) === 0) {
+            // Check if extension matches (or is missing)
+            $orphanPathInfo = pathinfo($orphanFile);
+            $orphanExt = $orphanPathInfo['extension'] ?? '';
+
+            // Match if extensions are the same, or if orphan has no extension
+            if ($orphanExt === $ext || $orphanExt === '') {
+                $candidates[] = $orphanFile;
+            }
+        }
+    }
+
+    // If we found candidates, prefer the highest quality (look for largest file or no -resized suffix)
+    if (!empty($candidates)) {
+        // Sort by: 1) files without -resized first, 2) then by descending size
+        usort($candidates, function($a, $b) use ($orphanDir) {
+            $aHasResized = strpos($a, '-resized-') !== false;
+            $bHasResized = strpos($b, '-resized-') !== false;
+
+            // Prefer non-resized files
+            if ($aHasResized !== $bHasResized) {
+                return $aHasResized ? 1 : -1;
+            }
+
+            // Both resized or both not - compare by size (larger first)
+            $aSize = @filesize($orphanDir . $a);
+            $bSize = @filesize($orphanDir . $b);
+            return $bSize - $aSize;
+        });
+
+        return $candidates[0];
+    }
+
+    return null;
+}
+
+/**
  * Verify car images - report phase
  */
 function verifyCarImages(
@@ -442,7 +515,7 @@ function verifyCarImages(
 
         // Check if file exists
         if (!file_exists($filePath)) {
-            // Check orphan directory for recovery
+            // Try exact match in orphan directory
             $orphanPath = $orphanDir . $filename;
             if (file_exists($orphanPath)) {
                 $issues[] = [
@@ -451,11 +524,22 @@ function verifyCarImages(
                     'message' => 'Found in orphan directory'
                 ];
             } else {
-                $issues[] = [
-                    'type' => 'lost',
-                    'file' => $filename,
-                    'message' => 'Not found anywhere'
-                ];
+                // Try fuzzy matching for partial filename matches
+                $matchingOrphanFile = findMatchingOrphanFile($filename, $orphanDir);
+                if ($matchingOrphanFile) {
+                    $issues[] = [
+                        'type' => 'recoverable',
+                        'file' => $filename,
+                        'orphan_match' => $matchingOrphanFile,
+                        'message' => "Found in orphan: {$matchingOrphanFile}"
+                    ];
+                } else {
+                    $issues[] = [
+                        'type' => 'lost',
+                        'file' => $filename,
+                        'message' => 'Not found anywhere'
+                    ];
+                }
             }
             continue;
         }
