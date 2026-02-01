@@ -702,8 +702,7 @@ else:
 
                     // Get all cars with images
                     $allCars = $db->query(
-                        "SELECT id, image FROM cars WHERE image IS NOT NULL AND image != '' LIMIT ? OFFSET ?",
-                        [$batchSize, $offset]
+                        "SELECT id, image FROM cars WHERE image IS NOT NULL AND image != '' LIMIT {$batchSize} OFFSET {$offset}"
                     )->results();
 
                     if (empty($allCars)) {
