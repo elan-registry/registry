@@ -656,7 +656,7 @@ else:
         <style>
             body { background: #f5f5f5; }
             .container { background: white; padding: 2rem; border-radius: 8px; margin-top: 2rem; margin-bottom: 2rem; }
-            .log-output { background: #000; color: #0f0; padding: 1rem; border-radius: 4px; font-family: monospace; font-size: 0.85rem; max-height: 500px; overflow-y: auto; }
+            .log-output { background: #000; color: #0f0; padding: 1rem; border-radius: 4px; font-family: monospace; font-size: 0.85rem; max-height: 500px; overflow-y: auto; white-space: pre-wrap; word-wrap: break-word; }
             .progress { height: 2rem; }
             .btn-group { margin-top: 2rem; }
         </style>
