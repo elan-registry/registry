@@ -265,7 +265,7 @@ try {
  * @param int $bytes
  * @return string
  */
-function formatBytes($bytes) {
+function formatBytes($bytes): string {
     $units = ['B', 'KB', 'MB', 'GB'];
     $bytes = max($bytes, 0);
     $pow = floor(($bytes ? log($bytes) : 0) / log(1024));

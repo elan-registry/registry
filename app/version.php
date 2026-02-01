@@ -14,7 +14,7 @@ class ApplicationVersion
      * Returns the current version from VERSION file with deployment timestamp.
      * @return string Version string
      */
-    public static function get()
+    public static function get(): string
     {
         // Get version from static VERSION file
         $versionFile = dirname(__DIR__) . '/VERSION';

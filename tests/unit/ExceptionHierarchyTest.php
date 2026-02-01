@@ -2,6 +2,28 @@
 
 declare(strict_types=1);
 
+use ElanRegistry\Exceptions\BackupException;
+use ElanRegistry\Exceptions\CarCreationException;
+use ElanRegistry\Exceptions\CarDatabaseException;
+use ElanRegistry\Exceptions\CarDeletionException;
+use ElanRegistry\Exceptions\CarMergeException;
+use ElanRegistry\Exceptions\CarNotFoundException;
+use ElanRegistry\Exceptions\CarPermissionException;
+use ElanRegistry\Exceptions\CarTransferException;
+use ElanRegistry\Exceptions\CarValidationException;
+use ElanRegistry\Exceptions\DocumentationException;
+use ElanRegistry\Exceptions\ElanRegistryException;
+use ElanRegistry\Exceptions\ForbiddenException;
+use ElanRegistry\Exceptions\GeocodingException;
+use ElanRegistry\Exceptions\ImageProcessingException;
+use ElanRegistry\Exceptions\LocationServiceException;
+use ElanRegistry\Exceptions\OwnerCreationException;
+use ElanRegistry\Exceptions\OwnerNotFoundException;
+use ElanRegistry\Exceptions\OwnerUpdateException;
+use ElanRegistry\Exceptions\OwnerValidationException;
+use ElanRegistry\Exceptions\SchemaException;
+use ElanRegistry\Exceptions\UnauthorizedException;
+use ElanRegistry\Exceptions\ValidationException;
 use PHPUnit\Framework\TestCase;
 
 /**
@@ -19,27 +41,27 @@ class ExceptionHierarchyTest extends TestCase
      * All exception classes that should extend ElanRegistryException
      */
     private const EXCEPTION_CLASSES = [
-        'CarNotFoundException',
-        'CarCreationException',
-        'CarValidationException',
-        'CarDeletionException',
-        'CarMergeException',
-        'CarTransferException',
-        'CarDatabaseException',
-        'CarPermissionException',
-        'OwnerNotFoundException',
-        'OwnerCreationException',
-        'OwnerValidationException',
-        'OwnerUpdateException',
-        'ImageProcessingException',
-        'GeocodingException',
-        'BackupException',
-        'SchemaException',
-        'ValidationException',
-        'UnauthorizedException',
-        'ForbiddenException',
-        'DocumentationException',
-        'LocationServiceException',
+        CarNotFoundException::class,
+        CarCreationException::class,
+        CarValidationException::class,
+        CarDeletionException::class,
+        CarMergeException::class,
+        CarTransferException::class,
+        CarDatabaseException::class,
+        CarPermissionException::class,
+        OwnerNotFoundException::class,
+        OwnerCreationException::class,
+        OwnerValidationException::class,
+        OwnerUpdateException::class,
+        ImageProcessingException::class,
+        GeocodingException::class,
+        BackupException::class,
+        SchemaException::class,
+        ValidationException::class,
+        UnauthorizedException::class,
+        ForbiddenException::class,
+        DocumentationException::class,
+        LocationServiceException::class,
     ];
 
     /**
@@ -47,7 +69,7 @@ class ExceptionHierarchyTest extends TestCase
      */
     public function testBaseClassIsAbstract(): void
     {
-        $reflection = new ReflectionClass('ElanRegistryException');
+        $reflection = new ReflectionClass(ElanRegistryException::class);
         $this->assertTrue(
             $reflection->isAbstract(),
             'ElanRegistryException must be abstract'
@@ -68,7 +90,7 @@ class ExceptionHierarchyTest extends TestCase
         );
 
         $this->assertTrue(
-            is_subclass_of($className, 'ElanRegistryException'),
+            is_subclass_of($className, ElanRegistryException::class),
             "{$className} should extend ElanRegistryException"
         );
     }
@@ -362,27 +384,27 @@ class ExceptionHierarchyTest extends TestCase
     public static function exceptionWithCategoryProvider(): array
     {
         return [
-            'CarNotFoundException' => ['CarNotFoundException', 'CarErrors'],
-            'CarCreationException' => ['CarCreationException', 'CarCreation'],
-            'CarValidationException' => ['CarValidationException', 'ValidationError'],
-            'CarDeletionException' => ['CarDeletionException', 'CarDeletion'],
-            'CarMergeException' => ['CarMergeException', 'CarMerge'],
-            'CarTransferException' => ['CarTransferException', 'CarTransferError'],
-            'CarDatabaseException' => ['CarDatabaseException', 'DatabaseError'],
-            'CarPermissionException' => ['CarPermissionException', 'AccessDenied'],
-            'OwnerNotFoundException' => ['OwnerNotFoundException', 'OwnerActions'],
-            'OwnerCreationException' => ['OwnerCreationException', 'OwnerActions'],
-            'OwnerValidationException' => ['OwnerValidationException', 'ValidationError'],
-            'OwnerUpdateException' => ['OwnerUpdateException', 'OwnerActions'],
-            'ImageProcessingException' => ['ImageProcessingException', 'FileError'],
-            'GeocodingException' => ['GeocodingException', 'SystemError'],
-            'BackupException' => ['BackupException', 'BackupError'],
-            'SchemaException' => ['SchemaException', 'DatabaseError'],
-            'ValidationException' => ['ValidationException', 'ValidationError'],
-            'UnauthorizedException' => ['UnauthorizedException', 'SecurityError'],
-            'ForbiddenException' => ['ForbiddenException', 'SecurityError'],
-            'DocumentationException' => ['DocumentationException', 'SystemError'],
-            'LocationServiceException' => ['LocationServiceException', 'SystemError'],
+            'CarNotFoundException' => [CarNotFoundException::class, 'CarErrors'],
+            'CarCreationException' => [CarCreationException::class, 'CarCreation'],
+            'CarValidationException' => [CarValidationException::class, 'ValidationError'],
+            'CarDeletionException' => [CarDeletionException::class, 'CarDeletion'],
+            'CarMergeException' => [CarMergeException::class, 'CarMerge'],
+            'CarTransferException' => [CarTransferException::class, 'CarTransferError'],
+            'CarDatabaseException' => [CarDatabaseException::class, 'DatabaseError'],
+            'CarPermissionException' => [CarPermissionException::class, 'AccessDenied'],
+            'OwnerNotFoundException' => [OwnerNotFoundException::class, 'OwnerActions'],
+            'OwnerCreationException' => [OwnerCreationException::class, 'OwnerActions'],
+            'OwnerValidationException' => [OwnerValidationException::class, 'ValidationError'],
+            'OwnerUpdateException' => [OwnerUpdateException::class, 'OwnerActions'],
+            'ImageProcessingException' => [ImageProcessingException::class, 'FileError'],
+            'GeocodingException' => [GeocodingException::class, 'SystemError'],
+            'BackupException' => [BackupException::class, 'BackupError'],
+            'SchemaException' => [SchemaException::class, 'DatabaseError'],
+            'ValidationException' => [ValidationException::class, 'ValidationError'],
+            'UnauthorizedException' => [UnauthorizedException::class, 'SecurityError'],
+            'ForbiddenException' => [ForbiddenException::class, 'SecurityError'],
+            'DocumentationException' => [DocumentationException::class, 'SystemError'],
+            'LocationServiceException' => [LocationServiceException::class, 'SystemError'],
         ];
     }
 
@@ -394,27 +416,27 @@ class ExceptionHierarchyTest extends TestCase
     public static function exceptionWithStatusProvider(): array
     {
         return [
-            'CarNotFoundException' => ['CarNotFoundException', 404],
-            'CarCreationException' => ['CarCreationException', 500],
-            'CarValidationException' => ['CarValidationException', 422],
-            'CarDeletionException' => ['CarDeletionException', 500],
-            'CarMergeException' => ['CarMergeException', 500],
-            'CarTransferException' => ['CarTransferException', 500],
-            'CarDatabaseException' => ['CarDatabaseException', 500],
-            'CarPermissionException' => ['CarPermissionException', 403],
-            'OwnerNotFoundException' => ['OwnerNotFoundException', 404],
-            'OwnerCreationException' => ['OwnerCreationException', 500],
-            'OwnerValidationException' => ['OwnerValidationException', 422],
-            'OwnerUpdateException' => ['OwnerUpdateException', 500],
-            'ImageProcessingException' => ['ImageProcessingException', 500],
-            'GeocodingException' => ['GeocodingException', 500],
-            'BackupException' => ['BackupException', 500],
-            'SchemaException' => ['SchemaException', 500],
-            'ValidationException' => ['ValidationException', 422],
-            'UnauthorizedException' => ['UnauthorizedException', 401],
-            'ForbiddenException' => ['ForbiddenException', 403],
-            'DocumentationException' => ['DocumentationException', 500],
-            'LocationServiceException' => ['LocationServiceException', 500],
+            'CarNotFoundException' => [CarNotFoundException::class, 404],
+            'CarCreationException' => [CarCreationException::class, 500],
+            'CarValidationException' => [CarValidationException::class, 422],
+            'CarDeletionException' => [CarDeletionException::class, 500],
+            'CarMergeException' => [CarMergeException::class, 500],
+            'CarTransferException' => [CarTransferException::class, 500],
+            'CarDatabaseException' => [CarDatabaseException::class, 500],
+            'CarPermissionException' => [CarPermissionException::class, 403],
+            'OwnerNotFoundException' => [OwnerNotFoundException::class, 404],
+            'OwnerCreationException' => [OwnerCreationException::class, 500],
+            'OwnerValidationException' => [OwnerValidationException::class, 422],
+            'OwnerUpdateException' => [OwnerUpdateException::class, 500],
+            'ImageProcessingException' => [ImageProcessingException::class, 500],
+            'GeocodingException' => [GeocodingException::class, 500],
+            'BackupException' => [BackupException::class, 500],
+            'SchemaException' => [SchemaException::class, 500],
+            'ValidationException' => [ValidationException::class, 422],
+            'UnauthorizedException' => [UnauthorizedException::class, 401],
+            'ForbiddenException' => [ForbiddenException::class, 403],
+            'DocumentationException' => [DocumentationException::class, 500],
+            'LocationServiceException' => [LocationServiceException::class, 500],
         ];
     }
 }

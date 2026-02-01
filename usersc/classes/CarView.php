@@ -2,6 +2,8 @@
 
 declare(strict_types=1);
 
+use ElanRegistry\Exceptions\ImageProcessingException;
+
 /**
  * CarView - Static utility class for car display and view functions
  *

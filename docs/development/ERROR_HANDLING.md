@@ -119,11 +119,14 @@ handling and logging.
 
 **Architecture**:
 
+- **Namespace**: `ElanRegistry\Exceptions` - All exception classes are namespaced
+- **Location**: `/usersc/classes/Exceptions/` directory
 - **Base Class**: `ElanRegistryException` - Abstract base for all custom exceptions
 - **Properties**: Each exception type has:
   - User-friendly message (safe for UI display)
   - Log category (from LogCategories constants)
   - HTTP status code (for API responses)
+- **Autoloading**: PSR-4 autoload via composer.json
 
 **Exception Types** (26 total):
 
@@ -159,6 +162,9 @@ handling and logging.
 **Usage Pattern**:
 
 ```php
+use ElanRegistry\Exceptions\OwnerValidationException;
+use ElanRegistry\Exceptions\ElanRegistryException;
+
 try {
     // Operation that might fail
     $owner = new ElanRegistryOwner($ownerId);
@@ -341,9 +347,15 @@ async function search(query) {
 The NotificationHelper utility displays user feedback consistently across the
 application with XSS protection.
 
+> **Note (v2.14.0+):** `NotificationHelper.show()` now delegates to UserSpice
+> toast functions (`usSuccess()`, `usError()`, `usInfo()`) instead of creating
+> its own container. This ensures a single, consistent toast system with
+> proper z-index and positioning. The `showValidationErrors()` and
+> `escapeHtml()` methods are unchanged.
+
 **Methods**:
 
-- `show(message, type)` - Display general notification
+- `show(message, type)` - Display general notification (delegates to UserSpice toasts)
   - type: 'success', 'error', 'warning', 'info'
 - `showValidationErrors(errors)` - Display field-level validation errors
   - errors: { field_name: 'Error message' }
@@ -470,6 +482,9 @@ try {
 **After** (typed exception - proper classification):
 
 ```php
+use ElanRegistry\Exceptions\CarCreationException;
+use ElanRegistry\Exceptions\ElanRegistryException;
+
 try {
     // Operation
     throw new CarCreationException('Database insert failed');
@@ -493,6 +508,8 @@ try {
 throw new Exception('Admin not found');
 
 # After
+use ElanRegistry\Exceptions\OwnerNotFoundException;
+
 throw new OwnerNotFoundException('Admin with ID ' . $adminId . ' not found');
 ```
 
@@ -595,6 +612,8 @@ logger($userId, LogCategories::LOG_CATEGORY_DATABASE_ERROR, 'Query failed for ta
 **Choose Appropriate Exception Type**:
 
 ```php
+use ElanRegistry\Exceptions\CarValidationException;
+
 // ✅ CORRECT: Specific exception for the operation
 if (empty($carData['year'])) {
     throw new CarValidationException('Year field is required');
@@ -609,6 +628,8 @@ if (empty($carData['year'])) {
 **Separate User vs Technical Messages**:
 
 ```php
+use ElanRegistry\Exceptions\CarCreationException;
+
 // ✅ CORRECT: User message is safe, technical message for logs
 throw new CarCreationException(
     'Database insert failed: constraint violation on vin',  // Technical
@@ -805,11 +826,13 @@ const result = await api.post('endpoint', data);
 ### Core Files
 
 - `/usersc/classes/ApiResponse.php` - API response class
-- `/usersc/classes/exceptions/ElanRegistryException.php` - Base exception
+- `/usersc/classes/Exceptions/ElanRegistryException.php` - Base exception (namespace: `ElanRegistry\Exceptions`)
+- `/usersc/classes/Exceptions/` - All exception classes (26 total)
 - `/usersc/classes/LogCategories.php` - Log category constants
 - `/usersc/includes/custom_functions.php` - logger() function, getUserWithProfile()
 - `/usersc/js/elan-registry-api.js` - Frontend API client
 - `/usersc/js/notification-helper.js` - Notification utility
+- `/composer.json` - PSR-4 autoload configuration for `ElanRegistry\Exceptions`
 
 ### Cross-References
 

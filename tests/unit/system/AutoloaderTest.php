@@ -72,24 +72,24 @@ class AutoloaderTest extends TestCase
      */
     public function testExceptionClassesAutoload(): void
     {
-        // Car exceptions
-        $this->assertTrue(class_exists('CarNotFoundException'), 'CarNotFoundException should auto-load');
-        $this->assertTrue(class_exists('CarCreationException'), 'CarCreationException should auto-load');
-        $this->assertTrue(class_exists('CarValidationException'), 'CarValidationException should auto-load');
-        $this->assertTrue(class_exists('CarTransferException'), 'CarTransferException should auto-load');
-        $this->assertTrue(class_exists('CarMergeException'), 'CarMergeException should auto-load');
-        $this->assertTrue(class_exists('CarDeletionException'), 'CarDeletionException should auto-load');
+        // Car exceptions (namespaced under ElanRegistry\Exceptions)
+        $this->assertTrue(class_exists('ElanRegistry\\Exceptions\\CarNotFoundException'), 'CarNotFoundException should auto-load');
+        $this->assertTrue(class_exists('ElanRegistry\\Exceptions\\CarCreationException'), 'CarCreationException should auto-load');
+        $this->assertTrue(class_exists('ElanRegistry\\Exceptions\\CarValidationException'), 'CarValidationException should auto-load');
+        $this->assertTrue(class_exists('ElanRegistry\\Exceptions\\CarTransferException'), 'CarTransferException should auto-load');
+        $this->assertTrue(class_exists('ElanRegistry\\Exceptions\\CarMergeException'), 'CarMergeException should auto-load');
+        $this->assertTrue(class_exists('ElanRegistry\\Exceptions\\CarDeletionException'), 'CarDeletionException should auto-load');
 
         // Owner exceptions
-        $this->assertTrue(class_exists('OwnerNotFoundException'), 'OwnerNotFoundException should auto-load');
-        $this->assertTrue(class_exists('OwnerCreationException'), 'OwnerCreationException should auto-load');
-        $this->assertTrue(class_exists('OwnerValidationException'), 'OwnerValidationException should auto-load');
-        $this->assertTrue(class_exists('OwnerUpdateException'), 'OwnerUpdateException should auto-load');
+        $this->assertTrue(class_exists('ElanRegistry\\Exceptions\\OwnerNotFoundException'), 'OwnerNotFoundException should auto-load');
+        $this->assertTrue(class_exists('ElanRegistry\\Exceptions\\OwnerCreationException'), 'OwnerCreationException should auto-load');
+        $this->assertTrue(class_exists('ElanRegistry\\Exceptions\\OwnerValidationException'), 'OwnerValidationException should auto-load');
+        $this->assertTrue(class_exists('ElanRegistry\\Exceptions\\OwnerUpdateException'), 'OwnerUpdateException should auto-load');
 
         // System exceptions
-        $this->assertTrue(class_exists('ImageProcessingException'), 'ImageProcessingException should auto-load');
-        $this->assertTrue(class_exists('BackupException'), 'BackupException should auto-load');
-        $this->assertTrue(class_exists('SchemaException'), 'SchemaException should auto-load');
+        $this->assertTrue(class_exists('ElanRegistry\\Exceptions\\ImageProcessingException'), 'ImageProcessingException should auto-load');
+        $this->assertTrue(class_exists('ElanRegistry\\Exceptions\\BackupException'), 'BackupException should auto-load');
+        $this->assertTrue(class_exists('ElanRegistry\\Exceptions\\SchemaException'), 'SchemaException should auto-load');
     }
 
     /**
@@ -121,25 +121,25 @@ class AutoloaderTest extends TestCase
     {
         // Test that we can create and throw an exception
         try {
-            throw new CarNotFoundException('Test message');
-        } catch (CarNotFoundException $e) {
-            $this->assertInstanceOf(CarNotFoundException::class, $e);
+            throw new \ElanRegistry\Exceptions\CarNotFoundException('Test message');
+        } catch (\ElanRegistry\Exceptions\CarNotFoundException $e) {
+            $this->assertInstanceOf(\ElanRegistry\Exceptions\CarNotFoundException::class, $e);
             $this->assertEquals('Test message', $e->getMessage());
         }
 
         // Test owner exception
         try {
-            throw new OwnerNotFoundException('Test owner message');
-        } catch (OwnerNotFoundException $e) {
-            $this->assertInstanceOf(OwnerNotFoundException::class, $e);
+            throw new \ElanRegistry\Exceptions\OwnerNotFoundException('Test owner message');
+        } catch (\ElanRegistry\Exceptions\OwnerNotFoundException $e) {
+            $this->assertInstanceOf(\ElanRegistry\Exceptions\OwnerNotFoundException::class, $e);
             $this->assertEquals('Test owner message', $e->getMessage());
         }
 
         // Test system exception
         try {
-            throw new BackupException('Test backup message');
-        } catch (BackupException $e) {
-            $this->assertInstanceOf(BackupException::class, $e);
+            throw new \ElanRegistry\Exceptions\BackupException('Test backup message');
+        } catch (\ElanRegistry\Exceptions\BackupException $e) {
+            $this->assertInstanceOf(\ElanRegistry\Exceptions\BackupException::class, $e);
             $this->assertEquals('Test backup message', $e->getMessage());
         }
     }

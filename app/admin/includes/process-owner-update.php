@@ -1,5 +1,10 @@
 <?php
 declare(strict_types=1);
+
+use ElanRegistry\Exceptions\AdminOperationException;
+use ElanRegistry\Exceptions\OwnerUpdateException;
+use ElanRegistry\Exceptions\OwnerValidationException;
+
 /**
  * process-owner-update.php
  * AJAX endpoint for updating owner profiles

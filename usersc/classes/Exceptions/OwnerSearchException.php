@@ -2,18 +2,23 @@
 
 declare(strict_types=1);
 
+namespace ElanRegistry\Exceptions;
+
+use LogCategories;
+use Throwable;
+
 /**
- * CarDatabaseException
+ * OwnerSearchException
  *
- * Exception thrown when car-related database operations fail.
- * Used for insert, update, delete, and transaction failures
- * in the Car class.
+ * Exception thrown when owner search operations fail.
+ * Used for errors during owner profile searches, data retrieval failures,
+ * and quality score calculation errors.
  *
  * @package ElanRegistry
  * @subpackage Exceptions
- * @since v2.14.0
+ * @since v2.12.0
  */
-class CarDatabaseException extends CarException
+class OwnerSearchException extends ElanRegistryException
 {
     /**
      * Constructor
@@ -37,7 +42,7 @@ class CarDatabaseException extends CarException
      */
     protected static function getDefaultUserMessage(): string
     {
-        return "A database error occurred while processing the car record.";
+        return "Search failed. Please try again.";
     }
 
     /**
@@ -45,7 +50,7 @@ class CarDatabaseException extends CarException
      */
     protected static function getDefaultLogCategory(): string
     {
-        return LogCategories::LOG_CATEGORY_DATABASE_ERROR;
+        return LogCategories::LOG_CATEGORY_OWNER_ACTIONS;
     }
 
     /**

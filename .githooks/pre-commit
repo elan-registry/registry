@@ -14,7 +14,8 @@
 #   2. Markdown Linting (formatting)
 #   3. Regression Test Issue Linking (traceability)
 #   4. Unit Tests (if critical files changed)
-#   5. JavaScript Linting (if JS files changed and ESLint available)
+#   5. PHPStan Static Analysis (if PHP files changed)
+#   6. JavaScript Linting (if JS files changed and ESLint available)
 #
 
 set -e
@@ -155,9 +156,29 @@ else
     echo "⏭️  No critical files changed"
 fi
 
-# Step 5: Run ESLint on staged JS files (if available)
+# Step 5: Run PHPStan static analysis (if PHP files changed)
 echo ""
-echo "📜 Step 5: JavaScript Lint"
+echo "🔬 Step 5: PHPStan Static Analysis"
+if [ -n "$STAGED_PHP_FILES" ]; then
+    if [ -f "vendor/bin/phpstan" ]; then
+        if vendor/bin/phpstan analyse --no-progress --memory-limit=512M 2>&1; then
+            echo "✅ Passed"
+        else
+            echo ""
+            echo "❌ COMMIT BLOCKED: Fix PHPStan errors above."
+            echo "   Bypass (not recommended): git commit --no-verify"
+            exit 1
+        fi
+    else
+        echo "⚠️  Skipping: phpstan not installed (composer require --dev phpstan/phpstan)"
+    fi
+else
+    echo "⏭️  No PHP files staged"
+fi
+
+# Step 6: Run ESLint on staged JS files (if available)
+echo ""
+echo "📜 Step 6: JavaScript Lint"
 if [ -n "$STAGED_JS_FILES" ]; then
     # Check if eslint is available
     if [ -f "node_modules/.bin/eslint" ] || command -v eslint &> /dev/null; then
@@ -173,7 +194,9 @@ if [ -n "$STAGED_JS_FILES" ]; then
             echo "✅ Passed"
         else
             echo ""
-            echo "⚠️  ESLint issues found (not blocking). Run 'npm run lint' to see details."
+            echo "❌ COMMIT BLOCKED: Fix ESLint errors above."
+            echo "   Bypass (not recommended): git commit --no-verify"
+            exit 1
         fi
     else
         echo "⏭️  ESLint not installed (optional: npm install)"

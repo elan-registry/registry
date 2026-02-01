@@ -2,17 +2,23 @@
 
 declare(strict_types=1);
 
+namespace ElanRegistry\Exceptions;
+
+use LogCategories;
+use Throwable;
+
 /**
- * SchemaException
+ * AdminOperationException
  *
- * Exception thrown when database schema operations fail.
- * Used when schema migrations, alterations, or validations encounter errors.
+ * Generic exception for admin system operation failures that don't fit other
+ * specific exception categories. Used as a catch-all for unexpected errors
+ * in admin interfaces including profile loading, data retrieval, and sync operations.
  *
  * @package ElanRegistry
  * @subpackage Exceptions
- * @since v2.9.2
+ * @since v2.12.0
  */
-class SchemaException extends ElanRegistryException
+class AdminOperationException extends ElanRegistryException
 {
     /**
      * Constructor
@@ -36,7 +42,7 @@ class SchemaException extends ElanRegistryException
      */
     protected static function getDefaultUserMessage(): string
     {
-        return "A database schema operation failed. Please contact support.";
+        return "An error occurred during the operation. Please try again.";
     }
 
     /**
@@ -44,7 +50,7 @@ class SchemaException extends ElanRegistryException
      */
     protected static function getDefaultLogCategory(): string
     {
-        return LogCategories::LOG_CATEGORY_DATABASE_ERROR;
+        return LogCategories::LOG_CATEGORY_SYSTEM_ERROR;
     }
 
     /**

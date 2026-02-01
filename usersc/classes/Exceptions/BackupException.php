@@ -2,17 +2,22 @@
 
 declare(strict_types=1);
 
+namespace ElanRegistry\Exceptions;
+
+use LogCategories;
+use Throwable;
+
 /**
- * ForbiddenException
+ * BackupException
  *
- * Exception thrown when user is authenticated but lacks permission.
- * Use for authorization failures after successful authentication.
+ * Exception thrown when backup operations fail.
+ * Used when backup creation, restoration, or cleanup operations encounter errors.
  *
  * @package ElanRegistry
  * @subpackage Exceptions
- * @since v2.12.0
+ * @since v2.9.2
  */
-class ForbiddenException extends ElanRegistryException
+class BackupException extends ElanRegistryException
 {
     /**
      * Constructor
@@ -36,7 +41,7 @@ class ForbiddenException extends ElanRegistryException
      */
     protected static function getDefaultUserMessage(): string
     {
-        return "You do not have permission to perform this action.";
+        return "A backup operation failed. Please contact support.";
     }
 
     /**
@@ -44,7 +49,7 @@ class ForbiddenException extends ElanRegistryException
      */
     protected static function getDefaultLogCategory(): string
     {
-        return 'SecurityError';
+        return LogCategories::LOG_CATEGORY_BACKUP_ERROR;
     }
 
     /**
@@ -52,6 +57,6 @@ class ForbiddenException extends ElanRegistryException
      */
     protected static function getDefaultHttpStatusCode(): int
     {
-        return 403;
+        return 500;
     }
 }

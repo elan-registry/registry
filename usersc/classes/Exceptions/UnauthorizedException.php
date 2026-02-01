@@ -2,18 +2,21 @@
 
 declare(strict_types=1);
 
+namespace ElanRegistry\Exceptions;
+
+use Throwable;
+
 /**
- * OwnerCreationException
+ * UnauthorizedException
  *
- * Exception thrown when owner creation operations fail.
- * Used when database insertion or validation errors occur during
- * new owner record creation.
+ * Exception thrown when authentication is required but not provided.
+ * Use for actions requiring login where user is not authenticated.
  *
  * @package ElanRegistry
  * @subpackage Exceptions
- * @since v2.11.0
+ * @since v2.12.0
  */
-class OwnerCreationException extends ElanRegistryException
+class UnauthorizedException extends ElanRegistryException
 {
     /**
      * Constructor
@@ -37,7 +40,7 @@ class OwnerCreationException extends ElanRegistryException
      */
     protected static function getDefaultUserMessage(): string
     {
-        return "Unable to create the owner record. Please try again.";
+        return "You must be logged in to perform this action.";
     }
 
     /**
@@ -45,7 +48,7 @@ class OwnerCreationException extends ElanRegistryException
      */
     protected static function getDefaultLogCategory(): string
     {
-        return LogCategories::LOG_CATEGORY_OWNER_ACTIONS;
+        return 'SecurityError';
     }
 
     /**
@@ -53,6 +56,6 @@ class OwnerCreationException extends ElanRegistryException
      */
     protected static function getDefaultHttpStatusCode(): int
     {
-        return 500;
+        return 401;
     }
 }

@@ -2,17 +2,23 @@
 
 declare(strict_types=1);
 
+namespace ElanRegistry\Exceptions;
+
+use LogCategories;
+use Throwable;
+
 /**
- * DocumentationException
+ * CarNotFoundException
  *
- * Exception thrown when documentation loading or rendering fails.
- * Used by MarkdownParser and DocumentConfig classes.
+ * Exception thrown when a requested car cannot be found in the database.
+ * Used throughout the Car class and related components when operations
+ * are attempted on non-existent car records.
  *
  * @package ElanRegistry
  * @subpackage Exceptions
- * @since v2.12.0
+ * @since v2.11.0
  */
-class DocumentationException extends ElanRegistryException
+class CarNotFoundException extends CarException
 {
     /**
      * Constructor
@@ -36,7 +42,7 @@ class DocumentationException extends ElanRegistryException
      */
     protected static function getDefaultUserMessage(): string
     {
-        return "Unable to load the requested documentation.";
+        return "The requested car could not be found.";
     }
 
     /**
@@ -44,7 +50,7 @@ class DocumentationException extends ElanRegistryException
      */
     protected static function getDefaultLogCategory(): string
     {
-        return 'SystemError';
+        return LogCategories::LOG_CATEGORY_CAR_ERRORS;
     }
 
     /**
@@ -52,6 +58,6 @@ class DocumentationException extends ElanRegistryException
      */
     protected static function getDefaultHttpStatusCode(): int
     {
-        return 500;
+        return 404;
     }
 }

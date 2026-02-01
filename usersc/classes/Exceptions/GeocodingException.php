@@ -2,18 +2,26 @@
 
 declare(strict_types=1);
 
+namespace ElanRegistry\Exceptions;
+
+use LogCategories;
+use Throwable;
+
 /**
- * CarMergeException
+ * GeocodingException
  *
- * Exception thrown when car merge operations fail.
- * Used when attempting to merge duplicate car records encounters
- * errors or data conflicts.
+ * Exception thrown when geocoding operations fail.
+ * Used when Google Maps API calls fail, return invalid data,
+ * or when network/API key issues occur.
+ *
+ * Also thrown when LocationGeocoder is instantiated directly
+ * instead of through ElanRegistryOwner::geocodeAddress().
  *
  * @package ElanRegistry
  * @subpackage Exceptions
  * @since v2.11.0
  */
-class CarMergeException extends CarException
+class GeocodingException extends ElanRegistryException
 {
     /**
      * Constructor
@@ -37,7 +45,7 @@ class CarMergeException extends CarException
      */
     protected static function getDefaultUserMessage(): string
     {
-        return "Unable to merge the car records. Please try again.";
+        return "Unable to geocode the location. Please verify your address.";
     }
 
     /**
@@ -45,7 +53,7 @@ class CarMergeException extends CarException
      */
     protected static function getDefaultLogCategory(): string
     {
-        return LogCategories::LOG_CATEGORY_CAR_MERGE;
+        return LogCategories::LOG_CATEGORY_SYSTEM_ERROR;
     }
 
     /**

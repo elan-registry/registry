@@ -1,5 +1,8 @@
 <?php
 declare(strict_types=1);
+
+use ElanRegistry\Exceptions\OwnerSearchException;
+
 /**
  * process-owner-search.php
  * AJAX endpoint for owner search functionality

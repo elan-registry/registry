@@ -1,6 +1,10 @@
 <?php
 declare(strict_types=1);
 
+use ElanRegistry\Exceptions\OwnerCreationException;
+use ElanRegistry\Exceptions\OwnerUpdateException;
+use ElanRegistry\Exceptions\OwnerValidationException;
+
 /**
  * ElanRegistryOwner is a class for managing Owner data
  *

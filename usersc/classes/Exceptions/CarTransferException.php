@@ -2,18 +2,23 @@
 
 declare(strict_types=1);
 
+namespace ElanRegistry\Exceptions;
+
+use LogCategories;
+use Throwable;
+
 /**
- * OwnerSearchException
+ * CarTransferException
  *
- * Exception thrown when owner search operations fail.
- * Used for errors during owner profile searches, data retrieval failures,
- * and quality score calculation errors.
+ * Exception thrown when car ownership transfer operations fail.
+ * Used during the car transfer workflow when database updates,
+ * validation, or user permission checks fail.
  *
  * @package ElanRegistry
  * @subpackage Exceptions
- * @since v2.12.0
+ * @since v2.11.0
  */
-class OwnerSearchException extends ElanRegistryException
+class CarTransferException extends CarException
 {
     /**
      * Constructor
@@ -37,7 +42,7 @@ class OwnerSearchException extends ElanRegistryException
      */
     protected static function getDefaultUserMessage(): string
     {
-        return "Search failed. Please try again.";
+        return "Unable to transfer the car. Please try again.";
     }
 
     /**
@@ -45,7 +50,7 @@ class OwnerSearchException extends ElanRegistryException
      */
     protected static function getDefaultLogCategory(): string
     {
-        return LogCategories::LOG_CATEGORY_OWNER_ACTIONS;
+        return LogCategories::LOG_CATEGORY_CAR_TRANSFER_ERROR;
     }
 
     /**

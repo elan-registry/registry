@@ -2,17 +2,23 @@
 
 declare(strict_types=1);
 
+namespace ElanRegistry\Exceptions;
+
+use LogCategories;
+use Throwable;
+
 /**
- * UnauthorizedException
+ * CarDatabaseException
  *
- * Exception thrown when authentication is required but not provided.
- * Use for actions requiring login where user is not authenticated.
+ * Exception thrown when car-related database operations fail.
+ * Used for insert, update, delete, and transaction failures
+ * in the Car class.
  *
  * @package ElanRegistry
  * @subpackage Exceptions
- * @since v2.12.0
+ * @since v2.14.0
  */
-class UnauthorizedException extends ElanRegistryException
+class CarDatabaseException extends CarException
 {
     /**
      * Constructor
@@ -36,7 +42,7 @@ class UnauthorizedException extends ElanRegistryException
      */
     protected static function getDefaultUserMessage(): string
     {
-        return "You must be logged in to perform this action.";
+        return "A database error occurred while processing the car record.";
     }
 
     /**
@@ -44,7 +50,7 @@ class UnauthorizedException extends ElanRegistryException
      */
     protected static function getDefaultLogCategory(): string
     {
-        return 'SecurityError';
+        return LogCategories::LOG_CATEGORY_DATABASE_ERROR;
     }
 
     /**
@@ -52,6 +58,6 @@ class UnauthorizedException extends ElanRegistryException
      */
     protected static function getDefaultHttpStatusCode(): int
     {
-        return 401;
+        return 500;
     }
 }

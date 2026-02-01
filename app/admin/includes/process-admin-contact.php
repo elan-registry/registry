@@ -1,5 +1,8 @@
 <?php
 declare(strict_types=1);
+
+use ElanRegistry\Exceptions\AdminContactException;
+
 /**
  * process-admin-contact.php
  * Processes admin-to-owner contact requests from data quality dashboard
