@@ -1077,15 +1077,12 @@ else:
                                 'all_issues' => json_encode($allIssues)
                             ]);
                             ?>
-                        </div>
-
-                        <script>
-                            setTimeout(function() {
-                                document.getElementById('logOutput').innerHTML += "\n🔄 Automatically continuing to next batch...\n";
-                                window.location.href = '<?php echo $nextUrl; ?>';
-                            }, 2000);
-                        </script>
-
+                            <script>
+                                setTimeout(function() {
+                                    addLogMessage('🔄 Automatically continuing to next batch...');
+                                    window.location.href = '<?php echo $nextUrl; ?>';
+                                }, 2000);
+                            </script>
                             <?php
                             exit;
                         } else {
