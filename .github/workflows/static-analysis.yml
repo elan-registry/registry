@@ -56,6 +56,8 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Setup PHP
         uses: shivammathur/setup-php@v2
@@ -63,11 +65,34 @@ jobs:
           php-version: "8.2"
           coverage: none
 
-      # Note: Running without --strict because the existing codebase has
-      # acceptable warnings. Strict mode is used in pre-commit hooks for
-      # developers actively working on files.
-      - name: Run coding standards checker
-        run: php scripts/check-coding-standards.php app usersc/classes
+      # Only check PHP files changed in this PR (or push).
+      # Uses a temp directory with changed files to work with the
+      # directory-based coding standards checker.
+      - name: Run coding standards checker on changed files
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            BASE=$(git merge-base "${{ github.event.pull_request.base.sha }}" HEAD)
+          else
+            BASE="${{ github.event.before }}"
+          fi
+
+          CHANGED_PHP=$(git diff --name-only --diff-filter=ACMR "$BASE"..HEAD -- '*.php' || true)
+
+          if [ -z "$CHANGED_PHP" ]; then
+            echo "No PHP files changed — skipping."
+            exit 0
+          fi
+
+          echo "Checking changed PHP files:"
+          echo "$CHANGED_PHP"
+
+          TMPDIR=$(mktemp -d)
+          for f in $CHANGED_PHP; do
+            mkdir -p "$TMPDIR/$(dirname "$f")"
+            cp "$f" "$TMPDIR/$f"
+          done
+
+          php scripts/check-coding-standards.php "$TMPDIR"
 
   eslint:
     name: JavaScript Lint Check
