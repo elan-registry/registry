@@ -308,6 +308,9 @@ function processCarImages(
                     }
 
                     $result['files_renamed']++;
+
+                    // CRITICAL: Generate thumbnails for newly-renamed file
+                    generateThumbnails($newPath, $newFilename, $thumbnailSizes, $result);
                     break;
 
                 // Case 2: Recover from orphan directory
@@ -345,6 +348,9 @@ function processCarImages(
                     ];
 
                     $result['files_recovered']++;
+
+                    // CRITICAL: Generate thumbnails for recovered file
+                    generateThumbnails($destPath, $issue['file'], $thumbnailSizes, $result);
                     break;
 
                 // Case 3: Generate missing thumbnails
