@@ -98,7 +98,7 @@ class NotificationHelper {
         } else {
             // Fallback if UserSpice toast functions not available
             console.warn('UserSpice toast function not available:', usFunction);
-            console.log(`[${type}] ${message}`);
+            console.warn(`[${type}] ${message}`);
         }
     }
 
