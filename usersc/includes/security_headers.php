@@ -18,10 +18,6 @@ header("Content-Security-Policy: " .
     "script-src 'self' 'unsafe-inline' 'unsafe-eval' " .
         // Google Services
         "https://maps.googleapis.com " .
-        "https://www.google-analytics.com " .
-        "https://analytics.google.com " .
-        "https://www.googletagmanager.com " .
-        "https://region1.google-analytics.com " .
         "https://www.gstatic.com " .
         "https://ssl.gstatic.com " .
         // Google reCAPTCHA
@@ -57,10 +53,7 @@ header("Content-Security-Policy: " .
         // Image sources
         "https://maps.googleapis.com " .
         "https://maps.gstatic.com " .
-        "https://www.google-analytics.com " .
-        "https://analytics.google.com " .
-        "https://www.googletagmanager.com " .
-        "https://region1.google-analytics.com " .
+        "https://www.gravatar.com " .
         "https://ssl.gstatic.com; " .
     "font-src 'self' " .
         // Font sources
@@ -71,11 +64,6 @@ header("Content-Security-Policy: " .
     "connect-src 'self' " .
         // API and AJAX endpoints
         "https://maps.googleapis.com " .
-        "https://www.google-analytics.com " .
-        "https://www.google-analytics.com/* " .
-        "https://analytics.google.com " .
-        "https://www.googletagmanager.com " .
-        "https://region1.google-analytics.com " .
         "https://www.gstatic.com " .
         "https://ssl.gstatic.com " .
         // Google reCAPTCHA API
