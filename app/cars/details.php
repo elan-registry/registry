@@ -568,6 +568,7 @@ if (!empty($_GET)) {
                                         <strong>Tip:</strong> You can sort, search, and filter the history data using the controls above the table.
                                         Changes are automatically tracked whenever the car's information is updated.
                                     </small>
+                                    <table><tr><td>Cell Colour Coding Information:</td><td class="table-success">Newly Inserted value</td><td class="table-danger">Deleted Value</td><td class="table-info">Changed value</td></tr></table>
                                 </div>
                             </div>
                             
