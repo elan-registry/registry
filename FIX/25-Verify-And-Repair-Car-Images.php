@@ -997,6 +997,13 @@ else:
                 logProgress("Starting verification scan...", 'step');
                     logProgress("Batch size: {$batchSize} cars, Offset: {$offset}", 'info');
 
+                    // Get total count of cars for progress tracking
+                    $totalCarsResult = $db->query(
+                        "SELECT COUNT(*) as count FROM cars WHERE image IS NOT NULL AND image != ''"
+                    )->first();
+                    $totalCarsInDb = $totalCarsResult->count;
+                    logProgress("Total cars to process: {$totalCarsInDb}", 'info');
+
                     // Get all cars with images
                     $allCars = $db->query(
                         "SELECT id, image FROM cars WHERE image IS NOT NULL AND image != '' LIMIT {$batchSize} OFFSET {$offset}"
@@ -1021,7 +1028,13 @@ else:
 
                         foreach ($allCars as $index => $car) {
                             $currentPosition = $offset + $index + 1;
-                            logProgress("Scanning car {$currentPosition} (ID: {$car->id})...", 'step');
+                            $overallPosition = $totalProcessed + $index + 1;
+                            $percentage = round(($overallPosition / $totalCarsInDb) * 100);
+
+                            logProgress("Scanning car {$currentPosition} (ID: {$car->id})... (Overall: {$overallPosition}/{$totalCarsInDb})", 'step');
+                            ?>
+                            <script>updateProgress(<?php echo $percentage; ?>, 100, 'Processing: <?php echo $overallPosition; ?>/<?php echo $totalCarsInDb; ?> cars');</script>
+                            <?php
 
                             // Verify images for this car
                             $issues = verifyCarImages(
@@ -1056,8 +1069,12 @@ else:
 
                         $newTotalProcessed = $totalProcessed + count($allCars);
                         $newTotalIssues = $totalIssues + $batchIssueCount;
+                        $percentageComplete = round(($newTotalProcessed / $totalCarsInDb) * 100);
 
                         logProgress("Batch processed: {$batchIssueCount} issues found", 'info');
+                        ?>
+                        <script>updateProgress(<?php echo $percentageComplete; ?>, 100, 'Batch Complete: <?php echo $newTotalProcessed; ?>/<?php echo $totalCarsInDb; ?> cars processed');</script>
+                        <?php
 
                         // Check for next batch
                         $totalCarsInDb = $db->query(
