@@ -73,7 +73,7 @@ class Car
         }
 
         if (isset($user) && $user->isLoggedIn()) {
-            $this->_owner = getUserWithProfile($user->data()->id);
+            $this->_owner = getUserWithProfile((int) $user->data()->id);
         }
 
         if ($id && $settings) {
