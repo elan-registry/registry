@@ -347,9 +347,15 @@ async function search(query) {
 The NotificationHelper utility displays user feedback consistently across the
 application with XSS protection.
 
+> **Note (v2.14.0+):** `NotificationHelper.show()` now delegates to UserSpice
+> toast functions (`usSuccess()`, `usError()`, `usInfo()`) instead of creating
+> its own container. This ensures a single, consistent toast system with
+> proper z-index and positioning. The `showValidationErrors()` and
+> `escapeHtml()` methods are unchanged.
+
 **Methods**:
 
-- `show(message, type)` - Display general notification
+- `show(message, type)` - Display general notification (delegates to UserSpice toasts)
   - type: 'success', 'error', 'warning', 'info'
 - `showValidationErrors(errors)` - Display field-level validation errors
   - errors: { field_name: 'Error message' }
