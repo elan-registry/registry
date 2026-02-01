@@ -267,8 +267,8 @@ $iconType = $errorInfo['icon_type'];
     <!-- Navbar matching site design -->
     <nav class="navbar navbar-expand-lg navbar-dark">
         <div class="container">
-            <a class="navbar-brand" href="../">
-                <img src="../usersc/templates/ElanRegistry/assets/images/Lotus-logo-40x40.png"
+            <a class="navbar-brand" href="/">
+                <img src="/usersc/templates/ElanRegistry/assets/images/Lotus-logo-40x40.png"
                      alt="Lotus Elan Registry"
                      onerror="this.parentElement.innerHTML='Lotus Elan Registry'">
             </a>
@@ -278,7 +278,7 @@ $iconType = $errorInfo['icon_type'];
             <div class="collapse navbar-collapse" id="navbarNav">
                 <ul class="navbar-nav ml-auto">
                     <li class="nav-item">
-                        <a class="nav-link" href="../">Home</a>
+                        <a class="nav-link" href="/">Home</a>
                     </li>
                 </ul>
             </div>
@@ -314,7 +314,7 @@ $iconType = $errorInfo['icon_type'];
                 </p>
 
                 <div class="btn-group" role="group">
-                    <a href="../" class="btn btn-elan-red">Return Home</a>
+                    <a href="/" class="btn btn-elan-red">Return Home</a>
                 </div>
             </div>
         </div>
