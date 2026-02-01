@@ -1,3 +1,4 @@
+/* exported getColorForName, initializeOverviewTab, setupTabLazyLoading, loadTabContent, renderTabContent, renderGeographicTab, renderProductionTab, renderColorsTab, renderQualityTab, renderSeriesTable, updateOverviewMetrics, createTimelineChart, createAgeChart, createCountryChart, createCountryDistributionChart, createUSStatesChart, createTypeChart, createSeriesChart, createVariantChart, createProductionYearChart, createEarlyLateChart, createColorDistributionChart, createColorByYearChart, createColorBySeriesChart, createDataCompletenessChart, statisticsInitMap, loadMapMarkers, destroyAllCharts */
 /**
  * statistics.js
  * JavaScript functionality for the enhanced statistics page

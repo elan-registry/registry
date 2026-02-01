@@ -114,9 +114,8 @@ export default [
                 // Page-specific config objects (injected by PHP)
                 carDetailsConfig: "readonly",
                 pageConfig: "readonly",
-                carousel: "readonly",
                 ELAN_CONFIG: "readonly",
-                img_path: "readonly",
+                img_path: "writable",
                 img_root: "readonly",
             },
         },
@@ -150,6 +149,8 @@ export default [
             "no-unused-vars": ["warn", {
                 vars: "all",
                 args: "none",  // Don't warn about unused function args
+                caughtErrors: "all",
+                caughtErrorsIgnorePattern: "^_",  // Allow _unused naming convention in catch
                 ignoreRestSiblings: true,
                 varsIgnorePattern: "^_",  // Allow _unused naming convention
             }],

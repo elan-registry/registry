@@ -97,9 +97,6 @@ jobs:
   eslint:
     name: JavaScript Lint Check
     runs-on: ubuntu-latest
-    # ESLint is advisory - don't block PRs on JS lint issues
-    continue-on-error: true
-
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
