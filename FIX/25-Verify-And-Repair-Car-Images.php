@@ -520,8 +520,13 @@ function logProgress(string $message, string $type = 'info'): void
     ];
 
     $icon = $icons[$type] ?? '•';
-    echo date('[H:i:s] ') . $icon . ' ' . htmlspecialchars($message) . "\n";
+    $timeStr = date('[H:i:s]');
+    $text = "{$icon} {$message}";
+    $escapedText = htmlspecialchars($text);
+
+    echo "<script>if(window.addLogMessage) addLogMessage('{$timeStr} {$escapedText}');</script>\n";
     flush();
+    ob_flush();
 }
 
 function outputMessage(string $message, string $type = 'info'): void
@@ -596,48 +601,196 @@ if (!$isStarting && !$isFix):
         <div class="container">
             <h1>🖼️ Verify and Repair Car Images</h1>
 
-            <div class="card border-info mt-4">
-                <div class="card-body">
-                    <h5 class="card-title">Description</h5>
-                    <p>This script verifies all car images and fixes common issues:</p>
-                    <ul>
-                        <li><strong>Missing Files:</strong> Checks for 404 errors and orphaned images</li>
-                        <li><strong>Extensionless Files:</strong> Detects type and adds proper extension</li>
-                        <li><strong>Orphan Recovery:</strong> Recovers lost images from backup directory</li>
-                        <li><strong>Thumbnails:</strong> Generates missing thumbnail sizes (100, 300, 768, 1024, 2048px)</li>
-                        <li><strong>Database Updates:</strong> Updates cars.image field when filenames change</li>
-                    </ul>
+            <!-- Initial Description Card -->
+            <div class="row" id="descriptionSection">
+                <div class="col-lg-12 mb-4">
+                    <div class="card registry-card">
+                        <div class="card-header">
+                            <h2 class="mb-0">
+                                <i class="fas fa-check-circle"></i> Image Verification & Repair
+                            </h2>
+                        </div>
+                        <div class="card-body">
+                            <p class="mb-3">This script verifies all car images and fixes common issues:</p>
+                            <ul class="mb-3">
+                                <li><strong>Missing Files:</strong> Checks for 404 errors and orphaned images</li>
+                                <li><strong>Extensionless Files:</strong> Detects type and adds proper extension</li>
+                                <li><strong>Orphan Recovery:</strong> Recovers lost images from backup directory</li>
+                                <li><strong>Thumbnails:</strong> Generates missing thumbnail sizes (100, 300, 768, 1024, 2048px)</li>
+                                <li><strong>Database Updates:</strong> Updates cars.image field when filenames change</li>
+                            </ul>
+
+                            <div class="alert alert-warning">
+                                <h5><i class="fas fa-exclamation-triangle"></i> Important Notes</h5>
+                                <ul class="mb-0">
+                                    <li>This script processes cars in batches to avoid timeouts</li>
+                                    <li>A database transaction ensures atomicity - fixes are all-or-nothing per car</li>
+                                    <li>Process lock prevents concurrent execution by multiple admins</li>
+                                    <li>Orphan files are <strong>copied, not moved</strong> - backup is preserved</li>
+                                    <li>All operations are logged for audit trail</li>
+                                </ul>
+                            </div>
+
+                            <div class="form-group row">
+                                <label for="batchSize" class="col-sm-3 col-form-label">Batch Size:</label>
+                                <div class="col-sm-4">
+                                    <select id="batchSize" class="form-control">
+                                        <option value="10" selected>10 cars per batch (Default)</option>
+                                        <option value="25">25 cars per batch (Faster)</option>
+                                        <option value="50">50 cars per batch (High Performance)</option>
+                                        <option value="100">100 cars per batch (Very Fast)</option>
+                                    </select>
+                                </div>
+                                <div class="col-sm-5">
+                                    <small class="text-muted">
+                                        <i class="fas fa-info-circle"></i> Smaller batches are safer for slower servers
+                                    </small>
+                                </div>
+                            </div>
+
+                            <div class="text-center">
+                                <button onclick="startProcessing()" class="btn btn-success">
+                                    <i class="fas fa-play"></i> Start Verification
+                                </button>
+                                <a href="index.php" class="btn btn-secondary">
+                                    <i class="fas fa-times"></i> Cancel
+                                </a>
+                            </div>
+                        </div>
+                    </div>
                 </div>
             </div>
 
-            <div class="card border-warning mt-4">
-                <div class="card-body">
-                    <h5 class="card-title">⚠️ Important Notes</h5>
-                    <ul>
-                        <li>This script processes cars in batches to avoid timeouts</li>
-                        <li>A database transaction ensures atomicity - fixes are all-or-nothing per car</li>
-                        <li>Process lock prevents concurrent execution by multiple admins</li>
-                        <li>Orphan files are <strong>copied, not moved</strong> - backup is preserved</li>
-                        <li>All operations are logged for audit trail</li>
-                    </ul>
+            <!-- Progress Section -->
+            <div class="row mb-4" id="progressSection" style="display: none;">
+                <div class="col-lg-6 col-md-6">
+                    <div class="card registry-card mb-4">
+                        <div class="card-header">
+                            <h2 class="mb-0">
+                                <i class="fas fa-cogs"></i> Progress
+                            </h2>
+                            <small class="text-muted">
+                                <i class="fas fa-clock"></i> Started: <span id="startTimeText"></span>
+                            </small>
+                        </div>
+                        <div class="card-body">
+                            <div class="progress car-progress mb-2">
+                                <div class="progress-bar progress-bar-striped progress-bar-animated bg-success"
+                                    id="progressBar"
+                                    role="progressbar"
+                                    style="width: 0%;"
+                                    aria-valuenow="0"
+                                    aria-valuemin="0"
+                                    aria-valuemax="100">0%</div>
+                            </div>
+                            <div id="currentStatus" class="text-muted small">
+                                <i class="fas fa-spinner fa-spin"></i> Initializing...
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-lg-6 col-md-6">
+                    <div class="card registry-card mb-4">
+                        <div class="card-header">
+                            <h2 class="mb-0">
+                                <i class="fas fa-chart-bar"></i> Summary
+                            </h2>
+                        </div>
+                        <div class="card-body" id="summaryContent">
+                            <div class="text-muted">
+                                <em>Waiting for process to complete...</em>
+                            </div>
+                        </div>
+                    </div>
                 </div>
             </div>
 
-            <form method="GET" class="mt-4">
-                <div class="form-group">
-                    <label for="batch_size">Batch Size (cars per batch):</label>
-                    <select id="batch_size" name="batch_size" class="form-control" required>
-                        <option value="10" selected>10 cars</option>
-                        <option value="25">25 cars</option>
-                        <option value="50">50 cars</option>
-                        <option value="100">100 cars</option>
-                    </select>
-                    <small class="form-text text-muted">Smaller batches are slower but safer. Larger batches may timeout on slow servers.</small>
+            <!-- Progress Log Section -->
+            <div class="row mb-4" id="logSection" style="display: none;">
+                <div class="col-12">
+                    <div class="card registry-card">
+                        <div class="card-header">
+                            <h3 class="mb-0">
+                                <i class="fas fa-list"></i> Progress Log
+                            </h3>
+                        </div>
+                        <div class="card-body fix-results-container" id="resultsContainer">
+                            <div class="fix-status-line text-muted">
+                                <small><em>Initializing process...</em></small>
+                            </div>
+                        </div>
+                    </div>
                 </div>
+            </div>
 
-                <button type="submit" name="start" value="1" class="btn btn-primary">▶️ Start Verification</button>
-                <a href="index.php" class="btn btn-secondary">Cancel</a>
-            </form>
+            <script>
+                let processStarted = false;
+
+                function updateProgress(current, total, statusMessage) {
+                    if (total === 0) return;
+                    const percentage = Math.round((current / total) * 100);
+                    const progressBar = document.getElementById('progressBar');
+                    progressBar.style.width = percentage + '%';
+                    progressBar.setAttribute('aria-valuenow', percentage);
+                    progressBar.textContent = percentage + '%';
+
+                    if (statusMessage) {
+                        const statusElement = document.getElementById('currentStatus');
+                        const statusIcon = percentage >= 100 ?
+                            '<i class="fas fa-check-circle text-success"></i>' :
+                            '<i class="fas fa-spinner fa-spin"></i>';
+                        statusElement.innerHTML = statusIcon + ' ' + statusMessage;
+                    }
+                }
+
+                function addLogMessage(message) {
+                    const container = document.getElementById('resultsContainer');
+                    if (!container) return;
+                    const line = document.createElement('div');
+                    line.className = 'fix-status-line';
+
+                    if (message.includes('✅')) {
+                        line.className += ' text-success';
+                    } else if (message.includes('❌') || message.includes('✗')) {
+                        line.className += ' text-danger';
+                    } else if (message.includes('⚠️') || message.includes('warning')) {
+                        line.className += ' text-warning';
+                    } else if (message.includes('ℹ️')) {
+                        line.className += ' text-info';
+                    }
+
+                    line.innerHTML = message;
+                    container.appendChild(line);
+                    container.scrollTop = container.scrollHeight;
+                }
+
+                function startProcessing() {
+                    if (processStarted) return;
+                    processStarted = true;
+                    const batchSize = document.getElementById('batchSize').value;
+                    document.getElementById('descriptionSection').style.display = 'none';
+                    document.getElementById('progressSection').style.display = '';
+                    document.getElementById('logSection').style.display = '';
+
+                    const now = new Date();
+                    document.getElementById('startTimeText').textContent = now.toLocaleString();
+
+                    const params = new URLSearchParams(window.location.search);
+                    params.set('start', '1');
+                    params.set('batch_size', batchSize);
+                    window.location.href = window.location.pathname + '?' + params.toString();
+                }
+
+                if (new URLSearchParams(window.location.search).get('start') === '1') {
+                    processStarted = true;
+                    document.getElementById('descriptionSection').style.display = 'none';
+                    document.getElementById('progressSection').style.display = '';
+                    document.getElementById('logSection').style.display = '';
+
+                    const now = new Date();
+                    document.getElementById('startTimeText').textContent = now.toLocaleString();
+                }
+            </script>
         </div>
     </body>
     </html>
@@ -653,17 +806,21 @@ else:
     <head>
         <title>Image Verification & Repair - Processing</title>
         <link href="https://cdn.jsdelivr.net/npm/bootstrap@4.6.0/dist/css/bootstrap.min.css" rel="stylesheet">
+        <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/all.min.css" rel="stylesheet">
         <style>
             body { background: #f5f5f5; }
-            .container { background: white; padding: 2rem; border-radius: 8px; margin-top: 2rem; margin-bottom: 2rem; }
-            .log-output { background: #000; color: #0f0; padding: 1rem; border-radius: 4px; font-family: monospace; font-size: 0.85rem; max-height: 500px; overflow-y: auto; white-space: pre-wrap; word-wrap: break-word; }
-            .progress { height: 2rem; }
-            .btn-group { margin-top: 2rem; }
+            .well { background: white; padding: 2rem; border-radius: 8px; margin: 2rem auto; }
+            .registry-card { box-shadow: 0 2px 4px rgba(0,0,0,0.1); border: 1px solid #e3e6f0; }
+            .registry-card .card-header { background: #f8f9fa; border-bottom: 1px solid #e3e6f0; }
+            .fix-results-container { max-height: 500px; overflow-y: auto; font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace; font-size: 0.875rem; line-height: 1.4; background: #f8f9fa; padding: 1rem; border-radius: 4px; }
+            .fix-status-line { margin: 0.25rem 0; padding: 0.125rem 0; }
+            .car-progress { height: 25px; }
+            .progress-bar { min-width: 50px; font-weight: bold; }
         </style>
     </head>
     <body class="p-4">
-        <div class="container">
-            <h1>🖼️ Verify and Repair Car Images</h1>
+        <div class="well">
+            <h1><i class="fas fa-images"></i> Verify and Repair Car Images</h1>
 
             <?php
             // Get parameters with bounds validation
@@ -690,9 +847,6 @@ else:
             if ($isStarting && !$isFix):
                 // REPORT PHASE
                 ?>
-                <h3 class="mt-4">📊 Scanning for Image Issues...</h3>
-
-                <div class="log-output" id="logOutput">
                     <?php
                     ob_flush();
                     flush();
@@ -709,8 +863,6 @@ else:
                         if ($offset === 0) {
                             logProgress("No cars with images found!", 'warning');
                             ?>
-                            </div>
-
                             <div class="alert alert-info mt-4">
                                 <p>No cars have image references in the database.</p>
                                 <a href="index.php" class="btn btn-secondary">Return to FIX Scripts</a>
