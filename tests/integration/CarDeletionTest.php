@@ -4,6 +4,9 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/IntegrationTestCase.php';
 
+use ElanRegistry\Exceptions\CarDeletionException;
+use ElanRegistry\Exceptions\CarNotFoundException;
+
 /**
  * Test cases for Car deletion functionality
  *

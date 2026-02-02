@@ -169,4 +169,64 @@ class SecurityHeadersTest extends TestCase
             'security_headers.php should document Server::getScheme() usage'
         );
     }
+
+    /**
+     * Test that CSP includes frame-ancestors directive for anti-clickjacking
+     *
+     * Modern anti-clickjacking protection via CSP frame-ancestors directive
+     * (CSP3 standard, preferred over frame-src for this purpose)
+     */
+    public function testCspContainsFrameAncestors(): void
+    {
+        // Should include frame-ancestors directive in CSP
+        $this->assertStringContainsString(
+            "frame-ancestors 'self'",
+            $this->fileContent,
+            'CSP should include frame-ancestors directive for anti-clickjacking protection'
+        );
+
+        // Verify it appears in the context of the Content-Security-Policy header
+        // (account for multiline string concatenation with dot operators)
+        $this->assertMatchesRegularExpression(
+            '/Content-Security-Policy:.*frame-ancestors\s+\'self\'/s',
+            $this->fileContent,
+            'CSP header should contain frame-ancestors directive'
+        );
+    }
+
+    /**
+     * Test that /usersc/join.php doesn't set duplicate X-Frame-Options header
+     *
+     * Security headers should be set globally via security_headers.php
+     * Individual pages should not override them
+     */
+    public function testUserscJoinNoFrameOptions(): void
+    {
+        $joinFile = dirname(__DIR__, 3) . '/usersc/join.php';
+
+        if (!is_file($joinFile)) {
+            $this->markTestSkipped("usersc/join.php not found at {$joinFile}");
+        }
+
+        $content = file_get_contents($joinFile);
+        if ($content === false) {
+            $this->markTestSkipped("Unable to read usersc/join.php");
+        }
+
+        $joinContent = (string) $content;
+
+        // Should NOT have X-Frame-Options header call
+        $this->assertStringNotContainsString(
+            "header('X-Frame-Options:",
+            $joinContent,
+            'usersc/join.php should not set X-Frame-Options (relies on global header)'
+        );
+
+        // Should have comment explaining why
+        $this->assertStringContainsString(
+            'Security headers',
+            $joinContent,
+            'usersc/join.php should have comment about global security headers'
+        );
+    }
 }

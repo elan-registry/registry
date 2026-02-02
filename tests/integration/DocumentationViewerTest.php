@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/IntegrationTestCase.php';
 
+use ElanRegistry\Exceptions\DocumentationException;
+
 /**
  * DocumentationViewerTest
  *
@@ -333,12 +335,12 @@ class DocumentationViewerTest extends IntegrationTestCase
     public function testDocumentationExceptionExists(): void
     {
         $this->assertTrue(
-            class_exists('DocumentationException'),
+            class_exists(DocumentationException::class),
             'DocumentationException class should exist'
         );
 
         // Create an instance to verify methods exist
-        $exception = new \DocumentationException('Test error');
+        $exception = new DocumentationException('Test error');
 
         $this->assertTrue(
             method_exists($exception, 'getLogCategory'),
