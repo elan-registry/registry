@@ -1485,8 +1485,7 @@ else:
                 // Log script completion
                 try {
                     $db->insert('fix_script_runs', [
-                        'script_name' => 'Verify-And-Repair-Car-Images',
-                        'completed_at' => date('Y-m-d H:i:s')
+                        'script_name' => basename(__FILE__)
                     ]);
 
                     logger((int)$user->data()->id, LogCategories::LOG_CATEGORY_FIX_SCRIPT,
