@@ -66,7 +66,7 @@ try {
 }
 
 // Convert markdown to HTML using the utility class
-$htmlContent = MarkdownParser::toHtml($markdownContent);
+$htmlContent = MarkdownParser::toHtml($markdownContent, $us_url_root);
 $htmlContent = MarkdownParser::sanitizeHtml($htmlContent);
 
 // Get document information and navigation

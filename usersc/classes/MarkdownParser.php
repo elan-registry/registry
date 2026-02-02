@@ -21,9 +21,10 @@ class MarkdownParser
      * Convert markdown content to HTML
      *
      * @param string $markdown The markdown content to convert
+     * @param string $baseUrl Optional base URL for relative path resolution (e.g., $us_url_root)
      * @return string The converted HTML content
      */
-    public static function toHtml(string $markdown): string
+    public static function toHtml(string $markdown, string $baseUrl = ''): string
     {
         // Headers with ID attributes for anchor links
         $markdown = preg_replace_callback('/^# (.*)$/m', function($matches) {
@@ -54,11 +55,15 @@ class MarkdownParser
         // Images - must be processed BEFORE links since ![alt](url) contains link syntax
         $markdown = preg_replace_callback(
             '/!\[([^\]]*)\]\(([^)]+)\)/',
-            function ($matches) {
+            function ($matches) use ($baseUrl) {
                 $alt = htmlspecialchars($matches[1], ENT_QUOTES, 'UTF-8');
                 $url = htmlspecialchars($matches[2], ENT_QUOTES, 'UTF-8');
                 // Only allow safe image URLs
                 if (self::isSafeUrl($url)) {
+                    // If baseUrl is provided, prepend it to relative paths in the docs directory
+                    if (!empty($baseUrl) && strpos($url, '#') !== 0 && strpos($url, '/') !== 0 && parse_url($url, PHP_URL_SCHEME) === null) {
+                        $url = $baseUrl . 'docs/' . $url;
+                    }
                     return '<img src="' . $url . '" alt="' . $alt . '" class="img-fluid" />';
                 }
                 return $alt; // Return just the alt text if URL is unsafe
@@ -69,12 +74,16 @@ class MarkdownParser
         // Links with XSS protection
         $markdown = preg_replace_callback(
             '/\[([^\]]+)\]\(([^)]+)\)/',
-            function ($matches) {
+            function ($matches) use ($baseUrl) {
                 $text = htmlspecialchars($matches[1], ENT_QUOTES, 'UTF-8');
                 $url = htmlspecialchars($matches[2], ENT_QUOTES, 'UTF-8');
                 // Only allow safe URL schemes
                 if (self::isSafeUrl($url)) {
-                    // Don't open anchor links or relative URLs in new tab
+                    // If baseUrl is provided, prepend it to relative paths in the docs directory
+                    if (!empty($baseUrl) && strpos($url, '#') !== 0 && strpos($url, '/') !== 0 && parse_url($url, PHP_URL_SCHEME) === null) {
+                        $url = $baseUrl . 'docs/' . $url;
+                    }
+                    // Don't open anchor links or absolute paths in new tab
                     $target = (strpos($url, '#') === 0 || strpos($url, '/') === 0) ? '' : ' target="_blank"';
                     return '<a href="' . $url . '"' . $target . '>' . $text . '</a>';
                 }

@@ -13,7 +13,7 @@ and ask.
 - [Coupe](#coupe)
 - [Racing Version](#racing-version)
 - [Plus 2](#plus-2)
-- [Super Safety Documentation](../embed.php?doc=2019_Jan_The_Elan_Super_Safety.pdf)
+- [Super Safety Documentation](embed.php?doc=2019_Jan_The_Elan_Super_Safety.pdf)
   (External PDF)
 
 ---
