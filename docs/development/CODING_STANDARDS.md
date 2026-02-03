@@ -258,71 +258,26 @@ All exceptions **MUST** extend `ElanRegistryException` base class (26 domain-spe
 
 #### **API Response Requirements** (MANDATORY for AJAX endpoints)
 
-All AJAX endpoints **MUST** return Pattern A format via `ApiResponse` class:
+All AJAX endpoints **MUST** return Pattern A format via `ApiResponse` class with logging.
 
-```php
-// ✅ REQUIRED - Use ApiResponse for all AJAX endpoints
-try {
-    // Operation
-    $result = processData($_POST);
+**Factory Methods**: `success()`, `error()`, `validationError()`, `unauthorized()`, `forbidden()`, `notFound()`, `serverError()`.
 
-    ApiResponse::success('Operation successful')
-        ->withData('result', $result)
-        ->withLogging($userId, LogCategories::LOG_CATEGORY_CAR_CREATION, 'Car created')
-        ->send();
-
-} catch (ValidationException $e) {
-    ApiResponse::validationError(['field' => $e->getUserMessage()])
-        ->withLogging($userId, $e->getLogCategory(), $e->getMessage())
-        ->send();
-}
-
-// ❌ PROHIBITED - Direct JSON output
-echo json_encode(['success' => true, 'data' => $result]);
-exit;
-```
-
-**Factory Methods**: `success()`, `error()`, `validationError()`, `unauthorized()`,
-`forbidden()`, `notFound()`, `serverError()`.
+See [ERROR_HANDLING.md](ERROR_HANDLING.md#backend-error-handling) for complete examples and usage patterns.
 
 #### **Log Category Requirements** (MANDATORY)
 
-All `logger()` calls **MUST** use LogCategories constants (NEVER hardcoded
-strings):
-
-```php
-// ✅ REQUIRED - Use LogCategories constants
-logger($userId, LogCategories::LOG_CATEGORY_CAR_DELETION, 'Car deleted');
-
-// ❌ PROHIBITED - Hardcoded log strings
-logger($userId, 'CarDeletion', 'Car deleted');  // Don't do this!
-```
+All `logger()` calls **MUST** use LogCategories constants (never hardcoded strings).
 
 **Discovery**: `grep "const LOG_CATEGORY" usersc/classes/LogCategories.php`
 
-**See Also**: [ERROR_HANDLING.md](ERROR_HANDLING.md#logcategories) for complete
-category reference (140+ categories).
+See [LOG_CATEGORIES.md](LOG_CATEGORIES.md) and [ERROR_HANDLING.md](ERROR_HANDLING.md#logcategories) for complete reference.
 
 ### **Method Naming and Structure**
 
-#### **Method Naming Conventions**
-
+**Conventions**:
 - **Verbs**: `create()`, `update()`, `delete()`, `validate()`
 - **Boolean methods**: `exists()`, `isValid()`, `hasPermission()`
 - **Getters**: `data()`, `images()`, `history()` (not `getData()`)
-
-```php
-// ✅ GOOD - Clear, verb-based naming
-public function updateChassis(string $chassis): bool
-public function hasValidChassis(): bool  
-public function validateChassisFormat(string $chassis): void
-
-// ❌ POOR - Unclear or inconsistent naming
-public function chassisUpdate($chassis)
-public function checkChassis($chassis)
-public function getChassisValidation($chassis)
-
-```text
 
 ---
 
@@ -711,249 +666,11 @@ class ExampleClass
 
 ---
 
-## 🌐 **Frontend AJAX Standards (v2.12.0+)**
-
-### **Pattern A Response Format**
-
-All backend AJAX endpoints **MUST** return Pattern A format using the ApiResponse class:
-
-```php
-<?php
-// ✅ REQUIRED - Use ApiResponse for all new endpoints
-use App\Classes\ApiResponse;
-
-try {
-    $data = validateAndProcess($_POST);
-
-    // Successful response
-    ApiResponse::success('Operation completed successfully', [
-        'id' => $data->id,
-        'message' => 'Saved successfully'
-    ]);
-
-} catch (ValidationException $e) {
-    // Validation error (422) - includes field errors
-    ApiResponse::validationError(
-        'Please correct the errors below',
-        [
-            'email' => 'Invalid email format',
-            'password' => 'Password too short'
-        ]
-    );
-
-} catch (Exception $e) {
-    // General error
-    ApiResponse::error('An error occurred: ' . $e->getMessage());
-}
-```
-
-**Response Format:**
-
-```json
-{
-  "success": true|false,
-  "message": "Human-readable message",
-  "errors": { "field": "error message" },
-  "data": "additional fields as needed"
-}
-```
-
-### **ElanRegistryAPI Usage (Required for New Code)**
-
-**MANDATORY for all NEW AJAX endpoints created after v2.12.0:**
-
-```javascript
-// ✅ CORRECT - Use ElanRegistryAPI
-const api = new ElanRegistryAPI();
-
-try {
-    const result = await api.post('app/action/endpoint.php', {
-        car_id: 123,
-        field: 'value'
-    });
-
-    NotificationHelper.show(result.message, 'success');
-
-    // Process additional data
-    if (result.data) {
-        console.log('Result:', result.data);
-    }
-
-} catch (error) {
-    if (error instanceof ApiValidationError) {
-        NotificationHelper.showValidationErrors(error.errors);
-    } else {
-        NotificationHelper.show(error.message, 'error');
-    }
-}
-```
-
-**Features:**
-
-- ✅ Automatic CSRF token injection
-- ✅ Fetch API with async/await
-- ✅ Request cancellation support (AbortController)
-- ✅ Custom error classes (ApiError, ApiValidationError, ApiCancelledError)
-- ✅ XSS-safe notification display
-- ✅ Field-level validation error handling
-
-### **Migration of Existing Code**
-
-**ACCEPTABLE for existing endpoints only:**
-
-```javascript
-// ⚠️ Only for legacy code - DO NOT use for new endpoints
-$.ajax({...});  // Legacy jQuery - acceptable only for existing code
-```
-
-**Migration Timeline:**
-
-- **Phase 1 (v2.12.0)**: New endpoints MUST use ElanRegistryAPI
-- **Phase 2 (v2.13.0)**: Opportunistic migration of high-traffic endpoints
-- **Phase 3 (v2.14.0)**: Systematic migration of remaining endpoints
-
-### **Notification Standards**
-
-Use NotificationHelper for all user feedback:
-
-```javascript
-// Display success message
-NotificationHelper.show('Operation completed successfully', 'success');
-
-// Display error message
-NotificationHelper.show('An error occurred', 'error');
-
-// Display field validation errors
-NotificationHelper.showValidationErrors({
-    'email': 'Invalid email format',
-    'phone': 'Invalid phone number'
-});
-
-// Persistent notification (no auto-hide)
-NotificationHelper.show('Important message', 'warning', 0);
-```
-
-### **Frontend Error Handling**
-
-```javascript
-const api = new ElanRegistryAPI();
-
-try {
-    const result = await api.post('app/endpoint.php', data);
-    // Success handling...
-
-} catch (error) {
-    // Type-specific error handling
-    if (error instanceof ApiValidationError) {
-        // 422 - Validation errors
-        NotificationHelper.showValidationErrors(error.errors);
-
-    } else if (error instanceof ApiCancelledError) {
-        // Request was cancelled - typically silent
-        console.log('Request cancelled');
-
-    } else if (error instanceof ApiError) {
-        // HTTP error or network error
-        if (error.status === 401) {
-            // Redirect to login
-            window.location.href = '/users/?view=login';
-        } else if (error.status === 403) {
-            NotificationHelper.show('Permission denied', 'error');
-        } else {
-            NotificationHelper.show(error.message, 'error');
-        }
-    }
-}
-```
-
-### **CSRF Token Handling**
-
-The API client automatically handles CSRF tokens. Include in all forms:
-
-```html
-<!-- ✅ REQUIRED - CSRF field in forms -->
-<form id="myForm">
-    <input type="hidden" name="csrf" value="<?php echo Token::generate(); ?>">
-    <!-- Form fields -->
-</form>
-```
-
-The ElanRegistryAPI will automatically extract and inject this token into all requests.
-
----
-
 ## 🚀 **Performance Guidelines**
 
-### **Database Optimization**
+**Key principles**: Minimize database queries, cache results, process large datasets in chunks.
 
-```php
-// ✅ GOOD - Single query with JOIN
-public function getCarWithOwner(int $carId): ?array
-{
-    return $this->db->query(
-        'SELECT c.*, u.fname, u.lname
-         FROM cars c
-         JOIN users u ON c.user_id = u.id
-         WHERE c.id = ?',
-        [$carId]
-    )->first();
-}
-
-// ❌ POOR - Multiple queries (N+1 problem)
-public function getCarWithOwner(int $carId): ?array
-{
-    $car = $this->db->query('SELECT * FROM cars WHERE id = ?', [$carId])->first();
-    $user = $this->db->query('SELECT * FROM users WHERE id = ?', [$car->user_id])->first();
-    return array_merge($car, $user);
-}
-
-```text
-
-### **Caching Patterns**
-
-```php
-// ✅ GOOD - Object caching to avoid repeated method calls
-public function displayCarDetails(int $carId): void
-{
-    $car = new Car($carId);
-  
-    // Cache expensive operations
-    $carData = $car->data();
-    $factoryData = $car->factory();
-    $carHistory = $car->history();
-  
-    // Use cached data in template
-    $this->render('car-details', [
-        'car' => $carData,
-        'factory' => $factoryData,  
-        'history' => $carHistory
-    ]);
-}
-
-```text
-
-### **Memory Management**
-
-```php
-// ✅ GOOD - Process large datasets in chunks
-public function processLargeDataset(array $items): void
-{
-    $chunks = array_chunk($items, 100);
-  
-    foreach ($chunks as $chunk) {
-        $this->processBatch($chunk);
-  
-        // Free memory between chunks
-        unset($chunk);
-  
-        // Optional: Force garbage collection for very large datasets
-        if (memory_get_usage() > self::MEMORY_THRESHOLD) {
-            gc_collect_cycles();
-        }
-    }
-}
-
-```text
+For detailed patterns and examples, see [QUICK_REFERENCE.md](QUICK_REFERENCE.md).
 
 ---
 
