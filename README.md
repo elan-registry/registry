@@ -96,9 +96,9 @@ CI checks.
   - See root `CLAUDE.md` for AI assistant instructions and quick reference
   - `QUICK_REFERENCE.md` - Quick lookup for common tasks and commands
   - `INSTALLATION.md` - Setup, installation, and testing commands
-  - `ARCHITECTURE.md` - System architecture and class patterns
+  - **GitHub Wiki**: [Architecture Guide](https://github.com/jimboone/elan-registry/wiki/Architecture) - System architecture and class patterns
   - `DATABASE.md` - Complete database schema and table relationships
-  - `INTEGRATION.md` - UserSpice integration and custom functions
+  - **GitHub Wiki**: [UserSpice Integration Guide](https://github.com/jimboone/elan-registry/wiki/Integration) - UserSpice integration and custom functions
   - `CODING_STANDARDS.md` - Coding standards and conventions
   - `ENVIRONMENT.md` - Environment configuration and security setup
   - `FIX_SCRIPTS.md` - Database maintenance script guidelines

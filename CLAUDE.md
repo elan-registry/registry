@@ -23,10 +23,10 @@ working with code in this repository.
 
 **Core Understanding:**
 
-1. `docs/development/ARCHITECTURE.md` - System architecture and patterns
+1. [GitHub Wiki: Architecture Guide](https://github.com/jimboone/elan-registry/wiki/Architecture) - System architecture and patterns
 2. `docs/development/DATABASE.md` - Database schema and relationships
 3. `docs/development/CODING_STANDARDS.md` - Coding standards and conventions
-4. `docs/development/INTEGRATION.md` - UserSpice integration
+4. [GitHub Wiki: UserSpice Integration Guide](https://github.com/jimboone/elan-registry/wiki/Integration) - UserSpice integration
 
 **As Needed - Specialized Topics:**
 
@@ -49,8 +49,8 @@ This is a PHP web application for the Lotus Elan Registry hosted at
 <https://elanregistry.org>. Built on UserSpice (<https://userspice.com>) for
 authentication, with custom car registry functionality.
 
-> **For complete architecture, see
-> [ARCHITECTURE.md](docs/development/ARCHITECTURE.md)**
+> **For complete architecture, see the
+> [GitHub Wiki: Architecture Guide](https://github.com/jimboone/elan-registry/wiki/Architecture)**
 
 **Directory Structure:**
 
@@ -64,7 +64,7 @@ authentication, with custom car registry functionality.
 **Key Integration Points:**
 
 - **Page Security**: All protected pages require `securePage($php_self)` check.
-  See [INTEGRATION.md](docs/development/INTEGRATION.md).
+  See [GitHub Wiki: UserSpice Integration Guide](https://github.com/jimboone/elan-registry/wiki/Integration).
 - **New PHP Directories**: Update `$path` array in `/z_us_root.php`
 - **Database**: MySQL 8.0+ with audit trails via triggers.
   See [DATABASE.md](docs/development/DATABASE.md).

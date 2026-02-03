@@ -747,8 +747,8 @@ composer test:quick        # Fast subset (<30s)
 
 ## See Also
 
-- [ARCHITECTURE.md](ARCHITECTURE.md) - System architecture overview
+- [GitHub Wiki: Architecture Guide](https://github.com/jimboone/elan-registry/wiki/Architecture) - System architecture overview
 - [DATABASE.md](DATABASE.md) - Database schema and relationships
-- [INTEGRATION.md](INTEGRATION.md) - UserSpice integration patterns
+- [GitHub Wiki: UserSpice Integration Guide](https://github.com/jimboone/elan-registry/wiki/Integration) - UserSpice integration patterns
 - [CODING_STANDARDS.md](CODING_STANDARDS.md) - Code quality requirements
 - [TESTING.md](../testing/TESTING.md) - Testing guidelines

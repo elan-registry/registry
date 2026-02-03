@@ -80,14 +80,14 @@ Essential documents for getting started:
 
 Fundamental architecture and patterns:
 
-- **[ARCHITECTURE.md](development/ARCHITECTURE.md)** - System architecture,
-  database, and class patterns
+- **[Architecture Guide](https://github.com/jimboone/elan-registry/wiki/Architecture)** - System architecture,
+  database, and class patterns (GitHub Wiki)
 - **[PAGE_LOADING_FLOW.md](development/PAGE_LOADING_FLOW.md)** - Complete
   reference for page initialization and file loading sequence
 - **[DATABASE.md](development/DATABASE.md)** - Complete database schema
   documentation and table relationships
-- **[INTEGRATION.md](development/INTEGRATION.md)** - UserSpice integration
-  and custom functions
+- **[UserSpice Integration Guide](https://github.com/jimboone/elan-registry/wiki/Integration)** - UserSpice integration
+  and custom functions (GitHub Wiki)
 - **[CODING_STANDARDS.md](development/CODING_STANDARDS.md)** - Code quality
   requirements, standards, and project conventions
 - **[STRICT_TYPE_HANDLING.md](development/STRICT_TYPE_HANDLING.md)** - PHP

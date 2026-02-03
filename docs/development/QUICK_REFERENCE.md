@@ -90,7 +90,7 @@ See [PAGE_LOADING_FLOW.md](PAGE_LOADING_FLOW.md)
 
 **New PHP Directories:**
 Add path to `$path` array in `/z_us_root.php`, register pages in UserSpice admin
-See [INTEGRATION.md](INTEGRATION.md)
+See [GitHub Wiki: UserSpice Integration Guide](https://github.com/jimboone/elan-registry/wiki/Integration)
 
 ## Troubleshooting
 
@@ -107,14 +107,15 @@ See [INTEGRATION.md](INTEGRATION.md)
 CLAUDE.md                  # Start here - AI assistant guide
 docs/development/
   INSTALLATION.md          # Setup and installation
-  ARCHITECTURE.md          # System architecture
   DATABASE.md              # Database schema
   CODING_STANDARDS.md      # Coding standards
   ERROR_HANDLING.md        # Error handling patterns
-  INTEGRATION.md           # UserSpice integration
   LOG_CATEGORIES.md        # Logging categories (140+)
   CLASSES.md               # Application classes
   DEPLOYMENT.md            # Release and deployment
+Wiki (GitHub):
+  Architecture             # System architecture (github.com/jimboone/elan-registry/wiki/Architecture)
+  UserSpice Integration    # UserSpice integration (github.com/jimboone/elan-registry/wiki/Integration)
 docs/faq/                  # User documentation
 docs/faq/admin/            # Admin documentation
 docs/README.md             # Complete documentation index
