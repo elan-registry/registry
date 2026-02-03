@@ -382,346 +382,71 @@ try {
 
 ---
 
-## Migration Guide
-
-This section documents the evolution of error handling patterns in v2.12.0 and
-how to migrate existing code.
-
-### 1. display_errors/display_successes → usError/usSuccess
-
-**Status**: 100% complete (Issue #237)
-
-**Before** (deprecated UserSpice session messages):
-
-```php
-// Display errors and successes manually with HTML
-if (!empty($errors)) {
-    foreach ($errors as $error) {
-        echo '<div class="alert alert-danger">' . htmlspecialchars($error) . '</div>';
-    }
-}
-```
-
-**After** (modern session-based messaging):
-
-```php
-// Use modern UserSpice message functions
-if (!empty($errors)) {
-    foreach ($errors as $error) {
-        usError($error);
-    }
-}
-
-// Display all messages (replaces manual Bootstrap alert HTML)
-sessionValMessages($errors, $successes, null);
-```
-
-**Checklist**:
-
-- [ ] Replace `display_errors()` calls with `usError()` loop
-- [ ] Replace `display_successes()` calls with `usSuccess()` loop
-- [ ] Remove manual Bootstrap alert HTML
-- [ ] Use `sessionValMessages()` to display queued messages
-- [ ] Test error and success message display
-
-### 2. Hardcoded Strings → LogCategories Constants
-
-**Status**: 95% complete (Issue #459)
-
-**Before** (hardcoded log strings - error-prone):
-
-```php
-// Typos possible, inconsistent strings
-logger($userId, 'car_creation', 'Car created');
-logger($userId, 'CarCreation', 'Car updated');  // Different case!
-logger($userId, 'car_deletion', 'Car deleted');
-```
-
-**After** (typed constants - discoverable and consistent):
-
-```php
-logger($userId, LogCategories::LOG_CATEGORY_CAR_CREATION, 'Car created');
-logger($userId, LogCategories::LOG_CATEGORY_CAR_UPDATE, 'Car updated');
-logger($userId, LogCategories::LOG_CATEGORY_CAR_DELETION, 'Car deleted');
-```
-
-**Real Example** (commit 1e00581e):
-
-```bash
-# Before
-logger(0, 'Password Reset', 'Password reset requested');
-
-# After
-logger(0, LogCategories::LOG_CATEGORY_PASSWORD_RESET, 'Password reset requested');
-```
-
-**Checklist**:
-
-- [ ] Identify all `logger()` calls in modified files
-- [ ] Replace hardcoded strings with LogCategories constants
-- [ ] Use discovery command: `grep "const LOG_CATEGORY" usersc/classes/LogCategories.php`
-- [ ] Test log entries appear in admin logs with correct category
-
-### 3. Generic Exception → Typed Exceptions
-
-**Status**: Admin system complete (Issue #356)
-
-**Before** (generic Exception - loses context):
-
-```php
-try {
-    // Operation
-    throw new Exception('Database insert failed');
-} catch (Exception $e) {
-    // Can't distinguish between different error types
-    error_log($e->getMessage());
-    die('An error occurred');
-}
-```
-
-**After** (typed exception - proper classification):
-
-```php
-use ElanRegistry\Exceptions\CarCreationException;
-use ElanRegistry\Exceptions\ElanRegistryException;
-
-try {
-    // Operation
-    throw new CarCreationException('Database insert failed');
-} catch (CarCreationException $e) {
-    // Handle car-specific error
-    ApiResponse::serverError($e->getUserMessage())
-        ->withLogging($userId, $e->getLogCategory(), $e->getMessage())
-        ->send();
-} catch (ElanRegistryException $e) {
-    // Handle other domain errors
-    ApiResponse::error($e->getUserMessage(), $e->getHttpStatusCode())
-        ->withLogging($userId, $e->getLogCategory(), $e->getMessage())
-        ->send();
-}
-```
-
-**Real Example** (commit d82e5667):
-
-```bash
-# Before
-throw new Exception('Admin not found');
-
-# After
-use ElanRegistry\Exceptions\OwnerNotFoundException;
-
-throw new OwnerNotFoundException('Admin with ID ' . $adminId . ' not found');
-```
-
-**Checklist**:
-
-- [ ] Identify operation type (car, owner, location, admin, etc.)
-- [ ] Choose appropriate exception class from 23 available types
-- [ ] Replace `throw new Exception()` with typed exception
-- [ ] Add try/catch blocks for specific exception types
-- [ ] Test error handling paths return correct HTTP codes
-
-### 4. Direct JSON → ApiResponse
-
-**Status**: New endpoints only (Issue #444)
-
-**Before** (direct JSON output - inconsistent):
-
-```php
-// Different responses for different endpoints
-echo json_encode(['success' => true, 'data' => $result]);
-exit;
-
-// Or completely different format
-echo json_encode($result);
-exit;
-```
-
-**After** (ApiResponse - consistent Pattern A):
-
-```php
-// All endpoints return same Pattern A format
-ApiResponse::success('Operation successful')
-    ->withData('result', $result)
-    ->withLogging($userId, 'CarActions', 'Operation completed')
-    ->send();
-```
-
-**Real Example** (commit f3437c06):
-
-```bash
-# Before
-echo json_encode([
-    'success' => true,
-    'data' => $carData
-]);
-exit;
-
-# After
-ApiResponse::success('Car data retrieved')
-    ->withData('car', $carData)
-    ->withLogging($userId, 'CarActions', 'Retrieved car ' . $carId)
-    ->send();
-```
-
-**Checklist**:
-
-- [ ] New AJAX endpoints MUST use ApiResponse
-- [ ] Choose appropriate factory method (success, error, validationError, etc.)
-- [ ] Add logging via `->withLogging()`
-- [ ] Add additional data via `->withData()`
-- [ ] Call `->send()` to output response and exit
-- [ ] Test all endpoints return 200 success or appropriate error code
-
----
-
 ## Best Practices
 
-### Logging Best Practices
+### Logging
 
-**When to Log**:
+**When to log**: Errors, business events, access control decisions, system maintenance, authentication events.
 
-- All errors (caught exceptions)
-- Important business events (car created, transferred, deleted)
-- Access control decisions (denied, permission check)
-- System maintenance operations (backups, schema changes)
-- User authentication events (login, logout, password reset)
-
-**User ID Handling**:
+**Patterns**:
 
 ```php
-// Use actual user ID when available
+// Use actual user ID when available, 0 for anonymous actions
 $userId = $user->isLoggedIn() ? (int)$user->data()->id : 0;
 logger($userId, LogCategories::LOG_CATEGORY_CAR_CREATION, 'Car created');
 
-// For anonymous actions (registration, public searches), use 0
-logger(0, LogCategories::LOG_CATEGORY_LOCATION_SERVICE, 'Location search: Paris');
-```
-
-**Error Context**:
-
-```php
-// Include enough context for troubleshooting
+// Include context for troubleshooting
 logger($userId, LogCategories::LOG_CATEGORY_CAR_UPDATE, 'Car update failed: ' . $e->getMessage());
-logger($userId, LogCategories::LOG_CATEGORY_VALIDATION_ERROR, 'Email validation: invalid format');
-logger($userId, LogCategories::LOG_CATEGORY_DATABASE_ERROR, 'Query failed for table cars: ' . $e->getMessage());
 ```
 
-### Exception Best Practices
+### Exceptions
 
-**Choose Appropriate Exception Type**:
+**Choose appropriate exception type**: Use specific exceptions (CarValidationException, OwnerNotFoundException) not generic Exception.
 
-```php
-use ElanRegistry\Exceptions\CarValidationException;
-
-// ✅ CORRECT: Specific exception for the operation
-if (empty($carData['year'])) {
-    throw new CarValidationException('Year field is required');
-}
-
-// ❌ INCORRECT: Generic exception loses context
-if (empty($carData['year'])) {
-    throw new Exception('Validation failed');
-}
-```
-
-**Separate User vs Technical Messages**:
+**Separate messages**: User message for UI (`getUserMessage()`) vs technical message for logs (`getMessage()`).
 
 ```php
-use ElanRegistry\Exceptions\CarCreationException;
-
-// ✅ CORRECT: User message is safe, technical message for logs
-throw new CarCreationException(
-    'Database insert failed: constraint violation on vin',  // Technical
+throw new CarValidationException(
+    'Database constraint: VIN already exists',  // Technical
     0,
     null,
-    'Unable to create car. Please verify the VIN and try again.'  // User-safe
+    'Unable to create car. Please verify the VIN.'  // User-safe
 );
-
-// ❌ INCORRECT: Same message for both contexts
-throw new CarCreationException('Database constraint violation - VIN must be unique');
 ```
 
-### API Response Best Practices
+### API Responses
 
-**Use Appropriate HTTP Codes**:
+**Match HTTP codes to situation**: 404 for not found, 403 for forbidden, 422 for validation errors, 500 for server errors.
 
-```php
-// ✅ CORRECT: Match HTTP codes to situation
-if (!$resource->exists()) {
-    ApiResponse::notFound('Car not found')->send();  // 404
-}
-
-if (!hasPermission($userId)) {
-    ApiResponse::forbidden('You cannot modify this car')->send();  // 403
-}
-
-if (!$data['email']) {
-    ApiResponse::validationError(['email' => 'Email is required'])->send();  // 422
-}
-
-// ❌ INCORRECT: Everything returns 400
-ApiResponse::error('Something went wrong', 400)->send();
-```
-
-**Include Logging in Responses**:
+**Always include logging** with responses via `->withLogging()`.
 
 ```php
-// ✅ CORRECT: Always include logging
 ApiResponse::success('Car updated')
     ->withData('car', $car)
     ->withLogging($userId, LogCategories::LOG_CATEGORY_CAR_UPDATE, 'Updated car ' . $carId)
     ->send();
-
-// ❌ INCORRECT: Missing logging
-ApiResponse::success('Car updated')->send();
 ```
 
-### Frontend Best Practices
+### Frontend
 
-**Type-Specific Error Handling**:
+**Handle error types appropriately**:
 
 ```javascript
-// ✅ CORRECT: Handle each error type appropriately
 try {
     const result = await api.post('endpoint', data);
     NotificationHelper.show(result.message, 'success');
 } catch (error) {
     if (error instanceof ApiValidationError) {
-        // Field-level errors - highlight form fields
         NotificationHelper.showValidationErrors(error.errors);
     } else if (error instanceof ApiCancelledError) {
-        // Silently ignore cancellations
         console.log('Request cancelled');
-    } else if (error.status === 401) {
-        // Unauthorized - redirect to login
-        window.location.href = '/users/?view=login';
     } else {
         NotificationHelper.show(error.message, 'error');
     }
 }
-
-// ❌ INCORRECT: Generic error handling
-try {
-    const result = await api.post('endpoint', data);
-} catch (error) {
-    alert('An error occurred');
-}
 ```
 
-**Loading State Management**:
-
-```javascript
-const $btn = $('#submitBtn');
-$btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i> Loading...');
-
-try {
-    const result = await api.post('endpoint', data);
-    NotificationHelper.show(result.message, 'success');
-} finally {
-    $btn.prop('disabled', false).html('Submit');
-}
-```
+See [QUICK_REFERENCE.md](QUICK_REFERENCE.md) for additional patterns and code examples.
 
 ---
 
