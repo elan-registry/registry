@@ -3,6 +3,7 @@
 **Quick method reference for UserSpice classes and functions.**
 
 For detailed explanations and code examples, see:
+
 - Full reference: [USERSPICE_FUNCTIONS.md](USERSPICE_FUNCTIONS.md)
 - Wiki guide: [UserSpice Integration Guide](https://github.com/jimboone/elan-registry/wiki/Integration)
 
@@ -10,8 +11,10 @@ For detailed explanations and code examples, see:
 
 ## DB Class Methods
 
+**See detailed docs:** [DB Class](USERSPICE_FUNCTIONS.md#db-class)
+
 | Method | Signature | Returns | Purpose |
-|--------|-----------|---------|---------|
+| --- | --- | --- | --- |
 | getInstance() | `DB::getInstance()` | DB | Get singleton DB instance |
 | getDB() | `DB::getDB($config)` | DB | Get alternate database connection |
 | query() | `query($sql, $params = [])` | QueryResult | Execute prepared SQL statement |
@@ -28,10 +31,12 @@ For detailed explanations and code examples, see:
 
 ## DB QueryResult Methods
 
+**See detailed docs:** [DB Class](USERSPICE_FUNCTIONS.md#db-class)
+
 Chain these methods on DB query results.
 
 | Method | Returns | Purpose |
-|--------|---------|---------|
+| --- | --- | --- |
 | results($assoc = false) | array | Get all result rows |
 | first($assoc = false) | object/array | Get first result row |
 | count() | int | Number of affected rows |
@@ -47,8 +52,10 @@ Chain these methods on DB query results.
 
 ## User Class Methods
 
+**See detailed docs:** [User Class](USERSPICE_FUNCTIONS.md#user-class)
+
 | Method | Signature | Returns | Purpose |
-|--------|-----------|---------|---------|
+| --- | --- | --- | --- |
 | create() | `create($fields = [])` | bool | Create new user account |
 | find() | `find($identifier)` | bool | Find user by ID/email/username |
 | login() | `login($username, $password)` | bool | Log in by username |
@@ -64,10 +71,12 @@ Chain these methods on DB query results.
 
 ## Validation & Input Classes
 
+**See detailed docs:** [Validate Class](USERSPICE_FUNCTIONS.md#validate-class) | [Input Class](USERSPICE_FUNCTIONS.md#input-class)
+
 ### Validate Class
 
 | Method | Signature | Returns | Purpose |
-|--------|-----------|---------|---------|
+| --- | --- | --- | --- |
 | check() | `check($source, $items = [], $sanitize = false)` | Validate | Validate input fields |
 | addError() | `addError($error)` | void | Add validation error |
 | errors() | `errors()` | array | Get all validation errors |
@@ -77,7 +86,7 @@ Chain these methods on DB query results.
 ### Input Class
 
 | Method | Signature | Returns | Purpose |
-|--------|-----------|---------|---------|
+| --- | --- | --- | --- |
 | exists() | `exists($type = 'post')` | bool | Check if input exists (GET/POST) |
 | get() | `get($item)` | mixed | Get input value |
 | sanitize() | `sanitize($item)` | string | Sanitize input for XSS |
@@ -88,24 +97,31 @@ Chain these methods on DB query results.
 
 ## Security & Token Classes
 
+**See detailed docs:**
+
+- [Token Class](USERSPICE_FUNCTIONS.md#token-class)
+- [Hash Class](USERSPICE_FUNCTIONS.md#hash-class)
+- [Session Class](USERSPICE_FUNCTIONS.md#session-class)
+- [Cookie Class](USERSPICE_FUNCTIONS.md#cookie-class)
+
 ### Token Class
 
 | Method | Signature | Returns | Purpose |
-|--------|-----------|---------|---------|
+| --- | --- | --- | --- |
 | generate() | `Token::generate()` | string | Generate CSRF token |
 | check() | `check($token)` | bool | Verify CSRF token |
 
 ### Hash Class
 
 | Method | Signature | Returns | Purpose |
-|--------|-----------|---------|---------|
+| --- | --- | --- | --- |
 | make() | `make($string, $salt = '')` | string | Hash password (bcrypt) |
 | unique() | `unique()` | string | Generate unique hash |
 
 ### Session Class
 
 | Method | Signature | Returns | Purpose |
-|--------|-----------|---------|---------|
+| --- | --- | --- | --- |
 | put() | `put($name, $value)` | void | Set session value |
 | get() | `get($name)` | mixed | Get session value |
 | has() | `has($name)` | bool | Check if session exists |
@@ -115,7 +131,7 @@ Chain these methods on DB query results.
 ### Cookie Class
 
 | Method | Signature | Returns | Purpose |
-|--------|-----------|---------|---------|
+| --- | --- | --- | --- |
 | put() | `put($name, $value, $expiry)` | void | Set cookie |
 | get() | `get($name)` | mixed | Get cookie value |
 | has() | `has($name)` | bool | Check if cookie exists |
@@ -125,8 +141,10 @@ Chain these methods on DB query results.
 
 ## Permission & Access Control
 
+**See detailed docs:** [Permission & Access Control](USERSPICE_FUNCTIONS.md#permission--access-control)
+
 | Function | Signature | Returns | Purpose |
-|----------|-----------|---------|---------|
+| --- | --- | --- | --- |
 | hasPerm() | `hasPerm($permissions, $id = null)` | bool | Check user permission(s) |
 | fetchUserPermissions() | `fetchUserPermissions($user_id)` | array | Get all user permissions |
 | fetchPagePermissions() | `fetchPagePermissions($page_id)` | array | Get page requirements |
@@ -139,32 +157,36 @@ Chain these methods on DB query results.
 
 ## Configuration & Redirect
 
+**See detailed docs:** [Config Class](USERSPICE_FUNCTIONS.md#config-class) | [Redirect Class](USERSPICE_FUNCTIONS.md#redirect-class) | [Server Class](USERSPICE_FUNCTIONS.md#server-class)
+
 ### Config Class
 
 | Method | Signature | Returns | Purpose |
-|--------|-----------|---------|---------|
+| --- | --- | --- | --- |
 | get() | `get($path)` | mixed | Get config value by dot path |
 | set() | `set($path, $value)` | void | Set config value |
 
 ### Redirect Class
 
 | Method | Signature | Returns | Purpose |
-|--------|-----------|---------|---------|
+| --- | --- | --- | --- |
 | to() | `to($location, $args = [])` | void | Safe redirect to URL |
 | sanitized() | `sanitized($location, $args = [], $code = 302, $options = [])` | void | Redirect with validation |
 
 ### Server Class
 
 | Method | Signature | Returns | Purpose |
-|--------|-----------|---------|---------|
+| --- | --- | --- | --- |
 | get() | `get($key, $default = '')` | string | Get validated $_SERVER value |
 
 ---
 
 ## Menu System
 
+**See detailed docs:** [Menu Class](USERSPICE_FUNCTIONS.md#menu-class)
+
 | Method | Signature | Returns | Purpose |
-|--------|-----------|---------|---------|
+| --- | --- | --- | --- |
 | __construct() | `new Menu($id_or_name)` | Menu | Create menu instance |
 | display() | `display($override = [])` | void | Render menu HTML |
 | items() | `items()` | array | Get menu items |
@@ -173,8 +195,10 @@ Chain these methods on DB query results.
 
 ## User Helper Functions
 
+**See detailed docs:** [User Helper Functions](USERSPICE_FUNCTIONS.md#user-helper-functions)
+
 | Function | Signature | Returns | Purpose |
-|----------|-----------|---------|---------|
+| --- | --- | --- | --- |
 | getUser() | `getUser($user_id)` | object | Get user by ID |
 | getUserId() | `getUserId()` | int | Get current user ID |
 | getUserUsername() | `getUserUsername($user_id)` | string | Get username |
@@ -190,8 +214,10 @@ Chain these methods on DB query results.
 
 ## Page Management Functions
 
+**See detailed docs:** [Page Management](USERSPICE_FUNCTIONS.md#page-management)
+
 | Function | Signature | Returns | Purpose |
-|----------|-----------|---------|---------|
+| --- | --- | --- | --- |
 | getPages() | `getPages()` | array | Get all pages |
 | getPage() | `getPage($page_id)` | object | Get page by ID |
 | createPage() | `createPage($path, $title, $private = 0)` | int | Create new page |
@@ -202,8 +228,10 @@ Chain these methods on DB query results.
 
 ## Display & Output Helpers
 
+**See detailed docs:** [Display & Output Helpers](USERSPICE_FUNCTIONS.md#display--output-helpers)
+
 | Function | Returns | Purpose |
-|----------|---------|---------|
+| --- | --- | --- |
 | display_errors() | void | Display validation errors |
 | err() | void | Display error message |
 | err_view() | string | Get error HTML |
@@ -216,8 +244,10 @@ Chain these methods on DB query results.
 
 ## Email Functions
 
+**See detailed docs:** [Email Functions](USERSPICE_FUNCTIONS.md#email-functions)
+
 | Function | Signature | Purpose |
-|----------|-----------|---------|
+| --- | --- | --- |
 | email() | `email($to, $subject, $body, $headers = [])` | Send email via PHPMailer |
 | emailHtmlTemplate() | `emailHtmlTemplate($template, $data)` | Render email template |
 
@@ -225,8 +255,10 @@ Chain these methods on DB query results.
 
 ## Utility Functions
 
+**See detailed docs:** [Utility Functions](USERSPICE_FUNCTIONS.md#utility-functions)
+
 | Function | Signature | Returns | Purpose |
-|----------|-----------|---------|---------|
+| --- | --- | --- | --- |
 | logger() | `logger($user_id, $log_type, $log_note, $metadata = [])` | bool | Log user action |
 | protect() | `protect($str)` | string | Escape for HTML output |
 | cleanStr() | `cleanStr($str)` | string | Remove special characters |
@@ -238,8 +270,10 @@ Chain these methods on DB query results.
 
 ## Plugin & Hook System
 
+**See detailed docs:** [Plugin & Hook System](USERSPICE_FUNCTIONS.md#plugin--hook-system)
+
 | Function | Signature | Purpose |
-|----------|-----------|---------|
+| --- | --- | --- |
 | loadPlugins() | `loadPlugins()` | Load all plugins |
 | getMyHooks() | `getMyHooks($options)` | Get hooks for page |
 | includeHook() | `includeHook($hooks, $location)` | Include hook file |
@@ -251,8 +285,10 @@ Chain these methods on DB query results.
 
 ## Session & Message Helpers
 
+**See detailed docs:** [Session & Message Helpers](USERSPICE_FUNCTIONS.md#session--message-helpers)
+
 | Function | Signature | Purpose |
-|----------|-----------|---------|
+| --- | --- | --- |
 | message() | `message($type, $msg)` | Set flash message |
 | displayMessage() | `displayMessage()` | Display flash messages |
 | clearMessages() | `clearMessages()` | Clear all messages |
@@ -261,8 +297,10 @@ Chain these methods on DB query results.
 
 ## Menu Helper Functions
 
+**See detailed docs:** [Menu Helper Functions](USERSPICE_FUNCTIONS.md#menu-helper-functions)
+
 | Function | Signature | Returns | Purpose |
-|----------|-----------|---------|---------|
+| --- | --- | --- | --- |
 | getMenus() | `getMenus()` | array | Get all menus |
 | getMenu() | `getMenu($menu_id)` | object | Get menu by ID |
 | createMenu() | `createMenu($menu_name, $type = 0)` | int | Create new menu |
@@ -276,7 +314,7 @@ Chain these methods on DB query results.
 ## Form Manager Functions
 
 | Function | Signature | Purpose |
-|----------|-----------|---------|
+| --- | --- | --- |
 | loadFormManager() | `loadFormManager()` | Load form manager |
 | createForm() | `createForm($form_name, $fields)` | Create custom form |
 | renderForm() | `renderForm($form_name)` | Render form HTML |
@@ -287,6 +325,7 @@ Chain these methods on DB query results.
 ## Common Patterns
 
 ### Database Query Pattern
+
 ```php
 $db = DB::getInstance();
 $result = $db->query("SELECT * FROM users WHERE id = ?", [$userId]);
@@ -296,6 +335,7 @@ if ($result->count() > 0) {
 ```
 
 ### User Login Pattern
+
 ```php
 $user = new User();
 if ($user->login($username, $password)) {
@@ -305,6 +345,7 @@ if ($user->login($username, $password)) {
 ```
 
 ### Permission Check Pattern
+
 ```php
 if (hasPerm([2], $user->data()->id)) {
     // User is admin (permission 2)
@@ -312,6 +353,7 @@ if (hasPerm([2], $user->data()->id)) {
 ```
 
 ### CSRF Token Pattern
+
 ```php
 // Generate token in form
 <?= Token::generate(); ?>
@@ -323,6 +365,7 @@ if (!Token::check($fields['csrf'])) {
 ```
 
 ### Input Validation Pattern
+
 ```php
 $validate = new Validate();
 $validation = $validate->check($fields, [
