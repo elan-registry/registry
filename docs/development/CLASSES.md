@@ -10,6 +10,23 @@ the `ElanRegistry\Exceptions` namespace and are located in
 `/usersc/classes/Exceptions/`. Classes follow established design patterns with
 consistent database integration, exception handling, and audit logging.
 
+## Quick Class Selection Guide
+
+Use this table to choose the right class for your task:
+
+| Task | Use This Class | Why | Example |
+|------|---|---|---|
+| Load car by ID and get all data | Car | Direct database access, validation, history tracking | `$car = new Car(123)` |
+| Display cars in a list view | CarView | Read-only, optimized for rendering, no mutations | `$view = new CarView()` → `$view->getAllCars()` |
+| Update car data and create history | Car + update() | Automatic history via triggers, audit logging | `$car->update(['color' => 'Blue', ...])` |
+| Access owner profile and user data | ElanRegistryOwner | User profile integration, custom user methods | `$owner = new ElanRegistryOwner($uid)` |
+| Validate VIN/chassis format | ChassisValidator | Specialized validation for vehicle identifiers | `$validator->validate('26/0001')` |
+| Create database backups | BackupManager | Backup/restore operations, database dumping | `$backup = new BackupManager(...)` |
+| Convert markdown to HTML | MarkdownParser | Documentation rendering, safe HTML conversion | `$parser = new MarkdownParser(...)` |
+| Get car images | CarImage | Image metadata and associations | `$images = CarImage::getByCarId($carId)` |
+
+---
+
 ## Core Domain Classes
 
 ### Car
@@ -84,6 +101,19 @@ All exception classes are in the `ElanRegistry\Exceptions` namespace:
 - `CarMergeException` - Car merge failures (500)
 - `CarTransferException` - Ownership transfer failures (500)
 
+**When to Use Which Exception**:
+
+| Situation | Exception Class | Example |
+|-----------|---|---|
+| Car ID not found in database | CarNotFoundException | User tries to edit car that was deleted |
+| Validation of user input fails | CarValidationException | Invalid chassis format, missing required field |
+| Database query/operation fails | CarDatabaseException | INSERT fails, UPDATE fails, deadlock |
+| User lacks permission | CarPermissionException | Non-owner trying to edit someone else's car |
+| Car creation fails | CarCreationException | Cannot create car due to validation or database issue |
+| Car deletion fails | CarDeletionException | Cannot delete car, foreign key constraint |
+| Car merge operation fails | CarMergeException | Cannot merge duplicate cars |
+| Car transfer fails | CarTransferException | Cannot transfer ownership |
+
 **Usage**:
 
 ```php
@@ -93,7 +123,11 @@ use ElanRegistry\Exceptions\CarValidationException;
 try {
     $car = new Car($carId);
 } catch (CarNotFoundException $e) {
-    // Handle not found
+    // Handle not found - return 404
+    return response()->notFound('Car not found');
+} catch (CarValidationException $e) {
+    // Handle validation error - return 422
+    return response()->error('Invalid car data: ' . $e->getMessage());
 }
 ```
 

@@ -92,6 +92,40 @@ See [PAGE_LOADING_FLOW.md](PAGE_LOADING_FLOW.md)
 Add path to `$path` array in `/z_us_root.php`, register pages in UserSpice admin
 See [GitHub Wiki: UserSpice Integration Guide](https://github.com/jimboone/elan-registry/wiki/Integration)
 
+## Custom Functions Available on All Pages
+
+These functions are loaded globally and available on every page:
+
+| Function | Returns | Purpose | Example |
+|----------|---------|---------|---------|
+| `getUserWithProfile($userId)` | object | Get user + profile data in one query | `$owner = getUserWithProfile(5)` |
+| `isRegistryAdmin($userId)` | bool | Check if user has admin/editor perms | `if (isRegistryAdmin()) { ... }` |
+| `getBaseUrl()` | string | Get app base URL (environment-aware) | `$base = getBaseUrl()` |
+| `getAdminEmails()` | string | Get comma-separated admin emails | `$emails = getAdminEmails()` |
+| `getFeedbackEmail()` | string | Get feedback form email address | `$email = getFeedbackEmail()` |
+| `dbInt($value)` | int | Cast database value to int safely | `$id = dbInt($row->id)` |
+| `dbIntOrNull($value)` | ?int | Cast to nullable int | `$id = dbIntOrNull($row->id)` |
+| `currentUserId()` | int | Get logged-in user's ID (throws if not) | `$uid = currentUserId()` |
+| `logger($userId, $type, $note, $metadata)` | bool | Log user action for audit trail | `logger($uid, LogCategories::LOG_CATEGORY_LOGIN, 'User logged in')` |
+
+**Examples:**
+
+```php
+// Get owner data with profile information
+$owner = getUserWithProfile($userId);
+echo $owner->fname . " from " . $owner->city;
+
+// Check admin status
+if (isRegistryAdmin()) {
+    echo '<a href="admin">Admin Panel</a>';
+}
+
+// Log an action
+logger(currentUserId(), LogCategories::LOG_CATEGORY_CAR_CREATE, 'Created new car');
+```
+
+See [USERSPICE_QUICK_LOOKUP.md](USERSPICE_QUICK_LOOKUP.md) for additional UserSpice functions.
+
 ## Troubleshooting
 
 | Problem | Solution |
