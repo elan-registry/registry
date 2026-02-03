@@ -97,7 +97,7 @@ See [GitHub Wiki: UserSpice Integration Guide](https://github.com/jimboone/elan-
 These functions are loaded globally and available on every page:
 
 | Function | Returns | Purpose | Example |
-|----------|---------|---------|---------|
+| --- | --- | --- | --- |
 | `getUserWithProfile($userId)` | object | Get user + profile data in one query | `$owner = getUserWithProfile(5)` |
 | `isRegistryAdmin($userId)` | bool | Check if user has admin/editor perms | `if (isRegistryAdmin()) { ... }` |
 | `getBaseUrl()` | string | Get app base URL (environment-aware) | `$base = getBaseUrl()` |
@@ -126,14 +126,181 @@ logger(currentUserId(), LogCategories::LOG_CATEGORY_CAR_CREATE, 'Created new car
 
 See [USERSPICE_QUICK_LOOKUP.md](USERSPICE_QUICK_LOOKUP.md) for additional UserSpice functions.
 
+## Code Patterns & Snippets
+
+### Database Queries
+
+```php
+// Get single record
+$result = $db->query('SELECT * FROM cars WHERE id = ?', [$carId])->first();
+
+// Get multiple records
+$results = $db->query('SELECT * FROM cars WHERE user_id = ?', [$userId])->results();
+
+// Check existence
+$exists = $db->query('SELECT id FROM cars WHERE id = ?', [$carId])->count() > 0;
+
+// Get single value
+$color = $db->cell('cars.color', ['id' => $carId]);
+
+// Insert
+$db->insert('cars', ['user_id' => $uid, 'year' => 2020]);
+
+// Update
+$db->update('cars', $carId, ['color' => 'red']);
+
+// Delete
+$db->delete('cars', ['id' => $carId]);
+```
+
+### Backend Error Handling
+
+```php
+try {
+    // Operation
+    $car = new Car($carId);
+    $car->validateYear();
+
+} catch (CarValidationException $e) {
+    // Validation error (422)
+    ApiResponse::validationError(['field' => $e->getMessage()])
+        ->withLogging($userId, $e->getLogCategory(), $e->getMessage())
+        ->send();
+
+} catch (CarNotFoundException $e) {
+    // Not found (404)
+    ApiResponse::notFound($e->getUserMessage())
+        ->withLogging($userId, LogCategories::LOG_CATEGORY_CAR_ERRORS, $e->getMessage())
+        ->send();
+
+} catch (Exception $e) {
+    // Server error (500)
+    ApiResponse::serverError('An error occurred')
+        ->withLogging($userId, LogCategories::LOG_CATEGORY_SYSTEM_ERROR, $e->getMessage())
+        ->send();
+}
+```
+
+### Frontend AJAX Request
+
+```javascript
+const api = new ElanRegistryAPI();
+
+try {
+    const result = await api.post('app/action/update-car.php', {
+        car_id: 123,
+        color: 'red'
+    });
+
+    NotificationHelper.show(result.message, 'success');
+
+} catch (error) {
+    if (error instanceof ApiValidationError) {
+        NotificationHelper.showValidationErrors(error.errors);
+    } else {
+        NotificationHelper.show(error.message, 'error');
+    }
+}
+```
+
+### Permission Checking
+
+```php
+// Page-level protection
+securePage($php_self);  // Redirect to login if not authenticated
+
+// Feature-level checking
+if (!hasPerm([2], $userId)) {  // Permission level 2 = admin
+    ApiResponse::forbidden('Admin access required')->send();
+}
+
+// Owner verification
+$car = new Car($carId);
+if ($car->user_id !== $userId && !isRegistryAdmin($userId)) {
+    ApiResponse::forbidden('You can only modify your own cars')->send();
+}
+```
+
+### Form Submission with Validation
+
+```php
+if ($method === 'POST') {
+    try {
+        // Validate CSRF
+        if (!Token::check(Input::get('csrf'))) {
+            throw new ValidationException('Invalid CSRF token');
+        }
+
+        // Get and validate input
+        $carId = dbInt(Input::get('car_id'));
+        $color = Input::get('color');
+
+        if (empty($color) || strlen($color) > 50) {
+            throw new ValidationException('Color must be 1-50 characters');
+        }
+
+        // Process
+        $car = new Car($carId);
+        $car->update(['color' => $color]);
+
+        ApiResponse::success('Car updated')
+            ->withLogging(currentUserId(), LogCategories::LOG_CATEGORY_CAR_UPDATE, "Updated car $carId")
+            ->send();
+
+    } catch (ValidationException $e) {
+        ApiResponse::validationError(['field' => $e->getMessage()])->send();
+    }
+}
+```
+
+### User & Profile Data
+
+```php
+// Get user with profile (single query)
+$owner = getUserWithProfile($userId);
+echo $owner->fname . ' ' . $owner->lname;
+echo $owner->city . ', ' . $owner->state;
+
+// Check if admin/editor
+if (isRegistryAdmin($userId)) {
+    // Show admin controls
+}
+
+// Get current user
+$currentUser = currentUserId();  // Throws if not logged in
+```
+
+### Logging Patterns
+
+```php
+// Login/Logout
+logger($userId, LogCategories::LOG_CATEGORY_LOGIN, 'User logged in');
+
+// Car actions
+logger($userId, LogCategories::LOG_CATEGORY_CAR_CREATE, 'Created car with VIN ' . $vin);
+logger($userId, LogCategories::LOG_CATEGORY_CAR_UPDATE, 'Updated car color');
+logger($userId, LogCategories::LOG_CATEGORY_CAR_DELETE, 'Deleted car ' . $carId);
+
+// Access control
+logger($userId, LogCategories::LOG_CATEGORY_ACCESS_DENIED, 'Attempted unauthorized access');
+
+// Search/lookup
+logger($userId, LogCategories::LOG_CATEGORY_LOCATION_SERVICE, 'Location search: Paris');
+
+// Errors
+logger($userId, LogCategories::LOG_CATEGORY_VALIDATION_ERROR, 'Email validation failed');
+```
+
 ## Troubleshooting
 
 | Problem | Solution |
 | --- | --- |
 | `securePage()` redirecting to login | Register page in UserSpice admin; add dir to `z_us_root.php` `$path` array |
-| Database triggers not firing | Only `cars` table has triggers; other tables use app-level logging |
+| CSRF validation failed | Ensure `<input name="csrf" value="<?php echo Token::generate(); ?>">` in form |
+| API returns 500 error | Check PHP error log; verify exception types are correct |
+| Database query returns no results | Verify table name, column names, and WHERE clause |
 | Tests failing | Check PHP 8.1+; run `composer install` && `npm install` |
-| File modified by hooks | Re-read file; check `.markdownlint.json` |
+| NotificationHelper not showing | Verify footer.php is included; check browser console for JS errors |
 
 ## Documentation Index
 
