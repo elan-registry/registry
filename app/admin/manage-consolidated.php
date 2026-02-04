@@ -361,6 +361,9 @@ if (Input::exists('post')) {
 ?>
 
 <div class="page-wrapper">
+    <!-- Hidden CSRF token for AJAX requests -->
+    <input type="hidden" name="csrf" value="<?= $csrfToken ?>" />
+
     <div class="container-fluid">
         <div class="page-container">
 
@@ -804,5 +807,9 @@ if (Input::exists('post')) {
 
 <!-- Include custom CSS and JavaScript -->
 <link rel="stylesheet" href="assets/manage-consolidated.css">
-<script>window.elanUrlRoot = '<?= $us_url_root ?>';</script>
+<script>
+    window.elanUrlRoot = '<?= $us_url_root ?>';
+    // Make CSRF token available to ElanRegistryAPI client
+    document.documentElement.setAttribute('data-csrf-token', '<?= $csrfToken ?>');
+</script>
 <script src="assets/manage-consolidated.js"></script>

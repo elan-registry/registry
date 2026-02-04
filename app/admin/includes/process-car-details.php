@@ -39,7 +39,7 @@ try {
     $carQ = $db->query("SELECT * FROM cars WHERE id = ?", [$carId]);
 
     if ($carQ->count() === 0) {
-        ApiResponse::notFound('Car not found')
+        ApiResponse::error('Car not found', 200)
             ->withLogging(
                 $user->data()->id,
                 LogCategories::LOG_CATEGORY_CAR_ERRORS,

@@ -17,6 +17,13 @@ if (!securePage($php_self)) {
         ->send();
 }
 
+// CSRF protection for all POST operations
+if ($method === 'POST' && (!isset($_POST['csrf']) || !Token::check($_POST['csrf']))) {
+    ApiResponse::error('Invalid CSRF token', 400)
+        ->withLogging($user->data()->id, LogCategories::LOG_CATEGORY_SECURITY, 'Invalid CSRF token in schema operations')
+        ->send();
+}
+
 // Set content type for JSON responses
 header('Content-Type: application/json');
 

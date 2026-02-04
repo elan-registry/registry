@@ -27,6 +27,13 @@ if (!hasPerm([2], $user->data()->id)) {
         ->send();
 }
 
+// CSRF protection for all POST operations
+if (!isset($_POST['csrf']) || !Token::check($_POST['csrf'])) {
+    ApiResponse::error('Invalid CSRF token', 400)
+        ->withLogging($user->data()->id, LogCategories::LOG_CATEGORY_SECURITY, 'Invalid CSRF token in backup operations')
+        ->send();
+}
+
 // Get action
 $action = $_POST['action'] ?? '';
 

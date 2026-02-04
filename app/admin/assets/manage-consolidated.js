@@ -500,7 +500,8 @@ function initializeCarManagement() {
         $btn.prop('disabled', true);
         $btn.html('<i class="fas fa-spinner fa-spin"></i>');
 
-        new ElanRegistryAPI().post((window.elanUrlRoot || '/') + 'app/admin/includes/process-car-details.php', {
+        const endpoint = window.elanUrlRoot ? window.elanUrlRoot.replace(/\/$/, '') + '/app/admin/includes/process-car-details.php' : '/app/admin/includes/process-car-details.php';
+        new ElanRegistryAPI().post(endpoint, {
             car_id: carId
         }).then(function(response) {
             $btn.prop('disabled', false);
@@ -548,7 +549,8 @@ function initializeCarManagement() {
         $btn.prop('disabled', true);
         $btn.html('<i class="fas fa-spinner fa-spin"></i>');
 
-        new ElanRegistryAPI().post((window.elanUrlRoot || '/') + 'app/admin/includes/process-user-details.php', {
+        const endpoint = window.elanUrlRoot ? window.elanUrlRoot.replace(/\/$/, '') + '/app/admin/includes/process-user-details.php' : '/app/admin/includes/process-user-details.php';
+        new ElanRegistryAPI().post(endpoint, {
             user_id: userId
         }).then(function(response) {
             $btn.prop('disabled', false);
@@ -599,7 +601,8 @@ function initializeCarManagement() {
         $btn.prop('disabled', true);
         $btn.html('<i class="fas fa-spinner fa-spin"></i>');
 
-        new ElanRegistryAPI().post((window.elanUrlRoot || '/') + 'app/admin/includes/process-car-details.php', {
+        const endpoint = window.elanUrlRoot ? window.elanUrlRoot.replace(/\/$/, '') + '/app/admin/includes/process-car-details.php' : '/app/admin/includes/process-car-details.php';
+        new ElanRegistryAPI().post(endpoint, {
             car_id: carId
         }).then(function(response) {
             $btn.prop('disabled', false);
@@ -1298,10 +1301,10 @@ function initializeCarManagement() {
             $btn.html('<i class="fas fa-spinner fa-spin"></i> Processing...');
 
             // Determine endpoint based on action
-            const urlRoot = window.elanUrlRoot || '/';
+            const urlRoot = window.elanUrlRoot ? window.elanUrlRoot.replace(/\/$/, '') : '';
             const endpoint = transferDecisionData.action === 'approve'
-                ? urlRoot + 'app/admin/includes/process-transfer-approve.php'
-                : urlRoot + 'app/admin/includes/process-transfer-deny.php';
+                ? urlRoot + '/app/admin/includes/process-transfer-approve.php'
+                : urlRoot + '/app/admin/includes/process-transfer-deny.php';
 
             // Make AJAX request
             new ElanRegistryAPI().post(endpoint, {

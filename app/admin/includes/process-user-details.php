@@ -39,7 +39,7 @@ try {
     $userWithProfile = getUserWithProfile($userId);
 
     if (!$userWithProfile) {
-        ApiResponse::notFound('User not found')
+        ApiResponse::error('User not found', 200)
             ->withLogging(
                 $user->data()->id,
                 'OwnerErrors',
