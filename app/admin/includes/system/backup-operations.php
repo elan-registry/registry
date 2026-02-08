@@ -38,8 +38,8 @@ if (!isset($_POST['csrf']) || !Token::check($_POST['csrf'])) {
 $action = $_POST['action'] ?? '';
 
 try {
-    // Initialize BackupManager
-    $backupDir = $abs_us_root . $us_url_root . 'FIX/backups/';
+    // Initialize BackupManager with global configuration constant
+    $backupDir = $abs_us_root . $us_url_root . BACKUP_BASE_DIR;
     // Cast user ID to int for strict type safety across different PHP/database configurations
     $backupManager = new BackupManager($db, $backupDir, (int)$user->data()->id);
 
@@ -235,6 +235,53 @@ try {
                 ])
                 ->withLogging($user->data()->id, LogCategories::LOG_CATEGORY_BACKUP_MANAGER,
                     "Backup cleanup completed via API: {$totalDeleted}/{$totalScanned} deleted")
+                ->send();
+            break;
+
+        case 'delete_backup':
+            // Log delete request
+            $filename = $_POST['filename'] ?? '';
+            logger($user->data()->id, LogCategories::LOG_CATEGORY_BACKUP_MANAGER, "Delete backup requested: {$filename}");
+
+            if (empty($filename)) {
+                ApiResponse::error('Backup filename required', 400)
+                    ->withLogging($user->data()->id, LogCategories::LOG_CATEGORY_BACKUP_ERROR, 'Delete backup: filename missing')
+                    ->send();
+            }
+
+            // Find and delete the backup file from any of the three directories
+            $deleted = false;
+            $types = ['automated', 'manual', 'rollback'];
+
+            foreach ($types as $type) {
+                $filepath = $backupDir . $type . '/' . basename($filename);
+
+                if (file_exists($filepath)) {
+                    if (unlink($filepath)) {
+                        $deleted = true;
+                        logger($user->data()->id, LogCategories::LOG_CATEGORY_BACKUP_MANAGER,
+                            "Backup deleted via API: {$filename} (type: {$type})");
+                        break;
+                    } else {
+                        ApiResponse::error('Failed to delete backup file', 500)
+                            ->withLogging($user->data()->id, LogCategories::LOG_CATEGORY_BACKUP_ERROR,
+                                "Failed to unlink backup file: {$filepath}")
+                            ->send();
+                    }
+                }
+            }
+
+            if (!$deleted) {
+                ApiResponse::error('Backup file not found', 404)
+                    ->withLogging($user->data()->id, LogCategories::LOG_CATEGORY_BACKUP_ERROR,
+                        "Backup file not found for deletion: {$filename}")
+                    ->send();
+            }
+
+            ApiResponse::success('Backup deleted successfully')
+                ->withDataArray(['filename' => $filename])
+                ->withLogging($user->data()->id, LogCategories::LOG_CATEGORY_BACKUP_MANAGER,
+                    "Backup deletion completed via API: {$filename}")
                 ->send();
             break;
 

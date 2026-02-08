@@ -34,8 +34,11 @@ if (!function_exists('processSettingsAutoCreation')) {
         ];
 
         // System Maintenance settings
+        // DEPRECATED: elan_backup_age is no longer used
+        // Backup retention is now configured in usersc/includes/config.php
+        // This setting is kept for backward compatibility only
         $maintenanceSettingsFields = [
-            'elan_backup_age' => ['type' => 'INT(11)', 'default' => '30', 'description' => 'Backup retention period in days']
+            // 'elan_backup_age' => ['type' => 'INT(11)', 'default' => '30', 'description' => 'Backup retention period in days']
         ];
 
         // Google Maps settings
@@ -271,25 +274,15 @@ $autoCreationMessages = processSettingsAutoCreation();
                     <small class="text-light">Backup and system maintenance settings</small>
                 </div>
                 <div class="card-body">
-                    <div class="form-group">
-                        <label for="elan_backup_age" class="font-weight-bold">
-                            <i class="fas fa-calendar-times"></i> Backup Retention Period
-                        </label>
-                        <div class="input-group">
-                            <input type="number"
-                                   step="1"
-                                   min="1"
-                                   max="365"
-                                   class="form-control ajxnum"
-                                   data-desc="Backup Age"
-                                   name="elan_backup_age"
-                                   id="elan_backup_age"
-                                   value="<?= $settings->elan_backup_age ?? '30' ?>">
-                            <div class="input-group-append">
-                                <span class="input-group-text">days</span>
-                            </div>
-                        </div>
-                        <small class="form-text text-muted">How long to keep automated backups before cleanup</small>
+                    <div class="alert alert-info">
+                        <i class="fas fa-info-circle"></i> <strong>Backup Configuration Moved</strong>
+                        <p class="mb-0 mt-2">Backup retention periods are now configured in <code>usersc/includes/config.php</code> for better application-wide consistency.</p>
+                        <p class="mb-0 mt-2 small"><strong>Configuration:</strong></p>
+                        <ul class="small mb-0 mt-1">
+                            <li><code>BACKUP_RETENTION_AUTOMATED</code> = 7 days</li>
+                            <li><code>BACKUP_RETENTION_MANUAL</code> = 30 days</li>
+                            <li><code>BACKUP_RETENTION_ROLLBACK</code> = 30 days</li>
+                        </ul>
                     </div>
                 </div>
             </div>

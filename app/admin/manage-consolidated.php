@@ -813,3 +813,4 @@ if (Input::exists('post')) {
     document.documentElement.setAttribute('data-csrf-token', '<?= $csrfToken ?>');
 </script>
 <script src="assets/manage-consolidated.js"></script>
+<script src="assets/backup-operations.js"></script>

@@ -1,0 +1,2 @@
+# This file ensures the automated backups directory is tracked by git
+# while ignoring actual backup files (see .gitignore)

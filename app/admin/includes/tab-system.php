@@ -18,7 +18,7 @@ use ElanRegistry\Exceptions\BackupException;
 // Initialize enhanced managers
 // Cast user ID to int for strict type safety across different PHP/database configurations
 $schemaManager = new EnhancedSchemaManager($db, (int)$user->data()->id);
-$backupManager = new BackupManager($db, $abs_us_root . $us_url_root . 'FIX/backups/', (int)$user->data()->id);
+$backupManager = new BackupManager($db, $abs_us_root . $us_url_root . BACKUP_BASE_DIR, (int)$user->data()->id);
 
 // Get list of FIX scripts
 $fixDirectory = $abs_us_root . $us_url_root . 'FIX/';
@@ -362,7 +362,7 @@ foreach ($fixScripts as $script) {
                     </div>
                 </div>
                 <div class="mt-2">
-                    <button type="button" class="btn btn-sm btn-outline-primary" onclick="runSchemaValidation()">
+                    <button type="button" class="btn btn-sm btn-outline-primary" onclick="runSchemaValidation(this)">
                         <i class="fas fa-check-double"></i> Validate Schema
                     </button>
                     <button type="button" class="btn btn-sm btn-outline-success ml-2" onclick="runSchemaMaintenance()">
@@ -497,7 +497,7 @@ foreach ($fixScripts as $script) {
             <button type="button" class="btn btn-outline-warning btn-sm" onclick="performBackupCleanup()">
                 <i class="fas fa-broom"></i> Cleanup Old Backups
             </button>
-            <button type="button" class="btn btn-outline-primary btn-sm ml-2" onclick="runSchemaValidation()">
+            <button type="button" class="btn btn-outline-primary btn-sm ml-2" onclick="runSchemaValidation(this)">
                 <i class="fas fa-check-circle"></i> Validate Schema
             </button>
         </div>

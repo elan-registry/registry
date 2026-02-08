@@ -12,5 +12,8 @@ DO NOT EVER use it to do anything that will echo text to the screen
 or it will break important functionality.
 */
 
+// Load global application configuration
+require_once $abs_us_root . $us_url_root . 'usersc/includes/config.php';
+
 // Load server globals for environment detection and URL construction
 require_once $abs_us_root . $us_url_root . 'usersc/includes/server_globals.php';

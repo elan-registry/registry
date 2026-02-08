@@ -15,8 +15,11 @@ declare(strict_types=1);
 // BackupManager class auto-loaded via custom autoloader
 // (now located in usersc/classes/admin/BackupManager.php)
 
-// Define backup directory constant to avoid duplication
-define('BACKUP_DIR_PATH', 'FIX/backups/');
+// Legacy backup directory constant for backward compatibility
+// Now defined in usersc/includes/config.php as BACKUP_BASE_DIR
+if (!defined('BACKUP_DIR_PATH')) {
+    define('BACKUP_DIR_PATH', BACKUP_BASE_DIR);
+}
 
 /**
  * Create standardized backup (compatibility wrapper)
@@ -28,7 +31,7 @@ define('BACKUP_DIR_PATH', 'FIX/backups/');
  * @throws Exception If backup creation fails
  * @deprecated Use BackupManager class directly
  */
-function createStandardizedBackup($scriptName, $tables = [], $type = 'automated') {
+function createStandardizedBackup(string $scriptName, array $tables = [], string $type = 'automated'): string {
     global $db, $abs_us_root, $us_url_root;
 
     // Create BackupManager instance
@@ -50,7 +53,7 @@ function createStandardizedBackup($scriptName, $tables = [], $type = 'automated'
  * @return array Backup statistics by type
  * @deprecated Use BackupManager::getEnhancedBackupStatistics() instead
  */
-function getBackupStatistics() {
+function getBackupStatistics(): array {
     global $db, $abs_us_root, $us_url_root;
 
     $backupDir = $abs_us_root . $us_url_root . BACKUP_DIR_PATH;
@@ -72,7 +75,7 @@ function getBackupStatistics() {
  * @return array Summary of cleanup actions
  * @deprecated Use BackupManager::performEnhancedCleanup() instead
  */
-function cleanupOldBackups() {
+function cleanupOldBackups(): array {
     global $db, $abs_us_root, $us_url_root;
 
     $backupDir = $abs_us_root . $us_url_root . BACKUP_DIR_PATH;
