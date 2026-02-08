@@ -347,7 +347,7 @@ if (!empty($_GET)) {
                                     <i class="fas fa-user text-primary"></i> Owner Name
                                 </dt>
                                 <dd class="col-sm-8">
-                                    <?= ucfirst($carData->fname) ?>
+                                    <?= !empty($carData->fname) ? ucfirst($carData->fname) : '<em class="text-muted">Not specified</em>' ?>
                                 </dd>
                                 
                                 <dt class="col-sm-4 text-muted">
