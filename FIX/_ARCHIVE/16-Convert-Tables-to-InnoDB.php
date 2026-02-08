@@ -60,7 +60,7 @@ set_error_handler(function($errno, $errstr, $errfile, $errline) {
 });
 
 $db = DB::getInstance();
-$backupManager = new BackupManager($db, $abs_us_root . $us_url_root . 'FIX/backups', (int)$user->data()->id);
+$backupManager = new BackupManager($db, $abs_us_root . $us_url_root . 'backups/', (int)$user->data()->id);
 
 $tablesToConvert = [
     'cars',

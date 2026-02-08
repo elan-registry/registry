@@ -50,7 +50,7 @@ set_error_handler(function($errno, $errstr, $errfile, $errline) {
 $db = DB::getInstance();
 
 // Optional: Initialize BackupManager if needed
-// $backupManager = new BackupManager($db, $abs_us_root . $us_url_root . 'FIX/backups', $user->data()->id);
+// $backupManager = new BackupManager($db, $abs_us_root . $us_url_root . 'backups', $user->data()->id);
 
 ?>
 

@@ -104,7 +104,7 @@ $oldBackupsCount = 0;
 
 try {
     // Check for old backups (using 30 days as threshold for prompt)
-    $backupBaseDir = $abs_us_root . $us_url_root . 'FIX/backups/';
+    $backupBaseDir = $abs_us_root . $us_url_root . BACKUP_BASE_DIR;
     $types = ['automated', 'manual', 'rollback'];
     $cutoffTime = time() - (30 * 24 * 60 * 60); // 30 days ago
 
