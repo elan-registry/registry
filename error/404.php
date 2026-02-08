@@ -54,7 +54,7 @@ $logMessage = sprintf(
     substr($user_agent, 0, 150)
 );
 
-if (function_exists('logger')) {
+if (function_exists('logger') && class_exists('LogCategories')) {
     logger($userId, LogCategories::LOG_CATEGORY_PAGE_NOT_FOUND, $logMessage);
 }
 ?>
@@ -208,7 +208,7 @@ if (function_exists('logger')) {
     <nav class="navbar navbar-expand-lg navbar-dark">
         <div class="container">
             <a class="navbar-brand" href="/">
-                <img src="/usersc/templates/ElanRegistry/assets/images/Lotus-logo-40x40.png"
+                <img src="../usersc/templates/ElanRegistry/assets/images/Lotus-logo-40x40.png"
                      alt="Lotus Elan Registry"
                      onerror="this.parentElement.innerHTML='Lotus Elan Registry'">
             </a>

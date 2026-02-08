@@ -272,7 +272,7 @@ $iconType = $errorInfo['icon_type'];
     <nav class="navbar navbar-expand-lg navbar-dark">
         <div class="container">
             <a class="navbar-brand" href="/">
-                <img src="/usersc/templates/ElanRegistry/assets/images/Lotus-logo-40x40.png"
+                <img src="../usersc/templates/ElanRegistry/assets/images/Lotus-logo-40x40.png"
                      alt="Lotus Elan Registry"
                      onerror="this.parentElement.innerHTML='Lotus Elan Registry'">
             </a>
