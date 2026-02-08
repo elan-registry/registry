@@ -21,7 +21,7 @@ one senior-test-engineer per test suite type).
 | **Explore** | `Explore` | `haiku` | Codebase research: find files, understand patterns, trace call chains. |
 | **Plan** | `Plan` | `sonnet` | Design implementation strategy, identify critical files, evaluate trade-offs. |
 | **Software Developer** | `software-developer` | `sonnet` | **Primary coding agent.** Write and update application code. |
-| **Senior Architect** | `senior-architect` | `sonnet` | Architectural review, security audit, GDPR compliance, code review. |
+| **Senior Architect** | `senior-architect` | `sonnet` | Architectural review, security audit, GDPR compliance, database impact, code review. |
 | **Senior Product Manager** | `senior-product-manager` | `sonnet` | Issue refinement, scope definition, acceptance criteria, milestone planning. |
 | **Senior Test Engineer** | `senior-test-engineer` | `sonnet` | Test strategy, writing PHPUnit/Playwright tests, debugging failures. |
 | **Technical Documentation Writer** | `technical-documentation-writer` | `haiku` | Create/update docs, README, CLAUDE.md, API docs, release notes. |
@@ -119,11 +119,38 @@ issue touches different areas:
 - One agent to find existing patterns and conventions relevant to the change
 - One agent to trace dependencies and call chains
 
+**Key documentation to reference during exploration:**
+
+Each Explore agent should check these project documentation files for patterns,
+conventions, and existing functionality:
+
+- **USERSPICE_FUNCTIONS.md** - Existing UserSpice framework functions (avoid duplication)
+- **CLASSES.md** - Custom application classes (Car, CarView, ElanRegistryOwner, etc.)
+- **CODING_STANDARDS.md** - PHP 8+ typing, structure, naming conventions
+- **ERROR_HANDLING.md** - Error handling patterns, API response format, exception classes
+- **DATABASE.md** - Database schema, relationships, audit trail patterns
+- **DEPLOYMENT.md** - Environment-specific considerations
+
 Example: For a transfer system issue, launch parallel Explore agents for:
 
 - `app/cars/` (transfer pages and actions)
-- `usersc/classes/` (related classes)
+- `usersc/classes/` (related classes, check CLASSES.md)
 - `tests/` (existing test coverage)
+
+Each agent should also verify: Are similar features already implemented? Do they
+follow UserSpice patterns or custom patterns? What security/database considerations
+apply?
+
+#### For Bug Issues (bug label): Investigate Testing Gaps
+
+If the issue has a `bug` label, **add a dedicated Explore agent** to investigate:
+
+- Why wasn't this bug caught by existing tests?
+- What test coverage gap allowed this to reach production?
+- Are there similar untested code paths in related areas?
+- What type of test would have prevented this (unit, integration, browser)?
+
+This "escape analysis" is critical for preventing similar bugs. Document findings.
 
 Wait for Explore results before proceeding to questions.
 
@@ -197,29 +224,131 @@ and your answers. I'll ask clarifying questions as I refine the approach."
 4. **Ask follow-up questions as needed**: Don't batch questions - ask them
    naturally as you work through the planning process.
 
-5. **Consult specialized agents**: Before finalizing the plan, determine which
+5. **Verify UserSpice Integration** (Step 7.1): Before finalizing the approach,
+   check if the solution duplicates existing UserSpice functionality:
+
+   - Review USERSPICE_FUNCTIONS.md for relevant framework functions
+   - Ask: "Does UserSpice provide this functionality already?"
+   - If yes: Leverage UserSpice instead of custom implementation
+   - If no: Verify the custom approach doesn't conflict with UserSpice patterns
+
+   Document the UserSpice integration decision in your plan.
+
+6. **Assess Database and Security Impacts** (Step 7.2): For issues that may
+   affect the database, security, or sensitive operations, ask these questions:
+
+   - Does this change affect database schema, triggers, or audit trails?
+   - Does this involve user authentication, session handling, or CSRF protection?
+   - Does this handle sensitive data (user info, payment data, etc.)?
+   - Are there GDPR compliance implications?
+   - Does this require prepared statements for all database queries?
+   - Does this require input validation or sanitization?
+
+   Document any database, security, or compliance requirements in your plan.
+
+   **For Bug Issues: Document Escape Analysis** (Step 7.2.5): If the issue
+   has a `bug` label, create an "Escape Analysis" section in your plan:
+
+   - **Root Cause:**
+     - What specifically caused the bug?
+     - Why did it reach production?
+
+   - **Testing Gap:**
+     - What existing tests should have caught this?
+     - Why were those tests missing or insufficient?
+     - What code paths were untested?
+
+   - **Preventive Measures:**
+     - What automated tests will prevent this bug from recurring?
+     - Should be: unit test, integration test, or browser test (or combination)?
+     - Are there similar untested code paths needing tests?
+
+   Example: "Bug: Form doesn't validate negative car prices. Root cause: numeric
+   validation was removed in refactor. Testing gap: no unit test for price
+   validation. Preventive: Add PHPUnit test for price input validation."
+
+   This analysis will be included in the implementation plan and highlighted in
+   the PR description.
+
+7. **Consult specialized agents** (Step 7.3): Before finalizing the plan, determine which
    agents are needed based on the issue type, then launch them **in parallel**:
 
    - **senior-architect** (always): Provide the issue details, Explore results,
-     your research findings, and proposed approach. Ask for review of: code
-     structure, security implications, maintainability, GDPR compliance if
-     applicable, and adherence to project patterns.
+     your research findings, and proposed approach. Ask for review of:
+
+     **Architecture & Standards:**
+     - Code structure and PHP 8+ type hints compliance
+     - Adherence to CODING_STANDARDS.md
+     - Alignment with existing project patterns (CLASSES.md, error handling)
+     - UserSpice integration (don't duplicate framework functionality)
+
+     **Security Review:**
+     - CSRF token handling (all forms must have tokens)
+     - SQL injection prevention (all queries must use prepared statements)
+     - Input validation and sanitization (all user inputs)
+     - XSS prevention (output escaping)
+     - Session/authentication security
+     - Sensitive data handling (never commit credentials)
+
+     **Database & Compliance:**
+     - Database schema changes and trigger impacts
+     - Audit trail implications (when records are modified)
+     - GDPR compliance (if handling personal data)
+     - Data retention and cleanup policies
+
+     **Maintainability:**
+     - Code clarity and documentation
+     - Test coverage adequacy
+     - Future refactoring considerations
 
    - **senior-test-engineer** (when code changes are made): Provide the issue
-     details and proposed implementation. Ask for a test strategy: PHPUnit tests
-     (unit, integration, regression), Playwright browser tests, edge cases, and
-     whether existing tests need updating. Launch **separate instances** if both
-     PHPUnit and Playwright tests are needed.
+     details and proposed implementation. Ask for a comprehensive test strategy
+     using this checklist (skip items that don't apply):
 
-   - **technical-documentation-writer** (when public API, config, user-facing
-     behavior, or docs change): Provide the issue details and proposed changes.
-     Ask which docs need updating and what changes should cover.
+     **Test Strategy Checklist:**
+     - [ ] Unit tests (PHPUnit) - test individual functions/methods
+     - [ ] Integration tests (PHPUnit) - test component interactions
+     - [ ] Regression tests - test that existing functionality still works
+     - [ ] Edge case tests - boundary conditions, error scenarios
+     - [ ] Browser tests (Playwright) - UI interaction, form submission, navigation
+     - [ ] Security tests - CSRF validation, XSS prevention, injection prevention
+     - [ ] Database tests - audit trail creation, trigger execution if applicable
+     - [ ] Existing tests - need updates due to API/behavior changes?
 
-   - **Skip agents that aren't relevant**: Internal refactoring doesn't need
-     the docs agent. Docs-only changes don't need the test agent.
+     Launch **separate instances** if both PHPUnit and Playwright tests are
+     needed.
 
-6. **Incorporate agent feedback into the plan**: Merge feedback into a single
+   - **technical-documentation-writer** (when changes affect documentation):
+     Use the **Documentation Requirements Matrix** below to determine if docs
+     updates are needed. Provide the agent with: issue details, proposed changes,
+     and which docs to update.
+
+     **Documentation Requirements Matrix:**
+
+     | Change Type | Documentation to Update |
+     | --- | --- |
+     | **Database schema changes** | DATABASE.md, CLASSES.md (if class models change) |
+     | **API endpoints added/changed** | FRONTEND_API_GUIDE.md, ERROR_HANDLING.md (if response format changes) |
+     | **New PHP classes/methods** | CLASSES.md, USERSPICE_QUICK_LOOKUP.md (if public API) |
+     | **User-visible features** | User guides (in `docs/user/` if exists), release notes |
+     | **Configuration/environment changes** | ENVIRONMENT.md, DEPLOYMENT.md |
+     | **Coding standards violations fixed** | CODING_STANDARDS.md (if pattern changed) |
+     | **Security patterns added** | ERROR_HANDLING.md, CODING_STANDARDS.md |
+     | **UserSpice integration changes** | Integration guide (Wiki), USERSPICE_FUNCTIONS.md |
+     | **Testing patterns/infrastructure** | TESTING.md |
+     | **Deployment procedure changes** | DEPLOYMENT.md, QUICK_REFERENCE.md |
+
+     Then ask: "Based on these changes, which documentation should be updated?"
+
+   - **Skip agents that aren't relevant**: Internal refactoring that doesn't
+     change APIs doesn't need the docs agent. Docs-only changes don't need the
+     test agent.
+
+8. **Incorporate agent feedback into the plan**: Merge feedback into a single
    comprehensive plan. Include sections only for agents that were consulted:
+   - **Bug Escape Analysis** (from Step 7.2.5, if bug issue)
+   - **UserSpice Integration** (from Step 7.1)
+   - **Database & Security Considerations** (from Step 7.2)
    - **Architecture & Design** (from senior-architect)
    - **Implementation Steps** (your plan, informed by architect feedback)
    - **Test Plan** (from senior-test-engineer, if consulted)
@@ -273,8 +402,14 @@ Once the user approves the plan, execute using agents strategically:
    - Relevant test suites (verify the test agent's tests pass)
 
 5. **Launch senior-architect agent** for final review of the completed changes.
-   Provide the diff of all changes and ask for a code review focusing on
-   security, maintainability, and adherence to project standards.
+   Provide the diff of all changes and ask for comprehensive code review:
+
+   - **Security verification**: CSRF tokens, prepared statements, input validation, XSS prevention
+   - **Database verification**: Schema consistency, trigger execution, audit trail logging
+   - **Code quality**: PHP 8+ types, readability, maintainability
+   - **Standards adherence**: CODING_STANDARDS.md, error handling patterns, project conventions
+   - **Test coverage**: Are tests comprehensive? Do they cover security and edge cases?
+   - **Documentation**: Are docs complete and accurate?
 
 6. Address any issues raised by the architect review. If fixes are needed,
    launch software-developer agents again for the corrections.
@@ -293,7 +428,39 @@ GitHub closing keywords in the PR body to auto-close the issue on merge:
 Closes #ISSUE_NUMBER
 ```
 
-Example PR creation:
+**For Bug Fixes:** Include the escape analysis in the PR description so reviewers
+understand:
+
+- What caused the bug
+- Why it escaped testing
+- What automated tests prevent recurrence
+
+Example PR creation for a bug:
+
+```bash
+gh pr create --base milestone/v2.14.0 --title "Bug #369: Fix negative price validation" --body "$(cat <<'EOF'
+## Summary
+- Added price input validation to prevent negative values
+- Added PHPUnit test for price validation
+
+## Bug Escape Analysis
+**Root Cause:** Numeric validation was removed during form refactor
+**Testing Gap:** No unit test for price input validation; code path was untested
+**Preventive Measures:** New PHPUnit test validates positive/negative/zero prices
+
+Closes #369
+
+## Test plan
+- [ ] New PHPUnit test passes: tests/Unit/PriceValidationTest.php
+- [ ] composer test:quick passes
+- [ ] Pre-commit hooks pass
+
+🤖 Generated with [Claude Code](https://claude.com/claude-code)
+EOF
+)"
+```
+
+Example PR creation for non-bug issues:
 
 ```bash
 gh pr create --base milestone/v2.14.0 --title "Issue #369: Add strict types to edit.php" --body "$(cat <<'EOF'
@@ -346,6 +513,20 @@ for the milestone at `docs/releases/RELEASE_NOTES_vX.Y.Z.md`:
 - **Test thoroughly** - run diagnostics and tests before considering work complete
 - **Launch Explore agents early** - use parallel Explore agents in Step 5 to
   build context before asking questions or planning
+- **Check documentation during Explore** - agents must review USERSPICE_FUNCTIONS.md,
+  CLASSES.md, CODING_STANDARDS.md, and other relevant docs for patterns
+- **Investigate testing gaps for bugs** (Step 5 & 7.2.5) - For `bug` labeled issues,
+  analyze why the bug escaped testing and document preventive automated tests
+- **Verify UserSpice integration** (Step 7.1) - do not duplicate framework
+  functionality; leverage existing UserSpice functions
+- **Assess database and security impacts** (Step 7.2) - identify schema changes,
+  audit trail impacts, security requirements, and GDPR implications upfront
+- **Security architecture review** - senior-architect must verify CSRF tokens,
+  prepared statements, input validation, XSS prevention, and data handling
+- **Mandatory test checklist** - test engineer uses the provided checklist to
+  identify all test types needed (unit, integration, regression, browser, security)
+- **Documentation requirements matrix** - use the matrix to determine which docs
+  need updating based on the change type
 - **Only invoke agents that are needed** - match agents to the issue type;
   skip docs agent for internal refactoring, skip test agent for docs-only changes
 - **Scale agents up** - launch multiple instances of the same agent type when
@@ -422,13 +603,21 @@ User: Only filtered results
 You: [enters plan mode]
 [asks more questions as they arise]
 
+Now let me verify UserSpice integration and assess database/security impacts...
+
+[checks USERSPICE_FUNCTIONS.md for existing export functionality]
+[identifies that DataTables has built-in export capabilities - leverage UserSpice]
+
+[assesses database impacts: export doesn't require schema changes, no new audit trails]
+[assesses security: export data is already public, CSRF token required on form]
+
 Now let me consult the specialized agents for their input...
 
 [launches IN PARALLEL via Task tool:
- - senior-architect: review proposed approach
- - senior-test-engineer (PHPUnit): unit/integration test strategy
+ - senior-architect: review proposed approach (including security/database verification)
+ - senior-test-engineer (PHPUnit): unit/integration/security test strategy
  - senior-test-engineer (Playwright): browser test strategy
- - technical-documentation-writer: docs impact assessment]
+ - technical-documentation-writer: docs impact assessment (using matrix)]
 
 [incorporates feedback into plan]
 [exits plan mode]
@@ -460,6 +649,133 @@ You: [commits changes]
 
 PR created: feature/423-car-data-export → milestone/v3.2.0
 Issue #423 will close automatically when the PR is merged.
+```
+
+## Project-Specific Enhancements
+
+This workflow has been customized for the Elan Registry PHP project with emphasis on:
+
+### 1. Documentation Reference During Exploration (Step 5)
+
+- Explore agents explicitly check USERSPICE_FUNCTIONS.md, CLASSES.md, CODING_STANDARDS.md
+- Prevents duplication of UserSpice framework functionality
+- Ensures adherence to project patterns from the start
+
+### 2. UserSpice Integration Verification (Step 7.1)
+
+- Mandatory check that solutions don't duplicate UserSpice functions
+- Encourages leveraging the framework before custom implementation
+- Reduces code complexity and maintenance burden
+
+### 3. Database & Security Assessment (Step 7.2)
+
+- Upfront identification of database schema, trigger, and audit trail impacts
+- Security checklist: CSRF, SQL injection, input validation, XSS, data handling
+- GDPR compliance evaluation
+- Prevents security oversights and database issues late in development
+
+### 4. Enhanced Security Architecture Review
+
+- Senior-architect review includes explicit security criteria:
+  - CSRF token validation, prepared statements, input sanitization, XSS prevention
+  - Session/auth security, sensitive data handling
+- Database and trigger impact verification
+- Compliance checklist (GDPR, data retention)
+
+### 5. Comprehensive Test Strategy Checklist (Step 7.3)
+
+- Senior-test-engineer uses structured checklist, not open-ended questions
+- Covers: unit, integration, regression, edge case, security, database, and browser tests
+- Reduces risk of missing test types (especially security and regression tests)
+
+### 6. Documentation Requirements Matrix
+
+- Clear mapping of change types to required documentation updates
+- Prevents documentation rot and keeps docs in sync with code
+- Guides technical-documentation-writer on scope
+
+### 7. Enhanced Code Review Process (Step 10)
+
+- Final architect review includes security and database verification
+- Ensures comprehensive quality gate before PR
+
+### 8. Bug-Specific Escape Analysis (For bug labels)
+
+- **During Explore (Step 5)**: Investigate why the bug wasn't caught by existing tests
+- **During Planning (Step 7)**: Create an escape analysis documenting root cause and test gaps
+- **Test Strategy**: Define new automated tests to prevent similar bugs (unit, integration, e2e)
+- **PR Documentation**: Include escape analysis and preventive measures in PR description
+
+## Bug Issue Example Flow
+
+Here's how a bug issue flows through the enhanced workflow:
+
+```text
+User: /issue 512
+
+You: I'll help you work on issue #512. Let me fetch the details...
+
+Issue #512: Car price accepts negative values
+Status: Open
+Labels: bug
+Milestone: v2.16.0
+
+I see this is a bug issue. I'll create a branch named `bug/512-negative-price-validation`.
+Does this work?
+
+User: Yes
+
+You: [creates branch]
+
+Created branch `bug/512-negative-price-validation` from `milestone/v2.16.0`.
+
+Let me explore the code and investigate why this bug wasn't caught by tests...
+
+[launches 2 Explore agents IN PARALLEL:
+ - Explore agent 1: app/cars/ (price input handling and validation)
+ - Explore agent 2: tests/ (existing validation tests, why gap exists)]
+
+[Explore agents investigate:]
+- Price input in car registration form doesn't validate for negative values
+- Recent refactor removed validation logic from form processing
+- No PHPUnit test exists for price input validation
+- Similar price inputs in other forms (update car) also lack validation tests
+
+Based on the investigation:
+
+**Why it escaped:** Price validation was removed in a refactor, but no regression
+tests existed. The input acceptance wasn't covered by PHPUnit or browser tests.
+
+Should I proceed with understanding the full scope and creating a preventive
+test strategy?
+
+User: Yes, continue
+
+[enters plan mode]
+[asks clarifying questions about expected behavior]
+
+User: Price should reject negatives and zero; minimum is $1
+
+Now let me create the escape analysis and preventive measures...
+
+[documents in plan:]
+**Bug Escape Analysis:**
+- Root Cause: Price validation removed in form refactor (commit xyz)
+- Testing Gap: No unit test for price validation; code path never tested
+- Preventive: Add PHPUnit test for price input validation
+- Related: Other price inputs (car update form) also need similar tests
+
+[launches senior-architect for review]
+[launches senior-test-engineer with explicit test strategy for validation tests]
+
+Here's my plan with escape analysis and preventive tests...
+
+[after approval]
+
+[implements fix + validation]
+[writes comprehensive tests for price validation]
+
+[creates PR with escape analysis in description]
 ```
 
 ## Plan Mode Question Guidelines
