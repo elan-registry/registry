@@ -34,44 +34,82 @@ async function setupAuth() {
 
   try {
     console.log('📝 Navigating to TEST environment login page...');
-    await page.goto('https://test.elanregistry.org/users/login.php');
+    // Use usersc/login.php (customized version with security validation)
+    await page.goto('https://test.elanregistry.org/usersc/login.php');
     await page.waitForLoadState('networkidle');
 
     console.log('✍️  Filling in credentials...');
-    await page.fill('input[name="username"], input[type="text"]', username);
-    await page.fill('input[name="password"], input[type="password"]', password);
+
+    // Wait for form fields to be available
+    await page.waitForSelector('input[name="username"]', { timeout: 5000 });
+    await page.waitForSelector('input[name="password"]', { timeout: 5000 });
+
+    // Fill in username and password using correct selectors
+    console.log('  → Entering username...');
+    await page.fill('input[name="username"]', username);
+    console.log('  → Entering password...');
+    await page.fill('input[name="password"]', password);
+
+    // Click the submit button to submit the form
+    console.log('🔓 Submitting login form...');
+    await page.waitForSelector('button[type="submit"]', { timeout: 5000 });
+    await page.click('button[type="submit"]');
 
     console.log('\n' + '='.repeat(70));
     console.log('⚠️  IMPORTANT INSTRUCTIONS:');
     console.log('='.repeat(70));
-    console.log('1. Look at the browser window that just opened');
-    console.log('2. If there is a CAPTCHA, solve it now');
-    console.log('3. Click the LOGIN/SUBMIT button');
-    console.log('4. Wait for the page to redirect after successful login');
-    console.log('\n⏳ This script will wait up to 5 minutes for you to complete the login...');
+    console.log('1. If there is a CAPTCHA, solve it now');
+    console.log('2. If 2FA/TOTP is required, enter your code');
+    console.log('3. Wait for successful redirect after login');
+    console.log('\n⏳ This script will wait up to 5 minutes for redirect...');
     console.log('='.repeat(70) + '\n');
 
     // Wait for navigation away from login page (5 minute timeout)
     try {
-      await page.waitForFunction(
-        () => !window.location.href.includes('login.php'),
-        { timeout: 300000 } // 5 minutes
-      );
+      console.log('⏳ Waiting for login redirect (this may take a moment)...');
 
-      await page.waitForLoadState('networkidle');
+      // Wait for either:
+      // 1. URL to change away from login.php, OR
+      // 2. Dashboard/account page elements to appear
+      await Promise.race([
+        page.waitForFunction(
+          () => !window.location.href.includes('login.php'),
+          { timeout: 300000 } // 5 minutes
+        ),
+        page.waitForSelector('[data-testid="dashboard"], .account-page, .app-container',
+          { timeout: 300000 }).catch(() => {}) // Catch but allow other condition to win
+      ]);
+
+      await page.waitForLoadState('networkidle').catch(() => {});
 
       const currentUrl = page.url();
       console.log(`\n✅ Login successful! Redirected to: ${currentUrl}`);
     } catch (timeoutError) {
       const currentUrl = page.url();
-      console.log(`\n⏱️  Timeout waiting for login. Current URL: ${currentUrl}`);
+      console.log(`\n⏱️  Timeout or error waiting for login redirect.`);
+      console.log(`Current URL: ${currentUrl}`);
 
       if (currentUrl.includes('login')) {
-        console.log('❌ Still on login page. Login may have failed or timed out.');
-        console.log('Please try running the script again.');
-        process.exit(1);
-      } else {
-        console.log('✅ Login appears successful (moved away from login page)');
+        console.log('❌ Still on login page after timeout.');
+        console.log('\nPossible issues:');
+        console.log('- Invalid credentials (check 1Password vault)');
+        console.log('- CAPTCHA present (and not auto-solved)');
+        console.log('- 2FA/TOTP required (browser window timed out waiting for input)');
+        console.log('- Network connectivity issue');
+        console.log('\n📝 The browser window should still be open. Please check and complete login if needed.');
+        console.log('Script will continue waiting for 2 more minutes...\n');
+
+        // Give user 2 more minutes to complete login manually if needed
+        try {
+          await page.waitForFunction(
+            () => !window.location.href.includes('login.php'),
+            { timeout: 120000 } // 2 more minutes
+          );
+          console.log('✅ Login completed successfully!');
+        } catch (finalError) {
+          console.error('❌ Login failed. Please try again.');
+          process.exit(1);
+        }
       }
     }
 
