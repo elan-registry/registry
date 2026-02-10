@@ -117,6 +117,12 @@ export default [
                 ELAN_CONFIG: "readonly",
                 img_path: "writable",
                 img_root: "readonly",
+
+                // Admin panel globals (defined in manage-consolidated.js)
+                showNotification: "readonly",
+
+                // Standard browser globals
+                event: "readonly",
             },
         },
         rules: {

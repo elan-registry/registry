@@ -2,25 +2,25 @@
  * backup-operations.js
  * Handles AJAX requests for backup management in the admin panel
  * Includes proper CSRF token handling via ElanRegistryAPI
+ *
+ * These functions are intentionally declared in global scope as they are
+ * called from HTML onclick handlers in the admin panel.
  */
 
-/* eslint-disable no-unused-vars, no-undef */
+/* eslint-disable no-implicit-globals */
 /* exported createManualBackup, listBackupFiles, downloadBackup, deleteBackup, performBackupCleanup, runSchemaValidation */
 
 /**
  * Create a manual backup via AJAX
  */
-// eslint-disable-next-line no-unused-vars
 function createManualBackup() {
     'use strict';
 
-    // eslint-disable-next-line no-undef
     const reason = window.prompt('Enter backup reason (or leave blank for default):', 'Admin Panel Manual Backup');
     if (reason === null) {
         return; // User cancelled
     }
 
-    // eslint-disable-next-line no-undef
     const button = event.target;
     const originalText = button.innerHTML;
     button.disabled = true;
@@ -28,7 +28,6 @@ function createManualBackup() {
 
     // Use ElanRegistryAPI for proper CSRF token handling
     const endpoint = window.elanUrlRoot ? window.elanUrlRoot.replace(/\/$/, '') + '/app/admin/includes/system/backup-operations.php' : '/app/admin/includes/system/backup-operations.php';
-    // eslint-disable-next-line no-undef
     new ElanRegistryAPI().post(endpoint, {
         action: 'create_manual_backup',
         reason: reason
@@ -38,13 +37,11 @@ function createManualBackup() {
                 // Refresh backup list
                 listBackupFiles();
             } else {
-                // eslint-disable-next-line no-undef
                 showNotification(`Backup failed: ${response.message}`, 'error');
             }
         })
         .catch(error => {
             console.error('Backup creation error:', error);
-            // eslint-disable-next-line no-undef
             showNotification(`Error: ${error.message || 'Failed to create backup'}`, 'error');
         })
         .finally(() => {
@@ -64,7 +61,6 @@ function listBackupFiles() {
 
     // Use ElanRegistryAPI for proper CSRF token handling
     const endpoint = window.elanUrlRoot ? window.elanUrlRoot.replace(/\/$/, '') + '/app/admin/includes/system/backup-operations.php' : '/app/admin/includes/system/backup-operations.php';
-    // eslint-disable-next-line no-undef
     new ElanRegistryAPI().post(endpoint, {
         action: 'list_backups'
     })
@@ -195,7 +191,6 @@ function downloadBackup(filename) {
  * Delete a backup file
  * @param {string} filename - Backup filename
  */
-// eslint-disable-next-line no-unused-vars
 function deleteBackup(filename) {
     'use strict';
 
@@ -217,12 +212,10 @@ function deleteBackup(filename) {
 
     newConfirmButton.addEventListener('click', function performDelete() {
         // Close modal
-        // eslint-disable-next-line no-undef
         $('#confirmationModal').modal('hide');
 
         // Perform deletion
         const endpoint = window.elanUrlRoot ? window.elanUrlRoot.replace(/\/$/, '') + '/app/admin/includes/system/backup-operations.php' : '/app/admin/includes/system/backup-operations.php';
-        // eslint-disable-next-line no-undef
         new ElanRegistryAPI().post(endpoint, {
             action: 'delete_backup',
             filename: filename
@@ -231,26 +224,22 @@ function deleteBackup(filename) {
                 if (response.success) {
                     listBackupFiles(); // Refresh list
                 } else {
-                    // eslint-disable-next-line no-undef
                     showNotification(`Delete failed: ${response.message}`, 'error');
                 }
             })
             .catch(error => {
                 console.error('Delete backup error:', error);
-                // eslint-disable-next-line no-undef
                 showNotification(`Error: ${error.message || 'Failed to delete backup'}`, 'error');
             });
     });
 
     // Show modal
-    // eslint-disable-next-line no-undef
     $('#confirmationModal').modal('show');
 }
 
 /**
  * Perform backup cleanup (remove old backups)
  */
-// eslint-disable-next-line no-unused-vars
 function performBackupCleanup() {
     'use strict';
 
@@ -272,7 +261,6 @@ function performBackupCleanup() {
 
     newConfirmButton.addEventListener('click', function performCleanup() {
         // Close modal
-        // eslint-disable-next-line no-undef
         $('#confirmationModal').modal('hide');
 
         const button = event.target;
@@ -281,7 +269,6 @@ function performBackupCleanup() {
         button.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Cleaning up...';
 
     const endpoint = window.elanUrlRoot ? window.elanUrlRoot.replace(/\/$/, '') + '/app/admin/includes/system/backup-operations.php' : '/app/admin/includes/system/backup-operations.php';
-    // eslint-disable-next-line no-undef
     new ElanRegistryAPI().post(endpoint, {
         action: 'cleanup_backups'
     })
@@ -290,7 +277,6 @@ function performBackupCleanup() {
             // Refresh stats
             location.reload();
         } else {
-            // eslint-disable-next-line no-undef
             showNotification(`Cleanup failed: ${response.message}`, 'error');
         }
     })
@@ -305,19 +291,16 @@ function performBackupCleanup() {
     });
 
     // Show modal
-    // eslint-disable-next-line no-undef
     $('#confirmationModal').modal('show');
 }
 
 /**
  * Run schema validation
  */
-// eslint-disable-next-line no-unused-vars
 function runSchemaValidation(button) {
     'use strict';
 
     if (!button) {
-        // eslint-disable-next-line no-undef
         console.error('Button element required for validation');
         return;
     }
@@ -327,7 +310,6 @@ function runSchemaValidation(button) {
     button.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Validating...';
 
     const schemaEndpoint = window.elanUrlRoot ? window.elanUrlRoot.replace(/\/$/, '') + '/app/admin/includes/system/schema-operations.php' : '/app/admin/includes/system/schema-operations.php';
-    // eslint-disable-next-line no-undef
     new ElanRegistryAPI().post(schemaEndpoint, {
         action: 'validate_schema'
     })
@@ -335,7 +317,6 @@ function runSchemaValidation(button) {
         if (response.success) {
             displayValidationResults(response);
         } else {
-            // eslint-disable-next-line no-undef
             showNotification(`Validation failed: ${response.message}`, 'error');
         }
     })
