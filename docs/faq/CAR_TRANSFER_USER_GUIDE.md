@@ -6,21 +6,21 @@ The Car Ownership Transfer Request system allows you to request ownership of a c
 
 ## When to Use Transfer Requests
 
+**Transfer requests** are only for cars that already exist in the registry under another owner's name.
+If a car does not exist previously in the registry, please go to the section **How to add a car**.
+
 Use the transfer request system when:
 - ✅ You've purchased a car from another registry member
-- ✅ A car ownership has changed but the registry still shows the previous owner
+- ✅ A car ownership has changed but the registry still shows a previous owner
 - ✅ You need to claim ownership of a car with a duplicate chassis number entry
-- ✅ There's been a private sale that needs to be reflected in the registry
-
-**Note:** Transfer requests are for cars that already exist in the registry under another owner's name.
 
 ## Prerequisites
 
 Before requesting a transfer, ensure you have:
-- ✅ **Active registry account** - You must be logged in to the Lotus Elan Registry
-- ✅ **Accurate car information** - Chassis number, year, model details
+- ✅ **Active registry account** - You must be registered as a user in the Lotus Elan Registry and be logged in
+- ✅ **Contact information** - Your account email address for notifications must be up-to-date
+- ✅ **Accurate car information** - You must have chassis number, year, model details, even if the record hasn't
 - ✅ **Proof of ownership** - Be prepared to provide documentation if requested
-- ✅ **Contact information** - Current email address for notifications
 
 ## Step-by-Step Transfer Request Process
 
@@ -42,7 +42,7 @@ Before requesting a transfer, ensure you have:
 
 Fill out the required information:
 
-**Car Details (Pre-filled from registry):**
+**Car Details (Pre-filled from existing record):**
 - Chassis Number
 - Year
 - Model/Series
