@@ -138,9 +138,9 @@ try {
 }
 
 // Function to check if script has been run
-function getScriptRunStatus($scriptName) {
+function getScriptRunStatus($scriptName): array {
     global $db;
-    
+
     try {
         // Check if this script has a completion record
         $result = $db->query("SELECT completed_at FROM fix_script_runs WHERE script_name = ? ORDER BY completed_at DESC LIMIT 1", [$scriptName]);
@@ -153,14 +153,14 @@ function getScriptRunStatus($scriptName) {
         }
 
         return ['has_run' => false, 'last_run' => null];
-        
+
     } catch (Exception) {
         return ['has_run' => false, 'last_run' => null];
     }
 }
 
 // Function to extract script description from file
-function getScriptDescription($filename) {
+function getScriptDescription($filename): string {
     global $abs_us_root, $us_url_root;
     
     $descriptions = [

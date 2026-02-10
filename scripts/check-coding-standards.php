@@ -76,10 +76,13 @@ class CodingStandardsChecker
 
         foreach ($iterator as $file) {
             if ($file->isFile() && $file->getExtension() === 'php') {
-                // Skip vendor and node_modules
+                // Skip vendor, third-party, and test code
                 $path = $file->getPathname();
                 if (strpos($path, '/vendor/') !== false ||
                     strpos($path, '/node_modules/') !== false ||
+                    strpos($path, '/usersc/plugins/') !== false ||
+                    strpos($path, '/FIX/_ARCHIVE/') !== false ||
+                    strpos($path, '/tests/') !== false ||
                     strpos($path, '/.git/') !== false) {
                     continue;
                 }
