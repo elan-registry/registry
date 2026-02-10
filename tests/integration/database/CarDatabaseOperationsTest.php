@@ -72,10 +72,10 @@ final class CarDatabaseOperationsTest extends IntegrationTestCase
             'token' => Token::generate(),
             'user_id' => $this->testUserId,
             'year' => '1973',
-            'model' => 'Elan S4',
-            'series' => 'S4',
-            'variant' => 'SE',
-            'type' => 'FHC',
+            'model' => 'Sprint|FHC|36',  // Updated to new pipe-delimited format
+            'series' => 'Sprint',
+            'variant' => 'FHC',
+            'type' => '36',
             'chassis' => 'TST' . substr(uniqid(), -9),  // Keep within 15 char limit
             'color' => 'Integration Red',
             'engine' => 'ENG' . substr(uniqid(), -9)  // Keep within 15 char limit
@@ -340,10 +340,10 @@ final class CarDatabaseOperationsTest extends IntegrationTestCase
             'token' => Token::generate(),
             'user_id' => $this->testUserId,
             'year' => '1968',
-            'model' => 'Elan',
+            'model' => 'S4|FHC|36',  // Updated to new pipe-delimited format
             'series' => 'S4',
-            'variant' => 'SE',
-            'type' => 'FHC',
+            'variant' => 'FHC',
+            'type' => '36',
             'chassis' => 'SLD' . substr(uniqid(), -9),  // Keep within 15 char limit
             'color' => 'Red'
         ];
