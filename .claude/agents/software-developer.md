@@ -1,7 +1,7 @@
 ---
 name: software-developer
 description: "Use this agent when you need to write or update application code. This is the primary coding agent for implementing features, fixing bugs, refactoring, and applying coding standards. Launch multiple instances in parallel to work on independent files or subsystems simultaneously.\n\n<example>\nContext: The approved plan has 3 files to modify in different subsystems.\nassistant: \"I'll launch 3 software-developer agents in parallel, one per file, to implement the changes efficiently.\"\n<commentary>\nSince the files are independent, launch parallel software-developer agents to maximize throughput.\n</commentary>\n</example>\n\n<example>\nContext: A bug fix requires changes to a single action file.\nassistant: \"I'll launch the software-developer agent to fix the bug in request-transfer.php.\"\n<commentary>\nA single agent is sufficient for a focused change to one file.\n</commentary>\n</example>\n\n<example>\nContext: Coding standards cleanup across multiple files.\nassistant: \"I'll launch separate software-developer agents for each file since the changes are independent.\"\n<commentary>\nEach file can be cleaned up independently, so parallel agents are efficient.\n</commentary>\n</example>"
-model: sonnet
+model: Opus
 color: green
 ---
 
