@@ -15,7 +15,7 @@ consistent database integration, exception handling, and audit logging.
 Use this table to choose the right class for your task:
 
 | Task | Use This Class | Why | Example |
-|------|---|---|---|
+| --- | --- | --- | --- |
 | Load car by ID and get all data | Car | Direct database access, validation, history tracking | `$car = new Car(123)` |
 | Display cars in a list view | CarView | Read-only, optimized for rendering, no mutations | `$view = new CarView()` → `$view->getAllCars()` |
 | Update car data and create history | Car + update() | Automatic history via triggers, audit logging | `$car->update(['color' => 'Blue', ...])` |
@@ -35,7 +35,7 @@ Use this table to choose the right class for your task:
 The Elan Registry uses namespaces to organize classes by their architectural role:
 
 | Namespace | Purpose | Location | Examples |
-|-----------|---------|----------|----------|
+| --- | --- | --- | --- |
 | **(root)** | Entity classes (domain objects) | `/usersc/classes/` | Car, ElanRegistryOwner |
 | `ElanRegistry\Exceptions` | Custom exception types | `/usersc/classes/Exceptions/` | CarNotFoundException, CarValidationException |
 | `ElanRegistry\Reference` | **External reference data** | `/usersc/classes/ElanRegistry/Reference/` | CarModel, FactoryColor |
@@ -43,18 +43,21 @@ The Elan Registry uses namespaces to organize classes by their architectural rol
 ### Reference Data vs. Entity Classes
 
 **Reference Data Classes** (`ElanRegistry\Reference`):
+
 - Represent **external/canonical facts** about cars from Lotus (factory data, official colors, model specifications)
 - **Read-only** - no create/update/delete operations
 - Static query methods only
 - Examples: CarModel (model types), FactoryColor (official colors), FactoryInfo (production specs)
 
 **Entity Classes** (root namespace):
+
 - Represent **registry records** (individual car registrations, owner profiles)
 - **Full CRUD operations** - create, read, update, delete
 - Instance methods and properties
 - Examples: Car (individual registered car), ElanRegistryOwner (owner profile)
 
 **Quick Decision Guide**:
+
 - Does this represent data from an external authoritative source? → Reference class
 - Does this represent a record in the registry database? → Entity class
 - Does this need CRUD operations? → Entity class
@@ -139,7 +142,7 @@ All exception classes are in the `ElanRegistry\Exceptions` namespace:
 **When to Use Which Exception**:
 
 | Situation | Exception Class | Example |
-|-----------|---|---|
+| --- | --- | --- |
 | Car ID not found in database | CarNotFoundException | User tries to edit car that was deleted |
 | Validation of user input fails | CarValidationException | Invalid chassis format, missing required field |
 | Database query/operation fails | CarDatabaseException | INSERT fails, UPDATE fails, deadlock |
@@ -322,6 +325,104 @@ if (!empty($result)) {
 **Public API:**
 
 - `ElanRegistryOwner::geocodeAddress($city, $state, $country)` - Use this method for all geocoding needs
+
+### CarValidator
+
+**Location**: `/usersc/classes/Car/CarValidator.php`
+
+**Namespace**: `ElanRegistry\Car`
+
+**Purpose**: Provides focused, testable validation and sanitization logic for all car data fields. Extracted from Car class to enable independent testing and reuse.
+
+**Key Features**:
+
+- Field-by-field validation with type coercion
+- Automatic input sanitization (HTML stripping, trimming, truncation)
+- Model format and existence validation via CarModel
+- Date format validation (YYYY-MM-DD)
+- Email and URL validation
+- Coordinate validation (latitude/longitude)
+- Flexible required/optional field handling
+- Consistent error reporting via CarValidationException
+
+**Common Usage**:
+
+```php
+use ElanRegistry\Car\CarValidator;
+
+$validator = new CarValidator();
+
+// Validate all required fields (create mode)
+try {
+    $clean = $validator->validateAndSanitizeFields([
+        'chassis' => '26/0001',
+        'model' => 'S4|FHC|36',
+        'year' => '1970',
+        'color' => 'Red',
+        'email' => 'owner@example.com'
+    ], true); // requireAll = true
+
+    // All fields validated and sanitized
+} catch (CarValidationException $e) {
+    echo "Validation failed: " . $e->getMessage();
+}
+
+// Validate optional fields (update mode)
+$clean = $validator->validateAndSanitizeFields([
+    'color' => 'Blue'  // Only updating color
+], false); // requireAll = false
+```
+
+**Validation Rules**:
+
+| Field | Rule | Example |
+| --- | --- | --- |
+| `chassis` | 3-50 chars, sanitized | `26/0001` |
+| `model` | Format: `series\|variant\|type`, must exist in car_models | `S4\|FHC\|36` |
+| `year` | 1963-1974 inclusive | `1970` |
+| `email` | Valid email format | `user@example.com` |
+| `website` | Valid URL format | `https://example.com` |
+| `purchasedate` / `solddate` | YYYY-MM-DD format | `2023-06-15` |
+| `lat` / `lon` | -180 to +180 range | `51.5` |
+| `color`, `engine`, `series`, `variant`, `type` | 1-100 chars, sanitized | `Red` |
+| `comments` | 1-5000 chars, sanitized | `Well maintained` |
+
+**Model Validation** (Phase 2):
+
+As of Phase 2, model validation includes both format and existence checks:
+
+```php
+// Format validation: "series|variant|type"
+if (format is invalid) throw CarValidationException('Invalid model format...');
+
+// Existence validation: Check car_models table
+if (!CarModel::exists($series, $variant, $type)) {
+    throw CarValidationException("Invalid model combination: ...");
+}
+```
+
+**Methods**:
+
+- `validateAndSanitizeFields(array $fields, bool $requireAll): array` - Main validation method
+- `validateRequiredFields(array $fields, array $required): void` - Check required fields are present
+- `sanitizeString(string $input, int $maxLength): string` - HTML strip and truncate
+
+**Exceptions**:
+
+- `CarValidationException` - Validation failure (422 Bad Request)
+
+**Used By**:
+
+- Car class (create/update operations)
+- edit.php AJAX endpoint
+- Integration tests for car operations
+
+**See Also**:
+
+- [ERROR_HANDLING.md](ERROR_HANDLING.md) - Exception patterns
+- CarModel reference class for model validation
+
+---
 
 ### ChassisValidator
 
@@ -814,6 +915,7 @@ Classes in the `ElanRegistry\Reference` namespace provide access to external/can
 **Purpose**: Query car model reference data from `car_models` table. Provides access to model definitions, year ranges, series/variant combinations.
 
 **Key Features**:
+
 - Query models by production year
 - Filter by series (S1, S2, S3, S4, Sprint, +2)
 - Validate model combinations
@@ -849,6 +951,7 @@ if ($carModel->exists('S4', 'FHC', '36')) {
 ```
 
 **Methods**:
+
 - `getAvailableInYear(int $year): array<object>` - Models for specific year
 - `getBySeries(string $series): array<object>` - All models with series
 - `byValue(string $modelValue): ?object` - Get by "series|variant|type"
@@ -860,12 +963,14 @@ if ($carModel->exists('S4', 'FHC', '36')) {
 **Database Table**: `car_models`
 
 **Used By**:
+
 - Issue #298-1: Factory Colors migration (series filtering)
 - Issue #298-4: Color suggestion API (model-based color filtering)
 - Issue #298-7: Bulk cleanup script (model validation)
 - Phase 2: edit.php dynamic dropdowns (replacing cardefinition.js)
 
 **See Also**:
+
 - [Issue #577](https://github.com/jimboone/elan-registry/issues/577) - car_models table creation
 - `/usersc/classes/ElanRegistry/README.md` - Namespace pattern documentation
 

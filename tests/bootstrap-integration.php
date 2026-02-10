@@ -197,3 +197,62 @@ try {
 } catch (Throwable $e) {
     fwrite(STDERR, "NOTE: Database reconnection attempt failed: {$e->getMessage()}\n");
 }
+
+// ============================================================
+// Auto-load Reference Data for Integration Tests
+// ============================================================
+// Integration tests require car_models table to be populated.
+// Automatically load reference data if the table is empty.
+
+try {
+    if (class_exists('DB')) {
+        $db = DB::getInstance();
+
+        // Check if car_models table exists and is empty
+        $count = $db->query("SELECT COUNT(*) as cnt FROM car_models")->first();
+
+        if ($count && $count->cnt == 0) {
+            fwrite(STDERR, "NOTE: car_models table is empty, loading reference data...\n");
+
+            // Load reference data from SQL file
+            $refDataPath = dirname(__DIR__) . '/database/2-reference-data.sql';
+
+            if (file_exists($refDataPath)) {
+                $refDataSql = file_get_contents($refDataPath);
+
+                if ($refDataSql !== false) {
+                    // Extract just the car_models INSERT statement
+                    $carModelsPattern = '/INSERT IGNORE INTO `car_models`.*?VALUES\s*(.*?);/s';
+
+                    if (preg_match($carModelsPattern, $refDataSql, $matches)) {
+                        $carModelsInsert = "INSERT IGNORE INTO `car_models`
+                          (`year_available_from`, `year_available_to`, `display_name`,
+                           `human_readable_short`, `series`, `variant`, `type_code`, `model_value`)
+                        VALUES " . $matches[1] . ";";
+
+                        // Execute the INSERT
+                        $db->query($carModelsInsert);
+
+                        // Verify loaded
+                        $newCount = $db->query("SELECT COUNT(*) as cnt FROM car_models")->first();
+                        $loadedCount = $newCount ? $newCount->cnt : 0;
+
+                        fwrite(STDERR, "NOTE: Loaded {$loadedCount} car_models records for integration tests\n");
+                    } else {
+                        fwrite(STDERR, "NOTE: Could not parse car_models INSERT from reference data file\n");
+                    }
+                } else {
+                    fwrite(STDERR, "NOTE: Failed to read reference data file\n");
+                }
+            } else {
+                fwrite(STDERR, "NOTE: Reference data file not found: {$refDataPath}\n");
+            }
+        } else {
+            $recordCount = $count ? $count->cnt : 0;
+            fwrite(STDERR, "NOTE: car_models table already populated with {$recordCount} records\n");
+        }
+    }
+} catch (Throwable $e) {
+    fwrite(STDERR, "NOTE: Failed to load reference data: {$e->getMessage()}\n");
+    // Non-fatal: tests requiring car_models will handle gracefully
+}

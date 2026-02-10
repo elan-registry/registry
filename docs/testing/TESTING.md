@@ -63,8 +63,10 @@ npm run test:debug        # Debug mode
 ### Integration Tests (`tests/integration/`)
 
 - Car operations, database workflows, API endpoints
+- **Reference/**: CarModelTest.php (car_models reference data)
+- **cars/services/**: CarValidatorModelTest.php (model validation with database)
 - **Featured tests**: FactoryRegistryLinkIntegrationTest.php (Registry Link feature)
-- Requires: MySQL connection, UserSpice framework
+- Requires: MySQL connection, UserSpice framework, car_models reference data
 
 ### Browser Tests (`tests/playwright/`)
 
@@ -114,6 +116,40 @@ final class MyFeatureIntegrationTest extends IntegrationTestCase
 }
 ```
 
+## Test Database Setup
+
+Integration tests require the `car_models` reference table to be populated with Lotus Elan model data.
+
+### Automatic Fixture Loading
+
+The `bootstrap-integration.php` automatically loads reference data from
+`database/2-reference-data.sql` when the `car_models` table is empty. This
+happens transparently when you run integration tests.
+
+### Manual Setup
+
+You can manually run the setup script if needed:
+
+```bash
+php tests/setup-test-database.php
+```
+
+This script:
+
+- Verifies database connection
+- Checks if `car_models` table is populated
+- Loads 24 car model records from `database/2-reference-data.sql`
+- Provides confirmation and sample data output
+
+### Reference Data Requirements
+
+Tests that require `car_models` data:
+
+- `tests/integration/Reference/CarModelTest.php` - Complete CarModel class testing
+- `tests/integration/cars/services/CarValidatorModelTest.php` - Model validation with real database
+
+Unit tests use mock CarModel class (no database required).
+
 ## Configuration
 
 ### Environment Variables (Integration Tests)
@@ -123,8 +159,8 @@ final class MyFeatureIntegrationTest extends IntegrationTestCase
 
 ### PHPUnit Config Files
 
-- `phpunit-unit.xml` - Unit test configuration
-- `phpunit-integration.xml` - Integration test configuration
+- `phpunit-unit.xml` - Unit test configuration (uses mock CarModel)
+- `phpunit-integration.xml` - Integration test configuration (uses real database)
 
 ## Troubleshooting
 
@@ -138,6 +174,7 @@ final class MyFeatureIntegrationTest extends IntegrationTestCase
 - **DB connection failed**: Check `.env.local` credentials
 - **MAMP socket**: Verify `/Applications/MAMP/tmp/mysql/mysql.sock`
 - **Missing data**: Ensure user ID 1 and car ID 1 exist
+- **Empty car_models**: Run `php tests/setup-test-database.php` to load reference data
 
 ### Debugging
 
