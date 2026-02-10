@@ -1,9 +1,12 @@
 <?php
+
+declare(strict_types=1);
+
 //This serves as an example to make your own template with DB based navigation
 //Edit these functions to meet your own style needs.
 //Note that there are a few "default" menu items that you are free to delete at your own risk
 //Generally you can look for the <li> tags and anything you change in there will be reflected in your template.
-function customItemString($menuItem, $user_id)
+function customItemString($menuItem, $user_id): string
 {
   $itemString = '';
 
@@ -57,7 +60,7 @@ function customItemString($menuItem, $user_id)
 }
 
 
-function DropdownString($menuItem, $user_id)
+function DropdownString($menuItem, $user_id): string
 {
   $itemString = '';
 
@@ -111,7 +114,7 @@ function DropdownString($menuItem, $user_id)
 }
 
 // Let's deal with dropdown menus
-function customDropdownString($menuItem, $user_id)
+function customDropdownString($menuItem, $user_id): string
 {
   $itemString = '';
   //bs4 usually uses divs, bs3 often uses li tags here
