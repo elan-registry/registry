@@ -24,9 +24,9 @@ if ($method !== 'POST') {
 if (Input::exists('post')) {
     $token = Input::get('csrf');
     if (!Token::check($token)) {
-        http_response_code(403);
-        include($abs_us_root . $us_url_root . 'usersc/scripts/token_error.php');
-        exit();
+        ApiResponse::forbidden('Invalid CSRF token')
+            ->withLogging($user->data()->id ?? 0, LogCategories::LOG_CATEGORY_SECURITY, 'CSRF token validation failed in DataTables endpoint')
+            ->send();
     }
     
     try {
