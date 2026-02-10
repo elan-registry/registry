@@ -14,19 +14,57 @@ declare(strict_types=1);
 
 require_once '../../users/init.php';
 
+// Import exception classes for typed exception handling
+use ElanRegistry\Exceptions\ValidationException;
+use ElanRegistry\Exceptions\CarException;
+use ElanRegistry\Exceptions\ElanRegistryException;
+
+/**
+ * Handle DataTables server-side processing requests
+ *
+ * Processes DataTables AJAX requests for the cars and factory tables.
+ * Implements secure parameter validation, CSRF protection, and error handling
+ * with standardized ApiResponse Pattern A format.
+ *
+ * POST Parameters:
+ * - draw: DataTables draw counter for request matching
+ * - start: Pagination start index
+ * - length: Number of records to return
+ * - search: Search filter object with 'value' property
+ * - order: Column ordering array
+ * - columns: Column definitions array
+ * - table: Target table ('cars' or 'factory')
+ * - csrf: CSRF token for security validation
+ * - chassis: (Optional) Chassis number for findCarByChassis special endpoint
+ *
+ * Sends JSON responses with DataTables metadata (draw, recordsTotal, recordsFiltered, data)
+ * in all cases (success and error).
+ *
+ * @return void Sends JSON response via ApiResponse::send() and exits
+ *
+ * @throws ValidationException If table parameter is invalid
+ * @throws CarException If Car class data retrieval fails
+ * @throws ElanRegistryException Caught and logged with 500 response
+ */
+
 // Security: Only process POST requests
 if ($method !== 'POST') {
-    http_response_code(405);
-    exit(json_encode(['error' => 'Method not allowed']));
+    ApiResponse::error('Method not allowed', 405)->send();
 }
 
 // Security: Verify CSRF token
 if (Input::exists('post')) {
     $token = Input::get('csrf');
     if (!Token::check($token)) {
-        http_response_code(403);
-        include($abs_us_root . $us_url_root . 'usersc/scripts/token_error.php');
-        exit();
+        ApiResponse::forbidden('Invalid CSRF token')
+            ->withDataArray([
+                'draw' => 0,
+                'recordsTotal' => 0,
+                'recordsFiltered' => 0,
+                'data' => []
+            ])
+            ->withLogging($user->data()->id ?? 0, LogCategories::LOG_CATEGORY_SECURITY, 'CSRF token validation failed in DataTables endpoint')
+            ->send();
     }
     
     try {
@@ -77,7 +115,7 @@ if (Input::exists('post')) {
         
         // Validate table parameter
         if (!in_array($table, ['cars', 'factory'], true)) {
-            throw new InvalidArgumentException('Invalid table parameter: ' . $table);
+            throw new ValidationException('Invalid table parameter: ' . $table);
         }
         
         // Use Car class for secure data retrieval
@@ -88,21 +126,50 @@ if (Input::exists('post')) {
         header('Content-Type: application/json');
         echo json_encode($response);
         
-    } catch (Exception $e) {
-        // Log error for debugging (don't expose to client)
-        logger(0, LogCategories::LOG_CATEGORY_SYSTEM_ERROR, "DataTables error: " . $e->getMessage());
-        logger(0, LogCategories::LOG_CATEGORY_SYSTEM_ERROR, "DataTables error trace: " . $e->getTraceAsString());
-        
-        http_response_code(500);
-        echo json_encode([
-            'error' => 'Server error occurred',
-            'draw' => (int) Input::get('draw'),
+    } catch (ValidationException | CarException $e) {
+        // Handle domain-specific validation and car operation errors
+        logger(
+            $user->data()->id ?? 0,
+            $e->getLogCategory(),
+            "DataTables error: " . $e->getMessage()
+        );
+
+        // Return error response with DataTables metadata
+        ApiResponse::error($e->getUserMessage(), $e->getHttpStatusCode())
+            ->withDataArray([
+                'draw' => (int) Input::get('draw'),
+                'recordsTotal' => 0,
+                'recordsFiltered' => 0,
+                'data' => []
+            ])
+            ->send();
+    } catch (ElanRegistryException $e) {
+        // Fallback for any other application exceptions
+        logger(
+            $user->data()->id ?? 0,
+            LogCategories::LOG_CATEGORY_SYSTEM_ERROR,
+            "DataTables error: " . $e->getMessage() . "\nTrace: " . $e->getTraceAsString()
+        );
+
+        // Return error response with DataTables metadata
+        ApiResponse::serverError('Server error occurred')
+            ->withDataArray([
+                'draw' => (int) Input::get('draw'),
+                'recordsTotal' => 0,
+                'recordsFiltered' => 0,
+                'data' => []
+            ])
+            ->send();
+    }
+} else {
+    // No POST data received - return bad request error via factory method
+    // error() defaults to 400 status code for bad requests
+    ApiResponse::error('No data received')
+        ->withDataArray([
+            'draw' => 0,
             'recordsTotal' => 0,
             'recordsFiltered' => 0,
             'data' => []
-        ]);
-    }
-} else {
-    http_response_code(400);
-    echo json_encode(['error' => 'No data received']);
+        ])
+        ->send();
 }

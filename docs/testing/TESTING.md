@@ -7,7 +7,7 @@ Automated test infrastructure using PHPUnit for PHP tests and Playwright for bro
 **Dual-bootstrap architecture** for test isolation and speed:
 
 | Suite | Location | Bootstrap | Purpose |
-|-------|----------|-----------|---------|
+| --- | --- | --- | --- |
 | Unit | `tests/unit/` | `bootstrap-unit.php` | Fast tests with mocks, no database |
 | Integration | `tests/integration/` | `bootstrap-integration.php` | Real database, UserSpice framework |
 | Browser | `tests/playwright/` | Playwright config | End-to-end UI testing |
@@ -54,16 +54,21 @@ npm run test:debug        # Debug mode
 ## Test Organization
 
 ### Unit Tests (`tests/unit/`)
+
 - **cars/**: CarCoreTest.php, CarCrudTest.php
 - **security/**: FileUploadSecurityTest.php, InputValidationTest.php
 - **users/**: UserDeletionCleanupTest.php
-- **api/**: ApiResponseTest.php
+- **api/**: ApiResponseTest.php, GetDataTablesFindCarByChassisTest.php
 
 ### Integration Tests (`tests/integration/`)
+
 - Car operations, database workflows, API endpoints
+- **Featured tests**: FactoryRegistryLinkIntegrationTest.php (Registry Link feature)
 - Requires: MySQL connection, UserSpice framework
 
 ### Browser Tests (`tests/playwright/`)
+
+- **e2e/**: factory-registry-link.spec.js (Registry Link UI workflow)
 - Security, navigation, functionality, UI consistency
 - Requires: Local dev server at `http://localhost:9999/elan_registry`
 
@@ -112,25 +117,30 @@ final class MyFeatureIntegrationTest extends IntegrationTestCase
 ## Configuration
 
 ### Environment Variables (Integration Tests)
+
 - `DB_HOST`, `DB_USERNAME`, `DB_PASSWORD`, `DB_NAME`
 - Reads from `.env.enc` (encrypted) or `.env.local` (plaintext)
 
 ### PHPUnit Config Files
+
 - `phpunit-unit.xml` - Unit test configuration
 - `phpunit-integration.xml` - Integration test configuration
 
 ## Troubleshooting
 
 ### Unit Tests
+
 - **Mock errors**: Check `bootstrap-unit.php` is loading
 - **Missing deps**: Run `composer install`
 
 ### Integration Tests
+
 - **DB connection failed**: Check `.env.local` credentials
 - **MAMP socket**: Verify `/Applications/MAMP/tmp/mysql/mysql.sock`
 - **Missing data**: Ensure user ID 1 and car ID 1 exist
 
 ### Debugging
+
 ```bash
 # Verbose output
 vendor/bin/phpunit -c phpunit-unit.xml --verbose
