@@ -62,6 +62,7 @@ The Elan Registry is a community-driven database for Lotus Elan cars. This Priva
 
 ### ❌ **What We Don't Do**
 - Sell or share your personal information with third parties
+- Display your Last Name publicly
 - Display your email address publicly
 - Track your exact location
 - Keep detailed browsing history
