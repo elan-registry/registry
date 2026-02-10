@@ -54,7 +54,7 @@ error_reporting(E_ALL);
 
 require_once '../users/init.php';
 
-if (!securePage($_SERVER['PHP_SELF'])) {
+if (!securePage($php_self)) {
     die();
 }
 
@@ -280,7 +280,7 @@ function analyzePermissions($db): array {
 }
 
 // Handle POST requests for AJAX - MUST be before any HTML output
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
+if ($method === 'POST' && isset($_POST['action'])) {
     header('Content-Type: application/json');
 
     if ($_POST['action'] === 'analyze') {

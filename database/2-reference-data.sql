@@ -10049,6 +10049,42 @@ ON DUPLICATE KEY UPDATE
 
 
 -- ==================================================================
+-- car_models: Lotus Elan Model Reference Data
+-- ==================================================================
+-- Extracted from cardefinition.js MENU array
+-- Safe to run multiple times (uses INSERT IGNORE)
+-- ==================================================================
+
+INSERT IGNORE INTO `car_models`
+  (`year_available_from`, `year_available_to`, `display_name`,
+   `human_readable_short`, `series`, `variant`, `type_code`, `model_value`)
+VALUES
+  (1963, 1963, 'Elan 1500 ( Type 26 Elan 1500 Roadster )', 'Elan 1500', 'Elan 1500', 'Roadster', '26', 'Elan 1500|Roadster|26'),
+  (1963, 1964, 'Elan 1600 ( Type 26 S1 Roadster )', 'Elan 1600', 'S1', 'Roadster', '26', 'S1|Roadster|26'),
+  (1963, 1964, 'Racing Version ( Number 26-R-xx )', 'Racing Version', 'S1', 'Race', '26R', 'S1|Race|26R'),
+  (1964, 1966, 'Roadster S2 ( Type 26 S2 Roadster )', 'Roadster S2', 'S2', 'Roadster', '26', 'S2|Roadster|26'),
+  (1964, 1966, 'Racing Version ( Number 26-S2-xx )', 'Racing Version', 'S2', 'Race', '26R', 'S2|Race|26R'),
+  (1965, 1965, 'Racing Version ( Type 26 26R Race )', 'Racing Version', '26R', 'Race', '26', '26R|Race|26'),
+  (1965, 1966, 'Coupe S3 Pre-Airflow ( Type 36 S3 FHC-preairflow )', 'Coupe S3 Pre-Airflow', 'S3', 'FHC-preairflow', '36', 'S3|FHC-preairflow|36'),
+  (1966, 1966, 'Roadster S2 S/E ( Type 26 S2 S/E Roadster )', 'Roadster S2 S/E', 'S2 SE', 'Roadster', '26', 'S2 SE|Roadster|26'),
+  (1966, 1968, 'Coupe S3 Airflow ( Type 36 S3 FHC )', 'Coupe S3 Airflow', 'S3', 'FHC', '36', 'S3|FHC|36'),
+  (1966, 1968, 'Drophead S3 DHC ( Type 45 S3 DHC )', 'Drophead S3 DHC', 'S3', 'DHC', '45', 'S3|DHC|45'),
+  (1966, 1968, 'Drophead S3 S/E DHC ( Type 45 S3 S/E DHC )', 'Drophead S3 S/E DHC', 'S3 SE', 'DHC', '45', 'S3 SE|DHC|45'),
+  (1967, 1970, 'Plus 2 ( Type 50 +2)', 'Plus 2', '+2', 'FHC', '50', '+2|FHC|50'),
+  (1967, 1968, 'Coupe S3 S/E ( Type 36 S3 FHC )', 'Coupe S3 S/E', 'S3 SE', 'FHC', '36', 'S3 SE|FHC|36'),
+  (1968, 1970, 'Plus 2 Federal ( Type 50 +2 Federal)', 'Plus 2 Federal', '+2', 'Federal', '50', '+2|Federal|50'),
+  (1968, 1971, 'Coupe S4 ( Type 36 S4 FHC )', 'Coupe S4', 'S4', 'FHC', '36', 'S4|FHC|36'),
+  (1968, 1971, 'Drophead S4 DHC ( Type 45 S4 DHC )', 'Drophead S4 DHC', 'S4', 'DHC', '45', 'S4|DHC|45'),
+  (1968, 1971, 'Coupe S4 S/E ( Type 36 S4 S/E FHC )', 'Coupe S4 S/E', 'S4 SE', 'FHC', '36', 'S4 SE|FHC|36'),
+  (1968, 1971, 'Drophead S4 S/E DHC ( Type 45 S4 S/E DHC )', 'Drophead S4 S/E DHC', 'S4 SE', 'DHC', '45', 'S4 SE|DHC|45'),
+  (1969, 1970, 'Plus 2S ( Type 50 +2S)', 'Plus 2S', '+2S', 'FHC', '50', '+2S|FHC|50'),
+  (1969, 1970, 'Plus 2S Federal ( Type 50 +2S Federal)', 'Plus 2S Federal', '+2S', 'Federal', '50', '+2S|Federal|50'),
+  (1970, 1973, 'Coupe Sprint ( Type 36 Sprint FHC )', 'Coupe Sprint', 'Sprint', 'FHC', '36', 'Sprint|FHC|36'),
+  (1970, 1973, 'Drophead Sprint ( Type 45 Sprint DHC )', 'Drophead Sprint', 'Sprint', 'DHC', '45', 'Sprint|DHC|45'),
+  (1971, 1974, 'Plus 2S 130 ( Type 50 +2S/130)', 'Plus 2S 130', '+2S/130', 'FHC', '50', '+2S/130|FHC|50'),
+  (1972, 1974, 'Plus 2S 130/5 ( Type 50 +2S/130/5)', 'Plus 2S 130/5', '+2S/130/5', 'FHC', '50', '+2S/130/5|FHC|50');
+
+-- ==================================================================
 -- Record script execution
 -- ==================================================================
 INSERT INTO `fix_script_runs` (`script_name`)
@@ -10061,4 +10097,5 @@ ON DUPLICATE KEY UPDATE completed_at = CURRENT_TIMESTAMP;
 -- Successfully imported:
 -- - 249 countries
 -- - 9,762 factory production records
+-- - 24 car models
 -- ==================================================================

@@ -48,6 +48,39 @@ CREATE TABLE `elan_factory_info` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- -----------------------------------------------------------------------------
+-- Table: car_models (Reference table for Lotus Elan model definitions)
+-- -----------------------------------------------------------------------------
+CREATE TABLE `car_models` (
+  `id` int(10) unsigned NOT NULL AUTO_INCREMENT,
+  `year_available_from` int(11) NOT NULL COMMENT 'First production year',
+  `year_available_to` int(11) NOT NULL COMMENT 'Last production year',
+  `display_name` varchar(100) COLLATE utf8mb4_unicode_ci NOT NULL COMMENT 'Full display name from cardefinition.js',
+  `human_readable_short` varchar(50) COLLATE utf8mb4_unicode_ci NOT NULL COMMENT 'Short name (no parenthetical)',
+  `series` varchar(15) COLLATE utf8mb4_unicode_ci NOT NULL COMMENT 'Series (S1, S2, S3, S4, +2, Sprint, etc.)',
+  `variant` varchar(20) COLLATE utf8mb4_unicode_ci NOT NULL COMMENT 'Body style (Roadster, FHC, DHC, Federal, Race)',
+  `type_code` char(3) COLLATE utf8mb4_unicode_ci NOT NULL COMMENT 'Type code (26, 36, 45, 50, 26R)',
+  `model_value` varchar(50) COLLATE utf8mb4_unicode_ci NOT NULL COMMENT 'series|variant|type composite key',
+  `series_normalized` varchar(15) COLLATE utf8mb4_unicode_ci GENERATED ALWAYS AS (
+    CASE
+      WHEN `series` LIKE '% SE' THEN TRIM(SUBSTRING_INDEX(`series`, ' SE', 1))
+      WHEN `series` LIKE '% S/E' THEN TRIM(SUBSTRING_INDEX(`series`, ' S/E', 1))
+      WHEN `series` LIKE '%|Race' THEN TRIM(SUBSTRING_INDEX(`series`, '|Race', 1))
+      ELSE `series`
+    END
+  ) STORED COMMENT 'Normalized series for filtering (strips SE/Race suffixes)',
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `model_value` (`model_value`),
+  UNIQUE KEY `unique_model_combo` (`series`,`variant`,`type_code`),
+  KEY `idx_year_range` (`year_available_from`,`year_available_to`),
+  KEY `idx_series` (`series`),
+  KEY `idx_series_normalized` (`series_normalized`),
+  KEY `idx_type_code` (`type_code`),
+  CONSTRAINT `ck_year_range` CHECK ((`year_available_from` <= `year_available_to`)),
+  CONSTRAINT `ck_year_bounds` CHECK (((`year_available_from` >= 1963) and (`year_available_to` <= 1974))),
+  CONSTRAINT `ck_type_code` CHECK ((`type_code` in ('26','36','45','50','26R')))
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='Lotus Elan model reference data from cardefinition.js';
+
+-- -----------------------------------------------------------------------------
 -- Table: fix_script_runs (Migration tracking)
 -- -----------------------------------------------------------------------------
 CREATE TABLE `fix_script_runs` (

@@ -202,8 +202,15 @@ sequence details.
 
 ### Code Quality
 
+**ALWAYS use the software-developer agent when writing or debugging code.**
+The software-developer agent has specialized skills for implementing features,
+debugging issues, and ensuring code quality. Do not write code directly
+without launching the agent first.
+
 **ALWAYS run before completing any task:**
 
+- Use `software-developer` agent for all coding work
+  (features, fixes, refactoring)
 - Run `/security-review` to conduct a security review of all changes
 - Run `mcp__ide__getDiagnostics` to check all files for diagnostics
 - Fix any linting or type errors before considering the task complete

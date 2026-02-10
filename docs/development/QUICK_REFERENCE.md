@@ -291,6 +291,55 @@ logger($userId, LogCategories::LOG_CATEGORY_LOCATION_SERVICE, 'Location search: 
 logger($userId, LogCategories::LOG_CATEGORY_VALIDATION_ERROR, 'Email validation failed');
 ```
 
+### Model Management (Phase 2)
+
+Models are now managed in the database (car_models table). To add/modify car model definitions:
+
+**Add New Car Model Definition**:
+
+```sql
+-- Insert new model definition into car_models table
+INSERT INTO car_models
+(year_available_from, year_available_to, display_name, human_readable_short,
+ series, variant, type_code, model_value)
+VALUES
+(1970, 1973, 'New Model ( Type 36 Description )', 'New Model',
+ 'Series', 'Variant', '36', 'Series|Variant|36');
+```
+
+**Test Availability**:
+
+```php
+// Check if model is available in a specific year
+use ElanRegistry\Reference\CarModel;
+
+$carModel = new CarModel();
+$models = $carModel->getAvailableInYear(1970);
+
+foreach ($models as $model) {
+    echo $model->human_readable_short . " (" . $model->model_value . ")\n";
+}
+
+// Validate if model combination exists
+if ($carModel->exists('S4', 'FHC', '36')) {
+    echo 'Valid model combination';
+}
+```
+
+**Dynamic Dropdown Updates**:
+
+- Model dropdowns in `edit.php` load dynamically from database (no JS changes needed)
+- API endpoint: `app/cars/actions/get-models.php`
+- JavaScript module: `app/assets/js/model-loader.js`
+- Models are cached client-side after first load
+
+**Notes**:
+
+- Model definitions replace hardcoded `cardefinition.js` (now removed)
+- Form submission still uses format: `series|variant|type`
+- Backend validates model combination exists via CarModel::exists()
+- No data migration of existing cars required
+
 ## Troubleshooting
 
 | Problem | Solution |
