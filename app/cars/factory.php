@@ -171,9 +171,10 @@ echo html_entity_decode($settings->elan_datatables_css_cdn);
 
       // Make AJAX request to find car by chassis
       new ElanRegistryAPI()
-        .post('../action/getDataTables.php', {
+        .post(us_url_root + 'app/action/getDataTables.php', {
           table: 'findCarByChassis',
-          chassis: chassis
+          chassis: chassis,
+          csrf: csrf
         })
         .then(function(response) {
           if (response.car_id) {

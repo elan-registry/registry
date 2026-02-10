@@ -303,6 +303,175 @@ npm run playwright:functionality
 npm run playwright:ui
 ```
 
+## Testing DataTables Implementations
+
+This section documents testing strategies for DataTables-based features, with
+examples from the Registry Link feature on the factory page.
+
+### Unit Tests
+
+Unit tests for DataTables endpoints validate logic without database dependencies.
+
+**Example**: `/tests/unit/api/GetDataTablesFindCarByChassisTest.php`
+
+Tests the `findCarByChassis` endpoint logic in `/app/action/getDataTables.php`:
+
+```php
+/**
+ * Test SQL query uses prepared statement (prevents SQL injection)
+ */
+public function testSqlQueryUsesPreparedStatement(): void
+{
+    // Verify prepared statement with ? placeholder
+    $this->assertStringContainsString(
+        'SELECT id FROM cars WHERE chassis = ? LIMIT 1',
+        $content
+    );
+
+    // Verify chassis is passed as bound parameter
+    $this->assertStringContainsString(
+        '[$chassis]',
+        $content
+    );
+}
+```
+
+**Coverage Areas**:
+
+- Input validation (missing/empty parameters)
+- SQL injection prevention (prepared statements)
+- Response format (ApiResponse Pattern A)
+- Error handling
+
+**Run unit tests**:
+
+```bash
+vendor/bin/phpunit tests/unit/api/GetDataTablesFindCarByChassisTest.php
+```
+
+### Integration Tests
+
+Integration tests validate database interactions with real data.
+
+**Example**: `/tests/integration/FactoryRegistryLinkIntegrationTest.php`
+
+Tests the complete `findCarByChassis` workflow:
+
+```php
+/**
+ * Test findCarByChassis finds registered car by chassis number
+ */
+public function testFindCarByChassisWithMatchingCar(): void
+{
+    // Create test car with known chassis
+    $this->createTestCar($this->testUserId, [
+        'chassis' => $this->testChassis
+    ]);
+
+    // Query database directly
+    $query = $this->db->query(
+        "SELECT id FROM cars WHERE chassis = ? LIMIT 1",
+        [$this->testChassis]
+    );
+
+    $this->assertTrue($query->count() > 0);
+}
+```
+
+**Coverage Areas**:
+
+- Real database queries
+- Data type correctness (integer car IDs)
+- Special character handling
+- Performance characteristics
+- Concurrent query handling
+
+**Run integration tests** (requires database):
+
+```bash
+vendor/bin/phpunit tests/integration/FactoryRegistryLinkIntegrationTest.php
+```
+
+### End-to-End Tests
+
+E2E tests validate complete user workflows in a real browser.
+
+**Example**: `/tests/playwright/e2e/factory-registry-link.spec.js`
+
+Tests the Registry Link feature on the factory page:
+
+```javascript
+test('should load factory page without errors', async ({ page }) => {
+  // Navigate to Factory page
+  await page.goto('/app/cars/factory.php');
+  await page.waitForLoadState('domcontentloaded');
+
+  // Verify table renders
+  const table = page.locator('#cartable');
+  await expect(table).toBeVisible();
+
+  // Check for console errors
+  const errors = [];
+  page.on('console', (msg) => {
+    if (msg.type() === 'error') {
+      errors.push(msg.text());
+    }
+  });
+});
+```
+
+**Coverage Areas**:
+
+- Page rendering and layout
+- AJAX endpoint calls (network monitoring)
+- User interactions (pagination, sorting)
+- Real browser JavaScript errors
+- Performance timing
+
+**Run E2E tests**:
+
+```bash
+npm run playwright:test tests/playwright/e2e/factory-registry-link.spec.js
+```
+
+### Testing Best Practices for DataTables
+
+1. **Separate concerns**: Use unit tests for endpoint logic, integration tests for
+   database queries, and E2E tests for user workflows.
+
+2. **Test edge cases**: Empty parameters, special characters, missing data,
+   pagination boundaries.
+
+3. **Monitor performance**: E2E tests can log load times for observations (not hard
+   requirements).
+
+4. **Validate AJAX calls**: Use Playwright's network interception to verify correct
+   endpoint paths and parameters are used (prevents issues like #581).
+
+5. **Test pagination**: Verify features work across multiple pages.
+
+6. **Check for errors**: Monitor browser console and HTTP responses for errors that
+   might not be visible to users.
+
+### Test Pyramid Strategy
+
+Recommended test distribution for DataTables features:
+
+```text
+      /\
+     /  \ E2E Tests (few, slower)
+    /____\
+   /      \
+  /        \ Integration Tests (some, medium)
+ /  ________\
+/            \
+Unit Tests (many, fast)
+```
+
+- **Unit Tests**: Quick feedback, test logic in isolation
+- **Integration Tests**: Validate database interactions
+- **E2E Tests**: Catch real-world issues users experience
+
 ## References
 
 - **Official Documentation**: <https://datatables.net>
