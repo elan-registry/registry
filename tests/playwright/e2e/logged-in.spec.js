@@ -97,7 +97,8 @@ test.describe('Elan Registry - Car Update Functionality (Logged In)', () => {
 
     // Step 1: Car Details - Click Next
     await page.locator('fieldset:nth-of-type(1) input[value="Next"]').click();
-    await page.waitForLoadState('domcontentloaded');
+    // Wait for fieldset 2 to become visible (form step change, not page load)
+    await page.waitForSelector('fieldset:nth-of-type(2)', { state: 'visible', timeout: 5000 });
     console.log('✓ Step 1 (Car Details) completed');
 
     // Step 2: Additional Information - Add comment and click Next
@@ -109,7 +110,8 @@ test.describe('Elan Registry - Car Update Functionality (Logged In)', () => {
     console.log(`✓ Added comment: ${testNote}`);
 
     await page.locator('fieldset:nth-of-type(2) input[value="Next"]').click();
-    await page.waitForLoadState('domcontentloaded');
+    // Wait for fieldset 3 to become visible (form step change, not page load)
+    await page.waitForSelector('fieldset:nth-of-type(3)', { state: 'visible', timeout: 5000 });
     console.log('✓ Step 2 (Additional Information) completed');
 
     // Step 3: Images - Click Update Car (final submission, no Next button on this page)
