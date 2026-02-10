@@ -13,13 +13,13 @@ require_once '../../../../users/init.php';
 
 if (!securePage($php_self)) {
     ApiResponse::forbidden('Access denied')
-        ->withLogging(0, 'SecurityError', 'Unauthorized schema operations access attempt')
+        ->withLogging(0, LogCategories::LOG_CATEGORY_SECURITY, 'Unauthorized schema operations access attempt')
         ->send();
 }
 
 // CSRF protection for all POST operations
 if ($method === 'POST' && (!isset($_POST['csrf']) || !Token::check($_POST['csrf']))) {
-    ApiResponse::error('Invalid CSRF token', 400)
+    ApiResponse::forbidden('Invalid CSRF token')
         ->withLogging($user->data()->id, LogCategories::LOG_CATEGORY_SECURITY, 'Invalid CSRF token in schema operations')
         ->send();
 }

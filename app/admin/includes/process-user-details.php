@@ -16,14 +16,14 @@ require_once '../../../users/init.php';
 // Security check - admin permission required
 if (!$user->isLoggedIn() || !isRegistryAdmin($user->data()->id)) {
     ApiResponse::forbidden('Unauthorized access')
-        ->withLogging(0, 'SecurityError', 'Unauthorized user details access attempt')
+        ->withLogging(0, LogCategories::LOG_CATEGORY_SECURITY, 'Unauthorized user details access attempt')
         ->send();
 }
 
 // CSRF protection
 if (!isset($_POST['csrf']) || !Token::check($_POST['csrf'])) {
-    ApiResponse::error('Invalid CSRF token', 400)
-        ->withLogging($user->data()->id, 'SecurityError', 'Invalid CSRF token in user details request')
+    ApiResponse::forbidden('Invalid CSRF token')
+        ->withLogging($user->data()->id, LogCategories::LOG_CATEGORY_SECURITY, 'Invalid CSRF token in user details request')
         ->send();
 }
 

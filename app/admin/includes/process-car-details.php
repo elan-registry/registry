@@ -22,7 +22,7 @@ if (!$user->isLoggedIn() || !isRegistryAdmin($user->data()->id)) {
 
 // CSRF protection
 if (!isset($_POST['csrf']) || !Token::check($_POST['csrf'])) {
-    ApiResponse::error('Invalid CSRF token', 400)
+    ApiResponse::forbidden('Invalid CSRF token')
         ->withLogging($user->data()->id, LogCategories::LOG_CATEGORY_SECURITY, 'Invalid CSRF token in car details request')
         ->send();
 }
