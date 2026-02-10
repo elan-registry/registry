@@ -7,7 +7,7 @@ The Car Ownership Transfer Request system allows you to request ownership of a c
 ## When to Use Transfer Requests
 
 **Transfer requests** are only for cars that already exist in the registry under another owner's name.
-If a car does not exist previously in the registry, please go to the section **How to add a car**.
+If a car does not exist previously in the registry, please go to the section **[How to Add Your Car](https://elanregistry.org/docs/view.php?doc=ADD_CAR_GUIDE.md)**.
 
 Use the transfer request system when:
 - ✅ You've purchased a car from another registry member
