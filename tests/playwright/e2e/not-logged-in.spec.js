@@ -1,6 +1,12 @@
 const { test, expect } = require('@playwright/test');
 
 test.describe('Elan Registry - All Pages (Not Logged In)', () => {
+  // Skip these tests if running in logged-in project
+  test.beforeEach(async ({ }, testInfo) => {
+    if (testInfo.project.name !== 'not-logged-in') {
+      test.skip();
+    }
+  });
   const pages = [
     {
       path: '/',

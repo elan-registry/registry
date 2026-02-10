@@ -1,6 +1,13 @@
 const { test, expect } = require('@playwright/test');
 
 test.describe('Elan Registry - Menu Verification (Logged In)', () => {
+  // Skip these tests if NOT running in logged-in project
+  test.beforeEach(async ({ }, testInfo) => {
+    if (testInfo.project.name !== 'logged-in') {
+      test.skip();
+    }
+  });
+
   test('should show correct menu items when logged in with proper ordering', async ({ page }) => {
     await page.goto('/');
     await page.waitForLoadState('domcontentloaded');
@@ -69,6 +76,13 @@ test.describe('Elan Registry - Menu Verification (Logged In)', () => {
 });
 
 test.describe('Elan Registry - Car Update Functionality (Logged In)', () => {
+  // Skip these tests if NOT running in logged-in project
+  test.beforeEach(async ({ }, testInfo) => {
+    if (testInfo.project.name !== 'logged-in') {
+      test.skip();
+    }
+  });
+
   test('should be able to update car information', async ({ page }) => {
     // Navigate to account page
     await page.goto('/users/account.php');
@@ -117,6 +131,13 @@ test.describe('Elan Registry - Car Update Functionality (Logged In)', () => {
 });
 
 test.describe('Elan Registry - All Pages (Logged In)', () => {
+  // Skip these tests if NOT running in logged-in project
+  test.beforeEach(async ({ }, testInfo) => {
+    if (testInfo.project.name !== 'logged-in') {
+      test.skip();
+    }
+  });
+
   const pages = [
     { path: '/', name: 'Home' },
     { path: '/app/cars/index.php', name: 'List Cars' },
@@ -149,6 +170,13 @@ test.describe('Elan Registry - All Pages (Logged In)', () => {
 });
 
 test.describe('Internal Links Discovery and Testing (Logged In)', () => {
+  // Skip these tests if NOT running in logged-in project
+  test.beforeEach(async ({ }, testInfo) => {
+    if (testInfo.project.name !== 'logged-in') {
+      test.skip();
+    }
+  });
+
   const pages = [
     { path: '/', name: 'Home' },
     { path: '/app/cars/index.php', name: 'List Cars' },
