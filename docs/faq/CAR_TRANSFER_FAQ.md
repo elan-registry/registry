@@ -9,8 +9,7 @@
 **A:** Use transfer requests when:
 - You've purchased a car from another registry member
 - You need to claim ownership of a car with duplicate chassis entries
-- There's been an ownership change that needs registry update
-- The car exists in the registry under someone else's name
+- A car ownership has changed but the registry still shows a previous owner
 
 ### Q: Do I need an account to request a transfer?
 **A:** Yes, you must have an active Lotus Elan Registry account and be logged in to submit transfer requests.
@@ -38,12 +37,14 @@
 
 ### Q: What happens after I submit a transfer request?
 **A:** Three things happen immediately:
-1. You receive a confirmation email
+1. You receive a confirmation email about the initiation of the transfer process.
 2. The current owner receives a notification email
 3. Registry administrators are notified for oversight
+4. After a few days you receive an email about the result of the transfer process.
 
 ### Q: How long does the transfer process take?
-**A:** If approved, transfers complete immediately. Response time varies (typically 1-7 days) depending on how quickly the current owner responds.
+**A:** Response time varies (typically 1-7 days) depending on how quickly the current owner responds.
+Once approved, transfers complete immediately. 
 
 ### Q: Can the current owner see my personal information?
 **A:** The current owner sees your first name, email address, general location, and any comments you included. Full personal details are not shared.
@@ -83,11 +84,13 @@
 **A:** Possible reasons:
 - You're not logged in
 - You already own this car
-- The car may not exist in the registry
 - Technical issue - contact administrators
 
 ### Q: I submitted a request but didn't get a confirmation email. What should I do?
-**A:** Check your spam/junk folder first. If not found, contact administrators to verify your request was received.
+**A:** 
+Check if the email address in your account is accurate.
+Check your spam/junk folder. If not found, contact administrators to verify your request was received.
+
 
 ### Q: Can I modify or cancel a pending transfer request?
 **A:** Contact administrators to modify or cancel pending requests. Include the chassis number and reason for the change.
