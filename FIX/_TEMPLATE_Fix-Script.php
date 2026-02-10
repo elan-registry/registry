@@ -127,7 +127,7 @@ $db = DB::getInstance();
                      * @param string $message Message to display
                      * @param string $type Type of message: 'info', 'success', 'error', 'warning', 'step'
                      */
-                    function logProgress($message, $type = 'info') {
+                    function logProgress($message, $type = 'info'): void {
                         $icons = [
                             'info' => 'ℹ️',
                             'success' => '✅',
