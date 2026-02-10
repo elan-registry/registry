@@ -113,7 +113,7 @@ async function ensureLoggedIn(page, username = process.env.TEST_USERNAME || 'tes
  * @param {Function} unauthenticatedTest - Function to run if auth required (optional)
  */
 async function handleAuthRequired(page, authenticatedTest, unauthenticatedTest = null) {
-  await page.waitForLoadState('networkidle');
+  await page.waitForLoadState('domcontentloaded');
   
   const pageContent = await page.textContent('body');
   
@@ -138,7 +138,7 @@ async function handleAuthRequired(page, authenticatedTest, unauthenticatedTest =
  */
 async function navigateAndWait(page, path) {
   await page.goto(path);
-  await page.waitForLoadState('networkidle');
+  await page.waitForLoadState('domcontentloaded');
 }
 
 /**
