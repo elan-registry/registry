@@ -33,7 +33,7 @@ async function loginAndSaveState(page, username, password) {
 
   // Wait for successful login - adjust selector based on your site
   // For example, wait for a logout button or user menu to appear
-  await page.waitForLoadState('networkidle');
+  await page.waitForLoadState('domcontentloaded');
 
   // Save the authentication state
   await page.context().storageState({ path: authFile });
@@ -50,7 +50,7 @@ async function login(page, username, password) {
   await page.fill('input[name="password"], input[type="password"]', password);
   await page.click('button[type="submit"], input[type="submit"]');
 
-  await page.waitForLoadState('networkidle');
+  await page.waitForLoadState('domcontentloaded');
 }
 
 module.exports = {

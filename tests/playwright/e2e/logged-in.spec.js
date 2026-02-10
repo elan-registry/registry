@@ -1,9 +1,16 @@
 const { test, expect } = require('@playwright/test');
 
 test.describe('Elan Registry - Menu Verification (Logged In)', () => {
+  // Skip these tests if NOT running in logged-in project
+  test.beforeEach(async ({ }, testInfo) => {
+    if (testInfo.project.name !== 'logged-in') {
+      testInfo.skip();
+    }
+  });
+
   test('should show correct menu items when logged in with proper ordering', async ({ page }) => {
     await page.goto('/');
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
 
     // Get all navigation links (adjust selector based on actual menu structure)
     // Common selectors: 'nav a', 'header nav a', '.menu a', '.navigation a'
@@ -69,21 +76,29 @@ test.describe('Elan Registry - Menu Verification (Logged In)', () => {
 });
 
 test.describe('Elan Registry - Car Update Functionality (Logged In)', () => {
+  // Skip these tests if NOT running in logged-in project
+  test.beforeEach(async ({ }, testInfo) => {
+    if (testInfo.project.name !== 'logged-in') {
+      testInfo.skip();
+    }
+  });
+
   test('should be able to update car information', async ({ page }) => {
     // Navigate to account page
     await page.goto('/users/account.php');
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
 
     console.log('✓ Navigated to account page');
 
     // Click "Update Car" button to enter the update workflow
     await page.click('button:has-text("Update Car"), a:has-text("Update Car")');
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
     console.log('✓ Entered car update workflow');
 
     // Step 1: Car Details - Click Next
     await page.locator('fieldset:nth-of-type(1) input[value="Next"]').click();
-    await page.waitForLoadState('networkidle');
+    // Wait for fieldset 2 to become visible (form step change, not page load)
+    await page.waitForSelector('fieldset:nth-of-type(2)', { state: 'visible', timeout: 5000 });
     console.log('✓ Step 1 (Car Details) completed');
 
     // Step 2: Additional Information - Add comment and click Next
@@ -95,12 +110,13 @@ test.describe('Elan Registry - Car Update Functionality (Logged In)', () => {
     console.log(`✓ Added comment: ${testNote}`);
 
     await page.locator('fieldset:nth-of-type(2) input[value="Next"]').click();
-    await page.waitForLoadState('networkidle');
+    // Wait for fieldset 3 to become visible (form step change, not page load)
+    await page.waitForSelector('fieldset:nth-of-type(3)', { state: 'visible', timeout: 5000 });
     console.log('✓ Step 2 (Additional Information) completed');
 
     // Step 3: Images - Click Update Car (final submission, no Next button on this page)
     await page.locator('fieldset:nth-of-type(3) button:has-text("Update Car"), input[value="Update Car"]').first().click();
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
     console.log('✓ Clicked Update Car button');
 
     // Take screenshot after update
@@ -117,6 +133,13 @@ test.describe('Elan Registry - Car Update Functionality (Logged In)', () => {
 });
 
 test.describe('Elan Registry - All Pages (Logged In)', () => {
+  // Skip these tests if NOT running in logged-in project
+  test.beforeEach(async ({ }, testInfo) => {
+    if (testInfo.project.name !== 'logged-in') {
+      testInfo.skip();
+    }
+  });
+
   const pages = [
     { path: '/', name: 'Home' },
     { path: '/app/cars/index.php', name: 'List Cars' },
@@ -137,7 +160,7 @@ test.describe('Elan Registry - All Pages (Logged In)', () => {
       expect(response.status()).toBeLessThan(400);
 
       // Wait for the page to load
-      await page.waitForLoadState('networkidle');
+      await page.waitForLoadState('domcontentloaded');
 
       // Verify the page has content
       const bodyText = await page.textContent('body');
@@ -149,6 +172,13 @@ test.describe('Elan Registry - All Pages (Logged In)', () => {
 });
 
 test.describe('Internal Links Discovery and Testing (Logged In)', () => {
+  // Skip these tests if NOT running in logged-in project
+  test.beforeEach(async ({ }, testInfo) => {
+    if (testInfo.project.name !== 'logged-in') {
+      testInfo.skip();
+    }
+  });
+
   const pages = [
     { path: '/', name: 'Home' },
     { path: '/app/cars/index.php', name: 'List Cars' },
@@ -165,7 +195,7 @@ test.describe('Internal Links Discovery and Testing (Logged In)', () => {
 
     for (const { path, name } of pages) {
       await page.goto(path);
-      await page.waitForLoadState('networkidle');
+      await page.waitForLoadState('domcontentloaded');
 
       const contentLinks = await page.locator('a:not(header a, nav a)').all();
 
@@ -229,7 +259,7 @@ test.describe('Internal Links Discovery and Testing (Logged In)', () => {
     console.log('\n=== Discovering Internal Links (Logged In) ===');
     for (const { path, name } of pages) {
       await page.goto(path);
-      await page.waitForLoadState('networkidle');
+      await page.waitForLoadState('domcontentloaded');
 
       const contentLinks = await page.locator('a:not(header a, nav a)').all();
 

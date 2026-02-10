@@ -1,6 +1,12 @@
 const { test, expect } = require('@playwright/test');
 
 test.describe('Elan Registry - All Pages (Not Logged In)', () => {
+  // Skip these tests if running in logged-in project
+  test.beforeEach(async ({ }, testInfo) => {
+    if (testInfo.project.name !== 'not-logged-in') {
+      testInfo.skip();
+    }
+  });
   const pages = [
     {
       path: '/',
@@ -75,8 +81,8 @@ test.describe('Elan Registry - All Pages (Not Logged In)', () => {
       // Layer 1: Check that we got a successful response
       expect(response.status()).toBeLessThan(400);
 
-      // Wait for the page to load
-      await page.waitForLoadState('networkidle');
+      // Wait for the page DOM to load (don't wait for all images/resources)
+      await page.waitForLoadState('domcontentloaded');
 
       // Layer 2: CRITICAL - Verify we're NOT on the login page (not redirected to login)
       // Skip this check for the login page itself, since it should contain login.php in URL
@@ -119,7 +125,7 @@ test.describe('Internal Links Discovery and Testing (Not Logged In)', () => {
 
     for (const { path, name } of pages) {
       await page.goto(path);
-      await page.waitForLoadState('networkidle');
+      await page.waitForLoadState('domcontentloaded');
 
       // Get all links NOT in the header/nav
       const contentLinks = await page.locator('a:not(header a, nav a)').all();
@@ -191,7 +197,7 @@ test.describe('Internal Links Discovery and Testing (Not Logged In)', () => {
     console.log('\n=== Discovering Internal Links ===');
     for (const { path, name } of pages) {
       await page.goto(path);
-      await page.waitForLoadState('networkidle');
+      await page.waitForLoadState('domcontentloaded');
 
       const contentLinks = await page.locator('a:not(header a, nav a)').all();
 
