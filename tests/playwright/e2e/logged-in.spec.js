@@ -4,7 +4,7 @@ test.describe('Elan Registry - Menu Verification (Logged In)', () => {
   // Skip these tests if NOT running in logged-in project
   test.beforeEach(async ({ }, testInfo) => {
     if (testInfo.project.name !== 'logged-in') {
-      test.skip();
+      testInfo.skip();
     }
   });
 
@@ -79,7 +79,7 @@ test.describe('Elan Registry - Car Update Functionality (Logged In)', () => {
   // Skip these tests if NOT running in logged-in project
   test.beforeEach(async ({ }, testInfo) => {
     if (testInfo.project.name !== 'logged-in') {
-      test.skip();
+      testInfo.skip();
     }
   });
 
@@ -134,7 +134,7 @@ test.describe('Elan Registry - All Pages (Logged In)', () => {
   // Skip these tests if NOT running in logged-in project
   test.beforeEach(async ({ }, testInfo) => {
     if (testInfo.project.name !== 'logged-in') {
-      test.skip();
+      testInfo.skip();
     }
   });
 
@@ -173,7 +173,7 @@ test.describe('Internal Links Discovery and Testing (Logged In)', () => {
   // Skip these tests if NOT running in logged-in project
   test.beforeEach(async ({ }, testInfo) => {
     if (testInfo.project.name !== 'logged-in') {
-      test.skip();
+      testInfo.skip();
     }
   });
 
