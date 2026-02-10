@@ -53,15 +53,27 @@ async function setupAuth() {
     // Click the submit button to submit the form
     console.log('🔓 Submitting login form...');
     await page.waitForSelector('button[type="submit"]', { timeout: 5000 });
-    await page.click('button[type="submit"]');
+
+    // Try to click the button - may be delayed by reCAPTCHA
+    // Give it a longer timeout since reCAPTCHA might be blocking
+    try {
+      console.log('⏳ Attempting to submit form (may wait for reCAPTCHA)...');
+      await page.click('button[type="submit"]', { timeout: 60000 }); // 60 second timeout for CAPTCHA
+      console.log('✅ Login form submitted successfully');
+    } catch (clickError) {
+      console.log('⚠️  Could not auto-submit form (likely due to reCAPTCHA)');
+    }
 
     console.log('\n' + '='.repeat(70));
-    console.log('⚠️  IMPORTANT INSTRUCTIONS:');
+    console.log('⚠️  IMPORTANT - PLEASE COMPLETE THESE STEPS:');
     console.log('='.repeat(70));
-    console.log('1. If there is a CAPTCHA, solve it now');
-    console.log('2. If 2FA/TOTP is required, enter your code');
-    console.log('3. Wait for successful redirect after login');
-    console.log('\n⏳ This script will wait up to 5 minutes for redirect...');
+    console.log('1. 🤖 SOLVE reCAPTCHA - Click the "I\'m not a robot" checkbox');
+    console.log('2. ⏳ Wait for reCAPTCHA verification (may take 10-30 seconds)');
+    console.log('3. 📝 Verify credentials are still filled in (should be)');
+    console.log('4. 🔓 Click the LOGIN button when reCAPTCHA is solved');
+    console.log('5. 🔐 If 2FA/TOTP is required, enter your code');
+    console.log('6. ✅ Wait for redirect to dashboard');
+    console.log('\n⏳ This script will wait up to 5 minutes for successful redirect...');
     console.log('='.repeat(70) + '\n');
 
     // Wait for navigation away from login page (5 minute timeout)
