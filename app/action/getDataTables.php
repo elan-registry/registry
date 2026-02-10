@@ -16,17 +16,22 @@ require_once '../../users/init.php';
 
 // Security: Only process POST requests
 if ($method !== 'POST') {
-    http_response_code(405);
-    exit(json_encode(['error' => 'Method not allowed']));
+    ApiResponse::error('Method not allowed', 405)->send();
 }
 
 // Security: Verify CSRF token
 if (Input::exists('post')) {
     $token = Input::get('csrf');
     if (!Token::check($token)) {
-        http_response_code(403);
-        include($abs_us_root . $us_url_root . 'usersc/scripts/token_error.php');
-        exit();
+        ApiResponse::forbidden('Invalid CSRF token')
+            ->withDataArray([
+                'draw' => 0,
+                'recordsTotal' => 0,
+                'recordsFiltered' => 0,
+                'data' => []
+            ])
+            ->withLogging(0, LogCategories::LOG_CATEGORY_SECURITY, 'DataTables CSRF token validation failed')
+            ->send();
     }
     
     try {
@@ -89,20 +94,27 @@ if (Input::exists('post')) {
         echo json_encode($response);
         
     } catch (Exception $e) {
-        // Log error for debugging (don't expose to client)
+        // Log detailed error information for debugging
         logger(0, LogCategories::LOG_CATEGORY_SYSTEM_ERROR, "DataTables error: " . $e->getMessage());
         logger(0, LogCategories::LOG_CATEGORY_SYSTEM_ERROR, "DataTables error trace: " . $e->getTraceAsString());
-        
-        http_response_code(500);
-        echo json_encode([
-            'error' => 'Server error occurred',
-            'draw' => (int) Input::get('draw'),
+
+        // Return standardized error response with DataTables metadata
+        ApiResponse::serverError('Server error occurred')
+            ->withDataArray([
+                'draw' => (int) Input::get('draw'),
+                'recordsTotal' => 0,
+                'recordsFiltered' => 0,
+                'data' => []
+            ])
+            ->send();
+    }
+} else {
+    ApiResponse::error('No data received', 400)
+        ->withDataArray([
+            'draw' => 0,
             'recordsTotal' => 0,
             'recordsFiltered' => 0,
             'data' => []
-        ]);
-    }
-} else {
-    http_response_code(400);
-    echo json_encode(['error' => 'No data received']);
+        ])
+        ->send();
 }
