@@ -24,6 +24,41 @@ Use this table to choose the right class for your task:
 | Create database backups | BackupManager | Backup/restore operations, database dumping | `$backup = new BackupManager(...)` |
 | Convert markdown to HTML | MarkdownParser | Documentation rendering, safe HTML conversion | `$parser = new MarkdownParser(...)` |
 | Get car images | CarImage | Image metadata and associations | `$images = CarImage::getByCarId($carId)` |
+| Query car models by year/series | CarModel | Reference data for model filtering | `$models = (new CarModel())->getAvailableInYear(1970)` |
+
+---
+
+## Class Organization Patterns
+
+### Namespaces
+
+The Elan Registry uses namespaces to organize classes by their architectural role:
+
+| Namespace | Purpose | Location | Examples |
+|-----------|---------|----------|----------|
+| **(root)** | Entity classes (domain objects) | `/usersc/classes/` | Car, ElanRegistryOwner |
+| `ElanRegistry\Exceptions` | Custom exception types | `/usersc/classes/Exceptions/` | CarNotFoundException, CarValidationException |
+| `ElanRegistry\Reference` | **External reference data** | `/usersc/classes/ElanRegistry/Reference/` | CarModel, FactoryColor |
+
+### Reference Data vs. Entity Classes
+
+**Reference Data Classes** (`ElanRegistry\Reference`):
+- Represent **external/canonical facts** about cars from Lotus (factory data, official colors, model specifications)
+- **Read-only** - no create/update/delete operations
+- Static query methods only
+- Examples: CarModel (model types), FactoryColor (official colors), FactoryInfo (production specs)
+
+**Entity Classes** (root namespace):
+- Represent **registry records** (individual car registrations, owner profiles)
+- **Full CRUD operations** - create, read, update, delete
+- Instance methods and properties
+- Examples: Car (individual registered car), ElanRegistryOwner (owner profile)
+
+**Quick Decision Guide**:
+- Does this represent data from an external authoritative source? → Reference class
+- Does this represent a record in the registry database? → Entity class
+- Does this need CRUD operations? → Entity class
+- Is it lookup/metadata only? → Reference class
 
 ---
 
@@ -765,6 +800,74 @@ composer test:unit         # Unit tests only
 composer test:integration  # Integration tests
 composer test:quick        # Fast subset (<30s)
 ```
+
+## Reference Data Classes
+
+Classes in the `ElanRegistry\Reference` namespace provide access to external/canonical data about Lotus Elan models, factory colors, and production specifications.
+
+### CarModel
+
+**Location**: `/usersc/classes/ElanRegistry/Reference/CarModel.php`
+
+**Namespace**: `ElanRegistry\Reference`
+
+**Purpose**: Query car model reference data from `car_models` table. Provides access to model definitions, year ranges, series/variant combinations.
+
+**Key Features**:
+- Query models by production year
+- Filter by series (S1, S2, S3, S4, Sprint, +2)
+- Validate model combinations
+- Get year availability ranges
+- Support for color filtering (via series_normalized)
+
+**Common Usage**:
+
+```php
+use ElanRegistry\Reference\CarModel;
+
+$carModel = new CarModel();
+
+// Get all models available in 1970
+$models = $carModel->getAvailableInYear(1970);
+
+// Get all S4 models (across all years)
+$s4Models = $carModel->getBySeries('S4');
+
+// Get model by pipe-delimited value
+$model = $carModel->byValue('S4|FHC|36');
+if ($model) {
+    echo $model->human_readable_short; // "Coupe S4"
+}
+
+// Get unique series in 1973
+$series = $carModel->getSeriesInYear(1973); // ["S4", "Sprint", "+2S/130"]
+
+// Validate model exists
+if ($carModel->exists('S4', 'FHC', '36')) {
+    // Valid model combination
+}
+```
+
+**Methods**:
+- `getAvailableInYear(int $year): array<object>` - Models for specific year
+- `getBySeries(string $series): array<object>` - All models with series
+- `byValue(string $modelValue): ?object` - Get by "series|variant|type"
+- `getSeriesInYear(int $year): array<string>` - Unique series in year
+- `groupByYear(): array<int, array<object>>` - Models grouped by year
+- `getAll(): array<object>` - All models (admin/reference)
+- `exists(string $series, string $variant, string $typeCode): bool` - Validate combination
+
+**Database Table**: `car_models`
+
+**Used By**:
+- Issue #298-1: Factory Colors migration (series filtering)
+- Issue #298-4: Color suggestion API (model-based color filtering)
+- Issue #298-7: Bulk cleanup script (model validation)
+- Phase 2: edit.php dynamic dropdowns (replacing cardefinition.js)
+
+**See Also**:
+- [Issue #577](https://github.com/jimboone/elan-registry/issues/577) - car_models table creation
+- `/usersc/classes/ElanRegistry/README.md` - Namespace pattern documentation
 
 ## Best Practices
 
