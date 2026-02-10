@@ -204,6 +204,7 @@ sequence details.
 
 **ALWAYS run before completing any task:**
 
+- Run `/security-review` to conduct a security review of all changes
 - Run `mcp__ide__getDiagnostics` to check all files for diagnostics
 - Fix any linting or type errors before considering the task complete
 - Run appropriate test suites for modified functionality

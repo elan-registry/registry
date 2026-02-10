@@ -74,7 +74,7 @@ define('PERM_EDITOR', 3);
 /**
  * Check if a page should be PRIVATE with NO permissions (special case)
  */
-function shouldBePrivateNoPermissions($pagePath) {
+function shouldBePrivateNoPermissions($pagePath): bool {
     $specialPages = [
         'usersc/join.php',
         'usersc/login.php',
@@ -86,7 +86,7 @@ function shouldBePrivateNoPermissions($pagePath) {
 /**
  * Check if a page is ADMIN-ONLY (should have Admin+Editor permissions)
  */
-function shouldHaveAdminPermissions($pagePath) {
+function shouldHaveAdminPermissions($pagePath): bool {
     // FIX scripts are admin-only
     if (strpos($pagePath, 'FIX/') === 0) {
         return true;
@@ -103,7 +103,7 @@ function shouldHaveAdminPermissions($pagePath) {
 /**
  * Determine if a page should be PRIVATE based on pattern matching
  */
-function shouldBePrivate($pagePath) {
+function shouldBePrivate($pagePath): bool {
     // Error pages (404.php, 403.php, etc.) in root should be PUBLIC
     if (preg_match('#^40\d\.php$#', $pagePath)) {
         return false;
@@ -142,7 +142,7 @@ function shouldBePrivate($pagePath) {
 /**
  * Analyze current permissions and determine what needs to change
  */
-function analyzePermissions($db) {
+function analyzePermissions($db): array {
     $issues = [
         'set_public' => [],                    // Pages that should be public but are private
         'set_private_admin' => [],             // Pages that should be private-admin but are public
@@ -951,7 +951,7 @@ function abortProcess() {
                 $global_attempts = 0;
                 $global_successes = 0;
 
-                function outputMessage($message, $percentage = null) {
+                function outputMessage($message, $percentage = null): void {
                     // If running in iframe, call parent window functions
                     echo '<script>
                         if (window.parent && window.parent.addLogMessage) {

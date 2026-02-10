@@ -334,8 +334,8 @@ $line = 1; // Where messages go
                 // Track batch start time for timeout management
                 $batch_start_time = time();
                 $max_batch_time = 25; // Allow 25 seconds per batch (5s buffer)
-                
-                function outputMessage($message, $percentage = null) {
+
+                function outputMessage($message, $percentage = null): void {
                     echo '<script>addLogMessage("' . addslashes($message) . '");</script>';
                     if ($percentage !== null) {
                         echo '<script>updateProgress(' . $percentage . ', 100, "' . addslashes($message) . '");</script>';

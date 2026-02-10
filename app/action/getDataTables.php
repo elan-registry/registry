@@ -30,7 +30,7 @@ if (Input::exists('post')) {
                 'recordsFiltered' => 0,
                 'data' => []
             ])
-            ->withLogging(0, LogCategories::LOG_CATEGORY_SECURITY, 'DataTables CSRF token validation failed')
+            ->withLogging($user->data()->id ?? 0, LogCategories::LOG_CATEGORY_SECURITY, 'CSRF token validation failed in DataTables endpoint')
             ->send();
     }
     
