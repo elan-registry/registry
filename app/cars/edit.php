@@ -505,8 +505,8 @@ require_once $abs_us_root . $us_url_root . 'users/includes/html_footer.php'; //c
 <?php echo html_entity_decode($settings->elan_datepicker_js_cdn); ?>
 <?php echo html_entity_decode($settings->elan_datepicker_css_cdn); ?>
 
-<!-- Year/Model definitions -->
-<script src='<?= $us_url_root ?>app/assets/js/cardefinition.js'></script>
+<!-- Dynamic model loading from database -->
+<script src='<?= $us_url_root ?>app/assets/js/model-loader.js'></script>
 
 <script>
     Dropzone.autoDiscover = false;
@@ -918,22 +918,19 @@ require_once $abs_us_root . $us_url_root . 'users/includes/html_footer.php'; //c
         });
 
         // Pre-populate dropdown menus if we are updating a car
+<?php if ($action === 'updateCar'): ?>
         if ($('#action').val() === 'updateCar') {
-            $('#year option[value=<?= $cardetails['year'] ?>]').prop('selected', true);
-            $('#year').trigger('change'); // Trigger the change event to populate and validate
-            // Need to escape all the special characters in the MODEL field in order for this to work
-            var model = "<?= $cardetails['model'] ?>";
+            const year = <?= $cardetails['year'] ?>;
+            const modelValue = "<?= $cardetails['model'] ?>";
 
-            // Escape the special characters in the model string
-            var model = model.replace(/\|/g, "\\\|");
-            var model = model.replace(/ /g, "\\\ ");
-            var model = model.replace(/\//g, "\\\/");
-            var model = model.replace(/\+/g, "\\\+");
+            // Set year and trigger change to load models
+            $('#year').val(year).trigger('change');
 
-            $('#model option[value=' + model + ']').prop('selected', true);
-
-            $('#model').trigger('change'); // Trigger the change event to populate and validate
-            $('#chassis').trigger('blur'); // Trigger the change event to populate and validate
+            // After models load, set the model value
+            setTimeout(function() {
+                $('#model').val(modelValue).trigger('change');
+                $('#chassis').trigger('blur');
+            }, 500);
 
             // Show all fields
             $('#color').prop('disabled', false)
@@ -948,6 +945,7 @@ require_once $abs_us_root . $us_url_root . 'users/includes/html_footer.php'; //c
             $('#car_id').html($('#car_id').val());
             $('#carHeader').html('<h2><strong>Update car</strong><h2>');
         }
+<?php endif; ?>
     });
 
     /* *
@@ -956,10 +954,13 @@ require_once $abs_us_root . $us_url_root . 'users/includes/html_footer.php'; //c
      * Set fields that are valid as green and invalid as red
      */
 
+    // Initialize ModelLoader with API endpoint
+    ModelLoader.init('<?= $us_url_root ?>app/cars/actions/get-models.php');
+
     /*
      * When year changes, update the model list and show the appropriate chassis help text
      */
-    $('#year').change(function() {
+    $('#year').change(async function() {
         validYear = $('#year option:selected').val();
         $('#year_icon').toggleClass('fa-thumbs-up', Boolean(validYear)).toggleClass('fa-thumbs-down', !Boolean(validYear)).toggleClass('is-valid', Boolean(validYear)).toggleClass('is-invalid', !Boolean(validYear));
         $('#year').toggleClass('is-valid', Boolean(validYear)).toggleClass('is-invalid', !Boolean(validYear));
@@ -980,7 +981,10 @@ require_once $abs_us_root . $us_url_root . 'users/includes/html_footer.php'; //c
             $('#model').prop('disabled', false);
         }
 
+        // Load model dropdown for selected year
         if (validYear) {
+            await ModelLoader.populateModelDropdown(validYear, $('#model'));
+
             //Display appropriate chassis text
             if (validYear < 1970) {
                 $('#chassis_pre1970').show();
@@ -998,7 +1002,11 @@ require_once $abs_us_root . $us_url_root . 'users/includes/html_footer.php'; //c
                 $('#chassis_post1970').show();
                 $('#chassis_taken').hide();
             }
-            populateSub($('#year').get(0), $('#model').get(0));
+
+            // Re-validate chassis when year changes (format requirements change)
+            if ($('#chassis').val() && $('#action').val() === 'updateCar') {
+                $('#chassis').trigger('blur');
+            }
         }
     });
     // Validate Model
@@ -1008,6 +1016,11 @@ require_once $abs_us_root . $us_url_root . 'users/includes/html_footer.php'; //c
         $('#model_icon').toggleClass('fa-thumbs-up', Boolean(validModel)).toggleClass('fa-thumbs-down', !Boolean(validModel)).toggleClass('is-valid', Boolean(validModel)).toggleClass('is-invalid', !Boolean(validModel));
         $('#model').toggleClass('is-valid', Boolean(validModel)).toggleClass('is-invalid', !Boolean(validModel));
         $('#chassis').prop('disabled', false);
+
+        // Re-validate chassis when model changes (requirements change based on year/model)
+        if ($('#chassis').val()) {
+            $('#chassis').trigger('blur');
+        }
     });
 
     // Validate Chassis - Centralized AJAX Validation
