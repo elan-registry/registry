@@ -3,6 +3,14 @@
 **Release Date:** February 2026
 **Type:** Minor Release - Data Quality & Validation
 
+## REQUIRED ACTIONS AFTER DEPLOYMENT
+
+Run the following FIX script to populate the `car_models` reference table with Lotus Elan model data:
+
+- `FIX/26-Load-Car-Models.php` - Loads 24 Lotus Elan model definitions (1963-1974)
+
+Navigate to `/FIX/` admin page and run the script, or execute via CLI.
+
 ## User-Facing Changes
 
 ### New Features
