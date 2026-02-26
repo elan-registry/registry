@@ -11,7 +11,7 @@ We follow the [Michael Nygard ADR template](https://cognitect.com/blog/2011/11/1
 | ADR | Title | Status | Priority |
 | --- | --- | --- | --- |
 | [ADR-001](ADR-001-userspice-authentication-framework.md) | Adopt UserSpice as Authentication and Authorization Framework | Accepted | High |
-| [ADR-002](ADR-002-denormalized-cars-table-cached-owner-data.md) | Use a Denormalized Cars Table with Cached Owner Data | In Review | High |
+| [ADR-002](ADR-002-denormalized-cars-table-cached-owner-data.md) | Use a Denormalized Cars Table with Cached Owner Data | Accepted | High |
 | [ADR-003](ADR-003-database-audit-trails-triggers-history-tables.md) | Implement Database Audit Trails via Triggers and History Tables | In Review | High |
 | [ADR-004](ADR-004-standardize-api-architecture-pattern-a-responses.md) | Standardize API Architecture: Pattern A Responses | In Review | High |
 | [ADR-005](ADR-005-use-encrypted-environment-variables-via-secure-env-php.md) | Use Encrypted Environment Variables via SecureEnvPHP | In Review | High |
