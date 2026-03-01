@@ -207,7 +207,7 @@ git commit --no-verify           # Bypass (emergency only)
 
 ### Step-by-Step Deployment
 
-1. **Create git tag** using `./scripts/bump-version.sh [patch|minor|major]`
+1. **Create git tag**: `git tag vX.Y.Z`
 2. **Commit changes** (if any) before creating tag
 3. **Push to remotes** - deployment hooks automatically update VERSION file:
    - GitHub: `git push origin main && git push origin --tags`
@@ -258,12 +258,6 @@ Run `./scripts/update-version.sh` to generate VERSION file locally after creatin
 - `ApplicationVersion::get()` reads VERSION file (unchanged)
 - Deployment timestamp shows VERSION file modification time
 - Example output: `v2.9.1-rc1 (2025-12-14 10:30:00)`
-
-**Version Bump Helper Script:**
-
-- **Location**: `scripts/bump-version.sh`
-- **Usage**: `./scripts/bump-version.sh [patch|minor|major] [--tag] [--dry-run]`
-- **Features**: Automatic semantic version incrementing, optional git tag creation
 
 ## ✅ Post-Deployment Configuration Requirements
 

@@ -402,14 +402,6 @@ git rm --cached VERSION
 git commit -m "CLEANUP: Stop tracking VERSION file (auto-generated)"
 ```
 
-## Other Scripts
-
-### bump-version.sh
-
-Updates version numbers across the project for new releases.
-
----
-
 ## Adding New Scripts
 
 When adding new scripts:
