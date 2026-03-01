@@ -158,6 +158,50 @@ data for verification and potential updates.
 | `builddate` | `date` | Build/invoice date |
 | `note` | `mediumtext` | Additional notes and documentation |
 
+#### `car_models` - Lotus Elan model definitions and year ranges
+
+**Purpose**: Reference table for Lotus Elan model types extracted from cardefinition.js
+
+**Source**: Extracted from `/app/assets/js/cardefinition.js` MENU array
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `id` | `int unsigned` | PRIMARY KEY, AUTO_INCREMENT |
+| `year_available_from` | `int` | First production year (1963-1974) |
+| `year_available_to` | `int` | Last production year (1963-1974) |
+| `display_name` | `varchar(100)` | Full display name from cardefinition.js |
+| `human_readable_short` | `varchar(50)` | Short name without parenthetical |
+| `series` | `varchar(15)` | Series identifier (S1, S2, S3, S4, Sprint, +2, etc.) |
+| `variant` | `varchar(20)` | Body style (Roadster, FHC, DHC, Federal, Race) |
+| `type_code` | `char(3)` | Lotus type code (26, 36, 45, 50, 26R) |
+| `model_value` | `varchar(50)` | Composite key "series\|variant\|type" (UNIQUE) |
+| `series_normalized` | `varchar(15)` | GENERATED: Normalized series (strips SE/S/E/Race) |
+
+**Indexes**:
+
+- `unique_model_combo` (series, variant, type_code) - Enforce model uniqueness
+- `idx_year_range` (year_available_from, year_available_to) - Year range filtering
+- `idx_series_normalized` (series_normalized) - Filtering by normalized series
+- `idx_type_code` (type_code) - Filtering by Lotus type code
+
+**Populated By**: FIX script `FIX/26-Load-Car-Models.php`
+
+**Accessed Via**: `ElanRegistry\Reference\CarModel` class
+
+**Example Records**:
+
+```text
+id=1, years=1963-1964, series="S1", variant="Roadster", type_code="26", model_value="S1|Roadster|26"
+id=5, years=1971-1974, series="S4", variant="FHC", type_code="36", model_value="S4|FHC|36"
+```
+
+**Used By**:
+
+- Issue #298-1: Factory Colors normalization (series filtering)
+- Issue #298-3: Series normalization (model-based filtering)
+- Issue #298-4: Color suggestion API (model-based color filtering)
+- Phase 2: Dynamic model dropdowns (replacing hardcoded cardefinition.js)
+
 ### System Tables
 
 #### `audit` - UserSpice audit logging

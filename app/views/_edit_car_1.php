@@ -4,9 +4,9 @@
         ?>
 
             <div class="form-group row">
-                <label for="carlabel" class="col-md-3 col-xs-12  col-form-label">Car ID</label>
-                <div class="col-sm-1">
-                    <div id='carlabel' class='input-group-prepend'><?= $cardetails['id'] ?></div>
+                <label for="car_id_display" class="col-md-3 col-xs-12 col-form-label">Car ID</label>
+                <div class="col-sm-9">
+                    <input type="text" id="car_id_display" class="form-control" value="<?= htmlspecialchars((string)($cardetails['id'] ?? ''), ENT_QUOTES, 'UTF-8'); ?>" readonly>
                 </div>
             </div>
         <?php

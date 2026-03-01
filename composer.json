@@ -13,7 +13,8 @@
     ],
     "autoload": {
         "psr-4": {
-            "ElanRegistry\\Exceptions\\": "usersc/classes/Exceptions/"
+            "ElanRegistry\\Exceptions\\": "usersc/classes/Exceptions/",
+            "ElanRegistry\\Reference\\": "usersc/classes/ElanRegistry/Reference/"
         }
     },
     "require-dev": {

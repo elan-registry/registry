@@ -1052,6 +1052,68 @@ if (!function_exists('currentUserId')) {
     }
 }
 
+// ============================================================
+// Mock CarModel Reference Data Class
+// ============================================================
+// CRITICAL: Must be defined BEFORE autoloader to prevent loading real CarModel
+// Provides test data for valid model combinations without requiring database
+
+// Use eval to create the class in the correct namespace
+// This is a special case for unit testing - allows us to mock a namespaced class
+eval('
+namespace ElanRegistry\Reference;
+
+/**
+ * Mock CarModel class for unit tests
+ * Returns valid test data for known model combinations
+ */
+class CarModel {
+    /**
+     * Valid model combinations for testing
+     * @var array<string, bool>
+     */
+    private static array $validModels = [
+        "S4|FHC|36" => true,
+        "S4|DHC|45" => true,
+        "Sprint|FHC|36" => true,
+        "Sprint|DHC|45" => true,
+        "S3|FHC|36" => true,
+        "S3|DHC|45" => true,
+        "+2|FHC|50" => true,
+        "+2S|FHC|50" => true,
+        "+2S/130|FHC|50" => true,
+    ];
+
+    /**
+     * Check if a model combination exists
+     */
+    public function exists(string $series, string $variant, string $typeCode): bool {
+        $series = trim($series);
+        $variant = trim($variant);
+        $typeCode = trim($typeCode);
+
+        $modelValue = "{$series}|{$variant}|{$typeCode}";
+        return isset(self::$validModels[$modelValue]);
+    }
+
+    /**
+     * Get model by composite value
+     */
+    public function byValue(string $value): ?object {
+        if (isset(self::$validModels[$value])) {
+            $parts = explode("|", $value);
+            return (object)[
+                "model_value" => $value,
+                "series_normalized" => $parts[0],
+                "variant" => $parts[1],
+                "type_code" => $parts[2],
+            ];
+        }
+        return null;
+    }
+}
+');
+
 // Load unified autoloader for all custom classes and exceptions
 // This must come AFTER mock classes are defined so the mocks take precedence
 require_once $projectRoot . '/usersc/classes/class.autoloader.php';

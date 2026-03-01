@@ -212,11 +212,15 @@ final class CarValidatorTest extends TestCase
     // Full positive case: valid inputs return sanitized array
     // ============================================================
 
+    /**
+     * Full positive case with mock model validation
+     * Uses mock CarModel class that accepts known valid combinations
+     */
     public function testValidateAndSanitizeFieldsReturnsFullSanitizedArray(): void
     {
         $fields = [
             'chassis' => 'ABC123',
-            'model' => 'Elan S4',
+            'model' => 'S4|FHC|36', // Valid in mock CarModel
             'year' => '1970',
             'email' => 'owner@example.com',
             'website' => 'https://example.com',
@@ -232,7 +236,7 @@ final class CarValidatorTest extends TestCase
         $result = $this->validator->validateAndSanitizeFields($fields, true);
 
         $this->assertEquals('ABC123', $result['chassis']);
-        $this->assertEquals('Elan S4', $result['model']);
+        $this->assertEquals('S4|FHC|36', $result['model']);
         $this->assertSame(1970, $result['year']);
         $this->assertEquals('owner@example.com', $result['email']);
         $this->assertEquals('https://example.com', $result['website']);
@@ -316,5 +320,91 @@ final class CarValidatorTest extends TestCase
     {
         $result = $this->validator->sanitizeString('Long string here', 4);
         $this->assertEquals('Long', $result);
+    }
+
+    // ============================================================
+    // Model validation tests with Mock CarModel
+    // Unit tests using mock CarModel class (see bootstrap-unit.php)
+    // Integration tests that require real database are in
+    // tests/integration/cars/services/CarValidatorModelTest.php
+    // ============================================================
+
+    /**
+     * @test
+     * Model validation accepts valid model combinations (mock)
+     */
+    public function testValidateModelAcceptsValidCombination(): void
+    {
+        $data = [
+            'model' => 'S4|FHC|36', // Valid in mock CarModel
+        ];
+
+        $result = $this->validator->validateAndSanitizeFields($data, false);
+
+        $this->assertArrayHasKey('model', $result);
+        $this->assertEquals('S4|FHC|36', $result['model']);
+    }
+
+    /**
+     * @test
+     * Model validation rejects invalid combinations (mock)
+     */
+    public function testValidateModelRejectsInvalidCombination(): void
+    {
+        $this->expectException(CarValidationException::class);
+        $this->expectExceptionMessage('is not a valid Lotus Elan model');
+
+        $data = [
+            'model' => 'S4|Roadster|99', // Invalid: not in mock CarModel
+        ];
+
+        $this->validator->validateAndSanitizeFields($data, false);
+    }
+
+    /**
+     * @test
+     * Model validation rejects invalid format
+     */
+    public function testValidateModelRejectsInvalidFormat(): void
+    {
+        $this->expectException(CarValidationException::class);
+        $this->expectExceptionMessage('Invalid model format');
+
+        $data = [
+            'model' => 'InvalidFormat', // Missing pipe delimiters
+        ];
+
+        $this->validator->validateAndSanitizeFields($data, false);
+    }
+
+    /**
+     * @test
+     * Model validation handles empty model (when not required)
+     */
+    public function testValidateModelHandlesEmptyWhenNotRequired(): void
+    {
+        $data = [
+            // model omitted
+        ];
+
+        $result = $this->validator->validateAndSanitizeFields($data, false);
+
+        $this->assertArrayNotHasKey('model', $result);
+    }
+
+    /**
+     * @test
+     * Model validation requires model when requireAll is true
+     */
+    public function testValidateModelRequiredWhenRequireAll(): void
+    {
+        $this->expectException(CarValidationException::class);
+        $this->expectExceptionMessage('Model is required');
+
+        $data = [
+            'model' => '',
+        ];
+
+        $this->validator->validateAndSanitizeFields($data, true);
     }
 }

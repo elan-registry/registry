@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace ElanRegistry\Car;
 
 use ElanRegistry\Exceptions\CarValidationException;
+use ElanRegistry\Reference\CarModel;
 use DateTime;
 
 /**
@@ -63,7 +64,35 @@ class CarValidator
 
                 case 'model':
                     if (!empty($value)) {
+                        // Sanitize input
                         $validatedFields[$key] = $this->sanitizeString($value, 100);
+
+                        // Validate format: "series|variant|type"
+                        $parts = explode('|', $validatedFields[$key]);
+                        if (count($parts) !== 3) {
+                            throw new CarValidationException(
+                                'Invalid model format. Expected format: series|variant|type'
+                            );
+                        }
+
+                        list($series, $variant, $type) = $parts;
+
+                        // Trim whitespace
+                        $series = trim($series);
+                        $variant = trim($variant);
+                        $type = trim($type);
+
+                        // Validate model combination exists in car_models table
+                        $carModelRef = new CarModel();
+                        if (!$carModelRef->exists($series, $variant, $type)) {
+                            throw new CarValidationException(
+                                "Invalid model combination: {$series} {$variant} (Type {$type}) is not a valid Lotus Elan model"
+                            );
+                        }
+
+                        // Store validated model
+                        $validatedFields[$key] = "{$series}|{$variant}|{$type}";
+
                     } elseif ($requireAll) {
                         throw new CarValidationException('Model is required');
                     }
