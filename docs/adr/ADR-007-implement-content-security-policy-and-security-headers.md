@@ -21,15 +21,24 @@ was first deployed on the UserSpice framework.
 The application required a security header strategy that:
 
 1. Protects against clickjacking for all pages, including error pages that load
+
    outside the normal UserSpice initialization sequence
+
 2. Establishes a Content Security Policy that permits all required third-party CDN
+
    domains (see ADR-006) without triggering browser violations
+
 3. Enforces HTTPS via HSTS when running in a secure context, without false-positives
+
    on local development or HTTP environments
+
 4. Removes PHP version disclosure from response headers
 5. Plays well with the UserSpice framework, which sets some security headers
+
    itself in its default `security_headers.php` file
+
 6. Does not require a CSP nonce system given the UserSpice framework's use of
+
    inline JavaScript and inline styles throughout its templates
 
 ### Threat Model
@@ -37,17 +46,28 @@ The application required a security header strategy that:
 The specific attacks addressed by this decision:
 
 - **Clickjacking (UI Redress)**: An attacker embeds the registry in a hidden
+
   iframe on another site and tricks visitors into clicking UI elements. Particularly
   relevant for car transfer and account management forms.
+
 - **XSS via MIME Sniffing**: A browser incorrectly interprets a non-script MIME
+
   type as executable JavaScript and executes malicious content.
+
 - **Protocol Downgrade (SSL Strip)**: An attacker intercepts an HTTP redirect and
+
   prevents the browser from upgrading to HTTPS.
+
 - **Information Disclosure**: Exposing PHP version via `X-Powered-By` aids
+
   fingerprinting for known PHP vulnerability exploitation.
+
 - **Cross-Site Content Injection**: Malicious scripts or styles injected from
+
   unauthorized origins execute in the user's browser.
+
 - **Referrer Leakage**: Full URLs including path and query parameters from the
+
   registry (which may include car IDs or owner identifiers) sent as the `Referer`
   header to third-party CDN domains.
 
@@ -72,7 +92,7 @@ error pages must emit minimum anti-clickjacking headers independently, before an
 ### Nonce Feasibility Assessment
 
 A CSP nonce approach (replacing `'unsafe-inline'` with per-request
-`'nonce-{value}'` tokens on each `<script>` and `<style>` tag) was assessed and
+`'nonce-{value}'`tokens on each`<script>`and`<style>` tag) was assessed and
 rejected. The UserSpice framework generates substantial inline JavaScript and
 inline `<style>` blocks throughout its template system, plugin hooks, and helper
 files. These are upstream framework files (constrained by ADR-001) and cannot be
@@ -88,8 +108,6 @@ tag in `usersc/includes/footer.php`. However, neither variable feeds into the CS
 header itself; the CSP header is set before these templates render. The nonce
 attributes on the framework script tags are framework-side annotations that are
 inconsistent with the emitted CSP policy and do not provide enforcement.
-
-
 
 ## Decision
 
@@ -114,7 +132,7 @@ third-party domains required by the application:
 **Directives:**
 
 | Directive | Value | Purpose |
-|---|---|---|
+| --- | --- | --- |
 | `default-src` | `'self'` | Catch-all fallback for unlisted resource types |
 | `script-src` | `'self' 'unsafe-inline' 'unsafe-eval'` + CDN domains | Allow UserSpice inline JS and all CDN script sources |
 | `style-src` | `'self' 'unsafe-inline'` + CDN domains | Allow Bootstrap/Bootswatch/FontAwesome inline and CDN styles |
@@ -124,11 +142,11 @@ third-party domains required by the application:
 | `frame-src` | `'self' https://www.google.com` | Google reCAPTCHA iframe on registration page |
 | `frame-ancestors` | `'self'` | Anti-clickjacking: prevents cross-origin iframes (CSP3, preferred method) |
 | `object-src` | `'none'` | Blocks Flash/plugin embeds entirely |
-| `base-uri` | `'self'` | Prevents `<base>` tag injection attacks that redirect relative URLs |
+| `base-uri` | `'self'` | Prevents`<base>` tag injection attacks that redirect relative URLs |
 
 **Whitelisted CDN Domains (script-src):**
 
-```
+```text
 https://maps.googleapis.com        Google Maps JavaScript API
 https://www.gstatic.com            Google static assets
 https://ssl.gstatic.com            Google SSL static assets
@@ -149,7 +167,7 @@ https://static.cloudflareinsights.com  Cloudflare Analytics
 
 **Whitelisted CDN Domains (style-src):**
 
-```
+```text
 https://fonts.googleapis.com       Google Fonts CSS
 https://cdn.jsdelivr.net           Bootstrap/Dropzone/Datepicker CSS
 https://cdnjs.cloudflare.com       Datepicker CSS
@@ -167,7 +185,7 @@ https://www.gstatic.com            Google-injected styles (Maps, reCAPTCHA)
 #### 2. HTTP Strict Transport Security (HSTS)
 
 HSTS is emitted only when the request is served over HTTPS, using the `$is_https`
-server global (which in turn uses `REQUEST_SCHEME` via the `Server`
+server global (which in turn uses `REQUEST_SCHEME`via the`Server`
 class, making it proxy-aware):
 
 ```php
@@ -177,6 +195,7 @@ if ($is_https) {
 ```
 
 Parameters:
+
 - `max-age=31536000`: One year; browsers remember the HTTPS requirement
 - `includeSubDomains`: Applies to all subdomains of elanregistry.org
 - `preload`: Eligible for browser HSTS preload list submission
@@ -186,7 +205,7 @@ environments, which would lock developers out of their HTTP local server.
 
 #### 3. X-Frame-Options
 
-```
+```text
 X-Frame-Options: SAMEORIGIN
 ```
 
@@ -200,7 +219,7 @@ viewers).
 
 #### 4. X-XSS-Protection
 
-```
+```text
 X-XSS-Protection: 1; mode=block
 ```
 
@@ -215,7 +234,7 @@ the registry's user base.
 
 #### 5. X-Content-Type-Options
 
-```
+```text
 X-Content-Type-Options: nosniff
 ```
 
@@ -225,12 +244,13 @@ attacks where a server serves a JavaScript file with an image MIME type.
 
 #### 6. Referrer-Policy
 
-```
+```text
 Referrer-Policy: no-referrer-when-downgrade
 ```
 
 Sends the full `Referer` header on same-origin and HTTPS-to-HTTPS requests, but
 omits it on HTTPS-to-HTTP (protocol downgrade) requests. This balances:
+
 - Usability: analytics and navigation logic that reads the referer still function
 - Privacy: registry URLs are not leaked to insecure external sites
 
@@ -263,10 +283,14 @@ Apache headers are emitted in addition to PHP `header()` calls. When both are
 present, the browser receives both values. RFC 7230 permits multiple values for
 the same header name (browsers use the last value or concatenate, behavior varies
 by header and browser). In practice:
-- `X-Frame-Options` with duplicate `SAMEORIGIN` values is harmless; browsers
+
+- `X-Frame-Options`with duplicate`SAMEORIGIN` values is harmless; browsers
+
   honor `SAMEORIGIN`
-- `X-Content-Type-Options` with duplicate `nosniff` is harmless
-- `Referrer-Policy` with conflicting values (PHP: `no-referrer-when-downgrade`;
+
+- `X-Content-Type-Options`with duplicate`nosniff` is harmless
+- `Referrer-Policy`with conflicting values (PHP:`no-referrer-when-downgrade`;
+
   Apache: `strict-origin-when-cross-origin`) may result in browser-specific
   behavior
 
@@ -289,7 +313,7 @@ that would require a full whitelist; they only load Bootstrap from
 fallback CSP at minimum prevents clickjacking.
 
 Additionally, if `init.php` fails to load on an error page, the error page
-directly requires the `Server` class and `server_globals.php` to ensure validated
+directly requires the `Server`class and`server_globals.php` to ensure validated
 request globals are available for logging:
 
 ```php
@@ -308,21 +332,24 @@ directory:
 Header always set X-Frame-Options DENY
 ```
 
-`DENY` (instead of `SAMEORIGIN`) is used for the scripts directory because
+`DENY`(instead of`SAMEORIGIN`) is used for the scripts directory because
 administrative scripts should never be framed by any page, including same-origin
 pages.
 
 ### CSP Violation Monitoring
 
-No `report-uri` or `report-to` directive is included in the CSP. Violation
+No `report-uri`or`report-to` directive is included in the CSP. Violation
 monitoring is handled entirely via Playwright end-to-end tests
 (`tests/playwright/csp-validation.spec.js`) that:
 
 - Listen for CSP violations in the browser console
 - Monitor `pageerror` events for CSP-related errors
 - Test multiple page types: home page, car listings, car details, login page,
+
   statistics page (which loads Google Charts)
+
 - Verify critical external domains (gstatic.com, cloudflareinsights.com) load
+
   without failure
 
 PHPUnit unit tests (`tests/unit/security/SecurityHeadersTest.php`) and integration
@@ -335,13 +362,16 @@ via HTTP response inspection.
 
 ### Referrer-Policy Discrepancy
 
-The PHP `security_headers.php` sets `Referrer-Policy: no-referrer-when-downgrade`
-while the root `.htaccess` sets `Referrer-Policy: strict-origin-when-cross-origin`.
+The PHP `security_headers.php`sets`Referrer-Policy: no-referrer-when-downgrade`
+while the root `.htaccess`sets`Referrer-Policy: strict-origin-when-cross-origin`.
 These are different policies:
 
 - `no-referrer-when-downgrade`: Sends full URL on same-origin and HTTPS-to-HTTPS
+
   cross-origin requests; omits on HTTPS-to-HTTP
+
 - `strict-origin-when-cross-origin`: Sends full URL on same-origin requests, only
+
   origin (no path) on HTTPS-to-HTTPS cross-origin requests, omits on HTTP-to-HTTPS
 
 `strict-origin-when-cross-origin` is the more privacy-preserving policy (MDN
@@ -350,10 +380,10 @@ leaking to CDN analytics and tracking endpoints. The PHP value should be updated
 to match the Apache value, or the Apache value should be removed to eliminate
 the duplicate header entirely.
 
-### `'unsafe-inline'` and `'unsafe-eval'` Limitations
+### `'unsafe-inline'`and`'unsafe-eval'` Limitations
 
 The CSP does not eliminate XSS risk from inline scripts because `'unsafe-inline'`
-and `'unsafe-eval'` are present in `script-src`. These are required by the
+and `'unsafe-eval'`are present in`script-src`. These are required by the
 UserSpice framework (ADR-001 constraint) and cannot be removed without forking
 the framework. The CSP still provides value via:
 
@@ -370,7 +400,7 @@ and UserSpice framework refactoring, tracked separately.
 `$userspice_nonce` (UserSpice framework variable, set in framework core) and
 `$usespice_nonce` (custom application variable, referenced in
 `usersc/includes/footer.php` for the ElanRegistryAPI script tag) both appear in
-templates with `nonce` attributes on `<script>` tags. Neither variable is
+templates with `nonce`attributes on`<script>` tags. Neither variable is
 currently populated with a value by the application (the `?? ''` null-coalescing
 default produces empty strings), and neither is wired into the CSP header. The
 nonce attributes on script tags are non-functional annotations at present.
@@ -380,45 +410,55 @@ nonce attributes on script tags are non-functional annotations at present.
 ### Positive
 
 - **Clickjacking protection on all pages.** The dual-layer approach (CSP
-  `frame-ancestors` + `X-Frame-Options`) ensures clickjacking protection regardless
+
+  `frame-ancestors`+`X-Frame-Options`) ensures clickjacking protection regardless
   of browser CSP3 support level. Error pages have independent fallback headers that
   work even when `init.php` fails to load.
 
 - **HTTPS enforcement for sessions.** HSTS with a one-year max-age prevents
+
   SSL-stripping attacks and ensures the registry's authentication cookies are
   only transmitted over HTTPS.
 
 - **Supply-chain attack surface reduced.** The CSP domain whitelist means that
+
   even if an attacker injects a `<script src="https://evil.com/...">` tag (via
   stored XSS), the browser will block it. Only the explicitly whitelisted CDN
   domains can serve scripts.
 
 - **PHP version hidden.** Removing `X-Powered-By` prevents automated scanners
+
   from trivially identifying the PHP version for known CVE matching.
 
 - **MIME sniffing blocked.** `X-Content-Type-Options: nosniff` prevents a class
+
   of attacks where uploaded files served with incorrect MIME types execute as
   scripts.
 
 - **Tested at multiple levels.** Unit tests verify static header file content.
+
   Integration tests verify error page header structure. Playwright E2E tests
   verify actual HTTP response headers and CSP violation absence at runtime.
 
 - **Integrated with server globals abstraction.** HSTS emission uses
-  `$is_https` from the validated server globals rather than direct `$_SERVER`
+
+  `$is_https`from the validated server globals rather than direct`$_SERVER`
   access, ensuring correct behavior behind reverse proxies.
 
 - **No CSP reporting overhead.** Without a `report-uri` endpoint, there is no
+
   server-side overhead from browser violation reports. Playwright tests cover
   the same use case in the CI/CD pipeline.
 
 ### Negative
 
 - **`'unsafe-inline'` limits XSS protection.** The CSP does not prevent execution
+
   of inline scripts injected via stored or reflected XSS. This is the most
   significant security limitation of the current implementation.
 
 - **Broad CDN whitelist increases supply-chain risk surface.** Whitelisting CDNs
+
   like `cdn.jsdelivr.net`, `cdnjs.cloudflare.com`, and `unpkg.com` means any
   package on those CDNs can be loaded if an attacker injects a `<script>` tag
   pointing to a malicious package on a whitelisted domain. This is a known
@@ -426,25 +466,30 @@ nonce attributes on script tags are non-functional annotations at present.
   resources (ADR-006).
 
 - **Referrer-Policy value inconsistency.** Two different Referrer-Policy values
+
   (PHP vs. Apache) can be sent simultaneously. Browser behavior with conflicting
   same-name headers varies; the stricter or more recent value is typically used,
   but this is not guaranteed.
 
 - **No CSP violation reporting.** Without a `report-uri` endpoint, CSP violations
+
   that occur in production (not caught by Playwright tests) are invisible.
   Violations would only surface through user-reported broken functionality.
 
 - **HSTS `preload` directive creates long-term commitment.** Submitting
+
   elanregistry.org to the browser HSTS preload lists means the domain will be
   hardcoded as HTTPS-only in browsers for potentially years. Removing from
   preload lists takes months. Switching to HTTP-only hosting after preload
   submission would break the site for all preload-list browsers.
 
-- **Apache `.htaccess` dependency.** The Layer 2 headers require `mod_headers`
+- **Apache `.htaccess`dependency.** The Layer 2 headers require`mod_headers`
+
   to be loaded in Apache. On shared hosting, this is typically available but not
   guaranteed. Missing `mod_headers` silently removes the baseline Apache headers.
 
-- **Duplicate headers for `X-Frame-Options` and `X-Content-Type-Options`.** PHP
+- **Duplicate headers for `X-Frame-Options`and`X-Content-Type-Options`.** PHP
+
   and Apache both set these headers. While currently harmless, any future change
   to the PHP values requires coordinated changes to `.htaccess` or the duplicate
   Apache value will persist.
@@ -452,12 +497,12 @@ nonce attributes on script tags are non-functional annotations at present.
 ### Risks
 
 | Risk | Likelihood | Impact | Mitigation |
-|---|---|---|---|
-| Stored XSS succeeds due to `'unsafe-inline'` | Low | High | Input validation, output escaping, prepared statements, and UserSpice CSRF tokens mitigate the primary injection vectors; `'unsafe-inline'` removal requires Bootstrap 5 migration |
+| --- | --- | --- | --- |
+| Stored XSS succeeds due to `'unsafe-inline'` | Low | High | Input validation, output escaping, prepared statements, and UserSpice CSRF tokens mitigate the primary injection vectors;`'unsafe-inline'` removal requires Bootstrap 5 migration |
 | CDN-domain CSP bypass (e.g., malicious npm package on jsdelivr.net) | Very Low | High | SRI hashes (ADR-006) block tampered CDN files; domain allowlist is a necessary trade-off for CDN-based dependencies |
 | HSTS preload causes prolonged downtime if HTTPS fails | Very Low | Critical | Ensure HTTPS renewal is automated (Let's Encrypt); monitor cert expiry; do not submit to preload lists until production HTTPS is stable |
 | CSP violation in production breaks user functionality silently | Medium | Medium | Playwright E2E tests catch CSP violations in CI; users experiencing issues should report to admin; consider adding temporary `report-uri` during major changes |
-| `mod_headers` not available on shared hosting | Low | Low | Verify `mod_headers` is enabled on A2 Hosting; Apache headers are defense-in-depth, not primary security layer |
+| `mod_headers`not available on shared hosting | Low | Low | Verify`mod_headers` is enabled on A2 Hosting; Apache headers are defense-in-depth, not primary security layer |
 | Future CDN domain addition blocked by CSP | Medium | Low | Maintain the CDN whitelist in `security_headers.php` when adding new CDN dependencies; document this requirement in CLAUDE.md |
 
 ## Alternatives Considered
@@ -465,23 +510,32 @@ nonce attributes on script tags are non-functional annotations at present.
 ### Nonce-Based CSP (Strict CSP)
 
 Replace `'unsafe-inline'` with per-request cryptographic nonces on all
-`<script>` and `<style>` tags. Emit `'nonce-{base64value}'` in the CSP header
+`<script>`and`<style>`tags. Emit`'nonce-{base64value}'` in the CSP header
 and add `nonce="..."` attributes to each inline script block.
 
 **Rejected because:**
 
 - The UserSpice framework emits inline JavaScript in its template files, plugin
+
   hooks, and helper functions (ADR-001 constraint). These upstream files cannot
   be modified to accept nonce attributes without forking the framework.
+
 - `'unsafe-inline'` in the policy defeats the nonce approach entirely: if
+
   `'unsafe-inline'` is present, browsers allow all inline scripts, and nonces
   have no additional effect.
+
 - Implementing nonces on custom application code only (while leaving framework
+
   code under `'unsafe-inline'`) provides no security improvement.
+
 - Nonce-based CSP requires a centralized nonce generation mechanism accessible
+
   before any HTML output, a PHP session or request object, and reliable injection
   into the CSP header and all relevant template locations simultaneously.
+
 - The correct long-term path is Bootstrap 5 migration plus UserSpice framework
+
   updates to eliminate inline script needs, tracked as a separate roadmap item.
 
 ### Hash-Based CSP
@@ -493,12 +547,19 @@ required.
 **Rejected because:**
 
 - Requires computing hashes for every inline script in UserSpice templates,
+
   plugins, and helpers—dozens of blocks across the framework.
+
 - Framework updates break hashes; every UserSpice update requires re-hashing all
+
   inline scripts.
+
 - Dynamic inline scripts (any PHP-generated JavaScript) cannot be pre-hashed
+
   because their content varies per request.
+
 - The UserSpice framework generates significant amounts of dynamic inline
+
   JavaScript (flash messages, configuration values, etc.) that cannot be
   pre-hashed.
 
@@ -510,12 +571,17 @@ directory) to block all framing including same-origin frames.
 **Rejected because:**
 
 - `DENY` prevents legitimate same-origin use cases such as admin iframes and
+
   documentation viewers.
+
 - The documentation viewer feature (`app/docs/`) may render documents in iframes.
 - `SAMEORIGIN` provides equivalent protection against cross-origin clickjacking
+
   attacks (which is the actual threat model) while permitting legitimate
   same-origin framing.
+
 - The CSP `frame-ancestors 'self'` directive already enforces the same restriction
+
   via the modern CSP3 mechanism.
 
 ### CSP Reporting Endpoint
@@ -527,17 +593,28 @@ or logs them via the `logger()` function.
 **Not adopted (but identified as a future enhancement) because:**
 
 - Adds server-side overhead: every CSP violation in every browser session sends
+
   an HTTP request to the application server.
+
 - Public CSP reporting endpoints are commonly abused for denial-of-service (DoS)
+
   by flooding the endpoint with fake violation reports.
+
 - The application already has Playwright E2E tests that catch CSP violations in
+
   CI/CD; runtime production reporting would be redundant.
+
 - The added complexity (endpoint, authentication, rate limiting, storage,
+
   alerting) is not warranted for the application's scale.
+
 - Cloudflare Analytics (already whitelisted in `connect-src`) provides general
+
   error visibility; CSP violations are a development-time concern addressed by
   the Playwright test suite.
+
 - If a significant policy change is planned (e.g., removing `'unsafe-inline'`),
+
   a temporary `report-only` CSP header can be added at that time without
   committing to a permanent reporting infrastructure.
 
@@ -551,8 +628,11 @@ headers at the infrastructure level, removing header management from PHP.
 - The application runs on shared hosting (A2 Hosting) without WAF capabilities.
 - Cloudflare proxy is not in use; the application connects directly to A2 Hosting.
 - Adding a WAF layer introduces a new infrastructure dependency incompatible with
+
   the shared-hosting deployment model (ADR-001).
+
 - Application-level headers provide more granular control (e.g., conditional HSTS
+
   based on `$is_https`) than infrastructure-level rules.
 
 ### Permissions-Policy Header
@@ -563,12 +643,17 @@ Add a `Permissions-Policy` header to restrict browser feature access
 **Not adopted (but identified as planned) because:**
 
 - The application does not use browser geolocation APIs (Google Maps loads from
+
   a CDN; address coordinates are geocoded server-side via ElanRegistryOwner).
+
 - No camera, microphone, payment, or other restricted API access occurs.
 - The benefit is minimal for this application's feature set.
 - Adding a restrictive `Permissions-Policy` could inadvertently block future
+
   features without clear documentation that the header must be updated.
+
 - Remains a planned addition once the feature set stabilizes and requirements
+
   for browser permissions are well understood.
 
 ## References

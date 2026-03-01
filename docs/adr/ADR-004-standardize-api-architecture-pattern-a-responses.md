@@ -19,7 +19,8 @@ Prior to v2.12.0, the Lotus Elan Registry lacked a standardized AJAX API archite
 - **No request cancellation**: Long-running searches or autocomplete requests could accumulate responses from stale requests
 - **Unstructured error logging**: API failures were difficult to correlate with user actions or debug in production
 
-The application needed to standardize AJAX communication within the constraints of the UserSpice framework: a page-based PHP architecture with no dedicated router, middleware, or API layer.
+The application needed to standardize AJAX communication within the constraints of the UserSpice framework: a page-based PHP architecture with no dedicated
+router, middleware, or API layer.
 
 ### Problem Statement
 
@@ -42,7 +43,7 @@ Introduce `ApiResponse` class (`usersc/classes/ApiResponse.php`) as the canonica
 
 **Design Principles:**
 
-- **Immutable Builder Pattern**: `withData()`, `withLogging()`, `withStatusCode()` return new instances (via `clone`)
+- **Immutable Builder Pattern**: `withData()`, `withLogging()`, `withStatusCode()`return new instances (via`clone`)
 - **Private Constructor with Factory Methods**: Enforces consistent HTTP status codes:
   - `success(message): ApiResponse` → 200 OK
   - `error(message, statusCode): ApiResponse` → 400 Bad Request (default)
@@ -63,11 +64,12 @@ Introduce `ApiResponse` class (`usersc/classes/ApiResponse.php`) as the canonica
 }
 ```
 
-Additional data is merged flat at the top level (not nested under a "data" key), which is unconventional but avoids breaking existing integrations and keeps the format simple.
+Additional data is merged flat at the top level (not nested under a "data" key), which is unconventional but avoids breaking existing integrations and keeps the
+format simple.
 
 **Integration with Exception Hierarchy:**
 
-Each `ElanRegistryException` subclass maps to the appropriate `ApiResponse` factory method via `getDefaultHttpStatusCode()`. The canonical catch pattern:
+Each `ElanRegistryException`subclass maps to the appropriate`ApiResponse`factory method via`getDefaultHttpStatusCode()`. The canonical catch pattern:
 
 ```php
 try {
@@ -83,7 +85,7 @@ try {
 
 **Integrated Logging:**
 
-The `withLogging(userId, category, message)` method queues a logger call to be executed when `send()` is called, ensuring all API operations are auditable:
+The `withLogging(userId, category, message)`method queues a logger call to be executed when`send()` is called, ensuring all API operations are auditable:
 
 ```php
 ApiResponse::success('Car updated')
@@ -95,13 +97,14 @@ ApiResponse::success('Car updated')
 **Immutability and Testing:**
 
 The immutable builder pattern provides:
+
 - `toArray()` method for unit testing response structure
 - `toJson()` method for JSON serialization
 - `getStatusCode()`, `isSuccess()`, `getMessage()`, `getPendingLog()` accessors for assertions
 
 **Autoloading:**
 
-`ApiResponse` is autoloaded via the recursive class autoloader (configured in `users/init.php`) and available on every page after initialization.
+`ApiResponse`is autoloaded via the recursive class autoloader (configured in`users/init.php`) and available on every page after initialization.
 
 **send() Method Behavior:**
 
@@ -145,9 +148,10 @@ The client automatically detects and injects CSRF tokens from three DOM location
 
 1. `input[name="csrf"]` -- HTML form input
 2. `#csrf` -- HTML element with ID
-3. `data-csrf-token` attribute on `<html>` element
+3. `data-csrf-token`attribute on`<html>` element
 
 Tokens are injected via:
+
 - **Header**: `X-CSRF-Token: <token>`
 - **Body**: CSRF field in FormData (for POST/PUT/DELETE)
 
@@ -188,7 +192,8 @@ This prevents race conditions in search-as-you-type and prevents stale responses
 **FormData Serialization:**
 
 Handles:
-- `File` and `Blob` objects
+
+- `File`and`Blob` objects
 - Arrays as `key[]` parameters
 - Scalars as string values
 
@@ -203,6 +208,7 @@ const data = { items: ['a', 'b', 'c'] };
 The client distinguishes three error types:
 
 - **`ApiValidationError` (422)**: Validation failures with field-keyed errors
+
   ```javascript
   .catch(error => {
       if (error instanceof ApiValidationError) {
@@ -212,6 +218,7 @@ The client distinguishes three error types:
   ```
 
 - **`ApiError` (non-422 failures)**: General API or network errors
+
   ```javascript
   .catch(error => {
       if (error instanceof ApiError) {
@@ -221,6 +228,7 @@ The client distinguishes three error types:
   ```
 
 - **`ApiCancelledError`**: Request was cancelled or timed out
+
   ```javascript
   .catch(error => {
       if (error instanceof ApiCancelledError) {
@@ -240,7 +248,7 @@ Provides unified toast notification integration with UserSpice toast functions.
   - Delegates to UserSpice functions: `usSuccess()`, `usError()`, `usInfo()`
 
 - `showValidationErrors(errors)` -- Display field-level validation errors
-  - Flattens field errors and appends ` is-invalid` CSS class to corresponding form inputs
+  - Flattens field errors and appends `is-invalid` CSS class to corresponding form inputs
   - Enables Bootstrap form validation styling
 
 **XSS Protection:**
@@ -255,46 +263,62 @@ NotificationHelper.escapeHtml(userMessage); // Escapes <, >, &, ", '
 
 ### Positive
 
-- **Consistent response format eliminates per-endpoint parsing.** All endpoints return Pattern A: `{success, message, ...data}`. Frontend code uses a single response handler instead of custom per-endpoint logic.
+- **Consistent response format eliminates per-endpoint parsing.** All endpoints return Pattern A: `{success, message, ...data}`. Frontend code uses a single
+  response handler instead of custom per-endpoint logic.
 
-- **Typed frontend errors enable specific handling.** `ApiValidationError`, `ApiError`, and `ApiCancelledError` allow frontend code to respond appropriately to different failure modes (validation vs. auth vs. network).
+- **Typed frontend errors enable specific handling.** `ApiValidationError`, `ApiError`, and `ApiCancelledError` allow frontend code to respond appropriately to
+  different failure modes (validation vs. auth vs. network).
 
 - **Automatic CSRF injection eliminates manual token management.** The client automatically detects and injects tokens; developers write:
+
   ```javascript
   ElanRegistryAPI.post('/endpoint', data)
   ```
+
   instead of manually extracting and appending CSRF tokens.
 
-- **Integrated logging ensures all API operations are auditable.** The `withLogging()` method queues audit entries that are executed atomically with the response, ensuring no audit gap between the API operation and its log entry.
+- **Integrated logging ensures all API operations are auditable.** The `withLogging()` method queues audit entries that are executed atomically with the
+  response, ensuring no audit gap between the API operation and its log entry.
 
-- **Request cancellation prevents race conditions.** Search-as-you-type and other multi-request patterns are protected by `AbortController` timeout and cancellation, preventing stale responses from being processed.
+- **Request cancellation prevents race conditions.** Search-as-you-type and other multi-request patterns are protected by `AbortController` timeout and
+  cancellation, preventing stale responses from being processed.
 
-- **Builder pattern keeps ApiResponse immutable and testable.** The immutable design with `toArray()` and `toJson()` accessors enables unit testing without mocking the entire response sending infrastructure. Tests can assert on response structure before `send()` is called.
+- **Builder pattern keeps ApiResponse immutable and testable.** The immutable design with `toArray()`and`toJson()`accessors enables unit testing without mocking
+  the entire response sending infrastructure. Tests can assert on response structure before`send()` is called.
 
-- **Single injection point ensures client availability.** Loading the client in `footer.php` via nonce-based CSP injection guarantees that `ElanRegistryAPI`, `NotificationHelper`, and error classes are available on every page without individual script tag management.
+- **Single injection point ensures client availability.** Loading the client in `footer.php`via nonce-based CSP injection guarantees that`ElanRegistryAPI`,
+  `NotificationHelper`, and error classes are available on every page without individual script tag management.
 
-- **Exception integration maps typed errors to HTTP codes.** Each `ElanRegistryException` subclass defines its own HTTP status code; the canonical catch pattern automatically selects the appropriate `ApiResponse` factory method.
+- **Exception integration maps typed errors to HTTP codes.** Each `ElanRegistryException`subclass defines its own HTTP status code; the canonical catch pattern
+  automatically selects the appropriate`ApiResponse` factory method.
 
 ### Negative
 
-- **Flat data structure violates REST conventions.** Pattern A merges additional data at the top level alongside `success` and `message`, rather than nesting it under a "data" key. This is unconventional but was retained to avoid breaking existing integrations during incremental migration. New integrations should be mindful of key collision risks (e.g., "data" field name could shadow the API's custom data).
+- **Flat data structure violates REST conventions.** Pattern A merges additional data at the top level alongside `success`and`message`, rather than nesting it
+  under a "data" key. This is unconventional but was retained to avoid breaking existing integrations during incremental migration. New integrations should be
+  mindful of key collision risks (e.g., "data" field name could shadow the API's custom data).
 
-- **send() calls exit, making it impossible to run code after response.** By design, `send()` terminates script execution to prevent accidental additional output. This means:
+- **send() calls exit, making it impossible to run code after response.** By design, `send()` terminates script execution to prevent accidental additional
+  output. This means:
   - No middleware-pattern request/response filtering
   - No chaining multiple response handlers
   - No Server-Sent Events or streaming responses
+
   This is intentional for safety but limits advanced patterns.
 
-- **No support for Server-Sent Events or streaming responses.** The `send()` method exits immediately; streaming or long-polling patterns require alternative endpoints using raw PHP output.
+- **No support for Server-Sent Events or streaming responses.** The `send()` method exits immediately; streaming or long-polling patterns require alternative
+  endpoints using raw PHP output.
 
-- **CSRF token staleness on long-lived pages.** If a user keeps a page open for hours, the session CSRF token may be regenerated by UserSpice. The client will continue using the stale token until the page is refreshed. This is mitigated by session timeout; typical timeouts are 1-2 hours.
+- **CSRF token staleness on long-lived pages.** If a user keeps a page open for hours, the session CSRF token may be regenerated by UserSpice. The client will
+  continue using the stale token until the page is refreshed. This is mitigated by session timeout; typical timeouts are 1-2 hours.
 
-- **Legacy jQuery.ajax() calls coexist during incremental migration.** Approximately 5 endpoints still use `jQuery.ajax()` (tagged `@deprecated`, tracked in Issue #481). This creates a dual-client pattern during the transition period.
+- **Legacy jQuery.ajax() calls coexist during incremental migration.** Approximately 5 endpoints still use `jQuery.ajax()`(tagged`@deprecated`, tracked in Issue
+  #481). This creates a dual-client pattern during the transition period.
 
 ### Risks
 
 | Risk | Likelihood | Impact | Mitigation |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | Flat data key collision with "success"/"message" | Low | Medium | Code review for "success" or "message" in custom data keys; consider namespace prefix for future-added custom fields |
 | Incomplete migration leaving inconsistent API behavior | Medium | Medium | @deprecated tags mark jQuery.ajax() calls; Issue #481 tracks migration; add ApiResponse requirement to code review checklist |
 | CSRF token staleness on long-lived pages | Low | Low | Session timeout (typically 1-2 hours) covers normal usage; consider client-side token refresh via AJAX polling for ultra-long sessions |
@@ -310,9 +334,11 @@ Adopt a lightweight PHP REST framework with built-in routing, middleware, and re
 
 **Rejected because:**
 
-- Adds router/middleware overhead incompatible with UserSpice's page-based architecture. Would require running two frameworks in parallel (UserSpice for auth, Slim for routing), complicating initialization and session management.
+- Adds router/middleware overhead incompatible with UserSpice's page-based architecture. Would require running two frameworks in parallel (UserSpice for auth,
+  Slim for routing), complicating initialization and session management.
 
-- The application has ~20 JSON endpoints; a dedicated REST framework is overengineered for this scale. The incremental cost of ad-hoc ApiResponse is lower than framework adoption and maintenance.
+- The application has ~20 JSON endpoints; a dedicated REST framework is overengineered for this scale. The incremental cost of ad-hoc ApiResponse is lower than
+  framework adoption and maintenance.
 
 - UserSpice is the existing framework; introducing a second framework fragments the architecture and creates deployment complexity.
 
@@ -322,9 +348,10 @@ Adopt a standardized hypermedia API specification (JSON:API, HAL) for response e
 
 **Rejected because:**
 
-- Both specifications are over-engineered for an internal, non-public API with a single frontend client. JSON:API's inclusion of links, relationships, and meta fields adds complexity that provides no benefit to the registry.
+- Both specifications are over-engineered for an internal, non-public API with a single frontend client. JSON:API's inclusion of links, relationships, and meta
+  fields adds complexity that provides no benefit to the registry.
 
-- HAL's constraint of nesting data under `_embedded` and `_links` would require rewriting all frontend integration logic.
+- HAL's constraint of nesting data under `_embedded`and`_links` would require rewriting all frontend integration logic.
 
 - The application has no public API; conforming to a standard for standardization's sake provides no practical benefit.
 
@@ -336,11 +363,13 @@ Adopt Axios (or similar) as the frontend HTTP client instead of building a custo
 
 **Rejected because:**
 
-- Adds an npm dependency for features (automatic CSRF injection, request cancellation, typed error hierarchy) that are straightforward to implement with native Fetch API. The custom client is ~300 lines of code; Axios is 40+ KB minified.
+- Adds an npm dependency for features (automatic CSRF injection, request cancellation, typed error hierarchy) that are straightforward to implement with native
+  Fetch API. The custom client is ~300 lines of code; Axios is 40+ KB minified.
 
 - Custom implementation allows tight integration with UserSpice CSRF token generation (Token class) and retrieval without adapter complexity.
 
-- Application-specific error types (`ApiValidationError`, `ApiError`) and notification delegation to UserSpice toast functions are simpler in custom code than in a generic HTTP client.
+- Application-specific error types (`ApiValidationError`, `ApiError`) and notification delegation to UserSpice toast functions are simpler in custom code than
+  in a generic HTTP client.
 
 - Reduces frontend dependencies; the application currently has no npm packages in production (build tools only).
 
@@ -352,11 +381,13 @@ Standardize jQuery.ajax() responses and error handling without introducing a new
 
 - jQuery.ajax() provides no mechanism for automatic CSRF injection; tokens must be manually extracted and added to each request.
 
-- No typed error distinction; all errors are handled via the same `error` callback regardless of whether they're validation, authentication, network, or server errors.
+- No typed error distinction; all errors are handled via the same `error` callback regardless of whether they're validation, authentication, network, or server
+  errors.
 
 - No built-in request cancellation (AbortController is native Fetch feature, not available in jQuery.ajax() without `jqXHR.abort()` manual management).
 
-- Perpetuates jQuery dependency for AJAX when modern Fetch API is universally supported. jQuery.ajax() is fundamentally a wrapper over XMLHttpRequest; Fetch is the modern standard.
+- Perpetuates jQuery dependency for AJAX when modern Fetch API is universally supported. jQuery.ajax() is fundamentally a wrapper over XMLHttpRequest; Fetch is
+  the modern standard.
 
 - Does not address the root problems: inconsistent error handling, race conditions, and audit trail gaps.
 
@@ -410,4 +441,5 @@ This decision was made in v2.12.0 and is documented retroactively.
 - **Class Documentation**: [docs/development/CLASSES.md](../development/CLASSES.md)
 - **CSRF Pattern**: ADR-001 covers UserSpice Token class and CSRF protection
 - **Migration Issue**: [GitHub Issue #481](https://github.com/jimboone/elan-registry/issues/481) (jQuery.ajax() removal)
-- **Nygard ADR Format**: [https://cognitect.com/blog/2011/11/15/documenting-architecture-decisions](https://cognitect.com/blog/2011/11/15/documenting-architecture-decisions)
+- **Nygard ADR Format**:
+  [https://cognitect.com/blog/2011/11/15/documenting-architecture-decisions](https://cognitect.com/blog/2011/11/15/documenting-architecture-decisions)
