@@ -2,6 +2,7 @@
   "MD051": false,
   "line-length": {
     "line_length": 160,
-    "code_blocks": false
+    "code_blocks": false,
+    "tables": false
   }
 }
