@@ -28,7 +28,20 @@ When the user runs `/release`, execute this comprehensive release workflow:
    - Get resolved issues: extract #NNN from commits
    - Get merged PRs: `gh pr list --state merged --search "merged:>[last_release_date]"`
 
-4. **Recommend Version Bump**
+4. **Security Review**
+   - Get the changed file count: `git diff --name-only [last_tag]..HEAD | wc -l`
+   - If more than 50 changed files, warn the user and offer to skip (the
+     review may be slow for large releases)
+   - Launch the security-reviewer agent via the Agent tool with
+     `subagent_type: "security-reviewer"` to audit changed `.php` and `.js`
+     files since the last release tag
+   - Provide the agent with `git diff [last_tag]..HEAD` and the file list
+   - Report findings to the user
+   - If Critical or High severity issues are found, **halt the release** and
+     recommend fixing them first
+   - If only Medium/Low or no issues, proceed with the release
+
+5. **Recommend Version Bump**
    - Breaking changes → major
    - New features → minor
    - Bug fixes only → patch
@@ -124,7 +137,7 @@ When the user runs `/release`, execute this comprehensive release workflow:
 
    🤖 Generated with [Claude Code](https://claude.com/claude-code)
 
-   Co-Authored-By: Claude Sonnet 4.5 <noreply@anthropic.com>"
+   Co-Authored-By: Claude <noreply@anthropic.com>"
    ```
 
 3. **Create Annotated Tag**

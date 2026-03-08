@@ -3,35 +3,26 @@
 This file provides essential guidance to Claude Code (claude.ai/code) when
 working with code in this repository.
 
-## Required Reading for All Sessions
+## Documentation Reference
 
-**CRITICAL:** Read these files at the start of every Claude Code session:
+**Essential reading:**
 
-- `CLAUDE.md` (this file) - Essential development guidance
+- `CLAUDE.md` (this file) - Overview and quick reference
 - `docs/development/CODING_STANDARDS.md` - Code quality requirements
-- `docs/development/DEVELOPMENT_WORKFLOW.md` - Detailed development processes
+- `docs/development/QUICK_REFERENCE.md` - Common tasks lookup
 - `docs/development/DEPLOYMENT.md` - Production deployment procedures
 - `docs/development/ENVIRONMENT.md` - Environment setup and configuration
 
-## Recommended Reading Path
+**Core understanding:**
 
-**Essential Context:**
+- [GitHub Wiki: Architecture Guide](https://github.com/jimboone/elan-registry/wiki/Architecture) - System architecture and patterns
+- `docs/development/DATABASE.md` - Database schema and relationships
+- [GitHub Wiki: UserSpice Integration Guide](https://github.com/jimboone/elan-registry/wiki/Integration) - UserSpice integration
 
-1. `CLAUDE.md` (this file) - Overview and quick reference
-2. `docs/development/QUICK_REFERENCE.md` - Common tasks lookup
-3. `docs/development/INSTALLATION.md` - Setup and testing commands
-
-**Core Understanding:**
-
-1. [GitHub Wiki: Architecture Guide](https://github.com/jimboone/elan-registry/wiki/Architecture) - System architecture and patterns
-2. `docs/development/DATABASE.md` - Database schema and relationships
-3. `docs/development/CODING_STANDARDS.md` - Coding standards and conventions
-4. [GitHub Wiki: UserSpice Integration Guide](https://github.com/jimboone/elan-registry/wiki/Integration) - UserSpice integration
-
-**As Needed - Specialized Topics:**
+**As needed:**
 
 - `docs/development/ERROR_HANDLING.md` - Error handling, exceptions, API responses
-- `docs/development/PAGE_LOADING_FLOW.md` - Initialization and file loading sequence
+- `docs/development/PAGE_LOADING_FLOW.md` - Initialization, file loading, server globals
 - `docs/development/CLASSES.md` - Application class documentation
 - `docs/development/BACKUP_SYSTEM.md` - BackupManager class
 - `docs/development/DATATABLES.md` - DataTables configuration
@@ -75,7 +66,7 @@ authentication, with custom car registry functionality.
 
 ### System Requirements
 
-- PHP 8.1+ required (8.2+ recommended)
+- PHP 8.2+ required
 - MySQL 8.0+
 - Uses `johnathanmiller/secure-env-php` for encrypted environment variables
 
@@ -147,74 +138,59 @@ and migration guide from jQuery.ajax().
 
 ### Server Environment Globals (v2.13.0+)
 
-Use validated server globals instead of direct `$_SERVER` access. These are
-initialized in `usersc/includes/server_globals.php` (Phase 1.11.12) and
-available on every page after `init.php`.
+Use validated server globals instead of direct `$_SERVER` access. Initialized
+in `usersc/includes/server_globals.php` and available on every page after
+`init.php`.
 
-**Available globals:**
+**Available globals:** `$scheme`, `$is_https`, `$host`, `$method`,
+`$request_uri`, `$current_url`, `$current_origin`, `$php_self`,
+`$remote_addr`, `$referer`, `$user_agent`
 
-| Variable          | Type     | Description                          |
-|-------------------|----------|--------------------------------------|
-| `$scheme`         | `string` | HTTP scheme ('http' or 'https')      |
-| `$is_https`       | `bool`   | Whether request is HTTPS             |
-| `$host`           | `string` | Validated hostname (no port)         |
-| `$method`         | `string` | HTTP method (GET, POST, etc.)        |
-| `$request_uri`    | `string` | Sanitized URI (path + query)         |
-| `$current_url`    | `string` | Full URL (scheme://host/path?query)  |
-| `$current_origin` | `string` | Origin (scheme://host) for CORS      |
-| `$php_self`       | `string` | Script path (for securePage)         |
-| `$remote_addr`    | `string` | Client IP address                    |
-| `$referer`        | `string` | HTTP referer (user-controlled)       |
-| `$user_agent`     | `string` | User agent (sanitized, max 512 chars)|
-
-**Correct usage:**
-
-```php
-// HTTPS detection
-if ($is_https) { /* secure context */ }
-
-// Form method check
-if ($method === 'POST') { /* process form */ }
-
-// Build URLs using origin
-$redirect = $current_origin . '/app/cars/details.php?id=' . $carId;
-
-// Logging with IP
-logger($userId, LogCategories::LOG_CATEGORY_LOGIN, "Login from $remote_addr");
-```
-
-**What NOT to do:**
-
-```php
-// WRONG: Direct $_SERVER access
-$host = $_SERVER['HTTP_HOST'];           // Use $host instead
-$uri  = $_SERVER['REQUEST_URI'];         // Use $request_uri instead
-$ip   = $_SERVER['REMOTE_ADDR'];         // Use $remote_addr instead
-$ssl  = $_SERVER['HTTPS'] === 'on';      // Use $is_https instead
-
-// WRONG: Constructing URLs manually from $_SERVER
-$url = $_SERVER['REQUEST_SCHEME'] . '://' . $_SERVER['HTTP_HOST'];
-// Use $current_origin or $current_url instead
-```
-
-See [PAGE_LOADING_FLOW.md](docs/development/PAGE_LOADING_FLOW.md) for loading
-sequence details.
+**Never use raw `$_SERVER`** — use the globals above instead.
+See [PAGE_LOADING_FLOW.md](docs/development/PAGE_LOADING_FLOW.md) for full
+details and usage examples.
 
 ### Code Quality
-
-**ALWAYS use the software-developer agent when writing or debugging code.**
-The software-developer agent has specialized skills for implementing features,
-debugging issues, and ensuring code quality. Do not write code directly
-without launching the agent first.
 
 **ALWAYS run before completing any task:**
 
 - Use `software-developer` agent for all coding work
-  (features, fixes, refactoring)
+  (features, fixes, refactoring) — do not write code directly
 - Run `/security-review` to conduct a security review of all changes
 - Run `mcp__ide__getDiagnostics` to check all files for diagnostics
 - Fix any linting or type errors before considering the task complete
 - Run appropriate test suites for modified functionality
+
+## Claude Code Tooling
+
+### Agents (`.claude/agents/`)
+
+| Agent | Purpose |
+| ----- | ------- |
+| `software-developer` | Primary coding agent for features, fixes, refactoring |
+| `security-reviewer` | OWASP security audit of changed files |
+| `senior-architect` | Architecture review, security audit, GDPR compliance |
+| `senior-product-manager` | Issue refinement, scope, acceptance criteria |
+| `senior-test-engineer` | Test strategy, PHPUnit/Playwright tests |
+| `technical-documentation-writer` | Docs, README, release notes |
+
+### Skills (`.claude/commands/`)
+
+| Skill | Purpose |
+| ----- | ------- |
+| `/issue` | Start work on a GitHub issue (branch, plan, implement) |
+| `/release` | Automated release workflow with version analysis |
+| `/security-review` | Security audit of recent code changes |
+
+### Hooks (`.claude/settings.local.json`)
+
+- **PostToolUse (Edit/Write)**: Auto-runs `php -l` syntax check on PHP files
+
+### MCP Servers (configured in `~/.claude.json`)
+
+- **Playwright**: Browser automation and UI testing
+- **GitHub**: GitHub issues, PRs, and actions integration
+- **context7**: Live documentation lookup for libraries/frameworks
 
 ### Release Notes
 
@@ -244,7 +220,7 @@ See [DEPLOYMENT.md](docs/development/DEPLOYMENT.md) for complete procedures.
 
 **For detailed information, see:**
 
-- [ARCHITECTURE.md](docs/development/ARCHITECTURE.md) - System architecture
+- [GitHub Wiki: Architecture Guide](https://github.com/jimboone/elan-registry/wiki/Architecture) - System architecture
 - [CODING_STANDARDS.md](docs/development/CODING_STANDARDS.md) - Code quality
 - [ERROR_HANDLING.md](docs/development/ERROR_HANDLING.md) - Error handling and API patterns
 - [DEPLOYMENT.md](docs/development/DEPLOYMENT.md) - Release and deployment

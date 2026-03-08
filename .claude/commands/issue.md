@@ -401,7 +401,12 @@ Once the user approves the plan, execute using agents strategically:
    - `mcp__ide__getDiagnostics` to check for linting/type errors
    - Relevant test suites (verify the test agent's tests pass)
 
-5. **Launch senior-architect agent** for final review of the completed changes.
+5. **Run `/security-review`**: Launch the security-reviewer agent via the
+   Agent tool with `subagent_type: "security-reviewer"` to audit all changed
+   files. Provide the agent with the full diff of changes. Address any
+   Critical or High severity findings before proceeding.
+
+6. **Launch senior-architect agent** for final review of the completed changes.
    Provide the diff of all changes and ask for comprehensive code review:
 
    - **Security verification**: CSRF tokens, prepared statements, input validation, XSS prevention
@@ -411,10 +416,11 @@ Once the user approves the plan, execute using agents strategically:
    - **Test coverage**: Are tests comprehensive? Do they cover security and edge cases?
    - **Documentation**: Are docs complete and accurate?
 
-6. Address any issues raised by the architect review. If fixes are needed,
-   launch software-developer agents again for the corrections.
+7. Address any issues raised by the security review or architect review. If
+   fixes are needed, launch software-developer agents again for the
+   corrections.
 
-7. Ask if the user wants to:
+8. Ask if the user wants to:
    - Create a commit
    - Create a pull request (see PR guidelines below)
    - Continue with additional changes
