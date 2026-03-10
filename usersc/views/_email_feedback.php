@@ -57,8 +57,6 @@
                 <h3 class="lotus-blue">Feedback Message</h3>
                 <div class="message-content"><?= htmlspecialchars($comments) ?></div>
             </div>
-            
-            <p><small>This feedback was submitted through the registry website. You can reply directly to <?= htmlspecialchars($email) ?> if a response is needed.</small></p>
         </div>
         
         <div class="footer">
