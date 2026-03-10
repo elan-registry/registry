@@ -1,7 +1,7 @@
-# Elan Registry v2.16.1 Release Notes
+# Elan Registry v2.16.2 Release Notes
 
 **Release Date:** 2026-03-10
-**Type:** Patch Release - Bug fixes, security hardening, and documentation
+**Type:** Patch Release - Bug fixes, security hardening, email fixes, and documentation
 
 ## REQUIRED ACTIONS AFTER DEPLOYMENT
 
@@ -22,6 +22,14 @@ uploading updated files:
   emails — previously showed the sender's name; now correctly shows the
   reply-to address.
 
+- **Email Template Variables**: Fixed custom email templates showing blank
+  fields (name, account ID, comments) after UserSpice v6.05 update. Added
+  variable whitelist override covering all custom email templates.
+
+- **Feedback Email Reply-To**: Feedback emails now set the reply-to header
+  to the sender's email address, so admins can reply directly to the person
+  who submitted the feedback.
+
 ## Technical Changes
 
 - **Security: Web-Exposed Directory Protection**: Added `.htaccess` deny-all
@@ -31,6 +39,15 @@ uploading updated files:
 - **Brevo Plugin: Reply-To Options**: Added per-call `reply` and `reply_name`
   option support to `sendinblue()` for overriding the reply-to address at
   call time. Removed stray debug log statement from the email send path.
+
+- **Email Variable Whitelist**: Added `$email_field_whitelist` global in
+  `custom_functions.php` to override UserSpice v6.05's restrictive variable
+  whitelist in `email_body()`. Covers feedback, contact, transfer, and admin
+  email template variables.
+
+- **Feedback Email: Direct Brevo Call**: Feedback form calls `sendinblue()`
+  directly when available (test/prod) to correctly pass reply-to options,
+  with PHPMailer fallback on dev.
 
 - **Chore: Remove `bump-version.sh`**: Script deleted; `VERSION` is managed
   by the server post-receive hook. Tag creation documented as plain
@@ -58,6 +75,7 @@ uploading updated files:
 
 ## Summary
 
-Patch release with 1 bug fix, security hardening for web-exposed directories,
-a dependency security patch, and documentation improvements including 13
-Architecture Decision Records.
+Patch release with 3 bug fixes (email reply-to, template variables, feedback
+reply-to), security hardening for web-exposed directories, a dependency
+security patch, and documentation improvements including 13 Architecture
+Decision Records.
