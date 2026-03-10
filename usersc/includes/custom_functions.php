@@ -26,6 +26,30 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 // Note: SecureEnvPHP is autoloaded via helpers.php (usersc/vendor/autoload.php)
 // and parsed in users/init.php where environment variables are actually needed
 
+// Override UserSpice email_body() variable whitelist to include custom template variables.
+// UserSpice v6.05 restricts which $options keys are extracted into template scope.
+// Without this, custom email templates receive null for non-whitelisted variables.
+$email_field_whitelist = [
+    // UserSpice defaults
+    'fname', 'lname', 'email', 'vericode', 'user_id',
+    'reset_vericode_expiry', 'join_vericode_expiry',
+    'verification_code', 'passwordless_expiry', 'url',
+    // Feedback form
+    'name', 'accountId', 'comments',
+    // Owner contact
+    'from', 'to', 'message', 'content',
+    // Car transfer templates
+    'requester', 'currentOwner', 'previousOwner',
+    'requesterDetails', 'currentOwnerDetails', 'newOwnerDetails',
+    'requestDetails', 'decisionDetails', 'carDetails', 'carInfo', 'carContext',
+    'transferRequest', 'nextSteps', 'adminNotes', 'qualityIssue',
+    'approveUrl', 'denyUrl', 'reviewUrl', 'carUrl',
+    'isApproved', 'statusMessage', 'statusTitle', 'statusText',
+    'statusContent', 'statusStyle',
+    // Admin contact
+    'fromEmail', 'emailTemplate',
+];
+
 /**
  * Get user details with profile information (city, state, country, location, website)
  *

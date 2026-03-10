@@ -99,7 +99,16 @@ if (isset($_POST['email'])) {
     // Generate email body using template
     $body = email_body('_email_feedback.php', $template);
 
-    $email_sent = email($email_to, $email_subject, $body);
+    // Set reply-to so admin can reply directly to the feedback sender.
+    // Call sendinblue() directly when available (test/prod); fall back to PHPMailer email() (dev).
+    if (function_exists('sendinblue')) {
+        $email_sent = sendinblue($email_to, $email_subject, $body, $name, [
+            'reply'      => $email_from,
+            'reply_name' => $name,
+        ]);
+    } else {
+        $email_sent = email($email_to, $email_subject, $body, ['replyTo' => $email_from]);
+    }
     if (!$email_sent) {
         logger(1, LogCategories::LOG_CATEGORY_FEEDBACK_FORM, "Error sending email");
     }
