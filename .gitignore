@@ -17,6 +17,7 @@ ElanRegistry.code-workspace
 .claude/*
 !.claude/commands/
 !.claude/agents/
+!.claude/settings.json
 
 ########################################
 # Operating System Files

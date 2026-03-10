@@ -420,78 +420,27 @@ Once the user approves the plan, execute using agents strategically:
    fixes are needed, launch software-developer agents again for the
    corrections.
 
-8. Ask if the user wants to:
-   - Create a commit
-   - Create a pull request (see PR guidelines below)
-   - Continue with additional changes
+8. **Hand off to the developer workflow.** Do NOT commit, push, or create PRs.
+   Instead, present a summary and tell the user:
 
-### Pull Request Guidelines
+   ```text
+   Implementation complete for issue #ISSUE_NUMBER. Next steps:
 
-When creating a PR, target the **milestone branch** (not `main`). Include
-GitHub closing keywords in the PR body to auto-close the issue on merge:
+   1. /simplify        — Review and clean up the code (optional)
+   2. /commit           — Commit your changes
+   3. /commit-push-pr   — Push and create a PR targeting [BASE_BRANCH]
+   4. /review-pr        — Review the PR before merge
 
-```text
-Closes #ISSUE_NUMBER
-```
+   Remember: PR should target [BASE_BRANCH] and include "Closes #ISSUE_NUMBER"
+   ```
 
-**For Bug Fixes:** Include the escape analysis in the PR description so reviewers
-understand:
-
-- What caused the bug
-- Why it escaped testing
-- What automated tests prevent recurrence
-
-Example PR creation for a bug:
-
-```bash
-gh pr create --base milestone/v2.14.0 --title "Bug #369: Fix negative price validation" --body "$(cat <<'EOF'
-## Summary
-- Added price input validation to prevent negative values
-- Added PHPUnit test for price validation
-
-## Bug Escape Analysis
-**Root Cause:** Numeric validation was removed during form refactor
-**Testing Gap:** No unit test for price input validation; code path was untested
-**Preventive Measures:** New PHPUnit test validates positive/negative/zero prices
-
-Closes #369
-
-## Test plan
-- [ ] New PHPUnit test passes: tests/Unit/PriceValidationTest.php
-- [ ] composer test:quick passes
-- [ ] Pre-commit hooks pass
-
-🤖 Generated with [Claude Code](https://claude.com/claude-code)
-EOF
-)"
-```
-
-Example PR creation for non-bug issues:
-
-```bash
-gh pr create --base milestone/v2.14.0 --title "Issue #369: Add strict types to edit.php" --body "$(cat <<'EOF'
-## Summary
-- Added declare(strict_types=1)
-- Replaced generic exceptions with typed classes
-
-Closes #369
-
-## Test plan
-- [ ] Pre-commit hooks pass
-- [ ] composer test:quick passes
-
-🤖 Generated with [Claude Code](https://claude.com/claude-code)
-EOF
-)"
-```
-
-**Do NOT close issues manually with `gh issue close`.** Issues are closed
-automatically when the PR merges into the milestone branch.
+   **For bug issues**, also remind the user to include the escape analysis
+   in the PR description when running `/commit-push-pr`.
 
 ### Update Draft Release Notes
 
-After creating the PR (or commit if no PR), update the draft release notes
-for the milestone at `docs/releases/RELEASE_NOTES_vX.Y.Z.md`:
+Before handing off, update the draft release notes for the milestone at
+`docs/releases/RELEASE_NOTES_vX.Y.Z.md`:
 
 1. **If the file doesn't exist yet**, create it from the template at
    `docs/development/RELEASE_NOTES_TEMPLATE.md` with the milestone version.
@@ -510,6 +459,10 @@ for the milestone at `docs/releases/RELEASE_NOTES_vX.Y.Z.md`:
 
 ## Critical Rules
 
+- **NEVER commit code** - `/issue` does not commit, push, or create PRs.
+  After implementation is complete, stop and tell the user to continue with
+  `/simplify`, `/commit`, and `/commit-push-pr` as needed. See the
+  **Developer Workflow** section in CLAUDE.md for the full sequence.
 - **Ask questions ONE AT A TIME** - wait for each answer before asking the next
 - **Continue asking questions WHILE IN PLAN MODE** - don't wait until
   after plan mode
@@ -645,16 +598,16 @@ Here's my implementation plan based on our discussion and agent input...
 [launches senior-architect for final code review]
 [addresses any review feedback - launches software-developer if fixes needed]
 
-All changes implemented, tested, documented, and reviewed. Would you like me
-to create a commit?
+All changes implemented, tested, documented, and reviewed.
 
-User: Yes, and create a PR
+Implementation complete for issue #423. Next steps:
 
-You: [commits changes]
-[creates PR targeting milestone/v3.2.0 with "Closes #423" in the body]
+1. /simplify        — Review and clean up the code (optional)
+2. /commit           — Commit your changes
+3. /commit-push-pr   — Push and create a PR targeting milestone/v3.2.0
+4. /review-pr        — Review the PR before merge
 
-PR created: feature/423-car-data-export → milestone/v3.2.0
-Issue #423 will close automatically when the PR is merged.
+Remember: PR should target milestone/v3.2.0 and include "Closes #423"
 ```
 
 ## Project-Specific Enhancements
@@ -781,7 +734,15 @@ Here's my plan with escape analysis and preventive tests...
 [implements fix + validation]
 [writes comprehensive tests for price validation]
 
-[creates PR with escape analysis in description]
+Implementation complete for issue #512. Next steps:
+
+1. /simplify        — Review and clean up the code (optional)
+2. /commit           — Commit your changes
+3. /commit-push-pr   — Push and create a PR targeting milestone/v2.16.0
+4. /review-pr        — Review the PR before merge
+
+Remember: PR should target milestone/v2.16.0 and include "Closes #512"
+Include the bug escape analysis in the PR description.
 ```
 
 ## Plan Mode Question Guidelines

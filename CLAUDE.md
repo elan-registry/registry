@@ -19,20 +19,10 @@ working with code in this repository.
 - `docs/development/DATABASE.md` - Database schema and relationships
 - [GitHub Wiki: UserSpice Integration Guide](https://github.com/jimboone/elan-registry/wiki/Integration) - UserSpice integration
 
-**As needed:**
-
-- `docs/development/ERROR_HANDLING.md` - Error handling, exceptions, API responses
-- `docs/development/PAGE_LOADING_FLOW.md` - Initialization, file loading, server globals
-- `docs/development/CLASSES.md` - Application class documentation
-- `docs/development/BACKUP_SYSTEM.md` - BackupManager class
-- `docs/development/DATATABLES.md` - DataTables configuration
-- `docs/development/CSS_AND_ASSETS.md` - Stylesheets and CDN resources
-- `docs/development/FIX_SCRIPTS.md` - Database maintenance scripts
-- `docs/development/STRICT_TYPE_HANDLING.md` - Strict type handling
-- `docs/development/USERSPICE_FUNCTIONS.md` - UserSpice framework functions reference (check before building custom solutions)
-- `docs/testing/TESTING.md` - Writing and running tests
-
-**See [docs/README.md](docs/README.md) for complete documentation index**
+**As needed:** See [docs/README.md](docs/README.md) for the complete documentation
+index (error handling, classes, DataTables, CSS, testing, UserSpice functions,
+etc.). Always check `docs/development/USERSPICE_FUNCTIONS.md` before building
+custom solutions.
 
 ## Architecture Overview
 
@@ -82,10 +72,18 @@ composer test:quick             # Unit tests only (<30s)
 composer test:medium            # Unit + Integration (<2min)
 composer test:full              # All PHP tests
 composer test:coverage          # Coverage report
+composer check:php              # PHP linting (syntax check)
 
-# UI testing
+# Local Playwright tests (requires MAMP at localhost:9999)
 npm run playwright:install      # Install browsers
-npm run playwright:test         # Run UI tests
+npm run playwright:test         # All local tests
+npm run playwright:security     # Security tests
+npm run playwright:maps         # Maps & charts tests
+npm run playwright:csp          # CSP validation tests
+
+# E2E tests (against deployed environments)
+npm run test:e2e                # All E2E on elanregistry.org
+npm run test:e2e:test           # All E2E on test.elanregistry.org
 ```
 
 ### Pre-commit Quality Checks
@@ -161,9 +159,52 @@ details and usage examples.
 - Fix any linting or type errors before considering the task complete
 - Run appropriate test suites for modified functionality
 
+## Developer Workflow
+
+### Issue-Driven Work (typical)
+
+For work that starts from a GitHub issue — features, bugs, enhancements:
+
+```text
+/issue 423          — Branch, explore, plan, implement, test, security review
+/simplify           — Clean up the code (optional, recommended)
+/commit             — Commit changes locally
+/commit-push-pr     — Push branch and create PR
+/review-pr          — Multi-agent PR review before merge
+```
+
+`/issue` handles the full development cycle (branch creation through
+implementation and testing) but **does not commit or push**. The developer
+controls when to commit and ship.
+
+### Ad-Hoc Work (no GitHub issue)
+
+For quick fixes, refactoring, or exploratory work not tied to an issue:
+
+```text
+/feature-dev        — Guided implementation with codebase exploration
+/simplify           — Clean up the code (optional)
+/commit             — Commit changes locally
+/commit-push-pr     — Push and create PR (if needed)
+/code-review        — Review a specific PR
+```
+
+`/feature-dev` is a user-level plugin (not project-scoped) for work that
+doesn't need the full `/issue` workflow. It provides its own code exploration
+and architecture agents.
+
+### Other Commands
+
+```text
+/security-review    — OWASP security audit of recent changes
+/release            — Version bump, release notes, tag, and publish
+/revise-claude-md   — Update CLAUDE.md with session learnings
+/clean_gone         — Delete local branches removed from remote
+```
+
 ## Claude Code Tooling
 
-### Agents (`.claude/agents/`)
+### Project Agents (`.claude/agents/`)
 
 | Agent | Purpose |
 | ----- | ------- |
@@ -174,7 +215,7 @@ details and usage examples.
 | `senior-test-engineer` | Test strategy, PHPUnit/Playwright tests |
 | `technical-documentation-writer` | Docs, README, release notes |
 
-### Skills (`.claude/commands/`)
+### Project Skills (`.claude/commands/`)
 
 | Skill | Purpose |
 | ----- | ------- |
@@ -182,13 +223,26 @@ details and usage examples.
 | `/release` | Automated release workflow with version analysis |
 | `/security-review` | Security audit of recent code changes |
 
+### Project Plugins (`.claude/settings.json`)
+
+Installed at project scope so all developers share the same workflow:
+
+| Plugin | Skills Provided |
+| ------ | --------------- |
+| `commit-commands` | `/commit`, `/commit-push-pr`, `/clean_gone` |
+| `pr-review-toolkit` | `/review-pr` + review agents |
+| `code-review` | `/code-review` |
+| `code-simplifier` | `/simplify` |
+| `playwright` | Playwright MCP server for browser testing |
+| `claude-md-management` | `/revise-claude-md`, `/claude-md-improver` |
+
 ### Hooks (`.claude/settings.local.json`)
 
 - **PostToolUse (Edit/Write)**: Auto-runs `php -l` syntax check on PHP files
 
 ### MCP Servers (configured in `~/.claude.json`)
 
-- **Playwright**: Browser automation and UI testing
+- **Playwright**: Browser automation and UI testing (via plugin)
 - **GitHub**: GitHub issues, PRs, and actions integration
 - **context7**: Live documentation lookup for libraries/frameworks
 
@@ -210,18 +264,8 @@ at `docs/development/RELEASE_NOTES_TEMPLATE.md`.
 
 ```bash
 git push origin main && git push origin --tags   # GitHub
-git push test feature/v2.9.1                      # Staging
+git push test main                                # Staging
 git push prod main && git push prod --tags        # PRODUCTION
 ```
 
 See [DEPLOYMENT.md](docs/development/DEPLOYMENT.md) for complete procedures.
-
----
-
-**For detailed information, see:**
-
-- [GitHub Wiki: Architecture Guide](https://github.com/jimboone/elan-registry/wiki/Architecture) - System architecture
-- [CODING_STANDARDS.md](docs/development/CODING_STANDARDS.md) - Code quality
-- [ERROR_HANDLING.md](docs/development/ERROR_HANDLING.md) - Error handling and API patterns
-- [DEPLOYMENT.md](docs/development/DEPLOYMENT.md) - Release and deployment
-- [ENVIRONMENT.md](docs/development/ENVIRONMENT.md) - Environment setup
