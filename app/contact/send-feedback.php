@@ -100,9 +100,9 @@ if (isset($_POST['email'])) {
     $body = email_body('_email_feedback.php', $template);
 
     // Set reply-to so admin can reply directly to the feedback sender.
-    // Brevo override (test/prod) uses $options['reply']; PHPMailer (dev) uses $opts['replyTo'].
+    // Call sendinblue() directly when available (test/prod); fall back to PHPMailer email() (dev).
     if (function_exists('sendinblue')) {
-        $email_sent = email($email_to, $email_subject, $body, $name, [
+        $email_sent = sendinblue($email_to, $email_subject, $body, $name, [
             'reply'      => $email_from,
             'reply_name' => $name,
         ]);
