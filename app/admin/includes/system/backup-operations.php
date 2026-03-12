@@ -34,8 +34,8 @@ if (!isset($_POST['csrf']) || !Token::check($_POST['csrf'])) {
         ->send();
 }
 
-// Get action
-$action = $_POST['action'] ?? '';
+// Get action — allow only word characters and hyphens (safe for routing, logging, and display)
+$action = preg_replace('/[^\w\-]/', '', $_POST['action'] ?? '') ?? '';
 
 try {
     // Initialize BackupManager with global configuration constant
@@ -48,8 +48,8 @@ try {
             // Log backup initiation with details
             logger($user->data()->id, LogCategories::LOG_CATEGORY_BACKUP_MANAGER, "Manual backup initiated by {$user->data()->username}");
 
-            // Get reason (default to Admin Panel Manual Backup)
-            $reason = $_POST['reason'] ?? 'Admin Panel Manual Backup';
+            // Get reason — strip control characters to prevent log injection; default to standard reason if empty
+            $reason = preg_replace('/[\x00-\x1f\x7f]/', '', $_POST['reason'] ?? '') ?: 'Admin Panel Manual Backup';
 
             // Log the reason for debugging
             logger($user->data()->id, LogCategories::LOG_CATEGORY_BACKUP_DEBUG, "Backup reason: '{$reason}'");
@@ -239,8 +239,8 @@ try {
             break;
 
         case 'delete_backup':
-            // Log delete request
-            $filename = $_POST['filename'] ?? '';
+            // Sanitize filename at assignment — basename() strips directory components to prevent path traversal
+            $filename = basename($_POST['filename'] ?? '');
             logger($user->data()->id, LogCategories::LOG_CATEGORY_BACKUP_MANAGER, "Delete backup requested: {$filename}");
 
             if (empty($filename)) {
@@ -254,7 +254,7 @@ try {
             $types = ['automated', 'manual', 'rollback'];
 
             foreach ($types as $type) {
-                $filepath = $backupDir . $type . '/' . basename($filename);
+                $filepath = $backupDir . $type . '/' . $filename;
 
                 if (file_exists($filepath)) {
                     if (unlink($filepath)) {
@@ -297,19 +297,12 @@ try {
     $errorDetails = "Backup operation '{$action}' failed for user {$user->data()->username}\n";
     $errorDetails .= "Error: " . $e->getMessage() . "\n";
     $errorDetails .= "File: " . $e->getFile() . " (Line " . $e->getLine() . ")\n";
-    $errorDetails .= "Request params: " . json_encode($_POST) . "\n";
+    $errorDetails .= "Request action: " . ($action ?: 'none') . "\n";
     $errorDetails .= "Stack trace:\n" . $e->getTraceAsString();
 
     logger($user->data()->id, LogCategories::LOG_CATEGORY_BACKUP_ERROR, $errorDetails);
 
-    ApiResponse::serverError($e->getMessage())
-        ->withDataArray([
-            'error_details' => [
-                'file' => basename($e->getFile()),
-                'line' => $e->getLine(),
-                'action' => $action
-            ]
-        ])
+    ApiResponse::serverError('Backup operation failed')
         ->send();
 }
 
