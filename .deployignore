@@ -5,19 +5,34 @@
 # Claude Code / AI tooling
 .claude/
 
-# GitHub (CI workflows, issue templates)
+# GitHub (CI workflows, issue templates, bot configs)
 .github/
+.imgbotconfig
+
+# Git config files (not needed on server)
+.githooks/
+.gitignore
+.gitmessage
 
 # Development documentation (not served to users)
 docs/development/
 docs/testing/
 docs/releases/
+docs/PRD.md
+docs/README.md
 
 # Tests
 tests/
 
 # Scripts (already blocked by .htaccess, but not needed on server)
 scripts/
+
+# Linting and static analysis
+eslint.config.mjs
+phpstan.neon
+phpstan-baseline.neon
+.markdownlint.json
+.markdownlintignore
 
 # Playwright configs
 playwright.config.js
@@ -33,7 +48,6 @@ phpunit-integration.xml
 package.json
 package-lock.json
 tsconfig.json
-.markdownlint.json
 
 # Composer (dependencies not deployed via git)
 composer.json
@@ -41,5 +55,11 @@ composer.lock
 
 # Project documentation not needed on server
 CLAUDE.md
-docs/PRD.md
-docs/README.md
+README.md
+SECURITY.md
+LICENSE
+.env.local.sample
+instructions.txt
+
+# Database migrations (run manually, not served)
+database/
