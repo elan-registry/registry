@@ -34,7 +34,7 @@ if (!isset($_POST['csrf']) || !Token::check($_POST['csrf'])) {
         ->send();
 }
 
-// Get action — sanitize to prevent log injection from user-controlled input
+// Get action — allow only word characters and hyphens (safe for routing, logging, and display)
 $action = preg_replace('/[^\w\-]/', '', $_POST['action'] ?? '') ?? '';
 
 try {
@@ -48,7 +48,7 @@ try {
             // Log backup initiation with details
             logger($user->data()->id, LogCategories::LOG_CATEGORY_BACKUP_MANAGER, "Manual backup initiated by {$user->data()->username}");
 
-            // Get reason — strip control characters to prevent log injection
+            // Get reason — strip control characters to prevent log injection; default to standard reason if empty
             $reason = preg_replace('/[\x00-\x1f\x7f]/', '', $_POST['reason'] ?? '') ?: 'Admin Panel Manual Backup';
 
             // Log the reason for debugging
@@ -239,7 +239,7 @@ try {
             break;
 
         case 'delete_backup':
-            // Sanitize filename at assignment — basename() prevents path traversal and log injection
+            // Sanitize filename at assignment — basename() strips directory components to prevent path traversal
             $filename = basename($_POST['filename'] ?? '');
             logger($user->data()->id, LogCategories::LOG_CATEGORY_BACKUP_MANAGER, "Delete backup requested: {$filename}");
 
