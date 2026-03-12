@@ -119,7 +119,8 @@ try {
             break;
 
         default:
-            throw new SchemaException('Unknown action: ' . $action);
+            $safeAction = preg_replace('/[^\w\-]/', '', $action ?? '');
+            throw new SchemaException('Unknown action: ' . $safeAction);
     }
 
 } catch (Exception $e) {
@@ -127,6 +128,6 @@ try {
     logger($user->data()->id ?? 0, LogCategories::LOG_CATEGORY_SCHEMA_OPERATION_ERROR,
         'Schema operation failed: ' . $e->getMessage());
 
-    ApiResponse::serverError('Schema operation failed: ' . $e->getMessage())
+    ApiResponse::serverError('Schema operation failed')
         ->send();
 }

@@ -293,23 +293,17 @@ try {
     }
 
 } catch (Exception $e) {
-    // Log detailed error with stack trace
-    $errorDetails = "Backup operation '{$action}' failed for user {$user->data()->username}\n";
+    // Log detailed error with stack trace — sanitize $action to prevent log injection
+    $safeAction = preg_replace('/[^\w\-]/', '', $action ?? '');
+    $errorDetails = "Backup operation '{$safeAction}' failed for user {$user->data()->username}\n";
     $errorDetails .= "Error: " . $e->getMessage() . "\n";
     $errorDetails .= "File: " . $e->getFile() . " (Line " . $e->getLine() . ")\n";
-    $errorDetails .= "Request params: " . json_encode($_POST) . "\n";
+    $errorDetails .= "Request action: " . ($safeAction ?: 'none') . "\n";
     $errorDetails .= "Stack trace:\n" . $e->getTraceAsString();
 
     logger($user->data()->id, LogCategories::LOG_CATEGORY_BACKUP_ERROR, $errorDetails);
 
-    ApiResponse::serverError($e->getMessage())
-        ->withDataArray([
-            'error_details' => [
-                'file' => basename($e->getFile()),
-                'line' => $e->getLine(),
-                'action' => $action
-            ]
-        ])
+    ApiResponse::serverError('Backup operation failed')
         ->send();
 }
 
