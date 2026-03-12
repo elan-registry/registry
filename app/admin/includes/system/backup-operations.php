@@ -48,8 +48,8 @@ try {
             // Log backup initiation with details
             logger($user->data()->id, LogCategories::LOG_CATEGORY_BACKUP_MANAGER, "Manual backup initiated by {$user->data()->username}");
 
-            // Get reason (default to Admin Panel Manual Backup)
-            $reason = $_POST['reason'] ?? 'Admin Panel Manual Backup';
+            // Get reason — strip control characters to prevent log injection
+            $reason = preg_replace('/[\x00-\x1f\x7f]/', '', $_POST['reason'] ?? '') ?: 'Admin Panel Manual Backup';
 
             // Log the reason for debugging
             logger($user->data()->id, LogCategories::LOG_CATEGORY_BACKUP_DEBUG, "Backup reason: '{$reason}'");
@@ -239,8 +239,8 @@ try {
             break;
 
         case 'delete_backup':
-            // Log delete request
-            $filename = $_POST['filename'] ?? '';
+            // Sanitize filename at assignment — basename() prevents path traversal and log injection
+            $filename = basename($_POST['filename'] ?? '');
             logger($user->data()->id, LogCategories::LOG_CATEGORY_BACKUP_MANAGER, "Delete backup requested: {$filename}");
 
             if (empty($filename)) {
@@ -254,7 +254,7 @@ try {
             $types = ['automated', 'manual', 'rollback'];
 
             foreach ($types as $type) {
-                $filepath = $backupDir . $type . '/' . basename($filename);
+                $filepath = $backupDir . $type . '/' . $filename;
 
                 if (file_exists($filepath)) {
                     if (unlink($filepath)) {
