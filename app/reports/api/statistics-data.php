@@ -24,7 +24,7 @@ if (!securePage($php_self)) {
 }
 
 // Get requested tab
-$tab = Input::get('tab') ?? '';
+$tab = Input::get('tab');
 
 if (empty($tab)) {
     ApiResponse::error('Tab parameter required', 400)
@@ -90,7 +90,6 @@ try {
 
 } catch (Throwable $e) {
     ApiResponse::serverError('Data retrieval failed')
-        ->withData('tab', $tab ?? 'unknown')
         ->withLogging(
             $user->data()->id ?? 0,
             'DatabaseError',
