@@ -1,0 +1,45 @@
+# Files and directories excluded from test/prod deployments.
+# Used by server-side post-receive hooks to clean up after git checkout.
+# Paths are relative to the work tree root.
+
+# Claude Code / AI tooling
+.claude/
+
+# GitHub (CI workflows, issue templates)
+.github/
+
+# Development documentation (not served to users)
+docs/development/
+docs/testing/
+docs/releases/
+
+# Tests
+tests/
+
+# Scripts (already blocked by .htaccess, but not needed on server)
+scripts/
+
+# Playwright configs
+playwright.config.js
+playwright.config.prod.js
+playwright.config.test.js
+
+# PHP test configs
+phpunit.xml
+phpunit-unit.xml
+phpunit-integration.xml
+
+# Node / JS tooling
+package.json
+package-lock.json
+tsconfig.json
+.markdownlint.json
+
+# Composer (dependencies not deployed via git)
+composer.json
+composer.lock
+
+# Project documentation not needed on server
+CLAUDE.md
+docs/PRD.md
+docs/README.md

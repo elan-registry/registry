@@ -1,0 +1,52 @@
+#!/bin/bash
+#
+# Post-receive hook for Elan Registry deployment.
+# Source: scripts/server-hooks/ in the repository.
+#
+# Configuration — only these lines differ between prod and test:
+GIT_DIR=/home/unibrain/git/elanregistry.git
+WORK_TREE=/home/unibrain/elanregistry.org
+ENV_NAME="Production"
+VERSION_EXCLUDE='--exclude=*-rc*'
+
+echo "Enter: post-receive."
+echo " - GIT_DIR=$GIT_DIR"
+echo " - WORK_TREE=$WORK_TREE"
+
+while read oldrev newrev ref
+do
+    branch=$(echo $ref | sed "s/.*\///")
+    echo "Branch $branch received. Deploying to $ENV_NAME environment..."
+
+    # Deploy exactly what was pushed
+    git --work-tree=$WORK_TREE --git-dir=$GIT_DIR checkout $newrev --force --progress
+
+    cd $WORK_TREE
+
+    # Generate VERSION file from latest matching tag
+    git --git-dir=$GIT_DIR describe --tags $VERSION_EXCLUDE > VERSION
+    echo "VERSION file updated: $(cat VERSION)"
+
+    # Remove dev-only files listed in .deployignore
+    if [ -f "$WORK_TREE/.deployignore" ]; then
+        echo "Cleaning up dev-only files..."
+        removed=0
+        while IFS= read -r pattern; do
+            # Skip empty lines and comments
+            [[ -z "$pattern" || "$pattern" == \#* ]] && continue
+            # Trim whitespace
+            pattern=$(echo "$pattern" | xargs)
+            [[ -z "$pattern" ]] && continue
+            if [ -e "$WORK_TREE/$pattern" ]; then
+                rm -rf "$WORK_TREE/$pattern"
+                echo "  Removed: $pattern"
+                removed=$((removed + 1))
+            fi
+        done < "$WORK_TREE/.deployignore"
+        # Remove .deployignore itself
+        rm -f "$WORK_TREE/.deployignore"
+        echo "Cleanup complete: $removed items removed."
+    fi
+
+    echo "$ENV_NAME deployment complete for branch: $branch"
+done
