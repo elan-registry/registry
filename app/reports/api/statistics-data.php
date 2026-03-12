@@ -24,7 +24,7 @@ if (!securePage($php_self)) {
 }
 
 // Get requested tab
-$tab = $_GET['tab'] ?? '';
+$tab = Input::get('tab') ?? '';
 
 if (empty($tab)) {
     ApiResponse::error('Tab parameter required', 400)
@@ -78,7 +78,6 @@ try {
 
         default:
             ApiResponse::error('Invalid tab parameter', 400)
-                ->withData('tab', $tab)
                 ->withData('valid_tabs', ['geographic', 'production', 'colors', 'quality'])
                 ->withLogging($user->data()->id ?? 0, 'ValidationError', "Statistics API: Invalid tab '{$tab}'")
                 ->send();
