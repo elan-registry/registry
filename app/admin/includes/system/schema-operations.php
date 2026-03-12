@@ -28,7 +28,8 @@ if ($method === 'POST' && (!isset($_POST['csrf']) || !Token::check($_POST['csrf'
 header('Content-Type: application/json');
 
 try {
-    $action = $_POST['action'] ?? $_GET['action'] ?? null;
+    $action = preg_replace('/[^\w\-]/', '', $_POST['action'] ?? $_GET['action'] ?? '') ?? '';
+    $action = $action ?: null;
 
     if (!$action) {
         throw new SchemaException('No action specified');
@@ -119,12 +120,11 @@ try {
             break;
 
         default:
-            $safeAction = preg_replace('/[^\w\-]/', '', $action ?? '');
-            throw new SchemaException('Unknown action: ' . $safeAction);
+            throw new SchemaException('Unknown action: ' . $action);
     }
 
 } catch (Exception $e) {
-    // Keep existing logger() call for detailed error logging
+    // Log error details server-side for diagnosis; generic message returned to client
     logger($user->data()->id ?? 0, LogCategories::LOG_CATEGORY_SCHEMA_OPERATION_ERROR,
         'Schema operation failed: ' . $e->getMessage());
 

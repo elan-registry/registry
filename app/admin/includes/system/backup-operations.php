@@ -34,8 +34,8 @@ if (!isset($_POST['csrf']) || !Token::check($_POST['csrf'])) {
         ->send();
 }
 
-// Get action
-$action = $_POST['action'] ?? '';
+// Get action — sanitize to prevent log injection from user-controlled input
+$action = preg_replace('/[^\w\-]/', '', $_POST['action'] ?? '') ?? '';
 
 try {
     // Initialize BackupManager with global configuration constant
@@ -293,12 +293,11 @@ try {
     }
 
 } catch (Exception $e) {
-    // Log detailed error with stack trace — sanitize $action to prevent log injection
-    $safeAction = preg_replace('/[^\w\-]/', '', $action ?? '');
-    $errorDetails = "Backup operation '{$safeAction}' failed for user {$user->data()->username}\n";
+    // Log detailed error with stack trace
+    $errorDetails = "Backup operation '{$action}' failed for user {$user->data()->username}\n";
     $errorDetails .= "Error: " . $e->getMessage() . "\n";
     $errorDetails .= "File: " . $e->getFile() . " (Line " . $e->getLine() . ")\n";
-    $errorDetails .= "Request action: " . ($safeAction ?: 'none') . "\n";
+    $errorDetails .= "Request action: " . ($action ?: 'none') . "\n";
     $errorDetails .= "Stack trace:\n" . $e->getTraceAsString();
 
     logger($user->data()->id, LogCategories::LOG_CATEGORY_BACKUP_ERROR, $errorDetails);
