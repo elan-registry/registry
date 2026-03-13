@@ -169,13 +169,20 @@ For work that starts from a GitHub issue — features, bugs, enhancements:
 /issue 423          — Branch, explore, plan, implement, test, security review
 /simplify           — Clean up the code (optional, recommended)
 /commit             — Commit changes locally
-/commit-push-pr     — Push branch and create PR
-/review-pr          — Multi-agent PR review before merge
+git merge           — Merge issue branch into feature branch locally, push
+```
+
+When ALL milestone issues are complete:
+
+```text
+/commit-push-pr     — Create milestone PR (feature branch → main)
+/review-pr          — Multi-agent PR review before repo owner merges
 ```
 
 `/issue` handles the full development cycle (branch creation through
-implementation and testing) but **does not commit or push**. The developer
-controls when to commit and ship.
+implementation and testing) but **does not commit or push**. For milestone
+issues, developers merge locally into the feature branch — no PR per issue.
+Only the final milestone PR requires formal review.
 
 ### Ad-Hoc Work (no GitHub issue)
 

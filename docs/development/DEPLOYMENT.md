@@ -201,7 +201,7 @@ Pre-commit hooks validate PHP coding standards, markdown formatting, and run fas
 git commit --no-verify           # Bypass (emergency only)
 ```
 
-**See [DEVELOPMENT_WORKFLOW.md](DEVELOPMENT_WORKFLOW.md#-git-hooks--quality-gates)** for hook details and `scripts/README.md` for troubleshooting.
+**See the [Development Workflow](https://github.com/jimboone/elan-registry/wiki/Development-Workflow) wiki page** for hook details and `scripts/README.md` for troubleshooting.
 
 ## 📋 Complete Production Deployment Process
 
@@ -353,5 +353,5 @@ If deployment fails:
 **📖 Related Documentation:**
 
 - [CLAUDE.md](../../CLAUDE.md) - Essential development guidance
-- [DEVELOPMENT_WORKFLOW.md](DEVELOPMENT_WORKFLOW.md) - Detailed development processes
+- [Development Workflow](https://github.com/jimboone/elan-registry/wiki/Development-Workflow) - Development processes (wiki)
 - [ENVIRONMENT.md](ENVIRONMENT.md) - Environment setup and configuration

@@ -49,7 +49,7 @@ Complete development documentation for the Elan Registry application.
 ### Workflow & Development
 
 - **[QUICK_REFERENCE.md](QUICK_REFERENCE.md)** - Common commands, patterns, quick lookup
-- **[DEVELOPMENT_WORKFLOW.md](../wiki/Development-Patterns.md)** (wiki) - Development processes
+- **[Development Workflow](https://github.com/jimboone/elan-registry/wiki/Development-Workflow)** (wiki) - Development processes
 - **[STATIC_ANALYSIS.md](../wiki/Developer-Tools.md)** (wiki) - Code quality tools
 
 ## Documentation Purpose & Audience

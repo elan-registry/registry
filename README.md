@@ -77,7 +77,7 @@ environment:
 - [ ] Run initial tests: `composer test:quick`
 - [ ] Configure local environment (`.env` file - see `ENVIRONMENT.md`)
 - [ ] Review coding standards: `docs/development/CODING_STANDARDS.md`
-- [ ] Read development workflow: `docs/development/DEVELOPMENT_WORKFLOW.md`
+- [ ] Read [Development Workflow](https://github.com/jimboone/elan-registry/wiki/Development-Workflow) (wiki)
 
 **Important:** The git hooks setup is essential for maintaining code quality.
 It catches issues before they reach GitHub, saving time and preventing failed

@@ -97,8 +97,8 @@ Fundamental architecture and patterns:
 
 Specific workflows and advanced topics:
 
-- **[DEVELOPMENT_WORKFLOW.md](development/DEVELOPMENT_WORKFLOW.md)** -
-  Detailed development processes
+- **[Development Workflow](https://github.com/jimboone/elan-registry/wiki/Development-Workflow)** -
+  Development processes (wiki)
 - **[DEPLOYMENT.md](development/DEPLOYMENT.md)** - Production deployment
   procedures
 - **[FIX_SCRIPTS.md](development/FIX_SCRIPTS.md)** - FIX script creation
