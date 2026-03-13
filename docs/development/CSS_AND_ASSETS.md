@@ -10,7 +10,7 @@ This document provides comprehensive guidance for managing stylesheets and front
 
 **Location:** `/usersc/templates/ElanRegistry/assets/css/`
 
-```
+```text
 usersc/templates/ElanRegistry/assets/css/
 ├── consolidated.css          # Main source CSS (unminified, readable) ✅ USED
 ├── consolidated.min.css      # Production CSS (minified, loaded in production) ✅ USED
@@ -21,12 +21,14 @@ usersc/templates/ElanRegistry/assets/css/
 ### CSS Consolidation (v2.12.0)
 
 **Overview:**
+
 - All registry-specific CSS is consolidated in `consolidated.css` and its minified variant
 - Consolidation merged two files: original `ElanRegistry.css` + `style.css`
 - Removed 40+ lines of duplicate CSS rules
 - Removed unused utility classes (`.w-20`, `.w-30`, `.polaroid`)
 
 **Removed Original Files:**
+
 - ~~`usersc/templates/ElanRegistry.css`~~ (REMOVED - consolidated into consolidated.css)
 - ~~`usersc/templates/ElanRegistry/assets/css/style.css`~~ (REMOVED - consolidated into consolidated.css)
 
@@ -63,6 +65,7 @@ echo html_entity_decode($settings->elan_fontawesome_cdn);
 ```
 
 **Key Performance Points:**
+
 - CDN resources use SRI (Subresource Integrity) hashes for security
 - All external resources are minified (`.min.css` / `.min.js`)
 - Consolidated CSS loads as single file instead of multiple requests
@@ -76,6 +79,7 @@ echo html_entity_decode($settings->elan_fontawesome_cdn);
 **Status:** Not currently used (✋ Can be removed)
 
 **Details:**
+
 - Local backup of Bootswatch Simplex theme
 - Currently loaded from CDN: `https://cdn.jsdelivr.net/npm/bootswatch@4.6.1/dist/simplex/bootstrap.min.css`
 - Managed via `elan_bootswatch_cdn` database setting
@@ -83,6 +87,7 @@ echo html_entity_decode($settings->elan_fontawesome_cdn);
 - Not required for current production setup
 
 **Recommendation:**
+
 - Safe to remove from source control if CDN is always available
 - Keep in repository as fallback if offline capability needed
 - Currently kept for reference purposes
@@ -92,6 +97,7 @@ echo html_entity_decode($settings->elan_fontawesome_cdn);
 ### When to Modify CSS
 
 **Modify consolidated.css when:**
+
 - Adding new component styles
 - Updating existing registry styles (cards, forms, tables, maps)
 - Adding responsive design rules
@@ -102,12 +108,14 @@ echo html_entity_decode($settings->elan_fontawesome_cdn);
 ### CSS Modification Steps
 
 1. **Edit the source file:**
+
    ```bash
    # Edit unminified CSS for readability
    vim usersc/templates/ElanRegistry/assets/css/consolidated.css
    ```
 
 2. **Generate minified version:**
+
    ```bash
    # For quick minification, use an online tool or npm package:
    npm install -g csso-cli  # Install CSS minifier
@@ -123,6 +131,7 @@ echo html_entity_decode($settings->elan_fontawesome_cdn);
    - Test all components that use modified styles
 
 4. **Commit changes:**
+
    ```bash
    git add usersc/templates/ElanRegistry/assets/css/consolidated.{css,min.css}
    git commit -m "Update registry CSS: [describe changes]"
@@ -133,12 +142,14 @@ echo html_entity_decode($settings->elan_fontawesome_cdn);
 ### Why Minification Matters
 
 **Performance Impact (v2.12.0 baseline):**
+
 - Source: `consolidated.css` = ~2.8 KB
 - Minified: `consolidated.min.css` = ~2.2 KB
 - **Savings: ~22% reduction**
 - After gzip: ~15% reduction (CSS already compresses well)
 
 **Why both files exist:**
+
 - `consolidated.css` - Source file for development and readability
 - `consolidated.min.css` - Production file loaded by users (required for performance)
 
@@ -158,13 +169,14 @@ ls -lh consolidated.css consolidated.min.css
 ```
 
 **Why csso-cli:**
+
 - Preserves CSS functionality while removing whitespace
 - Optimizes selectors and values
 - Extremely fast for local development
 
 #### Method 2: Online CSS Minifier
 
-1. Go to https://cssminifier.com/
+1. Go to <https://cssminifier.com/>
 2. Copy contents of `consolidated.css`
 3. Paste into minifier
 4. Copy minified output
@@ -225,7 +237,7 @@ npm run css:minify
 
 All CDN URLs are stored in the database `settings` table:
 
-```
+```text
 elan_bootstrap_css_cdn      → Bootstrap 4.6.2 CSS (full HTML link tag)
 elan_jquery_cdn             → jQuery 3.6.0 JS (full HTML script tag)
 elan_bootstrap_js_cdn       → Bootstrap 4.6.2 JS (full HTML script tag)
@@ -246,6 +258,7 @@ elan_chartjs_cdn            → Chart.js library (full HTML script tag)
 Example: `/FIX/23-Optimize-CDN-Resources.php`
 
 **Advantages:**
+
 - Two-phase UI (description → processing)
 - Progress logging and error handling
 - Automatic audit trail in `fix_script_runs` table
@@ -253,6 +266,7 @@ Example: `/FIX/23-Optimize-CDN-Resources.php`
 - Documented in database history
 
 **Steps:**
+
 1. Create FIX script following FIX/17 pattern
 2. Update settings with new CDN URLs
 3. Log to `fix_script_runs` table
@@ -277,6 +291,7 @@ WHERE id = 1;
 Subresource Integrity (SRI) is a security feature that ensures CDN resources haven't been tampered with. Each resource includes a cryptographic hash.
 
 **Format:**
+
 ```html
 <!-- Example with SRI hash -->
 <script src="https://example.com/file.min.js"
@@ -284,7 +299,7 @@ Subresource Integrity (SRI) is a security feature that ensures CDN resources hav
         crossorigin="anonymous"></script>
 ```
 
-**Generating SRI Hashes**
+### Generating SRI Hashes
 
 Use the provided PHP script to generate correct hashes:
 
@@ -300,7 +315,7 @@ echo "sha384-$hash";
 **Current Valid Hashes (v2.12.0):**
 
 | Resource | Version | Hash |
-|----------|---------|------|
+| -------- | ------- | ---- |
 | Bootstrap CSS | 4.6.2 | `sha384-xOolHFLEh07PJGoPkLv1IbcEPTNtaed2xpHsD9ESMhqIYd0nLMwNLD69Npy4HI+N` |
 | jQuery | 3.6.0 | `sha384-vtXRMe3mGCbOeY7l30aIg8H9p3GdeSe4IFlP6G8JMa7o7lXvnz3GFKzPxzJdPfGK` |
 | Bootstrap JS | 4.6.2 | `sha384-+sLIOodYLS7CIrQpBjl+C7nPvqq+FbNUBDunl/OZv93DB7Ln/533i8e/mZXLi/P+` |
@@ -328,7 +343,7 @@ openssl dgst -sha384 -binary bootstrap.min.css | openssl enc -base64
 **Current Performance (v2.12.0):**
 
 | Metric | Value |
-|--------|-------|
+| ------ | ----- |
 | Consolidated CSS size | ~2.2 KB (minified) |
 | Bootstrap CSS (CDN) | ~18 KB (minified) |
 | Total CSS payload | ~20 KB (uncompressed) |
@@ -337,22 +352,26 @@ openssl dgst -sha384 -binary bootstrap.min.css | openssl enc -base64
 
 ### CSS Loading Optimization Techniques
 
-#### 1. CSS Minification ✅ (DONE)
+#### 1. CSS Minification (DONE)
+
 - All CSS files use `.min.css` versions
 - Source files (`.css`) are in repository for maintenance
 - Minification saves ~22% on consolidated CSS
 
-#### 2. CSS Consolidation ✅ (DONE)
+#### 2. CSS Consolidation (DONE)
+
 - Merged multiple files into single `consolidated.min.css`
 - Reduces HTTP requests from 2 to 1
 - Single file cached by browser as unit
 
-#### 3. CSS Delivery ✅ (DONE)
+#### 3. CSS Delivery (DONE)
+
 - Critical CSS (Bootstrap, Bootswatch) from CDN with fast delivery
 - Custom CSS (consolidated.min.css) served from origin
 - No CSS critical path issues
 
-#### 4. Media Query Optimization ✅
+#### 4. Media Query Optimization
+
 - Single responsive breakpoint: 768px
 - Minimal media query rules
 - Mobile-first approach
@@ -440,6 +459,6 @@ When releasing new versions:
 ## Related Documentation
 
 - [ARCHITECTURE.md](ARCHITECTURE.md) - Overall system architecture
-- [DEVELOPMENT_WORKFLOW.md](DEVELOPMENT_WORKFLOW.md) - Development processes
+- [Development Workflow](https://github.com/jimboone/elan-registry/wiki/Development-Workflow) - Development processes (wiki)
 - [CODING_STANDARDS.md](CODING_STANDARDS.md) - Code quality requirements
 - [QUICK_REFERENCE.md](QUICK_REFERENCE.md) - Common development tasks
