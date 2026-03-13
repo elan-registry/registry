@@ -51,7 +51,7 @@ UPDATE settings SET
   
   -- CDN Resource Management (Production URLs with integrity hashes)
   -- NOTE: CDN values are HTML-encoded because template uses html_entity_decode()
-  elan_jquery_cdn = '&lt;script src=&quot;https://cdn.jsdelivr.net/npm/jquery@3.5.1/dist/jquery.min.js&quot;&gt;&lt;/script&gt;',
+  elan_jquery_cdn = '&lt;script src=&quot;https://cdn.jsdelivr.net/npm/jquery@3.7.1/dist/jquery.min.js&quot; integrity=&quot;sha384-1H217gwSVyLSIfaLxHbE7dRb3v4mYCKbpQvzx0cegeju1MVsGrX5xXxAvs/HgeFs&quot; crossorigin=&quot;anonymous&quot;&gt;&lt;/script&gt;',
   elan_bootstrap_js_cdn = '&lt;script src=&quot;https://cdn.jsdelivr.net/npm/bootstrap@4.5.3/dist/js/bootstrap.bundle.min.js&quot; integrity=&quot;sha384-ho+j7jyWK8fNQe+A12Hb8AhRq26LrZ/JpcUGGOn+Y7RsweNrtN/tE3MoK7ZeZDyx&quot; crossorigin=&quot;anonymous&quot;&gt;&lt;/script&gt;',
   elan_bootstrap_css_cdn = '&lt;link rel=&quot;stylesheet&quot; href=&quot;https://cdn.jsdelivr.net/npm/bootstrap@4.5.3/dist/css/bootstrap.min.css&quot; integrity=&quot;sha384-TX8t27EcRE3e/ihU7zmQxVncDAy5uIKz4rEkgIXeMed4M0jlfIDPvg6uqKI2xXr2&quot; crossorigin=&quot;anonymous&quot;&gt;',
   elan_popper_cdn = '&lt;script src=&quot;https://cdn.jsdelivr.net/npm/popper.js@1.16.1/dist/umd/popper.min.js&quot; integrity=&quot;sha384-9/reFTGAW83EW2RDu2S0VKaIzap3H66lZH81PoYlFhbGU+6BZp6G7niu735Sk7lN&quot; crossorigin=&quot;anonymous&quot;&gt;&lt;/script&gt;',
