@@ -249,6 +249,14 @@ try {
                     ->send();
             }
 
+            // Validate backup file extension — only .sql files can be deleted
+            if (!str_ends_with($filename, '.sql')) {
+                ApiResponse::error('Invalid backup file type', 400)
+                    ->withLogging($user->data()->id, LogCategories::LOG_CATEGORY_BACKUP_ERROR,
+                        "Delete backup: invalid file extension for '{$filename}'")
+                    ->send();
+            }
+
             // Find and delete the backup file from any of the three directories
             $deleted = false;
             $types = ['automated', 'manual', 'rollback'];
