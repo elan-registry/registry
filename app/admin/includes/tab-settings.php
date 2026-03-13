@@ -426,7 +426,7 @@ $autoCreationMessages = processSettingsAutoCreation();
                                           data-desc="jQuery CDN URL"
                                           name="elan_jquery_cdn"
                                           id="elan_jquery_cdn"
-                                          placeholder="https://cdn.jsdelivr.net/npm/jquery@3.5.1/dist/jquery.min.js"><?= $settings->elan_jquery_cdn ?? '' ?></textarea>
+                                          placeholder="https://cdn.jsdelivr.net/npm/jquery@3.7.1/dist/jquery.min.js"><?= $settings->elan_jquery_cdn ?? '' ?></textarea>
                                 <small class="form-text text-muted">
                                     <i class="fas fa-external-link-alt"></i> <strong>Note:</strong> Do not use SLIM version
                                     <a href="https://code.jquery.com" target="_blank" class="ml-2">Browse Versions</a>
