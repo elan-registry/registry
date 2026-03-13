@@ -28,7 +28,8 @@ if ($method === 'POST' && (!isset($_POST['csrf']) || !Token::check($_POST['csrf'
 header('Content-Type: application/json');
 
 try {
-    $action = $_POST['action'] ?? $_GET['action'] ?? null;
+    $action = preg_replace('/[^\w\-]/', '', $_POST['action'] ?? $_GET['action'] ?? '') ?? '';
+    $action = $action ?: null;
 
     if (!$action) {
         throw new SchemaException('No action specified');
@@ -47,7 +48,7 @@ try {
                     'issues' => $validation['issues'] ?? [],
                     'recommendations' => $validation['recommendations'] ?? []
                 ])
-                ->withLogging($user->data()->id, 'DatabaseMaintenance',
+                ->withLogging($user->data()->id, LogCategories::LOG_CATEGORY_DATABASE_MAINTENANCE,
                     'Schema validation: ' . ($validation['valid'] ? 'PASSED' : 'FAILED'))
                 ->send();
             break;
@@ -59,7 +60,7 @@ try {
                     'overall' => $health['overall'],
                     'components' => $health['components']
                 ])
-                ->withLogging($user->data()->id, 'DatabaseMaintenance',
+                ->withLogging($user->data()->id, LogCategories::LOG_CATEGORY_DATABASE_MAINTENANCE,
                     "Schema health check: {$health['overall']}")
                 ->send();
             break;
@@ -70,14 +71,25 @@ try {
                 ? "Created {$result['created_fields']} settings fields"
                 : 'Settings fields check failed';
 
-            ApiResponse::success($message)
-                ->withDataArray([
-                    'created_fields' => $result['created_fields'],
-                    'results' => $result['results'],
-                    'errors' => $result['errors']
-                ])
-                ->withLogging($user->data()->id, 'DatabaseMaintenance', $message)
-                ->send();
+            if ($result['success']) {
+                ApiResponse::success($message)
+                    ->withDataArray([
+                        'created_fields' => $result['created_fields'],
+                        'results' => $result['results'],
+                        'errors' => $result['errors']
+                    ])
+                    ->withLogging($user->data()->id, LogCategories::LOG_CATEGORY_DATABASE_MAINTENANCE, $message)
+                    ->send();
+            } else {
+                ApiResponse::serverError($message)
+                    ->withDataArray([
+                        'created_fields' => $result['created_fields'],
+                        'results' => $result['results'],
+                        'errors' => $result['errors']
+                    ])
+                    ->withLogging($user->data()->id, LogCategories::LOG_CATEGORY_DATABASE_MAINTENANCE, $message)
+                    ->send();
+            }
             break;
 
         case 'ensure_quality_tables':
@@ -86,14 +98,25 @@ try {
                 ? "Created {$result['created_tables']} quality tables"
                 : 'Quality tables check failed';
 
-            ApiResponse::success($message)
-                ->withDataArray([
-                    'created_tables' => $result['created_tables'],
-                    'results' => $result['results'],
-                    'errors' => $result['errors']
-                ])
-                ->withLogging($user->data()->id, 'DatabaseMaintenance', $message)
-                ->send();
+            if ($result['success']) {
+                ApiResponse::success($message)
+                    ->withDataArray([
+                        'created_tables' => $result['created_tables'],
+                        'results' => $result['results'],
+                        'errors' => $result['errors']
+                    ])
+                    ->withLogging($user->data()->id, LogCategories::LOG_CATEGORY_DATABASE_MAINTENANCE, $message)
+                    ->send();
+            } else {
+                ApiResponse::serverError($message)
+                    ->withDataArray([
+                        'created_tables' => $result['created_tables'],
+                        'results' => $result['results'],
+                        'errors' => $result['errors']
+                    ])
+                    ->withLogging($user->data()->id, LogCategories::LOG_CATEGORY_DATABASE_MAINTENANCE, $message)
+                    ->send();
+            }
             break;
 
         case 'perform_maintenance':
@@ -107,15 +130,27 @@ try {
                 ? 'Schema maintenance completed successfully'
                 : 'Schema maintenance failed';
 
-            ApiResponse::success($message)
-                ->withDataArray([
-                    'operations' => $result['operations'],
-                    'backup_created' => $result['backup_created'],
-                    'backup_path' => $result['backup_path'] ?? null,
-                    'validation_issues' => $result['validation_issues'] ?? []
-                ])
-                ->withLogging($user->data()->id, 'DatabaseMaintenance', $message)
-                ->send();
+            if ($result['success']) {
+                ApiResponse::success($message)
+                    ->withDataArray([
+                        'operations' => $result['operations'],
+                        'backup_created' => $result['backup_created'],
+                        'backup_path' => $result['backup_path'] ?? null,
+                        'validation_issues' => $result['validation_issues'] ?? []
+                    ])
+                    ->withLogging($user->data()->id, LogCategories::LOG_CATEGORY_DATABASE_MAINTENANCE, $message)
+                    ->send();
+            } else {
+                ApiResponse::serverError($message)
+                    ->withDataArray([
+                        'operations' => $result['operations'],
+                        'backup_created' => $result['backup_created'],
+                        'backup_path' => $result['backup_path'] ?? null,
+                        'validation_issues' => $result['validation_issues'] ?? []
+                    ])
+                    ->withLogging($user->data()->id, LogCategories::LOG_CATEGORY_DATABASE_MAINTENANCE, $message)
+                    ->send();
+            }
             break;
 
         default:
@@ -123,10 +158,14 @@ try {
     }
 
 } catch (Exception $e) {
-    // Keep existing logger() call for detailed error logging
-    logger($user->data()->id ?? 0, LogCategories::LOG_CATEGORY_SCHEMA_OPERATION_ERROR,
-        'Schema operation failed: ' . $e->getMessage());
+    // Log full error details server-side; generic message returned to client
+    $errorDetails = "Schema operation '" . ($action ?? 'unknown') . "' failed for user " . ($user->data()->username ?? 'unknown') . "\n";
+    $errorDetails .= "Error: " . $e->getMessage() . "\n";
+    $errorDetails .= "File: " . $e->getFile() . " (Line " . $e->getLine() . ")\n";
+    $errorDetails .= "Stack trace:\n" . $e->getTraceAsString();
 
-    ApiResponse::serverError('Schema operation failed: ' . $e->getMessage())
+    logger($user->data()->id ?? 0, LogCategories::LOG_CATEGORY_SCHEMA_OPERATION_ERROR, $errorDetails);
+
+    ApiResponse::serverError('Schema operation failed')
         ->send();
 }

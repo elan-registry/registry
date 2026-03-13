@@ -19,16 +19,16 @@ require_once $abs_us_root . $us_url_root . 'usersc/classes/StatisticsDataService
 // Security check
 if (!securePage($php_self)) {
     ApiResponse::forbidden('Unauthorized access')
-        ->withLogging(0, 'SecurityError', 'Unauthorized statistics-data.php access attempt')
+        ->withLogging(0, LogCategories::LOG_CATEGORY_SECURITY, 'Unauthorized statistics-data.php access attempt')
         ->send();
 }
 
 // Get requested tab
-$tab = $_GET['tab'] ?? '';
+$tab = Input::get('tab');
 
 if (empty($tab)) {
     ApiResponse::error('Tab parameter required', 400)
-        ->withLogging($user->data()->id ?? 0, 'ValidationError', 'Statistics API called without tab parameter')
+        ->withLogging($user->data()->id ?? 0, LogCategories::LOG_CATEGORY_VALIDATION_ERROR, 'Statistics API called without tab parameter')
         ->send();
 }
 
@@ -36,7 +36,7 @@ if (empty($tab)) {
 try {
     if (!isset($db)) {
         ApiResponse::serverError('Database connection not available')
-            ->withLogging($user->data()->id ?? 0, 'DatabaseError', 'Statistics API: Database connection not available')
+            ->withLogging($user->data()->id ?? 0, LogCategories::LOG_CATEGORY_DATABASE_ERROR, 'Statistics API: Database connection not available')
             ->send();
     }
     $dataService = new StatisticsDataService($db);
@@ -78,9 +78,8 @@ try {
 
         default:
             ApiResponse::error('Invalid tab parameter', 400)
-                ->withData('tab', $tab)
                 ->withData('valid_tabs', ['geographic', 'production', 'colors', 'quality'])
-                ->withLogging($user->data()->id ?? 0, 'ValidationError', "Statistics API: Invalid tab '{$tab}'")
+                ->withLogging($user->data()->id ?? 0, LogCategories::LOG_CATEGORY_VALIDATION_ERROR, "Statistics API: Invalid tab '{$tab}'")
                 ->send();
     }
 
@@ -91,10 +90,10 @@ try {
 
 } catch (Throwable $e) {
     ApiResponse::serverError('Data retrieval failed')
-        ->withData('tab', $tab ?? 'unknown')
+        ->withData('tab', $tab)
         ->withLogging(
             $user->data()->id ?? 0,
-            'DatabaseError',
+            LogCategories::LOG_CATEGORY_DATABASE_ERROR,
             "Statistics API error for tab '{$tab}': " . $e->getMessage()
         )
         ->send();
