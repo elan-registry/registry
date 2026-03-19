@@ -15,9 +15,9 @@ working with code in this repository.
 
 **Core understanding:**
 
-- [GitHub Wiki: Architecture Guide](https://github.com/jimboone/elan-registry/wiki/Architecture) - System architecture and patterns
+- [GitHub Wiki: Architecture Guide](https://github.com/unibrain1/elanregistry/wiki/Elan-Registry-Architecture-and-Database-Design) - System architecture and patterns
 - `docs/development/DATABASE.md` - Database schema and relationships
-- [GitHub Wiki: UserSpice Integration Guide](https://github.com/jimboone/elan-registry/wiki/Integration) - UserSpice integration
+- [GitHub Wiki: UserSpice Integration Guide](https://github.com/unibrain1/elanregistry/wiki/Customization-and-Integration-Patterns) - UserSpice integration
 
 **As needed:** See [docs/README.md](docs/README.md) for the complete documentation
 index (error handling, classes, DataTables, CSS, testing, UserSpice functions,
@@ -27,11 +27,12 @@ custom solutions.
 ## Architecture Overview
 
 This is a PHP web application for the Lotus Elan Registry hosted at
-<https://elanregistry.org>. Built on UserSpice (<https://userspice.com>) for
-authentication, with custom car registry functionality.
+<https://elanregistry.org>. Built on UserSpice 6 (<https://userspice.com>) for
+authentication, with custom car registry functionality. Cloudflare provides
+edge caching and CDN for global users (US, EU, AU).
 
 > **For complete architecture, see the
-> [GitHub Wiki: Architecture Guide](https://github.com/jimboone/elan-registry/wiki/Architecture)**
+> [GitHub Wiki: Architecture Guide](https://github.com/unibrain1/elanregistry/wiki/Elan-Registry-Architecture-and-Database-Design)**
 
 **Directory Structure:**
 
@@ -45,12 +46,24 @@ authentication, with custom car registry functionality.
 **Key Integration Points:**
 
 - **Page Security**: All protected pages require `securePage($php_self)` check.
-  See [GitHub Wiki: UserSpice Integration Guide](https://github.com/jimboone/elan-registry/wiki/Integration).
+  See [GitHub Wiki: UserSpice Integration Guide](https://github.com/unibrain1/elanregistry/wiki/Customization-and-Integration-Patterns).
 - **New PHP Directories**: Update `$path` array in `/z_us_root.php`
 - **Database**: MySQL 8.0+ with audit trails via triggers.
   See [DATABASE.md](docs/development/DATABASE.md).
 - **Classes**: Car, CarView, ElanRegistryOwner, ChassisValidator, and support
   classes. See [CLASSES.md](docs/development/CLASSES.md).
+
+**Template Architecture:**
+
+- Active template: `/usersc/templates/ElanRegistry/` (Bootstrap 4.5.3, migrating to BS5)
+- US6 reference templates: `journal/` (BS5.2) and `customizer/` (BS5.3) — use
+  as patterns for migration
+- UserSpice 6 admin uses its own template — independent of ElanRegistry template
+- jQuery is a UserSpice 6 dependency (`users/js/jquery.php`) — cannot be removed
+- CDN URLs stored in database settings (`elan_*_cdn` columns) — decoded via
+  `html_entity_decode()` in `header.php`
+- ADRs: `docs/development/adr/` — update ADR-006 and ADR-007 when changing
+  frontend dependencies or CSP
 
 ## Development Setup
 
@@ -200,6 +213,13 @@ For quick fixes, refactoring, or exploratory work not tied to an issue:
 doesn't need the full `/issue` workflow. It provides its own code exploration
 and architecture agents.
 
+### Planning Work
+
+- `plans/` directory is for temporary working documents (sprint plans, triage
+  reports) — delete after decisions are applied to GitHub milestones/issues
+- For milestone planning, use the `senior-product-manager`, `senior-architect`,
+  and `security-reviewer` agents in parallel for comprehensive analysis
+
 ### Other Commands
 
 ```text
@@ -229,6 +249,7 @@ and architecture agents.
 | `/issue` | Start work on a GitHub issue (branch, plan, implement) |
 | `/release` | Automated release workflow with version analysis |
 | `/security-review` | Security audit of recent code changes |
+| `/new-issue` | Create a new GitHub issue with PM-driven scope refinement |
 
 ### Project Plugins (`.claude/settings.json`)
 
@@ -245,7 +266,8 @@ Installed at project scope so all developers share the same workflow:
 
 ### Hooks (`.claude/settings.local.json`)
 
-- **PostToolUse (Edit/Write)**: Auto-runs `php -l` syntax check on PHP files
+- **PostToolUse (Edit/Write)**: Auto-runs `php -l` on PHP files and
+  `markdownlint` on Markdown files
 
 ### MCP Servers (configured in `~/.claude.json`)
 
@@ -276,3 +298,11 @@ git push prod main && git push prod --tags        # PRODUCTION
 ```
 
 See [DEPLOYMENT.md](docs/development/DEPLOYMENT.md) for complete procedures.
+
+## GitHub Repository
+
+- **GitHub owner/repo:** `unibrain1/elanregistry` (not `jimboone/elan-registry`)
+- Use `gh` CLI for GitHub operations — the MCP GitHub tools require the correct
+  owner/repo pair above
+- Milestone descriptions should state the goal, not list issue numbers
+- Remove closed issues from milestones to keep progress tracking accurate
