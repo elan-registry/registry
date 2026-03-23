@@ -1,13 +1,13 @@
 ---
-description: Start work on a GitHub issue with branch creation, planning, and clarifying questions
+description: Start work on a GitHub issue within a milestone workflow
 ---
 
 # GitHub Issue Workflow Command
 
-This command helps you start working on a GitHub issue by creating a branch,
-entering plan mode, and developing an implementation plan with continuous
-clarifying questions. Specialized agents are invoked as needed throughout the
-workflow.
+This command helps you start working on a GitHub issue within a milestone
+workflow by creating a branch, entering plan mode, and developing an
+implementation plan with continuous clarifying questions. Specialized agents are
+invoked as needed throughout the workflow.
 
 ## Available Agents
 
@@ -72,74 +72,77 @@ Display a summary of the issue including:
 - Milestone (if any)
 - Description
 
-### Step 3: Determine Branch Name and Base Branch
+### Step 3: Verify Milestone Branch and Determine Issue Branch Name
 
-Before creating a branch or entering plan mode, determine the branch details:
+This command requires a milestone workflow. The user must already be on a
+`milestone/*` branch (created by `/start-milestone`).
 
-1. **Branch naming**: Use the issue labels to determine the branch prefix:
-   - `bug` label → `bug/ISSUE_NUMBER-short-description`
-   - `enhancement` or `feature` label → `feature/ISSUE_NUMBER-short-description`
-   - All other labels (including `tech-debt`) → `issue/ISSUE_NUMBER-short-description`
+1. **Check the current branch:**
+
+   ```bash
+   git branch --show-current
+   ```
+
+2. **If on a `milestone/*` branch**, use it as the base. Extract the version
+   from the branch name (e.g., `milestone/v2.17.0` -> `v2.17.0`).
+
+3. **If NOT on a `milestone/*` branch**, check if exactly one exists:
+
+   ```bash
+   git branch --list 'milestone/*'
+   ```
+
+   - **If exactly one exists**, switch to it:
+
+     ```bash
+     git checkout milestone/vX.Y.Z
+     git pull origin milestone/vX.Y.Z
+     ```
+
+   - **If zero exist**, stop and tell the user:
+     "No milestone branch found. Please run `/start-milestone` first to create
+     one, then re-run `/start-issue ISSUE_NUMBER`."
+   - **If multiple exist**, stop and tell the user:
+     "Multiple milestone branches found: [list them]. Please checkout the one
+     you want to work on and re-run `/start-issue ISSUE_NUMBER`."
+
+4. **Branch naming**: Use the issue labels to determine the branch prefix:
+   - `bug` label -> `bug/ISSUE_NUMBER-short-description`
+   - `enhancement` or `feature` label -> `feature/ISSUE_NUMBER-short-description`
+   - All other labels (including `tech-debt`) -> `issue/ISSUE_NUMBER-short-description`
 
    Present the proposed branch name and ask: "I'll create a branch named
-   `PREFIX/ISSUE_NUMBER-short-description`. Does this work, or would you prefer
-   a different name?"
+   `PREFIX/ISSUE_NUMBER-short-description` from `milestone/vX.Y.Z`. Does this
+   work, or would you prefer a different name?"
 
-2. **Base branch**: Many features span multiple issues. Each issue branch should
-   target the shared feature/milestone branch — NOT main. Only the completed
-   feature branch gets merged into main.
+Wait for the answer before proceeding.
 
-   Determine the correct base branch using this priority:
+### Step 4: Create Issue Branch
 
-   a. **Check the issue's milestone** for a matching feature/milestone branch.
-      Search both local and remote branches:
-
-      ```bash
-      git branch -a --list '*milestone/*' '*feature/v*'
-      ```
-
-   b. **If a matching branch exists**, use it as the base. For example, if the
-      issue is in milestone `v2.17.0` and a `feature/v2.17.0` branch exists,
-      branch from that.
-
-   c. **If no matching branch exists**, ask the user whether to:
-      - Create a new feature branch for the milestone (e.g., `feature/v2.17.0`)
-      - Branch directly from `main` (for standalone issues not part of a larger
-        feature)
-
-   d. **If the issue has no milestone**, default to `main`.
-
-   Present your finding: "This issue is in milestone `vX.Y.Z`. I found
-   `feature/vX.Y.Z` and will branch from that. Is that correct?"
-
-   Or: "This issue has no milestone. I'll branch from `main`. Is that correct?"
-
-Wait for answers before proceeding.
-
-### Step 4: Create Branch
-
-After getting branch preferences, create the branch.
-
-**If a new feature branch needs to be created first** (from Step 3c):
+After getting branch name confirmation, create the issue branch from the
+current milestone branch and push to remote:
 
 ```bash
-git checkout main
-git pull origin main
-git checkout -b feature/vX.Y.Z
-git push -u origin feature/vX.Y.Z
-```
-
-Confirm: "Created shared feature branch `feature/vX.Y.Z` from `main` and pushed to GitHub."
-
-**Then create the issue branch:**
-
-```bash
-git checkout BASE_BRANCH
-git pull origin BASE_BRANCH
 git checkout -b BRANCH_NAME
+git push -u origin BRANCH_NAME
 ```
 
-Confirm: "Created branch `BRANCH_NAME` from `BASE_BRANCH`"
+Confirm: "Created branch `BRANCH_NAME` from `MILESTONE_BRANCH` and pushed to
+remote."
+
+### Step 4.5: Update GitHub Issue
+
+After creating the branch, mark the issue as in progress:
+
+```bash
+# Create the "in progress" label if it doesn't exist (ignore error if it does)
+gh label create "in progress" --color 0075CA --description "Work is actively underway" 2>/dev/null || true
+
+# Update the issue
+gh issue edit ISSUE_NUMBER --add-label "in progress" --add-assignee @me
+```
+
+Confirm: "Marked issue #ISSUE_NUMBER as in progress and assigned to you."
 
 ### Step 5: Launch Explore Agents for Initial Research
 
@@ -453,59 +456,42 @@ Once the user approves the plan, execute using agents strategically:
    corrections.
 
 8. **Hand off to the developer workflow.** Do NOT commit, push, or create PRs.
-   Instead, present a summary with the appropriate next steps based on
-   whether the issue is part of a milestone or standalone.
-
-   **For milestone issues** (branched from a feature branch):
+   Present a summary with the next steps:
 
    ```text
    Implementation complete for issue #ISSUE_NUMBER. Next steps:
 
    1. /simplify        — Review and clean up the code (optional)
-   2. /commit           — Commit your changes
-   3. Merge into the feature branch locally:
-        git checkout [BASE_BRANCH]
-        git pull origin [BASE_BRANCH]
-        git merge [ISSUE_BRANCH]
-        git push origin [BASE_BRANCH]
-   4. Delete the issue branch: git branch -d [ISSUE_BRANCH]
-
-   When ALL milestone issues are complete, create the milestone PR:
-        /commit-push-pr   (targeting main, include "Closes #ISSUE_NUMBER")
-        /review-pr        (comprehensive review before repo owner merges)
-   ```
-
-   **For standalone issues** (branched from main):
-
-   ```text
-   Implementation complete for issue #ISSUE_NUMBER. Next steps:
-
-   1. /simplify        — Review and clean up the code (optional)
-   2. /commit           — Commit your changes
-   3. /commit-push-pr   — Push and create a PR targeting main
-   4. /review-pr        — Review the PR before merge
-
-   Remember: Include "Closes #ISSUE_NUMBER" in the PR body.
+   2. /commit          — Commit your changes
+   3. /commit-push-pr  — Push and create a PR targeting `MILESTONE_BRANCH`
+                         Include "Closes #ISSUE_NUMBER" in the PR body.
+   4. /finish-issue    — Monitor CI, squash-merge, and close the issue
    ```
 
    **For bug issues**, also remind the user to include the escape analysis
-   in the PR description.
+   in the PR description:
+
+   ```text
+   Remember: Include the bug escape analysis in the PR description so
+   reviewers can verify preventive test coverage.
+   ```
 
 ### Update Draft Release Notes
 
-Before handing off, update the draft release notes for the milestone at
-`docs/releases/RELEASE_NOTES_vX.Y.Z.md`:
+Before handing off, update the draft release notes for the milestone. Extract
+the version from the milestone branch name (e.g., `milestone/v2.17.0` ->
+`v2.17.0`) and update `docs/releases/RELEASE_NOTES_vX.Y.Z.md`:
 
 1. **If the file doesn't exist yet**, create it from the template at
    `docs/development/RELEASE_NOTES_TEMPLATE.md` with the milestone version.
 
 2. **Add the issue's changes** to the appropriate section(s):
-   - User-facing changes → `## 👤 User-Facing Changes`
-   - Bug fixes → `### Bug Fixes`
-   - Technical/internal changes → `## 🔧 Technical Changes`
+   - User-facing changes -> `## User-Facing Changes`
+   - Bug fixes -> `### Bug Fixes`
+   - Technical/internal changes -> `## Technical Changes`
    - Include the issue number as a reference: `(#ISSUE_NUMBER)`
 
-3. **Keep it cumulative** — append to existing entries, don't replace them.
+3. **Keep it cumulative** -- append to existing entries, don't replace them.
    Each issue adds its line items to the draft.
 
 4. **Use the technical-documentation-writer agent** (`haiku`) to write the
@@ -513,11 +499,14 @@ Before handing off, update the draft release notes for the milestone at
 
 ## Critical Rules
 
-- **NEVER commit code** - `/issue` does not commit, push, or create PRs.
+- **NEVER commit code** - `/start-issue` does not commit, push, or create PRs.
   After implementation is complete, stop and tell the user to continue with
-  `/simplify` and `/commit`. For milestone issues, the developer merges
-  locally into the feature branch. For standalone issues, they use
-  `/commit-push-pr`. See the **Developer Workflow** section in CLAUDE.md.
+  `/simplify`, `/commit`, then `/commit-push-pr`.
+- **Issue PRs MUST target the milestone branch** - never target `main` directly.
+  The issue PR targets `milestone/vX.Y.Z`. Only the final milestone PR
+  (created by `/finish-milestone`) targets `main`.
+- **Remind user to use `/finish-issue`** - after the PR passes review and CI,
+  the user should run `/finish-issue` to squash-merge and clean up.
 - **Ask questions ONE AT A TIME** - wait for each answer before asking the next
 - **Continue asking questions WHILE IN PLAN MODE** - don't wait until
   after plan mode
@@ -550,16 +539,11 @@ Before handing off, update the draft release notes for the milestone at
   other's output, launch them simultaneously for efficiency
 - **Never close issues manually** - use `Closes #NNN` in the PR body so
   issues close automatically on merge
-- **Milestone issues merge locally** - developers merge issue branches into
-  the feature branch locally and push. No PR is created per issue. Only the
-  final milestone PR (feature branch → main) goes through formal PR review.
-- **Standalone issues PR to main** - issues without a milestone create a PR
-  directly to `main`.
 
 ## Example Flow
 
 ```text
-User: /issue 423
+User: /start-issue 423
 
 You: I'll help you work on issue #423. Let me fetch the details...
 
@@ -570,20 +554,24 @@ Status: Open
 Labels: enhancement
 Milestone: v3.2.0
 
+[checks current branch]
+
+You're on `milestone/v3.2.0` -- good.
+
 I see this is labeled `enhancement`, so I'll create a branch named
-`feature/423-car-data-export`. Does this work, or would you prefer a
-different name?
+`feature/423-car-data-export` from `milestone/v3.2.0`. Does this work,
+or would you prefer a different name?
 
 User: That's fine
 
-You: I found a `milestone/v3.2.0` branch matching the issue milestone.
-I'll branch from that. Is that correct?
+You: [creates branch and pushes to remote]
 
-User: Yes
+Created branch `feature/423-car-data-export` from `milestone/v3.2.0` and
+pushed to remote.
 
-You: [creates branch]
+[marks issue as in progress, assigns to user]
 
-Created branch `feature/423-car-data-export` from `milestone/v3.2.0`.
+Marked issue #423 as in progress and assigned to you.
 
 Let me explore the relevant areas of the codebase first...
 
@@ -661,17 +649,100 @@ All changes implemented, tested, documented, and reviewed.
 Implementation complete for issue #423. Next steps:
 
 1. /simplify        — Review and clean up the code (optional)
-2. /commit           — Commit your changes
-3. Merge into the feature branch locally:
-     git checkout milestone/v3.2.0
-     git pull origin milestone/v3.2.0
-     git merge feature/423-car-data-export
-     git push origin milestone/v3.2.0
-4. Delete the issue branch: git branch -d feature/423-car-data-export
+2. /commit          — Commit your changes
+3. /commit-push-pr  — Push and create a PR targeting `milestone/v3.2.0`
+                      Include "Closes #423" in the PR body.
+4. /finish-issue    — Monitor CI, squash-merge, and close the issue
+```
 
-When ALL milestone issues are complete, create the milestone PR:
-     /commit-push-pr   (targeting main, include "Closes #423, Closes #NNN...")
-     /review-pr        (comprehensive review before repo owner merges)
+## Bug Issue Example Flow
+
+Here's how a bug issue flows through the enhanced workflow:
+
+```text
+User: /start-issue 512
+
+You: I'll help you work on issue #512. Let me fetch the details...
+
+Issue #512: Car price accepts negative values
+Status: Open
+Labels: bug
+Milestone: v2.16.0
+
+[checks current branch]
+
+You're on `milestone/v2.16.0` -- good.
+
+I see this is a bug issue. I'll create a branch named
+`bug/512-negative-price-validation` from `milestone/v2.16.0`. Does this work?
+
+User: Yes
+
+You: [creates branch and pushes to remote]
+
+Created branch `bug/512-negative-price-validation` from `milestone/v2.16.0`
+and pushed to remote.
+
+[marks issue as in progress, assigns to user]
+
+Marked issue #512 as in progress and assigned to you.
+
+Let me explore the code and investigate why this bug wasn't caught by tests...
+
+[launches 2 Explore agents IN PARALLEL:
+ - Explore agent 1: app/cars/ (price input handling and validation)
+ - Explore agent 2: tests/ (existing validation tests, why gap exists)]
+
+[Explore agents investigate:]
+- Price input in car registration form doesn't validate for negative values
+- Recent refactor removed validation logic from form processing
+- No PHPUnit test exists for price input validation
+- Similar price inputs in other forms (update car) also lack validation tests
+
+Based on the investigation:
+
+**Why it escaped:** Price validation was removed in a refactor, but no regression
+tests existed. The input acceptance wasn't covered by PHPUnit or browser tests.
+
+Should I proceed with understanding the full scope and creating a preventive
+test strategy?
+
+User: Yes, continue
+
+[enters plan mode]
+[asks clarifying questions about expected behavior]
+
+User: Price should reject negatives and zero; minimum is $1
+
+Now let me create the escape analysis and preventive measures...
+
+[documents in plan:]
+**Bug Escape Analysis:**
+- Root Cause: Price validation removed in form refactor (commit xyz)
+- Testing Gap: No unit test for price validation; code path never tested
+- Preventive: Add PHPUnit test for price input validation
+- Related: Other price inputs (car update form) also need similar tests
+
+[launches senior-architect for review]
+[launches senior-test-engineer with explicit test strategy for validation tests]
+
+Here's my plan with escape analysis and preventive tests...
+
+[after approval]
+
+[implements fix + validation]
+[writes comprehensive tests for price validation]
+
+Implementation complete for issue #512. Next steps:
+
+1. /simplify        — Review and clean up the code (optional)
+2. /commit          — Commit your changes
+3. /commit-push-pr  — Push and create a PR targeting `milestone/v2.16.0`
+                      Include "Closes #512" in the PR body.
+4. /finish-issue    — Monitor CI, squash-merge, and close the issue
+
+Remember: Include the bug escape analysis in the PR description so
+reviewers can verify preventive test coverage.
 ```
 
 ## Project-Specific Enhancements
@@ -728,92 +799,6 @@ This workflow has been customized for the Elan Registry PHP project with emphasi
 - **During Planning (Step 7)**: Create an escape analysis documenting root cause and test gaps
 - **Test Strategy**: Define new automated tests to prevent similar bugs (unit, integration, e2e)
 - **PR Documentation**: Include escape analysis and preventive measures in PR description
-
-## Bug Issue Example Flow
-
-Here's how a bug issue flows through the enhanced workflow:
-
-```text
-User: /issue 512
-
-You: I'll help you work on issue #512. Let me fetch the details...
-
-Issue #512: Car price accepts negative values
-Status: Open
-Labels: bug
-Milestone: v2.16.0
-
-I see this is a bug issue. I'll create a branch named `bug/512-negative-price-validation`.
-Does this work?
-
-User: Yes
-
-You: [creates branch]
-
-Created branch `bug/512-negative-price-validation` from `milestone/v2.16.0`.
-
-Let me explore the code and investigate why this bug wasn't caught by tests...
-
-[launches 2 Explore agents IN PARALLEL:
- - Explore agent 1: app/cars/ (price input handling and validation)
- - Explore agent 2: tests/ (existing validation tests, why gap exists)]
-
-[Explore agents investigate:]
-- Price input in car registration form doesn't validate for negative values
-- Recent refactor removed validation logic from form processing
-- No PHPUnit test exists for price input validation
-- Similar price inputs in other forms (update car) also lack validation tests
-
-Based on the investigation:
-
-**Why it escaped:** Price validation was removed in a refactor, but no regression
-tests existed. The input acceptance wasn't covered by PHPUnit or browser tests.
-
-Should I proceed with understanding the full scope and creating a preventive
-test strategy?
-
-User: Yes, continue
-
-[enters plan mode]
-[asks clarifying questions about expected behavior]
-
-User: Price should reject negatives and zero; minimum is $1
-
-Now let me create the escape analysis and preventive measures...
-
-[documents in plan:]
-**Bug Escape Analysis:**
-- Root Cause: Price validation removed in form refactor (commit xyz)
-- Testing Gap: No unit test for price validation; code path never tested
-- Preventive: Add PHPUnit test for price input validation
-- Related: Other price inputs (car update form) also need similar tests
-
-[launches senior-architect for review]
-[launches senior-test-engineer with explicit test strategy for validation tests]
-
-Here's my plan with escape analysis and preventive tests...
-
-[after approval]
-
-[implements fix + validation]
-[writes comprehensive tests for price validation]
-
-Implementation complete for issue #512. Next steps:
-
-1. /simplify        — Review and clean up the code (optional)
-2. /commit           — Commit your changes
-3. Merge into the feature branch locally:
-     git checkout milestone/v2.16.0
-     git pull origin milestone/v2.16.0
-     git merge bug/512-negative-price-validation
-     git push origin milestone/v2.16.0
-4. Delete the issue branch: git branch -d bug/512-negative-price-validation
-
-When ALL milestone issues are complete, create the milestone PR:
-     /commit-push-pr   (targeting main, include "Closes #512, Closes #NNN...")
-     /review-pr        (comprehensive review before repo owner merges)
-Include the bug escape analysis in the milestone PR description.
-```
 
 ## Plan Mode Question Guidelines
 
