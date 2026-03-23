@@ -23,6 +23,20 @@ npm run playwright:test    # UI tests (requires setup)
 composer phpcs                  # Manual coding standards check
 ```
 
+### Milestone Lifecycle
+
+```bash
+/start-milestone v2.17.0     # Create milestone branch, draft release notes
+/start-issue 423              # Branch, plan, implement, test, security review
+/simplify                     # Clean up the code (optional)
+/commit                       # Commit locally
+/commit-push-pr               # Push + PR targeting milestone branch
+/finish-issue 423             # CI check, squash-merge, close issue
+/finish-milestone v2.17.0    # PR to main, finalize release notes, update wiki
+/review-pr                    # Multi-agent PR review
+/release-milestone v2.17.0   # Merge, tag, GitHub release, close milestone
+```
+
 ### Git & Deployment
 
 ```bash
