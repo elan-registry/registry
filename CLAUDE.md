@@ -174,32 +174,37 @@ details and usage examples.
 
 ## Developer Workflow
 
-### Issue-Driven Work (typical)
+### Milestone Lifecycle (typical)
 
-For work that starts from a GitHub issue — features, bugs, enhancements:
-
-```text
-/issue 423          — Branch, explore, plan, implement, test, security review
-/simplify           — Clean up the code (optional, recommended)
-/commit             — Commit changes locally
-git merge           — Merge issue branch into feature branch locally, push
-```
-
-When ALL milestone issues are complete:
+Most work follows a structured milestone lifecycle with five commands:
 
 ```text
-/commit-push-pr     — Create milestone PR (feature branch → main)
-/review-pr          — Multi-agent PR review before repo owner merges
+/start-milestone v2.17.0     — Create milestone branch, draft release notes
+  /start-issue 423            — Branch, plan, implement, test, security review
+  /simplify                   — Clean up the code (optional, recommended)
+  /commit                     — Commit changes locally
+  /commit-push-pr             — Push + PR targeting milestone branch
+  /finish-issue 423           — Monitor CI, squash-merge, close issue
+  (repeat for each issue)
+/finish-milestone v2.17.0    — PR to main, finalize release notes, update wiki
+/review-pr                   — Multi-agent PR review before merge
+/release-milestone v2.17.0   — Merge, tag, GitHub release, close milestone
 ```
 
-`/issue` handles the full development cycle (branch creation through
-implementation and testing) but **does not commit or push**. For milestone
-issues, developers merge locally into the feature branch — no PR per issue.
-Only the final milestone PR requires formal review.
+**Branch structure:** `main` ← `milestone/vX.Y.Z` ← `issue/NNN-slug`
+
+- `/start-issue` handles the full development cycle (branch, plan, implement,
+  test, security review) but **does not commit or push**
+- Each issue gets its own PR targeting the milestone branch (squash-merged by
+  `/finish-issue` for clean history)
+- `/finish-milestone` creates the final PR to `main` with all closing keywords
+  and updates wiki/architecture docs
+- `/release-milestone` merges, tags, and publishes — deployment to test/prod
+  is a separate manual step
 
 ### Ad-Hoc Work (no GitHub issue)
 
-For quick fixes, refactoring, or exploratory work not tied to an issue:
+For quick fixes, refactoring, or exploratory work not tied to a milestone:
 
 ```text
 /feature-dev        — Guided implementation with codebase exploration
@@ -210,7 +215,7 @@ For quick fixes, refactoring, or exploratory work not tied to an issue:
 ```
 
 `/feature-dev` is a user-level plugin (not project-scoped) for work that
-doesn't need the full `/issue` workflow. It provides its own code exploration
+doesn't need the full milestone workflow. It provides its own code exploration
 and architecture agents.
 
 ### Planning Work
@@ -223,8 +228,10 @@ and architecture agents.
 ### Other Commands
 
 ```text
+/new-issue          — Create a well-defined GitHub issue with PM refinement
 /security-review    — OWASP security audit of recent changes
-/release            — Version bump, release notes, tag, and publish
+/release            — Standalone release (hotfixes not tied to a milestone)
+/architecture-update — Full wiki architecture documentation refresh
 /revise-claude-md   — Update CLAUDE.md with session learnings
 /clean_gone         — Delete local branches removed from remote
 ```
@@ -246,10 +253,15 @@ and architecture agents.
 
 | Skill | Purpose |
 | ----- | ------- |
-| `/issue` | Start work on a GitHub issue (branch, plan, implement) |
-| `/release` | Automated release workflow with version analysis |
+| `/start-milestone` | Create milestone branch, draft release notes, recommend issue order |
+| `/start-issue` | Branch, plan, implement, test, security review within a milestone |
+| `/finish-issue` | Monitor CI, squash-merge issue PR into milestone branch, close issue |
+| `/finish-milestone` | Create milestone PR to main, finalize release notes, update wiki |
+| `/release-milestone` | Merge milestone PR, tag, push, GitHub release, close milestone |
+| `/release` | Standalone release workflow (hotfixes not tied to a milestone) |
 | `/security-review` | Security audit of recent code changes |
 | `/new-issue` | Create a new GitHub issue with PM-driven scope refinement |
+| `/architecture-update` | Full wiki architecture documentation refresh with diagrams |
 
 ### Project Plugins (`.claude/settings.json`)
 

@@ -227,8 +227,10 @@ git commit --no-verify           # Bypass (emergency only)
 
 #### Branch Naming Convention
 
-- Feature branches: `feature/issue-{number}-brief-description`
-- Phase branches: `phase-{number}-{name}`
+- Milestone branches: `milestone/v{X.Y.Z}` (created by `/start-milestone`)
+- Issue branches: `issue/{number}-brief-description` (created by `/start-issue`)
+- Bug fix branches: `bug/{number}-brief-description` (created by `/start-issue`)
+- Feature branches: `feature/{number}-brief-description` (created by `/start-issue`)
 - Hotfix branches: `hotfix/issue-{number}-brief-description`
 
 #### Version Management & Git Tag-Based Versioning
