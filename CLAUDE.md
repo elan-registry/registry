@@ -131,7 +131,6 @@ input handling, session management, CSRF protection, and email.
 - All forms must use CSRF tokens
 - Use prepared statements for all SQL queries
 - Input validation and sanitization for all user inputs
-- **CRITICAL**: Never commit credentials, API keys, or sensitive data
 - Use environment variables for sensitive configuration
 
 ### Error Handling
@@ -235,57 +234,6 @@ and architecture agents.
 /revise-claude-md   — Update CLAUDE.md with session learnings
 /clean_gone         — Delete local branches removed from remote
 ```
-
-## Claude Code Tooling
-
-### Project Agents (`.claude/agents/`)
-
-| Agent | Purpose |
-| ----- | ------- |
-| `software-developer` | Primary coding agent for features, fixes, refactoring |
-| `security-reviewer` | OWASP security audit of changed files |
-| `senior-architect` | Architecture review, security audit, GDPR compliance |
-| `senior-product-manager` | Issue refinement, scope, acceptance criteria |
-| `senior-test-engineer` | Test strategy, PHPUnit/Playwright tests |
-| `technical-documentation-writer` | Docs, README, release notes |
-
-### Project Skills (`.claude/commands/`)
-
-| Skill | Purpose |
-| ----- | ------- |
-| `/start-milestone` | Create milestone branch, draft release notes, recommend issue order |
-| `/start-issue` | Branch, plan, implement, test, security review within a milestone |
-| `/finish-issue` | Monitor CI, squash-merge issue PR into milestone branch, close issue |
-| `/finish-milestone` | Create milestone PR to main, finalize release notes, update wiki |
-| `/release-milestone` | Merge milestone PR, tag, push, GitHub release, close milestone |
-| `/release` | Standalone release workflow (hotfixes not tied to a milestone) |
-| `/security-review` | Security audit of recent code changes |
-| `/new-issue` | Create a new GitHub issue with PM-driven scope refinement |
-| `/architecture-update` | Full wiki architecture documentation refresh with diagrams |
-
-### Project Plugins (`.claude/settings.json`)
-
-Installed at project scope so all developers share the same workflow:
-
-| Plugin | Skills Provided |
-| ------ | --------------- |
-| `commit-commands` | `/commit`, `/commit-push-pr`, `/clean_gone` |
-| `pr-review-toolkit` | `/review-pr` + review agents |
-| `code-review` | `/code-review` |
-| `code-simplifier` | `/simplify` |
-| `playwright` | Playwright MCP server for browser testing |
-| `claude-md-management` | `/revise-claude-md`, `/claude-md-improver` |
-
-### Hooks (`.claude/settings.local.json`)
-
-- **PostToolUse (Edit/Write)**: Auto-runs `php -l` on PHP files and
-  `markdownlint` on Markdown files
-
-### MCP Servers (configured in `~/.claude.json`)
-
-- **Playwright**: Browser automation and UI testing (via plugin)
-- **GitHub**: GitHub issues, PRs, and actions integration
-- **context7**: Live documentation lookup for libraries/frameworks
 
 ### Release Notes
 
