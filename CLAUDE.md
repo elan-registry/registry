@@ -50,8 +50,8 @@ edge caching and CDN for global users (US, EU, AU).
 - **New PHP Directories**: Update `$path` array in `/z_us_root.php`
 - **Database**: MySQL 8.0+ with audit trails via triggers.
   See [DATABASE.md](docs/development/DATABASE.md).
-- **Classes**: Car, CarView, ElanRegistryOwner, ChassisValidator, and support
-  classes. See [CLASSES.md](docs/development/CLASSES.md).
+- **Classes**: See [CLASSES.md](docs/development/CLASSES.md) for Car,
+  ElanRegistryOwner, ApiResponse, and all application classes.
 
 **Template Architecture:**
 
@@ -85,7 +85,12 @@ composer test:quick             # Unit tests only (<30s)
 composer test:medium            # Unit + Integration (<2min)
 composer test:full              # All PHP tests
 composer test:coverage          # Coverage report
-composer check:php              # PHP linting (syntax check)
+composer check:php              # PHP coding standards + PHPStan analysis
+composer check                  # Full check (PHP standards + PHPStan + ESLint)
+
+# Linting
+npm run lint                    # ESLint for JavaScript
+npm run lint:fix                # ESLint with auto-fix
 
 # Local Playwright tests (requires MAMP at localhost:9999)
 npm run playwright:install      # Install browsers
