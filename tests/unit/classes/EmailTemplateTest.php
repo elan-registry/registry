@@ -256,17 +256,49 @@ final class EmailTemplateTest extends TestCase
 
     public function testCreateMessageBoxHasInlineStyles(): void
     {
-        $html = $this->template->createMessageBox('Title', 'Content', 'default');
-        $this->assertStringContainsString('background-color: #f8f9fa', $html);
-        $this->assertStringContainsString('border: 2px solid #029acf', $html);
-
-        $html = $this->template->createMessageBox('Title', 'Content', 'alert');
-        $this->assertStringContainsString('border: 2px solid #dc3545', $html);
+        $cases = [
+            ['default',  '#029acf'],
+            ['alert',    '#dc3545'],
+            ['message',  '#469408'],
+            ['success',  '#28a745'],
+        ];
+        foreach ($cases as [$style, $expectedColor]) {
+            $html = $this->template->createMessageBox('Title', 'Content', $style);
+            $this->assertStringContainsString('background-color: #f8f9fa', $html);
+            $this->assertStringContainsString("border: 2px solid {$expectedColor}", $html);
+        }
     }
 
     public function testRenderHeaderHasInlineBackgroundColor(): void
     {
         $html = $this->template->render('Subject', 'Subtitle', 'Content');
+        $this->assertStringContainsString('background-color: #029acf', $html);
+    }
+
+    public function testCreateButtonEscapesHtmlInText(): void
+    {
+        $html = $this->template->createButton('<script>alert("XSS")</script>', 'https://example.com');
+        $this->assertStringNotContainsString('<script>', $html);
+        $this->assertStringContainsString('&lt;script&gt;', $html);
+    }
+
+    public function testCreateMessageBoxEscapesHtmlInTitle(): void
+    {
+        $html = $this->template->createMessageBox('<b>Bold</b>', 'Content');
+        $this->assertStringNotContainsString('<b>', $html);
+        $this->assertStringContainsString('&lt;b&gt;', $html);
+    }
+
+    public function testCreateDetailRowEscapesHtmlInLabel(): void
+    {
+        $html = $this->template->createDetailRow('<b>Label</b>', 'Value');
+        $this->assertStringNotContainsString('<b>', $html);
+        $this->assertStringContainsString('&lt;b&gt;', $html);
+    }
+
+    public function testCreateButtonUnknownStyleFallsBackToPrimary(): void
+    {
+        $html = $this->template->createButton('Click', 'https://example.com', 'nonexistent');
         $this->assertStringContainsString('background-color: #029acf', $html);
     }
 }

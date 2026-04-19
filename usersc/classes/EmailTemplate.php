@@ -50,9 +50,10 @@ class EmailTemplate
         $styleClass = $this->getBoxStyleClass($style);
         $inlineStyles = $this->getBoxInlineStyles($style);
         $headingColor = $this->getBoxHeadingColor($style);
+        $safeTitle = htmlspecialchars($title, ENT_QUOTES, 'UTF-8');
         return "
         <div class=\"{$styleClass}\" style=\"{$inlineStyles}\">
-            <h3 style=\"color: {$headingColor}; margin-top: 0;\">{$title}</h3>
+            <h3 style=\"color: {$headingColor}; margin-top: 0;\">{$safeTitle}</h3>
             <div class=\"detail-section\" style=\"background-color: #ffffff; border: 1px solid #dee2e6; border-radius: 5px; padding: 15px; margin: 15px 0;\">
                 {$content}
             </div>
@@ -90,9 +91,10 @@ class EmailTemplate
         $buttonClass = 'btn btn-' . $style;
         $inlineStyles = $this->getButtonInlineStyles($style);
         $safeUrl = htmlspecialchars($url, ENT_QUOTES, 'UTF-8');
+        $safeText = htmlspecialchars($text, ENT_QUOTES, 'UTF-8');
         return "
         <div class=\"text-center\" style=\"text-align: center;\">
-            <a href=\"{$safeUrl}\" class=\"{$buttonClass}\" style=\"{$inlineStyles}\">{$text}</a>
+            <a href=\"{$safeUrl}\" class=\"{$buttonClass}\" style=\"{$inlineStyles}\">{$safeText}</a>
         </div>";
     }
 
@@ -176,12 +178,13 @@ class EmailTemplate
      */
     private function getBaseTemplate(string $title, string $subtitle, string $content, string $footerText): string
     {
+        $safeTitle = htmlspecialchars($title, ENT_QUOTES, 'UTF-8');
         return "<!DOCTYPE html>
 <html lang=\"en\">
 <head>
     <meta charset=\"UTF-8\">
     <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">
-    <title>Lotus Elan Registry - {$title}</title>
+    <title>Lotus Elan Registry - {$safeTitle}</title>
     <style>
         /* Base Styles */
         body {
