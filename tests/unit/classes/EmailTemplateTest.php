@@ -140,7 +140,8 @@ final class EmailTemplateTest extends TestCase
         $html = $this->template->createMessageBox('Title', 'Content');
 
         $this->assertStringContainsString('content-box', $html);
-        $this->assertStringContainsString('<h3>Title</h3>', $html);
+        $this->assertStringContainsString('<h3 style=', $html);
+        $this->assertStringContainsString('>Title</h3>', $html);
         $this->assertStringContainsString('Content', $html);
     }
 
@@ -217,5 +218,87 @@ final class EmailTemplateTest extends TestCase
 
         $this->assertStringContainsString('@media', $html);
         $this->assertStringContainsString('max-width: 600px', $html);
+    }
+
+    // ============================================================
+    // EMAIL CLIENT COMPATIBILITY TESTS
+    // ============================================================
+
+    public function testRenderUsesTableBasedOuterWrapper(): void
+    {
+        $html = $this->template->render('Subject', 'Subtitle', 'Content');
+        $this->assertStringContainsString('<table', $html);
+        $this->assertStringNotContainsString('class="email-container"', $html);
+    }
+
+    public function testCreateDetailRowUsesTableLayout(): void
+    {
+        $html = $this->template->createDetailRow('Label', 'Value');
+        $this->assertStringContainsString('<table', $html);
+        $this->assertStringContainsString('<td', $html);
+        $this->assertStringNotContainsString('display: flex', $html);
+        $this->assertStringNotContainsString('display:flex', $html);
+    }
+
+    public function testCreateButtonHasInlineBackgroundColor(): void
+    {
+        $cases = [
+            ['primary',   '#029acf'],
+            ['secondary', '#6c757d'],
+            ['success',   '#28a745'],
+            ['danger',    '#dc3545'],
+        ];
+        foreach ($cases as [$style, $expectedColor]) {
+            $html = $this->template->createButton('Click', 'https://example.com', $style);
+            $this->assertStringContainsString("background-color: {$expectedColor}", $html);
+        }
+    }
+
+    public function testCreateMessageBoxHasInlineStyles(): void
+    {
+        $cases = [
+            ['default',  '#029acf'],
+            ['alert',    '#dc3545'],
+            ['message',  '#469408'],
+            ['success',  '#28a745'],
+        ];
+        foreach ($cases as [$style, $expectedColor]) {
+            $html = $this->template->createMessageBox('Title', 'Content', $style);
+            $this->assertStringContainsString('background-color: #f8f9fa', $html);
+            $this->assertStringContainsString("border: 2px solid {$expectedColor}", $html);
+        }
+    }
+
+    public function testRenderHeaderHasInlineBackgroundColor(): void
+    {
+        $html = $this->template->render('Subject', 'Subtitle', 'Content');
+        $this->assertStringContainsString('background-color: #029acf', $html);
+    }
+
+    public function testCreateButtonEscapesHtmlInText(): void
+    {
+        $html = $this->template->createButton('<script>alert("XSS")</script>', 'https://example.com');
+        $this->assertStringNotContainsString('<script>', $html);
+        $this->assertStringContainsString('&lt;script&gt;', $html);
+    }
+
+    public function testCreateMessageBoxEscapesHtmlInTitle(): void
+    {
+        $html = $this->template->createMessageBox('<b>Bold</b>', 'Content');
+        $this->assertStringNotContainsString('<b>', $html);
+        $this->assertStringContainsString('&lt;b&gt;', $html);
+    }
+
+    public function testCreateDetailRowEscapesHtmlInLabel(): void
+    {
+        $html = $this->template->createDetailRow('<b>Label</b>', 'Value');
+        $this->assertStringNotContainsString('<b>', $html);
+        $this->assertStringContainsString('&lt;b&gt;', $html);
+    }
+
+    public function testCreateButtonUnknownStyleFallsBackToPrimary(): void
+    {
+        $html = $this->template->createButton('Click', 'https://example.com', 'nonexistent');
+        $this->assertStringContainsString('background-color: #029acf', $html);
     }
 }

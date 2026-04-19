@@ -48,10 +48,13 @@ class EmailTemplate
     public function createMessageBox(string $title, string $content, string $style = 'default'): string
     {
         $styleClass = $this->getBoxStyleClass($style);
+        $inlineStyles = $this->getBoxInlineStyles($style);
+        $headingColor = $this->getBoxHeadingColor($style);
+        $safeTitle = htmlspecialchars($title, ENT_QUOTES, 'UTF-8');
         return "
-        <div class=\"{$styleClass}\">
-            <h3>{$title}</h3>
-            <div class=\"detail-section\">
+        <div class=\"{$styleClass}\" style=\"{$inlineStyles}\">
+            <h3 style=\"color: {$headingColor}; margin-top: 0;\">{$safeTitle}</h3>
+            <div class=\"detail-section\" style=\"background-color: #ffffff; border: 1px solid #dee2e6; border-radius: 5px; padding: 15px; margin: 15px 0;\">
                 {$content}
             </div>
         </div>";
@@ -67,10 +70,12 @@ class EmailTemplate
     public function createDetailRow(string $label, string $value): string
     {
         return "
-        <div class=\"detail-row\">
-            <div class=\"detail-label\">{$label}:</div>
-            <div class=\"detail-value\">" . htmlspecialchars($value) . "</div>
-        </div>";
+        <table role=\"presentation\" border=\"0\" cellpadding=\"0\" cellspacing=\"0\" width=\"100%\" style=\"margin-bottom: 10px;\">
+            <tr>
+                <td style=\"font-weight: bold; width: 120px; color: #469408; vertical-align: top; padding-right: 10px;\">" . htmlspecialchars($label, ENT_QUOTES, 'UTF-8') . ":</td>
+                <td style=\"vertical-align: top;\">" . htmlspecialchars($value, ENT_QUOTES, 'UTF-8') . "</td>
+            </tr>
+        </table>";
     }
 
     /**
@@ -84,11 +89,12 @@ class EmailTemplate
     public function createButton(string $text, string $url, string $style = 'primary'): string
     {
         $buttonClass = 'btn btn-' . $style;
+        $inlineStyles = $this->getButtonInlineStyles($style);
+        $safeUrl = htmlspecialchars($url, ENT_QUOTES, 'UTF-8');
+        $safeText = htmlspecialchars($text, ENT_QUOTES, 'UTF-8');
         return "
-        <div class=\"text-center\">
-            <a href=\"{$url}\" class=\"{$buttonClass}\">
-                {$text}
-            </a>
+        <div class=\"text-center\" style=\"text-align: center;\">
+            <a href=\"{$safeUrl}\" class=\"{$buttonClass}\" style=\"{$inlineStyles}\">{$safeText}</a>
         </div>";
     }
 
@@ -110,16 +116,75 @@ class EmailTemplate
     }
 
     /**
+     * Get accent color for message box based on style type
+     *
+     * @param string $style Box style: 'message', 'alert', 'success', or 'default'
+     * @return string CSS color hex value
+     */
+    private function getBoxAccentColor(string $style): string
+    {
+        $colors = [
+            'message' => '#469408',
+            'alert'   => '#dc3545',
+            'success' => '#28a745',
+            'default' => '#029acf',
+        ];
+        return $colors[$style] ?? $colors['default'];
+    }
+
+    /**
+     * Get heading color for message box based on style type
+     *
+     * @param string $style Box style: 'message', 'alert', 'success', or 'default'
+     * @return string CSS color value
+     */
+    private function getBoxHeadingColor(string $style): string
+    {
+        return $this->getBoxAccentColor($style);
+    }
+
+    /**
+     * Get inline CSS styles for message box based on style type
+     *
+     * @param string $style Box style: 'message', 'alert', 'success', or 'default'
+     * @return string Inline CSS style string
+     */
+    private function getBoxInlineStyles(string $style): string
+    {
+        $color = $this->getBoxAccentColor($style);
+        return "background-color: #f8f9fa; border: 2px solid {$color}; padding: 20px; margin: 20px 0;";
+    }
+
+    /**
+     * Get inline CSS styles for button based on style type
+     *
+     * @param string $style Button style: 'primary', 'secondary', 'success', or 'danger'
+     * @return string Inline CSS style string
+     */
+    private function getButtonInlineStyles(string $style): string
+    {
+        $colors = [
+            'primary'   => '#029acf',
+            'secondary' => '#6c757d',
+            'success'   => '#28a745',
+            'danger'    => '#dc3545',
+        ];
+        $bg = $colors[$style] ?? $colors['primary'];
+        return "display: inline-block; background-color: {$bg}; color: #ffffff; padding: 12px 24px; text-decoration: none; font-weight: bold; text-align: center;";
+    }
+
+    /**
      * Base HTML template with registry branding and CSS
      */
     private function getBaseTemplate(string $title, string $subtitle, string $content, string $footerText): string
     {
+        $safeTitle = htmlspecialchars($title, ENT_QUOTES, 'UTF-8');
         return "<!DOCTYPE html>
 <html lang=\"en\">
 <head>
     <meta charset=\"UTF-8\">
     <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">
-    <title>Lotus Elan Registry - {$title}</title>
+    <title>Lotus Elan Registry - {$safeTitle}</title>
     <style>
         /* Base Styles */
         body {
@@ -129,12 +194,6 @@ class EmailTemplate
             margin: 0;
             padding: 0;
             background-color: #f4f4f4;
-        }
-
-        .email-container {
-            max-width: 600px;
-            margin: 0 auto;
-            background-color: #ffffff;
         }
 
         /* Header Styles */
@@ -201,21 +260,6 @@ class EmailTemplate
             margin: 15px 0;
         }
 
-        .detail-row {
-            display: flex;
-            margin-bottom: 10px;
-        }
-
-        .detail-label {
-            font-weight: bold;
-            min-width: 100px;
-            color: #469408;
-        }
-
-        .detail-value {
-            flex: 1;
-        }
-
         .message-content {
             background-color: #f8f9fa;
             border-left: 4px solid #469408;
@@ -276,13 +320,6 @@ class EmailTemplate
             .content {
                 padding: 20px;
             }
-            .detail-row {
-                flex-direction: column;
-            }
-            .detail-label {
-                min-width: auto;
-                margin-bottom: 5px;
-            }
             .btn {
                 display: block;
                 margin: 10px 0;
@@ -291,25 +328,35 @@ class EmailTemplate
     </style>
 </head>
 <body>
-    <div class=\"email-container\">
-        <div class=\"header\">
-            <img src=\"{$this->logoUrl}\" alt=\"Lotus Logo\" class=\"logo\">
-            <h1>Lotus Elan Registry</h1>
-            <p>{$subtitle}</p>
-        </div>
+    <table role=\"presentation\" border=\"0\" cellpadding=\"0\" cellspacing=\"0\" width=\"100%\" style=\"background-color: #f4f4f4;\">
+        <tr>
+            <td align=\"center\" valign=\"top\">
+                <table role=\"presentation\" border=\"0\" cellpadding=\"0\" cellspacing=\"0\" width=\"600\" style=\"width: 600px; max-width: 600px; background-color: #ffffff;\">
+                    <tr>
+                        <td>
+                            <div class=\"header\" style=\"background-color: #029acf; color: #ffffff; padding: 20px; text-align: center;\">
+                                <img src=\"{$this->logoUrl}\" alt=\"Lotus Logo\" class=\"logo\" style=\"width: 48px; height: 48px; display: block; margin: 0 auto 10px auto;\">
+                                <h1 style=\"color: #ffffff; margin: 0 0 5px 0; font-size: 24px;\">Lotus Elan Registry</h1>
+                                <p>" . htmlspecialchars($subtitle, ENT_QUOTES, 'UTF-8') . "</p>
+                            </div>
 
-        <div class=\"content\">
-            {$content}
-        </div>
+                            <div class=\"content\" style=\"padding: 30px;\">
+                                {$content}
+                            </div>
 
-        <div class=\"footer\">
-            <p><strong>The Lotus Elan Registry</strong></p>
-            <p><a href=\"{$this->baseUrl}\">{$this->baseUrl}</a></p>
-            <p>Preserving the legacy of Colin Chapman's masterpiece since 2003</p>
-            <hr style=\"border: none; border-top: 1px solid #dee2e6; margin: 15px 0;\">
-            <p><small>{$footerText}</small></p>
-        </div>
-    </div>
+                            <div class=\"footer\" style=\"background-color: #f8f9fa; padding: 20px; text-align: center; border-top: 1px solid #dee2e6; color: #6b7280; font-size: 14px;\">
+                                <p><strong>The Lotus Elan Registry</strong></p>
+                                <p><a href=\"{$this->baseUrl}\">{$this->baseUrl}</a></p>
+                                <p>Preserving the legacy of Colin Chapman's masterpiece since 2003</p>
+                                <hr style=\"border: none; border-top: 1px solid #dee2e6; margin: 15px 0;\">
+                                <p><small>{$footerText}</small></p>
+                            </div>
+                        </td>
+                    </tr>
+                </table>
+            </td>
+        </tr>
+    </table>
 </body>
 </html>";
     }
