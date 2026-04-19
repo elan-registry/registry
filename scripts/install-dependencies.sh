@@ -5,13 +5,14 @@ set -e
 # Elan Registry Dependency Installation Script
 # ==============================================================================
 #
-# Purpose: Installs or updates application runtime dependencies in usersc/vendor
+# Purpose: Installs or updates application dependencies (root and usersc/vendor)
 #
 # Features:
 #   - Idempotent: Safe to run multiple times
 #   - Validates Composer availability
 #   - Verifies successful installation
 #   - Supports both fresh install and updates
+#   - Automatically runs `composer update` if lock file is out of sync
 #
 # Usage:
 #   ./scripts/install-dependencies.sh [--dev|--prod]
@@ -96,6 +97,42 @@ fi
 print_success "Composer found: $(composer --version | head -n1)"
 
 # ==============================================================================
+# Helper: run composer install, update lock file if stale
+# Usage: run_composer_install <directory> <install_cmd> <update_cmd>
+# ==============================================================================
+
+run_composer_install() {
+    local dir="$1"
+    local install_cmd="$2"
+    local update_cmd="$3"
+
+    cd "$dir"
+
+    # Capture output so we can detect stale lock file warning
+    local output
+    if ! output=$(eval "$install_cmd" 2>&1); then
+        echo "$output"
+        cd - > /dev/null
+        return 1
+    fi
+
+    echo "$output"
+
+    if echo "$output" | grep -q "lock file is not up to date"; then
+        print_warning "Lock file is out of sync with composer.json — running update..."
+        print_info "Running: ${update_cmd}"
+        if eval "$update_cmd"; then
+            print_success "Lock file updated"
+        else
+            print_warning "composer update failed — continuing with existing install"
+        fi
+    fi
+
+    cd - > /dev/null
+    return 0
+}
+
+# ==============================================================================
 # Install/Update usersc Dependencies
 # ==============================================================================
 
@@ -109,28 +146,25 @@ fi
 
 print_success "Found usersc/composer.json"
 
-# Determine Composer command based on mode
+# Determine Composer commands based on mode
 if [ "$MODE" = "prod" ]; then
-    COMPOSER_CMD="composer install --no-dev --optimize-autoloader"
+    COMPOSER_INSTALL="composer install --no-dev --optimize-autoloader"
+    COMPOSER_UPDATE="composer update --no-dev --optimize-autoloader"
     print_info "Production mode: Installing without dev dependencies"
 else
-    COMPOSER_CMD="composer install"
+    COMPOSER_INSTALL="composer install"
+    COMPOSER_UPDATE="composer update"
     print_info "Development mode: Installing with dev dependencies"
 fi
 
-# Install dependencies in usersc/
-print_info "Running: cd usersc && ${COMPOSER_CMD}"
+print_info "Running: cd usersc && ${COMPOSER_INSTALL}"
 
-cd usersc
-
-if $COMPOSER_CMD; then
+if run_composer_install "usersc" "$COMPOSER_INSTALL" "$COMPOSER_UPDATE"; then
     print_success "Dependencies installed successfully"
 else
     print_error "Composer installation failed"
     exit 2
 fi
-
-cd ..
 
 # ==============================================================================
 # Verify Installation
@@ -174,15 +208,22 @@ fi
 # Optional: Update Root Dependencies
 # ==============================================================================
 
-if [ "$MODE" = "prod" ] && [ -f "composer.json" ]; then
-    print_header "Updating Root Dependencies (Production)"
-
-    print_info "Cleaning up development dependencies from root vendor/"
-
-    if composer install --no-dev; then
-        print_success "Root dependencies updated for production"
+if [ -f "composer.json" ]; then
+    if [ "$MODE" = "prod" ]; then
+        print_header "Installing Root Dependencies (Production)"
+        ROOT_INSTALL="composer install --no-dev"
+        ROOT_UPDATE="composer update --no-dev"
     else
-        print_warning "Root dependency update failed (not critical)"
+        print_header "Installing Root Dependencies"
+        ROOT_INSTALL="composer install"
+        ROOT_UPDATE="composer update"
+    fi
+
+    print_info "Running: ${ROOT_INSTALL}"
+    if run_composer_install "." "$ROOT_INSTALL" "$ROOT_UPDATE"; then
+        print_success "Root dependencies installed successfully"
+    else
+        print_warning "Root dependency installation failed (not critical)"
     fi
 fi
 
