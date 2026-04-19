@@ -11,40 +11,23 @@ invoked as needed throughout the workflow.
 
 ## Available Agents
 
-Use the Task tool to launch these agents. Launch multiple agents in parallel
-when they don't depend on each other. Launch multiple instances of the same
-agent type when work can be partitioned (e.g., one Explore agent per subsystem,
-one senior-test-engineer per test suite type).
+Launch agents via the Task tool. Use parallel instances when work can be partitioned.
 
-| Agent Type | `subagent_type` | Model | Use When |
+| Agent | `subagent_type` | Model | Use When |
 | --- | --- | --- | --- |
-| **Explore** | `Explore` | `haiku` | Codebase research: find files, understand patterns, trace call chains. |
-| **Plan** | `Plan` | `sonnet` | Design implementation strategy, identify critical files, evaluate trade-offs. |
-| **Software Developer** | `software-developer` | `sonnet` | **Primary coding agent.** Write and update application code. |
-| **Senior Architect** | `senior-architect` | `sonnet` | Architectural review, security audit, GDPR compliance, database impact, code review. |
-| **Senior Product Manager** | `senior-product-manager` | `sonnet` | Issue refinement, scope definition, acceptance criteria, milestone planning. |
-| **Senior Test Engineer** | `senior-test-engineer` | `sonnet` | Test strategy, writing PHPUnit/Playwright tests, debugging failures. |
-| **Technical Documentation Writer** | `technical-documentation-writer` | `haiku` | Create/update docs, README, CLAUDE.md, API docs, release notes. |
-| **General Purpose** | `general-purpose` | `haiku` | Multi-step research, web searches, complex analysis. |
+| Explore | `Explore` | `haiku` | Codebase research |
+| Plan | `Plan` | `sonnet` | Implementation strategy |
+| Software Developer | `software-developer` | `sonnet` | **Primary coding agent** |
+| Senior Architect | `senior-architect` | `sonnet` | Architecture, security, code review |
+| Senior Product Manager | `senior-product-manager` | `sonnet` | Issue refinement, scope, criteria |
+| Senior Test Engineer | `senior-test-engineer` | `sonnet` | Test strategy and writing |
+| Technical Documentation Writer | `technical-documentation-writer` | `haiku` | Docs updates |
+| General Purpose | `general-purpose` | `haiku` | Multi-step research |
 
-**Model guidance:** For built-in agents (Explore, Plan, General Purpose), pass the
-`model` parameter in the Task tool call. Project agents (software-developer,
-senior-architect, senior-test-engineer, technical-documentation-writer) have their
-model set in their `.claude/agents/*.md` frontmatter.
-
-**Agent selection guidance:**
-
-- **Always invoke**: Explore (for initial research), senior-product-manager
-  (for issue refinement in Step 6, and proactively for issue creation,
-  prioritization, and replanning), senior-architect (for review)
-- **Always invoke for code changes**: software-developer (for implementation),
-  senior-test-engineer (for tests)
-- **Invoke when docs/config/public API changes**: technical-documentation-writer
-- **Skip when not needed**: Don't launch docs agent for internal refactoring.
-  Don't launch test agent for docs-only changes.
-- **Scale up**: If the issue touches 3+ subsystems, launch parallel Explore
-  agents. Launch parallel software-developer agents for independent files.
-  If tests span PHPUnit and Playwright, launch separate test agents.
+**Always invoke:** Explore (Step 5), senior-product-manager (Step 6), senior-architect (Step 7.3).
+**Always invoke for code changes:** software-developer, senior-test-engineer.
+**Skip** docs agent for internal refactoring; test agent for docs-only changes.
+**Scale up** with parallel instances for large issues (3+ subsystems, PHPUnit + Playwright).
 
 ## Workflow Steps
 
@@ -744,61 +727,6 @@ Implementation complete for issue #512. Next steps:
 Remember: Include the bug escape analysis in the PR description so
 reviewers can verify preventive test coverage.
 ```
-
-## Project-Specific Enhancements
-
-This workflow has been customized for the Elan Registry PHP project with emphasis on:
-
-### 1. Documentation Reference During Exploration (Step 5)
-
-- Explore agents explicitly check USERSPICE_FUNCTIONS.md, CLASSES.md, CODING_STANDARDS.md
-- Prevents duplication of UserSpice framework functionality
-- Ensures adherence to project patterns from the start
-
-### 2. UserSpice Integration Verification (Step 7.1)
-
-- Mandatory check that solutions don't duplicate UserSpice functions
-- Encourages leveraging the framework before custom implementation
-- Reduces code complexity and maintenance burden
-
-### 3. Database & Security Assessment (Step 7.2)
-
-- Upfront identification of database schema, trigger, and audit trail impacts
-- Security checklist: CSRF, SQL injection, input validation, XSS, data handling
-- GDPR compliance evaluation
-- Prevents security oversights and database issues late in development
-
-### 4. Enhanced Security Architecture Review
-
-- Senior-architect review includes explicit security criteria:
-  - CSRF token validation, prepared statements, input sanitization, XSS prevention
-  - Session/auth security, sensitive data handling
-- Database and trigger impact verification
-- Compliance checklist (GDPR, data retention)
-
-### 5. Comprehensive Test Strategy Checklist (Step 7.3)
-
-- Senior-test-engineer uses structured checklist, not open-ended questions
-- Covers: unit, integration, regression, edge case, security, database, and browser tests
-- Reduces risk of missing test types (especially security and regression tests)
-
-### 6. Documentation Requirements Matrix
-
-- Clear mapping of change types to required documentation updates
-- Prevents documentation rot and keeps docs in sync with code
-- Guides technical-documentation-writer on scope
-
-### 7. Enhanced Code Review Process (Step 10)
-
-- Final architect review includes security and database verification
-- Ensures comprehensive quality gate before PR
-
-### 8. Bug-Specific Escape Analysis (For bug labels)
-
-- **During Explore (Step 5)**: Investigate why the bug wasn't caught by existing tests
-- **During Planning (Step 7)**: Create an escape analysis documenting root cause and test gaps
-- **Test Strategy**: Define new automated tests to prevent similar bugs (unit, integration, e2e)
-- **PR Documentation**: Include escape analysis and preventive measures in PR description
 
 ## Plan Mode Question Guidelines
 
