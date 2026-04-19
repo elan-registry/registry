@@ -140,7 +140,8 @@ final class EmailTemplateTest extends TestCase
         $html = $this->template->createMessageBox('Title', 'Content');
 
         $this->assertStringContainsString('content-box', $html);
-        $this->assertStringContainsString('<h3>Title</h3>', $html);
+        $this->assertStringContainsString('<h3 style=', $html);
+        $this->assertStringContainsString('>Title</h3>', $html);
         $this->assertStringContainsString('Content', $html);
     }
 
@@ -217,5 +218,55 @@ final class EmailTemplateTest extends TestCase
 
         $this->assertStringContainsString('@media', $html);
         $this->assertStringContainsString('max-width: 600px', $html);
+    }
+
+    // ============================================================
+    // EMAIL CLIENT COMPATIBILITY TESTS
+    // ============================================================
+
+    public function testRenderUsesTableBasedOuterWrapper(): void
+    {
+        $html = $this->template->render('Subject', 'Subtitle', 'Content');
+        $this->assertStringContainsString('<table', $html);
+        $this->assertStringNotContainsString('class="email-container"', $html);
+    }
+
+    public function testCreateDetailRowUsesTableLayout(): void
+    {
+        $html = $this->template->createDetailRow('Label', 'Value');
+        $this->assertStringContainsString('<table', $html);
+        $this->assertStringContainsString('<td', $html);
+        $this->assertStringNotContainsString('display: flex', $html);
+        $this->assertStringNotContainsString('display:flex', $html);
+    }
+
+    public function testCreateButtonHasInlineBackgroundColor(): void
+    {
+        $cases = [
+            ['primary',   '#029acf'],
+            ['secondary', '#6c757d'],
+            ['success',   '#28a745'],
+            ['danger',    '#dc3545'],
+        ];
+        foreach ($cases as [$style, $expectedColor]) {
+            $html = $this->template->createButton('Click', 'https://example.com', $style);
+            $this->assertStringContainsString("background-color: {$expectedColor}", $html);
+        }
+    }
+
+    public function testCreateMessageBoxHasInlineStyles(): void
+    {
+        $html = $this->template->createMessageBox('Title', 'Content', 'default');
+        $this->assertStringContainsString('background-color: #f8f9fa', $html);
+        $this->assertStringContainsString('border: 2px solid #029acf', $html);
+
+        $html = $this->template->createMessageBox('Title', 'Content', 'alert');
+        $this->assertStringContainsString('border: 2px solid #dc3545', $html);
+    }
+
+    public function testRenderHeaderHasInlineBackgroundColor(): void
+    {
+        $html = $this->template->render('Subject', 'Subtitle', 'Content');
+        $this->assertStringContainsString('background-color: #029acf', $html);
     }
 }
