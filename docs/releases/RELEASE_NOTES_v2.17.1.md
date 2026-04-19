@@ -29,7 +29,7 @@ None.
   ([#597](https://github.com/unibrain1/elanregistry/issues/597)):
   Replaced flexbox layout with HTML tables, added inline styles alongside
   `<style>` block, and replaced `max-width` CSS with `width` table attribute
-  in `EmailTemplate.php` and all `usersc/views/_email_*.php` templates.
+  in `EmailTemplate.php`. Standalone `_email_*.php` views deferred to #324.
   Target: 95%+ Mailtrap HTML Check market support score.
 - **EmailTemplate migration**
   ([#324](https://github.com/unibrain1/elanregistry/issues/324)):
