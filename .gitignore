@@ -35,6 +35,7 @@ ElanRegistry.code-workspace
 .env.testing
 .user.ini
 USER.INI
+usersc/vericode_secret.php
 
 ########################################
 # Build & Cache Files
