@@ -264,7 +264,7 @@ function currentUserId(): int
  * @param string $subject SMTP subject line
  * @param string $body    HTML email body
  * @param array  $opts    Optional: ['reply' => '', 'replyTo' => '']
- * @return true|string    true on success; error string (Brevo) or false (PHPMailer) on failure
+ * @return true|string|false  true on success; error string (Brevo) or false (PHPMailer) on failure
  */
 function registrySendEmail(string $to, string $toName, string $subject, string $body, array $opts = []): mixed
 {
