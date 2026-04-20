@@ -846,19 +846,20 @@ final class EmailTemplateTest extends TestCase
 
     public function testVerifyNewEmailViewBuildsFullUrlFromBaseUrl(): void
     {
-        $relativeUrl = 'users/verify_new.php?vericode=NEWCODE77';
         $html = $this->renderView('_email_template_verify_new.php', [
             'fname'               => 'Carol',
             'email'               => 'carol@example.com',
             'vericode'            => 'NEWCODE77',
             'user_id'             => 12,
             'join_vericode_expiry' => 24,
-            'url'                 => $relativeUrl,
         ]);
 
-        // The template prepends getBaseUrl() (mocked as 'https://test.elanregistry.org')
-        // to the relative $url value.
-        $this->assertStringContainsString('https://test.elanregistry.org/' . $relativeUrl, $html);
+        // URL is built from trusted components (same as UserSpice original):
+        // users/verify.php?new=1&email=<email>&vericode=<code>&user_id=<id>
+        $this->assertStringContainsString(
+            'https://test.elanregistry.org/users/verify.php?new=1&amp;email=carol@example.com&amp;vericode=NEWCODE77&amp;user_id=12',
+            $html
+        );
     }
 
     public function testVerifyNewEmailViewContainsExpiryHours(): void
@@ -890,8 +891,10 @@ final class EmailTemplateTest extends TestCase
         $this->assertStringContainsString('&lt;script&gt;', $html);
     }
 
-    public function testVerifyNewEmailViewOpenRedirectGuardRejectsScheme(): void
+    public function testVerifyNewEmailViewUrlIgnoresUrlParameter(): void
     {
+        // The $url option is not used — URL is always built from trusted components.
+        // Passing a malicious $url has no effect on the output.
         $html = $this->renderView('_email_template_verify_new.php', [
             'fname'               => 'Carol',
             'email'               => 'carol@example.com',
@@ -901,9 +904,8 @@ final class EmailTemplateTest extends TestCase
             'url'                 => 'javascript:alert(1)',
         ]);
 
-        // Scheme-based open-redirect must be rejected; URL must fall back to safe path.
         $this->assertStringNotContainsString('javascript:', $html);
-        $this->assertStringContainsString('users/verify_new.php', $html);
+        $this->assertStringContainsString('users/verify.php', $html);
     }
 
     // ============================================================
