@@ -55,7 +55,16 @@ None.
   verification emails (`_email_template_verify.php`, `_email_template_verify_new.php`)
   — no UserSpice core files modified. Added `filter_var` guard on reply-to header
   and `htmlspecialchars` escaping of footer text in `EmailTemplate`. Extended
-  `EmailTemplateTest.php` with 36 new test methods covering all migrated templates.
+  `EmailTemplateTest.php` with 49 new test methods covering all migrated templates,
+  including all four transfer email templates and security regression tests.
+- **Security hardening in email send path**:
+  Fixed broken reply-to header in `send-owner-email.php` via Brevo plugin workaround
+  (upstream signature bug documented in `docs/bugs/`). Added delivery failure logging
+  when `sendinblue()` returns an error string. Added `str_starts_with` URL validation
+  and scheme-rejection guard for email verification links. Escaped `$baseUrl` and
+  `$logoUrl` in `EmailTemplate` footer/header. Added `(string)` casts on integer IDs
+  passed to `createDetailRow()` under `strict_types=1`, and `?: time()` fallbacks on
+  all `strtotime()` calls in transfer templates.
 
 ## Issues Resolved
 
