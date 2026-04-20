@@ -99,24 +99,34 @@ function isRegistryAdmin(int|string|null $userId = null): bool {
 }
 
 /**
- * Get the base URL from database email settings with static caching
+ * Get the base URL for the application using UserSpice server globals.
  *
- * Retrieves the base URL for the application from the email.verify_url database setting.
- * Uses static caching to avoid repeated database queries per request.
- * This ensures environment-aware URLs in emails and API calls.
+ * Derives the URL from $current_origin (scheme + host) and $us_url_root
+ * (the install path set by UserSpice from the actual filesystem location).
+ * This is environment-aware without relying on a manually configured database
+ * setting that can diverge from the real install path.
  *
- * @return string Base URL (e.g., 'https://elanregistry.org' or 'http://localhost')
+ * Falls back to the email.verify_url database setting when server globals are
+ * not populated (e.g., CLI scripts).
+ *
+ * @return string Base URL without trailing slash (e.g., 'https://elanregistry.org' or 'http://localhost:9999/elan-registry')
  */
 function getBaseUrl(): string {
-    static $baseUrl = null;
+    global $current_origin, $us_url_root;
 
+    if (!empty($current_origin) && !empty($us_url_root)) {
+        return rtrim($current_origin . $us_url_root, '/');
+    }
+
+    // Fallback for CLI or early-boot contexts where server globals are not set
+    static $baseUrl = null;
     if ($baseUrl === null) {
         $db = DB::getInstance();
         $result = $db->query("SELECT verify_url FROM email")->first();
-        $baseUrl = $result->verify_url ?? 'https://elanregistry.org'; // Fallback to production
+        $baseUrl = $result->verify_url ?? 'https://elanregistry.org';
     }
 
-    return rtrim($baseUrl, '/'); // Remove trailing slash for consistency
+    return rtrim($baseUrl, '/');
 }
 
 /**
