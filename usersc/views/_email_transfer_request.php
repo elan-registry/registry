@@ -43,7 +43,7 @@ $content = "
 
     <p>No changes have been made to your registration. Registry administrators will review this request carefully before any transfer is considered.</p>
 
-    " . $emailTemplate->createButton('View Your Car in the Registry', $us_url_root . 'app/cars/details.php?car_id=' . $carInfo->id, 'primary') . "
+    " . $emailTemplate->createButton('View Your Car in the Registry', getBaseUrl() . '/app/cars/details.php?car_id=' . $carInfo->id, 'primary') . "
 
     <p><strong>What happens next?</strong></p>
     <ul>

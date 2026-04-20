@@ -54,9 +54,13 @@ $content = "
     <p>To respond, simply reply to this email.</p>
 ";
 
-if ($hasQualityIssue && $hasCarContext) {
-    $updateUrl = $us_url_root . 'app/cars/edit.php?car_id=' . (int)$carContext['id'];
-    $content .= $emailTemplate->createButton('Update Your Car Record', $updateUrl, 'primary');
+if ($hasCarContext) {
+    $baseUrl = getBaseUrl();
+    if ($hasQualityIssue) {
+        $content .= $emailTemplate->createButton('Update Your Car Record', $baseUrl . '/app/cars/edit.php?car_id=' . (int)$carContext['id'], 'primary');
+    } else {
+        $content .= $emailTemplate->createButton('View Your Car', $baseUrl . '/app/cars/details.php?car_id=' . (int)$carContext['id'], 'primary');
+    }
 } else {
     $content .= "
     <p>Visit the registry at: <a href=\"{$registryUrl}\">{$registryUrl}</a></p>
