@@ -65,13 +65,37 @@ None.
   `$logoUrl` in `EmailTemplate` footer/header. Added `(string)` casts on integer IDs
   passed to `createDetailRow()` under `strict_types=1`, and `?: time()` fallbacks on
   all `strtotime()` calls in transfer templates.
+- **`registrySendEmail()` helper**
+  ([#638](https://github.com/unibrain1/elanregistry/issues/638)):
+  Added `registrySendEmail()` to `custom_functions.php` to set the To: display name
+  on both email transport paths. Brevo path calls `sendinblue()` directly with the
+  recipient name as the 4th argument; PHPMailer/SMTP path constructs the message
+  directly with `addAddress($to, $toName)`. This eliminates the
+  `TO_NO_BRKTS_HTML_ONLY` SpamAssassin rule (score 0.6) and fixes broken delivery
+  failure detection in `send-feedback.php` where `!$email_sent` never triggered for
+  Brevo errors (`$email_sent !== true` is now used instead). A TODO note referencing
+  issue #601 documents what to revisit when the upstream Brevo plugin signature bug
+  is resolved.
+- **Broken button URLs in transfer emails**:
+  Fixed `details.php?car_id=` and `edit.php?car_id=` URLs in
+  `_email_transfer_request.php` and `_email_admin_contact_owner.php` that previously
+  used wrong parameter names (`detail.php?id=` and `edit.php?id=`).
+- **"Message Sent" page conditional on delivery success** in `send-owner-email.php`:
+  The success confirmation is now shown only when email delivery succeeds. On
+  failure, an error message is displayed and the failure is logged under
+  `LOG_CATEGORY_EMAIL_ERROR`.
+- **Open-redirect guard now logs security events** in `_email_template_verify_new.php`:
+  Added a `logger()` call under `LOG_CATEGORY_SECURITY` when the scheme-rejection
+  guard triggers, making security events visible in the admin log.
 
 ## Issues Resolved
 
 - [#324](https://github.com/unibrain1/elanregistry/issues/324) — Migrate existing email functionality to centralized EmailTemplate system
 - [#597](https://github.com/unibrain1/elanregistry/issues/597) — fix: improve email template HTML compatibility for Outlook and Gmail mobile
+- [#638](https://github.com/unibrain1/elanregistry/issues/638) — send-feedback.php delivery failure check dead code
 
 ## Summary
 
-2 issues resolved, fixing email rendering across major clients and migrating
-all registry emails to a consistent centralized template system.
+3 issues resolved, fixing email rendering across major clients, migrating all
+registry emails to a consistent centralized template system, and hardening the
+email send path with correct failure detection and spam score reduction.
