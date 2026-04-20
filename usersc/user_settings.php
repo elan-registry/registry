@@ -371,7 +371,7 @@ if (!empty($_POST)) {
                                 if (!$email_sent) {
                                     $errors[] = 'Email NOT sent due to error. Please contact site administrator.';
                                 } else {
-                                    $successes[] = 'Email request received. Please check your email to perform verification. Be sure to check your Spam and Junk folder as the verification link expires in $settings->join_vericode_expiry hours.';
+                                    $successes[] = "Email request received. Please check your email to perform verification. Be sure to check your Spam and Junk folder as the verification link expires in {$settings->join_vericode_expiry} hours.";
                                 }
                                 if ($emailR->email_act == 1) {
                                     logger((int)$user->data()->id, LogCategories::LOG_CATEGORY_USER, "Requested change email from $userdetails->email to $email. Verification email sent.");
