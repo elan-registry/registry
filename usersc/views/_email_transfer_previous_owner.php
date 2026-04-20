@@ -80,7 +80,7 @@ $content = "
 
     " . (!empty($adminNotes) ?
         $emailTemplate->createMessageBox('Administrator Notes',
-            '<div class="message-content">' . htmlspecialchars($adminNotes) . '</div>', 'message') : '') . "
+            $emailTemplate->createMessageContent($adminNotes), 'message') : '') . "
 
     <p><strong>Questions or concerns?</strong> Please contact the registry administrators at
     <a href=\"mailto:<?= htmlspecialchars(getAdminEmails()) ?>\"><?= htmlspecialchars(getAdminEmails()) ?></a> if you have any questions about this decision.</p>

@@ -79,6 +79,25 @@ class EmailTemplate
     }
 
     /**
+     * Create a styled pre-wrapped message content block for free-form user text.
+     *
+     * Use this inside createMessageBox() $content when displaying raw user-supplied
+     * text (messages, comments, notes). Handles HTML escaping internally.
+     *
+     * @param string $text   Raw user-supplied text (will be HTML-escaped)
+     * @param bool   $italic Apply italic style (e.g., for quoted feedback)
+     * @return string HTML div with message-content styling
+     */
+    public function createMessageContent(string $text, bool $italic = false): string
+    {
+        $extraStyle = $italic ? ' font-style:italic;' : '';
+        return '<div class="message-content" style="background-color:#f8f9fa; border-left:4px solid #469408; '
+            . 'padding:15px; margin:10px 0; white-space:pre-wrap;' . $extraStyle . '">'
+            . htmlspecialchars($text, ENT_QUOTES, 'UTF-8')
+            . '</div>';
+    }
+
+    /**
      * Create an action button for emails
      *
      * @param string $text Button text
@@ -178,7 +197,10 @@ class EmailTemplate
      */
     private function getBaseTemplate(string $title, string $subtitle, string $content, string $footerText): string
     {
-        $safeTitle = htmlspecialchars($title, ENT_QUOTES, 'UTF-8');
+        $safeTitle  = htmlspecialchars($title, ENT_QUOTES, 'UTF-8');
+        $safeFooter = htmlspecialchars($footerText, ENT_QUOTES, 'UTF-8');
+        // NOTE: $content is trusted pre-composed HTML. Callers are responsible for
+        // escaping all user-supplied values before including them in $content.
         return "<!DOCTYPE html>
 <html lang=\"en\">
 <head>
@@ -349,7 +371,7 @@ class EmailTemplate
                                 <p><a href=\"{$this->baseUrl}\">{$this->baseUrl}</a></p>
                                 <p>Preserving the legacy of Colin Chapman's masterpiece since 2003</p>
                                 <hr style=\"border: none; border-top: 1px solid #dee2e6; margin: 15px 0;\">
-                                <p><small>{$footerText}</small></p>
+                                <p><small>{$safeFooter}</small></p>
                             </div>
                         </td>
                     </tr>

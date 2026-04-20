@@ -97,7 +97,7 @@ $content = "
 // Add admin notes if provided
 if (!empty($adminNotes)) {
     $content .= $emailTemplate->createMessageBox('Administrator Notes',
-        '<div class="message-content">' . htmlspecialchars($adminNotes) . '</div>', 'message');
+        $emailTemplate->createMessageContent($adminNotes), 'message');
 }
 
 $content .= "

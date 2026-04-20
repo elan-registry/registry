@@ -19,7 +19,7 @@ if (!securePage($php_self)) {
     die();
 }
 // EDIT THE 2 LINES BELOW AS REQUIRED
-$subject = 'elanregistry.org - Owner to Owner Contact';
+$subject = '[ELANREGISTRY] Owner to Owner Message';
 
 // Initialize message arrays
 $errors = [];
@@ -90,13 +90,19 @@ if (Input::exists('post')) {
             $template       =  array(
                 'message'   => clean_string($message),
                 'from'      => $fromName,
-                'fromEmail' => $fromEmail,
                 'to'        => $toName
             );
 
             $body = email_body('_email_contact_owner.php', $template);
 
-            $result = email($toEmail, $subject, $body);
+            // Validate email format before using as reply-to header (defense-in-depth against
+            // header injection, even though $fromEmail is sourced from the users table).
+            if (filter_var($fromEmail, FILTER_VALIDATE_EMAIL)) {
+                $result = email($toEmail, $subject, $body, ['replyTo' => $fromEmail]);
+            } else {
+                logger($user->data()->id, LogCategories::LOG_CATEGORY_ELAN_REGISTRY, "contact_owner_email.php invalid fromEmail for reply-to: " . $fromEmail);
+                $result = email($toEmail, $subject, $body);
+            }
 
             // Log the email sending (no session message needed - we show "Message Sent" page)
             logger($user->data()->id, LogCategories::LOG_CATEGORY_ELAN_REGISTRY, "contact_owner_email.php from " . $fromEmail . " to " . $toEmail);

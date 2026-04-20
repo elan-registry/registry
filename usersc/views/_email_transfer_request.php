@@ -36,7 +36,7 @@ $content = "
 
     " . (!empty($transferRequest->submitted_comments) ?
         $emailTemplate->createMessageBox('Requester\'s Comments',
-            '<div class="message-content">' . htmlspecialchars($transferRequest->submitted_comments) . '</div>', 'message') : '') . "
+            $emailTemplate->createMessageContent($transferRequest->submitted_comments), 'message') : '') . "
 
     <p><strong>What happens next?</strong></p>
     <ul>
