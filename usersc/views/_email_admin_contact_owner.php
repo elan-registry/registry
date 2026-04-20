@@ -21,7 +21,7 @@ $adminDetails =
     $emailTemplate->createDetailRow('Role', 'Registry Administrator');
 
 $carContextBox = '';
-if (isset($carContext) && $carContext) {
+if ($hasCarContext) {
     $carDetails = $emailTemplate->createDetailRow('Car ID', $carContext['id']);
     if (isset($carContext['year']) && isset($carContext['model'])) {
         $carDetails .= $emailTemplate->createDetailRow('Vehicle', $carContext['year'] . ' ' . $carContext['model']);
