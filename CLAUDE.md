@@ -176,6 +176,13 @@ details and usage examples.
 - Fix any linting or type errors before considering the task complete
 - Run appropriate test suites for modified functionality
 
+### Security Scanning (Semgrep)
+
+Semgrep runs automatically on every PR (GitHub App Managed Scan). New findings
+fail the `semgrep-cloud-platform/scan` check. Periodic triage keeps the
+dashboard clean — see [QUICK_REFERENCE.md](docs/development/QUICK_REFERENCE.md#security-scanning-semgrep)
+for the triage workflow, API commands, and known false positive patterns.
+
 ## Developer Workflow
 
 ### Milestone Lifecycle (typical)

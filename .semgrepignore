@@ -1,0 +1,23 @@
+# UserSpice framework core — not our code
+users/
+
+# Dependencies
+vendor/
+node_modules/
+
+# One-time database migration/fix scripts — run manually by admin, not production web code
+FIX/
+
+# Archived HTML content from third-party site (type26register.com) — not application code
+docs/stories/
+
+# Test fixtures and sample data
+database/4-sample-data.sql
+tests/
+
+# Build artifacts and caches
+backups/
+userimages/
+
+# Wiki (documentation only)
+wiki/
