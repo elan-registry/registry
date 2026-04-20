@@ -112,10 +112,15 @@ function isRegistryAdmin(int|string|null $userId = null): bool {
  * @return string Base URL without trailing slash (e.g., 'https://elanregistry.org' or 'http://localhost:9999/elan-registry')
  */
 function getBaseUrl(): string {
-    global $current_origin, $us_url_root;
+    global $scheme, $host, $us_url_root;
 
-    if (!empty($current_origin) && !empty($us_url_root)) {
-        return rtrim($current_origin . $us_url_root, '/');
+    if (!empty($scheme) && !empty($host) && !empty($us_url_root)) {
+        // $host has the port stripped (Server::get uses stripPort=true).
+        // Re-add non-standard ports so email URLs are correct on local dev.
+        $port = Server::get('SERVER_PORT', 0);
+        $defaultPort = ($scheme === 'https') ? 443 : 80;
+        $portStr = ($port && $port !== $defaultPort) ? ':' . $port : '';
+        return rtrim($scheme . '://' . $host . $portStr . $us_url_root, '/');
     }
 
     // Fallback for CLI or early-boot contexts where server globals are not set
