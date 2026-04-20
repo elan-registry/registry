@@ -212,8 +212,10 @@ class EmailTemplate
      */
     private function getBaseTemplate(string $title, string $subtitle, string $content, string $footerText): string
     {
-        $safeTitle  = htmlspecialchars($title, ENT_QUOTES, 'UTF-8');
-        $safeFooter = htmlspecialchars($footerText, ENT_QUOTES, 'UTF-8');
+        $safeTitle   = htmlspecialchars($title, ENT_QUOTES, 'UTF-8');
+        $safeFooter  = htmlspecialchars($footerText, ENT_QUOTES, 'UTF-8');
+        $safeBaseUrl = htmlspecialchars($this->baseUrl, ENT_QUOTES, 'UTF-8');
+        $safeLogoUrl = htmlspecialchars($this->logoUrl, ENT_QUOTES, 'UTF-8');
         // NOTE: $content is trusted pre-composed HTML. Callers are responsible for
         // escaping all user-supplied values before including them in $content.
         return "<!DOCTYPE html>
@@ -372,7 +374,7 @@ class EmailTemplate
                     <tr>
                         <td>
                             <div class=\"header\" style=\"background-color: #029acf; color: #ffffff; padding: 20px; text-align: center;\">
-                                <img src=\"{$this->logoUrl}\" alt=\"Lotus Logo\" class=\"logo\" style=\"width: 48px; height: 48px; display: block; margin: 0 auto 10px auto;\">
+                                <img src=\"{$safeLogoUrl}\" alt=\"Lotus Logo\" class=\"logo\" style=\"width: 48px; height: 48px; display: block; margin: 0 auto 10px auto;\">
                                 <h1 style=\"color: #ffffff; margin: 0 0 5px 0; font-size: 24px;\">Lotus Elan Registry</h1>
                                 <p>" . htmlspecialchars($subtitle, ENT_QUOTES, 'UTF-8') . "</p>
                             </div>
@@ -383,7 +385,7 @@ class EmailTemplate
 
                             <div class=\"footer\" style=\"background-color: #f8f9fa; padding: 20px; text-align: center; border-top: 1px solid #dee2e6; color: #6b7280; font-size: 14px;\">
                                 <p><strong>The Lotus Elan Registry</strong></p>
-                                <p><a href=\"{$this->baseUrl}\">{$this->baseUrl}</a></p>
+                                <p><a href=\"{$safeBaseUrl}\">{$safeBaseUrl}</a></p>
                                 <p>Preserving the legacy of Colin Chapman's masterpiece since 2003</p>
                                 <hr style=\"border: none; border-top: 1px solid #dee2e6; margin: 15px 0;\">
                                 <p><small>{$safeFooter}</small></p>

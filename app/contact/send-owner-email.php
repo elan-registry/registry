@@ -97,15 +97,24 @@ if (Input::exists('post')) {
 
             // Validate email format before using as reply-to header (defense-in-depth against
             // header injection, even though $fromEmail is sourced from the users table).
+            // Workaround for Brevo plugin override.php signature mismatch (see docs/bugs/userspice-brevo-override-signature-bug.txt):
+            // email() 4th arg is $to_name (string), not $opts (array), so call sendinblue() directly with Brevo's key 'reply'.
             if (filter_var($fromEmail, FILTER_VALIDATE_EMAIL)) {
-                $result = email($toEmail, $subject, $body, ['replyTo' => $fromEmail]);
+                if (function_exists('sendinblue')) {
+                    $result = sendinblue($toEmail, $subject, $body, '', ['reply' => $fromEmail]);
+                } else {
+                    $result = email($toEmail, $subject, $body, ['replyTo' => $fromEmail]);
+                }
             } else {
-                logger($user->data()->id, LogCategories::LOG_CATEGORY_ELAN_REGISTRY, "contact_owner_email.php invalid fromEmail for reply-to: " . $fromEmail);
+                $safeFromLog = preg_replace('/[\r\n\t]/', '', $fromEmail);
+                logger($user->data()->id, LogCategories::LOG_CATEGORY_ELAN_REGISTRY, "contact_owner_email.php invalid fromEmail for reply-to: " . $safeFromLog);
                 $result = email($toEmail, $subject, $body);
             }
 
             // Log the email sending (no session message needed - we show "Message Sent" page)
-            logger($user->data()->id, LogCategories::LOG_CATEGORY_ELAN_REGISTRY, "contact_owner_email.php from " . $fromEmail . " to " . $toEmail);
+            $safeFromLog = preg_replace('/[\r\n\t]/', '', $fromEmail);
+            $safeToLog   = preg_replace('/[\r\n\t]/', '', $toEmail);
+            logger($user->data()->id, LogCategories::LOG_CATEGORY_ELAN_REGISTRY, "contact_owner_email.php from " . $safeFromLog . " to " . $safeToLog);
         } else {
             $errors[] = 'Not enough parameters provided';
         }
