@@ -17,10 +17,8 @@ require_once $abs_us_root . $us_url_root . 'usersc/classes/EmailTemplate.php';
 
 $emailTemplate = new EmailTemplate();
 
-// Build verification URL
 $verifyUrl = getBaseUrl() . '/users/verify.php?email=' . rawurlencode($email) . '&vericode=' . rawurlencode($vericode) . '&user_id=' . (int)$user_id;
 
-// Build main content
 $content = "
     <p>Hello <strong>" . htmlspecialchars($fname, ENT_QUOTES, 'UTF-8') . "</strong>,</p>
 
@@ -44,7 +42,6 @@ $content = "
     <p>If you did not register an account, you can safely ignore this email.</p>
 ";
 
-// Generate the complete email
 echo $emailTemplate->render(
     'Verify Your Email Address',
     'Welcome — Please Verify Your Email',

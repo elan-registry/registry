@@ -636,6 +636,51 @@ final class EmailTemplateTest extends TestCase
     }
 
     // ------------------------------------------------------------------
+    // _email_admin_contact_owner.php — quality issue behaviour
+    // ------------------------------------------------------------------
+
+    public function testAdminContactOwnerViewShowsUpdateButtonWhenQualityIssueAndCarPresent(): void
+    {
+        $html = $this->renderView('_email_admin_contact_owner.php', [
+            'to'          => 'Alice',
+            'from'        => 'Admin Name',
+            'message'     => 'Please correct the data.',
+            'carContext'  => ['id' => '99', 'year' => '1971', 'model' => 'Elan S4', 'chassis' => 'ELAN/6/1234'],
+            'qualityIssue' => 'Year is incorrect',
+        ]);
+
+        $this->assertStringContainsString('Update Your Car Record', $html);
+    }
+
+    public function testAdminContactOwnerViewShowsRegistryLinkWhenNoQualityIssue(): void
+    {
+        $html = $this->renderView('_email_admin_contact_owner.php', [
+            'to'          => 'Alice',
+            'from'        => 'Admin Name',
+            'message'     => 'General message.',
+            'carContext'  => [],
+            'qualityIssue' => '',
+        ]);
+
+        $this->assertStringNotContainsString('Update Your Car Record', $html);
+        $this->assertStringContainsString('elanregistry.org', $html);
+    }
+
+    public function testAdminContactOwnerViewEscapesXssInQualityIssue(): void
+    {
+        $html = $this->renderView('_email_admin_contact_owner.php', [
+            'to'          => 'Alice',
+            'from'        => 'Admin Name',
+            'message'     => 'Please fix the data.',
+            'carContext'  => ['id' => '99', 'year' => '1971', 'model' => 'Elan S4', 'chassis' => 'ELAN/6/1234'],
+            'qualityIssue' => '<script>alert("xss")</script>',
+        ]);
+
+        $this->assertStringNotContainsString('<script>', $html);
+        $this->assertStringContainsString('&lt;script&gt;', $html);
+    }
+
+    // ------------------------------------------------------------------
     // _email_template_verify.php
     // ------------------------------------------------------------------
 
@@ -845,19 +890,186 @@ final class EmailTemplateTest extends TestCase
         $this->assertStringContainsString('&lt;script&gt;', $html);
     }
 
-    public function testVerifyNewEmailViewEscapesXssInName(): void
+    public function testVerifyNewEmailViewOpenRedirectGuardRejectsScheme(): void
     {
         $html = $this->renderView('_email_template_verify_new.php', [
-            'fname'               => '<script>alert(\'xss\')</script>',
+            'fname'               => 'Carol',
             'email'               => 'carol@example.com',
             'vericode'            => 'NEWCODE77',
             'user_id'             => 12,
             'join_vericode_expiry' => 24,
-            'url'                 => 'users/verify_new.php?vericode=NEWCODE77',
+            'url'                 => 'javascript:alert(1)',
         ]);
 
-        // Malicious fname must be HTML-escaped, not rendered raw.
-        $this->assertStringNotContainsString('<script>', $html);
-        $this->assertStringContainsString('&lt;script&gt;', $html);
+        // Scheme-based open-redirect must be rejected; URL must fall back to safe path.
+        $this->assertStringNotContainsString('javascript:', $html);
+        $this->assertStringContainsString('users/verify_new.php', $html);
+    }
+
+    // ============================================================
+    // TRANSFER EMAIL TEMPLATE VIEW TESTS
+    //
+    // These tests exercise the four transfer email view files.
+    // $currentOwner, $requester, $carInfo, $transferRequest, and
+    // $previousOwner are stdClass objects cast from DB results.
+    // renderView() sets $abs_us_root and $us_url_root via its own
+    // local scope (EXTR_SKIP prevents caller-supplied values from
+    // overwriting them). getAdminEmails() is mocked in the test
+    // bootstrap.
+    // ============================================================
+
+    // ------------------------------------------------------------------
+    // _email_transfer_request.php
+    // ------------------------------------------------------------------
+
+    public function testTransferRequestViewRendersWithoutError(): void
+    {
+        $html = $this->renderView('_email_transfer_request.php', [
+            'currentOwner'    => (object)['fname' => 'Alice', 'lname' => 'Smith', 'email' => 'alice@example.com', 'id' => 1, 'city' => 'London', 'state' => '', 'country' => 'UK'],
+            'requester'       => (object)['fname' => 'Bob', 'lname' => 'Jones', 'email' => 'bob@example.com', 'id' => 2, 'city' => 'Paris', 'state' => '', 'country' => 'FR'],
+            'carInfo'         => (object)['id' => 42, 'year' => '1971', 'series' => 'S4', 'variant' => 'SE', 'chassis' => 'ELAN/6/1234', 'color' => 'Yellow', 'engine' => 'Twin Cam'],
+            'transferRequest' => (object)['id' => 7, 'request_date' => '2026-01-15 10:00:00', 'expires_at' => '2026-01-22 10:00:00', 'submitted_comments' => ''],
+        ]);
+
+        $this->assertStringContainsString('<!DOCTYPE html>', $html);
+        $this->assertStringContainsString('Alice', $html);
+    }
+
+    public function testTransferRequestViewRendersSubmittedComments(): void
+    {
+        $html = $this->renderView('_email_transfer_request.php', [
+            'currentOwner'    => (object)['fname' => 'Alice', 'lname' => 'Smith', 'email' => 'alice@example.com', 'id' => 1, 'city' => 'London', 'state' => '', 'country' => 'UK'],
+            'requester'       => (object)['fname' => 'Bob', 'lname' => 'Jones', 'email' => 'bob@example.com', 'id' => 2, 'city' => 'Paris', 'state' => '', 'country' => 'FR'],
+            'carInfo'         => (object)['id' => 42, 'year' => '1971', 'series' => 'S4', 'variant' => 'SE', 'chassis' => 'ELAN/6/1234', 'color' => 'Yellow', 'engine' => 'Twin Cam'],
+            'transferRequest' => (object)['id' => 7, 'request_date' => '2026-01-15 10:00:00', 'expires_at' => '2026-01-22 10:00:00', 'submitted_comments' => 'I have proof of ownership.'],
+        ]);
+
+        $this->assertStringContainsString('I have proof of ownership.', $html);
+    }
+
+    public function testTransferRequestViewOmitsCommentBoxWhenEmpty(): void
+    {
+        $html = $this->renderView('_email_transfer_request.php', [
+            'currentOwner'    => (object)['fname' => 'Alice', 'lname' => 'Smith', 'email' => 'alice@example.com', 'id' => 1, 'city' => 'London', 'state' => '', 'country' => 'UK'],
+            'requester'       => (object)['fname' => 'Bob', 'lname' => 'Jones', 'email' => 'bob@example.com', 'id' => 2, 'city' => 'Paris', 'state' => '', 'country' => 'FR'],
+            'carInfo'         => (object)['id' => 42, 'year' => '1971', 'series' => 'S4', 'variant' => 'SE', 'chassis' => 'ELAN/6/1234', 'color' => 'Yellow', 'engine' => 'Twin Cam'],
+            'transferRequest' => (object)['id' => 7, 'request_date' => '2026-01-15 10:00:00', 'expires_at' => '2026-01-22 10:00:00', 'submitted_comments' => ''],
+        ]);
+
+        $this->assertStringNotContainsString("Requester&#039;s Comments", $html);
+    }
+
+    // ------------------------------------------------------------------
+    // _email_transfer_response.php
+    // ------------------------------------------------------------------
+
+    public function testTransferResponseViewApprovedBranchContainsCongratulations(): void
+    {
+        $html = $this->renderView('_email_transfer_response.php', [
+            'requester'       => (object)['fname' => 'Bob', 'lname' => 'Jones', 'email' => 'bob@example.com', 'id' => 2, 'city' => 'Paris', 'state' => '', 'country' => 'FR'],
+            'carInfo'         => (object)['id' => 42, 'year' => '1971', 'series' => 'S4', 'variant' => 'SE', 'chassis' => 'ELAN/6/1234', 'color' => 'Yellow'],
+            'transferRequest' => (object)['id' => 7, 'request_date' => '2026-01-15 10:00:00', 'completed_date' => '2026-01-20 14:00:00'],
+            'isApproved'      => true,
+            'adminNotes'      => '',
+            'carUrl'          => '/app/cars/detail.php?id=42',
+        ]);
+
+        $this->assertStringContainsString('Congratulations', $html);
+        $this->assertStringContainsString('APPROVED', $html);
+        $this->assertStringNotContainsString('denied', strtolower($html));
+    }
+
+    public function testTransferResponseViewDeniedBranchContainsDenialText(): void
+    {
+        $html = $this->renderView('_email_transfer_response.php', [
+            'requester'       => (object)['fname' => 'Bob', 'lname' => 'Jones', 'email' => 'bob@example.com', 'id' => 2, 'city' => 'Paris', 'state' => '', 'country' => 'FR'],
+            'carInfo'         => (object)['id' => 42, 'year' => '1971', 'series' => 'S4', 'variant' => 'SE', 'chassis' => 'ELAN/6/1234', 'color' => 'Yellow'],
+            'transferRequest' => (object)['id' => 7, 'request_date' => '2026-01-15 10:00:00', 'completed_date' => '2026-01-20 14:00:00'],
+            'isApproved'      => false,
+            'adminNotes'      => '',
+            'carUrl'          => '/app/cars/detail.php?id=42',
+        ]);
+
+        $this->assertStringContainsString('DENIED', $html);
+        $this->assertStringNotContainsString('Congratulations', $html);
+    }
+
+    public function testTransferResponseViewRendersAdminNotesWhenPresent(): void
+    {
+        $html = $this->renderView('_email_transfer_response.php', [
+            'requester'       => (object)['fname' => 'Bob', 'lname' => 'Jones', 'email' => 'bob@example.com', 'id' => 2, 'city' => 'Paris', 'state' => '', 'country' => 'FR'],
+            'carInfo'         => (object)['id' => 42, 'year' => '1971', 'series' => 'S4', 'variant' => 'SE', 'chassis' => 'ELAN/6/1234', 'color' => 'Yellow'],
+            'transferRequest' => (object)['id' => 7, 'request_date' => '2026-01-15 10:00:00', 'completed_date' => '2026-01-20 14:00:00'],
+            'isApproved'      => false,
+            'adminNotes'      => 'Documentation was insufficient.',
+            'carUrl'          => '/app/cars/detail.php?id=42',
+        ]);
+
+        $this->assertStringContainsString('Documentation was insufficient.', $html);
+    }
+
+    // ------------------------------------------------------------------
+    // _email_transfer_previous_owner.php
+    // ------------------------------------------------------------------
+
+    public function testTransferPreviousOwnerViewApprovedBranchShowsTransferMessage(): void
+    {
+        $html = $this->renderView('_email_transfer_previous_owner.php', [
+            'previousOwner'   => (object)['fname' => 'Alice', 'lname' => 'Smith', 'email' => 'alice@example.com', 'id' => 1, 'city' => 'London', 'state' => '', 'country' => 'UK'],
+            'requester'       => (object)['fname' => 'Bob', 'lname' => 'Jones', 'email' => 'bob@example.com', 'id' => 2, 'city' => 'Paris', 'state' => '', 'country' => 'FR'],
+            'carInfo'         => (object)['id' => 42, 'year' => '1971', 'series' => 'S4', 'variant' => 'SE', 'chassis' => 'ELAN/6/1234', 'color' => 'Yellow', 'engine' => 'Twin Cam'],
+            'transferRequest' => (object)['id' => 7, 'request_date' => '2026-01-15 10:00:00', 'completed_date' => '2026-01-20 14:00:00'],
+            'isApproved'      => true,
+            'adminNotes'      => '',
+        ]);
+
+        $this->assertStringContainsString('transferred to the new owner', $html);
+        $this->assertStringContainsString('APPROVED', $html);
+    }
+
+    public function testTransferPreviousOwnerViewDeniedBranchShowsGoodNews(): void
+    {
+        $html = $this->renderView('_email_transfer_previous_owner.php', [
+            'previousOwner'   => (object)['fname' => 'Alice', 'lname' => 'Smith', 'email' => 'alice@example.com', 'id' => 1, 'city' => 'London', 'state' => '', 'country' => 'UK'],
+            'requester'       => (object)['fname' => 'Bob', 'lname' => 'Jones', 'email' => 'bob@example.com', 'id' => 2, 'city' => 'Paris', 'state' => '', 'country' => 'FR'],
+            'carInfo'         => (object)['id' => 42, 'year' => '1971', 'series' => 'S4', 'variant' => 'SE', 'chassis' => 'ELAN/6/1234', 'color' => 'Yellow', 'engine' => 'Twin Cam'],
+            'transferRequest' => (object)['id' => 7, 'request_date' => '2026-01-15 10:00:00', 'completed_date' => '2026-01-20 14:00:00'],
+            'isApproved'      => false,
+            'adminNotes'      => '',
+        ]);
+
+        $this->assertStringContainsString('Good news', $html);
+        $this->assertStringContainsString('DENIED', $html);
+    }
+
+    // ------------------------------------------------------------------
+    // _email_transfer_admin.php
+    // ------------------------------------------------------------------
+
+    public function testTransferAdminViewRendersWithoutError(): void
+    {
+        $html = $this->renderView('_email_transfer_admin.php', [
+            'currentOwner'    => (object)['fname' => 'Alice', 'lname' => 'Smith', 'email' => 'alice@example.com', 'id' => 1, 'city' => 'London', 'state' => '', 'country' => 'UK'],
+            'requester'       => (object)['fname' => 'Bob', 'lname' => 'Jones', 'email' => 'bob@example.com', 'id' => 2, 'city' => 'Paris', 'state' => '', 'country' => 'FR'],
+            'carInfo'         => (object)['id' => 42, 'year' => '1971', 'series' => 'S4', 'variant' => 'SE', 'chassis' => 'ELAN/6/1234', 'color' => 'Yellow'],
+            'transferRequest' => (object)['id' => 7, 'request_date' => '2026-01-15 10:00:00', 'expires_at' => '2026-01-22 10:00:00', 'submitted_comments' => ''],
+            'reviewUrl'       => '/admin/transfers/review.php?id=7',
+        ]);
+
+        $this->assertStringContainsString('<!DOCTYPE html>', $html);
+        $this->assertStringContainsString('Administrative Review Required', $html);
+    }
+
+    public function testTransferAdminViewRendersSubmittedComments(): void
+    {
+        $html = $this->renderView('_email_transfer_admin.php', [
+            'currentOwner'    => (object)['fname' => 'Alice', 'lname' => 'Smith', 'email' => 'alice@example.com', 'id' => 1, 'city' => 'London', 'state' => '', 'country' => 'UK'],
+            'requester'       => (object)['fname' => 'Bob', 'lname' => 'Jones', 'email' => 'bob@example.com', 'id' => 2, 'city' => 'Paris', 'state' => '', 'country' => 'FR'],
+            'carInfo'         => (object)['id' => 42, 'year' => '1971', 'series' => 'S4', 'variant' => 'SE', 'chassis' => 'ELAN/6/1234', 'color' => 'Yellow'],
+            'transferRequest' => (object)['id' => 7, 'request_date' => '2026-01-15 10:00:00', 'expires_at' => '2026-01-22 10:00:00', 'submitted_comments' => 'I bought this car at auction.'],
+            'reviewUrl'       => '/admin/transfers/review.php?id=7',
+        ]);
+
+        $this->assertStringContainsString('I bought this car at auction.', $html);
     }
 }

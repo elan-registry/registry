@@ -18,12 +18,11 @@ require_once $abs_us_root . $us_url_root . 'users/includes/template/prep.php';
 if (!securePage($php_self)) {
     die();
 }
-// EDIT THE 2 LINES BELOW AS REQUIRED
+// EDIT THE LINE BELOW AS REQUIRED
 $subject = '[ELANREGISTRY] Owner to Owner Message';
 
 // Initialize message arrays
 $errors = [];
-$successes = [];
 
 function died($error): void
 {
@@ -106,8 +105,7 @@ if (Input::exists('post')) {
                     $result = email($toEmail, $subject, $body, ['replyTo' => $fromEmail]);
                 }
             } else {
-                $safeFromLog = preg_replace('/[\r\n\t]/', '', $fromEmail);
-                logger($user->data()->id, LogCategories::LOG_CATEGORY_ELAN_REGISTRY, "contact_owner_email.php invalid fromEmail for reply-to: " . $safeFromLog);
+                logger($user->data()->id, LogCategories::LOG_CATEGORY_ELAN_REGISTRY, "contact_owner_email.php invalid fromEmail for reply-to: " . preg_replace('/[\r\n\t]/', '', $fromEmail));
                 $result = email($toEmail, $subject, $body);
             }
 
@@ -115,6 +113,12 @@ if (Input::exists('post')) {
             $safeFromLog = preg_replace('/[\r\n\t]/', '', $fromEmail);
             $safeToLog   = preg_replace('/[\r\n\t]/', '', $toEmail);
             logger($user->data()->id, LogCategories::LOG_CATEGORY_ELAN_REGISTRY, "contact_owner_email.php from " . $safeFromLog . " to " . $safeToLog);
+
+            // sendinblue() returns true on success, an error string on failure (see docs/bugs/).
+            if (isset($result) && $result !== true) {
+                $resultStr = is_string($result) ? $result : 'unknown delivery error';
+                logger($user->data()->id, LogCategories::LOG_CATEGORY_ELAN_REGISTRY, "contact_owner_email.php SEND FAILED from " . $safeFromLog . " to " . $safeToLog . ": " . $resultStr);
+            }
         } else {
             $errors[] = 'Not enough parameters provided';
         }
@@ -126,12 +130,6 @@ if (Input::exists('post')) {
             usError($error);
         }
     }
-    if (!empty($successes)) {
-        foreach ($successes as $success) {
-            usSuccess($success);
-        }
-    }
-    
     // Messages will be displayed by UserSpice session system in template
 } // End Post
 

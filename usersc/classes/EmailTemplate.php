@@ -7,6 +7,11 @@ declare(strict_types=1);
  * Provides consistent email formatting across all registry email functionality.
  * Supports branded HTML emails with responsive design and customizable content.
  *
+ * @example
+ * $template = new EmailTemplate();
+ * $content = $template->createMessageBox('Title', $template->createDetailRow('Name', $value));
+ * echo $template->render('Subject', 'Subtitle', $content);
+ *
  * @author Elan Registry Team
  * @copyright 2025
  */
@@ -25,7 +30,7 @@ class EmailTemplate
     /**
      * Generate a complete HTML email using the registry template
      *
-     * @param string $subject Email subject line
+     * @param string $subject HTML document title (appears in browser tab; the SMTP subject is set by the caller)
      * @param string $subtitle Header subtitle (e.g., "Owner to Owner Message")
      * @param string $content Main content HTML (can include custom styling)
      * @param array $options Optional customizations ['footer_text' => '', 'reply_to' => '']
@@ -41,7 +46,7 @@ class EmailTemplate
      * Create a formatted message box for email content
      *
      * @param string $title Box title
-     * @param string $content Box content
+     * @param string $content Pre-composed HTML — not escaped. Use createDetailRow() and createMessageContent() to build this safely from user data.
      * @param string $style 'default', 'message', 'alert', 'success'
      * @return string HTML for message box
      */
@@ -49,7 +54,7 @@ class EmailTemplate
     {
         $styleClass = $this->getBoxStyleClass($style);
         $inlineStyles = $this->getBoxInlineStyles($style);
-        $headingColor = $this->getBoxHeadingColor($style);
+        $headingColor = $this->getBoxAccentColor($style);
         $safeTitle = htmlspecialchars($title, ENT_QUOTES, 'UTF-8');
         return "
         <div class=\"{$styleClass}\" style=\"{$inlineStyles}\">
@@ -159,17 +164,6 @@ class EmailTemplate
     }
 
     /**
-     * Get heading color for message box based on style type
-     *
-     * @param string $style Box style: 'message', 'alert', 'success', or 'default'
-     * @return string CSS color value
-     */
-    private function getBoxHeadingColor(string $style): string
-    {
-        return $this->getBoxAccentColor($style);
-    }
-
-    /**
      * Get inline CSS styles for message box based on style type
      *
      * @param string $style Box style: 'message', 'alert', 'success', or 'default'
@@ -208,7 +202,13 @@ class EmailTemplate
     // ---------------------------------------------------------------
 
     /**
-     * Base HTML template with registry branding and CSS
+     * Build the complete HTML email template
+     *
+     * @param string $title HTML document title
+     * @param string $subtitle Header subtitle shown in the email header bar
+     * @param string $content Pre-composed HTML body content — not escaped here
+     * @param string $footerText Footer note (escaped before output)
+     * @return string Complete HTML email
      */
     private function getBaseTemplate(string $title, string $subtitle, string $content, string $footerText): string
     {

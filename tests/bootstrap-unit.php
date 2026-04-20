@@ -1302,6 +1302,18 @@ if (!function_exists('getBaseUrl')) {
     }
 }
 
+// Mock getAdminEmails function - needed by transfer email templates
+if (!function_exists('getAdminEmails')) {
+    /**
+     * Mock getAdminEmails function for testing
+     * Returns a predictable admin email for assertions
+     */
+    function getAdminEmails(): string
+    {
+        return 'admin@elanregistry.org';
+    }
+}
+
 // Mock isRegistryAdmin function - needed by DocumentConfig::hasAccess()
 if (!function_exists('isRegistryAdmin')) {
     /**

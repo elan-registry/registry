@@ -21,8 +21,8 @@ $carDetails =
     $emailTemplate->createDetailRow('Engine', $carInfo->engine ?: 'Not specified');
 
 $decisionDetails =
-    $emailTemplate->createDetailRow('Request ID', $transferRequest->id) .
-    $emailTemplate->createDetailRow('Decision Date', date('M j, Y g:i A', strtotime($transferRequest->completed_date))) .
+    $emailTemplate->createDetailRow('Request ID', (string)$transferRequest->id) .
+    $emailTemplate->createDetailRow('Decision Date', date('M j, Y g:i A', strtotime($transferRequest->completed_date) ?: time())) .
     $emailTemplate->createDetailRow('Status', $isApproved ? 'APPROVED' : 'DENIED');
 
 if ($isApproved) {

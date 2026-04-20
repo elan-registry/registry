@@ -20,9 +20,9 @@ $carDetails =
     $emailTemplate->createDetailRow('Color', $carInfo->color ?: 'Not specified');
 
 $requestDetails =
-    $emailTemplate->createDetailRow('Request ID', $transferRequest->id) .
-    $emailTemplate->createDetailRow('Submitted', date('M j, Y g:i A', strtotime($transferRequest->request_date))) .
-    $emailTemplate->createDetailRow('Reviewed', date('M j, Y g:i A', strtotime($transferRequest->completed_date))) .
+    $emailTemplate->createDetailRow('Request ID', (string)$transferRequest->id) .
+    $emailTemplate->createDetailRow('Submitted', date('M j, Y g:i A', strtotime($transferRequest->request_date) ?: time())) .
+    $emailTemplate->createDetailRow('Reviewed', date('M j, Y g:i A', strtotime($transferRequest->completed_date) ?: time())) .
     $emailTemplate->createDetailRow('Status', $isApproved ? 'APPROVED' : 'DENIED');
 
 $adminEmail = htmlspecialchars(getAdminEmails(), ENT_QUOTES, 'UTF-8');

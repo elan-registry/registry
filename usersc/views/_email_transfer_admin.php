@@ -14,7 +14,7 @@ require_once $abs_us_root . $us_url_root . 'usersc/classes/EmailTemplate.php';
 $emailTemplate = new EmailTemplate();
 
 $carDetails =
-    $emailTemplate->createDetailRow('Car ID', $carInfo->id) .
+    $emailTemplate->createDetailRow('Car ID', (string)$carInfo->id) .
     $emailTemplate->createDetailRow('Year', $carInfo->year) .
     $emailTemplate->createDetailRow('Model', $carInfo->series . ' ' . $carInfo->variant) .
     $emailTemplate->createDetailRow('Chassis', $carInfo->chassis) .
@@ -23,20 +23,19 @@ $carDetails =
 $currentOwnerDetails =
     $emailTemplate->createDetailRow('Name', $currentOwner->fname . ' ' . $currentOwner->lname) .
     $emailTemplate->createDetailRow('Email', $currentOwner->email) .
-    $emailTemplate->createDetailRow('User ID', $currentOwner->id) .
+    $emailTemplate->createDetailRow('User ID', (string)$currentOwner->id) .
     $emailTemplate->createDetailRow('Location', trim($currentOwner->city . ', ' . $currentOwner->state . ', ' . $currentOwner->country, ', ') ?: 'Not specified');
 
 $requesterDetails =
     $emailTemplate->createDetailRow('Name', $requester->fname . ' ' . $requester->lname) .
     $emailTemplate->createDetailRow('Email', $requester->email) .
-    $emailTemplate->createDetailRow('User ID', $requester->id) .
+    $emailTemplate->createDetailRow('User ID', (string)$requester->id) .
     $emailTemplate->createDetailRow('Location', trim($requester->city . ', ' . $requester->state . ', ' . $requester->country, ', ') ?: 'Not specified');
 
-$expiresAt     = strtotime($transferRequest->expires_at);
 $requestDetails =
-    $emailTemplate->createDetailRow('Request ID', $transferRequest->id) .
-    $emailTemplate->createDetailRow('Submitted', date('M j, Y g:i A', strtotime($transferRequest->request_date))) .
-    $emailTemplate->createDetailRow('Expires', date('M j, Y g:i A', $expiresAt));
+    $emailTemplate->createDetailRow('Request ID', (string)$transferRequest->id) .
+    $emailTemplate->createDetailRow('Submitted', date('M j, Y g:i A', strtotime($transferRequest->request_date) ?: time())) .
+    $emailTemplate->createDetailRow('Expires', date('M j, Y g:i A', strtotime($transferRequest->expires_at) ?: time()));
 
 $content = "
     <p><strong>A new car ownership transfer request requires administrative review.</strong></p>

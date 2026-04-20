@@ -27,7 +27,6 @@ if (preg_match('#^[a-zA-Z][a-zA-Z0-9+\-.]*:|^//#', $relPath)) {
 }
 $verifyUrl = $baseUrl . '/' . $relPath;
 
-// Build main content
 $content = "
     <p>Hello <strong>" . htmlspecialchars($fname, ENT_QUOTES, 'UTF-8') . "</strong>,</p>
 
@@ -43,7 +42,6 @@ $content = "
     <p>This verification link expires in <strong>" . htmlspecialchars((string)$join_vericode_expiry, ENT_QUOTES, 'UTF-8') . " hours</strong>. Until verified, your previous email address will remain active.</p>
 ";
 
-// Generate the complete email
 echo $emailTemplate->render(
     'Confirm your Elan Registry email address change',
     'Email Change Verification',
