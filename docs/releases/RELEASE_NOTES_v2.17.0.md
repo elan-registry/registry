@@ -1,4 +1,4 @@
-# Elan Registry v2.17.1 Release Notes
+# Elan Registry v2.17.0 Release Notes
 
 **Release Date:** TBD
 **Type:** Patch Release - Email Template Modernization

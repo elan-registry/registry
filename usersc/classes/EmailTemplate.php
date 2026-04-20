@@ -30,10 +30,10 @@ class EmailTemplate
     /**
      * Generate a complete HTML email using the registry template
      *
-     * @param string $subject HTML document title (appears in browser tab; the SMTP subject is set by the caller)
-     * @param string $subtitle Header subtitle (e.g., "Owner to Owner Message")
+     * @param string $subject HTML document `<title>` only — does NOT set the SMTP subject. Pass the SMTP subject separately when calling sendinblue() or email().
+     * @param string $subtitle Header subtitle shown in the email header bar (e.g., "Owner to Owner Message")
      * @param string $content Main content HTML (can include custom styling)
-     * @param array $options Optional customizations ['footer_text' => '', 'reply_to' => '']
+     * @param array $options Optional customizations ['footer_text' => ''] Note: reply-to must be set at the transport layer, not via this method.
      * @return string Complete HTML email
      */
     public function render(string $subject, string $subtitle, string $content, array $options = []): string

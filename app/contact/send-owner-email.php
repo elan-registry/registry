@@ -18,24 +18,13 @@ require_once $abs_us_root . $us_url_root . 'users/includes/template/prep.php';
 if (!securePage($php_self)) {
     die();
 }
-// EDIT THE LINE BELOW AS REQUIRED
 $subject = '[ELANREGISTRY] Owner to Owner Message';
 
 // Initialize message arrays
 $errors = [];
 
-function died($error): void
-{
-    // your error code can go here
-    echo 'We are very sorry, but there were error(s) found with the form you submitted. ';
-    echo 'These errors appear below.<br /><br />';
-    echo $error . '<br /><br />';
-    echo 'Please go back and fix these errors.<br /><br />';
-    die();
-}
-
 // Make sure no one tries to add header like keywords
-function clean_string($string): string
+function clean_string(string $string): string
 {
     $bad = array('content-type', 'bcc:', 'to:', 'cc:', 'href');
     return str_replace($bad, '', $string);
@@ -96,8 +85,9 @@ if (Input::exists('post')) {
 
             // Validate email format before using as reply-to header (defense-in-depth against
             // header injection, even though $fromEmail is sourced from the users table).
-            // Workaround for Brevo plugin override.php signature mismatch (see docs/bugs/userspice-brevo-override-signature-bug.txt):
-            // email() 4th arg is $to_name (string), not $opts (array), so call sendinblue() directly with Brevo's key 'reply'.
+            // Call sendinblue() directly to set reply-to: the override.php wrapper places $to_name
+            // before $options, requiring an empty display-name argument. Direct call is cleaner
+            // and avoids coupling to wrapper internals. See docs/bugs/userspice-brevo-override-signature-bug.txt.
             if (filter_var($fromEmail, FILTER_VALIDATE_EMAIL)) {
                 if (function_exists('sendinblue')) {
                     $result = sendinblue($toEmail, $subject, $body, '', ['reply' => $fromEmail]);
@@ -109,15 +99,16 @@ if (Input::exists('post')) {
                 $result = email($toEmail, $subject, $body);
             }
 
-            // Log the email sending (no session message needed - we show "Message Sent" page)
+            // sendinblue() returns true on success, error string on failure.
+            // email() (PHPMailer fallback) returns true on success, false on failure.
             $safeFromLog = preg_replace('/[\r\n\t]/', '', $fromEmail);
             $safeToLog   = preg_replace('/[\r\n\t]/', '', $toEmail);
-            logger($user->data()->id, LogCategories::LOG_CATEGORY_ELAN_REGISTRY, "contact_owner_email.php from " . $safeFromLog . " to " . $safeToLog);
-
-            // sendinblue() returns true on success, an error string on failure (see docs/bugs/).
             if (isset($result) && $result !== true) {
                 $resultStr = is_string($result) ? $result : 'unknown delivery error';
-                logger($user->data()->id, LogCategories::LOG_CATEGORY_ELAN_REGISTRY, "contact_owner_email.php SEND FAILED from " . $safeFromLog . " to " . $safeToLog . ": " . $resultStr);
+                logger($user->data()->id, LogCategories::LOG_CATEGORY_EMAIL_ERROR, "contact_owner_email.php SEND FAILED from " . $safeFromLog . " to " . $safeToLog . ": " . $resultStr);
+                $errors[] = 'Your message could not be delivered. Please try again or contact the administrator.';
+            } else {
+                logger($user->data()->id, LogCategories::LOG_CATEGORY_ELAN_REGISTRY, "contact_owner_email.php sent from " . $safeFromLog . " to " . $safeToLog);
             }
         } else {
             $errors[] = 'Not enough parameters provided';
@@ -140,17 +131,15 @@ if (Input::exists('post')) {
         <div class='row'>
             <div class='col-sm-12'>
                 <div class='jumbotron'>
-                    <!-- Messages now handled by UserSpice session system in template (Issue #237) -->
+                    <?php if (empty($errors)): ?>
                     <div class="text-center py-4">
                         <i class="fas fa-envelope fa-3x text-success mb-3"></i>
                         <h4>Message Sent</h4>
                         <p class="text-muted">Taking you back to the car in a few seconds</p>
                     </div>
                     <script>
-                        //Using setTimeout to execute a function after 5 seconds.
                         setTimeout(function() {
-                            //Redirect back to the car details page
-                            <?php 
+                            <?php
                             $carId = Input::get('car_id');
                             if ($carId) {
                                 echo "window.location.href = '" . $us_url_root . "app/cars/details.php?car_id=" . (int)$carId . "';";
@@ -160,6 +149,13 @@ if (Input::exists('post')) {
                             ?>
                         }, 5000);
                     </script>
+                    <?php else: ?>
+                    <div class="text-center py-4">
+                        <i class="fas fa-exclamation-triangle fa-3x text-danger mb-3"></i>
+                        <h4>Message Not Sent</h4>
+                        <p class="text-muted">There was a problem delivering your message. Please try again or contact the administrator.</p>
+                    </div>
+                    <?php endif; ?>
                 </div><!-- End of main content section -->
             </div> <!-- /.col -->
         </div> <!-- /.row -->

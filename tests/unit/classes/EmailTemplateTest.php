@@ -1072,4 +1072,123 @@ final class EmailTemplateTest extends TestCase
 
         $this->assertStringContainsString('I bought this car at auction.', $html);
     }
+
+    // ============================================================
+    // createMessageContent() DIRECT TESTS
+    // @group createMessageContent
+    // ============================================================
+
+    public function testCreateMessageContentEscapesHtml(): void
+    {
+        $html = $this->template->createMessageContent('<script>alert(1)</script>');
+
+        $this->assertStringContainsString('&lt;script&gt;', $html);
+        $this->assertStringNotContainsString('<script>', $html);
+    }
+
+    public function testCreateMessageContentDefaultHasNoItalic(): void
+    {
+        $html = $this->template->createMessageContent('Some message text');
+
+        $this->assertStringNotContainsString('font-style:italic', $html);
+    }
+
+    public function testCreateMessageContentItalicAppliesStyle(): void
+    {
+        $html = $this->template->createMessageContent('Some message text', true);
+
+        $this->assertStringContainsString('font-style:italic', $html);
+    }
+
+    public function testCreateMessageContentHasPreWrapStyle(): void
+    {
+        $html = $this->template->createMessageContent('Some message text');
+
+        $this->assertStringContainsString('white-space:pre-wrap', $html);
+    }
+
+    // ============================================================
+    // OPEN-REDIRECT GUARD — protocol-relative URL
+    // ============================================================
+
+    public function testVerifyNewEmailViewOpenRedirectGuardRejectsProtocolRelativeUrl(): void
+    {
+        $html = $this->renderView('_email_template_verify_new.php', [
+            'fname'               => 'Carol',
+            'email'               => 'carol@example.com',
+            'vericode'            => 'NEWCODE77',
+            'user_id'             => 12,
+            'join_vericode_expiry' => 24,
+            'url'                 => '//evil.com/steal-cookies',
+        ]);
+
+        // ltrim strips the leading '//' so 'evil.com/steal-cookies' is treated as a
+        // relative path under the registry origin.  The output URL must be on the
+        // registry domain — not an off-domain redirect to evil.com.
+        $this->assertStringContainsString('https://test.elanregistry.org/', $html);
+        $this->assertStringNotContainsString('href="//evil.com', $html);
+        $this->assertStringNotContainsString('href="http://evil.com', $html);
+        $this->assertStringNotContainsString('href="https://evil.com', $html);
+    }
+
+    // ============================================================
+    // XSS REGRESSION TESTS — transfer email view files
+    // ============================================================
+
+    public function testTransferRequestViewEscapesXssInChassis(): void
+    {
+        $html = $this->renderView('_email_transfer_request.php', [
+            'currentOwner'    => (object)['fname' => 'Alice', 'lname' => 'Smith', 'email' => 'alice@example.com', 'id' => 1, 'city' => 'London', 'state' => '', 'country' => 'UK'],
+            'requester'       => (object)['fname' => 'Bob', 'lname' => 'Jones', 'email' => 'bob@example.com', 'id' => 2, 'city' => 'Paris', 'state' => '', 'country' => 'FR'],
+            'carInfo'         => (object)['id' => 42, 'year' => '1971', 'series' => 'S4', 'variant' => 'SE', 'chassis' => '<script>alert(1)</script>', 'color' => 'Yellow', 'engine' => 'Twin Cam'],
+            'transferRequest' => (object)['id' => 7, 'request_date' => '2026-01-15 10:00:00', 'expires_at' => '2026-01-22 10:00:00', 'submitted_comments' => ''],
+        ]);
+
+        $this->assertStringContainsString('&lt;script&gt;', $html);
+        $this->assertStringNotContainsString('<script>alert', $html);
+    }
+
+    public function testTransferResponseViewEscapesXssInAdminNotes(): void
+    {
+        $html = $this->renderView('_email_transfer_response.php', [
+            'requester'       => (object)['fname' => 'Bob', 'lname' => 'Jones', 'email' => 'bob@example.com', 'id' => 2, 'city' => 'Paris', 'state' => '', 'country' => 'FR'],
+            'carInfo'         => (object)['id' => 42, 'year' => '1971', 'series' => 'S4', 'variant' => 'SE', 'chassis' => 'ELAN/6/1234', 'color' => 'Yellow'],
+            'transferRequest' => (object)['id' => 7, 'request_date' => '2026-01-15 10:00:00', 'completed_date' => '2026-01-20 14:00:00'],
+            'isApproved'      => false,
+            'adminNotes'      => '<script>alert(1)</script>',
+            'carUrl'          => '/app/cars/detail.php?id=42',
+        ]);
+
+        $this->assertStringContainsString('&lt;script&gt;', $html);
+        $this->assertStringNotContainsString('<script>alert', $html);
+    }
+
+    public function testTransferPreviousOwnerViewEscapesXssInChassis(): void
+    {
+        $html = $this->renderView('_email_transfer_previous_owner.php', [
+            'previousOwner'   => (object)['fname' => 'Alice', 'lname' => 'Smith', 'email' => 'alice@example.com', 'id' => 1, 'city' => 'London', 'state' => '', 'country' => 'UK'],
+            'requester'       => (object)['fname' => 'Bob', 'lname' => 'Jones', 'email' => 'bob@example.com', 'id' => 2, 'city' => 'Paris', 'state' => '', 'country' => 'FR'],
+            'carInfo'         => (object)['id' => 42, 'year' => '1971', 'series' => 'S4', 'variant' => 'SE', 'chassis' => '<script>alert(1)</script>', 'color' => 'Yellow', 'engine' => 'Twin Cam'],
+            'transferRequest' => (object)['id' => 7, 'request_date' => '2026-01-15 10:00:00', 'completed_date' => '2026-01-20 14:00:00'],
+            'isApproved'      => true,
+            'adminNotes'      => '',
+        ]);
+
+        $this->assertStringContainsString('&lt;script&gt;', $html);
+        $this->assertStringNotContainsString('<script>alert', $html);
+    }
+
+    public function testTransferAdminViewEscapesXssInSubmittedComments(): void
+    {
+        $html = $this->renderView('_email_transfer_admin.php', [
+            'currentOwner'    => (object)['fname' => 'Alice', 'lname' => 'Smith', 'email' => 'alice@example.com', 'id' => 1, 'city' => 'London', 'state' => '', 'country' => 'UK'],
+            'requester'       => (object)['fname' => 'Bob', 'lname' => 'Jones', 'email' => 'bob@example.com', 'id' => 2, 'city' => 'Paris', 'state' => '', 'country' => 'FR'],
+            'carInfo'         => (object)['id' => 42, 'year' => '1971', 'series' => 'S4', 'variant' => 'SE', 'chassis' => 'ELAN/6/1234', 'color' => 'Yellow'],
+            'transferRequest' => (object)['id' => 7, 'request_date' => '2026-01-15 10:00:00', 'expires_at' => '2026-01-22 10:00:00', 'submitted_comments' => '<script>alert(1)</script>'],
+            'reviewUrl'       => '/admin/transfers/review.php?id=7',
+        ]);
+
+        $this->assertStringContainsString('&lt;script&gt;', $html);
+        $this->assertStringNotContainsString('<script>alert', $html);
+    }
 }

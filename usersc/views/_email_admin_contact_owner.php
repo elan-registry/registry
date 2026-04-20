@@ -55,7 +55,7 @@ $content = "
 ";
 
 if ($hasQualityIssue && $hasCarContext) {
-    $updateUrl = $us_url_root . 'app/cars/edit.php?id=' . (int)$carContext['id'];
+    $updateUrl = $us_url_root . 'app/cars/edit.php?car_id=' . (int)$carContext['id'];
     $content .= $emailTemplate->createButton('Update Your Car Record', $updateUrl, 'primary');
 } else {
     $content .= "

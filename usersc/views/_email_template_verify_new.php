@@ -17,12 +17,15 @@ require_once $abs_us_root . $us_url_root . 'usersc/classes/EmailTemplate.php';
 
 $emailTemplate = new EmailTemplate();
 
-// Build verification URL (UserSpice pre-builds $url as a relative path).
-// Guard against open-redirect if $url were ever influenced by attacker-controlled data:
-// reject anything with a scheme (e.g. javascript:, https://) or protocol-relative prefix (//host).
+// Build verification URL. UserSpice pre-builds $url as a server-relative path from trusted
+// server-side data, so direct user control is not expected. Guard against scheme-based or
+// protocol-relative redirects as defense-in-depth against future template reuse in other contexts.
 $baseUrl = getBaseUrl();
 $relPath = ltrim($url ?? '', '/');
 if (preg_match('#^[a-zA-Z][a-zA-Z0-9+\-.]*:|^//#', $relPath)) {
+    logger(0, LogCategories::LOG_CATEGORY_SECURITY,
+        '_email_template_verify_new.php: open-redirect guard triggered on $url: '
+        . preg_replace('/[\r\n\t]/', '', $url ?? ''));
     $relPath = 'users/verify_new.php';
 }
 $verifyUrl = $baseUrl . '/' . $relPath;
