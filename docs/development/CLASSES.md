@@ -575,6 +575,65 @@ $html = $template->buildEmail(
 - Footer with registry information
 - Responsive design for mobile devices
 
+### registrySendEmail()
+
+**Location**: `/usersc/includes/custom_functions.php`
+
+**Purpose**: Registry-specific email sender that sets the To: display name on
+both transport paths (Brevo and PHPMailer/SMTP). The UserSpice base `email()`
+function does not expose recipient name to `addAddress()`, which raises spam
+scores. Use this wrapper instead of `email()` when sending registry emails that
+need a named recipient.
+
+**Signature**:
+
+```php
+function registrySendEmail(
+    string $to,
+    string $toName,
+    string $subject,
+    string $body,
+    array $opts = []
+): mixed
+```
+
+**Parameters**:
+
+| Parameter | Description |
+| --------- | ----------- |
+| `$to` | Recipient email address |
+| `$toName` | Recipient display name (used in `To:` header) |
+| `$subject` | Email subject line |
+| `$body` | HTML email body |
+| `$opts` | Optional: `['reply' => '...']` or `['replyTo' => '...']` |
+
+**Returns**: `true` on success; error string (Brevo) or `false` (PHPMailer) on failure.
+
+**Example**:
+
+```php
+$body = email_body('_email_contact_owner.php', $options);
+$result = registrySendEmail(
+    $ownerEmail,
+    $ownerName,
+    '[ELANREGISTRY] You have a message',
+    $body,
+    ['replyTo' => $senderEmail]
+);
+if ($result !== true) {
+    // log failure
+}
+```
+
+**Transport Paths**:
+
+- **Brevo** (when `sendinblue()` exists): delegates to `sendinblue($to, $subject, $body, $toName, $opts)` — the 4th argument is the display name
+- **PHPMailer/SMTP**: constructs the message directly with `$mail->addAddress($to, $toName)`
+
+> **Note**: A known upstream bug in the Brevo plugin's `override.php` passes `""` as `$to_name`
+> to the Brevo API. See issue #601 and the TODO comment in `custom_functions.php` for what to
+> review when #601 is resolved.
+
 ### MarkdownParser
 
 **Location**: `/usersc/classes/MarkdownParser.php`

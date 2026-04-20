@@ -1,6 +1,6 @@
 # Elan Registry v2.17.0 Release Notes
 
-**Release Date:** TBD
+**Release Date:** 2026-04-20
 **Type:** Patch Release - Email Template Modernization
 
 ## Required Actions After Deployment
@@ -98,9 +98,12 @@ None.
   POST values, preventing false change detection if the LocationPicker JS fails.
   Added a `$geocodingAttempted` flag so the "Geocoding failed" log only fires
   when geocoding was actually called, not on every save with no location change.
-- **Open-redirect guard now logs security events** in `_email_template_verify_new.php`:
-  Added a `logger()` call under `LOG_CATEGORY_SECURITY` when the scheme-rejection
-  guard triggers, making security events visible in the admin log.
+- **Email change verification URL corrected** in `_email_template_verify_new.php`:
+  The verify button now links to the correct endpoint with all required parameters
+  (`users/verify.php?new=1&email=...&vericode=...&user_id=...`). Previously the URL
+  was built from a `$url` variable that was never passed in options, causing the
+  button to link to just the base URL. URL is now built from trusted server-side
+  components, eliminating any open-redirect risk.
 
 ## Issues Resolved
 
