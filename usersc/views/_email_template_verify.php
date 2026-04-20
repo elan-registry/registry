@@ -31,15 +31,17 @@ $content = "
     <p>Or copy and paste this link into your browser:</p>
     <p style=\"word-break:break-all;font-size:13px;color:#6c757d;\">" . htmlspecialchars($verifyUrl, ENT_QUOTES, 'UTF-8') . "</p>
 
-    <p><small>This verification link expires in <strong>" . htmlspecialchars((string)$join_vericode_expiry, ENT_QUOTES, 'UTF-8') . " hours</strong>. If you did not register an account, you can safely ignore this email.</small></p>
+    <p>This verification link expires in <strong>" . htmlspecialchars((string)$join_vericode_expiry, ENT_QUOTES, 'UTF-8') . " hours</strong>.</p>
 
     <h3>Welcome to the Registry</h3>
     <ul>
-        <li>Register your Lotus Elan(s) in the worldwide database</li>
-        <li>Connect with other Elan owners around the globe</li>
-        <li>Access the complete registry history and documentation</li>
-        <li>Manage ownership records and car details</li>
+        <li>Add your Lotus Elan to the worldwide registry database</li>
+        <li>Connect with other owners — including previous custodians of your car</li>
+        <li>Explore chassis records, build details, and ownership history</li>
+        <li>Help preserve the history of your car for future owners</li>
     </ul>
+
+    <p>If you did not register an account, you can safely ignore this email.</p>
 ";
 
 // Generate the complete email

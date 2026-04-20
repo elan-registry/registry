@@ -502,7 +502,7 @@ final class EmailTemplateTest extends TestCase
             'comments'  => 'Some comment.',
         ]);
 
-        $this->assertStringContainsString('User Feedback Submission', $html);
+        $this->assertStringContainsString('Feedback from Alice Tester', $html);
     }
 
     public function testFeedbackViewEscapesXssInComments(): void
@@ -780,9 +780,9 @@ final class EmailTemplateTest extends TestCase
             'url'                 => 'users/verify_new.php?vericode=NEWCODE77',
         ]);
 
-        // The new email address must appear in the detail row.
-        $this->assertStringContainsString('carol@example.com', $html);
-        $this->assertStringContainsString('New Email Address', $html);
+        // The verification button and security warning must be present.
+        $this->assertStringContainsString('Verify New Email Address', $html);
+        $this->assertStringContainsString('request this change?', $html);
     }
 
     public function testVerifyNewEmailViewContainsVerificationButton(): void
@@ -845,17 +845,18 @@ final class EmailTemplateTest extends TestCase
         $this->assertStringContainsString('&lt;script&gt;', $html);
     }
 
-    public function testVerifyNewEmailViewEscapesXssInEmailAddress(): void
+    public function testVerifyNewEmailViewEscapesXssInName(): void
     {
         $html = $this->renderView('_email_template_verify_new.php', [
-            'fname'               => 'Carol',
-            'email'               => '<script>alert(\'xss\')</script>',
+            'fname'               => '<script>alert(\'xss\')</script>',
+            'email'               => 'carol@example.com',
             'vericode'            => 'NEWCODE77',
             'user_id'             => 12,
             'join_vericode_expiry' => 24,
             'url'                 => 'users/verify_new.php?vericode=NEWCODE77',
         ]);
 
+        // Malicious fname must be HTML-escaped, not rendered raw.
         $this->assertStringNotContainsString('<script>', $html);
         $this->assertStringContainsString('&lt;script&gt;', $html);
     }

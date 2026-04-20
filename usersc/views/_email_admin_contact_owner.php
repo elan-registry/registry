@@ -13,12 +13,13 @@ require_once $abs_us_root . $us_url_root . 'usersc/classes/EmailTemplate.php';
 
 $emailTemplate = new EmailTemplate();
 
-// Build administrator details
+$hasQualityIssue = !empty($qualityIssue);
+$hasCarContext   = !empty($carContext['id']);
+
 $adminDetails =
     $emailTemplate->createDetailRow('Name', $from) .
     $emailTemplate->createDetailRow('Role', 'Registry Administrator');
 
-// Build car context details (conditional)
 $carContextBox = '';
 if (isset($carContext) && $carContext) {
     $carDetails = $emailTemplate->createDetailRow('Car ID', $carContext['id']);
@@ -28,7 +29,7 @@ if (isset($carContext) && $carContext) {
     if (isset($carContext['chassis'])) {
         $carDetails .= $emailTemplate->createDetailRow('Chassis', $carContext['chassis']);
     }
-    if (isset($qualityIssue)) {
+    if ($hasQualityIssue) {
         $carDetails .= $emailTemplate->createDetailRow('Issue', $qualityIssue);
     }
     $carContextBox = $emailTemplate->createMessageBox('Related to Your Car', $carDetails, 'default');
@@ -36,11 +37,12 @@ if (isset($carContext) && $carContext) {
 
 $registryUrl = htmlspecialchars(getBaseUrl(), ENT_QUOTES, 'UTF-8');
 
-// Build main content
 $content = "
     <p>Hello <strong>" . htmlspecialchars($to, ENT_QUOTES, 'UTF-8') . "</strong>,</p>
 
-    <p>A Registry Administrator has sent you a message regarding your car registration in the Lotus Elan Registry.</p>
+    " . ($hasQualityIssue
+        ? '<p>A Registry Administrator has flagged a data issue with one of your car registrations and needs your help to correct it.</p>'
+        : '<p>A Registry Administrator has sent you a message regarding your car registration.</p>') . "
 
     " . $emailTemplate->createMessageBox('From Registry Administrator', $adminDetails, 'default') . "
 
@@ -49,10 +51,18 @@ $content = "
     " . $emailTemplate->createMessageBox('Administrator Message',
         $emailTemplate->createMessageContent($message), 'message') . "
 
-    <p>If this message is regarding data quality in your car registration, please consider updating your car details at: <a href=\"{$registryUrl}\">{$registryUrl}</a></p>
+    <p>To respond, simply reply to this email.</p>
 ";
 
-// Generate the complete email
+if ($hasQualityIssue && $hasCarContext) {
+    $updateUrl = $us_url_root . 'app/cars/edit.php?id=' . (int)$carContext['id'];
+    $content .= $emailTemplate->createButton('Update Your Car Record', $updateUrl, 'primary');
+} else {
+    $content .= "
+    <p>Visit the registry at: <a href=\"{$registryUrl}\">{$registryUrl}</a></p>
+";
+}
+
 echo $emailTemplate->render(
     'Lotus Elan Registry - Administrator Message',
     'Administrator Message',

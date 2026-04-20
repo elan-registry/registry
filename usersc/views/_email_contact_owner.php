@@ -17,7 +17,7 @@ $emailTemplate = new EmailTemplate();
 $content = "
     <p>Hello <strong>" . htmlspecialchars($to, ENT_QUOTES, 'UTF-8') . "</strong>,</p>
 
-    <p>Another Elan owner has sent you a message through the Lotus Elan Registry.</p>
+    <p>You've got a message from a fellow Lotus Elan owner.</p>
 
     " . $emailTemplate->createMessageBox('From Owner', $emailTemplate->createDetailRow('Name', $from)) . "
 
@@ -28,7 +28,7 @@ $content = "
 
 // Generate the complete email
 echo $emailTemplate->render(
-    '[ELANREGISTRY] Owner to Owner Message',
+    'A fellow Elan owner sent you a message',
     'Owner to Owner Message',
     $content,
     ['footer_text' => 'This message was sent through the registry contact system. Reply to this email to respond directly to the sender.']

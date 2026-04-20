@@ -19,13 +19,15 @@ $ownerDetails =
 
 $messageHtml = $emailTemplate->createMessageContent($comments, true);
 
-$content =
+$content = "
+    <p>A registry member has submitted feedback.</p>
+" .
     $emailTemplate->createMessageBox('Owner Details', $ownerDetails, 'default') .
     $emailTemplate->createMessageBox('Feedback Message', $messageHtml, 'message');
 
 echo $emailTemplate->render(
     '[ELANREGISTRY] User Feedback',
-    'User Feedback Submission',
+    'Feedback from ' . htmlspecialchars($name, ENT_QUOTES, 'UTF-8'),
     $content,
     ['footer_text' => 'This is an automated message from the registry feedback system.']
 );
