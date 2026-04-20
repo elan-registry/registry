@@ -354,6 +354,65 @@ if ($carModel->exists('S4', 'FHC', '36')) {
 - Backend validates model combination exists via CarModel::exists()
 - No data migration of existing cars required
 
+## Security Scanning (Semgrep)
+
+Semgrep runs automatically on every PR via GitHub App Managed Scan
+(`semgrep-cloud-platform/scan` check). PRs that introduce new findings will
+fail the check. The dashboard at semgrep.dev/orgs/jim_unibrain_org shows all
+open findings for all repos.
+
+### Fetch open findings for this repo
+
+```bash
+bash scripts/semgrep-dump.sh
+```
+
+Requires 1Password CLI (`op`). Token stored at
+`op://HomeLab/SEMGREP_APP_TOKEN/credential` — must have **Web API** scope.
+
+### Periodic triage (keep the dashboard clean)
+
+Run after a milestone or when findings accumulate:
+
+1. Pull findings: `bash scripts/semgrep-dump.sh`
+2. Review each rule against the actual code — check for int casts, `htmlspecialchars()`, whitelist validation, etc.
+3. Bulk-mark confirmed false positives via the API:
+
+```bash
+SEMGREP_APP_TOKEN=$(op read "op://HomeLab/SEMGREP_APP_TOKEN/credential")
+curl -s -X POST "https://semgrep.dev/api/v1/deployments/jim_unibrain_org/triage" \
+  --header "Authorization: Bearer $SEMGREP_APP_TOKEN" \
+  --header "Content-Type: application/json" \
+  -d '{
+    "issue_ids": ["id1","id2"],
+    "issue_type": "sast",
+    "new_triage_state": "ignored",
+    "new_triage_reason": "false_positive",
+    "note": "Reason it is safe"
+  }'
+```
+
+1. Create GitHub issues for confirmed real findings; assign to appropriate milestone.
+
+### What is excluded from scanning
+
+See `.semgrepignore` in the repo root. Key exclusions:
+
+- `users/` — UserSpice framework core (not our code)
+- `FIX/` — one-time admin migration scripts
+- `docs/stories/` — archived third-party HTML
+- `vendor/`, `node_modules/` — dependencies
+- `tests/`, `database/4-sample-data.sql` — test fixtures
+
+### Common false positive patterns in this codebase
+
+| Semgrep rule | Why it fires | Why it's safe |
+| --- | --- | --- |
+| `taint-unsafe-echo-tag` | Follows `$_REQUEST` source | Output is int-cast or wrapped in `htmlspecialchars()` |
+| `tainted-sql-string` | Follows input through exception handlers | Actual DB calls use prepared statements via `ElanRegistryOwner` |
+| `tainted-filename` | Flags `basename()` as insufficient | `basename()` + extension check + directory validation is sufficient |
+| `tainted-path-traversal` | Flags `include` with derived path | `$activeTab` validated against `$validTabs` whitelist before use |
+
 ## Troubleshooting
 
 | Problem | Solution |
