@@ -370,7 +370,7 @@ class EmailTemplate
     <table role=\"presentation\" border=\"0\" cellpadding=\"0\" cellspacing=\"0\" width=\"100%\" style=\"background-color: #f4f4f4;\">
         <tr>
             <td align=\"center\" valign=\"top\">
-                <table role=\"presentation\" border=\"0\" cellpadding=\"0\" cellspacing=\"0\" width=\"600\" style=\"width: 600px; max-width: 600px; background-color: #ffffff;\">
+                <table role=\"presentation\" border=\"0\" cellpadding=\"0\" cellspacing=\"0\" width=\"600\" style=\"width: 600px; background-color: #ffffff;\">
                     <tr>
                         <td>
                             <div class=\"header\" style=\"background-color: #029acf; color: #ffffff; padding: 20px; text-align: center;\">
@@ -388,7 +388,7 @@ class EmailTemplate
                                 <p><a href=\"{$safeBaseUrl}\">{$safeBaseUrl}</a></p>
                                 <p>Preserving the legacy of Colin Chapman's masterpiece since 2003</p>
                                 <hr style=\"border: none; border-top: 1px solid #dee2e6; margin: 15px 0;\">
-                                <p><small>{$safeFooter}</small></p>
+                                <p><span style=\"font-size: 12px;\">{$safeFooter}</span></p>
                             </div>
                         </td>
                     </tr>
