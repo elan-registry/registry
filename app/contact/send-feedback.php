@@ -29,20 +29,8 @@ if (isset($_POST['email'])) {
         exit;
     }
 
-    // EDIT THE 2 LINES BELOW AS REQUIRED
     $email_to = getFeedbackEmail();
     $email_subject = "[ELANREGISTRY] Feedback";
-
-    function died($error): void
-    {
-        // your error code can go here
-        echo "We are very sorry, but there were error(s) found with the form you submitted. ";
-        echo "These errors appear below.<br /><br />";
-        echo $error . "<br /><br />";
-        echo "Please go back and fix these errors.<br /><br />";
-        die();
-    }
-
 
     // Get and validate form data using secure Input::get()
     $name = Input::get('name');
@@ -99,20 +87,22 @@ if (isset($_POST['email'])) {
     // Generate email body using template
     $body = email_body('_email_feedback.php', $template);
 
-    // Set reply-to so admin can reply directly to the feedback sender.
-    // Call sendinblue() directly when available (test/prod); fall back to PHPMailer email() (dev).
-    if (function_exists('sendinblue')) {
-        $email_sent = sendinblue($email_to, $email_subject, $body, $name, [
-            'reply'      => $email_from,
-            'reply_name' => $name,
-        ]);
+    // Send via registrySendEmail() so the To: header includes the admin display name
+    // on both the Brevo and PHPMailer/SMTP paths. Reply-to is set to the submitter
+    // so the admin can reply directly. See custom_functions.php for implementation.
+    $email_sent = registrySendEmail($email_to, 'Elan Registry', $email_subject, $body, [
+        'reply'      => $email_from,
+        'reply_name' => $name,
+    ]);
+
+    // sendinblue() returns true on success, error string on failure.
+    // email() (PHPMailer fallback) returns true on success, false on failure.
+    if ($email_sent !== true) {
+        $resultStr = is_string($email_sent) ? $email_sent : 'unknown delivery error';
+        logger(1, LogCategories::LOG_CATEGORY_FEEDBACK_FORM, "Error sending feedback email: " . $resultStr);
     } else {
-        $email_sent = email($email_to, $email_subject, $body, ['replyTo' => $email_from]);
+        logger(1, LogCategories::LOG_CATEGORY_FEEDBACK_FORM, "Complete: sent to " . $email_to . " with subject '" . $email_subject . "'");
     }
-    if (!$email_sent) {
-        logger(1, LogCategories::LOG_CATEGORY_FEEDBACK_FORM, "Error sending email");
-    }
-    logger(1, LogCategories::LOG_CATEGORY_FEEDBACK_FORM, "Complete: sent to " . $email_to . " with subject '" . $email_subject . "'");
 }
 
 ?>
