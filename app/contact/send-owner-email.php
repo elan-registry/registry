@@ -83,21 +83,19 @@ if (Input::exists('post')) {
 
             $body = email_body('_email_contact_owner.php', $template);
 
-            // Validate email format before using as reply-to header (defense-in-depth against
-            // header injection, even though $fromEmail is sourced from the users table).
-            // Call sendinblue() directly to set reply-to: the override.php wrapper places $to_name
-            // before $options, requiring an empty display-name argument. Direct call is cleaner
-            // and avoids coupling to wrapper internals. See docs/bugs/userspice-brevo-override-signature-bug.txt.
-            if (filter_var($fromEmail, FILTER_VALIDATE_EMAIL)) {
-                if (function_exists('sendinblue')) {
-                    $result = sendinblue($toEmail, $subject, $body, '', ['reply' => $fromEmail]);
-                } else {
-                    $result = email($toEmail, $subject, $body, ['replyTo' => $fromEmail]);
-                }
-            } else {
+            // Validate email format before using as reply-to (defense-in-depth;
+            // $fromEmail comes from the database but we guard anyway).
+            $replyOpts = filter_var($fromEmail, FILTER_VALIDATE_EMAIL)
+                ? ['reply' => $fromEmail]
+                : [];
+
+            if (!filter_var($fromEmail, FILTER_VALIDATE_EMAIL)) {
                 logger($user->data()->id, LogCategories::LOG_CATEGORY_ELAN_REGISTRY, "contact_owner_email.php invalid fromEmail for reply-to: " . preg_replace('/[\r\n\t]/', '', $fromEmail));
-                $result = email($toEmail, $subject, $body);
             }
+
+            // registrySendEmail() handles both the Brevo (sendinblue) and PHPMailer (SMTP)
+            // paths, setting the To: display name on both. See custom_functions.php.
+            $result = registrySendEmail($toEmail, $toName, $subject, $body, $replyOpts);
 
             // sendinblue() returns true on success, error string on failure.
             // email() (PHPMailer fallback) returns true on success, false on failure.

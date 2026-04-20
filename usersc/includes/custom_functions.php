@@ -228,5 +228,74 @@ function currentUserId(): int
 }
 
 
+/**
+ * Send a registry email with recipient name in the To: header.
+ *
+ * The UserSpice base email() function does not expose recipient name to PHPMailer's
+ * addAddress(), causing To: headers without display names and higher spam scores.
+ * This wrapper fixes that for both transport paths:
+ *
+ * - Brevo (sendinblue plugin active): delegates to sendinblue() with $toName as
+ *   the 4th positional argument, which Brevo passes as the To: display name.
+ * - PHPMailer (SMTP, e.g. Mailtrap): constructs the message directly so
+ *   addAddress($to, $toName) can be called with the display name.
+ *
+ * Supported $opts keys (both paths):
+ *   'reply'   => string  Reply-to address (Brevo native key, also mapped for PHPMailer)
+ *   'replyTo' => string  Reply-to address (PHPMailer/UserSpice key)
+ *
+ * @param string $to      Recipient email address
+ * @param string $toName  Recipient display name (used in To: header)
+ * @param string $subject SMTP subject line
+ * @param string $body    HTML email body
+ * @param array  $opts    Optional: ['reply' => '', 'replyTo' => '']
+ * @return true|string    true on success; error string (Brevo) or false (PHPMailer) on failure
+ */
+function registrySendEmail(string $to, string $toName, string $subject, string $body, array $opts = []): mixed
+{
+    if (function_exists('sendinblue')) {
+        return sendinblue($to, $subject, $body, $toName, $opts);
+    }
+
+    // PHPMailer path: replicate UserSpice email() setup with named recipient
+    global $db;
+    $settings = $db->query('SELECT * FROM email')->first();
+
+    $mail = new \PHPMailer\PHPMailer\PHPMailer();
+    $mail->CharSet   = 'UTF-8';
+    $mail->SMTPDebug = $settings->debug_level;
+    $mail->XMailer   = null;
+    $mail->Timeout   = 10;
+
+    if ($settings->isSMTP == 1) {
+        $mail->isSMTP();
+    }
+    $mail->Host       = $settings->smtp_server;
+    $mail->SMTPAuth   = $settings->useSMTPauth;
+    $mail->Username   = $settings->email_login;
+    $mail->Password   = html_entity_decode($settings->email_pass);
+    $mail->SMTPSecure = $settings->transport;
+    $mail->Port       = $settings->smtp_port;
+
+    if ($settings->authtype != '') {
+        $mail->AuthType = $settings->authtype;
+    }
+
+    $mail->setFrom($settings->from_email, $settings->from_name);
+
+    $replyTo = $opts['reply'] ?? $opts['replyTo'] ?? null;
+    if ($replyTo !== null) {
+        $mail->addReplyTo($replyTo);
+    }
+
+    $mail->addAddress($to, $toName);
+
+    $mail->isHTML(true);
+    $mail->Subject = $subject;
+    $mail->Body    = $body;
+
+    return $mail->send();
+}
+
 // We need server globals in custom functions as it's used early in the load process.
 require_once $abs_us_root . $us_url_root . 'usersc/includes/server_globals.php';
