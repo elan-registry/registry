@@ -1,4 +1,7 @@
 <?php
+
+declare(strict_types=1);
+
 /**
  * Email Change Verification Email Template (Branded Override)
  *

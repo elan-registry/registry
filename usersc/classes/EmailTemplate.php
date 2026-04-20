@@ -117,8 +117,15 @@ class EmailTemplate
         </div>";
     }
 
+    // ---------------------------------------------------------------
+    // Message box style helpers
+    // ---------------------------------------------------------------
+
     /**
      * Get CSS class for message box style
+     *
+     * @param string $style Box style: 'message', 'alert', 'success', or 'default'
+     * @return string CSS class string
      */
     private function getBoxStyleClass(string $style): string
     {
@@ -174,6 +181,10 @@ class EmailTemplate
         return "background-color: #f8f9fa; border: 2px solid {$color}; padding: 20px; margin: 20px 0;";
     }
 
+    // ---------------------------------------------------------------
+    // Button style helpers
+    // ---------------------------------------------------------------
+
     /**
      * Get inline CSS styles for button based on style type
      *
@@ -191,6 +202,10 @@ class EmailTemplate
         $bg = $colors[$style] ?? $colors['primary'];
         return "display: inline-block; background-color: {$bg}; color: #ffffff; padding: 12px 24px; text-decoration: none; font-weight: bold; text-align: center;";
     }
+
+    // ---------------------------------------------------------------
+    // HTML template
+    // ---------------------------------------------------------------
 
     /**
      * Base HTML template with registry branding and CSS
