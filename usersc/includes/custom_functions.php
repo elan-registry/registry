@@ -253,6 +253,12 @@ function currentUserId(): int
  */
 function registrySendEmail(string $to, string $toName, string $subject, string $body, array $opts = []): mixed
 {
+    // TODO (#601): When the Brevo override.php signature is fixed, this direct sendinblue()
+    // call may need updating. The accepted fix in #601 passes "" as $to_name:
+    //   return sendinblue($to, $subject, $body, "", $brevo_opts);
+    // If recipient display name support is still needed after the fix, either add a
+    // 'to_name' key to the opts translation in override.php, or keep calling
+    // sendinblue() directly here. Review this method when #601 is resolved.
     if (function_exists('sendinblue')) {
         return sendinblue($to, $subject, $body, $toName, $opts);
     }
