@@ -11,6 +11,13 @@ None.
 
 ### Bug Fixes
 
+- **False location change detection on settings save**
+  ([#644](https://github.com/unibrain1/elanregistry/issues/644)):
+  Changing only email or other non-location fields on the account settings page
+  no longer triggers a spurious geocoding lookup or "Geocoding failed" log entry.
+  The fix preserves existing location data when the LocationPicker JS fails to
+  populate hidden inputs (e.g. if JavaScript is disabled).
+
 - **Email rendering in Outlook and Gmail mobile**
   ([#597](https://github.com/unibrain1/elanregistry/issues/597)):
   All registry emails now render correctly in Outlook for Windows and Gmail on
@@ -84,6 +91,13 @@ None.
   The success confirmation is now shown only when email delivery succeeds. On
   failure, an error message is displayed and the failure is logged under
   `LOG_CATEGORY_EMAIL_ERROR`.
+- **Location change detection hardened** in `usersc/user_settings.php`
+  ([#644](https://github.com/unibrain1/elanregistry/issues/644)):
+  Added server-side fallback: when all location POST fields are empty but the
+  user has existing location data, the DB values are used instead of the empty
+  POST values, preventing false change detection if the LocationPicker JS fails.
+  Added a `$geocodingAttempted` flag so the "Geocoding failed" log only fires
+  when geocoding was actually called, not on every save with no location change.
 - **Open-redirect guard now logs security events** in `_email_template_verify_new.php`:
   Added a `logger()` call under `LOG_CATEGORY_SECURITY` when the scheme-rejection
   guard triggers, making security events visible in the admin log.
@@ -93,9 +107,11 @@ None.
 - [#324](https://github.com/unibrain1/elanregistry/issues/324) — Migrate existing email functionality to centralized EmailTemplate system
 - [#597](https://github.com/unibrain1/elanregistry/issues/597) — fix: improve email template HTML compatibility for Outlook and Gmail mobile
 - [#638](https://github.com/unibrain1/elanregistry/issues/638) — send-feedback.php delivery failure check dead code
+- [#644](https://github.com/unibrain1/elanregistry/issues/644) — user_settings.php: location change falsely detected when only email changes
 
 ## Summary
 
-3 issues resolved, fixing email rendering across major clients, migrating all
-registry emails to a consistent centralized template system, and hardening the
-email send path with correct failure detection and spam score reduction.
+4 issues resolved, fixing email rendering across major clients, migrating all
+registry emails to a consistent centralized template system, hardening the
+email send path with correct failure detection and spam score reduction, and
+fixing false location change detection on the account settings page.

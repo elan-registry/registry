@@ -160,11 +160,22 @@ if (!empty($_POST)) {
         // Extend user_setttings.php with some PROFILE information
         // Update Location (city, state, country, lat, lon)
         $locationChanged = false;
+        $geocodingAttempted = false;
         $newCity = Input::get('city');
         $newState = Input::get('state');
         $newCountry = Input::get('country');
         $newLat = Input::get('lat');
         $newLon = Input::get('lon');
+
+        // If all location fields are empty but the user has existing location data,
+        // JS pre-population likely failed — preserve existing values to prevent false change detection
+        if (empty($newCity) && empty($newCountry) && !empty($profiledetails->city)) {
+            $newCity    = $profiledetails->city;
+            $newState   = $profiledetails->state ?? '';
+            $newCountry = $profiledetails->country;
+            $newLat     = (string)($profiledetails->lat ?? '');
+            $newLon     = (string)($profiledetails->lon ?? '');
+        }
 
         // Check if any location field changed
         if ($profiledetails->city != $newCity ||
@@ -211,6 +222,7 @@ if (!empty($_POST)) {
                 } else {
                     // Fallback to old geocoding method if coordinates not provided
                     /** @deprecated Fallback only - location picker should provide coordinates */
+                    $geocodingAttempted = true;
                     $geoResult = ElanRegistryOwner::geocodeAddress($newCity, $newState, $newCountry);
                     if (!empty($geoResult)) {
                         $locationFields = array_merge($locationFields, $geoResult);
@@ -288,7 +300,7 @@ if (!empty($_POST)) {
                     logger((int)$user->data()->id, LogCategories::LOG_CATEGORY_USER, "Location sync: Updated $carsUpdated cars with new coordinates");
                 }
             }
-        } else {
+        } elseif ($geocodingAttempted) {
             logger((int)$user->data()->id, LogCategories::LOG_CATEGORY_USER, 'Geocoding failed - preserving existing lat/lon coordinates');
         }
 
