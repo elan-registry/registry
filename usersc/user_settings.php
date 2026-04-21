@@ -369,6 +369,9 @@ if (!empty($_POST)) {
                                 $body =  email_body('_email_template_verify_new.php', $options);
                                 $email_sent = email($email, $subject, $body);
                                 if ($email_sent !== true) {
+                                    $safeToLog = preg_replace('/[\r\n\t]/', '', $email);
+                                    logger($userId, LogCategories::LOG_CATEGORY_EMAIL_ERROR,
+                                        'user_settings.php: verify-email SEND FAILED for user ' . $userId . ' to ' . $safeToLog);
                                     $errors[] = 'Email NOT sent due to error. Please contact site administrator.';
                                 } else {
                                     $successes[] = "Email request received. Please check your email to perform verification. Be sure to check your Spam and Junk folder as the verification link expires in {$settings->join_vericode_expiry} hours.";

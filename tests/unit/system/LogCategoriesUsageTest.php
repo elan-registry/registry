@@ -171,6 +171,25 @@ class LogCategoriesUsageTest extends TestCase
     }
 
     /**
+     * Regression test for Issue #657: user_settings.php must log verify-email delivery failures.
+     */
+    public function testUserSettingsPhpLogsEmailFailure(): void
+    {
+        $filePath = $this->rootDir . '/usersc/user_settings.php';
+        if (!file_exists($filePath)) {
+            $this->markTestSkipped('user_settings.php not found');
+        }
+
+        $content = file_get_contents($filePath);
+
+        $this->assertStringContainsString(
+            'LogCategories::LOG_CATEGORY_EMAIL_ERROR',
+            $content,
+            'user_settings.php must log verify-email failures using LogCategories::LOG_CATEGORY_EMAIL_ERROR (Issue #657)'
+        );
+    }
+
+    /**
      * Data provider for car endpoint files
      */
     public static function carEndpointFilesProvider(): array
