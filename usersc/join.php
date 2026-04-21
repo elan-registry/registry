@@ -217,8 +217,12 @@ if (Input::exists()) {
                     $to = rawurlencode($email);
                     $subject = html_entity_decode($settings->site_name, ENT_QUOTES);
                     $body = email_body('_email_template_verify.php', $params);
-                    email($to, $subject, $body);
-                    
+                    $email_result = email($to, $subject, $body);
+                    if ($email_result !== true) {
+                        $safeToLog = preg_replace('/[\r\n\t]/', '', $email);
+                        logger($theNewId, LogCategories::LOG_CATEGORY_EMAIL_ERROR,
+                            'join.php: Registration verification email SEND FAILED to ' . $safeToLog);
+                    }
                 }
             } catch (Exception $e) {
                 // Record failed registration attempt
