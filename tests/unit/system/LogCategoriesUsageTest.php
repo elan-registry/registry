@@ -171,6 +171,30 @@ class LogCategoriesUsageTest extends TestCase
     }
 
     /**
+     * Regression test for Issue #656: partial admin alert failure must use LOG_CATEGORY_EMAIL_ERROR.
+     */
+    public function testTransferAdminAlertLogsPartialFailureUnderErrorCategory(): void
+    {
+        $filePath = $this->rootDir . '/usersc/includes/transfer_email_notifications.php';
+        if (!file_exists($filePath)) {
+            $this->markTestSkipped('transfer_email_notifications.php not found');
+        }
+
+        $content = file_get_contents($filePath);
+
+        $this->assertStringContainsString(
+            '$failCount',
+            $content,
+            'sendTransferRequestAdminAlert() must track $failCount for partial-failure logging (Issue #656)'
+        );
+        $this->assertMatchesRegularExpression(
+            '/logger\s*\([^,]+,\s*LogCategories::LOG_CATEGORY_EMAIL_ERROR[^)]*\$failCount/',
+            $content,
+            'Partial admin alert failure must log under LOG_CATEGORY_EMAIL_ERROR with $failCount (Issue #656)'
+        );
+    }
+
+    /**
      * Regression test for Issue #657: user_settings.php must log verify-email delivery failures.
      */
     public function testUserSettingsPhpLogsEmailFailure(): void
