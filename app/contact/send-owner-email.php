@@ -95,7 +95,7 @@ if (Input::exists('post')) {
                 // Validate email format before using as reply-to (defense-in-depth;
                 // $fromEmail comes from the database but we guard anyway).
                 $replyOpts = filter_var($fromEmail, FILTER_VALIDATE_EMAIL)
-                    ? ['reply' => $fromEmail]
+                    ? ['reply' => $fromEmail, 'reply_name' => $fromName]
                     : [];
 
                 if (!filter_var($fromEmail, FILTER_VALIDATE_EMAIL)) {
