@@ -80,10 +80,6 @@ if (!empty($_POST)) {
                             <div class="mb-2">
                                 <strong><?= $to['fname'] . ' ' . $to['lname'] ?></strong>
                             </div>
-                            <div class="text-muted">
-                                <i class="fas fa-envelope"></i> <?= $to['email'] ?>
-                            </div>
-                            <small class="text-muted">User ID: <?= $to['id'] ?></small>
                         </div>
                     </div>
                 </div>
