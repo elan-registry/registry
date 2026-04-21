@@ -98,6 +98,9 @@ function sendTransferRequestNotification(int $transferRequestId): bool
         }
 
     } catch (Exception $e) {
+        if (ob_get_level() > 0) {
+            ob_end_clean();
+        }
         logger(0, LogCategories::LOG_CATEGORY_EMAIL_ERROR, sprintf(
             "Transfer request notification error [%s] in %s:%d: %s",
             get_class($e), $e->getFile(), $e->getLine(), $e->getMessage()
@@ -219,6 +222,9 @@ function sendTransferRequestAdminAlert(int $transferRequestId): bool
         return $successCount > 0;
 
     } catch (Exception $e) {
+        if (ob_get_level() > 0) {
+            ob_end_clean();
+        }
         logger(0, LogCategories::LOG_CATEGORY_EMAIL_ERROR, sprintf(
             "Transfer admin alert error [%s] in %s:%d: %s",
             get_class($e), $e->getFile(), $e->getLine(), $e->getMessage()
@@ -309,6 +315,9 @@ function sendTransferResponseNotification(int $transferRequestId, bool $isApprov
         return $requesterNotificationSent || $previousOwnerNotificationSent;
 
     } catch (Exception $e) {
+        if (ob_get_level() > 0) {
+            ob_end_clean();
+        }
         logger(0, LogCategories::LOG_CATEGORY_EMAIL_ERROR, sprintf(
             "Transfer response notification error [%s] in %s:%d: %s",
             get_class($e), $e->getFile(), $e->getLine(), $e->getMessage()
@@ -408,6 +417,9 @@ function sendTransferPreviousOwnerNotification(int $transferRequestId, bool $isA
         }
 
     } catch (Exception $e) {
+        if (ob_get_level() > 0) {
+            ob_end_clean();
+        }
         logger(0, LogCategories::LOG_CATEGORY_EMAIL_ERROR, sprintf(
             "Transfer previous owner notification error [%s] in %s:%d: %s",
             get_class($e), $e->getFile(), $e->getLine(), $e->getMessage()

@@ -218,20 +218,20 @@ class LogCategoriesUsageTest extends TestCase
 
         $content = file_get_contents($filePath);
 
-        $this->assertStringContainsString(
-            'get_class($e)',
-            $content,
-            'transfer_email_notifications.php catch blocks must include get_class($e) for exception class (Issue #655)'
+        $this->assertSame(
+            4,
+            substr_count($content, 'get_class($e)'),
+            'All 4 catch blocks in transfer_email_notifications.php must include get_class($e) (Issue #655)'
         );
-        $this->assertStringContainsString(
-            '$e->getFile()',
-            $content,
-            'transfer_email_notifications.php catch blocks must include $e->getFile() (Issue #655)'
+        $this->assertSame(
+            4,
+            substr_count($content, '$e->getFile()'),
+            'All 4 catch blocks in transfer_email_notifications.php must include $e->getFile() (Issue #655)'
         );
-        $this->assertStringContainsString(
-            '$e->getLine()',
-            $content,
-            'transfer_email_notifications.php catch blocks must include $e->getLine() (Issue #655)'
+        $this->assertSame(
+            4,
+            substr_count($content, '$e->getLine()'),
+            'All 4 catch blocks in transfer_email_notifications.php must include $e->getLine() (Issue #655)'
         );
     }
 
