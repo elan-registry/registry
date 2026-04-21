@@ -11,14 +11,6 @@ release notes, and recommending an issue order.
 
 - `$ARGUMENTS` — the milestone version number (e.g., `v2.17.0`)
 
-## Available Agents
-
-| Agent Type | `subagent_type` | Model | Use When |
-| --- | --- | --- | --- |
-| **Senior Product Manager** | `senior-product-manager` | `sonnet` | Recommend issue order, assess dependencies |
-| **Senior Architect** | `senior-architect` | `sonnet` | Identify technical dependencies between issues |
-| **Technical Documentation Writer** | `technical-documentation-writer` | `haiku` | Draft release notes |
-
 ## Workflow
 
 ### Step 1: Validate the milestone exists on GitHub

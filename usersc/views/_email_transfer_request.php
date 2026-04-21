@@ -1,4 +1,7 @@
 <?php
+
+declare(strict_types=1);
+
 /**
  * Transfer Request Notification Email Template
  *
@@ -10,7 +13,6 @@ require_once $abs_us_root . $us_url_root . 'usersc/classes/EmailTemplate.php';
 
 $emailTemplate = new EmailTemplate();
 
-// Build car information display
 $carDetails =
     $emailTemplate->createDetailRow('Year', $carInfo->year) .
     $emailTemplate->createDetailRow('Model', $carInfo->series . ' ' . $carInfo->variant) .
@@ -18,15 +20,16 @@ $carDetails =
     $emailTemplate->createDetailRow('Color', $carInfo->color ?: 'Not specified') .
     $emailTemplate->createDetailRow('Engine', $carInfo->engine ?: 'Not specified');
 
-// Build requester information display (privacy: only first name shown)
+// Privacy: only first name shown to current owner
 $requesterDetails =
     $emailTemplate->createDetailRow('Name', $requester->fname) .
     $emailTemplate->createDetailRow('Email', $requester->email) .
     $emailTemplate->createDetailRow('Location', trim($requester->city . ', ' . $requester->state . ', ' . $requester->country, ', ') ?: 'Not specified');
 
-// Build main content
+$adminEmail = htmlspecialchars(getAdminEmails(), ENT_QUOTES, 'UTF-8');
+
 $content = "
-    <p>Hello <strong>" . htmlspecialchars($currentOwner->fname) . "</strong>,</p>
+    <p>Hello <strong>" . htmlspecialchars($currentOwner->fname, ENT_QUOTES, 'UTF-8') . "</strong>,</p>
 
     <p>A transfer request has been submitted for one of your registered Lotus Elans. Another registry member believes they are the rightful owner of this vehicle and has requested ownership transfer.</p>
 
@@ -36,30 +39,23 @@ $content = "
 
     " . (!empty($transferRequest->submitted_comments) ?
         $emailTemplate->createMessageBox('Requester\'s Comments',
-            '<div class="message-content">' . htmlspecialchars($transferRequest->submitted_comments) . '</div>', 'message') : '') . "
+            $emailTemplate->createMessageContent($transferRequest->submitted_comments), 'message') : '') . "
+
+    <p>No changes have been made to your registration. Registry administrators will review this request carefully before any transfer is considered.</p>
+
+    " . $emailTemplate->createButton('View Your Car in the Registry', getBaseUrl() . '/app/cars/details.php?car_id=' . $carInfo->id, 'primary') . "
 
     <p><strong>What happens next?</strong></p>
     <ul>
         <li>This request will be reviewed by registry administrators</li>
         <li>You may be contacted for additional verification</li>
         <li>If approved, car ownership will be transferred to the requester</li>
-        <li>You will be notified of the final decision</li>
     </ul>
 
     <p><strong>Questions or concerns?</strong> Please contact the registry administrators at
-    <a href=\"mailto:<?= htmlspecialchars(getAdminEmails()) ?>\"><?= htmlspecialchars(getAdminEmails()) ?></a> with any questions about this transfer request.</p>
-
-    <h3>📚 Transfer System Information</h3>
-    <p>Learn more about how car transfers work:</p>
-    <ul>
-        <li><a href=\"{$us_url_root}docs/view.php?doc=CAR_TRANSFER_FAQ.md\">Transfer FAQ</a> - How the transfer system works</li>
-        <li><a href=\"{$us_url_root}docs/view.php?doc=CAR_TRANSFER_USER_GUIDE.md\">Transfer User Guide</a> - Complete transfer process documentation</li>
-        <li><a href=\"{$us_url_root}docs/faq/index.php\">Registry Help</a> - All documentation and user guides</li>
-    </ul>
-    <p>These resources explain the transfer process, your rights as a current owner, and what to expect during the review.</p>
+    <a href=\"mailto:{$adminEmail}\">{$adminEmail}</a> with any questions about this transfer request.</p>
 ";
 
-// Generate the complete email
 echo $emailTemplate->render(
     'Car Ownership Transfer Request',
     'Transfer Request Notification',

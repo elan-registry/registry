@@ -267,7 +267,7 @@ function sendTransferResponseNotification(int $transferRequestId, bool $isApprov
             'completed_date' => $transferData->completed_date ?: date('Y-m-d H:i:s')
         ];
 
-        $carUrl = getBaseUrl() . "/app/cars/details.php?id=" . $carData->id;
+        $carUrl = getBaseUrl() . '/app/cars/details.php?car_id=' . $carData->id;
 
         // Generate email content
         ob_start();

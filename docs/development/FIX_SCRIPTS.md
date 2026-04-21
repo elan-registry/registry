@@ -109,8 +109,54 @@ if (Input::exists()) {
 - Use descriptive variable names
 - Follow established coding standards
 
+## Archiving Completed Scripts
+
+When a FIX script has been successfully run on production and will never need to
+run again, move it to `FIX/_ARCHIVE/` and update the archive README.
+
+**Do not delete scripts immediately** — move them to `_ARCHIVE/` first so the
+git history and the README serve as an audit trail.
+
+### When to archive
+
+- The script has run successfully on production
+- The underlying data issue is fully resolved
+- There is no scenario where it would need to run again
+
+### Archive process
+
+1. Move the script: `git mv FIX/##-Name.php FIX/_ARCHIVE/##-Name.php`
+2. Add an entry to `FIX/_ARCHIVE/README.md`:
+
+```markdown
+| `##-Name.php` | Brief description | What it did in one sentence |
+```
+
+1. Commit with message: `chore: archive completed FIX script ##-Name`
+
+### Bulk cleanup
+
+When multiple archived scripts accumulate, they can be deleted in a single
+commit to reduce repository size. Before deleting:
+
+1. Ensure `FIX/_ARCHIVE/README.md` lists every script being removed with its
+   purpose — this is the permanent record.
+2. Include git recovery instructions in the README (see existing README for
+   template).
+3. Commit the deletions and README update together.
+
+### Recovery
+
+To restore a deleted script from git history:
+
+```bash
+git log --all --oneline -- FIX/_ARCHIVE/<filename>.php
+git show <commit>:FIX/_ARCHIVE/<filename>.php > recovered-script.php
+```
+
 ## See Also
 
 - `/FIX/_TEMPLATE_Fix-Script.php` - The standardized template
+- `/FIX/_ARCHIVE/README.md` - Record of all archived/deleted scripts
 - `/FIX/README.md` - FIX scripts directory documentation
 - [CODING_STANDARDS.md](CODING_STANDARDS.md) - Coding standards and conventions

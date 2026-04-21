@@ -66,16 +66,8 @@ Get the list of changed source files in this milestone:
 git diff --name-only main...milestone/$ARGUMENTS
 ```
 
-Determine if wiki updates are needed by checking whether changed files affect:
-
-- Application architecture or directory structure
-- Database schema or relationships
-- UserSpice integration or access control
-- PHP classes or data flow patterns
-- File storage or image handling
-- External integrations
-- Key user flows
-- Development workflow or tooling
+Determine if wiki updates are needed: check whether changed files affect architecture, database schema,
+UserSpice integration, PHP classes, file storage, external integrations, user flows, or dev tooling.
 
 If wiki updates are needed:
 
@@ -150,6 +142,22 @@ git commit -m "docs: update CLAUDE.md for $ARGUMENTS milestone changes"
 
 If no updates needed, skip.
 
+### Step 9.5: Security Review
+
+Before creating the PR, run a security audit of all changes in this milestone:
+
+```bash
+git diff main...milestone/$ARGUMENTS -- '*.php' '*.js'
+```
+
+Launch the `security-reviewer` agent via the Agent tool with
+`subagent_type: "security-reviewer"`. Provide the full diff of `.php` and
+`.js` files against `main`.
+
+- If **Critical or High** severity issues are found, **stop** and tell the
+  user to fix them before proceeding.
+- If only Medium/Low or no issues, note findings in the summary and proceed.
+
 ### Step 10: Create the PR targeting main
 
 ```bash
@@ -181,7 +189,7 @@ See `docs/releases/RELEASE_NOTES_v$ARGUMENTS.md` for complete release notes.
 - [ ] Integration tests pass (`composer test:medium`)
 - [ ] Browser tests pass where applicable (`npm run playwright:test`)
 - [ ] Manual verification of key user flows
-- [ ] Security review completed
+- [ ] Security review completed (run before this PR was created)
 
 🤖 Generated with [Claude Code](https://claude.com/claude-code)
 EOF

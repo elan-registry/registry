@@ -160,11 +160,22 @@ if (!empty($_POST)) {
         // Extend user_setttings.php with some PROFILE information
         // Update Location (city, state, country, lat, lon)
         $locationChanged = false;
+        $geocodingAttempted = false;
         $newCity = Input::get('city');
         $newState = Input::get('state');
         $newCountry = Input::get('country');
         $newLat = Input::get('lat');
         $newLon = Input::get('lon');
+
+        // If all location fields are empty but the user has existing location data,
+        // JS pre-population likely failed — preserve existing values to prevent false change detection
+        if (empty($newCity) && empty($newCountry) && !empty($profiledetails->city)) {
+            $newCity    = $profiledetails->city;
+            $newState   = $profiledetails->state ?? '';
+            $newCountry = $profiledetails->country;
+            $newLat     = (string)($profiledetails->lat ?? '');
+            $newLon     = (string)($profiledetails->lon ?? '');
+        }
 
         // Check if any location field changed
         if ($profiledetails->city != $newCity ||
@@ -211,6 +222,7 @@ if (!empty($_POST)) {
                 } else {
                     // Fallback to old geocoding method if coordinates not provided
                     /** @deprecated Fallback only - location picker should provide coordinates */
+                    $geocodingAttempted = true;
                     $geoResult = ElanRegistryOwner::geocodeAddress($newCity, $newState, $newCountry);
                     if (!empty($geoResult)) {
                         $locationFields = array_merge($locationFields, $geoResult);
@@ -288,7 +300,7 @@ if (!empty($_POST)) {
                     logger((int)$user->data()->id, LogCategories::LOG_CATEGORY_USER, "Location sync: Updated $carsUpdated cars with new coordinates");
                 }
             }
-        } else {
+        } elseif ($geocodingAttempted) {
             logger((int)$user->data()->id, LogCategories::LOG_CATEGORY_USER, 'Geocoding failed - preserving existing lat/lon coordinates');
         }
 
@@ -350,16 +362,16 @@ if (!empty($_POST)) {
                                     'fname' => $user->data()->fname,
                                     'email' => rawurlencode($user->data()->email),
                                     'vericode' => $vericode,
+                                    'user_id' => $userId,
                                     'join_vericode_expiry' => $settings->join_vericode_expiry
                                 ];
-                                $encoded_email = rawurlencode($email);
                                 $subject = 'Verify Your Email';
                                 $body =  email_body('_email_template_verify_new.php', $options);
                                 $email_sent = email($email, $subject, $body);
                                 if (!$email_sent) {
                                     $errors[] = 'Email NOT sent due to error. Please contact site administrator.';
                                 } else {
-                                    $successes[] = 'Email request received. Please check your email to perform verification. Be sure to check your Spam and Junk folder as the verification link expires in $settings->join_vericode_expiry hours.';
+                                    $successes[] = "Email request received. Please check your email to perform verification. Be sure to check your Spam and Junk folder as the verification link expires in {$settings->join_vericode_expiry} hours.";
                                 }
                                 if ($emailR->email_act == 1) {
                                     logger((int)$user->data()->id, LogCategories::LOG_CATEGORY_USER, "Requested change email from $userdetails->email to $email. Verification email sent.");

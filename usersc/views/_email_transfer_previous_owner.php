@@ -1,4 +1,7 @@
 <?php
+
+declare(strict_types=1);
+
 /**
  * Transfer Decision Notification Email Template for Previous Owner
  *
@@ -10,7 +13,6 @@ require_once $abs_us_root . $us_url_root . 'usersc/classes/EmailTemplate.php';
 
 $emailTemplate = new EmailTemplate();
 
-// Build car information display
 $carDetails =
     $emailTemplate->createDetailRow('Year', $carInfo->year) .
     $emailTemplate->createDetailRow('Model', $carInfo->series . ' ' . $carInfo->variant) .
@@ -18,20 +20,16 @@ $carDetails =
     $emailTemplate->createDetailRow('Color', $carInfo->color ?: 'Not specified') .
     $emailTemplate->createDetailRow('Engine', $carInfo->engine ?: 'Not specified');
 
-// Build transfer decision details
 $decisionDetails =
-    $emailTemplate->createDetailRow('Request ID', $transferRequest->id) .
-    $emailTemplate->createDetailRow('Decision Date', date('M j, Y g:i A', strtotime($transferRequest->completed_date))) .
+    $emailTemplate->createDetailRow('Request ID', (string)$transferRequest->id) .
+    $emailTemplate->createDetailRow('Decision Date', date('M j, Y g:i A', strtotime($transferRequest->completed_date) ?: time())) .
     $emailTemplate->createDetailRow('Status', $isApproved ? 'APPROVED' : 'DENIED');
 
-// Build content based on approval status
 if ($isApproved) {
-    // Approved transfer content
-    $statusMessage = '<p><strong>The ownership transfer request for your car has been APPROVED by registry administrators.</strong></p>';
+    $statusMessage = '<p><strong>Ownership of your ' . htmlspecialchars($carInfo->year, ENT_QUOTES, 'UTF-8') . ' Lotus Elan has been transferred to the new owner following our review.</strong></p>';
 
     $newOwnerDetails =
-        $emailTemplate->createDetailRow('Name', $requester->fname . ' ' . $requester->lname) .
-        $emailTemplate->createDetailRow('Email', $requester->email) .
+        $emailTemplate->createDetailRow('Name', $requester->fname) .
         $emailTemplate->createDetailRow('Location', trim($requester->city . ', ' . $requester->state . ', ' . $requester->country, ', ') ?: 'Not specified');
 
     $nextSteps = "
@@ -48,8 +46,7 @@ if ($isApproved) {
         " . $emailTemplate->createMessageBox('New Owner Details', $newOwnerDetails);
 
 } else {
-    // Denied transfer content
-    $statusMessage = '<p><strong>The ownership transfer request for your car has been DENIED by registry administrators.</strong></p>';
+    $statusMessage = '<p><strong>Good news — your ownership of this Lotus Elan remains unchanged. The transfer request has been reviewed and denied.</strong></p>';
 
     $nextSteps = "
         <p><strong>What this means:</strong></p>
@@ -64,9 +61,10 @@ if ($isApproved) {
         <p>Registry administrators carefully review each transfer request to protect legitimate owners. Common reasons include insufficient proof of ownership, disputed claims, or incomplete documentation.</p>";
 }
 
-// Build main content
+$adminEmail = htmlspecialchars(getAdminEmails(), ENT_QUOTES, 'UTF-8');
+
 $content = "
-    <p>Hello <strong>" . htmlspecialchars($previousOwner->fname) . "</strong>,</p>
+    <p>Hello <strong>" . htmlspecialchars($previousOwner->fname, ENT_QUOTES, 'UTF-8') . "</strong>,</p>
 
     $statusMessage
 
@@ -80,23 +78,13 @@ $content = "
 
     " . (!empty($adminNotes) ?
         $emailTemplate->createMessageBox('Administrator Notes',
-            '<div class="message-content">' . htmlspecialchars($adminNotes) . '</div>', 'message') : '') . "
+            $emailTemplate->createMessageContent($adminNotes), 'message') : '') . "
 
     <p><strong>Questions or concerns?</strong> Please contact the registry administrators at
-    <a href=\"mailto:<?= htmlspecialchars(getAdminEmails()) ?>\"><?= htmlspecialchars(getAdminEmails()) ?></a> if you have any questions about this decision.</p>
+    <a href=\"mailto:{$adminEmail}\">{$adminEmail}</a> if you have any questions about this decision.</p>
 
-    <h3>📚 Registry Resources</h3>
-    <p>Learn more about the transfer system and registry features:</p>
-    <ul>
-        <li><a href=\"{$us_url_root}docs/view.php?doc=CAR_TRANSFER_FAQ.md\">Transfer FAQ</a> - How the transfer system works</li>
-        <li><a href=\"{$us_url_root}docs/view.php?doc=CAR_TRANSFER_USER_GUIDE.md\">Transfer Guide</a> - Complete transfer process documentation</li>
-        <li><a href=\"{$us_url_root}docs/faq/index.php\">Registry Help</a> - All documentation and user guides</li>
-    </ul>
-
-    <p>Thank you for using the Elan Registry transfer system.</p>
 ";
 
-// Generate the complete email
 $statusText = $isApproved ? 'Transfer Approved' : 'Transfer Denied';
 echo $emailTemplate->render(
     'Car Ownership Transfer Decision',

@@ -7,19 +7,6 @@ description: Create a new GitHub issue with PM-driven scope refinement and exper
 This command helps create well-defined GitHub issues by engaging specialized
 agents to refine scope, architecture, testing, and documentation requirements.
 
-## Available Agents
-
-Use the Task tool to launch these agents. Launch multiple agents in parallel
-when they don't depend on each other.
-
-| Agent Type | `subagent_type` | Model | Use When |
-| --- | --- | --- | --- |
-| **Senior Product Manager** | `senior-product-manager` | `sonnet` | Always — drives issue creation, scope, acceptance criteria |
-| **Senior Architect** | `senior-architect` | `sonnet` | Refine technical scope, identify risks, estimate complexity |
-| **Senior Test Engineer** | `senior-test-engineer` | `sonnet` | Define test requirements, identify testability concerns |
-| **Technical Documentation Writer** | `technical-documentation-writer` | `haiku` | Identify documentation impact, suggest docs updates |
-| **Explore** | `Explore` | `haiku` | Research codebase for context before refining scope |
-
 ## Workflow Steps
 
 ### Step 1: Get the Problem Statement

@@ -99,24 +99,39 @@ function isRegistryAdmin(int|string|null $userId = null): bool {
 }
 
 /**
- * Get the base URL from database email settings with static caching
+ * Get the base URL for the application using UserSpice server globals.
  *
- * Retrieves the base URL for the application from the email.verify_url database setting.
- * Uses static caching to avoid repeated database queries per request.
- * This ensures environment-aware URLs in emails and API calls.
+ * Derives the URL from $current_origin (scheme + host) and $us_url_root
+ * (the install path set by UserSpice from the actual filesystem location).
+ * This is environment-aware without relying on a manually configured database
+ * setting that can diverge from the real install path.
  *
- * @return string Base URL (e.g., 'https://elanregistry.org' or 'http://localhost')
+ * Falls back to the email.verify_url database setting when server globals are
+ * not populated (e.g., CLI scripts).
+ *
+ * @return string Base URL without trailing slash (e.g., 'https://elanregistry.org' or 'http://localhost:9999/elan-registry')
  */
 function getBaseUrl(): string {
-    static $baseUrl = null;
+    global $scheme, $host, $us_url_root;
 
+    if (!empty($scheme) && !empty($host) && !empty($us_url_root)) {
+        // $host has the port stripped (Server::get uses stripPort=true).
+        // Re-add non-standard ports so email URLs are correct on local dev.
+        $port = Server::get('SERVER_PORT', 0);
+        $defaultPort = ($scheme === 'https') ? 443 : 80;
+        $portStr = ($port && $port !== $defaultPort) ? ':' . $port : '';
+        return rtrim($scheme . '://' . $host . $portStr . $us_url_root, '/');
+    }
+
+    // Fallback for CLI or early-boot contexts where server globals are not set
+    static $baseUrl = null;
     if ($baseUrl === null) {
         $db = DB::getInstance();
         $result = $db->query("SELECT verify_url FROM email")->first();
-        $baseUrl = $result->verify_url ?? 'https://elanregistry.org'; // Fallback to production
+        $baseUrl = $result->verify_url ?? 'https://elanregistry.org';
     }
 
-    return rtrim($baseUrl, '/'); // Remove trailing slash for consistency
+    return rtrim($baseUrl, '/');
 }
 
 /**
@@ -227,6 +242,95 @@ function currentUserId(): int
     return (int) $user->data()->id;
 }
 
+
+/**
+ * Send a registry email with recipient name in the To: header.
+ *
+ * The UserSpice base email() function does not expose recipient name to PHPMailer's
+ * addAddress(), causing To: headers without display names and higher spam scores.
+ * This wrapper fixes that for both transport paths:
+ *
+ * - Brevo (sendinblue plugin active): delegates to sendinblue() with $toName as
+ *   the 4th positional argument, which Brevo passes as the To: display name.
+ * - PHPMailer (SMTP, e.g. Mailtrap): constructs the message directly so
+ *   addAddress($to, $toName) can be called with the display name.
+ *
+ * Supported $opts keys (both paths):
+ *   'reply'   => string  Reply-to address (Brevo native key, also mapped for PHPMailer)
+ *   'replyTo' => string  Reply-to address (PHPMailer/UserSpice key)
+ *
+ * @param string $to      Recipient email address
+ * @param string $toName  Recipient display name (used in To: header)
+ * @param string $subject SMTP subject line
+ * @param string $body    HTML email body
+ * @param array  $opts    Optional keys:
+ *                        'reply'      => string  Reply-to address (Brevo and PHPMailer)
+ *                        'replyTo'    => string  Alias for 'reply'
+ *                        'reply_name' => string  Reply-to display name (Brevo path only;
+ *                                                PHPMailer path uses it for addReplyTo() name)
+ * @return true|string|false  true on success; error string (Brevo) or false (PHPMailer) on failure
+ */
+function registrySendEmail(string $to, string $toName, string $subject, string $body, array $opts = []): mixed
+{
+    // TODO (#601): When the Brevo override.php signature is fixed, this direct sendinblue()
+    // call may need updating. The accepted fix in #601 passes "" as $to_name:
+    //   return sendinblue($to, $subject, $body, "", $brevo_opts);
+    // If recipient display name support is still needed after the fix, either add a
+    // 'to_name' key to the opts translation in override.php, or keep calling
+    // sendinblue() directly here. Review this method when #601 is resolved.
+    if (function_exists('sendinblue')) {
+        return sendinblue($to, $subject, $body, $toName, $opts);
+    }
+
+    // PHPMailer path: replicate UserSpice email() setup with named recipient
+    global $db;
+    $settings = $db->query('SELECT * FROM email')->first();
+    if (!$settings) {
+        logger(0, LogCategories::LOG_CATEGORY_EMAIL_ERROR, 'registrySendEmail: email settings not found in database');
+        return 'Email configuration not found — cannot send email';
+    }
+
+    $mail = new \PHPMailer\PHPMailer\PHPMailer();
+    $mail->CharSet   = 'UTF-8';
+    $mail->SMTPDebug = $settings->debug_level;
+    $mail->XMailer   = null;
+    $mail->Timeout   = 10;
+
+    if ($settings->isSMTP == 1) {
+        $mail->isSMTP();
+    }
+    $mail->Host       = $settings->smtp_server;
+    $mail->SMTPAuth   = $settings->useSMTPauth;
+    $mail->Username   = $settings->email_login;
+    $mail->Password   = html_entity_decode($settings->email_pass);
+    $mail->SMTPSecure = $settings->transport;
+    $mail->Port       = $settings->smtp_port;
+
+    if ($settings->authtype != '') {
+        $mail->AuthType = $settings->authtype;
+    }
+
+    $mail->setFrom($settings->from_email, $settings->from_name);
+
+    $replyTo = $opts['reply'] ?? $opts['replyTo'] ?? null;
+    if ($replyTo !== null) {
+        $replyName = $opts['reply_name'] ?? '';
+        $mail->addReplyTo($replyTo, $replyName);
+    }
+
+    $mail->addAddress($to, $toName);
+
+    $mail->isHTML(true);
+    $mail->Subject = $subject;
+    $mail->Body    = $body;
+
+    try {
+        return $mail->send();
+    } catch (\PHPMailer\PHPMailer\Exception $e) {
+        logger(0, LogCategories::LOG_CATEGORY_EMAIL_ERROR, 'registrySendEmail PHPMailer exception: ' . $e->getMessage());
+        return 'Email delivery failed: ' . $e->getMessage();
+    }
+}
 
 // We need server globals in custom functions as it's used early in the load process.
 require_once $abs_us_root . $us_url_root . 'usersc/includes/server_globals.php';
