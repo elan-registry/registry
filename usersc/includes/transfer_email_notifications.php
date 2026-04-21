@@ -89,7 +89,7 @@ function sendTransferRequestNotification(int $transferRequestId): bool
 
         $result = email($currentOwner->email, $subject, $emailBody);
 
-        if ($result) {
+        if ($result === true) {
             logger($transferData->requested_by_user_id, LogCategories::LOG_CATEGORY_EMAIL_SUCCESS, "Transfer request notification sent to current owner: {$currentOwner->email}");
             return true;
         } else {
@@ -195,7 +195,7 @@ function sendTransferRequestAdminAlert(int $transferRequestId): bool
 
         foreach ($adminEmails as $adminEmail) {
             $result = email($adminEmail, $subject, $emailBody);
-            if ($result) {
+            if ($result === true) {
                 $successCount++;
             } else {
                 logger(0, LogCategories::LOG_CATEGORY_EMAIL_ERROR, "Failed to send admin alert to: {$adminEmail}");
@@ -279,7 +279,7 @@ function sendTransferResponseNotification(int $transferRequestId, bool $isApprov
         $subject = "[ELANREGISTRY] Transfer Request $status - " . $carData->year . " " . $carData->series . " " . $carData->variant . " (Chassis: " . $carData->chassis . ")";
         $result = email($requester->email, $subject, $emailBody);
 
-        $requesterNotificationSent = $result;
+        $requesterNotificationSent = ($result === true);
         if ($requesterNotificationSent) {
             logger($transferData->requested_by_user_id, LogCategories::LOG_CATEGORY_EMAIL_SUCCESS, "Transfer response notification ($status) sent to requester: {$requester->email}");
         } else {
@@ -380,7 +380,7 @@ function sendTransferPreviousOwnerNotification(int $transferRequestId, bool $isA
 
         $result = email($previousOwner->email, $subject, $emailBody);
 
-        if ($result) {
+        if ($result === true) {
             logger($transferData->requested_by_user_id, LogCategories::LOG_CATEGORY_EMAIL_SUCCESS, "Transfer decision notification ($status) sent to previous owner: {$previousOwner->email}");
             return true;
         } else {

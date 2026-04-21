@@ -148,21 +148,22 @@ if (Input::exists('post')) {
                 $body = email_body('_email_admin_contact_owner.php', $template);
 
                 // Send email
-                $result = email($toEmail, $subject, $body);
+                $result      = email($toEmail, $subject, $body);
+                $safeFromLog = preg_replace('/[\r\n\t]/', '', $fromEmail);
+                $safeToLog   = preg_replace('/[\r\n\t]/', '', $toEmail);
+                $safeIssue   = preg_replace('/[\r\n\t]/', '', (string)($qualityIssue ?? ''));
 
-                if ($result) {
-                    // For duplicate accounts, show the email address instead of "Multiple Users"
+                if ($result !== true) {
+                    $resultStr = is_string($result) ? preg_replace('/[\r\n\t]/', '', $result) : 'unknown delivery error';
+                    $errors[] = 'Failed to send email. Please try again.';
+                    logger($user->data()->id, LogCategories::LOG_CATEGORY_EMAIL_ERROR, "Admin contact SEND FAILED to {$safeToLog}: {$resultStr}");
+                } else {
                     if ($ownerId === 'Multiple') {
                         $successes[] = 'Administrator message sent successfully to duplicate accounts at ' . $toEmail;
                     } else {
                         $successes[] = 'Administrator message sent successfully to ' . $toName;
                     }
-
-                    // Log the admin contact for audit trail
-                    logger($user->data()->id, LogCategories::LOG_CATEGORY_CAR_ACTIONS, "Admin contact sent - Admin: {$fromEmail}, Owner: {$toEmail}, Car: {$carId}, Issue: {$qualityIssue}");
-                } else {
-                    $errors[] = 'Failed to send email. Please try again.';
-                    logger($user->data()->id, LogCategories::LOG_CATEGORY_CAR_ACTIONS, "Failed admin contact email - Admin: {$fromEmail}, Owner: {$toEmail}");
+                    logger($user->data()->id, LogCategories::LOG_CATEGORY_CAR_ACTIONS, "Admin contact sent - Admin: {$safeFromLog}, Owner: {$safeToLog}, Car: {$carId}, Issue: {$safeIssue}");
                 }
 
             } catch (AdminContactException $e) {

@@ -94,25 +94,18 @@ if (Input::exists('post')) {
             if (empty($errors)) {
                 // Validate email format before using as reply-to (defense-in-depth;
                 // $fromEmail comes from the database but we guard anyway).
-                $replyOpts = filter_var($fromEmail, FILTER_VALIDATE_EMAIL)
-                    ? ['reply' => $fromEmail, 'reply_name' => $fromName]
-                    : [];
-
-                if (!filter_var($fromEmail, FILTER_VALIDATE_EMAIL)) {
+                $fromEmailValid = filter_var($fromEmail, FILTER_VALIDATE_EMAIL);
+                if (!$fromEmailValid) {
                     logger($user->data()->id, LogCategories::LOG_CATEGORY_ELAN_REGISTRY, "contact_owner_email.php invalid fromEmail for reply-to: " . preg_replace('/[\r\n\t]/', '', $fromEmail));
                 }
+                // reply_name is a no-op until the Brevo override.php is updated to forward it.
+                $replyOpts = $fromEmailValid ? ['replyTo' => $fromEmail, 'reply_name' => $fromName] : [];
 
-                // registrySendEmail() handles both the Brevo (sendinblue) and PHPMailer (SMTP)
-                // paths, setting the To: display name on both. See custom_functions.php.
-                $result = registrySendEmail($toEmail, $toName, $subject, $body, $replyOpts);
-
-                // sendinblue() returns true on success, error string on failure.
-                // email() (PHPMailer fallback) returns true on success, false on failure.
+                $result = email($toEmail, $subject, $body, $replyOpts);
                 $safeFromLog = preg_replace('/[\r\n\t]/', '', $fromEmail);
                 $safeToLog   = preg_replace('/[\r\n\t]/', '', $toEmail);
                 if ($result !== true) {
-                    $resultStr = is_string($result) ? $result : 'unknown delivery error';
-                    logger($user->data()->id, LogCategories::LOG_CATEGORY_EMAIL_ERROR, "contact_owner_email.php SEND FAILED from " . $safeFromLog . " to " . $safeToLog . ": " . $resultStr);
+                    logger($user->data()->id, LogCategories::LOG_CATEGORY_EMAIL_ERROR, "contact_owner_email.php SEND FAILED from " . $safeFromLog . " to " . $safeToLog);
                     $errors[] = 'Your message could not be delivered. Please try again or contact the administrator.';
                 } else {
                     logger($user->data()->id, LogCategories::LOG_CATEGORY_ELAN_REGISTRY, "contact_owner_email.php sent from " . $safeFromLog . " to " . $safeToLog);
