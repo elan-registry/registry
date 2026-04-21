@@ -206,6 +206,36 @@ class LogCategoriesUsageTest extends TestCase
     }
 
     /**
+     * Regression test for Issue #655: all catch blocks in transfer_email_notifications.php
+     * must include exception class, file, and line number.
+     */
+    public function testTransferNotificationCatchBlocksIncludeExceptionDetail(): void
+    {
+        $filePath = $this->rootDir . '/usersc/includes/transfer_email_notifications.php';
+        if (!file_exists($filePath)) {
+            $this->markTestSkipped('transfer_email_notifications.php not found');
+        }
+
+        $content = file_get_contents($filePath);
+
+        $this->assertSame(
+            4,
+            substr_count($content, 'get_class($e)'),
+            'All 4 catch blocks in transfer_email_notifications.php must include get_class($e) (Issue #655)'
+        );
+        $this->assertSame(
+            4,
+            substr_count($content, '$e->getFile()'),
+            'All 4 catch blocks in transfer_email_notifications.php must include $e->getFile() (Issue #655)'
+        );
+        $this->assertSame(
+            4,
+            substr_count($content, '$e->getLine()'),
+            'All 4 catch blocks in transfer_email_notifications.php must include $e->getLine() (Issue #655)'
+        );
+    }
+
+    /**
      * Regression test for Issue #657: user_settings.php must log verify-email delivery failures.
      */
     public function testUserSettingsPhpLogsEmailFailure(): void

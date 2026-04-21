@@ -98,7 +98,13 @@ function sendTransferRequestNotification(int $transferRequestId): bool
         }
 
     } catch (Exception $e) {
-        logger(0, LogCategories::LOG_CATEGORY_EMAIL_ERROR, "Transfer request notification error: " . $e->getMessage());
+        if (ob_get_level() > 0) {
+            ob_end_clean();
+        }
+        logger(0, LogCategories::LOG_CATEGORY_EMAIL_ERROR, sprintf(
+            "Transfer request notification error [%s] in %s:%d: %s",
+            get_class($e), $e->getFile(), $e->getLine(), $e->getMessage()
+        ));
         return false;
     }
 }
@@ -216,7 +222,13 @@ function sendTransferRequestAdminAlert(int $transferRequestId): bool
         return $successCount > 0;
 
     } catch (Exception $e) {
-        logger(0, LogCategories::LOG_CATEGORY_EMAIL_ERROR, "Transfer admin alert error: " . $e->getMessage());
+        if (ob_get_level() > 0) {
+            ob_end_clean();
+        }
+        logger(0, LogCategories::LOG_CATEGORY_EMAIL_ERROR, sprintf(
+            "Transfer admin alert error [%s] in %s:%d: %s",
+            get_class($e), $e->getFile(), $e->getLine(), $e->getMessage()
+        ));
         return false;
     }
 }
@@ -303,7 +315,13 @@ function sendTransferResponseNotification(int $transferRequestId, bool $isApprov
         return $requesterNotificationSent || $previousOwnerNotificationSent;
 
     } catch (Exception $e) {
-        logger(0, LogCategories::LOG_CATEGORY_EMAIL_ERROR, "Transfer response notification error: " . $e->getMessage());
+        if (ob_get_level() > 0) {
+            ob_end_clean();
+        }
+        logger(0, LogCategories::LOG_CATEGORY_EMAIL_ERROR, sprintf(
+            "Transfer response notification error [%s] in %s:%d: %s",
+            get_class($e), $e->getFile(), $e->getLine(), $e->getMessage()
+        ));
         return false;
     }
 }
@@ -399,7 +417,13 @@ function sendTransferPreviousOwnerNotification(int $transferRequestId, bool $isA
         }
 
     } catch (Exception $e) {
-        logger(0, LogCategories::LOG_CATEGORY_EMAIL_ERROR, "Transfer previous owner notification error: " . $e->getMessage());
+        if (ob_get_level() > 0) {
+            ob_end_clean();
+        }
+        logger(0, LogCategories::LOG_CATEGORY_EMAIL_ERROR, sprintf(
+            "Transfer previous owner notification error [%s] in %s:%d: %s",
+            get_class($e), $e->getFile(), $e->getLine(), $e->getMessage()
+        ));
         return false;
     }
 }
