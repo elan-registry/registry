@@ -95,7 +95,7 @@ if ($post_attempted) {
 
     if (empty($errors)) {
         // Reply-to is set to the submitter so the admin can reply directly.
-        $result = email($email_to, $email_subject, $body, ['replyTo' => $email_from]);
+        $result = email($email_to, $email_subject, $body, ['replyTo' => $email_from, 'reply_name' => $name]);
 
         if ($result !== true) {
             $resultStr = is_string($result) ? preg_replace('/[\r\n\t]/', '', $result) : 'unknown delivery error';

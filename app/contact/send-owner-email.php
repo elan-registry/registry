@@ -98,7 +98,7 @@ if (Input::exists('post')) {
                 if (!$fromEmailValid) {
                     logger($user->data()->id, LogCategories::LOG_CATEGORY_ELAN_REGISTRY, "contact_owner_email.php invalid fromEmail for reply-to: " . preg_replace('/[\r\n\t]/', '', $fromEmail));
                 }
-                $replyOpts = $fromEmailValid ? ['replyTo' => $fromEmail] : [];
+                $replyOpts = $fromEmailValid ? ['replyTo' => $fromEmail, 'reply_name' => $fromName] : [];
 
                 $result = email($toEmail, $subject, $body, $replyOpts);
                 $safeFromLog = preg_replace('/[\r\n\t]/', '', $fromEmail);
