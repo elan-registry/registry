@@ -68,10 +68,6 @@ if (!empty($_POST)) {
                             <div class="mb-2">
                                 <strong><?= $from['fname'] . ' ' . $from['lname'] ?></strong>
                             </div>
-                            <div class="text-muted">
-                                <i class="fas fa-envelope"></i> <?= $from['email'] ?>
-                            </div>
-                            <small class="text-muted">User ID: <?= $from['id'] ?></small>
                         </div>
                     </div>
                     <div class="col-md-6">
