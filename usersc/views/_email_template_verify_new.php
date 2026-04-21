@@ -17,8 +17,9 @@ require_once $abs_us_root . $us_url_root . 'usersc/classes/EmailTemplate.php';
 
 $emailTemplate = new EmailTemplate();
 
-// Build verification URL from components (same pattern as UserSpice original).
-// $email is already rawurlencode()'d by usersc/user_settings.php; $vericode is alphanumeric.
+// Build verification URL from trusted server-side components.
+// $email here is the current (old) email, rawurlencode()'d by user_settings.php — it is not used
+// in the URL. The new address is not in scope; vericode + user_id are sufficient for verify.php.
 $verifyUrl = getBaseUrl() . '/users/verify.php?new=1'
     . '&email=' . ($email ?? '')
     . '&vericode=' . rawurlencode($vericode ?? '')

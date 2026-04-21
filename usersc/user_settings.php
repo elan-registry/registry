@@ -365,7 +365,6 @@ if (!empty($_POST)) {
                                     'user_id' => $userId,
                                     'join_vericode_expiry' => $settings->join_vericode_expiry
                                 ];
-                                $encoded_email = rawurlencode($email);
                                 $subject = 'Verify Your Email';
                                 $body =  email_body('_email_template_verify_new.php', $options);
                                 $email_sent = email($email, $subject, $body);

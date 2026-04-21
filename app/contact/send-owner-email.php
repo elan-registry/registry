@@ -22,6 +22,8 @@ $subject = '[ELANREGISTRY] Owner to Owner Message';
 
 // Initialize message arrays
 $errors = [];
+$email_sent = false;
+$post_attempted = Input::exists('post');
 
 // Make sure no one tries to add header like keywords
 function clean_string(string $string): string
@@ -83,30 +85,38 @@ if (Input::exists('post')) {
 
             $body = email_body('_email_contact_owner.php', $template);
 
-            // Validate email format before using as reply-to (defense-in-depth;
-            // $fromEmail comes from the database but we guard anyway).
-            $replyOpts = filter_var($fromEmail, FILTER_VALIDATE_EMAIL)
-                ? ['reply' => $fromEmail]
-                : [];
-
-            if (!filter_var($fromEmail, FILTER_VALIDATE_EMAIL)) {
-                logger($user->data()->id, LogCategories::LOG_CATEGORY_ELAN_REGISTRY, "contact_owner_email.php invalid fromEmail for reply-to: " . preg_replace('/[\r\n\t]/', '', $fromEmail));
+            if (empty($body)) {
+                logger($user->data()->id, LogCategories::LOG_CATEGORY_EMAIL_ERROR, "contact_owner_email.php: email_body() returned empty — template missing or failed");
+                $errors[] = 'Your message could not be sent due to a server configuration error. Please contact the administrator.';
             }
 
-            // registrySendEmail() handles both the Brevo (sendinblue) and PHPMailer (SMTP)
-            // paths, setting the To: display name on both. See custom_functions.php.
-            $result = registrySendEmail($toEmail, $toName, $subject, $body, $replyOpts);
+            if (empty($errors)) {
+                // Validate email format before using as reply-to (defense-in-depth;
+                // $fromEmail comes from the database but we guard anyway).
+                $replyOpts = filter_var($fromEmail, FILTER_VALIDATE_EMAIL)
+                    ? ['reply' => $fromEmail]
+                    : [];
 
-            // sendinblue() returns true on success, error string on failure.
-            // email() (PHPMailer fallback) returns true on success, false on failure.
-            $safeFromLog = preg_replace('/[\r\n\t]/', '', $fromEmail);
-            $safeToLog   = preg_replace('/[\r\n\t]/', '', $toEmail);
-            if (isset($result) && $result !== true) {
-                $resultStr = is_string($result) ? $result : 'unknown delivery error';
-                logger($user->data()->id, LogCategories::LOG_CATEGORY_EMAIL_ERROR, "contact_owner_email.php SEND FAILED from " . $safeFromLog . " to " . $safeToLog . ": " . $resultStr);
-                $errors[] = 'Your message could not be delivered. Please try again or contact the administrator.';
-            } else {
-                logger($user->data()->id, LogCategories::LOG_CATEGORY_ELAN_REGISTRY, "contact_owner_email.php sent from " . $safeFromLog . " to " . $safeToLog);
+                if (!filter_var($fromEmail, FILTER_VALIDATE_EMAIL)) {
+                    logger($user->data()->id, LogCategories::LOG_CATEGORY_ELAN_REGISTRY, "contact_owner_email.php invalid fromEmail for reply-to: " . preg_replace('/[\r\n\t]/', '', $fromEmail));
+                }
+
+                // registrySendEmail() handles both the Brevo (sendinblue) and PHPMailer (SMTP)
+                // paths, setting the To: display name on both. See custom_functions.php.
+                $result = registrySendEmail($toEmail, $toName, $subject, $body, $replyOpts);
+
+                // sendinblue() returns true on success, error string on failure.
+                // email() (PHPMailer fallback) returns true on success, false on failure.
+                $safeFromLog = preg_replace('/[\r\n\t]/', '', $fromEmail);
+                $safeToLog   = preg_replace('/[\r\n\t]/', '', $toEmail);
+                if ($result !== true) {
+                    $resultStr = is_string($result) ? $result : 'unknown delivery error';
+                    logger($user->data()->id, LogCategories::LOG_CATEGORY_EMAIL_ERROR, "contact_owner_email.php SEND FAILED from " . $safeFromLog . " to " . $safeToLog . ": " . $resultStr);
+                    $errors[] = 'Your message could not be delivered. Please try again or contact the administrator.';
+                } else {
+                    logger($user->data()->id, LogCategories::LOG_CATEGORY_ELAN_REGISTRY, "contact_owner_email.php sent from " . $safeFromLog . " to " . $safeToLog);
+                    $email_sent = true;
+                }
             }
         } else {
             $errors[] = 'Not enough parameters provided';
@@ -129,7 +139,7 @@ if (Input::exists('post')) {
         <div class='row'>
             <div class='col-sm-12'>
                 <div class='jumbotron'>
-                    <?php if (empty($errors)): ?>
+                    <?php if ($email_sent): ?>
                     <div class="text-center py-4">
                         <i class="fas fa-envelope fa-3x text-success mb-3"></i>
                         <h4>Message Sent</h4>
@@ -147,11 +157,15 @@ if (Input::exists('post')) {
                             ?>
                         }, 5000);
                     </script>
-                    <?php else: ?>
+                    <?php elseif ($post_attempted): ?>
                     <div class="text-center py-4">
                         <i class="fas fa-exclamation-triangle fa-3x text-danger mb-3"></i>
                         <h4>Message Not Sent</h4>
                         <p class="text-muted">There was a problem delivering your message. Please try again or contact the administrator.</p>
+                    </div>
+                    <?php else: ?>
+                    <div class="text-center py-4">
+                        <p class="text-muted">Please use the contact form on the car details page to send a message.</p>
                     </div>
                     <?php endif; ?>
                 </div><!-- End of main content section -->

@@ -263,7 +263,11 @@ function currentUserId(): int
  * @param string $toName  Recipient display name (used in To: header)
  * @param string $subject SMTP subject line
  * @param string $body    HTML email body
- * @param array  $opts    Optional: ['reply' => '', 'replyTo' => '']
+ * @param array  $opts    Optional keys:
+ *                        'reply'      => string  Reply-to address (Brevo and PHPMailer)
+ *                        'replyTo'    => string  Alias for 'reply'
+ *                        'reply_name' => string  Reply-to display name (Brevo path only;
+ *                                                PHPMailer path uses it for addReplyTo() name)
  * @return true|string|false  true on success; error string (Brevo) or false (PHPMailer) on failure
  */
 function registrySendEmail(string $to, string $toName, string $subject, string $body, array $opts = []): mixed
@@ -281,6 +285,10 @@ function registrySendEmail(string $to, string $toName, string $subject, string $
     // PHPMailer path: replicate UserSpice email() setup with named recipient
     global $db;
     $settings = $db->query('SELECT * FROM email')->first();
+    if (!$settings) {
+        logger(0, LogCategories::LOG_CATEGORY_EMAIL_ERROR, 'registrySendEmail: email settings not found in database');
+        return 'Email configuration not found — cannot send email';
+    }
 
     $mail = new \PHPMailer\PHPMailer\PHPMailer();
     $mail->CharSet   = 'UTF-8';
@@ -306,7 +314,8 @@ function registrySendEmail(string $to, string $toName, string $subject, string $
 
     $replyTo = $opts['reply'] ?? $opts['replyTo'] ?? null;
     if ($replyTo !== null) {
-        $mail->addReplyTo($replyTo);
+        $replyName = $opts['reply_name'] ?? '';
+        $mail->addReplyTo($replyTo, $replyName);
     }
 
     $mail->addAddress($to, $toName);
@@ -315,7 +324,12 @@ function registrySendEmail(string $to, string $toName, string $subject, string $
     $mail->Subject = $subject;
     $mail->Body    = $body;
 
-    return $mail->send();
+    try {
+        return $mail->send();
+    } catch (\PHPMailer\PHPMailer\Exception $e) {
+        logger(0, LogCategories::LOG_CATEGORY_EMAIL_ERROR, 'registrySendEmail PHPMailer exception: ' . $e->getMessage());
+        return 'Email delivery failed: ' . $e->getMessage();
+    }
 }
 
 // We need server globals in custom functions as it's used early in the load process.

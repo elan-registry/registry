@@ -22,8 +22,15 @@ require_once $abs_us_root . $us_url_root . 'users/includes/template/prep.php';
 <?php
 $errors = [];
 $email_sent = false;
+$post_attempted = isset($_POST['email']);
 
-if (isset($_POST['email'])) {
+function cleanString(string $string): string
+{
+    $bad = array("content-type", "bcc:", "to:", "cc:", "href");
+    return str_replace($bad, "", $string);
+}
+
+if ($post_attempted) {
 
     // CSRF Protection
     $token = Input::get('csrf');
@@ -63,12 +70,6 @@ if (isset($_POST['email'])) {
     }
 
     if (empty($errors)) {
-        function cleanString($string): string
-        {
-            $bad = array("content-type", "bcc:", "to:", "cc:", "href");
-            return str_replace($bad, "", $string);
-        }
-
         // Clean the input data
         $name = cleanString($name);
         $email_from = cleanString($email_from);
@@ -86,6 +87,13 @@ if (isset($_POST['email'])) {
         // Generate email body using template
         $body = email_body('_email_feedback.php', $template);
 
+        if (empty($body)) {
+            logger(1, LogCategories::LOG_CATEGORY_FEEDBACK_FORM, "send-feedback.php: email_body() returned empty — template missing or failed");
+            $errors[] = 'Your message could not be sent due to a server configuration error. Please contact the administrator.';
+        }
+    }
+
+    if (empty($errors)) {
         // Send via registrySendEmail() so the To: header includes the admin display name
         // on both the Brevo and PHPMailer/SMTP paths. Reply-to is set to the submitter
         // so the admin can reply directly. See custom_functions.php for implementation.
@@ -136,11 +144,15 @@ if (isset($_POST['email'])) {
                             ?>
                         }, 5000);
                     </script>
-                    <?php else: ?>
+                    <?php elseif ($post_attempted): ?>
                     <div class="text-center py-4">
                         <i class="fas fa-exclamation-triangle fa-3x text-danger mb-3"></i>
                         <h4>Message Not Sent</h4>
                         <p class="text-muted">There was a problem with your submission. Please go back and try again.</p>
+                    </div>
+                    <?php else: ?>
+                    <div class="text-center py-4">
+                        <p class="text-muted">Please submit the feedback form to send a message.</p>
                     </div>
                     <?php endif; ?>
                 </div><!-- End of main content section -->
