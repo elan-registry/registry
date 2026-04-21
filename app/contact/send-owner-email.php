@@ -94,20 +94,13 @@ if (Input::exists('post')) {
             if (empty($errors)) {
                 // Validate email format before using as reply-to (defense-in-depth;
                 // $fromEmail comes from the database but we guard anyway).
-                $replyOpts = filter_var($fromEmail, FILTER_VALIDATE_EMAIL)
-                    ? ['reply' => $fromEmail, 'reply_name' => $fromName]
-                    : [];
-
-                if (!filter_var($fromEmail, FILTER_VALIDATE_EMAIL)) {
+                $fromEmailValid = filter_var($fromEmail, FILTER_VALIDATE_EMAIL);
+                if (!$fromEmailValid) {
                     logger($user->data()->id, LogCategories::LOG_CATEGORY_ELAN_REGISTRY, "contact_owner_email.php invalid fromEmail for reply-to: " . preg_replace('/[\r\n\t]/', '', $fromEmail));
                 }
+                $replyOpts = $fromEmailValid ? ['replyTo' => $fromEmail] : [];
 
-                // registrySendEmail() handles both the Brevo (sendinblue) and PHPMailer (SMTP)
-                // paths, setting the To: display name on both. See custom_functions.php.
-                $result = registrySendEmail($toEmail, $toName, $subject, $body, $replyOpts);
-
-                // sendinblue() returns true on success, error string on failure.
-                // email() (PHPMailer fallback) returns true on success, false on failure.
+                $result = email($toEmail, $subject, $body, $replyOpts);
                 $safeFromLog = preg_replace('/[\r\n\t]/', '', $fromEmail);
                 $safeToLog   = preg_replace('/[\r\n\t]/', '', $toEmail);
                 if ($result !== true) {

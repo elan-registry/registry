@@ -94,16 +94,9 @@ if ($post_attempted) {
     }
 
     if (empty($errors)) {
-        // Send via registrySendEmail() so the To: header includes the admin display name
-        // on both the Brevo and PHPMailer/SMTP paths. Reply-to is set to the submitter
-        // so the admin can reply directly. See custom_functions.php for implementation.
-        $result = registrySendEmail($email_to, 'Elan Registry', $email_subject, $body, [
-            'reply'      => $email_from,
-            'reply_name' => $name,
-        ]);
+        // Reply-to is set to the submitter so the admin can reply directly.
+        $result = email($email_to, $email_subject, $body, ['replyTo' => $email_from]);
 
-        // sendinblue() returns true on success, error string on failure.
-        // email() (PHPMailer fallback) returns true on success, false on failure.
         if ($result !== true) {
             $resultStr = is_string($result) ? $result : 'unknown delivery error';
             logger(1, LogCategories::LOG_CATEGORY_FEEDBACK_FORM, "Error sending feedback email: " . $resultStr);
