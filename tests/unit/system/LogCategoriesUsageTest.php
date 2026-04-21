@@ -25,6 +25,7 @@ class LogCategoriesUsageTest extends TestCase
         'app/admin/includes/process-transfer-approve.php',
         'app/admin/includes/process-transfer-deny.php',
         'app/admin/includes/process-car-details.php',
+        'usersc/includes/transfer_email_notifications.php',
     ];
 
     private string $rootDir;
@@ -191,6 +192,16 @@ class LogCategoriesUsageTest extends TestCase
             '/logger\s*\([^,]+,\s*LogCategories::LOG_CATEGORY_EMAIL_ERROR[^)]*\$failCount/',
             $content,
             'Partial admin alert failure must log under LOG_CATEGORY_EMAIL_ERROR with $failCount (Issue #656)'
+        );
+        $this->assertMatchesRegularExpression(
+            '/if\s*\(\s*\$failCount\s*>\s*0\s*\)/',
+            $content,
+            'Error log must be gated on $failCount > 0 (Issue #656)'
+        );
+        $this->assertMatchesRegularExpression(
+            '/if\s*\(\s*\$successCount\s*>\s*0\s*\)/',
+            $content,
+            'Success log must be gated on $successCount > 0 to prevent false success entries (Issue #656)'
         );
     }
 

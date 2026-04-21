@@ -199,18 +199,19 @@ function sendTransferRequestAdminAlert(int $transferRequestId): bool
             if ($result === true) {
                 $successCount++;
             } else {
-                logger(0, LogCategories::LOG_CATEGORY_EMAIL_ERROR, "Failed to send admin alert to: {$adminEmail}");
+                logger(0, LogCategories::LOG_CATEGORY_EMAIL_ERROR,
+                    "Transfer request #$transferRequestId admin alert failed to send to: {$adminEmail}");
             }
         }
 
         $failCount = $totalCount - $successCount;
         if ($failCount > 0) {
             logger(0, LogCategories::LOG_CATEGORY_EMAIL_ERROR,
-                "Transfer request admin alerts: $successCount sent, $failCount FAILED out of $totalCount");
+                "Transfer request #$transferRequestId admin alerts: $successCount sent, $failCount FAILED out of $totalCount");
         }
         if ($successCount > 0) {
             logger($transferData->requested_by_user_id, LogCategories::LOG_CATEGORY_EMAIL_SUCCESS,
-                "Transfer request admin alerts sent to $successCount administrators");
+                "Transfer request #$transferRequestId admin alerts sent to $successCount of $totalCount administrators");
         }
         return $successCount > 0;
 
