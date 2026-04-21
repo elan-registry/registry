@@ -134,6 +134,7 @@ tests/playwright/.auth/
 ########################################
 # Backups & Archives
 ########################################
+usersc/plugins/sendinblue_backup_*/
 @backup*
 backup/
 usupdate.zip
