@@ -98,14 +98,14 @@ if (Input::exists('post')) {
                 if (!$fromEmailValid) {
                     logger($user->data()->id, LogCategories::LOG_CATEGORY_ELAN_REGISTRY, "contact_owner_email.php invalid fromEmail for reply-to: " . preg_replace('/[\r\n\t]/', '', $fromEmail));
                 }
+                // reply_name is a no-op until the Brevo override.php is updated to forward it.
                 $replyOpts = $fromEmailValid ? ['replyTo' => $fromEmail, 'reply_name' => $fromName] : [];
 
                 $result = email($toEmail, $subject, $body, $replyOpts);
                 $safeFromLog = preg_replace('/[\r\n\t]/', '', $fromEmail);
                 $safeToLog   = preg_replace('/[\r\n\t]/', '', $toEmail);
                 if ($result !== true) {
-                    $resultStr = is_string($result) ? preg_replace('/[\r\n\t]/', '', $result) : 'unknown delivery error';
-                    logger($user->data()->id, LogCategories::LOG_CATEGORY_EMAIL_ERROR, "contact_owner_email.php SEND FAILED from " . $safeFromLog . " to " . $safeToLog . ": " . $resultStr);
+                    logger($user->data()->id, LogCategories::LOG_CATEGORY_EMAIL_ERROR, "contact_owner_email.php SEND FAILED from " . $safeFromLog . " to " . $safeToLog);
                     $errors[] = 'Your message could not be delivered. Please try again or contact the administrator.';
                 } else {
                     logger($user->data()->id, LogCategories::LOG_CATEGORY_ELAN_REGISTRY, "contact_owner_email.php sent from " . $safeFromLog . " to " . $safeToLog);
