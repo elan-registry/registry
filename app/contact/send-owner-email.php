@@ -37,6 +37,7 @@ if (Input::exists('post')) {
     $token = Input::get('csrf');
     if (!Token::check($token)) {
         include($abs_us_root . $us_url_root . 'usersc/scripts/token_error.php');
+        exit;
     } else {
         $action = Input::get('action');
         if ($action === 'send_message' && Input::get('from_user_id') && Input::get('to_user_id') && Input::get('message')) {
