@@ -151,7 +151,7 @@ if (Input::exists('post')) {
                 $result      = email($toEmail, $subject, $body);
                 $safeFromLog = preg_replace('/[\r\n\t]/', '', $fromEmail);
                 $safeToLog   = preg_replace('/[\r\n\t]/', '', $toEmail);
-                $safeIssue   = preg_replace('/[\r\n\t]/', '', $qualityIssue);
+                $safeIssue   = preg_replace('/[\r\n\t]/', '', (string)($qualityIssue ?? ''));
 
                 if ($result !== true) {
                     $resultStr = is_string($result) ? $result : 'unknown delivery error';
