@@ -98,7 +98,7 @@ if ($post_attempted) {
         $result = email($email_to, $email_subject, $body, ['replyTo' => $email_from]);
 
         if ($result !== true) {
-            $resultStr = is_string($result) ? $result : 'unknown delivery error';
+            $resultStr = is_string($result) ? preg_replace('/[\r\n\t]/', '', $result) : 'unknown delivery error';
             logger(1, LogCategories::LOG_CATEGORY_FEEDBACK_FORM, "Error sending feedback email: " . $resultStr);
             $errors[] = 'Your message could not be delivered. Please try again or contact the administrator.';
         } else {

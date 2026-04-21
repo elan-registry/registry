@@ -154,7 +154,7 @@ if (Input::exists('post')) {
                 $safeIssue   = preg_replace('/[\r\n\t]/', '', (string)($qualityIssue ?? ''));
 
                 if ($result !== true) {
-                    $resultStr = is_string($result) ? $result : 'unknown delivery error';
+                    $resultStr = is_string($result) ? preg_replace('/[\r\n\t]/', '', $result) : 'unknown delivery error';
                     $errors[] = 'Failed to send email. Please try again.';
                     logger($user->data()->id, LogCategories::LOG_CATEGORY_EMAIL_ERROR, "Admin contact SEND FAILED to {$safeToLog}: {$resultStr}");
                 } else {

@@ -104,7 +104,7 @@ if (Input::exists('post')) {
                 $safeFromLog = preg_replace('/[\r\n\t]/', '', $fromEmail);
                 $safeToLog   = preg_replace('/[\r\n\t]/', '', $toEmail);
                 if ($result !== true) {
-                    $resultStr = is_string($result) ? $result : 'unknown delivery error';
+                    $resultStr = is_string($result) ? preg_replace('/[\r\n\t]/', '', $result) : 'unknown delivery error';
                     logger($user->data()->id, LogCategories::LOG_CATEGORY_EMAIL_ERROR, "contact_owner_email.php SEND FAILED from " . $safeFromLog . " to " . $safeToLog . ": " . $resultStr);
                     $errors[] = 'Your message could not be delivered. Please try again or contact the administrator.';
                 } else {

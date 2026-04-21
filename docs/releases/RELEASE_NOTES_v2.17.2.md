@@ -1,6 +1,6 @@
 # Elan Registry v2.17.2 Release Notes
 
-**Release Date:** TBD
+**Release Date:** 2026-04-21
 **Type:** Patch Release - Email System Enhancements
 
 ## Required Actions After Deployment
