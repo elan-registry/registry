@@ -147,6 +147,30 @@ class LogCategoriesUsageTest extends TestCase
     }
 
     /**
+     * Regression test for Issue #639: join.php must capture email() return value and log failures.
+     */
+    public function testJoinPhpCapturesEmailReturnValue(): void
+    {
+        $filePath = $this->rootDir . '/usersc/join.php';
+        if (!file_exists($filePath)) {
+            $this->markTestSkipped('join.php not found');
+        }
+
+        $content = file_get_contents($filePath);
+
+        $this->assertMatchesRegularExpression(
+            '/\$\w+\s*=\s*email\s*\(/',
+            $content,
+            'join.php must capture the return value of email() (Issue #639)'
+        );
+        $this->assertStringContainsString(
+            'LogCategories::LOG_CATEGORY_EMAIL_ERROR',
+            $content,
+            'join.php must log email failures using LogCategories::LOG_CATEGORY_EMAIL_ERROR (Issue #639)'
+        );
+    }
+
+    /**
      * Data provider for car endpoint files
      */
     public static function carEndpointFilesProvider(): array
