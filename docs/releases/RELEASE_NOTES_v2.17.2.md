@@ -23,15 +23,15 @@ after deployment:
 
 - **Brevo plugin v1.5 upgrade**: Replaces plugin files with upstream v1.5, resolving
   the `override.php` signature mismatch that caused silent data loss.
-- **override.php signature alignment** ([#601](https://github.com/unibrain1/elanregistry/issues/601)):
-  Rewritten to match UserSpice's canonical `email()` signature with correct option
-  key translation (`replyTo` → `reply`, etc.).
-- **Failure detection fix** ([#601](https://github.com/unibrain1/elanregistry/issues/601)):
-  `send-feedback.php` uses `!== true` so Brevo error strings are caught as failures.
-- **`function_exists('sendinblue')` removed** ([#601](https://github.com/unibrain1/elanregistry/issues/601)):
-  `send-feedback.php` calls `email()` directly, removing environment-specific branching.
+- **`registrySendEmail()` removed** ([#601](https://github.com/unibrain1/elanregistry/issues/601)):
+  The workaround wrapper that bypassed `override.php` is deleted. All callers now use
+  `email()` directly with UserSpice canonical option keys (`replyTo`, etc.).
+- **Strict failure detection** ([#601](https://github.com/unibrain1/elanregistry/issues/601)):
+  `send-feedback.php`, `user_settings.php`, and `transfer_email_notifications.php`
+  updated to use strict `!== true` / `=== true` checks (consistent with the rest of
+  the codebase).
 - **process-admin-contact.php delivery check** ([#640](https://github.com/unibrain1/elanregistry/issues/640)):
-  Changed `if ($result)` to `if ($result === true)` for correct Brevo error detection.
+  Changed `if ($result)` to `if ($result !== true)` for correct failure detection.
 
 ## Issues Resolved
 
@@ -42,6 +42,6 @@ after deployment:
 
 ## Summary
 
-2 issues resolved. Upgrades Brevo plugin to v1.5 and fixes the override.php signature
-mismatch that caused silent email delivery failures, plus unreliable failure detection
-in admin contact emails.
+2 issues resolved. Upgrades Brevo plugin to v1.5, removes the `registrySendEmail()`
+workaround, standardizes all email() callers to use strict result checks, and fixes
+unreliable failure detection in admin contact emails.

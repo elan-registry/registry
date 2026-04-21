@@ -368,7 +368,7 @@ if (!empty($_POST)) {
                                 $subject = 'Verify Your Email';
                                 $body =  email_body('_email_template_verify_new.php', $options);
                                 $email_sent = email($email, $subject, $body);
-                                if (!$email_sent) {
+                                if ($email_sent !== true) {
                                     $errors[] = 'Email NOT sent due to error. Please contact site administrator.';
                                 } else {
                                     $successes[] = "Email request received. Please check your email to perform verification. Be sure to check your Spam and Junk folder as the verification link expires in {$settings->join_vericode_expiry} hours.";
