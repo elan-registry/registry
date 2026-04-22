@@ -22,8 +22,9 @@ class ApplicationVersion
             $version    = trim((string) file_get_contents($versionFile));
             $deployTime = filemtime($versionFile);
         } else {
-            // Local dev: VERSION file is absent (post-receive hook has not run).
-            // shell_exec is safe here — the command is a hardcoded string with no user input.
+            // Last-resort fallback: VERSION is absent when git hooks have not been configured
+            // (e.g. fresh clone before running setup-git-hooks.sh, CI environments, GitHub
+            // Actions). The command is a hardcoded string with no user input — safe to use.
             // phpcs:ignore Squiz.PHP.DiscouragedFunctions.Discouraged
             $gitVersion = trim((string) shell_exec('git describe --tags --always 2>/dev/null'));
             $version    = $gitVersion !== '' ? $gitVersion : 'unknown';
