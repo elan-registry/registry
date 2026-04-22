@@ -38,8 +38,9 @@
   Shared `DocumentPortalTemplate` class eliminates ~60% of duplicated HTML across
   documentation portal pages.
 - **MarkdownParser XSS hardening** ([#635](https://github.com/unibrain1/elanregistry/issues/635)):
-  `sanitizeHtml()` now strips event handler attributes and `javascript:` URIs from allowed
-  HTML tags.
+  `sanitizeHtml()` now uses a DOM-based attribute allowlist to strip event handlers and
+  block `javascript:`, `data:`, and `vbscript:` URIs (including control-character and
+  mixed-case bypass variants) from allowed HTML tags.
 - **Replace abandoned secure-env-php with phpdotenv** ([#631](https://github.com/unibrain1/elanregistry/issues/631)):
   Swaps the first-boot env library for the actively maintained `vlucas/phpdotenv`; credentials
   move from `.env.enc` + `.env.key` to plaintext `.env` with `chmod 600`.
