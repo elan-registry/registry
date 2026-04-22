@@ -97,7 +97,7 @@ if (!empty($_POST)) {
                             'Car add error: ' . $e->getMessage()
                         )->send();
                 } catch (\Exception $e) {
-                    ApiResponse::serverError('Failed to add car: ' . $e->getMessage())
+                    ApiResponse::serverError('Failed to add car: An unexpected error occurred.')
                         ->withLogging(
                             $user->data()->id,
                             LogCategories::LOG_CATEGORY_CAR_ERRORS,
@@ -149,7 +149,7 @@ if (!empty($_POST)) {
                             'Car update error: ' . $e->getMessage()
                         )->send();
                 } catch (\Exception $e) {
-                    ApiResponse::serverError('Failed to update car: ' . $e->getMessage())
+                    ApiResponse::serverError('Failed to update car: An unexpected error occurred.')
                         ->withLogging(
                             $user->data()->id,
                             LogCategories::LOG_CATEGORY_CAR_ERRORS,
@@ -639,6 +639,12 @@ function uploadImages(array &$cardetails): void
                             $resizeObj->saveImage($thumbname, 80);
                         } catch (ElanRegistryException $e) {
                             $resizeSuccess = false;
+                            logger(
+                                $user->data()->id,
+                                LogCategories::LOG_CATEGORY_FILE_ERROR,
+                                'Image resize failed for carId: ' . Input::get('car_id') .
+                                    ' file: ' . $newFileName . ' size: ' . $size . ' error: ' . $e->getMessage()
+                            );
                             break;
                         }
                     }
