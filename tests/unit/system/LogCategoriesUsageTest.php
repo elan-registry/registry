@@ -298,6 +298,32 @@ class LogCategoriesUsageTest extends TestCase
     }
 
     /**
+     * Regression test for Issue #669: manage-consolidated.php must not use a hardcoded
+     * $currentUserId fallback or raw $_SESSION access for the user ID.
+     * A fabricated user ID would corrupt the audit trail for destructive admin operations.
+     */
+    public function testManageConsolidatedPhpHasNoUserIdFallback(): void
+    {
+        $filePath = $this->rootDir . '/app/admin/manage-consolidated.php';
+        if (!file_exists($filePath)) {
+            $this->markTestSkipped('manage-consolidated.php not found');
+        }
+
+        $content = (string)file_get_contents($filePath);
+
+        $this->assertStringNotContainsString(
+            '$currentUserId = 1',
+            $content,
+            'manage-consolidated.php must not fall back to a hardcoded user ID — this corrupts the audit trail (Issue #669)'
+        );
+        $this->assertStringNotContainsString(
+            '$_SESSION[\'user\'][\'id\']',
+            $content,
+            'manage-consolidated.php must not access $_SESSION directly for the user ID — use the $user object (Issue #669)'
+        );
+    }
+
+    /**
      * Data provider for car endpoint files
      */
     public static function carEndpointFilesProvider(): array
