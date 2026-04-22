@@ -442,7 +442,8 @@ class LogCategoriesUsageTest extends TestCase
     }
 
     /**
-     * Regression test for Issue #368: no hardcoded admin email addresses in email templates.
+     * Regression test for Issue #368: _email_template_verify_new.php must not contain
+     * a hardcoded admin email address and must call getFeedbackEmail() instead.
      */
     public function testNoHardcodedAdminEmailInVerifyTemplate(): void
     {
@@ -466,7 +467,9 @@ class LogCategoriesUsageTest extends TestCase
     }
 
     /**
-     * Regression test for Issue #368: elan_feedback_email must be in settings auto-creation.
+     * Regression test for Issue #368: elan_feedback_email must appear in the
+     * processSettingsAutoCreation() defaults array in tab-settings.php,
+     * ensuring it is inserted into the database on fresh installs.
      */
     public function testFeedbackEmailSettingIsAutoCreated(): void
     {

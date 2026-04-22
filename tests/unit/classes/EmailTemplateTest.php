@@ -908,6 +908,31 @@ final class EmailTemplateTest extends TestCase
         $this->assertStringContainsString('users/verify.php', $html);
     }
 
+    public function testVerifyNewEmailViewContainsAdminContactEmail(): void
+    {
+        // getFeedbackEmail() mock returns 'registrar@elanregistry.org'.
+        // Verify the template renders the dynamic address into the mailto: href
+        // and visible link text — not any hardcoded value.
+        $html = $this->renderView('_email_template_verify_new.php', [
+            'fname'                => 'Carol',
+            'email'                => 'carol@example.com',
+            'vericode'             => 'NEWCODE77',
+            'user_id'              => 12,
+            'join_vericode_expiry' => 24,
+        ]);
+
+        $this->assertStringContainsString(
+            'href="mailto:registrar@elanregistry.org"',
+            $html,
+            '_email_template_verify_new.php must build mailto: href from getFeedbackEmail() (#368)'
+        );
+        $this->assertStringContainsString(
+            '>registrar@elanregistry.org<',
+            $html,
+            '_email_template_verify_new.php must display the configured feedback address in link text (#368)'
+        );
+    }
+
     // ============================================================
     // TRANSFER EMAIL TEMPLATE VIEW TESTS
     //

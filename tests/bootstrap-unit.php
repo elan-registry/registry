@@ -1306,7 +1306,8 @@ if (!function_exists('getBaseUrl')) {
 if (!function_exists('getFeedbackEmail')) {
     /**
      * Mock getFeedbackEmail function for testing
-     * Returns a predictable feedback email for assertions
+     * Returns 'registrar@elanregistry.org' — mirrors the production fallback in
+     * custom_functions.php so that render assertions reflect real-world behavior.
      */
     function getFeedbackEmail(): string
     {
