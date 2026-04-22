@@ -28,6 +28,15 @@ class LogCategoriesUsageTest extends TestCase
         'usersc/includes/transfer_email_notifications.php',
     ];
 
+    /**
+     * Contact-related PHP files that should use LogCategories constants
+     * for all logging category parameters.
+     */
+    private const CONTACT_ENDPOINT_FILES = [
+        'app/contact/send-feedback.php',
+        'app/contact/send-owner-email.php',
+    ];
+
     private string $rootDir;
 
     protected function setUp(): void
@@ -71,6 +80,67 @@ class LogCategoriesUsageTest extends TestCase
      * @dataProvider carEndpointFilesProvider
      */
     public function testNoHardcodedLoggerStrings(string $relativePath): void
+    {
+        $filePath = $this->rootDir . '/' . $relativePath;
+        if (!file_exists($filePath)) {
+            $this->markTestSkipped("File not found: $relativePath");
+        }
+
+        $content = file_get_contents($filePath);
+
+        // Match logger() calls that use string literals for the category parameter
+        // Pattern: logger(anything, 'SomeString', anything)
+        $pattern = '/\blogger\s*\([^,]+,\s*[\'"][A-Za-z]+[\'"]/';
+
+        $matches = [];
+        preg_match_all($pattern, $content, $matches);
+
+        $this->assertEmpty(
+            $matches[0],
+            sprintf(
+                "File %s contains hardcoded string literals in logger() calls. " .
+                "Use LogCategories constants instead.\nFound: %s",
+                $relativePath,
+                implode(', ', $matches[0])
+            )
+        );
+    }
+
+    /**
+     * @dataProvider contactEndpointFilesProvider
+     */
+    public function testNoHardcodedWithLoggingStringsInContactFiles(string $relativePath): void
+    {
+        $filePath = $this->rootDir . '/' . $relativePath;
+        if (!file_exists($filePath)) {
+            $this->markTestSkipped("File not found: $relativePath");
+        }
+
+        $content = file_get_contents($filePath);
+
+        // Match withLogging calls that use string literals for the category parameter
+        // Pattern: ->withLogging(anything, 'SomeString', anything)
+        // The category is the second argument after the user ID
+        $pattern = '/->withLogging\s*\([^,]+,\s*[\'"][A-Za-z]+[\'"]/';
+
+        $matches = [];
+        preg_match_all($pattern, $content, $matches);
+
+        $this->assertEmpty(
+            $matches[0],
+            sprintf(
+                "File %s contains hardcoded string literals in withLogging() calls. " .
+                "Use LogCategories constants instead.\nFound: %s",
+                $relativePath,
+                implode(', ', $matches[0])
+            )
+        );
+    }
+
+    /**
+     * @dataProvider contactEndpointFilesProvider
+     */
+    public function testNoHardcodedLoggerStringsInContactFiles(string $relativePath): void
     {
         $filePath = $this->rootDir . '/' . $relativePath;
         if (!file_exists($filePath)) {
@@ -345,12 +415,51 @@ class LogCategoriesUsageTest extends TestCase
     }
 
     /**
+     * Regression test for Issue #600: send-feedback.php modernization checks.
+     */
+    public function testSendFeedbackPhpIsModernized(): void
+    {
+        $filePath = $this->rootDir . '/app/contact/send-feedback.php';
+        if (!file_exists($filePath)) {
+            $this->markTestSkipped('send-feedback.php not found');
+        }
+
+        $content = (string)file_get_contents($filePath);
+
+        // cleanString() must have a PHPDoc block
+        $this->assertMatchesRegularExpression(
+            '/\/\*\*.*?cleanString/s',
+            $content,
+            'send-feedback.php cleanString() must have a PHPDoc block (#600)'
+        );
+
+        // logger() calls must not use hardcoded user ID 1
+        $this->assertDoesNotMatchRegularExpression(
+            '/\blogger\s*\(\s*1\s*,/',
+            $content,
+            'send-feedback.php must not use hardcoded user ID 1 in logger() calls (#600)'
+        );
+    }
+
+    /**
      * Data provider for car endpoint files
      */
     public static function carEndpointFilesProvider(): array
     {
         $data = [];
         foreach (self::CAR_ENDPOINT_FILES as $file) {
+            $data[$file] = [$file];
+        }
+        return $data;
+    }
+
+    /**
+     * Data provider for contact endpoint files
+     */
+    public static function contactEndpointFilesProvider(): array
+    {
+        $data = [];
+        foreach (self::CONTACT_ENDPOINT_FILES as $file) {
             $data[$file] = [$file];
         }
         return $data;
