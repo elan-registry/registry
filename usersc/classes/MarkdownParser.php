@@ -15,6 +15,8 @@ declare(strict_types=1);
 
 namespace ElanRegistry\Documentation;
 
+use LogCategories;
+
 class MarkdownParser
 {
     /**
@@ -371,6 +373,9 @@ class MarkdownParser
 
         $xpath = new \DOMXPath($dom);
         foreach ($xpath->query('//*') as $element) {
+            if (!($element instanceof \DOMElement)) {
+                continue;
+            }
             $tag     = strtolower($element->tagName);
             $allowed = $safeAttributes[$tag] ?? [];
 
@@ -389,8 +394,9 @@ class MarkdownParser
                 if ($value !== '') {
                     $stripped = preg_replace('/[\x00-\x20]+/', '', $value);
                     if ($stripped === null) {
+                        logger(0, LogCategories::LOG_CATEGORY_SYSTEM_ERROR, 'sanitizeHtml: preg_replace() returned null for ' . $urlAttr . ' attribute; removing attribute as precaution.');
                         $element->removeAttribute($urlAttr);
-                        continue 2;
+                        continue;
                     }
                     $lower = strtolower($stripped);
                     foreach ($unsafeSchemes as $unsafe) {
@@ -412,9 +418,11 @@ class MarkdownParser
         $result = '';
         foreach ($body->childNodes as $child) {
             $serialized = $dom->saveHTML($child);
-            if ($serialized !== false) {
-                $result .= $serialized;
+            if ($serialized === false) {
+                logger(0, LogCategories::LOG_CATEGORY_SYSTEM_ERROR, 'sanitizeHtml: saveHTML() failed for node type=' . $child->nodeType . '; returning empty string. Input length: ' . strlen($html));
+                return '';
             }
+            $result .= $serialized;
         }
 
         return $result;

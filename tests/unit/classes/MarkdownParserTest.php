@@ -264,6 +264,22 @@ final class MarkdownParserTest extends TestCase
         $this->assertStringContainsString('<a', $sanitized);
     }
 
+    public function testSanitizeHtmlBlocksJavascriptSrc(): void
+    {
+        $html = '<img src="javascript:alert(1)" alt="img">';
+
+        $sanitized = MarkdownParser::sanitizeHtml($html);
+
+        $this->assertStringNotContainsString('javascript:', $sanitized);
+        $this->assertStringContainsString('alt="img"', $sanitized);
+    }
+
+    public function testSanitizeHtmlReturnsEmptyStringForBlankInput(): void
+    {
+        $this->assertSame('', MarkdownParser::sanitizeHtml(''));
+        $this->assertSame('', MarkdownParser::sanitizeHtml('   '));
+    }
+
     // ============================================================
     // MARKDOWN CONVERSION TESTS
     // ============================================================
