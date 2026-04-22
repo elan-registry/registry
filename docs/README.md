@@ -105,6 +105,8 @@ Specific workflows and advanced topics:
   guidelines
 - **[BACKUP_SYSTEM.md](development/BACKUP_SYSTEM.md)** - BackupManager class
   API and usage patterns
+- **[EMAIL_SYSTEM.md](development/EMAIL_SYSTEM.md)** - Brevo email plugin
+  setup, configuration, environment setup, and troubleshooting
 - **[ERROR_HANDLING.md](development/ERROR_HANDLING.md)** - Error handling
   patterns, API responses, and frontend integration
 - **[CLASSES.md](development/CLASSES.md)** - Custom application class
