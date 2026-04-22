@@ -181,3 +181,8 @@ screenshots/
 TODO
 plans
 
+########################################
+# Private / Credentials (never commit)
+########################################
+private/
+

@@ -15,6 +15,8 @@ declare(strict_types=1);
 
 namespace ElanRegistry\Documentation;
 
+use LogCategories;
+
 class MarkdownParser
 {
     /**
@@ -325,16 +327,104 @@ class MarkdownParser
     }
 
     /**
-     * Sanitize HTML output to prevent XSS
+     * Sanitize HTML output to prevent XSS.
+     *
+     * Strips disallowed elements via strip_tags(), then uses a DOM-based
+     * attribute allowlist to remove event handler attributes and unsafe URI
+     * schemes (javascript:, data:, vbscript:) from remaining elements.
+     * Returns an empty string immediately if input is blank after strip_tags(),
+     * bypassing DOM processing.
      *
      * @param string $html The HTML to sanitize
      * @return string Sanitized HTML
      */
     public static function sanitizeHtml(string $html): string
     {
-        // Allow basic HTML tags but strip dangerous ones
         $allowedTags = '<h1><h2><h3><h4><h5><h6><p><br><strong><em><a><ul><ol><li><pre><code><blockquote><table><thead><tbody><tr><th><td><img>';
+        $html        = strip_tags($html, $allowedTags);
 
-        return strip_tags($html, $allowedTags);
+        if (trim($html) === '') {
+            return '';
+        }
+
+        $dom            = new \DOMDocument('1.0', 'UTF-8');
+        $previousErrors = libxml_use_internal_errors(true);
+        $loaded         = $dom->loadHTML('<?xml encoding="UTF-8"><body>' . $html . '</body>', LIBXML_HTML_NOIMPLIED | LIBXML_HTML_NODEFDTD);
+        libxml_clear_errors();
+        libxml_use_internal_errors($previousErrors);
+
+        if ($loaded === false) {
+            logger(0, LogCategories::LOG_CATEGORY_SYSTEM_ERROR, 'sanitizeHtml: DOMDocument::loadHTML() failed; returning empty string. Input length: ' . strlen($html));
+            return '';
+        }
+
+        // Attribute allowlist per element — all unlisted attributes are stripped. Tags absent from this array are allowed but lose all attributes.
+        $safeAttributes = [
+            'a'    => ['href', 'target', 'rel'],
+            'img'  => ['src', 'alt', 'width', 'height'],
+            'h1'   => ['id'], 'h2' => ['id'], 'h3' => ['id'],
+            'h4'   => ['id'], 'h5' => ['id'], 'h6' => ['id'],
+            'td'   => ['colspan', 'rowspan'],
+            'th'   => ['colspan', 'rowspan'],
+            'code' => ['class'],
+        ];
+
+        $unsafeSchemes = ['javascript:', 'data:', 'vbscript:'];
+
+        $xpath = new \DOMXPath($dom);
+        foreach ($xpath->query('//*') as $element) {
+            if (!($element instanceof \DOMElement)) {
+                continue;
+            }
+            $tag     = strtolower($element->tagName);
+            $allowed = $safeAttributes[$tag] ?? [];
+
+            $toRemove = [];
+            foreach ($element->attributes as $attr) {
+                if (!in_array(strtolower($attr->nodeName), $allowed, true)) {
+                    $toRemove[] = $attr->nodeName;
+                }
+            }
+            foreach ($toRemove as $name) {
+                $element->removeAttribute($name);
+            }
+
+            foreach (['href', 'src'] as $urlAttr) {
+                $value = $element->getAttribute($urlAttr);
+                if ($value !== '') {
+                    $stripped = preg_replace('/[\x00-\x20]+/', '', $value);
+                    if ($stripped === null) {
+                        logger(0, LogCategories::LOG_CATEGORY_SYSTEM_ERROR, 'sanitizeHtml: preg_replace() returned null for ' . $urlAttr . ' attribute; removing attribute as precaution.');
+                        $element->removeAttribute($urlAttr);
+                        continue;
+                    }
+                    $lower = strtolower($stripped);
+                    foreach ($unsafeSchemes as $unsafe) {
+                        if (str_starts_with($lower, $unsafe)) {
+                            $element->removeAttribute($urlAttr);
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+
+        $body = $dom->getElementsByTagName('body')->item(0);
+        if ($body === null) {
+            logger(0, LogCategories::LOG_CATEGORY_SYSTEM_ERROR, 'sanitizeHtml: <body> element missing from parsed DOM. Input length: ' . strlen($html));
+            return '';
+        }
+
+        $result = '';
+        foreach ($body->childNodes as $child) {
+            $serialized = $dom->saveHTML($child);
+            if ($serialized === false) {
+                logger(0, LogCategories::LOG_CATEGORY_SYSTEM_ERROR, 'sanitizeHtml: saveHTML() failed for node type=' . $child->nodeType . '; returning empty string. Input length: ' . strlen($html));
+                return '';
+            }
+            $result .= $serialized;
+        }
+
+        return $result;
     }
 }
