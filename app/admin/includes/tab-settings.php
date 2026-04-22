@@ -171,7 +171,7 @@ if (!function_exists('processSettingsAutoCreation')) {
                     $messages[] = ['type' => 'success', 'message' => count($fieldsToAdd) . ' settings fields were automatically added and populated with default values.'];
                 }
             } catch (Exception $e) {
-                $messages[] = ['type' => 'danger', 'message' => 'Error creating settings fields: ' . $e->getMessage()];
+                $messages[] = ['type' => 'danger', 'message' => 'Error creating settings fields. See system log for details.'];
                 logger($user->data()->id ?? 0, LogCategories::LOG_CATEGORY_DATABASE_ERROR, 'Settings field creation failed: ' . $e->getMessage());
             }
         }
@@ -197,7 +197,7 @@ if (!function_exists('processSettingsAutoCreation')) {
                 logger($user->data()->id, LogCategories::LOG_CATEGORY_SETTINGS_UPDATE, 'Populated NULL settings fields with defaults: ' . implode(', ', $fieldsToPopulate));
                 $messages[] = ['type' => 'info', 'message' => count($fieldsToPopulate) . ' existing settings fields were populated with default values.'];
             } catch (Exception $e) {
-                $messages[] = ['type' => 'danger', 'message' => 'Error populating settings fields: ' . $e->getMessage()];
+                $messages[] = ['type' => 'danger', 'message' => 'Error populating settings fields. See system log for details.'];
                 logger($user->data()->id ?? 0, LogCategories::LOG_CATEGORY_DATABASE_ERROR, 'Settings field population failed: ' . $e->getMessage());
             }
         }
