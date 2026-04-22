@@ -16,15 +16,23 @@ class ApplicationVersion
      */
     public static function get(): string
     {
-        // Get version from static VERSION file
         $versionFile = dirname(__DIR__) . '/VERSION';
-        $version = file_exists($versionFile) ? trim(file_get_contents($versionFile)) : 'unknown';
-        
-        // Get deployment timestamp from file modification time or current time
-        $deployTime = file_exists($versionFile) ? filemtime($versionFile) : time();
+
+        if (file_exists($versionFile)) {
+            $version    = trim((string) file_get_contents($versionFile));
+            $deployTime = filemtime($versionFile);
+        } else {
+            // Local dev: VERSION file is absent (post-receive hook has not run).
+            // shell_exec is safe here — the command is a hardcoded string with no user input.
+            // phpcs:ignore Squiz.PHP.DiscouragedFunctions.Discouraged
+            $gitVersion = trim((string) shell_exec('git describe --tags --always 2>/dev/null'));
+            $version    = $gitVersion !== '' ? $gitVersion : 'unknown';
+            $deployTime = time();
+        }
+
         $deployDate = new \DateTime('@' . $deployTime);
         $deployDate->setTimezone(new \DateTimeZone('PST'));
-        
+
         return sprintf('%s (%s)', $version, $deployDate->format('Y-m-d H:i:s'));
     }
 }
