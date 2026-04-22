@@ -25,6 +25,8 @@ $verifyUrl = getBaseUrl() . '/users/verify.php?new=1'
     . '&vericode=' . rawurlencode($vericode ?? '')
     . '&user_id=' . (int)($user_id ?? 0);
 
+$adminContact = getFeedbackEmail();
+
 $content = "
     <p>Hello <strong>" . htmlspecialchars($fname, ENT_QUOTES, 'UTF-8') . "</strong>,</p>
 
@@ -35,7 +37,7 @@ $content = "
     <p>Or copy and paste this link into your browser:</p>
     <p style=\"word-break:break-all;font-size:13px;color:#6c757d;\">" . htmlspecialchars($verifyUrl, ENT_QUOTES, 'UTF-8') . "</p>
 
-    <p><strong>Didn't request this change?</strong> Contact <a href=\"mailto:admin@elanregistry.org\">admin@elanregistry.org</a> immediately — your account may be at risk.</p>
+    <p><strong>Didn't request this change?</strong> Contact <a href=\"mailto:" . htmlspecialchars($adminContact, ENT_QUOTES, 'UTF-8') . "\">" . htmlspecialchars($adminContact, ENT_QUOTES, 'UTF-8') . "</a> immediately — your account may be at risk.</p>
 
     <p>This verification link expires in <strong>" . htmlspecialchars((string)$join_vericode_expiry, ENT_QUOTES, 'UTF-8') . " hours</strong>. Until verified, your previous email address will remain active.</p>
 ";

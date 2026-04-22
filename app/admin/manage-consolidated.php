@@ -29,18 +29,15 @@ if (!securePage($php_self)) {
 // Initialize database connection
 $db = DB::getInstance();
 
-// Ensure user object is available and get current user ID
-$currentUserId = null;
-if (isset($user) && $user->data() && $user->data()->id) {
-    $currentUserId = $user->data()->id;
-} else {
-    // Fallback: try to get user ID from session or other methods
-    if (isset($_SESSION['user']) && isset($_SESSION['user']['id'])) {
-        $currentUserId = $_SESSION['user']['id'];
-    } else {
-        // Last resort: set a default admin user ID
-        $currentUserId = 1; // Assuming admin user ID 1 exists
-    }
+// Abort immediately if no authenticated session exists.
+// securePage() above handles access control; this guard ensures the audit trail
+// always has a real, authenticated user ID — never a fabricated fallback.
+try {
+    $currentUserId = currentUserId();
+} catch (RuntimeException $e) {
+    logger(0, LogCategories::LOG_CATEGORY_SECURITY,
+        "Admin page accessed with invalid user session on $php_self");
+    Redirect::to($us_url_root . 'users/login.php');
 }
 
 // Tab routing - determine which tab to show
@@ -198,8 +195,8 @@ if (Input::exists('post')) {
                             $errors[] = "Failed to reassign car ID $car_id";
                         }
                     } catch (Exception $e) {
-                        $errors[] = "Transfer failed: " . $e->getMessage();
-                        logger($currentUserId, LogCategories::LOG_CATEGORY_CAR_ACTIONS, "Car reassignment failed for Car ID $car_id: " . $e->getMessage());
+                        $errors[] = 'Transfer failed. Please try again.';
+                        logger($currentUserId, LogCategories::LOG_CATEGORY_CAR_TRANSFER_ERROR, "Car reassignment failed for Car ID $car_id: " . $e->getMessage());
                     }
                     break;
 

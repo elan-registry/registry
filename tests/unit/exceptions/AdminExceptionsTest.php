@@ -56,6 +56,22 @@ class AdminExceptionsTest extends TestCase
     }
 
     /**
+     * Regression test for issue #651: catch block must use getUserMessage(), not getMessage().
+     * Verifies the two return different strings so the bug would be observable in a code review.
+     */
+    public function testGetMessageAndGetUserMessageAreDistinctForIssue651(): void
+    {
+        $e = new AdminContactException('Admin user not found');
+
+        $this->assertEquals('Admin user not found', $e->getMessage());
+        $this->assertEquals(
+            'An error occurred while sending the message. Please try again.',
+            $e->getUserMessage()
+        );
+        $this->assertNotEquals($e->getMessage(), $e->getUserMessage());
+    }
+
+    /**
      * Test AdminOperationException instantiation and properties
      */
     public function testAdminOperationException(): void

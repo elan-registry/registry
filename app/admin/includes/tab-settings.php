@@ -171,7 +171,7 @@ if (!function_exists('processSettingsAutoCreation')) {
                     $messages[] = ['type' => 'success', 'message' => count($fieldsToAdd) . ' settings fields were automatically added and populated with default values.'];
                 }
             } catch (Exception $e) {
-                $messages[] = ['type' => 'danger', 'message' => 'Error creating settings fields: ' . $e->getMessage()];
+                $messages[] = ['type' => 'danger', 'message' => 'Error creating settings fields. See system log for details.'];
                 logger($user->data()->id ?? 0, LogCategories::LOG_CATEGORY_DATABASE_ERROR, 'Settings field creation failed: ' . $e->getMessage());
             }
         }
@@ -197,7 +197,7 @@ if (!function_exists('processSettingsAutoCreation')) {
                 logger($user->data()->id, LogCategories::LOG_CATEGORY_SETTINGS_UPDATE, 'Populated NULL settings fields with defaults: ' . implode(', ', $fieldsToPopulate));
                 $messages[] = ['type' => 'info', 'message' => count($fieldsToPopulate) . ' existing settings fields were populated with default values.'];
             } catch (Exception $e) {
-                $messages[] = ['type' => 'danger', 'message' => 'Error populating settings fields: ' . $e->getMessage()];
+                $messages[] = ['type' => 'danger', 'message' => 'Error populating settings fields. See system log for details.'];
                 logger($user->data()->id ?? 0, LogCategories::LOG_CATEGORY_DATABASE_ERROR, 'Settings field population failed: ' . $e->getMessage());
             }
         }
@@ -426,7 +426,7 @@ $autoCreationMessages = processSettingsAutoCreation();
                                           data-desc="jQuery CDN URL"
                                           name="elan_jquery_cdn"
                                           id="elan_jquery_cdn"
-                                          placeholder="https://cdn.jsdelivr.net/npm/jquery@3.7.1/dist/jquery.min.js"><?= $settings->elan_jquery_cdn ?? '' ?></textarea>
+                                          placeholder="https://cdn.jsdelivr.net/npm/jquery@3.7.1/dist/jquery.min.js"><?= htmlspecialchars($settings->elan_jquery_cdn ?? '', ENT_QUOTES, 'UTF-8') ?></textarea>
                                 <small class="form-text text-muted">
                                     <i class="fas fa-external-link-alt"></i> <strong>Note:</strong> Do not use SLIM version
                                     <a href="https://code.jquery.com" target="_blank" class="ml-2">Browse Versions</a>
@@ -446,7 +446,7 @@ $autoCreationMessages = processSettingsAutoCreation();
                                           data-desc="jQuery UI CDN URL"
                                           name="elan_jquery_ui_cdn"
                                           id="elan_jquery_ui_cdn"
-                                          placeholder="https://code.jquery.com/ui/1.12.1/jquery-ui.min.js"><?= $settings->elan_jquery_ui_cdn ?? '' ?></textarea>
+                                          placeholder="https://code.jquery.com/ui/1.12.1/jquery-ui.min.js"><?= htmlspecialchars($settings->elan_jquery_ui_cdn ?? '', ENT_QUOTES, 'UTF-8') ?></textarea>
                                 <small class="form-text text-muted">
                                     <i class="fas fa-external-link-alt"></i> jQuery UI components and widgets
                                     <a href="https://jqueryui.com/download/" target="_blank" class="ml-2">Get UI CDN</a>
@@ -471,7 +471,7 @@ $autoCreationMessages = processSettingsAutoCreation();
                                        data-desc="Bootstrap CSS CDN URL"
                                        name="elan_bootstrap_css_cdn"
                                        id="elan_bootstrap_css_cdn"
-                                       value="<?= $settings->elan_bootstrap_css_cdn ?? '' ?>"
+                                       value="<?= htmlspecialchars($settings->elan_bootstrap_css_cdn ?? '', ENT_QUOTES, 'UTF-8') ?>"
                                        placeholder="https://cdn.jsdelivr.net/npm/bootstrap@4.5.3/dist/css/bootstrap.min.css">
                                 <small class="form-text text-muted">
                                     <i class="fas fa-external-link-alt"></i> Bootstrap CSS framework
@@ -492,7 +492,7 @@ $autoCreationMessages = processSettingsAutoCreation();
                                        data-desc="Bootstrap JS CDN URL"
                                        name="elan_bootstrap_js_cdn"
                                        id="elan_bootstrap_js_cdn"
-                                       value="<?= $settings->elan_bootstrap_js_cdn ?? '' ?>"
+                                       value="<?= htmlspecialchars($settings->elan_bootstrap_js_cdn ?? '', ENT_QUOTES, 'UTF-8') ?>"
                                        placeholder="https://cdn.jsdelivr.net/npm/bootstrap@4.5.3/dist/js/bootstrap.bundle.min.js">
                                 <small class="form-text text-muted">
                                     <i class="fas fa-external-link-alt"></i> Bootstrap JavaScript components
@@ -512,7 +512,7 @@ $autoCreationMessages = processSettingsAutoCreation();
                                        data-desc="Popper CDN URL"
                                        name="elan_popper_cdn"
                                        id="elan_popper_cdn"
-                                       value="<?= $settings->elan_popper_cdn ?? '' ?>"
+                                       value="<?= htmlspecialchars($settings->elan_popper_cdn ?? '', ENT_QUOTES, 'UTF-8') ?>"
                                        placeholder="https://cdn.jsdelivr.net/npm/popper.js@1.16.1/dist/umd/popper.min.js">
                                 <small class="form-text text-muted">
                                     <i class="fas fa-external-link-alt"></i> Required for Bootstrap tooltips and popovers
@@ -532,7 +532,7 @@ $autoCreationMessages = processSettingsAutoCreation();
                                        data-desc="Bootswatch Theme CDN URL"
                                        name="elan_bootswatch_cdn"
                                        id="elan_bootswatch_cdn"
-                                       value="<?= $settings->elan_bootswatch_cdn ?? '' ?>"
+                                       value="<?= htmlspecialchars($settings->elan_bootswatch_cdn ?? '', ENT_QUOTES, 'UTF-8') ?>"
                                        placeholder="https://cdnjs.cloudflare.com/ajax/libs/bootswatch/4.6.0/simplex/bootstrap.min.css">
                                 <small class="form-text text-muted">
                                     <i class="fas fa-external-link-alt"></i> Bootstrap theme (tested with Simplex)
@@ -558,7 +558,7 @@ $autoCreationMessages = processSettingsAutoCreation();
                                        data-desc="Font Awesome CDN URL"
                                        name="elan_fontawesome_cdn"
                                        id="elan_fontawesome_cdn"
-                                       value="<?= $settings->elan_fontawesome_cdn ?? '' ?>"
+                                       value="<?= htmlspecialchars($settings->elan_fontawesome_cdn ?? '', ENT_QUOTES, 'UTF-8') ?>"
                                        placeholder="https://kit.fontawesome.com/2d8f489b15.js">
                                 <small class="form-text text-muted">
                                     <i class="fas fa-external-link-alt"></i> Font Awesome icons (use Kit URL for latest features)
@@ -579,7 +579,7 @@ $autoCreationMessages = processSettingsAutoCreation();
                                           data-desc="DataTables JS CDN URL"
                                           name="elan_datatables_js_cdn"
                                           id="elan_datatables_js_cdn"
-                                          placeholder="https://cdn.datatables.net/v/bs4/dt-1.10.23/..."><?= $settings->elan_datatables_js_cdn ?? '' ?></textarea>
+                                          placeholder="https://cdn.datatables.net/v/bs4/dt-1.10.23/..."><?= htmlspecialchars($settings->elan_datatables_js_cdn ?? '', ENT_QUOTES, 'UTF-8') ?></textarea>
                                 <small class="form-text text-muted">
                                     <i class="fas fa-external-link-alt"></i> DataTables with Bootstrap styling
                                     <a href="https://datatables.net/download/" target="_blank" class="ml-2">Get DataTables</a>
@@ -599,7 +599,7 @@ $autoCreationMessages = processSettingsAutoCreation();
                                           data-desc="DataTables CSS CDN URL"
                                           name="elan_datatables_css_cdn"
                                           id="elan_datatables_css_cdn"
-                                          placeholder="https://cdn.datatables.net/v/bs4/dt-1.10.23/..."><?= $settings->elan_datatables_css_cdn ?? '' ?></textarea>
+                                          placeholder="https://cdn.datatables.net/v/bs4/dt-1.10.23/..."><?= htmlspecialchars($settings->elan_datatables_css_cdn ?? '', ENT_QUOTES, 'UTF-8') ?></textarea>
                                 <small class="form-text text-muted">
                                     <i class="fas fa-external-link-alt"></i> DataTables CSS styling
                                 </small>
@@ -623,7 +623,7 @@ $autoCreationMessages = processSettingsAutoCreation();
                                        data-desc="Datepicker JS CDN URL"
                                        name="elan_datepicker_js_cdn"
                                        id="elan_datepicker_js_cdn"
-                                       value="<?= $settings->elan_datepicker_js_cdn ?? '' ?>"
+                                       value="<?= htmlspecialchars($settings->elan_datepicker_js_cdn ?? '', ENT_QUOTES, 'UTF-8') ?>"
                                        placeholder="https://cdnjs.cloudflare.com/ajax/libs/bootstrap-datepicker/1.9.0/js/bootstrap-datepicker.min.js">
                                 <small class="form-text text-muted">
                                     <i class="fas fa-external-link-alt"></i> Bootstrap datepicker component
@@ -644,7 +644,7 @@ $autoCreationMessages = processSettingsAutoCreation();
                                        data-desc="Datepicker CSS CDN URL"
                                        name="elan_datepicker_css_cdn"
                                        id="elan_datepicker_css_cdn"
-                                       value="<?= $settings->elan_datepicker_css_cdn ?? '' ?>"
+                                       value="<?= htmlspecialchars($settings->elan_datepicker_css_cdn ?? '', ENT_QUOTES, 'UTF-8') ?>"
                                        placeholder="https://cdnjs.cloudflare.com/ajax/libs/bootstrap-datepicker/1.9.0/css/bootstrap-datepicker.min.css">
                                 <small class="form-text text-muted">
                                     <i class="fas fa-external-link-alt"></i> Datepicker styling
@@ -664,7 +664,7 @@ $autoCreationMessages = processSettingsAutoCreation();
                                        data-desc="Dropzone JS CDN URL"
                                        name="elan_dropzone_js_cdn"
                                        id="elan_dropzone_js_cdn"
-                                       value="<?= $settings->elan_dropzone_js_cdn ?? '' ?>"
+                                       value="<?= htmlspecialchars($settings->elan_dropzone_js_cdn ?? '', ENT_QUOTES, 'UTF-8') ?>"
                                        placeholder="https://cdn.jsdelivr.net/npm/dropzone@5.7.6/dist/min/dropzone.min.js">
                                 <small class="form-text text-muted">
                                     <i class="fas fa-external-link-alt"></i> Drag & drop file uploads
@@ -685,7 +685,7 @@ $autoCreationMessages = processSettingsAutoCreation();
                                        data-desc="Dropzone CSS CDN URL"
                                        name="elan_dropzone_css_cdn"
                                        id="elan_dropzone_css_cdn"
-                                       value="<?= $settings->elan_dropzone_css_cdn ?? '' ?>"
+                                       value="<?= htmlspecialchars($settings->elan_dropzone_css_cdn ?? '', ENT_QUOTES, 'UTF-8') ?>"
                                        placeholder="https://cdn.jsdelivr.net/npm/dropzone@5.7.6/dist/min/dropzone.min.css">
                                 <small class="form-text text-muted">
                                     <i class="fas fa-external-link-alt"></i> Dropzone styling
@@ -705,7 +705,7 @@ $autoCreationMessages = processSettingsAutoCreation();
                                        name="elan_chartjs_cdn"
                                        id="elan_chartjs_cdn"
                                        rows="3"
-                                       placeholder="<script src=&quot;https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.js&quot; integrity=&quot;sha384-...&quot; crossorigin=&quot;anonymous&quot;></script>"><?= $settings->elan_chartjs_cdn ?? '' ?></textarea>
+                                       placeholder="<script src=&quot;https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.js&quot; integrity=&quot;sha384-...&quot; crossorigin=&quot;anonymous&quot;></script>"><?= htmlspecialchars($settings->elan_chartjs_cdn ?? '', ENT_QUOTES, 'UTF-8') ?></textarea>
                                 <small class="form-text text-muted">
                                     <i class="fas fa-external-link-alt"></i> Chart.js library for statistics page charts (full script tag with SRI hash)
                                     <a href="https://www.chartjs.org/docs/latest/getting-started/installation.html" target="_blank" class="ml-2">Get Chart.js</a>

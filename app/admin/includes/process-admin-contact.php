@@ -73,28 +73,27 @@ if (Input::exists('post')) {
                 // Get admin user data
                 $adminData = $db->query('SELECT id, email, fname, lname FROM users WHERE id = ?', [$user->data()->id])->first();
                 if (!$adminData) {
-                    $errors[] = 'Admin user data not found';
                     throw new AdminContactException('Admin user not found');
                 }
 
                 // Get owner data - handle special 'Multiple' case for duplicate emails
                 if ($ownerId === 'Multiple') {
-                    // For duplicate emails, extract the actual email from the form data
-                    // The email would be passed in the quality issue context
+                    $targetEmail = Input::get('target_email');
+                    if (empty($targetEmail)) {
+                        throw new AdminContactException('Target email not provided for multiple users');
+                    }
+                    if (!filter_var($targetEmail, FILTER_VALIDATE_EMAIL)) {
+                        throw new AdminContactException('Invalid target email address format');
+                    }
                     $ownerData = (object)[
                         'id' => 'Multiple',
-                        'email' => Input::get('target_email'), // We'll need to pass this from the form
+                        'email' => $targetEmail,
                         'fname' => 'Multiple',
                         'lname' => 'Users'
                     ];
-                    if (empty($ownerData->email)) {
-                        $errors[] = 'Target email is required for multiple user contact';
-                        throw new AdminContactException('Target email not provided for multiple users');
-                    }
                 } else {
                     $ownerData = $db->query('SELECT id, email, fname, lname FROM users WHERE id = ?', [$ownerId])->first();
                     if (!$ownerData) {
-                        $errors[] = 'Owner user data not found (Owner ID: ' . $ownerId . ')';
                         throw new AdminContactException('Owner user not found');
                     }
                 }
@@ -167,7 +166,7 @@ if (Input::exists('post')) {
                 }
 
             } catch (AdminContactException $e) {
-                $errors[] = 'An error occurred while sending the message: ' . $e->getMessage();
+                $errors[] = $e->getUserMessage();
                 logger($user->data()->id, $e->getLogCategory(), "Admin contact error: " . $e->getMessage());
             }
         }
