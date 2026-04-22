@@ -24,6 +24,19 @@ $errors = [];
 $email_sent = false;
 $post_attempted = isset($_POST['email']);
 
+/**
+ * Remove suspicious email-header keywords from user input.
+ *
+ * This is a legacy defense-in-depth measure. Email is sent via the Brevo
+ * API (not raw SMTP headers), so header injection via concatenation is not
+ * a risk. The function also strips "href" from comment text.
+ *
+ * Note: str_replace is not a robust injection defense — it can be bypassed
+ * with nested tokens. Retained for backward compatibility and minimal harm.
+ *
+ * @param string $string Raw user input
+ * @return string String with header keywords removed
+ */
 function cleanString(string $string): string
 {
     $bad = array("content-type", "bcc:", "to:", "cc:", "href");
@@ -88,7 +101,7 @@ if ($post_attempted) {
         $body = email_body('_email_feedback.php', $template);
 
         if (empty($body)) {
-            logger(1, LogCategories::LOG_CATEGORY_FEEDBACK_FORM, "send-feedback.php: email_body() returned empty — template missing or failed");
+            logger((int)$user->data()->id, LogCategories::LOG_CATEGORY_FEEDBACK_FORM, "send-feedback.php: email_body() returned empty — template missing or failed");
             $errors[] = 'Your message could not be sent due to a server configuration error. Please contact the administrator.';
         }
     }
@@ -99,10 +112,10 @@ if ($post_attempted) {
         $result = email($email_to, $email_subject, $body, ['replyTo' => $email_from, 'reply_name' => $name]);
 
         if ($result !== true) {
-            logger(1, LogCategories::LOG_CATEGORY_FEEDBACK_FORM, "Error sending feedback email: unknown delivery error");
+            logger((int)$user->data()->id, LogCategories::LOG_CATEGORY_FEEDBACK_FORM, "Error sending feedback email: unknown delivery error");
             $errors[] = 'Your message could not be delivered. Please try again or contact the administrator.';
         } else {
-            logger(1, LogCategories::LOG_CATEGORY_FEEDBACK_FORM, "Complete: sent to " . $email_to . " with subject '" . $email_subject . "'");
+            logger((int)$user->data()->id, LogCategories::LOG_CATEGORY_FEEDBACK_FORM, "Complete: sent to " . $email_to . " with subject '" . $email_subject . "'");
             $email_sent = true;
         }
     }
