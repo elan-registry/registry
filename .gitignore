@@ -118,9 +118,13 @@ yarn-error.log*
 tests/.phpunit.result.cache
 tests/coverage/
 tests/temp/
+tests/reports/
 tests/integration/database/reports/
 coverage/
 usersc/tests/
+
+# Test tooling (local installs, not committed)
+tests/javascript/
 
 # Playwright
 test-results/
