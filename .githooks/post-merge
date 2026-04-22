@@ -1,0 +1,3 @@
+#!/bin/sh
+# Update VERSION file after git pull / git merge.
+git describe --tags --always > VERSION

@@ -1,0 +1,4 @@
+#!/bin/sh
+# Update VERSION file after every commit so the local dev footer shows the
+# correct version without relying on the PHP fallback in ApplicationVersion.
+git describe --tags --always > VERSION
