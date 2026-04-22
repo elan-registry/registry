@@ -15,6 +15,7 @@ None
 - **Admin contact error messages** ([#651](https://github.com/unibrain1/elanregistry/issues/651)): Error messages shown to admins no longer expose internal system details.
 - **Car edit error messages** ([#658](https://github.com/unibrain1/elanregistry/issues/658)): Validation and operation errors in the car edit form now show safe user messages instead of raw exception details.
 - **Admin car reassignment error messages** ([#659](https://github.com/unibrain1/elanregistry/issues/659)): Transfer failure errors in the admin panel no longer expose raw exception details to users.
+- **Admin audit trail integrity** ([#669](https://github.com/unibrain1/elanregistry/issues/669)): Hardcoded user ID fallback removed from admin management page; invalid sessions now redirect to login and log a security event instead of proceeding with a fabricated user ID.
 - **Email settings verification logging** ([#657](https://github.com/unibrain1/elanregistry/issues/657)): Failed verification email sends in user settings are now logged for administrator review.
 
 ## Technical Changes
@@ -39,7 +40,8 @@ None
 - [#657](https://github.com/unibrain1/elanregistry/issues/657) — bug: user_settings.php verify-email failure has no logger() call
 - [#658](https://github.com/unibrain1/elanregistry/issues/658) — bug: catch blocks in edit.php use getMessage() in user-facing errors
 - [#659](https://github.com/unibrain1/elanregistry/issues/659) — bug: manage-consolidated.php catch(Exception) exposes getMessage() in user-facing error
+- [#669](https://github.com/unibrain1/elanregistry/issues/669) — bug: hardcoded $currentUserId = 1 fallback corrupts audit trail in manage-consolidated.php
 
 ## Summary
 
-11 issues resolved across email system hardening (improved exception logging, failure detection, and configurable admin email addresses), user-facing error message safety (replacing raw exception messages with safe user messages), and new Brevo plugin documentation. #652 closed without code change — the affected catch block is in the Brevo plugin's own files (`usersc/plugins/sendinblue/`), which are third-party and not tracked in this repository.
+12 issues resolved across email system hardening (improved exception logging, failure detection, and configurable admin email addresses), user-facing error message safety (replacing raw exception messages with safe user messages), and new Brevo plugin documentation. #652 closed without code change — the affected catch block is in the Brevo plugin's own files (`usersc/plugins/sendinblue/`), which are third-party and not tracked in this repository.
