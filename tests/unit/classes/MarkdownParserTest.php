@@ -231,6 +231,39 @@ final class MarkdownParserTest extends TestCase
         $this->assertStringContainsString('<p>', $sanitized);
     }
 
+    public function testSanitizeHtmlBlocksControlCharacterUriBypass(): void
+    {
+        // Tab and null byte before "script" must not bypass javascript: detection
+        $html = '<a href="java' . "\x09" . 'script:alert(1)">click</a>'
+              . '<img src="da' . "\x00" . 'ta:image/png;base64,abc" alt="img">';
+
+        $sanitized = MarkdownParser::sanitizeHtml($html);
+
+        $this->assertStringNotContainsString('javascript:', $sanitized);
+        $this->assertStringNotContainsString('data:', $sanitized);
+    }
+
+    public function testSanitizeHtmlBlocksUpperCaseSchemes(): void
+    {
+        $html = '<a href="JAVASCRIPT:alert(1)">click</a>'
+              . '<img src="DATA:image/svg+xml,<svg/>" alt="img">';
+
+        $sanitized = MarkdownParser::sanitizeHtml($html);
+
+        $this->assertStringNotContainsString('JAVASCRIPT:', $sanitized);
+        $this->assertStringNotContainsString('DATA:', $sanitized);
+    }
+
+    public function testSanitizeHtmlBlocksVbscriptHref(): void
+    {
+        $html = '<a href="vbscript:msgbox(1)">click</a>';
+
+        $sanitized = MarkdownParser::sanitizeHtml($html);
+
+        $this->assertStringNotContainsString('vbscript:', $sanitized);
+        $this->assertStringContainsString('<a', $sanitized);
+    }
+
     // ============================================================
     // MARKDOWN CONVERSION TESTS
     // ============================================================

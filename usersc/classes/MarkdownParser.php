@@ -330,6 +330,8 @@ class MarkdownParser
      * Strips disallowed elements via strip_tags(), then uses a DOM-based
      * attribute allowlist to remove event handler attributes and unsafe URI
      * schemes (javascript:, data:, vbscript:) from remaining elements.
+     * Returns an empty string immediately if input is blank after strip_tags(),
+     * bypassing DOM processing.
      *
      * @param string $html The HTML to sanitize
      * @return string Sanitized HTML
@@ -345,11 +347,16 @@ class MarkdownParser
 
         $dom            = new \DOMDocument('1.0', 'UTF-8');
         $previousErrors = libxml_use_internal_errors(true);
-        $dom->loadHTML('<?xml encoding="UTF-8"><body>' . $html . '</body>', LIBXML_HTML_NOIMPLIED | LIBXML_HTML_NODEFDTD);
+        $loaded         = $dom->loadHTML('<?xml encoding="UTF-8"><body>' . $html . '</body>', LIBXML_HTML_NOIMPLIED | LIBXML_HTML_NODEFDTD);
         libxml_clear_errors();
         libxml_use_internal_errors($previousErrors);
 
-        // Attribute allowlist per element — all unlisted attributes are stripped
+        if ($loaded === false) {
+            logger(0, LogCategories::LOG_CATEGORY_SYSTEM_ERROR, 'sanitizeHtml: DOMDocument::loadHTML() failed; returning empty string. Input length: ' . strlen($html));
+            return '';
+        }
+
+        // Attribute allowlist per element — all unlisted attributes are stripped. Tags absent from this array are allowed but lose all attributes.
         $safeAttributes = [
             'a'    => ['href', 'target', 'rel'],
             'img'  => ['src', 'alt', 'width', 'height'],
@@ -380,7 +387,12 @@ class MarkdownParser
             foreach (['href', 'src'] as $urlAttr) {
                 $value = $element->getAttribute($urlAttr);
                 if ($value !== '') {
-                    $lower = strtolower(preg_replace('/[\x00-\x20]+/', '', $value));
+                    $stripped = preg_replace('/[\x00-\x20]+/', '', $value);
+                    if ($stripped === null) {
+                        $element->removeAttribute($urlAttr);
+                        continue 2;
+                    }
+                    $lower = strtolower($stripped);
                     foreach ($unsafeSchemes as $unsafe) {
                         if (str_starts_with($lower, $unsafe)) {
                             $element->removeAttribute($urlAttr);
@@ -393,12 +405,16 @@ class MarkdownParser
 
         $body = $dom->getElementsByTagName('body')->item(0);
         if ($body === null) {
+            logger(0, LogCategories::LOG_CATEGORY_SYSTEM_ERROR, 'sanitizeHtml: <body> element missing from parsed DOM. Input length: ' . strlen($html));
             return '';
         }
 
         $result = '';
         foreach ($body->childNodes as $child) {
-            $result .= $dom->saveHTML($child);
+            $serialized = $dom->saveHTML($child);
+            if ($serialized !== false) {
+                $result .= $serialized;
+            }
         }
 
         return $result;
