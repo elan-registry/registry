@@ -255,6 +255,28 @@ class LogCategoriesUsageTest extends TestCase
     }
 
     /**
+     * Regression test for Issue #658: edit.php must not expose getMessage() in user-facing $errors[].
+     */
+    public function testEditPhpCatchBlocksUseGetUserMessage(): void
+    {
+        $filePath = $this->rootDir . '/app/cars/actions/edit.php';
+        if (!file_exists($filePath)) {
+            $this->markTestSkipped('edit.php not found');
+        }
+
+        $content = file_get_contents($filePath);
+
+        // Find any $errors[] assignment that uses getMessage() — these expose technical messages to users
+        preg_match_all('/\$errors\[\]\s*=\s*[^;]*\$e->getMessage\(\)/', $content, $matches);
+
+        $this->assertEmpty(
+            $matches[0],
+            'app/cars/actions/edit.php must not use $e->getMessage() in $errors[] assignments. ' .
+            'Use $e->getUserMessage() instead (Issue #658). Found: ' . implode(', ', $matches[0])
+        );
+    }
+
+    /**
      * Data provider for car endpoint files
      */
     public static function carEndpointFilesProvider(): array

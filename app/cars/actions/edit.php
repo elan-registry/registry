@@ -90,14 +90,14 @@ if (!empty($_POST)) {
                         )->send();
 
                 } catch (ElanRegistryException $e) {
-                    ApiResponse::serverError('Failed to add car: ' . $e->getMessage())
+                    ApiResponse::serverError('Failed to add car: ' . $e->getUserMessage())
                         ->withLogging(
                             $user->data()->id,
                             LogCategories::LOG_CATEGORY_CAR_ERRORS,
                             'Car add error: ' . $e->getMessage()
                         )->send();
                 } catch (\Exception $e) {
-                    ApiResponse::serverError('Failed to add car: ' . $e->getMessage())
+                    ApiResponse::serverError('Failed to add car: An unexpected error occurred.')
                         ->withLogging(
                             $user->data()->id,
                             LogCategories::LOG_CATEGORY_CAR_ERRORS,
@@ -142,14 +142,14 @@ if (!empty($_POST)) {
                         )->send();
 
                 } catch (ElanRegistryException $e) {
-                    ApiResponse::serverError('Failed to update car: ' . $e->getMessage())
+                    ApiResponse::serverError('Failed to update car: ' . $e->getUserMessage())
                         ->withLogging(
                             $user->data()->id,
                             LogCategories::LOG_CATEGORY_CAR_ERRORS,
                             'Car update error: ' . $e->getMessage()
                         )->send();
                 } catch (\Exception $e) {
-                    ApiResponse::serverError('Failed to update car: ' . $e->getMessage())
+                    ApiResponse::serverError('Failed to update car: An unexpected error occurred.')
                         ->withLogging(
                             $user->data()->id,
                             LogCategories::LOG_CATEGORY_CAR_ERRORS,
@@ -202,10 +202,10 @@ function updateCar(array &$cardetails): void
         }
     } catch (CarValidationException $e) {
         logger($user->data()->id, LogCategories::LOG_CATEGORY_VALIDATION_ERROR, 'Car Update Validation Error: ' . $e->getMessage());
-        $errors[] = 'Car Update Validation Error: ' . $e->getMessage();
+        $errors[] = 'Car Update Validation Error: ' . $e->getUserMessage();
     } catch (ElanRegistryException $e) {
         logger($user->data()->id, LogCategories::LOG_CATEGORY_CAR_ERRORS, 'Car Update Error: ' . $e->getMessage());
-        $errors[] = 'Car Update Error: ' . $e->getMessage();
+        $errors[] = 'Car Update Error: ' . $e->getUserMessage();
     }
 }
 /**
@@ -232,10 +232,10 @@ function addCar(array &$cardetails): void
         }
     } catch (CarValidationException $e) {
         logger($user->data()->id, LogCategories::LOG_CATEGORY_VALIDATION_ERROR, 'Car Creation Validation Error: ' . $e->getMessage());
-        $errors[] = 'Car Creation Validation Error: ' . $e->getMessage();
+        $errors[] = 'Car Creation Validation Error: ' . $e->getUserMessage();
     } catch (ElanRegistryException $e) {
         logger($user->data()->id, LogCategories::LOG_CATEGORY_CAR_ERRORS, 'Car Creation Error: ' . $e->getMessage());
-        $errors[] = 'Car Creation Error: ' . $e->getMessage();
+        $errors[] = 'Car Creation Error: ' . $e->getUserMessage();
     }
 }
 
@@ -386,7 +386,7 @@ function updateChassis(array &$cardetails): void
             $validator = new ChassisValidator();
             $result = $validator->validate($chassis, $year, $model, $chassisOverride);
         } catch (ElanRegistryException $e) {
-            $errors[] = 'Chassis validation error: ' . $e->getMessage();
+            $errors[] = 'Chassis validation error: ' . $e->getUserMessage();
             return;
         }
         
@@ -639,6 +639,12 @@ function uploadImages(array &$cardetails): void
                             $resizeObj->saveImage($thumbname, 80);
                         } catch (ElanRegistryException $e) {
                             $resizeSuccess = false;
+                            logger(
+                                $user->data()->id,
+                                LogCategories::LOG_CATEGORY_FILE_ERROR,
+                                'Image resize failed for carId: ' . Input::get('car_id') .
+                                    ' file: ' . $newFileName . ' size: ' . $size . ' error: ' . $e->getMessage()
+                            );
                             break;
                         }
                     }
@@ -660,7 +666,7 @@ function uploadImages(array &$cardetails): void
                 }
             } catch (ElanRegistryException $e) {
                 // Log security violation and reject file
-                $errors[] = "File upload rejected: " . $e->getMessage();
+                $errors[] = "File upload rejected: " . $e->getUserMessage();
                 logger(
                     $user->data()->id,
                     LogCategories::LOG_CATEGORY_FILE_ERROR,
