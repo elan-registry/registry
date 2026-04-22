@@ -22,7 +22,7 @@ None
 
 - **Transfer notification exception logging** ([#655](https://github.com/unibrain1/elanregistry/issues/655)): All four catch blocks in `transfer_email_notifications.php` now include exception class, file, and line number.
 - **Transfer admin alert partial failure** ([#656](https://github.com/unibrain1/elanregistry/issues/656)): Partial delivery failures to admin recipients now logged under error category with sent/failed counts.
-- **Modernize send-feedback.php** ([#600](https://github.com/unibrain1/elanregistry/issues/600)): Add type hints and PHPDoc; move functions to file scope; fix unconditional success log on failure path.
+- **Modernize send-feedback.php** ([#600](https://github.com/unibrain1/elanregistry/issues/600)): Add PHPDoc to `cleanString()` documenting its defense-in-depth rationale; fix hardcoded logger user ID to use authenticated user; extend static scan tests to contact endpoint files.
 - **Configurable admin email addresses** ([#368](https://github.com/unibrain1/elanregistry/issues/368)): Replace hardcoded admin email address in feedback form and other locations with `$settings->elan_admin_emails`.
 - **email_body() empty return guard** ([#650](https://github.com/unibrain1/elanregistry/issues/650)): Check `email_body()` return value before calling `email()` in `process-admin-contact.php` so template failures are distinguishable from Brevo delivery failures in logs.
 - **Brevo email system documentation** ([#354](https://github.com/unibrain1/elanregistry/issues/354)): New `docs/development/EMAIL_SYSTEM.md` covering plugin setup, configuration, environment setup, and troubleshooting.
