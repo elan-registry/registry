@@ -1,6 +1,6 @@
 # Elan Registry v2.17.3 Release Notes
 
-**Release Date:** [DATE]
+**Release Date:** 2026-04-22
 **Type:** Patch Release - Email System Hardening & Documentation
 
 ## Required Actions After Deployment
@@ -17,6 +17,9 @@ None
 - **Admin car reassignment error messages** ([#659](https://github.com/unibrain1/elanregistry/issues/659)): Transfer failure errors in the admin panel no longer expose raw exception details to users.
 - **Admin audit trail integrity** ([#669](https://github.com/unibrain1/elanregistry/issues/669)): Hardcoded user ID fallback removed from admin management page; invalid sessions now redirect to login and log a security event instead of proceeding with a fabricated user ID.
 - **Email settings verification logging** ([#657](https://github.com/unibrain1/elanregistry/issues/657)): Failed verification email sends in user settings are now logged for administrator review.
+- **Admin settings XSS protection** ([#677](https://github.com/unibrain1/elanregistry/issues/677)): CDN setting values in the admin settings tab are now HTML-escaped on output, preventing stored XSS from crafted setting values.
+- **Admin settings error message safety** ([#678](https://github.com/unibrain1/elanregistry/issues/678)): Exception details no longer exposed in admin settings alerts; safe messages shown to admins with full details retained in system logs.
+- **Admin contact email validation** ([#679](https://github.com/unibrain1/elanregistry/issues/679)): The `target_email` parameter in admin-to-owner contact is now validated for proper email format before use as a recipient address.
 
 ## Technical Changes
 
@@ -41,7 +44,10 @@ None
 - [#658](https://github.com/unibrain1/elanregistry/issues/658) — bug: catch blocks in edit.php use getMessage() in user-facing errors
 - [#659](https://github.com/unibrain1/elanregistry/issues/659) — bug: manage-consolidated.php catch(Exception) exposes getMessage() in user-facing error
 - [#669](https://github.com/unibrain1/elanregistry/issues/669) — bug: hardcoded $currentUserId = 1 fallback corrupts audit trail in manage-consolidated.php
+- [#677](https://github.com/unibrain1/elanregistry/issues/677) — bug: CDN setting values output without htmlspecialchars() in tab-settings.php (stored XSS)
+- [#678](https://github.com/unibrain1/elanregistry/issues/678) — bug: catch blocks in tab-settings.php expose getMessage() in user-facing admin alerts
+- [#679](https://github.com/unibrain1/elanregistry/issues/679) — bug: target_email POST parameter used as email recipient without format validation in process-admin-contact.php
 
 ## Summary
 
-12 issues resolved across email system hardening (improved exception logging, failure detection, and configurable admin email addresses), user-facing error message safety (replacing raw exception messages with safe user messages), and new Brevo plugin documentation. #652 closed without code change — the affected catch block is in the Brevo plugin's own files (`usersc/plugins/sendinblue/`), which are third-party and not tracked in this repository.
+15 issues resolved across email system hardening (improved exception logging, failure detection, and configurable admin email addresses), user-facing error message safety (replacing raw exception messages with safe user messages), security fixes (stored XSS prevention, input validation), and new Brevo plugin documentation. #652 closed without code change — the affected catch block is in the Brevo plugin's own files (`usersc/plugins/sendinblue/`), which are third-party and not tracked in this repository.
