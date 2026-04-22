@@ -259,20 +259,41 @@ class LogCategoriesUsageTest extends TestCase
      */
     public function testEditPhpCatchBlocksUseGetUserMessage(): void
     {
-        $filePath = $this->rootDir . '/app/cars/actions/edit.php';
+        $this->assertNoGetMessageInErrorsArray(
+            'app/cars/actions/edit.php',
+            'Use $e->getUserMessage() instead (Issue #658).'
+        );
+    }
+
+    /**
+     * Regression test for Issue #659: manage-consolidated.php must not expose getMessage() in $errors[].
+     */
+    public function testManageConsolidatedPhpCatchBlocksDoNotExposeGetMessage(): void
+    {
+        $this->assertNoGetMessageInErrorsArray(
+            'app/admin/manage-consolidated.php',
+            'Use a safe static message instead (Issue #659).'
+        );
+    }
+
+    /**
+     * Assert that no $errors[] assignment in a file uses $e->getMessage() directly.
+     * Such assignments expose technical exception messages to users.
+     */
+    private function assertNoGetMessageInErrorsArray(string $relativePath, string $hint): void
+    {
+        $filePath = $this->rootDir . '/' . $relativePath;
         if (!file_exists($filePath)) {
-            $this->markTestSkipped('edit.php not found');
+            $this->markTestSkipped("File not found: $relativePath");
         }
 
-        $content = file_get_contents($filePath);
-
-        // Find any $errors[] assignment that uses getMessage() — these expose technical messages to users
+        $content = (string)file_get_contents($filePath);
         preg_match_all('/\$errors\[\]\s*=\s*[^;]*\$e->getMessage\(\)/', $content, $matches);
 
         $this->assertEmpty(
             $matches[0],
-            'app/cars/actions/edit.php must not use $e->getMessage() in $errors[] assignments. ' .
-            'Use $e->getUserMessage() instead (Issue #658). Found: ' . implode(', ', $matches[0])
+            "$relativePath must not use \$e->getMessage() in \$errors[] assignments. $hint Found: "
+                . implode(', ', $matches[0])
         );
     }
 

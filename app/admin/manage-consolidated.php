@@ -198,8 +198,8 @@ if (Input::exists('post')) {
                             $errors[] = "Failed to reassign car ID $car_id";
                         }
                     } catch (Exception $e) {
-                        $errors[] = "Transfer failed: " . $e->getMessage();
-                        logger($currentUserId, LogCategories::LOG_CATEGORY_CAR_ACTIONS, "Car reassignment failed for Car ID $car_id: " . $e->getMessage());
+                        $errors[] = 'Transfer failed. Please try again.';
+                        logger($currentUserId, LogCategories::LOG_CATEGORY_CAR_TRANSFER_ERROR, "Car reassignment failed for Car ID $car_id: " . $e->getMessage());
                     }
                     break;
 
