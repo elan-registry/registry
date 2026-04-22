@@ -325,16 +325,82 @@ class MarkdownParser
     }
 
     /**
-     * Sanitize HTML output to prevent XSS
+     * Sanitize HTML output to prevent XSS.
+     *
+     * Strips disallowed elements via strip_tags(), then uses a DOM-based
+     * attribute allowlist to remove event handler attributes and unsafe URI
+     * schemes (javascript:, data:, vbscript:) from remaining elements.
      *
      * @param string $html The HTML to sanitize
      * @return string Sanitized HTML
      */
     public static function sanitizeHtml(string $html): string
     {
-        // Allow basic HTML tags but strip dangerous ones
         $allowedTags = '<h1><h2><h3><h4><h5><h6><p><br><strong><em><a><ul><ol><li><pre><code><blockquote><table><thead><tbody><tr><th><td><img>';
+        $html        = strip_tags($html, $allowedTags);
 
-        return strip_tags($html, $allowedTags);
+        if (trim($html) === '') {
+            return '';
+        }
+
+        $dom            = new \DOMDocument('1.0', 'UTF-8');
+        $previousErrors = libxml_use_internal_errors(true);
+        $dom->loadHTML('<?xml encoding="UTF-8"><body>' . $html . '</body>', LIBXML_HTML_NOIMPLIED | LIBXML_HTML_NODEFDTD);
+        libxml_clear_errors();
+        libxml_use_internal_errors($previousErrors);
+
+        // Attribute allowlist per element — all unlisted attributes are stripped
+        $safeAttributes = [
+            'a'    => ['href', 'target', 'rel'],
+            'img'  => ['src', 'alt', 'width', 'height'],
+            'h1'   => ['id'], 'h2' => ['id'], 'h3' => ['id'],
+            'h4'   => ['id'], 'h5' => ['id'], 'h6' => ['id'],
+            'td'   => ['colspan', 'rowspan'],
+            'th'   => ['colspan', 'rowspan'],
+            'code' => ['class'],
+        ];
+
+        $unsafeSchemes = ['javascript:', 'data:', 'vbscript:'];
+
+        $xpath = new \DOMXPath($dom);
+        foreach ($xpath->query('//*') as $element) {
+            $tag     = strtolower($element->tagName);
+            $allowed = $safeAttributes[$tag] ?? [];
+
+            $toRemove = [];
+            foreach ($element->attributes as $attr) {
+                if (!in_array(strtolower($attr->nodeName), $allowed, true)) {
+                    $toRemove[] = $attr->nodeName;
+                }
+            }
+            foreach ($toRemove as $name) {
+                $element->removeAttribute($name);
+            }
+
+            foreach (['href', 'src'] as $urlAttr) {
+                $value = $element->getAttribute($urlAttr);
+                if ($value !== '') {
+                    $lower = strtolower(preg_replace('/[\x00-\x20]+/', '', $value));
+                    foreach ($unsafeSchemes as $unsafe) {
+                        if (str_starts_with($lower, $unsafe)) {
+                            $element->removeAttribute($urlAttr);
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+
+        $body = $dom->getElementsByTagName('body')->item(0);
+        if ($body === null) {
+            return '';
+        }
+
+        $result = '';
+        foreach ($body->childNodes as $child) {
+            $result .= $dom->saveHTML($child);
+        }
+
+        return $result;
     }
 }
