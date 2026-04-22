@@ -74,7 +74,7 @@ try {
                 </div>
                 <div class="col-4">
                     <h4 class="text-<?= $qualityScore >= 80 ? 'success' : ($qualityScore >= 60 ? 'warning' : 'danger') ?>">
-                        <?= $qualityScore // nosemgrep: php.lang.security.taint-unsafe-echo-tag ?>%
+                        <?= (int)$qualityScore // nosemgrep: php.lang.security.taint-unsafe-echo-tag ?>%
                     </h4>
                     <small>Profile Quality</small>
                 </div>
@@ -111,8 +111,8 @@ try {
         <div class="card-body">
             <div class="progress mb-2">
                 <div class="progress-bar bg-<?= $qualityScore >= 80 ? 'success' : ($qualityScore >= 60 ? 'warning' : 'danger') ?>"
-                     style="width: <?= $qualityScore // nosemgrep: php.lang.security.taint-unsafe-echo-tag ?>%">
-                    <?= $qualityScore // nosemgrep: php.lang.security.taint-unsafe-echo-tag ?>%
+                     style="width: <?= (int)$qualityScore // nosemgrep: php.lang.security.taint-unsafe-echo-tag ?>%">
+                    <?= (int)$qualityScore // nosemgrep: php.lang.security.taint-unsafe-echo-tag ?>%
                 </div>
             </div>
 
@@ -194,7 +194,7 @@ try {
                                 <span class="text-muted">
                                     <?php
                                     $timestamp = strtotime($record->ctime ?? '');
-                                                    echo $timestamp !== false
+                                    echo $timestamp !== false
                                         ? htmlspecialchars(date('M j, Y', $timestamp), ENT_QUOTES, 'UTF-8')
                                         : 'Unknown date';
                                     ?>
