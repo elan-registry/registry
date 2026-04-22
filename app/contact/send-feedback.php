@@ -29,10 +29,12 @@ $post_attempted = isset($_POST['email']);
  *
  * This is a legacy defense-in-depth measure. Email is sent via the Brevo
  * API (not raw SMTP headers), so header injection via concatenation is not
- * a risk. The function also strips "href" from comment text.
+ * a risk. The function also strips "href" from all input fields to reduce
+ * link injection in rendered output.
  *
  * Note: str_replace is not a robust injection defense — it can be bypassed
- * with nested tokens. Retained for backward compatibility and minimal harm.
+ * by wrapping the target string within itself (e.g. "ccontent-typeontent-type").
+ * Retained for backward compatibility and minimal harm.
  *
  * @param string $string Raw user input
  * @return string String with header keywords removed
