@@ -73,7 +73,6 @@ if (Input::exists('post')) {
                 // Get admin user data
                 $adminData = $db->query('SELECT id, email, fname, lname FROM users WHERE id = ?', [$user->data()->id])->first();
                 if (!$adminData) {
-                    $errors[] = 'Admin user data not found';
                     throw new AdminContactException('Admin user not found');
                 }
 
@@ -81,11 +80,9 @@ if (Input::exists('post')) {
                 if ($ownerId === 'Multiple') {
                     $targetEmail = Input::get('target_email');
                     if (empty($targetEmail)) {
-                        $errors[] = 'Target email is required for multiple user contact';
                         throw new AdminContactException('Target email not provided for multiple users');
                     }
                     if (!filter_var($targetEmail, FILTER_VALIDATE_EMAIL)) {
-                        $errors[] = 'Invalid target email address format';
                         throw new AdminContactException('Invalid target email address format');
                     }
                     $ownerData = (object)[
@@ -97,7 +94,6 @@ if (Input::exists('post')) {
                 } else {
                     $ownerData = $db->query('SELECT id, email, fname, lname FROM users WHERE id = ?', [$ownerId])->first();
                     if (!$ownerData) {
-                        $errors[] = 'Owner user data not found (Owner ID: ' . $ownerId . ')';
                         throw new AdminContactException('Owner user not found');
                     }
                 }
@@ -170,7 +166,7 @@ if (Input::exists('post')) {
                 }
 
             } catch (AdminContactException $e) {
-                $errors[] = 'An error occurred while sending the message: ' . $e->getMessage();
+                $errors[] = $e->getUserMessage();
                 logger($user->data()->id, $e->getLogCategory(), "Admin contact error: " . $e->getMessage());
             }
         }
