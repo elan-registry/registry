@@ -1302,6 +1302,18 @@ if (!function_exists('getBaseUrl')) {
     }
 }
 
+// Mock getFeedbackEmail function - needed by verify-new-email template
+if (!function_exists('getFeedbackEmail')) {
+    /**
+     * Mock getFeedbackEmail function for testing
+     * Returns a predictable feedback email for assertions
+     */
+    function getFeedbackEmail(): string
+    {
+        return 'registrar@elanregistry.org';
+    }
+}
+
 // Mock getAdminEmails function - needed by transfer email templates
 if (!function_exists('getAdminEmails')) {
     /**
