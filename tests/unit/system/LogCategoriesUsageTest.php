@@ -324,6 +324,27 @@ class LogCategoriesUsageTest extends TestCase
     }
 
     /**
+     * Regression test for Issue #650: process-admin-contact.php must check email_body()
+     * return value before calling email(), so template failures are distinguishable from
+     * Brevo delivery failures in the logs.
+     */
+    public function testAdminContactChecksEmailBodyReturn(): void
+    {
+        $filePath = $this->rootDir . '/app/admin/includes/process-admin-contact.php';
+        if (!file_exists($filePath)) {
+            $this->markTestSkipped('process-admin-contact.php not found');
+        }
+
+        $content = (string)file_get_contents($filePath);
+
+        $this->assertStringContainsString(
+            "\$body === ''",
+            $content,
+            'process-admin-contact.php must check email_body() return for empty string before calling email() (Issue #650)'
+        );
+    }
+
+    /**
      * Data provider for car endpoint files
      */
     public static function carEndpointFilesProvider(): array

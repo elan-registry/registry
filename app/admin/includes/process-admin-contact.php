@@ -143,6 +143,9 @@ if (Input::exists('post')) {
 
                 // Generate email body using template
                 $body = email_body('_email_admin_contact_owner.php', $template);
+                if ($body === '') {
+                    throw new AdminContactException('email_body() returned empty string for admin contact template');
+                }
 
                 // Send email
                 $result      = email($toEmail, $subject, $body);
