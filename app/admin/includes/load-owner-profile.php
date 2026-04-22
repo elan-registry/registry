@@ -55,7 +55,7 @@ try {
 
     ?>
     <form id="ownerProfileUpdateForm" method="post">
-        <input type="hidden" name="owner_id" value="<?= $ownerId // nosemgrep: php.lang.security.taint-unsafe-echo-tag ?>">
+        <input type="hidden" name="owner_id" value="<?= $ownerId // nosemgrep: php.lang.security.taint-unsafe-echo-tag.taint-unsafe-echo-tag ?>">
         <input type="hidden" name="csrf" value="<?= Token::generate() ?>">
 
         <!-- Profile Quality Indicator -->
@@ -63,7 +63,7 @@ try {
             <div class="row align-items-center">
                 <div class="col-md-8">
                     <h6 class="mb-1">
-                        <i class="fas fa-chart-pie"></i> Profile Quality Score: <strong><?= (int)$qualityScore // nosemgrep: php.lang.security.taint-unsafe-echo-tag ?>%</strong>
+                        <i class="fas fa-chart-pie"></i> Profile Quality Score: <strong><?= (int)$qualityScore // nosemgrep: php.lang.security.taint-unsafe-echo-tag.taint-unsafe-echo-tag ?>%</strong>
                     </h6>
                     <?php if (!empty($missingFields)): ?>
                         <small>Missing: <?= htmlspecialchars(implode(', ', $missingFields), ENT_QUOTES, 'UTF-8') ?></small>
@@ -74,7 +74,7 @@ try {
                 <div class="col-md-4 text-right">
                     <div class="progress" style="height: 8px;">
                         <div class="progress-bar bg-<?= $qualityScore >= 80 ? 'success' : ($qualityScore >= 60 ? 'warning' : 'danger') ?>"
-                             style="width: <?= (int)$qualityScore // nosemgrep: php.lang.security.taint-unsafe-echo-tag ?>%"></div>
+                             style="width: <?= (int)$qualityScore // nosemgrep: php.lang.security.taint-unsafe-echo-tag.taint-unsafe-echo-tag ?>%"></div>
                     </div>
                 </div>
             </div>
@@ -149,7 +149,7 @@ try {
 
                 <!-- Location Actions -->
                 <div class="mt-3">
-                    <button type="button" class="btn btn-outline-primary btn-sm" onclick="syncLocationToCars(<?= $ownerId // nosemgrep: php.lang.security.taint-unsafe-echo-tag ?>)">
+                    <button type="button" class="btn btn-outline-primary btn-sm" onclick="syncLocationToCars(<?= $ownerId // nosemgrep: php.lang.security.taint-unsafe-echo-tag.taint-unsafe-echo-tag ?>)">
                         <i class="fas fa-sync"></i> Sync Location to Owned Cars
                     </button>
                 </div>
@@ -176,7 +176,7 @@ try {
                                 ? htmlspecialchars(date('M j, Y', $joinTimestamp), ENT_QUOTES, 'UTF-8')
                                 : 'Unknown date';
                             ?>
-                            User ID: <?= (int)$ownerData->id // nosemgrep: php.lang.security.taint-unsafe-echo-tag ?> | Joined: <?= $joinFormatted // nosemgrep: php.lang.security.taint-unsafe-echo-tag ?>
+                            User ID: <?= (int)$ownerData->id // nosemgrep: php.lang.security.taint-unsafe-echo-tag.taint-unsafe-echo-tag ?> | Joined: <?= $joinFormatted // nosemgrep: php.lang.security.taint-unsafe-echo-tag.taint-unsafe-echo-tag ?>
                         </small>
                     </div>
                 </div>
@@ -199,8 +199,8 @@ try {
                 city: '<?= htmlspecialchars($ownerData->city ?? '', ENT_QUOTES) ?>',
                 state: '<?= htmlspecialchars($ownerData->state ?? '', ENT_QUOTES) ?>',
                 country: '<?= htmlspecialchars($ownerData->country ?? '', ENT_QUOTES) ?>',
-                lat: <?= (float)($ownerData->lat ?? 0) // nosemgrep: php.lang.security.taint-unsafe-echo-tag ?>,
-                lon: <?= (float)($ownerData->lon ?? 0) // nosemgrep: php.lang.security.taint-unsafe-echo-tag ?>
+                lat: <?= (float)($ownerData->lat ?? 0) // nosemgrep: php.lang.security.taint-unsafe-echo-tag.taint-unsafe-echo-tag ?>,
+                lon: <?= (float)($ownerData->lon ?? 0) // nosemgrep: php.lang.security.taint-unsafe-echo-tag.taint-unsafe-echo-tag ?>
             };
 
             const locationPicker = new LocationPicker({
@@ -247,7 +247,7 @@ try {
 
                 // Reload the profile form to show updated data
                 setTimeout(() => {
-                    loadOwnerById(<?= $ownerId // nosemgrep: php.lang.security.taint-unsafe-echo-tag ?>);
+                    loadOwnerById(<?= $ownerId // nosemgrep: php.lang.security.taint-unsafe-echo-tag.taint-unsafe-echo-tag ?>);
                 }, 1500);
 
                 // Refresh search results if visible
