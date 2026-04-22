@@ -30,7 +30,12 @@ if (!function_exists('processSettingsAutoCreation')) {
 
         // Email & Communication settings
         $emailSettingsFields = [
-            'elan_admin_emails' => ['type' => 'TEXT', 'default' => 'registrar@elanregistry.org', 'description' => 'Comma-separated admin email addresses for system notifications and administrative alerts']
+            'elan_admin_emails' => ['type' => 'TEXT', 'default' => 'registrar@elanregistry.org', 'description' => 'Comma-separated admin email addresses for system notifications and administrative alerts'],
+            'elan_feedback_email' => [
+                'type' => 'TEXT',
+                'default' => 'registrar@elanregistry.org',
+                'description' => 'Email address for receiving user feedback form submissions'
+            ],
         ];
 
         // System Maintenance settings

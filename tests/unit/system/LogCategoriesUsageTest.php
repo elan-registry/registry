@@ -442,6 +442,52 @@ class LogCategoriesUsageTest extends TestCase
     }
 
     /**
+     * Regression test for Issue #368: _email_template_verify_new.php must not contain
+     * a hardcoded admin email address and must call getFeedbackEmail() instead.
+     */
+    public function testNoHardcodedAdminEmailInVerifyTemplate(): void
+    {
+        $filePath = $this->rootDir . '/usersc/views/_email_template_verify_new.php';
+        if (!file_exists($filePath)) {
+            $this->markTestSkipped('_email_template_verify_new.php not found');
+        }
+
+        $content = (string)file_get_contents($filePath);
+
+        $this->assertStringNotContainsString(
+            'admin@elanregistry.org',
+            $content,
+            '_email_template_verify_new.php must not contain hardcoded admin@elanregistry.org (#368)'
+        );
+        $this->assertStringContainsString(
+            'getFeedbackEmail()',
+            $content,
+            '_email_template_verify_new.php must call getFeedbackEmail() for admin contact (#368)'
+        );
+    }
+
+    /**
+     * Regression test for Issue #368: elan_feedback_email must appear in the
+     * processSettingsAutoCreation() defaults array in tab-settings.php,
+     * ensuring it is inserted into the database on fresh installs.
+     */
+    public function testFeedbackEmailSettingIsAutoCreated(): void
+    {
+        $filePath = $this->rootDir . '/app/admin/includes/tab-settings.php';
+        if (!file_exists($filePath)) {
+            $this->markTestSkipped('tab-settings.php not found');
+        }
+
+        $content = (string)file_get_contents($filePath);
+
+        $this->assertMatchesRegularExpression(
+            '/[\'"]elan_feedback_email[\'"]\s*=>/m',
+            $content,
+            'tab-settings.php must include elan_feedback_email in settings auto-creation (#368)'
+        );
+    }
+
+    /**
      * Data provider for car endpoint files
      */
     public static function carEndpointFilesProvider(): array

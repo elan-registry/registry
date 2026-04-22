@@ -1302,6 +1302,19 @@ if (!function_exists('getBaseUrl')) {
     }
 }
 
+// Mock getFeedbackEmail function - needed by verify-new-email template
+if (!function_exists('getFeedbackEmail')) {
+    /**
+     * Mock getFeedbackEmail function for testing
+     * Returns 'registrar@elanregistry.org' — mirrors the production fallback in
+     * custom_functions.php so that render assertions reflect real-world behavior.
+     */
+    function getFeedbackEmail(): string
+    {
+        return 'registrar@elanregistry.org';
+    }
+}
+
 // Mock getAdminEmails function - needed by transfer email templates
 if (!function_exists('getAdminEmails')) {
     /**
