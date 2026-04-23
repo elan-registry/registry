@@ -51,9 +51,16 @@ $dotenv = \Dotenv\Dotenv::createImmutable($abs_us_root . $us_url_root);
 $dotenv->safeLoad();
 try {
     $dotenv->required(['DB_HOST', 'DB_USER', 'DB_PASS', 'DB_NAME'])->notEmpty();
-} catch (\Dotenv\Exception\ValidationException $e) {
-    error_log('[elan-registry] Boot failed — missing required environment variable(s): ' . $e->getMessage());
-    throw $e;
+} catch (\Dotenv\Exception\ValidationException|\Dotenv\Exception\InvalidFileException $e) {
+    error_log('[elan-registry] Boot failed — environment configuration error: ' . $e->getMessage());
+    http_response_code(500);
+    $errorPage = $abs_us_root . $us_url_root . 'error/500.php';
+    if (file_exists($errorPage)) {
+        require $errorPage;
+    } else {
+        echo 'A configuration error has occurred. Please contact the site administrator.';
+    }
+    exit(1);
 }
 
 // Set config

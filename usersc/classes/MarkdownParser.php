@@ -6,10 +6,9 @@ declare(strict_types=1);
  * Markdown Parser Utility
  *
  * A lightweight markdown to HTML converter for documentation rendering.
- * Supports headers, bold/italic text, links, code blocks, and lists.
+ * Supports headers, bold/italic text, links, images, tables, code blocks, and lists.
  *
  * @package ElanRegistry\Documentation
- * @version 2.9.0
  * @author Jim Boone
  */
 

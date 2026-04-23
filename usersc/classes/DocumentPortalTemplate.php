@@ -187,7 +187,8 @@ class DocumentPortalTemplate
      *
      * @param string $icon       Font Awesome icon class without 'fas ' prefix (e.g. 'fa-code')
      * @param string $title      Section heading text
-     * @param string $colorClass Optional Bootstrap text color class (e.g. 'text-danger')
+     * @param string $colorClass Optional Bootstrap text color class applied to the icon only,
+     *                           not the heading text (e.g. 'text-danger' tints the icon).
      */
     public static function renderSectionHeading(string $icon, string $title, string $colorClass = ''): string
     {

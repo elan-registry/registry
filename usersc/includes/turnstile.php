@@ -76,12 +76,17 @@ function verifyTurnstile(): bool
  *
  * @param string $secret Server-side Turnstile secret key.
  * @param string $token  cf-turnstile-response token from the POST body.
- * @param string $ip     Client IP address forwarded to Cloudflare for analytics.
+ * @param string $ip     Client IP address passed to Cloudflare as a risk signal for bot
+ *                       and fraud detection. Optional per the API but improves challenge accuracy.
  * @return bool True when Cloudflare returns success:true.
  */
 function _verifyTurnstileToken(string $secret, string $token, string $ip): bool
 {
     $ch = curl_init('https://challenges.cloudflare.com/turnstile/v0/siteverify');
+    if ($ch === false) {
+        logger(0, LogCategories::LOG_CATEGORY_SYSTEM_ERROR, 'Turnstile: curl_init() failed — cURL extension may be unavailable');
+        return false;
+    }
     curl_setopt_array($ch, [
         CURLOPT_RETURNTRANSFER => true,
         CURLOPT_POST           => true,
