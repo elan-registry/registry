@@ -146,6 +146,14 @@ if (Input::exists('post')) {
                 // Generate email body using template
                 $body = email_body('_email_admin_contact_owner.php', $template);
 
+                if ($body === '') {
+                    logger($user->data()->id, LogCategories::LOG_CATEGORY_EMAIL_ERROR,
+                        'process-admin-contact.php: email_body() returned empty — template missing or failed',
+                        ['template' => '_email_admin_contact_owner.php']);
+                    $errors[] = 'Email could not be sent. Please try again or contact the administrator.';
+                    return;
+                }
+
                 // Send email
                 $result      = email($toEmail, $subject, $body);
                 $safeFromLog = preg_replace('/[\r\n\t]/', '', $fromEmail);
