@@ -31,7 +31,8 @@ function isTurnstileEnabled(): bool
 /**
  * Render the Cloudflare Turnstile widget into the current form.
  *
- * Outputs a centred .cf-turnstile div and the Turnstile api.js script tag.
+ * Outputs a .cf-turnstile div wrapped in a Bootstrap .d-flex.justify-content-center.my-2
+ * flex container, followed by the Turnstile api.js script tag.
  * No-ops silently when Turnstile is disabled (off mode or plain HTTP).
  *
  * @return void
@@ -94,19 +95,20 @@ function _verifyTurnstileToken(string $secret, string $token, string $ip): bool
     ]);
     $result    = curl_exec($ch);
     $curlErrno = curl_errno($ch);
+    $curlError = curl_error($ch);
     curl_close($ch);
 
     if ($curlErrno || $result === false) {
-        logger(0, LogCategories::LOG_CATEGORY_SYSTEM_ERROR, 'Turnstile cURL error: ' . curl_strerror($curlErrno));
+        logger(0, LogCategories::LOG_CATEGORY_SYSTEM_ERROR, 'Turnstile cURL error: ' . $curlError);
         return false;
     }
     $data = json_decode((string) $result, true);
     if (!is_array($data)) {
-        logger(0, LogCategories::LOG_CATEGORY_SYSTEM_ERROR, 'Turnstile returned invalid JSON');
+        logger(0, LogCategories::LOG_CATEGORY_SYSTEM_ERROR, 'Turnstile returned invalid JSON: ' . substr((string) $result, 0, 200));
         return false;
     }
     if (!($data['success'] ?? false)) {
-        logger(0, LogCategories::LOG_CATEGORY_SYSTEM_ERROR, 'Turnstile rejected token: ' . implode(', ', $data['error-codes'] ?? ['unknown']));
+        logger(0, LogCategories::LOG_CATEGORY_SECURITY, 'Turnstile rejected token from ' . $ip . ': ' . implode(', ', $data['error-codes'] ?? ['unknown']));
     }
     return (bool) ($data['success'] ?? false);
 }
