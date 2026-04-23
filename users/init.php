@@ -50,7 +50,7 @@ require_once $abs_us_root . $us_url_root . 'users/helpers/helpers.php';
 $dotenv = \Dotenv\Dotenv::createImmutable($abs_us_root . $us_url_root);
 $dotenv->safeLoad();
 try {
-    $dotenv->required(['DB_HOST', 'DB_USER', 'DB_PASS', 'DB_NAME']);
+    $dotenv->required(['DB_HOST', 'DB_USER', 'DB_PASS', 'DB_NAME'])->notEmpty();
 } catch (\Dotenv\Exception\ValidationException $e) {
     error_log('[elan-registry] Boot failed — missing required environment variable(s): ' . $e->getMessage());
     throw $e;

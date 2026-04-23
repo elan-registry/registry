@@ -40,10 +40,9 @@ if (!file_exists($initPath)) {
     exit(1);
 }
 
-// Load test environment via phpdotenv (.env.local for dev, .env for CI)
-// .env.local uses DB_* names directly (e.g. DB_HOST=127.0.0.1:8889)
-// createMutable() populates $_ENV/$_SERVER; init.php uses createImmutable() which
-// won't overwrite already-set vars, so test values in $_ENV survive init.php's load.
+// Load test environment (.env.local overrides .env for local development)
+// .env.local uses DB_* names directly (e.g. DB_HOST=127.0.0.1:8889 for MAMP)
+// createMutable() allows init.php's createImmutable() to read our test values from $_ENV
 $envLocal = $projectRoot . '/.env.local';
 $envName  = file_exists($envLocal) ? '.env.local' : '.env';
 
