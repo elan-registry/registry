@@ -53,6 +53,11 @@
   layout (matching the join flow) with Font Awesome icons, styled input groups, and a
   "Check Your Email" confirmation card showing the reset link expiry time.
 
+- **Branded password reset email** ([#695](https://github.com/unibrain1/elanregistry/issues/695)):
+  The password reset email now uses the registry's branded email template — logo header,
+  styled "Reset My Password" button, plain-text fallback link, expiry notice, and a
+  security disclaimer — matching the visual identity of all other registry transactional emails.
+
 - **Documentation reorganized by intent** ([#559](https://github.com/unibrain1/elanregistry/issues/559)):
   Documentation is now structured around owner intent — "How do I use the registry?" (Owner
   Guides) vs. "Tell me about my car" (Technical Reference) — with a simplified 5-item
@@ -90,6 +95,7 @@
 - [#684](https://github.com/unibrain1/elanregistry/issues/684) — chore: auto-update VERSION file via post-commit/post-checkout git hooks
 - [#686](https://github.com/unibrain1/elanregistry/issues/686) — chore: remove stale test artifacts and update .gitignore
 - [#694](https://github.com/unibrain1/elanregistry/issues/694) — Apply Elan Registry branding to forgot password pages
+- [#695](https://github.com/unibrain1/elanregistry/issues/695) — Apply Elan Registry branding to password reset email template
 
 ## Summary
 
