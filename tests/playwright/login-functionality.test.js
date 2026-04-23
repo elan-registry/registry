@@ -327,3 +327,35 @@ test.describe('Login Form Responsiveness', () => {
     });
   }
 });
+
+test.describe('Forgot Password Page', () => {
+  const SUBMIT_BUTTON = 'button[name="forgotten_password"], input[name="forgotten_password"]';
+
+  test('forgot password form renders with required security elements', async ({ page }) => {
+    await page.goto('users/forgot_password.php', { waitUntil: 'networkidle' });
+
+    await expect(page.locator('input[name="email"]')).toBeVisible();
+
+    // CSRF token must survive any template restructuring
+    const csrfInput = page.locator('input[name="csrf"]');
+    await expect(csrfInput).toHaveCount(1);
+    expect((await csrfInput.inputValue()).length).toBeGreaterThan(10);
+
+    // Bot protection must be present
+    expect(await page.locator('.cf-turnstile').count()).toBeGreaterThan(0);
+
+    await expect(page.locator(SUBMIT_BUTTON)).toBeVisible();
+  });
+
+  test('forgot password confirmation page renders after submission', async ({ page }) => {
+    await page.goto('users/forgot_password.php', { waitUntil: 'networkidle' });
+
+    await page.fill('input[name="email"]', 'test@example.com');
+    await page.click(SUBMIT_BUTTON);
+    await page.waitForLoadState('networkidle');
+
+    // Rate limiting or validation may keep us on the form — either way no PHP errors
+    const pageContent = await page.textContent('body');
+    expect(pageContent).not.toMatch(/Fatal error|Parse error|Warning:/i);
+  });
+});

@@ -1,42 +1,40 @@
 <?php
+declare(strict_types=1);
+
 /*
-this is a user-facing page
-UserSpice 5
-An Open Source PHP User Management System
-by the UserSpice Team at http://UserSpice.com
-
-This program is free software: you can redistribute it and/or modify
-it under the terms of the GNU General Public License as published by
-the Free Software Foundation, either version 3 of the License, or
-(at your option) any later version.
-
-This program is distributed in the hope that it will be useful,
-but WITHOUT ANY WARRANTY; without even the implied warranty of
-MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-GNU General Public License for more details.
-
-You should have received a copy of the GNU General Public License
-along with this program.  If not, see <http://www.gnu.org/licenses/>.
+Branded forgot password form for the Lotus Elan Registry.
+Overrides the stock UserSpice template with registry card layout
+matching the join flow in _join.php.
 */
 ?>
-<div class="row">
-<div class="col-12 col-sm-8 offeset-sm-1 col-md-6 offset-md-3 col-lg-4 offset-lg-4">
-		<h2><?=lang("PW_RESET");?></h2>
-		<ol>
-			<?=lang("VER_INS");?>
-		</ol>
-		<?php if ($errors != '') { display_errors($errors); } ?>
-		<form action="" method="post" class="form " id="pwReset">
-
-			<div class="form-group">
-				<label for="email"><?=lang("GEN_EMAIL");?></label>
-				<input type="text" name="email" placeholder="<?=lang("GEN_EMAIL");?>" class="form-control" autofocus autocomplete='email'>
-			</div>
-
-			<input type="hidden" name="csrf" value="<?=Token::generate();?>">
-			<?php addTurnstile(); ?>
-			<p><input type="submit" name="forgotten_password" value="<?=lang("GEN_RESET");?>" class="btn btn-primary"></p>
-		</form>
-
-	</div><!-- /.col -->
-</div><!-- /.row -->
+<div class="container mt-4">
+  <div class="row justify-content-center">
+    <div class="col-12 col-md-6 col-lg-4">
+      <div class="card registry-card">
+        <div class="card-header">
+          <h2 class="mb-0"><i class="fas fa-key"></i> <strong><?= lang("PW_RESET"); ?></strong></h2>
+        </div>
+        <div class="card-body">
+          <?php if (!empty($errors)) { display_errors($errors); } ?>
+          <form action="" method="post" id="pwReset">
+            <div class="mb-3">
+              <label for="email" class="form-label"><?= lang("GEN_EMAIL"); ?></label>
+              <div class="input-group">
+                <span class="input-group-text"><i class="fas fa-envelope"></i></span>
+                <input type="email" name="email" id="email" class="form-control"
+                       placeholder="your.email@example.com" autofocus autocomplete="email">
+              </div>
+            </div>
+            <input type="hidden" name="csrf" value="<?= Token::generate(); ?>">
+            <?php addTurnstile(); ?>
+            <div class="mt-3 text-center">
+              <button type="submit" name="forgotten_password" value="1" class="btn btn-primary btn-lg">
+                <i class="fas fa-paper-plane mr-2"></i><?= lang("GEN_RESET"); ?>
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>

@@ -71,6 +71,12 @@ test.describe('Elan Registry - All Pages (Not Logged In)', () => {
       expectedText: 'Please Log In',
       isLoginPage: true,
     },
+    {
+      path: '/users/forgot_password.php',
+      name: 'Forgot Password',
+      selector: 'h2',
+      expectedText: 'Reset',
+    },
   ];
 
   pages.forEach(({ path, name, selector, expectedText, isRedirect, expectedRedirectPattern, isLoginPage }) => {
@@ -118,6 +124,7 @@ test.describe('Internal Links Discovery and Testing (Not Logged In)', () => {
     { path: '/docs/car-stories.php', name: 'Car Stories' },
     { path: '/docs/faq/index.php', name: 'FAQ' },
     { path: 'usersc/login.php', name: 'Log In' },
+    { path: '/users/forgot_password.php', name: 'Forgot Password' },
   ];
 
   test('find all internal links across all pages (excluding header)', async ({ page }) => {
