@@ -4,7 +4,8 @@ declare(strict_types=1);
 /*
 Branded forgot password confirmation page for the Lotus Elan Registry.
 Overrides the stock UserSpice template (users/views/_forgot_password_sent.php).
-The controller at users/forgot_password.php checks for this override file first.
+The controller users/forgot_password.php checks for this file via file_exists()
+and requires it instead of the stock template when the reset email has been sent.
 */
 ?>
 <div class="container mt-4">

@@ -354,7 +354,7 @@ test.describe('Forgot Password Page', () => {
     await page.click(SUBMIT_BUTTON);
     await page.waitForLoadState('networkidle');
 
-    // Rate limiting or validation may keep us on the form — either way no PHP errors
+    // Only assert no PHP errors — redirect vs. stay-on-form behavior is not tested here
     const pageContent = await page.textContent('body');
     expect(pageContent).not.toMatch(/Fatal error|Parse error|Warning:/i);
   });

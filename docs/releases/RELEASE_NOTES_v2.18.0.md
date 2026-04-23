@@ -48,6 +48,11 @@
 
 ### Improvements
 
+- **Branded forgot password pages** ([#694](https://github.com/unibrain1/elanregistry/issues/694)):
+  The forgot password form and post-submission confirmation screen now use the registry card
+  layout (matching the join flow) with Font Awesome icons, styled input groups, and a
+  "Check Your Email" confirmation card showing the reset link expiry time.
+
 - **Documentation reorganized by intent** ([#559](https://github.com/unibrain1/elanregistry/issues/559)):
   Documentation is now structured around owner intent — "How do I use the registry?" (Owner
   Guides) vs. "Tell me about my car" (Technical Reference) — with a simplified 5-item
@@ -84,6 +89,7 @@
 - [#675](https://github.com/unibrain1/elanregistry/issues/675) — security: audit admin include files for unescaped echo points (XSS hardening)
 - [#684](https://github.com/unibrain1/elanregistry/issues/684) — chore: auto-update VERSION file via post-commit/post-checkout git hooks
 - [#686](https://github.com/unibrain1/elanregistry/issues/686) — chore: remove stale test artifacts and update .gitignore
+- [#694](https://github.com/unibrain1/elanregistry/issues/694) — Apply Elan Registry branding to forgot password pages
 
 ## Summary
 

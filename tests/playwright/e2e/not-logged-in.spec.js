@@ -75,7 +75,7 @@ test.describe('Elan Registry - All Pages (Not Logged In)', () => {
       path: '/users/forgot_password.php',
       name: 'Forgot Password',
       selector: 'h2',
-      expectedText: 'Reset',
+      expectedText: 'Reset Password',
     },
   ];
 
