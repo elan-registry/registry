@@ -18,7 +18,7 @@
 
 3. **Add Turnstile keys to `.env`** (#630) — obtain keys from Cloudflare Dashboard → Turnstile:
 
-   ```
+   ```text
    TURNSTILE_SITE_KEY=your_site_key
    TURNSTILE_SECRET_KEY=your_secret_key
    ```
@@ -28,12 +28,12 @@
    `usersc/plugins/hooker/hooks/`:
 
    | Page | Position | Hook file |
-   |------|----------|-----------|
+   | ---- | -------- | --------- |
    | `login.php` | `form` | `hooks/login_form_turnstile.php` |
-   | `login.php` | `post` | `hooks/login_post_turnstile.php` |
+   | `login.php` | `post` | `hooks/post_turnstile.php` |
    | `join.php` | `form` | `hooks/join_form_turnstile.php` |
-   | `joinAttempt` | `body` | `hooks/join_post_turnstile.php` |
-   | `forgot_password.php` | `post` | `hooks/forgotpassword_post_turnstile.php` |
+   | `joinAttempt` | `body` | `hooks/post_turnstile.php` |
+   | `forgot_password.php` | `post` | `hooks/post_turnstile.php` |
 
 5. Verify URL redirects in `docs/.htaccess` are working after docs reorganization (#559)
 6. Run `./scripts/setup-git-hooks.sh` on each developer machine to install new git hooks (#684)

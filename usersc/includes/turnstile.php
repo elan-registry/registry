@@ -12,17 +12,31 @@ declare(strict_types=1);
  * Fail closed: API errors block submission and are logged.
  */
 
+/**
+ * Check whether Cloudflare Turnstile is enabled and configured.
+ *
+ * Requires HTTPS — the Turnstile iframe is served over https:// and browsers
+ * block cross-protocol frame access, producing error 110200 on plain HTTP.
+ *
+ * @return bool True when both env keys are present and the connection is HTTPS.
+ */
 function isTurnstileEnabled(): bool
 {
     global $is_https;
-    // Turnstile requires HTTPS — its iframe is served over https:// and browsers
-    // block cross-protocol frame access, causing error 110200 on plain HTTP.
     return !empty($is_https)
-        && !empty($_ENV['TURNSTILE_SECRET_KEY'] ?? '')
-        && !empty($_ENV['TURNSTILE_SITE_KEY'] ?? '');
+        && !empty($_ENV['TURNSTILE_SECRET_KEY'])
+        && !empty($_ENV['TURNSTILE_SITE_KEY']);
 }
 
-function addTurnstile(string $formId): void
+/**
+ * Render the Cloudflare Turnstile widget into the current form.
+ *
+ * Outputs a centred .cf-turnstile div and the Turnstile api.js script tag.
+ * No-ops silently when Turnstile is disabled (off mode or plain HTTP).
+ *
+ * @return void
+ */
+function addTurnstile(): void
 {
     if (!isTurnstileEnabled()) {
         return;
@@ -34,6 +48,15 @@ function addTurnstile(string $formId): void
     echo '<script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>' . "\n";
 }
 
+/**
+ * Verify the Turnstile token submitted with the current POST request.
+ *
+ * Returns true immediately when Turnstile is disabled (off mode).
+ * Returns false when the token is absent or when the Cloudflare API rejects it.
+ * API errors are logged and treated as failures (fail-closed).
+ *
+ * @return bool True when the challenge passes or Turnstile is disabled.
+ */
 function verifyTurnstile(): bool
 {
     if (!isTurnstileEnabled()) {
@@ -44,10 +67,18 @@ function verifyTurnstile(): bool
         return false;
     }
     global $remote_addr;
-    return _sendTurnstileRequest($_ENV['TURNSTILE_SECRET_KEY'], $token, $remote_addr);
+    return _verifyTurnstileToken($_ENV['TURNSTILE_SECRET_KEY'], $token, $remote_addr);
 }
 
-function _sendTurnstileRequest(string $secret, string $token, string $ip): bool
+/**
+ * POST the token to the Cloudflare siteverify endpoint and return the result.
+ *
+ * @param string $secret Server-side Turnstile secret key.
+ * @param string $token  cf-turnstile-response token from the POST body.
+ * @param string $ip     Client IP address forwarded to Cloudflare for analytics.
+ * @return bool True when Cloudflare returns success:true.
+ */
+function _verifyTurnstileToken(string $secret, string $token, string $ip): bool
 {
     $ch = curl_init('https://challenges.cloudflare.com/turnstile/v0/siteverify');
     curl_setopt_array($ch, [
@@ -59,23 +90,23 @@ function _sendTurnstileRequest(string $secret, string $token, string $ip): bool
             'remoteip' => $ip,
         ]),
         CURLOPT_TIMEOUT        => 5,
-        CURLOPT_SSL_VERIFYPEER => defined('EXTRA_CURL_SECURITY') && EXTRA_CURL_SECURITY,
+        CURLOPT_SSL_VERIFYPEER => true,
     ]);
     $result    = curl_exec($ch);
     $curlErrno = curl_errno($ch);
     curl_close($ch);
 
     if ($curlErrno || $result === false) {
-        error_log('[elan-registry] Turnstile cURL error: ' . curl_strerror($curlErrno));
+        logger(0, LogCategories::LOG_CATEGORY_SYSTEM_ERROR, 'Turnstile cURL error: ' . curl_strerror($curlErrno));
         return false;
     }
     $data = json_decode((string) $result, true);
     if (!is_array($data)) {
-        error_log('[elan-registry] Turnstile returned invalid JSON');
+        logger(0, LogCategories::LOG_CATEGORY_SYSTEM_ERROR, 'Turnstile returned invalid JSON');
         return false;
     }
     if (!($data['success'] ?? false)) {
-        error_log('[elan-registry] Turnstile rejected token: ' . implode(', ', $data['error-codes'] ?? ['unknown']));
+        logger(0, LogCategories::LOG_CATEGORY_SYSTEM_ERROR, 'Turnstile rejected token: ' . implode(', ', $data['error-codes'] ?? ['unknown']));
     }
     return (bool) ($data['success'] ?? false);
 }

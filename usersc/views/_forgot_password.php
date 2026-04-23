@@ -25,7 +25,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 		<ol>
 			<?=lang("VER_INS");?>
 		</ol>
-		<?php if(!$errors=='') { display_errors($errors); } ?>
+		<?php if ($errors != '') { display_errors($errors); } ?>
 		<form action="" method="post" class="form " id="pwReset">
 
 			<div class="form-group">
@@ -34,7 +34,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 			</div>
 
 			<input type="hidden" name="csrf" value="<?=Token::generate();?>">
-			<?php addTurnstile('pwReset'); ?>
+			<?php addTurnstile(); ?>
 			<p><input type="submit" name="forgotten_password" value="<?=lang("GEN_RESET");?>" class="btn btn-primary"></p>
 		</form>
 
