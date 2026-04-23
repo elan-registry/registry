@@ -45,20 +45,24 @@ if (file_exists($customAutoloaderPath)) {
 
 require_once $abs_us_root . $us_url_root . 'users/helpers/helpers.php';
 
-// Load encrypted environment variables
-// SecureEnvPHP autoloaded via helpers.php → usersc/vendor/autoload.php
-use SecureEnvPHP\SecureEnvPHP;
-
-(new SecureEnvPHP())->parse($abs_us_root . $us_url_root . '.env.enc', $abs_us_root . $us_url_root . '.env.key');
+// Load .env via phpdotenv (autoloaded via helpers.php → usersc/vendor/autoload.php)
+// createImmutable(): populates $_ENV/$_SERVER only (no putenv); won't overwrite test bootstrap values
+$dotenv = \Dotenv\Dotenv::createImmutable($abs_us_root . $us_url_root);
+$dotenv->safeLoad();
+try {
+    $dotenv->required(['DB_HOST', 'DB_USER', 'DB_PASS', 'DB_NAME'])->notEmpty();
+} catch (\Dotenv\Exception\ValidationException $e) {
+    error_log('[elan-registry] Boot failed — missing required environment variable(s): ' . $e->getMessage());
+    throw $e;
+}
 
 // Set config
 $GLOBALS['config'] = array(
     'mysql'      => array(
-        // Set config
-        'host'         => getenv('DB_HOST'),
-        'username'     => getenv('DB_USER'),
-        'password'     => getenv('DB_PASS'),
-        'db'           => getenv('DB_NAME'),
+        'host'         => $_ENV['DB_HOST'],
+        'username'     => $_ENV['DB_USER'],
+        'password'     => $_ENV['DB_PASS'],
+        'db'           => $_ENV['DB_NAME'],
         // PDO options: match production driver behavior
         // MYSQL_ATTR_INIT_COMMAND disables strict SQL mode (required for
         // UserSpice INSERT statements that omit columns without defaults)

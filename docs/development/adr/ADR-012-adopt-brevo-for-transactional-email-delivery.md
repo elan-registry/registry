@@ -167,7 +167,8 @@ The Brevo plugin stores configuration in a database table:
 | `from_email` | varchar(255) | Sender email address |
 | `from_name` | varchar(255) | Sender display name |
 
-Alternatively, the API key could be migrated to SecureEnvPHP (ADR-005) for encryption at rest, but this requires a separate migration task.
+Alternatively, the API key could be migrated to a phpdotenv `.env` file (ADR-014) for centralized
+environment variable management, but this requires a separate migration task.
 
 ### Brevo HTTP API Details
 
@@ -309,7 +310,7 @@ There is no fallback to PHPMailer. If the Brevo API call fails, the email is not
   MailChannels pool.
 
 - **API key stored in plaintext database.** The Brevo API key is stored in the `plg_sendinblue.api_key` column without encryption. While database access is
-  already restricted, this is asymmetric with ADR-005 (encrypted environment variables). Mitigation: migrate API key to SecureEnvPHP in a follow-up task.
+  already restricted, this could be asymmetric with ADR-014 (plaintext `.env` with chmod 600). Mitigation: migrate API key to phpdotenv `.env` in a follow-up task.
 
 - **Brand naming inconsistency.** The company rebranded from Sendinblue to Brevo in 2023, but the plugin directory is still named `/usersc/plugins/sendinblue/`.
   This is a cosmetic issue but may confuse developers unfamiliar with the rebrand. Follow-up refactor recommended.
@@ -324,7 +325,7 @@ There is no fallback to PHPMailer. If the Brevo API call fails, the email is not
 | --- | --- | --- | --- |
 | Brevo API outage causes silent email failure | Low-Medium | Medium | Error logging with LogCategories::LOG_CATEGORY_SENDINBLUE; monitor Brevo status page; implement manual retry mechanism for critical emails (password reset, transfer notifications); consider adding optional queue table for guaranteed delivery |
 | Free tier volume (300/day) is exceeded | Very Low | Low | Current volume <10/day typical; monitor via Brevo dashboard; upgrade to paid plan if needed; no hard blocking; graceful degradation to local mail if API rate-limited |
-| Brevo API key leaked via database backup or SQL injection | Low | High | Enforce strict backup access controls; use SecureEnvPHP (ADR-005) to encrypt API key in environment (follow-up task); API key rotatable in Brevo dashboard; monitor API usage for unauthorized sends |
+| Brevo API key leaked via database backup or SQL injection | Low | High | Enforce strict backup access controls; use phpdotenv (ADR-014) to store API key in `.env` (follow-up task); API key rotatable in Brevo dashboard; monitor API usage for unauthorized sends |
 | Brevo pricing or terms change | Low | Medium | HTTP API integration is provider-agnostic at transport layer; switching providers requires only plugin replacement, not application email refactoring; maintain separation of concerns via UserSpice plugin system |
 | Recipient data DPA not in place | Low | High | Execute Brevo DPA immediately; document in Privacy Statement that Brevo is a data processor; conduct DPIA for GDPR compliance; periodic review of DPA terms |
 | API key exposure in leaked version control | Very Low | High | `.env.key`file (if stored there) is in`.gitignore`; pre-commit hooks should catch secrets; GitGuardian CI check prevents plaintext keys in commits |

@@ -40,82 +40,19 @@ if (!file_exists($initPath)) {
     exit(1);
 }
 
-// Load environment variables BEFORE calling users/init.php
-// Use SecureEnvPHP if available to parse encrypted .env.enc
-// Otherwise fall back to plaintext .env.local parsing
+// Load test environment (.env.local overrides .env for local development)
+// .env.local uses DB_* names directly (e.g. DB_HOST=127.0.0.1:8889 for MAMP)
+// createMutable() allows init.php's createImmutable() to read our test values from $_ENV
+$envLocal = $projectRoot . '/.env.local';
+$envName  = file_exists($envLocal) ? '.env.local' : '.env';
 
-// First, try to load Composer autoloader (which includes SecureEnvPHP)
-$composerAutoloadPath = $projectRoot . '/usersc/vendor/autoload.php';
-if (file_exists($composerAutoloadPath)) {
-    require_once $composerAutoloadPath;
-
-    // Use SecureEnvPHP to parse encrypted environment file
-    $envEncPath = $projectRoot . '/.env.enc';
-    $envKeyPath = $projectRoot . '/.env.key';
-
-    if (file_exists($envEncPath) && file_exists($envKeyPath)) {
-        try {
-            $secureEnv = new \SecureEnvPHP\SecureEnvPHP();
-            $secureEnv->parse($envEncPath, $envKeyPath);
-            fwrite(STDERR, "NOTE: Loaded encrypted environment from .env.enc\n");
-        } catch (Throwable $e) {
-            fwrite(STDERR, "NOTE: Failed to parse .env.enc: {$e->getMessage()}\n");
-        }
-    }
-}
-
-// Fallback: Try to load environment variables from .env.local
-// This helps when encrypted file isn't available or fails to parse
-$envLocalPath = $projectRoot . '/.env.local';
-$dbHost = null;
-$dbPort = null;
-
-if (file_exists($envLocalPath)) {
-    $envContent = file_get_contents($envLocalPath);
-    // Parse basic environment variables from .env.local
-    foreach (explode("\n", $envContent) as $line) {
-        if (empty(trim($line)) || strpos(trim($line), '#') === 0) {
-            continue;
-        }
-        if (strpos($line, '=') !== false) {
-            list($key, $value) = explode('=', $line, 2);
-            $key = trim($key);
-            $value = trim($value);
-
-            // Capture host and port separately for later combination
-            if ($key === 'DEV_DB_HOST') {
-                $dbHost = $value;
-            } elseif ($key === 'DEV_DB_PORT') {
-                $dbPort = $value;
-            }
-
-            // Map dev environment variables to standard DB variables if needed
-            if (strpos($key, 'DEV_DB_') === 0) {
-                $standardKey = str_replace('DEV_DB_', 'DB_', $key);
-                putenv("{$standardKey}={$value}");
-            } elseif (!getenv($key)) {
-                // Only set if not already set (encrypted file takes precedence)
-                putenv("{$key}={$value}");
-            }
-        }
-    }
-    fwrite(STDERR, "NOTE: Loaded plaintext environment from .env.local\n");
-}
-
-// Combine host and port for MySQL connection
-// The DB class DSN only uses 'host', so we need to combine port into it if needed
-if ($dbHost && $dbPort) {
-    // Override DB_HOST to include port
-    putenv("DB_HOST={$dbHost}:{$dbPort}");
-    fwrite(STDERR, "NOTE: Combined DB_HOST with port: {$dbHost}:{$dbPort}\n");
-}
-
-// Special handling for MAMP MySQL socket on macOS
-// MAMP uses Unix socket instead of TCP on localhost:8889
-$mampSocket = '/Applications/MAMP/tmp/mysql/mysql.sock';
-if (file_exists($mampSocket) && !getenv('DB_SOCKET')) {
-    putenv("DB_SOCKET={$mampSocket}");
-    fwrite(STDERR, "NOTE: Set MAMP MySQL socket: {$mampSocket}\n");
+try {
+    \Dotenv\Dotenv::createMutable($projectRoot, $envName)->load();
+    fwrite(STDERR, "NOTE: Loaded test environment from {$envName}\n");
+} catch (\Dotenv\Exception\ExceptionInterface $e) {
+    fwrite(STDERR, "WARNING: Could not load {$envName}: {$e->getMessage()}\n");
+    fwrite(STDERR, "WARNING: All integration tests requiring a database will be skipped.\n");
+    fwrite(STDERR, "WARNING: To enable them, copy .env.local.sample to .env.local and fill in credentials.\n");
 }
 
 // Suppress UserSpice initialization errors (especially database connection errors)
@@ -142,18 +79,6 @@ if (!empty(trim($output))) {
 }
 
 restore_error_handler();
-
-// Fix up configuration if SecureEnvPHP overwrote our port settings
-// The encrypted .env.enc likely has DB_HOST as just 'localhost' or 'localhost:8889'
-// We need to ensure the port is included for MAMP connections
-if (isset($GLOBALS['config']) && isset($GLOBALS['config']['mysql']) && isset($GLOBALS['config']['mysql']['host'])) {
-    $currentHost = $GLOBALS['config']['mysql']['host'];
-    // If host doesn't include port and we have a separate port, combine them
-    if (strpos($currentHost, ':') === false && $dbPort) {
-        $GLOBALS['config']['mysql']['host'] = $currentHost . ':' . $dbPort;
-        fwrite(STDERR, "NOTE: Updated config host with port: " . $GLOBALS['config']['mysql']['host'] . "\n");
-    }
-}
 
 // Ensure $user global is properly initialized for getSettings() calls
 // If users/init.php didn't fully initialize $user, create a minimal User object
@@ -191,7 +116,7 @@ try {
 
         // Re-initialize the global $db after configuration fixes
         // This ensures $db in tests uses the corrected configuration
-        $GLOBALS['db'] = DB::getInstance();
+        $GLOBALS['db'] = $testDb;
         fwrite(STDERR, "NOTE: Re-initialized global \$db for integration tests\n");
     }
 } catch (Throwable $e) {

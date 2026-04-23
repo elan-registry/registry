@@ -44,7 +44,7 @@ British sports cars.
 - MySQL 8.0+
 - Composer for dependency management
 - Google Maps JavaScript API, Google Geocoding API
-- Encrypted environment variables using SecureEnvPHP
+- Environment variables via phpdotenv (plaintext `.env` with `chmod 600`)
 
 **Required API Keys:**
 

@@ -29,8 +29,6 @@ ElanRegistry.code-workspace
 # Environment & Configuration
 ########################################
 .env
-.env.enc
-.env.key
 .env.local
 .env.testing
 .user.ini

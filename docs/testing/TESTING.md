@@ -154,8 +154,8 @@ Unit tests use mock CarModel class (no database required).
 
 ### Environment Variables (Integration Tests)
 
-- `DB_HOST`, `DB_USERNAME`, `DB_PASSWORD`, `DB_NAME`
-- Reads from `.env.enc` (encrypted) or `.env.local` (plaintext)
+- `DB_HOST`, `DB_USER`, `DB_PASS`, `DB_NAME`
+- Reads from `.env.local` (local dev) or `.env` (CI), loaded via phpdotenv
 
 ### PHPUnit Config Files
 
