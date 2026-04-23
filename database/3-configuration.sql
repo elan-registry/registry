@@ -135,7 +135,13 @@ INSERT INTO `us_plugin_hooks` (`id`, `page`, `folder`, `position`, `hook`, `disa
 (26, 'admin.php?view=user', 'userspice_core', 'post', 'hooks/tags_admin_user_post.php', 0),
 (27, 'login', 'recaptcha', 'form', 'hooks/loginform.php', 1),
 (28, 'login', 'recaptcha', 'bottom', 'hooks/loginbottom.php', 1),
-(29, 'login', 'recaptcha', 'post', 'hooks/loginpost.php', 1)
+(29, 'login', 'recaptcha', 'post', 'hooks/loginpost.php', 1),
+-- Cloudflare Turnstile hooks (#630)
+(34, 'login.php', 'hooker', 'form', 'hooks/login_form_turnstile.php', 0),
+(35, 'login.php', 'hooker', 'post', 'hooks/login_post_turnstile.php', 0),
+(36, 'join.php', 'hooker', 'form', 'hooks/join_form_turnstile.php', 0),
+(37, 'joinAttempt', 'hooker', 'body', 'hooks/join_post_turnstile.php', 0),
+(38, 'forgot_password.php', 'hooker', 'post', 'hooks/forgotpassword_post_turnstile.php', 0)
 ON DUPLICATE KEY UPDATE
   page = VALUES(page),
   folder = VALUES(folder),
