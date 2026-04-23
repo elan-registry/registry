@@ -9,9 +9,48 @@
 require_once '../users/init.php';
 require_once $abs_us_root . $us_url_root . 'users/includes/template/prep.php';
 
+use ElanRegistry\Documentation\DocumentPortalTemplate;
+
 if (!securePage($php_self)) {
     die();
 }
+
+$portalCards = [
+    [
+        'title'       => 'Reference Library',
+        'icon'        => 'fa-book',
+        'url'         => 'reference-library.php',
+        'buttonText'  => 'View Reference Library',
+        'buttonIcon'  => 'fa-arrow-right',
+        'headerClass' => 'bg-primary text-white',
+        'buttonClass' => 'btn-primary',
+        'cardClass'   => 'border-primary',
+        'description' => 'Technical documentation, workshop manuals, parts lists, and owner guides. Everything you need for maintenance and restoration.',
+        'listItems'   => [
+            ['icon' => 'fa-wrench text-primary',  'text' => 'Workshop Manuals'],
+            ['icon' => 'fa-cogs text-primary',    'text' => 'Parts Lists'],
+            ['icon' => 'fa-tools text-primary',   'text' => 'Technical Guides'],
+            ['icon' => 'fa-barcode text-primary', 'text' => 'Chassis Validation'],
+        ],
+    ],
+    [
+        'title'       => 'Car Stories',
+        'icon'        => 'fa-book-open',
+        'url'         => 'car-stories.php',
+        'buttonText'  => 'Read Car Stories',
+        'buttonIcon'  => 'fa-arrow-right',
+        'headerClass' => 'bg-success text-white',
+        'buttonClass' => 'btn-success',
+        'cardClass'   => 'border-success',
+        'description' => 'Individual car histories, owner stories, and community articles. Discover the unique tales behind registry vehicles.',
+        'listItems'   => [
+            ['icon' => 'fa-history text-success',   'text' => 'Individual Car Histories'],
+            ['icon' => 'fa-users text-success',     'text' => 'Owner Stories'],
+            ['icon' => 'fa-newspaper text-success', 'text' => 'Magazine Articles'],
+            ['icon' => 'fa-archive text-success',   'text' => 'Historical Archives'],
+        ],
+    ],
+];
 
 ?>
 <div class="page-wrapper">
@@ -24,64 +63,14 @@ if (!securePage($php_self)) {
                             <p class="text-muted">Our documentation has been reorganized for better navigation</p>
                         </div>
                         <div class="card-body">
-                            
+
                             <div class="alert alert-info mb-4">
                                 <i class="fas fa-info-circle"></i>
-                                <strong>Updated Organization:</strong> We've split our documentation into focused sections 
+                                <strong>Updated Organization:</strong> We've split our documentation into focused sections
                                 to make it easier to find what you're looking for.
                             </div>
 
-                            <div class="row">
-                                <div class="col-md-6 mb-4">
-                                    <div class="card border-primary">
-                                        <div class="card-header bg-primary text-white">
-                                            <h5 class="mb-0">
-                                                <i class="fas fa-book"></i> Reference Library
-                                            </h5>
-                                        </div>
-                                        <div class="card-body">
-                                            <p class="card-text">
-                                                Technical documentation, workshop manuals, parts lists, and owner guides. 
-                                                Everything you need for maintenance and restoration.
-                                            </p>
-                                            <ul class="list-unstyled">
-                                                <li><i class="fas fa-wrench text-primary"></i> Workshop Manuals</li>
-                                                <li><i class="fas fa-cogs text-primary"></i> Parts Lists</li>
-                                                <li><i class="fas fa-tools text-primary"></i> Technical Guides</li>
-                                                <li><i class="fas fa-barcode text-primary"></i> Chassis Validation</li>
-                                            </ul>
-                                            <a href="reference-library.php" class="btn btn-primary">
-                                                <i class="fas fa-arrow-right"></i> View Reference Library
-                                            </a>
-                                        </div>
-                                    </div>
-                                </div>
-
-                                <div class="col-md-6 mb-4">
-                                    <div class="card border-success">
-                                        <div class="card-header bg-success text-white">
-                                            <h5 class="mb-0">
-                                                <i class="fas fa-book-open"></i> Car Stories
-                                            </h5>
-                                        </div>
-                                        <div class="card-body">
-                                            <p class="card-text">
-                                                Individual car histories, owner stories, and community articles. 
-                                                Discover the unique tales behind registry vehicles.
-                                            </p>
-                                            <ul class="list-unstyled">
-                                                <li><i class="fas fa-history text-success"></i> Individual Car Histories</li>
-                                                <li><i class="fas fa-users text-success"></i> Owner Stories</li>
-                                                <li><i class="fas fa-newspaper text-success"></i> Magazine Articles</li>
-                                                <li><i class="fas fa-archive text-success"></i> Historical Archives</li>
-                                            </ul>
-                                            <a href="car-stories.php" class="btn btn-success">
-                                                <i class="fas fa-arrow-right"></i> Read Car Stories
-                                            </a>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
+                            <?= DocumentPortalTemplate::renderDocumentCardGrid($portalCards, 'col-md-6') ?>
 
                             <!-- Quick Access Links -->
                             <div class="mt-4">
