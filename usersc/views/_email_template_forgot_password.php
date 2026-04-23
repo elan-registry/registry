@@ -10,7 +10,11 @@ declare(strict_types=1);
  * via the EmailTemplate class.
  *
  * Variables available (from $email_field_whitelist):
- *   $fname, $email (rawurlencode'd), $vericode, $user_id, $reset_vericode_expiry
+ *   $fname            — user's first name (raw)
+ *   $email            — already rawurlencode'd by the caller; do NOT re-encode in this template
+ *   $vericode         — raw plaintext token (rawurlencode applied in this template)
+ *   $user_id          — user ID integer
+ *   $reset_vericode_expiry — reset link expiry in minutes
  */
 
 require_once $abs_us_root . $us_url_root . 'usersc/classes/EmailTemplate.php';
