@@ -61,6 +61,16 @@ The Elan Registry uses **vlucas/phpdotenv** v5 for environment variable loading 
 - `DB_PASS` - Database password
 - `DB_NAME` - Database name (e.g., `elanregi_spice`)
 
+### Cloudflare Turnstile CAPTCHA
+
+**Usage**: `usersc/includes/turnstile.php`
+
+- `TURNSTILE_SITE_KEY` — Turnstile widget site key (public; rendered in HTML). Dev: `1x00000000000000000000AA`
+- `TURNSTILE_SECRET_KEY` — Turnstile secret key (private; server-side token verification). Dev: `1x0000000000000000000000000000000AA`
+
+Omit either key to disable Turnstile (off mode — forms work without CAPTCHA).
+Production keys: Cloudflare Dashboard → Turnstile → your site.
+
 ## Setup & Configuration
 
 ### Development Setup

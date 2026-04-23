@@ -5,15 +5,37 @@
 
 ## Required Actions After Deployment
 
-1. Run database migration to add `turnstile_site_key` column (if #630 is included):
+1. **Run `./scripts/install-dependencies.sh --prod`** (#631) — installs `vlucas/phpdotenv`
+   (replaces abandoned `johnathanmiller/secure-env-php`). Must run before the site boots.
 
-   ```sql
-   ALTER TABLE settings ADD COLUMN turnstile_site_key VARCHAR(100);
+2. **Migrate credentials to `.env`** (#631) — create `.env` from `.env.enc` data, set
+   `chmod 600 .env`, then securely delete `.env.enc` and `.env.key`:
+
+   ```bash
+   chmod 600 .env
+   shred -vfz -n 3 .env.enc .env.key
    ```
 
-2. Add `TURNSTILE_SECRET_KEY` to `.env` (if #630 is included)
-3. Set `turnstile_site_key` in site settings after deployment (if #630 is included)
-4. Migrate credentials from `.env.enc` + `.env.key` to `.env` with `chmod 600` (#631)
+3. **Add Turnstile keys to `.env`** (#630) — obtain keys from Cloudflare Dashboard → Turnstile:
+
+   ```
+   TURNSTILE_SITE_KEY=your_site_key
+   TURNSTILE_SECRET_KEY=your_secret_key
+   ```
+
+4. **Register Turnstile hooks via Hooker plugin** (#630) — Admin → Plugin Manager →
+   Hooker → Configure. Add six hooks pointing to the new files in
+   `usersc/plugins/hooker/hooks/`:
+
+   | Page | Position | Hook file |
+   |------|----------|-----------|
+   | `login.php` | `bottom` | `hooks/login_bottom_turnstile.php` |
+   | `login.php` | `post` | `hooks/login_post_turnstile.php` |
+   | `join.php` | `bottom` | `hooks/join_bottom_turnstile.php` |
+   | `joinAttempt` | `body` | `hooks/join_post_turnstile.php` |
+   | `forgot_password.php` | `bottom` | `hooks/forgotpassword_bottom_turnstile.php` |
+   | `forgot_password.php` | `post` | `hooks/forgotpassword_post_turnstile.php` |
+
 5. Verify URL redirects in `docs/.htaccess` are working after docs reorganization (#559)
 6. Run `./scripts/setup-git-hooks.sh` on each developer machine to install new git hooks (#684)
 

@@ -50,7 +50,7 @@ British sports cars.
 
 - Google Maps API Key (for map displays)
 - Google Geocoding API Key (for location lookup)
-- reCAPTCHA Keys (for spam protection)
+- Cloudflare Turnstile Keys (for spam protection)
 - Brevo/Sendinblue API Key or SMTP configuration (for email delivery)
 
 ### Installation

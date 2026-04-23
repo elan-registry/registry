@@ -41,8 +41,13 @@ declare(strict_types=1);
  */
 
 // HTTP Scheme Detection
-// Determines if request is secure (HTTPS) or plain HTTP
+// Determines if request is secure (HTTPS) or plain HTTP.
+// Also checks X-Forwarded-Proto for reverse proxy / Cloudflare Tunnel setups
+// where SSL is terminated upstream and the backend sees plain HTTP internally.
 $scheme = Server::get('REQUEST_SCHEME', 'http');
+if (Server::get('HTTP_X_FORWARDED_PROTO', '') === 'https') {
+    $scheme = 'https';
+}
 $is_https = ($scheme === 'https');
 
 // Host and Origin

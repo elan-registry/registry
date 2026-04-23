@@ -139,7 +139,7 @@ third-party domains required by the application:
 | `img-src` | `'self' data: blob:` + image domains | Allow embedded SVGs (`data:`), canvas exports (`blob:`), Google Maps tiles, Gravatar avatars |
 | `font-src` | `'self'` + font CDN domains | FontAwesome kit and Google Fonts |
 | `connect-src` | `'self'` + API domains | AJAX calls to application endpoints, Google Maps API, Cloudflare Analytics beacon |
-| `frame-src` | `'self' https://www.google.com` | Google reCAPTCHA iframe on registration page |
+| `frame-src` | `'self' https://challenges.cloudflare.com` | Cloudflare Turnstile CAPTCHA iframe on registration page |
 | `frame-ancestors` | `'self'` | Anti-clickjacking: prevents cross-origin iframes (CSP3, preferred method) |
 | `object-src` | `'none'` | Blocks Flash/plugin embeds entirely |
 | `base-uri` | `'self'` | Prevents`<base>` tag injection attacks that redirect relative URLs |
@@ -150,8 +150,7 @@ third-party domains required by the application:
 https://maps.googleapis.com        Google Maps JavaScript API
 https://www.gstatic.com            Google static assets
 https://ssl.gstatic.com            Google SSL static assets
-https://www.google.com             Google reCAPTCHA
-https://www.gstatic.com/recaptcha/ reCAPTCHA scripts
+https://challenges.cloudflare.com  Cloudflare Turnstile CAPTCHA
 https://cdn.jsdelivr.net           jQuery, Bootstrap, Dropzone, Chart.js, Datepicker
 https://cdnjs.cloudflare.com       Datepicker (alternative CDN)
 https://unpkg.com                  General CDN (future use)
@@ -179,7 +178,7 @@ https://cdn.datatables.net         DataTables CSS
 https://use.fontawesome.com        Font Awesome CSS (legacy)
 https://kit.fontawesome.com        Font Awesome Kit CSS
 https://ka-f.fontawesome.com       Font Awesome Kit delivery
-https://www.gstatic.com            Google-injected styles (Maps, reCAPTCHA)
+https://www.gstatic.com            Google-injected styles (Maps)
 ```
 
 #### 2. HTTP Strict Transport Security (HSTS)
@@ -357,6 +356,12 @@ tests (`tests/integration/ErrorPageHeadersTest.php`) verify static correctness o
 the header configuration in code, and Playwright E2E tests
 (`tests/playwright/security/clickjacking.spec.ts`) verify runtime header values
 via HTTP response inspection.
+
+## Revision History
+
+| Date       | Change | Issue |
+| --- | --- | --- |
+| 2026-04-22 | Replace reCAPTCHA CSP entries with Cloudflare Turnstile | #630 |
 
 ## Known Issues
 

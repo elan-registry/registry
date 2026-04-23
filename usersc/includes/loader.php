@@ -17,3 +17,6 @@ require_once $abs_us_root . $us_url_root . 'usersc/includes/config.php';
 
 // Load server globals for environment detection and URL construction
 require_once $abs_us_root . $us_url_root . 'usersc/includes/server_globals.php';
+
+// Load Cloudflare Turnstile CAPTCHA functions
+require_once $abs_us_root . $us_url_root . 'usersc/includes/turnstile.php';
