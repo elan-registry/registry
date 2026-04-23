@@ -367,17 +367,27 @@ if (!empty($_POST)) {
                                 ];
                                 $subject = 'Verify Your Email';
                                 $body =  email_body('_email_template_verify_new.php', $options);
-                                $email_sent = email($email, $subject, $body);
-                                if ($email_sent !== true) {
-                                    $safeToLog = preg_replace('/[\r\n\t]/', '', $email);
+
+                                if ($body === '') {
                                     logger($userId, LogCategories::LOG_CATEGORY_EMAIL_ERROR,
-                                        'user_settings.php: verify-email SEND FAILED for user ' . $userId . ' to ' . $safeToLog);
-                                    $errors[] = 'Email NOT sent due to error. Please contact site administrator.';
-                                } else {
-                                    $successes[] = "Email request received. Please check your email to perform verification. Be sure to check your Spam and Junk folder as the verification link expires in {$settings->join_vericode_expiry} hours.";
+                                        'user_settings.php: email_body() returned empty — template missing or failed',
+                                        ['template' => '_email_template_verify_new.php']);
+                                    $errors[] = 'Email could not be sent. Please try again or contact the administrator.';
                                 }
-                                if ($emailR->email_act == 1) {
-                                    logger((int)$user->data()->id, LogCategories::LOG_CATEGORY_USER, "Requested change email from $userdetails->email to $email. Verification email sent.");
+
+                                if ($body !== '') {
+                                    $email_sent = email($email, $subject, $body);
+                                    if ($email_sent !== true) {
+                                        $safeToLog = preg_replace('/[\r\n\t]/', '', $email);
+                                        logger($userId, LogCategories::LOG_CATEGORY_EMAIL_ERROR,
+                                            'user_settings.php: verify-email SEND FAILED for user ' . $userId . ' to ' . $safeToLog);
+                                        $errors[] = 'Email NOT sent due to error. Please contact site administrator.';
+                                    } else {
+                                        $successes[] = "Email request received. Please check your email to perform verification. Be sure to check your Spam and Junk folder as the verification link expires in {$settings->join_vericode_expiry} hours.";
+                                    }
+                                    if ($emailR->email_act == 1) {
+                                        logger((int)$user->data()->id, LogCategories::LOG_CATEGORY_USER, "Requested change email from $userdetails->email to $email. Verification email sent.");
+                                    }
                                 }
                             }
                         } else {

@@ -414,6 +414,56 @@ class LogCategoriesUsageTest extends TestCase
         );
     }
 
+    // --- Issue #701: email_body() return value checks — all callers must guard against empty body ---
+
+    /**
+     * Regression test for Issue #701: usersc/join.php must check email_body() return value
+     * before calling email(), so template failures are detectable and logged.
+     *
+     * @issue 701
+     * @link https://github.com/unibrain1/elanregistry/issues/701
+     */
+    public function testUsercJoinChecksEmailBodyReturn(): void
+    {
+        $filePath = $this->rootDir . '/usersc/join.php';
+        if (!file_exists($filePath)) {
+            $this->markTestSkipped('usersc/join.php not found');
+        }
+
+        $content = (string)file_get_contents($filePath);
+
+        $this->assertStringContainsString(
+            "\$body === ''",
+            $content,
+            'usersc/join.php must check email_body() return for empty string before calling ' .
+            'email() — template failures must be logged, not silently sent as blank emails (Issue #701)'
+        );
+    }
+
+    /**
+     * Regression test for Issue #701: usersc/user_settings.php must check email_body() return value
+     * before calling email(), so template failures are detectable and logged.
+     *
+     * @issue 701
+     * @link https://github.com/unibrain1/elanregistry/issues/701
+     */
+    public function testUsercUserSettingsChecksEmailBodyReturn(): void
+    {
+        $filePath = $this->rootDir . '/usersc/user_settings.php';
+        if (!file_exists($filePath)) {
+            $this->markTestSkipped('usersc/user_settings.php not found');
+        }
+
+        $content = (string)file_get_contents($filePath);
+
+        $this->assertStringContainsString(
+            "\$body === ''",
+            $content,
+            'usersc/user_settings.php must check email_body() return for empty string before calling ' .
+            'email() — template failures must be logged, not silently sent as blank emails (Issue #701)'
+        );
+    }
+
     /**
      * Regression test for Issue #600: send-feedback.php modernization checks.
      */

@@ -83,6 +83,11 @@
 - **VERSION file auto-update via git hooks** ([#684](https://github.com/unibrain1/elanregistry/issues/684)):
   Post-commit, post-merge, and post-checkout hooks keep the VERSION file current on developer
   machines without relying on the PHP fallback in ApplicationVersion.
+- **Fix `email_body()` silent failure in registration and admin contact** ([#701](https://github.com/unibrain1/elanregistry/issues/701)):
+  Three callers (`usersc/join.php`, `usersc/user_settings.php`,
+  `app/admin/includes/process-admin-contact.php`) now check `$body === ''` after calling
+  `email_body()`, log via `LOG_CATEGORY_EMAIL_ERROR`, and abort the send rather than
+  delivering a blank email silently.
 
 ## Issues Resolved
 
@@ -96,6 +101,7 @@
 - [#686](https://github.com/unibrain1/elanregistry/issues/686) — chore: remove stale test artifacts and update .gitignore
 - [#694](https://github.com/unibrain1/elanregistry/issues/694) — Apply Elan Registry branding to forgot password pages
 - [#695](https://github.com/unibrain1/elanregistry/issues/695) — Apply Elan Registry branding to password reset email template
+- [#701](https://github.com/unibrain1/elanregistry/issues/701) — Fix email_body() silent failure — add return value checks to callers
 
 ## Summary
 

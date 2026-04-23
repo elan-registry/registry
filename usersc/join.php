@@ -217,11 +217,19 @@ if (Input::exists()) {
                     $to = rawurlencode($email);
                     $subject = html_entity_decode($settings->site_name, ENT_QUOTES);
                     $body = email_body('_email_template_verify.php', $params);
-                    $email_result = email($to, $subject, $body);
-                    if ($email_result !== true) {
-                        $safeToLog = preg_replace('/[\r\n\t]/', '', $email);
+
+                    if ($body === '') {
                         logger($theNewId, LogCategories::LOG_CATEGORY_EMAIL_ERROR,
-                            'join.php: Registration verification email SEND FAILED to ' . $safeToLog);
+                            'join.php: email_body() returned empty — template missing or failed',
+                            ['template' => '_email_template_verify.php']);
+                        $errors[] = 'Email could not be sent. Please try again or contact the administrator.';
+                    } else {
+                        $email_result = email($to, $subject, $body);
+                        if ($email_result !== true) {
+                            $safeToLog = preg_replace('/[\r\n\t]/', '', $email);
+                            logger($theNewId, LogCategories::LOG_CATEGORY_EMAIL_ERROR,
+                                'join.php: Registration verification email SEND FAILED to ' . $safeToLog);
+                        }
                     }
                 }
             } catch (Exception $e) {
