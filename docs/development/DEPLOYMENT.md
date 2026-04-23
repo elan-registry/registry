@@ -310,7 +310,7 @@ After each deployment, verify:
 
 ## 🛠️ Environment Variables
 
-See [ENVIRONMENT.md](ENVIRONMENT.md) for complete environment configuration (database credentials, API keys, phpdotenv plaintext `.env` with `chmod 600`).
+See [ENVIRONMENT.md](ENVIRONMENT.md) for complete environment configuration (database credentials, API keys, CAPTCHA keys, phpdotenv plaintext `.env` with `chmod 600`).
 
 ### Pre-Deployment: Prepare .env File
 
@@ -353,7 +353,6 @@ Before deploying the phpdotenv version (v2.18.0+), ensure the production `.env` 
 - `getSettings Function` - Provides global settings access via getSettings()
   function
 - `hooker` - Custom hooks system for code injection points
-- `reCAPTCHA` - Google reCAPTCHA v2/v3 integration for spam protection
 - `Brevo Sendinblue` - API-based email delivery replacing phpmailer
   (300 emails/day free)
 

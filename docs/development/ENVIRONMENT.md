@@ -23,8 +23,8 @@ Access the development database using MAMP's MySQL 8.0:
 ```bash
 # MySQL CLI access (credentials from .env.local file)
 /Applications/MAMP/Library/bin/mysql80/bin/mysql -h 127.0.0.1 -P 8889 \
-  -u [DB_USER from .env.local] -p \
-  -D [DB_NAME from .env.local]
+  -u [DB_USER from .env] -p \
+  -D [DB_NAME from .env]
 # Enter password from .env.local when prompted
 ```
 
@@ -60,6 +60,69 @@ The Elan Registry uses **vlucas/phpdotenv** v5 for environment variable loading 
 - `DB_USER` - Database username (e.g., `elan_registry_user`)
 - `DB_PASS` - Database password
 - `DB_NAME` - Database name (e.g., `elanregi_spice`)
+
+### Cloudflare Turnstile CAPTCHA
+
+**Usage**: `usersc/includes/turnstile.php`
+
+- `TURNSTILE_SITE_KEY` — Turnstile widget site key (public; rendered in HTML)
+- `TURNSTILE_SECRET_KEY` — Turnstile secret key (private; server-side token verification)
+
+Omit either key to disable Turnstile (off mode — forms work without CAPTCHA).
+Production keys: Cloudflare Dashboard → Turnstile → your site.
+See [test key combinations](#testing-turnstile-in-development) below.
+
+#### Testing Turnstile in Development
+
+Turnstile requires HTTPS — the widget iframe is served over `https://` and
+browsers block cross-protocol frame loading, causing **TurnstileError 110200**
+on plain `http://localhost`.
+
+**Option A — Disable Turnstile (simplest)**
+
+Remove or omit either key from `.env`. The widget is hidden and forms work
+without CAPTCHA validation. Use this when Turnstile behaviour is not under test.
+
+**Option B — Cloudflare Tunnel (test the full widget)**
+
+`cloudflared` creates a temporary public HTTPS URL that proxies to your local
+MAMP server. Cloudflare Tunnel terminates TLS upstream and forwards HTTP
+internally, setting the `X-Forwarded-Proto: https` header so `$is_https` is
+`true` and Turnstile enables.
+
+1. **Install `cloudflared`**:
+
+   ```bash
+   brew install cloudflare/cloudflare/cloudflared
+   ```
+
+2. **Start the tunnel** (while MAMP is running):
+
+   ```bash
+   cloudflared tunnel --url http://localhost:9999
+   ```
+
+   The command prints a temporary `https://*.trycloudflare.com` URL — open
+   that in your browser instead of `http://localhost:9999`.
+
+3. **Choose test keys** based on what you are testing:
+
+   | Scenario | `TURNSTILE_SITE_KEY` | `TURNSTILE_SECRET_KEY` | Widget result | Server result |
+   |----------|----------------------|------------------------|---------------|---------------|
+   | Always pass | `1x00000000000000000000AA` | `1x0000000000000000000000000000000AA` | Green check ✓ | `success: true` |
+   | Widget block | `2x00000000000000000000AB` | `2x0000000000000000000000000000000AB` | Shows blocked / "Troubleshoot" | `success: false` |
+   | Server-side reject | `1x00000000000000000000AA` | `2x0000000000000000000000000000000AB` | Green check ✓ | `success: false` |
+
+   - **Always pass** — use for normal development; widget auto-verifies, form submits.
+   - **Widget block** — the widget itself shows a failed state before the form is submitted.
+     A "Troubleshoot" link appears — this is expected Cloudflare behaviour for this test key.
+   - **Server-side reject** — the widget shows a green check (client-side pass), but
+     `verifyTurnstile()` returns `false` on the server. Use this to test the PHP
+     validation path — the form submission is blocked with the CAPTCHA error message —
+     independently of the widget UI.
+
+> **Note:** The tunnel URL changes every run. Browser DevTools → Network tab
+> will show requests to `challenges.cloudflare.com` succeeding under HTTPS.
 
 ## Setup & Configuration
 

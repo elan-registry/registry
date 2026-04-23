@@ -20,9 +20,8 @@ header("Content-Security-Policy: " .
         "https://maps.googleapis.com " .
         "https://www.gstatic.com " .
         "https://ssl.gstatic.com " .
-        // Google reCAPTCHA
-        "https://www.google.com " .
-        "https://www.gstatic.com/recaptcha/ " .
+        // Cloudflare Turnstile
+        "https://challenges.cloudflare.com " .
         // JavaScript CDNs
         "https://cdn.jsdelivr.net " .
         "https://cdnjs.cloudflare.com " .
@@ -66,8 +65,8 @@ header("Content-Security-Policy: " .
         "https://maps.googleapis.com " .
         "https://www.gstatic.com " .
         "https://ssl.gstatic.com " .
-        // Google reCAPTCHA API
-        "https://www.google.com " .
+        // Cloudflare Turnstile
+        "https://challenges.cloudflare.com " .
         "https://kit.fontawesome.com " .
         "https://ka-f.fontawesome.com " .
         // CDN for source maps
@@ -75,7 +74,7 @@ header("Content-Security-Policy: " .
         // Cloudflare Analytics
         "https://cloudflareinsights.com " .
         "https://static.cloudflareinsights.com; " .
-    "frame-src 'self' https://www.google.com; " .
+    "frame-src 'self' https://challenges.cloudflare.com; " .
     "frame-ancestors 'self'; " .
     "object-src 'none'; " .
     "base-uri 'self'"
