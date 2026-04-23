@@ -71,6 +71,63 @@ The Elan Registry uses **vlucas/phpdotenv** v5 for environment variable loading 
 Omit either key to disable Turnstile (off mode — forms work without CAPTCHA).
 Production keys: Cloudflare Dashboard → Turnstile → your site.
 
+#### Testing Turnstile in Development
+
+Turnstile requires HTTPS — the widget iframe is served over `https://` and
+browsers block cross-protocol frame loading, causing **TurnstileError 110200**
+on plain `http://localhost`.
+
+**Option A — Disable Turnstile (simplest)**
+
+Remove or omit either key from `.env`. The widget is hidden and forms work
+without CAPTCHA validation. Use this when Turnstile behaviour is not under test.
+
+**Option B — Cloudflare Tunnel (test the full widget)**
+
+`cloudflared` creates a temporary public HTTPS URL that proxies to your local
+MAMP server. Cloudflare Tunnel terminates TLS upstream and forwards HTTP
+internally, setting the `X-Forwarded-Proto: https` header so `$is_https` is
+`true` and Turnstile enables.
+
+1. **Install `cloudflared`**:
+
+   ```bash
+   brew install cloudflare/cloudflare/cloudflared
+   ```
+
+2. **Start the tunnel** (while MAMP is running):
+
+   ```bash
+   cloudflared tunnel --url http://localhost:9999
+   ```
+
+   The command prints a temporary `https://*.trycloudflare.com` URL — open
+   that in your browser instead of `http://localhost:9999`.
+
+3. **Use the test keys** in `.env` — the always-pass keys let the widget
+   render and auto-verify without a real Cloudflare account:
+
+   ```
+   TURNSTILE_SITE_KEY=1x00000000000000000000AA
+   TURNSTILE_SECRET_KEY=1x0000000000000000000000000000000AA
+   ```
+
+4. **Test the negative path** using the always-block keys. These make the
+   widget appear to pass (shows a green check) but the server-side
+   `verifyTurnstile()` call returns `false`, triggering the validation error:
+
+   ```
+   TURNSTILE_SITE_KEY=2x00000000000000000000AB
+   TURNSTILE_SECRET_KEY=2x0000000000000000000000000000000AB
+   ```
+
+   Expected result: the form rejects submission with the CAPTCHA error message.
+   A "Troubleshoot" link appears in the widget — this is expected Cloudflare
+   behaviour for the always-block test keys.
+
+> **Note:** The tunnel URL changes every run. Browser DevTools → Network tab
+> will show requests to `challenges.cloudflare.com` succeeding under HTTPS.
+
 ## Setup & Configuration
 
 ### Development Setup
