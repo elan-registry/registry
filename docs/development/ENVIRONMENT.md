@@ -23,8 +23,8 @@ Access the development database using MAMP's MySQL 8.0:
 ```bash
 # MySQL CLI access (credentials from .env.local file)
 /Applications/MAMP/Library/bin/mysql80/bin/mysql -h 127.0.0.1 -P 8889 \
-  -u [DB_USER from .env.local] -p \
-  -D [DB_NAME from .env.local]
+  -u [DB_USER from .env] -p \
+  -D [DB_NAME from .env]
 # Enter password from .env.local when prompted
 ```
 
@@ -65,11 +65,12 @@ The Elan Registry uses **vlucas/phpdotenv** v5 for environment variable loading 
 
 **Usage**: `usersc/includes/turnstile.php`
 
-- `TURNSTILE_SITE_KEY` — Turnstile widget site key (public; rendered in HTML). Dev: `1x00000000000000000000AA`
-- `TURNSTILE_SECRET_KEY` — Turnstile secret key (private; server-side token verification). Dev: `1x0000000000000000000000000000000AA`
+- `TURNSTILE_SITE_KEY` — Turnstile widget site key (public; rendered in HTML)
+- `TURNSTILE_SECRET_KEY` — Turnstile secret key (private; server-side token verification)
 
 Omit either key to disable Turnstile (off mode — forms work without CAPTCHA).
 Production keys: Cloudflare Dashboard → Turnstile → your site.
+See [test key combinations](#testing-turnstile-in-development) below.
 
 #### Testing Turnstile in Development
 
@@ -104,26 +105,21 @@ internally, setting the `X-Forwarded-Proto: https` header so `$is_https` is
    The command prints a temporary `https://*.trycloudflare.com` URL — open
    that in your browser instead of `http://localhost:9999`.
 
-3. **Use the test keys** in `.env` — the always-pass keys let the widget
-   render and auto-verify without a real Cloudflare account:
+3. **Choose test keys** based on what you are testing:
 
-   ```
-   TURNSTILE_SITE_KEY=1x00000000000000000000AA
-   TURNSTILE_SECRET_KEY=1x0000000000000000000000000000000AA
-   ```
+   | Scenario | `TURNSTILE_SITE_KEY` | `TURNSTILE_SECRET_KEY` | Widget result | Server result |
+   |----------|----------------------|------------------------|---------------|---------------|
+   | Always pass | `1x00000000000000000000AA` | `1x0000000000000000000000000000000AA` | Green check ✓ | `success: true` |
+   | Widget block | `2x00000000000000000000AB` | `2x0000000000000000000000000000000AB` | Shows blocked / "Troubleshoot" | `success: false` |
+   | Server-side reject | `1x00000000000000000000AA` | `2x0000000000000000000000000000000AB` | Green check ✓ | `success: false` |
 
-4. **Test the negative path** using the always-block keys. These make the
-   widget appear to pass (shows a green check) but the server-side
-   `verifyTurnstile()` call returns `false`, triggering the validation error:
-
-   ```
-   TURNSTILE_SITE_KEY=2x00000000000000000000AB
-   TURNSTILE_SECRET_KEY=2x0000000000000000000000000000000AB
-   ```
-
-   Expected result: the form rejects submission with the CAPTCHA error message.
-   A "Troubleshoot" link appears in the widget — this is expected Cloudflare
-   behaviour for the always-block test keys.
+   - **Always pass** — use for normal development; widget auto-verifies, form submits.
+   - **Widget block** — the widget itself shows a failed state before the form is submitted.
+     A "Troubleshoot" link appears — this is expected Cloudflare behaviour for this test key.
+   - **Server-side reject** — the widget shows a green check (client-side pass), but
+     `verifyTurnstile()` returns `false` on the server. Use this to test the PHP
+     validation path — the form submission is blocked with the CAPTCHA error message —
+     independently of the widget UI.
 
 > **Note:** The tunnel URL changes every run. Browser DevTools → Network tab
 > will show requests to `challenges.cloudflare.com` succeeding under HTTPS.
