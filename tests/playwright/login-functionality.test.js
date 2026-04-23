@@ -3,7 +3,7 @@
 /**
  * Comprehensive login functionality tests
  * These tests verify the core authentication system works correctly
- * before implementing reCAPTCHA or other login modifications
+ * with Cloudflare Turnstile bot protection (test keys auto-pass)
  */
 
 const { test, expect } = require('@playwright/test');
@@ -24,32 +24,28 @@ const INVALID_CREDENTIALS = {
 
 test.describe('Login Functionality', () => {
   
-  test('reCAPTCHA integration verification', async ({ page }) => {
+  test('Cloudflare Turnstile integration verification', async ({ page }) => {
     await page.goto('usersc/login.php', { waitUntil: 'networkidle' });
     await page.waitForLoadState('networkidle');
-    
-    // Check if reCAPTCHA is present
-    const recaptchaElement = await page.locator('.g-recaptcha').count();
-    
-    if (recaptchaElement > 0) {
-      console.log('✅ reCAPTCHA detected on login form');
-      
-      // Verify reCAPTCHA widget is properly loaded
-      await expect(page.locator('.g-recaptcha')).toBeVisible();
-      
-      // Check that Google reCAPTCHA script is loaded
-      const recaptchaScript = await page.locator('script[src*="google.com/recaptcha"]').count();
-      expect(recaptchaScript).toBeGreaterThan(0);
-      
-      // Verify form structure with reCAPTCHA
+
+    // Check if Turnstile widget is present
+    const turnstileElement = await page.locator('.cf-turnstile').count();
+
+    if (turnstileElement > 0) {
+      console.log('Turnstile widget detected on login form');
+
+      // Verify Turnstile script is loaded
+      const turnstileScript = await page.locator('script[src*="challenges.cloudflare.com/turnstile"]').count();
+      expect(turnstileScript).toBeGreaterThan(0);
+
+      // Verify form structure with Turnstile
       await expect(page.locator('input[name="username"], input[name="email"]')).toBeVisible();
       await expect(page.locator('input[name="password"]')).toBeVisible();
       await expect(page.locator('button[type="submit"], input[type="submit"]')).toBeVisible();
-      
-      console.log('✅ reCAPTCHA integration is working correctly');
-      console.log('✅ Login form is properly protected with reCAPTCHA');
+
+      console.log('Turnstile integration is working correctly');
     } else {
-      console.log('ℹ️ reCAPTCHA not detected - login form without reCAPTCHA protection');
+      console.log('Turnstile widget not detected - Turnstile may be in off mode');
     }
   });
   
@@ -60,26 +56,8 @@ test.describe('Login Functionality', () => {
 
   test('successful login with valid credentials', async ({ page }) => {
     await page.goto('usersc/login.php', { waitUntil: 'networkidle' });
-    
-    // Check if reCAPTCHA is present
-    const recaptchaElement = await page.locator('.g-recaptcha').count();
-    
-    if (recaptchaElement > 0) {
-      console.log('reCAPTCHA detected on login form - skipping automated login test');
-      console.log('Manual verification required: reCAPTCHA is properly integrated');
-      
-      // Verify the form elements are present
-      await expect(page.locator('input[name="username"], input[name="email"]')).toBeVisible();
-      await expect(page.locator('input[name="password"]')).toBeVisible();
-      await expect(page.locator('button[type="submit"], input[type="submit"]')).toBeVisible();
-      await expect(page.locator('.g-recaptcha')).toBeVisible();
-      
-      // Test passed - reCAPTCHA is present and form is accessible
-      console.log('✅ reCAPTCHA integration verified - login form properly protected');
-      return;
-    }
-    
-    // If no reCAPTCHA, proceed with normal login test
+
+    // Turnstile test keys auto-pass - proceed with login
     await page.fill('input[name="username"], input[name="email"]', VALID_CREDENTIALS.username);
     await page.fill('input[name="password"]', VALID_CREDENTIALS.password);
     
@@ -348,4 +326,36 @@ test.describe('Login Form Responsiveness', () => {
       expect(submitBox?.width).toBeGreaterThan(50);
     });
   }
+});
+
+test.describe('Forgot Password Page', () => {
+  const SUBMIT_BUTTON = 'button[name="forgotten_password"], input[name="forgotten_password"]';
+
+  test('forgot password form renders with required security elements', async ({ page }) => {
+    await page.goto('users/forgot_password.php', { waitUntil: 'networkidle' });
+
+    await expect(page.locator('input[name="email"]')).toBeVisible();
+
+    // CSRF token must survive any template restructuring
+    const csrfInput = page.locator('input[name="csrf"]');
+    await expect(csrfInput).toHaveCount(1);
+    expect((await csrfInput.inputValue()).length).toBeGreaterThan(10);
+
+    // Bot protection must be present
+    expect(await page.locator('.cf-turnstile').count()).toBeGreaterThan(0);
+
+    await expect(page.locator(SUBMIT_BUTTON)).toBeVisible();
+  });
+
+  test('forgot password confirmation page renders after submission', async ({ page }) => {
+    await page.goto('users/forgot_password.php', { waitUntil: 'networkidle' });
+
+    await page.fill('input[name="email"]', 'test@example.com');
+    await page.click(SUBMIT_BUTTON);
+    await page.waitForLoadState('networkidle');
+
+    // Only assert no PHP errors — redirect vs. stay-on-form behavior is not tested here
+    const pageContent = await page.textContent('body');
+    expect(pageContent).not.toMatch(/Fatal error|Parse error|Warning:/i);
+  });
 });

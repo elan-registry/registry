@@ -439,7 +439,8 @@ Once the user approves the plan, execute using agents strategically:
    corrections.
 
 8. **Hand off to the developer workflow.** Do NOT commit, push, or create PRs.
-   Present a summary with the next steps:
+   **STOP HERE and wait for the user's explicit instruction before proceeding.**
+   Present a summary with the next steps and ask the user which step to run:
 
    ```text
    Implementation complete for issue #ISSUE_NUMBER. Next steps:
@@ -450,6 +451,9 @@ Once the user approves the plan, execute using agents strategically:
                          Include "Closes #ISSUE_NUMBER" in the PR body.
    4. /finish-issue    — Monitor CI, squash-merge, and close the issue
    ```
+
+   Do NOT run any of these steps automatically. Each step requires the user
+   to explicitly invoke it (e.g., type `/commit` or `/commit-push-pr`).
 
    **For bug issues**, also remind the user to include the escape analysis
    in the PR description:

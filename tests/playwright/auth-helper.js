@@ -12,35 +12,27 @@ const { expect } = require('@playwright/test');
  * @param {import('@playwright/test').Page} page - Playwright page object
  * @param {string} username - Username for login
  * @param {string} password - Password for login
- * @param {boolean} skipRecaptcha - Skip reCAPTCHA handling for testing (default: false)
  */
-async function login(page, username = process.env.TEST_USERNAME || 'test@example.com', password = process.env.TEST_PASSWORD || 'defaultTestPass', skipRecaptcha = false) {
+async function login(page, username = process.env.TEST_USERNAME || 'test@example.com', password = process.env.TEST_PASSWORD || 'defaultTestPass') {
   // Navigate to login page directly (skip /users/login.php 302 redirect)
   await page.goto('usersc/login.php', { waitUntil: 'networkidle' });
-  
+
   // Wait for login form to load
   await page.waitForSelector('input[name="username"], input[name="email"]', { timeout: 10000 });
-  
-  // Check if reCAPTCHA is present
-  const recaptchaElement = await page.locator('.g-recaptcha').count();
-  
-  if (recaptchaElement > 0 && !skipRecaptcha) {
-    throw new Error('reCAPTCHA is enabled on login form. Automated login not possible without solving CAPTCHA. Use manual testing for reCAPTCHA-protected forms.');
-  }
-  
+
   // Fill in credentials
   const usernameField = page.locator('input[name="username"], input[name="email"]').first();
   const passwordField = page.locator('input[name="password"]');
-  
+
   await usernameField.fill(username);
   await passwordField.fill(password);
-  
-  // Submit the form
+
+  // Submit the form (Cloudflare Turnstile test keys auto-pass)
   await page.click('button[type="submit"], input[type="submit"]');
-  
+
   // Wait for successful login (redirect or success indicator)
   await page.waitForTimeout(2000);
-  
+
   // Verify login was successful by checking for logout link or user area
   try {
     await page.waitForSelector('a[href*="logout"], .user-menu, .account-menu', { timeout: 5000 });
@@ -51,12 +43,7 @@ async function login(page, username = process.env.TEST_USERNAME || 'test@example
       // Assume login was successful if we're not on login page
       return;
     }
-    
-    // Check if we failed due to reCAPTCHA
-    if (recaptchaElement > 0) {
-      throw new Error('Login failed - likely due to reCAPTCHA verification requirement');
-    }
-    
+
     throw new Error('Login may have failed - no logout link or account area found');
   }
 }

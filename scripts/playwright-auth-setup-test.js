@@ -1,6 +1,6 @@
 /**
  * One-time setup script to log in to TEST environment and save authentication state
- * This needs to be run once, and you'll need to manually solve any CAPTCHA
+ * Run once to capture auth cookies; Cloudflare Turnstile test keys auto-pass.
  *
  * Usage:
  *   export ELAN_USERNAME=$(op read "op://ElanRegistry/Elanregistry - Test Admin/username")
@@ -28,7 +28,7 @@ async function setupAuth() {
 
   console.log('🔐 Starting TEST environment authentication setup...\n');
 
-  const browser = await chromium.launch({ headless: false }); // Run in headed mode so you can solve CAPTCHA
+  const browser = await chromium.launch({ headless: false });
   const context = await browser.newContext();
   const page = await context.newPage();
 
@@ -50,78 +50,40 @@ async function setupAuth() {
     console.log('  → Entering password...');
     await page.fill('input[name="password"]', password);
 
-    // Click the submit button to submit the form
-    console.log('🔓 Submitting login form...');
+    // Click the submit button (Turnstile test keys auto-pass)
+    console.log('Submitting login form...');
     await page.waitForSelector('button[type="submit"]', { timeout: 5000 });
+    await page.click('button[type="submit"]');
+    console.log('Login form submitted');
 
-    // Try to click the button - may be delayed by reCAPTCHA
-    // Give it a longer timeout since reCAPTCHA might be blocking
+    // Wait for navigation away from login page
     try {
-      console.log('⏳ Attempting to submit form (may wait for reCAPTCHA)...');
-      await page.click('button[type="submit"]', { timeout: 60000 }); // 60 second timeout for CAPTCHA
-      console.log('✅ Login form submitted successfully');
-    } catch (clickError) {
-      console.log('⚠️  Could not auto-submit form (likely due to reCAPTCHA)');
-    }
+      console.log('Waiting for login redirect...');
 
-    console.log('\n' + '='.repeat(70));
-    console.log('⚠️  IMPORTANT - PLEASE COMPLETE THESE STEPS:');
-    console.log('='.repeat(70));
-    console.log('1. 🤖 SOLVE reCAPTCHA - Click the "I\'m not a robot" checkbox');
-    console.log('2. ⏳ Wait for reCAPTCHA verification (may take 10-30 seconds)');
-    console.log('3. 📝 Verify credentials are still filled in (should be)');
-    console.log('4. 🔓 Click the LOGIN button when reCAPTCHA is solved');
-    console.log('5. 🔐 If 2FA/TOTP is required, enter your code');
-    console.log('6. ✅ Wait for redirect to dashboard');
-    console.log('\n⏳ This script will wait up to 5 minutes for successful redirect...');
-    console.log('='.repeat(70) + '\n');
-
-    // Wait for navigation away from login page (5 minute timeout)
-    try {
-      console.log('⏳ Waiting for login redirect (this may take a moment)...');
-
-      // Wait for either:
-      // 1. URL to change away from login.php, OR
-      // 2. Dashboard/account page elements to appear
+      // Wait for URL to change away from login.php or dashboard elements to appear
       await Promise.race([
         page.waitForFunction(
           () => !window.location.href.includes('login.php'),
-          { timeout: 300000 } // 5 minutes
+          { timeout: 30000 }
         ),
         page.waitForSelector('[data-testid="dashboard"], .account-page, .app-container',
-          { timeout: 300000 }).catch(() => {}) // Catch but allow other condition to win
+          { timeout: 30000 }).catch(() => {})
       ]);
 
       await page.waitForLoadState('networkidle').catch(() => {});
 
       const currentUrl = page.url();
-      console.log(`\n✅ Login successful! Redirected to: ${currentUrl}`);
+      console.log(`Login successful! Redirected to: ${currentUrl}`);
     } catch (timeoutError) {
       const currentUrl = page.url();
-      console.log(`\n⏱️  Timeout or error waiting for login redirect.`);
-      console.log(`Current URL: ${currentUrl}`);
+      console.log(`Timeout waiting for login redirect. Current URL: ${currentUrl}`);
 
       if (currentUrl.includes('login')) {
-        console.log('❌ Still on login page after timeout.');
-        console.log('\nPossible issues:');
-        console.log('- Invalid credentials (check 1Password vault)');
-        console.log('- CAPTCHA present (and not auto-solved)');
-        console.log('- 2FA/TOTP required (browser window timed out waiting for input)');
-        console.log('- Network connectivity issue');
-        console.log('\n📝 The browser window should still be open. Please check and complete login if needed.');
-        console.log('Script will continue waiting for 2 more minutes...\n');
-
-        // Give user 2 more minutes to complete login manually if needed
-        try {
-          await page.waitForFunction(
-            () => !window.location.href.includes('login.php'),
-            { timeout: 120000 } // 2 more minutes
-          );
-          console.log('✅ Login completed successfully!');
-        } catch (finalError) {
-          console.error('❌ Login failed. Please try again.');
-          process.exit(1);
-        }
+        console.error('Still on login page. Possible issues:');
+        console.error('- Invalid credentials (check 1Password vault)');
+        console.error('- 2FA/TOTP required');
+        console.error('- Network connectivity issue');
+        process.exit(1);
       }
     }
 

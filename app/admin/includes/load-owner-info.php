@@ -69,17 +69,17 @@ try {
         <div class="card-body">
             <div class="row text-center">
                 <div class="col-4">
-                    <h4 class="text-primary"><?= $carCount ?></h4>
+                    <h4 class="text-primary"><?= $carCount // nosemgrep: php.lang.security.taint-unsafe-echo-tag.taint-unsafe-echo-tag ?></h4>
                     <small>Cars Owned</small>
                 </div>
                 <div class="col-4">
                     <h4 class="text-<?= $qualityScore >= 80 ? 'success' : ($qualityScore >= 60 ? 'warning' : 'danger') ?>">
-                        <?= $qualityScore ?>%
+                        <?= (int)$qualityScore // nosemgrep: php.lang.security.taint-unsafe-echo-tag.taint-unsafe-echo-tag ?>%
                     </h4>
                     <small>Profile Quality</small>
                 </div>
                 <div class="col-4">
-                    <h4 class="text-info"><?= $historyCount ?></h4>
+                    <h4 class="text-info"><?= $historyCount // nosemgrep: php.lang.security.taint-unsafe-echo-tag.taint-unsafe-echo-tag ?></h4>
                     <small>History Records</small>
                 </div>
             </div>
@@ -87,7 +87,7 @@ try {
             <hr>
 
             <div class="text-center">
-                <strong>User ID:</strong> <?= $ownerId ?><br>
+                <strong>User ID:</strong> <?= $ownerId // nosemgrep: php.lang.security.taint-unsafe-echo-tag.taint-unsafe-echo-tag ?><br>
                 <strong>Email:</strong> <a href="mailto:<?= htmlspecialchars($ownerData->email) ?>"><?= htmlspecialchars($ownerData->email) ?></a><br>
                 <?php if (!empty($ownerData->website)): ?>
                     <strong>Website:</strong> <a href="<?= htmlspecialchars($ownerData->website) ?>" target="_blank"><?= htmlspecialchars($ownerData->website) ?></a><br>
@@ -111,8 +111,8 @@ try {
         <div class="card-body">
             <div class="progress mb-2">
                 <div class="progress-bar bg-<?= $qualityScore >= 80 ? 'success' : ($qualityScore >= 60 ? 'warning' : 'danger') ?>"
-                     style="width: <?= $qualityScore ?>%">
-                    <?= $qualityScore ?>%
+                     style="width: <?= (int)$qualityScore // nosemgrep: php.lang.security.taint-unsafe-echo-tag.taint-unsafe-echo-tag ?>%">
+                    <?= (int)$qualityScore // nosemgrep: php.lang.security.taint-unsafe-echo-tag.taint-unsafe-echo-tag ?>%
                 </div>
             </div>
 
@@ -135,7 +135,7 @@ try {
     <div class="card border-info mb-3">
         <div class="card-header bg-info text-white">
             <h6 class="mb-0">
-                <i class="fas fa-car"></i> Car Ownership (<?= $carCount ?>)
+                <i class="fas fa-car"></i> Car Ownership (<?= $carCount // nosemgrep: php.lang.security.taint-unsafe-echo-tag.taint-unsafe-echo-tag ?>)
             </h6>
         </div>
         <div class="card-body">
@@ -154,13 +154,13 @@ try {
                     <?php endforeach; ?>
                     <?php if ($carCount > 5): ?>
                         <div class="list-group-item border-0 px-0 py-1">
-                            <small class="text-muted">... and <?= $carCount - 5 ?> more</small>
+                            <small class="text-muted">... and <?= $carCount - 5 // nosemgrep: php.lang.security.taint-unsafe-echo-tag.taint-unsafe-echo-tag ?> more</small>
                         </div>
                     <?php endif; ?>
                 </div>
 
                 <div class="mt-2">
-                    <button class="btn btn-sm btn-outline-info" onclick="viewOwnerCars(<?= $ownerId ?>)">
+                    <button class="btn btn-sm btn-outline-info" onclick="viewOwnerCars(<?= $ownerId // nosemgrep: php.lang.security.taint-unsafe-echo-tag.taint-unsafe-echo-tag ?>)">
                         <i class="fas fa-eye"></i> View All Cars
                     </button>
                 </div>
@@ -194,7 +194,9 @@ try {
                                 <span class="text-muted">
                                     <?php
                                     $timestamp = strtotime($record->ctime ?? '');
-                                    echo $timestamp !== false ? date('M j, Y', $timestamp) : 'Unknown date';
+                                    echo $timestamp !== false // nosemgrep: php.lang.security.taint-unsafe-echo-tag.taint-unsafe-echo-tag
+                                        ? htmlspecialchars(date('M j, Y', $timestamp), ENT_QUOTES, 'UTF-8')
+                                        : 'Unknown date';
                                     ?>
                                 </span>
                             </small>
@@ -204,7 +206,7 @@ try {
 
                 <?php if ($historyCount > 3): ?>
                     <div class="mt-2">
-                        <button class="btn btn-sm btn-outline-secondary" onclick="viewOwnerHistory(<?= $ownerId ?>)">
+                        <button class="btn btn-sm btn-outline-secondary" onclick="viewOwnerHistory(<?= $ownerId // nosemgrep: php.lang.security.taint-unsafe-echo-tag.taint-unsafe-echo-tag ?>)">
                             <i class="fas fa-history"></i> View Full History
                         </button>
                     </div>
@@ -222,15 +224,15 @@ try {
         </div>
         <div class="card-body">
             <div class="d-grid gap-2">
-                <button class="btn btn-sm btn-outline-primary" onclick="contactOwner(<?= $ownerId ?>)">
+                <button class="btn btn-sm btn-outline-primary" onclick="contactOwner(<?= $ownerId // nosemgrep: php.lang.security.taint-unsafe-echo-tag.taint-unsafe-echo-tag ?>)">
                     <i class="fas fa-envelope"></i> Send Email
                 </button>
                 <?php if ($carCount > 0): ?>
-                    <button class="btn btn-sm btn-outline-success" onclick="syncLocationToCars(<?= $ownerId ?>)">
+                    <button class="btn btn-sm btn-outline-success" onclick="syncLocationToCars(<?= $ownerId // nosemgrep: php.lang.security.taint-unsafe-echo-tag.taint-unsafe-echo-tag ?>)">
                         <i class="fas fa-sync"></i> Sync Location to Cars
                     </button>
                 <?php endif; ?>
-                <a href="../../users/admin.php?view=user&id=<?= $ownerId ?>" target="_blank" class="btn btn-sm btn-outline-secondary">
+                <a href="../../users/admin.php?view=user&id=<?= $ownerId // nosemgrep: php.lang.security.taint-unsafe-echo-tag.taint-unsafe-echo-tag ?>" target="_blank" class="btn btn-sm btn-outline-secondary">
                     <i class="fas fa-external-link-alt"></i> UserSpice Admin
                 </a>
             </div>

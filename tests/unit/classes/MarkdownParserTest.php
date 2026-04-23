@@ -172,6 +172,114 @@ final class MarkdownParserTest extends TestCase
         $this->assertStringContainsString('<img', $sanitized);
     }
 
+    public function testSanitizeHtmlStripsEventHandlerAttributes(): void
+    {
+        $html = '<a href="https://example.com" onclick="alert(1)">link</a>'
+              . '<img src="test.jpg" onerror="alert(1)">'
+              . '<p onload="evil()">text</p>';
+
+        $sanitized = MarkdownParser::sanitizeHtml($html);
+
+        $this->assertStringNotContainsString('onclick', $sanitized);
+        $this->assertStringNotContainsString('onerror', $sanitized);
+        $this->assertStringNotContainsString('onload', $sanitized);
+        $this->assertStringContainsString('href="https://example.com"', $sanitized);
+    }
+
+    public function testSanitizeHtmlBlocksJavascriptHref(): void
+    {
+        $html = '<a href="javascript:alert(1)">click</a>';
+
+        $sanitized = MarkdownParser::sanitizeHtml($html);
+
+        $this->assertStringNotContainsString('javascript:', $sanitized);
+        $this->assertStringContainsString('<a', $sanitized);
+    }
+
+    public function testSanitizeHtmlBlocksDataSrc(): void
+    {
+        $html = '<img src="data:image/png;base64,abc123" alt="img">';
+
+        $sanitized = MarkdownParser::sanitizeHtml($html);
+
+        $this->assertStringNotContainsString('data:', $sanitized);
+        $this->assertStringContainsString('alt="img"', $sanitized);
+    }
+
+    public function testSanitizeHtmlPreservesAllowedAttributes(): void
+    {
+        $html = '<h2 id="section-title">Title</h2>'
+              . '<a href="https://example.com" target="_blank" rel="noopener noreferrer">link</a>'
+              . '<img src="photo.jpg" alt="Photo">';
+
+        $sanitized = MarkdownParser::sanitizeHtml($html);
+
+        $this->assertStringContainsString('id="section-title"', $sanitized);
+        $this->assertStringContainsString('href="https://example.com"', $sanitized);
+        $this->assertStringContainsString('target="_blank"', $sanitized);
+        $this->assertStringContainsString('src="photo.jpg"', $sanitized);
+        $this->assertStringContainsString('alt="Photo"', $sanitized);
+    }
+
+    public function testSanitizeHtmlStripsStyleAttribute(): void
+    {
+        $html = '<p style="color:red;expression(alert(1))">text</p>';
+
+        $sanitized = MarkdownParser::sanitizeHtml($html);
+
+        $this->assertStringNotContainsString('style=', $sanitized);
+        $this->assertStringContainsString('<p>', $sanitized);
+    }
+
+    public function testSanitizeHtmlBlocksControlCharacterUriBypass(): void
+    {
+        // Tab and null byte before "script" must not bypass javascript: detection
+        $html = '<a href="java' . "\x09" . 'script:alert(1)">click</a>'
+              . '<img src="da' . "\x00" . 'ta:image/png;base64,abc" alt="img">';
+
+        $sanitized = MarkdownParser::sanitizeHtml($html);
+
+        $this->assertStringNotContainsString('javascript:', $sanitized);
+        $this->assertStringNotContainsString('data:', $sanitized);
+    }
+
+    public function testSanitizeHtmlBlocksUpperCaseSchemes(): void
+    {
+        $html = '<a href="JAVASCRIPT:alert(1)">click</a>'
+              . '<img src="DATA:image/svg+xml,<svg/>" alt="img">';
+
+        $sanitized = MarkdownParser::sanitizeHtml($html);
+
+        $this->assertStringNotContainsString('JAVASCRIPT:', $sanitized);
+        $this->assertStringNotContainsString('DATA:', $sanitized);
+    }
+
+    public function testSanitizeHtmlBlocksVbscriptHref(): void
+    {
+        $html = '<a href="vbscript:msgbox(1)">click</a>';
+
+        $sanitized = MarkdownParser::sanitizeHtml($html);
+
+        $this->assertStringNotContainsString('vbscript:', $sanitized);
+        $this->assertStringContainsString('<a', $sanitized);
+    }
+
+    public function testSanitizeHtmlBlocksJavascriptSrc(): void
+    {
+        $html = '<img src="javascript:alert(1)" alt="img">';
+
+        $sanitized = MarkdownParser::sanitizeHtml($html);
+
+        $this->assertStringNotContainsString('javascript:', $sanitized);
+        $this->assertStringContainsString('alt="img"', $sanitized);
+    }
+
+    public function testSanitizeHtmlReturnsEmptyStringForBlankInput(): void
+    {
+        $this->assertSame('', MarkdownParser::sanitizeHtml(''));
+        $this->assertSame('', MarkdownParser::sanitizeHtml('   '));
+    }
+
     // ============================================================
     // MARKDOWN CONVERSION TESTS
     // ============================================================

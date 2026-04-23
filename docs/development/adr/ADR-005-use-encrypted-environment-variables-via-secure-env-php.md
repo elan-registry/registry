@@ -1,8 +1,15 @@
 # ADR-005: Use Encrypted Environment Variables via SecureEnvPHP
 
+> **Status: Superseded by [ADR-014](ADR-014-replace-secure-env-php-with-phpdotenv.md)** — April 2026
+>
+> This decision is no longer in effect. The library was replaced due to abandonment.
+> See ADR-014 for the replacement decision.
+
+---
+
 ## Status
 
-**In Review** (retroactive)
+**Superseded** (retroactive)
 
 ## Date
 

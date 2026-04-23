@@ -72,7 +72,7 @@ edge caching and CDN for global users (US, EU, AU).
 
 - PHP 8.2+ required
 - MySQL 8.0+
-- Uses `johnathanmiller/secure-env-php` for encrypted environment variables
+- Uses `vlucas/phpdotenv` for environment variable loading (plaintext `.env`, `chmod 600`)
 
 ### Quick Start Commands
 

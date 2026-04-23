@@ -1,0 +1,5 @@
+#!/bin/sh
+# $3 is 1 for branch checkout, 0 for file checkout (git checkout -- file).
+# Only regenerate VERSION on branch switches to avoid unnecessary writes.
+[ "$3" = "1" ] || exit 0
+git describe --tags --always > VERSION

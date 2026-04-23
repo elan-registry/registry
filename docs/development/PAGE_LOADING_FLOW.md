@@ -123,10 +123,10 @@ users/init.php
 │   │
 │   ├─ 1.5.6. Composer Autoloaders
 │   │   ├─ usersc/vendor/autoload.php (if exists)
-│   │   │   └─ Custom application Composer packages (SecureEnvPHP)
+│   │   │   └─ Custom application Composer packages
 │   │   │
 │   │   └─ users/vendor/autoload.php (if exists)
-│   │       └─ UserSpice framework Composer packages
+│   │       └─ UserSpice framework Composer packages (includes phpdotenv)
 │   │
 │   ├─ 1.5.7. PHPMailer
 │   │   └─ users/classes/phpmailer/PHPMailerAutoload.php
@@ -141,15 +141,13 @@ users/init.php
 │           └─ Plugin-specific helper functions
 │
 ├─ 1.6. Load Environment Variables (back in users/init.php, Lines 47-51)
-│   └─ SecureEnvPHP class (autoloaded via step 1.5.6 → usersc/vendor/autoload.php)
-│       ├─ Parse .env.enc with .env.key
-│       └─ Environment variables available via getenv():
-│           ├─ DB_HOST, DB_USER, DB_PASS, DB_NAME
-│           ├─ Google Maps API keys (MAPS_KEY, GEO_ENCODE_KEY)
-│           └─ Application secrets
+│   └─ phpdotenv class (autoloaded via step 1.5.6 → vendor/autoload.php)
+│       ├─ Load .env via Dotenv::createImmutable()->safeLoad()
+│       └─ Environment variables populated into $_ENV:
+│           └─ DB_HOST, DB_USER, DB_PASS, DB_NAME
 │
 ├─ 1.7. Database Configuration
-│   ├─ Load encrypted database credentials from environment (via getenv())
+│   ├─ Read database credentials from $_ENV (set by phpdotenv in step 1.6)
 │   ├─ Create $config array with connection parameters
 │   └─ Initialize DB singleton instance ($db)
 │
@@ -723,11 +721,11 @@ Debug mode shows:
 
 ## Revision History
 
-| Version | Date       | Changes                                          |
-|---------|------------|--------------------------------------------------|
-| 1.0.0   | 2026-01-09 | Initial documentation of page loading flow       |
-| 1.1.0   | 2026-01-28 | Add server globals to critical variables table   |
-| 1.2.0   | 2026-01-31 | Fix Phase 2.5/4 toast system documentation; document pre_footer.php hook, system_messages_header/footer loading sequence, and unified toast architecture (Issue #536) |
+| Version | Date | Changes |
+| --- | --- | --- |
+| 1.0.0 | 2026-01-09 | Initial documentation of page loading flow |
+| 1.1.0 | 2026-01-28 | Add server globals to critical variables table |
+| 1.2.0 | 2026-01-31 | Fix Phase 2.5/4 toast system documentation; document pre_footer.php hook, system_messages_header/footer loading sequence, and unified toast architecture (Issue #536) |
 
 ---
 

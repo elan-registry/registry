@@ -121,12 +121,12 @@ WHERE id = 1;
 INSERT INTO `us_plugin_hooks` (`id`, `page`, `folder`, `position`, `hook`, `disabled`) VALUES
 (10, 'admin.php?view=user', 'hooker', 'form', 'hooks/user_form_hook.php', 0),
 (12, 'login.php', 'getsettings', 'bottom', 'hooks/loginbottom.php', 0),
-(13, 'login.php', 'recaptcha', 'post', 'hooks/loginpost.php', 0),
-(14, 'login.php', 'recaptcha', 'bottom', 'hooks/loginbottom.php', 0),
-(15, 'joinAttempt', 'recaptcha', 'body', 'hooks/joinattemptbody.php', 0),
-(16, 'join.php', 'recaptcha', 'bottom', 'hooks/joinbottom.php', 0),
-(17, 'forgot_password.php', 'recaptcha', 'post', 'hooks/forgotpasswordpost.php', 0),
-(18, 'forgot_password.php', 'recaptcha', 'bottom', 'hooks/forgotpasswordbottom.php', 0),
+(13, 'login.php', 'recaptcha', 'post', 'hooks/loginpost.php', 1),
+(14, 'login.php', 'recaptcha', 'bottom', 'hooks/loginbottom.php', 1),
+(15, 'joinAttempt', 'recaptcha', 'body', 'hooks/joinattemptbody.php', 1),
+(16, 'join.php', 'recaptcha', 'bottom', 'hooks/joinbottom.php', 1),
+(17, 'forgot_password.php', 'recaptcha', 'post', 'hooks/forgotpasswordpost.php', 1),
+(18, 'forgot_password.php', 'recaptcha', 'bottom', 'hooks/forgotpasswordbottom.php', 1),
 (19, 'joinAttempt', 'autoassignun', 'body', 'hooks/username_replace.php', 0),
 (20, 'join.php', 'autoassignun', 'bottom', 'hooks/username_field_removal.php', 0),
 (23, 'account.php', 'hooker', 'body', 'hooks/account_body_hook.php', 0),
@@ -135,7 +135,13 @@ INSERT INTO `us_plugin_hooks` (`id`, `page`, `folder`, `position`, `hook`, `disa
 (26, 'admin.php?view=user', 'userspice_core', 'post', 'hooks/tags_admin_user_post.php', 0),
 (27, 'login', 'recaptcha', 'form', 'hooks/loginform.php', 1),
 (28, 'login', 'recaptcha', 'bottom', 'hooks/loginbottom.php', 1),
-(29, 'login', 'recaptcha', 'post', 'hooks/loginpost.php', 1)
+(29, 'login', 'recaptcha', 'post', 'hooks/loginpost.php', 1),
+-- Cloudflare Turnstile hooks (#630)
+(34, 'login.php', 'hooker', 'form', 'hooks/login_form_turnstile.php', 0),
+(35, 'login.php', 'hooker', 'post', 'hooks/post_turnstile.php', 0),
+(36, 'join.php', 'hooker', 'form', 'hooks/join_form_turnstile.php', 0),
+(37, 'joinAttempt', 'hooker', 'body', 'hooks/post_turnstile.php', 0),
+(38, 'forgot_password.php', 'hooker', 'post', 'hooks/post_turnstile.php', 0)
 ON DUPLICATE KEY UPDATE
   page = VALUES(page),
   folder = VALUES(folder),

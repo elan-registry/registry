@@ -69,7 +69,8 @@ See [DEPLOYMENT.md](DEPLOYMENT.md) for complete release procedures.
 ```text
 z_us_root.php              # Root path configuration (add new dirs here)
 users/init.php             # UserSpice initialization
-.env.enc                   # Encrypted environment variables
+.env                       # Environment variables (plaintext, chmod 600, not committed)
+.env.example               # Public template for .env (committed)
 VERSION                    # Current version number
 ```
 
