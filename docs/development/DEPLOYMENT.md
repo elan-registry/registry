@@ -182,7 +182,7 @@ Use `Closes`, `Fixes`, or `Resolves` followed by `#NNN`. See the
 
 - **Cause**: Hardcoded secrets, API keys, or credentials detected
 - **Resolution**: Remove secrets, use environment variables instead
-- **Prevention**: Use `.env.enc` encrypted storage for sensitive data
+- **Prevention**: Use `.env` (plaintext, chmod 600) or environment variables for sensitive data
 
 #### Claude Review Failures
 
@@ -310,7 +310,39 @@ After each deployment, verify:
 
 ## 🛠️ Environment Variables
 
-See [ENVIRONMENT.md](ENVIRONMENT.md) for complete environment configuration (database credentials, API keys, SecureEnvPHP encryption).
+See [ENVIRONMENT.md](ENVIRONMENT.md) for complete environment configuration (database credentials, API keys, phpdotenv plaintext `.env` with `chmod 600`).
+
+### Pre-Deployment: Prepare .env File
+
+Before deploying the phpdotenv version (v2.18.0+), ensure the production `.env` file is in place on the server:
+
+1. **Create `.env` from current credentials** (if migrating from SecureEnvPHP):
+
+   ```bash
+   # Securely transfer credentials to server and create .env
+   cat > /path/to/elan-registry/.env << 'EOF'
+   DB_HOST=your_production_host
+   DB_USER=your_production_user
+   DB_PASS=your_production_password
+   DB_NAME=your_production_database
+   EOF
+   chmod 600 .env
+   chown www-data:www-data .env
+   ```
+
+2. **Verify application boots** (after code deployment):
+
+   ```bash
+   # Test database connection via browser or curl
+   curl -s https://elanregistry.org/ | head -20
+   ```
+
+3. **Remove old encrypted files** (after successful verification):
+
+   ```bash
+   # Securely delete old encryption files (if migrating)
+   shred -vfz -n 3 .env.enc .env.key
+   ```
 
 ### UserSpice Plugins
 

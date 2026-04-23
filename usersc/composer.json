@@ -10,7 +10,7 @@
         }
     ],
     "require": {
-        "php": ">=7.1",
-        "johnathanmiller/secure-env-php": "^2.0"
+        "php": ">=8.2",
+        "vlucas/phpdotenv": "^5.6"
     }
 }

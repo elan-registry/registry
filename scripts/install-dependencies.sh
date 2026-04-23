@@ -188,12 +188,12 @@ else
     exit 3
 fi
 
-# Check SecureEnvPHP package exists
-if [ -d "usersc/vendor/johnathanmiller/secure-env-php" ]; then
-    print_success "SecureEnvPHP package installed"
+# Check phpdotenv package exists
+if [ -d "usersc/vendor/vlucas/phpdotenv" ]; then
+    print_success "phpdotenv package installed"
 else
-    print_error "SecureEnvPHP package not found"
-    print_warning "Expected: usersc/vendor/johnathanmiller/secure-env-php"
+    print_error "phpdotenv package not found"
+    print_warning "Expected: usersc/vendor/vlucas/phpdotenv"
     exit 3
 fi
 
