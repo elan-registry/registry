@@ -98,7 +98,8 @@ class DocumentPortalTemplate
      *     listItems?: list<array{icon: string, text: string}>,
      *     buttonIcon?: string,
      *     headerStyle?: string,
-     *     buttonStyle?: string
+     *     buttonStyle?: string,
+     *     colClass?: string
      * } $card
      * @throws \InvalidArgumentException if required keys are missing
      */
@@ -133,7 +134,8 @@ class DocumentPortalTemplate
 
         if (!empty($card['listItems'])) {
             $html .= "<ul class='list-unstyled'>";
-            foreach ($card['listItems'] as $item) {
+            foreach ($card['listItems'] as $index => $item) {
+                self::requireKeys($item, ['icon', 'text'], "renderDocumentCard listItems[{$index}]");
                 $itemText  = htmlspecialchars($item['text'], ENT_QUOTES, 'UTF-8');
                 $html     .= "<li>" . self::renderIcon($item['icon']) . "{$itemText}</li>";
             }

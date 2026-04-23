@@ -118,6 +118,18 @@ final class DocumentPortalTemplateTest extends TestCase
         $this->assertStringNotContainsString("<i class='fas", $html);
     }
 
+    public function testRenderPortalHeaderEscapesLeadText(): void
+    {
+        $html = DocumentPortalTemplate::renderPortalHeader([
+            'title'       => 'Title',
+            'description' => 'Desc',
+            'leadText'    => '<script>xss</script>',
+        ]);
+
+        $this->assertStringContainsString('&lt;script&gt;', $html);
+        $this->assertStringNotContainsString('<script>', $html);
+    }
+
     public function testRenderPortalHeaderThrowsOnMissingTitle(): void
     {
         $this->expectException(\InvalidArgumentException::class);
@@ -365,14 +377,75 @@ final class DocumentPortalTemplateTest extends TestCase
         $this->assertStringNotContainsString('<script>', $html);
     }
 
+    public function testRenderDocumentCardEscapesDescription(): void
+    {
+        $html = DocumentPortalTemplate::renderDocumentCard([
+            'title'       => 'Title',
+            'icon'        => 'fa-car',
+            'url'         => '/test',
+            'buttonText'  => 'View',
+            'description' => '<script>xss</script>',
+        ]);
+
+        $this->assertStringContainsString('&lt;script&gt;', $html);
+        $this->assertStringNotContainsString('<script>', $html);
+    }
+
+    public function testRenderDocumentCardEscapesMetadata(): void
+    {
+        $html = DocumentPortalTemplate::renderDocumentCard([
+            'title'      => 'Title',
+            'icon'       => 'fa-car',
+            'url'        => '/test',
+            'buttonText' => 'View',
+            'metadata'   => '<b onmouseover="evil()">metadata</b>',
+        ]);
+
+        $this->assertStringNotContainsString('<b ', $html);
+        $this->assertStringContainsString('&lt;b ', $html);
+    }
+
     public function testRenderDocumentCardThrowsOnMissingTitle(): void
     {
         $this->expectException(\InvalidArgumentException::class);
 
         DocumentPortalTemplate::renderDocumentCard([
-            'icon' => 'fa-car',
-            'url' => '/test',
+            'icon'       => 'fa-car',
+            'url'        => '/test',
             'buttonText' => 'View',
+        ]);
+    }
+
+    public function testRenderDocumentCardThrowsOnMissingIcon(): void
+    {
+        $this->expectException(\InvalidArgumentException::class);
+
+        DocumentPortalTemplate::renderDocumentCard([
+            'title'      => 'Title',
+            'url'        => '/test',
+            'buttonText' => 'View',
+        ]);
+    }
+
+    public function testRenderDocumentCardThrowsOnMissingUrl(): void
+    {
+        $this->expectException(\InvalidArgumentException::class);
+
+        DocumentPortalTemplate::renderDocumentCard([
+            'title'      => 'Title',
+            'icon'       => 'fa-car',
+            'buttonText' => 'View',
+        ]);
+    }
+
+    public function testRenderDocumentCardThrowsOnMissingButtonText(): void
+    {
+        $this->expectException(\InvalidArgumentException::class);
+
+        DocumentPortalTemplate::renderDocumentCard([
+            'title' => 'Title',
+            'icon'  => 'fa-car',
+            'url'   => '/test',
         ]);
     }
 
