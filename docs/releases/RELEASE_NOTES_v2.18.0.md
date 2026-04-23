@@ -105,4 +105,9 @@
 
 ## Summary
 
-[To be completed on release: total issues resolved, PRs merged, key themes.]
+11 issues resolved across 10 PRs. Key themes: security hardening (Turnstile
+CAPTCHA replacing Google reCAPTCHA, XSS hardening in MarkdownParser and admin
+includes, email_body() silent failure fix), branding consistency (forgot
+password pages and password reset email now match the registry's visual
+identity), and dependency modernization (phpdotenv replacing abandoned
+secure-env-php, documentation portal template consolidation).
