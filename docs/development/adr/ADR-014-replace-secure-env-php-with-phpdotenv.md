@@ -80,22 +80,14 @@ use SecureEnvPHP\SecureEnvPHP;
 To:
 
 ```php
-\Dotenv\Dotenv::createImmutable($abs_us_root . $us_url_root)->safeLoad();
-```
-
-**Consumption** (Phase 1.7):
-
-Reads from `$_ENV` (phpdotenv's recommended approach — avoids `getenv()`/`putenv()`).
-Required variables are validated at load time; a missing variable throws `RuntimeException`:
-
-```php
+// Phase 1.6 + 1.7 (users/init.php) — single $dotenv instance:
 $dotenv = \Dotenv\Dotenv::createImmutable($abs_us_root . $us_url_root);
-$dotenv->safeLoad();
-$dotenv->required(['DB_HOST', 'DB_USER', 'DB_PASS', 'DB_NAME']);
+$dotenv->safeLoad();                                          // no-op if .env absent
+$dotenv->required(['DB_HOST', 'DB_USER', 'DB_PASS', 'DB_NAME']); // throws if missing
 
 $GLOBALS['config'] = [
     'mysql' => [
-        'host'     => $_ENV['DB_HOST'],
+        'host'     => $_ENV['DB_HOST'],   // reads from $_ENV, not putenv/getenv
         'username' => $_ENV['DB_USER'],
         'password' => $_ENV['DB_PASS'],
         'db'       => $_ENV['DB_NAME'],
@@ -115,7 +107,7 @@ $GLOBALS['config'] = [
 
 **phpdotenv Features Used**:
 
-- `createImmutable()` — populates `$_ENV`/`$_SERVER` only; avoids `putenv()` per phpdotenv's own recommendation
+- `createImmutable()` — populates `$_ENV`/`$_SERVER` (no `putenv()`); application reads exclusively from `$_ENV`
 - `safeLoad()` — load without raising exceptions if file absent (handles missing files gracefully)
 - Variable interpolation — supports `${VAR}` references within values
 
@@ -148,7 +140,7 @@ $GLOBALS['config'] = [
 | Accidental exposure in logs | ❌ No (decrypts at startup) | ❌ No (plaintext in env) | Both have this weakness; mitigation is limiting log retention and access |
 | Runtime compromise | ❌ No | ❌ No | Neither protects; encryption is no defense against active compromise |
 
-**LayeredDefense**:
+**Layered Defense**:
 
 1. **OS-level**: `chmod 600` restricts to web server user only (same as encrypted files)
 2. **VCS-level**: `.gitignore` + GitGuardian CI check prevents committed secrets

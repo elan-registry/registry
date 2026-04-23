@@ -49,7 +49,12 @@ require_once $abs_us_root . $us_url_root . 'users/helpers/helpers.php';
 // createImmutable(): populates $_ENV/$_SERVER only (no putenv); won't overwrite test bootstrap values
 $dotenv = \Dotenv\Dotenv::createImmutable($abs_us_root . $us_url_root);
 $dotenv->safeLoad();
-$dotenv->required(['DB_HOST', 'DB_USER', 'DB_PASS', 'DB_NAME']);
+try {
+    $dotenv->required(['DB_HOST', 'DB_USER', 'DB_PASS', 'DB_NAME']);
+} catch (\Dotenv\Exception\ValidationException $e) {
+    error_log('[elan-registry] Boot failed — missing required environment variable(s): ' . $e->getMessage());
+    throw $e;
+}
 
 // Set config
 $GLOBALS['config'] = array(

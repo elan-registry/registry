@@ -51,7 +51,9 @@ try {
     \Dotenv\Dotenv::createMutable($projectRoot, $envName)->load();
     fwrite(STDERR, "NOTE: Loaded test environment from {$envName}\n");
 } catch (\Dotenv\Exception\ExceptionInterface $e) {
-    fwrite(STDERR, "NOTE: Could not load {$envName}: {$e->getMessage()}\n");
+    fwrite(STDERR, "WARNING: Could not load {$envName}: {$e->getMessage()}\n");
+    fwrite(STDERR, "WARNING: All integration tests requiring a database will be skipped.\n");
+    fwrite(STDERR, "WARNING: To enable them, copy .env.local.sample to .env.local and fill in credentials.\n");
 }
 
 // Suppress UserSpice initialization errors (especially database connection errors)

@@ -54,7 +54,7 @@ The Elan Registry uses **vlucas/phpdotenv** v5 for environment variable loading 
 
 ### Database Configuration
 
-**Usage**: `users/init.php:40-46`
+**Usage**: `users/init.php` (Phase 1.6–1.7)
 
 - `DB_HOST` - Database server hostname/IP (e.g., `localhost`)
 - `DB_USER` - Database username (e.g., `elan_registry_user`)
