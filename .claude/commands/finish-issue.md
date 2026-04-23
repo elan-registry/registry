@@ -72,7 +72,10 @@ keep waiting.
 
 ### Step 4: Handle check results
 
-**If all checks pass** → proceed to step 5.
+**If all checks pass** → report results to the user and **ask for explicit
+confirmation before merging**: "All CI checks passed. Ready to squash-merge
+PR #NNN into `MILESTONE_BRANCH` and close issue #NNN. Shall I proceed?"
+Do NOT merge until the user confirms.
 
 **If any check fails:**
 
