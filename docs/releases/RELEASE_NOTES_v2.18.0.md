@@ -5,8 +5,14 @@
 
 ## Required Actions After Deployment
 
-1. **Run `./scripts/install-dependencies.sh --prod`** (#631) — installs `vlucas/phpdotenv`
-   (replaces abandoned `johnathanmiller/secure-env-php`). Must run before the site boots.
+1. **Install phpdotenv** (#631) — run from the site root on the server:
+
+   ```bash
+   cd usersc && composer install --no-dev --optimize-autoloader && cd ..
+   ```
+
+   Installs `vlucas/phpdotenv` (replaces abandoned `johnathanmiller/secure-env-php`).
+   Must complete before the site boots.
 
 2. **Migrate credentials to `.env`** (#631) — create `.env` from `.env.enc` data, set
    `chmod 600 .env`, then securely delete `.env.enc` and `.env.key`:
