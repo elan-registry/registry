@@ -143,7 +143,8 @@ class ImageOrientationTest extends TestCase
     /**
      * Test that the Resize class properly handles files without EXIF data
      */
-    public function testHandleImageWithoutEXIF()
+    #[Group('fast')]
+    public function testHandleImageWithoutEXIF(): void
     {
         // Create a simple test image without EXIF data
         $testImage = imagecreate(100, 100);
@@ -163,9 +164,10 @@ class ImageOrientationTest extends TestCase
     }
 
     /**
-     * Test that non-JPEG files are handled properly 
+     * Test that non-JPEG files are handled properly
      */
-    public function testHandleNonJPEGFiles()
+    #[Group('fast')]
+    public function testHandleNonJPEGFiles(): void
     {
         // Create a simple PNG test image
         $testImage = imagecreate(100, 100);

@@ -714,7 +714,8 @@ if (!function_exists('getMimeType')) {
         
         $allowedMimes = [
             'image/jpeg',
-            'image/png', 
+            'image/jpg',
+            'image/png',
             'image/gif',
             'image/webp'
         ];

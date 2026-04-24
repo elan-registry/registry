@@ -1103,7 +1103,6 @@ final class EmailTemplateTest extends TestCase
 
     // ============================================================
     // createMessageContent() DIRECT TESTS
-    // @group createMessageContent
     // ============================================================
 
     public function testCreateMessageContentEscapesHtml(): void
