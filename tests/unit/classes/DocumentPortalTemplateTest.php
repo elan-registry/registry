@@ -5,14 +5,15 @@ declare(strict_types=1);
 use PHPUnit\Framework\TestCase;
 use ElanRegistry\Documentation\DocumentPortalTemplate;
 
+use PHPUnit\Framework\Attributes\Group;
+
 /**
  * DocumentPortalTemplate class tests
  *
  * Tests static rendering utilities for documentation portal pages.
- *
- * @group fast
- * @group documentation
  */
+#[Group('fast')]
+#[Group('documentation')]
 final class DocumentPortalTemplateTest extends TestCase
 {
     // ============================================================

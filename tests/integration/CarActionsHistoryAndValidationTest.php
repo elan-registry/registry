@@ -4,16 +4,17 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/IntegrationTestCase.php';
 
+use PHPUnit\Framework\Attributes\Group;
+
 /**
  * Integration tests for Car Actions endpoints: history.php and validateChassis.php
  *
  * Tests the ApiResponse pattern implementation for:
  * - Car history retrieval (history.php)
  * - Chassis validation (validateChassis.php)
- *
- * @group integration
- * @group car-actions
  */
+#[Group('integration')]
+#[Group('car-actions')]
 final class CarActionsHistoryAndValidationTest extends IntegrationTestCase
 {
     /**

@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 use PHPUnit\Framework\TestCase;
 
+use PHPUnit\Framework\Attributes\Group;
+
 /**
  * Test for EXIF orientation handling in the Resize class
  *
@@ -13,7 +15,6 @@ use PHPUnit\Framework\TestCase;
  * - Privacy-preserving EXIF stripping
  * - Error handling for missing EXIF data
  */
-
 class ImageOrientationTest extends TestCase
 {
     private $testImageDir;
@@ -45,9 +46,8 @@ class ImageOrientationTest extends TestCase
 
     /**
      * Test that the Resize class exists
-     *
-     * @group fast
      */
+    #[Group('fast')]
     public function testResizeClassExists(): void
     {
         $this->assertTrue(class_exists('Resize'), 'Resize class should exist');
@@ -55,9 +55,8 @@ class ImageOrientationTest extends TestCase
 
     /**
      * Test that the correctOrientation method exists in Resize class
-     *
-     * @group fast
      */
+    #[Group('fast')]
     public function testCorrectOrientationMethodExists(): void
     {
         $reflection = new ReflectionClass('Resize');
@@ -69,9 +68,8 @@ class ImageOrientationTest extends TestCase
 
     /**
      * Test orientation correction with mock image data
-     *
-     * @group fast
      */
+    #[Group('fast')]
     public function testOrientationCorrectionWithMockImage(): void
     {
         // Create a simple test image
@@ -85,7 +83,6 @@ class ImageOrientationTest extends TestCase
         imagefilledrectangle($testImage, 0, 0, 20, 50, $red); // Red stripe on left
         
         imagejpeg($testImage, $testFile, 90);
-        imagedestroy($testImage);
 
         $this->assertFileExists($testFile, 'Test image should be created');
 
@@ -108,9 +105,8 @@ class ImageOrientationTest extends TestCase
 
     /**
      * Test that EXIF extension is available
-     *
-     * @group fast
      */
+    #[Group('fast')]
     public function testEXIFExtensionAvailable(): void
     {
         $this->assertTrue(
@@ -121,9 +117,8 @@ class ImageOrientationTest extends TestCase
 
     /**
      * Test that imagerotate function is available
-     *
-     * @group fast
      */
+    #[Group('fast')]
     public function testImageRotateAvailable(): void
     {
         $this->assertTrue(
@@ -134,9 +129,8 @@ class ImageOrientationTest extends TestCase
 
     /**
      * Test that imageflip function is available
-     *
-     * @group fast
      */
+    #[Group('fast')]
     public function testImageFlipAvailable(): void
     {
         // imageflip was added in PHP 5.5.0
@@ -158,7 +152,6 @@ class ImageOrientationTest extends TestCase
         
         $testFile = $this->outputDir . 'no_exif.jpg';
         imagejpeg($testImage, $testFile, 90);
-        imagedestroy($testImage);
 
         // Should not throw exception when processing image without EXIF
         try {
@@ -181,7 +174,6 @@ class ImageOrientationTest extends TestCase
         
         $testFile = $this->outputDir . 'test.png';
         imagepng($testImage, $testFile);
-        imagedestroy($testImage);
 
         // Should process PNG files normally (no EXIF orientation correction)
         try {

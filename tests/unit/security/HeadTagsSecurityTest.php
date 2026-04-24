@@ -3,16 +3,17 @@ declare(strict_types=1);
 
 use PHPUnit\Framework\TestCase;
 
+use PHPUnit\Framework\Attributes\Group;
+
 /**
  * Test head_tags.php security migration
  *
  * Verifies that head_tags.php uses validated server globals
  * and properly handles invalid host scenarios.
- *
- * @group security
- * @group head-tags
- * @group server-globals
  */
+#[Group('security')]
+#[Group('head-tags')]
+#[Group('server-globals')]
 class HeadTagsSecurityTest extends TestCase
 {
     private string $headTagsFile;

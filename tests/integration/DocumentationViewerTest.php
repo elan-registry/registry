@@ -6,6 +6,8 @@ require_once __DIR__ . '/IntegrationTestCase.php';
 
 use ElanRegistry\Exceptions\DocumentationException;
 
+use PHPUnit\Framework\Attributes\DataProvider;
+
 /**
  * DocumentationViewerTest
  *
@@ -115,8 +117,8 @@ class DocumentationViewerTest extends IntegrationTestCase
      *
      * @param string $invalidDoc Invalid document name to test
      * @test
-     * @dataProvider invalidDocumentFormatProvider
      */
+    #[DataProvider('invalidDocumentFormatProvider')]
     public function testInvalidDocumentFormatRejected(string $invalidDoc): void
     {
         // Verify the regex pattern blocks invalid formats
@@ -280,8 +282,8 @@ class DocumentationViewerTest extends IntegrationTestCase
      * @param string $scenario The error scenario being tested
      * @param string $expectedCategory The expected log category
      * @test
-     * @dataProvider logCategoryProvider
      */
+    #[DataProvider('logCategoryProvider')]
     public function testLogCategoriesAreCorrect(string $scenario, string $expectedCategory): void
     {
         $logCategories = [

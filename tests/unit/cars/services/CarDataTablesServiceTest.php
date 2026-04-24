@@ -6,11 +6,12 @@ use ElanRegistry\Car\CarDataTablesService;
 use ElanRegistry\Exceptions\CarValidationException;
 use PHPUnit\Framework\TestCase;
 
+use PHPUnit\Framework\Attributes\Group;
+
 /**
  * Unit tests for CarDataTablesService service class
- *
- * @group fast
  */
+#[Group('fast')]
 final class CarDataTablesServiceTest extends TestCase
 {
     private CarDataTablesService $service;

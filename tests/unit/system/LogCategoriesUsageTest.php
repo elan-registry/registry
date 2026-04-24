@@ -4,13 +4,15 @@ declare(strict_types=1);
 
 use PHPUnit\Framework\TestCase;
 
+use PHPUnit\Framework\Attributes\DataProvider;
+use PHPUnit\Framework\Attributes\Group;
+
 /**
  * Test that car-related PHP endpoints use LogCategories constants
  * instead of hardcoded string literals in withLogging() and logger() calls.
- *
- * @group system
- * @group logging
  */
+#[Group('system')]
+#[Group('logging')]
 class LogCategoriesUsageTest extends TestCase
 {
     /**
@@ -45,9 +47,7 @@ class LogCategoriesUsageTest extends TestCase
         $this->rootDir = dirname(__DIR__, 3);
     }
 
-    /**
-     * @dataProvider carEndpointFilesProvider
-     */
+    #[DataProvider('carEndpointFilesProvider')]
     public function testNoHardcodedWithLoggingStrings(string $relativePath): void
     {
         $filePath = $this->rootDir . '/' . $relativePath;
@@ -76,9 +76,7 @@ class LogCategoriesUsageTest extends TestCase
         );
     }
 
-    /**
-     * @dataProvider carEndpointFilesProvider
-     */
+    #[DataProvider('carEndpointFilesProvider')]
     public function testNoHardcodedLoggerStrings(string $relativePath): void
     {
         $filePath = $this->rootDir . '/' . $relativePath;
@@ -106,9 +104,7 @@ class LogCategoriesUsageTest extends TestCase
         );
     }
 
-    /**
-     * @dataProvider contactEndpointFilesProvider
-     */
+    #[DataProvider('contactEndpointFilesProvider')]
     public function testNoHardcodedWithLoggingStringsInContactFiles(string $relativePath): void
     {
         $filePath = $this->rootDir . '/' . $relativePath;
@@ -137,9 +133,7 @@ class LogCategoriesUsageTest extends TestCase
         );
     }
 
-    /**
-     * @dataProvider contactEndpointFilesProvider
-     */
+    #[DataProvider('contactEndpointFilesProvider')]
     public function testNoHardcodedLoggerStringsInContactFiles(string $relativePath): void
     {
         $filePath = $this->rootDir . '/' . $relativePath;

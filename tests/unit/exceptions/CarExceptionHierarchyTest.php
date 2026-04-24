@@ -14,16 +14,18 @@ use ElanRegistry\Exceptions\CarValidationException;
 use ElanRegistry\Exceptions\ElanRegistryException;
 use PHPUnit\Framework\TestCase;
 
+use PHPUnit\Framework\Attributes\DataProvider;
+use PHPUnit\Framework\Attributes\Group;
+
 /**
  * Test cases for the CarException hierarchy
  *
  * Verifies that all car-related exceptions properly extend CarException,
  * which in turn extends ElanRegistryException, maintaining backward
  * compatibility with existing catch blocks.
- *
- * @group unit
- * @group exceptions
  */
+#[Group('unit')]
+#[Group('exceptions')]
 class CarExceptionHierarchyTest extends TestCase
 {
     /**
@@ -67,8 +69,8 @@ class CarExceptionHierarchyTest extends TestCase
      * Test that all car exceptions extend CarException
      *
      * @param string $className Exception class name to test
-     * @dataProvider carExceptionClassProvider
      */
+    #[DataProvider('carExceptionClassProvider')]
     public function testCarExceptionExtendsCarException(string $className): void
     {
         $this->assertTrue(
@@ -81,8 +83,8 @@ class CarExceptionHierarchyTest extends TestCase
      * Test backward compatibility - all car exceptions are still instanceof ElanRegistryException
      *
      * @param string $className Exception class name to test
-     * @dataProvider carExceptionClassProvider
      */
+    #[DataProvider('carExceptionClassProvider')]
     public function testBackwardCompatibilityWithElanRegistryException(string $className): void
     {
         $exception = new $className();
@@ -97,8 +99,8 @@ class CarExceptionHierarchyTest extends TestCase
      * Test backward compatibility - all car exceptions are instanceof CarException
      *
      * @param string $className Exception class name to test
-     * @dataProvider carExceptionClassProvider
      */
+    #[DataProvider('carExceptionClassProvider')]
     public function testAllCarExceptionsAreInstanceOfCarException(string $className): void
     {
         $exception = new $className();

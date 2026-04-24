@@ -3,23 +3,24 @@ declare(strict_types=1);
 
 use PHPUnit\Framework\TestCase;
 
+use PHPUnit\Framework\Attributes\DataProvider;
+use PHPUnit\Framework\Attributes\Group;
+
 /**
  * Test security headers on error pages
  *
  * Verifies that error pages (403, 404, 500) return proper
  * anti-clickjacking headers even if init.php fails to load.
- *
- * @group integration
- * @group security
- * @group error-pages
  */
+#[Group('integration')]
+#[Group('security')]
+#[Group('error-pages')]
 class ErrorPageHeadersTest extends TestCase
 {
     /**
      * Test that error page files include security header fallbacks
-     *
-     * @dataProvider errorPageProvider
      */
+    #[DataProvider('errorPageProvider')]
     public function testErrorPageIncludesSecurityHeaders(string $pageName): void
     {
         $errorPageFile = dirname(__DIR__, 2) . '/error/' . $pageName;
@@ -61,9 +62,8 @@ class ErrorPageHeadersTest extends TestCase
      *
      * Headers should be set early in the file, before any includes that
      * might fail (like init.php)
-     *
-     * @dataProvider errorPageProvider
      */
+    #[DataProvider('errorPageProvider')]
     public function testErrorPageHeadersBeforeInitPhp(string $pageName): void
     {
         $errorPageFile = dirname(__DIR__, 2) . '/error/' . $pageName;
@@ -119,9 +119,8 @@ class ErrorPageHeadersTest extends TestCase
      *
      * Error pages allow framing within same origin (more user-friendly)
      * while still protecting against cross-origin clickjacking
-     *
-     * @dataProvider errorPageProvider
      */
+    #[DataProvider('errorPageProvider')]
     public function testErrorPageUsesSameoriginPolicy(string $pageName): void
     {
         $errorPageFile = dirname(__DIR__, 2) . '/error/' . $pageName;

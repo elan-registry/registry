@@ -4,14 +4,15 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/IntegrationTestCase.php';
 
+use PHPUnit\Framework\Attributes\Group;
+
 /**
  * Test cases for Car verification functionality
  *
  * Tests cover verification code management, verification status tracking,
  * and sold status marking with date validation.
- *
- * @group integration
  */
+#[Group('integration')]
 final class CarVerificationTest extends IntegrationTestCase
 {
     private $testCarId;
@@ -41,9 +42,8 @@ final class CarVerificationTest extends IntegrationTestCase
 
     /**
      * Test set verification code success
-     *
-     * @group fast
      */
+    #[Group('fast')]
     public function testSetVerificationCodeSuccess(): void
     {
         $car = new Car($this->testCarId);
@@ -60,9 +60,8 @@ final class CarVerificationTest extends IntegrationTestCase
 
     /**
      * Test set verification code fails with short code
-     *
-     * @group fast
      */
+    #[Group('fast')]
     public function testSetVerificationCodeFailsWithShortCode(): void
     {
         $this->expectException(Exception::class);
@@ -73,9 +72,8 @@ final class CarVerificationTest extends IntegrationTestCase
 
     /**
      * Test set verification code fails when car does not exist
-     *
-     * @group fast
      */
+    #[Group('fast')]
     public function testSetVerificationCodeFailsWhenCarNotExists(): void
     {
         $this->expectException(Exception::class);
@@ -86,9 +84,8 @@ final class CarVerificationTest extends IntegrationTestCase
 
     /**
      * Test mark verified success
-     *
-     * @group fast
      */
+    #[Group('fast')]
     public function testMarkVerifiedSuccess(): void
     {
         $car = new Car($this->testCarId);
@@ -104,9 +101,8 @@ final class CarVerificationTest extends IntegrationTestCase
 
     /**
      * Test mark verified updates timestamp
-     *
-     * @group fast
      */
+    #[Group('fast')]
     public function testMarkVerifiedUpdatesTimestamp(): void
     {
         $car = new Car($this->testCarId);
@@ -129,9 +125,8 @@ final class CarVerificationTest extends IntegrationTestCase
 
     /**
      * Test mark sold with custom date
-     *
-     * @group fast
      */
+    #[Group('fast')]
     public function testMarkSoldWithCustomDate(): void
     {
         $car = new Car($this->testCarId);
@@ -148,9 +143,8 @@ final class CarVerificationTest extends IntegrationTestCase
 
     /**
      * Test mark sold with default date
-     *
-     * @group fast
      */
+    #[Group('fast')]
     public function testMarkSoldWithDefaultDate(): void
     {
         $car = new Car($this->testCarId);
@@ -167,9 +161,8 @@ final class CarVerificationTest extends IntegrationTestCase
 
     /**
      * Test mark sold fails with invalid date
-     *
-     * @group fast
      */
+    #[Group('fast')]
     public function testMarkSoldFailsWithInvalidDate(): void
     {
         $this->expectException(Exception::class);
@@ -180,9 +173,8 @@ final class CarVerificationTest extends IntegrationTestCase
 
     /**
      * Test find by verification code success
-     *
-     * @group fast
      */
+    #[Group('fast')]
     public function testFindByVerificationCodeSuccess(): void
     {
         $car = new Car($this->testCarId);
@@ -198,9 +190,8 @@ final class CarVerificationTest extends IntegrationTestCase
 
     /**
      * Test find by verification code returns null when not found
-     *
-     * @group fast
      */
+    #[Group('fast')]
     public function testFindByVerificationCodeReturnsNullWhenNotFound(): void
     {
         $result = Car::findByVerificationCode('NONEXISTENT-CODE-12345');
@@ -210,9 +201,8 @@ final class CarVerificationTest extends IntegrationTestCase
 
     /**
      * Test find by verification code fails with empty code
-     *
-     * @group fast
      */
+    #[Group('fast')]
     public function testFindByVerificationCodeFailsWithEmptyCode(): void
     {
         // Empty code returns null, not an exception
@@ -224,9 +214,8 @@ final class CarVerificationTest extends IntegrationTestCase
 
     /**
      * Test verification code is cleared on verification
-     *
-     * @group fast
      */
+    #[Group('fast')]
     public function testVerificationCodeIsClearedAfterVerification(): void
     {
         $car = new Car($this->testCarId);
@@ -245,9 +234,8 @@ final class CarVerificationTest extends IntegrationTestCase
 
     /**
      * Test mark sold clears verification code
-     *
-     * @group fast
      */
+    #[Group('fast')]
     public function testMarkSoldClearsVerificationCode(): void
     {
         $car = new Car($this->testCarId);

@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 use PHPUnit\Framework\TestCase;
 
+use PHPUnit\Framework\Attributes\Group;
+
 /**
  * Unit tests for getDataTables.php findCarByChassis endpoint logic
  *
@@ -18,20 +20,20 @@ use PHPUnit\Framework\TestCase;
  * - Special characters handling
  * - Response format validation (Pattern A)
  *
- * @group fast
- * @group unit
- * @group api
  * @author Elan Registry Development Team
  * @copyright 2025
  */
+#[Group('fast')]
+#[Group('unit')]
+#[Group('api')]
 final class GetDataTablesFindCarByChassisTest extends TestCase
 {
     /**
      * Test missing chassis parameter returns validation error
      *
-     * @group fast
      * @return void
      */
+    #[Group('fast')]
     public function testMissingChassisParameterReturnsError(): void
     {
         $filePath = __DIR__ . '/../../../app/action/getDataTables.php';
@@ -62,9 +64,9 @@ final class GetDataTablesFindCarByChassisTest extends TestCase
     /**
      * Test chassis parameter is retrieved correctly
      *
-     * @group fast
      * @return void
      */
+    #[Group('fast')]
     public function testChassisParameterRetrieval(): void
     {
         $filePath = __DIR__ . '/../../../app/action/getDataTables.php';
@@ -81,9 +83,9 @@ final class GetDataTablesFindCarByChassisTest extends TestCase
     /**
      * Test SQL query uses prepared statement (prevents SQL injection)
      *
-     * @group fast
      * @return void
      */
+    #[Group('fast')]
     public function testSqlQueryUsesPreparedStatement(): void
     {
         $filePath = __DIR__ . '/../../../app/action/getDataTables.php';
@@ -120,9 +122,9 @@ final class GetDataTablesFindCarByChassisTest extends TestCase
     /**
      * Test car found response uses correct pattern
      *
-     * @group fast
      * @return void
      */
+    #[Group('fast')]
     public function testCarFoundResponsePattern(): void
     {
         $filePath = __DIR__ . '/../../../app/action/getDataTables.php';
@@ -160,9 +162,9 @@ final class GetDataTablesFindCarByChassisTest extends TestCase
     /**
      * Test car not found response uses correct pattern
      *
-     * @group fast
      * @return void
      */
+    #[Group('fast')]
     public function testCarNotFoundResponsePattern(): void
     {
         $filePath = __DIR__ . '/../../../app/action/getDataTables.php';
@@ -193,9 +195,9 @@ final class GetDataTablesFindCarByChassisTest extends TestCase
     /**
      * Test response uses ApiResponse Pattern A format
      *
-     * @group fast
      * @return void
      */
+    #[Group('fast')]
     public function testResponseFollowsPatternA(): void
     {
         $filePath = __DIR__ . '/../../../app/action/getDataTables.php';
@@ -227,9 +229,9 @@ final class GetDataTablesFindCarByChassisTest extends TestCase
     /**
      * Test endpoint exits after sending response
      *
-     * @group fast
      * @return void
      */
+    #[Group('fast')]
     public function testEndpointExitsAfterResponse(): void
     {
         $filePath = __DIR__ . '/../../../app/action/getDataTables.php';
@@ -246,9 +248,9 @@ final class GetDataTablesFindCarByChassisTest extends TestCase
     /**
      * Test chassis lookup returns integer car_id (not string)
      *
-     * @group fast
      * @return void
      */
+    #[Group('fast')]
     public function testCarIdIsProperType(): void
     {
         $filePath = __DIR__ . '/../../../app/action/getDataTables.php';
@@ -269,9 +271,9 @@ final class GetDataTablesFindCarByChassisTest extends TestCase
     /**
      * Test limit 1 ensures only one result is returned
      *
-     * @group fast
      * @return void
      */
+    #[Group('fast')]
     public function testQueryLimitsToOneResult(): void
     {
         $filePath = __DIR__ . '/../../../app/action/getDataTables.php';
@@ -288,9 +290,9 @@ final class GetDataTablesFindCarByChassisTest extends TestCase
     /**
      * Test findCarByChassis is early return before table validation
      *
-     * @group fast
      * @return void
      */
+    #[Group('fast')]
     public function testFindCarByChassisIsEarlyReturn(): void
     {
         $filePath = __DIR__ . '/../../../app/action/getDataTables.php';
@@ -312,9 +314,9 @@ final class GetDataTablesFindCarByChassisTest extends TestCase
     /**
      * Test chassis parameter is not logged in response
      *
-     * @group fast
      * @return void
      */
+    #[Group('fast')]
     public function testChassisParameterNotLoggedInResponse(): void
     {
         $filePath = __DIR__ . '/../../../app/action/getDataTables.php';
@@ -352,9 +354,9 @@ final class GetDataTablesFindCarByChassisTest extends TestCase
      * Regression test for issue #581: Missing CSRF token caused 403 Forbidden errors
      * This ensures the calling code passes the csrf parameter to prevent CSRF validation failures
      *
-     * @group fast
      * @return void
      */
+    #[Group('fast')]
     public function testFactoryPageIncludesCsrfTokenInRequest(): void
     {
         $filePath = __DIR__ . '/../../../app/cars/factory.php';

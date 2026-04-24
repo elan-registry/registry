@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/IntegrationTestCase.php';
 
+use PHPUnit\Framework\Attributes\Group;
+
 /**
  * Integration tests for car action endpoints
  *
@@ -12,10 +14,9 @@ require_once __DIR__ . '/IntegrationTestCase.php';
  * - Car updates (updateCar)
  * - Image fetching (fetchImages)
  * - Image removal (removeImages)
- *
- * @group integration
- * @group car-actions
  */
+#[Group('integration')]
+#[Group('car-actions')]
 final class CarActionsTest extends IntegrationTestCase
 {
     /**

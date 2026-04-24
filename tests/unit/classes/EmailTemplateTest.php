@@ -4,14 +4,15 @@ declare(strict_types=1);
 
 use PHPUnit\Framework\TestCase;
 
+use PHPUnit\Framework\Attributes\Group;
+
 /**
  * EmailTemplate class tests
  *
  * Tests email template rendering with focus on XSS prevention
  * and proper HTML structure.
- *
- * @group fast
  */
+#[Group('fast')]
 final class EmailTemplateTest extends TestCase
 {
     private EmailTemplate $template;

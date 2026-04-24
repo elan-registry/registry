@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/IntegrationTestCase.php';
 
+use PHPUnit\Framework\Attributes\Group;
+
 /**
  * Integration tests for getDataTables.php endpoint error handling
  *
@@ -16,10 +18,10 @@ require_once __DIR__ . '/IntegrationTestCase.php';
  * - Exception handling
  * - Missing data handling
  *
- * @group integration
  * @author Elan Registry Development Team
  * @copyright 2025
  */
+#[Group('integration')]
 final class GetDataTablesEndpointTest extends IntegrationTestCase
 {
     protected $db;
@@ -38,9 +40,8 @@ final class GetDataTablesEndpointTest extends IntegrationTestCase
 
     /**
      * Test GET request returns 405 Method Not Allowed
-     *
-     * @group fast
      */
+    #[Group('fast')]
     public function testGetRequestReturnsMethodNotAllowed(): void
     {
         // Set up GET request (we can't directly test $_SERVER['REQUEST_METHOD'],
@@ -65,9 +66,8 @@ final class GetDataTablesEndpointTest extends IntegrationTestCase
 
     /**
      * Test method not allowed response follows Pattern A
-     *
-     * @group fast
      */
+    #[Group('fast')]
     public function testMethodNotAllowedFollowsPatternA(): void
     {
         $filePath = __DIR__ . '/../../app/action/getDataTables.php';
@@ -90,9 +90,8 @@ final class GetDataTablesEndpointTest extends IntegrationTestCase
 
     /**
      * Test method not allowed response does not log
-     *
-     * @group fast
      */
+    #[Group('fast')]
     public function testMethodNotAllowedDoesNotLog(): void
     {
         $filePath = __DIR__ . '/../../app/action/getDataTables.php';
@@ -119,9 +118,8 @@ final class GetDataTablesEndpointTest extends IntegrationTestCase
 
     /**
      * Test invalid CSRF token returns 403 Forbidden
-     *
-     * @group fast
      */
+    #[Group('fast')]
     public function testInvalidCsrfTokenReturnsForbidden(): void
     {
         $filePath = __DIR__ . '/../../app/action/getDataTables.php';
@@ -144,9 +142,8 @@ final class GetDataTablesEndpointTest extends IntegrationTestCase
 
     /**
      * Test CSRF error response follows Pattern A
-     *
-     * @group fast
      */
+    #[Group('fast')]
     public function testCsrfErrorFollowsPatternA(): void
     {
         $filePath = __DIR__ . '/../../app/action/getDataTables.php';
@@ -169,9 +166,8 @@ final class GetDataTablesEndpointTest extends IntegrationTestCase
 
     /**
      * Test CSRF error includes DataTables metadata
-     *
-     * @group fast
      */
+    #[Group('fast')]
     public function testCsrfErrorIncludesDataTablesMetadata(): void
     {
         $filePath = __DIR__ . '/../../app/action/getDataTables.php';
@@ -214,9 +210,8 @@ final class GetDataTablesEndpointTest extends IntegrationTestCase
 
     /**
      * Test CSRF error is logged to Security category
-     *
-     * @group fast
      */
+    #[Group('fast')]
     public function testCsrfErrorIsLogged(): void
     {
         $filePath = __DIR__ . '/../../app/action/getDataTables.php';
@@ -243,9 +238,8 @@ final class GetDataTablesEndpointTest extends IntegrationTestCase
 
     /**
      * Test exception returns 500 Server Error
-     *
-     * @group fast
      */
+    #[Group('fast')]
     public function testExceptionReturnsServerError(): void
     {
         $filePath = __DIR__ . '/../../app/action/getDataTables.php';
@@ -268,9 +262,8 @@ final class GetDataTablesEndpointTest extends IntegrationTestCase
 
     /**
      * Test exception response follows Pattern A
-     *
-     * @group fast
      */
+    #[Group('fast')]
     public function testExceptionFollowsPatternA(): void
     {
         $filePath = __DIR__ . '/../../app/action/getDataTables.php';
@@ -299,9 +292,8 @@ final class GetDataTablesEndpointTest extends IntegrationTestCase
 
     /**
      * Test exception response includes DataTables metadata
-     *
-     * @group fast
      */
+    #[Group('fast')]
     public function testExceptionIncludesDataTablesMetadata(): void
     {
         $filePath = __DIR__ . '/../../app/action/getDataTables.php';
@@ -332,9 +324,8 @@ final class GetDataTablesEndpointTest extends IntegrationTestCase
 
     /**
      * Test exception handler logs errors
-     *
-     * @group fast
      */
+    #[Group('fast')]
     public function testExceptionIsLogged(): void
     {
         $filePath = __DIR__ . '/../../app/action/getDataTables.php';
@@ -370,9 +361,8 @@ final class GetDataTablesEndpointTest extends IntegrationTestCase
 
     /**
      * Test no POST data returns 400 Bad Request
-     *
-     * @group fast
      */
+    #[Group('fast')]
     public function testNoPostDataReturnsBadRequest(): void
     {
         $filePath = __DIR__ . '/../../app/action/getDataTables.php';
@@ -395,9 +385,8 @@ final class GetDataTablesEndpointTest extends IntegrationTestCase
 
     /**
      * Test no POST data follows Pattern A
-     *
-     * @group fast
      */
+    #[Group('fast')]
     public function testNoDataFollowsPatternA(): void
     {
         $filePath = __DIR__ . '/../../app/action/getDataTables.php';
@@ -426,9 +415,8 @@ final class GetDataTablesEndpointTest extends IntegrationTestCase
 
     /**
      * Test no data response includes DataTables metadata
-     *
-     * @group fast
      */
+    #[Group('fast')]
     public function testNoDataIncludesDataTablesMetadata(): void
     {
         $filePath = __DIR__ . '/../../app/action/getDataTables.php';
@@ -463,9 +451,8 @@ final class GetDataTablesEndpointTest extends IntegrationTestCase
 
     /**
      * Test file has strict types declaration
-     *
-     * @group fast
      */
+    #[Group('fast')]
     public function testFileHasStrictTypesDeclaration(): void
     {
         $filePath = __DIR__ . '/../../app/action/getDataTables.php';
@@ -480,9 +467,8 @@ final class GetDataTablesEndpointTest extends IntegrationTestCase
 
     /**
      * Test all error responses use send() method
-     *
-     * @group fast
      */
+    #[Group('fast')]
     public function testAllErrorResponsesUseSendMethod(): void
     {
         $filePath = __DIR__ . '/../../app/action/getDataTables.php';
@@ -508,9 +494,8 @@ final class GetDataTablesEndpointTest extends IntegrationTestCase
 
     /**
      * Test CSRF error is returned before processing
-     *
-     * @group fast
      */
+    #[Group('fast')]
     public function testCsrfCheckBeforeProcessing(): void
     {
         $filePath = __DIR__ . '/../../app/action/getDataTables.php';
@@ -536,9 +521,8 @@ final class GetDataTablesEndpointTest extends IntegrationTestCase
 
     /**
      * Test DataTables metadata structure is consistent
-     *
-     * @group fast
      */
+    #[Group('fast')]
     public function testDataTablesMetadataStructureIsConsistent(): void
     {
         $filePath = __DIR__ . '/../../app/action/getDataTables.php';
@@ -580,9 +564,8 @@ final class GetDataTablesEndpointTest extends IntegrationTestCase
 
     /**
      * Test no hardcoded error responses remain
-     *
-     * @group fast
      */
+    #[Group('fast')]
     public function testNoHardcodedErrorResponses(): void
     {
         $filePath = __DIR__ . '/../../app/action/getDataTables.php';
