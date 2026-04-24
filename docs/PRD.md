@@ -699,7 +699,7 @@ optimization, automation, and UI/UX modernization.
 - **Backend**: PHP 8.1+ with UserSpice framework
 - **Database**: MySQL 8.0+ with comprehensive audit trails
 - **Frontend**: Bootstrap 4/5 with responsive design
-- **APIs**: Google Maps (Geocoding, JavaScript API)
+- **APIs**: Google Maps JavaScript API (map display); OpenStreetMap Nominatim (location search and geocoding)
 - **Hosting**: A2 Hosting with git-based deployment
 
 ---
