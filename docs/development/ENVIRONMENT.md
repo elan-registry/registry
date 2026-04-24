@@ -78,12 +78,12 @@ Turnstile requires HTTPS — the widget iframe is served over `https://` and
 browsers block cross-protocol frame loading, causing **TurnstileError 110200**
 on plain `http://localhost`.
 
-**Option A — Disable Turnstile (simplest)**
+#### Option A — Disable Turnstile (simplest)
 
 Remove or omit either key from `.env`. The widget is hidden and forms work
 without CAPTCHA validation. Use this when Turnstile behaviour is not under test.
 
-**Option B — Cloudflare Tunnel (test the full widget)**
+#### Option B — Cloudflare Tunnel (test the full widget)
 
 `cloudflared` creates a temporary public HTTPS URL that proxies to your local
 MAMP server. Cloudflare Tunnel terminates TLS upstream and forwards HTTP
@@ -107,11 +107,11 @@ internally, setting the `X-Forwarded-Proto: https` header so `$is_https` is
 
 3. **Choose test keys** based on what you are testing:
 
-   | Scenario | `TURNSTILE_SITE_KEY` | `TURNSTILE_SECRET_KEY` | Widget result | Server result |
-   |----------|----------------------|------------------------|---------------|---------------|
-   | Always pass | `1x00000000000000000000AA` | `1x0000000000000000000000000000000AA` | Green check ✓ | `success: true` |
-   | Widget block | `2x00000000000000000000AB` | `2x0000000000000000000000000000000AB` | Shows blocked / "Troubleshoot" | `success: false` |
-   | Server-side reject | `1x00000000000000000000AA` | `2x0000000000000000000000000000000AB` | Green check ✓ | `success: false` |
+   | Scenario           | `TURNSTILE_SITE_KEY`       | `TURNSTILE_SECRET_KEY`                | Widget result                  | Server result    |
+   | ------------------ | -------------------------- | ------------------------------------- | ------------------------------ | ---------------- |
+   | Always pass        | `1x00000000000000000000AA` | `1x0000000000000000000000000000000AA` | Green check ✓                  | `success: true`  |
+   | Widget block       | `2x00000000000000000000AB` | `2x0000000000000000000000000000000AB` | Shows blocked / "Troubleshoot" | `success: false` |
+   | Server-side reject | `1x00000000000000000000AA` | `2x0000000000000000000000000000000AB` | Green check ✓                  | `success: false` |
 
    - **Always pass** — use for normal development; widget auto-verifies, form submits.
    - **Widget block** — the widget itself shows a failed state before the form is submitted.
@@ -140,7 +140,7 @@ internally, setting the `X-Forwarded-Proto: https` header so `$is_https` is
    ```bash
    # Copy the public template
    cp .env.example .env
-   
+
    # Edit with your local credentials
    # Example contents:
    # DB_HOST=127.0.0.1
@@ -161,7 +161,7 @@ internally, setting the `X-Forwarded-Proto: https` header so `$is_https` is
    ```bash
    # Copy the test template
    cp .env.local.sample .env.local
-   
+
    # Edit with your test database credentials
    # Uses DB_* names directly (not ELAN_DEV_DB_* prefix)
    chmod 600 .env.local
@@ -236,16 +236,15 @@ The `.env.local` file contains local development database credentials:
 
 - **Never commit** `.env`, `.env.local`, or other environment files to version control
 - **Restrict file permissions** to web server user only: `chmod 600 .env`
-- **Secure deletion** when replacing credentials: `shred -vfz .env.enc` (if migrating from SecureEnvPHP)
 - **Backup security** — ensure backups are encrypted by hosting provider
 - **CI scanning** — GitGuardian detects accidental plaintext secret commits
 
 ### API Key Security
 
-Configure API keys in **Google Cloud Console**:
+Configure Google Maps API keys in **Google Cloud Console**:
 
 - **Domain Restrictions**: Restrict to your domains only
-- **API Restrictions**: Enable only Maps JavaScript API and Geocoding API
+- **API Restrictions**: Enable only the Maps JavaScript API (geocoding
 - **Monitoring**: Set usage quotas and monitor for unusual activity
 - **Separate Keys**: Use different keys for development/staging/production
 
@@ -291,4 +290,4 @@ if (empty($_ENV['DB_HOST'])) {
 - [vlucas/phpdotenv Documentation](https://github.com/vlucas/phpdotenv)
 - [ADR-014: Replace secure-env-php with phpdotenv](adr/ADR-014-replace-secure-env-php-with-phpdotenv.md)
 - [Google Maps API Documentation](https://developers.google.com/maps/documentation)
-- [Google Geocoding API Documentation](https://developers.google.com/maps/documentation/geocoding)
+- [Nominatim API Documentation](https://nominatim.org/release-docs/latest/api/Search/) — used for location search and reverse geocoding
