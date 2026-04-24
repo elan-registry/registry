@@ -42,6 +42,13 @@ or script execution. Use numbered steps with commands.]
 
 **Delete everything below the `---` line when creating actual release notes.**
 
+### Working Draft Convention
+
+`docs/releases/` holds **only the current milestone's working draft**. Once
+`/release-milestone` publishes the notes to GitHub Releases, the file is
+deleted from the repo. GitHub Releases is the canonical archive — do not
+accumulate historical files here.
+
 ### For AI Agents
 
 When generating release notes:
