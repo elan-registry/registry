@@ -2,47 +2,48 @@
 
 #
 # Pre-push hook: non-blocking reminder to run /review-pr before pushing
-# an issue branch.
+# a feature branch.
 #
-# Rationale: CI runs a lightweight Sonnet-backed review on issue -> milestone
-# PRs and relies on the author having done a deep multi-agent review
-# locally. Running /review-pr on your Claude Max/Pro subscription catches
-# issues before CI cycles burn tokens on every push.
+# Rationale: CI runs a lightweight Sonnet-backed review on PRs targeting
+# milestone branches and relies on the author having done a deep multi-agent
+# review locally. Running /review-pr on your Claude Max/Pro subscription
+# catches issues before CI cycles burn tokens on every push.
 #
 # This hook NEVER blocks a push. It only prints a reminder on the first
-# push of a branch that looks like an issue branch (issue/*,
+# push of a branch that looks like feature / issue work (issue/*,
 # claude/*, feat/*, fix/*, chore/*, refactor/*) when the remote branch
 # does not yet exist. Set SKIP_REVIEW_PR_REMINDER=1 to silence it.
 #
-
-set -u
 
 if [ -n "${SKIP_REVIEW_PR_REMINDER:-}" ]; then
     exit 0
 fi
 
-# Read ref updates from stdin. If none, nothing to do.
-if [ ! -t 0 ]; then
-    while read -r local_ref local_sha remote_ref remote_sha; do
-        # Skip deletes
-        if [ "$local_sha" = "0000000000000000000000000000000000000000" ]; then
+# Read ref updates from stdin. git always pipes ref data to pre-push hooks;
+# the while loop exits cleanly on EOF if there is nothing to process.
+reminder_shown=0
+while read -r local_ref local_sha remote_ref remote_sha; do
+    # Skip deletes
+    if [ "$local_sha" = "0000000000000000000000000000000000000000" ]; then
+        continue
+    fi
+
+    branch="${local_ref#refs/heads/}"
+
+    # Only remind on branches that look like feature / issue work
+    case "$branch" in
+        issue/*|claude/*|feat/*|fix/*|chore/*|refactor/*)
+            ;;
+        *)
             continue
-        fi
+            ;;
+    esac
 
-        branch="${local_ref#refs/heads/}"
-
-        # Only remind on branches that look like feature / issue work
-        case "$branch" in
-            issue/*|claude/*|feat/*|fix/*|chore/*|refactor/*)
-                ;;
-            *)
-                continue
-                ;;
-        esac
-
-        # Only remind on the first push (remote ref is all-zeros)
-        if [ "$remote_sha" = "0000000000000000000000000000000000000000" ]; then
-            cat <<EOF
+    # Only remind on the first push (remote ref is all-zeros).
+    # Use a flag instead of break so all refs are evaluated — on a
+    # multi-branch push a later ref may be the new one that needs the reminder.
+    if [ "$remote_sha" = "0000000000000000000000000000000000000000" ] && [ "$reminder_shown" -eq 0 ]; then
+        cat <<EOF
 
   Heads up: first push of branch '$branch'.
 
@@ -55,9 +56,8 @@ if [ ! -t 0 ]; then
   (Silence this reminder with SKIP_REVIEW_PR_REMINDER=1 git push ...)
 
 EOF
-            break
-        fi
-    done
-fi
+        reminder_shown=1
+    fi
+done
 
 exit 0

@@ -2,12 +2,15 @@ name: Claude Code Review
 
 # Two review modes gated by PR base branch:
 #
-#   issue  -> milestone/*   : lightweight Sonnet backstop. Runs on every push.
-#                             Assumes the author ran `/review-pr` locally on
-#                             their Max/Pro plan before pushing, and relies on
-#                             the parallel Static Analysis / CodeQL / Semgrep
-#                             checks to catch the cheap issues. This prompt
-#                             focuses on things static tools can't see.
+#   * -> milestone/*        : lightweight Sonnet backstop. Runs on every push.
+#                             Covers any head branch type (issue/*, feat/*,
+#                             fix/*, claude/*, chore/*, etc.) — not restricted
+#                             to issue/ branches by design. Assumes the author
+#                             ran `/review-pr` locally on their Max/Pro plan
+#                             before pushing, and relies on the parallel Static
+#                             Analysis / CodeQL / Semgrep checks to catch the
+#                             cheap issues. This prompt focuses on things static
+#                             tools can't see.
 #
 #   milestone/* -> main     : deep multi-agent review. Runs once on PR open
 #                             or when the `deep-review` label is applied / a
@@ -31,6 +34,9 @@ on:
       - "scripts/**"
       - "docs/development/**"
       - ".github/workflows/**"
+  # Note: `paths` filter above applies only to pull_request events.
+  # issue_comment events are not filtered by paths — the job's `if:`
+  # condition and author_association check handle gating.
   issue_comment:
     types: [created]
   workflow_dispatch:
@@ -41,8 +47,9 @@ on:
         type: number
 
 jobs:
-  # Lightweight review for issue -> milestone PRs. Runs on every push.
-  issue-review:
+  # Lightweight review for PRs targeting milestone branches. Runs on every
+  # push. Covers any head branch type — not restricted to issue/ branches.
+  pr-to-milestone-review:
     if: |
       github.event_name == 'pull_request' &&
       github.event.pull_request.draft == false &&
@@ -184,16 +191,21 @@ jobs:
         id: merged-prs
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          MILESTONE_BRANCH: ${{ github.event.pull_request.head.ref }}
         run: |
-          MILESTONE_BRANCH="${{ github.event.pull_request.head.ref }}"
           echo "Merged issue PRs against ${MILESTONE_BRANCH}:" > merged-prs.txt
-          gh pr list \
+          if ! gh pr list \
             --base "$MILESTONE_BRANCH" \
             --state merged \
             --limit 100 \
             --json number,title,mergedAt,author \
             --jq '.[] | "#\(.number) \(.title) (by @\(.author.login))"' \
-            >> merged-prs.txt || true
+            >> merged-prs.txt; then
+            echo "::warning::Failed to fetch merged PR list — review will proceed with incomplete data"
+            echo "WARNING: gh pr list failed. PR list above may be incomplete." >> merged-prs.txt
+          fi
+          PR_COUNT=$(grep -c '^#' merged-prs.txt || echo 0)
+          echo "Collected ${PR_COUNT} merged PRs"
           cat merged-prs.txt
 
       - name: Run Claude Milestone-Level Review
@@ -202,7 +214,7 @@ jobs:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           use_sticky_comment: true
           # Opus is worth it here: this runs once per milestone, not per push.
-          model: "claude-opus-4-5"
+          model: "claude-opus-4-6"
           direct_prompt: |
             You are reviewing a **milestone release PR** targeting `main`.
 
@@ -227,10 +239,10 @@ jobs:
             Dispatch specialist agents in parallel via the Task tool:
 
             1. **Release notes accuracy** — compare `merged-prs.txt` against
-               the milestone's release notes under `docs/development/` (see
-               `RELEASE_NOTES_TEMPLATE.md`). Every merged PR should be
-               reflected. Flag missing, duplicated, or mis-categorized
-               entries.
+               the milestone's release notes at `docs/releases/RELEASE_NOTES_v*.md`
+               (use `docs/development/RELEASE_NOTES_TEMPLATE.md` as the
+               structural reference only). Every merged PR should be reflected.
+               Flag missing, duplicated, or mis-categorized entries.
 
             2. **Architecture drift** — launch `senior-architect`. Is the
                aggregated shape still coherent with the wiki's architecture
@@ -313,13 +325,17 @@ jobs:
             Bash(npm run lint)
 
   # Deep review triggered by a PR comment: `@claude deep-review`.
-  # Useful when the author wants the Opus multi-agent pass on an
-  # issue-level PR or on a milestone PR after a push.
+  # Restricted to repository owners and collaborators to prevent abuse.
+  # Useful when the author wants the Opus multi-agent pass on any PR.
   comment-triggered-deep-review:
     if: |
       github.event_name == 'issue_comment' &&
       github.event.issue.pull_request != null &&
-      contains(github.event.comment.body, '@claude deep-review')
+      contains(github.event.comment.body, '@claude deep-review') &&
+      (
+        github.event.comment.author_association == 'OWNER' ||
+        github.event.comment.author_association == 'COLLABORATOR'
+      )
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -334,12 +350,21 @@ jobs:
           fetch-depth: 0
           ref: refs/pull/${{ github.event.issue.number }}/head
 
+      - name: Get PR base branch
+        id: pr-info
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.issue.number }}
+        run: |
+          BASE=$(gh pr view "$PR_NUMBER" --json baseRefName -q .baseRefName)
+          echo "base_ref=${BASE}" >> "$GITHUB_OUTPUT"
+
       - name: Run Claude Deep Review
         uses: anthropics/claude-code-action@beta
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           use_sticky_comment: true
-          model: "claude-opus-4-5"
+          model: "claude-opus-4-6"
           direct_prompt: |
             Deep review requested by `@claude deep-review` comment on
             PR #${{ github.event.issue.number }}.
@@ -358,10 +383,8 @@ jobs:
             Scope is the PR diff:
 
             ```bash
-            git diff origin/${{ github.event.issue.pull_request.url }}...HEAD
+            git diff origin/${{ steps.pr-info.outputs.base_ref }}...HEAD
             ```
-
-            If that fails, fall back to `git diff main...HEAD`.
 
             Aggregate into one sticky comment with Blocking / Important /
             Suggestions / Strengths / Action Plan sections. Every item must

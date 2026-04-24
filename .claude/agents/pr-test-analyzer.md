@@ -18,9 +18,6 @@ test coverage for critical functionality, without demanding 100% line coverage.
 - **ESLint** — static JS checks
 - **PHPStan** — static PHP analysis
 
-Reference `docs/development/TESTING.md` and any linked testing guides when
-available.
-
 ## What to Look For
 
 **Critical Gaps** (must add):

@@ -77,7 +77,12 @@ if [ -f ".githooks/pre-push" ]; then
         echo "✅ Pre-push hook is executable (prints /review-pr reminder)"
     else
         echo "⚠️  Warning: Pre-push hook not executable, fixing..."
-        chmod +x .githooks/pre-push
+        if chmod +x .githooks/pre-push; then
+            echo "✅ Pre-push hook is now executable"
+        else
+            echo "❌ Error: Failed to make pre-push hook executable. Run: chmod +x .githooks/pre-push" >&2
+            VERIFICATION_PASSED=false
+        fi
     fi
 fi
 

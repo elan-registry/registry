@@ -458,7 +458,9 @@ Once the user approves the plan, execute using agents strategically:
    > **Why `/review-pr` before push?** CI runs a lightweight Sonnet backstop
    > on issue PRs and relies on the author having done a deep review locally.
    > Running `/review-pr` here catches issues on your plan instead of burning
-   > CI tokens on repeated pushes.
+   > CI tokens on repeated pushes. Note: at this stage it reviews working-tree
+   > changes (`git diff HEAD`) — run it before `/commit` so you can act on
+   > findings without an amended commit.
 
    Do NOT run any of these steps automatically. Each step requires the user
    to explicitly invoke it (e.g., type `/commit` or `/commit-push-pr`).

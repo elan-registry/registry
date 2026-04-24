@@ -169,9 +169,10 @@ deep pass on the milestone PR.
 ```
 
 Scope the review to `git diff main...milestone/$ARGUMENTS`. The multi-agent
-suite runs in parallel (code-reviewer, pr-test-analyzer,
+suite runs in parallel (currently: code-reviewer, pr-test-analyzer,
 silent-failure-hunter, comment-analyzer, type-design-analyzer,
-senior-architect). Focus areas at milestone level:
+senior-architect — agent list reflects `/review-pr` implementation).
+Focus areas at milestone level:
 
 - Cross-issue integration (did two PRs introduce contradictions?)
 - Architecture drift vs. the wiki
