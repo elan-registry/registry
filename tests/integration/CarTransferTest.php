@@ -6,14 +6,15 @@ require_once __DIR__ . '/IntegrationTestCase.php';
 
 use ElanRegistry\Exceptions\CarPermissionException;
 
+use PHPUnit\Framework\Attributes\Group;
+
 /**
  * Test cases for Car transfer functionality
  *
  * Tests cover car ownership transfer operations with user validation,
  * transaction handling, relationship updates, and profile data copying.
- *
- * @group integration
  */
+#[Group('integration')]
 final class CarTransferTest extends IntegrationTestCase
 {
     private $testCarId;
@@ -66,9 +67,8 @@ final class CarTransferTest extends IntegrationTestCase
 
     /**
      * Test successful car transfer to valid user
-     *
-     * @group fast
      */
+    #[Group('fast')]
     public function testTransferCarSuccessWithValidUser(): void
     {
         $car = new Car($this->testCarId);
@@ -84,9 +84,8 @@ final class CarTransferTest extends IntegrationTestCase
 
     /**
      * Test car transfer fails with invalid user ID
-     *
-     * @group fast
      */
+    #[Group('fast')]
     public function testTransferCarFailsWithInvalidUser(): void
     {
         $this->expectException(Exception::class);
@@ -97,9 +96,8 @@ final class CarTransferTest extends IntegrationTestCase
 
     /**
      * Test car transfer fails when car does not exist
-     *
-     * @group fast
      */
+    #[Group('fast')]
     public function testTransferCarFailsWhenCarNotExists(): void
     {
         $this->expectException(Exception::class);
@@ -110,9 +108,8 @@ final class CarTransferTest extends IntegrationTestCase
 
     /**
      * Test car transfer updates car_user relationship table
-     *
-     * @group fast
      */
+    #[Group('fast')]
     public function testTransferUpdatesCarUserRelationship(): void
     {
         $car = new Car($this->testCarId);
@@ -139,9 +136,8 @@ final class CarTransferTest extends IntegrationTestCase
 
     /**
      * Test car transfer creates history record
-     *
-     * @group fast
      */
+    #[Group('fast')]
     public function testTransferCreatesHistoryRecord(): void
     {
         $car = new Car($this->testCarId);
@@ -161,9 +157,8 @@ final class CarTransferTest extends IntegrationTestCase
 
     /**
      * Test car transfer copies user profile data
-     *
-     * @group fast
      */
+    #[Group('fast')]
     public function testTransferCopiesUserProfileData(): void
     {
         $car = new Car($this->testCarId);
@@ -185,9 +180,8 @@ final class CarTransferTest extends IntegrationTestCase
 
     /**
      * Test car transfer transaction rollback on failure
-     *
-     * @group fast
      */
+    #[Group('fast')]
     public function testTransferTransactionRollbackOnFailure(): void
     {
         // Test that invalid user causes transfer to fail completely
@@ -208,9 +202,8 @@ final class CarTransferTest extends IntegrationTestCase
 
     /**
      * Test car transfer requires authenticated user
-     *
-     * @group fast
      */
+    #[Group('fast')]
     public function testTransferRequiresAuthenticatedUser(): void
     {
         $this->expectException(CarPermissionException::class);
@@ -234,9 +227,8 @@ final class CarTransferTest extends IntegrationTestCase
 
     /**
      * Test car transfer with TRANSFER operation type
-     *
-     * @group fast
      */
+    #[Group('fast')]
     public function testTransferCarWithTransferOperationType(): void
     {
         $car = new Car($this->testCarId);
@@ -256,9 +248,8 @@ final class CarTransferTest extends IntegrationTestCase
 
     /**
      * Test car transfer updates location data if available
-     *
-     * @group fast
      */
+    #[Group('fast')]
     public function testTransferUpdatesLocationData(): void
     {
         $car = new Car($this->testCarId);

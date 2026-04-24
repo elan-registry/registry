@@ -6,14 +6,15 @@ require_once __DIR__ . '/IntegrationTestCase.php';
 
 use ElanRegistry\Exceptions\CarPermissionException;
 
+use PHPUnit\Framework\Attributes\Group;
+
 /**
  * Test cases for Car merge functionality
  *
  * Tests cover car merging operations with history transfer, deletion,
  * transaction handling, and validation.
- *
- * @group integration
  */
+#[Group('integration')]
 final class CarMergeTest extends IntegrationTestCase
 {
     private $testCarId;
@@ -71,9 +72,8 @@ final class CarMergeTest extends IntegrationTestCase
 
     /**
      * Test successful car merge with valid source car
-     *
-     * @group fast
      */
+    #[Group('fast')]
     public function testMergeCarSuccessWithValidOldCar(): void
     {
         $car = new Car($this->testCarId);
@@ -84,9 +84,8 @@ final class CarMergeTest extends IntegrationTestCase
 
     /**
      * Test car merge fails when target car does not exist
-     *
-     * @group fast
      */
+    #[Group('fast')]
     public function testMergeCarFailsWhenTargetNotExists(): void
     {
         $this->expectException(Exception::class);
@@ -97,9 +96,8 @@ final class CarMergeTest extends IntegrationTestCase
 
     /**
      * Test car merge fails when source car does not exist
-     *
-     * @group fast
      */
+    #[Group('fast')]
     public function testMergeCarFailsWhenSourceNotExists(): void
     {
         $this->expectException(Exception::class);
@@ -110,9 +108,8 @@ final class CarMergeTest extends IntegrationTestCase
 
     /**
      * Test car merge fails when merging car with itself
-     *
-     * @group fast
      */
+    #[Group('fast')]
     public function testMergeCarFailsWhenMergingSelf(): void
     {
         $this->expectException(Exception::class);
@@ -123,9 +120,8 @@ final class CarMergeTest extends IntegrationTestCase
 
     /**
      * Test car merge transfers history records
-     *
-     * @group fast
      */
+    #[Group('fast')]
     public function testMergeTransfersHistoryRecords(): void
     {
         $car = new Car($this->testCarId);
@@ -143,9 +139,8 @@ final class CarMergeTest extends IntegrationTestCase
 
     /**
      * Test car merge deletes old car
-     *
-     * @group fast
      */
+    #[Group('fast')]
     public function testMergeDeletesOldCar(): void
     {
         $oldCarId = $this->testMergeCarId;
@@ -162,9 +157,8 @@ final class CarMergeTest extends IntegrationTestCase
 
     /**
      * Test car merge creates audit trail
-     *
-     * @group fast
      */
+    #[Group('fast')]
     public function testMergeCreatesAuditTrail(): void
     {
         $car = new Car($this->testCarId);
@@ -182,9 +176,8 @@ final class CarMergeTest extends IntegrationTestCase
 
     /**
      * Test car merge transaction rollback on failure
-     *
-     * @group fast
      */
+    #[Group('fast')]
     public function testMergeTransactionRollbackOnFailure(): void
     {
         $this->expectException(Exception::class);
@@ -204,9 +197,8 @@ final class CarMergeTest extends IntegrationTestCase
 
     /**
      * Test car merge removes old car relationships
-     *
-     * @group fast
      */
+    #[Group('fast')]
     public function testMergeRemovesOldCarRelationships(): void
     {
         $oldCarId = $this->testMergeCarId;
@@ -223,9 +215,8 @@ final class CarMergeTest extends IntegrationTestCase
 
     /**
      * Test car merge requires authenticated user
-     *
-     * @group fast
      */
+    #[Group('fast')]
     public function testMergeRequiresAuthenticatedUser(): void
     {
         $this->expectException(CarPermissionException::class);

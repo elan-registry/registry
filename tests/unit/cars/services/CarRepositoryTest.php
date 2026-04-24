@@ -5,11 +5,12 @@ declare(strict_types=1);
 use ElanRegistry\Car\CarRepository;
 use PHPUnit\Framework\TestCase;
 
+use PHPUnit\Framework\Attributes\Group;
+
 /**
  * Unit tests for CarRepository service class
- *
- * @group fast
  */
+#[Group('fast')]
 final class CarRepositoryTest extends TestCase
 {
     private CarRepository $repo;

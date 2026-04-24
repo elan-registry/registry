@@ -4,14 +4,15 @@ declare(strict_types=1);
 
 use PHPUnit\Framework\TestCase;
 
+use PHPUnit\Framework\Attributes\Group;
+
 /**
  * Security-focused test cases for file upload functionality
  *
  * Tests the security enhancements added to editCar.php file upload system.
  * Validates protection against common file upload attack vectors.
- *
- * @group fast
  */
+#[Group('fast')]
 class FileUploadSecurityTest extends TestCase
 {
     private $tempDir;

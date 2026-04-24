@@ -4,15 +4,16 @@ declare(strict_types=1);
 
 use PHPUnit\Framework\TestCase;
 
+use PHPUnit\Framework\Attributes\Group;
+
 /**
  * Test custom autoloader functionality
  *
  * Verifies that the hybrid namespace-aware autoloader correctly loads
  * both namespaced (PSR-4) and non-namespaced (recursive scan) classes.
- *
- * @group system
- * @group autoloader
  */
+#[Group('system')]
+#[Group('autoloader')]
 class AutoloaderTest extends TestCase
 {
     /**

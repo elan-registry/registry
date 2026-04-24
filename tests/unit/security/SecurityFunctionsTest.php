@@ -4,12 +4,13 @@ declare(strict_types=1);
 
 use PHPUnit\Framework\TestCase;
 
+use PHPUnit\Framework\Attributes\Group;
+
 /**
  * Direct tests of security functions without full framework bootstrap
  * SECURITY: Removed eval() usage and implemented safe function definitions
- *
- * @group fast
  */
+#[Group('fast')]
 class SecurityFunctionsTest extends TestCase
 {
     private $tempDir;
@@ -79,7 +80,6 @@ class SecurityFunctionsTest extends TestCase
                 if (function_exists("finfo_open")) {
                     $finfo = finfo_open(FILEINFO_MIME_TYPE);
                     $mtype = finfo_file($finfo, $file);
-                    finfo_close($finfo);
                 } elseif (function_exists("mime_content_type")) {
                     $mtype = mime_content_type($file);
                 } else {
@@ -114,10 +114,8 @@ class SecurityFunctionsTest extends TestCase
             }
         }
     }
-    
-    /**
-     * @group fast
-     */
+
+    #[Group('fast')]
     public function testSecureFilenameGeneration(): void
     {
         $filename1 = generateSecureFilename('jpg');
@@ -133,10 +131,8 @@ class SecurityFunctionsTest extends TestCase
         // Should be proper length (img_ + 32 hex chars + .ext)
         $this->assertEquals(40, strlen($filename1)); // img_ (4) + 32 hex + .jpg (4)
     }
-    
-    /**
-     * @group fast
-     */
+
+    #[Group('fast')]
     public function testMimeTypeValidationValid(): void
     {
         // Create test files with valid MIME types
@@ -147,10 +143,8 @@ class SecurityFunctionsTest extends TestCase
         $this->assertEquals('image/jpeg', getMimeType($jpegFile));
         $this->assertEquals('image/png', getMimeType($pngFile));
     }
-    
-    /**
-     * @group fast
-     */
+
+    #[Group('fast')]
     public function testMimeTypeValidationInvalid(): void
     {
         // Create test file with invalid MIME type  
@@ -161,10 +155,8 @@ class SecurityFunctionsTest extends TestCase
         $this->expectExceptionMessage('Invalid file type detected');
         getMimeType($phpFile);
     }
-    
-    /**
-     * @group fast
-     */
+
+    #[Group('fast')]
     public function testExtensionMappingSecurity(): void
     {
         // Valid MIME types should return correct extensions
@@ -178,10 +170,8 @@ class SecurityFunctionsTest extends TestCase
         $this->expectExceptionMessage('Unsupported file type');
         getExtension('application/x-php');
     }
-    
-    /**
-     * @group fast
-     */
+
+    #[Group('fast')]
     public function testFileUploadSizeValidation(): void
     {
         // Test file within size limit
@@ -207,9 +197,8 @@ class SecurityFunctionsTest extends TestCase
     
     /**
      * Test file upload minimum size validation
-     *
-     * @group fast
      */
+    #[Group('fast')]
     public function testFileUploadMinimumSize(): void
     {
         // Test file below minimum size
@@ -226,9 +215,8 @@ class SecurityFunctionsTest extends TestCase
     
     /**
      * Test file upload error handling for various upload error codes
-     *
-     * @group fast
      */
+    #[Group('fast')]
     public function testFileUploadErrorHandling(): void
     {
         // Test various upload errors
@@ -257,10 +245,8 @@ class SecurityFunctionsTest extends TestCase
             }
         }
     }
-    
-    /**
-     * @group slow
-     */
+
+    #[Group('slow')]
     public function testFilenameCollisionHandling(): void
     {
         // Generate multiple filenames - should all be unique
@@ -271,10 +257,8 @@ class SecurityFunctionsTest extends TestCase
             $filenames[] = $filename;
         }
     }
-    
-    /**
-     * @group slow
-     */
+
+    #[Group('slow')]
     public function testFilenameEntropy(): void
     {
         $filenames = [];

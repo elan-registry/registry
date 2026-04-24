@@ -5,14 +5,15 @@ declare(strict_types=1);
 use ElanRegistry\Exceptions\CarValidationException;
 use PHPUnit\Framework\TestCase;
 
+use PHPUnit\Framework\Attributes\Group;
+
 /**
  * Car CRUD operations tests
  *
  * Tests cover create, read, update, delete operations including
  * validation, security, file uploads, and image management.
- *
- * @group fast
  */
+#[Group('fast')]
 final class CarCrudTest extends TestCase
 {
     private $testCarId;

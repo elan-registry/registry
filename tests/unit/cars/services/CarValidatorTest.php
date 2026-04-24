@@ -7,11 +7,13 @@ use ElanRegistry\Exceptions\CarValidationException;
 use ElanRegistry\Exceptions\ElanRegistryException;
 use PHPUnit\Framework\TestCase;
 
+use PHPUnit\Framework\Attributes\DataProvider;
+use PHPUnit\Framework\Attributes\Group;
+
 /**
  * Unit tests for CarValidator service class
- *
- * @group fast
  */
+#[Group('fast')]
 final class CarValidatorTest extends TestCase
 {
     private CarValidator $validator;
@@ -258,8 +260,8 @@ final class CarValidatorTest extends TestCase
      * (extends ElanRegistryException), never generic Exception.
      *
      * @param array<string, mixed> $fields
-     * @dataProvider invalidFieldsProvider
      */
+    #[DataProvider('invalidFieldsProvider')]
     public function testAllValidationErrorsThrowCarValidationException(array $fields, bool $requireAll): void
     {
         try {

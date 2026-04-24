@@ -5,15 +5,16 @@ declare(strict_types=1);
 use PHPUnit\Framework\TestCase;
 use ElanRegistry\Documentation\MarkdownParser;
 
+use PHPUnit\Framework\Attributes\Group;
+
 /**
  * MarkdownParser class tests
  *
  * CRITICAL SECURITY TESTS for XSS prevention in markdown conversion.
  * Focus: URL validation, script injection prevention, safe output.
- *
- * @group fast
- * @group security
  */
+#[Group('fast')]
+#[Group('security')]
 final class MarkdownParserTest extends TestCase
 {
     // ============================================================

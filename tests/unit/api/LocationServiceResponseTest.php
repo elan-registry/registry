@@ -4,25 +4,26 @@ declare(strict_types=1);
 
 use PHPUnit\Framework\TestCase;
 
+use PHPUnit\Framework\Attributes\Group;
+
 /**
  * Unit tests for Location Service AJAX endpoints using ApiResponse
  *
  * Tests the refactored location-search.php and location-reverse.php endpoints
  * to verify they properly use the ApiResponse class and return standardized
  * response formats.
- *
- * @group fast
- * @group unit
- * @group api
  */
+#[Group('fast')]
+#[Group('unit')]
+#[Group('api')]
 final class LocationServiceResponseTest extends TestCase
 {
     /**
      * Test that search endpoint would return 405 for non-POST requests
      *
-     * @group fast
      * @return void
      */
+    #[Group('fast')]
     public function testLocationSearchReturnsMethodNotAllowedForNonPost(): void
     {
         $response = ApiResponse::error('Method not allowed', 405);
@@ -36,9 +37,9 @@ final class LocationServiceResponseTest extends TestCase
     /**
      * Test that reverse geocode endpoint would return 405 for non-POST requests
      *
-     * @group fast
      * @return void
      */
+    #[Group('fast')]
     public function testLocationReverseReturnsMethodNotAllowedForNonPost(): void
     {
         $response = ApiResponse::error('Method not allowed', 405);
@@ -50,9 +51,9 @@ final class LocationServiceResponseTest extends TestCase
     /**
      * Test that search endpoint would return 403 for invalid CSRF token
      *
-     * @group fast
      * @return void
      */
+    #[Group('fast')]
     public function testLocationSearchReturnsForbiddenForInvalidCsrf(): void
     {
         $response = ApiResponse::forbidden('Invalid CSRF token');
@@ -65,9 +66,9 @@ final class LocationServiceResponseTest extends TestCase
     /**
      * Test that reverse geocode endpoint would return 403 for invalid CSRF token
      *
-     * @group fast
      * @return void
      */
+    #[Group('fast')]
     public function testLocationReverseReturnsForbiddenForInvalidCsrf(): void
     {
         $response = ApiResponse::forbidden('Invalid CSRF token');
@@ -84,9 +85,9 @@ final class LocationServiceResponseTest extends TestCase
      * - Response has 'message' key (not 'error' key)
      * - HTTP status code is 400
      *
-     * @group fast
      * @return void
      */
+    #[Group('fast')]
     public function testLocationSearchReturnsValidationErrorWithMessageKey(): void
     {
         $response = ApiResponse::error('Search query must be at least 2 characters', 400);
@@ -108,9 +109,9 @@ final class LocationServiceResponseTest extends TestCase
      * - HTTP status code is 400
      * - Optional logging can be attached
      *
-     * @group fast
      * @return void
      */
+    #[Group('fast')]
     public function testLocationSearchReturnsBadRequestForLocationServiceException(): void
     {
         $errorMessage = 'Rate limit exceeded. Please try again in a moment.';
@@ -137,9 +138,9 @@ final class LocationServiceResponseTest extends TestCase
      * - Response includes 'results' and 'count' keys in data
      * - HTTP status code is 200
      *
-     * @group fast
      * @return void
      */
+    #[Group('fast')]
     public function testLocationSearchReturnsSuccessWithResultsAndCount(): void
     {
         $mockResults = [
@@ -174,9 +175,9 @@ final class LocationServiceResponseTest extends TestCase
      * - Response has generic error message
      * - HTTP status code is 500
      *
-     * @group fast
      * @return void
      */
+    #[Group('fast')]
     public function testLocationSearchReturnsServerErrorForUnexpectedException(): void
     {
         $response = ApiResponse::serverError('An error occurred while searching locations')
@@ -196,9 +197,9 @@ final class LocationServiceResponseTest extends TestCase
      * - Response has 'message' key
      * - HTTP status code is 400
      *
-     * @group fast
      * @return void
      */
+    #[Group('fast')]
     public function testLocationReverseReturnsBadRequestForMissingCoordinates(): void
     {
         $response = ApiResponse::error('Latitude and longitude are required', 400);
@@ -218,9 +219,9 @@ final class LocationServiceResponseTest extends TestCase
      * - HTTP status code is 400 (always, for consistent behavior)
      * - Logging is included
      *
-     * @group fast
      * @return void
      */
+    #[Group('fast')]
     public function testLocationReverseReturnsBadRequestForLocationServiceException(): void
     {
         $errorMessage = 'Invalid coordinates provided';
@@ -246,9 +247,9 @@ final class LocationServiceResponseTest extends TestCase
      * - Response includes 'location' object in data with city, state, country, lat, lon
      * - HTTP status code is 200
      *
-     * @group fast
      * @return void
      */
+    #[Group('fast')]
     public function testLocationReverseReturnsSuccessWithLocation(): void
     {
         $mockLocation = [
@@ -279,9 +280,9 @@ final class LocationServiceResponseTest extends TestCase
      * - Response has generic error message
      * - HTTP status code is 500
      *
-     * @group fast
      * @return void
      */
+    #[Group('fast')]
     public function testLocationReverseReturnsServerErrorForUnexpectedException(): void
     {
         $response = ApiResponse::serverError('An error occurred while reverse geocoding coordinates')
@@ -299,9 +300,9 @@ final class LocationServiceResponseTest extends TestCase
      * This verifies the frontend JavaScript can properly read the 'message' key
      * when checking if data.success is false.
      *
-     * @group fast
      * @return void
      */
+    #[Group('fast')]
     public function testLocationResponsesUseMessageKeyNotErrorKey(): void
     {
         // Test error response
@@ -329,9 +330,9 @@ final class LocationServiceResponseTest extends TestCase
      * Location services are used during registration (anonymous users),
      * so logging should work with userId=0
      *
-     * @group fast
      * @return void
      */
+    #[Group('fast')]
     public function testLocationResponsesWithAnonymousUserLogging(): void
     {
         $response = ApiResponse::error('Search failed', 400)
@@ -347,9 +348,9 @@ final class LocationServiceResponseTest extends TestCase
     /**
      * Test logging is included in responses with authenticated users
      *
-     * @group fast
      * @return void
      */
+    #[Group('fast')]
     public function testLocationResponsesWithAuthenticatedUserLogging(): void
     {
         $userId = 42;
@@ -365,9 +366,9 @@ final class LocationServiceResponseTest extends TestCase
     /**
      * Test search response with empty results
      *
-     * @group fast
      * @return void
      */
+    #[Group('fast')]
     public function testLocationSearchWithEmptyResults(): void
     {
         $response = ApiResponse::success('Search completed')
@@ -383,9 +384,9 @@ final class LocationServiceResponseTest extends TestCase
     /**
      * Test search response with multiple results
      *
-     * @group fast
      * @return void
      */
+    #[Group('fast')]
     public function testLocationSearchWithMultipleResults(): void
     {
         $mockResults = [

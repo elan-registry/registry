@@ -26,15 +26,17 @@ use ElanRegistry\Exceptions\UnauthorizedException;
 use ElanRegistry\Exceptions\ValidationException;
 use PHPUnit\Framework\TestCase;
 
+use PHPUnit\Framework\Attributes\DataProvider;
+use PHPUnit\Framework\Attributes\Group;
+
 /**
  * Test cases for the ElanRegistry exception hierarchy
  *
  * Verifies that all exceptions properly extend ElanRegistryException
  * and implement required methods correctly.
- *
- * @group unit
- * @group exceptions
  */
+#[Group('unit')]
+#[Group('exceptions')]
 class ExceptionHierarchyTest extends TestCase
 {
     /**
@@ -80,8 +82,8 @@ class ExceptionHierarchyTest extends TestCase
      * Test that all exceptions extend ElanRegistryException
      *
      * @param string $className Exception class name to test
-     * @dataProvider exceptionClassProvider
      */
+    #[DataProvider('exceptionClassProvider')]
     public function testExceptionExtendsBase(string $className): void
     {
         $this->assertTrue(
@@ -99,8 +101,8 @@ class ExceptionHierarchyTest extends TestCase
      * Test that all exceptions have required methods
      *
      * @param string $className Exception class name to test
-     * @dataProvider exceptionClassProvider
      */
+    #[DataProvider('exceptionClassProvider')]
     public function testExceptionHasRequiredMethods(string $className): void
     {
         $exception = new $className();
@@ -125,8 +127,8 @@ class ExceptionHierarchyTest extends TestCase
      * Test that HTTP status codes are valid
      *
      * @param string $className Exception class name to test
-     * @dataProvider exceptionClassProvider
      */
+    #[DataProvider('exceptionClassProvider')]
     public function testHttpStatusCodeIsValid(string $className): void
     {
         $exception = new $className();
@@ -149,8 +151,8 @@ class ExceptionHierarchyTest extends TestCase
      * Test that user messages are non-empty and user-friendly
      *
      * @param string $className Exception class name to test
-     * @dataProvider exceptionClassProvider
      */
+    #[DataProvider('exceptionClassProvider')]
     public function testUserMessageIsUserFriendly(string $className): void
     {
         $exception = new $className();
@@ -184,9 +186,8 @@ class ExceptionHierarchyTest extends TestCase
 
     /**
      * Test that log categories match expected values
-     *
-     * @dataProvider exceptionWithCategoryProvider
      */
+    #[DataProvider('exceptionWithCategoryProvider')]
     public function testLogCategoryMatchesExpected(
         string $className,
         string $expectedCategory
@@ -202,9 +203,8 @@ class ExceptionHierarchyTest extends TestCase
 
     /**
      * Test that HTTP status codes match expected values
-     *
-     * @dataProvider exceptionWithStatusProvider
      */
+    #[DataProvider('exceptionWithStatusProvider')]
     public function testHttpStatusMatchesExpected(
         string $className,
         int $expectedStatus
@@ -222,8 +222,8 @@ class ExceptionHierarchyTest extends TestCase
      * Test backward compatibility - existing constructor signature works
      *
      * @param string $className Exception class name to test
-     * @dataProvider exceptionClassProvider
      */
+    #[DataProvider('exceptionClassProvider')]
     public function testBackwardCompatibility(string $className): void
     {
         // Test with message only
@@ -244,8 +244,8 @@ class ExceptionHierarchyTest extends TestCase
      * Test withUserMessage factory method
      *
      * @param string $className Exception class name to test
-     * @dataProvider exceptionClassProvider
      */
+    #[DataProvider('exceptionClassProvider')]
     public function testWithUserMessageFactory(string $className): void
     {
         $exception = $className::withUserMessage(
@@ -270,8 +270,8 @@ class ExceptionHierarchyTest extends TestCase
      * Test that previous exception uses Throwable type (not just Exception)
      *
      * @param string $className Exception class name to test
-     * @dataProvider exceptionClassProvider
      */
+    #[DataProvider('exceptionClassProvider')]
     public function testPreviousAcceptsThrowable(string $className): void
     {
         $error = new Error('An error');

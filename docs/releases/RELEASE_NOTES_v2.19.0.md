@@ -20,8 +20,8 @@ None — this milestone is entirely internal testing infrastructure.
   Add `elan_feedback_email` to `processSettingsAutoCreation()` so the regression test
   accurately verifies fresh-install seeding.
 - **Upgrade PHPUnit 11 → 12** ([#629](https://github.com/unibrain1/elanregistry/issues/629)):
-  Resolve Dependabot advisory GHSA-qrr6-mg7r-m243; update composer constraint and fix
-  API compatibility issues.
+  Resolve Dependabot advisory GHSA-qrr6-mg7r-m243; convert 310 docblock annotations to
+  PHP 8 attributes; fix `finfo_close()` and `imagedestroy()` PHP 8.5 deprecations.
 - **Refactor GetDataTables tests** ([#606](https://github.com/unibrain1/elanregistry/issues/606)):
   Replace source-inspection anti-pattern assertions with behavior-based tests covering
   valid, malformed, oversized, unauthenticated, and CSRF scenarios.

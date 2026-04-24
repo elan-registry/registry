@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/IntegrationTestCase.php';
 
+use PHPUnit\Framework\Attributes\Group;
+
 /**
  * Integration tests for Registry Link workflow in factory page
  *
@@ -19,11 +21,11 @@ require_once __DIR__ . '/IntegrationTestCase.php';
  * - HTTP method validation
  * - Response format and data types
  *
- * @group integration
- * @group factories
  * @author Elan Registry Development Team
  * @copyright 2025
  */
+#[Group('integration')]
+#[Group('factories')]
 final class FactoryRegistryLinkIntegrationTest extends IntegrationTestCase
 {
     protected $db;
@@ -49,10 +51,10 @@ final class FactoryRegistryLinkIntegrationTest extends IntegrationTestCase
     /**
      * Test findCarByChassis finds registered car by chassis number
      *
-     * @group integration
-     * @group slow
      * @return void
      */
+    #[Group('integration')]
+    #[Group('slow')]
     public function testFindCarByChassisWithMatchingCar(): void
     {
         // Verify test car exists in database
@@ -73,10 +75,10 @@ final class FactoryRegistryLinkIntegrationTest extends IntegrationTestCase
     /**
      * Test findCarByChassis returns null for non-existent chassis
      *
-     * @group integration
-     * @group slow
      * @return void
      */
+    #[Group('integration')]
+    #[Group('slow')]
     public function testFindCarByChassisWithNonExistentChassis(): void
     {
         $nonExistentChassis = 'NONEXISTENT' . uniqid();
@@ -93,10 +95,10 @@ final class FactoryRegistryLinkIntegrationTest extends IntegrationTestCase
     /**
      * Test query uses LIMIT 1 and returns only first match
      *
-     * @group integration
-     * @group slow
      * @return void
      */
+    #[Group('integration')]
+    #[Group('slow')]
     public function testFindCarByChassisLimitsBehavior(): void
     {
         // Create second car with same chassis (shouldn't happen in real scenario)
@@ -120,10 +122,10 @@ final class FactoryRegistryLinkIntegrationTest extends IntegrationTestCase
     /**
      * Test prepared statement prevents SQL injection
      *
-     * @group integration
-     * @group slow
      * @return void
      */
+    #[Group('integration')]
+    #[Group('slow')]
     public function testPreparedStatementPreventsInjection(): void
     {
         // Attempt SQL injection in chassis parameter
@@ -147,10 +149,10 @@ final class FactoryRegistryLinkIntegrationTest extends IntegrationTestCase
     /**
      * Test chassis lookup returns integer car ID, not string
      *
-     * @group integration
-     * @group slow
      * @return void
      */
+    #[Group('integration')]
+    #[Group('slow')]
     public function testCarIdReturnedAsCorrectType(): void
     {
         $query = $this->db->query(
@@ -168,10 +170,10 @@ final class FactoryRegistryLinkIntegrationTest extends IntegrationTestCase
     /**
      * Test query respects case sensitivity of chassis lookup
      *
-     * @group integration
-     * @group slow
      * @return void
      */
+    #[Group('integration')]
+    #[Group('slow')]
     public function testChassisCaseSensitivity(): void
     {
         // MySQL is typically case-insensitive for string comparisons by default
@@ -200,10 +202,10 @@ final class FactoryRegistryLinkIntegrationTest extends IntegrationTestCase
     /**
      * Test empty chassis parameter returns error
      *
-     * @group integration
-     * @group slow
      * @return void
      */
+    #[Group('integration')]
+    #[Group('slow')]
     public function testEmptyChassisParameter(): void
     {
         // Empty string should not match any cars
@@ -218,10 +220,10 @@ final class FactoryRegistryLinkIntegrationTest extends IntegrationTestCase
     /**
      * Test special characters in chassis number are handled correctly
      *
-     * @group integration
-     * @group slow
      * @return void
      */
+    #[Group('integration')]
+    #[Group('slow')]
     public function testSpecialCharactersInChassis(): void
     {
         $specialChassis = 'TEST-70/1234-' . uniqid();
@@ -246,10 +248,10 @@ final class FactoryRegistryLinkIntegrationTest extends IntegrationTestCase
     /**
      * Test performance: single chassis lookup completes quickly
      *
-     * @group integration
-     * @group slow
      * @return void
      */
+    #[Group('integration')]
+    #[Group('slow')]
     public function testChassisLookupPerformance(): void
     {
         $startTime = microtime(true);
@@ -278,10 +280,10 @@ final class FactoryRegistryLinkIntegrationTest extends IntegrationTestCase
     /**
      * Test database can handle concurrent lookups (without actual concurrency)
      *
-     * @group integration
-     * @group slow
      * @return void
      */
+    #[Group('integration')]
+    #[Group('slow')]
     public function testSequentialChassisLookups(): void
     {
         // Simulate sequential lookups that might happen from pagination

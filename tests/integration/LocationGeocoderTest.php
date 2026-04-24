@@ -6,6 +6,8 @@ require_once __DIR__ . '/IntegrationTestCase.php';
 
 use ElanRegistry\Exceptions\LocationServiceException;
 
+use PHPUnit\Framework\Attributes\Group;
+
 /**
  * LocationGeocoderTest / LocationServiceTest
  *
@@ -21,10 +23,9 @@ use ElanRegistry\Exceptions\LocationServiceException;
  * Uses free OpenStreetMap APIs (Photon/Nominatim) instead of Google Maps.
  *
  * Tests assume user ID 1 for rate limiting and logging context.
- *
- * @group Integration
- * @group Geocoding
  */
+#[Group('Integration')]
+#[Group('Geocoding')]
 class LocationGeocoderTest extends IntegrationTestCase
 {
     protected const TEST_USER_ID = 1;

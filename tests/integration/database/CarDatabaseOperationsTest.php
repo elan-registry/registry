@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/../IntegrationTestCase.php';
 
+use PHPUnit\Framework\Attributes\Group;
+
 /**
  * Integration tests for Car database operations
  *
@@ -12,9 +14,8 @@ require_once __DIR__ . '/../IntegrationTestCase.php';
  * works correctly with the Car class.
  *
  * Uses real database fixtures (user ID 1, car IDs 1-2).
- *
- * @group integration
  */
+#[Group('integration')]
 final class CarDatabaseOperationsTest extends IntegrationTestCase
 {
     private $testCarId;
@@ -63,9 +64,8 @@ final class CarDatabaseOperationsTest extends IntegrationTestCase
 
     /**
      * Test car creation persists to database
-     *
-     * @group integration
      */
+    #[Group('integration')]
     public function testCarCreationPersistsToDatabases(): void
     {
         $carData = [
@@ -98,9 +98,8 @@ final class CarDatabaseOperationsTest extends IntegrationTestCase
 
     /**
      * Test car update persists to database
-     *
-     * @group integration
      */
+    #[Group('integration')]
     public function testCarUpdatePersiststoDatabase(): void
     {
         $car = new Car($this->testCarId);
@@ -127,9 +126,8 @@ final class CarDatabaseOperationsTest extends IntegrationTestCase
 
     /**
      * Test car deletion removes from database
-     *
-     * @group integration
      */
+    #[Group('integration')]
     public function testCarDeletionRemovesFromDatabase(): void
     {
         $car = new Car($this->testCarId);
@@ -144,9 +142,8 @@ final class CarDatabaseOperationsTest extends IntegrationTestCase
 
     /**
      * Test car deletion creates audit trail
-     *
-     * @group integration
      */
+    #[Group('integration')]
     public function testCarDeletionCreatesAuditTrail(): void
     {
         $car = new Car($this->testCarId);
@@ -164,9 +161,8 @@ final class CarDatabaseOperationsTest extends IntegrationTestCase
 
     /**
      * Test car transfer updates relationships
-     *
-     * @group integration
      */
+    #[Group('integration')]
     public function testCarTransferUpdatesRelationships(): void
     {
         $car = new Car($this->testCarId);
@@ -194,9 +190,8 @@ final class CarDatabaseOperationsTest extends IntegrationTestCase
 
     /**
      * Test car transfer creates history record
-     *
-     * @group integration
      */
+    #[Group('integration')]
     public function testCarTransferCreatesHistoryRecord(): void
     {
         $car = new Car($this->testCarId);
@@ -216,9 +211,8 @@ final class CarDatabaseOperationsTest extends IntegrationTestCase
 
     /**
      * Test car merge transfers history records
-     *
-     * @group integration
      */
+    #[Group('integration')]
     public function testCarMergeTransfersHistoryRecords(): void
     {
         // Create a second test car to merge from
@@ -245,9 +239,8 @@ final class CarDatabaseOperationsTest extends IntegrationTestCase
 
     /**
      * Test database trigger creates update history on car update
-     *
-     * @group integration
      */
+    #[Group('integration')]
     public function testDatabaseTriggerCreatesUpdateHistory(): void
     {
         $car = new Car($this->testCarId);
@@ -284,9 +277,8 @@ final class CarDatabaseOperationsTest extends IntegrationTestCase
 
     /**
      * Test car-user relationship integrity
-     *
-     * @group integration
      */
+    #[Group('integration')]
     public function testCarUserRelationshipIntegrity(): void
     {
         // Verify car has valid user relationship
@@ -305,9 +297,8 @@ final class CarDatabaseOperationsTest extends IntegrationTestCase
 
     /**
      * Test verification code is set and retrieved
-     *
-     * @group integration
      */
+    #[Group('integration')]
     public function testVerificationCodeSetAndRetrieved(): void
     {
         $car = new Car($this->testCarId);
@@ -330,9 +321,8 @@ final class CarDatabaseOperationsTest extends IntegrationTestCase
 
     /**
      * Test mark sold updates database
-     *
-     * @group integration
      */
+    #[Group('integration')]
     public function testMarkSoldUpdatesDatabase(): void
     {
         // Create a test car for sold marking
@@ -367,9 +357,8 @@ final class CarDatabaseOperationsTest extends IntegrationTestCase
 
     /**
      * Test concurrent car operations maintain integrity
-     *
-     * @group integration
      */
+    #[Group('integration')]
     public function testConcurrentCarOperationsMaintainIntegrity(): void
     {
         // Load same car twice

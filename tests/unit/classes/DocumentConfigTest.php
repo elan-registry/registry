@@ -5,15 +5,16 @@ declare(strict_types=1);
 use PHPUnit\Framework\TestCase;
 use ElanRegistry\Documentation\DocumentConfig;
 
+use PHPUnit\Framework\Attributes\Group;
+
 /**
  * DocumentConfig class tests
  *
  * Tests document configuration, validation, and access control.
  * CRITICAL: Access control for admin-only documents.
- *
- * @group fast
- * @group security
  */
+#[Group('fast')]
+#[Group('security')]
 final class DocumentConfigTest extends TestCase
 {
     // ============================================================

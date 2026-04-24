@@ -4,14 +4,15 @@ declare(strict_types=1);
 
 use PHPUnit\Framework\TestCase;
 
+use PHPUnit\Framework\Attributes\Group;
+
 /**
  * User Deletion Cleanup tests (Issue #106)
  *
  * Tests the decision logic and validation for user deletion cleanup.
  * Note: Database operations are tested in integration tests, not here.
- *
- * @group fast
  */
+#[Group('fast')]
 final class UserDeletionCleanupTest extends TestCase
 {
     private $db;

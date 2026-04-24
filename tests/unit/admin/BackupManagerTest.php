@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use PHPUnit\Framework\TestCase;
 
+use PHPUnit\Framework\Attributes\Group;
 // BackupManager and BackupException auto-loaded via custom autoloader
 // (BackupManager now in usersc/classes/admin/, BackupException in usersc/classes/exceptions/)
 
@@ -12,11 +13,10 @@ use PHPUnit\Framework\TestCase;
  *
  * Tests backup creation, validation, statistics, and cleanup operations
  * for the database backup management system.
- *
- * @group fast
- * @group unit
- * @group admin
  */
+#[Group('fast')]
+#[Group('unit')]
+#[Group('admin')]
 final class BackupManagerTest extends TestCase
 {
     private string $testBackupDir;
@@ -64,9 +64,9 @@ final class BackupManagerTest extends TestCase
     /**
      * Test BackupManager instantiation
      *
-     * @group fast
      * @return void
      */
+    #[Group('fast')]
     public function testInstantiation(): void
     {
         $this->assertInstanceOf(BackupManager::class, $this->backupManager);
@@ -75,9 +75,9 @@ final class BackupManagerTest extends TestCase
     /**
      * Test createSchemaBackup creates a backup file
      *
-     * @group fast
      * @return void
      */
+    #[Group('fast')]
     public function testCreateSchemaBackup(): void
     {
         $backupPath = $this->backupManager->createSchemaBackup('Test Operation', ['settings']);
@@ -90,9 +90,9 @@ final class BackupManagerTest extends TestCase
     /**
      * Test createSchemaBackup uses default tables when none specified
      *
-     * @group fast
      * @return void
      */
+    #[Group('fast')]
     public function testCreateSchemaBackupWithDefaultTables(): void
     {
         $backupPath = $this->backupManager->createSchemaBackup('Default Tables Test');
@@ -106,9 +106,9 @@ final class BackupManagerTest extends TestCase
     /**
      * Test createManualBackup creates a backup file
      *
-     * @group fast
      * @return void
      */
+    #[Group('fast')]
     public function testCreateManualBackup(): void
     {
         $backupPath = $this->backupManager->createManualBackup('Pre-Migration', ['users', 'cars']);
@@ -121,9 +121,9 @@ final class BackupManagerTest extends TestCase
     /**
      * Test createManualBackup includes metadata in backup
      *
-     * @group fast
      * @return void
      */
+    #[Group('fast')]
     public function testCreateManualBackupWithMetadata(): void
     {
         $metadata = [
@@ -141,9 +141,9 @@ final class BackupManagerTest extends TestCase
     /**
      * Test verifyBackupIntegrity validates a good backup
      *
-     * @group fast
      * @return void
      */
+    #[Group('fast')]
     public function testVerifyBackupIntegrityValidBackup(): void
     {
         // Create a test backup
@@ -161,9 +161,9 @@ final class BackupManagerTest extends TestCase
     /**
      * Test verifyBackupIntegrity detects non-existent file
      *
-     * @group fast
      * @return void
      */
+    #[Group('fast')]
     public function testVerifyBackupIntegrityNonExistentFile(): void
     {
         $result = $this->backupManager->verifyBackupIntegrity('/nonexistent/backup.sql');
@@ -175,9 +175,9 @@ final class BackupManagerTest extends TestCase
     /**
      * Test verifyBackupIntegrity detects empty file
      *
-     * @group fast
      * @return void
      */
+    #[Group('fast')]
     public function testVerifyBackupIntegrityEmptyFile(): void
     {
         // Create an empty file
@@ -193,9 +193,9 @@ final class BackupManagerTest extends TestCase
     /**
      * Test getEnhancedBackupStatistics returns statistics structure
      *
-     * @group fast
      * @return void
      */
+    #[Group('fast')]
     public function testGetEnhancedBackupStatistics(): void
     {
         // Create some test backups
@@ -225,9 +225,9 @@ final class BackupManagerTest extends TestCase
     /**
      * Test getEnhancedBackupStatistics calculates health score
      *
-     * @group fast
      * @return void
      */
+    #[Group('fast')]
     public function testGetEnhancedBackupStatisticsHealthScore(): void
     {
         $this->backupManager->createSchemaBackup('Health Test', ['settings']);
@@ -242,9 +242,9 @@ final class BackupManagerTest extends TestCase
     /**
      * Test performEnhancedCleanup returns cleanup statistics
      *
-     * @group fast
      * @return void
      */
+    #[Group('fast')]
     public function testPerformEnhancedCleanup(): void
     {
         // Create some test backups
@@ -271,9 +271,9 @@ final class BackupManagerTest extends TestCase
     /**
      * Test performEnhancedCleanup does not delete recent backups
      *
-     * @group fast
      * @return void
      */
+    #[Group('fast')]
     public function testPerformEnhancedCleanupPreservesRecentBackups(): void
     {
         // Create a recent backup
@@ -289,9 +289,9 @@ final class BackupManagerTest extends TestCase
     /**
      * Test backup file naming convention
      *
-     * @group fast
      * @return void
      */
+    #[Group('fast')]
     public function testBackupFileNamingConvention(): void
     {
         $backupPath = $this->backupManager->createSchemaBackup('Test Naming', ['settings']);
@@ -308,9 +308,9 @@ final class BackupManagerTest extends TestCase
     /**
      * Test backup contains metadata header
      *
-     * @group fast
      * @return void
      */
+    #[Group('fast')]
     public function testBackupContainsMetadata(): void
     {
         $backupPath = $this->backupManager->createSchemaBackup('Metadata Test', ['settings']);
@@ -326,9 +326,9 @@ final class BackupManagerTest extends TestCase
     /**
      * Test backup contains SQL statements
      *
-     * @group fast
      * @return void
      */
+    #[Group('fast')]
     public function testBackupContainsSqlStatements(): void
     {
         $backupPath = $this->backupManager->createSchemaBackup('SQL Test', ['settings']);

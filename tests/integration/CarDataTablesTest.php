@@ -4,14 +4,15 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/IntegrationTestCase.php';
 
+use PHPUnit\Framework\Attributes\Group;
+
 /**
  * Test cases for Car DataTables functionality
  *
  * Tests cover server-side DataTables data processing including searching,
  * sorting, pagination, and security validation.
- *
- * @group integration
  */
+#[Group('integration')]
 final class CarDataTablesTest extends IntegrationTestCase
 {
     protected $db;
@@ -31,9 +32,8 @@ final class CarDataTablesTest extends IntegrationTestCase
 
     /**
      * Test getDataTablesData for cars table
-     *
-     * @group fast
      */
+    #[Group('fast')]
     public function testGetDataTablesDataForCarsTable(): void
     {
         $car = new Car();
@@ -62,9 +62,8 @@ final class CarDataTablesTest extends IntegrationTestCase
 
     /**
      * Test getDataTablesData for factory table
-     *
-     * @group fast
      */
+    #[Group('fast')]
     public function testGetDataTablesDataForFactoryTable(): void
     {
         $car = new Car();
@@ -89,9 +88,8 @@ final class CarDataTablesTest extends IntegrationTestCase
 
     /**
      * Test getDataTablesData with search filter
-     *
-     * @group fast
      */
+    #[Group('fast')]
     public function testGetDataTablesDataWithSearch(): void
     {
         $car = new Car();
@@ -118,9 +116,8 @@ final class CarDataTablesTest extends IntegrationTestCase
 
     /**
      * Test getDataTablesData with sorting
-     *
-     * @group fast
      */
+    #[Group('fast')]
     public function testGetDataTablesDataWithSorting(): void
     {
         $car = new Car();
@@ -151,9 +148,8 @@ final class CarDataTablesTest extends IntegrationTestCase
 
     /**
      * Test getDataTablesData with pagination
-     *
-     * @group fast
      */
+    #[Group('fast')]
     public function testGetDataTablesDataWithPagination(): void
     {
         $car = new Car();
@@ -179,9 +175,8 @@ final class CarDataTablesTest extends IntegrationTestCase
 
     /**
      * Test getDataTablesData validates column names
-     *
-     * @group fast
      */
+    #[Group('fast')]
     public function testGetDataTablesDataValidatesColumnNames(): void
     {
         $car = new Car();
@@ -211,9 +206,8 @@ final class CarDataTablesTest extends IntegrationTestCase
 
     /**
      * Test getDataTablesData prevents SQL injection
-     *
-     * @group fast
      */
+    #[Group('fast')]
     public function testGetDataTablesDataPreventsInjection(): void
     {
         $car = new Car();
@@ -239,9 +233,8 @@ final class CarDataTablesTest extends IntegrationTestCase
 
     /**
      * Test getDataTablesData fails with invalid table
-     *
-     * @group fast
      */
+    #[Group('fast')]
     public function testGetDataTablesDataFailsWithInvalidTable(): void
     {
         $this->expectException(Exception::class);
@@ -264,9 +257,8 @@ final class CarDataTablesTest extends IntegrationTestCase
 
     /**
      * Test getDataTablesData returns correct record counts
-     *
-     * @group fast
      */
+    #[Group('fast')]
     public function testGetDataTablesDataReturnsCorrectRecordCounts(): void
     {
         $car = new Car();

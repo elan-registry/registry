@@ -4,24 +4,25 @@ declare(strict_types=1);
 
 use PHPUnit\Framework\TestCase;
 
+use PHPUnit\Framework\Attributes\Group;
+
 /**
  * Unit tests for ApiResponse class
  *
  * Tests all factory methods, builder methods, output methods, and edge cases
  * for the standardized API response system.
- *
- * @group fast
- * @group unit
- * @group api
  */
+#[Group('fast')]
+#[Group('unit')]
+#[Group('api')]
 final class ApiResponseTest extends TestCase
 {
     /**
      * Test success factory method with default message
      *
-     * @group fast
      * @return void
      */
+    #[Group('fast')]
     public function testSuccessWithDefaultMessage(): void
     {
         $response = ApiResponse::success();
@@ -34,9 +35,9 @@ final class ApiResponseTest extends TestCase
     /**
      * Test success factory method with custom message
      *
-     * @group fast
      * @return void
      */
+    #[Group('fast')]
     public function testSuccessWithCustomMessage(): void
     {
         $response = ApiResponse::success('Profile updated successfully!');
@@ -49,9 +50,9 @@ final class ApiResponseTest extends TestCase
     /**
      * Test error factory method with default message
      *
-     * @group fast
      * @return void
      */
+    #[Group('fast')]
     public function testErrorWithDefaultMessage(): void
     {
         $response = ApiResponse::error();
@@ -64,9 +65,9 @@ final class ApiResponseTest extends TestCase
     /**
      * Test error factory method with custom message
      *
-     * @group fast
      * @return void
      */
+    #[Group('fast')]
     public function testErrorWithCustomMessage(): void
     {
         $response = ApiResponse::error('Invalid request data');
@@ -79,9 +80,9 @@ final class ApiResponseTest extends TestCase
     /**
      * Test error factory method with custom status code
      *
-     * @group fast
      * @return void
      */
+    #[Group('fast')]
     public function testErrorWithCustomStatusCode(): void
     {
         $response = ApiResponse::error('Rate limit exceeded', 429);
@@ -94,9 +95,9 @@ final class ApiResponseTest extends TestCase
     /**
      * Test validationError factory method with errors
      *
-     * @group fast
      * @return void
      */
+    #[Group('fast')]
     public function testValidationError(): void
     {
         $errors = [
@@ -115,9 +116,9 @@ final class ApiResponseTest extends TestCase
     /**
      * Test validationError factory method with custom message
      *
-     * @group fast
      * @return void
      */
+    #[Group('fast')]
     public function testValidationErrorWithCustomMessage(): void
     {
         $errors = ['field' => 'Error'];
@@ -130,9 +131,9 @@ final class ApiResponseTest extends TestCase
     /**
      * Test unauthorized factory method with default message
      *
-     * @group fast
      * @return void
      */
+    #[Group('fast')]
     public function testUnauthorizedWithDefaultMessage(): void
     {
         $response = ApiResponse::unauthorized();
@@ -145,9 +146,9 @@ final class ApiResponseTest extends TestCase
     /**
      * Test unauthorized factory method with custom message
      *
-     * @group fast
      * @return void
      */
+    #[Group('fast')]
     public function testUnauthorizedWithCustomMessage(): void
     {
         $response = ApiResponse::unauthorized('Session expired');
@@ -159,9 +160,9 @@ final class ApiResponseTest extends TestCase
     /**
      * Test forbidden factory method with default message
      *
-     * @group fast
      * @return void
      */
+    #[Group('fast')]
     public function testForbiddenWithDefaultMessage(): void
     {
         $response = ApiResponse::forbidden();
@@ -174,9 +175,9 @@ final class ApiResponseTest extends TestCase
     /**
      * Test forbidden factory method with custom message
      *
-     * @group fast
      * @return void
      */
+    #[Group('fast')]
     public function testForbiddenWithCustomMessage(): void
     {
         $response = ApiResponse::forbidden('Admin access required');
@@ -188,9 +189,9 @@ final class ApiResponseTest extends TestCase
     /**
      * Test notFound factory method with default message
      *
-     * @group fast
      * @return void
      */
+    #[Group('fast')]
     public function testNotFoundWithDefaultMessage(): void
     {
         $response = ApiResponse::notFound();
@@ -203,9 +204,9 @@ final class ApiResponseTest extends TestCase
     /**
      * Test notFound factory method with custom message
      *
-     * @group fast
      * @return void
      */
+    #[Group('fast')]
     public function testNotFoundWithCustomMessage(): void
     {
         $response = ApiResponse::notFound('Car not found');
@@ -217,9 +218,9 @@ final class ApiResponseTest extends TestCase
     /**
      * Test serverError factory method with default message
      *
-     * @group fast
      * @return void
      */
+    #[Group('fast')]
     public function testServerErrorWithDefaultMessage(): void
     {
         $response = ApiResponse::serverError();
@@ -232,9 +233,9 @@ final class ApiResponseTest extends TestCase
     /**
      * Test serverError factory method with custom message
      *
-     * @group fast
      * @return void
      */
+    #[Group('fast')]
     public function testServerErrorWithCustomMessage(): void
     {
         $response = ApiResponse::serverError('Database connection failed');
@@ -246,9 +247,9 @@ final class ApiResponseTest extends TestCase
     /**
      * Test withData adds data to response
      *
-     * @group fast
      * @return void
      */
+    #[Group('fast')]
     public function testWithDataAddsSingleValue(): void
     {
         $response = ApiResponse::success('Done')
@@ -262,9 +263,9 @@ final class ApiResponseTest extends TestCase
     /**
      * Test withData is immutable
      *
-     * @group fast
      * @return void
      */
+    #[Group('fast')]
     public function testWithDataIsImmutable(): void
     {
         $original = ApiResponse::success('Done');
@@ -278,9 +279,9 @@ final class ApiResponseTest extends TestCase
     /**
      * Test withData can be chained multiple times
      *
-     * @group fast
      * @return void
      */
+    #[Group('fast')]
     public function testWithDataChaining(): void
     {
         $response = ApiResponse::success('Done')
@@ -297,9 +298,9 @@ final class ApiResponseTest extends TestCase
     /**
      * Test withDataArray adds multiple values at once
      *
-     * @group fast
      * @return void
      */
+    #[Group('fast')]
     public function testWithDataArray(): void
     {
         $response = ApiResponse::success('Done')
@@ -316,9 +317,9 @@ final class ApiResponseTest extends TestCase
     /**
      * Test withDataArray is immutable
      *
-     * @group fast
      * @return void
      */
+    #[Group('fast')]
     public function testWithDataArrayIsImmutable(): void
     {
         $original = ApiResponse::success('Done');
@@ -331,9 +332,9 @@ final class ApiResponseTest extends TestCase
     /**
      * Test withLogging sets pending log
      *
-     * @group fast
      * @return void
      */
+    #[Group('fast')]
     public function testWithLogging(): void
     {
         $response = ApiResponse::success('Done')
@@ -349,9 +350,9 @@ final class ApiResponseTest extends TestCase
     /**
      * Test withLogging is immutable
      *
-     * @group fast
      * @return void
      */
+    #[Group('fast')]
     public function testWithLoggingIsImmutable(): void
     {
         $original = ApiResponse::success('Done');
@@ -364,9 +365,9 @@ final class ApiResponseTest extends TestCase
     /**
      * Test withStatusCode overrides status code
      *
-     * @group fast
      * @return void
      */
+    #[Group('fast')]
     public function testWithStatusCode(): void
     {
         $response = ApiResponse::error('Custom error')
@@ -378,9 +379,9 @@ final class ApiResponseTest extends TestCase
     /**
      * Test withStatusCode is immutable
      *
-     * @group fast
      * @return void
      */
+    #[Group('fast')]
     public function testWithStatusCodeIsImmutable(): void
     {
         $original = ApiResponse::error('Error');
@@ -393,9 +394,9 @@ final class ApiResponseTest extends TestCase
     /**
      * Test toArray returns minimal response for success
      *
-     * @group fast
      * @return void
      */
+    #[Group('fast')]
     public function testToArrayMinimalSuccess(): void
     {
         $response = ApiResponse::success('Done');
@@ -410,9 +411,9 @@ final class ApiResponseTest extends TestCase
     /**
      * Test toArray returns minimal response for error
      *
-     * @group fast
      * @return void
      */
+    #[Group('fast')]
     public function testToArrayMinimalError(): void
     {
         $response = ApiResponse::error('Failed');
@@ -427,9 +428,9 @@ final class ApiResponseTest extends TestCase
     /**
      * Test toArray includes additional data
      *
-     * @group fast
      * @return void
      */
+    #[Group('fast')]
     public function testToArrayWithData(): void
     {
         $response = ApiResponse::success('Done')
@@ -447,9 +448,9 @@ final class ApiResponseTest extends TestCase
     /**
      * Test toArray for validation error includes errors
      *
-     * @group fast
      * @return void
      */
+    #[Group('fast')]
     public function testToArrayForValidationError(): void
     {
         $errors = [
@@ -468,9 +469,9 @@ final class ApiResponseTest extends TestCase
     /**
      * Test toJson returns valid JSON string
      *
-     * @group fast
      * @return void
      */
+    #[Group('fast')]
     public function testToJson(): void
     {
         $response = ApiResponse::success('Done');
@@ -484,9 +485,9 @@ final class ApiResponseTest extends TestCase
     /**
      * Test toJson with special characters
      *
-     * @group fast
      * @return void
      */
+    #[Group('fast')]
     public function testToJsonWithSpecialCharacters(): void
     {
         $response = ApiResponse::success('Updated "Lotus Elan" & saved <data>');
@@ -500,9 +501,9 @@ final class ApiResponseTest extends TestCase
     /**
      * Test response with empty string message
      *
-     * @group fast
      * @return void
      */
+    #[Group('fast')]
     public function testEmptyStringMessage(): void
     {
         $response = ApiResponse::success('');
@@ -515,9 +516,9 @@ final class ApiResponseTest extends TestCase
     /**
      * Test response with null data value
      *
-     * @group fast
      * @return void
      */
+    #[Group('fast')]
     public function testNullDataValue(): void
     {
         $response = ApiResponse::success('Done')
@@ -531,9 +532,9 @@ final class ApiResponseTest extends TestCase
     /**
      * Test response with empty array data
      *
-     * @group fast
      * @return void
      */
+    #[Group('fast')]
     public function testEmptyArrayData(): void
     {
         $response = ApiResponse::success('Done')
@@ -546,9 +547,9 @@ final class ApiResponseTest extends TestCase
     /**
      * Test response with nested array data
      *
-     * @group fast
      * @return void
      */
+    #[Group('fast')]
     public function testNestedArrayData(): void
     {
         $nestedData = [
@@ -571,9 +572,9 @@ final class ApiResponseTest extends TestCase
     /**
      * Test response with numeric data
      *
-     * @group fast
      * @return void
      */
+    #[Group('fast')]
     public function testNumericData(): void
     {
         $response = ApiResponse::success('Done')
@@ -590,9 +591,9 @@ final class ApiResponseTest extends TestCase
     /**
      * Test response with boolean data
      *
-     * @group fast
      * @return void
      */
+    #[Group('fast')]
     public function testBooleanData(): void
     {
         $response = ApiResponse::success('Done')
@@ -607,9 +608,9 @@ final class ApiResponseTest extends TestCase
     /**
      * Test getStatusCode for all factory methods
      *
-     * @group fast
      * @return void
      */
+    #[Group('fast')]
     public function testStatusCodesForAllFactoryMethods(): void
     {
         $this->assertEquals(200, ApiResponse::success()->getStatusCode());
@@ -624,9 +625,9 @@ final class ApiResponseTest extends TestCase
     /**
      * Test isSuccess for all factory methods
      *
-     * @group fast
      * @return void
      */
+    #[Group('fast')]
     public function testIsSuccessForAllFactoryMethods(): void
     {
         $this->assertTrue(ApiResponse::success()->isSuccess());
@@ -641,9 +642,9 @@ final class ApiResponseTest extends TestCase
     /**
      * Test full builder chain maintains all values
      *
-     * @group fast
      * @return void
      */
+    #[Group('fast')]
     public function testFullBuilderChain(): void
     {
         $response = ApiResponse::success('Profile updated!')
@@ -668,9 +669,9 @@ final class ApiResponseTest extends TestCase
     /**
      * Test validation error with empty errors array
      *
-     * @group fast
      * @return void
      */
+    #[Group('fast')]
     public function testValidationErrorWithEmptyErrors(): void
     {
         $response = ApiResponse::validationError([]);
@@ -683,9 +684,9 @@ final class ApiResponseTest extends TestCase
     /**
      * Test withLogging with zero user ID
      *
-     * @group fast
      * @return void
      */
+    #[Group('fast')]
     public function testWithLoggingZeroUserId(): void
     {
         $response = ApiResponse::forbidden('Access denied')
@@ -698,9 +699,9 @@ final class ApiResponseTest extends TestCase
     /**
      * Test response data does not include internal state
      *
-     * @group fast
      * @return void
      */
+    #[Group('fast')]
     public function testToArrayDoesNotIncludePendingLog(): void
     {
         $response = ApiResponse::success('Done')
@@ -715,9 +716,9 @@ final class ApiResponseTest extends TestCase
     /**
      * Test data can overwrite values with same key
      *
-     * @group fast
      * @return void
      */
+    #[Group('fast')]
     public function testWithDataOverwritesSameKey(): void
     {
         $response = ApiResponse::success('Done')
@@ -730,9 +731,9 @@ final class ApiResponseTest extends TestCase
     /**
      * Test getMessage getter
      *
-     * @group fast
      * @return void
      */
+    #[Group('fast')]
     public function testGetMessage(): void
     {
         $response = ApiResponse::success('Test message');
@@ -742,9 +743,9 @@ final class ApiResponseTest extends TestCase
     /**
      * Test getData returns empty array when no data set
      *
-     * @group fast
      * @return void
      */
+    #[Group('fast')]
     public function testGetDataReturnsEmptyArrayByDefault(): void
     {
         $response = ApiResponse::success('Done');
@@ -754,9 +755,9 @@ final class ApiResponseTest extends TestCase
     /**
      * Test getPendingLog returns null when no log set
      *
-     * @group fast
      * @return void
      */
+    #[Group('fast')]
     public function testGetPendingLogReturnsNullByDefault(): void
     {
         $response = ApiResponse::success('Done');
@@ -766,9 +767,9 @@ final class ApiResponseTest extends TestCase
     /**
      * Test response with Unicode characters
      *
-     * @group fast
      * @return void
      */
+    #[Group('fast')]
     public function testUnicodeCharacters(): void
     {
         $response = ApiResponse::success('Mise à jour réussie! 日本語 🚗');
@@ -782,9 +783,9 @@ final class ApiResponseTest extends TestCase
     /**
      * Test response with very long message
      *
-     * @group fast
      * @return void
      */
+    #[Group('fast')]
     public function testVeryLongMessage(): void
     {
         $longMessage = str_repeat('A', 10000);
@@ -797,9 +798,9 @@ final class ApiResponseTest extends TestCase
     /**
      * Test withDataArray merges with existing data
      *
-     * @group fast
      * @return void
      */
+    #[Group('fast')]
     public function testWithDataArrayMergesWithExisting(): void
     {
         $response = ApiResponse::success('Done')

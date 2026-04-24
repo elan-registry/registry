@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 use PHPUnit\Framework\TestCase;
 
+use PHPUnit\Framework\Attributes\Group;
+
 /**
  * Verification Workflow Tests
  * Tests the car verification process specific to the Lotus Elan Registry
@@ -30,9 +32,8 @@ class VerificationWorkflowTest extends TestCase
     
     /**
      * Test verification email generation
-     *
-     * @group fast
      */
+    #[Group('fast')]
     public function testVerificationEmailGeneration(): void
     {
         $carData = [
@@ -55,9 +56,8 @@ class VerificationWorkflowTest extends TestCase
     
     /**
      * Test verification link generation
-     *
-     * @group fast
      */
+    #[Group('fast')]
     public function testVerificationLinkGeneration(): void
     {
         $carId = 123;
@@ -71,9 +71,8 @@ class VerificationWorkflowTest extends TestCase
     
     /**
      * Test verification status transitions
-     *
-     * @group fast
      */
+    #[Group('fast')]
     public function testVerificationStatusTransitions(): void
     {
         // Test valid status transitions
@@ -101,9 +100,8 @@ class VerificationWorkflowTest extends TestCase
     
     /**
      * Test verification requirements validation
-     *
-     * @group fast
      */
+    #[Group('fast')]
     public function testVerificationRequirements(): void
     {
         // Test minimum requirements for verification
@@ -131,9 +129,8 @@ class VerificationWorkflowTest extends TestCase
     
     /**
      * Test verification document validation
-     *
-     * @group fast
      */
+    #[Group('fast')]
     public function testVerificationDocumentValidation(): void
     {
         // Test document types accepted for verification
@@ -162,9 +159,8 @@ class VerificationWorkflowTest extends TestCase
     
     /**
      * Test chassis number uniqueness validation
-     *
-     * @group fast
      */
+    #[Group('fast')]
     public function testChassisNumberUniquenessValidation(): void
     {
         $testChassis = '12345678';
@@ -182,9 +178,8 @@ class VerificationWorkflowTest extends TestCase
     
     /**
      * Test verification email throttling
-     *
-     * @group fast
      */
+    #[Group('fast')]
     public function testVerificationEmailThrottling(): void
     {
         $carId = 123;
