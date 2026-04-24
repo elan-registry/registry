@@ -5,14 +5,15 @@ declare(strict_types=1);
 use ElanRegistry\Exceptions\ImageProcessingException;
 use PHPUnit\Framework\TestCase;
 
+use PHPUnit\Framework\Attributes\Group;
+
 /**
  * CarView class tests
  *
  * Tests static utility methods for car display and image generation.
  * Focus: Input validation, exception handling, HTML structure.
- *
- * @group fast
  */
+#[Group('fast')]
 final class CarViewTest extends TestCase
 {
     // ============================================================

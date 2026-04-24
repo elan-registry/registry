@@ -6,11 +6,12 @@ use ElanRegistry\Car\CarImageProcessor;
 use ElanRegistry\Exceptions\ImageProcessingException;
 use PHPUnit\Framework\TestCase;
 
+use PHPUnit\Framework\Attributes\Group;
+
 /**
  * Unit tests for CarImageProcessor service class
- *
- * @group fast
  */
+#[Group('fast')]
 final class CarImageProcessorTest extends TestCase
 {
     private CarImageProcessor $processor;

@@ -4,15 +4,16 @@ declare(strict_types=1);
 
 use PHPUnit\Framework\TestCase;
 
+use PHPUnit\Framework\Attributes\Group;
+
 /**
  * Test server globals initialization module
  *
  * Verifies that server_globals.php correctly initializes all global variables
  * with proper validation and safe defaults.
- *
- * @group system
- * @group server-globals
  */
+#[Group('system')]
+#[Group('server-globals')]
 class ServerGlobalsTest extends TestCase
 {
     private string $globalsFile;

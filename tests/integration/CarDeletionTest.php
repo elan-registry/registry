@@ -7,14 +7,15 @@ require_once __DIR__ . '/IntegrationTestCase.php';
 use ElanRegistry\Exceptions\CarDeletionException;
 use ElanRegistry\Exceptions\CarNotFoundException;
 
+use PHPUnit\Framework\Attributes\Group;
+
 /**
  * Test cases for Car deletion functionality
  *
  * Tests cover car deletion operations with CSRF protection, transaction handling,
  * audit trail creation, and error scenarios.
- *
- * @group integration
  */
+#[Group('integration')]
 final class CarDeletionTest extends IntegrationTestCase
 {
     private $testCarId;
@@ -65,9 +66,8 @@ final class CarDeletionTest extends IntegrationTestCase
 
     /**
      * Test successful car deletion with valid CSRF token
-     *
-     * @group fast
      */
+    #[Group('fast')]
     public function testDeleteCarSuccessWithValidToken(): void
     {
         $car = new Car($this->testCarId);
@@ -82,9 +82,8 @@ final class CarDeletionTest extends IntegrationTestCase
 
     /**
      * Test car deletion fails with invalid CSRF token
-     *
-     * @group fast
      */
+    #[Group('fast')]
     public function testDeleteCarFailsWithInvalidToken(): void
     {
         $this->expectException(CarDeletionException::class);
@@ -95,9 +94,8 @@ final class CarDeletionTest extends IntegrationTestCase
 
     /**
      * Test car deletion fails when car does not exist
-     *
-     * @group fast
      */
+    #[Group('fast')]
     public function testDeleteCarFailsWhenCarNotExists(): void
     {
         $this->expectException(CarNotFoundException::class);
@@ -108,9 +106,8 @@ final class CarDeletionTest extends IntegrationTestCase
 
     /**
      * Test car deletion creates audit trail in history table
-     *
-     * @group fast
      */
+    #[Group('fast')]
     public function testDeleteCarCreatesAuditTrail(): void
     {
         $car = new Car($this->testCarId);
@@ -131,9 +128,8 @@ final class CarDeletionTest extends IntegrationTestCase
 
     /**
      * Test car deletion removes car-user relationships
-     *
-     * @group fast
      */
+    #[Group('fast')]
     public function testDeleteCarRemovesCarUserRelationships(): void
     {
         $car = new Car($this->testCarId);
@@ -155,9 +151,8 @@ final class CarDeletionTest extends IntegrationTestCase
 
     /**
      * Test car deletion transaction rollback on failure
-     *
-     * @group fast
      */
+    #[Group('fast')]
     public function testDeleteTransactionRollbackOnFailure(): void
     {
         // This test verifies that if any step fails, the transaction rolls back
@@ -186,9 +181,8 @@ final class CarDeletionTest extends IntegrationTestCase
 
     /**
      * Test car deletion requires authenticated user
-     *
-     * @group fast
      */
+    #[Group('fast')]
     public function testDeleteRequiresAuthenticatedUser(): void
     {
         $this->expectException(CarDeletionException::class);
@@ -212,9 +206,8 @@ final class CarDeletionTest extends IntegrationTestCase
 
     /**
      * Test car deletion with optional token parameter
-     *
-     * @group fast
      */
+    #[Group('fast')]
     public function testDeleteCarWithOptionalToken(): void
     {
         $car = new Car($this->testCarId);

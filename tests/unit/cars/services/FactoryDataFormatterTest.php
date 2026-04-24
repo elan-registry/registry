@@ -5,11 +5,12 @@ declare(strict_types=1);
 use ElanRegistry\Car\FactoryDataFormatter;
 use PHPUnit\Framework\TestCase;
 
+use PHPUnit\Framework\Attributes\Group;
+
 /**
  * Unit tests for FactoryDataFormatter service class
- *
- * @group fast
  */
+#[Group('fast')]
 final class FactoryDataFormatterTest extends TestCase
 {
     public function testSuffixToTextReturnsCorrectDescriptionForA(): void

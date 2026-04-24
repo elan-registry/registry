@@ -3,16 +3,17 @@ declare(strict_types=1);
 
 use PHPUnit\Framework\TestCase;
 
+use PHPUnit\Framework\Attributes\Group;
+
 /**
  * Test security_headers.php HTTPS detection migration
  *
  * Verifies that security_headers.php uses validated $is_https
  * global instead of raw $_SERVER proxy headers.
- *
- * @group security
- * @group security-headers
- * @group server-globals
  */
+#[Group('security')]
+#[Group('security-headers')]
+#[Group('server-globals')]
 class SecurityHeadersTest extends TestCase
 {
     private string $securityHeadersFile;

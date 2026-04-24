@@ -8,16 +8,17 @@ use PHPUnit\Framework\TestCase;
 use ElanRegistry\Car\CarValidator;
 use ElanRegistry\Exceptions\CarValidationException;
 
+use PHPUnit\Framework\Attributes\Group;
+
 /**
  * Integration Tests for CarValidator Model Validation
  *
  * Tests model validation that requires car_models reference data.
  * These tests verify that CarValidator correctly integrates with the
  * CarModel class to validate model combinations against the database.
- *
- * @group integration
- * @group reference-data
  */
+#[Group('integration')]
+#[Group('reference-data')]
 final class CarValidatorModelTest extends TestCase
 {
     private CarValidator $validator;

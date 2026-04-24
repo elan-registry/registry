@@ -7,16 +7,18 @@ namespace Tests\Integration\Reference;
 use PHPUnit\Framework\TestCase;
 use ElanRegistry\Reference\CarModel;
 
+use PHPUnit\Framework\Attributes\CoversClass;
+use PHPUnit\Framework\Attributes\Group;
+
 /**
  * CarModelTest - Unit Tests for CarModel Reference Data Class
  *
  * Tests the read-only query interface for car model reference data.
  * These tests verify correct data retrieval and filtering from the car_models table.
- *
- * @group integration
- * @group reference-data
- * @covers \ElanRegistry\Reference\CarModel
  */
+#[Group('integration')]
+#[Group('reference-data')]
+#[CoversClass(CarModel::class)]
 class CarModelTest extends TestCase
 {
     private CarModel $carModel;

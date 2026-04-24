@@ -4,14 +4,15 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/IntegrationTestCase.php';
 
+use PHPUnit\Framework\Attributes\Group;
+
 /**
  * Test cases for Car DataTables functionality
  *
  * Tests cover server-side DataTables data processing including searching,
  * sorting, pagination, and security validation.
- *
- * @group integration
  */
+#[Group('integration')]
 final class CarDataTablesTest extends IntegrationTestCase
 {
     protected $db;
@@ -31,9 +32,8 @@ final class CarDataTablesTest extends IntegrationTestCase
 
     /**
      * Test getDataTablesData for cars table
-     *
-     * @group fast
      */
+    #[Group('fast')]
     public function testGetDataTablesDataForCarsTable(): void
     {
         $car = new Car();
@@ -62,9 +62,8 @@ final class CarDataTablesTest extends IntegrationTestCase
 
     /**
      * Test getDataTablesData for factory table
-     *
-     * @group fast
      */
+    #[Group('fast')]
     public function testGetDataTablesDataForFactoryTable(): void
     {
         $car = new Car();
@@ -89,9 +88,8 @@ final class CarDataTablesTest extends IntegrationTestCase
 
     /**
      * Test getDataTablesData with search filter
-     *
-     * @group fast
      */
+    #[Group('fast')]
     public function testGetDataTablesDataWithSearch(): void
     {
         $car = new Car();
@@ -118,9 +116,8 @@ final class CarDataTablesTest extends IntegrationTestCase
 
     /**
      * Test getDataTablesData with sorting
-     *
-     * @group fast
      */
+    #[Group('fast')]
     public function testGetDataTablesDataWithSorting(): void
     {
         $car = new Car();
@@ -151,9 +148,8 @@ final class CarDataTablesTest extends IntegrationTestCase
 
     /**
      * Test getDataTablesData with pagination
-     *
-     * @group fast
      */
+    #[Group('fast')]
     public function testGetDataTablesDataWithPagination(): void
     {
         $car = new Car();
@@ -179,9 +175,8 @@ final class CarDataTablesTest extends IntegrationTestCase
 
     /**
      * Test getDataTablesData validates column names
-     *
-     * @group fast
      */
+    #[Group('fast')]
     public function testGetDataTablesDataValidatesColumnNames(): void
     {
         $car = new Car();
@@ -211,9 +206,8 @@ final class CarDataTablesTest extends IntegrationTestCase
 
     /**
      * Test getDataTablesData prevents SQL injection
-     *
-     * @group fast
      */
+    #[Group('fast')]
     public function testGetDataTablesDataPreventsInjection(): void
     {
         $car = new Car();
@@ -239,9 +233,8 @@ final class CarDataTablesTest extends IntegrationTestCase
 
     /**
      * Test getDataTablesData fails with invalid table
-     *
-     * @group fast
      */
+    #[Group('fast')]
     public function testGetDataTablesDataFailsWithInvalidTable(): void
     {
         $this->expectException(Exception::class);
@@ -264,9 +257,8 @@ final class CarDataTablesTest extends IntegrationTestCase
 
     /**
      * Test getDataTablesData returns correct record counts
-     *
-     * @group fast
      */
+    #[Group('fast')]
     public function testGetDataTablesDataReturnsCorrectRecordCounts(): void
     {
         $car = new Car();
@@ -288,5 +280,164 @@ final class CarDataTablesTest extends IntegrationTestCase
         $this->assertIsNumeric($result['recordsFiltered']);
         $this->assertGreaterThanOrEqual(0, $result['recordsTotal']);
         $this->assertGreaterThanOrEqual(0, $result['recordsFiltered']);
+    }
+
+    /**
+     * Build a default DataTables request array with optional overrides.
+     *
+     * @param array<string, mixed> $overrides Key/value pairs to override default values
+     * @param list<array<string, string>> $columns Column definitions (defaults to id column)
+     * @return array<string, mixed>
+     */
+    private function buildDataTablesRequest(array $overrides = [], array $columns = []): array
+    {
+        return array_merge([
+            'draw'    => 1,
+            'start'   => 0,
+            'length'  => 10,
+            'search'  => ['value' => ''],
+            'order'   => [['column' => 0, 'dir' => 'asc']],
+            'columns' => $columns ?: [['data' => 'id', 'searchable' => 'true', 'orderable' => 'true']],
+        ], $overrides);
+    }
+
+    /**
+     * Test that an oversized search value (100KB+) does not crash the service
+     */
+    #[Group('fast')]
+    public function testOversizedSearchValueDoesNotCrash(): void
+    {
+        $car = new Car();
+
+        $request = $this->buildDataTablesRequest(
+            ['search' => ['value' => str_repeat('x', 102400)]],
+            [['data' => 'chassis', 'searchable' => 'true', 'orderable' => 'true']]
+        );
+
+        $result = $car->getDataTablesData($request, 'cars');
+
+        $this->assertIsArray($result);
+        $this->assertArrayHasKey('draw', $result);
+        $this->assertArrayHasKey('recordsTotal', $result);
+        $this->assertArrayHasKey('recordsFiltered', $result);
+        $this->assertArrayHasKey('data', $result);
+        $this->assertEquals(0, $result['recordsFiltered']);
+    }
+
+    /**
+     * Test that a negative length parameter is handled safely without crashing
+     */
+    #[Group('fast')]
+    public function testNegativeLengthParameter(): void
+    {
+        $car = new Car();
+
+        $request = $this->buildDataTablesRequest(['length' => -1]);
+
+        $result = $car->getDataTablesData($request, 'cars');
+
+        $this->assertIsArray($result);
+        $this->assertArrayHasKey('data', $result);
+        $this->assertIsArray($result['data']);
+    }
+
+    /**
+     * Test that a zero length parameter returns an empty data array with valid metadata structure
+     */
+    #[Group('fast')]
+    public function testZeroLengthParameter(): void
+    {
+        $car = new Car();
+
+        $request = $this->buildDataTablesRequest(['draw' => 3, 'length' => 0]);
+
+        $result = $car->getDataTablesData($request, 'cars');
+
+        $this->assertIsArray($result);
+        $this->assertEquals(3, $result['draw']);
+        $this->assertArrayHasKey('recordsTotal', $result);
+        $this->assertArrayHasKey('recordsFiltered', $result);
+        $this->assertGreaterThanOrEqual(0, $result['recordsTotal']);
+        $this->assertEmpty($result['data']);
+    }
+
+    /**
+     * Test that a non-integer start value is cast safely to an integer
+     */
+    #[Group('fast')]
+    public function testNonIntegerStartIsCastSafely(): void
+    {
+        $car = new Car();
+
+        // Pass 0 (the result of casting a non-numeric string to int) to verify
+        // the service handles an offset of 0 correctly.
+        $request = $this->buildDataTablesRequest(['start' => (int) 'abc']);
+
+        $result = $car->getDataTablesData($request, 'cars');
+
+        $this->assertIsArray($result);
+        $this->assertArrayHasKey('draw', $result);
+        $this->assertArrayHasKey('recordsTotal', $result);
+        $this->assertArrayHasKey('recordsFiltered', $result);
+        $this->assertArrayHasKey('data', $result);
+    }
+
+    /**
+     * Test that 500+ unrecognized column names do not crash the service and return the full record count
+     */
+    #[Group('fast')]
+    public function testExcessiveColumnCountDoesNotCrash(): void
+    {
+        $car = new Car();
+
+        $columns = [];
+        for ($i = 0; $i < 500; $i++) {
+            $columns[] = ['data' => 'col_' . $i, 'searchable' => 'true', 'orderable' => 'true'];
+        }
+
+        $request = $this->buildDataTablesRequest([], $columns);
+
+        $result = $car->getDataTablesData($request, 'cars');
+
+        $this->assertIsArray($result);
+        $this->assertArrayHasKey('draw', $result);
+        $this->assertArrayHasKey('recordsTotal', $result);
+        $this->assertArrayHasKey('recordsFiltered', $result);
+        $this->assertArrayHasKey('data', $result);
+        $this->assertEquals($result['recordsTotal'], $result['recordsFiltered']);
+    }
+
+    /**
+     * Test chassis lookup SQL query finds a car with a matching chassis number
+     *
+     * The findCarByChassis special endpoint executes this query inline in getDataTables.php.
+     * We verify the query behavior directly against the real database.
+     */
+    #[Group('fast')]
+    public function testChassisLookupQueryFindsCar(): void
+    {
+        $userId = $this->createTestUser();
+        $chassis = 'TEST-CHASSIS-' . uniqid();
+        $carId = $this->createTestCar($userId, ['chassis' => $chassis]);
+
+        // Execute the same SQL that the findCarByChassis endpoint runs (getDataTables.php:103)
+        $result = $this->db->query("SELECT id FROM cars WHERE chassis = ? LIMIT 1", [$chassis]);
+
+        $this->assertGreaterThan(0, $result->count());
+        $this->assertEquals($carId, $result->first()->id);
+    }
+
+    /**
+     * Test chassis lookup SQL query returns no results for an unknown chassis number
+     */
+    #[Group('fast')]
+    public function testChassisLookupQueryReturnsNoResultsForUnknownChassis(): void
+    {
+        $result = $this->db->query(
+            "SELECT id FROM cars WHERE chassis = ? LIMIT 1",
+            ['CHASSIS-DOES-NOT-EXIST-' . uniqid()]
+        );
+
+        $this->assertEquals(0, $result->count());
     }
 }

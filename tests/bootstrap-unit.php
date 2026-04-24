@@ -711,11 +711,11 @@ if (!function_exists('getMimeType')) {
         
         $finfo = finfo_open(FILEINFO_MIME_TYPE);
         $mimeType = finfo_file($finfo, $filepath);
-        finfo_close($finfo);
         
         $allowedMimes = [
             'image/jpeg',
-            'image/png', 
+            'image/jpg',
+            'image/png',
             'image/gif',
             'image/webp'
         ];

@@ -4,14 +4,15 @@ declare(strict_types=1);
 
 use PHPUnit\Framework\TestCase;
 
+use PHPUnit\Framework\Attributes\Group;
+
 /**
  * Core Car class tests
  *
  * Consolidated tests for Car class functionality including instantiation,
  * find operations, exists checks, basic getters, and static methods.
- *
- * @group fast
  */
+#[Group('fast')]
 final class CarCoreTest extends TestCase
 {
     private int $testCarId = 1;

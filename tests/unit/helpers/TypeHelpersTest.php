@@ -4,11 +4,12 @@ declare(strict_types=1);
 
 use PHPUnit\Framework\TestCase;
 
+use PHPUnit\Framework\Attributes\Group;
+
 /**
  * Unit tests for type helper functions (dbInt, dbIntOrNull, currentUserId)
- *
- * @group fast
  */
+#[Group('fast')]
 final class TypeHelpersTest extends TestCase
 {
     // ============================================================
