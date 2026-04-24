@@ -71,6 +71,16 @@ if [ -f ".githooks/commit-msg" ]; then
     fi
 fi
 
+# Check if pre-push hook exists and is executable
+if [ -f ".githooks/pre-push" ]; then
+    if [ -x ".githooks/pre-push" ]; then
+        echo "✅ Pre-push hook is executable (prints /review-pr reminder)"
+    else
+        echo "⚠️  Warning: Pre-push hook not executable, fixing..."
+        chmod +x .githooks/pre-push
+    fi
+fi
+
 # Check for required tools
 echo ""
 echo "🔧 Checking required tools:"

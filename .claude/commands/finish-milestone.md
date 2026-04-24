@@ -158,6 +158,32 @@ Launch the `security-reviewer` agent via the Agent tool with
   user to fix them before proceeding.
 - If only Medium/Low or no issues, note findings in the summary and proceed.
 
+### Step 9.7: Local multi-agent review (before opening the PR)
+
+Run `/review-pr` locally against `main` on the milestone branch. This runs
+on the user's Claude subscription, so CI doesn't have to pay for the first
+deep pass on the milestone PR.
+
+```text
+/review-pr
+```
+
+Scope the review to `git diff main...milestone/$ARGUMENTS`. The multi-agent
+suite runs in parallel (code-reviewer, pr-test-analyzer,
+silent-failure-hunter, comment-analyzer, type-design-analyzer,
+senior-architect). Focus areas at milestone level:
+
+- Cross-issue integration (did two PRs introduce contradictions?)
+- Architecture drift vs. the wiki
+- Release-notes accuracy vs. the merged PR list
+- Aggregated security surface
+
+If Critical or Important issues surface, **stop and fix them before
+creating the PR**. These would otherwise land as blocking comments on the
+milestone-level CI review and require another push cycle.
+
+Once the local review is clean, proceed to Step 10.
+
 ### Step 10: Create the PR targeting main
 
 ```bash
@@ -203,9 +229,16 @@ main triggers auto-closure.
 
 Fill in actual data from steps 4 and 5.
 
-### Step 11: Run multi-agent review
+### Step 11: CI milestone review
 
-Suggest the user run `/review-pr` for comprehensive review before merging.
+Once the PR is open, the `claude-code-review.yml` workflow automatically
+runs a milestone-level review (multi-agent, Opus) against `main`. It reads
+`merged-prs.txt`, checks release-notes accuracy, architecture drift,
+integration, and deployment readiness.
+
+If you need to re-run the deep review later (e.g., after pushing fixes),
+apply the `deep-review` label to the PR or comment `@claude deep-review`.
+It will not re-run on every push — that keeps CI cost down.
 
 ### Step 12: Output summary
 
@@ -217,7 +250,8 @@ Suggest the user run `/review-pr` for comprehensive review before merging.
 - CLAUDE.md update status (updated or skipped)
 - Remind: wiki/ files need to be manually pushed to the wiki repo
 - Next steps:
-  - "Use `/review-pr` to review the milestone PR"
+  - "The CI milestone-level review runs automatically on PR open"
+  - "To re-run the deep review later, label the PR `deep-review` or comment `@claude deep-review`"
   - "After the PR is merged, run `/release-milestone $ARGUMENTS` to tag and deploy"
   - "Release notes are at `docs/releases/RELEASE_NOTES_v$ARGUMENTS.md`"
 
