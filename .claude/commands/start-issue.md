@@ -446,11 +446,21 @@ Once the user approves the plan, execute using agents strategically:
    Implementation complete for issue #ISSUE_NUMBER. Next steps:
 
    1. /simplify        — Review and clean up the code (optional)
-   2. /commit          — Commit your changes
-   3. /commit-push-pr  — Push and create a PR targeting `MILESTONE_BRANCH`
+   2. /review-pr       — Run the multi-agent local review (RECOMMENDED before
+                         push; uses your Max/Pro subscription so CI can stay
+                         cheap)
+   3. /commit          — Commit your changes
+   4. /commit-push-pr  — Push and create a PR targeting `MILESTONE_BRANCH`
                          Include "Closes #ISSUE_NUMBER" in the PR body.
-   4. /finish-issue    — Monitor CI, squash-merge, and close the issue
+   5. /finish-issue    — Monitor CI, squash-merge, and close the issue
    ```
+
+   > **Why `/review-pr` before push?** CI runs a lightweight Sonnet backstop
+   > on issue PRs and relies on the author having done a deep review locally.
+   > Running `/review-pr` here catches issues on your plan instead of burning
+   > CI tokens on repeated pushes. Note: at this stage it reviews working-tree
+   > changes (`git diff HEAD`) — run it before `/commit` so you can act on
+   > findings without an amended commit.
 
    Do NOT run any of these steps automatically. Each step requires the user
    to explicitly invoke it (e.g., type `/commit` or `/commit-push-pr`).
@@ -488,7 +498,7 @@ the version from the milestone branch name (e.g., `milestone/v2.17.0` ->
 
 - **NEVER commit code** - `/start-issue` does not commit, push, or create PRs.
   After implementation is complete, stop and tell the user to continue with
-  `/simplify`, `/commit`, then `/commit-push-pr`.
+  `/simplify`, `/review-pr` (recommended), `/commit`, then `/commit-push-pr`.
 - **Issue PRs MUST target the milestone branch** - never target `main` directly.
   The issue PR targets `milestone/vX.Y.Z`. Only the final milestone PR
   (created by `/finish-milestone`) targets `main`.
@@ -636,10 +646,11 @@ All changes implemented, tested, documented, and reviewed.
 Implementation complete for issue #423. Next steps:
 
 1. /simplify        — Review and clean up the code (optional)
-2. /commit          — Commit your changes
-3. /commit-push-pr  — Push and create a PR targeting `milestone/v3.2.0`
+2. /review-pr       — Multi-agent local review (recommended before push)
+3. /commit          — Commit your changes
+4. /commit-push-pr  — Push and create a PR targeting `milestone/v3.2.0`
                       Include "Closes #423" in the PR body.
-4. /finish-issue    — Monitor CI, squash-merge, and close the issue
+5. /finish-issue    — Monitor CI, squash-merge, and close the issue
 ```
 
 ## Bug Issue Example Flow
@@ -723,10 +734,11 @@ Here's my plan with escape analysis and preventive tests...
 Implementation complete for issue #512. Next steps:
 
 1. /simplify        — Review and clean up the code (optional)
-2. /commit          — Commit your changes
-3. /commit-push-pr  — Push and create a PR targeting `milestone/v2.16.0`
+2. /review-pr       — Multi-agent local review (recommended before push)
+3. /commit          — Commit your changes
+4. /commit-push-pr  — Push and create a PR targeting `milestone/v2.16.0`
                       Include "Closes #512" in the PR body.
-4. /finish-issue    — Monitor CI, squash-merge, and close the issue
+5. /finish-issue    — Monitor CI, squash-merge, and close the issue
 
 Remember: Include the bug escape analysis in the PR description so
 reviewers can verify preventive test coverage.
