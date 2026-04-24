@@ -321,7 +321,6 @@ final class CarDataTablesTest extends IntegrationTestCase
         $this->assertArrayHasKey('recordsTotal', $result);
         $this->assertArrayHasKey('recordsFiltered', $result);
         $this->assertArrayHasKey('data', $result);
-        $this->assertGreaterThanOrEqual(0, $result['recordsFiltered']);
         $this->assertEquals(0, $result['recordsFiltered']);
     }
 
