@@ -5,33 +5,51 @@
 
 ## Required Actions After Deployment
 
-1. **Install phpdotenv** (#631) — run from the site root on the server:
+**Important:** Complete steps 1–3 before pushing code. This ensures the database
+remains accessible immediately after the push, before phpdotenv is installed.
 
-   ```bash
-   cd usersc && composer install --no-dev --optimize-autoloader && cd ..
-   ```
-
-   Installs `vlucas/phpdotenv` (replaces abandoned `johnathanmiller/secure-env-php`).
-   Must complete before the site boots.
-
-2. **Migrate credentials to `.env`** (#631) — create `.env` from `.env.enc` data, set
-   `chmod 600 .env`, then securely delete `.env.enc` and `.env.key`:
+1. **Create `.env` with database credentials** (#631) — before pushing, create `.env`
+   in the site root from your `.env.enc` data and set permissions:
 
    ```bash
    chmod 600 .env
-   shred -vfz -n 3 .env.enc .env.key
    ```
 
-3. **Add Turnstile keys to `.env`** (#630) — obtain keys from Cloudflare Dashboard → Turnstile:
+   The site will read DB credentials from `.env` as soon as the new code is live.
+
+2. **Add Turnstile keys to `.env`** (#630) — obtain keys from Cloudflare Dashboard →
+   Turnstile and append to `.env`:
 
    ```text
    TURNSTILE_SITE_KEY=your_site_key
    TURNSTILE_SECRET_KEY=your_secret_key
    ```
 
-4. **Register Turnstile hooks via Hooker plugin** (#630) — Admin → Plugin Manager →
-   Hooker → Configure. Add five hooks pointing to the new files in
-   `usersc/plugins/hooker/hooks/`:
+3. **Push the code** — deploy as normal (e.g., `git push test main`).
+
+4. **Install phpdotenv immediately after pushing** (#631) — run from the site root:
+
+   ```bash
+   cd usersc && composer install --no-dev --optimize-autoloader && cd ..
+   ```
+
+   Installs `vlucas/phpdotenv`. The site boots correctly once this completes.
+   Only `usersc/` requires this — the root `composer.json` is for dev tools only.
+
+5. **Securely delete `.env.enc` and `.env.key`** (#631) — credentials are now in `.env`:
+
+   ```bash
+   shred -vfz -n 3 .env.enc .env.key
+   ```
+
+6. **Register Turnstile hooks** (#630) — run the seed script against the database:
+
+   ```bash
+   mysql -u USER -p DATABASE < database/seed-turnstile-hooks.sql
+   ```
+
+   Alternatively, add the five hooks manually via Admin → Plugin Manager → Hooker →
+   Configure:
 
    | Page | Position | Hook file |
    | ---- | -------- | --------- |
@@ -41,8 +59,8 @@
    | `joinAttempt` | `body` | `hooks/post_turnstile.php` |
    | `forgot_password.php` | `post` | `hooks/post_turnstile.php` |
 
-5. Verify URL redirects in `docs/.htaccess` are working after docs reorganization (#559)
-6. Run `./scripts/setup-git-hooks.sh` on each **developer machine** to install new git hooks (#684)
+7. Verify URL redirects in `docs/.htaccess` are working after docs reorganization (#559)
+8. Run `./scripts/setup-git-hooks.sh` on each **developer machine** to install new git hooks (#684)
    (servers do not need this — it is for local pre-commit checks only)
 
 ## User-Facing Changes
