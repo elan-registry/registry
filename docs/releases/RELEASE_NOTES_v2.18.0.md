@@ -42,7 +42,8 @@
    | `forgot_password.php` | `post` | `hooks/post_turnstile.php` |
 
 5. Verify URL redirects in `docs/.htaccess` are working after docs reorganization (#559)
-6. Run `./scripts/setup-git-hooks.sh` on each developer machine to install new git hooks (#684)
+6. Run `./scripts/setup-git-hooks.sh` on each **developer machine** to install new git hooks (#684)
+   (servers do not need this — it is for local pre-commit checks only)
 
 ## User-Facing Changes
 
