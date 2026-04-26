@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 /**
  * Document Embed Page
  *
@@ -9,10 +11,15 @@
 require_once '../users/init.php';
 require_once $abs_us_root . $us_url_root . 'users/includes/template/prep.php';
 
+if (!securePage($php_self)) {
+    die();
+}
+
 // Validate and sanitize document parameter
-$document = '';
-$path_parts = [];
+$document    = '';
+$path_parts  = [];
 $error_message = '';
+$asset_base  = 'docs/assets/';
 
 if (!empty($_GET['doc'])) {
     $requested_doc = $_GET['doc'];
@@ -46,12 +53,13 @@ if (!empty($_GET['doc'])) {
             if (!in_array($requested_subdir, $allowed_subdirs, true)) {
                 logger(0, LogCategories::LOG_CATEGORY_SECURITY, 'Invalid subdir attempted: ' . $requested_subdir);
                 $error_message = 'Invalid document path.';
+                $document = '';
             } else {
                 $asset_subdir = $requested_subdir;
             }
         }
 
-        $asset_base = $asset_subdir ? 'docs/' . $asset_subdir . '/assets/' : 'docs/assets/';
+        $asset_base = $asset_subdir !== '' ? 'docs/' . $asset_subdir . '/assets/' : 'docs/assets/';
 
         // Check if file actually exists
         $file_path = $abs_us_root . $us_url_root . $asset_base . $document;

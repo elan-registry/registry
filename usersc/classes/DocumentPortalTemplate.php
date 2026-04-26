@@ -297,6 +297,9 @@ class DocumentPortalTemplate
 
     /**
      * Render a target attribute string, or empty string if no value given.
+     *
+     * Appends rel='noopener noreferrer' when target is '_blank' to prevent
+     * reverse tabnabbing attacks.
      */
     private static function renderTargetAttr(string $target): string
     {
@@ -304,7 +307,13 @@ class DocumentPortalTemplate
             return '';
         }
 
-        return " target='" . htmlspecialchars($target, ENT_QUOTES, 'UTF-8') . "'";
+        $attr = " target='" . htmlspecialchars($target, ENT_QUOTES, 'UTF-8') . "'";
+
+        if ($target === '_blank') {
+            $attr .= " rel='noopener noreferrer'";
+        }
+
+        return $attr;
     }
 
     /**

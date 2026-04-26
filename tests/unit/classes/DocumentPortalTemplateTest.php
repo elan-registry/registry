@@ -450,6 +450,144 @@ final class DocumentPortalTemplateTest extends TestCase
         ]);
     }
 
+    public function testRenderDocumentCardButtonTargetAddsTargetAttribute(): void
+    {
+        $html = DocumentPortalTemplate::renderDocumentCard([
+            'title'        => 'Title',
+            'icon'         => 'fa-car',
+            'url'          => '/test',
+            'buttonText'   => 'View',
+            'buttonTarget' => '_blank',
+        ]);
+
+        $this->assertStringContainsString("target='_blank'", $html);
+    }
+
+    public function testRenderDocumentCardButtonTargetBlankAddsRelAttribute(): void
+    {
+        $html = DocumentPortalTemplate::renderDocumentCard([
+            'title'        => 'Title',
+            'icon'         => 'fa-car',
+            'url'          => '/test',
+            'buttonText'   => 'View',
+            'buttonTarget' => '_blank',
+        ]);
+
+        $this->assertStringContainsString("rel='noopener noreferrer'", $html);
+    }
+
+    public function testRenderDocumentCardOmitsTargetWhenNotProvided(): void
+    {
+        $html = DocumentPortalTemplate::renderDocumentCard([
+            'title'      => 'Title',
+            'icon'       => 'fa-car',
+            'url'        => '/test',
+            'buttonText' => 'View',
+        ]);
+
+        $this->assertStringNotContainsString('target=', $html);
+        $this->assertStringNotContainsString('rel=', $html);
+    }
+
+    public function testRenderDocumentCardSecondaryButtonRendersUrl(): void
+    {
+        $html = DocumentPortalTemplate::renderDocumentCard([
+            'title'           => 'Title',
+            'icon'            => 'fa-car',
+            'url'             => '/test',
+            'buttonText'      => 'View',
+            'secondaryButton' => [
+                'url'  => '/download/file.pdf',
+                'text' => 'Download PDF',
+            ],
+        ]);
+
+        $this->assertStringContainsString("href='/download/file.pdf'", $html);
+        $this->assertStringContainsString('Download PDF', $html);
+    }
+
+    public function testRenderDocumentCardSecondaryButtonAppliesClass(): void
+    {
+        $html = DocumentPortalTemplate::renderDocumentCard([
+            'title'           => 'Title',
+            'icon'            => 'fa-car',
+            'url'             => '/test',
+            'buttonText'      => 'View',
+            'secondaryButton' => [
+                'url'   => '/download',
+                'text'  => 'Download',
+                'class' => 'btn-warning btn-sm',
+            ],
+        ]);
+
+        $this->assertStringContainsString('btn btn-warning btn-sm', $html);
+    }
+
+    public function testRenderDocumentCardSecondaryButtonRendersIcon(): void
+    {
+        $html = DocumentPortalTemplate::renderDocumentCard([
+            'title'           => 'Title',
+            'icon'            => 'fa-car',
+            'url'             => '/test',
+            'buttonText'      => 'View',
+            'secondaryButton' => [
+                'url'  => '/download',
+                'text' => 'Download',
+                'icon' => 'fa-download',
+            ],
+        ]);
+
+        $this->assertStringContainsString('fas fa-download', $html);
+    }
+
+    public function testRenderDocumentCardSecondaryButtonRendersDownloadAttribute(): void
+    {
+        $html = DocumentPortalTemplate::renderDocumentCard([
+            'title'           => 'Title',
+            'icon'            => 'fa-car',
+            'url'             => '/test',
+            'buttonText'      => 'View',
+            'secondaryButton' => [
+                'url'      => '/download',
+                'text'     => 'Download',
+                'download' => true,
+            ],
+        ]);
+
+        $this->assertStringContainsString(' download', $html);
+    }
+
+    public function testRenderDocumentCardSecondaryButtonTargetBlankAddsRelAttribute(): void
+    {
+        $html = DocumentPortalTemplate::renderDocumentCard([
+            'title'           => 'Title',
+            'icon'            => 'fa-car',
+            'url'             => '/test',
+            'buttonText'      => 'View',
+            'secondaryButton' => [
+                'url'    => '/docs/file.pdf',
+                'text'   => 'Open',
+                'target' => '_blank',
+            ],
+        ]);
+
+        $this->assertStringContainsString("target='_blank'", $html);
+        $this->assertStringContainsString("rel='noopener noreferrer'", $html);
+    }
+
+    public function testRenderDocumentCardOmitsSecondaryButtonWhenAbsent(): void
+    {
+        $html = DocumentPortalTemplate::renderDocumentCard([
+            'title'      => 'Title',
+            'icon'       => 'fa-car',
+            'url'        => '/test',
+            'buttonText' => 'View',
+        ]);
+
+        // Only one <a> element (the primary button)
+        $this->assertSame(1, substr_count($html, '<a href='));
+    }
+
     // ============================================================
     // renderDocumentCardGrid TESTS
     // ============================================================
