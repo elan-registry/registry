@@ -213,7 +213,9 @@ INSERT INTO `pages` (`id`, `page`, `title`, `private`, `re_auth`, `core`) VALUES
 (329, 'app/admin/verify/index.php', NULL, 1, 0, 0),
 (330, 'app/admin/verify/send_email.php', NULL, 1, 0, 0),
 (331, 'app/admin/verify/verify_car.php', NULL, 1, 0, 0),
-(337, 'app/admin/includes/system/schema-operations.php', NULL, 1, 0, 0)
+(337, 'app/admin/includes/system/schema-operations.php', NULL, 1, 0, 0),
+(9001, 'docs/pdf-viewer.php',   NULL, 0, 0, 0),
+(9002, 'docs/guide-viewer.php', NULL, 0, 0, 0)
 ON DUPLICATE KEY UPDATE
   title = VALUES(title),
   private = VALUES(private),
