@@ -722,8 +722,8 @@ $category = $config->getCategory('user-guides');
 
 **Access Control**:
 
-- Documents in `/docs/faq/` - Public access
-- Documents in `/docs/faq/admin/` - Admin only
+- Documents in `/docs/guides/` and `/docs/reference/` - Public access
+- Documents in `/docs/admin/` - Admin only
 - Document viewer enforces access rules
 
 ## Design Patterns

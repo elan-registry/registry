@@ -17,23 +17,49 @@
 - **Documentation reorganized by intent**
   ([#559](https://github.com/unibrain1/elanregistry/issues/559)):
   Reference materials restructured from format-based (FAQ, Reference Library)
-  into purpose-based sections — Workshop & Parts, Technical Articles, and Help
-  & Guides — making content easier to find.
-- **Simplified navigation**
+  into purpose-based sections. New structure: "Owner Guides" (`docs/guides/`) for
+  how-to documentation and "Technical Reference" (`docs/reference/`) for car
+  knowledge and specifications. Technical Reference includes Workshop & Parts
+  (workshop manuals, parts lists, engine types) and Technical Articles
+  (gearknobs, steering wheels, engine types, super safety, serial numbers).
+- **Navigation redesigned**
   ([#559](https://github.com/unibrain1/elanregistry/issues/559)):
-  Top-level nav reduced from 9 items to 6. Resources dropdown consolidates
-  Technical Resources, Reference Library, and Help & Guides. Car Stories
-  restored to top-level.
+  Top-level nav reduced from 9 items to 6. "Technical Resources" dropdown
+  replaced by "Reference" dropdown; Car Stories promoted to top-level nav item;
+  "Feedback" moved into Account dropdown; "Home" link removed (logo links to
+  home). "Factory Data" renamed to "Production Records".
+- **Documentation hub updated**
+  ([#559](https://github.com/unibrain1/elanregistry/issues/559)):
+  `docs/index.php` redesigned with 3-card layout: Technical Reference, Car
+  Stories, and Owner Guides — making documentation structure immediately clear
+  to users.
 - **Paint Colour Codes page**
   ([#559](https://github.com/unibrain1/elanregistry/issues/559)):
-  Web colour guide and downloadable PDF merged into a single page.
-- **Chassis Validation**
+  Web colour guide and downloadable PDF merged into a single page with prominent
+  PDF download card for official factory paint codes.
+- **Technical Articles accessible via navigation**
   ([#559](https://github.com/unibrain1/elanregistry/issues/559)):
-  Now directly accessible from the Resources dropdown (was buried inside
-  Reference Library).
+  New dedicated Technical Reference section in main navigation with easy access
+  to gearknobs, steering wheels, engine types, super safety, and serial numbers
+  articles.
 
 ## Technical Changes
 
+- **Documentation directory reorganization**
+  ([#559](https://github.com/unibrain1/elanregistry/issues/559)):
+  `docs/faq/` directory split into `docs/guides/` (owner guides), `docs/reference/`
+  (technical content), and `docs/admin/` (admin documentation). Image assets moved
+  from `docs/faq/screenshots/` to `docs/reference/images/`. Old URLs redirect
+  automatically via `.htaccess`.
+- **DocumentConfig class updated**
+  ([#559](https://github.com/unibrain1/elanregistry/issues/559)):
+  `usersc/classes/DocumentConfig.php` updated with new `guides`, `reference`,
+  and `admin` categories (replaces `faq` and `faq/admin`). Breadcrumb navigation
+  in `docs/view.php` updated to reflect new structure.
+- **Root path array updated**
+  ([#559](https://github.com/unibrain1/elanregistry/issues/559)):
+  `z_us_root.php` path array updated with new directories (`docs/guides/`,
+  `docs/reference/`, `docs/admin/`).
 - **File-based navigation**
   ([#711](https://github.com/unibrain1/elanregistry/issues/711)):
   Completed `nav.php` with full menu structure; switched `navigation_type = 0`

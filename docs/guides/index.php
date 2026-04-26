@@ -1,6 +1,9 @@
 <?php
+
+declare(strict_types=1);
+
 /**
- * FAQ and User Documentation - Lotus Elan Registry
+ * Owner Guides - Lotus Elan Registry
  *
  * @package ElanRegistry
  */
@@ -26,26 +29,6 @@ $cards = [
         'description' => "Step-by-step guide to registering your Lotus Elan or +2. Learn about chassis validation, photo uploads, and completing your car's profile.",
     ],
     [
-        'title'       => 'Identification Guide',
-        'icon'        => 'fa-search',
-        'url'         => '../view.php?doc=IDENTIFICATION_GUIDE.md',
-        'buttonText'  => 'View Guide',
-        'buttonIcon'  => 'fa-book-open',
-        'headerClass' => 'bg-danger text-white',
-        'buttonClass' => 'btn-danger btn-sm',
-        'description' => 'Complete guide to identifying different Lotus Elan models and variants. Includes detailed descriptions and photos of Roadster, Coupe, Racing, and Plus 2 models.',
-    ],
-    [
-        'title'       => 'Chassis Validation Rules',
-        'icon'        => 'fa-barcode',
-        'url'         => '../chassis-validation.php',
-        'buttonText'  => 'View Rules',
-        'buttonIcon'  => 'fa-book-open',
-        'headerClass' => 'bg-warning text-dark',
-        'buttonClass' => 'btn-warning btn-sm',
-        'description' => 'Comprehensive guide to Lotus Elan chassis numbering formats and validation requirements. Detailed specifications for pre-1970, 1970 transition, and post-1970 formats.',
-    ],
-    [
         'title'       => 'Car Transfer Guide',
         'icon'        => 'fa-exchange-alt',
         'url'         => '../view.php?doc=CAR_TRANSFER_USER_GUIDE.md',
@@ -68,7 +51,7 @@ $cards = [
     [
         'title'       => 'Paint Colors Guide',
         'icon'        => 'fa-palette',
-        'url'         => 'paint-colors.php',
+        'url'         => '../reference/paint-colors.php',
         'buttonText'  => 'View Guide',
         'buttonIcon'  => 'fa-book-open',
         'headerClass' => 'bg-danger text-white',
@@ -105,10 +88,10 @@ if ($user->isLoggedIn()) {
 <div class="page-wrapper">
     <div class='container'>
         <?= DocumentPortalTemplate::renderPortalHeader([
-            'title'       => 'FAQ & User Guides',
+            'title'       => 'Owner Guides',
             'titleIcon'   => 'fa-question-circle',
             'description' => 'Documentation and guides for using the Lotus Elan Registry',
-            'leadText'    => 'Find answers to common questions and learn how to use the registry effectively.',
+            'leadText'    => 'How-to guides and policies for using the Lotus Elan Registry.',
         ]) ?>
         <?= DocumentPortalTemplate::renderDocumentCardGrid($cards) ?>
         <?= DocumentPortalTemplate::renderNavFooter($navLinks) ?>

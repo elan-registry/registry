@@ -87,8 +87,36 @@ test.describe('Navigation and File Reorganization', () => {
   test('identification guide loads (reorganized)', async ({ page }) => {
     await navigateAndWait(page, '/app/cars/identify.php');
     await expect(page.locator('h2')).toContainText(/Identification/);
-    
+
     // Test backward compatibility redirect
     await testRedirect(page, '/app/identification.php', 'app/cars/identify.php');
+  });
+
+  // Issue #559 — Documentation Reorganization
+  test('docs/reference-library.php redirects to docs/reference/index.php', async ({ page }) => {
+    // Test backward compatibility redirect for renamed reference library page
+    await testRedirect(page, '/docs/reference-library.php', 'docs/reference/index.php');
+  });
+
+  test('docs/faq/index.php redirects to docs/guides/index.php', async ({ page }) => {
+    // Test backward compatibility redirect for FAQ moved under guides
+    await testRedirect(page, '/docs/faq/index.php', 'docs/guides/index.php');
+  });
+
+  test('docs/reference/index.php loads without error', async ({ page }) => {
+    await navigateAndWait(page, '/docs/reference/index.php');
+
+    // Verify the page did not return a 404 or 500 error
+    await expect(page).not.toHaveTitle(/404|500|Not Found|Server Error/i);
+
+    // Verify a primary heading is present
+    await expect(page.locator('h1, h2').first()).toBeVisible();
+  });
+
+  test('nav contains Reference dropdown', async ({ page }) => {
+    await navigateAndWait(page, '/index.php');
+
+    // Verify the navigation contains a visible "Reference" entry
+    await expect(page.getByText(/Reference/i, { exact: false }).first()).toBeVisible();
   });
 });

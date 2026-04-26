@@ -31,7 +31,7 @@ and ask.
 
 ### Elan 1600 (*Type 26 S1 Roadster*)
 
-![Type 26 Elan 1600 (S1) showing round tail lights and lift-up windows](faq/screenshots/identify/elan1600.jpg)
+![Type 26 Elan 1600 (S1) showing round tail lights and lift-up windows](reference/images/identify/elan1600.jpg)
 
 - VIN/Chassis number starts with 26/
 - 1600 badge on boot
@@ -41,8 +41,8 @@ and ask.
 
 ### Roadster S2 (*Type 26 S2 Roadster*)
 
-![Type 26 Elan S2 with oval tail lights](faq/screenshots/identify/s2a.jpg)
-![Type 26 Elan S2 alternate view](faq/screenshots/identify/s2b.jpg)
+![Type 26 Elan S2 with oval tail lights](reference/images/identify/s2a.jpg)
+![Type 26 Elan S2 alternate view](reference/images/identify/s2b.jpg)
 
 - VIN/Chassis number starts with 26/
 - Oval tail lights. Early cars had round lights 
@@ -58,7 +58,7 @@ and ask.
 
 ### Drophead S3 S/E (*Type 45 S3 S/E DHC*)
 
-![Type 45 S3 S/E DHC with electric rollup windows](faq/screenshots/identify/s3_se_dhc.jpg)
+![Type 45 S3 S/E DHC with electric rollup windows](reference/images/identify/s3_se_dhc.jpg)
 
 - VIN/Chassis number starts with 45/
 - Electric rollup windows 
@@ -69,7 +69,7 @@ and ask.
 
 ### Drophead S4 (*Type 45 S4 DHC*)
 
-![Type 45 S4 DHC with square tail lights](faq/screenshots/identify/s4_dhc.jpg)
+![Type 45 S4 DHC with square tail lights](reference/images/identify/s4_dhc.jpg)
 
 - VIN/Chassis number starts with 45/ and from 1970 on with 70nnnnnnnnL, 71nnnnnnnnL, 72nnnnnnnnL or 73nnnnnnnnL (n number, L letter (E,F,G,H,J,K))
 - Electric rollup windows 
@@ -79,8 +79,8 @@ and ask.
 
 ### Drophead S4 S/E (*Type 45 S4 S/E DHC*)
 
-![Type 45 S4 S/E DHC showing stainless steel trim](faq/screenshots/identify/s4_se_dhc_b.jpg)
-![Type 45 S4 S/E DHC alternate view](faq/screenshots/identify/s4_se_dhc_a.jpg)
+![Type 45 S4 S/E DHC showing stainless steel trim](reference/images/identify/s4_se_dhc_b.jpg)
+![Type 45 S4 S/E DHC alternate view](reference/images/identify/s4_se_dhc_a.jpg)
 
 - VIN/Chassis number starts with 45/ and from 1970 on with 70nnnnnnnnL, 71nnnnnnnnL, 72nnnnnnnnL or 73nnnnnnnnL (n number, L letter (E,F,G,H,J,K))
 - Electric rollup windows 
@@ -92,7 +92,7 @@ and ask.
 
 ### Drophead Sprint (*Type 45 Sprint DHC*)
 
-![Type 45 Sprint DHC with unique two-tone paint](faq/screenshots/identify/sprint_dhc.jpg)
+![Type 45 Sprint DHC with unique two-tone paint](reference/images/identify/sprint_dhc.jpg)
 
 - [Complete Sprint Details](http://www.lotuselansprint.com)
 - VIN/Chassis number starts from 1971 on with 71nnnnnnnnL, 72nnnnnnnnL or 73nnnnnnnnL (n number, L letter (E,F,G,H,J,K))
@@ -109,7 +109,7 @@ and ask.
 
 ### Coupe S3 Pre-Airflow (*Type 36 FHC-preairflow*)
 
-![Type 36 FHC pre-airflow showing no extractor grill](faq/screenshots/identify/s3_fhc_pre.jpg)
+![Type 36 FHC pre-airflow showing no extractor grill](reference/images/identify/s3_fhc_pre.jpg)
 
 - VIN/Chassis number starts with 36/
 - Electric rollup windows 
@@ -119,7 +119,7 @@ and ask.
 
 ### Coupe S3 Airflow (*Type 36 S3 FHC*)
 
-![Type 36 FHC with extractor grill on rear quarter panel](faq/screenshots/identify/s3_fhc_air.jpg)
+![Type 36 FHC with extractor grill on rear quarter panel](reference/images/identify/s3_fhc_air.jpg)
 
 - VIN/Chassis number starts with 36/
 - Electric rollup windows 
@@ -139,7 +139,7 @@ and ask.
 
 ### Coupe S4 (*Type 36 S4 FHC*)
 
-![Type 36 S4 FHC with square tail lights](faq/screenshots/identify/s4_fhc.jpg)
+![Type 36 S4 FHC with square tail lights](reference/images/identify/s4_fhc.jpg)
 
 - VIN/Chassis number starts with 36/ and from 1970 on with 70nnnnnnnnL, 71nnnnnnnnL, 72nnnnnnnnL or 73nnnnnnnnL (n number, L letter (E,F,G,H,J,K))
 - Electric rollup windows 
@@ -159,7 +159,7 @@ and ask.
 
 ### Coupe Sprint (*Type 36 Sprint FHC*)
 
-![Type 45 Sprint FHC with unique two-tone paint](faq/screenshots/identify/sprint_fhc.jpg)
+![Type 45 Sprint FHC with unique two-tone paint](reference/images/identify/sprint_fhc.jpg)
 
 - VIN/Chassis number starts from 1971 on with 71nnnnnnnnL, 72nnnnnnnnL or 73nnnnnnnnL (n number, L letter (E,F,G,H,J,K))
 - [Complete Sprint Details](http://www.lotuselansprint.com)
@@ -176,7 +176,7 @@ and ask.
 
 ### 26R (*Type 26 26R Race*)
 
-![Type 26R race car with fixed headlights](faq/screenshots/identify/26r.jpg)
+![Type 26R race car with fixed headlights](reference/images/identify/26r.jpg)
 
 - VIN/Chassis number starts with 26-
 - Fixed headlights, but not all
@@ -185,7 +185,7 @@ and ask.
 
 ### 26R S2 (*Type 26 26R Race*)
 
-![Type 26R race car with fixed headlights](faq/screenshots/identify/26r.jpg)
+![Type 26R race car with fixed headlights](reference/images/identify/26r.jpg)
 
 - VIN/Chassis number starts with 26-S2
 - Fixed headlights, but not all
@@ -199,7 +199,7 @@ and ask.
 
 ### Plus 2 (*Type 50 +2*)
 
-![Type 50 Plus 2 dashboard showing 2 large and 4 small gauges](faq/screenshots/identify/plus2int.jpg)
+![Type 50 Plus 2 dashboard showing 2 large and 4 small gauges](reference/images/identify/plus2int.jpg)
 
 - VIN/chassis number starts with 50/0001 
 - 2 large gauges - Speedometer, Tachometer
@@ -214,8 +214,8 @@ and ask.
 
 ### Plus 2S (*Type 50 +2 2S*)
 
-![Type 50 Plus 2S exterior view](faq/screenshots/identify/plus2sa.jpg)
-![Type 50 Plus 2S alternate view](faq/screenshots/identify/plus2sb.jpg)
+![Type 50 Plus 2S exterior view](reference/images/identify/plus2sa.jpg)
+![Type 50 Plus 2S alternate view](reference/images/identify/plus2sb.jpg)
 
 - VIN/chassis number starts with 50/1593 on
 - 2 large gauges - Speedometer, Tachometer
@@ -235,10 +235,10 @@ and ask.
 
 ### Plus 2S 130 (*Type 50 +2 130*)
 
-![Type 50 Plus 2S 130 exterior front](faq/screenshots/identify/plus2s130a.jpg)
-![Type 50 Plus 2S 130 exterior rear](faq/screenshots/identify/plus2s130b.jpg)
-![Type 50 Plus 2S 130 dashboard showing 6 small gauges and 3 warning lights](faq/screenshots/identify/plus2s130int.jpg)
-![Type 50 Plus 2S 130 detail view](faq/screenshots/identify/plus2s130d.jpg)
+![Type 50 Plus 2S 130 exterior front](reference/images/identify/plus2s130a.jpg)
+![Type 50 Plus 2S 130 exterior rear](reference/images/identify/plus2s130b.jpg)
+![Type 50 Plus 2S 130 dashboard showing 6 small gauges and 3 warning lights](reference/images/identify/plus2s130int.jpg)
+![Type 50 Plus 2S 130 detail view](reference/images/identify/plus2s130d.jpg)
 
 - VIN/chassis number starts with 71.01...0001 on
 - 2 large gauges - Speedometer, Tachometer
