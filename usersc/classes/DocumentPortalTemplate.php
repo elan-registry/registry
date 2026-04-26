@@ -257,7 +257,7 @@ class DocumentPortalTemplate
             $btnClass = isset($link['btnClass'])
                 ? htmlspecialchars($link['btnClass'], ENT_QUOTES, 'UTF-8')
                 : self::DEFAULT_BTN_CLASS;
-            $classes  = 'btn ' . $btnClass . ($index < $lastIndex ? ' mr-2' : '');
+            $classes  = 'btn ' . $btnClass . ($index < $lastIndex ? ' me-2' : '');
 
             $html .= "<a href='{$url}' class='{$classes}'>" . self::renderIcon($link['icon'] ?? '') . "{$label}</a>";
         }
