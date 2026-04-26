@@ -106,6 +106,8 @@ class DocumentPortalTemplate
      *     buttonIcon?: string,
      *     headerStyle?: string,
      *     buttonStyle?: string,
+     *     buttonTarget?: string,
+     *     secondaryButton?: array{url: string, text: string, class?: string, icon?: string, download?: bool, target?: string},
      *     colClass?: string
      * } $card
      * @throws \InvalidArgumentException if required keys are missing
@@ -157,7 +159,23 @@ class DocumentPortalTemplate
         }
 
         $html .= "<div class='mt-auto'>";
-        $html .= "<a href='{$url}' class='btn {$buttonClass}'{$buttonStyleAttr}>" . self::renderIcon($card['buttonIcon'] ?? '') . "{$buttonText}</a>";
+        $targetAttr = isset($card['buttonTarget']) && $card['buttonTarget'] !== ''
+            ? " target='" . htmlspecialchars($card['buttonTarget'], ENT_QUOTES, 'UTF-8') . "'"
+            : '';
+        $html .= "<a href='{$url}' class='btn {$buttonClass}'{$buttonStyleAttr}{$targetAttr}>" . self::renderIcon($card['buttonIcon'] ?? '') . "{$buttonText}</a>";
+
+        if (isset($card['secondaryButton']) && is_array($card['secondaryButton'])) {
+            $sec         = $card['secondaryButton'];
+            $secUrl      = htmlspecialchars($sec['url'] ?? '', ENT_QUOTES, 'UTF-8');
+            $secText     = htmlspecialchars($sec['text'] ?? '', ENT_QUOTES, 'UTF-8');
+            $secClass    = htmlspecialchars($sec['class'] ?? 'btn-success btn-sm', ENT_QUOTES, 'UTF-8');
+            $secDownload = !empty($sec['download']) ? ' download' : '';
+            $secTarget   = isset($sec['target']) && $sec['target'] !== ''
+                ? " target='" . htmlspecialchars($sec['target'], ENT_QUOTES, 'UTF-8') . "'"
+                : '';
+            $html .= " <a href='{$secUrl}' class='btn {$secClass}'{$secDownload}{$secTarget}>" . self::renderIcon($sec['icon'] ?? '') . "{$secText}</a>";
+        }
+
         $html .= "</div>";
         $html .= "</div>";
         $html .= "</div>";

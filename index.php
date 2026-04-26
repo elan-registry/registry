@@ -295,7 +295,7 @@ $notes['+2']     = "4526";
 								</div>
 								<p class='mb-1 pl-3'><small>A great online community for the Lotus Elan.</small></p>
 							</a>
-							<a href='<?= $us_url_root ?>docs/stories/type26register.php' class='list-group-item list-group-item-action flex-column align-items-start'>
+							<a href='<?= $us_url_root ?>docs/car-stories.php' class='list-group-item list-group-item-action flex-column align-items-start'>
 								<div class='d-flex w-100 justify-content-between'>
 									<h5 class='mb-1'>Type 26 Registry</h5>
 								</div>

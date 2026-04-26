@@ -48,16 +48,6 @@ $cards = [
         'buttonClass' => 'btn-info btn-sm',
         'description' => 'Frequently asked questions about car ownership transfers, common issues, and quick solutions.',
     ],
-    [
-        'title'       => 'Privacy Policy',
-        'icon'        => 'fa-shield-alt',
-        'url'         => '../guide-viewer.php?doc=PRIVACY.md',
-        'buttonText'  => 'Read Policy',
-        'buttonIcon'  => 'fa-file-alt',
-        'headerClass' => 'bg-dark text-white',
-        'buttonClass' => 'btn-dark btn-sm',
-        'description' => 'Our privacy policy explaining how we collect, use, and protect your personal information in the registry.',
-    ],
 ];
 
 ?>

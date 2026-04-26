@@ -37,3 +37,6 @@ Redirect 301 /docs/assets/2019_Jan_The_Elan_Super_Safety.pdf /docs/reference/ass
 Redirect 301 "/docs/assets/Lotus Elan Plus 2 serial numbers.pdf" "/docs/reference/assets/Lotus Elan Plus 2 serial numbers.pdf"
 Redirect 301 "/docs/assets/All Elan and Elan Plus 2 Paint Codes.pdf" "/docs/reference/assets/All Elan and Elan Plus 2 Paint Codes.pdf"
 Redirect 301 "/docs/assets/Mag _issue_50_p12-15_Barry-Shapecraft.pdf" "/docs/stories/assets/Mag _issue_50_p12-15_Barry-Shapecraft.pdf"
+
+# Screenshot assets moved from faq/ to guides/ (#715)
+RedirectMatch 301 ^/docs/faq/screenshots/(.*)$ /docs/guides/screenshots/$1

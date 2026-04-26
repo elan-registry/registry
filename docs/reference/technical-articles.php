@@ -19,7 +19,108 @@ if (!securePage($php_self)) {
     die();
 }
 
-$imgStyle = 'max-height: 200px; object-fit: contain; padding: 10px;';
+$cards = [
+    [
+        'title'           => 'Engine Number Breakdown',
+        'icon'            => 'fa-file-pdf',
+        'headerClass'     => 'bg-info text-white',
+        'cardImage'       => $us_url_root . 'docs/reference/assets/' . rawurlencode('Engine number breakdown (Miles Wilkins).png'),
+        'cardImageAlt'    => 'Engine Number Breakdown',
+        'description'     => 'Identifying engine types from number sequences',
+        'url'             => $us_url_root . 'docs/pdf-viewer.php?subdir=reference&doc=' . rawurlencode('Engine number breakdown (Miles Wilkins).pdf'),
+        'buttonText'      => 'Read Online',
+        'buttonIcon'      => 'fa-eye',
+        'buttonClass'     => 'btn-outline-info btn-sm',
+        'buttonTarget'    => '_blank',
+        'secondaryButton' => [
+            'url'      => $us_url_root . 'docs/reference/assets/' . rawurlencode('Engine number breakdown (Miles Wilkins).pdf'),
+            'text'     => 'Download PDF',
+            'icon'     => 'fa-download',
+            'class'    => 'btn-success btn-sm',
+            'download' => true,
+        ],
+    ],
+    [
+        'title'           => 'Elan Gearknobs',
+        'icon'            => 'fa-file-pdf',
+        'headerClass'     => 'bg-info text-white',
+        'cardImage'       => $us_url_root . 'docs/reference/assets/' . rawurlencode('2014 Jul Elan Gearknobs.png'),
+        'cardImageAlt'    => 'Elan Gearknobs',
+        'description'     => 'A description of the various types of gear knobs available on the Elan and Elan +2',
+        'url'             => $us_url_root . 'docs/pdf-viewer.php?subdir=reference&doc=' . rawurlencode('2014 Jul Elan Gearknobs.pdf'),
+        'buttonText'      => 'Read Online',
+        'buttonIcon'      => 'fa-eye',
+        'buttonClass'     => 'btn-outline-info btn-sm',
+        'buttonTarget'    => '_blank',
+        'secondaryButton' => [
+            'url'      => $us_url_root . 'docs/reference/assets/' . rawurlencode('2014 Jul Elan Gearknobs.pdf'),
+            'text'     => 'Download PDF',
+            'icon'     => 'fa-download',
+            'class'    => 'btn-success btn-sm',
+            'download' => true,
+        ],
+    ],
+    [
+        'title'           => 'Steering Wheels',
+        'icon'            => 'fa-file-pdf',
+        'headerClass'     => 'bg-info text-white',
+        'cardImage'       => $us_url_root . 'docs/reference/assets/' . rawurlencode('2014 Oct Elan and Plus 2 Steering Wheels.png'),
+        'cardImageAlt'    => 'Elan and Plus 2 Steering Wheels',
+        'description'     => 'A description of the various types of steering wheels available on the Elan and Elan +2',
+        'url'             => $us_url_root . 'docs/pdf-viewer.php?subdir=reference&doc=' . rawurlencode('2014 Oct Elan and Plus 2 Steering Wheels.pdf'),
+        'buttonText'      => 'Read Online',
+        'buttonIcon'      => 'fa-eye',
+        'buttonClass'     => 'btn-outline-info btn-sm',
+        'buttonTarget'    => '_blank',
+        'secondaryButton' => [
+            'url'      => $us_url_root . 'docs/reference/assets/' . rawurlencode('2014 Oct Elan and Plus 2 Steering Wheels.pdf'),
+            'text'     => 'Download PDF',
+            'icon'     => 'fa-download',
+            'class'    => 'btn-success btn-sm',
+            'download' => true,
+        ],
+    ],
+    [
+        'title'           => 'The Elan Super Safety',
+        'icon'            => 'fa-file-pdf',
+        'headerClass'     => 'bg-info text-white',
+        'cardImage'       => $us_url_root . 'docs/reference/assets/' . rawurlencode('2019_Jan_The_Elan_Super_Safety.png'),
+        'cardImageAlt'    => 'The Elan Super Safety',
+        'description'     => 'A description of the Elan Super Safety',
+        'url'             => $us_url_root . 'docs/pdf-viewer.php?subdir=reference&doc=' . rawurlencode('2019_Jan_The_Elan_Super_Safety.pdf'),
+        'buttonText'      => 'Read Online',
+        'buttonIcon'      => 'fa-eye',
+        'buttonClass'     => 'btn-outline-info btn-sm',
+        'buttonTarget'    => '_blank',
+        'secondaryButton' => [
+            'url'      => $us_url_root . 'docs/reference/assets/' . rawurlencode('2019_Jan_The_Elan_Super_Safety.pdf'),
+            'text'     => 'Download PDF',
+            'icon'     => 'fa-download',
+            'class'    => 'btn-success btn-sm',
+            'download' => true,
+        ],
+    ],
+    [
+        'title'           => 'Plus 2 Serial Numbers',
+        'icon'            => 'fa-file-pdf',
+        'headerClass'     => 'bg-info text-white',
+        'cardImage'       => $us_url_root . 'docs/reference/assets/' . rawurlencode('Lotus Elan Plus 2 serial numbers.png'),
+        'cardImageAlt'    => 'Plus 2 Serial Numbers',
+        'description'     => 'Serial number sequences for the Lotus Elan Plus 2',
+        'url'             => $us_url_root . 'docs/pdf-viewer.php?subdir=reference&doc=' . rawurlencode('Lotus Elan Plus 2 serial numbers.pdf'),
+        'buttonText'      => 'Read Online',
+        'buttonIcon'      => 'fa-eye',
+        'buttonClass'     => 'btn-outline-info btn-sm',
+        'buttonTarget'    => '_blank',
+        'secondaryButton' => [
+            'url'      => $us_url_root . 'docs/reference/assets/' . rawurlencode('Lotus Elan Plus 2 serial numbers.pdf'),
+            'text'     => 'Download PDF',
+            'icon'     => 'fa-download',
+            'class'    => 'btn-success btn-sm',
+            'download' => true,
+        ],
+    ],
+];
 
 ?>
 <div class="page-wrapper">
@@ -29,109 +130,7 @@ $imgStyle = 'max-height: 200px; object-fit: contain; padding: 10px;';
             'titleIcon'   => 'fa-file-alt',
             'description' => 'Club Lotus technical articles and historical references',
         ]) ?>
-
-        <div class="row mt-4">
-            <div class="col-md-4 mb-4">
-                <div class="card registry-card h-100">
-                    <div class="card-header bg-info text-white">
-                        <h5 class="mb-0"><i class="fas fa-file-pdf"></i> Engine Number Breakdown</h5>
-                    </div>
-                    <img src="<?= $us_url_root ?>docs/reference/assets/<?= rawurlencode('Engine number breakdown (Miles Wilkins).png') ?>" class="card-img-top" alt="Engine Number Breakdown" style="<?= $imgStyle ?>">
-                    <div class="card-body d-flex flex-column">
-                        <p class="card-text flex-grow-1">Identifying engine types from number sequences</p>
-                        <div class="mt-auto">
-                            <a href="<?= $us_url_root ?>docs/pdf-viewer.php?subdir=reference&doc=<?= rawurlencode('Engine number breakdown (Miles Wilkins).pdf') ?>" target="_blank" class="btn btn-outline-info btn-sm mr-2">
-                                <i class="fas fa-eye"></i> Read Online
-                            </a>
-                            <a href="<?= $us_url_root ?>docs/reference/assets/<?= rawurlencode('Engine number breakdown (Miles Wilkins).pdf') ?>" download class="btn btn-success btn-sm">
-                                <i class="fas fa-download"></i> Download PDF
-                            </a>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            <div class="col-md-4 mb-4">
-                <div class="card registry-card h-100">
-                    <div class="card-header bg-info text-white">
-                        <h5 class="mb-0"><i class="fas fa-file-pdf"></i> Elan Gearknobs</h5>
-                    </div>
-                    <img src="<?= $us_url_root ?>docs/reference/assets/<?= rawurlencode('2014 Jul Elan Gearknobs.png') ?>" class="card-img-top" alt="Elan Gearknobs" style="<?= $imgStyle ?>">
-                    <div class="card-body d-flex flex-column">
-                        <p class="card-text flex-grow-1">A description of the various types of gear knobs available on the Elan and Elan +2</p>
-                        <div class="mt-auto">
-                            <a href="<?= $us_url_root ?>docs/pdf-viewer.php?subdir=reference&doc=<?= rawurlencode('2014 Jul Elan Gearknobs.pdf') ?>" target="_blank" class="btn btn-outline-info btn-sm mr-2">
-                                <i class="fas fa-eye"></i> Read Online
-                            </a>
-                            <a href="<?= $us_url_root ?>docs/reference/assets/<?= rawurlencode('2014 Jul Elan Gearknobs.pdf') ?>" download class="btn btn-success btn-sm">
-                                <i class="fas fa-download"></i> Download PDF
-                            </a>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            <div class="col-md-4 mb-4">
-                <div class="card registry-card h-100">
-                    <div class="card-header bg-info text-white">
-                        <h5 class="mb-0"><i class="fas fa-file-pdf"></i> Steering Wheels</h5>
-                    </div>
-                    <img src="<?= $us_url_root ?>docs/reference/assets/<?= rawurlencode('2014 Oct Elan and Plus 2 Steering Wheels.png') ?>" class="card-img-top" alt="Elan and Plus 2 Steering Wheels" style="<?= $imgStyle ?>">
-                    <div class="card-body d-flex flex-column">
-                        <p class="card-text flex-grow-1">A description of the various types of steering wheels available on the Elan and Elan +2</p>
-                        <div class="mt-auto">
-                            <a href="<?= $us_url_root ?>docs/pdf-viewer.php?subdir=reference&doc=<?= rawurlencode('2014 Oct Elan and Plus 2 Steering Wheels.pdf') ?>" target="_blank" class="btn btn-outline-info btn-sm mr-2">
-                                <i class="fas fa-eye"></i> Read Online
-                            </a>
-                            <a href="<?= $us_url_root ?>docs/reference/assets/<?= rawurlencode('2014 Oct Elan and Plus 2 Steering Wheels.pdf') ?>" download class="btn btn-success btn-sm">
-                                <i class="fas fa-download"></i> Download PDF
-                            </a>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            <div class="col-md-4 mb-4">
-                <div class="card registry-card h-100">
-                    <div class="card-header bg-info text-white">
-                        <h5 class="mb-0"><i class="fas fa-file-pdf"></i> The Elan Super Safety</h5>
-                    </div>
-                    <img src="<?= $us_url_root ?>docs/reference/assets/<?= rawurlencode('2019_Jan_The_Elan_Super_Safety.png') ?>" class="card-img-top" alt="The Elan Super Safety" style="<?= $imgStyle ?>">
-                    <div class="card-body d-flex flex-column">
-                        <p class="card-text flex-grow-1">A description of the Elan Super Safety</p>
-                        <div class="mt-auto">
-                            <a href="<?= $us_url_root ?>docs/pdf-viewer.php?subdir=reference&doc=<?= rawurlencode('2019_Jan_The_Elan_Super_Safety.pdf') ?>" target="_blank" class="btn btn-outline-info btn-sm mr-2">
-                                <i class="fas fa-eye"></i> Read Online
-                            </a>
-                            <a href="<?= $us_url_root ?>docs/reference/assets/<?= rawurlencode('2019_Jan_The_Elan_Super_Safety.pdf') ?>" download class="btn btn-success btn-sm">
-                                <i class="fas fa-download"></i> Download PDF
-                            </a>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            <div class="col-md-4 mb-4">
-                <div class="card registry-card h-100">
-                    <div class="card-header bg-info text-white">
-                        <h5 class="mb-0"><i class="fas fa-file-pdf"></i> Plus 2 Serial Numbers</h5>
-                    </div>
-                    <img src="<?= $us_url_root ?>docs/reference/assets/<?= rawurlencode('Lotus Elan Plus 2 serial numbers.png') ?>" class="card-img-top" alt="Plus 2 Serial Numbers" style="<?= $imgStyle ?>">
-                    <div class="card-body d-flex flex-column">
-                        <p class="card-text flex-grow-1">Serial number sequences for the Lotus Elan Plus 2</p>
-                        <div class="mt-auto">
-                            <a href="<?= $us_url_root ?>docs/pdf-viewer.php?subdir=reference&doc=<?= rawurlencode('Lotus Elan Plus 2 serial numbers.pdf') ?>" target="_blank" class="btn btn-outline-info btn-sm mr-2">
-                                <i class="fas fa-eye"></i> Read Online
-                            </a>
-                            <a href="<?= $us_url_root ?>docs/reference/assets/<?= rawurlencode('Lotus Elan Plus 2 serial numbers.pdf') ?>" download class="btn btn-success btn-sm">
-                                <i class="fas fa-download"></i> Download PDF
-                            </a>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-
+        <?= DocumentPortalTemplate::renderDocumentCardGrid($cards) ?>
     </div>
 </div>
 

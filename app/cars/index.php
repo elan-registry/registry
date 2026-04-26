@@ -26,7 +26,8 @@ if (!securePage($php_self)) {
       <div class="col-12">
         <div class="card registry-card mb-4">
           <div class="card-header">
-            <h2 class="mb-0">List Cars</h2>
+            <h2 class="mb-0"><i class="fa fa-car" aria-hidden="true"></i> Registry Cars</h2>
+            <p class="text-muted mb-0 small">All Lotus Elan and Plus 2 cars registered in the registry</p>
           </div>
           <div class="card-body">
             <div class="table-responsive">
