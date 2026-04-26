@@ -106,6 +106,8 @@ class DocumentPortalTemplate
      *     buttonIcon?: string,
      *     headerStyle?: string,
      *     buttonStyle?: string,
+     *     buttonTarget?: string,
+     *     secondaryButton?: array{url: string, text: string, class?: string, icon?: string, download?: bool, target?: string},
      *     colClass?: string
      * } $card
      * @throws \InvalidArgumentException if required keys are missing
@@ -157,7 +159,18 @@ class DocumentPortalTemplate
         }
 
         $html .= "<div class='mt-auto'>";
-        $html .= "<a href='{$url}' class='btn {$buttonClass}'{$buttonStyleAttr}>" . self::renderIcon($card['buttonIcon'] ?? '') . "{$buttonText}</a>";
+        $targetAttr = self::renderTargetAttr($card['buttonTarget'] ?? '');
+        $html .= "<a href='{$url}' class='btn {$buttonClass}'{$buttonStyleAttr}{$targetAttr}>" . self::renderIcon($card['buttonIcon'] ?? '') . "{$buttonText}</a>";
+
+        if (isset($card['secondaryButton']) && is_array($card['secondaryButton'])) {
+            $sec         = $card['secondaryButton'];
+            $secUrl      = htmlspecialchars($sec['url'] ?? '', ENT_QUOTES, 'UTF-8');
+            $secText     = htmlspecialchars($sec['text'] ?? '', ENT_QUOTES, 'UTF-8');
+            $secClass    = htmlspecialchars($sec['class'] ?? 'btn-success btn-sm', ENT_QUOTES, 'UTF-8');
+            $secDownload = !empty($sec['download']) ? ' download' : '';
+            $html .= " <a href='{$secUrl}' class='btn {$secClass}'{$secDownload}" . self::renderTargetAttr($sec['target'] ?? '') . ">" . self::renderIcon($sec['icon'] ?? '') . "{$secText}</a>";
+        }
+
         $html .= "</div>";
         $html .= "</div>";
         $html .= "</div>";
@@ -244,7 +257,7 @@ class DocumentPortalTemplate
             $btnClass = isset($link['btnClass'])
                 ? htmlspecialchars($link['btnClass'], ENT_QUOTES, 'UTF-8')
                 : self::DEFAULT_BTN_CLASS;
-            $classes  = 'btn ' . $btnClass . ($index < $lastIndex ? ' mr-2' : '');
+            $classes  = 'btn ' . $btnClass . ($index < $lastIndex ? ' me-2' : '');
 
             $html .= "<a href='{$url}' class='{$classes}'>" . self::renderIcon($link['icon'] ?? '') . "{$label}</a>";
         }
@@ -280,6 +293,27 @@ class DocumentPortalTemplate
         }
 
         return " style='" . htmlspecialchars($style, ENT_QUOTES, 'UTF-8') . "'";
+    }
+
+    /**
+     * Render a target attribute string, or empty string if no value given.
+     *
+     * Appends rel='noopener noreferrer' when target is '_blank' to prevent
+     * reverse tabnabbing attacks.
+     */
+    private static function renderTargetAttr(string $target): string
+    {
+        if ($target === '') {
+            return '';
+        }
+
+        $attr = " target='" . htmlspecialchars($target, ENT_QUOTES, 'UTF-8') . "'";
+
+        if ($target === '_blank') {
+            $attr .= " rel='noopener noreferrer'";
+        }
+
+        return $attr;
     }
 
     /**

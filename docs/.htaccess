@@ -15,9 +15,28 @@ Options -Indexes
     Require all denied
 </Files>
 
+# Viewer renames
+Redirect 301 /docs/embed.php /docs/pdf-viewer.php
+Redirect 301 /docs/view.php /docs/guide-viewer.php
+
 # Redirects for doc reorganization (#559)
 Redirect 301 /docs/reference-library.php /docs/reference/index.php
 Redirect 301 /docs/faq/index.php /docs/guides/index.php
 Redirect 301 /docs/faq/paint-colors.php /docs/reference/paint-colors.php
 Redirect 301 /docs/faq/admin/index.php /docs/admin/index.php
 Redirect 301 /docs/chassis-validation.php /docs/reference/chassis-validation.php
+
+# PDF asset co-location redirects (#715)
+Redirect 301 /docs/assets/Elan_26_36_Workshop_Manual.pdf /docs/reference/assets/Elan_26_36_Workshop_Manual.pdf
+Redirect 301 /docs/assets/Elan_S1_S2_Coupe_Masterpartslist.pdf /docs/reference/assets/Elan_S1_S2_Coupe_Masterpartslist.pdf
+Redirect 301 "/docs/assets/2016 Jan Elan Engine Types.pdf" "/docs/reference/assets/2016 Jan Elan Engine Types.pdf"
+Redirect 301 "/docs/assets/Engine number breakdown (Miles Wilkins).pdf" "/docs/reference/assets/Engine number breakdown (Miles Wilkins).pdf"
+Redirect 301 "/docs/assets/2014 Jul Elan Gearknobs.pdf" "/docs/reference/assets/2014 Jul Elan Gearknobs.pdf"
+Redirect 301 "/docs/assets/2014 Oct Elan and Plus 2 Steering Wheels.pdf" "/docs/reference/assets/2014 Oct Elan and Plus 2 Steering Wheels.pdf"
+Redirect 301 /docs/assets/2019_Jan_The_Elan_Super_Safety.pdf /docs/reference/assets/2019_Jan_The_Elan_Super_Safety.pdf
+Redirect 301 "/docs/assets/Lotus Elan Plus 2 serial numbers.pdf" "/docs/reference/assets/Lotus Elan Plus 2 serial numbers.pdf"
+Redirect 301 "/docs/assets/All Elan and Elan Plus 2 Paint Codes.pdf" "/docs/reference/assets/All Elan and Elan Plus 2 Paint Codes.pdf"
+Redirect 301 "/docs/assets/Mag _issue_50_p12-15_Barry-Shapecraft.pdf" "/docs/stories/assets/Mag _issue_50_p12-15_Barry-Shapecraft.pdf"
+
+# Screenshot assets moved from faq/ to guides/ (#715)
+RedirectMatch 301 ^/docs/faq/screenshots/(.*)$ /docs/guides/screenshots/$1

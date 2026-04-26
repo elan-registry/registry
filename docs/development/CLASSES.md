@@ -661,7 +661,7 @@ $parser = new MarkdownParser();
 $html = $parser->parse($markdownContent);
 
 // Used by documentation viewer
-// See /docs/view.php for integration example
+// See /docs/guide-viewer.php for integration example
 ```
 
 **Supported Markdown**:
@@ -938,11 +938,11 @@ EmailTemplate
 └── Used by: Transfer requests, notifications
 
 MarkdownParser
-└── Used by: DocumentConfig, docs/view.php
+└── Used by: DocumentConfig, docs/guide-viewer.php
 
 DocumentConfig
 ├── Uses: MarkdownParser
-└── Used by: docs/view.php
+└── Used by: docs/guide-viewer.php
 ```
 
 ## Testing
