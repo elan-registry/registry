@@ -20,9 +20,7 @@ if (!securePage($php_self)) {
 
 // Check if user should be redirected to new consolidated interface
 if (!isset($_GET['legacy']) && !isset($_GET['direct'])) {
-    // Redirect to the new consolidated admin interface
-    header('Location: ../app/admin/manage-consolidated.php?tab=system');
-    exit();
+    Redirect::to($us_url_root . 'app/admin/manage-consolidated.php?tab=system');
 }
 
 // Get list of files in the FIX directory

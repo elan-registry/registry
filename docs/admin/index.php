@@ -1,4 +1,7 @@
 <?php
+
+declare(strict_types=1);
+
 /**
  * Administrative Documentation - Lotus Elan Registry
  *
@@ -7,7 +10,7 @@
  * @package ElanRegistry
  */
 
-require_once '../../../users/init.php';
+require_once '../../users/init.php';
 require_once $abs_us_root . $us_url_root . 'users/includes/template/prep.php';
 
 use ElanRegistry\Documentation\DocumentPortalTemplate;
@@ -59,28 +62,6 @@ $carTransferCards = [
 
 $technicalCards = [
     [
-        'title'       => 'Database Schema',
-        'icon'        => 'fa-database',
-        'url'         => '../../view.php?doc=development/DATABASE.md',
-        'buttonText'  => 'View Schema',
-        'buttonIcon'  => 'fa-table',
-        'headerClass' => 'bg-info text-white',
-        'buttonClass' => 'btn-info btn-sm',
-        'description' => 'Complete database documentation including table relationships, indexes, and data integrity constraints.',
-        'metadata'    => 'Schema diagrams • Relationship mapping',
-    ],
-    [
-        'title'       => 'Product Requirements',
-        'icon'        => 'fa-file-contract',
-        'url'         => '../../view.php?doc=PRD.md',
-        'buttonText'  => 'View PRD',
-        'buttonIcon'  => 'fa-clipboard-list',
-        'headerClass' => 'bg-dark text-white',
-        'buttonClass' => 'btn-dark btn-sm',
-        'description' => 'Product Requirements Document (PRD) with feature specifications, business requirements, and system architecture.',
-        'metadata'    => 'Business logic • Feature specs',
-    ],
-    [
         'title'       => 'Email Guidelines',
         'icon'        => 'fa-envelope',
         'url'         => '../../view.php?doc=EMAIL_STYLING_GUIDELINES.md',
@@ -127,7 +108,7 @@ $sysAdminCards = [
 
 $navLinks = [
     ['label' => 'Registry Home',  'url' => $us_url_root,                    'icon' => 'fa-home',            'btnClass' => 'btn-outline-primary'],
-    ['label' => 'User FAQ',       'url' => '../index.php',                   'icon' => 'fa-question-circle', 'btnClass' => 'btn-outline-info'],
+    ['label' => 'User FAQ',       'url' => '../guides/index.php',            'icon' => 'fa-question-circle', 'btnClass' => 'btn-outline-info'],
     ['label' => 'Admin Dashboard', 'url' => $us_url_root . 'app/admin/',     'icon' => 'fa-tools',           'btnClass' => 'btn-outline-success'],
 ];
 

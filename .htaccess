@@ -58,3 +58,6 @@ RewriteRule ^SQL/ - [F,L]
 
 # Block access to FIX directory except operational scripts (admin interface)
 RewriteRule ^FIX/(?!index\.php$|[0-9]+-.*\.php$|[A-Za-z]+-.*\.php$) - [F,L]
+
+# Redirects for migrated pages (#559)
+Redirect 301 /app/cars/identify.php /docs/reference/identification-guide.php

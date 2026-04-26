@@ -37,7 +37,7 @@ declare(strict_types=1);
  * - Everything else in app/* that doesn't match PRIVATE patterns
  * - Error pages in root: 404.php, 403.php, etc.
  * - docs/* (except docs/*admin*) - Documentation pages
- * - Examples: app/cars/index.php, app/cars/details.php, app/reports/statistics.php, docs/faq/index.php
+ * - Examples: app/cars/index.php, app/cars/details.php, app/reports/statistics.php, docs/guides/index.php
  *
  * EXCLUDED (not modified):
  * - users/* - Core UserSpice framework files
@@ -92,7 +92,7 @@ function shouldHaveAdminPermissions($pagePath): bool {
         return true;
     }
 
-    // Any page containing "admin" is admin-only (includes docs/faq/admin/*)
+    // Any page containing "admin" is admin-only (includes docs/admin/*)
     if (strpos($pagePath, 'admin') !== false) {
         return true;
     }
@@ -109,8 +109,8 @@ function shouldBePrivate($pagePath): bool {
         return false;
     }
 
-    // docs/faq/* pages should generally be PUBLIC
-    // EXCEPT docs/faq/admin/* which should be PRIVATE-ADMIN
+    // docs/* pages should generally be PUBLIC
+    // EXCEPT docs/admin/* (and any path containing "admin") which should be PRIVATE-ADMIN
     if (strpos($pagePath, 'docs/') === 0) {
         // docs/*admin* should be PRIVATE
         if (strpos($pagePath, 'admin') !== false) {

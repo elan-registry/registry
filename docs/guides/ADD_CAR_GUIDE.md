@@ -426,7 +426,7 @@ For detailed information about the transfer process, see:
   contact form
 - **Transfer Questions** - See our [Transfer
   FAQ](/docs/view.php?doc=CAR_TRANSFER_FAQ.md)
-- **General Questions** - Visit the [FAQ & User Guides](/docs/faq/)
+- **General Questions** - Visit the [Owner Guides](/docs/guides/)
   section
 
 **Ready to get started?** [Add Your Car Now](/app/cars/edit.php)

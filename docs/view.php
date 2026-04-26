@@ -116,7 +116,7 @@ $breadcrumb = DocumentConfig::getBreadcrumb($documentData, $us_url_root);
         <div class='row'>
             <div class='col-12'>
                 <div class='card registry-card'>
-                    <div class='card-header <?= $isAdmin ? 'bg-danger' : 'bg-primary' ?> text-white'>
+                    <div class='card-header <?= $isAdmin ? 'bg-danger' : 'bg-info' ?> text-white'>
                         <h1 class='mb-0'><i class='<?= $info['icon'] ?>'></i> <?= htmlspecialchars($info['title'], ENT_QUOTES, 'UTF-8') ?></h1>
                         <p class='text-light mb-0'><?= htmlspecialchars($info['description'], ENT_QUOTES, 'UTF-8') ?></p>
                     </div>
@@ -141,10 +141,10 @@ $breadcrumb = DocumentConfig::getBreadcrumb($documentData, $us_url_root);
         <div class='row mt-4 mb-4'>
             <div class='col-12 text-center'>
                 <?php if ($isAdmin) { ?>
-                    <a href='faq/admin/index.php' class='btn btn-outline-primary mr-2'><i class='fas fa-arrow-left'></i> Back to Admin Docs</a>
+                    <a href='admin/index.php' class='btn btn-outline-primary mr-2'><i class='fas fa-arrow-left'></i> Back to Admin Docs</a>
                     <a href='<?= $us_url_root ?>app/admin/manage-consolidated.php' class='btn btn-outline-success mr-2'><i class='fas fa-tools'></i> Admin Panel</a>
                 <?php } else { ?>
-                    <a href='faq/index.php' class='btn btn-outline-primary mr-2'><i class='fas fa-arrow-left'></i> Back to FAQ</a>
+                    <a href='guides/index.php' class='btn btn-outline-primary mr-2'><i class='fas fa-arrow-left'></i> Back to Owner Guides</a>
                 <?php } ?>
                 <a href='<?= $us_url_root ?>' class='btn btn-outline-secondary'><i class='fas fa-home'></i> Registry Home</a>
             </div>

@@ -182,7 +182,7 @@ INSERT INTO `pages` (`id`, `page`, `title`, `private`, `re_auth`, `core`) VALUES
 (230, 'app/cars/details.php', NULL, 0, 0, 0),
 (231, 'app/cars/edit.php', NULL, 1, 0, 0),
 (232, 'app/cars/factory.php', NULL, 0, 0, 0),
-(233, 'app/cars/identify.php', NULL, 0, 0, 0),
+(233, 'docs/reference/identification-guide.php', NULL, 0, 0, 0),
 (235, 'app/cars/mapmarkers.xml.php', NULL, 0, 0, 0),
 (236, 'app/contact/index.php', NULL, 1, 0, 0),
 (237, 'app/contact/owner.php', NULL, 1, 0, 0),

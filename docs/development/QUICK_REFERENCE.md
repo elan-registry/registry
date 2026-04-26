@@ -440,7 +440,8 @@ docs/development/
 Wiki (GitHub):
   Architecture             # System architecture (github.com/jimboone/elan-registry/wiki/Architecture)
   UserSpice Integration    # UserSpice integration (github.com/jimboone/elan-registry/wiki/Integration)
-docs/faq/                  # User documentation
-docs/faq/admin/            # Admin documentation
+docs/guides/               # User documentation
+docs/reference/            # Technical reference pages
+docs/admin/                # Admin documentation
 docs/README.md             # Complete documentation index
 ```

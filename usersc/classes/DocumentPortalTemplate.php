@@ -25,9 +25,9 @@ class DocumentPortalTemplate
     private const REQUIRED_LINK_KEYS = ['label', 'url'];
 
     private const DEFAULT_CARD_CLASS   = 'registry-card h-100';
-    private const DEFAULT_HEADER_CLASS = 'bg-primary text-white';
-    private const DEFAULT_BUTTON_CLASS = 'btn-primary btn-sm';
-    private const DEFAULT_BTN_CLASS    = 'btn-outline-primary';
+    private const DEFAULT_HEADER_CLASS = 'bg-info text-white';
+    private const DEFAULT_BUTTON_CLASS = 'btn-info btn-sm';
+    private const DEFAULT_BTN_CLASS    = 'btn-outline-info';
     private const DEFAULT_COL_CLASS    = 'col-lg-4';
 
     /**
@@ -53,6 +53,9 @@ class DocumentPortalTemplate
             ? ' ' . htmlspecialchars($config['headerClass'], ENT_QUOTES, 'UTF-8')
             : '';
 
+        $hasLeadText = isset($config['leadText']) && $config['leadText'] !== '';
+        $isAdmin     = !empty($config['isAdmin']);
+
         $html  = "<div class='row'>";
         $html .= "<div class='col-12'>";
         $html .= "<div class='card registry-card'>";
@@ -60,21 +63,25 @@ class DocumentPortalTemplate
         $html .= "<h1 class='mb-0'>" . self::renderIcon($config['titleIcon'] ?? '') . "{$title}</h1>";
         $html .= "<p class='text-muted mb-0'>{$description}</p>";
         $html .= "</div>";
-        $html .= "<div class='card-body'>";
 
-        if (isset($config['leadText']) && $config['leadText'] !== '') {
-            $leadText = htmlspecialchars($config['leadText'], ENT_QUOTES, 'UTF-8');
-            $html    .= "<p class='lead'>{$leadText}</p>";
-        }
+        if ($hasLeadText || $isAdmin) {
+            $html .= "<div class='card-body'>";
 
-        if (!empty($config['isAdmin'])) {
-            $html .= "<div class='alert alert-warning'>";
-            $html .= "<i class='fas fa-exclamation-triangle'></i> <strong>Administrator Access Required</strong><br>";
-            $html .= "This documentation is intended for registry administrators and technical staff only.";
+            if ($hasLeadText) {
+                $leadText = htmlspecialchars($config['leadText'], ENT_QUOTES, 'UTF-8');
+                $html    .= "<p class='lead'>{$leadText}</p>";
+            }
+
+            if ($isAdmin) {
+                $html .= "<div class='alert alert-warning'>";
+                $html .= "<i class='fas fa-exclamation-triangle'></i> <strong>Administrator Access Required</strong><br>";
+                $html .= "This documentation is intended for registry administrators and technical staff only.";
+                $html .= "</div>";
+            }
+
             $html .= "</div>";
         }
 
-        $html .= "</div>";
         $html .= "</div>";
         $html .= "</div>";
         $html .= "</div>";
@@ -122,6 +129,13 @@ class DocumentPortalTemplate
         $html .= "<div class='card-header {$headerClass}'{$headerStyleAttr}>";
         $html .= "<h5 class='mb-0'><i class='fas {$icon}'></i> {$title}</h5>";
         $html .= "</div>";
+
+        if (isset($card['cardImage']) && $card['cardImage'] !== '') {
+            $imgSrc = htmlspecialchars($card['cardImage'], ENT_QUOTES, 'UTF-8');
+            $imgAlt = htmlspecialchars($card['cardImageAlt'] ?? $title, ENT_QUOTES, 'UTF-8');
+            $html  .= "<img class='card-img-top' src='{$imgSrc}' alt='{$imgAlt}' style='max-height: 200px; object-fit: contain; padding: 10px;'>";
+        }
+
         $html .= "<div class='card-body d-flex flex-column'>";
 
         if (isset($card['description']) && $card['description'] !== '') {

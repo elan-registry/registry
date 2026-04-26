@@ -1,11 +1,15 @@
 <?php
 
+declare(strict_types=1);
+
 /**
- * Documents Index - Redirect Page
+ * Documentation Hub - Lotus Elan Registry
  *
- * The documents section has been reorganized into focused pages.
- * This page provides navigation to the new sections.
+ * Top-level documentation landing page organised by user intent.
+ *
+ * @package ElanRegistry
  */
+
 require_once '../users/init.php';
 require_once $abs_us_root . $us_url_root . 'users/includes/template/prep.php';
 
@@ -15,84 +19,58 @@ if (!securePage($php_self)) {
     die();
 }
 
-$portalCards = [
+$cards = [
     [
-        'title'       => 'Reference Library',
+        'title'       => 'Technical Reference',
         'icon'        => 'fa-book',
-        'url'         => 'reference-library.php',
-        'buttonText'  => 'View Reference Library',
+        'url'         => 'reference/index.php',
+        'buttonText'  => 'Browse',
         'buttonIcon'  => 'fa-arrow-right',
-        'headerClass' => 'bg-primary text-white',
-        'buttonClass' => 'btn-primary',
-        'cardClass'   => 'border-primary',
-        'description' => 'Technical documentation, workshop manuals, parts lists, and owner guides. Everything you need for maintenance and restoration.',
-        'listItems'   => [
-            ['icon' => 'fa-wrench text-primary',  'text' => 'Workshop Manuals'],
-            ['icon' => 'fa-cogs text-primary',    'text' => 'Parts Lists'],
-            ['icon' => 'fa-tools text-primary',   'text' => 'Technical Guides'],
-            ['icon' => 'fa-barcode text-primary', 'text' => 'Chassis Validation'],
-        ],
+        'headerClass' => 'bg-info text-white',
+        'buttonClass' => 'btn-info btn-sm',
+        'description' => 'Workshop manuals, technical articles, identification guides, and paint reference for Lotus Elan owners.',
+        'colClass'    => 'col-md-4',
     ],
     [
         'title'       => 'Car Stories',
-        'icon'        => 'fa-book-open',
+        'icon'        => 'fa-history',
         'url'         => 'car-stories.php',
-        'buttonText'  => 'Read Car Stories',
+        'buttonText'  => 'Browse',
+        'buttonIcon'  => 'fa-arrow-right',
+        'headerClass' => 'bg-warning text-dark',
+        'buttonClass' => 'btn-warning btn-sm',
+        'description' => 'Individual car histories, owner stories, and historical archives from the Elan community.',
+        'colClass'    => 'col-md-4',
+    ],
+    [
+        'title'       => 'Owner Guides',
+        'icon'        => 'fa-question-circle',
+        'url'         => 'guides/index.php',
+        'buttonText'  => 'Browse',
         'buttonIcon'  => 'fa-arrow-right',
         'headerClass' => 'bg-success text-white',
-        'buttonClass' => 'btn-success',
-        'cardClass'   => 'border-success',
-        'description' => 'Individual car histories, owner stories, and community articles. Discover the unique tales behind registry vehicles.',
-        'listItems'   => [
-            ['icon' => 'fa-history text-success',   'text' => 'Individual Car Histories'],
-            ['icon' => 'fa-users text-success',     'text' => 'Owner Stories'],
-            ['icon' => 'fa-newspaper text-success', 'text' => 'Magazine Articles'],
-            ['icon' => 'fa-archive text-success',   'text' => 'Historical Archives'],
-        ],
+        'buttonClass' => 'btn-success btn-sm',
+        'description' => 'How to add your car, transfer ownership, and use the registry effectively.',
+        'colClass'    => 'col-md-4',
     ],
+];
+
+$navLinks = [
+    ['label' => 'Registry Home', 'url' => $us_url_root, 'icon' => 'fa-home', 'btnClass' => 'btn-outline-info'],
+    ['label' => 'Browse Cars',   'url' => $us_url_root . 'app/cars/', 'icon' => 'fa-car', 'btnClass' => 'btn-outline-success'],
 ];
 
 ?>
 <div class="page-wrapper">
-    <div class="container">
-        <div class="row">
-            <div class="col-sm-12">
-                <div class="card registry-card">
-                        <div class="card-header">
-                            <h2><strong>Documentation Center</strong></h2>
-                            <p class="text-muted">Our documentation has been reorganized for better navigation</p>
-                        </div>
-                        <div class="card-body">
+    <div class='container'>
+        <?= DocumentPortalTemplate::renderPortalHeader([
+            'title'       => 'Documentation',
+            'titleIcon'   => 'fa-book-open',
+            'description' => 'Lotus Elan knowledge organised by what you need',
+        ]) ?>
+        <?= DocumentPortalTemplate::renderDocumentCardGrid($cards, 'col-md-4') ?>
+        <?= DocumentPortalTemplate::renderNavFooter($navLinks) ?>
+    </div>
+</div>
 
-                            <div class="alert alert-info mb-4">
-                                <i class="fas fa-info-circle"></i>
-                                <strong>Updated Organization:</strong> We've split our documentation into focused sections
-                                to make it easier to find what you're looking for.
-                            </div>
-
-                            <?= DocumentPortalTemplate::renderDocumentCardGrid($portalCards, 'col-md-6') ?>
-
-                            <!-- Quick Access Links -->
-                            <div class="mt-4">
-                                <h5>Quick Access</h5>
-                                <div class="btn-group-vertical btn-group-sm w-100" role="group">
-                                    <a href="chassis-validation.php" class="btn btn-outline-secondary text-left">
-                                        <i class="fas fa-barcode"></i> Chassis Validation Rules
-                                    </a>
-                                    <a href="reference-library.php" class="btn btn-outline-secondary text-left">
-                                        <i class="fas fa-file-pdf"></i> Workshop Manual (Elan 26/36)
-                                    </a>
-                                    <a href="car-stories.php" class="btn btn-outline-secondary text-left">
-                                        <i class="fas fa-external-link-alt"></i> SGO 2F Story
-                                    </a>
-                                </div>
-                            </div>
-
-                        </div> <!-- card-body -->
-                    </div> <!-- card -->
-                </div> <!-- col -->
-            </div> <!-- row -->
-    </div><!-- Container -->
-</div><!-- page -->
-
-<?php require_once $abs_us_root . $us_url_root . 'usersc/templates/' . $settings->template . '/footer.php'; ?>
+<?php require_once $abs_us_root . $us_url_root . 'users/includes/html_footer.php'; ?>

@@ -57,9 +57,6 @@ project, structured for different audiences and use cases.
 **Audience:** Product managers, stakeholders, leadership
 **Access:** Public (version controlled)
 
-- **[PRD.md](PRD.md)** - Product Requirements Document with feature
-  specifications and requirements
-
 ### `/development/` - Development Documentation
 
 **Audience:** Developers, DevOps, AI assistants
