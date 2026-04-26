@@ -86,7 +86,7 @@ class DocumentationViewerTest extends IntegrationTestCase
     {
         // Create a valid test document
         $testDoc = 'CAR_TRANSFER_USER_GUIDE.md';
-        $expectedPath = $this->docsPath . '/faq/' . $testDoc;
+        $expectedPath = $this->docsPath . '/guides/' . $testDoc;
 
         // Verify the real documentation file exists
         $this->assertFileExists(
@@ -416,7 +416,7 @@ class DocumentationViewerTest extends IntegrationTestCase
      * Helper method to simulate DocumentConfig validation logic
      *
      * In real implementation, DocumentConfig::validateDocument() checks if
-     * the document exists in configured locations (faq/, faq/admin/, etc.)
+     * the document exists in configured locations (guides/, admin/, etc.)
      *
      * @param string $docName Document name to validate
      * @return bool True if document would be accepted
@@ -426,8 +426,8 @@ class DocumentationViewerTest extends IntegrationTestCase
     {
         // Simulate the validation - check if file exists in known locations
         $possibleLocations = [
-            $this->docsPath . '/faq/' . $docName,
-            $this->docsPath . '/faq/admin/' . $docName,
+            $this->docsPath . '/guides/' . $docName,
+            $this->docsPath . '/admin/' . $docName,
         ];
 
         foreach ($possibleLocations as $path) {

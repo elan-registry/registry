@@ -90,8 +90,10 @@
   automatically via `.htaccess`.
 - **DocumentConfig class updated**
   ([#559](https://github.com/unibrain1/elanregistry/issues/559)):
-  `usersc/classes/DocumentConfig.php` updated with new `guides`, `reference`,
-  and `admin` categories (replaces `faq` and `faq/admin`). Breadcrumb navigation
+  `usersc/classes/DocumentConfig.php` updated with new `guides` and `admin`
+  categories (replaces `faq` and `faq/admin`). Reference section pages
+  (`chassis-validation.php`, `paint-colors.php`, etc.) are standalone PHP pages
+  and do not use DocumentConfig routing. Breadcrumb navigation
   in `docs/guide-viewer.php` updated to reflect new structure.
 - **Root path array updated**
   ([#559](https://github.com/unibrain1/elanregistry/issues/559)):

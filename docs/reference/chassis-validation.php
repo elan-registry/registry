@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 /**
  * chassis-validation.php
  * Documentation page for Lotus Elan chassis validation rules
