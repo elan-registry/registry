@@ -69,7 +69,6 @@ database/
 backups/
 
 # Dev-only scripts and utilities
-FIX/
 utilities/
 
 # Wiki source (served via GitHub wiki, not the web server)
