@@ -272,13 +272,9 @@ SELECT COUNT(*) as total_pages,
        SUM(CASE WHEN private = 0 THEN 1 ELSE 0 END) as public_pages
 FROM pages;
 
--- Verify menu system was configured
-SELECT 'Menu system:' as status;
-SELECT COUNT(*) as total_menus,
-       SUM(CASE WHEN dropdown = 1 THEN 1 ELSE 0 END) as dropdown_menus,
-       SUM(CASE WHEN logged_in = 1 THEN 1 ELSE 0 END) as logged_in_menus,
-       SUM(CASE WHEN logged_in = 0 THEN 1 ELSE 0 END) as public_menus
-FROM menus;
+-- Verify navigation is configured for file-based nav
+SELECT 'Navigation type (expect 0 = file-based):' as status;
+SELECT navigation_type FROM settings WHERE id = 1;
 
 -- Verify plugin status
 SELECT 'Active plugins:' as status;  
