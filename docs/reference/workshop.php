@@ -13,6 +13,8 @@ declare(strict_types=1);
 require_once '../../users/init.php';
 require_once $abs_us_root . $us_url_root . 'users/includes/template/prep.php';
 
+use ElanRegistry\Documentation\DocumentPortalTemplate;
+
 if (!securePage($php_self)) {
     die();
 }
@@ -20,16 +22,11 @@ if (!securePage($php_self)) {
 ?>
 <div class="page-wrapper">
     <div class="container">
-        <div class="row">
-            <div class="col-12">
-                <div class="card registry-card">
-                    <div class="card-header">
-                        <h2><i class="fas fa-wrench"></i> <strong>Workshop & Parts</strong></h2>
-                        <p class="text-muted mb-0">Maintenance manuals and parts references</p>
-                    </div>
-                </div>
-            </div>
-        </div>
+        <?= DocumentPortalTemplate::renderPortalHeader([
+            'title'       => 'Workshop & Parts',
+            'titleIcon'   => 'fa-wrench',
+            'description' => 'Maintenance manuals and parts references for Lotus Elan owners',
+        ]) ?>
 
         <div class="row mt-4">
             <div class="col-md-4 mb-4">

@@ -1,4 +1,5 @@
 <?php
+declare(strict_types=1);
 
 /**
  * Brian Walton Elan Experimental Rally Car Story
@@ -9,16 +10,27 @@
 require_once '../../../users/init.php';
 require_once $abs_us_root . $us_url_root . 'users/includes/template/prep.php';
 
+use ElanRegistry\Documentation\DocumentPortalTemplate;
+
 if (!securePage($php_self)) {
     die();
 }
 ?>
 
 
-<div id="page-wrapper">
+<div class="page-wrapper">
 	<div class="container">
-		<div class="row">
-			<div class="col-sm-12">
+
+		<?= DocumentPortalTemplate::renderPortalHeader([
+			'title'       => 'Elan Experimental Rally Car',
+			'titleIcon'   => 'fa-flag-checkered',
+			'description' => 'The story of Brian Walton\'s unique Works rally Elan — chassis 36/6086',
+		]) ?>
+
+		<div class="row mt-4">
+			<div class="col-12">
+				<div class="card registry-card">
+					<div class="card-body">
 
 
 
@@ -39,10 +51,10 @@ if (!securePage($php_self)) {
 				<p>"A letter from Ray Badcock at Lotus dated 20th March 1979 and sent to Barry Freeman stated that this Elan was once a Works Experimental Rally Elan." The hunt was on when I received the vehicle to find out if this 'experimental story' was true....
 				</p>
 
-				<img src="brian_walton_s3rally_1.jpg" alt="rally car"><br />
-				<img src="brian_walton_s3rally_2.jpg" alt="vintage ad"><br />
-				<img src="brian_walton_s3rally_3.jpg" alt="letter from lotus"><br />
-				<img src="godon_n_palmer.jpg" alt="newspaper clipping"><br />
+				<img src="brian_walton_s3rally_1.jpg" alt="rally car" class="img-fluid rounded mb-3"><br />
+				<img src="brian_walton_s3rally_2.jpg" alt="vintage ad" class="img-fluid rounded mb-3"><br />
+				<img src="brian_walton_s3rally_3.jpg" alt="letter from lotus" class="img-fluid rounded mb-3"><br />
+				<img src="godon_n_palmer.jpg" alt="newspaper clipping" class="img-fluid rounded mb-3"><br />
 
 				<p>Great Britain...this is where it gets more interesting.</p>
 				<p>1975-1979</p>
@@ -69,11 +81,12 @@ if (!securePage($php_self)) {
 				<p>Up until then I will just sand on.</p>
 				<p>This shot was taken in my garage as I was slowly rubbing the beast down to just above the gel. In completing the task I found the four large round holes at the front of the car where the cibie oscar lights were placed. A replacement set was found and they fitted a treat. The front of the car was a real mess, with hundreds of cracks throughout. In typical kiwi fashion I have spent months slowly repairing the entire body back to new. </p>
 
-			</div> <!-- /.col -->
+					</div> <!-- /.card-body -->
+				</div> <!-- /.card -->
+			</div> <!-- /.col-12 -->
 		</div> <!-- /.row -->
 	</div> <!-- /.container -->
 </div><!-- .page-wrapper -->
 
 <!-- footers -->
-<?php require_once $abs_us_root . $us_url_root . 'usersc/templates/' . $settings->template . '/footer.php'; //custom template footer
-?>
+<?php require_once $abs_us_root . $us_url_root . 'users/includes/html_footer.php'; ?>

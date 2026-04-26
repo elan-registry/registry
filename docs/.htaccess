@@ -20,3 +20,4 @@ Redirect 301 /docs/reference-library.php /docs/reference/index.php
 Redirect 301 /docs/faq/index.php /docs/guides/index.php
 Redirect 301 /docs/faq/paint-colors.php /docs/reference/paint-colors.php
 Redirect 301 /docs/faq/admin/index.php /docs/admin/index.php
+Redirect 301 /docs/chassis-validation.php /docs/reference/chassis-validation.php

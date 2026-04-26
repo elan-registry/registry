@@ -41,7 +41,7 @@ $cards = [
     [
         'title'       => 'Chassis Validation Rules',
         'icon'        => 'fa-barcode',
-        'url'         => '../chassis-validation.php',
+        'url'         => 'chassis-validation.php',
         'buttonText'  => 'View Rules',
         'headerClass' => 'bg-info text-white',
         'buttonClass' => 'btn-info btn-sm',

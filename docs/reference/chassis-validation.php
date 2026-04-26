@@ -11,9 +11,11 @@
  * @copyright 2025
  */
 
-require_once '../users/init.php';
+require_once '../../users/init.php';
 require_once $abs_us_root . $us_url_root . 'users/includes/template/prep.php';
-require_once '../usersc/classes/ChassisValidator.php';
+require_once '../../usersc/classes/ChassisValidator.php';
+
+use ElanRegistry\Documentation\DocumentPortalTemplate;
 
 if (!securePage($php_self)) {
     die();
@@ -25,21 +27,12 @@ $validationRules = ChassisValidator::getValidationRules();
 ?>
 
 <div class="page-wrapper">
-    <div class="container-fluid">
-        <div class="page-container">
-            <!-- Page Header -->
-            <div class="row mb-4">
-                <div class="col-12">
-                    <div class="text-center">
-                        <h1 class="h3 mb-2 text-gray-800">
-                            <i class="fas fa-barcode text-primary"></i> Chassis Validation Rules
-                        </h1>
-                        <p class="text-muted mb-0">
-                            Complete guide to Lotus Elan chassis numbering formats and validation requirements
-                        </p>
-                    </div>
-                </div>
-            </div>
+    <div class="container">
+        <?= DocumentPortalTemplate::renderPortalHeader([
+            'title'       => 'Chassis Validation Rules',
+            'titleIcon'   => 'fa-barcode',
+            'description' => 'Complete guide to Lotus Elan chassis numbering formats and validation requirements',
+        ]) ?>
 
             <!-- Overview Section -->
             <div class="row mb-4">
@@ -436,49 +429,6 @@ $validationRules = ChassisValidator::getValidationRules();
                 </div>
             </div>
 
-            <!-- Technical Information Section -->
-            <div class="row mb-4">
-                <div class="col-12">
-                    <div class="card registry-card">
-                        <div class="card-header bg-dark text-white">
-                            <h4 class="mb-0">
-                                <i class="fas fa-cog"></i> Technical Implementation
-                            </h4>
-                        </div>
-                        <div class="card-body">
-                            <p>
-                                The chassis validation system uses centralized logic to ensure consistency
-                                between real-time frontend validation and backend form processing.
-                            </p>
-                            
-                            <div class="row">
-                                <div class="col-md-4">
-                                    <div class="text-center p-3 border rounded">
-                                        <i class="fas fa-code fa-2x text-primary mb-2"></i>
-                                        <h6>Centralized Validation</h6>
-                                        <small class="text-muted">Single ChassisValidator class handles all validation logic</small>
-                                    </div>
-                                </div>
-                                <div class="col-md-4">
-                                    <div class="text-center p-3 border rounded">
-                                        <i class="fas fa-bolt fa-2x text-warning mb-2"></i>
-                                        <h6>Real-time Feedback</h6>
-                                        <small class="text-muted">AJAX validation provides immediate user feedback</small>
-                                    </div>
-                                </div>
-                                <div class="col-md-4">
-                                    <div class="text-center p-3 border rounded">
-                                        <i class="fas fa-shield-alt fa-2x text-success mb-2"></i>
-                                        <h6>Data Integrity</h6>
-                                        <small class="text-muted">Backend validation ensures data quality and security</small>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
             <!-- Reference Source Section -->
             <div class="row mb-4">
                 <div class="col-12">
@@ -519,7 +469,6 @@ $validationRules = ChassisValidator::getValidationRules();
                 </div>
             </div>
 
-        </div>
     </div>
 </div>
 
