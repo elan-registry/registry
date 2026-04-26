@@ -49,18 +49,6 @@ $cards = [
         'description' => 'Frequently asked questions about car ownership transfers, common issues, and quick solutions.',
     ],
     [
-        'title'       => 'Paint Colors Guide',
-        'icon'        => 'fa-palette',
-        'url'         => '../reference/paint-colors.php',
-        'buttonText'  => 'View Guide',
-        'buttonIcon'  => 'fa-book-open',
-        'headerClass' => 'text-white',
-        'headerStyle' => 'background-color: #8e44ad;',
-        'buttonClass' => 'btn-sm',
-        'buttonStyle' => 'background-color: #8e44ad; color: white;',
-        'description' => 'Complete reference to Lotus Elan and Plus 2 factory paint colors, codes, date ranges, and supplier cross-references for restoration.',
-    ],
-    [
         'title'       => 'Privacy Policy',
         'icon'        => 'fa-shield-alt',
         'url'         => '../view.php?doc=PRIVACY.md',
