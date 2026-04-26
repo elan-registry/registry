@@ -21,7 +21,7 @@ $cards = [
     [
         'title'       => 'How to Add Your Car',
         'icon'        => 'fa-car',
-        'url'         => '../view.php?doc=ADD_CAR_GUIDE.md',
+        'url'         => '../guide-viewer.php?doc=ADD_CAR_GUIDE.md',
         'buttonText'  => 'Read Guide',
         'buttonIcon'  => 'fa-book-open',
         'headerClass' => 'bg-success text-white',
@@ -31,7 +31,7 @@ $cards = [
     [
         'title'       => 'Car Transfer Guide',
         'icon'        => 'fa-exchange-alt',
-        'url'         => '../view.php?doc=CAR_TRANSFER_USER_GUIDE.md',
+        'url'         => '../guide-viewer.php?doc=CAR_TRANSFER_USER_GUIDE.md',
         'buttonText'  => 'Read Guide',
         'buttonIcon'  => 'fa-book-open',
         'headerClass' => 'bg-info text-white',
@@ -41,7 +41,7 @@ $cards = [
     [
         'title'       => 'Transfer FAQ',
         'icon'        => 'fa-question',
-        'url'         => '../view.php?doc=CAR_TRANSFER_FAQ.md',
+        'url'         => '../guide-viewer.php?doc=CAR_TRANSFER_FAQ.md',
         'buttonText'  => 'View FAQ',
         'buttonIcon'  => 'fa-question-circle',
         'headerClass' => 'bg-info text-white',
@@ -51,7 +51,7 @@ $cards = [
     [
         'title'       => 'Privacy Policy',
         'icon'        => 'fa-shield-alt',
-        'url'         => '../view.php?doc=PRIVACY.md',
+        'url'         => '../guide-viewer.php?doc=PRIVACY.md',
         'buttonText'  => 'Read Policy',
         'buttonIcon'  => 'fa-file-alt',
         'headerClass' => 'bg-dark text-white',
