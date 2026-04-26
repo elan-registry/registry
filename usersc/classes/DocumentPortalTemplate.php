@@ -25,9 +25,9 @@ class DocumentPortalTemplate
     private const REQUIRED_LINK_KEYS = ['label', 'url'];
 
     private const DEFAULT_CARD_CLASS   = 'registry-card h-100';
-    private const DEFAULT_HEADER_CLASS = 'bg-primary text-white';
-    private const DEFAULT_BUTTON_CLASS = 'btn-primary btn-sm';
-    private const DEFAULT_BTN_CLASS    = 'btn-outline-primary';
+    private const DEFAULT_HEADER_CLASS = 'bg-info text-white';
+    private const DEFAULT_BUTTON_CLASS = 'btn-info btn-sm';
+    private const DEFAULT_BTN_CLASS    = 'btn-outline-info';
     private const DEFAULT_COL_CLASS    = 'col-lg-4';
 
     /**
@@ -53,6 +53,9 @@ class DocumentPortalTemplate
             ? ' ' . htmlspecialchars($config['headerClass'], ENT_QUOTES, 'UTF-8')
             : '';
 
+        $hasLeadText = isset($config['leadText']) && $config['leadText'] !== '';
+        $isAdmin     = !empty($config['isAdmin']);
+
         $html  = "<div class='row'>";
         $html .= "<div class='col-12'>";
         $html .= "<div class='card registry-card'>";
@@ -60,21 +63,25 @@ class DocumentPortalTemplate
         $html .= "<h1 class='mb-0'>" . self::renderIcon($config['titleIcon'] ?? '') . "{$title}</h1>";
         $html .= "<p class='text-muted mb-0'>{$description}</p>";
         $html .= "</div>";
-        $html .= "<div class='card-body'>";
 
-        if (isset($config['leadText']) && $config['leadText'] !== '') {
-            $leadText = htmlspecialchars($config['leadText'], ENT_QUOTES, 'UTF-8');
-            $html    .= "<p class='lead'>{$leadText}</p>";
-        }
+        if ($hasLeadText || $isAdmin) {
+            $html .= "<div class='card-body'>";
 
-        if (!empty($config['isAdmin'])) {
-            $html .= "<div class='alert alert-warning'>";
-            $html .= "<i class='fas fa-exclamation-triangle'></i> <strong>Administrator Access Required</strong><br>";
-            $html .= "This documentation is intended for registry administrators and technical staff only.";
+            if ($hasLeadText) {
+                $leadText = htmlspecialchars($config['leadText'], ENT_QUOTES, 'UTF-8');
+                $html    .= "<p class='lead'>{$leadText}</p>";
+            }
+
+            if ($isAdmin) {
+                $html .= "<div class='alert alert-warning'>";
+                $html .= "<i class='fas fa-exclamation-triangle'></i> <strong>Administrator Access Required</strong><br>";
+                $html .= "This documentation is intended for registry administrators and technical staff only.";
+                $html .= "</div>";
+            }
+
             $html .= "</div>";
         }
 
-        $html .= "</div>";
         $html .= "</div>";
         $html .= "</div>";
         $html .= "</div>";
@@ -99,6 +106,8 @@ class DocumentPortalTemplate
      *     buttonIcon?: string,
      *     headerStyle?: string,
      *     buttonStyle?: string,
+     *     buttonTarget?: string,
+     *     secondaryButton?: array{url: string, text: string, class?: string, icon?: string, download?: bool, target?: string},
      *     colClass?: string
      * } $card
      * @throws \InvalidArgumentException if required keys are missing
@@ -122,6 +131,13 @@ class DocumentPortalTemplate
         $html .= "<div class='card-header {$headerClass}'{$headerStyleAttr}>";
         $html .= "<h5 class='mb-0'><i class='fas {$icon}'></i> {$title}</h5>";
         $html .= "</div>";
+
+        if (isset($card['cardImage']) && $card['cardImage'] !== '') {
+            $imgSrc = htmlspecialchars($card['cardImage'], ENT_QUOTES, 'UTF-8');
+            $imgAlt = htmlspecialchars($card['cardImageAlt'] ?? $title, ENT_QUOTES, 'UTF-8');
+            $html  .= "<img class='card-img-top' src='{$imgSrc}' alt='{$imgAlt}' style='max-height: 200px; object-fit: contain; padding: 10px;'>";
+        }
+
         $html .= "<div class='card-body d-flex flex-column'>";
 
         if (isset($card['description']) && $card['description'] !== '') {
@@ -143,7 +159,18 @@ class DocumentPortalTemplate
         }
 
         $html .= "<div class='mt-auto'>";
-        $html .= "<a href='{$url}' class='btn {$buttonClass}'{$buttonStyleAttr}>" . self::renderIcon($card['buttonIcon'] ?? '') . "{$buttonText}</a>";
+        $targetAttr = self::renderTargetAttr($card['buttonTarget'] ?? '');
+        $html .= "<a href='{$url}' class='btn {$buttonClass}'{$buttonStyleAttr}{$targetAttr}>" . self::renderIcon($card['buttonIcon'] ?? '') . "{$buttonText}</a>";
+
+        if (isset($card['secondaryButton']) && is_array($card['secondaryButton'])) {
+            $sec         = $card['secondaryButton'];
+            $secUrl      = htmlspecialchars($sec['url'] ?? '', ENT_QUOTES, 'UTF-8');
+            $secText     = htmlspecialchars($sec['text'] ?? '', ENT_QUOTES, 'UTF-8');
+            $secClass    = htmlspecialchars($sec['class'] ?? 'btn-success btn-sm', ENT_QUOTES, 'UTF-8');
+            $secDownload = !empty($sec['download']) ? ' download' : '';
+            $html .= " <a href='{$secUrl}' class='btn {$secClass}'{$secDownload}" . self::renderTargetAttr($sec['target'] ?? '') . ">" . self::renderIcon($sec['icon'] ?? '') . "{$secText}</a>";
+        }
+
         $html .= "</div>";
         $html .= "</div>";
         $html .= "</div>";
@@ -266,6 +293,27 @@ class DocumentPortalTemplate
         }
 
         return " style='" . htmlspecialchars($style, ENT_QUOTES, 'UTF-8') . "'";
+    }
+
+    /**
+     * Render a target attribute string, or empty string if no value given.
+     *
+     * Appends rel='noopener noreferrer' when target is '_blank' to prevent
+     * reverse tabnabbing attacks.
+     */
+    private static function renderTargetAttr(string $target): string
+    {
+        if ($target === '') {
+            return '';
+        }
+
+        $attr = " target='" . htmlspecialchars($target, ENT_QUOTES, 'UTF-8') . "'";
+
+        if ($target === '_blank') {
+            $attr .= " rel='noopener noreferrer'";
+        }
+
+        return $attr;
     }
 
     /**

@@ -2,7 +2,15 @@
 
 ## Status
 
-**In Review** (retroactive)
+**Superseded** — by issue #715 (2026-04-26)
+
+The complexity-to-benefit ratio of the proposed database-proxy approach does not
+justify the architecture for the current document volume. The file-system
+co-location approach implemented in issue #715 — moving PDFs into
+`docs/reference/assets/` and `docs/stories/assets/` alongside the pages that
+reference them — is the final state. The `subdir` allowlist parameter added to
+`docs/embed.php` provides the necessary path flexibility without the overhead of
+a database proxy layer.
 
 ## Date
 

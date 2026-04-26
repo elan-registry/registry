@@ -1,140 +1,108 @@
 <?php
 
+declare(strict_types=1);
+
 /**
  * Car Stories Page
  *
  * Individual car histories, owner stories, and registry articles about specific vehicles.
  * Features stories from the community and historical documentation.
+ *
+ * @package ElanRegistry
  */
 require_once '../users/init.php';
 require_once $abs_us_root . $us_url_root . 'users/includes/template/prep.php';
+
+use ElanRegistry\Documentation\DocumentPortalTemplate;
 
 if (!securePage($php_self)) {
     die();
 }
 
-$stories = $us_url_root . 'docs/stories/';
+$storiesBase = $us_url_root . 'docs/stories/';
+
+$storyCards = [
+    [
+        'title'        => 'The Story of SGO 2F',
+        'icon'         => 'fa-car',
+        'url'          => $storiesBase . 'SGO_2F/index.php',
+        'buttonText'   => 'Read Story',
+        'buttonIcon'   => 'fa-book-open',
+        'headerClass'  => 'bg-info text-white',
+        'buttonClass'  => 'btn-info btn-sm',
+        'description'  => 'A detailed history of this remarkable Elan.',
+        'metadata'     => 'Registry ID: 50/0164',
+        'cardImage'    => $storiesBase . 'SGO_2F/photos/SGO_2F_Nepal_Orange.jpg',
+        'cardImageAlt' => 'SGO 2F in Nepal Orange',
+    ],
+    [
+        'title'        => 'Elan Experimental Rally Car',
+        'icon'         => 'fa-flag-checkered',
+        'url'          => $storiesBase . 'brian_walton/index.php',
+        'buttonText'   => 'Read Story',
+        'buttonIcon'   => 'fa-book-open',
+        'headerClass'  => 'bg-success text-white',
+        'buttonClass'  => 'btn-success btn-sm',
+        'description'  => "The fascinating story of Brian Walton's rally-prepared Elan.",
+        'metadata'     => 'Registry ID: 36/6086',
+        'cardImage'    => $storiesBase . 'brian_walton/brian_walton_s3rally_1.jpg',
+        'cardImageAlt' => "Brian Walton's Elan S3 rally car",
+    ],
+    [
+        'title'        => 'Shapecraft Elan Story',
+        'icon'         => 'fa-file-pdf',
+        'url'          => $us_url_root . 'docs/pdf-viewer.php?subdir=stories&doc=' . rawurlencode('Mag _issue_50_p12-15_Barry-Shapecraft.pdf'),
+        'buttonText'   => 'Read Article',
+        'buttonIcon'   => 'fa-book-open',
+        'headerClass'  => 'bg-info text-white',
+        'buttonClass'  => 'btn-info btn-sm',
+        'description'  => 'Featured in Historic Lotus Racing Magazine, No. 50, Spring 2022.',
+        'metadata'     => 'Registry ID: 26/4992',
+        'cardImage'    => $us_url_root . 'docs/stories/assets/' . rawurlencode('Mag _issue_50_p12-15_Barry-Shapecraft.png'),
+        'cardImageAlt' => 'Shapecraft Elan Story — Historic Lotus Racing Magazine',
+    ],
+];
+
+$archiveCards = [
+    [
+        'title'       => 'Type26Register.com Archive',
+        'icon'        => 'fa-history',
+        'url'         => $storiesBase . 'type26register.php',
+        'buttonText'  => 'Browse Archive',
+        'buttonIcon'  => 'fa-folder-open',
+        'headerClass' => 'bg-dark text-white',
+        'buttonClass' => 'btn-dark btn-sm',
+        'description' => 'An incomplete archive of type26register.com retrieved from the Wayback Machine, preserving valuable historical information about Type 26 Elans as of July 2010.',
+    ],
+];
 
 ?>
 <div class="page-wrapper">
     <div class="container">
-        <div class="row">
-            <div class="col-sm-12">
-                <div class="card registry-card">
-                        <div class="card-header">
-                            <h2><i class="fas fa-book-open"></i> <strong>Car Stories</strong></h2>
-                            <p class="text-muted">Individual car histories, owner stories, and community articles</p>
-                        </div>
-                        <div class="card-body">
-                            
-                            <div class="alert alert-info mb-4">
-                                <i class="fas fa-car"></i>
-                                <strong>Registry Stories:</strong> These are stories of individual cars in our registry, 
-                                shared by their owners and the community. Each tells a unique tale of restoration, 
-                                discovery, racing history, or personal connection to these remarkable vehicles.
-                            </div>
+        <?= DocumentPortalTemplate::renderPortalHeader([
+            'title'       => 'Car Stories',
+            'titleIcon'   => 'fa-book-open',
+            'description' => 'Individual car histories, owner stories, and community articles',
+        ]) ?>
 
-                            <table class="table table-striped table-bordered table-hover table-sm" aria-describedby="Car stories and histories table">
-                                <thead class="thead-dark">
-                                    <tr>
-                                        <th scope="column" style="width: 60%;">
-                                            <i class="fas fa-book-open"></i> Story Title
-                                        </th>
-                                        <th scope="column" style="width: 40%;">
-                                            <i class="fas fa-comment"></i> Details & Comments
-                                        </th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    <tr>
-                                        <td>
-                                            <a href="<?= $stories ?>SGO_2F/index.php" class="btn btn-outline-primary btn-sm mb-2">
-                                                <i class="fas fa-external-link-alt"></i> The Story of SGO 2F
-                                            </a>
-                                            <br>
-                                            <small class="text-muted">Registry ID: 50/0164</small>
-                                        </td>
-                                        <td>
-                                            <em>A detailed history of this remarkable Elan</em>
-                                        </td>
-                                    </tr>
+        <div class="row mt-4">
+            <div class="col-12">
+                <div class="alert alert-success">
+                    <i class="fas fa-pen-alt"></i>
+                    <strong>Share Your Story:</strong>
+                    Have a story about your Elan? We'd love to feature it here!
+                    <a href="<?= $us_url_root ?>app/contact/" class="alert-link">Contact us</a>
+                    to share your car's unique history.
+                </div>
+            </div>
+        </div>
 
-                                    <tr>
-                                        <td>
-                                            <a href="<?= $stories ?>brian_walton/index.php" class="btn btn-outline-primary btn-sm mb-2">
-                                                <i class="fas fa-external-link-alt"></i> Elan Experimental Rally Car
-                                            </a>
-                                            <br>
-                                            <small class="text-muted">Registry ID: 36/6086</small>
-                                        </td>
-                                        <td>
-                                            <em>The fascinating story of Brian Walton's rally-prepared Elan</em>
-                                        </td>
-                                    </tr>
+        <?= DocumentPortalTemplate::renderDocumentCardGrid($storyCards) ?>
 
-                                    <tr>
-                                        <td>
-                                            <a href='<?= $us_url_root ?>docs/embed.php?doc=Mag%20_issue_50_p12-15_Barry-Shapecraft.pdf' 
-                                               target='_blank' class="btn btn-outline-info btn-sm mb-2">
-                                                <i class="fas fa-file-pdf"></i> Shapecraft Elan Story
-                                            </a>
-                                            <br>
-                                            <small class="text-muted">Registry ID: 26/4992</small>
-                                        </td>
-                                        <td>
-                                            Featured in <a href="http://www.historiclotusclub.uk/the-magazine/no-50-spring-2022" 
-                                                          target="_blank" class="text-decoration-none">
-                                                <em>Historic Lotus Racing Magazine</em>, No. 50, Spring 2022
-                                            </a>
-                                            <br>
-                                            <small class="text-muted">Professional magazine article about this unique vehicle</small>
-                                        </td>
-                                    </tr>
-                                </tbody>
-                            </table>
+        <?= DocumentPortalTemplate::renderSectionHeading('fa-archive', 'Historical Archives') ?>
+        <?= DocumentPortalTemplate::renderDocumentCardGrid($archiveCards, 'col-lg-6') ?>
 
-                            <!-- Historical Archives Section -->
-                            <div class="mt-5">
-                                <h5 class="mb-3">
-                                    <i class="fas fa-archive"></i> Historical Archives
-                                </h5>
-                                
-                                <div class="card">
-                                    <div class="card-body">
-                                        <h6 class="card-title">
-                                            <a href="<?= $stories ?>type26register.php" class="text-decoration-none">
-                                                <i class="fas fa-history"></i> Type26Register.com Archive
-                                            </a>
-                                        </h6>
-                                        <p class="card-text">
-                                            An incomplete archive of type26register.com retrieved from the 
-                                            <a href='https://web.archive.org/web/20230000000000*/type26register.com' 
-                                               target="_blank" class="text-decoration-none">Wayback Machine</a>.
-                                        </p>
-                                        <p class="card-text">
-                                            <small class="text-muted">
-                                                This represents the site as best as can be recreated from July 2010, 
-                                                preserving valuable historical information about Type 26 Elans.
-                                            </small>
-                                        </p>
-                                    </div>
-                                </div>
-                            </div>
+    </div>
+</div>
 
-                            <!-- Call to Action -->
-                            <div class="alert alert-success mt-4">
-                                <i class="fas fa-pen-alt"></i>
-                                <strong>Share Your Story:</strong> 
-                                Have a story about your Elan? We'd love to feature it here! 
-                                <a href="<?= $us_url_root ?>app/contact/" class="alert-link">Contact us</a> 
-                                to share your car's unique history.
-                            </div>
-
-                        </div> <!-- card-body -->
-                    </div> <!-- card -->
-                </div> <!-- col -->
-            </div> <!-- row -->
-    </div><!-- Container -->
-</div><!-- page -->
-
-<?php require_once $abs_us_root . $us_url_root . 'usersc/templates/' . $settings->template . '/footer.php'; ?>
+<?php require_once $abs_us_root . $us_url_root . 'users/includes/html_footer.php'; ?>

@@ -46,6 +46,48 @@ If the PR targets `main` instead of a milestone branch, **warn the user** —
 issue PRs should always target the milestone branch per the git workflow. Ask
 if they want to proceed or retarget the PR.
 
+### Step 2.5: Handle draft PRs — trigger review, then mark ready
+
+Check if the PR is a draft:
+
+```bash
+gh pr view <pr-number> --json isDraft --repo unibrain1/elanregistry -q .isDraft
+```
+
+**If the PR is a draft:**
+
+1. Trigger the Claude Code Review workflow on the draft PR before notifying
+   anyone:
+
+   ```bash
+   gh workflow run claude-code-review.yml \
+     --ref main \
+     --field pr_number=<pr-number> \
+     --repo unibrain1/elanregistry
+   ```
+
+2. Wait for the workflow run to complete. Poll every 30 seconds:
+
+   ```bash
+   # Get the most recent run of claude-code-review.yml
+   gh run list --workflow=claude-code-review.yml --limit=1 \
+     --repo unibrain1/elanregistry --json databaseId,status,conclusion
+   gh run watch <run-id> --repo unibrain1/elanregistry
+   ```
+
+3. Report the review result. If the review posted **Blocking** findings, stop
+   here and tell the user to fix them before proceeding.
+
+4. Once the review is clean (no Blocking items), mark the PR as ready. This
+   is the moment watchers are notified — immediately followed by merge:
+
+   ```bash
+   gh pr ready <pr-number> --repo unibrain1/elanregistry
+   ```
+
+**If the PR is already ready (not a draft):** skip to Step 3 — the Claude
+review already ran when the PR was pushed.
+
 ### Step 3: Monitor CI checks
 
 Poll the PR's check status until all checks complete (pass or fail):

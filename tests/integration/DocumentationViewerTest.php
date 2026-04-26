@@ -12,7 +12,7 @@ use PHPUnit\Framework\Attributes\DataProvider;
  * DocumentationViewerTest
  *
  * Integration tests for the documentation viewer error handling.
- * Tests that /docs/view.php properly handles:
+ * Tests that /docs/guide-viewer.php properly handles:
  * - Valid document loading
  * - Invalid document formats (path traversal attempts)
  * - Missing documents
@@ -86,7 +86,7 @@ class DocumentationViewerTest extends IntegrationTestCase
     {
         // Create a valid test document
         $testDoc = 'CAR_TRANSFER_USER_GUIDE.md';
-        $expectedPath = $this->docsPath . '/faq/' . $testDoc;
+        $expectedPath = $this->docsPath . '/guides/' . $testDoc;
 
         // Verify the real documentation file exists
         $this->assertFileExists(
@@ -376,9 +376,9 @@ class DocumentationViewerTest extends IntegrationTestCase
      */
     public function testViewPhpHasNoDirectErrorStatements(): void
     {
-        $viewFile = __DIR__ . '/../../docs/view.php';
+        $viewFile = __DIR__ . '/../../docs/guide-viewer.php';
 
-        $this->assertFileExists($viewFile, 'docs/view.php should exist');
+        $this->assertFileExists($viewFile, 'docs/guide-viewer.php should exist');
 
         $content = file_get_contents($viewFile);
         $this->assertIsString($content);
@@ -416,7 +416,7 @@ class DocumentationViewerTest extends IntegrationTestCase
      * Helper method to simulate DocumentConfig validation logic
      *
      * In real implementation, DocumentConfig::validateDocument() checks if
-     * the document exists in configured locations (faq/, faq/admin/, etc.)
+     * the document exists in configured locations (guides/, admin/, etc.)
      *
      * @param string $docName Document name to validate
      * @return bool True if document would be accepted
@@ -426,8 +426,8 @@ class DocumentationViewerTest extends IntegrationTestCase
     {
         // Simulate the validation - check if file exists in known locations
         $possibleLocations = [
-            $this->docsPath . '/faq/' . $docName,
-            $this->docsPath . '/faq/admin/' . $docName,
+            $this->docsPath . '/guides/' . $docName,
+            $this->docsPath . '/admin/' . $docName,
         ];
 
         foreach ($possibleLocations as $path) {

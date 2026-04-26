@@ -1,7 +1,19 @@
 <?php
 
+declare(strict_types=1);
+
+/**
+ * Story page: Elan Plus 2 — SGO 2F, the Early Years
+ *
+ * The early years of chassis 50/0164, in the words of the original owner's son.
+ *
+ * @category Stories
+ */
+
 require_once '../../../users/init.php';
 require_once $abs_us_root . $us_url_root . 'users/includes/template/prep.php';
+
+use ElanRegistry\Documentation\DocumentPortalTemplate;
 
 if (!securePage($php_self)) {
     die();
@@ -9,10 +21,19 @@ if (!securePage($php_self)) {
 ?>
 
 
-<div id="page-wrapper">
+<div class="page-wrapper">
     <div class="container">
-        <div class="row">
-            <div class="col-sm-12">
+
+        <?= DocumentPortalTemplate::renderPortalHeader([
+            'title'       => 'Elan Plus 2 — SGO 2F',
+            'titleIcon'   => 'fa-car',
+            'description' => 'The early years of chassis 50/0164, in the words of the original owner\'s son',
+        ]) ?>
+
+        <div class="row mt-4">
+            <div class="col-12">
+                <div class="card registry-card">
+                    <div class="card-body">
 
                 <h2>Elan Plus 2 SGO 2F, the Early Years</h2>
                 <ul>
@@ -23,7 +44,7 @@ if (!securePage($php_self)) {
                     <li>Engine no; LP 10089 LBA</li>
                 </ul>
 
-                <img alt="ALT" src="photos/SGO_2F_Nepal_Orange.jpg" width="150">
+                <img src="photos/SGO_2F_Nepal_Orange.jpg" alt="SGO 2F in Nepal Orange" class="img-fluid rounded mb-2 mr-2">
 
 
                 <p>Dad, Luit Arthur Hak (his father, my grandfather, was Dutch) was a petrolhead, long before the term had been invented. After serving in the Royal Navy Pacific Fleet during WW2, he worked&nbsp;with&nbsp;my grandfather in&nbsp;his catering business, but his real ambition was to work on cars. He attended evening classes and earned a Diploma in Automotive Engineering, with a recommendation from his tutors that he&nbsp;should enrol at&nbsp;University to study for a degree but grandad wanted him to take over the day to day running of the business, so his ultimate ambition was never realised. However, it did mean that Dad had the finances to enable him to indulge in his love of cars.</p>
@@ -47,32 +68,33 @@ if (!securePage($php_self)) {
                 <ul>
                     <li>Original bill of sale</li>
 
-                    <img alt="Original bill of sale" src="photos/Original_bill_of_sale.jpg" width="150">
+                    <img src="photos/Original_bill_of_sale.jpg" alt="Original bill of sale" class="img-fluid rounded mb-2 mr-2">
                     <li>Two stamped pages from the service book &ndash; being a qualified engineer, Dad carried out most work on the car, including routine servicing, himself</li>
 
-                    <img alt="ALT" src="photos/Service_book_1.jpeg" width="150">
-                    <img alt="ALT" src="photos/Service_book_2.jpeg" width="150">
+                    <img src="photos/Service_book_1.jpeg" alt="Service book page 1" class="img-fluid rounded mb-2 mr-2">
+                    <img src="photos/Service_book_2.jpeg" alt="Service book page 2" class="img-fluid rounded mb-2 mr-2">
 
 
                     <li>The original Elan and Plus 2 brochure</li>
-                    <img alt="ALT" src="photos/Brochure_front_cover.jpg" width="150" <img alt="ALT" src="photos/Brochure_pg_2.jpeg" width="150">
-                    <img alt="ALT" src="photos/Brochure_pg_3.jpeg" width="150">
-                    <img alt="ALT" src="photos/Brochure_pg_4.jpeg" width="150">
-                    <img alt="ALT" src="photos/Brochure_pg_5.jpeg" width="150">
-                    <img alt="ALT" src="photos/Brochure_pg_7.jpeg" width="150">
-                    <img alt="ALT" src="photos/Brochure_pg_8.jpg" width="150">
-                    <img alt="ALT" src="photos/Brochure_pg_9.jpg" width="150">
-                    <img alt="ALT" src="photos/Brochure_pg_10.jpg" width="150">
-                    <img alt="ALT" src="photos/Brochure_pg_11.jpg" width="150">
-                    <img alt="ALT" src="photos/Brochure_rear_cover.jpg" width="150">
+                    <img src="photos/Brochure_front_cover.jpg" alt="Brochure front cover" class="img-fluid rounded mb-2 mr-2">
+                    <img src="photos/Brochure_pg_2.jpeg" alt="Brochure page 2" class="img-fluid rounded mb-2 mr-2">
+                    <img src="photos/Brochure_pg_3.jpeg" alt="Brochure page 3" class="img-fluid rounded mb-2 mr-2">
+                    <img src="photos/Brochure_pg_4.jpeg" alt="Brochure page 4" class="img-fluid rounded mb-2 mr-2">
+                    <img src="photos/Brochure_pg_5.jpeg" alt="Brochure page 5" class="img-fluid rounded mb-2 mr-2">
+                    <img src="photos/Brochure_pg_7.jpeg" alt="Brochure page 7" class="img-fluid rounded mb-2 mr-2">
+                    <img src="photos/Brochure_pg_8.jpg" alt="Brochure page 8" class="img-fluid rounded mb-2 mr-2">
+                    <img src="photos/Brochure_pg_9.jpg" alt="Brochure page 9" class="img-fluid rounded mb-2 mr-2">
+                    <img src="photos/Brochure_pg_10.jpg" alt="Brochure page 10" class="img-fluid rounded mb-2 mr-2">
+                    <img src="photos/Brochure_pg_11.jpg" alt="Brochure page 11" class="img-fluid rounded mb-2 mr-2">
+                    <img src="photos/Brochure_rear_cover.jpg" alt="Brochure rear cover" class="img-fluid rounded mb-2 mr-2">
 
                     <li>The first page of the original &lsquo;Motor&rsquo; road test</li>
 
-                    <img alt="ALT" src="photos/Motor_magazine_road_test_front_page.jpg" width="150">
+                    <img src="photos/Motor_magazine_road_test_front_page.jpg" alt="Motor magazine road test front page" class="img-fluid rounded mb-2 mr-2">
 
                     <li>Gratuitous photo of me, age 12, in a Formula Ford Lotus 61 at a Hethel open day</li>
 
-                    <img alt="ALT" src="photos/Lotus_open_day_Hethel_1970_12_year_old_me_trying_a_Lotus_61_for_size.jpg" width="150">
+                    <img src="photos/Lotus_open_day_Hethel_1970_12_year_old_me_trying_a_Lotus_61_for_size.jpg" alt="Lotus open day at Hethel 1970, trying a Lotus 61 for size" class="img-fluid rounded mb-2 mr-2">
 
                 </ul>
 
@@ -80,10 +102,13 @@ if (!securePage($php_self)) {
                 <p>Chris Hak</p>
                 <p>Dorset,</p>
                 <p>England</p>
-            </div> <!-- /.col--->
-        </div> <!-- /.row -->
+
+                    </div>
+                </div>
+            </div>
+        </div>
+
     </div> <!-- /.container -->
 </div><!-- .page-wrapper -->
 <!-- footers -->
-<?php require_once $abs_us_root . $us_url_root . 'usersc/templates/' . $settings->template . '/footer.php'; //custom template footer 
-?>
+<?php require_once $abs_us_root . $us_url_root . 'users/includes/html_footer.php'; ?>

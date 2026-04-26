@@ -8,9 +8,6 @@ declare(strict_types=1);
  * Administrative script to fix page permissions and private flag across the entire application.
  * Uses pattern-based rules to set pages as PUBLIC (accessible to all) or PRIVATE (restricted).
  *
- * NOTE: Page title updates have been moved to FIX/22-Update-Page-Titles.php
- * Run FIX/22 after FIX/21 to update page titles from H1/H2 tags.
- *
  * PERMISSION ARCHITECTURE:
  * - PUBLIC pages (private = 0): No permission entries required, accessible to all users
  * - PRIVATE-ADMIN pages (private = 1): Must have Administrator (ID=2) and Editor (ID=3) permissions
@@ -37,7 +34,7 @@ declare(strict_types=1);
  * - Everything else in app/* that doesn't match PRIVATE patterns
  * - Error pages in root: 404.php, 403.php, etc.
  * - docs/* (except docs/*admin*) - Documentation pages
- * - Examples: app/cars/index.php, app/cars/details.php, app/reports/statistics.php, docs/faq/index.php
+ * - Examples: app/cars/index.php, app/cars/details.php, app/reports/statistics.php, docs/guides/index.php
  *
  * EXCLUDED (not modified):
  * - users/* - Core UserSpice framework files
@@ -92,7 +89,7 @@ function shouldHaveAdminPermissions($pagePath): bool {
         return true;
     }
 
-    // Any page containing "admin" is admin-only (includes docs/faq/admin/*)
+    // Any page containing "admin" is admin-only (includes docs/admin/*)
     if (strpos($pagePath, 'admin') !== false) {
         return true;
     }
@@ -109,8 +106,8 @@ function shouldBePrivate($pagePath): bool {
         return false;
     }
 
-    // docs/faq/* pages should generally be PUBLIC
-    // EXCEPT docs/faq/admin/* which should be PRIVATE-ADMIN
+    // docs/* pages should generally be PUBLIC
+    // EXCEPT docs/admin/* (and any path containing "admin") which should be PRIVATE-ADMIN
     if (strpos($pagePath, 'docs/') === 0) {
         // docs/*admin* should be PRIVATE
         if (strpos($pagePath, 'admin') !== false) {
@@ -185,7 +182,7 @@ function analyzePermissions($db): array {
         $shouldBePrivateFlag = shouldBePrivate($page->page);
         $isAdminPage = shouldHaveAdminPermissions($page->page);
 
-        $pageTitle = ''; // Title updates moved to FIX/22-Update-Page-Titles.php
+        $pageTitle = '';
 
         // Handle special case: pages that should be PRIVATE with NO permissions
         if ($shouldBePrivateNoPermsFlag) {
@@ -410,11 +407,11 @@ require_once $abs_us_root . $us_url_root . 'users/includes/template/prep.php';
                     <div class="card registry-card">
                         <div class="card-header">
                             <h2 class="mb-0">
-                                <i class="fa fa-shield"></i> Fix Page Permissions & Titles
+                                <i class="fa fa-shield"></i> Fix Page Permissions
                             </h2>
                         </div>
                         <div class="card-body">
-                            <p class="mb-3">This script analyzes and fixes page permissions, privacy settings, and page titles across the entire application to ensure proper access control and accurate page information.</p>
+                            <p class="mb-3">This script analyzes and fixes page permissions and privacy settings across the entire application to ensure proper access control.</p>
 
                             <div class="alert alert-info">
                                 <h5><i class="fa fa-info-circle"></i> What this script does:</h5>

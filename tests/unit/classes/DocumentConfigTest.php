@@ -21,12 +21,12 @@ final class DocumentConfigTest extends TestCase
     // CATEGORY CONFIGURATION TESTS
     // ============================================================
 
-    public function testGetCategoriesReturnsFaqCategory(): void
+    public function testGetCategoriesReturnsGuidesCategory(): void
     {
         $categories = DocumentConfig::getCategories();
 
-        $this->assertArrayHasKey('faq', $categories);
-        $this->assertFalse($categories['faq']['requiresAdmin']);
+        $this->assertArrayHasKey('guides', $categories);
+        $this->assertFalse($categories['guides']['requiresAdmin']);
     }
 
     public function testGetCategoriesReturnsAdminCategory(): void
@@ -37,12 +37,12 @@ final class DocumentConfigTest extends TestCase
         $this->assertTrue($categories['admin']['requiresAdmin']);
     }
 
-    public function testFaqCategoryHasDocuments(): void
+    public function testGuidesCategoryHasDocuments(): void
     {
         $categories = DocumentConfig::getCategories();
 
-        $this->assertNotEmpty($categories['faq']['documents']);
-        $this->assertContains('CAR_TRANSFER_USER_GUIDE.md', $categories['faq']['documents']);
+        $this->assertNotEmpty($categories['guides']['documents']);
+        $this->assertContains('CAR_TRANSFER_USER_GUIDE.md', $categories['guides']['documents']);
     }
 
     public function testAdminCategoryHasDocuments(): void
@@ -79,20 +79,20 @@ final class DocumentConfigTest extends TestCase
         }
     }
 
-    public function testUserDocumentsHaveFaqCategory(): void
+    public function testUserDocumentsHaveGuidesCategory(): void
     {
         $info = DocumentConfig::getDocumentInfo();
         $userDocs = ['CAR_TRANSFER_USER_GUIDE.md', 'CAR_TRANSFER_FAQ.md', 'PRIVACY.md'];
 
         foreach ($userDocs as $doc) {
-            $this->assertEquals('faq', $info[$doc]['category']);
+            $this->assertEquals('guides', $info[$doc]['category']);
         }
     }
 
     public function testAdminDocumentsHaveAdminCategory(): void
     {
         $info = DocumentConfig::getDocumentInfo();
-        $adminDocs = ['CAR_TRANSFER_ADMIN_GUIDE.md', 'DATABASE.md', 'PRD.md'];
+        $adminDocs = ['CAR_TRANSFER_ADMIN_GUIDE.md', 'DATABASE.md'];
 
         foreach ($adminDocs as $doc) {
             $this->assertEquals('admin', $info[$doc]['category']);
@@ -133,7 +133,7 @@ final class DocumentConfigTest extends TestCase
         $userDoc = DocumentConfig::validateDocument('CAR_TRANSFER_USER_GUIDE.md');
         $adminDoc = DocumentConfig::validateDocument('CAR_TRANSFER_ADMIN_GUIDE.md');
 
-        $this->assertEquals('faq', $userDoc['category']);
+        $this->assertEquals('guides', $userDoc['category']);
         $this->assertEquals('admin', $adminDoc['category']);
     }
 
@@ -142,8 +142,8 @@ final class DocumentConfigTest extends TestCase
         $userDoc = DocumentConfig::validateDocument('CAR_TRANSFER_USER_GUIDE.md');
         $adminDoc = DocumentConfig::validateDocument('CAR_TRANSFER_ADMIN_GUIDE.md');
 
-        $this->assertStringContainsString('docs/faq/', $userDoc['path']);
-        $this->assertStringContainsString('docs/faq/admin/', $adminDoc['path']);
+        $this->assertStringContainsString('docs/guides/', $userDoc['path']);
+        $this->assertStringContainsString('docs/admin/', $adminDoc['path']);
     }
 
     // ============================================================
@@ -204,7 +204,7 @@ final class DocumentConfigTest extends TestCase
     public function testGetBreadcrumbIncludesHome(): void
     {
         $documentData = [
-            'category' => 'faq',
+            'category' => 'guides',
             'info' => ['breadcrumb' => 'User Guide']
         ];
 
@@ -214,16 +214,17 @@ final class DocumentConfigTest extends TestCase
         $this->assertStringContainsString('home', $breadcrumb[0]['icon']);
     }
 
-    public function testGetBreadcrumbIncludesFaq(): void
+    public function testGetBreadcrumbIncludesOwnerGuides(): void
     {
         $documentData = [
-            'category' => 'faq',
+            'category' => 'guides',
             'info' => ['breadcrumb' => 'User Guide']
         ];
 
         $breadcrumb = DocumentConfig::getBreadcrumb($documentData, '/');
 
-        $this->assertEquals('FAQ', $breadcrumb[1]['text']);
+        $this->assertEquals('Owner Guides', $breadcrumb[1]['text']);
+        $this->assertEquals('guides/index.php', $breadcrumb[1]['url']);
     }
 
     public function testGetBreadcrumbAddsAdminLevelForAdminDocs(): void
@@ -235,15 +236,16 @@ final class DocumentConfigTest extends TestCase
 
         $breadcrumb = DocumentConfig::getBreadcrumb($documentData, '/');
 
-        // Should have: Home > FAQ > Admin Docs > Document
+        // Should have: Home > Owner Guides > Admin Docs > Document
         $this->assertCount(4, $breadcrumb);
         $this->assertEquals('Admin Docs', $breadcrumb[2]['text']);
+        $this->assertEquals('admin/index.php', $breadcrumb[2]['url']);
     }
 
     public function testGetBreadcrumbLastItemIsActive(): void
     {
         $documentData = [
-            'category' => 'faq',
+            'category' => 'guides',
             'info' => ['breadcrumb' => 'User Guide']
         ];
 

@@ -1,58 +1,85 @@
-<?php if ($user->isLoggedIn()) { //anyone is logged in
-?>
-  <li class="nav-item"><a class="nav-link" href="<?= $us_url_root ?>users/account.php"><i class="fa fa-fw fa-user" aria-hidden="true"></i> <?php echo echousername($user->data()->id); ?></a></li> <!-- Common for Hamburger and Regular menus link -->
-  <?php if ($settings->notifications == 1) { ?>
-    <?php /*<li><a href="portal/'.PAGE_PATH.'#" id="notificationsTrigger" data-toggle="modal" data-target="#notificationsModal"><i class="fa fa-bell"></i> <span id="notifCount" class="badge" style="margin-top: -5px"><?= (($notifications->getUnreadCount() > 0) ? $notifications->getUnreadCount() : ''); ?></span></a></li>*/ ?>
+<li class="nav-item">
+  <a class="nav-link" href="<?= $us_url_root ?>app/cars/index.php"><i class="fa fa-fw fa-car" aria-hidden="true"></i> List Cars</a>
+</li>
 
-    <li class="nav-item"><a class="nav-link" href="#" onclick="displayNotifications('new')" id="notificationsTrigger" data-toggle="modal" data-target="#notificationsModal" style="text-decoration: none;"><span class="fa fa-fw fa-bell-o"></span> <span id="notifCount" class="badge badge-pill badge-primary" style="margin-top: -5px;"><?= (int)$notifications->getUnreadCount(); ?></span></a></li>
-  <?php } ?>
-  <?php if ($settings->messaging == 1) { ?>
-    <li class="nav-item"><a class="nav-link" href="<?= $us_url_root ?>users/messages.php"><i class="fa fa-envelope" aria-hidden="true"></i> <span id="msgCount" class="badge" style="margin-top: -5px"><?php if ($msgC > 0) {
-                                                                                                                                                                                                          echo $msgC;
-                                                                                                                                                                                                        } ?></span></a></li>
-  <?php } ?>
+<?php if ($user->isLoggedIn()): ?>
+  <li class="nav-item">
+    <a class="nav-link btn btn-success btn-sm text-white ml-1" href="<?= $us_url_root ?>app/cars/edit.php"><i class="fa fa-fw fa-plus" aria-hidden="true"></i> Add Car</a>
+  </li>
+<?php endif; ?>
 
-  <!-- Hamburger menu link -->
+<li class="nav-item">
+  <a class="nav-link" href="<?= $us_url_root ?>app/reports/statistics.php"><i class="fa fa-fw fa-pie-chart" aria-hidden="true"></i> Statistics</a>
+</li>
+
+<li class="nav-item dropdown">
+  <a class="nav-link dropdown-toggle" href="#" id="referenceDropdown" role="button" data-toggle="dropdown" aria-haspopup="true" aria-expanded="false">
+    <i class="fa fa-fw fa-book" aria-hidden="true"></i> Reference
+  </a>
+  <div class="dropdown-menu" aria-labelledby="referenceDropdown">
+    <a class="dropdown-item" href="<?= $us_url_root ?>docs/reference/index.php"><i class="fa fa-fw fa-folder-open" aria-hidden="true"></i> Reference Library</a>
+    <a class="dropdown-item" href="<?= $us_url_root ?>docs/reference/identification-guide.php"><i class="fa fa-fw fa-search" aria-hidden="true"></i> Identification Guide</a>
+    <a class="dropdown-item" href="<?= $us_url_root ?>docs/reference/chassis-validation.php"><i class="fa fa-fw fa-barcode" aria-hidden="true"></i> Chassis Validation</a>
+    <a class="dropdown-item" href="<?= $us_url_root ?>app/cars/factory.php"><i class="fa fa-fw fa-list-alt" aria-hidden="true"></i> Production Records</a>
+    <a class="dropdown-item" href="<?= $us_url_root ?>docs/reference/paint-colors.php"><i class="fa fa-fw fa-palette" aria-hidden="true"></i> Paint Colors</a>
+  </div>
+</li>
+
+<li class="nav-item">
+  <a class="nav-link" href="<?= $us_url_root ?>docs/car-stories.php"><i class="fa fa-fw fa-book-open" aria-hidden="true"></i> Car Stories</a>
+</li>
+
+<li class="nav-item">
+  <a class="nav-link" href="<?= $us_url_root ?>docs/guides/index.php"><i class="fa fa-fw fa-question-circle" aria-hidden="true"></i> Guides</a>
+</li>
+
+<?php if ($user->isLoggedIn()): ?>
+
+  <?php if (isset($notifications) && $settings->notifications == 1): ?>
+    <li class="nav-item">
+      <a class="nav-link" href="#" onclick="displayNotifications('new')" id="notificationsTrigger" data-toggle="modal" data-target="#notificationsModal" aria-label="Notifications">
+        <span class="fa fa-fw fa-bell-o"></span>
+        <span id="notifCount" class="badge badge-pill badge-primary" style="margin-top: -5px;"><?= (int)$notifications->getUnreadCount(); ?></span>
+      </a>
+    </li>
+  <?php endif; ?>
+
+  <?php if (checkMenu(2, $user->data()->id)): ?>
+    <li class="nav-item dropdown">
+      <a class="nav-link dropdown-toggle" href="#" id="adminDropdown" role="button" data-toggle="dropdown" aria-haspopup="true" aria-expanded="false">
+        <i class="fa fa-fw fa-cogs" aria-hidden="true"></i> Admin
+      </a>
+      <div class="dropdown-menu" aria-labelledby="adminDropdown">
+        <a class="dropdown-item" href="<?= $us_url_root ?>app/admin/manage-consolidated.php"><i class="fa fa-fw fa-car" aria-hidden="true"></i> Manage Registry</a>
+        <a class="dropdown-item" href="<?= $us_url_root ?>docs/admin/index.php"><i class="fa fa-fw fa-question-circle" aria-hidden="true"></i> Admin Guide</a>
+        <div class="dropdown-divider"></div>
+        <a class="dropdown-item" href="<?= $us_url_root ?>users/admin.php"><i class="fa fa-fw fa-cogs" aria-hidden="true"></i> Admin Dashboard</a>
+      </div>
+    </li>
+  <?php endif; ?>
 
   <li class="nav-item dropdown">
-    <a class="nav-link dropdown-toggle" href="#" id="navbardrop" data-toggle="dropdown">
-      <i class="fa fa-fw fa-cog" aria-hidden="true"></i>
+    <a class="nav-link dropdown-toggle" href="#" id="accountDropdown" role="button" data-toggle="dropdown" aria-haspopup="true" aria-expanded="false">
+      <i class="fa fa-fw fa-user" aria-hidden="true"></i> <?= echousername($user->data()->id); ?>
     </a>
-    <div class="dropdown-menu">
-      <!-- open tag for User dropdown menu -->
-      <a class="dropdown-item" href="<?= $us_url_root ?>"><i aria-hidden="true" class="fa fa-fw fa-home"></i> Home</a>
-      <a class="dropdown-item" href="<?= $us_url_root ?>users/account.php"><i aria-hidden="true" class="fa fa-fw fa-user"></i> Account</a>
-      <div class='dropdown-divider'></div>
-
-      <!-- regular user menu link -->
-
-      <?php if (checkMenu(2, $user->data()->id)) {  //Links for permission level 2 (default admin) 
-      ?>
-        <a class="dropdown-item" href="<?= $us_url_root ?>users/admin.php"><i aria-hidden="true" class="fa fa-fw fa-cogs"></i> Admin Dashboard</a>
-        <a class="dropdown-item" href="<?= $us_url_root ?>users/admin.php?view=users"><i aria-hidden="true" class="fa fa-fw fa-user"></i> User Management</a>
-        <a class="dropdown-item" href="<?= $us_url_root ?>users/admin.php?view=permissions"><i aria-hidden="true" class="fa fa-fw fa-lock"></i> Page Permissions</a>
-        <a class="dropdown-item" href="<?= $us_url_root ?>users/admin.php?view=pages"><i aria-hidden="true" class="fa fa-fw fa-wrench"></i> Page Management</a>
-        <?php if ($settings->messaging == 1) { ?><a class="dropdown-item" href="<?= $us_url_root ?>users/admin.php?view=messages"><i aria-hidden="true" class="fa fa-fw fa-envelope"></i> Message System</a><?php } ?>
-        <a class="dropdown-item" href="<?= $us_url_root ?>users/admin.php?view=logs"><i aria-hidden="true" class="fa fa-fw fa-search"></i> System Logs</a>
-      <?php } // is user an admin 
-      ?>
-      <div class='dropdown-divider'></div>
-      <a class="dropdown-item" href="<?= $us_url_root ?>users/logout.php"><i aria-hidden="true" class="fa fa-fw fa-sign-out"></i> Logout</a>
-    </div> <!-- close tag for User dropdown menu -->
+    <div class="dropdown-menu dropdown-menu-right" aria-labelledby="accountDropdown">
+      <a class="dropdown-item" href="<?= $us_url_root ?>users/account.php"><i class="fa fa-fw fa-user" aria-hidden="true"></i> Account</a>
+      <a class="dropdown-item" href="<?= $us_url_root ?>app/contact/index.php"><i class="fa fa-fw fa-comments" aria-hidden="true"></i> Feedback</a>
+      <div class="dropdown-divider"></div>
+      <a class="dropdown-item" href="<?= $us_url_root ?>users/logout.php"><i class="fa fa-fw fa-sign-out" aria-hidden="true"></i> Logout</a>
+    </div>
   </li>
 
-<?php } else { // no one is logged in so display default items 
-?>
-  <li><a href="<?= $us_url_root ?>users/login.php" class=""><i aria-hidden="true" class="fa fa-sign-in"></i> Login</a></li>
-  <li><a href="<?= $us_url_root ?>users/join.php" class=""><i aria-hidden="true" class="fa fa-plus-square"></i> Register</a></li>
-  <li class="dropdown"><a class="dropdown-toggle" href="#" data-toggle="dropdown"><i aria-hidden="true" class="fa fa-life-ring"></i> Help <b class="caret"></b></a>
-    <ul class="dropdown-menu">
-      <li><a href="<?= $us_url_root ?>users/forgot_password.php"><i aria-hidden="true" class="fa fa-wrench"></i> Forgot Password</a></li>
-      <?php if ($email_act) { //Only display following menu item if activation is enabled 
-      ?>
-        <li><a href="<?= $us_url_root ?>users/verify_resend.php"><i aria-hidden="true" class="fa fa-exclamation-triangle"></i> Resend Activation Email</a></li>
-      <?php } ?>
-    </ul>
+<?php else: ?>
+
+  <?php if ($settings->registration == 1): ?>
+    <li class="nav-item">
+      <a class="nav-link" href="<?= $us_url_root ?>users/join.php"><i class="fa fa-fw fa-plus-square" aria-hidden="true"></i> Register</a>
+    </li>
+  <?php endif; ?>
+
+  <li class="nav-item">
+    <a class="nav-link" href="<?= $us_url_root ?>users/login.php"><i class="fa fa-fw fa-sign-in" aria-hidden="true"></i> Log In</a>
   </li>
-<?php } //end of conditional for menu display 
-?>
+
+<?php endif; ?>

@@ -46,12 +46,11 @@ test.describe('Elan Registry - Menu Verification (Logged In)', () => {
 
     // Verify top-level menu items are visible (not dropdown items)
     const expectedVisibleMenuItems = [
-      'Home',
       'List Cars',
       'Statistics',
-      'Technical Resources', // Dropdown menu
+      'Reference', // Dropdown menu (replaces 'Technical Resources')
       'Car Stories',
-      'FAQ'
+      'Guides' // Replaces 'FAQ'
     ];
 
     for (const menuItem of expectedVisibleMenuItems) {
@@ -63,7 +62,7 @@ test.describe('Elan Registry - Menu Verification (Logged In)', () => {
     // Verify dropdown items exist (but don't check visibility since they're in dropdowns)
     const dropdownItems = [
       'Identification Guide',
-      'Factory Data',
+      'Production Records', // Replaces 'Factory Data'
       'Reference Library'
     ];
 
@@ -144,11 +143,11 @@ test.describe('Elan Registry - All Pages (Logged In)', () => {
     { path: '/', name: 'Home' },
     { path: '/app/cars/index.php', name: 'List Cars' },
     { path: '/app/reports/statistics.php', name: 'Statistics' },
-    { path: '/app/cars/identify.php', name: 'Identification Guide' },
+    { path: '/docs/reference/identification-guide.php', name: 'Identification Guide' },
     { path: '/app/cars/factory.php', name: 'Factory Data' },
-    { path: '/docs/reference-library.php', name: 'Reference Library' },
+    { path: '/docs/reference/index.php', name: 'Reference Library' },
     { path: '/docs/car-stories.php', name: 'Car Stories' },
-    { path: '/docs/faq/index.php', name: 'FAQ' },
+    { path: '/docs/guides/index.php', name: 'Guides' },
   ];
 
   pages.forEach(({ path, name }) => {
@@ -183,11 +182,11 @@ test.describe('Internal Links Discovery and Testing (Logged In)', () => {
     { path: '/', name: 'Home' },
     { path: '/app/cars/index.php', name: 'List Cars' },
     { path: '/app/reports/statistics.php', name: 'Statistics' },
-    { path: '/app/cars/identify.php', name: 'Identification Guide' },
+    { path: '/docs/reference/identification-guide.php', name: 'Identification Guide' },
     { path: '/app/cars/factory.php', name: 'Factory Data' },
-    { path: '/docs/reference-library.php', name: 'Reference Library' },
+    { path: '/docs/reference/index.php', name: 'Reference Library' },
     { path: '/docs/car-stories.php', name: 'Car Stories' },
-    { path: '/docs/faq/index.php', name: 'FAQ' },
+    { path: '/docs/guides/index.php', name: 'Guides' },
   ];
 
   test('find all internal links across all pages when logged in (excluding header)', async ({ page }) => {

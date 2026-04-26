@@ -87,9 +87,11 @@ CI checks.
 
 ### Documentation
 
-- **User Documentation** (`docs/faq/`) - End-user guides and FAQ
+- **User Documentation** (`docs/guides/`) - End-user guides and FAQ
   - Car transfer guides, privacy policy, and user help
-- **Admin Documentation** (`docs/faq/admin/`) - Administrative procedures
+- **Technical Reference** (`docs/reference/`) - Technical reference pages
+  - Paint colors, identification guides, workshop resources
+- **Admin Documentation** (`docs/admin/`) - Administrative procedures
   - Car transfer admin guides, troubleshooting, and system maintenance
 - **Development Docs** (`docs/development/`) - Documentation for
   developers
@@ -103,8 +105,6 @@ CI checks.
   - `ENVIRONMENT.md` - Environment configuration and security setup
   - `FIX_SCRIPTS.md` - Database maintenance script guidelines
 - **Testing Docs** (`docs/testing/`) - Testing strategy and test execution
-- **Product Requirements** (`docs/PRD.md`) - Feature specifications and
-  roadmap
 
 ## Privacy & GDPR Compliance
 
@@ -115,7 +115,7 @@ The registry maintains strict privacy standards and GDPR compliance:
 - **Transparent Policies**: Clear privacy policy available at `/app/privacy.php`
 - **User Rights**: Full data access, correction, and deletion capabilities
 
-For complete privacy details, see `docs/faq/PRIVACY.md`.
+For complete privacy details, see `docs/guides/PRIVACY.md`.
 
 ## Contributing
 

@@ -48,15 +48,19 @@ on:
 
 jobs:
   # Lightweight review for PRs targeting milestone branches. Runs on every
-  # push. Covers any head branch type — not restricted to issue/ branches.
+  # push to a non-draft PR, OR on demand via workflow_dispatch so /finish-issue
+  # can review a draft PR before marking it ready for merge.
   pr-to-milestone-review:
     if: |
-      github.event_name == 'pull_request' &&
-      github.event.pull_request.draft == false &&
-      startsWith(github.event.pull_request.base.ref, 'milestone/') &&
-      !contains(github.event.pull_request.title, '[skip-review]') &&
-      !contains(github.event.pull_request.title, '[WIP]') &&
-      github.event.action != 'labeled'
+      (
+        github.event_name == 'pull_request' &&
+        github.event.pull_request.draft == false &&
+        startsWith(github.event.pull_request.base.ref, 'milestone/') &&
+        !contains(github.event.pull_request.title, '[skip-review]') &&
+        !contains(github.event.pull_request.title, '[WIP]') &&
+        github.event.action != 'labeled'
+      ) ||
+      github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -65,10 +69,33 @@ jobs:
       id-token: write
 
     steps:
-      - name: Checkout repository
+      - name: Resolve PR context
+        id: ctx
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          EVENT_NAME: ${{ github.event_name }}
+          DISPATCH_PR_NUM: ${{ inputs.pr_number }}
+          PR_EVENT_NUM: ${{ github.event.pull_request.number }}
+          REPO: ${{ github.repository }}
+        run: |
+          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            PR_NUM="$DISPATCH_PR_NUM"
+          else
+            PR_NUM="$PR_EVENT_NUM"
+          fi
+          BASE=$(gh pr view "$PR_NUM" --repo "$REPO" --json baseRefName -q .baseRefName)
+          HEAD_REF=$(gh pr view "$PR_NUM" --repo "$REPO" --json headRefName -q .headRefName)
+          TITLE=$(gh pr view "$PR_NUM" --repo "$REPO" --json title -q .title)
+          echo "pr_number=${PR_NUM}" >> "$GITHUB_OUTPUT"
+          echo "base_ref=${BASE}" >> "$GITHUB_OUTPUT"
+          echo "head_ref=${HEAD_REF}" >> "$GITHUB_OUTPUT"
+          echo "title=${TITLE}" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout PR
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          ref: refs/pull/${{ steps.ctx.outputs.pr_number }}/head
 
       - name: Run Claude Issue-Level Review
         uses: anthropics/claude-code-action@beta
@@ -79,9 +106,9 @@ jobs:
             You are reviewing an **issue-level PR** targeting a milestone
             branch. Context:
 
-            - Base: ${{ github.event.pull_request.base.ref }}
-            - Head: ${{ github.event.pull_request.head.ref }}
-            - Title: ${{ github.event.pull_request.title }}
+            - Base: ${{ steps.ctx.outputs.base_ref }}
+            - Head: ${{ steps.ctx.outputs.head_ref }}
+            - Title: ${{ steps.ctx.outputs.title }}
 
             The author has almost certainly run `/review-pr` locally before
             pushing (our workflow calls for it in `/start-issue`), and the
@@ -97,7 +124,7 @@ jobs:
             Review only the diff on this PR:
 
             ```bash
-            git diff origin/${{ github.event.pull_request.base.ref }}...HEAD
+            git diff origin/${{ steps.ctx.outputs.base_ref }}...HEAD
             ```
 
             Skip `vendor/**`, `node_modules/**`, and minified / generated

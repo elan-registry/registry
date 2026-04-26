@@ -88,40 +88,7 @@ git add wiki/
 git commit -m "docs: update wiki pages for $ARGUMENTS milestone changes"
 ```
 
-### Step 8: Update PRD if needed
-
-Read `docs/PRD.md` and compare it against the milestone's closed issues and
-changed source files. Check whether any changes in this milestone affect
-product requirements:
-
-- New features or behaviors that should be documented as requirements
-- Changed acceptance criteria (e.g., new validation rules, new error states)
-- New data model fields, entities, or relationships
-- New user flows or changed screen descriptions
-- New security requirements (auth flows, CSP changes, rate limiting)
-- Changed technical architecture (new classes, new integrations)
-- Updated roadmap status or version references
-
-For each section that needs updating:
-
-- Make targeted, minimal edits — do not rewrite unchanged sections
-- Preserve the existing voice, formatting, and section numbering
-- Add new requirements inline where they logically belong
-- If the milestone introduced an entirely new feature area, add a new
-  subsection
-
-If no PRD changes are needed (e.g., the milestone was purely internal
-refactoring, test coverage, or bug fixes that don't change product behavior),
-note this in the summary and skip.
-
-Commit the PRD updates to the milestone branch:
-
-```bash
-git add docs/PRD.md
-git commit -m "docs: update PRD for $ARGUMENTS milestone changes"
-```
-
-### Step 9: Update CLAUDE.md if needed
+### Step 8: Update CLAUDE.md if needed
 
 Review CLAUDE.md against the milestone's changes. Check whether any updates
 are needed for:

@@ -39,7 +39,7 @@ and uses a simple step-by-step wizard.
 
 ## Step 1: Car Details
 
-![Step 1 - Car Details](faq/screenshots/step1.png)
+![Step 1 - Car Details](guides/screenshots/step1.png)
 
 This is the most important step where you provide essential information
 about your car.
@@ -99,7 +99,7 @@ your entry to ensure accuracy.
 
 #### For Complete Format Details
 
-See the **[Chassis Validation Rules](../docs/chassis-validation.php)** page
+See the **[Chassis Validation Rules](../reference/chassis-validation.php)** page
 for comprehensive information including:
 
 - Detailed format specifications for each period
@@ -138,7 +138,7 @@ Once all required fields show **green checkmarks**, click the
 
 ## Step 2: Additional Information
 
-![Step 2 - Additional Information](faq/screenshots/step2.png)
+![Step 2 - Additional Information](guides/screenshots/step2.png)
 
 Add optional details about your car's history and provide a way for
 other enthusiasts to learn more about your car.
@@ -194,7 +194,7 @@ other enthusiasts to learn more about your car.
 
 ## Step 3: Upload Photos
 
-![Step 3 - Image Upload](faq/screenshots/step3.png)
+![Step 3 - Image Upload](guides/screenshots/step3.png)
 
 Showcase your car with photos! Images help other registry members
 appreciate your car and increase engagement.
@@ -268,7 +268,7 @@ You can skip photo upload and add photos later:
 
 ## Step 4: Review and Confirm
 
-![Step 4 - Results](faq/screenshots/step4.png)
+![Step 4 - Results](guides/screenshots/step4.png)
 
 After clicking "Add Car", your submission is processed and you'll see
 your completed car profile.
@@ -395,9 +395,9 @@ If you're the new owner of a car already in the registry:
 For detailed information about the transfer process, see:
 
 - **[Car Transfer User
-  Guide](/docs/view.php?doc=CAR_TRANSFER_USER_GUIDE.md)** - Complete
+  Guide](/docs/guide-viewer.php?doc=CAR_TRANSFER_USER_GUIDE.md)** - Complete
   transfer process
-- **[Transfer FAQ](/docs/view.php?doc=CAR_TRANSFER_FAQ.md)** - Common
+- **[Transfer FAQ](/docs/guide-viewer.php?doc=CAR_TRANSFER_FAQ.md)** - Common
   questions
 
 ---
@@ -425,8 +425,8 @@ For detailed information about the transfer process, see:
 - **Technical Problems** - Contact registry administrators through the
   contact form
 - **Transfer Questions** - See our [Transfer
-  FAQ](/docs/view.php?doc=CAR_TRANSFER_FAQ.md)
-- **General Questions** - Visit the [FAQ & User Guides](/docs/faq/)
+  FAQ](/docs/guide-viewer.php?doc=CAR_TRANSFER_FAQ.md)
+- **General Questions** - Visit the [Owner Guides](/docs/guides/)
   section
 
 **Ready to get started?** [Add Your Car Now](/app/cars/edit.php)

@@ -25,26 +25,23 @@ class DocumentConfig
     public static function getCategories(): array
     {
         return [
-            'faq' => [
-                'path' => 'faq/',
+            'guides' => [
+                'path' => 'guides/',
                 'documents' => [
                     'ADD_CAR_GUIDE.md',
                     'CAR_TRANSFER_USER_GUIDE.md',
                     'CAR_TRANSFER_FAQ.md',
-                    'PRIVACY.md',
-                    'IDENTIFICATION_GUIDE.md',
-                    'PAINT_COLORS_GUIDE.md'
+                    'PRIVACY.md'
                 ],
                 'requiresAdmin' => false
             ],
             'admin' => [
-                'path' => 'faq/admin/',
+                'path' => 'admin/',
                 'documents' => [
                     'CAR_TRANSFER_ADMIN_GUIDE.md',
                     'CAR_TRANSFER_ADMIN_QUICK_REFERENCE.md',
                     'CAR_TRANSFER_TROUBLESHOOTING.md',
                     'DATABASE.md',
-                    'PRD.md',
                     'EMAIL_STYLING_GUIDELINES.md',
                     'SPAM_CLEANUP_SYSTEM.md'
                 ],
@@ -67,45 +64,29 @@ class DocumentConfig
                 'icon' => 'fas fa-car',
                 'description' => 'Step-by-step guide to register your Lotus Elan or +2',
                 'breadcrumb' => 'Add Car Guide',
-                'category' => 'faq'
+                'category' => 'guides'
             ],
             'CAR_TRANSFER_USER_GUIDE.md' => [
                 'title' => 'Car Transfer User Guide',
                 'icon' => 'fas fa-exchange-alt',
                 'description' => 'Complete guide for requesting ownership transfers',
                 'breadcrumb' => 'User Guide',
-                'category' => 'faq'
+                'category' => 'guides'
             ],
             'CAR_TRANSFER_FAQ.md' => [
                 'title' => 'Car Transfer FAQ',
                 'icon' => 'fas fa-question-circle',
                 'description' => 'Frequently asked questions about transfers',
                 'breadcrumb' => 'FAQ',
-                'category' => 'faq'
+                'category' => 'guides'
             ],
             'PRIVACY.md' => [
                 'title' => 'Privacy Policy',
                 'icon' => 'fas fa-shield-alt',
                 'description' => 'How we protect and use your information',
                 'breadcrumb' => 'Privacy Policy',
-                'category' => 'faq'
+                'category' => 'guides'
             ],
-            'IDENTIFICATION_GUIDE.md' => [
-                'title' => 'Lotus Elan Identification Guide',
-                'icon' => 'fas fa-search',
-                'description' => 'Complete guide to identifying Lotus Elan models and variants',
-                'breadcrumb' => 'Identification Guide',
-                'category' => 'faq'
-            ],
-
-            'PAINT_COLORS_GUIDE.md' => [
-                'title' => 'Lotus Elan & Plus 2 Paint Colors Guide',
-                'icon' => 'fas fa-palette',
-                'description' => 'Complete reference to factory paint colors and codes',
-                'breadcrumb' => 'Paint Colors Guide',
-                'category' => 'faq'
-            ],
-
             // Admin documents
             'CAR_TRANSFER_ADMIN_GUIDE.md' => [
                 'title' => 'Car Transfer Administrator Guide',
@@ -133,13 +114,6 @@ class DocumentConfig
                 'icon' => 'fas fa-database',
                 'description' => 'Complete database documentation',
                 'breadcrumb' => 'Database Schema',
-                'category' => 'admin'
-            ],
-            'PRD.md' => [
-                'title' => 'Product Requirements Document',
-                'icon' => 'fas fa-file-contract',
-                'description' => 'Feature specifications and requirements',
-                'breadcrumb' => 'PRD',
                 'category' => 'admin'
             ],
             'EMAIL_STYLING_GUIDELINES.md' => [
@@ -223,11 +197,16 @@ class DocumentConfig
     {
         $breadcrumb = [
             ['url' => $usUrlRoot, 'icon' => 'fas fa-home', 'text' => 'Registry'],
-            ['url' => 'faq/index.php', 'icon' => 'fas fa-question-circle', 'text' => 'FAQ']
         ];
 
-        if ($documentData['category'] === 'admin') {
-            $breadcrumb[] = ['url' => 'faq/admin/index.php', 'icon' => 'fas fa-tools', 'text' => 'Admin Docs'];
+        switch ($documentData['category']) {
+            case 'admin':
+                $breadcrumb[] = ['url' => 'guides/index.php', 'icon' => 'fas fa-book', 'text' => 'Owner Guides'];
+                $breadcrumb[] = ['url' => 'admin/index.php', 'icon' => 'fas fa-tools', 'text' => 'Admin Docs'];
+                break;
+            default:
+                $breadcrumb[] = ['url' => 'guides/index.php', 'icon' => 'fas fa-book', 'text' => 'Owner Guides'];
+                break;
         }
 
         $breadcrumb[] = ['text' => $documentData['info']['breadcrumb'], 'active' => true];

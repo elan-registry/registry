@@ -45,6 +45,7 @@ UPDATE settings SET
   us_css3 = '../usersc/css/custom.css',
   
   -- System Configuration Defaults
+  navigation_type = 0,
   elan_backup_age = 1,
   elan_image_dir = 'userimages/',
   elan_image_max = 6,
@@ -181,7 +182,7 @@ INSERT INTO `pages` (`id`, `page`, `title`, `private`, `re_auth`, `core`) VALUES
 (230, 'app/cars/details.php', NULL, 0, 0, 0),
 (231, 'app/cars/edit.php', NULL, 1, 0, 0),
 (232, 'app/cars/factory.php', NULL, 0, 0, 0),
-(233, 'app/cars/identify.php', NULL, 0, 0, 0),
+(233, 'docs/reference/identification-guide.php', NULL, 0, 0, 0),
 (235, 'app/cars/mapmarkers.xml.php', NULL, 0, 0, 0),
 (236, 'app/contact/index.php', NULL, 1, 0, 0),
 (237, 'app/contact/owner.php', NULL, 1, 0, 0),
@@ -212,7 +213,9 @@ INSERT INTO `pages` (`id`, `page`, `title`, `private`, `re_auth`, `core`) VALUES
 (329, 'app/admin/verify/index.php', NULL, 1, 0, 0),
 (330, 'app/admin/verify/send_email.php', NULL, 1, 0, 0),
 (331, 'app/admin/verify/verify_car.php', NULL, 1, 0, 0),
-(337, 'app/admin/includes/system/schema-operations.php', NULL, 1, 0, 0)
+(337, 'app/admin/includes/system/schema-operations.php', NULL, 1, 0, 0),
+(9001, 'docs/pdf-viewer.php',   NULL, 0, 0, 0),
+(9002, 'docs/guide-viewer.php', NULL, 0, 0, 0)
 ON DUPLICATE KEY UPDATE
   title = VALUES(title),
   private = VALUES(private),
@@ -236,97 +239,6 @@ INSERT IGNORE INTO `permission_page_matches` (`permission_id`, `page_id`) VALUES
 (3, 301), (3, 304), (3, 305), (3, 306), (3, 308), (3, 309), (3, 310), (3, 311),
 (3, 312), (3, 313), (3, 314), (3, 315), (3, 317), (3, 327), (3, 328), (3, 329),
 (3, 330), (3, 331), (3, 336);
-
--- ==================================================================
--- 5. MENU SYSTEM CONFIGURATION
--- ==================================================================
-
--- Configure the complete Elan Registry menu system
--- This creates a comprehensive navigation structure for the registry
-
--- Clear existing menus and rebuild with Elan Registry structure
--- ============================================================================
--- MENU SYSTEM CONFIGURATION - CLASSIC MENU SYSTEM
--- ============================================================================
--- 
--- Configure Classic Menu system used by ElanRegistry template (menus table)
---
--- Clear existing menus and rebuild with Elan Registry structure
-DELETE FROM groups_menus WHERE group_id IN (0, 2, 3);
-DELETE FROM menus; -- Remove ALL existing menus - complete replacement
-
--- Insert Elan Registry menu items (CLASSIC MENU SYSTEM)
-INSERT INTO `menus` (`id`, `menu_title`, `parent`, `dropdown`, `logged_in`, `display_order`, `label`, `link`, `icon_class`) VALUES
--- Core UserSpice menu items (required for structure)
-(2, 'main', -1, 1, 1, 140, 'Admin', '', 'fa fa-fw fa-cogs'),
-(3, 'main', 43, 0, 1, 110, '{{username}}', 'users/account.php', 'fa fa-fw fa-user'),
-(5, 'main', -1, 0, 0, 30, '{{register}}', 'users/join.php', 'fa fa-fw fa-plus-square'),
-(6, 'main', -1, 0, 0, 90, '{{login}}', 'users/login.php', 'fa fa-fw fa-sign-in-alt'),
-(9, 'main', 2, 0, 1, 60, '{{dashboard}}', 'users/admin.php', 'fa fa-fw fa-cogs'),
-(15, 'main', 43, 0, 1, 1000, '{{hr}}', '', ''),
-(16, 'main', 43, 0, 1, 99999, '{{logout}}', 'users/logout.php', 'fa fa-fw fa-sign-out'),
-(17, 'main', -1, 0, 0, 0, '{{home}}', '', 'fa fa-fw fa-home'),
-(25, 'main', -1, 0, 0, 20, 'List Cars', 'app/cars/index.php', 'fa fa-fw fa-car'),
-(29, 'main', 27, 0, 1, 1, 'List Cars', 'app/list_cars.php', ''),
-(31, 'main', 30, 1, 1, 99999, 'Dashboard', 'users/admin.php', ''),
-(34, 'main', 30, 1, 1, 99999, '{{logout}}', 'users/logout.php', 'fa fa-fw fa-sign-out'),
-(38, 'main', -1, 0, 1, 0, '{{home}}', '#', 'fa fa-fw fa-home'),
-(39, 'main', -1, 0, 1, 20, 'List Cars', 'app/cars/index.php', 'fa fa-fw fa-car'),
-(41, 'main', 61, 0, 0, 10, 'Identification Guide', 'app/cars/identify.php', 'fa fa-fw fa-binoculars'),
-(42, 'main', -1, 0, 1, 30, 'Add Car', 'app/cars/edit.php', 'fa fa-fw fa-plus'),
-(43, 'main', -1, 1, 1, 99999, '{{account}}', '#', 'fa fa-fw fa-user'),
-(45, 'main', 2, 0, 1, 50, '{{hr}}', '#', ''),
-(47, 'main', -1, 0, 1, 80, 'Feedback', 'app/contact/index.php', 'fa fa-fw fa-comments'),
-(48, 'main', -1, 0, 0, 40, 'Statistics', 'app/reports/statistics.php', 'fa fa-fw fa-pie-chart'),
-(49, 'main', -1, 0, 1, 40, 'Statistics', 'app/reports/statistics.php', 'fa fa-fw fa-pie-chart'),
-(54, 'main', 61, 0, 0, 20, 'Factory Data', 'app/cars/factory.php', 'fa fa-fw fa-list-alt'),
-(61, 'main', -1, 1, 0, 50, 'Technical Resources', '#', 'fa fa-fw fa-tools'),
-(62, 'main', 61, 0, 1, 30, 'Reference Library - Tech Manuals', 'docs/reference-library.php', 'fa fa-fw fa-book'),
-(63, 'main', -1, 0, 0, 70, 'Car Stories', 'docs/car-stories.php', 'fa fa-fw fa-book-open'),
-(64, 'main', -1, 1, 1, 50, 'Technical Resources', '#', 'fa fa-fw fa-tools'),
-(65, 'main', 64, 0, 1, 10, 'Identification Guide', 'app/cars/identify.php', 'fa fa-fw fa-binoculars'),
-(66, 'main', 64, 0, 1, 20, 'Factory Data', 'app/cars/factory.php', 'fa fa-fw fa-list-alt'),
-(67, 'main', 64, 0, 1, 30, 'Reference Library - Tech Manuals', 'docs/reference-library.php', 'fa fa-fw fa-book'),
-(68, 'main', -1, 0, 1, 70, 'Car Stories', 'docs/car-stories.php', 'fa fa-fw fa-book-open'),
-(71, 'main', 2, 0, 1, 1, 'Manage Registry', 'app/admin/manage-consolidated.php', 'fa fa-fw fa-car'),
-(72, 'main', -1, 0, 0, 85, 'FAQ', 'docs/faq/index.php', 'fa fa-fw fa-question-circle'),
-(73, 'main', -1, 0, 1, 85, 'FAQ', 'docs/faq/index.php', 'fa fa-fw fa-question-circle'),
-(74, 'main', 2, 0, 1, 5, 'Admin Guide', 'docs/faq/admin/index.php', 'fa fa-fw fa-question-circle')
-ON DUPLICATE KEY UPDATE
-  menu_title = VALUES(menu_title),
-  parent = VALUES(parent),
-  dropdown = VALUES(dropdown),
-  logged_in = VALUES(logged_in),
-  display_order = VALUES(display_order),
-  label = VALUES(label),
-  link = VALUES(link),
-  icon_class = VALUES(icon_class);
-
--- Configure menu permissions via groups_menus
--- group_id 0 = Public/All Users, 1 = Editors, 2 = Administrator, 3 = Editor
-INSERT INTO `groups_menus` (`group_id`, `menu_id`) VALUES
--- Public/All Users (group_id = 0) - Available to everyone (logged in and out)
-(0, 1), (0, 3), (0, 4), (0, 5), (0, 6), (0, 7), (0, 8), (0, 15), (0, 16),
-(0, 17), (0, 18), (0, 19), (0, 20), (0, 21), (0, 22), (0, 24), (0, 25),
-(0, 26), (0, 27), (0, 29), (0, 31), (0, 32), (0, 33), (0, 34), (0, 35),
-(0, 36), (0, 37), (0, 38), (0, 39), (0, 40), (0, 41), (0, 42), (0, 43),
-(0, 46), (0, 47), (0, 48), (0, 49), (0, 50), (0, 51), (0, 52), (0, 54),
-(0, 55), (0, 58), (0, 59), (0, 61), (0, 62), (0, 63), (0, 64), (0, 65),
-(0, 66), (0, 67), (0, 68), (0, 72), (0, 73),
-
--- Group 1 specific (if used)
-(1, 70),
-
--- Administrator (group_id = 2) - Admin-only menus
-(2, 2), (2, 9), (2, 10), (2, 11), (2, 12), (2, 13), (2, 14), (2, 30),
-(2, 44), (2, 45), (2, 53), (2, 60), (2, 69), (2, 71), (2, 74),
-
--- Editor (group_id = 3) - Editor-level access
-(3, 2), (3, 9), (3, 10), (3, 44), (3, 45), (3, 53), (3, 60), (3, 69),
-(3, 71), (3, 74)
-ON DUPLICATE KEY UPDATE
-  group_id = VALUES(group_id),
-  menu_id = VALUES(menu_id);
 
 -- Record this configuration script completion
 INSERT INTO `fix_script_runs` (`script_name`)
@@ -362,13 +274,9 @@ SELECT COUNT(*) as total_pages,
        SUM(CASE WHEN private = 0 THEN 1 ELSE 0 END) as public_pages
 FROM pages;
 
--- Verify menu system was configured
-SELECT 'Menu system:' as status;
-SELECT COUNT(*) as total_menus,
-       SUM(CASE WHEN dropdown = 1 THEN 1 ELSE 0 END) as dropdown_menus,
-       SUM(CASE WHEN logged_in = 1 THEN 1 ELSE 0 END) as logged_in_menus,
-       SUM(CASE WHEN logged_in = 0 THEN 1 ELSE 0 END) as public_menus
-FROM menus;
+-- Verify navigation is configured for file-based nav
+SELECT 'Navigation type (expect 0 = file-based):' as status;
+SELECT navigation_type FROM settings WHERE id = 1;
 
 -- Verify plugin status
 SELECT 'Active plugins:' as status;  

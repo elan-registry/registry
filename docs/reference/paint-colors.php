@@ -23,7 +23,7 @@ if (!securePage($php_self)) {
 }
 
 // Paint chip image base path (relative to web root)
-$chipPath = $us_url_root . 'docs/faq/screenshots/paint/';
+$chipPath = $us_url_root . 'docs/reference/images/paint/';
 
 /**
  * Early colors (no Lotus code) - borrowed from other manufacturers
@@ -143,7 +143,6 @@ function renderChip(string $chipFile, string $altText, string $basePath): string
 ?>
 <div class="page-wrapper">
     <div class="container">
-
         <!-- Page Header -->
         <div class="row">
             <div class="col-12">
@@ -161,6 +160,30 @@ function renderChip(string $chipFile, string $altText, string $basePath): string
                 </div>
             </div>
         </div>
+
+                            <!-- Paint Codes PDF Download -->
+                            <div class="row mt-4">
+                                <div class="col-12">
+                                    <div class="card registry-card">
+                                        <div class="card-header bg-info text-white">
+                                            <h5 class="mb-0"><i class="fas fa-file-pdf"></i> Paint Codes PDF — Official Factory Reference</h5>
+                                        </div>
+                                        <div class="card-body d-flex flex-column">
+                                            <p class="card-text flex-grow-1">Official factory paint codes for all Elan and Plus 2 models — downloadable PDF for offline reference.</p>
+                                            <div class="mt-auto">
+                                                <a href="<?= $us_url_root ?>docs/pdf-viewer.php?subdir=reference&doc=<?= rawurlencode('All Elan and Elan Plus 2 Paint Codes.pdf') ?>"
+                                                   target="_blank" rel="noopener noreferrer" class="btn btn-outline-info mr-2">
+                                                    <i class="fas fa-eye"></i> Read Online
+                                                </a>
+                                                <a href="<?= $us_url_root ?>docs/reference/assets/<?= rawurlencode('All Elan and Elan Plus 2 Paint Codes.pdf') ?>"
+                                                   download class="btn btn-success">
+                                                    <i class="fas fa-download"></i> Download PDF
+                                                </a>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
 
         <!-- Quick Navigation -->
         <div class="row mt-3">
@@ -245,7 +268,7 @@ function renderChip(string $chipFile, string $altText, string $basePath): string
                                         <td class="align-middle"><?= $row['color'] ?></td>
                                         <td class="align-middle"><?= $row['dates'] ?></td>
                                         <td class="align-middle"><?= $row['models'] ?></td>
-                                        <td class="align-middle"><?= $row['notes'] !== '' ? $row['notes'] : '' ?></td>
+                                        <td class="align-middle"><?= $row['notes'] ?></td>
                                     </tr>
                                     <?php endforeach; ?>
                                 </tbody>
@@ -364,33 +387,6 @@ function renderChip(string $chipFile, string $altText, string $basePath): string
                         </div>
                     </div>
                 </div>
-            </div>
-        </div>
-
-        <!-- Further Resources -->
-        <div class="row mt-4">
-            <div class="col-12">
-                <div class="card registry-card">
-                    <div class="card-header">
-                        <h2 class="mb-0">Further Resources</h2>
-                    </div>
-                    <div class="card-body">
-                        <ul class="mb-0">
-                            <li><a href="https://www.lotuselansprint.com/index.asp?pageid=41827" target="_blank">Lotus Elan Sprint Colors</a> &mdash; Sprint-specific color details and survey data</li>
-                            <li><a href="https://forums.lotuselan.net/t/about-the-paint-colors-category/103" target="_blank">LotusElan.net Paint Colors Forum</a> &mdash; Community discussion on paint colors and matching</li>
-                            <li><a href="<?= $us_url_root ?>docs/embed.php?doc=All%20Elan%20and%20Elan%20Plus%202%20Paint%20Codes.pdf">Full Paint Code Reference (PDF)</a> &mdash; Complete cross-reference with all supplier codes</li>
-                        </ul>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <!-- Navigation Links -->
-        <div class="row mt-4 mb-4">
-            <div class="col-12 text-center">
-                <a href="<?= $us_url_root ?>docs/faq/" class="btn btn-outline-secondary mr-2"><i class="fas fa-arrow-left"></i> Back to FAQ</a>
-                <a href="<?= $us_url_root ?>" class="btn btn-outline-primary mr-2"><i class="fas fa-home"></i> Registry Home</a>
-                <a href="<?= $us_url_root ?>app/cars/" class="btn btn-outline-success"><i class="fas fa-car"></i> Browse Cars</a>
             </div>
         </div>
 
