@@ -17,7 +17,7 @@
     <i class="fa fa-fw fa-book" aria-hidden="true"></i> Reference
   </a>
   <div class="dropdown-menu" aria-labelledby="referenceDropdown">
-    <a class="dropdown-item" href="<?= $us_url_root ?>app/cars/identify.php"><i class="fa fa-fw fa-search" aria-hidden="true"></i> Identification Guide</a>
+    <a class="dropdown-item" href="<?= $us_url_root ?>docs/reference/identification-guide.php"><i class="fa fa-fw fa-search" aria-hidden="true"></i> Identification Guide</a>
     <a class="dropdown-item" href="<?= $us_url_root ?>docs/reference/chassis-validation.php"><i class="fa fa-fw fa-barcode" aria-hidden="true"></i> Chassis Validation</a>
     <a class="dropdown-item" href="<?= $us_url_root ?>app/cars/factory.php"><i class="fa fa-fw fa-list-alt" aria-hidden="true"></i> Production Records</a>
     <div class="dropdown-divider"></div>

@@ -35,13 +35,6 @@ class DocumentConfig
                 ],
                 'requiresAdmin' => false
             ],
-            'reference' => [
-                'path' => 'reference/',
-                'documents' => [
-                    'IDENTIFICATION_GUIDE.md'
-                ],
-                'requiresAdmin' => false
-            ],
             'admin' => [
                 'path' => 'admin/',
                 'documents' => [
@@ -94,14 +87,6 @@ class DocumentConfig
                 'breadcrumb' => 'Privacy Policy',
                 'category' => 'guides'
             ],
-            'IDENTIFICATION_GUIDE.md' => [
-                'title' => 'Lotus Elan Identification Guide',
-                'icon' => 'fas fa-search',
-                'description' => 'Complete guide to identifying Lotus Elan models and variants',
-                'breadcrumb' => 'Identification Guide',
-                'category' => 'reference'
-            ],
-
             // Admin documents
             'CAR_TRANSFER_ADMIN_GUIDE.md' => [
                 'title' => 'Car Transfer Administrator Guide',
@@ -218,9 +203,6 @@ class DocumentConfig
             case 'admin':
                 $breadcrumb[] = ['url' => 'guides/index.php', 'icon' => 'fas fa-book', 'text' => 'Owner Guides'];
                 $breadcrumb[] = ['url' => 'admin/index.php', 'icon' => 'fas fa-tools', 'text' => 'Admin Docs'];
-                break;
-            case 'reference':
-                $breadcrumb[] = ['url' => 'reference/index.php', 'icon' => 'fas fa-book', 'text' => 'Reference Library'];
                 break;
             default:
                 $breadcrumb[] = ['url' => 'guides/index.php', 'icon' => 'fas fa-book', 'text' => 'Owner Guides'];

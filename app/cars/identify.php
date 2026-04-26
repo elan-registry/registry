@@ -10,5 +10,5 @@ declare(strict_types=1);
 
 // Permanent redirect (301) to new location
 header('HTTP/1.1 301 Moved Permanently');
-header('Location: ../../docs/view.php?doc=IDENTIFICATION_GUIDE.md');
+header('Location: ../../docs/reference/identification-guide.php');
 exit;

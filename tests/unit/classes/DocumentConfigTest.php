@@ -29,14 +29,6 @@ final class DocumentConfigTest extends TestCase
         $this->assertFalse($categories['guides']['requiresAdmin']);
     }
 
-    public function testGetCategoriesReturnsReferenceCategory(): void
-    {
-        $categories = DocumentConfig::getCategories();
-
-        $this->assertArrayHasKey('reference', $categories);
-        $this->assertFalse($categories['reference']['requiresAdmin']);
-    }
-
     public function testGetCategoriesReturnsAdminCategory(): void
     {
         $categories = DocumentConfig::getCategories();
@@ -51,14 +43,6 @@ final class DocumentConfigTest extends TestCase
 
         $this->assertNotEmpty($categories['guides']['documents']);
         $this->assertContains('CAR_TRANSFER_USER_GUIDE.md', $categories['guides']['documents']);
-    }
-
-    public function testReferenceCategoryHasDocuments(): void
-    {
-        $categories = DocumentConfig::getCategories();
-
-        $this->assertNotEmpty($categories['reference']['documents']);
-        $this->assertContains('IDENTIFICATION_GUIDE.md', $categories['reference']['documents']);
     }
 
     public function testAdminCategoryHasDocuments(): void
@@ -105,13 +89,6 @@ final class DocumentConfigTest extends TestCase
         }
     }
 
-    public function testIdentificationGuideHasReferenceCategory(): void
-    {
-        $info = DocumentConfig::getDocumentInfo();
-
-        $this->assertEquals('reference', $info['IDENTIFICATION_GUIDE.md']['category']);
-    }
-
     public function testAdminDocumentsHaveAdminCategory(): void
     {
         $info = DocumentConfig::getDocumentInfo();
@@ -155,22 +132,18 @@ final class DocumentConfigTest extends TestCase
     {
         $userDoc = DocumentConfig::validateDocument('CAR_TRANSFER_USER_GUIDE.md');
         $adminDoc = DocumentConfig::validateDocument('CAR_TRANSFER_ADMIN_GUIDE.md');
-        $refDoc = DocumentConfig::validateDocument('IDENTIFICATION_GUIDE.md');
 
         $this->assertEquals('guides', $userDoc['category']);
         $this->assertEquals('admin', $adminDoc['category']);
-        $this->assertEquals('reference', $refDoc['category']);
     }
 
     public function testValidateDocumentPathContainsCorrectDirectory(): void
     {
         $userDoc = DocumentConfig::validateDocument('CAR_TRANSFER_USER_GUIDE.md');
         $adminDoc = DocumentConfig::validateDocument('CAR_TRANSFER_ADMIN_GUIDE.md');
-        $refDoc = DocumentConfig::validateDocument('IDENTIFICATION_GUIDE.md');
 
         $this->assertStringContainsString('docs/guides/', $userDoc['path']);
         $this->assertStringContainsString('docs/admin/', $adminDoc['path']);
-        $this->assertStringContainsString('docs/reference/', $refDoc['path']);
     }
 
     // ============================================================
