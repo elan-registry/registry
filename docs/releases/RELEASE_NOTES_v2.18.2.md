@@ -5,10 +5,38 @@
 
 ## Required Actions After Deployment
 
-1. Set `navigation_type = 0` in the `settings` table (switches to file-based navigation)
-2. Run `FIX/21-Fix-Page-Permissions.php` on staging, review proposed changes, then execute
-3. Verify `docs/.htaccess` redirects are active (`/docs/reference-library.php` → `/docs/reference/`)
-4. Clear Cloudflare cache after deployment to ensure old doc URLs resolve via redirect
+1. **Run SQL patch** to register the renamed viewer pages and remove stale entries:
+
+   ```sql
+   -- #712: remove stale pages entries, register renamed viewers
+   DELETE FROM pages WHERE page IN (
+       'docs/embed.php',
+       'docs/view.php',
+       'docs/reference-library.php'
+   );
+
+   INSERT IGNORE INTO pages (page, title, private, re_auth, core) VALUES
+       ('docs/pdf-viewer.php',   NULL, 0, 0, 0),
+       ('docs/guide-viewer.php', NULL, 0, 0, 0);
+   ```
+
+2. **Run `FIX/21-Fix-Page-Permissions.php`** — analyze proposed changes, review, then execute.
+   Confirm `docs/reference/identification-guide.php` appears in the "set public" category
+   (live DB has it incorrectly private; FIX/21 will correct this).
+
+3. **Verify page privacy** after FIX/21 runs:
+
+   ```sql
+   SELECT page, private FROM pages WHERE page LIKE 'docs/%' ORDER BY page;
+   ```
+
+   Expected: all `docs/*` pages `private=0` except `docs/admin/index.php` (`private=1`).
+
+4. Set `navigation_type = 0` in the `settings` table (switches to file-based navigation).
+
+5. Verify `docs/.htaccess` redirects are active (`/docs/reference-library.php` → `/docs/reference/`).
+
+6. Clear Cloudflare cache after deployment to ensure old doc URLs resolve via redirect.
 
 ## User-Facing Changes
 
