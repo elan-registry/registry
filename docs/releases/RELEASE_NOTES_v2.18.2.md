@@ -45,6 +45,15 @@
 
 ## Technical Changes
 
+- **PDF assets co-located with their sections**
+  ([#715](https://github.com/unibrain1/elanregistry/issues/715)):
+  PDFs and companion files moved from flat `docs/assets/` into
+  `docs/reference/assets/` (workshop manuals, technical articles, paint codes)
+  and `docs/stories/assets/` (car stories). `docs/embed.php` updated with an
+  allowlisted `subdir` parameter so the viewer resolves the correct path.
+  Old direct-download URLs redirect automatically via `docs/.htaccess`.
+  ADR-013 (database proxy approach) superseded — file-system co-location is the
+  final state.
 - **Documentation directory reorganization**
   ([#559](https://github.com/unibrain1/elanregistry/issues/559)):
   `docs/faq/` directory split into `docs/guides/` (owner guides), `docs/reference/`
@@ -86,10 +95,13 @@
   refactor: complete nav.php and switch navigation_type to file-based
 - [#712](https://github.com/unibrain1/elanregistry/issues/712) —
   chore: run FIX/21 page permissions after documentation reorganization
+- [#715](https://github.com/unibrain1/elanregistry/issues/715) —
+  chore: co-locate PDF assets with their documentation sections
 
 ## Summary
 
-4 issues resolved across navigation refactoring and documentation
-reorganization. The primary change is a restructured docs hierarchy that
+5 issues resolved across navigation refactoring, documentation reorganization,
+and asset co-location. The primary change is a restructured docs hierarchy that
 organises content by user intent rather than format, paired with a simplified
-navigation menu and a switch to file-based nav rendering.
+navigation menu, file-based nav rendering, and PDF assets moved alongside the
+pages that reference them.

@@ -171,11 +171,11 @@ function renderChip(string $chipFile, string $altText, string $basePath): string
                                         <div class="card-body d-flex flex-column">
                                             <p class="card-text flex-grow-1">Official factory paint codes for all Elan and Plus 2 models — downloadable PDF for offline reference.</p>
                                             <div class="mt-auto">
-                                                <a href="<?= $us_url_root ?>docs/embed.php?doc=<?= rawurlencode('All Elan and Elan Plus 2 Paint Codes.pdf') ?>"
+                                                <a href="<?= $us_url_root ?>docs/embed.php?subdir=reference&doc=<?= rawurlencode('All Elan and Elan Plus 2 Paint Codes.pdf') ?>"
                                                    target="_blank" class="btn btn-outline-info mr-2">
                                                     <i class="fas fa-eye"></i> Read Online
                                                 </a>
-                                                <a href="<?= $us_url_root ?>docs/assets/<?= rawurlencode('All Elan and Elan Plus 2 Paint Codes.pdf') ?>"
+                                                <a href="<?= $us_url_root ?>docs/reference/assets/<?= rawurlencode('All Elan and Elan Plus 2 Paint Codes.pdf') ?>"
                                                    download class="btn btn-success">
                                                     <i class="fas fa-download"></i> Download PDF
                                                 </a>

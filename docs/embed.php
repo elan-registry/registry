@@ -38,9 +38,24 @@ if (!empty($_GET['doc'])) {
             $document = '';
         }
 
+        // Validate optional subdir parameter (allowlist only)
+        $allowed_subdirs = ['reference', 'stories'];
+        $asset_subdir = '';
+        if (!empty($_GET['subdir'])) {
+            $requested_subdir = $_GET['subdir'];
+            if (!in_array($requested_subdir, $allowed_subdirs, true)) {
+                logger(0, LogCategories::LOG_CATEGORY_SECURITY, 'Invalid subdir attempted: ' . $requested_subdir);
+                $error_message = 'Invalid document path.';
+            } else {
+                $asset_subdir = $requested_subdir;
+            }
+        }
+
+        $asset_base = $asset_subdir ? 'docs/' . $asset_subdir . '/assets/' : 'docs/assets/';
+
         // Check if file actually exists
-        $file_path = $abs_us_root . $us_url_root . 'docs/assets/' . $document;
-        if (!empty($document) && !file_exists($file_path)) {
+        $file_path = $abs_us_root . $us_url_root . $asset_base . $document;
+        if (empty($error_message) && !empty($document) && !file_exists($file_path)) {
             logger(0, LogCategories::LOG_CATEGORY_SECURITY, 'Non-existent document requested: ' . $document);
             $error_message = 'Document not found.';
             $document = '';
@@ -66,7 +81,7 @@ if (!empty($_GET['doc'])) {
                     <p>Please <a href="javascript:history.go(-1)">go back</a> and try again.</p>
                 <?php elseif (!empty($document)): ?>
                     <iframe style='width:100%; height:100vw;'
-                            src='<?= htmlspecialchars($us_url_root . 'docs/assets/' . $document, ENT_QUOTES, 'UTF-8') ?>'
+                            src='<?= htmlspecialchars($us_url_root . $asset_base . $document, ENT_QUOTES, 'UTF-8') ?>'
                             title='<?= htmlspecialchars($document, ENT_QUOTES, 'UTF-8') ?>'
                             allowfullscreen></iframe>
                 <?php else: ?>

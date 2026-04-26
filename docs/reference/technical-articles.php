@@ -36,14 +36,14 @@ $imgStyle = 'max-height: 200px; object-fit: contain; padding: 10px;';
                     <div class="card-header bg-info text-white">
                         <h5 class="mb-0"><i class="fas fa-file-pdf"></i> Engine Number Breakdown</h5>
                     </div>
-                    <img src="<?= $us_url_root ?>docs/assets/<?= rawurlencode('Engine number breakdown (Miles Wilkins).png') ?>" class="card-img-top" alt="Engine Number Breakdown" style="<?= $imgStyle ?>">
+                    <img src="<?= $us_url_root ?>docs/reference/assets/<?= rawurlencode('Engine number breakdown (Miles Wilkins).png') ?>" class="card-img-top" alt="Engine Number Breakdown" style="<?= $imgStyle ?>">
                     <div class="card-body d-flex flex-column">
                         <p class="card-text flex-grow-1">Identifying engine types from number sequences</p>
                         <div class="mt-auto">
-                            <a href="<?= $us_url_root ?>docs/embed.php?doc=<?= rawurlencode('Engine number breakdown (Miles Wilkins).pdf') ?>" target="_blank" class="btn btn-outline-info btn-sm mr-2">
+                            <a href="<?= $us_url_root ?>docs/embed.php?subdir=reference&doc=<?= rawurlencode('Engine number breakdown (Miles Wilkins).pdf') ?>" target="_blank" class="btn btn-outline-info btn-sm mr-2">
                                 <i class="fas fa-eye"></i> Read Online
                             </a>
-                            <a href="<?= $us_url_root ?>docs/assets/<?= rawurlencode('Engine number breakdown (Miles Wilkins).pdf') ?>" download class="btn btn-success btn-sm">
+                            <a href="<?= $us_url_root ?>docs/reference/assets/<?= rawurlencode('Engine number breakdown (Miles Wilkins).pdf') ?>" download class="btn btn-success btn-sm">
                                 <i class="fas fa-download"></i> Download PDF
                             </a>
                         </div>
@@ -56,14 +56,14 @@ $imgStyle = 'max-height: 200px; object-fit: contain; padding: 10px;';
                     <div class="card-header bg-info text-white">
                         <h5 class="mb-0"><i class="fas fa-file-pdf"></i> Elan Gearknobs</h5>
                     </div>
-                    <img src="<?= $us_url_root ?>docs/assets/<?= rawurlencode('2014 Jul Elan Gearknobs.png') ?>" class="card-img-top" alt="Elan Gearknobs" style="<?= $imgStyle ?>">
+                    <img src="<?= $us_url_root ?>docs/reference/assets/<?= rawurlencode('2014 Jul Elan Gearknobs.png') ?>" class="card-img-top" alt="Elan Gearknobs" style="<?= $imgStyle ?>">
                     <div class="card-body d-flex flex-column">
                         <p class="card-text flex-grow-1">A description of the various types of gear knobs available on the Elan and Elan +2</p>
                         <div class="mt-auto">
-                            <a href="<?= $us_url_root ?>docs/embed.php?doc=<?= rawurlencode('2014 Jul Elan Gearknobs.pdf') ?>" target="_blank" class="btn btn-outline-info btn-sm mr-2">
+                            <a href="<?= $us_url_root ?>docs/embed.php?subdir=reference&doc=<?= rawurlencode('2014 Jul Elan Gearknobs.pdf') ?>" target="_blank" class="btn btn-outline-info btn-sm mr-2">
                                 <i class="fas fa-eye"></i> Read Online
                             </a>
-                            <a href="<?= $us_url_root ?>docs/assets/<?= rawurlencode('2014 Jul Elan Gearknobs.pdf') ?>" download class="btn btn-success btn-sm">
+                            <a href="<?= $us_url_root ?>docs/reference/assets/<?= rawurlencode('2014 Jul Elan Gearknobs.pdf') ?>" download class="btn btn-success btn-sm">
                                 <i class="fas fa-download"></i> Download PDF
                             </a>
                         </div>
@@ -76,14 +76,14 @@ $imgStyle = 'max-height: 200px; object-fit: contain; padding: 10px;';
                     <div class="card-header bg-info text-white">
                         <h5 class="mb-0"><i class="fas fa-file-pdf"></i> Steering Wheels</h5>
                     </div>
-                    <img src="<?= $us_url_root ?>docs/assets/<?= rawurlencode('2014 Oct Elan and Plus 2 Steering Wheels.png') ?>" class="card-img-top" alt="Elan and Plus 2 Steering Wheels" style="<?= $imgStyle ?>">
+                    <img src="<?= $us_url_root ?>docs/reference/assets/<?= rawurlencode('2014 Oct Elan and Plus 2 Steering Wheels.png') ?>" class="card-img-top" alt="Elan and Plus 2 Steering Wheels" style="<?= $imgStyle ?>">
                     <div class="card-body d-flex flex-column">
                         <p class="card-text flex-grow-1">A description of the various types of steering wheels available on the Elan and Elan +2</p>
                         <div class="mt-auto">
-                            <a href="<?= $us_url_root ?>docs/embed.php?doc=<?= rawurlencode('2014 Oct Elan and Plus 2 Steering Wheels.pdf') ?>" target="_blank" class="btn btn-outline-info btn-sm mr-2">
+                            <a href="<?= $us_url_root ?>docs/embed.php?subdir=reference&doc=<?= rawurlencode('2014 Oct Elan and Plus 2 Steering Wheels.pdf') ?>" target="_blank" class="btn btn-outline-info btn-sm mr-2">
                                 <i class="fas fa-eye"></i> Read Online
                             </a>
-                            <a href="<?= $us_url_root ?>docs/assets/<?= rawurlencode('2014 Oct Elan and Plus 2 Steering Wheels.pdf') ?>" download class="btn btn-success btn-sm">
+                            <a href="<?= $us_url_root ?>docs/reference/assets/<?= rawurlencode('2014 Oct Elan and Plus 2 Steering Wheels.pdf') ?>" download class="btn btn-success btn-sm">
                                 <i class="fas fa-download"></i> Download PDF
                             </a>
                         </div>
@@ -96,14 +96,14 @@ $imgStyle = 'max-height: 200px; object-fit: contain; padding: 10px;';
                     <div class="card-header bg-info text-white">
                         <h5 class="mb-0"><i class="fas fa-file-pdf"></i> The Elan Super Safety</h5>
                     </div>
-                    <img src="<?= $us_url_root ?>docs/assets/<?= rawurlencode('2019_Jan_The_Elan_Super_Safety.png') ?>" class="card-img-top" alt="The Elan Super Safety" style="<?= $imgStyle ?>">
+                    <img src="<?= $us_url_root ?>docs/reference/assets/<?= rawurlencode('2019_Jan_The_Elan_Super_Safety.png') ?>" class="card-img-top" alt="The Elan Super Safety" style="<?= $imgStyle ?>">
                     <div class="card-body d-flex flex-column">
                         <p class="card-text flex-grow-1">A description of the Elan Super Safety</p>
                         <div class="mt-auto">
-                            <a href="<?= $us_url_root ?>docs/embed.php?doc=<?= rawurlencode('2019_Jan_The_Elan_Super_Safety.pdf') ?>" target="_blank" class="btn btn-outline-info btn-sm mr-2">
+                            <a href="<?= $us_url_root ?>docs/embed.php?subdir=reference&doc=<?= rawurlencode('2019_Jan_The_Elan_Super_Safety.pdf') ?>" target="_blank" class="btn btn-outline-info btn-sm mr-2">
                                 <i class="fas fa-eye"></i> Read Online
                             </a>
-                            <a href="<?= $us_url_root ?>docs/assets/<?= rawurlencode('2019_Jan_The_Elan_Super_Safety.pdf') ?>" download class="btn btn-success btn-sm">
+                            <a href="<?= $us_url_root ?>docs/reference/assets/<?= rawurlencode('2019_Jan_The_Elan_Super_Safety.pdf') ?>" download class="btn btn-success btn-sm">
                                 <i class="fas fa-download"></i> Download PDF
                             </a>
                         </div>
@@ -116,14 +116,14 @@ $imgStyle = 'max-height: 200px; object-fit: contain; padding: 10px;';
                     <div class="card-header bg-info text-white">
                         <h5 class="mb-0"><i class="fas fa-file-pdf"></i> Plus 2 Serial Numbers</h5>
                     </div>
-                    <img src="<?= $us_url_root ?>docs/assets/<?= rawurlencode('Lotus Elan Plus 2 serial numbers.png') ?>" class="card-img-top" alt="Plus 2 Serial Numbers" style="<?= $imgStyle ?>">
+                    <img src="<?= $us_url_root ?>docs/reference/assets/<?= rawurlencode('Lotus Elan Plus 2 serial numbers.png') ?>" class="card-img-top" alt="Plus 2 Serial Numbers" style="<?= $imgStyle ?>">
                     <div class="card-body d-flex flex-column">
                         <p class="card-text flex-grow-1">Serial number sequences for the Lotus Elan Plus 2</p>
                         <div class="mt-auto">
-                            <a href="<?= $us_url_root ?>docs/embed.php?doc=<?= rawurlencode('Lotus Elan Plus 2 serial numbers.pdf') ?>" target="_blank" class="btn btn-outline-info btn-sm mr-2">
+                            <a href="<?= $us_url_root ?>docs/embed.php?subdir=reference&doc=<?= rawurlencode('Lotus Elan Plus 2 serial numbers.pdf') ?>" target="_blank" class="btn btn-outline-info btn-sm mr-2">
                                 <i class="fas fa-eye"></i> Read Online
                             </a>
-                            <a href="<?= $us_url_root ?>docs/assets/<?= rawurlencode('Lotus Elan Plus 2 serial numbers.pdf') ?>" download class="btn btn-success btn-sm">
+                            <a href="<?= $us_url_root ?>docs/reference/assets/<?= rawurlencode('Lotus Elan Plus 2 serial numbers.pdf') ?>" download class="btn btn-success btn-sm">
                                 <i class="fas fa-download"></i> Download PDF
                             </a>
                         </div>

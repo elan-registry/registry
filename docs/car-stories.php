@@ -47,14 +47,14 @@ $storyCards = [
     [
         'title'        => 'Shapecraft Elan Story',
         'icon'         => 'fa-file-pdf',
-        'url'          => $us_url_root . 'docs/embed.php?doc=' . rawurlencode('Mag _issue_50_p12-15_Barry-Shapecraft.pdf'),
+        'url'          => $us_url_root . 'docs/embed.php?subdir=stories&doc=' . rawurlencode('Mag _issue_50_p12-15_Barry-Shapecraft.pdf'),
         'buttonText'   => 'Read Article',
         'buttonIcon'   => 'fa-book-open',
         'headerClass'  => 'bg-info text-white',
         'buttonClass'  => 'btn-info btn-sm',
         'description'  => 'Featured in Historic Lotus Racing Magazine, No. 50, Spring 2022.',
         'metadata'     => 'Registry ID: 26/4992',
-        'cardImage'    => $us_url_root . 'docs/assets/' . rawurlencode('Mag _issue_50_p12-15_Barry-Shapecraft.png'),
+        'cardImage'    => $us_url_root . 'docs/stories/assets/' . rawurlencode('Mag _issue_50_p12-15_Barry-Shapecraft.png'),
         'cardImageAlt' => 'Shapecraft Elan Story — Historic Lotus Racing Magazine',
     ],
 ];
