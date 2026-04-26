@@ -32,10 +32,7 @@ if ($navstyle == 'Default') {
             $notifications = new Notification($user->data()->id, false, $settings->notif_daylimit ?? 7);
           }
           require_once($abs_us_root . $us_url_root . 'usersc/templates/' . $settings->template . '/assets/functions/nav.php');
-        }
-
-
-        if ($settings->navigation_type == 1) {
+        } elseif ($settings->navigation_type == 1) {
           require_once($abs_us_root . $us_url_root . 'usersc/templates/' . $settings->template . '/assets/functions/dbnav.php');
         }
         ?>
