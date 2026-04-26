@@ -85,11 +85,13 @@ test.describe('Navigation and File Reorganization', () => {
   });
 
   test('identification guide loads (reorganized)', async ({ page }) => {
-    await navigateAndWait(page, '/app/cars/identify.php');
-    await expect(page.locator('h2')).toContainText(/Identification/);
+    await navigateAndWait(page, '/docs/reference/identification-guide.php');
+    await expect(page.locator('h1')).toContainText(/Identification Guide/);
+    expect(page.url()).toContain('docs/reference/identification-guide.php');
 
-    // Test backward compatibility redirect
-    await testRedirect(page, '/app/identification.php', 'app/cars/identify.php');
+    // Test backward compatibility redirect chains
+    await testRedirect(page, '/app/cars/identify.php', 'docs/reference/identification-guide.php');
+    await testRedirect(page, '/app/identification.php', 'docs/reference/identification-guide.php');
   });
 
   // Issue #559 — Documentation Reorganization

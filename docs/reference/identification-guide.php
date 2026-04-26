@@ -54,7 +54,7 @@ $imgPath = $us_url_root . 'docs/reference/images/identify/';
                         <a href="#coupe" class="btn btn-outline-secondary btn-sm mx-1">Coup&eacute;</a>
                         <a href="#racing" class="btn btn-outline-secondary btn-sm mx-1">Racing Version</a>
                         <a href="#plus2" class="btn btn-outline-secondary btn-sm mx-1">Plus 2</a>
-                        <a href="<?= $us_url_root ?>docs/embed.php?doc=<?= rawurlencode('2019_Jan_The_Elan_Super_Safety.pdf') ?>"
+                        <a href="<?= htmlspecialchars($us_url_root, ENT_QUOTES, 'UTF-8') ?>docs/embed.php?doc=<?= rawurlencode('2019_Jan_The_Elan_Super_Safety.pdf') ?>"
                            target="_blank" class="btn btn-outline-info btn-sm mx-1">
                             <i class="fas fa-file-pdf"></i> Super Safety Documentation
                         </a>

@@ -124,7 +124,7 @@ test.describe('UI Consistency After Style Refactoring', () => {
   });
 
   test('images and assets load correctly', async ({ page }) => {
-    await page.goto('/app/cars/identify.php');
+    await page.goto('/docs/reference/identification-guide.php');
     
     // Wait for page to fully load
     await page.waitForLoadState('networkidle');
