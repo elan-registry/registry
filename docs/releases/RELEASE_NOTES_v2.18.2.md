@@ -1,6 +1,6 @@
 # Elan Registry v2.18.2 Release Notes
 
-**Release Date:** [DATE]
+**Release Date:** 2026-04-26
 **Type:** Minor Release — Documentation Reorganization
 
 ## Required Actions After Deployment

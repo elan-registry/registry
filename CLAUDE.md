@@ -38,6 +38,7 @@ edge caching and CDN for global users (US, EU, AU).
 **Directory Structure:**
 
 - `/app/` - Main application pages (car listings, details, forms, actions)
+- `/docs/` - User-facing documentation: `guides/` (how-to), `reference/` (technical), `stories/` (car histories), `admin/` (admin docs)
 - `/error/` - Branded HTTP error pages (403, 404, 500)
 - `/users/` - UserSpice authentication system
 - `/usersc/` - UserSpice customizations (templates, plugins, overrides)
