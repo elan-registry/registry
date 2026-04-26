@@ -20,7 +20,6 @@ if (!securePage($php_self)) {
 
 // Check if user should be redirected to new consolidated interface
 if (!isset($_GET['legacy']) && !isset($_GET['direct'])) {
-    // Redirect to the new consolidated admin interface
     Redirect::to('../app/admin/manage-consolidated.php?tab=system');
 }
 
