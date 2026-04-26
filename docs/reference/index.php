@@ -47,6 +47,15 @@ $cards = [
         'buttonClass' => 'btn-info btn-sm',
         'description' => 'Complete chassis number validation rules for all Elan and Plus 2 models, including pre-1970 and post-1970 formats.',
     ],
+    [
+        'title'       => 'Paint Colors',
+        'icon'        => 'fa-palette',
+        'url'         => 'paint-colors.php',
+        'buttonText'  => 'Browse',
+        'headerClass' => 'bg-info text-white',
+        'buttonClass' => 'btn-info btn-sm',
+        'description' => 'Factory paint colors, codes, date ranges, and supplier cross-references for all Elan and Plus 2 models.',
+    ],
 ];
 
 ?>

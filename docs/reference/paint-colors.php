@@ -143,7 +143,6 @@ function renderChip(string $chipFile, string $altText, string $basePath): string
 ?>
 <div class="page-wrapper">
     <div class="container">
-
         <!-- Page Header -->
         <div class="row">
             <div class="col-12">

@@ -27,7 +27,6 @@ $validationRules = ChassisValidator::getValidationRules();
 <div class="page-wrapper">
     <div class="container-fluid">
         <div class="page-container">
-            
             <!-- Page Header -->
             <div class="row mb-4">
                 <div class="col-12">
