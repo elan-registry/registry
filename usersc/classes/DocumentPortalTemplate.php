@@ -53,6 +53,9 @@ class DocumentPortalTemplate
             ? ' ' . htmlspecialchars($config['headerClass'], ENT_QUOTES, 'UTF-8')
             : '';
 
+        $hasLeadText = isset($config['leadText']) && $config['leadText'] !== '';
+        $isAdmin     = !empty($config['isAdmin']);
+
         $html  = "<div class='row'>";
         $html .= "<div class='col-12'>";
         $html .= "<div class='card registry-card'>";
@@ -60,21 +63,25 @@ class DocumentPortalTemplate
         $html .= "<h1 class='mb-0'>" . self::renderIcon($config['titleIcon'] ?? '') . "{$title}</h1>";
         $html .= "<p class='text-muted mb-0'>{$description}</p>";
         $html .= "</div>";
-        $html .= "<div class='card-body'>";
 
-        if (isset($config['leadText']) && $config['leadText'] !== '') {
-            $leadText = htmlspecialchars($config['leadText'], ENT_QUOTES, 'UTF-8');
-            $html    .= "<p class='lead'>{$leadText}</p>";
-        }
+        if ($hasLeadText || $isAdmin) {
+            $html .= "<div class='card-body'>";
 
-        if (!empty($config['isAdmin'])) {
-            $html .= "<div class='alert alert-warning'>";
-            $html .= "<i class='fas fa-exclamation-triangle'></i> <strong>Administrator Access Required</strong><br>";
-            $html .= "This documentation is intended for registry administrators and technical staff only.";
+            if ($hasLeadText) {
+                $leadText = htmlspecialchars($config['leadText'], ENT_QUOTES, 'UTF-8');
+                $html    .= "<p class='lead'>{$leadText}</p>";
+            }
+
+            if ($isAdmin) {
+                $html .= "<div class='alert alert-warning'>";
+                $html .= "<i class='fas fa-exclamation-triangle'></i> <strong>Administrator Access Required</strong><br>";
+                $html .= "This documentation is intended for registry administrators and technical staff only.";
+                $html .= "</div>";
+            }
+
             $html .= "</div>";
         }
 
-        $html .= "</div>";
         $html .= "</div>";
         $html .= "</div>";
         $html .= "</div>";
