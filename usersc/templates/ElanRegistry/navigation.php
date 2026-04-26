@@ -28,22 +28,8 @@ if ($navstyle == 'Default') {
         <!-- Basically you will be editing each function into the "style" of your menu -->
         <?php
         if ($settings->navigation_type == 0) {
-          $query = $db->query("SELECT * FROM email");
-          $results = $query->first();
-
-          //Value of email_act used to determine whether to display the Resend Verification link
-          $email_act = $results->email_act;
-
-          // Set up notifications button/modal
           if ($user->isLoggedIn()) {
-            if ($dayLimitQ = $db->query('SELECT notif_daylimit FROM settings', array())) {
-              $dayLimit = $dayLimitQ->results()[0]->notif_daylimit;
-            } else {
-              $dayLimit = 7;
-            }
-
-            // 2nd parameter- true/false for all notifications or only current
-            $notifications = new Notification($user->data()->id, false, $dayLimit);
+            $notifications = new Notification($user->data()->id, false, $settings->notif_daylimit ?? 7);
           }
           require_once($abs_us_root . $us_url_root . 'usersc/templates/' . $settings->template . '/assets/functions/nav.php');
         }
