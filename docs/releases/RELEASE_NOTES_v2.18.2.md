@@ -49,7 +49,7 @@
   ([#715](https://github.com/unibrain1/elanregistry/issues/715)):
   PDFs and companion files moved from flat `docs/assets/` into
   `docs/reference/assets/` (workshop manuals, technical articles, paint codes)
-  and `docs/stories/assets/` (car stories). `docs/embed.php` updated with an
+  and `docs/stories/assets/` (car stories). `docs/pdf-viewer.php` updated with an
   allowlisted `subdir` parameter so the viewer resolves the correct path.
   Old direct-download URLs redirect automatically via `docs/.htaccess`.
   ADR-013 (database proxy approach) superseded — file-system co-location is the
@@ -64,7 +64,7 @@
   ([#559](https://github.com/unibrain1/elanregistry/issues/559)):
   `usersc/classes/DocumentConfig.php` updated with new `guides`, `reference`,
   and `admin` categories (replaces `faq` and `faq/admin`). Breadcrumb navigation
-  in `docs/view.php` updated to reflect new structure.
+  in `docs/guide-viewer.php` updated to reflect new structure.
 - **Root path array updated**
   ([#559](https://github.com/unibrain1/elanregistry/issues/559)):
   `z_us_root.php` path array updated with new directories (`docs/guides/`,

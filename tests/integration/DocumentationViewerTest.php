@@ -12,7 +12,7 @@ use PHPUnit\Framework\Attributes\DataProvider;
  * DocumentationViewerTest
  *
  * Integration tests for the documentation viewer error handling.
- * Tests that /docs/view.php properly handles:
+ * Tests that /docs/guide-viewer.php properly handles:
  * - Valid document loading
  * - Invalid document formats (path traversal attempts)
  * - Missing documents
@@ -376,9 +376,9 @@ class DocumentationViewerTest extends IntegrationTestCase
      */
     public function testViewPhpHasNoDirectErrorStatements(): void
     {
-        $viewFile = __DIR__ . '/../../docs/view.php';
+        $viewFile = __DIR__ . '/../../docs/guide-viewer.php';
 
-        $this->assertFileExists($viewFile, 'docs/view.php should exist');
+        $this->assertFileExists($viewFile, 'docs/guide-viewer.php should exist');
 
         $content = file_get_contents($viewFile);
         $this->assertIsString($content);

@@ -14,7 +14,7 @@ require_once $abs_us_root . $us_url_root . 'app/version.php';
       <footer>
         <br>
         <div class="mb-2">
-          <a href="<?= $us_url_root ?>docs/view.php?doc=PRIVACY.md" class="text-muted me-3">Privacy Policy</a>
+          <a href="<?= $us_url_root ?>docs/guide-viewer.php?doc=PRIVACY.md" class="text-muted me-3">Privacy Policy</a>
         </div>
         &copy; <?php echo date("Y"); ?> <?= $settings->copyright; ?>
         <br>

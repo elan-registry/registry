@@ -47,7 +47,7 @@ $storyCards = [
     [
         'title'        => 'Shapecraft Elan Story',
         'icon'         => 'fa-file-pdf',
-        'url'          => $us_url_root . 'docs/embed.php?subdir=stories&doc=' . rawurlencode('Mag _issue_50_p12-15_Barry-Shapecraft.pdf'),
+        'url'          => $us_url_root . 'docs/pdf-viewer.php?subdir=stories&doc=' . rawurlencode('Mag _issue_50_p12-15_Barry-Shapecraft.pdf'),
         'buttonText'   => 'Read Article',
         'buttonIcon'   => 'fa-book-open',
         'headerClass'  => 'bg-info text-white',

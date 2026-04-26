@@ -395,9 +395,9 @@ If you're the new owner of a car already in the registry:
 For detailed information about the transfer process, see:
 
 - **[Car Transfer User
-  Guide](/docs/view.php?doc=CAR_TRANSFER_USER_GUIDE.md)** - Complete
+  Guide](/docs/guide-viewer.php?doc=CAR_TRANSFER_USER_GUIDE.md)** - Complete
   transfer process
-- **[Transfer FAQ](/docs/view.php?doc=CAR_TRANSFER_FAQ.md)** - Common
+- **[Transfer FAQ](/docs/guide-viewer.php?doc=CAR_TRANSFER_FAQ.md)** - Common
   questions
 
 ---
@@ -425,7 +425,7 @@ For detailed information about the transfer process, see:
 - **Technical Problems** - Contact registry administrators through the
   contact form
 - **Transfer Questions** - See our [Transfer
-  FAQ](/docs/view.php?doc=CAR_TRANSFER_FAQ.md)
+  FAQ](/docs/guide-viewer.php?doc=CAR_TRANSFER_FAQ.md)
 - **General Questions** - Visit the [Owner Guides](/docs/guides/)
   section
 
