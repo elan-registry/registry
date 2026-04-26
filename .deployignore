@@ -33,6 +33,7 @@ phpstan.neon
 phpstan-baseline.neon
 .markdownlint.json
 .markdownlintignore
+.semgrepignore
 
 # Playwright configs
 playwright.config.js
@@ -58,8 +59,19 @@ CLAUDE.md
 README.md
 SECURITY.md
 LICENSE
+.env.example
 .env.local.sample
 instructions.txt
 
 # Database migrations (run manually, not served)
 database/
+
+# Local backups (server maintains its own; don't overwrite with git checkout)
+backups/
+
+# Dev-only scripts and utilities
+FIX/
+utilities/
+
+# Wiki source (served via GitHub wiki, not the web server)
+wiki/
