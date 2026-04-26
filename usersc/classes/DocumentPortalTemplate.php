@@ -159,9 +159,7 @@ class DocumentPortalTemplate
         }
 
         $html .= "<div class='mt-auto'>";
-        $targetAttr = isset($card['buttonTarget']) && $card['buttonTarget'] !== ''
-            ? " target='" . htmlspecialchars($card['buttonTarget'], ENT_QUOTES, 'UTF-8') . "'"
-            : '';
+        $targetAttr = self::renderTargetAttr($card['buttonTarget'] ?? '');
         $html .= "<a href='{$url}' class='btn {$buttonClass}'{$buttonStyleAttr}{$targetAttr}>" . self::renderIcon($card['buttonIcon'] ?? '') . "{$buttonText}</a>";
 
         if (isset($card['secondaryButton']) && is_array($card['secondaryButton'])) {
@@ -170,10 +168,7 @@ class DocumentPortalTemplate
             $secText     = htmlspecialchars($sec['text'] ?? '', ENT_QUOTES, 'UTF-8');
             $secClass    = htmlspecialchars($sec['class'] ?? 'btn-success btn-sm', ENT_QUOTES, 'UTF-8');
             $secDownload = !empty($sec['download']) ? ' download' : '';
-            $secTarget   = isset($sec['target']) && $sec['target'] !== ''
-                ? " target='" . htmlspecialchars($sec['target'], ENT_QUOTES, 'UTF-8') . "'"
-                : '';
-            $html .= " <a href='{$secUrl}' class='btn {$secClass}'{$secDownload}{$secTarget}>" . self::renderIcon($sec['icon'] ?? '') . "{$secText}</a>";
+            $html .= " <a href='{$secUrl}' class='btn {$secClass}'{$secDownload}" . self::renderTargetAttr($sec['target'] ?? '') . ">" . self::renderIcon($sec['icon'] ?? '') . "{$secText}</a>";
         }
 
         $html .= "</div>";
@@ -298,6 +293,18 @@ class DocumentPortalTemplate
         }
 
         return " style='" . htmlspecialchars($style, ENT_QUOTES, 'UTF-8') . "'";
+    }
+
+    /**
+     * Render a target attribute string, or empty string if no value given.
+     */
+    private static function renderTargetAttr(string $target): string
+    {
+        if ($target === '') {
+            return '';
+        }
+
+        return " target='" . htmlspecialchars($target, ENT_QUOTES, 'UTF-8') . "'";
     }
 
     /**
