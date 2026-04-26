@@ -458,7 +458,7 @@ $validationRules = ChassisValidator::getValidationRules();
                                     </p>
                                     <p class="mb-0">
                                         <a href="https://www.amazon.com/Authentic-Lotus-1962-1974-Marques-Models/dp/0947981950"
-                                           target="_blank" class="btn btn-sm btn-outline-info">
+                                           target="_blank" rel="noopener noreferrer" class="btn btn-sm btn-outline-info">
                                             <i class="fas fa-external-link-alt"></i> View on Amazon
                                         </a>
                                     </p>

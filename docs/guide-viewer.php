@@ -71,7 +71,8 @@ $htmlContent = MarkdownParser::sanitizeHtml($htmlContent);
 
 // Get document information and navigation
 $info = $documentData['info'];
-$isAdmin = ($documentData['category'] === 'admin');
+$isAdmin    = ($documentData['category'] === 'admin');
+$accentColor = $isAdmin ? '#dc3545' : '#007bff';
 $breadcrumb = DocumentConfig::getBreadcrumb($documentData, $us_url_root);
 
 ?>
@@ -169,8 +170,8 @@ $breadcrumb = DocumentConfig::getBreadcrumb($documentData, $us_url_root);
 }
 
 .document-content h1 {
-    color: <?= $isAdmin ? '#dc3545' : '#007bff' ?>;
-    border-bottom: 2px solid <?= $isAdmin ? '#dc3545' : '#007bff' ?>;
+    color: <?= htmlspecialchars($accentColor, ENT_QUOTES, 'UTF-8') ?>;
+    border-bottom: 2px solid <?= htmlspecialchars($accentColor, ENT_QUOTES, 'UTF-8') ?>;
     padding-bottom: 0.5rem;
     margin-top: 2rem;
     margin-bottom: 1rem;
@@ -229,7 +230,7 @@ $breadcrumb = DocumentConfig::getBreadcrumb($documentData, $us_url_root);
 }
 
 .document-content blockquote {
-    border-left: 4px solid <?= $isAdmin ? '#dc3545' : '#007bff' ?>;
+    border-left: 4px solid <?= htmlspecialchars($accentColor, ENT_QUOTES, 'UTF-8') ?>;
     padding-left: 1rem;
     margin: 1rem 0;
     font-style: italic;
