@@ -25,8 +25,8 @@ $cards = [
         'icon'        => 'fa-wrench',
         'url'         => 'workshop.php',
         'buttonText'  => 'Browse',
-        'headerClass' => 'bg-primary text-white',
-        'buttonClass' => 'btn-primary btn-sm',
+        'headerClass' => 'bg-info text-white',
+        'buttonClass' => 'btn-info btn-sm',
         'description' => 'Workshop manual, parts lists, and engine reference documents for Elan maintenance and restoration.',
     ],
     [
@@ -38,12 +38,15 @@ $cards = [
         'buttonClass' => 'btn-success btn-sm',
         'description' => 'Club Lotus technical articles covering gearknobs, steering wheels, engine types, and more.',
     ],
-];
-
-$navLinks = [
-    ['label' => 'Registry Home',  'url' => $us_url_root,                              'icon' => 'fa-home',      'btnClass' => 'btn-outline-primary'],
-    ['label' => 'Car Stories',    'url' => $us_url_root . 'docs/car-stories.php',      'icon' => 'fa-book-open', 'btnClass' => 'btn-outline-success'],
-    ['label' => 'Owner Guides',   'url' => $us_url_root . 'docs/guides/index.php',     'icon' => 'fa-user',      'btnClass' => 'btn-outline-info'],
+    [
+        'title'       => 'Chassis Validation Rules',
+        'icon'        => 'fa-barcode',
+        'url'         => '../chassis-validation.php',
+        'buttonText'  => 'View Rules',
+        'headerClass' => 'bg-info text-white',
+        'buttonClass' => 'btn-info btn-sm',
+        'description' => 'Complete chassis number validation rules for all Elan and Plus 2 models, including pre-1970 and post-1970 formats.',
+    ],
 ];
 
 ?>
@@ -53,8 +56,7 @@ $navLinks = [
             'title'       => 'Technical Reference',
             'description' => 'Manuals, technical articles, and identification resources for Lotus Elan owners',
         ]) ?>
-        <?= DocumentPortalTemplate::renderDocumentCardGrid($cards, 'col-md-6') ?>
-        <?= DocumentPortalTemplate::renderNavFooter($navLinks) ?>
+        <?= DocumentPortalTemplate::renderDocumentCardGrid($cards) ?>
     </div>
 </div>
 

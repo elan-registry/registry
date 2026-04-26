@@ -46,7 +46,7 @@ $validationRules = ChassisValidator::getValidationRules();
             <div class="row mb-4">
                 <div class="col-12">
                     <div class="card registry-card">
-                        <div class="card-header bg-primary text-white">
+                        <div class="card-header bg-info text-white">
                             <h4 class="mb-0">
                                 <i class="fas fa-info-circle"></i> Overview
                             </h4>
@@ -318,7 +318,7 @@ $validationRules = ChassisValidator::getValidationRules();
             <div class="row mb-4">
                 <div class="col-12">
                     <div class="card registry-card">
-                        <div class="card-header bg-danger text-white">
+                        <div class="card-header bg-dark text-white">
                             <h4 class="mb-0">
                                 <i class="fas fa-flag-checkered"></i> Race Car Chassis Formats
                             </h4>
@@ -332,9 +332,9 @@ $validationRules = ChassisValidator::getValidationRules();
                             <div class="row">
                                 <?php foreach($validationRules['race_cars'] as $year => $format): ?>
                                     <div class="col-md-6 mb-3">
-                                        <div class="card border-left-danger">
+                                        <div class="card border-left-dark">
                                             <div class="card-body">
-                                                <h6 class="text-danger">
+                                                <h6 class="text-dark">
                                                     <i class="fas fa-calendar"></i> <?= ucfirst(str_replace('_', ' ', $year)) ?>
                                                 </h6>
                                                 <p class="mb-2"><strong>Format:</strong> <?= $format ?></p>
@@ -441,7 +441,7 @@ $validationRules = ChassisValidator::getValidationRules();
             <div class="row mb-4">
                 <div class="col-12">
                     <div class="card registry-card">
-                        <div class="card-header bg-secondary text-white">
+                        <div class="card-header bg-dark text-white">
                             <h4 class="mb-0">
                                 <i class="fas fa-cog"></i> Technical Implementation
                             </h4>
@@ -509,7 +509,7 @@ $validationRules = ChassisValidator::getValidationRules();
                                     </p>
                                     <p class="mb-0">
                                         <a href="https://www.amazon.com/Authentic-Lotus-1962-1974-Marques-Models/dp/0947981950"
-                                           target="_blank" class="btn btn-sm btn-outline-primary">
+                                           target="_blank" class="btn btn-sm btn-outline-info">
                                             <i class="fas fa-external-link-alt"></i> View on Amazon
                                         </a>
                                     </p>

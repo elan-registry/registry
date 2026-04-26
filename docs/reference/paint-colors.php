@@ -173,7 +173,7 @@ function renderChip(string $chipFile, string $altText, string $basePath): string
                                             <p class="card-text flex-grow-1">Official factory paint codes for all Elan and Plus 2 models — downloadable PDF for offline reference.</p>
                                             <div class="mt-auto">
                                                 <a href="<?= $us_url_root ?>docs/embed.php?doc=<?= rawurlencode('All Elan and Elan Plus 2 Paint Codes.pdf') ?>"
-                                                   target="_blank" class="btn btn-outline-primary mr-2">
+                                                   target="_blank" class="btn btn-outline-info mr-2">
                                                     <i class="fas fa-eye"></i> Read Online
                                                 </a>
                                                 <a href="<?= $us_url_root ?>docs/assets/<?= rawurlencode('All Elan and Elan Plus 2 Paint Codes.pdf') ?>"
@@ -388,15 +388,6 @@ function renderChip(string $chipFile, string $altText, string $basePath): string
                         </div>
                     </div>
                 </div>
-            </div>
-        </div>
-
-        <!-- Navigation Links -->
-        <div class="row mt-4 mb-4">
-            <div class="col-12 text-center">
-                <a href="index.php" class="btn btn-outline-secondary mr-2"><i class="fas fa-arrow-left"></i> Back to Reference Library</a>
-                <a href="<?= $us_url_root ?>" class="btn btn-outline-primary mr-2"><i class="fas fa-home"></i> Registry Home</a>
-                <a href="<?= $us_url_root ?>app/cars/" class="btn btn-outline-success"><i class="fas fa-car"></i> Browse Cars</a>
             </div>
         </div>
 

@@ -34,8 +34,8 @@ $cards = [
         'url'         => '../view.php?doc=CAR_TRANSFER_USER_GUIDE.md',
         'buttonText'  => 'Read Guide',
         'buttonIcon'  => 'fa-book-open',
-        'headerClass' => 'bg-primary text-white',
-        'buttonClass' => 'btn-primary btn-sm',
+        'headerClass' => 'bg-info text-white',
+        'buttonClass' => 'btn-info btn-sm',
         'description' => 'Complete guide for requesting ownership transfers of cars in the registry. Learn the step-by-step process and what to expect.',
     ],
     [
@@ -54,8 +54,8 @@ $cards = [
         'url'         => '../reference/paint-colors.php',
         'buttonText'  => 'View Guide',
         'buttonIcon'  => 'fa-book-open',
-        'headerClass' => 'bg-danger text-white',
-        'headerStyle' => 'background-color: #8e44ad !important;',
+        'headerClass' => 'text-white',
+        'headerStyle' => 'background-color: #8e44ad;',
         'buttonClass' => 'btn-sm',
         'buttonStyle' => 'background-color: #8e44ad; color: white;',
         'description' => 'Complete reference to Lotus Elan and Plus 2 factory paint colors, codes, date ranges, and supplier cross-references for restoration.',
@@ -72,18 +72,6 @@ $cards = [
     ],
 ];
 
-// Build nav links — conditional on login state
-$navLinks = [
-    ['label' => 'Registry Home', 'url' => $us_url_root,               'icon' => 'fa-home', 'btnClass' => 'btn-outline-primary'],
-    ['label' => 'Browse Cars',   'url' => $us_url_root . 'app/cars/', 'icon' => 'fa-car',  'btnClass' => 'btn-outline-success'],
-];
-
-if ($user->isLoggedIn()) {
-    $navLinks[] = ['label' => 'My Account', 'url' => $us_url_root . 'users/account.php', 'icon' => 'fa-user',        'btnClass' => 'btn-outline-info'];
-} else {
-    $navLinks[] = ['label' => 'Login',      'url' => $us_url_root . 'users/login.php',   'icon' => 'fa-sign-in-alt', 'btnClass' => 'btn-outline-warning'];
-}
-
 ?>
 <div class="page-wrapper">
     <div class='container'>
@@ -94,7 +82,6 @@ if ($user->isLoggedIn()) {
             'leadText'    => 'How-to guides and policies for using the Lotus Elan Registry.',
         ]) ?>
         <?= DocumentPortalTemplate::renderDocumentCardGrid($cards) ?>
-        <?= DocumentPortalTemplate::renderNavFooter($navLinks) ?>
     </div>
 </div>
 

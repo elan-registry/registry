@@ -26,8 +26,8 @@ $cards = [
         'url'         => 'reference/index.php',
         'buttonText'  => 'Browse',
         'buttonIcon'  => 'fa-arrow-right',
-        'headerClass' => 'bg-primary text-white',
-        'buttonClass' => 'btn-primary btn-sm',
+        'headerClass' => 'bg-info text-white',
+        'buttonClass' => 'btn-info btn-sm',
         'description' => 'Workshop manuals, technical articles, identification guides, and paint reference for Lotus Elan owners.',
         'colClass'    => 'col-md-4',
     ],
@@ -56,7 +56,7 @@ $cards = [
 ];
 
 $navLinks = [
-    ['label' => 'Registry Home', 'url' => $us_url_root, 'icon' => 'fa-home', 'btnClass' => 'btn-outline-primary'],
+    ['label' => 'Registry Home', 'url' => $us_url_root, 'icon' => 'fa-home', 'btnClass' => 'btn-outline-info'],
     ['label' => 'Browse Cars',   'url' => $us_url_root . 'app/cars/', 'icon' => 'fa-car', 'btnClass' => 'btn-outline-success'],
 ];
 

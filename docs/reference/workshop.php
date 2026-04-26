@@ -34,14 +34,14 @@ if (!securePage($php_self)) {
         <div class="row mt-4">
             <div class="col-md-4 mb-4">
                 <div class="card registry-card h-100">
-                    <div class="card-header bg-primary text-white">
+                    <div class="card-header bg-info text-white">
                         <h5 class="mb-0"><i class="fas fa-file-pdf"></i> Elan Workshop Manual</h5>
                     </div>
                     <img src="<?= $us_url_root ?>docs/assets/Elan_26_36_Workshop_Manual.png" class="card-img-top" alt="Elan Workshop Manual" style="max-height: 200px; object-fit: contain; padding: 10px;">
                     <div class="card-body d-flex flex-column">
                         <p class="card-text flex-grow-1">Elan Workshop Manual</p>
                         <div class="mt-auto">
-                            <a href="<?= $us_url_root ?>docs/embed.php?doc=<?= rawurlencode('Elan_26_36_Workshop_Manual.pdf') ?>" target="_blank" class="btn btn-outline-primary btn-sm mr-2">
+                            <a href="<?= $us_url_root ?>docs/embed.php?doc=<?= rawurlencode('Elan_26_36_Workshop_Manual.pdf') ?>" target="_blank" class="btn btn-outline-info btn-sm mr-2">
                                 <i class="fas fa-eye"></i> Read Online
                             </a>
                             <a href="<?= $us_url_root ?>docs/assets/<?= rawurlencode('Elan_26_36_Workshop_Manual.pdf') ?>" download class="btn btn-success btn-sm">
@@ -54,14 +54,14 @@ if (!securePage($php_self)) {
 
             <div class="col-md-4 mb-4">
                 <div class="card registry-card h-100">
-                    <div class="card-header bg-primary text-white">
+                    <div class="card-header bg-info text-white">
                         <h5 class="mb-0"><i class="fas fa-file-pdf"></i> Elan Parts List</h5>
                     </div>
                     <img src="<?= $us_url_root ?>docs/assets/Elan_S1_S2_Coupe_Masterpartslist.png" class="card-img-top" alt="Elan Parts List" style="max-height: 200px; object-fit: contain; padding: 10px;">
                     <div class="card-body d-flex flex-column">
                         <p class="card-text flex-grow-1">1966 Parts list for Series 1, Series 2 and Coupe</p>
                         <div class="mt-auto">
-                            <a href="<?= $us_url_root ?>docs/embed.php?doc=<?= rawurlencode('Elan_S1_S2_Coupe_Masterpartslist.pdf') ?>" target="_blank" class="btn btn-outline-primary btn-sm mr-2">
+                            <a href="<?= $us_url_root ?>docs/embed.php?doc=<?= rawurlencode('Elan_S1_S2_Coupe_Masterpartslist.pdf') ?>" target="_blank" class="btn btn-outline-info btn-sm mr-2">
                                 <i class="fas fa-eye"></i> Read Online
                             </a>
                             <a href="<?= $us_url_root ?>docs/assets/<?= rawurlencode('Elan_S1_S2_Coupe_Masterpartslist.pdf') ?>" download class="btn btn-success btn-sm">
@@ -74,13 +74,14 @@ if (!securePage($php_self)) {
 
             <div class="col-md-4 mb-4">
                 <div class="card registry-card h-100">
-                    <div class="card-header bg-primary text-white">
+                    <div class="card-header bg-info text-white">
                         <h5 class="mb-0"><i class="fas fa-file-pdf"></i> Elan Engine Types</h5>
                     </div>
+                    <img src="<?= $us_url_root ?>docs/assets/<?= rawurlencode('2016 Jan Elan Engine Types.png') ?>" class="card-img-top" alt="Elan Engine Types" style="max-height: 200px; object-fit: contain; padding: 10px;">
                     <div class="card-body d-flex flex-column">
                         <p class="card-text flex-grow-1">CLUB LOTUS ELAN — Elan & +2 Engine Types</p>
                         <div class="mt-auto">
-                            <a href="<?= $us_url_root ?>docs/embed.php?doc=<?= rawurlencode('2016 Jan Elan Engine Types.pdf') ?>" target="_blank" class="btn btn-outline-primary btn-sm mr-2">
+                            <a href="<?= $us_url_root ?>docs/embed.php?doc=<?= rawurlencode('2016 Jan Elan Engine Types.pdf') ?>" target="_blank" class="btn btn-outline-info btn-sm mr-2">
                                 <i class="fas fa-eye"></i> Read Online
                             </a>
                             <a href="<?= $us_url_root ?>docs/assets/<?= rawurlencode('2016 Jan Elan Engine Types.pdf') ?>" download class="btn btn-success btn-sm">
@@ -92,19 +93,6 @@ if (!securePage($php_self)) {
             </div>
         </div>
 
-        <div class="row mt-4 mb-4">
-            <div class="col-12 text-center">
-                <a href="index.php" class="btn btn-outline-primary mr-2">
-                    <i class="fas fa-book"></i> Reference Library
-                </a>
-                <a href="technical-articles.php" class="btn btn-outline-success mr-2">
-                    <i class="fas fa-file-alt"></i> Technical Articles
-                </a>
-                <a href="<?= $us_url_root ?>" class="btn btn-outline-info">
-                    <i class="fas fa-home"></i> Registry Home
-                </a>
-            </div>
-        </div>
     </div>
 </div>
 
