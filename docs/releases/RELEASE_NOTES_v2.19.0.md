@@ -8,7 +8,7 @@
 1. Run the FIX migration script to remove `elan_*_cdn` settings from the database:
 
    ```bash
-   # [script path TBD in #405]
+   database/fixes/FIX-405-remove-elan-cdn-settings.sql
    ```
 
 2. Verify self-hosted library files are served correctly from `usersc/js/` and `usersc/css/`.
