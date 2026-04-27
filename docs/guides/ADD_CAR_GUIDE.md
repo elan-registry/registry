@@ -99,7 +99,7 @@ your entry to ensure accuracy.
 
 #### For Complete Format Details
 
-See the **[Chassis Validation Rules](../reference/chassis-validation.php)** page
+See the **[Chassis Validation Rules](/docs/reference/chassis-validation.php)** page
 for comprehensive information including:
 
 - Detailed format specifications for each period
