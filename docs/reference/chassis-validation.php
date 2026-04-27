@@ -339,15 +339,16 @@ $validationRules = [
                             
                             <div class="row">
                                 <?php foreach($validationRules['race_cars'] as $year => $format): ?>
+                                    <?php $yearStr = (string)$year; ?>
                                     <div class="col-md-6 mb-3">
                                         <div class="card border-left-dark">
                                             <div class="card-body">
                                                 <h6 class="text-dark">
-                                                    <i class="fas fa-calendar"></i> <?= ucfirst(str_replace('_', ' ', $year)) ?>
+                                                    <i class="fas fa-calendar"></i> <?= ucfirst(str_replace('_', ' ', $yearStr)) ?>
                                                 </h6>
                                                 <p class="mb-2"><strong>Format:</strong> <?= $format ?></p>
-                                                
-                                                <?php if($year === '1963'): ?>
+
+                                                <?php if($yearStr === '1963'): ?>
                                                     <div class="small">
                                                         <strong>Examples:</strong>
                                                         <ul class="list-unstyled ml-3">
@@ -355,7 +356,7 @@ $validationRules = [
                                                             <li><code class="text-success">26-R-15</code></li>
                                                         </ul>
                                                     </div>
-                                                <?php elseif($year === '1964'): ?>
+                                                <?php elseif($yearStr === '1964'): ?>
                                                     <div class="small">
                                                         <strong>Examples:</strong>
                                                         <ul class="list-unstyled ml-3">
@@ -363,7 +364,7 @@ $validationRules = [
                                                             <li><code class="text-success">26-S2-05</code> (S2 series)</li>
                                                         </ul>
                                                     </div>
-                                                <?php elseif($year === '1965-1966'): ?>
+                                                <?php elseif($yearStr === '1965-1966'): ?>
                                                     <div class="small">
                                                         <strong>Examples:</strong>
                                                         <ul class="list-unstyled ml-3">
