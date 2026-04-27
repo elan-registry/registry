@@ -11,7 +11,7 @@ change in ownership that needs to be reflected in the registry.
 
 **Transfer requests** are only for cars that already exist in the registry under another owner's name.
 If a car does not exist previously in the registry, please go to the section
-**[How to Add Your Car](https://elanregistry.org/docs/guide-viewer.php?doc=ADD_CAR_GUIDE.md)**.
+**[How to Add Your Car](/docs/guide-viewer.php?doc=ADD_CAR_GUIDE.md)**.
 
 Use the transfer request system when:
 
