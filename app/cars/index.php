@@ -62,11 +62,10 @@ if (!securePage($php_self)) {
 <!-- footers -->
 <?php
 require_once $abs_us_root . $us_url_root . 'users/includes/html_footer.php'; //custom template footer
-
-// Table Sorting and Such
-echo html_entity_decode($settings->elan_datatables_js_cdn);
-echo html_entity_decode($settings->elan_datatables_css_cdn);
 ?>
+
+<script src="<?=$us_url_root?>usersc/js/datatables.min.js"></script>
+<link rel="stylesheet" href="<?=$us_url_root?>usersc/css/datatables.min.css">
 
 <!-- Constants needed by the scripts -->
 <script>

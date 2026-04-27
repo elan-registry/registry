@@ -57,13 +57,14 @@ edge caching and CDN for global users (US, EU, AU).
 
 **Template Architecture:**
 
-- Active template: `/usersc/templates/ElanRegistry/` (Bootstrap 4.5.3, migrating to BS5)
+- Active template: `/usersc/templates/ElanRegistry/` (Bootstrap 4.5.3, migrating to BS5; #618 will complete the BS5 migration)
 - US6 reference templates: `journal/` (BS5.2) and `customizer/` (BS5.3) — use
   as patterns for migration
 - UserSpice 6 admin uses its own template — independent of ElanRegistry template
 - jQuery is a UserSpice 6 dependency (`users/js/jquery.php`) — cannot be removed
-- CDN URLs stored in database settings (`elan_*_cdn` columns) — decoded via
-  `html_entity_decode()` in `header.php`
+- Frontend libraries vendored to `usersc/js/` and `usersc/css/` (ADR-015);
+  Bootstrap/jQuery temporarily CDN-hardcoded in `header.php` until #618
+  completes the BS5 migration
 - ADRs: `docs/development/adr/` — update ADR-006 and ADR-007 when changing
   frontend dependencies or CSP
 

@@ -246,19 +246,6 @@ ALTER TABLE `settings`
   ADD COLUMN `elan_google_geo_key` mediumtext COLLATE utf8mb4_unicode_ci NOT NULL,
   ADD COLUMN `elan_image_dir` mediumtext COLLATE utf8mb4_unicode_ci NOT NULL,
   ADD COLUMN `elan_image_max` int(11) NOT NULL,
-  ADD COLUMN `elan_jquery_cdn` mediumtext COLLATE utf8mb4_unicode_ci NOT NULL,
-  ADD COLUMN `elan_bootstrap_js_cdn` mediumtext COLLATE utf8mb4_unicode_ci NOT NULL,
-  ADD COLUMN `elan_bootstrap_css_cdn` mediumtext COLLATE utf8mb4_unicode_ci NOT NULL,
-  ADD COLUMN `elan_popper_cdn` mediumtext COLLATE utf8mb4_unicode_ci NOT NULL,
-  ADD COLUMN `elan_fontawesome_cdn` mediumtext COLLATE utf8mb4_unicode_ci NOT NULL,
-  ADD COLUMN `elan_bootswatch_cdn` mediumtext COLLATE utf8mb4_unicode_ci NOT NULL,
-  ADD COLUMN `elan_datatables_js_cdn` mediumtext COLLATE utf8mb4_unicode_ci NOT NULL,
-  ADD COLUMN `elan_datatables_css_cdn` mediumtext COLLATE utf8mb4_unicode_ci NOT NULL,
-  ADD COLUMN `elan_datepicker_js_cdn` mediumtext COLLATE utf8mb4_unicode_ci NOT NULL,
-  ADD COLUMN `elan_datepicker_css_cdn` mediumtext COLLATE utf8mb4_unicode_ci NOT NULL,
-  ADD COLUMN `elan_jquery_ui_cdn` mediumtext COLLATE utf8mb4_unicode_ci NOT NULL,
-  ADD COLUMN `elan_dropzone_js_cdn` mediumtext COLLATE utf8mb4_unicode_ci NOT NULL,
-  ADD COLUMN `elan_dropzone_css_cdn` mediumtext COLLATE utf8mb4_unicode_ci NOT NULL,
   ADD COLUMN `fun` mediumtext COLLATE utf8mb4_unicode_ci,
   ADD COLUMN `elan_spam_cleanup_enabled` tinyint(1) DEFAULT '0' COMMENT 'Enable automated SPAM cleanup',
   ADD COLUMN `elan_spam_cleanup_dry_run` tinyint(1) DEFAULT '1' COMMENT 'Run SPAM cleanup in dry-run mode',
@@ -270,7 +257,6 @@ ALTER TABLE `settings`
   ADD COLUMN `elan_image_upload_max_size` decimal(4,2) DEFAULT '2.00' COMMENT 'Maximum upload file size in MB',
   ADD COLUMN `elan_image_display_max_size` int(11) DEFAULT '2048' COMMENT 'Maximum display image width in pixels',
   ADD COLUMN `elan_image_thumbnail_sizes` mediumtext COLLATE utf8mb4_unicode_ci COMMENT 'Comma-separated thumbnail sizes in pixels',
-  ADD COLUMN `elan_chartjs_cdn` mediumtext COLLATE utf8mb4_unicode_ci COMMENT 'Chart.js CDN URL for statistics charts',
   ADD COLUMN `elan_admin_emails` mediumtext COLLATE utf8mb4_unicode_ci COMMENT 'Comma-separated admin email addresses for system notifications and administrative alerts';
 
 -- =============================================================================
@@ -451,7 +437,7 @@ COMMIT;
 -- This script has successfully:
 -- ✅ Created 8 custom tables for car registry functionality
 -- ✅ Enhanced profiles table with 6 geographic location fields
--- ✅ Enhanced settings table with 33 Elan Registry configuration fields
+-- ✅ Enhanced settings table with 19 Elan Registry configuration fields
 -- ✅ Set up audit trail triggers for automatic change tracking
 -- ✅ Added foreign key constraints for data integrity
 --

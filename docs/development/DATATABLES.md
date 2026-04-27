@@ -99,96 +99,61 @@ const table = $("#cartable").DataTable({
 - `factory` - Factory information data
 - `findCarByChassis` - Lookup car by chassis number (for factory links)
 
-## CDN Configuration
+## Asset Loading
 
-### Current CDN URLs (v2.11.0+)
+### Self-Hosted DataTables JS (v2.17.0+)
 
-**JavaScript CDN**:
-
-```html
-<script
-  type="text/javascript"
-  src="https://cdn.datatables.net/v/bs4/dt-1.10.23/fh-3.1.8/r-2.2.7/datatables.min.js"
-></script>
-```
-
-**CSS CDN**:
-
-```html
-<link
-  rel="stylesheet"
-  type="text/css"
-  href="https://cdn.datatables.net/v/bs4/dt-1.10.23/fh-3.1.8/r-2.2.7/datatables.min.css"
-/>
-```
-
-### CDN URL Structure
-
-DataTables CDN URLs follow this pattern:
+As of #405 (ADR-015), DataTables JavaScript is self-hosted in the repository
+rather than loaded from a CDN. The bundle (DataTables Core + FixedHeader +
+Responsive, BS4 styling) is committed at:
 
 ```text
-https://cdn.datatables.net/v/{styling}/{extensions}/datatables.min.{js|css}
+usersc/js/datatables.min.js
 ```
 
-**Components**:
-
-- `{styling}`: Bootstrap version (we use `bs4` for Bootstrap 4)
-- `{extensions}`: Slash-separated list of extensions with versions
-
-**Extension Format**: `{code}-{version}`
-
-| Extension Code | Full Name       | Example      |
-| -------------- | --------------- | ------------ |
-| `dt`           | DataTables Core | `dt-1.10.23` |
-| `fh`           | FixedHeader     | `fh-3.1.8`   |
-| `r`            | Responsive      | `r-2.2.7`    |
-
-### Building CDN URLs
-
-**Example**: To build a CDN URL with DataTables Core, FixedHeader, and
-Responsive:
-
-1. Start with base: `https://cdn.datatables.net/v/bs4/`
-2. Add extensions: `dt-1.10.23/fh-3.1.8/r-2.2.7/`
-3. Add file: `datatables.min.js`
-4. Result:
-   `https://cdn.datatables.net/v/bs4/dt-1.10.23/fh-3.1.8/r-2.2.7/datatables.min.js`
-
-**Official CDN Builder**: <https://datatables.net/download/>
-
-### Updating CDN Configuration
-
-CDN URLs are stored in the `settings` table and can be updated via:
-
-1. **Admin Panel** (Recommended):
-
-   - Navigate to Admin Panel → System Settings
-   - Find "DataTables JavaScript CDN" setting
-   - Update URL and save
-
-2. **FIX Script** (For systematic changes):
-   - Create FIX script following template pattern
-   - Update both `elan_datatables_js_cdn` and `elan_datatables_css_cdn` fields
-   - Use `htmlspecialchars()` when storing URLs
-   - Use `html_entity_decode()` when rendering URLs
-
-**Example FIX Script Code**:
+Pages that need DataTables load it directly with a source-controlled
+`<script>` tag:
 
 ```php
-// Update JavaScript CDN
-$newJsCdn = '<script type="text/javascript" src="https://cdn.datatables.net/v/bs4/dt-1.10.23/fh-3.1.8/r-2.2.7/datatables.min.js"></script>';
-
-$db->update('settings', 1, [
-    'elan_datatables_js_cdn' => htmlspecialchars($newJsCdn)
-]);
-
-// Update CSS CDN
-$newCssCdn = '<link rel="stylesheet" type="text/css" href="https://cdn.datatables.net/v/bs4/dt-1.10.23/fh-3.1.8/r-2.2.7/datatables.min.css" />';
-
-$db->update('settings', 1, [
-    'elan_datatables_css_cdn' => htmlspecialchars($newCssCdn)
-]);
+<script src="<?=$us_url_root?>usersc/js/datatables.min.js"></script>
 ```
+
+The previous `elan_datatables_js_cdn` and `elan_datatables_css_cdn`
+settings-table columns are no longer referenced. The matching CSS bundle is
+vendored alongside the JS at `usersc/css/datatables.min.css` and loaded with:
+
+```php
+<link rel="stylesheet" href="<?=$us_url_root?>usersc/css/datatables.min.css">
+```
+
+### Bundle Contents
+
+The vendored bundle was generated from the official DataTables download
+builder with:
+
+| Extension Code | Full Name       | Version    |
+| -------------- | --------------- | ---------- |
+| `dt`           | DataTables Core | `1.10.23`  |
+| `fh`           | FixedHeader     | `3.1.8`    |
+| `r`            | Responsive      | `2.2.7`    |
+
+The styling target is `bs4` (Bootstrap 4).
+
+### Updating the Vendored Bundle
+
+When a security advisory or required feature drives an update:
+
+1. Visit the official CDN/download builder: <https://datatables.net/download/>
+2. Select Bootstrap 4 styling and the extensions listed above (or the new
+   set), choose the desired versions
+3. Download both the combined `datatables.min.js` and `datatables.min.css` files
+4. Replace `usersc/js/datatables.min.js` and `usersc/css/datatables.min.css` with the new files
+5. Bump the DataTables version pin in `package.json`
+6. Commit — the diff documents what changed and why
+7. Test the List Cars and Factory Information pages
+
+This workflow is the standard maintenance flow established in ADR-015 for all
+vendored frontend libraries.
 
 ## Configuration Best Practices
 
@@ -199,7 +164,7 @@ $db->update('settings', 1, [
 1. Audit codebase for actual DataTables configuration
 2. Search for extension-specific options (e.g., `fixedHeader: true`,
    `responsive: true`)
-3. Remove unused extensions from CDN URLs
+3. Remove unused extensions when regenerating the vendored bundle
 4. Test thoroughly after changes
 
 **Analysis Commands**:
@@ -249,7 +214,8 @@ server-side processing or assess if the UX trade-offs are acceptable.
 
 1. Test on development/staging environment first
 2. Review DataTables release notes for breaking changes
-3. Update CDN URLs via FIX script
+3. Replace `usersc/js/datatables.min.js` with the new bundle and bump the
+   version pin in `package.json` (see "Updating the Vendored Bundle" above)
 4. Clear browser caches (users may need to hard refresh)
 5. Monitor for JavaScript console errors
 
@@ -257,12 +223,12 @@ server-side processing or assess if the UX trade-offs are acceptable.
 
 ### Common Issues
 
-**Issue**: Blank page or JavaScript errors after CDN change
+**Issue**: Blank page or JavaScript errors after a bundle update
 
 **Solution**:
 
 - Check browser console for specific error messages
-- Verify CDN URLs are correctly formatted (no typos)
+- Verify `usersc/js/datatables.min.js` was replaced cleanly (no truncation)
 - Ensure all extension dependencies are met (e.g., SearchPanes requires Select)
 - Clear browser cache and hard refresh (Ctrl+Shift+R)
 
@@ -281,7 +247,8 @@ server-side processing or assess if the UX trade-offs are acceptable.
 
 - Verify column count in HTML matches JavaScript configuration
 - Check for responsive breakpoints hiding columns on mobile
-- Ensure CSS CDN URL matches JavaScript CDN URL (same extensions)
+- Ensure `usersc/css/datatables.min.css` was replaced from the same download
+  builder run as `usersc/js/datatables.min.js` (same extensions)
 
 ### Testing After Changes
 

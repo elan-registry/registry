@@ -2,6 +2,8 @@
 
 # CSS and Frontend Assets Guide
 
+> **⚠️ Partially superseded by [ADR-015](adr/ADR-015-self-host-frontend-libraries.md) (#405):** Sections describing DB-driven CDN loading (`elan_*_cdn` settings) reflect removed functionality. App-specific libraries (DataTables JS, Dropzone, Chart.js) are now self-hosted. Bootstrap and jQuery loading remains as described until #618.
+
 This document provides comprehensive guidance for managing stylesheets and frontend assets in the Lotus Elan Registry application.
 
 ## CSS Architecture (v2.12.0+)
@@ -34,33 +36,26 @@ usersc/templates/ElanRegistry/assets/css/
 
 ### CSS Loading (header.php)
 
-The template header loads CSS in this order:
+> **⚠️ Superseded by ADR-015 (#405):** The DB-driven `html_entity_decode($settings->elan_*_cdn)` pattern was removed. Bootstrap, Bootswatch, jQuery, Popper, and Font Awesome are now hardcoded in `header.php` until #618 rewrites the template to Bootstrap 5.
 
-```php
-// 1. Bootstrap 4.6.2 CSS from CDN (minified, SRI protected)
-echo html_entity_decode($settings->elan_bootstrap_css_cdn);
+The template header loads CSS/JS in this order (as of #405):
 
-// 2. Bootswatch Simplex theme from CDN (NOT from local file)
-// → Loaded from elan_bootswatch_cdn database setting
-// → Current: https://cdn.jsdelivr.net/npm/bootswatch@4.6.1/dist/simplex/bootstrap.min.css
-echo html_entity_decode($settings->elan_bootswatch_cdn);
-
-// 3. jQuery from CDN (loaded early for DOM manipulation)
-echo html_entity_decode($settings->elan_jquery_cdn);
-
-// 4. Bootstrap JS from CDN
-echo html_entity_decode($settings->elan_bootstrap_js_cdn);
-
-// 5. Popper.js from CDN (required for Bootstrap dropdowns/modals)
-echo html_entity_decode($settings->elan_popper_cdn);
-
-// 6. Font Awesome from CDN
-echo html_entity_decode($settings->elan_fontawesome_cdn);
-
-// 7. Hamburger menu CSS (local, minified)
+```html
+<!-- Bootstrap 4.5.3 CSS -->
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@4.5.3/dist/css/bootstrap.min.css" ...>
+<!-- Bootswatch Simplex 4.6.0 -->
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/bootswatch/4.6.0/simplex/bootstrap.min.css" ...>
+<!-- jQuery 3.7.1 -->
+<script src="https://cdn.jsdelivr.net/npm/jquery@3.7.1/dist/jquery.min.js" ...></script>
+<!-- Bootstrap 4.5.3 JS -->
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@4.5.3/dist/js/bootstrap.bundle.min.js" ...></script>
+<!-- Popper.js 1.16.1 -->
+<script src="https://cdn.jsdelivr.net/npm/popper.js@1.16.1/dist/umd/popper.min.js" ...></script>
+<!-- Font Awesome: self-hosted via UserSpice -->
+<link rel="stylesheet" href="<?=$us_url_root?>users/fonts/css/fontawesome.min.css">
+<!-- Hamburger menu CSS (local) -->
 <link href=".../hamburgers.min.css" rel="stylesheet">
-
-// 8. Consolidated registry CSS (local, minified)
+<!-- Consolidated registry CSS (local) -->
 <link href=".../consolidated.min.css" rel="stylesheet">
 ```
 
@@ -235,18 +230,20 @@ npm run css:minify
 
 ### CDN Configuration
 
-All CDN URLs are stored in the database `settings` table:
+> **⚠️ Superseded by ADR-015 (#405):** All `elan_*_cdn` columns have been removed from the `settings` table. App-specific libraries (DataTables JS/CSS, Dropzone, Chart.js, jQuery UI) are now vendored in `usersc/js/` and `usersc/css/`. Bootstrap, jQuery, Bootswatch, Popper, and Font Awesome are hardcoded in `header.php` until #618.
+
+~~All CDN URLs are stored in the database `settings` table~~ (removed in #405):
 
 ```text
-elan_bootstrap_css_cdn      → Bootstrap 4.6.2 CSS (full HTML link tag)
-elan_jquery_cdn             → jQuery 3.6.0 JS (full HTML script tag)
-elan_bootstrap_js_cdn       → Bootstrap 4.6.2 JS (full HTML script tag)
-elan_popper_cdn             → Popper.js 1.16.1 JS (full HTML script tag)
-elan_bootswatch_cdn         → Bootswatch Simplex theme (full HTML link tag)
-elan_fontawesome_cdn        → Font Awesome icons CDN (full HTML script tag)
-elan_datatables_js_cdn      → DataTables JS library (full HTML script tag)
-elan_datatables_css_cdn     → DataTables CSS library (full HTML link tag)
-elan_chartjs_cdn            → Chart.js library (full HTML script tag)
+elan_bootstrap_css_cdn      → removed; hardcoded in header.php until #618
+elan_jquery_cdn             → removed; hardcoded in header.php until #618
+elan_bootstrap_js_cdn       → removed; hardcoded in header.php until #618
+elan_popper_cdn             → removed; hardcoded in header.php until #618
+elan_bootswatch_cdn         → removed; hardcoded in header.php until #618
+elan_fontawesome_cdn        → removed; now self-hosted via users/fonts/css/
+elan_datatables_js_cdn      → removed; vendored at usersc/js/datatables.min.js
+elan_datatables_css_cdn     → removed; vendored at usersc/css/datatables.min.css
+elan_chartjs_cdn            → removed; vendored at usersc/js/chart.umd.min.js
 ```
 
 ### Updating CDN Resources

@@ -256,10 +256,7 @@ window.statisticsConfig = {
 </script>
 
 <!-- Load Chart.js -->
-<?php
-// Chart.js CDN - loaded from database setting with SRI hash
-echo isset($settings->elan_chartjs_cdn) ? html_entity_decode($settings->elan_chartjs_cdn) : '<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.js" integrity="sha384-FcQlsUOd0TJjROrBxhJdUhXTUgNJQxTMcxZe6nHbaEfFL1zjQ+bq/uRoBQxb0KMo" crossorigin="anonymous"></script>';
-?>
+<script src="<?=$us_url_root?>usersc/js/chart.umd.min.js"></script>
 
 <!-- Load Statistics JavaScript first -->
 <script src="<?= $us_url_root ?>app/assets/js/statistics.js?v=2.8.4-debug"></script>

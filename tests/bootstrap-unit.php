@@ -1283,9 +1283,7 @@ if (!function_exists('getSettings')) {
         return (object) [
             'id' => (string) $id,
             'elan_image_dir' => '/userimages/',
-            'elan_google_geo_key' => 'mock_api_key',
-            'elan_datatables_js_cdn' => 'https://cdn.datatables.net/1.10.23/js/jquery.dataTables.min.js',
-            'elan_datatables_css_cdn' => 'https://cdn.datatables.net/1.10.23/css/jquery.dataTables.min.css'
+            'elan_google_geo_key' => 'mock_api_key'
         ];
     }
 }
