@@ -4,6 +4,24 @@
  * Version: 2.12.0
  */
 
+/* ========== INFO COLOR — match Bootswatch Simplex (#3399F3 vs BS5 default cyan #0dcaf0) ========== */
+
+:root {
+    --bs-info: #3399F3;
+    --bs-info-rgb: 51, 153, 243;
+    --bs-info-hover: #2680d9;
+}
+
+/* ========== TYPOGRAPHY — 13px base, system font stack ========== */
+
+html {
+    font-size: 13px;
+}
+
+body {
+    font-family: -apple-system, system-ui, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol";
+}
+
 /* ========== FORM VALIDATION STATES ========== */
 
 .is-invalid {

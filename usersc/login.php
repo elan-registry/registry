@@ -23,7 +23,7 @@ if (!defined('USERSPICE_LOGIN_CALLED')) {
    define('USERSPICE_LOGIN_CALLED', true);
    require_once '../users/init.php';
 }
-require_once $abs_us_root . $us_url_root . 'users/includes/template/prep.php';
+require_once $abs_us_root . $us_url_root . 'usersc/includes/elanregistry_prep.php';
 
 // Ensure session is started for TOTP intermediate storage
 if (session_status() == PHP_SESSION_NONE) {
