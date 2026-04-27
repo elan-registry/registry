@@ -15,7 +15,6 @@ declare(strict_types=1);
 
 require_once '../../users/init.php';
 require_once $abs_us_root . $us_url_root . 'users/includes/template/prep.php';
-require_once '../../usersc/classes/ChassisValidator.php';
 
 use ElanRegistry\Documentation\DocumentPortalTemplate;
 
@@ -23,8 +22,23 @@ if (!securePage($php_self)) {
     die();
 }
 
-// Get validation rules from the centralized validator
-$validationRules = ChassisValidator::getValidationRules();
+$validationRules = [
+    'race_cars' => [
+        '1963'        => '26-R-xx format only',
+        '1964'        => '26-R-xx or 26-S2-xx formats',
+        '1965-1966'   => '26-S2-xx format only',
+        'other_years' => '26-R-xx format',
+    ],
+    'production_cars' => [
+        'pre_1970'  => '4 digits numeric only',
+        '1970'      => '5 characters (legacy) or 11 characters (YYMMBBXXXXC)',
+        'post_1970' => '11 characters YYMMBBXXXXC format',
+    ],
+    'letter_codes' => [
+        'elan'  => 'A, B, C, D, E, F, G, H, J, K (excluding I)',
+        'plus2' => 'L, M, N only',
+    ],
+];
 
 ?>
 
