@@ -27,17 +27,5 @@ require_once $abs_us_root . $us_url_root . 'app/version.php';
 
 <?php
 require_once($abs_us_root . $us_url_root . 'users/includes/html_footer.php');
-
-// // jQuery
-// echo html_entity_decode($settings->elan_jquery_cdn);
-
-// // Bootstrap Core CSS
-// echo html_entity_decode($settings->elan_bootstrap_js_cdn);
-
-// // Popper
-// echo html_entity_decode($settings->elan_popper_cdn);
-
-// // Custom Fonts/Animation/Styling from FontAwsome 
-// echo html_entity_decode($settings->elan_fontawesome_cdn);
 ?>
 

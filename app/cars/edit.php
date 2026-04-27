@@ -496,14 +496,9 @@ function updateCarDetails(array &$car): void
 require_once $abs_us_root . $us_url_root . 'users/includes/html_footer.php'; //custom template footer
 ?>
 
-<!-- Dropzone  jqueryui required for sortable dropzone -->
-<?php echo html_entity_decode($settings->elan_jquery_ui_cdn); ?>
-<?php echo html_entity_decode($settings->elan_dropzone_js_cdn); ?>
-<?php echo html_entity_decode($settings->elan_dropzone_css_cdn); ?>
-
-<!-- Include datapicker -->
-<?php echo html_entity_decode($settings->elan_datepicker_js_cdn); ?>
-<?php echo html_entity_decode($settings->elan_datepicker_css_cdn); ?>
+<script src="<?=$us_url_root?>usersc/js/jquery-ui.min.js"></script>
+<script src="<?=$us_url_root?>usersc/js/dropzone.min.js"></script>
+<link rel="stylesheet" href="<?=$us_url_root?>usersc/css/dropzone.min.css">
 
 <!-- Dynamic model loading from database -->
 <script src='<?= $us_url_root ?>app/assets/js/model-loader.js'></script>
@@ -899,23 +894,6 @@ require_once $abs_us_root . $us_url_root . 'users/includes/html_footer.php'; //c
 
     $(document).ready(function() {
         $('#message').hide();
-
-        // // Pop-up Calendar for date fields
-        // Avoid conflict with jquery datepicker - https://stackoverflow.com/questions/18507908/bootstrap-datepicker-noconflict#18512888
-        $(function() {
-            var datepicker = $.fn.datepicker.noConflict();
-            $.fn.bootstrapDP = datepicker;
-            $('#purchasedate').bootstrapDP({
-                format: 'yyyy-mm-dd',
-                todayHighlight: false,
-                autoclose: true,
-            });
-            $('#solddate').bootstrapDP({
-                format: 'yyyy-mm-dd',
-                todayHighlight: false,
-                autoclose: true,
-            });
-        });
 
         // Pre-populate dropdown menus if we are updating a car
 <?php if ($action === 'updateCar'): ?>

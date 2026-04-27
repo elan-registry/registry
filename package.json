@@ -46,6 +46,12 @@
     "url": "https://github.com/unibrain1/elanregistry/issues"
   },
   "homepage": "https://github.com/unibrain1/elanregistry#readme",
+  "dependencies": {
+    "chart.js": "4.5.1",
+    "datatables.net-bs4": "1.10.23",
+    "dropzone": "5.7.6",
+    "jquery-ui": "1.12.1"
+  },
   "devDependencies": {
     "@playwright/test": "^1.56.1",
     "dotenv": "^17.2.3",

@@ -13,6 +13,9 @@ The content-security-policy HTTP header provides an additional layer of security
 
 // Content Security Policy for ElanRegistry
 // Optimized policy without duplicates, allowing UserSpice framework while maintaining security
+// Stale domains removed (#405): unpkg.com, maxcdn.bootstrapcdn.com, stackpath.bootstrapcdn.com,
+// cdn.popper.js.org, bootswatch.com, cdn.bootswatch.com, use.fontawesome.com, ka-f.fontawesome.com
+// Remaining CDN domains (cdn.jsdelivr.net, cdnjs.cloudflare.com) will be removed in #618 when Bootstrap moves to self-hosted
 header("Content-Security-Policy: " .
     "default-src 'self'; " .
     "script-src 'self' 'unsafe-inline' 'unsafe-eval' " .
@@ -25,28 +28,13 @@ header("Content-Security-Policy: " .
         // JavaScript CDNs
         "https://cdn.jsdelivr.net " .
         "https://cdnjs.cloudflare.com " .
-        "https://unpkg.com " .
-        "https://code.jquery.com " .
         "https://ajax.googleapis.com " .
-        "https://maxcdn.bootstrapcdn.com " .
-        "https://stackpath.bootstrapcdn.com " .
-        "https://cdn.datatables.net " .
-        "https://kit.fontawesome.com " .
-        "https://cdn.popper.js.org " .
         "https://static.cloudflareinsights.com; " .
     "style-src 'self' 'unsafe-inline' " .
         // CSS CDNs and services
         "https://fonts.googleapis.com " .
         "https://cdn.jsdelivr.net " .
         "https://cdnjs.cloudflare.com " .
-        "https://maxcdn.bootstrapcdn.com " .
-        "https://stackpath.bootstrapcdn.com " .
-        "https://bootswatch.com " .
-        "https://cdn.bootswatch.com " .
-        "https://cdn.datatables.net " .
-        "https://use.fontawesome.com " .
-        "https://kit.fontawesome.com " .
-        "https://ka-f.fontawesome.com " .
         "https://www.gstatic.com; " .
     "img-src 'self' data: blob: " .
         // Image sources
@@ -56,10 +44,7 @@ header("Content-Security-Policy: " .
         "https://ssl.gstatic.com; " .
     "font-src 'self' " .
         // Font sources
-        "https://fonts.gstatic.com " .
-        "https://use.fontawesome.com " .
-        "https://kit.fontawesome.com " .
-        "https://ka-f.fontawesome.com; " .
+        "https://fonts.gstatic.com; " .
     "connect-src 'self' " .
         // API and AJAX endpoints
         "https://maps.googleapis.com " .
@@ -67,8 +52,6 @@ header("Content-Security-Policy: " .
         "https://ssl.gstatic.com " .
         // Cloudflare Turnstile
         "https://challenges.cloudflare.com " .
-        "https://kit.fontawesome.com " .
-        "https://ka-f.fontawesome.com " .
         // CDN for source maps
         "https://cdn.jsdelivr.net " .
         // Cloudflare Analytics

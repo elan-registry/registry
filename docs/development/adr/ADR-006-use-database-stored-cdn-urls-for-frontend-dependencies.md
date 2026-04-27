@@ -1,5 +1,7 @@
 # ADR-006: Use Database-Stored CDN URLs for Frontend Dependencies
 
+**Status: Superseded by [ADR-015](ADR-015-self-host-frontend-libraries.md)**
+
 ## Status
 
 **In Review** (retroactive)
