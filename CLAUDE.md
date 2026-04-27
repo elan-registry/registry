@@ -171,11 +171,9 @@ details and usage examples.
 
 **ALWAYS run before completing any task:**
 
-- Use `software-developer` agent for all coding work
-  (features, fixes, refactoring) — do not write code directly
-- Run `/security-review` to conduct a security review of all changes
-- Run `mcp__ide__getDiagnostics` to check all files for diagnostics
-- Fix any linting or type errors before considering the task complete
+- Use `software-developer` agent for changes spanning 3+ files or introducing new patterns. For targeted single-file fixes, edit directly.
+- Run `/security-review` when changes touch forms, SQL queries, auth, or user input
+- Fix any linting or type errors before considering the task complete (pre-commit hooks run PHPStan and phpcs automatically on staged files)
 - Run appropriate test suites for modified functionality
 
 ### Security Scanning (Semgrep)

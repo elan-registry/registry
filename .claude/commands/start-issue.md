@@ -24,10 +24,22 @@ Launch agents via the Task tool. Use parallel instances when work can be partiti
 | Technical Documentation Writer | `technical-documentation-writer` | `haiku` | Docs updates |
 | General Purpose | `general-purpose` | `haiku` | Multi-step research |
 
-**Always invoke:** Explore (Step 5), senior-product-manager (Step 6), senior-architect (Step 7.3).
-**Always invoke for code changes:** software-developer, senior-test-engineer.
+**Scale agent usage to issue complexity** — see tiers below. Over-invoking agents is waste.
+**Always invoke for code changes:** software-developer, senior-test-engineer (unless trivial fix).
 **Skip** docs agent for internal refactoring; test agent for docs-only changes.
-**Scale up** with parallel instances for large issues (3+ subsystems, PHPUnit + Playwright).
+
+## Issue Complexity Tiers
+
+Assess complexity immediately after fetching the issue. Choose the tier and follow its workflow.
+
+| Tier | Profile | Agent pattern |
+| --- | --- | --- |
+| **Small** | 1-2 files, clear scope, explicit acceptance criteria, no DB/security changes | 1 Explore → software-developer → security-reviewer (if forms/SQL touched) |
+| **Medium** | Feature, 3-5 files, some ambiguity, or touches DB/auth | 1-2 Explore → PM (if scope unclear) → Plan → software-developer → test engineer → security-reviewer |
+| **Large** | New subsystem, schema changes, cross-cutting concern, or significant ambiguity | Full workflow below |
+
+For Small issues skip: PM agent, pre-implementation architect call, parallel Explore agents.
+For Medium issues skip: pre-implementation architect call (architect reviews code, not plans).
 
 ## Workflow Steps
 
@@ -129,86 +141,45 @@ Confirm: "Marked issue #ISSUE_NUMBER as in progress and assigned to you."
 
 ### Step 5: Launch Explore Agents for Initial Research
 
-Before asking questions, launch Explore agents via the Task tool to understand
-the codebase context. Launch **multiple Explore agents in parallel** if the
-issue touches different areas:
+Before asking questions, launch Explore agents to understand the codebase context.
 
-- One agent per subsystem/directory affected by the issue
-- One agent to find existing patterns and conventions relevant to the change
-- One agent to trace dependencies and call chains
+**Scale to tier:**
 
-**Key documentation to reference during exploration:**
+- **Small:** 1 Explore agent covering the affected file(s) and adjacent patterns.
+- **Medium:** 1-2 Explore agents — one per distinct subsystem touched.
+- **Large:** 2-3 Explore agents in parallel — one per subsystem, one for patterns/conventions, one for tests.
 
-Each Explore agent should check these project documentation files for patterns,
-conventions, and existing functionality:
-
-- **USERSPICE_FUNCTIONS.md** - Existing UserSpice framework functions (avoid duplication)
-- **CLASSES.md** - Custom application classes (Car, CarView, ElanRegistryOwner, etc.)
-- **CODING_STANDARDS.md** - PHP 8+ typing, structure, naming conventions
-- **ERROR_HANDLING.md** - Error handling patterns, API response format, exception classes
-- **DATABASE.md** - Database schema, relationships, audit trail patterns
-- **DEPLOYMENT.md** - Environment-specific considerations
-
-Example: For a transfer system issue, launch parallel Explore agents for:
-
-- `app/cars/` (transfer pages and actions)
-- `usersc/classes/` (related classes, check CLASSES.md)
-- `tests/` (existing test coverage)
-
-Each agent should also verify: Are similar features already implemented? Do they
-follow UserSpice patterns or custom patterns? What security/database considerations
-apply?
+Each Explore agent should check the relevant docs (USERSPICE_FUNCTIONS.md, CLASSES.md,
+CODING_STANDARDS.md, ERROR_HANDLING.md, DATABASE.md) only when those areas are plausibly
+affected — don't blanket-read all docs for every issue.
 
 #### For Bug Issues (bug label): Investigate Testing Gaps
 
-If the issue has a `bug` label, **add a dedicated Explore agent** to investigate:
+Add an escape-analysis question to the Explore prompt: why wasn't this caught by existing
+tests? What code paths were untested? What type of test would prevent recurrence?
 
-- Why wasn't this bug caught by existing tests?
-- What test coverage gap allowed this to reach production?
-- Are there similar untested code paths in related areas?
-- What type of test would have prevented this (unit, integration, browser)?
+Document findings in the plan under **Bug Escape Analysis**.
 
-This "escape analysis" is critical for preventing similar bugs. Document findings.
-
-Wait for Explore results before proceeding to questions.
+Wait for Explore results before proceeding.
 
 ### Step 6: Interview Mode - Issue Refinement and Questions
 
-Before asking human interview questions, **launch the senior-product-manager
-agent** via the Task tool to analyze the issue for completeness and refinement
-needs.
+**For Small issues:** Skip the PM agent. Ask only questions you genuinely can't answer
+yourself from the issue text and Explore results. One or two targeted questions max.
 
-**Provide the PM agent with:**
+**For Medium/Large issues:** Launch the senior-product-manager agent when the issue has
+unclear scope, missing acceptance criteria, possible decomposition, or dependency concerns.
+Skip it when the issue is already well-defined.
 
-- The full issue details (title, description, labels, milestone, acceptance criteria if present)
-- The Explore results from Step 5
-- Any obvious scope, clarity, or dependency concerns
+When you do launch the PM agent, provide: issue details, Explore results, and specific
+concerns. Ask it to evaluate: completeness, acceptance criteria gaps, decomposition needs,
+and questions to ask the user.
 
-**Ask the PM agent to evaluate:**
+After any PM input, interview the user using AskUserQuestion. Ask only non-obvious
+questions — scope clarity, approach decisions, edge case handling. When providing options,
+note best practice or industry standard.
 
-1. Is this issue well-defined and ready for implementation?
-2. What's missing or unclear (acceptance criteria, edge cases, scope boundaries)?
-3. Does this issue need decomposition? If so, how should it be split?
-4. What questions should the orchestrator ask the user to refine this issue?
-5. Is the milestone assignment and priority appropriate?
-6. Are there dependencies on other issues or systems?
-
-**Wait for the PM agent's assessment before proceeding.**
-
-After receiving the PM agent's recommendations, interview the user using
-AskUserQuestion. Incorporate the PM agent's suggested questions along with
-your own technical, UI/UX, and implementation questions.
-
-Ask about: scope clarity, acceptance criteria, edge cases, technical
-implementation, UI/UX, concerns and tradeoffs. When providing options, tell
-me what is the best known practice or the industry standard.
-
-Make sure the questions are not obvious. Be very in-depth and continue until
-it is complete.
-
-**If the PM agent recommends issue decomposition or significant scope
-changes**, discuss this with the user before proceeding to plan mode. The
-user may want to update the issue or create new issues before implementation.
+**If the PM agent recommends issue decomposition**, discuss with the user before proceeding.
 
 ### Step 7: Enter Plan Mode and Ask Questions Throughout
 
@@ -288,79 +259,20 @@ and your answers. I'll ask clarifying questions as I refine the approach."
    This analysis will be included in the implementation plan and highlighted in
    the PR description.
 
-7. **Consult specialized agents** (Step 7.3): Before finalizing the plan, determine which
-   agents are needed based on the issue type, then launch them **in parallel**:
+7. **Consult specialized agents** (Step 7.3 — Medium/Large only):
 
-   - **senior-architect** (always): Provide the issue details, Explore results,
-     your research findings, and proposed approach. Ask for review of:
+   **Skip this step for Small issues.** The architect reviews code after implementation, not plans.
 
-     **Architecture & Standards:**
-     - Code structure and PHP 8+ type hints compliance
-     - Adherence to CODING_STANDARDS.md
-     - Alignment with existing project patterns (CLASSES.md, error handling)
-     - UserSpice integration (don't duplicate framework functionality)
+   For Medium/Large, launch in parallel only the agents that apply:
 
-     **Security Review:**
-     - CSRF token handling (all forms must have tokens)
-     - SQL injection prevention (all queries must use prepared statements)
-     - Input validation and sanitization (all user inputs)
-     - XSS prevention (output escaping)
-     - Session/authentication security
-     - Sensitive data handling (never commit credentials)
+   - **senior-test-engineer** (when code changes are made): Ask for a test strategy — which
+     test types apply (unit, integration, browser, security, DB) and which existing tests
+     need updating. Launch separate instances for PHPUnit vs Playwright if both are needed.
 
-     **Database & Compliance:**
-     - Database schema changes and trigger impacts
-     - Audit trail implications (when records are modified)
-     - GDPR compliance (if handling personal data)
-     - Data retention and cleanup policies
+   - **technical-documentation-writer** (only when changes affect public APIs, schema,
+     classes, or user flows): Ask which docs need updating based on the change type.
 
-     **Maintainability:**
-     - Code clarity and documentation
-     - Test coverage adequacy
-     - Future refactoring considerations
-
-   - **senior-test-engineer** (when code changes are made): Provide the issue
-     details and proposed implementation. Ask for a comprehensive test strategy
-     using this checklist (skip items that don't apply):
-
-     **Test Strategy Checklist:**
-     - [ ] Unit tests (PHPUnit) - test individual functions/methods
-     - [ ] Integration tests (PHPUnit) - test component interactions
-     - [ ] Regression tests - test that existing functionality still works
-     - [ ] Edge case tests - boundary conditions, error scenarios
-     - [ ] Browser tests (Playwright) - UI interaction, form submission, navigation
-     - [ ] Security tests - CSRF validation, XSS prevention, injection prevention
-     - [ ] Database tests - audit trail creation, trigger execution if applicable
-     - [ ] Existing tests - need updates due to API/behavior changes?
-
-     Launch **separate instances** if both PHPUnit and Playwright tests are
-     needed.
-
-   - **technical-documentation-writer** (when changes affect documentation):
-     Use the **Documentation Requirements Matrix** below to determine if docs
-     updates are needed. Provide the agent with: issue details, proposed changes,
-     and which docs to update.
-
-     **Documentation Requirements Matrix:**
-
-     | Change Type | Documentation to Update |
-     | --- | --- |
-     | **Database schema changes** | DATABASE.md, CLASSES.md (if class models change) |
-     | **API endpoints added/changed** | FRONTEND_API_GUIDE.md, ERROR_HANDLING.md (if response format changes) |
-     | **New PHP classes/methods** | CLASSES.md, USERSPICE_QUICK_LOOKUP.md (if public API) |
-     | **User-visible features** | User guides (in `docs/user/` if exists), release notes |
-     | **Configuration/environment changes** | ENVIRONMENT.md, DEPLOYMENT.md |
-     | **Coding standards violations fixed** | CODING_STANDARDS.md (if pattern changed) |
-     | **Security patterns added** | ERROR_HANDLING.md, CODING_STANDARDS.md |
-     | **UserSpice integration changes** | Integration guide (Wiki), USERSPICE_FUNCTIONS.md |
-     | **Testing patterns/infrastructure** | TESTING.md |
-     | **Deployment procedure changes** | DEPLOYMENT.md, QUICK_REFERENCE.md |
-
-     Then ask: "Based on these changes, which documentation should be updated?"
-
-   - **Skip agents that aren't relevant**: Internal refactoring that doesn't
-     change APIs doesn't need the docs agent. Docs-only changes don't need the
-     test agent.
+   Do NOT launch senior-architect pre-implementation. Architect review happens post-implementation (Step 10.6) when there is actual code to review.
 
 8. **Incorporate agent feedback into the plan**: Merge feedback into a single
    comprehensive plan. Include sections only for agents that were consulted:
@@ -416,8 +328,8 @@ Once the user approves the plan, execute using agents strategically:
      plan. Run in parallel with test agents when there are no dependencies.
 
 4. Run quality checks:
-   - `mcp__ide__getDiagnostics` to check for linting/type errors
    - Relevant test suites (verify the test agent's tests pass)
+   - Pre-commit hooks run PHPStan and phpcs on staged files — these catch type and lint errors
 
 5. **Run `/security-review`**: Launch the security-reviewer agent via the
    Agent tool with `subagent_type: "security-reviewer"` to audit all changed
@@ -511,27 +423,13 @@ the version from the milestone branch name (e.g., `milestone/v2.17.0` ->
 - **Follow project conventions** from CLAUDE.md and CODING_STANDARDS.md
 - **Read before modifying** - always read files before suggesting changes
 - **Test thoroughly** - run diagnostics and tests before considering work complete
-- **Launch Explore agents early** - use parallel Explore agents in Step 5 to
-  build context before asking questions or planning
-- **Check documentation during Explore** - agents must review USERSPICE_FUNCTIONS.md,
-  CLASSES.md, CODING_STANDARDS.md, and other relevant docs for patterns
-- **Investigate testing gaps for bugs** (Step 5 & 7.2.5) - For `bug` labeled issues,
-  analyze why the bug escaped testing and document preventive automated tests
-- **Verify UserSpice integration** (Step 7.1) - do not duplicate framework
-  functionality; leverage existing UserSpice functions
-- **Assess database and security impacts** (Step 7.2) - identify schema changes,
-  audit trail impacts, security requirements, and GDPR implications upfront
-- **Security architecture review** - senior-architect must verify CSRF tokens,
-  prepared statements, input validation, XSS prevention, and data handling
-- **Mandatory test checklist** - test engineer uses the provided checklist to
-  identify all test types needed (unit, integration, regression, browser, security)
-- **Documentation requirements matrix** - use the matrix to determine which docs
-  need updating based on the change type
-- **Only invoke agents that are needed** - match agents to the issue type;
-  skip docs agent for internal refactoring, skip test agent for docs-only changes
-- **Scale agents up** - launch multiple instances of the same agent type when
-  work can be partitioned (e.g., separate Explore agents per subsystem, separate
-  test agents for PHPUnit vs Playwright)
+- **Tier agent usage** - assess complexity first; Small issues skip PM, pre-implementation architect, and multi-agent Explore
+- **Investigate testing gaps for bugs** - for `bug` labeled issues, include escape analysis in the plan
+- **Verify UserSpice integration** (Step 7.1) - do not duplicate framework functionality
+- **Assess database and security impacts** (Step 7.2) - identify schema changes and security requirements upfront
+- **No pre-implementation architect call** - architect reviews code after implementation, not plans
+- **Only invoke agents that are needed** - match agents to the issue type; skip docs agent for internal refactoring, skip test agent for docs-only changes
+- **Scale agents up** - separate test agents for PHPUnit vs Playwright when both are needed
 - **Run independent agents in parallel** - when agents don't depend on each
   other's output, launch them simultaneously for efficiency
 - **Never close issues manually** - use `Closes #NNN` in the PR body so

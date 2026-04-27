@@ -60,26 +60,25 @@ git diff --stat main..milestone/$ARGUMENTS
 
 ### Step 7: Update wiki documentation
 
-Get the list of changed source files in this milestone:
+**Default: skip.** Wiki updates are only needed when the milestone changes architecture, database schema, PHP classes, external integrations, or user-visible flows.
+
+Get the changed source files:
 
 ```bash
 git diff --name-only main...milestone/$ARGUMENTS
 ```
 
-Determine if wiki updates are needed: check whether changed files affect architecture, database schema,
-UserSpice integration, PHP classes, file storage, external integrations, user flows, or dev tooling.
+**Skip wiki update if** changes are only: bug fixes, config tweaks, docs reorganization, CSS/JS tweaks, or SQL seed data with no schema change.
 
-If wiki updates are needed:
+**Run wiki update if** changed files include: `usersc/classes/`, `database/*.sql` (schema
+changes), new user flows, new env variables, or changes to how UserSpice is integrated.
 
-1. Clone the wiki repo into a temporary location if not already available
-2. Read the relevant wiki pages
-3. Launch `technical-documentation-writer` agent(s) in parallel to update
-   affected wiki pages
-4. Save updated pages to `wiki/` directory in the project root
-5. Note: wiki pages must be manually pushed to the wiki repo after review
+If update is needed:
 
-If no wiki updates are needed (e.g., purely bug fixes with no structural
-changes), note this in the summary and skip.
+1. Clone wiki repo if not already available
+2. Read only the affected wiki pages (not all pages)
+3. Launch `technical-documentation-writer` agent (haiku) to update only those pages
+4. Save to `wiki/` directory; push to wiki repo manually after review
 
 Commit any wiki files:
 
@@ -127,28 +126,27 @@ Launch the `security-reviewer` agent via the Agent tool with
 
 ### Step 9.7: Local multi-agent review (before opening the PR)
 
-Run `/review-pr` locally against `main` on the milestone branch. This runs
-on the user's Claude subscription, so CI doesn't have to pay for the first
-deep pass on the milestone PR.
+Run a scoped `/review-pr` against `main` on the milestone branch. Scope the agents to the file types changed — don't run all agents unconditionally.
 
-```text
-/review-pr
-```
+Determine which agents apply based on `git diff --name-only main...milestone/$ARGUMENTS`:
 
-Scope the review to `git diff main...milestone/$ARGUMENTS`. The multi-agent
-suite runs in parallel (currently: code-reviewer, pr-test-analyzer,
-silent-failure-hunter, comment-analyzer, type-design-analyzer,
-senior-architect — agent list reflects `/review-pr` implementation).
+| Changed file types | Agents to run |
+| --- | --- |
+| `.php` files | code-reviewer, silent-failure-hunter |
+| `.php` with forms/SQL | + security-reviewer |
+| New PHP classes/types | + type-design-analyzer |
+| Test files changed | pr-test-analyzer |
+| Docs/comments changed | comment-analyzer |
+
+Launch only the applicable agents in parallel. Skip agents for file types not present in the diff.
+
 Focus areas at milestone level:
 
 - Cross-issue integration (did two PRs introduce contradictions?)
-- Architecture drift vs. the wiki
 - Release-notes accuracy vs. the merged PR list
 - Aggregated security surface
 
-If Critical or Important issues surface, **stop and fix them before
-creating the PR**. These would otherwise land as blocking comments on the
-milestone-level CI review and require another push cycle.
+If Critical or Important issues surface, **stop and fix them before creating the PR**.
 
 Once the local review is clean, proceed to Step 10.
 
