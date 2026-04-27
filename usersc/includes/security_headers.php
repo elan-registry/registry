@@ -12,49 +12,31 @@ The content-security-policy HTTP header provides an additional layer of security
 */
 
 // Content Security Policy for ElanRegistry
-// Optimized policy without duplicates, allowing UserSpice framework while maintaining security
-// Stale domains removed (#405): unpkg.com, maxcdn.bootstrapcdn.com, stackpath.bootstrapcdn.com,
-// cdn.popper.js.org, bootswatch.com, cdn.bootswatch.com, use.fontawesome.com, ka-f.fontawesome.com
-// Remaining CDN domains (cdn.jsdelivr.net, cdnjs.cloudflare.com) will be removed in #618 when Bootstrap moves to self-hosted
+// Bootstrap, fonts, and other libraries are self-hosted — no CDN origins needed except:
+//   - Google Maps (maps feature), Cloudflare Turnstile (CAPTCHA), Cloudflare Analytics,
+//     code.jquery.com (UserSpice loads jQuery from there via users/js/jquery.php)
 header("Content-Security-Policy: " .
     "default-src 'self'; " .
     "script-src 'self' 'unsafe-inline' 'unsafe-eval' " .
-        // Google Services
         "https://maps.googleapis.com " .
         "https://www.gstatic.com " .
         "https://ssl.gstatic.com " .
-        // Cloudflare Turnstile
         "https://challenges.cloudflare.com " .
-        // JavaScript CDNs
-        "https://cdn.jsdelivr.net " .
-        "https://cdnjs.cloudflare.com " .
-        "https://ajax.googleapis.com " .
+        "https://code.jquery.com " .
         "https://static.cloudflareinsights.com; " .
     "style-src 'self' 'unsafe-inline' " .
-        // CSS CDNs and services
-        "https://fonts.googleapis.com " .
-        "https://cdn.jsdelivr.net " .
-        "https://cdnjs.cloudflare.com " .
         "https://www.gstatic.com; " .
     "img-src 'self' data: blob: " .
-        // Image sources
         "https://maps.googleapis.com " .
         "https://maps.gstatic.com " .
         "https://www.gravatar.com " .
         "https://ssl.gstatic.com; " .
-    "font-src 'self' " .
-        // Font sources
-        "https://fonts.gstatic.com; " .
+    "font-src 'self'; " .
     "connect-src 'self' " .
-        // API and AJAX endpoints
         "https://maps.googleapis.com " .
         "https://www.gstatic.com " .
         "https://ssl.gstatic.com " .
-        // Cloudflare Turnstile
         "https://challenges.cloudflare.com " .
-        // CDN for source maps
-        "https://cdn.jsdelivr.net " .
-        // Cloudflare Analytics
         "https://cloudflareinsights.com " .
         "https://static.cloudflareinsights.com; " .
     "frame-src 'self' https://challenges.cloudflare.com; " .

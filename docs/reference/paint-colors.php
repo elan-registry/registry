@@ -15,7 +15,7 @@ declare(strict_types=1);
  */
 
 require_once '../../users/init.php';
-require_once $abs_us_root . $us_url_root . 'users/includes/template/prep.php';
+require_once $abs_us_root . $us_url_root . 'usersc/includes/elanregistry_prep.php';
 
 // Security check - ensure page access is authorized
 if (!securePage($php_self)) {

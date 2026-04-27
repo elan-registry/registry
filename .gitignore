@@ -82,7 +82,15 @@ usersc/plugins/hooker/*
 # Usersc Templates, Widgets, Install
 ########################################
 usersc/templates/*
-!usersc/templates/ElanRegistry
+!usersc/templates/customizer/
+usersc/templates/customizer/*
+!usersc/templates/customizer/file_nav.php
+!usersc/templates/customizer/assets/
+usersc/templates/customizer/assets/*
+!usersc/templates/customizer/assets/child_themes/
+usersc/templates/customizer/assets/child_themes/*
+!usersc/templates/customizer/assets/child_themes/*.*
+!usersc/templates/customizer.css
 usersc/widgets/*
 !usersc/widgets/settings/
 usersc/widgets/settings/*.png

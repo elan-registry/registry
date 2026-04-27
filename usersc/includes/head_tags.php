@@ -10,7 +10,7 @@ require_once $abs_us_root . $us_url_root . 'app/version.php';
 // Uses validated Server::getScheme() and Server::get('HTTP_HOST') with proper sanitization
 $site_title = $settings->site_name ?? 'Lotus Elan Registry';
 $site_description = 'Registry for the Lotus Elan (1963-1973) and Elan Plus 2 (1967-1974). Document your classic British sports car, connect with owners, and preserve automotive history.';
-$og_image = $us_url_root . 'usersc/templates/ElanRegistry/assets/images/og-lotus-elan.jpg';
+$og_image = $us_url_root . 'usersc/images/og-lotus-elan.jpg';
 ?>
 
 <!-- Basic Meta Tags -->
@@ -46,14 +46,10 @@ $og_image = $us_url_root . 'usersc/templates/ElanRegistry/assets/images/og-lotus
 <?php endif; ?>
 
 <!-- Favicon and Icons -->
-<link rel="shortcut icon" href="<?= $us_url_root ?>usersc/templates/ElanRegistry/assets/images/favicon.ico">
-<link rel="icon" type="image/png" sizes="32x32" href="<?= $us_url_root ?>usersc/templates/ElanRegistry/assets/images/favicon-32x32.png">
-<link rel="icon" type="image/png" sizes="16x16" href="<?= $us_url_root ?>usersc/templates/ElanRegistry/assets/images/favicon-16x16.png">
-<link rel="apple-touch-icon" sizes="180x180" href="<?= $us_url_root ?>usersc/templates/ElanRegistry/assets/images/apple-touch-icon.png">
-
-<!-- DNS Prefetch for Performance -->
-<link rel="dns-prefetch" href="//fonts.googleapis.com">
-<link rel="dns-prefetch" href="//cdnjs.cloudflare.com">
+<link rel="shortcut icon" href="<?= $us_url_root ?>usersc/images/favicon.ico">
+<link rel="icon" type="image/png" sizes="32x32" href="<?= $us_url_root ?>usersc/images/favicon-32x32.png">
+<link rel="icon" type="image/png" sizes="16x16" href="<?= $us_url_root ?>usersc/images/favicon-16x16.png">
+<link rel="apple-touch-icon" sizes="180x180" href="<?= $us_url_root ?>usersc/images/apple-touch-icon.png">
 
 <!-- Security and Policy -->
 <meta name="referrer" content="strict-origin-when-cross-origin">

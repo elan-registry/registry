@@ -20,7 +20,7 @@ UPDATE settings SET
   req_cap = 1,
   req_num = 1,
   copyright = 'Lotus Elan Registry and UniBrain',
-  template = 'ElanRegistry',
+  template = 'customizer',
   show_tos = 0,
 
   -- User Management & Authentication

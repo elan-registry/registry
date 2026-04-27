@@ -65,7 +65,7 @@ if (function_exists('logger') && class_exists('LogCategories')) {
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="robots" content="noindex, nofollow">
     <title>403 Access Forbidden - Lotus Elan Registry</title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@4.6.2/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="../usersc/css/bootstrap.min.css" rel="stylesheet">
     <style>
         :root {
             --elan-red: #d9230f;
@@ -208,7 +208,7 @@ if (function_exists('logger') && class_exists('LogCategories')) {
     <nav class="navbar navbar-expand-lg navbar-dark">
         <div class="container">
             <a class="navbar-brand" href="/">
-                <img src="../usersc/templates/ElanRegistry/assets/images/Lotus-logo-40x40.png"
+                <img src="../usersc/images/logo-72x72.png"
                      alt="Lotus Elan Registry"
                      onerror="this.parentElement.innerHTML='Lotus Elan Registry'">
             </a>
@@ -263,7 +263,6 @@ if (function_exists('logger') && class_exists('LogCategories')) {
         </div>
     </div>
 
-    <script src="https://cdn.jsdelivr.net/npm/jquery@3.7.1/dist/jquery.slim.min.js" integrity="sha384-5AkRS45j4ukf+JbWAfHL8P4onPA9p0KwwP7pUdjSQA3ss9edbJUJc/XcYAiheSSz" crossorigin="anonymous"></script>
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@4.6.2/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="../usersc/js/bootstrap.bundle.min.js"></script>
 </body>
 </html>
