@@ -84,7 +84,6 @@ usersc/plugins/hooker/*
 usersc/templates/*
 !usersc/templates/customizer/
 usersc/templates/customizer/*
-!usersc/templates/customizer/header.php
 !usersc/templates/customizer/file_nav_custom.php
 !usersc/templates/customizer/navigation.php
 !usersc/templates/customizer/assets/
