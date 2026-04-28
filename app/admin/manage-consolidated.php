@@ -388,6 +388,7 @@ if (Input::exists('post')) {
                                         &nbsp;<i class="fas fa-exchange-alt"></i> <?= $systemStatus['pending_transfers'] ?> pending transfers
                                     <?php } ?>
                                     <br><i class="fas fa-clock"></i> Updated: <?= date('M j, Y g:i A', strtotime($systemStatus['last_updated'])) ?>
+                                    <br><i class="fas fa-code-branch"></i> <?= htmlspecialchars(ApplicationVersion::get()) ?>
                                 </small>
                             </div>
                         </div>

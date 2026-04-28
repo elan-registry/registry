@@ -12,9 +12,10 @@ The content-security-policy HTTP header provides an additional layer of security
 */
 
 // Content Security Policy for ElanRegistry
-// Bootstrap, fonts, and other libraries are self-hosted — no CDN origins needed except:
+// Most libraries are self-hosted — CDN origins needed for:
 //   - Google Maps (maps feature), Cloudflare Turnstile (CAPTCHA), Cloudflare Analytics,
-//     code.jquery.com (UserSpice loads jQuery from there via users/js/jquery.php)
+//     code.jquery.com (UserSpice loads jQuery from there via users/js/jquery.php),
+//     cdnjs.cloudflare.com (Customizer template loads Bootstrap CSS/JS; UserSpice dashboard loads Chart.js)
 header("Content-Security-Policy: " .
     "default-src 'self'; " .
     "script-src 'self' 'unsafe-inline' 'unsafe-eval' " .
@@ -23,9 +24,11 @@ header("Content-Security-Policy: " .
         "https://ssl.gstatic.com " .
         "https://challenges.cloudflare.com " .
         "https://code.jquery.com " .
-        "https://static.cloudflareinsights.com; " .
+        "https://static.cloudflareinsights.com " .
+        "https://cdnjs.cloudflare.com; " .
     "style-src 'self' 'unsafe-inline' " .
-        "https://www.gstatic.com; " .
+        "https://www.gstatic.com " .
+        "https://cdnjs.cloudflare.com; " .
     "img-src 'self' data: blob: " .
         "https://maps.googleapis.com " .
         "https://maps.gstatic.com " .
