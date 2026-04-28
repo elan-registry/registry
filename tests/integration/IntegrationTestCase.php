@@ -132,7 +132,7 @@ abstract class IntegrationTestCase extends TestCase
             'fname' => 'Test',
             'lname' => 'User',
             'active' => 1,
-            'joined' => date('Y-m-d H:i:s')
+            'join_date' => date('Y-m-d H:i:s')
         ];
 
         $userData = array_merge($defaults, $data);
@@ -181,7 +181,7 @@ abstract class IntegrationTestCase extends TestCase
             'series' => 'S4',
             'variant' => 'SE',
             'type' => 'FHC',
-            'chassis' => "TEST{$uniqueSuffix}",
+            'chassis' => 'T' . substr($uniqueSuffix, -10), // varchar(15) limit
             'color' => 'Red',
             'ctime' => date('Y-m-d H:i:s')
         ];
