@@ -137,7 +137,7 @@ function updateCarDetails(array &$car): void
     }
 }
 ?>
-<link rel="stylesheet" href="<?= $us_url_root ?>app/assets/css/edit_car.css">
+<link rel="stylesheet" href="<?= $us_url_root ?>app/assets/css/edit_car.min.css">
 
 <div class="page-wrapper">
     <div class="container-fluid">
@@ -493,7 +493,7 @@ require_once $abs_us_root . $us_url_root . 'users/includes/html_footer.php'; //c
 <link rel="stylesheet" href="<?=$us_url_root?>usersc/css/flatpickr.min.css">
 
 <!-- Dynamic model loading from database -->
-<script src='<?= $us_url_root ?>app/assets/js/model-loader.js'></script>
+<script src='<?= $us_url_root ?>app/assets/js/model-loader.min.js'></script>
 
 <script>
     Dropzone.autoDiscover = false;

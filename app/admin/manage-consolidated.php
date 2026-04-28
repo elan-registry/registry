@@ -790,17 +790,17 @@ if (Input::exists('post')) {
 <?php require_once $abs_us_root . $us_url_root . 'users/includes/html_footer.php'; ?>
 
 <!-- Location Picker Styles -->
-<link rel="stylesheet" href="<?=$us_url_root?>app/assets/css/location-picker.css?v=2.11.2">
+<link rel="stylesheet" href="<?=$us_url_root?>app/assets/css/location-picker.min.css">
 
 <!-- Location Picker Script -->
-<script src="<?=$us_url_root?>app/assets/js/location-picker.js?v=2.11.2"></script>
+<script src="<?=$us_url_root?>app/assets/js/location-picker.min.js"></script>
 
 <!-- Include custom CSS and JavaScript -->
-<link rel="stylesheet" href="assets/manage-consolidated.css">
+<link rel="stylesheet" href="assets/manage-consolidated.min.css">
 <script>
     window.elanUrlRoot = '<?= $us_url_root ?>';
     // Make CSRF token available to ElanRegistryAPI client
     document.documentElement.setAttribute('data-csrf-token', '<?= $csrfToken ?>');
 </script>
-<script src="assets/manage-consolidated.js"></script>
-<script src="assets/backup-operations.js"></script>
+<script src="assets/manage-consolidated.min.js"></script>
+<script src="assets/backup-operations.min.js"></script>

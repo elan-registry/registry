@@ -316,10 +316,10 @@ includeHook($hooks, 'bottom');
 ?>
 
 <!-- Location Picker Styles -->
-<link rel="stylesheet" href="<?=$us_url_root?>app/assets/css/location-picker.css?v=2.11.2">
+<link rel="stylesheet" href="<?=$us_url_root?>app/assets/css/location-picker.min.css">
 
 <!-- Location Picker Script -->
-<script src="<?=$us_url_root?>app/assets/js/location-picker.js?v=2.11.2"></script>
+<script src="<?=$us_url_root?>app/assets/js/location-picker.min.js"></script>
 
 <script type="text/javascript">
     $(document).ready(function(){

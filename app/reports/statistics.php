@@ -264,7 +264,7 @@ window.statisticsConfig = {
 <script src="<?=$us_url_root?>usersc/js/chart.umd.min.js"></script>
 
 <!-- Load Statistics JavaScript first -->
-<script src="<?= $us_url_root ?>app/assets/js/statistics.js?v=2.8.4-debug"></script>
+<script src="<?= $us_url_root ?>app/assets/js/statistics.min.js"></script>
 
 <!-- Initialize Google Maps and Statistics -->
 <script>

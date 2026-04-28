@@ -620,10 +620,10 @@ if ($userQ2->count() > 0) {
 require_once $abs_us_root . $us_url_root . 'users/includes/html_footer.php'; //custom template footer
 ?>
 <!-- Location Picker Styles -->
-<link rel="stylesheet" href="<?=$us_url_root?>app/assets/css/location-picker.css?v=2.11.2">
+<link rel="stylesheet" href="<?=$us_url_root?>app/assets/css/location-picker.min.css">
 
 <!-- Location Picker Script -->
-<script src="<?=$us_url_root?>app/assets/js/location-picker.js?v=2.11.2"></script>
+<script src="<?=$us_url_root?>app/assets/js/location-picker.min.js"></script>
 
 <!-- Place any per-page javascript here -->
 <script>

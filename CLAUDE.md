@@ -89,6 +89,9 @@ composer test:coverage          # Coverage report
 composer check:php              # PHP coding standards + PHPStan analysis
 composer check                  # Full check (PHP standards + PHPStan + ESLint)
 
+# Build (minify first-party JS/CSS — run after editing source files)
+npm run build                   # Minify app/assets/js/, app/assets/css/, app/admin/assets/
+
 # Linting
 npm run lint                    # ESLint for JavaScript
 npm run lint:fix                # ESLint with auto-fix
