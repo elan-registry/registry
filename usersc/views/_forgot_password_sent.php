@@ -28,7 +28,7 @@ and requires it instead of the stock template when the reset email has been sent
             </p>
           <?php endif; ?>
           <a href="<?= htmlspecialchars($us_url_root, ENT_QUOTES, 'UTF-8') ?>users/login.php" class="btn btn-outline-primary">
-            <i class="fas fa-arrow-left mr-2"></i>Back to Login
+            <i class="fas fa-arrow-left me-2"></i>Back to Login
           </a>
         </div>
       </div>

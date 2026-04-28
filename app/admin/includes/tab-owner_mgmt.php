@@ -45,14 +45,12 @@ if (isset($_GET['owner_id']) && is_numeric($_GET['owner_id'])) {
                            class="form-control"
                            placeholder="Search owners by name, email, or location..."
                            value="<?= $selectedOwnerId ? 'Loading owner ID ' . $selectedOwnerId . '...' : '' // nosemgrep: php.lang.security.taint-unsafe-echo-tag.taint-unsafe-echo-tag ?>">
-                    <div class="input-group-append">
-                        <button class="btn btn-primary" type="button" id="ownerSearchBtn">
-                            <i class="fas fa-search"></i> Search
-                        </button>
-                        <button class="btn btn-secondary" type="button" id="ownerClearBtn">
-                            <i class="fas fa-times"></i> Clear
-                        </button>
-                    </div>
+                    <button class="btn btn-primary" type="button" id="ownerSearchBtn">
+                        <i class="fas fa-search"></i> Search
+                    </button>
+                    <button class="btn btn-secondary" type="button" id="ownerClearBtn">
+                        <i class="fas fa-times"></i> Clear
+                    </button>
                 </div>
 
                 <!-- Search Results Area -->
@@ -329,14 +327,14 @@ $ownerQualityScore = $totalOwners > 0 ? max(0, 100 - (($qualityIssues / $totalOw
                     <div class="row mb-4" id="owner-report-<?= $key ?>">
                         <div class="col-12">
                             <div class="card border-<?= $report['severity'] ?>">
-                                <div class="card-header bg-dark" data-toggle="collapse" data-target="#owner-collapse-<?= $key ?>" aria-expanded="false" style="cursor: pointer;">
+                                <div class="card-header bg-dark" data-bs-toggle="collapse" data-bs-target="#owner-collapse-<?= $key ?>" aria-expanded="false" style="cursor: pointer;">
                                     <div class="d-flex justify-content-between align-items-center">
                                         <h4 class="mb-0 text-white">
                                             <i class="<?= $report['icon'] ?> text-<?= $report['severity'] ?>"></i> <?= $report['title'] ?>
-                                            <span class="badge badge-<?= $report['severity'] ?> ml-2"><?= $report['count'] ?></span>
+                                            <span class="badge text-bg-<?= $report['severity'] ?> ms-2"><?= $report['count'] ?></span>
                                         </h4>
                                         <div class="d-flex align-items-center">
-                                            <small class="text-light mr-3">Impact: <?= $report['impact'] ?></small>
+                                            <small class="text-light me-3">Impact: <?= $report['impact'] ?></small>
                                             <i class="fas fa-chevron-down text-light collapse-icon"></i>
                                         </div>
                                     </div>
@@ -369,10 +367,10 @@ $ownerQualityScore = $totalOwners > 0 ? max(0, 100 - (($qualityIssues / $totalOw
                                                             <strong>Recommended Actions:</strong> Review owner details, check car ownership, contact owners to clarify situation, merge accounts if appropriate.
                                                         </p>
                                                     </div>
-                                                    <div class="col-md-4 text-right">
+                                                    <div class="col-md-4 text-end">
                                                         <small class="text-muted">
-                                                            <span class="badge badge-success badge-sm mr-1"><i class="fas fa-check"></i></span>Matching Fields
-                                                            <span class="badge badge-danger badge-sm ml-2"><i class="fas fa-exclamation-triangle"></i></span>Different Fields
+                                                            <span class="badge text-bg-success badge-sm me-1"><i class="fas fa-check"></i></span>Matching Fields
+                                                            <span class="badge text-bg-danger badge-sm ms-2"><i class="fas fa-exclamation-triangle"></i></span>Different Fields
                                                         </small>
                                                     </div>
                                                 </div>
@@ -408,14 +406,14 @@ $ownerQualityScore = $totalOwners > 0 ? max(0, 100 - (($qualityIssues / $totalOw
                                                         <div class="card-header bg-warning bg-opacity-10 d-flex justify-content-between align-items-center">
                                                             <h5 class="mb-0">
                                                                 <button class="btn btn-link text-decoration-none p-0" type="button"
-                                                                        data-toggle="collapse" data-target="#emailGroup<?= $groupIndex ?>" aria-expanded="true">
+                                                                        data-bs-toggle="collapse" data-bs-target="#emailGroup<?= $groupIndex ?>" aria-expanded="true">
                                                                     <i class="fas fa-chevron-down"></i>
                                                                     Group <?= $groupIndex ?>: <?= htmlspecialchars($duplicate->email) ?>
                                                                 </button>
                                                             </h5>
                                                             <div>
-                                                                <span class="badge badge-warning"><?= count($owners) ?> owners</span>
-                                                                <span class="badge badge-secondary">Total Cars: <?= array_sum(array_column($owners, 'car_count')) ?></span>
+                                                                <span class="badge text-bg-warning"><?= count($owners) ?> owners</span>
+                                                                <span class="badge text-bg-secondary">Total Cars: <?= array_sum(array_column($owners, 'car_count')) ?></span>
                                                             </div>
                                                         </div>
 
@@ -436,11 +434,11 @@ $ownerQualityScore = $totalOwners > 0 ? max(0, 100 - (($qualityIssues / $totalOw
                                                                                     <div>
                                                                                         <strong>Owner #<?= $owner->id ?></strong>
                                                                                         <?php if ($isNewer) { ?>
-                                                                                            <span class="badge badge-success badge-sm ml-1">NEWER</span>
+                                                                                            <span class="badge text-bg-success badge-sm ms-1">NEWER</span>
                                                                                         <?php } ?>
                                                                                     </div>
                                                                                     <div>
-                                                                                        <span class="badge badge-<?= $qualityClass ?> badge-sm">
+                                                                                        <span class="badge text-bg-<?= $qualityClass ?> badge-sm">
                                                                                             Quality: <?= $owner->quality_score ?>%
                                                                                         </span>
                                                                                     </div>
@@ -484,12 +482,12 @@ $ownerQualityScore = $totalOwners > 0 ? max(0, 100 - (($qualityIssues / $totalOw
                                                                                                     <?= htmlspecialchars($owner->lname ?: 'Missing') ?>
                                                                                                 </span>
                                                                                                 <?= !($fieldMatches['fname'] && $fieldMatches['lname']) ?
-                                                                                                    '<i class="fas fa-exclamation-triangle text-warning ml-1" title="Different values"></i>' :
-                                                                                                    '<i class="fas fa-check text-success ml-1" title="Values match"></i>' ?>
+                                                                                                    '<i class="fas fa-exclamation-triangle text-warning ms-1" title="Different values"></i>' :
+                                                                                                    '<i class="fas fa-check text-success ms-1" title="Values match"></i>' ?>
                                                                                             </p>
                                                                                             <p class="mb-1">
                                                                                                 <strong>Email:</strong> <?= htmlspecialchars($owner->email) ?>
-                                                                                                <i class="fas fa-check text-success ml-1" title="Same email (expected)"></i>
+                                                                                                <i class="fas fa-check text-success ms-1" title="Same email (expected)"></i>
                                                                                             </p>
                                                                                             <p class="mb-1 <?= $fieldMatches['city'] && $fieldMatches['state'] && $fieldMatches['country'] ? 'field-match' : 'field-differ' ?>">
                                                                                                 <strong>Location:</strong>
@@ -500,17 +498,17 @@ $ownerQualityScore = $totalOwners > 0 ? max(0, 100 - (($qualityIssues / $totalOw
                                                                                                     ?>
                                                                                                 </span>
                                                                                                 <?= !($fieldMatches['city'] && $fieldMatches['state'] && $fieldMatches['country']) ?
-                                                                                                    '<i class="fas fa-exclamation-triangle text-warning ml-1" title="Different values"></i>' :
-                                                                                                    '<i class="fas fa-check text-success ml-1" title="Values match"></i>' ?>
+                                                                                                    '<i class="fas fa-exclamation-triangle text-warning ms-1" title="Different values"></i>' :
+                                                                                                    '<i class="fas fa-check text-success ms-1" title="Values match"></i>' ?>
                                                                                             </p>
                                                                                             <p class="mb-1">
                                                                                                 <strong>Coordinates:</strong>
                                                                                                 <?php if ($owner->lat && $owner->lon) { ?>
                                                                                                     <?= number_format((float)$owner->lat, 4) ?>, <?= number_format((float)$owner->lon, 4) ?>
-                                                                                                    <i class="fas fa-check text-success ml-1"></i>
+                                                                                                    <i class="fas fa-check text-success ms-1"></i>
                                                                                                 <?php } else { ?>
                                                                                                     <span class="text-danger">Missing</span>
-                                                                                                    <i class="fas fa-times text-danger ml-1"></i>
+                                                                                                    <i class="fas fa-times text-danger ms-1"></i>
                                                                                                 <?php } ?>
                                                                                             </p>
                                                                                         </div>
@@ -519,7 +517,7 @@ $ownerQualityScore = $totalOwners > 0 ? max(0, 100 - (($qualityIssues / $totalOw
                                                                                             <h6 class="text-success">Car Ownership</h6>
                                                                                             <?php if ($owner->car_count > 0) { ?>
                                                                                                 <p class="mb-2">
-                                                                                                    <span class="badge badge-success"><?= $owner->car_count ?> <?= $owner->car_count === 1 ? 'car' : 'cars' ?></span>
+                                                                                                    <span class="badge text-bg-success"><?= $owner->car_count ?> <?= $owner->car_count === 1 ? 'car' : 'cars' ?></span>
                                                                                                 </p>
                                                                                                 <div class="car-list-container" style="max-height: 200px; overflow-y: auto;">
                                                                                                     <table class="table table-sm table-bordered mb-0">
@@ -535,7 +533,7 @@ $ownerQualityScore = $totalOwners > 0 ? max(0, 100 - (($qualityIssues / $totalOw
                                                                                                                 <tr>
                                                                                                                     <td>
                                                                                                                         <a href="<?= $us_url_root ?>app/cars/details.php?car_id=<?= $car->id ?>"
-                                                                                                                           target="_blank" class="badge badge-primary">
+                                                                                                                           target="_blank" class="badge text-bg-primary">
                                                                                                                             <?= $car->id ?>
                                                                                                                         </a>
                                                                                                                     </td>
@@ -544,7 +542,7 @@ $ownerQualityScore = $totalOwners > 0 ? max(0, 100 - (($qualityIssues / $totalOw
                                                                                                                             <?= htmlspecialchars($car->year ?: '?') ?>
                                                                                                                             <?= htmlspecialchars($car->type ?: '?') ?>
                                                                                                                             <?php if ($car->series) { ?>
-                                                                                                                                <span class="badge badge-secondary badge-sm"><?= htmlspecialchars($car->series) ?></span>
+                                                                                                                                <span class="badge text-bg-secondary badge-sm"><?= htmlspecialchars($car->series) ?></span>
                                                                                                                             <?php } ?>
                                                                                                                         </small>
                                                                                                                     </td>
@@ -556,7 +554,7 @@ $ownerQualityScore = $totalOwners > 0 ? max(0, 100 - (($qualityIssues / $totalOw
                                                                                                 </div>
                                                                                             <?php } else { ?>
                                                                                                 <p class="mb-0">
-                                                                                                    <span class="badge badge-secondary">0 cars</span>
+                                                                                                    <span class="badge text-bg-secondary">0 cars</span>
                                                                                                 </p>
                                                                                             <?php } ?>
                                                                                         </div>
@@ -614,13 +612,13 @@ $ownerQualityScore = $totalOwners > 0 ? max(0, 100 - (($qualityIssues / $totalOw
                                                         <?php foreach ($report['data'] as $owner) { ?>
                                                             <tr>
                                                                 <td>
-                                                                    <span class="badge badge-primary"><?= $owner->id ?></span>
+                                                                    <span class="badge text-bg-primary"><?= $owner->id ?></span>
                                                                 </td>
                                                                 <td>
                                                                     <?php if ($owner->fname || $owner->lname) { ?>
                                                                         <?= htmlspecialchars(trim($owner->fname . ' ' . $owner->lname)) ?>
                                                                     <?php } else { ?>
-                                                                        <span class="badge badge-warning">Missing Name</span>
+                                                                        <span class="badge text-bg-warning">Missing Name</span>
                                                                     <?php } ?>
                                                                 </td>
                                                                 <td><?= htmlspecialchars($owner->email) ?></td>
@@ -630,14 +628,14 @@ $ownerQualityScore = $totalOwners > 0 ? max(0, 100 - (($qualityIssues / $totalOw
                                                                         <?= htmlspecialchars($owner->state ? $owner->state . ', ' : '') ?>
                                                                         <?= htmlspecialchars($owner->country ?: '') ?>
                                                                     <?php } else { ?>
-                                                                        <span class="badge badge-warning">Missing Location</span>
+                                                                        <span class="badge text-bg-warning">Missing Location</span>
                                                                     <?php } ?>
                                                                 </td>
                                                                 <td>
                                                                     <?php if (isset($owner->car_count)) { ?>
-                                                                        <span class="badge badge-success"><?= $owner->car_count ?></span>
+                                                                        <span class="badge text-bg-success"><?= $owner->car_count ?></span>
                                                                     <?php } else { ?>
-                                                                        <span class="badge badge-secondary">0</span>
+                                                                        <span class="badge text-bg-secondary">0</span>
                                                                     <?php } ?>
                                                                 </td>
                                                                 <td>
@@ -651,7 +649,7 @@ $ownerQualityScore = $totalOwners > 0 ? max(0, 100 - (($qualityIssues / $totalOw
                                                                             <?= date('M j, Y', strtotime($owner->last_login)) ?>
                                                                         </small>
                                                                     <?php } else { ?>
-                                                                        <span class="badge badge-danger">Never</span>
+                                                                        <span class="badge text-bg-danger">Never</span>
                                                                     <?php } ?>
                                                                 </td>
                                                                 <?php if ($key === 'owners_missing_info') { ?>
@@ -660,7 +658,7 @@ $ownerQualityScore = $totalOwners > 0 ? max(0, 100 - (($qualityIssues / $totalOw
                                                                     </td>
                                                                 <?php } ?>
                                                                 <td>
-                                                                    <button type="button" class="btn btn-sm btn-outline-primary mr-1"
+                                                                    <button type="button" class="btn btn-sm btn-outline-primary me-1"
                                                                             onclick="loadOwnerById(<?= $owner->id ?>)"
                                                                             title="Edit Owner Profile">
                                                                         <i class="fas fa-edit"></i> Edit

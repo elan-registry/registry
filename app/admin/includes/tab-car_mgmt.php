@@ -201,7 +201,7 @@ try {
             <div class="card-header bg-warning text-dark">
                 <h5 class="mb-0">
                     <i class="fas fa-shield-alt"></i> Administrative Tools
-                    <small class="ml-2 text-muted">For exceptional cases only</small>
+                    <small class="ms-2 text-muted">For exceptional cases only</small>
                 </h5>
             </div>
             <div class="card-body">
@@ -218,7 +218,7 @@ try {
                             <div class="card-header bg-warning text-dark">
                                 <h6 class="mb-0">
                                     <i class="fas fa-user-friends"></i> Manual Car Reassignment
-                                    <span class="badge badge-warning badge-sm ml-2">Administrative Use Only</span>
+                                    <span class="badge text-bg-warning badge-sm ms-2">Administrative Use Only</span>
                                 </h6>
                             </div>
                             <div class="card-body">
@@ -226,16 +226,14 @@ try {
                                     <div class="row">
                                         <!-- Car Selection -->
                                         <div class="col-md-6">
-                                            <div class="form-group">
+                                            <div class="mb-3">
                                                 <label for="reassign_car_id" class="form-label">Car ID</label>
                                                 <div class="input-group">
                                                     <input type="number" class="form-control" id="reassign_car_id" name="car_id"
                                                            placeholder="Enter Car ID" required>
-                                                    <div class="input-group-append">
-                                                        <button class="btn btn-outline-info" type="button" id="lookupCarBtn">
-                                                            <i class="fas fa-search"></i>
-                                                        </button>
-                                                    </div>
+                                                    <button class="btn btn-outline-info" type="button" id="lookupCarBtn">
+                                                        <i class="fas fa-search"></i>
+                                                    </button>
                                                 </div>
                                                 <div class="invalid-feedback">Please provide a valid car ID.</div>
 
@@ -254,17 +252,15 @@ try {
 
                                         <!-- User Selection -->
                                         <div class="col-md-6">
-                                            <div class="form-group">
+                                            <div class="mb-3">
                                                 <label for="reassign_user_id" class="form-label">New Owner ID</label>
 
                                                 <div class="input-group">
                                                     <input type="number" class="form-control" id="reassign_user_id" name="user_id"
                                                            placeholder="Enter User ID" required>
-                                                    <div class="input-group-append">
-                                                        <button class="btn btn-outline-info" type="button" id="lookupUserBtn">
-                                                            <i class="fas fa-search"></i>
-                                                        </button>
-                                                    </div>
+                                                    <button class="btn btn-outline-info" type="button" id="lookupUserBtn">
+                                                        <i class="fas fa-search"></i>
+                                                    </button>
                                                 </div>
                                                 <div class="invalid-feedback">Please provide a valid user ID.</div>
 
@@ -312,7 +308,7 @@ try {
                             <div class="card-header bg-danger text-white">
                                 <h6 class="mb-0">
                                     <i class="fas fa-trash-alt"></i> Permanent Car Deletion
-                                    <span class="badge badge-light badge-sm ml-2">Extremely Rare</span>
+                                    <span class="badge text-bg-light badge-sm ms-2">Extremely Rare</span>
                                 </h6>
                             </div>
                             <div class="card-body">
@@ -322,16 +318,14 @@ try {
                                 </div>
 
                                 <form name="deleteCar" action="" method="POST" class="delete-form needs-validation" novalidate>
-                                    <div class="form-group">
+                                    <div class="mb-3">
                                         <label for="delete_car_id" class="form-label">Car ID to Delete</label>
                                         <div class="input-group">
                                             <input type="number" class="form-control" id="delete_car_id" name="car_id"
                                                    placeholder="Car ID" required>
-                                            <div class="input-group-append">
-                                                <button class="btn btn-outline-info" type="button" id="lookupDeleteCarBtn">
-                                                    <i class="fas fa-search"></i>
-                                                </button>
-                                            </div>
+                                            <button class="btn btn-outline-info" type="button" id="lookupDeleteCarBtn">
+                                                <i class="fas fa-search"></i>
+                                            </button>
                                         </div>
                                         <div class="invalid-feedback">Please provide a valid car ID.</div>
 
@@ -346,7 +340,7 @@ try {
                                             </div>
                                         </div>
                                     </div>
-                                    <div class="form-group">
+                                    <div class="mb-3">
                                         <label for="delete_confirmation" class="form-label">Type "DELETE" to confirm</label>
                                         <input type="text" class="form-control" id="delete_confirmation" name="confirmation"
                                                placeholder="Type DELETE" required>
@@ -435,9 +429,7 @@ document.addEventListener("DOMContentLoaded", function() {
             alertDiv.innerHTML = `
                 <i class="fas fa-info-circle"></i> <strong>Data Quality Integration:</strong>
                 Car ID <?= $preloadCarId // nosemgrep: php.lang.security.taint-unsafe-echo-tag.taint-unsafe-echo-tag ?> has been pre-loaded from the Data Quality dashboard for editing.
-                <button type="button" class="close" data-dismiss="alert" aria-label="Close">
-                    <span aria-hidden="true">&times;</span>
-                </button>
+                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
             `;
             messageContainer.appendChild(alertDiv);
         }

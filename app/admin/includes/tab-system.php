@@ -185,7 +185,7 @@ foreach ($fixScripts as $script) {
     <button type="button" class="btn btn-warning btn-sm" onclick="performBackupCleanup()">
         <i class="fas fa-trash"></i> Enhanced Cleanup
     </button>
-    <button type="button" class="btn btn-secondary btn-sm ml-2" onclick="dismissCleanupPrompt()">
+    <button type="button" class="btn btn-secondary btn-sm ms-2" onclick="dismissCleanupPrompt()">
         <i class="fas fa-times"></i> Dismiss
     </button>
 </div>
@@ -199,8 +199,8 @@ foreach ($fixScripts as $script) {
             <div>
                 <small class="text-light">
                     <i class="fas fa-info-circle"></i> Run Status:
-                    <span class="badge badge-success">✅ Completed</span>
-                    <span class="badge badge-secondary">➖ Not Run</span>
+                    <span class="badge text-bg-success">✅ Completed</span>
+                    <span class="badge text-bg-secondary">➖ Not Run</span>
                 </small>
             </div>
         </div>
@@ -228,11 +228,11 @@ foreach ($fixScripts as $script) {
                             <tr>
                                 <td>
                                     <?php if ($scriptRunStatus[$script]['has_run']): ?>
-                                        <span class="badge badge-success" title="Script completed successfully">
+                                        <span class="badge text-bg-success" title="Script completed successfully">
                                             <i class="fas fa-check"></i> Completed
                                         </span>
                                     <?php else: ?>
-                                        <span class="badge badge-secondary" title="Script has not been run">
+                                        <span class="badge text-bg-secondary" title="Script has not been run">
                                             <i class="fas fa-minus"></i> Not Run
                                         </span>
                                     <?php endif; ?>
@@ -327,7 +327,7 @@ foreach ($fixScripts as $script) {
                     <button type="button" class="btn btn-sm btn-outline-primary" onclick="runSchemaValidation(this)">
                         <i class="fas fa-check-double"></i> Validate Schema
                     </button>
-                    <button type="button" class="btn btn-sm btn-outline-success ml-2" onclick="runSchemaMaintenance()">
+                    <button type="button" class="btn btn-sm btn-outline-success ms-2" onclick="runSchemaMaintenance()">
                         <i class="fas fa-tools"></i> Run Maintenance
                     </button>
                 </div>
@@ -350,25 +350,25 @@ foreach ($fixScripts as $script) {
                         <tbody>
                             <tr>
                                 <td><strong>Settings Auto-Creation</strong></td>
-                                <td><span class="badge badge-success">Active</span></td>
+                                <td><span class="badge text-bg-success">Active</span></td>
                                 <td>All required fields present and validated</td>
                                 <td><small class="text-muted">Real-time</small></td>
                             </tr>
                             <tr>
                                 <td><strong>Core Tables</strong></td>
-                                <td><span class="badge badge-success">Healthy</span></td>
+                                <td><span class="badge text-bg-success">Healthy</span></td>
                                 <td>Users, cars, profiles, and relationships intact</td>
                                 <td><small class="text-muted">System startup</small></td>
                             </tr>
                             <tr>
                                 <td><strong>FIX Script Tracking</strong></td>
-                                <td><span class="badge badge-success">Operational</span></td>
+                                <td><span class="badge text-bg-success">Operational</span></td>
                                 <td>Script execution history maintained</td>
                                 <td><small class="text-muted">Per execution</small></td>
                             </tr>
                             <tr>
                                 <td><strong>Backup System</strong></td>
-                                <td><span class="badge badge-<?= $showCleanupPrompt ? 'warning' : 'success' ?>">
+                                <td><span class="badge text-bg-<?= $showCleanupPrompt ? 'warning' : 'success' ?>">
                                     <?= $showCleanupPrompt ? 'Maintenance' : 'Healthy' ?>
                                 </span></td>
                                 <td><?= $showCleanupPrompt ? 'Cleanup recommended for optimal performance' : 'Backup retention within normal limits' ?></td>
@@ -396,7 +396,7 @@ foreach ($fixScripts as $script) {
                     </div>
                     <h6>Automated Backups</h6>
                     <p class="small text-muted mb-2">Created before FIX script execution</p>
-                    <div class="badge badge-primary"><?= $backupStats['automated']['count'] ?> files</div>
+                    <div class="badge text-bg-primary"><?= $backupStats['automated']['count'] ?> files</div>
                     <div class="small text-muted"><?= round($backupStats['automated']['total_size'] / 1024 / 1024, 1) ?>MB</div>
                 </div>
             </div>
@@ -407,7 +407,7 @@ foreach ($fixScripts as $script) {
                     </div>
                     <h6>Manual Backups</h6>
                     <p class="small text-muted mb-2">Administrator-initiated backups</p>
-                    <div class="badge badge-info"><?= $backupStats['manual']['count'] ?> files</div>
+                    <div class="badge text-bg-info"><?= $backupStats['manual']['count'] ?> files</div>
                     <div class="small text-muted"><?= round($backupStats['manual']['total_size'] / 1024 / 1024, 1) ?>MB</div>
                 </div>
             </div>
@@ -418,7 +418,7 @@ foreach ($fixScripts as $script) {
                     </div>
                     <h6>Rollback Files</h6>
                     <p class="small text-muted mb-2">Emergency recovery backups</p>
-                    <div class="badge badge-warning"><?= $backupStats['rollback']['count'] ?> files</div>
+                    <div class="badge text-bg-warning"><?= $backupStats['rollback']['count'] ?> files</div>
                     <div class="small text-muted"><?= round($backupStats['rollback']['total_size'] / 1024 / 1024, 1) ?>MB</div>
                 </div>
             </div>
@@ -450,7 +450,7 @@ foreach ($fixScripts as $script) {
             <button type="button" class="btn btn-success" onclick="createManualBackup()">
                 <i class="fas fa-save"></i> Create Manual Backup
             </button>
-            <button type="button" class="btn btn-outline-info ml-2" onclick="listBackupFiles()">
+            <button type="button" class="btn btn-outline-info ms-2" onclick="listBackupFiles()">
                 <i class="fas fa-list"></i> List Backup Files
             </button>
         </div>
@@ -459,7 +459,7 @@ foreach ($fixScripts as $script) {
             <button type="button" class="btn btn-outline-warning btn-sm" onclick="performBackupCleanup()">
                 <i class="fas fa-broom"></i> Cleanup Old Backups
             </button>
-            <button type="button" class="btn btn-outline-primary btn-sm ml-2" onclick="runSchemaValidation(this)">
+            <button type="button" class="btn btn-outline-primary btn-sm ms-2" onclick="runSchemaValidation(this)">
                 <i class="fas fa-check-circle"></i> Validate Schema
             </button>
         </div>
@@ -473,9 +473,7 @@ foreach ($fixScripts as $script) {
                 <div class="modal-content">
                     <div class="modal-header">
                         <h5 class="modal-title"><i class="fas fa-database"></i> Backup Files</h5>
-                        <button type="button" class="close" data-dismiss="modal">
-                            <span>&times;</span>
-                        </button>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                     </div>
                     <div class="modal-body" id="backupListContent">
                         <div class="text-center">
@@ -483,7 +481,7 @@ foreach ($fixScripts as $script) {
                         </div>
                     </div>
                     <div class="modal-footer">
-                        <button type="button" class="btn btn-secondary" data-dismiss="modal">Close</button>
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
                     </div>
                 </div>
             </div>
@@ -495,15 +493,13 @@ foreach ($fixScripts as $script) {
                 <div class="modal-content">
                     <div class="modal-header bg-warning text-dark">
                         <h5 class="modal-title"><i class="fas fa-exclamation-triangle"></i> <span id="confirmTitle">Confirm Action</span></h5>
-                        <button type="button" class="close" data-dismiss="modal">
-                            <span>&times;</span>
-                        </button>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                     </div>
                     <div class="modal-body" id="confirmMessage">
                         Are you sure?
                     </div>
                     <div class="modal-footer">
-                        <button type="button" class="btn btn-secondary" data-dismiss="modal">Cancel</button>
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
                         <button type="button" class="btn btn-primary" id="confirmButton">Confirm</button>
                     </div>
                 </div>
@@ -525,11 +521,11 @@ function showConfirmDialog(title, message, onConfirm) {
 
     // Add new click handler
     document.getElementById('confirmButton').addEventListener('click', function() {
-        $('#confirmationModal').modal('hide');
+        bootstrap.Modal.getInstance(document.getElementById('confirmationModal'))?.hide();
         onConfirm();
     });
 
-    $('#confirmationModal').modal('show');
+    bootstrap.Modal.getOrCreateInstance(document.getElementById('confirmationModal')).show();
 }
 
 // Dismiss cleanup prompt
