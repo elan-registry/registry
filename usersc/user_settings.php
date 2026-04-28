@@ -488,7 +488,7 @@ if ($userQ2->count() > 0) {
     <div class="container">
         <div class="well">
             <div class="row">
-                <div class="col-xs-12 col-md-10">
+                <div class="col-12 col-md-10">
                     <h1>Update your user settings</h1> <br>
                     <!-- Messages now handled by UserSpice session system in template (Issue #237) -->
 

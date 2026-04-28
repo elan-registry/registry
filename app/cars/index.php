@@ -103,7 +103,6 @@ window.ELAN_CONFIG = {
     fixedHeader: true,
     responsive: true,
     pageLength: 15,
-    scrollX: true,
     'aLengthMenu': [
       [10, 25, 50, 100, -1],
       [10, 25, 50, 100, 'All']
@@ -132,24 +131,32 @@ window.ELAN_CONFIG = {
       data: 'id',
       'searchable': false,
       'orderable': false,
+      responsivePriority: 1,
       'render': function(data, type, row, meta) {
         return '<a class="btn btn-success btn-sm" href="' + us_url_root + 'app/cars/details.php?car_id=' + data + '">Details';
       }
     }, {
       data: 'year',
+      responsivePriority: 1
     }, {
-      data: 'type'
+      data: 'type',
+      responsivePriority: 1
     }, {
-      data: 'chassis'
+      data: 'chassis',
+      responsivePriority: 1
     }, {
-      data: 'series'
+      data: 'series',
+      responsivePriority: 2
     }, {
-      data: 'variant'
+      data: 'variant',
+      responsivePriority: 2
     }, {
-      data: 'color'
+      data: 'color',
+      responsivePriority: 2
     }, {
       data: 'image',
       'searchable': false,
+      responsivePriority: 3,
       'render': function(data, type, row) {
         if (data) {
           return carousel(row);
@@ -158,16 +165,21 @@ window.ELAN_CONFIG = {
         }
       }
     }, {
-      data: 'fname'
+      data: 'fname',
+      responsivePriority: 3
     }, {
-      data: 'city'
+      data: 'city',
+      responsivePriority: 3
     }, {
-      data: 'state'
+      data: 'state',
+      responsivePriority: 3
     }, {
-      data: 'country'
+      data: 'country',
+      responsivePriority: 3
     }, {
       data: 'ctime',
       'searchable': true,
+      responsivePriority: 3
     }]
   });
 </script>

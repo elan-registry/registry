@@ -16,6 +16,7 @@
     "playwright:security": "playwright test tests/playwright/security.test.js",
     "playwright:maps": "playwright test tests/playwright/maps-charts.test.js",
     "playwright:csp": "playwright test tests/playwright/csp-validation.spec.js",
+    "playwright:mobile": "playwright test tests/playwright/mobile-responsive.test.js",
     "playwright:headed": "playwright test --headed",
     "playwright:debug": "playwright test --debug",
     "playwright:report": "playwright show-report",

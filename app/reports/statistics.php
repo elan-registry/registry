@@ -26,6 +26,11 @@ if (!securePage($php_self)) {
 $dataService = new StatisticsDataService($db);
 ?>
 
+<style>
+.chart-container { height: 400px; }
+@media (max-width: 575.98px) { .chart-container { height: 250px; } }
+</style>
+
 <div class="page-wrapper">
     <div class="container-fluid">
         <div class="page-container">
@@ -157,7 +162,7 @@ $dataService = new StatisticsDataService($db);
                                                 <div class="card-header">
                                                     <h5 class="mb-0">Registry Timeline</h5>
                                                 </div>
-                                                <div class="card-body" style="height: 400px;">
+                                                <div class="card-body chart-container">
                                                     <canvas id="timelineChart"></canvas>
                                                 </div>
                                             </div>
@@ -167,7 +172,7 @@ $dataService = new StatisticsDataService($db);
                                                 <div class="card-header">
                                                     <h5 class="mb-0">Recent Registration Activity</h5>
                                                 </div>
-                                                <div class="card-body" style="height: 400px;">
+                                                <div class="card-body chart-container">
                                                     <canvas id="ageChart"></canvas>
                                                 </div>
                                             </div>
