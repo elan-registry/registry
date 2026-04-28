@@ -104,6 +104,7 @@ require_once $abs_us_root . $us_url_root . 'users/includes/html_footer.php'; //c
         data: "id",
         'searchable': false,
         'orderable': false,
+        visible: false,
       },
       {
         data: "year",
@@ -149,9 +150,12 @@ require_once $abs_us_root . $us_url_root . 'users/includes/html_footer.php'; //c
                    '<i class="fas fa-spinner fa-spin"></i> Checking...' +
                    '</span></div>';
           }
+          if (type === 'sort' || type === 'type') {
+            return data || '';
+          }
           return '';
         },
-        orderable: false,
+        orderable: true,
         searchable: false
       }
     ]
@@ -193,8 +197,10 @@ require_once $abs_us_root . $us_url_root . 'users/includes/html_footer.php'; //c
             );
           }
         })
-        .catch(function() {
-          // Registry check failed - handle silently
+        .catch(function(error) {
+          if (error && error.name !== 'ApiCancelledError') {
+            console.error('Registry link check failed for chassis', chassis, error);
+          }
           container.html(
             '<span class="text-danger small">' +
             '<i class="fas fa-exclamation-triangle"></i> Check failed' +

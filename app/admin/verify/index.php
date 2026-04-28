@@ -30,7 +30,7 @@ $resultsUpdate = $db->query("SELECT count(*) as count  FROM `cars_hist` WHERE op
 	<div class="container-fluid">
 		<div class="well">
 			<div class="row">
-				<div class="col-8">
+				<div class="col-12 col-md-8">
 					<div class="card card-default">
 						<div class="card-header">
 							<h2><strong>Report of Verification Status</strong></h2>
@@ -43,7 +43,7 @@ $resultsUpdate = $db->query("SELECT count(*) as count  FROM `cars_hist` WHERE op
 						</div> <!-- card-body -->
 					</div> <!-- card -->
 				</div> <!-- col -->
-				<div class="col-4">
+				<div class="col-12 col-md-4">
 					<div class="card card-default">
 						<div class="card-header">
 							<h2><strong>Verify Cars</strong></h2>

@@ -43,7 +43,11 @@
 #progressbar {
     margin-bottom: 30px;
     overflow: hidden;
-    color: lightgrey
+    color: lightgrey;
+    display: flex;
+    flex-wrap: wrap;
+    padding-left: 0;
+    list-style: none
 }
 
 #progressbar .active {
@@ -54,9 +58,15 @@
     list-style-type: none;
     font-size: 15px;
     width: 25%;
-    float: left;
     position: relative;
     font-weight: 400
+}
+
+@media (max-width: 575.98px) {
+    #progressbar li {
+        width: 50%;
+        font-size: 12px;
+    }
 }
 
 #progressbar #cardetails:before {
