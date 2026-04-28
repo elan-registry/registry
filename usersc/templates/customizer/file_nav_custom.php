@@ -2,7 +2,7 @@
 <ul class='us_menu horizontal dark' style=' z-index: 50;' id='us_menu_1_638b71f2ed026'>
   <div class='us_brand full_screen'>
     <a href="<?= $us_url_root ?>">
-      <img src="<?= $us_url_root ?>usersc/images/logo-100x100.png" alt="Lotus Elan Registry" style="height:100px;width:100px;">
+      <img src="<?= $us_url_root ?>usersc/images/logo-100x100.png" alt="Lotus Elan Registry" class="img-fluid" style="max-height:100px;width:auto">
     </a>
   </div>
   <div class='flex-grow-1'></div>
@@ -10,7 +10,7 @@
   <div class='us_menu_mobile_wrapper'>
     <div class='us_brand'>
       <a href="<?= $us_url_root ?>">
-        <img src="<?= $us_url_root ?>usersc/images/logo-100x100.png" alt="Lotus Elan Registry" style="height:50px;width:50px;">
+        <img src="<?= $us_url_root ?>usersc/images/logo-100x100.png" alt="Lotus Elan Registry" class="img-fluid" style="max-height:50px;width:auto">
       </a>
     </div>
 

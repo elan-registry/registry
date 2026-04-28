@@ -509,7 +509,7 @@ if (!empty($_GET)) {
                                 <div class="alert alert-info mb-3">
                                     <i class="fas fa-info-circle"></i>
                                     <strong>About History:</strong> This table shows all changes made to the car's information over time.
-                                    Use horizontal scrolling on mobile devices to view all columns.
+                                    Tap any row to expand hidden columns on mobile devices.
                                 </div>
                                 
                                 <div class="table-responsive">
@@ -778,5 +778,8 @@ document.addEventListener('DOMContentLoaded', function() {
     body { font-size: 12px; }
     h1 { font-size: 18px; }
     h3 { font-size: 14px; }
+}
+@media (max-width: 575.98px) {
+    #map { height: 220px !important; }
 }
 </style>

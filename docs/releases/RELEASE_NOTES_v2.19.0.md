@@ -23,7 +23,14 @@
 - **Bootstrap 5 Template** ([#618](https://github.com/unibrain1/elanregistry/issues/618)):
   Updated site template to Bootstrap 5.3 — faster load times, improved accessibility, and modern UI components.
 - **Mobile Responsiveness** ([#620](https://github.com/unibrain1/elanregistry/issues/620)):
-  All 18 app pages audited and fixed for 375px mobile viewports — no more horizontal scrolling on phones.
+  All 18 app pages audited and fixed for 375px mobile viewports — DataTables columns collapse to
+  expandable child rows on phones, edit forms stack correctly, admin tabs scroll horizontally,
+  chart containers shrink at mobile breakpoint. No horizontal overflow on any page.
+- **Homepage "How are we doing?" chart** ([#620](https://github.com/unibrain1/elanregistry/issues/620)):
+  Replaced statistics table with Bootstrap 5 progress bars showing registered vs. produced counts
+  per series. Intro text now shows live car count and years since the registry started (Jan 2003).
+- **Factory page improvements** ([#620](https://github.com/unibrain1/elanregistry/issues/620)):
+  Hid the internal Record # column; Registry Link column is now sortable.
 
 ## Technical Changes
 

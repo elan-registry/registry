@@ -45,7 +45,6 @@ function initializeHistoryTable() {
 
     try {
         const table = $('#carHistoryTable').DataTable({
-            scrollX: true,
             responsive: true,
             order: [
                 [1, 'desc']
@@ -63,44 +62,57 @@ function initializeHistoryTable() {
                 }
             },
             columns: [{
-                    data: "operation"
+                    data: "operation",
+                    responsivePriority: 1
                 },
                 {
-                    data: "mtime"
+                    data: "mtime",
+                    responsivePriority: 1
                 },
                 {
-                    data: "year"
+                    data: "year",
+                    responsivePriority: 2
                 },
                 {
-                    data: "type"
+                    data: "type",
+                    responsivePriority: 2
                 },
                 {
-                    data: "chassis"
+                    data: "chassis",
+                    responsivePriority: 1
                 },
                 {
-                    data: "series"
+                    data: "series",
+                    responsivePriority: 3
                 },
                 {
-                    data: "variant"
+                    data: "variant",
+                    responsivePriority: 3
                 },
                 {
-                    data: "color"
+                    data: "color",
+                    responsivePriority: 3
                 },
                 {
-                    data: "engine"
+                    data: "engine",
+                    responsivePriority: 3
                 },
                 {
-                    data: "purchasedate"
+                    data: "purchasedate",
+                    responsivePriority: 3
                 },
                 {
-                    data: "solddate"
+                    data: "solddate",
+                    responsivePriority: 3
                 },
                 {
-                    data: "comments"
+                    data: "comments",
+                    responsivePriority: 3
                 },
                 {
                     data: "image",
                     searchable: false,
+                    responsivePriority: 3,
                     render: function(data, type, row) {
                         if (data) {
                             return carousel(row, row.car_id);
@@ -109,16 +121,20 @@ function initializeHistoryTable() {
                     }
                 },
                 {
-                    data: "fname"
+                    data: "fname",
+                    responsivePriority: 3
                 },
                 {
-                    data: "city"
+                    data: "city",
+                    responsivePriority: 3
                 },
                 {
-                    data: "state"
+                    data: "state",
+                    responsivePriority: 3
                 },
                 {
-                    data: "country"
+                    data: "country",
+                    responsivePriority: 3
                 }
             ]
         });

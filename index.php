@@ -53,12 +53,6 @@ if (!empty($randomCarResults)) {
     }
 }
 
-/**
- * Get count of cars by series using efficient single query
- * Groups cars into series categories and counts registrations
- *
- * @var array $seriesResults Database results containing series counts
- */
 $seriesResults = $db->query("SELECT
     CASE
         WHEN series LIKE 's1%' THEN 's1'
@@ -73,28 +67,14 @@ FROM cars
 WHERE series LIKE 's1%' OR series LIKE 's2%' OR series LIKE 's3%' OR series LIKE 's4%' OR series LIKE 'sprint%' OR series LIKE '+2%'
 GROUP BY series_group")->results();
 
-/**
- * Initialize count array with zeros for all series
- *
- * @var array<string, int> $count Array of series counts indexed by series name
- */
 $count = ['s1' => 0, 's2' => 0, 's3' => 0, 's4' => 0, 'sprint' => 0, '+2' => 0];
 
-/**
- * Populate count array from database query results
- */
 foreach ($seriesResults as $result) {
     if ($result->series_group) {
         $count[$result->series_group] = (int) $result->count;
     }
 }
 
-/**
- * Number of cars produced per series (from reference material)
- * Data source: "Authentic Lotus Elan & Plus 2 1962-1974" by Robinshaw and Ross
- *
- * @var array<string, string> $notes Production numbers for each series
- */
 $notes = [];
 $notes['s1']     = "900";
 $notes['s2']     = "1250";
@@ -103,17 +83,15 @@ $notes['s4']     = "2976";
 $notes['sprint'] = "900";
 $notes['+2']     = "4526";
 
-?>
-<?php
-/**
- * HTML Template Start - Homepage Layout
- *
- * The following section contains the main homepage template with:
- * - Site header and navigation
- * - Registry statistics table
- * - Featured random car display
- * - Resource links and acknowledgments
- */
+$total = 0;
+$totalN = 0;
+foreach ($count as $key => $value) {
+    $total  += (int) $value;
+    $totalN += (int) $notes[$key];
+}
+
+$yearsSince = (int) (new DateTime())->diff(new DateTime('2003-01-01'))->y;
+
 ?>
 <div class="page-wrapper">
 	<!-- Page Content -->
@@ -151,8 +129,8 @@ $notes['+2']     = "4526";
 						<p>The Lotus Elan Registry started in January 2003. A thread on LotusElan.net asked the question,
 							<a href='http://www.lotuselan.net/forums/elan-f14/lotus-elan-register-t349.html'>
 								Does anybody know if there is a Lotus Elan register?</a>
-							I bashed together a registry and a few years later
-							we have over 300 cars accounted for with more added every month.
+							I bashed together a registry and <?= (int) $yearsSince ?> years later
+							we have over <?= (int) $total ?> cars accounted for with more added every month.
 						</p>
 					</div> <!-- card-body -->
 				</div> <!-- card -->
@@ -162,39 +140,35 @@ $notes['+2']     = "4526";
 						<h2 class='mb-0'><i class='fas fa-chart-bar'></i> How are we doing?</h2>
 					</div>
 					<div class="card-body">
-						<table id="seriestable" class="table table-striped table-bordered table-hover table-sm" aria-describedby="card-header">
-							<thead class="thead-light">
-								<tr>
-									<th scope="column">Series</th>
-									<th scope="column">Registered</th>
-									<th scope="column">Number produced *</th>
-									<th scope="column">Percent registered</th>
-								</tr>
-							</thead>
-							<tbody>
-								<?php
-								/**
-								 * Generate statistics table rows showing registry data by series
-								 * Calculates totals and percentages for registered vs produced cars
-								 *
-								 * @var int $total Total registered cars across all series
-								 * @var int $totalN Total cars produced across all series
-								 */
-								$total = 0;
-								$totalN = 0;
-								foreach ($count as $key => $value) {
-									echo "<tr><td>" . ucfirst((string) $key) . "</td><td>" . (int) $value . "</td>";
-									echo "<td>" . htmlspecialchars((string) $notes[$key], ENT_QUOTES, 'UTF-8') . "</td>";
-									echo "<td>" . round(((int) $value * 100) / (int) $notes[$key], 0) . " %</td></tr>";
-
-									$total += (int) $value;
-									$totalN += (int) $notes[$key];
-								}
-								echo "<tr><td><strong>Total</strong></td><td><strong>" . $total . "</strong></td><td>" .
-									$totalN . "</td><td>" . round(($total * 100) / $totalN) . " %</td></tr>";
-								?>
-							</tbody>
-						</table>
+						<?php foreach ($count as $key => $value): ?>
+							<?php
+								$key_display = htmlspecialchars(ucfirst((string) $key), ENT_QUOTES, 'UTF-8');
+								$pct = (int) $notes[$key] > 0 ? (int) round((int) $value * 100 / (int) $notes[$key]) : 0;
+							?>
+							<div class="mb-3">
+								<div class="d-flex justify-content-between mb-1">
+									<span class="fw-semibold"><?= $key_display ?></span>
+									<span class="text-muted small"><?= (int) $value ?> / <?= htmlspecialchars((string) $notes[$key], ENT_QUOTES, 'UTF-8') ?></span>
+								</div>
+								<div class="progress" style="height: 18px;" role="progressbar" aria-label="<?= $key_display ?> registration" aria-valuenow="<?= $pct ?>" aria-valuemin="0" aria-valuemax="100">
+									<div class="progress-bar bg-success" style="width: <?= $pct ?>%">
+										<?php if ($pct >= 8): ?><?= $pct ?>%<?php endif; ?>
+									</div>
+								</div>
+							</div>
+							<?php endforeach; ?>
+							<?php $totalPct = $totalN > 0 ? (int) round($total * 100 / $totalN) : 0; ?>
+							<div class="mb-3">
+								<div class="d-flex justify-content-between mb-1">
+									<span class="fw-bold">Total</span>
+									<span class="text-muted small"><?= (int) $total ?> / <?= (int) $totalN ?></span>
+								</div>
+								<div class="progress" style="height: 18px;" role="progressbar" aria-label="Total registration" aria-valuenow="<?= $totalPct ?>" aria-valuemin="0" aria-valuemax="100">
+									<div class="progress-bar bg-primary" style="width: <?= $totalPct ?>%">
+										<?php if ($totalPct >= 8): ?><?= $totalPct ?>%<?php endif; ?>
+									</div>
+								</div>
+							</div>
 						<p><small>* - Number produced is from
 								<a href="https://www.amazon.com/Authentic-Lotus-1962-1974-Marques-Models/dp/0947981950">
 									Authentic Lotus Elan & Plus 2 1962 - 1974 by Robinshaw and Ross</a>, page 22 and page 138.
