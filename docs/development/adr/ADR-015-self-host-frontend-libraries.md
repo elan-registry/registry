@@ -52,6 +52,8 @@ jQuery UI) continue to be loaded from their existing self-hosted locations in
 
 | Library | Version | Vendored Path |
 | --- | --- | --- |
+| Bootstrap CSS | 5.3.3 | `usersc/css/bootstrap.min.css` (error pages only — see note) |
+| Bootstrap JS | 5.3.3 | `usersc/js/bootstrap.bundle.min.js` (error pages only — see note) |
 | DataTables JS (BS4 bundle) | dt-1.10.23 + extensions | `usersc/js/datatables.min.js` |
 | DataTables CSS (BS4 bundle) | dt-1.10.23 + extensions | `usersc/css/datatables.min.css` |
 | Dropzone JS | 5.7.6 | `usersc/js/dropzone.min.js` |
@@ -60,6 +62,12 @@ jQuery UI) continue to be loaded from their existing self-hosted locations in
 | jQuery UI | 1.12.1 | `usersc/js/jquery-ui.min.js` |
 | flatpickr JS | 4.6.13 | `usersc/js/flatpickr.min.js` |
 | flatpickr CSS | 4.6.13 | `usersc/css/flatpickr.min.css` |
+
+> **Bootstrap note:** The Customizer template's `header.php` loads Bootstrap
+> 5.3.3 from `cdnjs.cloudflare.com` (upstream default, with SRI hashes). The
+> vendored Bootstrap files are retained solely for the standalone error pages
+> (`error/403.php`, `error/404.php`, `error/500.php`) which run outside the
+> template system and cannot use CDN assets.
 
 ### Libraries Eliminated
 
@@ -106,11 +114,11 @@ declared version.
   scan against the GitHub Advisory Database and open PRs (or alerts) when a
   vendored library has a known CVE.
 
-- **Reduced CSP allowlist surface.** Removing CDN-hosted scripts allows
+- **Reduced CSP allowlist surface.** Removing CDN-hosted scripts allowed
   removing `https://code.jquery.com`, `https://cdn.datatables.net`, and
   `https://kit.fontawesome.com` from the CSP `script-src` allowlist (ADR-007).
-  The remaining CDN domains will be removed in #618 when Bootstrap migrates
-  to self-hosted.
+  Bootstrap is loaded from `cdnjs.cloudflare.com` via the upstream Customizer
+  template (SRI-hashed); `cdnjs.cloudflare.com` is in the CSP allowlist.
 
 - **Code/data alignment.** The deployed code and the deployed assets move
   together. No more drift between an updated `header.php` and stale `settings`

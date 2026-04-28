@@ -4,7 +4,7 @@ require_once($abs_us_root.$us_url_root.'usersc/templates/'.$settings->template.'
 ?>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <link rel="stylesheet" href="<?=$us_url_root?>usersc/templates/<?=$settings->template?>/assets/fonts/glyphicons.css">
-<link rel="stylesheet" href="<?=$us_url_root?>usersc/css/bootstrap.min.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.3/css/bootstrap.min.css" integrity="sha512-jnSuA4Ss2PkkikSOLtYs8BlYIeeIK1h99ty4YfvRPAlzr377vr3CXDb7sb7eEEBYjDtcYj+AjBH3FLv5uSJuXg==" crossorigin="anonymous" referrerpolicy="no-referrer" />
 
 <link href="<?=$us_url_root?>users/css/datatables.css" rel="stylesheet">
 <link href="<?=$us_url_root?>users/css/menu.css" rel="stylesheet">
@@ -16,7 +16,7 @@ require_once($abs_us_root.$us_url_root.'usersc/templates/'.$settings->template.'
 <?php
 require_once $abs_us_root . $us_url_root . "users/js/jquery.php";
 ?>
-<script src="<?=$us_url_root?>usersc/js/bootstrap.bundle.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.3/js/bootstrap.bundle.min.js" integrity="sha512-7Pi/otdlbbCR+LnW+F7PwFcSDJOuUJB3OxtEHbg4vSMvzvJjde4Po1v4BR9Gdc9aXNUNFVUY+SK51wWT8WF0Gg==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
 
 <?php
 //if the theme has never been loaded before, it needs to be initialized. We do this so we can distribute it without css files and customizations in place
@@ -46,11 +46,11 @@ if(isset($child_theme) && $child_theme != ''){
 }
   // Fall back to standard theme
   if(!$child_loaded && file_exists($abs_us_root.$us_url_root.'usersc/templates/'.$settings->template.'/assets/css/revision.php')){
-      if(isset($css_revision) && $css_revision != '' && file_exists($abs_us_root.$us_url_root.'usersc/templates/'.$settings->template.'/assets/css/'.$css_revision)){ 
+      if(isset($css_revision) && $css_revision != '' && file_exists($abs_us_root.$us_url_root.'usersc/templates/'.$settings->template.'/assets/css/'.$css_revision)){
       echo '<link href="'.$us_url_root.'usersc/templates/'.$settings->template.'/assets/css/'.$css_revision.'" rel="stylesheet">';
     }
   }
-  
+
 //if this file exists, it overrides everything before it
 if(file_exists($abs_us_root.$us_url_root.'usersc/templates/'.$settings->template.'.css')){?>
   <link href="<?=$us_url_root?>usersc/templates/<?=$settings->template?>.css" rel="stylesheet">
