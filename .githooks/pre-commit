@@ -16,6 +16,7 @@
 #   4. Unit Tests (if critical files changed)
 #   5. PHPStan Static Analysis (if PHP files changed)
 #   6. JavaScript Linting (if JS files changed and ESLint available)
+#   7. Minify first-party JS/CSS (if source files changed and Node available)
 #
 
 set -e
@@ -203,6 +204,28 @@ if [ -n "$STAGED_JS_FILES" ]; then
     fi
 else
     echo "⏭️  No JavaScript files staged"
+fi
+
+# Step 7: Minify first-party JS/CSS if source files changed
+STAGED_FIRST_PARTY=$(git diff --cached --name-only --diff-filter=ACM | \
+  grep -E '^app/assets/(js|css)/[^/]+\.(js|css)$|^app/admin/assets/[^/]+\.(js|css)$' | \
+  grep -v '\.min\.' || true)
+
+if [ -n "$STAGED_FIRST_PARTY" ]; then
+    echo ""
+    echo "📦 Step 7: Minify first-party JS/CSS"
+    if ! command -v node >/dev/null 2>&1; then
+        echo "⚠️  WARNING: Node not found — skipping minification. Commit may include stale .min.* files."
+        echo "   Install Node and run 'npm run build' before pushing."
+    elif node scripts/build.js; then
+        git add app/assets/js/*.min.js app/assets/css/*.min.css \
+                app/admin/assets/*.min.js app/admin/assets/*.min.css 2>/dev/null || true
+        echo "✅ Passed"
+    else
+        echo ""
+        echo "❌ COMMIT BLOCKED: Build failed. Run 'npm run build' to debug."
+        exit 1
+    fi
 fi
 
 # All checks passed

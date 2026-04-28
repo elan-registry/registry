@@ -690,8 +690,8 @@ window.ELAN_CONFIG = {
     RESPONSIVE_SIZE: <?php echo $responsiveSize; ?>
 };
 </script>
-<script src='<?= $us_url_root ?>app/assets/js/imagedisplay.js'></script>
-<script src='<?= $us_url_root ?>app/assets/js/highlightDifferences.js'></script>
+<script src='<?= $us_url_root ?>app/assets/js/imagedisplay.min.js'></script>
+<script src='<?= $us_url_root ?>app/assets/js/highlightDifferences.min.js'></script>
 <script>
 const img_root = '<?= $us_url_root . $settings->elan_image_dir ?>';
 window.carDetailsConfig = {
@@ -699,7 +699,7 @@ window.carDetailsConfig = {
     csrf: '<?= Token::generate() ?>'
 };
 </script>
-<script src='<?= $us_url_root ?>app/assets/js/car_details.js'></script>
+<script src='<?= $us_url_root ?>app/assets/js/car_details.min.js'></script>
 
 
 

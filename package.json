@@ -32,8 +32,9 @@
     "test:e2e:test:not-logged-in": "playwright test --config=playwright.config.test.js --project=not-logged-in",
     "test:e2e:test:logged-in": "playwright test --config=playwright.config.test.js --project=logged-in",
     "test:e2e:test:report": "playwright show-report playwright-report-e2e-test",
-    "lint": "eslint 'app/**/*.js'",
-    "lint:fix": "eslint 'app/**/*.js' --fix"
+    "build": "node scripts/build.js",
+    "lint": "eslint 'app/**/*.js' --ignore-pattern '**/*.min.js'",
+    "lint:fix": "eslint 'app/**/*.js' --ignore-pattern '**/*.min.js' --fix"
   },
   "repository": {
     "type": "git",
@@ -57,6 +58,7 @@
   "devDependencies": {
     "@playwright/test": "^1.56.1",
     "dotenv": "^17.2.3",
+    "esbuild": "^0.25.12",
     "eslint": "^9.0.0"
   }
 }

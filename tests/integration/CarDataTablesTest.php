@@ -417,7 +417,7 @@ final class CarDataTablesTest extends IntegrationTestCase
     public function testChassisLookupQueryFindsCar(): void
     {
         $userId = $this->createTestUser();
-        $chassis = 'TEST-CHASSIS-' . uniqid();
+        $chassis = 'TC-' . substr(uniqid(), -10); // varchar(15) limit
         $carId = $this->createTestCar($userId, ['chassis' => $chassis]);
 
         // Execute the same SQL that the findCarByChassis endpoint runs (getDataTables.php:103)
