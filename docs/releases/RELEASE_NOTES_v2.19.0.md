@@ -32,6 +32,10 @@
   Enables Dependabot security alerts for JS/CSS dependencies.
 - **BS4 → BS5 Class Migration** ([#619](https://github.com/unibrain1/elanregistry/issues/619)):
   Migrated all Bootstrap 4 classes and data attributes across 35 app files to Bootstrap 5 equivalents.
+- **Customizer Template Alignment** ([#620](https://github.com/unibrain1/elanregistry/issues/620)):
+  Custom navigation renamed to `file_nav_custom.php` to survive Spice Shaker template upgrades.
+  Bootstrap 5 now loaded from `cdnjs.cloudflare.com` via the upstream template (SRI-hashed).
+  Application version now displayed on the admin dashboard.
 
 ## Issues Resolved
 
