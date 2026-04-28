@@ -212,7 +212,8 @@ function deleteBackup(filename) {
 
     newConfirmButton.addEventListener('click', function performDelete() {
         // Close modal
-        bootstrap.Modal.getInstance(document.getElementById('confirmationModal'))?.hide();
+        const _confirmEl = document.getElementById('confirmationModal');
+        if (_confirmEl) bootstrap.Modal.getInstance(_confirmEl)?.hide();
 
         // Perform deletion
         const endpoint = window.elanUrlRoot ? window.elanUrlRoot.replace(/\/$/, '') + '/app/admin/includes/system/backup-operations.php' : '/app/admin/includes/system/backup-operations.php';
@@ -261,7 +262,8 @@ function performBackupCleanup() {
 
     newConfirmButton.addEventListener('click', function performCleanup() {
         // Close modal
-        bootstrap.Modal.getInstance(document.getElementById('confirmationModal'))?.hide();
+        const _confirmEl = document.getElementById('confirmationModal');
+        if (_confirmEl) bootstrap.Modal.getInstance(_confirmEl)?.hide();
 
         const button = event.target;
         const originalText = button.innerHTML;

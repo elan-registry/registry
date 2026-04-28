@@ -424,7 +424,8 @@ $(document).ready(function() {
 
             // Mark initialization complete
             $('body').addClass('consolidated-interface-ready');
-        } catch (_error) {
+        } catch (error) {
+            console.error('[ConsolidatedInterface] Initialization failed:', error);
         }
     }
 
