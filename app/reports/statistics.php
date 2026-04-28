@@ -37,7 +37,7 @@ $dataService = new StatisticsDataService($db);
                             <h1 class="h2 mb-0">Registry Analytics & Statistics</h1>
                             <p class="text-muted">Comprehensive analysis of car registry data with interactive visualizations</p>
                         </div>
-                        <div class="text-right">
+                        <div class="text-end">
                             <small class="text-muted">
                                 <i class="fas fa-chart-bar"></i>
                                 Live analytics data
@@ -54,27 +54,27 @@ $dataService = new StatisticsDataService($db);
                         <div class="card-header p-0">
                             <ul class="nav nav-tabs card-header-tabs" id="statisticsTabs" role="tablist">
                                 <li class="nav-item">
-                                    <a class="nav-link active" id="overview-tab" data-toggle="tab" href="#overview" role="tab" aria-controls="overview" aria-selected="true">
+                                    <a class="nav-link active" id="overview-tab" data-bs-toggle="tab" href="#overview" role="tab" aria-controls="overview" aria-selected="true">
                                         <i class="fas fa-tachometer-alt"></i> Overview
                                     </a>
                                 </li>
                                 <li class="nav-item">
-                                    <a class="nav-link" id="geographic-tab" data-toggle="tab" href="#geographic" role="tab" aria-controls="geographic" aria-selected="false">
+                                    <a class="nav-link" id="geographic-tab" data-bs-toggle="tab" href="#geographic" role="tab" aria-controls="geographic" aria-selected="false">
                                         <i class="fas fa-globe-americas"></i> Geographic
                                     </a>
                                 </li>
                                 <li class="nav-item">
-                                    <a class="nav-link" id="production-tab" data-toggle="tab" href="#production" role="tab" aria-controls="production" aria-selected="false">
+                                    <a class="nav-link" id="production-tab" data-bs-toggle="tab" href="#production" role="tab" aria-controls="production" aria-selected="false">
                                         <i class="fas fa-industry"></i> Production
                                     </a>
                                 </li>
                                 <li class="nav-item">
-                                    <a class="nav-link" id="colors-tab" data-toggle="tab" href="#colors" role="tab" aria-controls="colors" aria-selected="false">
+                                    <a class="nav-link" id="colors-tab" data-bs-toggle="tab" href="#colors" role="tab" aria-controls="colors" aria-selected="false">
                                         <i class="fas fa-palette"></i> Colors
                                     </a>
                                 </li>
                                 <li class="nav-item">
-                                    <a class="nav-link" id="quality-tab" data-toggle="tab" href="#quality" role="tab" aria-controls="quality" aria-selected="false">
+                                    <a class="nav-link" id="quality-tab" data-bs-toggle="tab" href="#quality" role="tab" aria-controls="quality" aria-selected="false">
                                         <i class="fas fa-check-circle"></i> Data Quality
                                     </a>
                                 </li>
@@ -180,7 +180,7 @@ $dataService = new StatisticsDataService($db);
                                     <div class="d-flex justify-content-between align-items-center mb-3">
                                         <h4>Geographic Distribution Analysis</h4>
                                         <div class="spinner-border text-primary" role="status" id="geographic-spinner" style="display: none;">
-                                            <span class="sr-only">Loading...</span>
+                                            <span class="visually-hidden">Loading...</span>
                                         </div>
                                     </div>
                                     <div id="geographic-content">
@@ -193,7 +193,7 @@ $dataService = new StatisticsDataService($db);
                                     <div class="d-flex justify-content-between align-items-center mb-3">
                                         <h4>Production Analysis</h4>
                                         <div class="spinner-border text-primary" role="status" id="production-spinner" style="display: none;">
-                                            <span class="sr-only">Loading...</span>
+                                            <span class="visually-hidden">Loading...</span>
                                         </div>
                                     </div>
                                     <div id="production-content">
@@ -206,7 +206,7 @@ $dataService = new StatisticsDataService($db);
                                     <div class="d-flex justify-content-between align-items-center mb-3">
                                         <h4>Color Analysis Dashboard</h4>
                                         <div class="spinner-border text-primary" role="status" id="colors-spinner" style="display: none;">
-                                            <span class="sr-only">Loading...</span>
+                                            <span class="visually-hidden">Loading...</span>
                                         </div>
                                     </div>
                                     <div id="colors-content">
@@ -219,7 +219,7 @@ $dataService = new StatisticsDataService($db);
                                     <div class="d-flex justify-content-between align-items-center mb-3">
                                         <h4>Data Quality & Completeness</h4>
                                         <div class="spinner-border text-primary" role="status" id="quality-spinner" style="display: none;">
-                                            <span class="sr-only">Loading...</span>
+                                            <span class="visually-hidden">Loading...</span>
                                         </div>
                                     </div>
                                     <div id="quality-content">
@@ -296,3 +296,4 @@ document.addEventListener('DOMContentLoaded', function() {
     }, 500); // Give statistics.js 500ms to fully load
 });
 </script>
+<?php require_once $abs_us_root . $us_url_root . 'users/includes/html_footer.php'; ?>

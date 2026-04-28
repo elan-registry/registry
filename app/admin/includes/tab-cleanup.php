@@ -139,9 +139,9 @@ if (Input::exists('post')) {
                 <h5 class="mb-0"><i class="fas fa-user-times"></i> SPAM Detection</h5>
             </div>
             <div class="card-body">
-                <div class="form-group">
+                <div class="mb-3">
                     <div class="d-flex justify-content-between align-items-center">
-                        <label class="mb-0 font-weight-bold">Enable Automated Cleanup</label>
+                        <label class="mb-0 fw-bold">Enable Automated Cleanup</label>
                         <div class="form-check form-switch">
                             <input type="checkbox"
                                    class="form-check-input toggle"
@@ -153,9 +153,9 @@ if (Input::exists('post')) {
                     <small class="form-text text-muted">Master switch to enable/disable the entire cleanup system</small>
                 </div>
 
-                <div class="form-group">
+                <div class="mb-3">
                     <div class="d-flex justify-content-between align-items-center">
-                        <label class="mb-0 font-weight-bold">Dry Run Mode</label>
+                        <label class="mb-0 fw-bold">Dry Run Mode</label>
                         <div class="form-check form-switch">
                             <input type="checkbox"
                                    class="form-check-input toggle"
@@ -166,12 +166,12 @@ if (Input::exists('post')) {
                     </div>
                     <small class="form-text text-muted">
                         Test mode - logs actions without actually deleting users
-                        <a href="../../users/admin.php?view=logs&search=SPAM+Cleanup" class="ml-2" target="_blank">View Logs</a>
+                        <a href="../../users/admin.php?view=logs&search=SPAM+Cleanup" class="ms-2" target="_blank">View Logs</a>
                     </small>
                 </div>
 
-                <div class="form-group">
-                    <label for="elan_spam_inactive_days" class="font-weight-bold">Inactive User Threshold</label>
+                <div class="mb-3">
+                    <label for="elan_spam_inactive_days" class="fw-bold">Inactive User Threshold</label>
                     <div class="input-group">
                         <input type="number"
                                step="1"
@@ -182,15 +182,13 @@ if (Input::exists('post')) {
                                name="elan_spam_inactive_days"
                                id="elan_spam_inactive_days"
                                value="<?= $settings->elan_spam_inactive_days ?? '30' ?>">
-                        <div class="input-group-append">
-                            <span class="input-group-text">days</span>
-                        </div>
+                        <span class="input-group-text">days</span>
                     </div>
                     <small class="form-text text-muted">Days before considering users without cars as inactive</small>
                 </div>
 
-                <div class="form-group">
-                    <label for="elan_spam_grace_period_days" class="font-weight-bold">Grace Period</label>
+                <div class="mb-3">
+                    <label for="elan_spam_grace_period_days" class="fw-bold">Grace Period</label>
                     <div class="input-group">
                         <input type="number"
                                step="1"
@@ -201,16 +199,14 @@ if (Input::exists('post')) {
                                name="elan_spam_grace_period_days"
                                id="elan_spam_grace_period_days"
                                value="<?= $settings->elan_spam_grace_period_days ?? '7' ?>">
-                        <div class="input-group-append">
-                            <span class="input-group-text">days</span>
-                        </div>
+                        <span class="input-group-text">days</span>
                     </div>
                     <small class="form-text text-muted">Days to wait after notification before deletion</small>
                 </div>
 
-                <div class="form-group mb-0">
+                <div class="mb-0">
                     <div class="d-flex justify-content-between align-items-center">
-                        <label class="mb-0 font-weight-bold">Send Grace Period Emails</label>
+                        <label class="mb-0 fw-bold">Send Grace Period Emails</label>
                         <div class="form-check form-switch">
                             <input type="checkbox"
                                    class="form-check-input toggle"
@@ -232,8 +228,8 @@ if (Input::exists('post')) {
                 <h5 class="mb-0"><i class="fas fa-shield-alt"></i> Safety Limits</h5>
             </div>
             <div class="card-body">
-                <div class="form-group">
-                    <label for="elan_spam_max_deletions" class="font-weight-bold">Max Deletions Per Run</label>
+                <div class="mb-3">
+                    <label for="elan_spam_max_deletions" class="fw-bold">Max Deletions Per Run</label>
                     <div class="input-group">
                         <input type="number"
                                step="1"
@@ -244,15 +240,13 @@ if (Input::exists('post')) {
                                name="elan_spam_max_deletions"
                                id="elan_spam_max_deletions"
                                value="<?= $settings->elan_spam_max_deletions ?? '50' ?>">
-                        <div class="input-group-append">
-                            <span class="input-group-text">users</span>
-                        </div>
+                        <span class="input-group-text">users</span>
                     </div>
                     <small class="form-text text-muted">Maximum users to delete in single execution</small>
                 </div>
 
-                <div class="form-group">
-                    <label for="elan_spam_max_percentage" class="font-weight-bold">Max Cleanup Percentage</label>
+                <div class="mb-3">
+                    <label for="elan_spam_max_percentage" class="fw-bold">Max Cleanup Percentage</label>
                     <div class="input-group">
                         <input type="number"
                                step="0.1"
@@ -263,9 +257,7 @@ if (Input::exists('post')) {
                                name="elan_spam_max_percentage"
                                id="elan_spam_max_percentage"
                                value="<?= $settings->elan_spam_max_percentage ?? '5.00' ?>">
-                        <div class="input-group-append">
-                            <span class="input-group-text">% of users</span>
-                        </div>
+                        <span class="input-group-text">% of users</span>
                     </div>
                     <small class="form-text text-muted">Maximum percentage of total users to cleanup per run</small>
                 </div>
@@ -349,14 +341,14 @@ if (Input::exists('post')) {
 <div class="row mt-4" id="report-users-without-cars">
     <div class="col-12">
         <div class="card border-info">
-            <div class="card-header bg-dark" data-toggle="collapse" data-target="#collapse-users-without-cars" aria-expanded="false" style="cursor: pointer;">
+            <div class="card-header bg-dark" data-bs-toggle="collapse" data-bs-target="#collapse-users-without-cars" aria-expanded="false" style="cursor: pointer;">
                 <div class="d-flex justify-content-between align-items-center">
                     <h4 class="mb-0 text-white">
                         <i class="<?= $usersWithoutCarsReport['icon'] ?? 'fas fa-user-plus' ?> text-info"></i> <?= htmlspecialchars($usersWithoutCarsReport['title']) ?>
-                        <span class="badge badge-info ml-2"><?= $usersWithoutCarsReport['count'] ?></span>
+                        <span class="badge text-bg-info ms-2"><?= $usersWithoutCarsReport['count'] ?></span>
                     </h4>
                     <div class="d-flex align-items-center">
-                        <small class="text-light mr-3">Impact: <?= htmlspecialchars($usersWithoutCarsReport['impact'] ?? 'Low - Potential registry growth opportunity') ?></small>
+                        <small class="text-light me-3">Impact: <?= htmlspecialchars($usersWithoutCarsReport['impact'] ?? 'Low - Potential registry growth opportunity') ?></small>
                         <i class="fas fa-chevron-down text-light collapse-icon"></i>
                     </div>
                 </div>
@@ -388,13 +380,13 @@ if (Input::exists('post')) {
                                     <?php foreach ($usersWithoutCarsReport['data'] as $user): ?>
                                     <tr>
                                         <td>
-                                            <span class="badge badge-primary"><?= $user->id ?></span>
+                                            <span class="badge text-bg-primary"><?= $user->id ?></span>
                                         </td>
                                         <td>
                                             <?php if ($user->fname || $user->lname) { ?>
                                                 <?= htmlspecialchars(trim($user->fname . ' ' . $user->lname)) ?>
                                             <?php } else { ?>
-                                                <span class="badge badge-warning">Missing Name</span>
+                                                <span class="badge text-bg-warning">Missing Name</span>
                                             <?php } ?>
                                         </td>
                                         <td><?= htmlspecialchars($user->email) ?></td>
@@ -408,7 +400,7 @@ if (Input::exists('post')) {
                                             if (!empty($location_parts)) {
                                                 echo htmlspecialchars(implode(', ', $location_parts));
                                             } else {
-                                                echo '<span class="badge badge-warning">Missing Location</span>';
+                                                echo '<span class="badge text-bg-warning">Missing Location</span>';
                                             }
                                             ?>
                                         </td>
@@ -419,7 +411,7 @@ if (Input::exists('post')) {
                                         </td>
                                         <td>
                                             <?php if ($user->last_login_formatted === 'Never') { ?>
-                                                <span class="badge badge-danger">Never</span>
+                                                <span class="badge text-bg-danger">Never</span>
                                             <?php } else { ?>
                                                 <small class="text-muted">
                                                     <?= htmlspecialchars($user->last_login_formatted) ?>
@@ -432,7 +424,7 @@ if (Input::exists('post')) {
                                             </span>
                                         </td>
                                         <td>
-                                            <button type="button" class="btn btn-sm btn-outline-primary mr-1"
+                                            <button type="button" class="btn btn-sm btn-outline-primary me-1"
                                                     onclick="switchToOwnerManagementTab(<?= $user->id ?>)"
                                                     title="Edit User Profile">
                                                 <i class="fas fa-edit"></i> Edit
@@ -581,7 +573,7 @@ $(document).ready(function() {
     });
 
     // Add hover effect for collapsible header
-    $('.card-header[data-toggle="collapse"]').hover(
+    $('.card-header[data-bs-toggle="collapse"]').hover(
         function() {
             $(this).css('background-color', '#495057');
         },

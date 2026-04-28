@@ -170,7 +170,7 @@ function initializeOverviewTab() {
 function setupTabLazyLoading() {
   const loadedTabs = new Set(["overview"]); // Overview is already loaded
 
-  $('#statisticsTabs a[data-toggle="tab"]').on("shown.bs.tab", function (e) {
+  $('#statisticsTabs a[data-bs-toggle="tab"]').on("shown.bs.tab", function (e) {
     const targetTab = $(e.target).attr("href").substring(1); // Remove #
 
     if (!loadedTabs.has(targetTab)) {
@@ -457,38 +457,38 @@ function renderQualityTab(container, data) {
                         <div class="small">
                             <div class="d-flex justify-content-between mb-2">
                                 <span>Chassis Numbers:</span>
-                                <span class="font-weight-bold">${Math.round(
+                                <span class="fw-bold">${Math.round(
                                   (completeness.has_chassis / totalCars) * 100
                                 )}%</span>
                             </div>
                             <div class="d-flex justify-content-between mb-2">
                                 <span>Color Information:</span>
-                                <span class="font-weight-bold">${Math.round(
+                                <span class="fw-bold">${Math.round(
                                   (completeness.has_color / totalCars) * 100
                                 )}%</span>
                             </div>
                             <div class="d-flex justify-content-between mb-2">
                                 <span>Engine Details:</span>
-                                <span class="font-weight-bold">${Math.round(
+                                <span class="fw-bold">${Math.round(
                                   (completeness.has_engine / totalCars) * 100
                                 )}%</span>
                             </div>
                             <div class="d-flex justify-content-between mb-2">
                                 <span>Purchase Dates:</span>
-                                <span class="font-weight-bold">${Math.round(
+                                <span class="fw-bold">${Math.round(
                                   (completeness.has_purchase_date / totalCars) *
                                     100
                                 )}%</span>
                             </div>
                             <div class="d-flex justify-content-between mb-2">
                                 <span>Photos:</span>
-                                <span class="font-weight-bold">${Math.round(
+                                <span class="fw-bold">${Math.round(
                                   (completeness.has_image / totalCars) * 100
                                 )}%</span>
                             </div>
                             <div class="d-flex justify-content-between">
                                 <span>Location Data:</span>
-                                <span class="font-weight-bold">${Math.round(
+                                <span class="fw-bold">${Math.round(
                                   (completeness.has_location / totalCars) * 100
                                 )}%</span>
                             </div>
@@ -516,7 +516,7 @@ function renderSeriesTable(counts, notes) {
 
     html += `
             <tr>
-                <td class="font-weight-bold">${series.toUpperCase()}</td>
+                <td class="fw-bold">${series.toUpperCase()}</td>
                 <td>${count}</td>
                 <td>${produced.toLocaleString()}</td>
                 <td>${percentage}%</td>

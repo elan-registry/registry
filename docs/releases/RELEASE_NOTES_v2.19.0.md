@@ -13,6 +13,9 @@
 
 2. Verify self-hosted library files are served correctly from `usersc/js/` and `usersc/css/`.
 
+3. Set the active template to `customizer` in the UserSpice admin panel (Settings → Template),
+   or run: `UPDATE settings SET value='customizer' WHERE name='template';`
+
 ## User-Facing Changes
 
 ### Improvements

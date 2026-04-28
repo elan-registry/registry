@@ -272,7 +272,7 @@ $(document).ready(function() {
         // Create or update aria-live region
         let $announcement = $('#tab-announcement');
         if ($announcement.length === 0) {
-            $announcement = $('<div id="tab-announcement" aria-live="polite" class="sr-only"></div>');
+            $announcement = $('<div id="tab-announcement" aria-live="polite" class="visually-hidden"></div>');
             $('body').append($announcement);
         }
 
@@ -359,9 +359,7 @@ $(document).ready(function() {
             <div class="alert ${alertClass} alert-dismissible fade show position-fixed"
                  style="top: 20px; right: 20px; z-index: 9999; min-width: 300px;">
                 <i class="fas ${iconClass}"></i> ${message}
-                <button type="button" class="close" data-dismiss="alert">
-                    <span>&times;</span>
-                </button>
+                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
             </div>
         `);
 
@@ -369,7 +367,8 @@ $(document).ready(function() {
 
         // Auto-dismiss after 5 seconds
         setTimeout(function() {
-            $notification.alert('close');
+            $notification.removeClass('show');
+            setTimeout(function() { $notification.remove(); }, 150);
         }, 5000);
     }
 
@@ -425,7 +424,8 @@ $(document).ready(function() {
 
             // Mark initialization complete
             $('body').addClass('consolidated-interface-ready');
-        } catch (_error) {
+        } catch (error) {
+            console.error('[ConsolidatedInterface] Initialization failed:', error);
         }
     }
 
@@ -771,7 +771,7 @@ function initializeCarManagement() {
         reassignFormToSubmit = this;
 
         // Show the modal
-        $('#reassignConfirmModal').modal('show');
+        bootstrap.Modal.getOrCreateInstance(document.getElementById('reassignConfirmModal')).show();
 
         return false;
     });
@@ -829,7 +829,7 @@ function initializeCarManagement() {
         $('#confirmDeleteBtn').prop('disabled', true);
 
         // Show the modal
-        $('#deleteConfirmModal').modal('show');
+        bootstrap.Modal.getOrCreateInstance(document.getElementById('deleteConfirmModal')).show();
 
         return false;
     });
@@ -893,7 +893,7 @@ function initializeCarManagement() {
         }
 
         // Show the modal
-        $('#transferActionModal').modal('show');
+        bootstrap.Modal.getOrCreateInstance(document.getElementById('transferActionModal')).show();
 
         return false;
     });
@@ -938,9 +938,7 @@ function initializeCarManagement() {
         const alertHtml = `
             <div class="${alertClass}" role="alert">
                 ${message}
-                <button type="button" class="close" data-dismiss="alert" aria-label="Close">
-                    <span aria-hidden="true">&times;</span>
-                </button>
+                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
             </div>
         `;
 
@@ -983,7 +981,8 @@ function initializeCarManagement() {
             $btn.html('<i class="fas fa-spinner fa-spin"></i> Reassigning...');
 
             // Hide modal and submit form
-            $('#reassignConfirmModal').modal('hide');
+            const _reassignEl = document.getElementById('reassignConfirmModal');
+            if (_reassignEl) bootstrap.Modal.getInstance(_reassignEl)?.hide();
             reassignFormToSubmit.submit();
         }
     });
@@ -1009,7 +1008,8 @@ function initializeCarManagement() {
             $btn.html('<i class="fas fa-spinner fa-spin"></i> Deleting...');
 
             // Hide modal and submit form
-            $('#deleteConfirmModal').modal('hide');
+            const _deleteEl = document.getElementById('deleteConfirmModal');
+            if (_deleteEl) bootstrap.Modal.getInstance(_deleteEl)?.hide();
             deleteFormToSubmit.submit();
         }
     });
@@ -1085,7 +1085,7 @@ function initializeCarManagement() {
         // Populate car details
         const carDetails = `
             <strong>${data.year} ${data.type}</strong>
-            ${data.series ? `<span class="badge badge-secondary badge-sm ml-1">${data.series}</span>` : ''}
+            ${data.series ? `<span class="badge text-bg-secondary badge-sm ms-1">${data.series}</span>` : ''}
             <br><small class="text-muted">
                 <i class="fas fa-barcode"></i> Chassis: ${data.chassis}
                 ${data.color ? ` • Color: ${data.color}` : ''}
@@ -1143,7 +1143,7 @@ function initializeCarManagement() {
         $('#cancelButtonText').text('Close');
 
         // Show the modal
-        $('#transferDecisionModal').modal('show');
+        bootstrap.Modal.getOrCreateInstance(document.getElementById('transferDecisionModal')).show();
     }
 
     // Handle transfer approve button click
@@ -1212,7 +1212,7 @@ function initializeCarManagement() {
         // Populate car details
         const carDetails = `
             <strong>${data.carYear} ${data.carType}</strong>
-            ${data.carSeries ? `<span class="badge badge-secondary badge-sm ml-1">${data.carSeries}</span>` : ''}
+            ${data.carSeries ? `<span class="badge text-bg-secondary badge-sm ms-1">${data.carSeries}</span>` : ''}
             <br><small class="text-muted">
                 <i class="fas fa-barcode"></i> Chassis: ${data.carChassis}
                 ${data.carColor ? ` • Color: ${data.carColor}` : ''}
@@ -1272,7 +1272,7 @@ function initializeCarManagement() {
         $('#transferDecisionEffects').html(effects);
 
         // Show the modal
-        $('#transferDecisionModal').modal('show');
+        bootstrap.Modal.getOrCreateInstance(document.getElementById('transferDecisionModal')).show();
     }
 
     // Handle approve button click from details modal
@@ -1310,7 +1310,8 @@ function initializeCarManagement() {
             new ElanRegistryAPI().post(endpoint, {
                 transfer_id: transferDecisionData.transferId
             }).then(function(response) {
-                $('#transferDecisionModal').modal('hide');
+                const _transferEl = document.getElementById('transferDecisionModal');
+                if (_transferEl) bootstrap.Modal.getInstance(_transferEl)?.hide();
                 if (response.success) {
                     showNotification(response.message, 'success');
                     // Reload page after brief delay to show notification
@@ -1320,7 +1321,8 @@ function initializeCarManagement() {
                     $btn.prop('disabled', false).html(originalHtml);
                 }
             }).catch(function(error) {
-                $('#transferDecisionModal').modal('hide');
+                const _transferEl = document.getElementById('transferDecisionModal');
+                if (_transferEl) bootstrap.Modal.getInstance(_transferEl)?.hide();
                 let errorMessage = 'An error occurred while processing the transfer request.';
                 if (error.message) {
                     errorMessage = error.message;
@@ -1355,9 +1357,7 @@ function showNotification(message, type = 'info') {
     const alertHtml = `
         <div class="${alertClass}" role="alert">
             ${message}
-            <button type="button" class="close" data-dismiss="alert" aria-label="Close">
-                <span aria-hidden="true">&times;</span>
-            </button>
+            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
         </div>
     `;
     $('#messageContainer').html(alertHtml);
@@ -1411,5 +1411,5 @@ function openAdminContactModal(carData, ownerData, qualityIssue = '', targetEmai
     }
 
     // Show the modal
-    $('#adminContactModal').modal('show');
+    bootstrap.Modal.getOrCreateInstance(document.getElementById('adminContactModal')).show();
 }

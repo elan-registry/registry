@@ -47,10 +47,10 @@ function carousel(row, carid = null) {
         response += '</div>';
         active = 'carousel-item';
     }
-    response += '</div><a class="carousel-control-prev" href="#myCarousel-' + id + '" role="button" data-slide="prev">';
+    response += '</div><a class="carousel-control-prev" href="#myCarousel-' + id + '" role="button" data-bs-slide="prev">';
     response += '<span class="carousel-control-prev-icon" aria-hidden="true" > </span>';
-    response += '<span class="sr-only">Previous</span></a> <a class="carousel-control-next" href="#myCarousel-' + id + '" role="button" data-slide="next">';
-    response += '<span class="carousel-control-next-icon" aria-hidden="true" ></span> <span class="sr-only">Next</span> </a>';
+    response += '<span class="visually-hidden">Previous</span></a> <a class="carousel-control-next" href="#myCarousel-' + id + '" role="button" data-bs-slide="next">';
+    response += '<span class="carousel-control-next-icon" aria-hidden="true" ></span> <span class="visually-hidden">Next</span> </a>';
     response += '</div>';
 
     return response;

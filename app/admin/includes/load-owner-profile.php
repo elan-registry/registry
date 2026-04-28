@@ -71,7 +71,7 @@ try {
                         <small>Profile is complete!</small>
                     <?php endif; ?>
                 </div>
-                <div class="col-md-4 text-right">
+                <div class="col-md-4 text-end">
                     <div class="progress" style="height: 8px;">
                         <div class="progress-bar bg-<?= $qualityScore >= 80 ? 'success' : ($qualityScore >= 60 ? 'warning' : 'danger') ?>"
                              style="width: <?= (int)$qualityScore // nosemgrep: php.lang.security.taint-unsafe-echo-tag.taint-unsafe-echo-tag ?>%"></div>
@@ -88,7 +88,7 @@ try {
             <div class="card-body">
                 <div class="row">
                     <div class="col-md-6">
-                        <div class="form-group">
+                        <div class="mb-3">
                             <label for="fname">First Name <span class="text-danger">*</span></label>
                             <input type="text"
                                    class="form-control <?= empty($ownerData->fname) ? 'border-warning' : '' ?>"
@@ -99,7 +99,7 @@ try {
                         </div>
                     </div>
                     <div class="col-md-6">
-                        <div class="form-group">
+                        <div class="mb-3">
                             <label for="lname">Last Name <span class="text-danger">*</span></label>
                             <input type="text"
                                    class="form-control <?= empty($ownerData->lname) ? 'border-warning' : '' ?>"
@@ -110,7 +110,7 @@ try {
                         </div>
                     </div>
                 </div>
-                <div class="form-group">
+                <div class="mb-3">
                     <label for="email">Email Address <span class="text-danger">*</span></label>
                     <input type="email"
                            class="form-control <?= empty($ownerData->email) ? 'border-warning' : '' ?>"
@@ -119,7 +119,7 @@ try {
                            value="<?= htmlspecialchars($ownerData->email ?? '') ?>"
                            required>
                 </div>
-                <div class="form-group">
+                <div class="mb-3">
                     <label for="website">Website</label>
                     <input type="url"
                            class="form-control"
@@ -168,7 +168,7 @@ try {
                             <i class="fas fa-times"></i> Cancel
                         </button>
                     </div>
-                    <div class="col-md-4 text-right">
+                    <div class="col-md-4 text-end">
                         <small class="text-muted">
                             <?php
                             $joinTimestamp = strtotime($ownerData->join_date ?? '');
@@ -241,7 +241,7 @@ try {
                 $('#ownerProfileForm').prepend(
                     '<div class="alert alert-success alert-dismissible fade show">' +
                     '<i class="fas fa-check"></i> ' + response.message +
-                    '<button type="button" class="close" data-dismiss="alert">&times;</button>' +
+                    '<button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>' +
                     '</div>'
                 );
 
@@ -260,7 +260,7 @@ try {
                 $('#ownerProfileForm').prepend(
                     '<div class="alert alert-danger alert-dismissible fade show">' +
                     '<i class="fas fa-exclamation-circle"></i> ' + (error.message || 'Update failed. Please try again.') +
-                    '<button type="button" class="close" data-dismiss="alert">&times;</button>' +
+                    '<button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>' +
                     '</div>'
                 );
             })
@@ -282,7 +282,7 @@ try {
                 $('#ownerProfileForm').prepend(
                     '<div class="alert alert-success alert-dismissible fade show">' +
                     '<i class="fas fa-check"></i> ' + response.message +
-                    '<button type="button" class="close" data-dismiss="alert">&times;</button>' +
+                    '<button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>' +
                     '</div>'
                 );
             })
@@ -290,7 +290,7 @@ try {
                 $('#ownerProfileForm').prepend(
                     '<div class="alert alert-danger alert-dismissible fade show">' +
                     '<i class="fas fa-exclamation-circle"></i> ' + (error.message || 'Sync failed. Please try again.') +
-                    '<button type="button" class="close" data-dismiss="alert">&times;</button>' +
+                    '<button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>' +
                     '</div>'
                 );
             })

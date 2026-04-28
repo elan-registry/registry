@@ -70,7 +70,7 @@ declare(strict_types=1);
                     <a href="../cars/manage.php" class="btn btn-outline-primary btn-sm">
                         <i class="fas fa-external-link-alt"></i> Current Car Management
                     </a>
-                    <a href="../reports/data-quality.php" class="btn btn-outline-info btn-sm ml-2">
+                    <a href="../reports/data-quality.php" class="btn btn-outline-info btn-sm ms-2">
                         <i class="fas fa-chart-line"></i> Current Data Quality
                     </a>
                 </div>

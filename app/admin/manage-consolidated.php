@@ -374,9 +374,9 @@ if (Input::exists('post')) {
                             </h1>
                             <p class="text-muted mb-0">Administrative tools for car registry, data quality, and system maintenance</p>
                         </div>
-                        <div class="text-right">
+                        <div class="text-end">
                             <div class="mb-2">
-                                <span class="badge badge-success badge-lg">
+                                <span class="badge text-bg-success badge-lg">
                                     <i class="fas fa-check-circle"></i> System Operational
                                 </span>
                             </div>
@@ -410,7 +410,7 @@ if (Input::exists('post')) {
                                        href="?tab=car-mgmt" role="tab">
                                         <i class="fas fa-car"></i> Car/Owner Relationships
                                         <?php if ($systemStatus['pending_transfers'] > 0) { ?>
-                                            <span class="badge badge-info badge-sm ml-1"><?= $systemStatus['pending_transfers'] ?></span>
+                                            <span class="badge text-bg-info badge-sm ms-1"><?= $systemStatus['pending_transfers'] ?></span>
                                         <?php } ?>
                                     </a>
                                 </li>
@@ -421,7 +421,7 @@ if (Input::exists('post')) {
                                        href="?tab=manage-cars" role="tab">
                                         <i class="fas fa-clipboard-check"></i> Manage Cars
                                         <?php if ($systemStatus['car_issues'] > 0) { ?>
-                                            <span class="badge badge-warning badge-sm ml-1"><?= $systemStatus['car_issues'] ?></span>
+                                            <span class="badge text-bg-warning badge-sm ms-1"><?= $systemStatus['car_issues'] ?></span>
                                         <?php } ?>
                                     </a>
                                 </li>
@@ -432,7 +432,7 @@ if (Input::exists('post')) {
                                        href="?tab=owner-mgmt" role="tab">
                                         <i class="fas fa-users"></i> Manage Owners
                                         <?php if ($systemStatus['owner_issues'] > 0) { ?>
-                                            <span class="badge badge-warning badge-sm ml-1"><?= $systemStatus['owner_issues'] ?></span>
+                                            <span class="badge text-bg-warning badge-sm ms-1"><?= $systemStatus['owner_issues'] ?></span>
                                         <?php } ?>
                                     </a>
                                 </li>
@@ -501,9 +501,7 @@ if (Input::exists('post')) {
                 <h5 class="modal-title" id="reassignConfirmModalLabel">
                     <i class="fas fa-user-friends"></i> Confirm Car Reassignment
                 </h5>
-                <button type="button" class="close" data-dismiss="modal" aria-label="Close">
-                    <span aria-hidden="true">&times;</span>
-                </button>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
             <div class="modal-body">
                 <div class="alert alert-info mb-3">
@@ -540,7 +538,7 @@ if (Input::exists('post')) {
                 </div>
             </div>
             <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-dismiss="modal">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
                     <i class="fas fa-times"></i> Cancel
                 </button>
                 <button type="button" class="btn btn-warning" id="confirmReassignBtn">
@@ -559,9 +557,7 @@ if (Input::exists('post')) {
                 <h5 class="modal-title" id="deleteConfirmModalLabel">
                     <i class="fas fa-exclamation-triangle"></i> Permanent Car Deletion Warning
                 </h5>
-                <button type="button" class="close text-white" data-dismiss="modal" aria-label="Close">
-                    <span aria-hidden="true">&times;</span>
-                </button>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
             <div class="modal-body">
                 <div class="alert alert-danger mb-3">
@@ -589,8 +585,8 @@ if (Input::exists('post')) {
                     </ul>
                 </div>
 
-                <div class="form-group">
-                    <label for="modal-delete-confirmation" class="font-weight-bold">
+                <div class="mb-3">
+                    <label for="modal-delete-confirmation" class="fw-bold">
                         Type <code>DELETE PERMANENTLY</code> to confirm:
                     </label>
                     <input type="text" class="form-control" id="modal-delete-confirmation"
@@ -599,7 +595,7 @@ if (Input::exists('post')) {
                 </div>
             </div>
             <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-dismiss="modal">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
                     <i class="fas fa-shield-alt"></i> Cancel (Safe)
                 </button>
                 <button type="button" class="btn btn-danger" id="confirmDeleteBtn" disabled>
@@ -618,9 +614,7 @@ if (Input::exists('post')) {
                 <h5 class="modal-title" id="transferDecisionModalLabel">
                     <i class="fas fa-exchange-alt"></i> <span id="transferDecisionTitle">Confirm Transfer Decision</span>
                 </h5>
-                <button type="button" class="close" data-dismiss="modal" aria-label="Close">
-                    <span aria-hidden="true">&times;</span>
-                </button>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
             <div class="modal-body">
                 <div id="transferDecisionMessage" class="alert mb-3">
@@ -683,7 +677,7 @@ if (Input::exists('post')) {
                 </div>
             </div>
             <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-dismiss="modal">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
                     <i class="fas fa-times"></i> <span id="cancelButtonText">Cancel</span>
                 </button>
                 <!-- Action buttons for view mode -->
@@ -712,9 +706,7 @@ if (Input::exists('post')) {
                 <h5 class="modal-title" id="adminContactModalLabel">
                     <i class="fas fa-shield-alt"></i> Administrator Contact Owner
                 </h5>
-                <button type="button" class="close" data-dismiss="modal" aria-label="Close">
-                    <span aria-hidden="true">&times;</span>
-                </button>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
             <form id="adminContactForm" method="POST" action="<?= $us_url_root ?>app/admin/includes/process-admin-contact.php">
                 <div class="modal-body">
@@ -784,7 +776,7 @@ if (Input::exists('post')) {
                     <input type="hidden" name="target_email" id="contactTargetEmail" value="" />
                 </div>
                 <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" data-dismiss="modal">Cancel</button>
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
                     <button type="submit" class="btn btn-warning">
                         <i class="fas fa-envelope"></i> Send Administrator Message
                     </button>

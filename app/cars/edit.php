@@ -182,7 +182,7 @@ function updateCarDetails(array &$car): void
                     <div class="card registry-card">
                         <div class="card-header">
                             <div class="row">
-                                <div class="col-md-7 text-left">
+                                <div class="col-md-7 text-start">
                                     <legend class="fs-title mb-0">Car Details:</legend>
                                 </div>
                                 <div class="col-5">
@@ -241,7 +241,7 @@ function updateCarDetails(array &$car): void
                     <div class="card registry-card">
                         <div class="card-header">
                             <div class="row">
-                                <div class="col-6 d-flex text-left">
+                                <div class="col-6 d-flex text-start">
                                     <legend class="fs-title mb-0">Results</legend>
                                 </div>
                                 <div class="col-6">
@@ -268,9 +268,7 @@ function updateCarDetails(array &$car): void
                 <h5 class="modal-title" id="chassisValidationModalLabel">
                     <i class="fas fa-barcode"></i> Chassis Validation Rules - Quick Reference
                 </h5>
-                <button type="button" class="close text-white" data-dismiss="modal" aria-label="Close">
-                    <span aria-hidden="true">&times;</span>
-                </button>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
             <div class="modal-body">
                 <!-- Format Overview -->
@@ -356,7 +354,7 @@ function updateCarDetails(array &$car): void
                 <a href="<?= $us_url_root ?>docs/chassis-validation.php" target="_blank" class="btn btn-outline-primary">
                     <i class="fas fa-external-link-alt"></i> View Full Documentation
                 </a>
-                <button type="button" class="btn btn-secondary" data-dismiss="modal">Close</button>
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
             </div>
         </div>
     </div>
@@ -372,15 +370,13 @@ function updateCarDetails(array &$car): void
                 <h5 class="modal-title" id="transferValidationModalLabel">
                     <i class="fas fa-exclamation-triangle"></i> Missing Information
                 </h5>
-                <button type="button" class="close" data-dismiss="modal" aria-label="Close">
-                    <span aria-hidden="true">&times;</span>
-                </button>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
             <div class="modal-body">
                 <p>Please ensure year, model, and chassis are selected before requesting transfer.</p>
             </div>
             <div class="modal-footer">
-                <button type="button" class="btn btn-primary" data-dismiss="modal">OK</button>
+                <button type="button" class="btn btn-primary" data-bs-dismiss="modal">OK</button>
             </div>
         </div>
     </div>
@@ -394,9 +390,7 @@ function updateCarDetails(array &$car): void
                 <h5 class="modal-title" id="transferConfirmModalLabel">
                     <i class="fas fa-exchange-alt"></i> Confirm Transfer Request
                 </h5>
-                <button type="button" class="close text-white" data-dismiss="modal" aria-label="Close">
-                    <span aria-hidden="true">&times;</span>
-                </button>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
             <div class="modal-body">
                 <p>Are you sure you want to request ownership transfer for this chassis number?</p>
@@ -406,8 +400,8 @@ function updateCarDetails(array &$car): void
                 </div>
 
                 <!-- Transfer Comment Field -->
-                <div class="form-group">
-                    <label for="transfer_comments" class="font-weight-bold">
+                <div class="mb-3">
+                    <label for="transfer_comments" class="fw-bold">
                         <i class="fas fa-comment-alt"></i> Explanation for Transfer Request (Optional but Recommended)
                     </label>
                     <textarea
@@ -425,12 +419,12 @@ function updateCarDetails(array &$car): void
                     ></textarea>
                     <small class="form-text text-muted">
                         <span id="transfer_comments_counter">0 / 1000 characters</span>
-                        <span class="ml-2"><i class="fas fa-info-circle"></i> Providing details helps expedite the review process.</span>
+                        <span class="ms-2"><i class="fas fa-info-circle"></i> Providing details helps expedite the review process.</span>
                     </small>
                 </div>
             </div>
             <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
                 <button type="button" class="btn btn-primary" id="confirmTransferBtn">
                     <i class="fas fa-check"></i> Request Transfer
                 </button>
@@ -447,9 +441,7 @@ function updateCarDetails(array &$car): void
                 <h5 class="modal-title" id="transferSuccessModalLabel">
                     <i class="fas fa-check-circle"></i> Transfer Request Submitted
                 </h5>
-                <button type="button" class="close text-white" data-dismiss="modal" aria-label="Close">
-                    <span aria-hidden="true">&times;</span>
-                </button>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
             <div class="modal-body">
                 <p>Transfer request submitted successfully!</p>
@@ -474,9 +466,7 @@ function updateCarDetails(array &$car): void
                 <h5 class="modal-title" id="transferErrorModalLabel">
                     <i class="fas fa-exclamation-circle"></i> Transfer Request Failed
                 </h5>
-                <button type="button" class="close text-white" data-dismiss="modal" aria-label="Close">
-                    <span aria-hidden="true">&times;</span>
-                </button>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
             <div class="modal-body">
                 <div class="alert alert-danger">
@@ -485,7 +475,7 @@ function updateCarDetails(array &$car): void
                 <p>Please try again or contact support if the problem persists.</p>
             </div>
             <div class="modal-footer">
-                <button type="button" class="btn btn-danger" data-dismiss="modal">Close</button>
+                <button type="button" class="btn btn-danger" data-bs-dismiss="modal">Close</button>
             </div>
         </div>
     </div>
@@ -499,6 +489,8 @@ require_once $abs_us_root . $us_url_root . 'users/includes/html_footer.php'; //c
 <script src="<?=$us_url_root?>usersc/js/jquery-ui.min.js"></script>
 <script src="<?=$us_url_root?>usersc/js/dropzone.min.js"></script>
 <link rel="stylesheet" href="<?=$us_url_root?>usersc/css/dropzone.min.css">
+<script src="<?=$us_url_root?>usersc/js/flatpickr.min.js"></script>
+<link rel="stylesheet" href="<?=$us_url_root?>usersc/css/flatpickr.min.css">
 
 <!-- Dynamic model loading from database -->
 <script src='<?= $us_url_root ?>app/assets/js/model-loader.js'></script>
@@ -509,6 +501,9 @@ require_once $abs_us_root . $us_url_root . 'users/includes/html_footer.php'; //c
     const car_id = $('#car_id').val();
 
     $(document).ready(function() {
+        flatpickr('#purchasedate', { dateFormat: 'Y-m-d', allowInput: true });
+        flatpickr('#solddate',     { dateFormat: 'Y-m-d', allowInput: true });
+
         // BEGIN DROPZONE
 
         $(function() {
@@ -1099,17 +1094,17 @@ require_once $abs_us_root . $us_url_root . 'users/includes/html_footer.php'; //c
         const model = validModel;
 
         if (!chassis || !year || !model) {
-            $('#transferValidationModal').modal('show');
+            bootstrap.Modal.getOrCreateInstance(document.getElementById('transferValidationModal')).show();
             return;
         }
 
         // Show confirmation modal
-        $('#transferConfirmModal').modal('show');
+        bootstrap.Modal.getOrCreateInstance(document.getElementById('transferConfirmModal')).show();
     });
 
     // Handle transfer confirmation
     $('#confirmTransferBtn').click(function() {
-        $('#transferConfirmModal').modal('hide');
+        bootstrap.Modal.getInstance(document.getElementById('transferConfirmModal'))?.hide();
 
         // Disable button to prevent double-submission
         $('#request_transfer_btn').prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i> Requesting...');
@@ -1118,7 +1113,7 @@ require_once $abs_us_root . $us_url_root . 'users/includes/html_footer.php'; //c
         const transferComments = $('#transfer_comments').val();
         if (transferComments.length > 1000) {
             $('#transferErrorMessage').text('Transfer explanation must be 1000 characters or less.');
-            $('#transferErrorModal').modal('show');
+            bootstrap.Modal.getOrCreateInstance(document.getElementById('transferErrorModal')).show();
             $('#request_transfer_btn').prop('disabled', false).html('<i class="fas fa-exchange-alt"></i> Request Ownership Transfer');
             return;
         }
@@ -1137,15 +1132,15 @@ require_once $abs_us_root . $us_url_root . 'users/includes/html_footer.php'; //c
             comments: $('#transfer_comments').val() || ''
         }).then(function(response) {
             if (response.success) {
-                $('#transferSuccessModal').modal('show');
+                bootstrap.Modal.getOrCreateInstance(document.getElementById('transferSuccessModal')).show();
             } else {
                 $('#transferErrorMessage').text(response.message);
-                $('#transferErrorModal').modal('show');
+                bootstrap.Modal.getOrCreateInstance(document.getElementById('transferErrorModal')).show();
                 $('#request_transfer_btn').prop('disabled', false).html('<i class="fas fa-exchange-alt"></i> Request Ownership Transfer');
             }
         }).catch(function() {
             $('#transferErrorMessage').text('There was an error processing your request. Please try again.');
-            $('#transferErrorModal').modal('show');
+            bootstrap.Modal.getOrCreateInstance(document.getElementById('transferErrorModal')).show();
             $('#request_transfer_btn').prop('disabled', false).html('<i class="fas fa-exchange-alt"></i> Request Ownership Transfer');
         });
     });

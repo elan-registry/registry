@@ -58,11 +58,13 @@ jQuery UI) continue to be loaded from their existing self-hosted locations in
 | Dropzone CSS | 5.7.6 | `usersc/css/dropzone.min.css` |
 | Chart.js | 4.5.1 | `usersc/js/chart.umd.min.js` |
 | jQuery UI | 1.12.1 | `usersc/js/jquery-ui.min.js` |
+| flatpickr JS | 4.6.13 | `usersc/js/flatpickr.min.js` |
+| flatpickr CSS | 4.6.13 | `usersc/css/flatpickr.min.css` |
 
 ### Libraries Eliminated
 
-- **Bootstrap Datepicker** — replaced by the native HTML5
-  `<input type="date">` control as part of #619. No vendored file required.
+- **Bootstrap Datepicker** — replaced by flatpickr (`dateFormat: 'Y-m-d'`) as part of #619.
+  flatpickr has no jQuery dependency and survives the planned jQuery UI removal in #726.
 
 ### Libraries Already Self-Hosted (UserSpice-Managed)
 
