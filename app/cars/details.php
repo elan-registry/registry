@@ -498,7 +498,7 @@ if (!empty($_GET)) {
                                     <small class="text-muted">Track all changes and updates made to this car's registry information</small>
                                 </div>
                                 <div class="col-md-4 text-md-end">
-                                    <button class="btn btn-outline-secondary btn-sm" type="button" id="historyToggleBtn" data-toggle="collapse" data-target="#historyDetails" aria-expanded="false" aria-controls="historyDetails">
+                                    <button class="btn btn-outline-secondary btn-sm" type="button" id="historyToggleBtn" data-bs-toggle="collapse" data-bs-target="#historyDetails" aria-expanded="false" aria-controls="historyDetails">
                                         <i class="fas fa-eye"></i> <span id="historyToggleText">Show Details</span>
                                     </button>
                                 </div>
@@ -514,7 +514,7 @@ if (!empty($_GET)) {
                                 
                                 <div class="table-responsive">
                                     <table id="carHistoryTable" class="table table-striped table-bordered table-hover table-sm w-100" aria-describedby="History of car updates">
-                                        <thead class="thead-dark">
+                                        <thead class="table-dark">
                                             <tr>
                                                 <th scope="col" class="text-nowrap">
                                                     <i class="fas fa-cog"></i> Operation
@@ -747,20 +747,18 @@ document.addEventListener('DOMContentLoaded', function() {
     const historyToggleBtn = document.getElementById('historyToggleBtn');
     
     if (historyDetails && historyToggleText && historyToggleBtn) {
-        historyToggleBtn.addEventListener('click', function() {
-            const isExpanded = historyDetails.classList.contains('show');
-            
-            if (isExpanded) {
-                $(historyDetails).collapse('hide');
-                historyToggleText.textContent = 'Show Details';
-                historyToggleText.previousElementSibling.className = 'fas fa-eye';
-                if (historySummary) historySummary.style.display = 'block';
-            } else {
-                $(historyDetails).collapse('show');
-                historyToggleText.textContent = 'Hide Details';
-                historyToggleText.previousElementSibling.className = 'fas fa-eye-slash';
-                if (historySummary) historySummary.style.display = 'none';
-            }
+        // The button has data-bs-toggle="collapse" so Bootstrap 5 handles show/hide
+        // automatically. Listen to collapse events to update label, icon, and summary.
+        historyDetails.addEventListener('shown.bs.collapse', function() {
+            historyToggleText.textContent = 'Hide Details';
+            historyToggleText.previousElementSibling.className = 'fas fa-eye-slash';
+            if (historySummary) historySummary.style.display = 'none';
+        });
+
+        historyDetails.addEventListener('hidden.bs.collapse', function() {
+            historyToggleText.textContent = 'Show Details';
+            historyToggleText.previousElementSibling.className = 'fas fa-eye';
+            if (historySummary) historySummary.style.display = 'block';
         });
     }
 });

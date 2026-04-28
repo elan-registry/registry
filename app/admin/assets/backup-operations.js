@@ -68,7 +68,7 @@ function listBackupFiles() {
         if (response.success) {
             displayBackupList(response.backups);
             // Show modal
-            $('#backupListModal').modal('show');
+            bootstrap.Modal.getOrCreateInstance(document.getElementById('backupListModal')).show();
         } else {
             showNotification(`Error loading backups: ${response.message}`, 'error');
             modalContent.innerHTML = `<div class="alert alert-danger">${response.message}</div>`;
@@ -212,7 +212,7 @@ function deleteBackup(filename) {
 
     newConfirmButton.addEventListener('click', function performDelete() {
         // Close modal
-        $('#confirmationModal').modal('hide');
+        bootstrap.Modal.getInstance(document.getElementById('confirmationModal'))?.hide();
 
         // Perform deletion
         const endpoint = window.elanUrlRoot ? window.elanUrlRoot.replace(/\/$/, '') + '/app/admin/includes/system/backup-operations.php' : '/app/admin/includes/system/backup-operations.php';
@@ -234,7 +234,7 @@ function deleteBackup(filename) {
     });
 
     // Show modal
-    $('#confirmationModal').modal('show');
+    bootstrap.Modal.getOrCreateInstance(document.getElementById('confirmationModal')).show();
 }
 
 /**
@@ -261,7 +261,7 @@ function performBackupCleanup() {
 
     newConfirmButton.addEventListener('click', function performCleanup() {
         // Close modal
-        $('#confirmationModal').modal('hide');
+        bootstrap.Modal.getInstance(document.getElementById('confirmationModal'))?.hide();
 
         const button = event.target;
         const originalText = button.innerHTML;
@@ -291,7 +291,7 @@ function performBackupCleanup() {
     });
 
     // Show modal
-    $('#confirmationModal').modal('show');
+    bootstrap.Modal.getOrCreateInstance(document.getElementById('confirmationModal')).show();
 }
 
 /**

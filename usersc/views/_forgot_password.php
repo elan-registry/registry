@@ -29,7 +29,7 @@ matching the join flow in _join.php.
             <?php addTurnstile(); ?>
             <div class="mt-3 text-center">
               <button type="submit" name="forgotten_password" value="1" class="btn btn-primary btn-lg">
-                <i class="fas fa-paper-plane mr-2"></i><?= lang("GEN_RESET"); ?>
+                <i class="fas fa-paper-plane me-2"></i><?= lang("GEN_RESET"); ?>
               </button>
             </div>
           </form>

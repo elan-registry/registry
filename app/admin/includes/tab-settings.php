@@ -191,9 +191,7 @@ $autoCreationMessages = processSettingsAutoCreation();
     <div class="alert alert-<?= $msg['type'] ?> alert-dismissible fade show" role="alert">
         <i class="fas fa-<?= $msg['type'] === 'success' ? 'check' : ($msg['type'] === 'info' ? 'info-circle' : 'exclamation-triangle') ?>"></i>
         <strong>Database Auto-Creation:</strong> <?= $msg['message'] ?>
-        <button type="button" class="close" data-dismiss="alert" aria-label="Close">
-            <span aria-hidden="true">&times;</span>
-        </button>
+        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
     </div>
 <?php endforeach; ?>
 
@@ -219,8 +217,8 @@ $autoCreationMessages = processSettingsAutoCreation();
                     <small class="text-light">API key for displaying car locations on maps</small>
                 </div>
                 <div class="card-body">
-                    <div class="form-group">
-                        <label for="elan_google_maps_key" class="font-weight-bold">
+                    <div class="mb-3">
+                        <label for="elan_google_maps_key" class="fw-bold">
                             <i class="fas fa-map"></i> Google Maps API Key
                         </label>
                         <input type="text"
@@ -232,7 +230,7 @@ $autoCreationMessages = processSettingsAutoCreation();
                                placeholder="AIzaSy...">
                         <small class="form-text text-muted">
                             <i class="fas fa-external-link-alt"></i> Required for car location maps and statistics page
-                            <a href="https://console.cloud.google.com/apis/credentials" target="_blank" class="ml-2">Get API Key</a>
+                            <a href="https://console.cloud.google.com/apis/credentials" target="_blank" class="ms-2">Get API Key</a>
                         </small>
                     </div>
 
@@ -273,8 +271,8 @@ $autoCreationMessages = processSettingsAutoCreation();
                     <small class="text-dark">File upload and image handling settings</small>
                 </div>
                 <div class="card-body">
-                    <div class="form-group">
-                        <label for="elan_image_dir" class="font-weight-bold">
+                    <div class="mb-3">
+                        <label for="elan_image_dir" class="fw-bold">
                             <i class="fas fa-folder"></i> Image Upload Directory
                         </label>
                         <input type="text"
@@ -287,8 +285,8 @@ $autoCreationMessages = processSettingsAutoCreation();
                         <small class="form-text text-muted">Directory path where car images are stored (relative to site root)</small>
                     </div>
 
-                    <div class="form-group">
-                        <label for="elan_image_max" class="font-weight-bold">
+                    <div class="mb-3">
+                        <label for="elan_image_max" class="fw-bold">
                             <i class="fas fa-photo-video"></i> Maximum Photos per Car
                         </label>
                         <div class="input-group">
@@ -301,15 +299,13 @@ $autoCreationMessages = processSettingsAutoCreation();
                                    name="elan_image_max"
                                    id="elan_image_max"
                                    value="<?= $settings->elan_image_max ?? '10' ?>">
-                            <div class="input-group-append">
-                                <span class="input-group-text">photos</span>
-                            </div>
+                            <span class="input-group-text">photos</span>
                         </div>
                         <small class="form-text text-muted">Limit number of photos users can upload per car</small>
                     </div>
 
-                    <div class="form-group">
-                        <label for="elan_image_upload_max_size" class="font-weight-bold">
+                    <div class="mb-3">
+                        <label for="elan_image_upload_max_size" class="fw-bold">
                             <i class="fas fa-file-upload"></i> Maximum Upload File Size
                         </label>
                         <div class="input-group">
@@ -322,9 +318,7 @@ $autoCreationMessages = processSettingsAutoCreation();
                                    name="elan_image_upload_max_size"
                                    id="elan_image_upload_max_size"
                                    value="<?= $settings->elan_image_upload_max_size ?? '2.00' ?>">
-                            <div class="input-group-append">
-                                <span class="input-group-text">MB</span>
-                            </div>
+                            <span class="input-group-text">MB</span>
                         </div>
                         <small class="form-text text-muted">Maximum file size for individual photo uploads (0.5-10 MB)</small>
                     </div>
@@ -338,8 +332,8 @@ $autoCreationMessages = processSettingsAutoCreation();
                     <small class="text-light">Administrative email addresses and notification settings</small>
                 </div>
                 <div class="card-body">
-                    <div class="form-group">
-                        <label for="elan_admin_emails" class="font-weight-bold">
+                    <div class="mb-3">
+                        <label for="elan_admin_emails" class="fw-bold">
                             <i class="fas fa-users-cog"></i> Admin Email Addresses
                         </label>
                         <textarea rows="3"
@@ -353,8 +347,8 @@ $autoCreationMessages = processSettingsAutoCreation();
                         </small>
                     </div>
 
-                    <div class="form-group">
-                        <label for="elan_feedback_email" class="font-weight-bold">
+                    <div class="mb-3">
+                        <label for="elan_feedback_email" class="fw-bold">
                             <i class="fas fa-comment-dots"></i> Feedback Email Address
                         </label>
                         <input type="text"
@@ -507,7 +501,7 @@ function testGoogleMapsAPI(buttonElement) {
     // Helper functions
     function showSuccess(btn, originalText) {
         btn.html(originalText).prop('disabled', false);
-        const successMsg = $('<span id="apiTestResult" class="ml-2 text-success font-weight-bold">' +
+        const successMsg = $('<span id="apiTestResult" class="ms-2 text-success fw-bold">' +
             '<i class="fas fa-check-circle"></i> Maps API Valid - Test Successful' +
             '</span>');
         btn.after(successMsg);
@@ -521,7 +515,7 @@ function testGoogleMapsAPI(buttonElement) {
 
     function showError(btn, originalText, message) {
         btn.html(originalText).prop('disabled', false);
-        const errorMsg = $('<span id="apiTestResult" class="ml-2 text-danger font-weight-bold">' +
+        const errorMsg = $('<span id="apiTestResult" class="ms-2 text-danger fw-bold">' +
             '<i class="fas fa-times-circle"></i> ' + message +
             '</span>');
         btn.after(errorMsg);
