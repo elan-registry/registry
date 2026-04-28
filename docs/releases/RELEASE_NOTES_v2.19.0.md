@@ -43,6 +43,10 @@
   Custom navigation renamed to `file_nav_custom.php` to survive Spice Shaker template upgrades.
   Bootstrap 5 now loaded from `cdnjs.cloudflare.com` via the upstream template (SRI-hashed).
   Application version now displayed on the admin dashboard.
+- **Minified JS/CSS assets** ([#737](https://github.com/unibrain1/elanregistry/issues/737)):
+  All first-party JS and CSS files are now minified with esbuild. `.min.js`/`.min.css` files are
+  committed to git and served in production. A pre-commit hook auto-rebuilds minified files when
+  source files change. `npm run build` regenerates all 12 minified assets on demand.
 
 ## Issues Resolved
 
@@ -50,7 +54,9 @@
 - [#618](https://github.com/unibrain1/elanregistry/issues/618) — Rebase ElanRegistry template on Bootstrap 5.3 (Customizer pattern)
 - [#619](https://github.com/unibrain1/elanregistry/issues/619) — Migrate Bootstrap 4 classes and data attributes across all app pages
 - [#620](https://github.com/unibrain1/elanregistry/issues/620) — Mobile responsiveness audit and remediation — all app pages
+- [#737](https://github.com/unibrain1/elanregistry/issues/737) — Minify first-party JS and CSS files to reduce payload size
 
 ## Summary
 
-4 issues resolved across the full Bootstrap 5 migration: self-hosted libraries, template rebase, class migration, and mobile responsiveness audit.
+5 issues resolved: full Bootstrap 5 migration (self-hosted libraries, template rebase, class migration,
+mobile responsiveness) plus first-party JS/CSS minification with esbuild.
