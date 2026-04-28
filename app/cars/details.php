@@ -747,17 +747,18 @@ document.addEventListener('DOMContentLoaded', function() {
     const historyToggleBtn = document.getElementById('historyToggleBtn');
     
     if (historyDetails && historyToggleText && historyToggleBtn) {
+        const historyToggleIcon = historyToggleBtn.querySelector('.fas');
         // The button has data-bs-toggle="collapse" so Bootstrap 5 handles show/hide
         // automatically. Listen to collapse events to update label, icon, and summary.
         historyDetails.addEventListener('shown.bs.collapse', function() {
             historyToggleText.textContent = 'Hide Details';
-            historyToggleText.previousElementSibling.className = 'fas fa-eye-slash';
+            if (historyToggleIcon) historyToggleIcon.className = 'fas fa-eye-slash';
             if (historySummary) historySummary.style.display = 'none';
         });
 
         historyDetails.addEventListener('hidden.bs.collapse', function() {
             historyToggleText.textContent = 'Show Details';
-            historyToggleText.previousElementSibling.className = 'fas fa-eye';
+            if (historyToggleIcon) historyToggleIcon.className = 'fas fa-eye';
             if (historySummary) historySummary.style.display = 'block';
         });
     }

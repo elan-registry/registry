@@ -980,7 +980,8 @@ function initializeCarManagement() {
             $btn.html('<i class="fas fa-spinner fa-spin"></i> Reassigning...');
 
             // Hide modal and submit form
-            bootstrap.Modal.getInstance(document.getElementById('reassignConfirmModal'))?.hide();
+            const _reassignEl = document.getElementById('reassignConfirmModal');
+            if (_reassignEl) bootstrap.Modal.getInstance(_reassignEl)?.hide();
             reassignFormToSubmit.submit();
         }
     });
@@ -1006,7 +1007,8 @@ function initializeCarManagement() {
             $btn.html('<i class="fas fa-spinner fa-spin"></i> Deleting...');
 
             // Hide modal and submit form
-            bootstrap.Modal.getInstance(document.getElementById('deleteConfirmModal'))?.hide();
+            const _deleteEl = document.getElementById('deleteConfirmModal');
+            if (_deleteEl) bootstrap.Modal.getInstance(_deleteEl)?.hide();
             deleteFormToSubmit.submit();
         }
     });
@@ -1307,7 +1309,8 @@ function initializeCarManagement() {
             new ElanRegistryAPI().post(endpoint, {
                 transfer_id: transferDecisionData.transferId
             }).then(function(response) {
-                bootstrap.Modal.getInstance(document.getElementById('transferDecisionModal'))?.hide();
+                const _transferEl = document.getElementById('transferDecisionModal');
+                if (_transferEl) bootstrap.Modal.getInstance(_transferEl)?.hide();
                 if (response.success) {
                     showNotification(response.message, 'success');
                     // Reload page after brief delay to show notification
@@ -1317,7 +1320,8 @@ function initializeCarManagement() {
                     $btn.prop('disabled', false).html(originalHtml);
                 }
             }).catch(function(error) {
-                bootstrap.Modal.getInstance(document.getElementById('transferDecisionModal'))?.hide();
+                const _transferEl = document.getElementById('transferDecisionModal');
+                if (_transferEl) bootstrap.Modal.getInstance(_transferEl)?.hide();
                 let errorMessage = 'An error occurred while processing the transfer request.';
                 if (error.message) {
                     errorMessage = error.message;
