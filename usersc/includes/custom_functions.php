@@ -128,7 +128,7 @@ function getBaseUrl(): string {
     static $baseUrl = null;
     if ($baseUrl === null) {
         $defaultUrl = 'https://elanregistry.org';
-        $logUserId = (isset($user) && $user->isLoggedIn()) ? (int) $user->data()->id : 0;
+        $logUserId = (isset($user) && $user->isLoggedIn() && $user->data()) ? (int) $user->data()->id : 0;
         $dbError = false;
         try {
             $db = DB::getInstance();
