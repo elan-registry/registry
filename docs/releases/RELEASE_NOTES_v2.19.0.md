@@ -31,6 +31,11 @@
   per series. Intro text now shows live car count and years since the registry started (Jan 2003).
 - **Factory page improvements** ([#620](https://github.com/unibrain1/elanregistry/issues/620)):
   Hid the internal Record # column; Registry Link column is now sortable.
+- **Photo uploads on Add/Edit Car form** ([#741](https://github.com/unibrain1/elanregistry/issues/741)):
+  Now use FilePond with improved drag-to-reorder, thumbnail previews, EXIF orientation
+  correction for mobile photos, and client-side file type/size validation with clear error messages.
+- **Photo upload layout on mobile** ([#743](https://github.com/unibrain1/elanregistry/issues/743)):
+  Constraints list and FilePond widget now stack full-width on all screen sizes; reorder hint updated to "Tap and hold to reorder • Drag on desktop".
 
 ## Technical Changes
 
@@ -47,6 +52,13 @@
   All first-party JS and CSS files are now minified with esbuild. `.min.js`/`.min.css` files are
   committed to git and served in production. A pre-commit hook auto-rebuilds minified files when
   source files change. `npm run build` regenerates all 12 minified assets on demand.
+- **FilePond image upload library** ([#741](https://github.com/unibrain1/elanregistry/issues/741)):
+  Replaced Dropzone 5.7.6 + jQuery UI Sortable with FilePond 4.x + six plugins
+  (image-exif-orientation, file-validate-type, file-validate-size, image-preview,
+  image-resize, image-transform); removed dropzone and jquery-ui npm dependencies.
+  Client-side image resize (to `elan_image_display_max_size`) before upload.
+  Fixed XSS vulnerability in edit car form validation error display (escapeHtml applied to server error messages).
+  Added `basename()` normalization to server-side `removeImages` file parameter.
 
 ## Issues Resolved
 
@@ -55,8 +67,10 @@
 - [#619](https://github.com/unibrain1/elanregistry/issues/619) — Migrate Bootstrap 4 classes and data attributes across all app pages
 - [#620](https://github.com/unibrain1/elanregistry/issues/620) — Mobile responsiveness audit and remediation — all app pages
 - [#737](https://github.com/unibrain1/elanregistry/issues/737) — Minify first-party JS and CSS files to reduce payload size
+- [#741](https://github.com/unibrain1/elanregistry/issues/741) — Migrate photo upload from Dropzone to FilePond with improved UX and security fixes
+- [#743](https://github.com/unibrain1/elanregistry/issues/743) — Fix Step 3 photo upload layout for mobile
 
 ## Summary
 
-5 issues resolved: full Bootstrap 5 migration (self-hosted libraries, template rebase, class migration,
-mobile responsiveness) plus first-party JS/CSS minification with esbuild.
+7 issues resolved: full Bootstrap 5 migration (self-hosted libraries, template rebase, class migration,
+mobile responsiveness), first-party JS/CSS minification with esbuild, and FilePond image upload library migration with mobile layout fix.

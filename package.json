@@ -51,9 +51,14 @@
   "dependencies": {
     "chart.js": "4.5.1",
     "datatables.net-bs4": "1.10.23",
-    "dropzone": "5.7.6",
-    "flatpickr": "^4.6.13",
-    "jquery-ui": "1.12.1"
+    "filepond": "^4.32.12",
+    "filepond-plugin-file-validate-size": "^2.2.8",
+    "filepond-plugin-file-validate-type": "^1.2.9",
+    "filepond-plugin-image-exif-orientation": "^1.0.11",
+    "filepond-plugin-image-preview": "^4.6.12",
+    "filepond-plugin-image-resize": "^2.0.10",
+    "filepond-plugin-image-transform": "^3.8.7",
+    "flatpickr": "^4.6.13"
   },
   "devDependencies": {
     "@playwright/test": "^1.56.1",

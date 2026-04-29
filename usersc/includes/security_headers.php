@@ -44,6 +44,7 @@ header("Content-Security-Policy: " .
         "https://static.cloudflareinsights.com; " .
     "frame-src 'self' https://challenges.cloudflare.com; " .
     "frame-ancestors 'self'; " .
+    "worker-src 'self' blob:; " .
     "object-src 'none'; " .
     "base-uri 'self'"
 );

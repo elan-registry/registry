@@ -486,9 +486,15 @@ function updateCarDetails(array &$car): void
 require_once $abs_us_root . $us_url_root . 'users/includes/html_footer.php'; //custom template footer
 ?>
 
-<script src="<?=$us_url_root?>usersc/js/jquery-ui.min.js"></script>
-<script src="<?=$us_url_root?>usersc/js/dropzone.min.js"></script>
-<link rel="stylesheet" href="<?=$us_url_root?>usersc/css/dropzone.min.css">
+<script src="<?=$us_url_root?>usersc/js/filepond.min.js"></script>
+<script src="<?=$us_url_root?>usersc/js/filepond-plugin-image-exif-orientation.min.js"></script>
+<script src="<?=$us_url_root?>usersc/js/filepond-plugin-file-validate-type.min.js"></script>
+<script src="<?=$us_url_root?>usersc/js/filepond-plugin-file-validate-size.min.js"></script>
+<script src="<?=$us_url_root?>usersc/js/filepond-plugin-image-preview.min.js"></script>
+<script src="<?=$us_url_root?>usersc/js/filepond-plugin-image-resize.min.js"></script>
+<script src="<?=$us_url_root?>usersc/js/filepond-plugin-image-transform.min.js"></script>
+<link rel="stylesheet" href="<?=$us_url_root?>usersc/css/filepond.min.css">
+<link rel="stylesheet" href="<?=$us_url_root?>usersc/css/filepond-plugin-image-preview.min.css">
 <script src="<?=$us_url_root?>usersc/js/flatpickr.min.js"></script>
 <link rel="stylesheet" href="<?=$us_url_root?>usersc/css/flatpickr.min.css">
 
@@ -496,7 +502,6 @@ require_once $abs_us_root . $us_url_root . 'users/includes/html_footer.php'; //c
 <script src='<?= $us_url_root ?>app/assets/js/model-loader.min.js'></script>
 
 <script>
-    Dropzone.autoDiscover = false;
     const csrf = $('#csrf').val();
     const car_id = $('#car_id').val();
 
@@ -504,153 +509,166 @@ require_once $abs_us_root . $us_url_root . 'users/includes/html_footer.php'; //c
         flatpickr('#purchasedate', { dateFormat: 'Y-m-d', allowInput: true });
         flatpickr('#solddate',     { dateFormat: 'Y-m-d', allowInput: true });
 
-        // BEGIN DROPZONE
+        // BEGIN FILEPOND
 
-        $(function() {
-            $("#myDrop").sortable({
-                items: '.dz-preview',
-                cursor: 'move',
-                opacity: 0.5,
-                containment: '#myDrop',
-                distance: 20,
-                tolerance: 'pointer',
-            });
+        FilePond.registerPlugin(
+            FilePondPluginImageExifOrientation,
+            FilePondPluginFileValidateType,
+            FilePondPluginFileValidateSize,
+            FilePondPluginImagePreview,
+            FilePondPluginImageResize,
+            FilePondPluginImageTransform
+        );
 
-            $("#myDrop").disableSelection();
-        });
+        const processedFiles = new Map();
 
-        var myDropzone = new Dropzone("div#myDrop", {
-            url: "actions/edit.php",
-            autoProcessQueue: false,
-            clickable: true,
-
-            uploadMultiple: true,
+        const pond = FilePond.create(document.querySelector('#myPond'), {
+            allowMultiple: true,
+            allowReorder: true,
             maxFiles: <?= $maximages ?>,
-            maxFilesize: <?= isset($settings->elan_image_upload_max_size) ? $settings->elan_image_upload_max_size : 2 ?>, // MB
-            parallelUploads: 10,
-
-            acceptedFiles: 'image/*',
-            addRemoveLinks: true,
-
-            resizeWidth: <?= isset($settings->elan_image_display_max_size) ? $settings->elan_image_display_max_size : 2048 ?>,
-            resizeMimeType: 'image/jpeg',
-
-            dictRemoveFile: 'Remove photo',
-            dictDefaultMessage: "Drop photos here to upload",
-            dictMaxFilesExceeded: "Only {{maxFiles}} photos are allowed",
-            dictFileTooBig: "Photo is to big ({{filesize}}mb). Max allowed photo size is {{maxFilesize}}mb",
-            dictInvalidFileType: "Invalid File Type - Only images are allowed",
-
-            paramName: "file", // The name that will be used to transfer the file
-
-            init: function() {
-                thisDropzone = this;
-                
-                // Only load existing images if we have a valid car ID (editing mode)
-                if (car_id && car_id !== '') {
-                    new ElanRegistryAPI().post('<?= $us_url_root ?>app/cars/actions/edit.php', {
-                        carID: car_id,
-                        action: 'fetchImages'
-                    }).then(function(data) {
-                        if (data == null || data.success !== true) {
-                            return;
+            acceptedFileTypes: ['image/jpeg', 'image/png', 'image/gif', 'image/webp'],
+            maxFileSize: <?= (int)((isset($settings->elan_image_upload_max_size) ? (float)$settings->elan_image_upload_max_size : 2) * 1024 * 1024) ?>,
+            instantUpload: false,
+            allowProcess: false,
+            imageResizeTargetWidth: <?= isset($settings->elan_image_display_max_size) ? $settings->elan_image_display_max_size : 2048 ?>,
+            imageResizeMode: 'downscale',
+            credits: false,
+            labelIdle: 'Drop photos here or <span class="filepond--label-action">Browse</span>',
+            labelFileTypeNotAllowed: 'Invalid file type — only images are allowed',
+            fileValidateTypeLabelExpectedTypes: 'Expects {allTypes}',
+            labelMaxFileSizeExceeded: 'Photo is too large',
+            labelMaxFileSize: 'Maximum size is {filesize}',
+            labelMaxTotalFileSizeExceeded: 'Maximum total size exceeded',
+            server: {
+                process: (fieldName, file, metadata, load, error, progress, abort) => {
+                    const serverId = 'fp_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8);
+                    processedFiles.set(serverId, { blob: file, name: file.name });
+                    load(serverId);
+                    return {
+                        abort: () => {
+                            processedFiles.delete(serverId);
+                            abort();
                         }
-                        $.each(data.images, function(key, value) {
-                            var mockFile = {
-                                path: value.path,
-                                name: value.basename,
-                                accepted: true,
-                                status: 'success',
-                            };
-
-                            thisDropzone.emit("addedfile", mockFile);
-                            thisDropzone.emit("thumbnail", mockFile, value.path);
-                            $('[data-dz-thumbnail]').css('height', '120');
-                            $('[data-dz-thumbnail]').css('width', '120');
-                            $('[data-dz-thumbnail]').css('object-fit', 'cover');
-
-                            // Make sure that there is no progress bar, etc...
-
-                            // thisDropzone.emit("success", mockFile);
-                            thisDropzone.emit("complete", mockFile);
-
-                            thisDropzone.files.push(mockFile);
-                        });
-                    }).catch(function() {
-                        // Failed to fetch images - handle silently
-                    });
+                    };
+                },
+                load: (source, load, error) => {
+                    const expectedOrigin = window.location.origin;
+                    // Normalise to absolute URL so the origin check is reliable
+                    const absSource = source.startsWith('http') ? source : expectedOrigin + '/' + source.replace(/^\//, '');
+                    if (!absSource.startsWith(expectedOrigin)) {
+                        error('Blocked load from unexpected origin');
+                        return;
+                    }
+                    fetch(absSource)
+                        .then(r => r.blob())
+                        .then(blob => load(blob))
+                        .catch(error);
+                },
+                revert: (serverId, load, error) => {
+                    processedFiles.delete(serverId);
+                    load();
                 }
-
-                // Grab the submit button.  Make sure it's error free and process the queue
-                document.getElementById("submit").addEventListener("click", function(e) {
-                    current_fs = $(this).parent();
-                    next_fs = $(this).parent().next();
-
-                    // Check to see if any of the form fields are invalid
-                    var form_data = $('#addCar').serializeArray();
-                    var error_free = true;
-
-                    for (var input in form_data) {
-                        var element = $('#' + form_data[input]['name'] + '_icon');
-                        var invalid = element.hasClass('fa-thumbs-down');
-                        if (invalid) {
-                            error_free = false;
-                        }
-                    }
-
-                    // check to see if there are any errors on the images
-                    //  See if data-dz-errormessage is empty for all images.
-                    $('.dropzone .dz-error-message span').each(function() {
-                        if ($(this).text()) {
-                            error_free = false;
-                        }
-                    });
-
-                    if (!error_free) {
-                        $('#message').show().append('<div class="alert alert-primary">Error: There are one or more errors on the page.<br>Please update and submit</div>');
-
-                        e.preventDefault();
-                    } else {
-                        // Now process the queue
-                        if (thisDropzone.getQueuedFiles().length > 0) {
-                            e.stopPropagation();
-                            e.preventDefault();
-                            thisDropzone.processQueue();
-                        } else {
-                            e.stopPropagation();
-                            e.preventDefault();
-
-                            // https://stackoverflow.com/questions/20910571/dropzonejs-submit-form-without-files
-                            var blob = new Blob();
-                            blob.upload = {};
-                            thisDropzone.uploadFile(blob);
-                        }
-                    }
-                });
-
-                thisDropzone.on("addedfile", function(file) {
-                    $("#message").hide();
-                });
-
             }
         });
 
-        //send all the form data along with the files:
-        myDropzone.on("sendingmultiple", function(data, xhr, formData) {
-            var filenames = [];
-            $('.dz-preview .dz-filename').each(function() {
-                filenames.push($(this).find('span').text());
+        // Hydrate existing images in edit mode
+        if (car_id && car_id !== '') {
+            new ElanRegistryAPI().post('<?= $us_url_root ?>app/cars/actions/edit.php', {
+                carID: car_id,
+                action: 'fetchImages'
+            }).then(function(data) {
+                if (data == null || data.success !== true) {
+                    return;
+                }
+                // Chain serially so FilePond receives files in server-defined order
+                data.images.reduce(function(chain, img) {
+                    return chain.then(function() {
+                        return pond.addFile(img.path, {
+                            type: 'local',
+                            metadata: { serverFilename: img.basename }
+                        });
+                    });
+                }, Promise.resolve());
+            }).catch(function() {
+                $('#message').show().html(
+                    '<div class="alert alert-warning">Existing photos could not be loaded. ' +
+                    'Please refresh the page before making changes to avoid losing photo data.</div>'
+                );
+                document.getElementById('submit').disabled = true;
+            });
+        }
+
+        // Remove existing images in edit mode
+        pond.on('removefile', function(error, fileItem) {
+            if (error) {
+                return;
+            }
+            if (car_id && car_id !== '' && fileItem.origin === FilePond.FileOrigin.LOCAL) {
+                const filename = fileItem.getMetadata('serverFilename');
+                new ElanRegistryAPI().post('<?= $us_url_root ?>app/cars/actions/edit.php', {
+                    action: 'removeImages',
+                    carID: car_id,
+                    file: filename
+                }).catch(function() {
+                    $('#message').show().html(
+                        '<div class="alert alert-warning">A photo could not be removed from the server. ' +
+                        'Please refresh the page and try again before submitting.</div>'
+                    );
+                });
+            }
+        });
+
+        // Clear file-level errors when a new file is added
+        pond.on('addfile', function() {
+            $('#message').hide();
+        });
+
+        document.getElementById('submit').addEventListener('click', function(e) {
+            e.stopPropagation();
+            e.preventDefault();
+
+            current_fs = $(this).parent();
+            next_fs = $(this).parent().next();
+
+            const form_data = $('#addCar').serializeArray();
+            let error_free = true;
+
+            form_data.forEach(function(field) {
+                if ($('#' + field.name + '_icon').hasClass('fa-thumbs-down')) {
+                    error_free = false;
+                }
             });
 
+            if (!error_free) {
+                $('#message').show().append('<div class="alert alert-primary">Error: There are one or more errors on the page.<br>Please update and submit</div>');
+                return;
+            }
+
+            const pondHasErrors = pond.getFiles().some(function(item) {
+                return item.status === FilePond.FileStatus.LOAD_ERROR ||
+                       item.status === FilePond.FileStatus.PROCESSING_ERROR;
+            });
+
+            if (pondHasErrors) {
+                $('#message').show().html('<div class="alert alert-primary">Error: One or more photos have errors. Please remove them and try again.</div>');
+                return;
+            }
+
+            // processFiles() skips already-processed files; their blobs remain in processedFiles
+            pond.processFiles().then(function() {
+                return submitCarForm();
+            }).catch(function(err) {
+                $('#message').show().html('<div class="alert alert-danger">An error occurred processing the photos. Please try again.</div>');
+            });
+        });
+
+        async function submitCarForm() {
+            const formData = new FormData();
             formData.append('action', $('#action').val());
             formData.append('csrf', $('#csrf').val());
-            formData.append('filenames', filenames);
-            formData.append('car_id', $('#car_id').val());
+            formData.append('car_id', car_id || '');
             formData.append('year', $('#year').val());
             formData.append('model', $('#model').val());
-            formData.append('series', $('#series').val());
-            formData.append('variant', $('#variant').val());
-            formData.append('type', $('#type').val());
             formData.append('chassis', $('#chassis').val());
             formData.append('chassis_override', $('#chassis_override').is(':checked') ? '1' : '0');
             formData.append('color', $('#color').val());
@@ -659,11 +677,53 @@ require_once $abs_us_root . $us_url_root . 'users/includes/html_footer.php'; //c
             formData.append('solddate', $('#solddate').val());
             formData.append('website', $('#website').val());
             formData.append('comments', $('#comments').val());
-        });
+
+            // Build ordered filenames and append new files in pond order
+            const allItems = pond.getFiles();
+            const orderedFilenames = [];
+            let hasNewFiles = false;
+
+            allItems.forEach(function(item) {
+                if (item.origin === FilePond.FileOrigin.LOCAL) {
+                    orderedFilenames.push(item.getMetadata('serverFilename'));
+                } else if (item.serverId) {
+                    const processed = processedFiles.get(item.serverId);
+                    if (processed) {
+                        formData.append('file[]', processed.blob, processed.name);
+                        orderedFilenames.push(processed.name);
+                        hasNewFiles = true;
+                    }
+                }
+            });
+
+            // Server parses filenames via explode(',', Input::get('filenames'))
+            formData.append('filenames', orderedFilenames.join(','));
+
+            // Empty blob named 'blob' signals server that no new files were uploaded
+            if (!hasNewFiles) {
+                formData.append('file[]', new Blob([]), 'blob');
+            }
+
+            try {
+                const response = await fetch('actions/edit.php', {
+                    method: 'POST',
+                    headers: { 'X-Requested-With': 'XMLHttpRequest' },
+                    body: formData
+                });
+                const data = await response.json();
+
+                if (data.success === true) {
+                    window.location = '<?= $us_url_root ?>app/cars/details.php?car_id=' + data.cardetails.id;
+                } else {
+                    displayValidationErrors(data);
+                }
+            } catch (err) {
+                $('#message').show().html('<div class="alert alert-danger">An error occurred. Please try again.</div>');
+            }
+        }
 
         /**
          * Display validation errors in the results fieldset and repopulate form fields.
-         * Used by both successmultiple (200 with success:false) and error (422) handlers.
          */
         function displayValidationErrors(data) {
             // Advance the page progress indicator
@@ -695,19 +755,19 @@ require_once $abs_us_root . $us_url_root . 'users/includes/html_footer.php'; //c
             // Build error display table
             var html = "<table id='resultstable' class='table table-striped table-bordered table-sm text-wrap'>";
             html += '<tr><td>Status</td><td><strong class="text-danger">ERROR</strong></td></tr>';
-            html += '<tr><td>Message</td><td>' + (data.message || 'An error occurred') + '</td></tr>';
+            html += '<tr><td>Message</td><td>' + NotificationHelper.escapeHtml(data.message || 'An error occurred') + '</td></tr>';
 
             // Display validation errors if present
             if (data.errors) {
                 html += '<tr><td>Validation Errors</td><td><ul>';
                 if (Array.isArray(data.errors.general)) {
                     data.errors.general.forEach(function(error) {
-                        html += '<li>' + error + '</li>';
+                        html += '<li>' + NotificationHelper.escapeHtml(error) + '</li>';
                     });
                 } else {
-                    for (var field in data.errors) {
-                        html += '<li><strong>' + field + ':</strong> ' + data.errors[field] + '</li>';
-                    }
+                    Object.entries(data.errors).forEach(function([field, msg]) {
+                        html += '<li><strong>' + NotificationHelper.escapeHtml(field) + ':</strong> ' + NotificationHelper.escapeHtml(msg) + '</li>';
+                    });
                 }
                 html += '</ul></td></tr>';
             }
@@ -743,35 +803,6 @@ require_once $abs_us_root . $us_url_root . 'users/includes/html_footer.php'; //c
                 if (data.cardetails.solddate) $('#solddate').val(data.cardetails.solddate);
             }
         }
-
-        myDropzone.on("successmultiple", function(file, message) {
-            // Message may already be parsed by Dropzone due to Content-Type header
-            const data = (typeof message === 'string') ? JSON.parse(message) : message;
-
-            // Pattern A: Check success boolean
-            if (data.success === true) {
-                window.location = '<?= $us_url_root ?>app/cars/details.php?car_id=' + data.cardetails.id;
-            } else {
-                displayValidationErrors(data);
-            }
-        });
-
-        myDropzone.on("error", function(data, msg, xhr) {
-            if (xhr && xhr.responseText) {
-                try {
-                    var jsonData = JSON.parse(xhr.responseText);
-                    if (jsonData.success === false) {
-                        displayValidationErrors(jsonData);
-                        return;
-                    }
-                } catch (e) {
-                    // Not JSON, fall through to generic display
-                }
-            }
-            $("#message").show().html('<div class="alert alert-primary">' + msg + '</div>');
-        });
-
-        // END DROPZONE
 
         // Tabbed interface
 
@@ -893,8 +924,8 @@ require_once $abs_us_root . $us_url_root . 'users/includes/html_footer.php'; //c
         // Pre-populate dropdown menus if we are updating a car
 <?php if ($action === 'updateCar'): ?>
         if ($('#action').val() === 'updateCar') {
-            const year = <?= $cardetails['year'] ?>;
-            const modelValue = "<?= $cardetails['model'] ?>";
+            const year = <?= (int)($cardetails['year'] ?? 0) ?>;
+            const modelValue = <?= json_encode((string)($cardetails['model'] ?? ''), JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP) ?>;
 
             // Set year and trigger change to load models
             $('#year').val(year).trigger('change');

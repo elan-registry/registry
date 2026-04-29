@@ -160,12 +160,24 @@ if (!empty($_POST)) {
 
             case "fetchImages":
                 $car_id = (int)Input::get('carID');
+                $carForAuth = new Car($car_id);
+                if (!$carForAuth->data() || ($user->data()->id != $carForAuth->data()->user_id && !hasPerm([2, 3]))) {
+                    ApiResponse::error('Unauthorized', 403)
+                        ->withLogging($user->data()->id, LogCategories::LOG_CATEGORY_VALIDATION_ERROR, 'fetchImages: unauthorized for car ' . $car_id)
+                        ->send();
+                }
                 fetchImages($car_id);
                 break;
 
             case "removeImages":
                 $car_id = (int)Input::get('carID');
-                $file = Input::get('file');
+                $carForAuth = new Car($car_id);
+                if (!$carForAuth->data() || ($user->data()->id != $carForAuth->data()->user_id && !hasPerm([2, 3]))) {
+                    ApiResponse::error('Unauthorized', 403)
+                        ->withLogging($user->data()->id, LogCategories::LOG_CATEGORY_VALIDATION_ERROR, 'removeImages: unauthorized for car ' . $car_id)
+                        ->send();
+                }
+                $file = basename((string)Input::get('file'));
                 removeImage($car_id, $file);
                 break;
 
