@@ -51,7 +51,7 @@
   "homepage": "https://github.com/unibrain1/elanregistry#readme",
   "dependencies": {
     "chart.js": "4.5.1",
-    "datatables.net-bs4": "1.10.23",
+    "datatables.net-bs4": "1.13.11",
     "filepond": "^4.32.12",
     "filepond-plugin-file-validate-size": "^2.2.8",
     "filepond-plugin-file-validate-type": "^1.2.9",
