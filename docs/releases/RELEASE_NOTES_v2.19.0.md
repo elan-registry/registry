@@ -37,6 +37,14 @@
 - **Photo upload layout on mobile** ([#743](https://github.com/unibrain1/elanregistry/issues/743)):
   Constraints list and FilePond widget now stack full-width on all screen sizes; reorder hint updated to "Tap and hold to reorder • Drag on desktop".
 
+### Bug Fixes
+
+- **Add/Edit Car form mobile layout** ([#744](https://github.com/unibrain1/elanregistry/issues/744)):
+  Fixed four mobile CSS regressions: buttons now use flexbox (`d-flex justify-content-between`)
+  instead of `float: right` so they never overlap on narrow screens; input wrappers updated to
+  `col-12 col-sm-9` so fields stack correctly at 375 px; comments textarea reduced from 10 to 4
+  rows; progress bar step labels enlarged from 12 px to 14 px on screens ≤ 575 px.
+
 ## Technical Changes
 
 - **Self-hosted Frontend Libraries** ([#405](https://github.com/unibrain1/elanregistry/issues/405)):
@@ -69,8 +77,10 @@
 - [#737](https://github.com/unibrain1/elanregistry/issues/737) — Minify first-party JS and CSS files to reduce payload size
 - [#741](https://github.com/unibrain1/elanregistry/issues/741) — Migrate photo upload from Dropzone to FilePond with improved UX and security fixes
 - [#743](https://github.com/unibrain1/elanregistry/issues/743) — Fix Step 3 photo upload layout for mobile
+- [#744](https://github.com/unibrain1/elanregistry/issues/744) — Fix mobile CSS regressions in add/edit car form
 
 ## Summary
 
-7 issues resolved: full Bootstrap 5 migration (self-hosted libraries, template rebase, class migration,
-mobile responsiveness), first-party JS/CSS minification with esbuild, and FilePond image upload library migration with mobile layout fix.
+8 issues resolved: full Bootstrap 5 migration (self-hosted libraries, template rebase, class migration,
+mobile responsiveness), first-party JS/CSS minification with esbuild, FilePond image upload library migration
+with mobile layout fix, and add/edit car form mobile CSS regressions.
