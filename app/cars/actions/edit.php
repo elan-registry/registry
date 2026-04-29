@@ -3,6 +3,7 @@ declare(strict_types=1);
 
 use ElanRegistry\Exceptions\CarValidationException;
 use ElanRegistry\Exceptions\ElanRegistryException;
+use ElanRegistry\Exceptions\ImageProcessingException;
 
 /**
  * editCar.php - Car management endpoint
