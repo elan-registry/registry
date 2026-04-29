@@ -97,7 +97,7 @@
   New `npm run playwright:bs5` script for targeted execution.
 - **Rename `edit.php` → `form.php`** ([#751](https://github.com/unibrain1/elanregistry/issues/751)):
   Renamed `app/cars/edit.php` to `app/cars/form.php` to reflect its dual add/edit role.
-  Updated all internal links, form actions, email templates, cron scripts, Playwright tests,
+  Updated all internal links, form actions, email view helpers, cron scripts, Playwright tests,
   PHPUnit tests, and documentation. Includes a DB migration (`FIX-751`) to update the UserSpice
   page permissions entry.
 - **StatisticsApiTest integration tests** ([#740](https://github.com/unibrain1/elanregistry/issues/740)):

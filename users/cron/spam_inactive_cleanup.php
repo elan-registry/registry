@@ -460,6 +460,10 @@ try {
     $errorMsg = "Error during cleanup process: " . $e->getMessage();
     logger($user_id, 'SpamCleanupError', $errorMsg);
     $errors[] = $errorMsg;
+} catch (\Throwable $e) {
+    $errorMsg = "Unexpected error during cleanup: " . $e->getMessage();
+    logger($user_id, 'SpamCleanupError', $errorMsg);
+    $errors[] = $errorMsg;
 }
 
 // UserSpice cron system logging
