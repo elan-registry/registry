@@ -207,6 +207,8 @@ INSERT INTO `pages` (`id`, `page`, `title`, `private`, `re_auth`, `core`) VALUES
 (330, 'app/admin/verify/send_email.php', NULL, 1, 0, 0),
 (331, 'app/admin/verify/verify_car.php', NULL, 1, 0, 0),
 (337, 'app/admin/includes/system/schema-operations.php', NULL, 1, 0, 0),
+(338, 'app/admin/manage-maintenance.php', 'Admin - Registry Maintenance', 1, 0, 0),
+(339, 'app/admin/includes/system/backup-operations.php', 'Admin - Backup Operations', 1, 0, 0),
 (9001, 'docs/pdf-viewer.php',   NULL, 0, 0, 0),
 (9002, 'docs/guide-viewer.php', NULL, 0, 0, 0)
 ON DUPLICATE KEY UPDATE
@@ -226,6 +228,7 @@ INSERT IGNORE INTO `permission_page_matches` (`permission_id`, `page_id`) VALUES
 (2, 68), (2, 157), (2, 256), (2, 280), (2, 283), (2, 294), (2, 299), (2, 300),
 (2, 301), (2, 304), (2, 305), (2, 306), (2, 308), (2, 309), (2, 310), (2, 311),
 (2, 312), (2, 313), (2, 314), (2, 315), (2, 317), (2, 327), (2, 331), (2, 336),
+(2, 337), (2, 338), (2, 339),
 
 -- Editor (permission_id = 3) - Content editor access
 (3, 3), (3, 4), (3, 157), (3, 256), (3, 283), (3, 294), (3, 299), (3, 300),
