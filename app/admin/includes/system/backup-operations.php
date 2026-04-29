@@ -239,7 +239,7 @@ try {
             break;
 
         case 'delete_backup':
-            // Sanitize filename at assignment — basename() strips directory components to prevent path traversal
+            // basename() strips ../ traversal sequences; realpath() below provides defense-in-depth against symlinks — both are required
             $filename = basename($_POST['filename'] ?? '');
             logger($user->data()->id, LogCategories::LOG_CATEGORY_BACKUP_MANAGER, "Delete backup requested: {$filename}");
 
@@ -261,11 +261,26 @@ try {
             $deleted = false;
             $types = ['automated', 'manual', 'rollback'];
 
+            $realBackupDir = realpath($backupDir);
+            if ($realBackupDir === false) {
+                ApiResponse::error('Backup directory unavailable', 500)
+                    ->withLogging($user->data()->id, LogCategories::LOG_CATEGORY_BACKUP_ERROR,
+                        "Delete backup: realpath() failed for backup dir '{$backupDir}' — server misconfiguration")
+                    ->send();
+            }
+
             foreach ($types as $type) {
                 $filepath = $backupDir . $type . '/' . $filename;
 
                 if (file_exists($filepath)) {
-                    if (unlink($filepath)) {
+                    $realpath = realpath($filepath);
+                    if ($realpath === false || !str_starts_with($realpath, $realBackupDir . '/')) {
+                        ApiResponse::error('Access denied', 403)
+                            ->withLogging($user->data()->id, LogCategories::LOG_CATEGORY_BACKUP_ERROR,
+                                "Delete backup: path traversal attempt blocked for '{$filename}'")
+                            ->send();
+                    }
+                    if (unlink($realpath)) { // nosemgrep: php.lang.security.unlink-use.unlink-use -- path verified within backup directory
                         $deleted = true;
                         logger($user->data()->id, LogCategories::LOG_CATEGORY_BACKUP_MANAGER,
                             "Backup deleted via API: {$filename} (type: {$type})");
@@ -273,7 +288,7 @@ try {
                     } else {
                         ApiResponse::error('Failed to delete backup file', 500)
                             ->withLogging($user->data()->id, LogCategories::LOG_CATEGORY_BACKUP_ERROR,
-                                "Failed to unlink backup file: {$filepath}")
+                                "Failed to unlink backup file: {$realpath}")
                             ->send();
                     }
                 }

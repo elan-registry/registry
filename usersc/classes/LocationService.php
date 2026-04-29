@@ -487,7 +487,11 @@ class LocationService
 
         $data = @json_decode(file_get_contents($cacheFile), true);
         if (!$data || !isset($data['expires']) || $data['expires'] < time()) {
-            @unlink($cacheFile);
+            $realCacheFile = realpath($cacheFile);
+            $realCacheDir = realpath($cacheDir);
+            if ($realCacheFile !== false && $realCacheDir !== false && str_starts_with($realCacheFile, $realCacheDir . '/')) {
+                @unlink($realCacheFile); // nosemgrep: php.lang.security.unlink-use.unlink-use -- path verified within cache directory; failure is non-fatal (stale cache)
+            }
             return null;
         }
 
