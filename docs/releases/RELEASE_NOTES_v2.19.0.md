@@ -67,6 +67,10 @@
   Client-side image resize (to `elan_image_display_max_size`) before upload.
   Fixed XSS vulnerability in edit car form validation error display (escapeHtml applied to server error messages).
   Added `basename()` normalization to server-side `removeImages` file parameter.
+- **StatisticsApiTest integration tests** ([#740](https://github.com/unibrain1/elanregistry/issues/740)):
+  Removed `try/catch (Throwable)` anti-pattern that was converting assertion failures into silent
+  skips; corrected asserted strings to match the actual `LogCategories` constants and `error.message`
+  JS pattern used in the source files.
 
 ## Issues Resolved
 
@@ -78,9 +82,10 @@
 - [#741](https://github.com/unibrain1/elanregistry/issues/741) — Migrate photo upload from Dropzone to FilePond with improved UX and security fixes
 - [#743](https://github.com/unibrain1/elanregistry/issues/743) — Fix Step 3 photo upload layout for mobile
 - [#744](https://github.com/unibrain1/elanregistry/issues/744) — Fix mobile CSS regressions in add/edit car form
+- [#740](https://github.com/unibrain1/elanregistry/issues/740) — Fix silently-skipping integration tests in StatisticsApiTest
 
 ## Summary
 
-8 issues resolved: full Bootstrap 5 migration (self-hosted libraries, template rebase, class migration,
+9 issues resolved: full Bootstrap 5 migration (self-hosted libraries, template rebase, class migration,
 mobile responsiveness), first-party JS/CSS minification with esbuild, FilePond image upload library migration
-with mobile layout fix, and add/edit car form mobile CSS regressions.
+with mobile layout fix, add/edit car form mobile CSS regressions, and StatisticsApiTest integration test fixes.
