@@ -49,8 +49,8 @@ Main application functionality organized by feature:
 /app/
 ├── /cars/               # Car registry management
 │   ├── index.php       # List all cars (public)
-│   ├── detail.php      # Single car detail view (public)
-│   ├── edit.php        # Add/edit car form (authenticated)
+│   ├── details.php     # Single car detail view (public)
+│   ├── form.php        # Add/edit car form (authenticated)
 │   ├── delete.php      # Delete car action (authenticated)
 │   ├── factory.php     # Production Records reference (public)
 │   └── /ajax/          # AJAX endpoints for car operations

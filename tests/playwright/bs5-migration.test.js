@@ -10,13 +10,13 @@ const { test, expect } = require('@playwright/test');
 const { ensureLoggedIn, navigateAndWait } = require('./auth-helper.js');
 
 // ---------------------------------------------------------------------------
-// Area 1: Flatpickr date pickers (app/cars/edit.php, Car Details section)
+// Area 1: Flatpickr date pickers (app/cars/form.php, Car Details section)
 // ---------------------------------------------------------------------------
 
 test.describe('BS5 Migration — Flatpickr date pickers', () => {
   test.beforeEach(async ({ page }) => {
     await ensureLoggedIn(page);
-    await page.goto('/app/cars/edit.php', { waitUntil: 'networkidle' });
+    await page.goto('/app/cars/form.php', { waitUntil: 'networkidle' });
     // Date fields are in Section 1 (Car Details) which is open by default — no toggle needed
     await expect(page.locator('#section1')).toBeVisible({ timeout: 5000 });
   });

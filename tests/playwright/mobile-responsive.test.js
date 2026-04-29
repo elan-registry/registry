@@ -63,7 +63,7 @@ test.describe('Mobile Responsive (iPhone SE / 375px)', () => {
   });
 
   test('edit car form progress bar does not cause horizontal overflow', async ({ page }) => {
-    await navigateAndWait(page, '/app/cars/edit.php');
+    await navigateAndWait(page, '/app/cars/form.php');
     await page.waitForLoadState('networkidle');
 
     await handleAuthRequired(
