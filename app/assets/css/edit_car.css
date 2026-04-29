@@ -131,11 +131,10 @@
     object-fit: cover
 }
 
-/* Dropzone */
+/* FilePond */
 
-/* Do not display filename and size */
-.dz-size, .dz-filename {
-    display: none;
+.filepond--root {
+    margin-bottom: 0;
 }
 
 .steps {
