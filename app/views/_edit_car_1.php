@@ -4,8 +4,8 @@
         ?>
 
             <div class="mb-3 row">
-                <label for="car_id_display" class="col-md-3 col-xs-12 col-form-label">Car ID</label>
-                <div class="col-sm-9">
+                <label for="car_id_display" class="col-md-3 col-12 col-form-label">Car ID</label>
+                <div class="col-12 col-sm-9">
                     <input type="text" id="car_id_display" class="form-control-plaintext" value="<?= htmlspecialchars((string)($cardetails['id'] ?? ''), ENT_QUOTES, 'UTF-8'); ?>" readonly>
                 </div>
             </div>
@@ -14,8 +14,8 @@
         ?>
         <!-- Year -->
         <div class="mb-3 row">
-            <label for="year" class="col-md-3 col-xs-12 col-form-label">Year *</label>
-            <div class="col-sm-9">
+            <label for="year" class="col-md-3 col-12 col-form-label">Year *</label>
+            <div class="col-12 col-sm-9">
                 <div class="input-group">
                     <span class="input-group-text"><i aria-hidden="true" class="fas fa-calendar-check"></i></span>
                     <select name='year' id='year' class='form-select'>
@@ -40,8 +40,8 @@
 
         <!-- Model -->
         <div class="mb-3 row">
-            <label for="model" class="col-md-3 col-xs-12  col-form-label">Model *</label>
-            <div class="col-sm-9">
+            <label for="model" class="col-md-3 col-12 col-form-label">Model *</label>
+            <div class="col-12 col-sm-9">
                 <div class="input-group">
                     <span class="input-group-text"><i aria-hidden="true" class="fas fa-car-side"></i></span>
                     <select disabled class="form-select" name="model" id="model">
@@ -55,8 +55,8 @@
 
         <!-- Chassis -->
         <div class="mb-3 row">
-            <label for="chassis" class="col-md-3 col-xs-12  col-form-label">Chassis *</label>
-            <div class="col-sm-9">
+            <label for="chassis" class="col-md-3 col-12 col-form-label">Chassis *</label>
+            <div class="col-12 col-sm-9">
                 <div class="input-group">
                     <span class="input-group-text"><i aria-hidden="true" class="fas fa-barcode"></i></span>
                     <input data-lpignore="true" disabled class="form-control" type="text" name="chassis" id="chassis" placeholder="<?= $carprompt['chassis'] ?>" value="<?= $cardetails['chassis'] ?>" />
@@ -130,8 +130,8 @@
 
         <!-- Color -->
         <div class="mb-3 row">
-            <label for="color" class="col-md-3 col-xs-12  col-form-label">Color</label>
-            <div class="col-sm-9">
+            <label for="color" class="col-md-3 col-12 col-form-label">Color</label>
+            <div class="col-12 col-sm-9">
                 <div class="input-group">
                     <span class="input-group-text"><i aria-hidden="true" class="fas fa-palette"></i></span>
                     <input class="form-control" type="text" name="color" id="color" placeholder="<?= $carprompt['color'] ?>" value="<?= $cardetails['color'] ?>" />
@@ -141,8 +141,8 @@
 
         <!-- Engine Number -->
         <div class="mb-3 row">
-            <label for="engine" class="col-md-3 col-xs-12  col-form-label">Engine Number</label>
-            <div class="col-sm-9">
+            <label for="engine" class="col-md-3 col-12 col-form-label">Engine Number</label>
+            <div class="col-12 col-sm-9">
                 <div class="input-group">
                     <span class="input-group-text"><i aria-hidden="true" class="fas fa-car"></i></span>
                     <input class="form-control" type="text" name="engine" id="engine" placeholder="<?= $carprompt['engine'] ?>" value="<?= $cardetails['engine'] ?>" /> <!-- Add validation -->

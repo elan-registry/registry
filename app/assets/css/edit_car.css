@@ -13,8 +13,7 @@
 
 #editCar input[type=button],
 #editCar input[type=submit] {
-    margin: 10px 0px 10px 5px;
-    float: right
+    margin: 10px 0;
 }
 
 .card {
@@ -65,7 +64,7 @@
 @media (max-width: 575.98px) {
     #progressbar li {
         width: 50%;
-        font-size: 12px;
+        font-size: 14px;
     }
 }
 

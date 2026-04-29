@@ -194,7 +194,9 @@ function updateCarDetails(array &$car): void
                             <?php include_once $abs_us_root . $us_url_root . 'app/views/_edit_car_1.php'; ?>
                         </div>
                     </div>
-                    <input type="button" name="next" class="next btn btn-info" value="Next" />
+                    <div class="d-flex justify-content-end mt-2">
+                        <input type="button" name="next" class="next btn btn-info" value="Next" />
+                    </div>
                 </fieldset>
                 <fieldset>
                     <!-- fieldsets page 2 -->
@@ -213,8 +215,10 @@ function updateCarDetails(array &$car): void
                             <?php include_once $abs_us_root . $us_url_root . 'app/views/_edit_car_2.php'; ?>
                         </div>
                     </div>
-                    <input type="button" name="next" class="next btn btn-info" value="Next" />
-                    <input type="button" name="previous" class="previous btn btn-danger" value="Previous" />
+                    <div class="d-flex justify-content-between mt-2">
+                        <input type="button" name="previous" class="previous btn btn-danger" value="Previous" />
+                        <input type="button" name="next" class="next btn btn-info" value="Next" />
+                    </div>
                 </fieldset>
                 <fieldset>
                     <!-- fieldsets page 3 -->
@@ -234,8 +238,10 @@ function updateCarDetails(array &$car): void
                         </div>
                     </div>
                     <!-- End Image panel -->
-                    <input type="submit" name="submit" id="submit" class="btn btn-success" value="Add Car" />
-                    <input type="button" name="previous" class="previous btn btn-danger" value="Previous" />
+                    <div class="d-flex justify-content-between mt-2">
+                        <input type="button" name="previous" class="previous btn btn-danger" value="Previous" />
+                        <input type="submit" name="submit" id="submit" class="btn btn-success" value="Add Car" />
+                    </div>
                 </fieldset>
                 <fieldset>
                     <div class="card registry-card">
@@ -627,8 +633,8 @@ require_once $abs_us_root . $us_url_root . 'users/includes/html_footer.php'; //c
             e.stopPropagation();
             e.preventDefault();
 
-            current_fs = $(this).parent();
-            next_fs = $(this).parent().next();
+            current_fs = $(this).closest('fieldset');
+            next_fs = current_fs.next();
 
             const form_data = $('#addCar').serializeArray();
             let error_free = true;
@@ -814,8 +820,8 @@ require_once $abs_us_root . $us_url_root . 'users/includes/html_footer.php'; //c
         setProgressBar(current);
 
         $('.next').click(function() {
-            current_fs = $(this).parent();
-            next_fs = $(this).parent().next();
+            current_fs = $(this).closest('fieldset');
+            next_fs = current_fs.next();
 
             // Check to see if the page is error free
             var form_data = current_fs.serializeArray();
@@ -873,8 +879,8 @@ require_once $abs_us_root . $us_url_root . 'users/includes/html_footer.php'; //c
         });
 
         $(".previous").click(function() {
-            current_fs = $(this).parent();
-            previous_fs = $(this).parent().prev();
+            current_fs = $(this).closest('fieldset');
+            previous_fs = current_fs.prev();
 
             //Remove class active
             $("#progressbar li").eq($("fieldset").index(current_fs)).removeClass("active");
