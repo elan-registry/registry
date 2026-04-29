@@ -262,16 +262,22 @@ try {
             $types = ['automated', 'manual', 'rollback'];
 
             $realBackupDir = realpath($backupDir);
+            if ($realBackupDir === false) {
+                ApiResponse::error('Backup directory unavailable', 500)
+                    ->withLogging($user->data()->id, LogCategories::LOG_CATEGORY_BACKUP_ERROR,
+                        "Delete backup: realpath() failed for backup dir '{$backupDir}' — server misconfiguration")
+                    ->send();
+            }
 
             foreach ($types as $type) {
                 $filepath = $backupDir . $type . '/' . $filename;
 
                 if (file_exists($filepath)) {
                     $realpath = realpath($filepath);
-                    if ($realpath === false || $realBackupDir === false || !str_starts_with($realpath, $realBackupDir . '/')) {
+                    if ($realpath === false || !str_starts_with($realpath, $realBackupDir . '/')) {
                         ApiResponse::error('Access denied', 403)
                             ->withLogging($user->data()->id, LogCategories::LOG_CATEGORY_BACKUP_ERROR,
-                                "Delete backup: path outside backup directory for '{$filename}'")
+                                "Delete backup: path traversal attempt blocked for '{$filename}'")
                             ->send();
                     }
                     if (unlink($realpath)) { // nosemgrep: php.lang.security.unlink-use.unlink-use -- path verified within backup directory
