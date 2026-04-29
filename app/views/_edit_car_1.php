@@ -3,22 +3,22 @@
         if (isset($cardetails['id'])) {
         ?>
 
-            <div class="form-group row">
-                <label for="car_id_display" class="col-md-3 col-xs-12 col-form-label">Car ID</label>
-                <div class="col-sm-9">
-                    <input type="text" id="car_id_display" class="form-control" value="<?= htmlspecialchars((string)($cardetails['id'] ?? ''), ENT_QUOTES, 'UTF-8'); ?>" readonly>
+            <div class="mb-3 row">
+                <label for="car_id_display" class="col-md-3 col-12 col-form-label">Car ID</label>
+                <div class="col-12 col-sm-9">
+                    <input type="text" id="car_id_display" class="form-control-plaintext" value="<?= htmlspecialchars((string)($cardetails['id'] ?? ''), ENT_QUOTES, 'UTF-8'); ?>" readonly>
                 </div>
             </div>
         <?php
         }
         ?>
         <!-- Year -->
-        <div class="form-group row">
-            <label for="year" class="col-md-3 col-xs-12 col-form-label">Year *</label>
-            <div class="col-sm-9">
-                <div class="input-group-prepend">
-                    <div class="input-group-text"><i aria-hidden="true" class="fas fa-calendar-check"></i> </div>
-                    <select name='year' id='year' class='custom-select form-control'>
+        <div class="mb-3 row">
+            <label for="year" class="col-md-3 col-12 col-form-label">Year *</label>
+            <div class="col-12 col-sm-9">
+                <div class="input-group">
+                    <span class="input-group-text"><i aria-hidden="true" class="fas fa-calendar-check"></i></span>
+                    <select name='year' id='year' class='form-select'>
                         <option value="">--Choose Year--</option>
                         <option value="1963">1963</option>
                         <option value="1964">1964</option>
@@ -33,34 +33,34 @@
                         <option value="1973">1973</option>
                         <option value="1974">1974</option>
                     </select>
-                    <div class='input-group-text'><i id="year_icon" aria-hidden='true' class="fas fa-thumbs-down"></i></div>
+                    <span class='input-group-text'><i id="year_icon" aria-hidden='true' class="fas fa-thumbs-down"></i></span>
                 </div>
             </div>
         </div>
 
         <!-- Model -->
-        <div class="form-group row">
-            <label for="model" class="col-md-3 col-xs-12  col-form-label">Model *</label>
-            <div class="col-sm-9">
-                <div class="input-group-prepend">
-                    <div class="input-group-text"><i aria-hidden="true" class="fas fa-car-side"></i></div>
-                    <select disabled class="form-control custom-select" name="model" id="model">
+        <div class="mb-3 row">
+            <label for="model" class="col-md-3 col-12 col-form-label">Model *</label>
+            <div class="col-12 col-sm-9">
+                <div class="input-group">
+                    <span class="input-group-text"><i aria-hidden="true" class="fas fa-car-side"></i></span>
+                    <select disabled class="form-select" name="model" id="model">
                         <option value="">--Please Select Model--</option>
                     </select>
-                    <div class='input-group-text'><i id="model_icon" aria-hidden='true' class="fas fa-thumbs-down "></i></div>
+                    <span class='input-group-text'><i id="model_icon" aria-hidden='true' class="fas fa-thumbs-down "></i></span>
                 </div>
             </div>
         </div>
 
 
         <!-- Chassis -->
-        <div class="form-group row">
-            <label for="chassis" class="col-md-3 col-xs-12  col-form-label">Chassis *</label>
-            <div class="col-sm-9">
-                <div class="input-group-prepend">
-                    <div class="input-group-text"><i aria-hidden="true" class="fas fa-barcode"></i></div>
-                    <input data-lpignore="true" disabled class="form-control" type="text" name="chassis" id="chassis" placeholder="<?= $carprompt['chassis'] ?>" value="<?= $cardetails['chassis'] ?>" />
-                    <div class='input-group-text'><i id="chassis_icon" aria-hidden='true' class="fas fa-thumbs-down "></i></div>
+        <div class="mb-3 row">
+            <label for="chassis" class="col-md-3 col-12 col-form-label">Chassis *</label>
+            <div class="col-12 col-sm-9">
+                <div class="input-group">
+                    <span class="input-group-text"><i aria-hidden="true" class="fas fa-barcode"></i></span>
+                    <input data-lpignore="true" disabled class="form-control" type="text" name="chassis" id="chassis" placeholder="<?= htmlspecialchars($carprompt['chassis'], ENT_QUOTES, 'UTF-8') ?>" value="<?= htmlspecialchars((string)($cardetails['chassis'] ?? ''), ENT_QUOTES, 'UTF-8') ?>" />
+                    <span class='input-group-text'><i id="chassis_icon" aria-hidden='true' class="fas fa-thumbs-down "></i></span>
                 </div>
 
 
@@ -109,43 +109,45 @@
                     <span id="chassis_error_reason"></span>
                 </div>
                 
-                <div class="form-check mt-2">
-                    <input type="checkbox" class="form-check-input" id="chassis_override" name="chassis_override" value="1">
-                    <label class="form-check-label text-warning" for="chassis_override">
-                        <strong>⚠️ Override chassis validation</strong><br>
-                        <small>Check this box to proceed with an invalid chassis number. Use with caution - this may indicate incorrect data entry.</small>
-                    </label>
-                </div>
-                
-                <div class="mt-2">
-                    <button type="button" class="btn btn-sm btn-outline-info" data-toggle="modal" data-target="#chassisValidationModal">
-                        <i class="fas fa-info-circle"></i> Chassis Validation Rules
-                    </button>
-                    <a href="<?= $us_url_root ?>docs/chassis-validation.php" target="_blank" class="btn btn-sm btn-outline-secondary ml-1">
-                        <i class="fas fa-external-link-alt"></i> Full Documentation
-                    </a>
+                <div id="chassis_override_section" class="d-none">
+                    <div class="form-check mt-2">
+                        <input type="checkbox" class="form-check-input" id="chassis_override" name="chassis_override" value="1">
+                        <label class="form-check-label text-warning" for="chassis_override">
+                            <strong>⚠️ Override chassis validation</strong><br>
+                            <small>Use only if this chassis number is correct but fails validation.</small>
+                        </label>
+                    </div>
+
+                    <div class="mt-2">
+                        <button type="button" class="btn btn-sm btn-outline-info" data-bs-toggle="modal" data-bs-target="#chassisValidationModal">
+                            <i class="fas fa-info-circle"></i> Chassis Validation Rules
+                        </button>
+                        <a href="<?= $us_url_root ?>docs/chassis-validation.php" target="_blank" class="btn btn-sm btn-outline-secondary ms-1">
+                            <i class="fas fa-external-link-alt"></i> Full Documentation
+                        </a>
+                    </div>
                 </div>
             </div>
         </div>
 
         <!-- Color -->
-        <div class="form-group row">
-            <label for="color" class="col-md-3 col-xs-12  col-form-label">Color</label>
-            <div class="col-sm-9">
-                <div class="input-group-prepend">
-                    <div class="input-group-text"><i aria-hidden="true" class="fas fa-palette"></i></div>
-                    <input class="form-control" type="text" name="color" id="color" placeholder="<?= $carprompt['color'] ?>" value="<?= $cardetails['color'] ?>" />
+        <div class="mb-3 row">
+            <label for="color" class="col-md-3 col-12 col-form-label">Color</label>
+            <div class="col-12 col-sm-9">
+                <div class="input-group">
+                    <span class="input-group-text"><i aria-hidden="true" class="fas fa-palette"></i></span>
+                    <input class="form-control" type="text" name="color" id="color" placeholder="<?= htmlspecialchars($carprompt['color'], ENT_QUOTES, 'UTF-8') ?>" value="<?= htmlspecialchars((string)($cardetails['color'] ?? ''), ENT_QUOTES, 'UTF-8') ?>" />
                 </div>
             </div>
         </div>
 
         <!-- Engine Number -->
-        <div class="form-group row">
-            <label for="engine" class="col-md-3 col-xs-12  col-form-label">Engine Number</label>
-            <div class="col-sm-9">
-                <div class="input-group-prepend">
-                    <div class="input-group-text"><i aria-hidden="true" class="fas fa-car"></i> </div>
-                    <input class="form-control" type="text" name="engine" id="engine" placeholder="<?= $carprompt['engine'] ?>" value="<?= $cardetails['engine'] ?>" /> <!-- Add validation -->
+        <div class="mb-3 row">
+            <label for="engine" class="col-md-3 col-12 col-form-label">Engine Number</label>
+            <div class="col-12 col-sm-9">
+                <div class="input-group">
+                    <span class="input-group-text"><i aria-hidden="true" class="fas fa-car"></i></span>
+                    <input class="form-control" type="text" name="engine" id="engine" placeholder="<?= htmlspecialchars($carprompt['engine'], ENT_QUOTES, 'UTF-8') ?>" value="<?= htmlspecialchars((string)($cardetails['engine'] ?? ''), ENT_QUOTES, 'UTF-8') ?>" />
                 </div>
             </div>
         </div>

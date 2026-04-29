@@ -23,7 +23,7 @@ if (!defined('USERSPICE_LOGIN_CALLED')) {
    define('USERSPICE_LOGIN_CALLED', true);
    require_once '../users/init.php';
 }
-require_once $abs_us_root . $us_url_root . 'users/includes/template/prep.php';
+require_once $abs_us_root . $us_url_root . 'usersc/includes/elanregistry_prep.php';
 
 // Ensure session is started for TOTP intermediate storage
 if (session_status() == PHP_SESSION_NONE) {
@@ -418,7 +418,7 @@ if (empty($dest = sanitizedDest('dest'))) {
             <div class="modal-content">
                 <div class="modal-header">
                     <b><?= $awaitingTOTP ? "Two-Factor Authentication" : lang("SIGNIN_TITLE") ?></b>
-                    <a href="<?= $us_url_root ?>" aria-label="Close" class="close btn-close" style="top: 1rem!important;"></a>
+                    <a href="<?= $us_url_root ?>" aria-label="Close" class="btn-close" style="top: 1rem!important;"></a>
                 </div>
                 <div class="modal-body p-4 <?= $topPad ?>">
 
@@ -434,7 +434,7 @@ if (empty($dest = sanitizedDest('dest'))) {
                         foreach ($usmsgs as $u) { ?>
                             <div style="" id="<?= $u ?>UserSpiceMessages" class="show d-none">
                                 <span id="<?= $u ?>UserSpiceMessage"></span>
-                                <button type="button" class="close btn-close" data-dismiss="alert" data-bs-dismiss="alert" aria-label="Close"></button>
+                                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
                             </div>
                         <?php } ?>
                     </div>
@@ -500,7 +500,7 @@ if (empty($dest = sanitizedDest('dest'))) {
                                 <div class="input-group">
                                     <input type="password" id="password" name="password" class="form-control form-control-lg"
                                         value="" autocomplete="current-password">
-                                    <span class="input-group-addon input-group-text see-pw" id="togglePassword">
+                                    <span class="input-group-text see-pw" id="togglePassword">
                                         <i class="fa fa-eye" id="togglePasswordIcon"></i>
                                     </span>
                                 </div>
@@ -567,11 +567,11 @@ if (empty($dest = sanitizedDest('dest'))) {
 </div>
 <script>
     $(document).ready(function() {
-        $("#loginModal").modal({
+        const loginModal = new bootstrap.Modal(document.getElementById('loginModal'), {
             backdrop: 'static',
             keyboard: false
-        })
-        $("#loginModal").modal('show');
+        });
+        loginModal.show();
 
         <?php if ($awaitingTOTP): ?>
             setTimeout(function() {

@@ -94,13 +94,7 @@ test.describe('Elan Registry - Car Update Functionality (Logged In)', () => {
     await page.waitForLoadState('domcontentloaded');
     console.log('✓ Entered car update workflow');
 
-    // Step 1: Car Details - Click Next
-    await page.locator('fieldset:nth-of-type(1) input[value="Next"]').click();
-    // Wait for fieldset 2 to become visible (form step change, not page load)
-    await page.waitForSelector('fieldset:nth-of-type(2)', { state: 'visible', timeout: 5000 });
-    console.log('✓ Step 1 (Car Details) completed');
-
-    // Step 2: Additional Information - Add comment and click Next
+    // Section 1 (Car Details) is open by default — fill in a comment
     const timestamp = new Date().toISOString();
     const testNote = `${timestamp} - This is a test update from automated Playwright tests`;
 
@@ -108,13 +102,13 @@ test.describe('Elan Registry - Car Update Functionality (Logged In)', () => {
     await commentField.fill(testNote);
     console.log(`✓ Added comment: ${testNote}`);
 
-    await page.locator('fieldset:nth-of-type(2) input[value="Next"]').click();
-    // Wait for fieldset 3 to become visible (form step change, not page load)
-    await page.waitForSelector('fieldset:nth-of-type(3)', { state: 'visible', timeout: 5000 });
-    console.log('✓ Step 2 (Additional Information) completed');
+    // Expand Section 2 (Photos)
+    await page.locator('#heading-section2 button').click();
+    await page.waitForSelector('#section2', { state: 'visible', timeout: 5000 });
+    console.log('✓ Section 2 (Photos) expanded');
 
-    // Step 3: Images - Click Update Car (final submission, no Next button on this page)
-    await page.locator('fieldset:nth-of-type(3) button:has-text("Update Car"), input[value="Update Car"]').first().click();
+    // Submit via button below accordion
+    await page.locator('#submit').click();
     await page.waitForLoadState('domcontentloaded');
     console.log('✓ Clicked Update Car button');
 

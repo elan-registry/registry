@@ -1,0 +1,204 @@
+/**
+ * Lotus Elan Registry - Consolidated Theme Styles
+ * Merged ElanRegistry.css + style.css with duplicates removed
+ * Version: 2.12.0
+ */
+
+/* ========== INFO COLOR — match Bootswatch Simplex (#3399F3 vs BS5 default cyan #0dcaf0) ========== */
+
+:root {
+    --bs-info: #3399F3;
+    --bs-info-rgb: 51, 153, 243;
+    --bs-info-hover: #2680d9;
+}
+
+/* ========== TYPOGRAPHY — 13px base, system font stack ========== */
+
+html {
+    font-size: 13px;
+}
+
+body {
+    font-family: -apple-system, system-ui, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol";
+}
+
+/* ========== FORM VALIDATION STATES ========== */
+
+.is-invalid {
+    color: red;
+}
+
+.is-valid {
+    color: green;
+}
+
+.hidden {
+    display: none;
+}
+
+/* ========== CAROUSEL OVERRIDES ========== */
+
+.list-inline {
+    white-space: nowrap;
+    overflow-x: auto;
+}
+
+.carousel-indicators {
+    position: static;
+    left: initial;
+    width: initial;
+    margin-left: initial;
+}
+
+.carousel-indicators > li {
+    width: initial;
+    height: initial;
+    text-indent: initial;
+}
+
+/* ========== IMAGE STYLING ========== */
+
+img.card-img-top {
+    border: 5px solid transparent;
+    border-radius: 8px;
+    width: 100%;
+    height: auto;
+    max-height: 400px;
+    object-fit: contain;
+}
+
+/* Prevent layout shift for thumbnail images only */
+.carousel-indicators .img-fluid {
+    aspect-ratio: 4/3;
+    object-fit: cover;
+    width: 100px;
+    height: 75px;
+}
+
+/* General fluid images preserve natural aspect ratio */
+.img-fluid:not(.carousel-indicators .img-fluid) {
+    width: 100%;
+    height: auto;
+    object-fit: contain;
+}
+
+/* Photo placeholder styling */
+.photo-placeholder {
+    min-height: 200px;
+    background: #f8f9fa;
+    border: 2px dashed #dee2e6;
+    transition: border-color 0.3s ease;
+}
+
+.photo-placeholder:hover {
+    border-color: #6c757d;
+}
+
+/* ========== LAYOUT & COMPONENTS ========== */
+
+/* Page layout */
+.page-wrapper {
+    padding: 20px 0;
+}
+
+.page-container {
+    max-width: 1200px;
+    margin: 0 auto;
+}
+
+/* Card consistency - extends Bootstrap cards */
+.registry-card {
+    box-shadow: 0 0.125rem 0.25rem rgba(0, 0, 0, 0.075);
+    border: 1px solid rgba(0, 0, 0, 0.125);
+    border-radius: 0.375rem;
+    margin-bottom: 1.5rem;
+}
+
+.registry-card .card-header {
+    background-color: #f8f9fa;
+    border-bottom: 1px solid rgba(0, 0, 0, 0.125);
+    padding: 1rem 1.25rem;
+}
+
+.registry-card .card-header h1,
+.registry-card .card-header h2,
+.registry-card .card-header h3 {
+    margin: 0;
+    font-weight: 600;
+}
+
+.registry-card .card-body {
+    padding: 1.25rem;
+}
+
+/* Content wrapper for privacy page */
+.content-wrapper {
+    max-width: 800px;
+    margin: 0 auto;
+}
+
+/* ========== MAPS ========== */
+
+.map-container {
+    width: 100%;
+    margin: 10px 0;
+    border-radius: 0.375rem;
+    overflow: hidden;
+    height: 500px; /* Default height */
+}
+
+.map-container.map-container-small {
+    height: 400px; /* Smaller variant */
+}
+
+.map-container #map {
+    height: 100%;
+    width: 100%;
+}
+
+.map-container img {
+    max-width: none;
+}
+
+/* ========== TABLE ENHANCEMENTS ========== */
+
+.registry-table thead th {
+    background-color: #f8f9fa;
+    border-bottom: 2px solid #dee2e6;
+    font-weight: 600;
+}
+
+/* ========== FORM COMPONENTS ========== */
+
+/* Form progress bar */
+.car-progress {
+    height: 24px;
+}
+
+/* Email template styling */
+.email-header-row {
+    background-color: #bcd7a9;
+}
+
+/* ========== WIDTH UTILITIES ========== */
+
+.w-15 { width: 15%; }
+.w-50 { width: 50%; }
+.w-85 { width: 85%; }
+
+/* ========== RESPONSIVE DESIGN ========== */
+
+@media (max-width: 768px) {
+    .page-wrapper {
+        padding: 10px;
+    }
+
+    .registry-card .card-body {
+        padding: 1rem;
+    }
+
+    .map-container,
+    .map-container.map-container-small {
+        height: 400px;
+    }
+}

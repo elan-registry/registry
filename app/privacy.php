@@ -12,12 +12,12 @@ declare(strict_types=1);
  * @copyright 2025
  */
 require_once '../users/init.php';
-require_once $abs_us_root . $us_url_root . 'users/includes/template/prep.php';
+require_once $abs_us_root . $us_url_root . 'usersc/includes/elanregistry_prep.php';
 require_once $abs_us_root . $us_url_root . 'usersc/classes/MarkdownParser.php';
 
 use ElanRegistry\Documentation\MarkdownParser;
 
-$mdFile = __DIR__ . '/../docs/elanregistry/PRIVACY.md';
+$mdFile = __DIR__ . '/../docs/guides/PRIVACY.md';
 $policy = '';
 if (file_exists($mdFile)) {
     $markdownContent = file_get_contents($mdFile);

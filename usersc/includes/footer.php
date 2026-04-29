@@ -21,5 +21,41 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 //This will go in every template.
 ?>
 
+<!-- Privacy Policy link injected into footer without modifying upstream template -->
+<script nonce="<?=htmlspecialchars($usespice_nonce ?? '')?>">
+(function () {
+    var container = document.querySelector('#footer .container');
+    if (container) {
+        var p = document.createElement('p');
+        p.className = 'text-center small';
+        var a = document.createElement('a');
+        a.href = '<?=$us_url_root?>app/privacy.php';
+        a.className = 'text-muted';
+        a.textContent = 'Privacy Policy';
+        p.appendChild(a);
+        container.appendChild(p);
+    }
+}());
+</script>
+
 <!-- ElanRegistry API Client - Pattern A standardized AJAX -->
-<script nonce="<?=htmlspecialchars($usespice_nonce ?? '')?>" src="<?=$us_url_root?>app/assets/js/api-client.js"></script>
+<script nonce="<?=htmlspecialchars($usespice_nonce ?? '')?>" src="<?=$us_url_root?>app/assets/js/api-client.min.js"></script>
+
+<!-- Patch: users/js/menu.js offClick handler (line 100) calls open.firstChild.click() where
+     firstChild is a whitespace text node in indented HTML. Text nodes have no .click() method,
+     throwing TypeError. Fix: in capture phase (before offClick fires), remove the .open class
+     so that e.target.closest(".dropdown.open") inside offClick returns null, bypassing the
+     broken firstChild.click() path entirely.
+     Tracked in: https://github.com/unibrain1/elanregistry/issues/729 -->
+<script nonce="<?=htmlspecialchars($usespice_nonce ?? '')?>">
+(function () {
+    document.addEventListener('click', function (evt) {
+        var openDropdown = document.querySelector('.us_menu .dropdown.open');
+        if (!openDropdown) return;
+        if (openDropdown.contains(evt.target)) return;
+        var sub = openDropdown.querySelector('.us_sub-menu.show');
+        if (sub) sub.classList.remove('show');
+        openDropdown.classList.remove('open');
+    }, true); // capture phase — runs before upstream bubbling offClick handler
+}());
+</script>

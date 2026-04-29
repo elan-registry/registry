@@ -1,5 +1,7 @@
 # ADR-006: Use Database-Stored CDN URLs for Frontend Dependencies
 
+**Status: Superseded by [ADR-015](ADR-015-self-host-frontend-libraries.md)**
+
 ## Status
 
 **In Review** (retroactive)
@@ -74,7 +76,7 @@ echo html_entity_decode($settings->elan_fontawesome_cdn);
 **Page-specific dependencies** loaded only where needed:
 
 - `app/cars/index.php`, `app/cars/factory.php`, `app/cars/details.php` — DataTables JS/CSS
-- `app/cars/edit.php` — jQuery UI, Dropzone JS/CSS, Datepicker JS/CSS
+- `app/cars/form.php` — FilePond 4.x + 6 plugins (JS/CSS), Flatpickr (JS/CSS)
 - `app/reports/statistics.php` — Chart.js (with hardcoded fallback if setting not present)
 
 ### SRI Protection

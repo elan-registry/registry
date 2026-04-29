@@ -1,7 +1,7 @@
 # Page Loading Flow Reference
 
-**Last Updated:** 2026-01-31
-**Version:** 2.14.0
+**Last Updated:** 2026-04-28
+**Version:** 2.19.0
 
 ## Purpose
 
@@ -315,31 +315,32 @@ users/includes/template/prep.php
 │   └─ Fallback to 'basic' template if invalid
 │
 ├─ 2.2. usersc/templates/{template}/header.php
-│   └─ HTML document structure:
+│   └─ HTML document structure (Customizer template):
 │       ├─ <!DOCTYPE html> declaration
 │       ├─ <head> section:
 │       │   ├─ Meta tags (charset, viewport, description)
 │       │   ├─ Title tag (from page metadata)
 │       │   ├─ Favicon links
 │       │   ├─ CSS includes:
-│       │   │   ├─ Bootstrap 5.x (CDN or local)
-│       │   │   ├─ Font Awesome icons
-│       │   │   ├─ DataTables CSS
-│       │   │   ├─ Custom theme CSS
-│       │   │   └─ Page-specific CSS
+│       │   │   ├─ Bootstrap 5.3.3 (cdnjs.cloudflare.com, SRI-hashed)
+│       │   │   ├─ Font Awesome icons (self-hosted)
+│       │   │   ├─ DataTables CSS (self-hosted)
+│       │   │   ├─ Customizer child theme CSS (see CSS loading below)
+│       │   │   └─ usersc/templates/{template}.css override (if exists)
 │       │   └─ JavaScript includes (header):
-│       │       ├─ jQuery
-│       │       ├─ Bootstrap bundle
-│       │       └─ CSP nonce for inline scripts
+│       │       ├─ jQuery (users/js/jquery.php → code.jquery.com CDN)
+│       │       └─ Bootstrap bundle 5.3.3 (cdnjs.cloudflare.com, SRI-hashed)
 │       └─ <body> opening tag
 │
 ├─ 2.3. usersc/templates/{template}/navigation.php
-│   └─ Site navigation:
-│       ├─ Navigation bar structure
-│       ├─ Logo and branding
-│       ├─ Main menu items (database-driven)
-│       ├─ User menu (login/logout, account)
-│       └─ Mobile responsive menu toggle
+│   └─ Site navigation (Customizer template):
+│       ├─ Inline CSS for nav-item spacing
+│       ├─ File-based navigation ($settings->navigation_type == 0):
+│       │   ├─ Checks for file_nav_custom.php first (survives Spice Shaker upgrades)
+│       │   ├─ Falls back to file_nav.php if file_nav_custom.php absent
+│       │   └─ Error if neither exists
+│       └─ Database-driven navigation ($settings->navigation_type != 0):
+│           └─ Menu::display() — renders menu from DB (menu_override or id 1)
 │
 └─ 2.4. usersc/templates/{template}/container_open.php
     └─ Main content container:
@@ -348,11 +349,51 @@ users/includes/template/prep.php
 
 **Template-Specific Files:**
 
-Depending on `$settings->template` value (typically 'ElanRegistry'), loads from:
+The active template is `customizer` with the `elanregistry` child theme. Files loaded:
 
-- `usersc/templates/ElanRegistry/header.php`
-- `usersc/templates/ElanRegistry/navigation.php`
-- `usersc/templates/ElanRegistry/container_open.php`
+- `usersc/templates/customizer/header.php`
+- `usersc/templates/customizer/navigation.php`
+- `usersc/templates/customizer/container_open.php`
+
+**Customizer CSS Loading Mechanism:**
+
+The Customizer template uses a versioned/timestamped CSS system managed by `revision.php`:
+
+1. `usersc/templates/customizer/assets/css/revision.php` is loaded by `header.php`. It defines:
+   - `$css_revision` — the current base theme filename (e.g., `custom-bootstrap-20260427100615.css`)
+   - `$child_themes` — an associative array mapping child theme names to their timestamped CSS files
+     (e.g., `['elanregistry' => 'elanregistry-20260427100627.css', 'dashboard' => '...']`)
+
+2. If `$child_theme` is set and matches a key in `$child_themes[]`, the corresponding
+   file from `assets/child_themes/` is loaded. This is the normal path for app pages.
+
+3. If no child theme is set or matched, the base theme from `assets/css/$css_revision` loads.
+
+4. If `usersc/templates/{template}.css` exists at the template root, it is loaded last as a
+   final override (rarely used).
+
+**Setting `$child_theme`:**
+
+`$child_theme` must be set **before** `prep.php` is included. Two patterns are used:
+
+- **App pages** — use `usersc/includes/elanregistry_prep.php` instead of requiring `prep.php`
+  directly.
+
+  ```php
+  require_once $abs_us_root . $us_url_root . 'usersc/includes/elanregistry_prep.php';
+  // This file sets $child_theme = 'elanregistry' and then includes prep.php
+  ```
+
+- **Admin dashboard** — `usersc/includes/dashboard_overrides.php` sets
+  `$child_theme = 'dashboard'` (and `$template_override = 'customizer'`).
+
+**`file_nav_custom.php` vs `file_nav.php`:**
+
+For file-based navigation (`$settings->navigation_type == 0`), the Customizer template
+checks for `file_nav_custom.php` before `file_nav.php`. Use `file_nav_custom.php` for
+site-specific navigation — Spice Shaker template upgrades overwrite `file_nav.php` but
+leave `file_nav_custom.php` intact. The active custom navigation is at
+`usersc/templates/customizer/file_nav_custom.php`.
 
 ### Phase 3: Page Content Execution
 
@@ -726,8 +767,9 @@ Debug mode shows:
 | 1.0.0 | 2026-01-09 | Initial documentation of page loading flow |
 | 1.1.0 | 2026-01-28 | Add server globals to critical variables table |
 | 1.2.0 | 2026-01-31 | Fix Phase 2.5/4 toast system documentation; document pre_footer.php hook, system_messages_header/footer loading sequence, and unified toast architecture (Issue #536) |
+| 1.3.0 | 2026-04-28 | Update Phase 2 for Customizer template (Bootstrap 5, child themes, file_nav_custom.php); document CSS loading mechanism, revision.php, and $child_theme setup (v2.19.0) |
 
 ---
 
-**Note:** This document reflects the loading sequence for UserSpice 5.x and Elan
-Registry v2.14.0. File paths and loading order may vary in different versions.
+**Note:** This document reflects the loading sequence for UserSpice 6 and Elan
+Registry v2.19.0. File paths and loading order may vary in different versions.

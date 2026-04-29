@@ -20,35 +20,31 @@ test.describe('Core Functionality After Refactoring', () => {
 
   test('car edit form workflow functions', async ({ page }) => {
     // Navigate to car edit page
-    await navigateAndWait(page, '/app/cars/edit.php');
+    await navigateAndWait(page, '/app/cars/form.php');
     
     // Handle authentication requirement or test the form
     await handleAuthRequired(
       page,
       // Authenticated test - test the multi-step form workflow
       async () => {
-        await expect(page.locator('#progressbar')).toBeVisible();
-        await expect(page.locator('fieldset').first()).toBeVisible();
-        
-        // Test form navigation
-        const nextButton = page.locator('.next').first();
-        await expect(nextButton).toBeVisible();
-        
-        // Fill in first step
+        await expect(page.locator('#editCarAccordion')).toBeVisible();
+        await expect(page.locator('#section1')).toBeVisible(); // auto-open on load
+        await expect(page.locator('#section2')).not.toBeVisible(); // Photos starts collapsed
+
+        // Fill in first section
         await page.selectOption('#year', '1973');
         await page.waitForTimeout(500); // Wait for model dropdown to populate
-        
-        await nextButton.click();
-        
-        // Should move to next step
-        await expect(page.locator('fieldset').nth(1)).toBeVisible();
+
+        // Expand Photos section via accordion toggle
+        await page.locator('#heading-section2 button').click();
+        await expect(page.locator('#section2')).toBeVisible();
       }
     );
   });
 
   test('chassis validation works', async ({ page }) => {
     // Navigate to car edit page for chassis validation testing
-    await navigateAndWait(page, '/app/cars/edit.php');
+    await navigateAndWait(page, '/app/cars/form.php');
     
     // Handle authentication requirement or test chassis validation
     await handleAuthRequired(

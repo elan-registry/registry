@@ -39,21 +39,18 @@ test.describe('Navigation and File Reorganization', () => {
     await testRedirect(page, '/app/car_details.php?car_id=1', 'app/cars/details.php');
   });
 
-  test('car edit page loads (reorganized)', async ({ page }) => {
-    // Navigate to car edit page
-    await navigateAndWait(page, '/app/cars/edit.php');
-    
+  test('car form page loads (reorganized)', async ({ page }) => {
+    // Navigate to car form page
+    await navigateAndWait(page, '/app/cars/form.php');
+
     // Handle authentication requirement or verify edit form
     await handleAuthRequired(
       page,
       // Authenticated test - verify edit form elements
       async () => {
-        await expect(page.locator('#progressbar')).toBeVisible();
+        await expect(page.locator('#editCarAccordion')).toBeVisible();
       }
     );
-    
-    // Test backward compatibility redirect
-    await testRedirect(page, '/app/edit_car.php', 'app/cars/edit.php');
   });
 
   test('statistics page loads (reorganized)', async ({ page }) => {

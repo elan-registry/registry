@@ -23,11 +23,6 @@ if (!function_exists('processSettingsAutoCreation')) {
             'elan_image_thumbnail_sizes' => ['type' => 'TEXT', 'default' => '100,300,768,1024,2048', 'description' => 'Comma-separated thumbnail sizes in pixels']
         ];
 
-        // Chart.js configuration settings
-        $chartJsSettingsFields = [
-            'elan_chartjs_cdn' => ['type' => 'TEXT', 'default' => '<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.js" integrity="sha384-FcQlsUOd0TJjROrBxhJdUhXTUgNJQxTMcxZe6nHbaEfFL1zjQ+bq/uRoBQxb0KMo" crossorigin="anonymous"></script>', 'description' => 'Chart.js CDN script tag with SRI hash for statistics charts']
-        ];
-
         // Email & Communication settings
         $emailSettingsFields = [
             'elan_admin_emails'   => ['type' => 'TEXT', 'default' => 'registrar@elanregistry.org', 'description' => 'Comma-separated admin email addresses for system notifications and administrative alerts'],
@@ -53,32 +48,13 @@ if (!function_exists('processSettingsAutoCreation')) {
             'elan_image_max' => ['type' => 'INT(11)', 'default' => '10', 'description' => 'Maximum photos per car']
         ];
 
-        // CDN Configuration settings
-        $cdnSettingsFields = [
-            'elan_jquery_cdn' => ['type' => 'TEXT', 'default' => '', 'description' => 'jQuery CDN URL'],
-            'elan_jquery_ui_cdn' => ['type' => 'TEXT', 'default' => '', 'description' => 'jQuery UI CDN URL'],
-            'elan_bootstrap_css_cdn' => ['type' => 'TEXT', 'default' => '', 'description' => 'Bootstrap CSS CDN URL'],
-            'elan_bootstrap_js_cdn' => ['type' => 'TEXT', 'default' => '', 'description' => 'Bootstrap JS CDN URL'],
-            'elan_popper_cdn' => ['type' => 'TEXT', 'default' => '', 'description' => 'Popper.js CDN URL'],
-            'elan_bootswatch_cdn' => ['type' => 'TEXT', 'default' => '', 'description' => 'Bootswatch theme CDN URL'],
-            'elan_fontawesome_cdn' => ['type' => 'TEXT', 'default' => '', 'description' => 'Font Awesome CDN URL'],
-            'elan_datatables_js_cdn' => ['type' => 'TEXT', 'default' => '', 'description' => 'DataTables JS CDN URL'],
-            'elan_datatables_css_cdn' => ['type' => 'TEXT', 'default' => '', 'description' => 'DataTables CSS CDN URL'],
-            'elan_datepicker_js_cdn' => ['type' => 'TEXT', 'default' => '', 'description' => 'Datepicker JS CDN URL'],
-            'elan_datepicker_css_cdn' => ['type' => 'TEXT', 'default' => '', 'description' => 'Datepicker CSS CDN URL'],
-            'elan_dropzone_js_cdn' => ['type' => 'TEXT', 'default' => '', 'description' => 'Dropzone JS CDN URL'],
-            'elan_dropzone_css_cdn' => ['type' => 'TEXT', 'default' => '', 'description' => 'Dropzone CSS CDN URL']
-        ];
-
         // Combine all settings fields for processing
         $allSettingsFields = array_merge(
             $imageSettingsFields,
-            $chartJsSettingsFields,
             $emailSettingsFields,
             $maintenanceSettingsFields,
             $googleSettingsFields,
-            $additionalMediaFields,
-            $cdnSettingsFields
+            $additionalMediaFields
         );
 
         $messages = [];
@@ -215,9 +191,7 @@ $autoCreationMessages = processSettingsAutoCreation();
     <div class="alert alert-<?= $msg['type'] ?> alert-dismissible fade show" role="alert">
         <i class="fas fa-<?= $msg['type'] === 'success' ? 'check' : ($msg['type'] === 'info' ? 'info-circle' : 'exclamation-triangle') ?>"></i>
         <strong>Database Auto-Creation:</strong> <?= $msg['message'] ?>
-        <button type="button" class="close" data-dismiss="alert" aria-label="Close">
-            <span aria-hidden="true">&times;</span>
-        </button>
+        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
     </div>
 <?php endforeach; ?>
 
@@ -243,8 +217,8 @@ $autoCreationMessages = processSettingsAutoCreation();
                     <small class="text-light">API key for displaying car locations on maps</small>
                 </div>
                 <div class="card-body">
-                    <div class="form-group">
-                        <label for="elan_google_maps_key" class="font-weight-bold">
+                    <div class="mb-3">
+                        <label for="elan_google_maps_key" class="fw-bold">
                             <i class="fas fa-map"></i> Google Maps API Key
                         </label>
                         <input type="text"
@@ -256,7 +230,7 @@ $autoCreationMessages = processSettingsAutoCreation();
                                placeholder="AIzaSy...">
                         <small class="form-text text-muted">
                             <i class="fas fa-external-link-alt"></i> Required for car location maps and statistics page
-                            <a href="https://console.cloud.google.com/apis/credentials" target="_blank" class="ml-2">Get API Key</a>
+                            <a href="https://console.cloud.google.com/apis/credentials" target="_blank" class="ms-2">Get API Key</a>
                         </small>
                     </div>
 
@@ -297,8 +271,8 @@ $autoCreationMessages = processSettingsAutoCreation();
                     <small class="text-dark">File upload and image handling settings</small>
                 </div>
                 <div class="card-body">
-                    <div class="form-group">
-                        <label for="elan_image_dir" class="font-weight-bold">
+                    <div class="mb-3">
+                        <label for="elan_image_dir" class="fw-bold">
                             <i class="fas fa-folder"></i> Image Upload Directory
                         </label>
                         <input type="text"
@@ -311,8 +285,8 @@ $autoCreationMessages = processSettingsAutoCreation();
                         <small class="form-text text-muted">Directory path where car images are stored (relative to site root)</small>
                     </div>
 
-                    <div class="form-group">
-                        <label for="elan_image_max" class="font-weight-bold">
+                    <div class="mb-3">
+                        <label for="elan_image_max" class="fw-bold">
                             <i class="fas fa-photo-video"></i> Maximum Photos per Car
                         </label>
                         <div class="input-group">
@@ -325,15 +299,13 @@ $autoCreationMessages = processSettingsAutoCreation();
                                    name="elan_image_max"
                                    id="elan_image_max"
                                    value="<?= $settings->elan_image_max ?? '10' ?>">
-                            <div class="input-group-append">
-                                <span class="input-group-text">photos</span>
-                            </div>
+                            <span class="input-group-text">photos</span>
                         </div>
                         <small class="form-text text-muted">Limit number of photos users can upload per car</small>
                     </div>
 
-                    <div class="form-group">
-                        <label for="elan_image_upload_max_size" class="font-weight-bold">
+                    <div class="mb-3">
+                        <label for="elan_image_upload_max_size" class="fw-bold">
                             <i class="fas fa-file-upload"></i> Maximum Upload File Size
                         </label>
                         <div class="input-group">
@@ -346,9 +318,7 @@ $autoCreationMessages = processSettingsAutoCreation();
                                    name="elan_image_upload_max_size"
                                    id="elan_image_upload_max_size"
                                    value="<?= $settings->elan_image_upload_max_size ?? '2.00' ?>">
-                            <div class="input-group-append">
-                                <span class="input-group-text">MB</span>
-                            </div>
+                            <span class="input-group-text">MB</span>
                         </div>
                         <small class="form-text text-muted">Maximum file size for individual photo uploads (0.5-10 MB)</small>
                     </div>
@@ -362,8 +332,8 @@ $autoCreationMessages = processSettingsAutoCreation();
                     <small class="text-light">Administrative email addresses and notification settings</small>
                 </div>
                 <div class="card-body">
-                    <div class="form-group">
-                        <label for="elan_admin_emails" class="font-weight-bold">
+                    <div class="mb-3">
+                        <label for="elan_admin_emails" class="fw-bold">
                             <i class="fas fa-users-cog"></i> Admin Email Addresses
                         </label>
                         <textarea rows="3"
@@ -377,8 +347,8 @@ $autoCreationMessages = processSettingsAutoCreation();
                         </small>
                     </div>
 
-                    <div class="form-group">
-                        <label for="elan_feedback_email" class="font-weight-bold">
+                    <div class="mb-3">
+                        <label for="elan_feedback_email" class="fw-bold">
                             <i class="fas fa-comment-dots"></i> Feedback Email Address
                         </label>
                         <input type="text"
@@ -397,322 +367,6 @@ $autoCreationMessages = processSettingsAutoCreation();
                         <button type="button" class="btn btn-outline-primary btn-sm" onclick="testEmailConfiguration()">
                             <i class="fas fa-paper-plane"></i> Test Email Config
                         </button>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
-</div>
-
-<!-- External Libraries & CDN Configuration -->
-<div class="row">
-    <div class="col-md-12">
-        <div class="card border-dark">
-            <div class="card-header bg-dark text-white">
-                <h5 class="mb-0"><i class="fas fa-code"></i> External Libraries & CDN Configuration</h5>
-            </div>
-            <div class="card-body">
-                <!-- Core JavaScript Libraries -->
-                <div class="border rounded p-3 mb-3" style="background-color: #fff8e1; border-color: #ffb300 !important;">
-                    <h5 class="mb-3" style="color: #ff6f00;"><i class="fab fa-js-square"></i> Core JavaScript Libraries</h5>
-
-                    <div class="row">
-                        <div class="col-md-12">
-                            <div class="form-group">
-                                <label for="elan_jquery_cdn" class="font-weight-bold">
-                                    <i class="fab fa-js"></i> jQuery CDN URL
-                                </label>
-                                <textarea rows="3"
-                                          class="form-control ajxtxt"
-                                          data-desc="jQuery CDN URL"
-                                          name="elan_jquery_cdn"
-                                          id="elan_jquery_cdn"
-                                          placeholder="https://cdn.jsdelivr.net/npm/jquery@3.7.1/dist/jquery.min.js"><?= htmlspecialchars(html_entity_decode($settings->elan_jquery_cdn ?? '', ENT_QUOTES, 'UTF-8'), ENT_QUOTES, 'UTF-8') ?></textarea>
-                                <small class="form-text text-muted">
-                                    <i class="fas fa-external-link-alt"></i> <strong>Note:</strong> Do not use SLIM version
-                                    <a href="https://code.jquery.com" target="_blank" class="ml-2">Browse Versions</a>
-                                </small>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div class="row">
-                        <div class="col-md-12">
-                            <div class="form-group">
-                                <label for="elan_jquery_ui_cdn" class="font-weight-bold">
-                                    <i class="fas fa-window-restore"></i> jQuery UI CDN URL
-                                </label>
-                                <textarea rows="3"
-                                          class="form-control ajxtxt"
-                                          data-desc="jQuery UI CDN URL"
-                                          name="elan_jquery_ui_cdn"
-                                          id="elan_jquery_ui_cdn"
-                                          placeholder="https://code.jquery.com/ui/1.12.1/jquery-ui.min.js"><?= htmlspecialchars(html_entity_decode($settings->elan_jquery_ui_cdn ?? '', ENT_QUOTES, 'UTF-8'), ENT_QUOTES, 'UTF-8') ?></textarea>
-                                <small class="form-text text-muted">
-                                    <i class="fas fa-external-link-alt"></i> jQuery UI components and widgets
-                                    <a href="https://jqueryui.com/download/" target="_blank" class="ml-2">Get UI CDN</a>
-                                </small>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- CSS Frameworks -->
-                <div class="border rounded p-3 mb-3" style="background-color: #f3e5f5; border-color: #9c27b0 !important;">
-                    <h5 class="mb-3" style="color: #7b1fa2;"><i class="fab fa-bootstrap"></i> CSS Frameworks & UI</h5>
-
-                    <div class="row">
-                        <div class="col-md-12">
-                            <div class="form-group">
-                                <label for="elan_bootstrap_css_cdn" class="font-weight-bold">
-                                    <i class="fab fa-bootstrap"></i> Bootstrap CSS CDN
-                                </label>
-                                <input type="text"
-                                       class="form-control ajxtxt"
-                                       data-desc="Bootstrap CSS CDN URL"
-                                       name="elan_bootstrap_css_cdn"
-                                       id="elan_bootstrap_css_cdn"
-                                       value="<?= htmlspecialchars(html_entity_decode($settings->elan_bootstrap_css_cdn ?? '', ENT_QUOTES, 'UTF-8'), ENT_QUOTES, 'UTF-8') ?>"
-                                       placeholder="https://cdn.jsdelivr.net/npm/bootstrap@4.5.3/dist/css/bootstrap.min.css">
-                                <small class="form-text text-muted">
-                                    <i class="fas fa-external-link-alt"></i> Bootstrap CSS framework
-                                    <a href="https://getbootstrap.com" target="_blank" class="ml-2">Get Bootstrap</a>
-                                </small>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div class="row">
-                        <div class="col-md-12">
-                            <div class="form-group">
-                                <label for="elan_bootstrap_js_cdn" class="font-weight-bold">
-                                    <i class="fab fa-js"></i> Bootstrap JS CDN
-                                </label>
-                                <input type="text"
-                                       class="form-control ajxtxt"
-                                       data-desc="Bootstrap JS CDN URL"
-                                       name="elan_bootstrap_js_cdn"
-                                       id="elan_bootstrap_js_cdn"
-                                       value="<?= htmlspecialchars(html_entity_decode($settings->elan_bootstrap_js_cdn ?? '', ENT_QUOTES, 'UTF-8'), ENT_QUOTES, 'UTF-8') ?>"
-                                       placeholder="https://cdn.jsdelivr.net/npm/bootstrap@4.5.3/dist/js/bootstrap.bundle.min.js">
-                                <small class="form-text text-muted">
-                                    <i class="fas fa-external-link-alt"></i> Bootstrap JavaScript components
-                                </small>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div class="row">
-                        <div class="col-md-12">
-                            <div class="form-group">
-                                <label for="elan_popper_cdn" class="font-weight-bold">
-                                    <i class="fas fa-layer-group"></i> Popper.js CDN
-                                </label>
-                                <input type="text"
-                                       class="form-control ajxtxt"
-                                       data-desc="Popper CDN URL"
-                                       name="elan_popper_cdn"
-                                       id="elan_popper_cdn"
-                                       value="<?= htmlspecialchars(html_entity_decode($settings->elan_popper_cdn ?? '', ENT_QUOTES, 'UTF-8'), ENT_QUOTES, 'UTF-8') ?>"
-                                       placeholder="https://cdn.jsdelivr.net/npm/popper.js@1.16.1/dist/umd/popper.min.js">
-                                <small class="form-text text-muted">
-                                    <i class="fas fa-external-link-alt"></i> Required for Bootstrap tooltips and popovers
-                                </small>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div class="row">
-                        <div class="col-md-12">
-                            <div class="form-group">
-                                <label for="elan_bootswatch_cdn" class="font-weight-bold">
-                                    <i class="fas fa-palette"></i> Bootswatch Theme CDN
-                                </label>
-                                <input type="text"
-                                       class="form-control ajxtxt"
-                                       data-desc="Bootswatch Theme CDN URL"
-                                       name="elan_bootswatch_cdn"
-                                       id="elan_bootswatch_cdn"
-                                       value="<?= htmlspecialchars(html_entity_decode($settings->elan_bootswatch_cdn ?? '', ENT_QUOTES, 'UTF-8'), ENT_QUOTES, 'UTF-8') ?>"
-                                       placeholder="https://cdnjs.cloudflare.com/ajax/libs/bootswatch/4.6.0/simplex/bootstrap.min.css">
-                                <small class="form-text text-muted">
-                                    <i class="fas fa-external-link-alt"></i> Bootstrap theme (tested with Simplex)
-                                    <a href="https://cdnjs.com/libraries/bootswatch" target="_blank" class="ml-2">Browse Themes</a>
-                                </small>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Icons & Data Components -->
-                <div class="border rounded p-3 mb-3" style="background-color: #e8f5e8; border-color: #4caf50 !important;">
-                    <h5 class="mb-3" style="color: #2e7d32;"><i class="fas fa-icons"></i> Icons & Data Components</h5>
-
-                    <div class="row">
-                        <div class="col-md-12">
-                            <div class="form-group">
-                                <label for="elan_fontawesome_cdn" class="font-weight-bold">
-                                    <i class="fab fa-font-awesome"></i> Font Awesome CDN URL
-                                </label>
-                                <input type="text"
-                                       class="form-control ajxtxt"
-                                       data-desc="Font Awesome CDN URL"
-                                       name="elan_fontawesome_cdn"
-                                       id="elan_fontawesome_cdn"
-                                       value="<?= htmlspecialchars(html_entity_decode($settings->elan_fontawesome_cdn ?? '', ENT_QUOTES, 'UTF-8'), ENT_QUOTES, 'UTF-8') ?>"
-                                       placeholder="https://kit.fontawesome.com/2d8f489b15.js">
-                                <small class="form-text text-muted">
-                                    <i class="fas fa-external-link-alt"></i> Font Awesome icons (use Kit URL for latest features)
-                                    <a href="https://fontawesome.com" target="_blank" class="ml-2">Get FontAwesome</a>
-                                </small>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div class="row">
-                        <div class="col-md-12">
-                            <div class="form-group">
-                                <label for="elan_datatables_js_cdn" class="font-weight-bold">
-                                    <i class="fas fa-table"></i> DataTables JS CDN
-                                </label>
-                                <textarea rows="2"
-                                          class="form-control ajxtxt"
-                                          data-desc="DataTables JS CDN URL"
-                                          name="elan_datatables_js_cdn"
-                                          id="elan_datatables_js_cdn"
-                                          placeholder="https://cdn.datatables.net/v/bs4/dt-1.10.23/..."><?= htmlspecialchars(html_entity_decode($settings->elan_datatables_js_cdn ?? '', ENT_QUOTES, 'UTF-8'), ENT_QUOTES, 'UTF-8') ?></textarea>
-                                <small class="form-text text-muted">
-                                    <i class="fas fa-external-link-alt"></i> DataTables with Bootstrap styling
-                                    <a href="https://datatables.net/download/" target="_blank" class="ml-2">Get DataTables</a>
-                                </small>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div class="row">
-                        <div class="col-md-12">
-                            <div class="form-group">
-                                <label for="elan_datatables_css_cdn" class="font-weight-bold">
-                                    <i class="fas fa-table"></i> DataTables CSS CDN
-                                </label>
-                                <textarea rows="2"
-                                          class="form-control ajxtxt"
-                                          data-desc="DataTables CSS CDN URL"
-                                          name="elan_datatables_css_cdn"
-                                          id="elan_datatables_css_cdn"
-                                          placeholder="https://cdn.datatables.net/v/bs4/dt-1.10.23/..."><?= htmlspecialchars(html_entity_decode($settings->elan_datatables_css_cdn ?? '', ENT_QUOTES, 'UTF-8'), ENT_QUOTES, 'UTF-8') ?></textarea>
-                                <small class="form-text text-muted">
-                                    <i class="fas fa-external-link-alt"></i> DataTables CSS styling
-                                </small>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- UI Components -->
-                <div class="border rounded p-3" style="background-color: #fce4ec; border-color: #e91e63 !important;">
-                    <h5 class="mb-3" style="color: #c2185b;"><i class="fas fa-puzzle-piece"></i> UI Components & Widgets</h5>
-
-                    <div class="row">
-                        <div class="col-md-12">
-                            <div class="form-group">
-                                <label for="elan_datepicker_js_cdn" class="font-weight-bold">
-                                    <i class="fas fa-calendar"></i> Datepicker JS CDN
-                                </label>
-                                <input type="text"
-                                       class="form-control ajxtxt"
-                                       data-desc="Datepicker JS CDN URL"
-                                       name="elan_datepicker_js_cdn"
-                                       id="elan_datepicker_js_cdn"
-                                       value="<?= htmlspecialchars(html_entity_decode($settings->elan_datepicker_js_cdn ?? '', ENT_QUOTES, 'UTF-8'), ENT_QUOTES, 'UTF-8') ?>"
-                                       placeholder="https://cdnjs.cloudflare.com/ajax/libs/bootstrap-datepicker/1.9.0/js/bootstrap-datepicker.min.js">
-                                <small class="form-text text-muted">
-                                    <i class="fas fa-external-link-alt"></i> Bootstrap datepicker component
-                                    <a href="https://cdnjs.com/libraries/bootstrap-datepicker" target="_blank" class="ml-2">Get Datepicker</a>
-                                </small>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div class="row">
-                        <div class="col-md-12">
-                            <div class="form-group">
-                                <label for="elan_datepicker_css_cdn" class="font-weight-bold">
-                                    <i class="fas fa-calendar"></i> Datepicker CSS CDN
-                                </label>
-                                <input type="text"
-                                       class="form-control ajxtxt"
-                                       data-desc="Datepicker CSS CDN URL"
-                                       name="elan_datepicker_css_cdn"
-                                       id="elan_datepicker_css_cdn"
-                                       value="<?= htmlspecialchars(html_entity_decode($settings->elan_datepicker_css_cdn ?? '', ENT_QUOTES, 'UTF-8'), ENT_QUOTES, 'UTF-8') ?>"
-                                       placeholder="https://cdnjs.cloudflare.com/ajax/libs/bootstrap-datepicker/1.9.0/css/bootstrap-datepicker.min.css">
-                                <small class="form-text text-muted">
-                                    <i class="fas fa-external-link-alt"></i> Datepicker styling
-                                </small>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div class="row">
-                        <div class="col-md-12">
-                            <div class="form-group">
-                                <label for="elan_dropzone_js_cdn" class="font-weight-bold">
-                                    <i class="fas fa-cloud-upload-alt"></i> Dropzone JS CDN
-                                </label>
-                                <input type="text"
-                                       class="form-control ajxtxt"
-                                       data-desc="Dropzone JS CDN URL"
-                                       name="elan_dropzone_js_cdn"
-                                       id="elan_dropzone_js_cdn"
-                                       value="<?= htmlspecialchars(html_entity_decode($settings->elan_dropzone_js_cdn ?? '', ENT_QUOTES, 'UTF-8'), ENT_QUOTES, 'UTF-8') ?>"
-                                       placeholder="https://cdn.jsdelivr.net/npm/dropzone@5.7.6/dist/min/dropzone.min.js">
-                                <small class="form-text text-muted">
-                                    <i class="fas fa-external-link-alt"></i> Drag & drop file uploads
-                                    <a href="https://dropzone.js.org/" target="_blank" class="ml-2">Get Dropzone</a>
-                                </small>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div class="row">
-                        <div class="col-md-12">
-                            <div class="form-group">
-                                <label for="elan_dropzone_css_cdn" class="font-weight-bold">
-                                    <i class="fas fa-cloud-upload-alt"></i> Dropzone CSS CDN
-                                </label>
-                                <input type="text"
-                                       class="form-control ajxtxt"
-                                       data-desc="Dropzone CSS CDN URL"
-                                       name="elan_dropzone_css_cdn"
-                                       id="elan_dropzone_css_cdn"
-                                       value="<?= htmlspecialchars(html_entity_decode($settings->elan_dropzone_css_cdn ?? '', ENT_QUOTES, 'UTF-8'), ENT_QUOTES, 'UTF-8') ?>"
-                                       placeholder="https://cdn.jsdelivr.net/npm/dropzone@5.7.6/dist/min/dropzone.min.css">
-                                <small class="form-text text-muted">
-                                    <i class="fas fa-external-link-alt"></i> Dropzone styling
-                                </small>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div class="row">
-                        <div class="col-md-12">
-                            <div class="form-group mb-0">
-                                <label for="elan_chartjs_cdn" class="font-weight-bold">
-                                    <i class="fas fa-chart-pie"></i> Chart.js CDN
-                                </label>
-                                <textarea class="form-control ajxtxt"
-                                       data-desc="Chart.js CDN"
-                                       name="elan_chartjs_cdn"
-                                       id="elan_chartjs_cdn"
-                                       rows="3"
-                                       placeholder="<script src=&quot;https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.js&quot; integrity=&quot;sha384-...&quot; crossorigin=&quot;anonymous&quot;></script>"><?= htmlspecialchars(html_entity_decode($settings->elan_chartjs_cdn ?? '', ENT_QUOTES, 'UTF-8'), ENT_QUOTES, 'UTF-8') ?></textarea>
-                                <small class="form-text text-muted">
-                                    <i class="fas fa-external-link-alt"></i> Chart.js library for statistics page charts (full script tag with SRI hash)
-                                    <a href="https://www.chartjs.org/docs/latest/getting-started/installation.html" target="_blank" class="ml-2">Get Chart.js</a>
-                                </small>
-                            </div>
-                        </div>
                     </div>
                 </div>
             </div>
@@ -847,7 +501,7 @@ function testGoogleMapsAPI(buttonElement) {
     // Helper functions
     function showSuccess(btn, originalText) {
         btn.html(originalText).prop('disabled', false);
-        const successMsg = $('<span id="apiTestResult" class="ml-2 text-success font-weight-bold">' +
+        const successMsg = $('<span id="apiTestResult" class="ms-2 text-success fw-bold">' +
             '<i class="fas fa-check-circle"></i> Maps API Valid - Test Successful' +
             '</span>');
         btn.after(successMsg);
@@ -861,7 +515,7 @@ function testGoogleMapsAPI(buttonElement) {
 
     function showError(btn, originalText, message) {
         btn.html(originalText).prop('disabled', false);
-        const errorMsg = $('<span id="apiTestResult" class="ml-2 text-danger font-weight-bold">' +
+        const errorMsg = $('<span id="apiTestResult" class="ms-2 text-danger fw-bold">' +
             '<i class="fas fa-times-circle"></i> ' + message +
             '</span>');
         btn.after(errorMsg);

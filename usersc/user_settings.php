@@ -20,7 +20,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 ?>
 <?php
 require_once '../users/init.php';
-require_once $abs_us_root . $us_url_root . 'users/includes/template/prep.php';
+require_once $abs_us_root . $us_url_root . 'usersc/includes/elanregistry_prep.php';
 ?>
 
 
@@ -488,19 +488,19 @@ if ($userQ2->count() > 0) {
     <div class="container">
         <div class="well">
             <div class="row">
-                <div class="col-xs-12 col-md-10">
+                <div class="col-12 col-md-10">
                     <h1>Update your user settings</h1> <br>
                     <!-- Messages now handled by UserSpice session system in template (Issue #237) -->
 
                     <form name='updateAccount' action='user_settings.php' method='post'>
 
-                        <div class="form-group">
+                        <div class="mb-3">
                             <label for="username">Username</label>
                             <?php if (($settings->change_un == 0) || (($settings->change_un == 2) && ($userdetails->un_changed == 1))) {
                             ?>
                                 <div class="input-group">
                                     <input class='form-control' type='text' id='username' name='username' value='<?= $userdetails->username ?>' readonly />
-                                    <span class="input-group-addon" data-toggle="tooltip" title="<?php if ($settings->change_un == 0) {
+                                    <span class="input-group-text" data-bs-toggle="tooltip" title="<?php if ($settings->change_un == 0) {
                                                                                                     ?>The Administrator has disabled changing usernames.<?php
                                                                                                                                                     }
                                                                                                                                                     if (($settings->change_un == 2) && ($userdetails->un_changed == 1)) {
@@ -515,17 +515,17 @@ if ($userQ2->count() > 0) {
                             } ?>
                         </div>
 
-                        <div class="form-group">
+                        <div class="mb-3">
                             <label for="fname">First Name</label>
                             <input class='form-control' type='text' id='fname' name='fname' value='<?= $userdetails->fname ?>' />
                         </div>
 
-                        <div class="form-group">
+                        <div class="mb-3">
                             <label for="lname">Last Name</label>
                             <input class='form-control' type='text' id='lname' name='lname' value='<?= $userdetails->lname ?>' />
                         </div>
                         <!-- Extend user_setttings.php with some PROFILE information -->
-                        <div class="form-group">
+                        <div class="mb-3">
                             <label>Location</label>
                             <p class="text-muted small">
                                 <i class="fas fa-info-circle"></i>
@@ -535,13 +535,13 @@ if ($userQ2->count() > 0) {
                             <div id="location-picker-settings" class="location-picker-container"></div>
                         </div>
 
-                        <div class="form-group">
+                        <div class="mb-3">
                             <label for="website">Website</label>
                             <input class='form-control' type='text' id='website' name='website' value='<?= $profiledetails->website ?>' />
                         </div>
                         <!-- END Extend user_setttings.php with some PROFILE information -->
 
-                        <div class="form-group">
+                        <div class="mb-3">
                             <label for="email">Email</label>
                             <input class='form-control' type='text' id='email' name='email' value='<?= $userdetails->email ?>' />
                             <?php if (!IS_NULL($userdetails->email_new)) {
@@ -554,48 +554,48 @@ if ($userQ2->count() > 0) {
                                     } ?>
                         </div>
 
-                        <div class="form-group">
+                        <div class="mb-3">
                             <label for="confemail">Confirm Email</label>
                             <input class='form-control' type='text' id='confemail' name='confemail' />
                         </div>
 
-                        <div class="form-group">
+                        <div class="mb-3">
                             <label for="password">New Password</label>
                             <div class="input-group" data-container="body">
-                                <span class="input-group-addon password_view_control" id="addon1"><span class="glyphicon glyphicon-eye-open"></span></span>
+                                <span class="input-group-text password_view_control" id="addon1"><span class="glyphicon glyphicon-eye-open"></span></span>
                                 <input class="form-control" type="password" autocomplete="off" name="password" id="password">
-                                <span class="input-group-addon pwpopover" id="addon2" data-container="body" data-toggle="popover" data-placement="top" data-content="<?= $settings->min_pw ?> char min, <?= $settings->max_pw ?> max.">?</span>
+                                <span class="input-group-text pwpopover" id="addon2" data-bs-container="body" data-bs-toggle="popover" data-bs-placement="top" data-bs-content="<?= $settings->min_pw ?> char min, <?= $settings->max_pw ?> max.">?</span>
                             </div>
                         </div>
 
-                        <div class="form-group">
+                        <div class="mb-3">
                             <label for="confirm">Confirm Password</label>
                             <div class="input-group" data-container="body">
-                                <span class="input-group-addon password_view_control" id="addon3"><span class="glyphicon glyphicon-eye-open"></span></span>
+                                <span class="input-group-text password_view_control" id="addon3"><span class="glyphicon glyphicon-eye-open"></span></span>
                                 <input type="password" autocomplete="off" id="confirm" name="confirm" class="form-control">
-                                <span class="input-group-addon pwpopover" id="addon4" data-container="body" data-toggle="popover" data-placement="top" data-content="Must match the New Password">?</span>
+                                <span class="input-group-text pwpopover" id="addon4" data-bs-container="body" data-bs-toggle="popover" data-bs-placement="top" data-bs-content="Must match the New Password">?</span>
                             </div>
                         </div>
 
                         <?php if (!is_null($userdetails->pin)) {
                         ?>
-                            <div class="form-group">
+                            <div class="mb-3">
                                 <label>Reset PIN
                                     <input type="checkbox" id="resetPin" name="resetPin" value="1" /></label>
                             </div>
                         <?php
                         } ?>
 
-                        <div class="form-group">
+                        <div class="mb-3">
                             <label for="old">Old Password<?php if (!is_null($userdetails->password)) {
                                                 ?>, required for changing password, email, or resetting PIN<?php
                                                                                                         } ?></label>
                             <div class="input-group" data-container="body">
-                                <span class="input-group-addon password_view_control" id="addon6"><span class="glyphicon glyphicon-eye-open"></span></span>
+                                <span class="input-group-text password_view_control" id="addon6"><span class="glyphicon glyphicon-eye-open"></span></span>
                                 <input class='form-control' type='password' id="old" name='old' <?php if (is_null($userdetails->password)) {
                                                                                                 ?>disabled<?php
                                                                                                         } ?> />
-                                <span class="input-group-addon pwpopover" id="addon5" data-container="body" data-toggle="popover" data-placement="top" data-content="Required to change your password">?</span>
+                                <span class="input-group-text pwpopover" id="addon5" data-bs-container="body" data-bs-toggle="popover" data-bs-placement="top" data-bs-content="Required to change your password">?</span>
                             </div>
                         </div>
 
@@ -620,10 +620,10 @@ if ($userQ2->count() > 0) {
 require_once $abs_us_root . $us_url_root . 'users/includes/html_footer.php'; //custom template footer
 ?>
 <!-- Location Picker Styles -->
-<link rel="stylesheet" href="<?=$us_url_root?>app/assets/css/location-picker.css?v=2.11.2">
+<link rel="stylesheet" href="<?=$us_url_root?>app/assets/css/location-picker.min.css">
 
 <!-- Location Picker Script -->
-<script src="<?=$us_url_root?>app/assets/js/location-picker.js?v=2.11.2"></script>
+<script src="<?=$us_url_root?>app/assets/js/location-picker.min.js"></script>
 
 <!-- Place any per-page javascript here -->
 <script>
@@ -682,11 +682,22 @@ require_once $abs_us_root . $us_url_root . 'users/includes/html_footer.php'; //c
             $('#confirm').attr('type', 'password');
         });
     });
-    $(function() {
-        $('[data-toggle="popover"]').popover()
-    })
-    $('.pwpopover').popover();
-    $('.pwpopover').on('click', function(e) {
-        $('.pwpopover').not(this).popover('hide');
+    document.querySelectorAll('[data-bs-toggle="popover"]').forEach(function(el) {
+        new bootstrap.Popover(el);
+    });
+    document.querySelectorAll('[data-bs-toggle="tooltip"]').forEach(function(el) {
+        new bootstrap.Tooltip(el);
+    });
+    document.querySelectorAll('.pwpopover').forEach(function(el) {
+        el.addEventListener('click', function() {
+            document.querySelectorAll('.pwpopover').forEach(function(other) {
+                if (other !== el) {
+                    const inst = bootstrap.Popover.getInstance(other);
+                    if (inst) {
+                        inst.hide();
+                    }
+                }
+            });
+        });
     });
 </script>

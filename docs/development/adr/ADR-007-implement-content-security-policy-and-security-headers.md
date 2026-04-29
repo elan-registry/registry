@@ -359,9 +359,24 @@ via HTTP response inspection.
 
 ## Revision History
 
-| Date       | Change | Issue |
+| Date | Change | Issue |
 | --- | --- | --- |
 | 2026-04-22 | Replace reCAPTCHA CSP entries with Cloudflare Turnstile | #630 |
+| 2026-04-27 | Remove 11 stale/library CDN domains from CSP allowlist (libraries self-hosted per ADR-015) | #405 |
+
+> **2026-04-27 (#405):** Removed the following domains from the CSP allowlist:
+>
+> - Library-specific (now self-hosted): `https://code.jquery.com`,
+>   `https://cdn.datatables.net`, `https://kit.fontawesome.com`
+> - Stale/unused: `https://unpkg.com`, `https://maxcdn.bootstrapcdn.com`,
+>   `https://stackpath.bootstrapcdn.com`, `https://cdn.popper.js.org`,
+>   `https://bootswatch.com`, `https://cdn.bootswatch.com`,
+>   `https://use.fontawesome.com`, `https://ka-f.fontawesome.com`
+>
+> jQuery UI, DataTables JS/CSS, and Chart.js are now vendored in `usersc/`.
+> Font Awesome is served from `users/fonts/css/`. Remaining CDN domains
+> (`cdn.jsdelivr.net`, `cdnjs.cloudflare.com`) will be removed in #618 when
+> Bootstrap migrates to self-hosted.
 
 ## Known Issues
 

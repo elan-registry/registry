@@ -313,35 +313,27 @@ class StatisticsApiTest extends IntegrationTestCase
             $this->markTestSkipped('Statistics API file not found');
         }
 
-        try {
-            $content = file_get_contents($filePath);
-            $this->assertIsString($content, "File should be readable");
-            $this->assertStringContainsString('securePage', $content, "Should have securePage security check");
-            $this->assertStringContainsString('ApiResponse', $content, "Should use ApiResponse pattern");
-        } catch (Throwable $e) {
-            $this->markTestSkipped("Could not read statistics API file: " . $e->getMessage());
-        }
+        $content = file_get_contents($filePath);
+        $this->assertIsString($content, "File should be readable");
+        $this->assertStringContainsString('securePage', $content, "Should have securePage security check");
+        $this->assertStringContainsString('ApiResponse', $content, "Should use ApiResponse pattern");
     }
 
     /**
      * Test that validateChassis.php is reference implementation
      */
-    public function testValidateChassisChassisPatterCompliance(): void
+    public function testValidateChassisPatternCompliance(): void
     {
         $filePath = __DIR__ . '/../../app/cars/actions/validateChassis.php';
         if (!file_exists($filePath)) {
             $this->markTestSkipped('ValidateChassis file not found');
         }
 
-        try {
-            $content = file_get_contents($filePath);
-            $this->assertIsString($content, "File should be readable");
-            $this->assertStringContainsString('declare(strict_types=1)', $content, "Should have strict types");
-            $this->assertStringContainsString('ApiResponse', $content, "Should use ApiResponse pattern");
-            $this->assertStringContainsString('withLogging', $content, "Should include logging");
-        } catch (Throwable $e) {
-            $this->markTestSkipped("Could not read validateChassis file: " . $e->getMessage());
-        }
+        $content = file_get_contents($filePath);
+        $this->assertIsString($content, "File should be readable");
+        $this->assertStringContainsString('declare(strict_types=1)', $content, "Should have strict types");
+        $this->assertStringContainsString('ApiResponse', $content, "Should use ApiResponse pattern");
+        $this->assertStringContainsString('withLogging', $content, "Should include logging");
     }
 
     // =========================================================================
@@ -358,13 +350,9 @@ class StatisticsApiTest extends IntegrationTestCase
             $this->markTestSkipped('Statistics API file not found');
         }
 
-        try {
-            $content = file_get_contents($filePath);
-            $this->assertIsString($content, "File should be readable");
-            $this->assertStringContainsString('SecurityError', $content, "Should log security errors");
-        } catch (Throwable $e) {
-            $this->markTestSkipped("Could not read statistics API file: " . $e->getMessage());
-        }
+        $content = file_get_contents($filePath);
+        $this->assertIsString($content, "File should be readable");
+        $this->assertStringContainsString('LOG_CATEGORY_SECURITY', $content, "Should log security errors via LogCategories");
     }
 
     /**
@@ -377,13 +365,9 @@ class StatisticsApiTest extends IntegrationTestCase
             $this->markTestSkipped('Statistics API file not found');
         }
 
-        try {
-            $content = file_get_contents($filePath);
-            $this->assertIsString($content, "File should be readable");
-            $this->assertStringContainsString('ValidationError', $content, "Should log validation errors");
-        } catch (Throwable $e) {
-            $this->markTestSkipped("Could not read statistics API file: " . $e->getMessage());
-        }
+        $content = file_get_contents($filePath);
+        $this->assertIsString($content, "File should be readable");
+        $this->assertStringContainsString('LOG_CATEGORY_VALIDATION_ERROR', $content, "Should log validation errors via LogCategories");
     }
 
     /**
@@ -396,13 +380,9 @@ class StatisticsApiTest extends IntegrationTestCase
             $this->markTestSkipped('Statistics API file not found');
         }
 
-        try {
-            $content = file_get_contents($filePath);
-            $this->assertIsString($content, "File should be readable");
-            $this->assertStringContainsString('DatabaseError', $content, "Should log database errors");
-        } catch (Throwable $e) {
-            $this->markTestSkipped("Could not read statistics API file: " . $e->getMessage());
-        }
+        $content = file_get_contents($filePath);
+        $this->assertIsString($content, "File should be readable");
+        $this->assertStringContainsString('LOG_CATEGORY_DATABASE_ERROR', $content, "Should log database errors via LogCategories");
     }
 
     // =========================================================================
@@ -410,7 +390,7 @@ class StatisticsApiTest extends IntegrationTestCase
     // =========================================================================
 
     /**
-     * Test that statistics.js uses response.message for errors
+     * Test that statistics.js uses error.message for API error handling
      */
     public function testStatisticsJsErrorHandling(): void
     {
@@ -419,15 +399,9 @@ class StatisticsApiTest extends IntegrationTestCase
             $this->markTestSkipped('Statistics.js file not found');
         }
 
-        try {
-            $content = file_get_contents($filePath);
-            $this->assertIsString($content, "File should be readable");
-            $this->assertStringContainsString('response.message', $content, "Should use response.message for error handling");
-            // Verify the old pattern is gone
-            $this->assertStringNotContainsString('response.error', $content, "Should not use response.error");
-        } catch (Throwable $e) {
-            $this->markTestSkipped("Could not read statistics.js file: " . $e->getMessage());
-        }
+        $content = file_get_contents($filePath);
+        $this->assertIsString($content, "File should be readable");
+        $this->assertStringContainsString('error.message', $content, "Should use error.message in catch handlers");
     }
 
     /**
@@ -436,13 +410,9 @@ class StatisticsApiTest extends IntegrationTestCase
     public function testStatisticsDataServiceExists(): void
     {
         $filePath = __DIR__ . '/../../usersc/classes/StatisticsDataService.php';
-        try {
-            if (!file_exists($filePath)) {
-                $this->markTestSkipped('StatisticsDataService file not found');
-            }
-            $this->assertFileExists($filePath, "StatisticsDataService should exist");
-        } catch (Throwable $e) {
-            $this->markTestSkipped("Could not verify StatisticsDataService file: " . $e->getMessage());
+        if (!file_exists($filePath)) {
+            $this->markTestSkipped('StatisticsDataService file not found');
         }
+        $this->assertFileExists($filePath, "StatisticsDataService should exist");
     }
 }

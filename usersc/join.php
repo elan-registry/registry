@@ -24,7 +24,7 @@ ini_set('allow_url_fopen', 1);
 // Security headers (including X-Frame-Options: SAMEORIGIN) are set globally via
 // usersc/includes/security_headers.php loaded during UserSpice initialization
 require_once '../users/init.php';
-require_once $abs_us_root.$us_url_root.'users/includes/template/prep.php';
+require_once $abs_us_root.$us_url_root.'usersc/includes/elanregistry_prep.php';
 $pw_settings = $db->query("SELECT * FROM us_password_strength WHERE id = 1")->first();
 if (!isset($pw_settings->meter_active)) {
     $pw_settings->meter_active = 0;
@@ -316,10 +316,10 @@ includeHook($hooks, 'bottom');
 ?>
 
 <!-- Location Picker Styles -->
-<link rel="stylesheet" href="<?=$us_url_root?>app/assets/css/location-picker.css?v=2.11.2">
+<link rel="stylesheet" href="<?=$us_url_root?>app/assets/css/location-picker.min.css">
 
 <!-- Location Picker Script -->
-<script src="<?=$us_url_root?>app/assets/js/location-picker.js?v=2.11.2"></script>
+<script src="<?=$us_url_root?>app/assets/js/location-picker.min.js"></script>
 
 <script type="text/javascript">
     $(document).ready(function(){

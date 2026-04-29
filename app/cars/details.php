@@ -13,7 +13,7 @@ declare(strict_types=1);
  */
 
 require_once '../../users/init.php';
-require_once $abs_us_root . $us_url_root . 'users/includes/template/prep.php';
+require_once $abs_us_root . $us_url_root . 'usersc/includes/elanregistry_prep.php';
 
 if (!securePage($php_self)) {
     die();
@@ -155,7 +155,7 @@ if (!empty($_GET)) {
                                         $isAdmin = isRegistryAdmin($user->data()->id); // Administrator (2) or Editor (3)
 
                                         if ($isOwner) { ?>
-                                            <form method="POST" action="<?= $us_url_root ?>app/cars/edit.php" class="d-inline">
+                                            <form method="POST" action="<?= $us_url_root ?>app/cars/form.php" class="d-inline">
                                                 <input type="hidden" name="csrf" value="<?= Token::generate(); ?>" />
                                                 <input type="hidden" name="action" value="updateCar" />
                                                 <input type="hidden" name="car_id" id="car_id" value="<?= $carData->id ?>" />
@@ -168,7 +168,7 @@ if (!empty($_GET)) {
                                                 <i class="fas fa-shield-alt"></i> <strong>Administrative Override:</strong>
                                                 You are editing a car that you do not own using Administrator/Editor privileges.
                                             </div>
-                                            <form method="POST" action="<?= $us_url_root ?>app/cars/edit.php" class="d-inline me-2">
+                                            <form method="POST" action="<?= $us_url_root ?>app/cars/form.php" class="d-inline me-2">
                                                 <input type="hidden" name="csrf" value="<?= Token::generate(); ?>" />
                                                 <input type="hidden" name="action" value="updateCar" />
                                                 <input type="hidden" name="car_id" id="car_id" value="<?= $carData->id ?>" />
@@ -498,7 +498,7 @@ if (!empty($_GET)) {
                                     <small class="text-muted">Track all changes and updates made to this car's registry information</small>
                                 </div>
                                 <div class="col-md-4 text-md-end">
-                                    <button class="btn btn-outline-secondary btn-sm" type="button" id="historyToggleBtn" data-toggle="collapse" data-target="#historyDetails" aria-expanded="false" aria-controls="historyDetails">
+                                    <button class="btn btn-outline-secondary btn-sm" type="button" id="historyToggleBtn" data-bs-toggle="collapse" data-bs-target="#historyDetails" aria-expanded="false" aria-controls="historyDetails">
                                         <i class="fas fa-eye"></i> <span id="historyToggleText">Show Details</span>
                                     </button>
                                 </div>
@@ -509,12 +509,12 @@ if (!empty($_GET)) {
                                 <div class="alert alert-info mb-3">
                                     <i class="fas fa-info-circle"></i>
                                     <strong>About History:</strong> This table shows all changes made to the car's information over time.
-                                    Use horizontal scrolling on mobile devices to view all columns.
+                                    Tap any row to expand hidden columns on mobile devices.
                                 </div>
                                 
                                 <div class="table-responsive">
                                     <table id="carHistoryTable" class="table table-striped table-bordered table-hover table-sm w-100" aria-describedby="History of car updates">
-                                        <thead class="thead-dark">
+                                        <thead class="table-dark">
                                             <tr>
                                                 <th scope="col" class="text-nowrap">
                                                     <i class="fas fa-cog"></i> Operation
@@ -663,13 +663,11 @@ if (!empty($_GET)) {
 <!-- footers -->
 <?php
 require_once $abs_us_root . $us_url_root . 'users/includes/html_footer.php'; //custom template footer
-
-// Table Sorting and Such
-echo html_entity_decode($settings->elan_datatables_js_cdn);
-echo html_entity_decode($settings->elan_datatables_css_cdn);
 ?>
 
-<!-- Load external JavaScript files -->
+<script src="<?=$us_url_root?>usersc/js/datatables.min.js"></script>
+<link rel="stylesheet" href="<?=$us_url_root?>usersc/css/datatables.min.css">
+
 <!-- Configure thumbnail sizes from settings -->
 <script>
 window.ELAN_CONFIG = {
@@ -692,8 +690,8 @@ window.ELAN_CONFIG = {
     RESPONSIVE_SIZE: <?php echo $responsiveSize; ?>
 };
 </script>
-<script src='<?= $us_url_root ?>app/assets/js/imagedisplay.js'></script>
-<script src='<?= $us_url_root ?>app/assets/js/highlightDifferences.js'></script>
+<script src='<?= $us_url_root ?>app/assets/js/imagedisplay.min.js'></script>
+<script src='<?= $us_url_root ?>app/assets/js/highlightDifferences.min.js'></script>
 <script>
 const img_root = '<?= $us_url_root . $settings->elan_image_dir ?>';
 window.carDetailsConfig = {
@@ -701,7 +699,7 @@ window.carDetailsConfig = {
     csrf: '<?= Token::generate() ?>'
 };
 </script>
-<script src='<?= $us_url_root ?>app/assets/js/car_details.js'></script>
+<script src='<?= $us_url_root ?>app/assets/js/car_details.min.js'></script>
 
 
 
@@ -749,20 +747,19 @@ document.addEventListener('DOMContentLoaded', function() {
     const historyToggleBtn = document.getElementById('historyToggleBtn');
     
     if (historyDetails && historyToggleText && historyToggleBtn) {
-        historyToggleBtn.addEventListener('click', function() {
-            const isExpanded = historyDetails.classList.contains('show');
-            
-            if (isExpanded) {
-                $(historyDetails).collapse('hide');
-                historyToggleText.textContent = 'Show Details';
-                historyToggleText.previousElementSibling.className = 'fas fa-eye';
-                if (historySummary) historySummary.style.display = 'block';
-            } else {
-                $(historyDetails).collapse('show');
-                historyToggleText.textContent = 'Hide Details';
-                historyToggleText.previousElementSibling.className = 'fas fa-eye-slash';
-                if (historySummary) historySummary.style.display = 'none';
-            }
+        const historyToggleIcon = historyToggleBtn.querySelector('.fas');
+        // The button has data-bs-toggle="collapse" so Bootstrap 5 handles show/hide
+        // automatically. Listen to collapse events to update label, icon, and summary.
+        historyDetails.addEventListener('shown.bs.collapse', function() {
+            historyToggleText.textContent = 'Hide Details';
+            if (historyToggleIcon) historyToggleIcon.className = 'fas fa-eye-slash';
+            if (historySummary) historySummary.style.display = 'none';
+        });
+
+        historyDetails.addEventListener('hidden.bs.collapse', function() {
+            historyToggleText.textContent = 'Show Details';
+            if (historyToggleIcon) historyToggleIcon.className = 'fas fa-eye';
+            if (historySummary) historySummary.style.display = 'block';
         });
     }
 });
@@ -781,5 +778,8 @@ document.addEventListener('DOMContentLoaded', function() {
     body { font-size: 12px; }
     h1 { font-size: 18px; }
     h3 { font-size: 14px; }
+}
+@media (max-width: 575.98px) {
+    #map { height: 220px !important; }
 }
 </style>

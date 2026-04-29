@@ -114,14 +114,13 @@ Configuration:
 
 ### CDN Management
 
-Frontend library assets (DataTables JS/CSS) loaded via database settings per ADR-006:
+> **Asset loading superseded by [ADR-015](ADR-015-self-host-frontend-libraries.md):**
+> DataTables JS and CSS are now vendored at `usersc/js/datatables.min.js` and
+> `usersc/css/datatables.min.css`. The `elan_datatables_js_cdn` and
+> `elan_datatables_css_cdn` DB settings have been removed. The rest of this ADR
+> (server-side processing, configuration, extensions) remains current.
 
-```php
-echo html_entity_decode($settings->elan_datatables_js_cdn);
-echo html_entity_decode($settings->elan_datatables_css_cdn);
-```
-
-Switchable without code deployment if version update or provider change is needed.
+~~Frontend library assets (DataTables JS/CSS) loaded via database settings per ADR-006~~ (removed in #405 — see ADR-015).
 
 ### Extension Rationalization
 

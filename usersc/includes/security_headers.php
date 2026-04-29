@@ -12,70 +12,39 @@ The content-security-policy HTTP header provides an additional layer of security
 */
 
 // Content Security Policy for ElanRegistry
-// Optimized policy without duplicates, allowing UserSpice framework while maintaining security
+// Most libraries are self-hosted — CDN origins needed for:
+//   - Google Maps (maps feature), Cloudflare Turnstile (CAPTCHA), Cloudflare Analytics,
+//     code.jquery.com (UserSpice loads jQuery from there via users/js/jquery.php),
+//     cdnjs.cloudflare.com (Customizer template loads Bootstrap CSS/JS; UserSpice dashboard loads Chart.js)
 header("Content-Security-Policy: " .
     "default-src 'self'; " .
     "script-src 'self' 'unsafe-inline' 'unsafe-eval' " .
-        // Google Services
         "https://maps.googleapis.com " .
         "https://www.gstatic.com " .
         "https://ssl.gstatic.com " .
-        // Cloudflare Turnstile
         "https://challenges.cloudflare.com " .
-        // JavaScript CDNs
-        "https://cdn.jsdelivr.net " .
-        "https://cdnjs.cloudflare.com " .
-        "https://unpkg.com " .
         "https://code.jquery.com " .
-        "https://ajax.googleapis.com " .
-        "https://maxcdn.bootstrapcdn.com " .
-        "https://stackpath.bootstrapcdn.com " .
-        "https://cdn.datatables.net " .
-        "https://kit.fontawesome.com " .
-        "https://cdn.popper.js.org " .
-        "https://static.cloudflareinsights.com; " .
+        "https://static.cloudflareinsights.com " .
+        "https://cdnjs.cloudflare.com; " .
     "style-src 'self' 'unsafe-inline' " .
-        // CSS CDNs and services
-        "https://fonts.googleapis.com " .
-        "https://cdn.jsdelivr.net " .
-        "https://cdnjs.cloudflare.com " .
-        "https://maxcdn.bootstrapcdn.com " .
-        "https://stackpath.bootstrapcdn.com " .
-        "https://bootswatch.com " .
-        "https://cdn.bootswatch.com " .
-        "https://cdn.datatables.net " .
-        "https://use.fontawesome.com " .
-        "https://kit.fontawesome.com " .
-        "https://ka-f.fontawesome.com " .
-        "https://www.gstatic.com; " .
+        "https://www.gstatic.com " .
+        "https://cdnjs.cloudflare.com; " .
     "img-src 'self' data: blob: " .
-        // Image sources
         "https://maps.googleapis.com " .
         "https://maps.gstatic.com " .
         "https://www.gravatar.com " .
         "https://ssl.gstatic.com; " .
-    "font-src 'self' " .
-        // Font sources
-        "https://fonts.gstatic.com " .
-        "https://use.fontawesome.com " .
-        "https://kit.fontawesome.com " .
-        "https://ka-f.fontawesome.com; " .
+    "font-src 'self'; " .
     "connect-src 'self' " .
-        // API and AJAX endpoints
         "https://maps.googleapis.com " .
         "https://www.gstatic.com " .
         "https://ssl.gstatic.com " .
-        // Cloudflare Turnstile
         "https://challenges.cloudflare.com " .
-        "https://kit.fontawesome.com " .
-        "https://ka-f.fontawesome.com " .
-        // CDN for source maps
-        "https://cdn.jsdelivr.net " .
-        // Cloudflare Analytics
         "https://cloudflareinsights.com " .
         "https://static.cloudflareinsights.com; " .
     "frame-src 'self' https://challenges.cloudflare.com; " .
     "frame-ancestors 'self'; " .
+    "worker-src 'self' blob:; " .
     "object-src 'none'; " .
     "base-uri 'self'"
 );

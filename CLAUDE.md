@@ -57,15 +57,23 @@ edge caching and CDN for global users (US, EU, AU).
 
 **Template Architecture:**
 
-- Active template: `/usersc/templates/ElanRegistry/` (Bootstrap 4.5.3, migrating to BS5)
+- Active template: `/usersc/templates/customizer/` with `elanregistry` child theme (Bootstrap 5.3.3)
 - US6 reference templates: `journal/` (BS5.2) and `customizer/` (BS5.3) — use
   as patterns for migration
 - UserSpice 6 admin uses its own template — independent of ElanRegistry template
 - jQuery is a UserSpice 6 dependency (`users/js/jquery.php`) — cannot be removed
-- CDN URLs stored in database settings (`elan_*_cdn` columns) — decoded via
-  `html_entity_decode()` in `header.php`
-- ADRs: `docs/development/adr/` — update ADR-006 and ADR-007 when changing
-  frontend dependencies or CSP
+- Frontend libraries vendored to `usersc/js/` and `usersc/css/` (ADR-015);
+  Bootstrap 5.3.3 loaded via Customizer `header.php` (self-hosted); jQuery via `users/js/jquery.php` (CDN, UserSpice-managed)
+- ADRs: `docs/development/adr/` — update ADR-015 when changing frontend dependencies, ADR-016 for nav changes, ADR-007 for CSP changes
+
+**Template Customization Rules:**
+
+- `usersc/templates/customizer/` is **gitignored upstream** — do NOT modify any
+  files in this directory. The sole exception is `file_nav_custom.php`, which is
+  project-owned and tracked.
+- To add content to the footer without touching upstream files, inject via JS
+  in `usersc/includes/footer.php` (included by UserSpice after the footer renders).
+- To add content to the header/nav, use `usersc/templates/customizer/file_nav_custom.php`.
 
 ## Development Setup
 
@@ -89,6 +97,9 @@ composer test:full              # All PHP tests
 composer test:coverage          # Coverage report
 composer check:php              # PHP coding standards + PHPStan analysis
 composer check                  # Full check (PHP standards + PHPStan + ESLint)
+
+# Build (minify first-party JS/CSS — run after editing source files)
+npm run build                   # Minify app/assets/js/, app/assets/css/, app/admin/assets/
 
 # Linting
 npm run lint                    # ESLint for JavaScript

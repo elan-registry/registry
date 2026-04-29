@@ -79,7 +79,7 @@
             this.container.innerHTML = `
                 ${gpsButton}
 
-                <div class="form-group position-relative">
+                <div class="mb-3 position-relative">
                     <label for="${this.options.containerId}-input">
                         Location ${this.options.required ? '<span class="text-danger">*</span>' : ''}
                     </label>
@@ -94,11 +94,9 @@
                                aria-autocomplete="list"
                                aria-controls="${this.options.containerId}-results"
                                aria-expanded="false">
-                        <div class="input-group-append d-none" id="${this.options.containerId}-spinner">
-                            <span class="input-group-text">
+                        <span class="input-group-text d-none" id="${this.options.containerId}-spinner">
                                 <i class="fas fa-spinner fa-spin"></i>
                             </span>
-                        </div>
                     </div>
                     <small class="form-text text-muted">Type at least 2 characters to see suggestions</small>
 

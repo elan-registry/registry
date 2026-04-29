@@ -11,7 +11,7 @@
  * @copyright 2025
  */
 require_once '../../users/init.php';
-require_once $abs_us_root . $us_url_root . 'users/includes/template/prep.php';
+require_once $abs_us_root . $us_url_root . 'usersc/includes/elanregistry_prep.php';
 
 // Security: Only allow access to authorized users
 if (!securePage($php_self)) {
@@ -62,11 +62,10 @@ if (!securePage($php_self)) {
 <!-- footers -->
 <?php
 require_once $abs_us_root . $us_url_root . 'users/includes/html_footer.php'; //custom template footer
-
-// Table Sorting and Such
-echo html_entity_decode($settings->elan_datatables_js_cdn);
-echo html_entity_decode($settings->elan_datatables_css_cdn);
 ?>
+
+<script src="<?=$us_url_root?>usersc/js/datatables.min.js"></script>
+<link rel="stylesheet" href="<?=$us_url_root?>usersc/css/datatables.min.css">
 
 <!-- Constants needed by the scripts -->
 <script>
@@ -97,14 +96,13 @@ window.ELAN_CONFIG = {
     RESPONSIVE_SIZE: <?php echo $responsiveSize; ?>
 };
 </script>
-<script src='<?= $us_url_root ?>app/assets/js/imagedisplay.js'></script>
+<script src='<?= $us_url_root ?>app/assets/js/imagedisplay.min.js'></script>
 
 <script>
   const table = $('#cartable').DataTable({
     fixedHeader: true,
     responsive: true,
     pageLength: 15,
-    scrollX: true,
     'aLengthMenu': [
       [10, 25, 50, 100, -1],
       [10, 25, 50, 100, 'All']
@@ -133,24 +131,32 @@ window.ELAN_CONFIG = {
       data: 'id',
       'searchable': false,
       'orderable': false,
+      responsivePriority: 1,
       'render': function(data, type, row, meta) {
         return '<a class="btn btn-success btn-sm" href="' + us_url_root + 'app/cars/details.php?car_id=' + data + '">Details';
       }
     }, {
       data: 'year',
+      responsivePriority: 1
     }, {
-      data: 'type'
+      data: 'type',
+      responsivePriority: 1
     }, {
-      data: 'chassis'
+      data: 'chassis',
+      responsivePriority: 1
     }, {
-      data: 'series'
+      data: 'series',
+      responsivePriority: 2
     }, {
-      data: 'variant'
+      data: 'variant',
+      responsivePriority: 2
     }, {
-      data: 'color'
+      data: 'color',
+      responsivePriority: 2
     }, {
       data: 'image',
       'searchable': false,
+      responsivePriority: 3,
       'render': function(data, type, row) {
         if (data) {
           return carousel(row);
@@ -159,16 +165,21 @@ window.ELAN_CONFIG = {
         }
       }
     }, {
-      data: 'fname'
+      data: 'fname',
+      responsivePriority: 3
     }, {
-      data: 'city'
+      data: 'city',
+      responsivePriority: 3
     }, {
-      data: 'state'
+      data: 'state',
+      responsivePriority: 3
     }, {
-      data: 'country'
+      data: 'country',
+      responsivePriority: 3
     }, {
       data: 'ctime',
       'searchable': true,
+      responsivePriority: 3
     }]
   });
 </script>

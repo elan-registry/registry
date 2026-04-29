@@ -10,7 +10,7 @@
  * @copyright 2025
  */
 require_once '../../users/init.php';
-require_once $abs_us_root . $us_url_root . 'users/includes/template/prep.php';
+require_once $abs_us_root . $us_url_root . 'usersc/includes/elanregistry_prep.php';
 
 if (!securePage($php_self)) {
   die();
@@ -62,11 +62,10 @@ if (!securePage($php_self)) {
 <!-- footers -->
 <?php
 require_once $abs_us_root . $us_url_root . 'users/includes/html_footer.php'; //custom template footer
-
-// Table Sorting and Such
-echo html_entity_decode($settings->elan_datatables_js_cdn);
-echo html_entity_decode($settings->elan_datatables_css_cdn);
 ?>
+
+<script src="<?=$us_url_root?>usersc/js/datatables.min.js"></script>
+<link rel="stylesheet" href="<?=$us_url_root?>usersc/css/datatables.min.css">
 
 <script>
   const img_root = '<?= $us_url_root . $settings->elan_image_dir ?>';
@@ -105,6 +104,7 @@ echo html_entity_decode($settings->elan_datatables_css_cdn);
         data: "id",
         'searchable': false,
         'orderable': false,
+        visible: false,
       },
       {
         data: "year",
@@ -150,9 +150,12 @@ echo html_entity_decode($settings->elan_datatables_css_cdn);
                    '<i class="fas fa-spinner fa-spin"></i> Checking...' +
                    '</span></div>';
           }
+          if (type === 'sort' || type === 'type') {
+            return data || '';
+          }
           return '';
         },
-        orderable: false,
+        orderable: true,
         searchable: false
       }
     ]
@@ -194,8 +197,10 @@ echo html_entity_decode($settings->elan_datatables_css_cdn);
             );
           }
         })
-        .catch(function() {
-          // Registry check failed - handle silently
+        .catch(function(error) {
+          if (error && error.name !== 'ApiCancelledError') {
+            console.error('Registry link check failed for chassis', chassis, error);
+          }
           container.html(
             '<span class="text-danger small">' +
             '<i class="fas fa-exclamation-triangle"></i> Check failed' +

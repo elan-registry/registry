@@ -1,4 +1,6 @@
 <?php
+declare(strict_types=1);
+
 /**
  * Automated SPAM and Inactive User Cleanup System
  * 
@@ -17,6 +19,8 @@
  */
 
 require_once '../init.php';
+
+use ElanRegistry\Exceptions\AdminOperationException;
 $filename = currentPage();
 $db = DB::getInstance();
 $ip = ipCheck();
@@ -36,10 +40,10 @@ $user_id = 1; // System user for cron operations
 /**
  * Generate grace period email content (HTML with plain text fallback)
  */
-function generateGracePeriodEmailHTML($username, $gracePeriodDays) {
+function generateGracePeriodEmailHTML(string $username, int $gracePeriodDays): string {
     $registryUrl = 'https://elanregistry.org';
     $loginUrl = $registryUrl . '/users/login.php';
-    $addCarUrl = $registryUrl . '/app/cars/edit.php';
+    $addCarUrl = $registryUrl . '/app/cars/form.php';
     $logoUrl = $registryUrl . '/usersc/templates/ElanRegistry/assets/images/logo-72x72.png';
     
     $htmlContent = '
@@ -125,10 +129,10 @@ function generateGracePeriodEmailHTML($username, $gracePeriodDays) {
 /**
  * Generate grace period email content (Plain text fallback)
  */
-function generateGracePeriodEmailText($username, $gracePeriodDays) {
+function generateGracePeriodEmailText(string $username, int $gracePeriodDays): string {
     $registryUrl = 'https://elanregistry.org';
     $loginUrl = $registryUrl . '/users/login.php';
-    $addCarUrl = $registryUrl . '/app/cars/edit.php';
+    $addCarUrl = $registryUrl . '/app/cars/form.php';
     
     return "LOTUS ELAN REGISTRY - Account Inactive Notice
 
@@ -447,13 +451,17 @@ try {
     if (!$DRY_RUN && $cleanupPercentage > $MAX_PERCENTAGE_CLEANUP) {
         $warningMsg = "SAFETY ABORT: Cleanup would affect {$cleanupPercentage}% of users (limit: {$MAX_PERCENTAGE_CLEANUP}%). Aborting for safety.";
         logger($user_id, 'SpamCleanupError', $warningMsg);
-        throw new Exception($warningMsg);
+        throw new AdminOperationException($warningMsg);
     }
-    
+
     logger($user_id, 'SpamCleanup', "Cleanup complete ($mode) - SPAM: $spamCount, Grace notifications: $graceCount, Inactive deletions: $inactiveCount, Total processed: $totalProcessed, Impact: " . round($cleanupPercentage, 2) . "% of users");
-    
-} catch (Exception $e) {
+
+} catch (AdminOperationException $e) {
     $errorMsg = "Error during cleanup process: " . $e->getMessage();
+    logger($user_id, 'SpamCleanupError', $errorMsg);
+    $errors[] = $errorMsg;
+} catch (\Throwable $e) {
+    $errorMsg = "Unexpected error during cleanup: " . $e->getMessage();
     logger($user_id, 'SpamCleanupError', $errorMsg);
     $errors[] = $errorMsg;
 }

@@ -15,7 +15,7 @@ declare(strict_types=1);
  * @copyright 2025
  */
 require_once '../../users/init.php';
-require_once $abs_us_root . $us_url_root . 'users/includes/template/prep.php';
+require_once $abs_us_root . $us_url_root . 'usersc/includes/elanregistry_prep.php';
 require_once $abs_us_root . $us_url_root . 'usersc/classes/StatisticsDataService.php';
 
 if (!securePage($php_self)) {
@@ -25,6 +25,11 @@ if (!securePage($php_self)) {
 // Initialize data service
 $dataService = new StatisticsDataService($db);
 ?>
+
+<style>
+.chart-container { height: 400px; }
+@media (max-width: 575.98px) { .chart-container { height: 250px; } }
+</style>
 
 <div class="page-wrapper">
     <div class="container-fluid">
@@ -37,7 +42,7 @@ $dataService = new StatisticsDataService($db);
                             <h1 class="h2 mb-0">Registry Analytics & Statistics</h1>
                             <p class="text-muted">Comprehensive analysis of car registry data with interactive visualizations</p>
                         </div>
-                        <div class="text-right">
+                        <div class="text-end">
                             <small class="text-muted">
                                 <i class="fas fa-chart-bar"></i>
                                 Live analytics data
@@ -54,27 +59,27 @@ $dataService = new StatisticsDataService($db);
                         <div class="card-header p-0">
                             <ul class="nav nav-tabs card-header-tabs" id="statisticsTabs" role="tablist">
                                 <li class="nav-item">
-                                    <a class="nav-link active" id="overview-tab" data-toggle="tab" href="#overview" role="tab" aria-controls="overview" aria-selected="true">
+                                    <a class="nav-link active" id="overview-tab" data-bs-toggle="tab" href="#overview" role="tab" aria-controls="overview" aria-selected="true">
                                         <i class="fas fa-tachometer-alt"></i> Overview
                                     </a>
                                 </li>
                                 <li class="nav-item">
-                                    <a class="nav-link" id="geographic-tab" data-toggle="tab" href="#geographic" role="tab" aria-controls="geographic" aria-selected="false">
+                                    <a class="nav-link" id="geographic-tab" data-bs-toggle="tab" href="#geographic" role="tab" aria-controls="geographic" aria-selected="false">
                                         <i class="fas fa-globe-americas"></i> Geographic
                                     </a>
                                 </li>
                                 <li class="nav-item">
-                                    <a class="nav-link" id="production-tab" data-toggle="tab" href="#production" role="tab" aria-controls="production" aria-selected="false">
+                                    <a class="nav-link" id="production-tab" data-bs-toggle="tab" href="#production" role="tab" aria-controls="production" aria-selected="false">
                                         <i class="fas fa-industry"></i> Production
                                     </a>
                                 </li>
                                 <li class="nav-item">
-                                    <a class="nav-link" id="colors-tab" data-toggle="tab" href="#colors" role="tab" aria-controls="colors" aria-selected="false">
+                                    <a class="nav-link" id="colors-tab" data-bs-toggle="tab" href="#colors" role="tab" aria-controls="colors" aria-selected="false">
                                         <i class="fas fa-palette"></i> Colors
                                     </a>
                                 </li>
                                 <li class="nav-item">
-                                    <a class="nav-link" id="quality-tab" data-toggle="tab" href="#quality" role="tab" aria-controls="quality" aria-selected="false">
+                                    <a class="nav-link" id="quality-tab" data-bs-toggle="tab" href="#quality" role="tab" aria-controls="quality" aria-selected="false">
                                         <i class="fas fa-check-circle"></i> Data Quality
                                     </a>
                                 </li>
@@ -157,7 +162,7 @@ $dataService = new StatisticsDataService($db);
                                                 <div class="card-header">
                                                     <h5 class="mb-0">Registry Timeline</h5>
                                                 </div>
-                                                <div class="card-body" style="height: 400px;">
+                                                <div class="card-body chart-container">
                                                     <canvas id="timelineChart"></canvas>
                                                 </div>
                                             </div>
@@ -167,7 +172,7 @@ $dataService = new StatisticsDataService($db);
                                                 <div class="card-header">
                                                     <h5 class="mb-0">Recent Registration Activity</h5>
                                                 </div>
-                                                <div class="card-body" style="height: 400px;">
+                                                <div class="card-body chart-container">
                                                     <canvas id="ageChart"></canvas>
                                                 </div>
                                             </div>
@@ -180,7 +185,7 @@ $dataService = new StatisticsDataService($db);
                                     <div class="d-flex justify-content-between align-items-center mb-3">
                                         <h4>Geographic Distribution Analysis</h4>
                                         <div class="spinner-border text-primary" role="status" id="geographic-spinner" style="display: none;">
-                                            <span class="sr-only">Loading...</span>
+                                            <span class="visually-hidden">Loading...</span>
                                         </div>
                                     </div>
                                     <div id="geographic-content">
@@ -193,7 +198,7 @@ $dataService = new StatisticsDataService($db);
                                     <div class="d-flex justify-content-between align-items-center mb-3">
                                         <h4>Production Analysis</h4>
                                         <div class="spinner-border text-primary" role="status" id="production-spinner" style="display: none;">
-                                            <span class="sr-only">Loading...</span>
+                                            <span class="visually-hidden">Loading...</span>
                                         </div>
                                     </div>
                                     <div id="production-content">
@@ -206,7 +211,7 @@ $dataService = new StatisticsDataService($db);
                                     <div class="d-flex justify-content-between align-items-center mb-3">
                                         <h4>Color Analysis Dashboard</h4>
                                         <div class="spinner-border text-primary" role="status" id="colors-spinner" style="display: none;">
-                                            <span class="sr-only">Loading...</span>
+                                            <span class="visually-hidden">Loading...</span>
                                         </div>
                                     </div>
                                     <div id="colors-content">
@@ -219,7 +224,7 @@ $dataService = new StatisticsDataService($db);
                                     <div class="d-flex justify-content-between align-items-center mb-3">
                                         <h4>Data Quality & Completeness</h4>
                                         <div class="spinner-border text-primary" role="status" id="quality-spinner" style="display: none;">
-                                            <span class="sr-only">Loading...</span>
+                                            <span class="visually-hidden">Loading...</span>
                                         </div>
                                     </div>
                                     <div id="quality-content">
@@ -256,13 +261,10 @@ window.statisticsConfig = {
 </script>
 
 <!-- Load Chart.js -->
-<?php
-// Chart.js CDN - loaded from database setting with SRI hash
-echo isset($settings->elan_chartjs_cdn) ? html_entity_decode($settings->elan_chartjs_cdn) : '<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.js" integrity="sha384-FcQlsUOd0TJjROrBxhJdUhXTUgNJQxTMcxZe6nHbaEfFL1zjQ+bq/uRoBQxb0KMo" crossorigin="anonymous"></script>';
-?>
+<script src="<?=$us_url_root?>usersc/js/chart.umd.min.js"></script>
 
 <!-- Load Statistics JavaScript first -->
-<script src="<?= $us_url_root ?>app/assets/js/statistics.js?v=2.8.4-debug"></script>
+<script src="<?= $us_url_root ?>app/assets/js/statistics.min.js"></script>
 
 <!-- Initialize Google Maps and Statistics -->
 <script>
@@ -299,3 +301,4 @@ document.addEventListener('DOMContentLoaded', function() {
     }, 500); // Give statistics.js 500ms to fully load
 });
 </script>
+<?php require_once $abs_us_root . $us_url_root . 'users/includes/html_footer.php'; ?>

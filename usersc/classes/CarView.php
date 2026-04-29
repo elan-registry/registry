@@ -108,21 +108,21 @@ class CarView
             }
             
             $html .= '</div>
-                    <a class="carousel-control-prev" href="#myCarousel-' . $carouselId . '" role="button" data-slide="prev">
+                    <button class="carousel-control-prev" type="button" data-bs-target="#myCarousel-' . $carouselId . '" data-bs-slide="prev">
                         <span class="carousel-control-prev-icon" aria-hidden="true"></span>
-                        <span class="sr-only">Previous</span>
-                    </a>
-                    <a class="carousel-control-next" href="#myCarousel-' . $carouselId . '" role="button" data-slide="next">
+                        <span class="visually-hidden">Previous</span>
+                    </button>
+                    <button class="carousel-control-next" type="button" data-bs-target="#myCarousel-' . $carouselId . '" data-bs-slide="next">
                         <span class="carousel-control-next-icon" aria-hidden="true"></span>
-                        <span class="sr-only">Next</span>
-                    </a>
+                        <span class="visually-hidden">Next</span>
+                    </button>
                 </div>
                 <ul class="carousel-indicators list-inline mx-auto border px-0">';
                 
             foreach ($carImages as $key => $image) {
                 $html .= '<li class="list-inline-item active">';
-                $html .= '<a id="carousel-selector-' . $key . '" class="selected" data-slide-to="'
-                    . $key . '" data-target="#myCarousel-' . $carouselId . '">';
+                $html .= '<a id="carousel-selector-' . $key . '" class="selected" data-bs-slide-to="'
+                    . $key . '" data-bs-target="#myCarousel-' . $carouselId . '">';
                 $html .= self::loadPicture($image, true);
                 $html .= '</a> </li>';
             }

@@ -40,6 +40,14 @@ if (!file_exists($initPath)) {
     exit(1);
 }
 
+// Load usersc/vendor autoload so Dotenv and other composer deps are available
+// before users/init.php runs (init.php loads it via helpers.php, but we need
+// Dotenv earlier to set env vars that init.php's own Dotenv call will read)
+$userscAutoload = $projectRoot . '/usersc/vendor/autoload.php';
+if (file_exists($userscAutoload)) {
+    require_once $userscAutoload;
+}
+
 // Load test environment (.env.local overrides .env for local development)
 // .env.local uses DB_* names directly (e.g. DB_HOST=127.0.0.1:8889 for MAMP)
 // createMutable() allows init.php's createImmutable() to read our test values from $_ENV
