@@ -181,18 +181,18 @@ class LogCategoriesUsageTest extends TestCase
     /**
      * Test that car-related JS files use ElanRegistryAPI instead of $.ajax
      */
-    public function testEditPhpJsUsesElanRegistryAPI(): void
+    public function testFormPhpJsUsesElanRegistryAPI(): void
     {
-        $filePath = $this->rootDir . '/app/cars/edit.php';
+        $filePath = $this->rootDir . '/app/cars/form.php';
         if (!file_exists($filePath)) {
-            $this->markTestSkipped('edit.php not found');
+            $this->markTestSkipped('form.php not found');
         }
 
         $content = file_get_contents($filePath);
 
         // Should not contain $.ajax for car-related AJAX calls
-        $this->assertStringNotContainsString('$.ajax', $content, 'edit.php should use ElanRegistryAPI instead of $.ajax');
-        $this->assertStringContainsString('new ElanRegistryAPI()', $content, 'edit.php should use new ElanRegistryAPI()');
+        $this->assertStringNotContainsString('$.ajax', $content, 'form.php should use ElanRegistryAPI instead of $.ajax');
+        $this->assertStringContainsString('new ElanRegistryAPI()', $content, 'form.php should use new ElanRegistryAPI()');
     }
 
     /**

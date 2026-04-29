@@ -1026,7 +1026,7 @@ if ($carModel->exists('S4', 'FHC', '36')) {
 - Issue #298-1: Factory Colors migration (series filtering)
 - Issue #298-4: Color suggestion API (model-based color filtering)
 - Issue #298-7: Bulk cleanup script (model validation)
-- Phase 2: edit.php dynamic dropdowns (replacing cardefinition.js)
+- Phase 2: form.php dynamic dropdowns (replacing cardefinition.js)
 
 **See Also**:
 

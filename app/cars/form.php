@@ -2,7 +2,7 @@
 declare(strict_types=1);
 
 /**
- * edit_car.php
+ * form.php
  * Allows users to add or edit car records in the registry.
  *
  * Handles form input, validation, image uploads, and updates to car data.

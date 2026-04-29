@@ -343,7 +343,7 @@ if ($carModel->exists('S4', 'FHC', '36')) {
 
 **Dynamic Dropdown Updates**:
 
-- Model dropdowns in `edit.php` load dynamically from database (no JS changes needed)
+- Model dropdowns in `form.php` load dynamically from database (no JS changes needed)
 - API endpoint: `app/cars/actions/get-models.php`
 - JavaScript module: `app/assets/js/model-loader.js`
 - Models are cached client-side after first load

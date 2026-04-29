@@ -161,7 +161,7 @@ INSERT INTO `pages` (`id`, `page`, `title`, `private`, `re_auth`, `core`) VALUES
 (218, 'app/privacy.php', NULL, 0, 0, 0),
 (229, 'app/cars/index.php', NULL, 0, 0, 0),
 (230, 'app/cars/details.php', NULL, 0, 0, 0),
-(231, 'app/cars/edit.php', NULL, 1, 0, 0),
+(231, 'app/cars/form.php', NULL, 1, 0, 0),
 (232, 'app/cars/factory.php', NULL, 0, 0, 0),
 (233, 'docs/reference/identification-guide.php', NULL, 0, 0, 0),
 (9003, 'docs/index.php',                          NULL, 0, 0, 0),

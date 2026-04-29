@@ -5,10 +5,11 @@
 
 ## Required Actions After Deployment
 
-1. Run the FIX migration script to remove `elan_*_cdn` settings from the database:
+1. Run the FIX migration scripts to update the database:
 
    ```bash
    database/fixes/FIX-405-remove-elan-cdn-settings.sql
+   database/fixes/FIX-751-rename-edit-to-form.sql
    ```
 
 2. Verify self-hosted library files are served correctly from `usersc/js/` and `usersc/css/`.
@@ -94,6 +95,11 @@
   on the edit car form, Statistics page `ElanRegistryAPI` availability and tab AJAX lazy-loading,
   and the navigation dropdown `firstChild` patch in `footer.php` (no TypeError on outside-click).
   New `npm run playwright:bs5` script for targeted execution.
+- **Rename `edit.php` → `form.php`** ([#751](https://github.com/unibrain1/elanregistry/issues/751)):
+  Renamed `app/cars/edit.php` to `app/cars/form.php` to reflect its dual add/edit role.
+  Updated all internal links, form actions, email templates, cron scripts, Playwright tests,
+  PHPUnit tests, and documentation. Includes a DB migration (`FIX-751`) to update the UserSpice
+  page permissions entry.
 - **StatisticsApiTest integration tests** ([#740](https://github.com/unibrain1/elanregistry/issues/740)):
   Removed `try/catch (Throwable)` anti-pattern that was converting assertion failures into silent
   skips; corrected asserted strings to match the actual `LogCategories` constants and `error.message`
@@ -113,11 +119,12 @@
 - [#750](https://github.com/unibrain1/elanregistry/issues/750) — Flatten and regroup add/edit car form for improved usability
 - [#732](https://github.com/unibrain1/elanregistry/issues/732) — Add Playwright regression tests for Bootstrap 5 JS API migration critical paths
 - [#740](https://github.com/unibrain1/elanregistry/issues/740) — Fix silently-skipping integration tests in StatisticsApiTest
+- [#751](https://github.com/unibrain1/elanregistry/issues/751) — Rename `app/cars/edit.php` → `app/cars/form.php`
 
 ## Summary
 
-12 issues resolved: full Bootstrap 5 migration (self-hosted libraries, template rebase, class migration,
+13 issues resolved: full Bootstrap 5 migration (self-hosted libraries, template rebase, class migration,
 mobile responsiveness), Playwright regression tests for BS5 JS API patterns, first-party JS/CSS minification
 with esbuild, FilePond image upload library migration with mobile layout fix, add/edit car form redesigned
 as Bootstrap 5 accordion with sticky submit footer (replacing 4-step wizard), add/edit car form mobile CSS
-regressions, and StatisticsApiTest integration test fixes.
+regressions, StatisticsApiTest integration test fixes, and rename of add/edit car form page to `form.php`.

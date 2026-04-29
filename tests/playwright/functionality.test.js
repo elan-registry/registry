@@ -20,7 +20,7 @@ test.describe('Core Functionality After Refactoring', () => {
 
   test('car edit form workflow functions', async ({ page }) => {
     // Navigate to car edit page
-    await navigateAndWait(page, '/app/cars/edit.php');
+    await navigateAndWait(page, '/app/cars/form.php');
     
     // Handle authentication requirement or test the form
     await handleAuthRequired(
@@ -44,7 +44,7 @@ test.describe('Core Functionality After Refactoring', () => {
 
   test('chassis validation works', async ({ page }) => {
     // Navigate to car edit page for chassis validation testing
-    await navigateAndWait(page, '/app/cars/edit.php');
+    await navigateAndWait(page, '/app/cars/form.php');
     
     // Handle authentication requirement or test chassis validation
     await handleAuthRequired(

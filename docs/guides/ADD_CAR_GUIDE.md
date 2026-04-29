@@ -429,7 +429,7 @@ For detailed information about the transfer process, see:
 - **General Questions** - Visit the [Owner Guides](/docs/guides/)
   section
 
-**Ready to get started?** [Add Your Car Now](/app/cars/edit.php)
+**Ready to get started?** [Add Your Car Now](/app/cars/form.php)
 
 ---
 

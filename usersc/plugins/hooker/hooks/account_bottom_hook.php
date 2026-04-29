@@ -35,7 +35,7 @@ $cars = Car::findByOwner($user_id);
             <div class="text-center py-5">
                 <i class="fas fa-car fa-3x text-muted mb-3"></i>
                 <p class="text-muted mb-3">You haven't registered any cars yet. Add your first Lotus Elan to get started!</p>
-                <a class="btn btn-success btn-lg" href="<?= $us_url_root ?>app/cars/edit.php" role="button">
+                <a class="btn btn-success btn-lg" href="<?= $us_url_root ?>app/cars/form.php" role="button">
                     <i class="fas fa-plus me-2"></i>Add Your First Car
                 </a>
             </div>
@@ -94,7 +94,7 @@ $cars = Car::findByOwner($user_id);
                                 </div>
                             </div>
                             <div class="col-md-4 text-md-end">
-                                <form method='POST' action='<?= $us_url_root ?>app/cars/edit.php' class="d-inline me-2">
+                                <form method='POST' action='<?= $us_url_root ?>app/cars/form.php' class="d-inline me-2">
                                     <input type="hidden" name="csrf" value="<?= Token::generate(); ?>" />
                                     <input type="hidden" name="action" value="updateCar" />
                                     <input type="hidden" name="car_id" value="<?= $car->data()->id ?>" />

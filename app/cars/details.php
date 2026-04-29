@@ -155,7 +155,7 @@ if (!empty($_GET)) {
                                         $isAdmin = isRegistryAdmin($user->data()->id); // Administrator (2) or Editor (3)
 
                                         if ($isOwner) { ?>
-                                            <form method="POST" action="<?= $us_url_root ?>app/cars/edit.php" class="d-inline">
+                                            <form method="POST" action="<?= $us_url_root ?>app/cars/form.php" class="d-inline">
                                                 <input type="hidden" name="csrf" value="<?= Token::generate(); ?>" />
                                                 <input type="hidden" name="action" value="updateCar" />
                                                 <input type="hidden" name="car_id" id="car_id" value="<?= $carData->id ?>" />
@@ -168,7 +168,7 @@ if (!empty($_GET)) {
                                                 <i class="fas fa-shield-alt"></i> <strong>Administrative Override:</strong>
                                                 You are editing a car that you do not own using Administrator/Editor privileges.
                                             </div>
-                                            <form method="POST" action="<?= $us_url_root ?>app/cars/edit.php" class="d-inline me-2">
+                                            <form method="POST" action="<?= $us_url_root ?>app/cars/form.php" class="d-inline me-2">
                                                 <input type="hidden" name="csrf" value="<?= Token::generate(); ?>" />
                                                 <input type="hidden" name="action" value="updateCar" />
                                                 <input type="hidden" name="car_id" id="car_id" value="<?= $carData->id ?>" />

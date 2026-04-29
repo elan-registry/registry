@@ -28,7 +28,7 @@
 
   <?php if (isset($user) && $user->isLoggedIn()): ?>
     <li class=''>
-      <a class='btn btn-success btn-sm text-white ms-1' href='<?= $us_url_root ?>app/cars/edit.php'>
+      <a class='btn btn-success btn-sm text-white ms-1' href='<?= $us_url_root ?>app/cars/form.php'>
         <i class='fa fa-plus'></i>
         <span class='labelText'>Add Car</span>
       </a>

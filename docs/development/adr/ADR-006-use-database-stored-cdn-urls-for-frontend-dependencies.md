@@ -76,7 +76,7 @@ echo html_entity_decode($settings->elan_fontawesome_cdn);
 **Page-specific dependencies** loaded only where needed:
 
 - `app/cars/index.php`, `app/cars/factory.php`, `app/cars/details.php` — DataTables JS/CSS
-- `app/cars/edit.php` — jQuery UI, Dropzone JS/CSS, Datepicker JS/CSS
+- `app/cars/form.php` — jQuery UI, Dropzone JS/CSS, Datepicker JS/CSS
 - `app/reports/statistics.php` — Chart.js (with hardcoded fallback if setting not present)
 
 ### SRI Protection
