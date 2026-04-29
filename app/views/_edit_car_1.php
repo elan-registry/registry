@@ -59,7 +59,7 @@
             <div class="col-12 col-sm-9">
                 <div class="input-group">
                     <span class="input-group-text"><i aria-hidden="true" class="fas fa-barcode"></i></span>
-                    <input data-lpignore="true" disabled class="form-control" type="text" name="chassis" id="chassis" placeholder="<?= $carprompt['chassis'] ?>" value="<?= $cardetails['chassis'] ?>" />
+                    <input data-lpignore="true" disabled class="form-control" type="text" name="chassis" id="chassis" placeholder="<?= htmlspecialchars($carprompt['chassis'], ENT_QUOTES, 'UTF-8') ?>" value="<?= htmlspecialchars((string)($cardetails['chassis'] ?? ''), ENT_QUOTES, 'UTF-8') ?>" />
                     <span class='input-group-text'><i id="chassis_icon" aria-hidden='true' class="fas fa-thumbs-down "></i></span>
                 </div>
 
@@ -134,7 +134,7 @@
             <div class="col-12 col-sm-9">
                 <div class="input-group">
                     <span class="input-group-text"><i aria-hidden="true" class="fas fa-palette"></i></span>
-                    <input class="form-control" type="text" name="color" id="color" placeholder="<?= $carprompt['color'] ?>" value="<?= $cardetails['color'] ?>" />
+                    <input class="form-control" type="text" name="color" id="color" placeholder="<?= htmlspecialchars($carprompt['color'], ENT_QUOTES, 'UTF-8') ?>" value="<?= htmlspecialchars((string)($cardetails['color'] ?? ''), ENT_QUOTES, 'UTF-8') ?>" />
                 </div>
             </div>
         </div>
@@ -145,7 +145,7 @@
             <div class="col-12 col-sm-9">
                 <div class="input-group">
                     <span class="input-group-text"><i aria-hidden="true" class="fas fa-car"></i></span>
-                    <input class="form-control" type="text" name="engine" id="engine" placeholder="<?= $carprompt['engine'] ?>" value="<?= $cardetails['engine'] ?>" /> <!-- Add validation -->
+                    <input class="form-control" type="text" name="engine" id="engine" placeholder="<?= htmlspecialchars($carprompt['engine'], ENT_QUOTES, 'UTF-8') ?>" value="<?= htmlspecialchars((string)($cardetails['engine'] ?? ''), ENT_QUOTES, 'UTF-8') ?>" />
                 </div>
             </div>
         </div>

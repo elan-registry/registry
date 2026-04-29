@@ -144,8 +144,6 @@ function updateCarDetails(array &$car): void
         <div class="page-container">
             <div class="row justify-content-center">
                 <div class="col-xl-10 col-lg-11 col-md-12">
-            <h2 id="heading" class="mt-4 mb-3 text-center">Fill all form fields to go to next step</h2>
-
             <?php
             // Show admin override warning if applicable
             if (isset($cardetails['id']) && isset($user) && $user->isLoggedIn()) {
@@ -166,99 +164,58 @@ function updateCarDetails(array &$car): void
                 <input type="hidden" name="csrf" id="csrf" value="<?= htmlspecialchars(Token::generate(), ENT_QUOTES, 'UTF-8'); ?>" />
                 <input type="hidden" name="action" id="action" value="<?= htmlspecialchars($action, ENT_QUOTES, 'UTF-8'); ?>" />
                 <input type="hidden" name="car_id" id="car_id" value="<?= htmlspecialchars((string)($cardetails['id'] ?? ''), ENT_QUOTES, 'UTF-8'); ?>" />
-                <!-- progressbar -->
-                <ul id="progressbar" class="mb-4">
-                    <li class="active" id="cardetails"><strong>Car Details</strong></li>
-                    <li id="addInfo"><strong>Additional Information</strong></li>
-                    <li id="image"><strong>Images</strong></li>
-                    <li id="confirm"><strong>Results</strong></li>
-                </ul>
-                <div class="mb-4">
-                    <progress id="carProgress" value="0" max="100" class="w-100 car-progress"></progress>
-                </div>
                 <div id="message" class="d-none"></div>
-                <fieldset>
-                    <!-- fieldsets page 1 -->
-                    <div class="card registry-card">
-                        <div class="card-header">
-                            <div class="row">
-                                <div class="col-md-7 text-start">
-                                    <legend class="fs-title mb-0">Car Details:</legend>
-                                </div>
-                                <div class="col-5">
-                                    <h2 class="steps mb-0">Step 1 - 4</h2>
-                                </div>
-                            </div>
-                        </div>
-                        <div class="card-body">
-                            <?php include_once $abs_us_root . $us_url_root . 'app/views/_edit_car_1.php'; ?>
-                        </div>
+                <div class="accordion" id="editCarAccordion">
+
+                  <!-- Section 1: Car Details — auto-open -->
+                  <div class="accordion-item">
+                    <h2 class="accordion-header" id="heading-section1">
+                      <button class="accordion-button" type="button"
+                              data-bs-toggle="collapse" data-bs-target="#section1"
+                              aria-expanded="true" aria-controls="section1">
+                        <i class="fas fa-car me-2"></i>
+                        <strong>Car Details</strong>
+                        <span class="section-indicator ms-auto me-2" id="indicator-section1"></span>
+                      </button>
+                    </h2>
+                    <div id="section1" class="accordion-collapse collapse show"
+                         aria-labelledby="heading-section1">
+                      <div class="accordion-body">
+                        <?php include_once $abs_us_root . $us_url_root . 'app/views/_edit_car_1.php'; ?>
+                        <?php include_once $abs_us_root . $us_url_root . 'app/views/_edit_car_2.php'; ?>
+                      </div>
                     </div>
-                    <div class="d-flex justify-content-end mt-2">
-                        <input type="button" name="next" class="next btn btn-info" value="Next" />
-                    </div>
-                </fieldset>
-                <fieldset>
-                    <!-- fieldsets page 2 -->
-                    <div class="card registry-card">
-                        <div class="card-header">
-                            <div class="row">
-                                <div class="col-md-7">
-                                    <legend class="fs-title mb-0">Additional Information:</legend>
-                                </div>
-                                <div class="col-5">
-                                    <h2 class="steps mb-0">Step 2 - 4</h2>
-                                </div>
-                            </div>
+                  </div>
+
+                  <!-- Section 2: Photos — collapsed, skippable -->
+                  <div class="accordion-item">
+                    <h2 class="accordion-header" id="heading-section2">
+                      <button class="accordion-button collapsed" type="button"
+                              data-bs-toggle="collapse" data-bs-target="#section2"
+                              aria-expanded="false" aria-controls="section2">
+                        <i class="fas fa-camera me-2"></i>
+                        <strong>Photos</strong>
+                        <span class="section-indicator ms-auto me-2" id="indicator-section2"></span>
+                      </button>
+                    </h2>
+                    <div id="section2" class="accordion-collapse collapse"
+                         aria-labelledby="heading-section2">
+                      <div class="accordion-body">
+                        <?php include_once $abs_us_root . $us_url_root . 'app/views/_edit_car_3.php'; ?>
+                        <div class="d-flex justify-content-end mt-3">
+                          <button type="button" class="btn btn-outline-secondary btn-sm"
+                                  id="skip-photos-btn">Skip this section</button>
                         </div>
-                        <div class="card-body">
-                            <?php include_once $abs_us_root . $us_url_root . 'app/views/_edit_car_2.php'; ?>
-                        </div>
+                      </div>
                     </div>
-                    <div class="d-flex justify-content-between mt-2">
-                        <input type="button" name="previous" class="previous btn btn-danger" value="Previous" />
-                        <input type="button" name="next" class="next btn btn-info" value="Next" />
-                    </div>
-                </fieldset>
-                <fieldset>
-                    <!-- fieldsets page 3 -->
-                    <div class="card registry-card">
-                        <div class="card-header">
-                            <div class="row">
-                                <div class="col-md-7">
-                                    <legend class="fs-title mb-0">Image Upload:</legend>
-                                </div>
-                                <div class="col-5">
-                                    <h2 class="steps mb-0">Step 3 - 4</h2>
-                                </div>
-                            </div>
-                        </div>
-                        <div class="card-body">
-                            <?php include_once $abs_us_root . $us_url_root . 'app/views/_edit_car_3.php'; ?>
-                        </div>
-                    </div>
-                    <!-- End Image panel -->
-                    <div class="d-flex justify-content-between mt-2">
-                        <input type="button" name="previous" class="previous btn btn-danger" value="Previous" />
-                        <input type="submit" name="submit" id="submit" class="btn btn-success" value="Add Car" />
-                    </div>
-                </fieldset>
-                <fieldset>
-                    <div class="card registry-card">
-                        <div class="card-header">
-                            <div class="row">
-                                <div class="col-6 d-flex text-start">
-                                    <legend class="fs-title mb-0">Results</legend>
-                                </div>
-                                <div class="col-6">
-                                    <h2 class="steps mb-0">Step 4 - 4</h2>
-                                </div>
-                            </div>
-                        </div>
-                        <div class="card-body" id="results">
-                        </div>
-                    </div>
-                </fieldset>
+                  </div>
+
+                </div><!-- /#editCarAccordion -->
+
+                <div class="d-flex justify-content-end mt-3 mb-4">
+                  <button type="button" id="submit" data-label="Add Car"
+                          class="btn btn-success btn-lg">Add Car</button>
+                </div>
             </form>
                 </div>
             </div>
@@ -607,8 +564,12 @@ require_once $abs_us_root . $us_url_root . 'users/includes/html_footer.php'; //c
         // Remove existing images in edit mode
         pond.on('removefile', function(error, fileItem) {
             if (error) {
+                $('#message').show().html(
+                    '<div class="alert alert-warning">A photo could not be removed. Please try again.</div>'
+                );
                 return;
             }
+            markSectionInteracted(2);
             if (car_id && car_id !== '' && fileItem.origin === FilePond.FileOrigin.LOCAL) {
                 const filename = fileItem.getMetadata('serverFilename');
                 new ElanRegistryAPI().post('<?= $us_url_root ?>app/cars/actions/edit.php', {
@@ -626,29 +587,41 @@ require_once $abs_us_root . $us_url_root . 'users/includes/html_footer.php'; //c
 
         // Clear file-level errors when a new file is added
         pond.on('addfile', function() {
+            markSectionInteracted(2);
             $('#message').hide();
+        });
+
+        const sectionInteracted = { 1: false, 2: false };
+
+        function markSectionInteracted(num) {
+            if (!sectionInteracted[num]) {
+                sectionInteracted[num] = true;
+                const el = document.getElementById('indicator-section' + num);
+                if (el) {
+                    const icon = document.createElement('i');
+                    icon.className = 'fas fa-check-circle text-success';
+                    el.replaceChildren(icon);
+                }
+            }
+        }
+
+        $('#section1').on('focus change blur', 'input, select, textarea', function() {
+            markSectionInteracted(1);
+        });
+
+        $('#skip-photos-btn').on('click', function() {
+            const el = document.getElementById('section2');
+            if (el) {
+                bootstrap.Collapse.getOrCreateInstance(el).hide();
+            }
+            markSectionInteracted(2);
         });
 
         document.getElementById('submit').addEventListener('click', function(e) {
             e.stopPropagation();
             e.preventDefault();
 
-            current_fs = $(this).closest('fieldset');
-            next_fs = current_fs.next();
-
-            const form_data = $('#addCar').serializeArray();
-            let error_free = true;
-
-            form_data.forEach(function(field) {
-                if ($('#' + field.name + '_icon').hasClass('fa-thumbs-down')) {
-                    error_free = false;
-                }
-            });
-
-            if (!error_free) {
-                $('#message').show().append('<div class="alert alert-primary">Error: There are one or more errors on the page.<br>Please update and submit</div>');
-                return;
-            }
+            const btn = document.getElementById('submit');
 
             const pondHasErrors = pond.getFiles().some(function(item) {
                 return item.status === FilePond.FileStatus.LOAD_ERROR ||
@@ -660,11 +633,15 @@ require_once $abs_us_root . $us_url_root . 'users/includes/html_footer.php'; //c
                 return;
             }
 
-            // processFiles() skips already-processed files; their blobs remain in processedFiles
+            btn.disabled = true;
+            btn.textContent = 'Saving\u2026';
+
             pond.processFiles().then(function() {
                 return submitCarForm();
             }).catch(function(err) {
                 $('#message').show().html('<div class="alert alert-danger">An error occurred processing the photos. Please try again.</div>');
+                btn.disabled = false;
+                btn.textContent = btn.dataset.label;
             });
         });
 
@@ -721,85 +698,77 @@ require_once $abs_us_root . $us_url_root . 'users/includes/html_footer.php'; //c
                 if (data.success === true) {
                     window.location = '<?= $us_url_root ?>app/cars/details.php?car_id=' + data.cardetails.id;
                 } else {
+                    const btn = document.getElementById('submit');
+                    btn.disabled = false;
+                    btn.textContent = btn.dataset.label;
                     displayValidationErrors(data);
                 }
             } catch (err) {
+                const btn = document.getElementById('submit');
+                btn.disabled = false;
+                btn.textContent = btn.dataset.label;
                 $('#message').show().html('<div class="alert alert-danger">An error occurred. Please try again.</div>');
             }
         }
 
-        /**
-         * Display validation errors in the results fieldset and repopulate form fields.
-         */
         function displayValidationErrors(data) {
-            // Advance the page progress indicator
-            $('#message').hide();
-            $('#progressbar li').eq($('fieldset').index(next_fs)).addClass('active');
+            const fieldSectionMap = {
+                year: 'section1', model: 'section1', chassis: 'section1',
+                color: 'section1', engine: 'section1',
+                purchasedate: 'section1', solddate: 'section1',
+                website: 'section1', comments: 'section1'
+            };
 
-            //show the next fieldset
-            next_fs.show();
-            //hide the current fieldset with style
-            current_fs.animate({
-                opacity: 0
-            }, {
-                step: function(now) {
-                    // for making fielset appear animation
-                    opacity = 1 - now;
-
-                    current_fs.css({
-                        'display': 'none',
-                        'position': 'relative'
-                    });
-                    next_fs.css({
-                        'opacity': opacity
-                    });
-                },
-                duration: 500
-            });
-            setProgressBar(++current);
-
-            // Build error display table
-            var html = "<table id='resultstable' class='table table-striped table-bordered table-sm text-wrap'>";
-            html += '<tr><td>Status</td><td><strong class="text-danger">ERROR</strong></td></tr>';
-            html += '<tr><td>Message</td><td>' + NotificationHelper.escapeHtml(data.message || 'An error occurred') + '</td></tr>';
-
-            // Display validation errors if present
+            let html = '<div class="alert alert-danger mb-0">';
+            html += '<strong>Submission failed.</strong>';
+            if (data.message) {
+                html += ' ' + NotificationHelper.escapeHtml(data.message);
+            }
             if (data.errors) {
-                html += '<tr><td>Validation Errors</td><td><ul>';
+                html += '<ul class="mb-0 mt-2">';
                 if (Array.isArray(data.errors.general)) {
-                    data.errors.general.forEach(function(error) {
-                        html += '<li>' + NotificationHelper.escapeHtml(error) + '</li>';
+                    data.errors.general.forEach(function(e) {
+                        html += '<li>' + NotificationHelper.escapeHtml(String(e)) + '</li>';
                     });
                 } else {
-                    Object.entries(data.errors).forEach(function([field, msg]) {
-                        html += '<li><strong>' + NotificationHelper.escapeHtml(field) + ':</strong> ' + NotificationHelper.escapeHtml(msg) + '</li>';
+                    Object.entries(data.errors).forEach(function(entry) {
+                        const msgs = Array.isArray(entry[1]) ? entry[1] : [entry[1]];
+                        msgs.forEach(function(msg) {
+                            html += '<li><strong>' + NotificationHelper.escapeHtml(entry[0]) + ':</strong> '
+                                  + NotificationHelper.escapeHtml(String(msg)) + '</li>';
+                        });
                     });
                 }
-                html += '</ul></td></tr>';
+                html += '</ul>';
+            }
+            html += '</div>';
+            $('#message').show().html(html);
+
+            // Expand the panel containing the first error field
+            let targetSection = 'section1';
+            if (data.errors && !Array.isArray(data.errors.general)) {
+                const firstField = Object.keys(data.errors)[0];
+                targetSection = fieldSectionMap[firstField] || 'section1';
+            }
+            const targetEl = document.getElementById(targetSection);
+            if (targetEl) {
+                bootstrap.Collapse.getOrCreateInstance(targetEl).show();
             }
 
-            html += '</table>';
-            $("#results").html(html);
+            // Scroll to message
+            const msgEl = document.getElementById('message');
+            if (msgEl) {
+                msgEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            }
 
-            // Repopulate form fields with submitted values to prevent data loss
+            // Repopulate form fields from submitted data
             if (data.cardetails) {
-                // Repopulate Year dropdown
                 if (data.cardetails.year) {
-                    $('#year option[value=' + data.cardetails.year + ']').prop('selected', true);
-                    $('#year').trigger('change');
+                    $('#year').val(data.cardetails.year).trigger('change');
                 }
-
-                // Repopulate Model dropdown
                 if (data.cardetails.model) {
-                    var model = data.cardetails.model.replace(/\|/g, "\\\|")
-                                                     .replace(/ /g, "\\\ ")
-                                                     .replace(/\//g, "\\\/")
-                                                     .replace(/\+/g, "\\\+");
-                    $('#model option[value=' + model + ']').prop('selected', true);
-                    $('#model').trigger('change');
+                    $('#model').val(data.cardetails.model).trigger('change');
                 }
-
-                // Repopulate other fields as needed
                 if (data.cardetails.chassis) $('#chassis').val(data.cardetails.chassis);
                 if (data.cardetails.color) $('#color').val(data.cardetails.color);
                 if (data.cardetails.engine) $('#engine').val(data.cardetails.engine);
@@ -809,115 +778,7 @@ require_once $abs_us_root . $us_url_root . 'users/includes/html_footer.php'; //c
                 if (data.cardetails.solddate) $('#solddate').val(data.cardetails.solddate);
             }
         }
-
-        // Tabbed interface
-
-        var current_fs, next_fs, previous_fs; //fieldsets
-        var opacity;
-        var current = 1;
-        var steps = $('fieldset').length;
-
-        setProgressBar(current);
-
-        $('.next').click(function() {
-            current_fs = $(this).closest('fieldset');
-            next_fs = current_fs.next();
-
-            // Check to see if the page is error free
-            var form_data = current_fs.serializeArray();
-            var error_free = true;
-            var chassis_override = $('#chassis_override').is(':checked');
-
-            for (var input in form_data) {
-                var element = $('#' + form_data[input]['name'] + '_icon');
-                var invalid = element.hasClass('fa-thumbs-down');
-                
-                // Allow proceeding if chassis validation is overridden
-                if (invalid && form_data[input]['name'] === 'chassis' && chassis_override) {
-                    continue; // Skip chassis validation error if override is enabled
-                }
-                
-                if (invalid) {
-                    error_free = false;
-                }
-            }
-
-            if (!error_free) {
-                var errorMessage = 'Error: There are one or more errors on the page.<br>Please update and submit.';
-                if (chassis_override) {
-                    errorMessage += '<br><strong>Note:</strong> Chassis validation has been overridden - please verify the chassis number is correct.';
-                }
-                $('#message').show().html('<div class="alert alert-primary">' + errorMessage + '<div>');
-            } else {
-                $('#message').hide();
-
-                //Add Class Active
-                $('#progressbar li').eq($('fieldset').index(next_fs)).addClass('active');
-
-                //show the next fieldset
-                next_fs.show();
-                //hide the current fieldset with style
-                current_fs.animate({
-                    opacity: 0
-                }, {
-                    step: function(now) {
-                        // for making fielset appear animation
-                        opacity = 1 - now;
-
-                        current_fs.css({
-                            'display': 'none',
-                            'position': 'relative'
-                        });
-                        next_fs.css({
-                            'opacity': opacity
-                        });
-                    },
-                    duration: 500
-                });
-                setProgressBar(++current);
-            }
-        });
-
-        $(".previous").click(function() {
-            current_fs = $(this).closest('fieldset');
-            previous_fs = current_fs.prev();
-
-            //Remove class active
-            $("#progressbar li").eq($("fieldset").index(current_fs)).removeClass("active");
-
-            //show the previous fieldset
-            previous_fs.show();
-
-            //hide the current fieldset with style
-            current_fs.animate({
-                opacity: 0
-            }, {
-                step: function(now) {
-                    // for making fielset appear animation
-                    opacity = 1 - now;
-
-                    current_fs.css({
-                        'display': 'none',
-                        'position': 'relative'
-                    });
-                    previous_fs.css({
-                        'opacity': opacity
-                    });
-                },
-                duration: 500
-            });
-            setProgressBar(--current);
-        });
-
-        function setProgressBar(curStep) {
-            var percent = parseFloat(100 / steps) * curStep;
-            percent = percent.toFixed();
-            $(".progress-bar")
-                .css("width", percent + "%")
-        }
     });
-
-    // End Tabbed Form
 
     // Car Validation
     var validYear = '';
@@ -951,7 +812,7 @@ require_once $abs_us_root . $us_url_root . 'users/includes/html_footer.php'; //c
             $('#comments').prop('disabled', false)
 
             // Set the form text for Update
-            $('#submit').attr('value', 'Update Car');
+            $('#submit').text('Update Car').attr('data-label', 'Update Car');
             $('#car_id').html($('#car_id').val());
             $('#carHeader').html('<h2><strong>Update car</strong><h2>');
         }

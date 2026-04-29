@@ -4,7 +4,7 @@
     <div class='col-12 col-sm-9'>
         <div class='input-group'>
             <span class='input-group-text'><i aria-hidden='true' class='fas fa-calendar'></i></span>
-            <input class='form-control' name='purchasedate' id='purchasedate' value='<?= $cardetails['purchasedate'] ?>' type='text' placeholder='YYYY-MM-DD' pattern='\d{4}-\d{2}-\d{2}' inputmode='numeric' />
+            <input class='form-control' name='purchasedate' id='purchasedate' value='<?= htmlspecialchars((string)($cardetails['purchasedate'] ?? ''), ENT_QUOTES, 'UTF-8') ?>' type='text' placeholder='YYYY-MM-DD' pattern='\d{4}-\d{2}-\d{2}' inputmode='numeric' />
         </div>
         <small id='purchasedateHelp' class='form-text text-muted'>Approximate date you purchased the car &mdash; use <strong>YYYY-MM-DD</strong> format (e.g. 1973-06-15).</small>
     </div>
@@ -16,7 +16,7 @@
     <div class='col-12 col-sm-9'>
         <div class='input-group'>
             <span class='input-group-text'><i aria-hidden='true' class='fas fa-calendar'></i></span>
-            <input class='form-control' name='solddate' id='solddate' value='<?= $cardetails['solddate'] ?>' type='text' placeholder='YYYY-MM-DD' pattern='\d{4}-\d{2}-\d{2}' inputmode='numeric' />
+            <input class='form-control' name='solddate' id='solddate' value='<?= htmlspecialchars((string)($cardetails['solddate'] ?? ''), ENT_QUOTES, 'UTF-8') ?>' type='text' placeholder='YYYY-MM-DD' pattern='\d{4}-\d{2}-\d{2}' inputmode='numeric' />
         </div>
         <small id='solddateHelp' class='form-text text-muted'>If you no longer own the car, approximate date you sold it &mdash; use <strong>YYYY-MM-DD</strong> format (e.g. 1985-03-01).</small>
     </div>
@@ -27,7 +27,7 @@
     <div class='col-12 col-sm-9'>
         <div class='input-group'>
             <span class='input-group-text'><i aria-hidden='true' class='fas fa-palette'></i></span>
-            <input class='form-control' type='url' name='website' id='website' placeholder='<?= $carprompt['website'] ?>' value='<?= $cardetails['website'] ?>' />
+            <input class='form-control' type='url' name='website' id='website' placeholder='<?= htmlspecialchars($carprompt['website'], ENT_QUOTES, 'UTF-8') ?>' value='<?= htmlspecialchars((string)($cardetails['website'] ?? ''), ENT_QUOTES, 'UTF-8') ?>' />
         </div>
     </div>
 </div>
@@ -36,7 +36,7 @@
     <div class='col-12 col-sm-9'>
         <div class='input-group'>
             <span class='input-group-text'><i aria-hidden='true' class='fas fa-comment-alt'></i></span>
-            <textarea class='form-control' name='comments' id='comments' rows='4' wrap='soft' placeholder='<?= $carprompt['comments'] ?>'><?= htmlspecialchars($cardetails['comments'] ?? ''); ?></textarea>
+            <textarea class='form-control' name='comments' id='comments' rows='4' wrap='soft' placeholder='<?= htmlspecialchars($carprompt['comments'], ENT_QUOTES, 'UTF-8') ?>'><?= htmlspecialchars((string)($cardetails['comments'] ?? ''), ENT_QUOTES, 'UTF-8') ?></textarea>
         </div>
     </div>
 
