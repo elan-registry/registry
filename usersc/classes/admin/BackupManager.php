@@ -623,6 +623,13 @@ class BackupManager {
         ];
 
         $types = ['automated', 'manual', 'rollback'];
+        $realBackupBase = realpath($this->backupBaseDir);
+
+        if ($realBackupBase === false) {
+            ($this->logger)(1, LogCategories::LOG_CATEGORY_BACKUP_ERROR,
+                "cleanupOldBackups: realpath() failed for backup base dir '{$this->backupBaseDir}' — cleanup aborted");
+            return $cleanupSummary;
+        }
 
         foreach ($types as $type) {
             $typeDir = $this->backupBaseDir . $type . '/';
@@ -646,9 +653,23 @@ class BackupManager {
                 $cutoffTime = time() - ($fileRetentionDays * 24 * 60 * 60);
 
                 if (filemtime($file) < $cutoffTime) {
-                    if (unlink($file)) {
+                    $realpath = realpath($file);
+                    if ($realpath === false) {
+                        ($this->logger)(1, LogCategories::LOG_CATEGORY_BACKUP_MANAGER,
+                            "cleanupOldBackups: realpath() returned false for '{$file}' — skipping (possibly deleted concurrently)");
+                        continue;
+                    }
+                    if (!str_starts_with($realpath, $realBackupBase . '/')) {
+                        ($this->logger)(1, LogCategories::LOG_CATEGORY_BACKUP_ERROR,
+                            "cleanupOldBackups: path traversal blocked — '{$realpath}' is outside backup base '{$realBackupBase}'");
+                        continue;
+                    }
+                    if (unlink($realpath)) { // nosemgrep: php.lang.security.unlink-use.unlink-use -- path verified within backup directory
                         $cleanupSummary[$type]['deleted']++;
-                        $this->logBackupEvent('deleted', $filename, $type, $environment, $file);
+                        $this->logBackupEvent('deleted', $filename, $type, $environment, $realpath);
+                    } else {
+                        ($this->logger)(1, LogCategories::LOG_CATEGORY_BACKUP_ERROR,
+                            "cleanupOldBackups: unlink() failed for '{$realpath}' — check permissions");
                     }
                 }
             }

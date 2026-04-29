@@ -23,6 +23,11 @@ None.
 
 ## Technical Changes
 
+- **Path boundary guard on unlink() calls** ([#634](https://github.com/unibrain1/elanregistry/issues/634)):
+  Added `realpath()` verification before all `unlink()` calls in backup and cache operations
+  to ensure deleted files are confirmed within their intended directory, resolving Semgrep
+  `php.lang.security.unlink-use.unlink-use` findings.
+
 - **confirm() → #confirmationModal** ([#571](https://github.com/unibrain1/elanregistry/issues/571)):
   Three confirm() calls in tab-manage_cars.php and tab-system.php converted to the existing
   confirmationModal pattern.
@@ -43,11 +48,13 @@ None.
   Convert validation alert() dialogs to app notification system
 - [#573](https://github.com/unibrain1/elanregistry/issues/573) —
   Convert remaining native dialogs and improve error messaging
+- [#634](https://github.com/unibrain1/elanregistry/issues/634) —
+  Add path boundary guard to unlink() calls in backup operations
 - [#775](https://github.com/unibrain1/elanregistry/pull/775) —
   chore(deps): bump datatables.net and datatables.net-bs4
 
 ## Summary
 
-3 issues and 1 dependency update resolved; replaces all native browser dialogs across the
-admin interface with Bootstrap 5 modals and the app notification system, and updates
-datatables.net to 1.13.11.
+4 issues and 1 dependency update resolved; replaces all native browser dialogs across the
+admin interface with Bootstrap 5 modals and the app notification system, updates
+datatables.net to 1.13.11, and hardens file deletion with path boundary guards.
