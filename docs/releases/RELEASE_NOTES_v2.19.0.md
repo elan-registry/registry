@@ -109,6 +109,15 @@
   Removed `try/catch (Throwable)` anti-pattern that was converting assertion failures into silent
   skips; corrected asserted strings to match the actual `LogCategories` constants and `error.message`
   JS pattern used in the source files.
+- **PHPUnit 11 → 12 upgrade** ([#629](https://github.com/unibrain1/elanregistry/issues/629)):
+  Upgraded PHPUnit from 11 to 12. Updated test base classes and assertions to the PHPUnit 12 API;
+  removed deprecated method usages flagged by the 12.x deprecation layer.
+- **Behavior-based GetDataTables tests** ([#606](https://github.com/unibrain1/elanregistry/issues/606)):
+  Replaced fragile source-inspection tests in `GetDataTablesTest` with behavior-based assertions
+  that verify actual query results, making the suite resilient to internal refactoring.
+- **Fix missing `elan_feedback_email` default** (PR #707):
+  Added `elan_feedback_email` to `processSettingsAutoCreation()` so the setting is created on
+  fresh installs and after a settings reset, preventing a missing-key error on the admin settings page.
 
 ## Issues Resolved
 
@@ -126,11 +135,16 @@
 - [#740](https://github.com/unibrain1/elanregistry/issues/740) — Fix silently-skipping integration tests in StatisticsApiTest
 - [#742](https://github.com/unibrain1/elanregistry/issues/742) — Add ownership guard regression tests for fetchImages and removeImages
 - [#751](https://github.com/unibrain1/elanregistry/issues/751) — Rename `app/cars/edit.php` → `app/cars/form.php`
+- [#629](https://github.com/unibrain1/elanregistry/issues/629) — PHPUnit 11 → 12 upgrade
+- [#606](https://github.com/unibrain1/elanregistry/issues/606) — Behavior-based GetDataTables tests replacing fragile source-inspection tests
+- PR #707 — Fix missing `elan_feedback_email` default in `processSettingsAutoCreation()`
 
 ## Summary
 
-14 issues resolved: full Bootstrap 5 migration (self-hosted libraries, template rebase, class migration,
-mobile responsiveness), Playwright regression tests for BS5 JS API patterns, first-party JS/CSS minification
-with esbuild, FilePond image upload library migration with mobile layout fix, add/edit car form redesigned
-as Bootstrap 5 accordion with sticky submit footer (replacing 4-step wizard), add/edit car form mobile CSS
-regressions, StatisticsApiTest integration test fixes, and rename of add/edit car form page to `form.php`.
+16 issues resolved (plus one standalone bug fix — PR #707): full Bootstrap 5 migration (self-hosted
+libraries, template rebase, class migration, mobile responsiveness), Playwright regression tests for BS5
+JS API patterns, first-party JS/CSS minification with esbuild, FilePond image upload library migration
+with mobile layout fix, add/edit car form redesigned as Bootstrap 5 accordion with sticky submit footer
+(replacing 4-step wizard), add/edit car form mobile CSS regressions, StatisticsApiTest integration test
+fixes, rename of add/edit car form page to `form.php`, PHPUnit 11→12 upgrade, behavior-based
+GetDataTables tests, and fix for missing `elan_feedback_email` settings default.
