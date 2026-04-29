@@ -322,7 +322,7 @@ class StatisticsApiTest extends IntegrationTestCase
     /**
      * Test that validateChassis.php is reference implementation
      */
-    public function testValidateChassisChassisPatterCompliance(): void
+    public function testValidateChassisPatternCompliance(): void
     {
         $filePath = __DIR__ . '/../../app/cars/actions/validateChassis.php';
         if (!file_exists($filePath)) {
