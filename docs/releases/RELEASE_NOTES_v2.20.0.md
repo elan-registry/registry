@@ -47,6 +47,10 @@ None.
   Removed redundant `hasPerm([2])` from `backup-operations.php`; access control now
   centralized in UserSpice pages table with role-based permissions; operational endpoints
   use `isRegistryAdmin()` for additional validation.
+- **Log warning when getBaseUrl() falls back to hardcoded production URL** ([#641](https://github.com/unibrain1/elanregistry/issues/641)):
+  `getBaseUrl()` now logs an `EmailSettings` entry when `verify_url` is not configured
+  in email settings, making environment misconfiguration visible instead of silently
+  sending staging emails with production links.
 
 ## Issues Resolved
 
@@ -60,12 +64,15 @@ None.
   Separate system maintenance functionality from car management; enforce admin-only access via PageManager
 - [#634](https://github.com/unibrain1/elanregistry/issues/634) —
   Add path boundary guard to unlink() calls in backup operations
+- [#641](https://github.com/unibrain1/elanregistry/issues/641) —
+  Log warning when getBaseUrl() falls back to hardcoded production URL
 - [#775](https://github.com/unibrain1/elanregistry/pull/775) —
   chore(deps): bump datatables.net and datatables.net-bs4
 
 ## Summary
 
-5 issues and 1 dependency update resolved; replaces all native browser dialogs across the
+6 issues and 1 dependency update resolved; replaces all native browser dialogs across the
 admin interface with Bootstrap 5 modals and the app notification system, refactors admin
 pages to separate system maintenance from car management with role-based access control,
-updates datatables.net to 1.13.11, and hardens file deletion with path boundary guards.
+updates datatables.net to 1.13.11, hardens file deletion with path boundary guards, and
+improves environment misconfiguration visibility in email URL generation.

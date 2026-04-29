@@ -128,7 +128,13 @@ function getBaseUrl(): string {
     if ($baseUrl === null) {
         $db = DB::getInstance();
         $result = $db->query("SELECT verify_url FROM email")->first();
-        $baseUrl = $result->verify_url ?? 'https://elanregistry.org';
+        $baseUrl = $result->verify_url ?? null;
+        if ($baseUrl === null) {
+            $defaultUrl = 'https://elanregistry.org';
+            logger(0, LogCategories::LOG_CATEGORY_EMAIL_SETTINGS,
+                "getBaseUrl() falling back to hardcoded production URL — verify_url not configured in email settings; emails from this environment will link to $defaultUrl");
+            $baseUrl = $defaultUrl;
+        }
     }
 
     return rtrim($baseUrl, '/');
