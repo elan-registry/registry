@@ -124,11 +124,31 @@ function getBaseUrl(): string {
     }
 
     // Fallback for CLI or early-boot contexts where server globals are not set
+    global $user;
     static $baseUrl = null;
     if ($baseUrl === null) {
-        $db = DB::getInstance();
-        $result = $db->query("SELECT verify_url FROM email")->first();
-        $baseUrl = $result->verify_url ?? 'https://elanregistry.org';
+        $defaultUrl = 'https://elanregistry.org';
+        $logUserId = (isset($user) && $user->isLoggedIn() && $user->data()) ? (int) $user->data()->id : 0;
+        $dbError = false;
+        try {
+            $db = DB::getInstance();
+            $result = $db->query("SELECT verify_url FROM email")->first();
+            $baseUrl = $result->verify_url ?? null;
+        } catch (\PDOException $e) {
+            $baseUrl = null;
+            $dbError = true;
+        }
+        if ($baseUrl === null) {
+            $category = $dbError ? LogCategories::LOG_CATEGORY_SYSTEM_ERROR : LogCategories::LOG_CATEGORY_EMAIL_SETTINGS;
+            $reason = $dbError ? 'database unavailable' : 'verify_url not configured in email settings';
+            try {
+                logger($logUserId, $category,
+                    "getBaseUrl() falling back to hardcoded production URL — $reason; emails from this environment will link to $defaultUrl");
+            } catch (\Throwable $e) {
+                // logger unavailable; proceed with fallback silently
+            }
+            $baseUrl = $defaultUrl;
+        }
     }
 
     return rtrim($baseUrl, '/');
