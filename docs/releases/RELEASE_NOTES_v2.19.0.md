@@ -37,6 +37,14 @@
 - **Photo upload layout on mobile** ([#743](https://github.com/unibrain1/elanregistry/issues/743)):
   Constraints list and FilePond widget now stack full-width on all screen sizes; reorder hint updated to "Tap and hold to reorder • Drag on desktop".
 
+- **Add/Edit Car form redesigned as accordion** ([#745](https://github.com/unibrain1/elanregistry/issues/745)):
+  The 4-step wizard (sequential Next/Back navigation) has been replaced with a vertical Bootstrap 5
+  accordion. All three content sections are accessible without navigating forward or backward, making
+  non-linear editing and returning to a previous section much easier — especially on mobile. The submit
+  button is now a sticky footer element always visible regardless of scroll position. Form validation
+  errors auto-expand the section containing the first error and scroll to the error message, eliminating
+  the vestigial "Step 4 Results" screen.
+
 ### Bug Fixes
 
 - **Add/Edit Car form mobile layout** ([#744](https://github.com/unibrain1/elanregistry/issues/744)):
@@ -67,6 +75,14 @@
   Client-side image resize (to `elan_image_display_max_size`) before upload.
   Fixed XSS vulnerability in edit car form validation error display (escapeHtml applied to server error messages).
   Added `basename()` normalization to server-side `removeImages` file parameter.
+- **Add/Edit Car form accordion refactor** ([#745](https://github.com/unibrain1/elanregistry/issues/745)):
+  Replaced 4-fieldset jQuery wizard with Bootstrap 5 accordion. Removed step animation JS (~80 lines),
+  progress bar HTML, Next/Previous buttons. New JS: section completion tracking (green checkmark after
+  any field interaction), skip buttons for optional sections (Details & Comments, Photos), error
+  auto-expand pointing to the panel containing the first server-side validation error.
+  Fixed pre-existing stored XSS: added `htmlspecialchars()` to 6 `value=` attributes in
+  `_edit_car_1.php` and `_edit_car_2.php` (chassis, color, engine, purchasedate, solddate, website).
+  Updated 4 Playwright tests to use accordion selectors.
 - **Playwright regression tests for Bootstrap 5 JS API** ([#732](https://github.com/unibrain1/elanregistry/issues/732)):
   Added `tests/playwright/bs5-migration.test.js` covering Flatpickr date picker initialization
   on the edit car form, Statistics page `ElanRegistryAPI` availability and tab AJAX lazy-loading,
@@ -87,12 +103,14 @@
 - [#741](https://github.com/unibrain1/elanregistry/issues/741) — Migrate photo upload from Dropzone to FilePond with improved UX and security fixes
 - [#743](https://github.com/unibrain1/elanregistry/issues/743) — Fix Step 3 photo upload layout for mobile
 - [#744](https://github.com/unibrain1/elanregistry/issues/744) — Fix mobile CSS regressions in add/edit car form
+- [#745](https://github.com/unibrain1/elanregistry/issues/745) — Replace 4-step wizard with vertical accordion for add/edit car form
 - [#732](https://github.com/unibrain1/elanregistry/issues/732) — Add Playwright regression tests for Bootstrap 5 JS API migration critical paths
 - [#740](https://github.com/unibrain1/elanregistry/issues/740) — Fix silently-skipping integration tests in StatisticsApiTest
 
 ## Summary
 
-10 issues resolved: full Bootstrap 5 migration (self-hosted libraries, template rebase, class migration,
+11 issues resolved: full Bootstrap 5 migration (self-hosted libraries, template rebase, class migration,
 mobile responsiveness), Playwright regression tests for BS5 JS API patterns, first-party JS/CSS minification
-with esbuild, FilePond image upload library migration with mobile layout fix, add/edit car form mobile CSS
+with esbuild, FilePond image upload library migration with mobile layout fix, add/edit car form redesigned
+as Bootstrap 5 accordion with sticky submit footer (replacing 4-step wizard), add/edit car form mobile CSS
 regressions, and StatisticsApiTest integration test fixes.

@@ -10,23 +10,15 @@ const { test, expect } = require('@playwright/test');
 const { ensureLoggedIn, navigateAndWait } = require('./auth-helper.js');
 
 // ---------------------------------------------------------------------------
-// Area 1: Flatpickr date pickers (app/cars/edit.php, step 2)
+// Area 1: Flatpickr date pickers (app/cars/edit.php, Car Details section)
 // ---------------------------------------------------------------------------
 
 test.describe('BS5 Migration — Flatpickr date pickers', () => {
   test.beforeEach(async ({ page }) => {
     await ensureLoggedIn(page);
     await page.goto('/app/cars/edit.php', { waitUntil: 'networkidle' });
-
-    // Reveal step-2 fieldset (Additional Info) directly rather than driving
-    // step-1 validation (requires model + chassis AJAX, not relevant here)
-    await page.evaluate(() => {
-      const fieldsets = document.querySelectorAll('fieldset');
-      if (fieldsets[0]) fieldsets[0].style.display = 'none';
-      if (fieldsets[1]) fieldsets[1].style.display = '';
-    });
-
-    await expect(page.locator('fieldset').nth(1)).toBeVisible({ timeout: 5000 });
+    // Date fields are in Section 1 (Car Details) which is open by default — no toggle needed
+    await expect(page.locator('#section1')).toBeVisible({ timeout: 5000 });
   });
 
   test('purchase date field opens flatpickr calendar', async ({ page }) => {

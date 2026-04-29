@@ -48,7 +48,7 @@ test.describe('Navigation and File Reorganization', () => {
       page,
       // Authenticated test - verify edit form elements
       async () => {
-        await expect(page.locator('#progressbar')).toBeVisible();
+        await expect(page.locator('#editCarAccordion')).toBeVisible();
       }
     );
     
