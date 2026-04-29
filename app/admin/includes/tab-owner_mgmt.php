@@ -849,8 +849,7 @@ function switchToDataQualityTab() {
     if (typeof switchToTab === 'function') {
         switchToTab('manage-cars');
     } else {
-        // Fallback - just show an alert
-        alert('Please use the Manage Cars tab to view quality reports');
+        showNotification('Please use the Manage Cars tab to view quality reports.', 'info');
     }
 }
 

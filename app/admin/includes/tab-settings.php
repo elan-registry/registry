@@ -482,13 +482,13 @@ function testGoogleMapsAPI(buttonElement) {
     const mapsKey = $('#elan_google_maps_key').val();
 
     if (!mapsKey) {
-        alert('Please enter a Google Maps API key to test.');
+        showNotification('Please enter a Google Maps API key to test.', 'warning');
         return;
     }
 
     const btn = $(buttonElement);
     if (btn.length === 0) {
-        alert('Error: Invalid button element. Please refresh the page.');
+        showNotification('Error: Invalid button element. Please refresh the page.', 'danger');
         return;
     }
 
@@ -590,7 +590,7 @@ function testEmailConfiguration() {
     const emails = $('#elan_admin_emails').val();
 
     if (!emails.trim()) {
-        alert('Please enter at least one admin email address.');
+        showNotification('Please enter at least one admin email address.', 'danger');
         return;
     }
 
@@ -611,7 +611,7 @@ function testEmailConfiguration() {
 
     if (invalidEmails.length > 0) {
         btn.html('<i class="fas fa-exclamation-triangle text-warning"></i> Invalid Format').removeClass('btn-outline-primary').addClass('btn-warning');
-        alert('Invalid email format detected: ' + invalidEmails.join(', '));
+        showNotification('Invalid email format detected: ' + invalidEmails.join(', '), 'danger');
         setTimeout(() => {
             btn.html(originalText).removeClass('btn-warning').addClass('btn-outline-primary');
         }, 3000);

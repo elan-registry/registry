@@ -1479,7 +1479,7 @@ $(document).ready(function() {
 
             if (selectedCars.length !== 2 || selectedReason.length !== 1) {
                 e.preventDefault();
-                alert('Please select exactly 2 cars and 1 merge reason.');
+                showNotification('Please select exactly 2 cars and 1 merge reason.', 'danger');
                 return false;
             }
 

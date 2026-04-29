@@ -350,6 +350,7 @@ $(document).ready(function() {
      * Show notifications to user
      */
     function showNotification(message, type = 'info') {
+        const safeMessage = $('<div>').text(message).html();
         const alertClass = `alert-${type === 'error' ? 'danger' : type}`;
         const iconClass = type === 'error' ? 'fa-exclamation-triangle' :
                          type === 'success' ? 'fa-check-circle' :
@@ -358,7 +359,7 @@ $(document).ready(function() {
         const $notification = $(`
             <div class="alert ${alertClass} alert-dismissible fade show position-fixed"
                  style="top: 20px; right: 20px; z-index: 9999; min-width: 300px;">
-                <i class="fas ${iconClass}"></i> ${message}
+                <i class="fas ${iconClass}"></i> ${safeMessage}
                 <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
             </div>
         `);
@@ -1349,6 +1350,7 @@ function initializeCarManagement() {
  * @param {string} type - Bootstrap alert type (success, danger, info, warning)
  */
 function showNotification(message, type = 'info') {
+    const safeMessage = $('<div>').text(message).html();
     const $messageContainer = $('#messageContainer');
     if (!$messageContainer.length) {
         $('body').prepend('<div id="messageContainer" style="position: fixed; top: 70px; right: 20px; z-index: 9999; max-width: 400px;"></div>');
@@ -1356,7 +1358,7 @@ function showNotification(message, type = 'info') {
     const alertClass = `alert alert-${type} alert-dismissible fade show`;
     const alertHtml = `
         <div class="${alertClass}" role="alert">
-            ${message}
+            ${safeMessage}
             <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
         </div>
     `;
