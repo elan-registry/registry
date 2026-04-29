@@ -109,21 +109,23 @@
                     <span id="chassis_error_reason"></span>
                 </div>
                 
-                <div class="form-check mt-2">
-                    <input type="checkbox" class="form-check-input" id="chassis_override" name="chassis_override" value="1">
-                    <label class="form-check-label text-warning" for="chassis_override">
-                        <strong>⚠️ Override chassis validation</strong><br>
-                        <small>Check this box to proceed with an invalid chassis number. Use with caution - this may indicate incorrect data entry.</small>
-                    </label>
-                </div>
-                
-                <div class="mt-2">
-                    <button type="button" class="btn btn-sm btn-outline-info" data-bs-toggle="modal" data-bs-target="#chassisValidationModal">
-                        <i class="fas fa-info-circle"></i> Chassis Validation Rules
-                    </button>
-                    <a href="<?= $us_url_root ?>docs/chassis-validation.php" target="_blank" class="btn btn-sm btn-outline-secondary ms-1">
-                        <i class="fas fa-external-link-alt"></i> Full Documentation
-                    </a>
+                <div id="chassis_override_section" class="d-none">
+                    <div class="form-check mt-2">
+                        <input type="checkbox" class="form-check-input" id="chassis_override" name="chassis_override" value="1">
+                        <label class="form-check-label text-warning" for="chassis_override">
+                            <strong>⚠️ Override chassis validation</strong><br>
+                            <small>Use only if this chassis number is correct but fails validation.</small>
+                        </label>
+                    </div>
+
+                    <div class="mt-2">
+                        <button type="button" class="btn btn-sm btn-outline-info" data-bs-toggle="modal" data-bs-target="#chassisValidationModal">
+                            <i class="fas fa-info-circle"></i> Chassis Validation Rules
+                        </button>
+                        <a href="<?= $us_url_root ?>docs/chassis-validation.php" target="_blank" class="btn btn-sm btn-outline-secondary ms-1">
+                            <i class="fas fa-external-link-alt"></i> Full Documentation
+                        </a>
+                    </div>
                 </div>
             </div>
         </div>

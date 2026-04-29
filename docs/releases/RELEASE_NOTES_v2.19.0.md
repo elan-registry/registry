@@ -37,6 +37,12 @@
 - **Photo upload layout on mobile** ([#743](https://github.com/unibrain1/elanregistry/issues/743)):
   Constraints list and FilePond widget now stack full-width on all screen sizes; reorder hint updated to "Tap and hold to reorder • Drag on desktop".
 
+- **Add/Edit Car form field order and Comments UX** ([#750](https://github.com/unibrain1/elanregistry/issues/750)):
+  Fields now follow the natural owner workflow — identification (Year, Model, Chassis, Color, Engine)
+  then narrative (Comments) then provenance (Purchase Date, Sold Date, Website). The Comments textarea
+  shows a live character counter (0 / 2000). The "Skip Photos" affordance is now a text link, visually
+  de-emphasized relative to primary form actions.
+
 - **Add/Edit Car form redesigned as accordion** ([#745](https://github.com/unibrain1/elanregistry/issues/745)):
   The 4-step wizard (sequential Next/Back navigation) has been replaced with a vertical Bootstrap 5
   accordion. All three content sections are accessible without navigating forward or backward, making
@@ -104,12 +110,13 @@
 - [#743](https://github.com/unibrain1/elanregistry/issues/743) — Fix Step 3 photo upload layout for mobile
 - [#744](https://github.com/unibrain1/elanregistry/issues/744) — Fix mobile CSS regressions in add/edit car form
 - [#745](https://github.com/unibrain1/elanregistry/issues/745) — Replace 4-step wizard with vertical accordion for add/edit car form
+- [#750](https://github.com/unibrain1/elanregistry/issues/750) — Flatten and regroup add/edit car form for improved usability
 - [#732](https://github.com/unibrain1/elanregistry/issues/732) — Add Playwright regression tests for Bootstrap 5 JS API migration critical paths
 - [#740](https://github.com/unibrain1/elanregistry/issues/740) — Fix silently-skipping integration tests in StatisticsApiTest
 
 ## Summary
 
-11 issues resolved: full Bootstrap 5 migration (self-hosted libraries, template rebase, class migration,
+12 issues resolved: full Bootstrap 5 migration (self-hosted libraries, template rebase, class migration,
 mobile responsiveness), Playwright regression tests for BS5 JS API patterns, first-party JS/CSS minification
 with esbuild, FilePond image upload library migration with mobile layout fix, add/edit car form redesigned
 as Bootstrap 5 accordion with sticky submit footer (replacing 4-step wizard), add/edit car form mobile CSS

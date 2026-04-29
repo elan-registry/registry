@@ -23,15 +23,33 @@
     object-fit: cover
 }
 
+/* Section headings */
+
+.form-section-heading {
+    font-size: 0.75rem;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: #3f8704;
+    border-bottom: 2px solid #3f8704;
+    padding-bottom: 0.4rem;
+    margin-bottom: 1.5rem;
+}
+
 /* FilePond */
 
 .filepond--root {
     margin-bottom: 0;
 }
 
-/* Accordion section completion indicator (green check after interaction) */
-.section-indicator {
-    min-width: 20px;
-    text-align: center;
-    font-size: 1rem;
+.filepond--panel-root {
+    background-color: #f4fbf4 !important;
+    border: 2px dashed #3f8704 !important;
+    border-radius: 6px !important;
+}
+
+.filepond--drop-label label {
+    color: #3f8704;
+    font-weight: 500;
+    cursor: pointer;
 }
