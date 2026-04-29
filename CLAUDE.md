@@ -66,6 +66,15 @@ edge caching and CDN for global users (US, EU, AU).
   Bootstrap 5.3.3 loaded via Customizer `header.php` (self-hosted); jQuery via `users/js/jquery.php` (CDN, UserSpice-managed)
 - ADRs: `docs/development/adr/` — update ADR-015 when changing frontend dependencies, ADR-016 for nav changes, ADR-007 for CSP changes
 
+**Template Customization Rules:**
+
+- `usersc/templates/customizer/` is **gitignored upstream** — do NOT modify any
+  files in this directory. The sole exception is `file_nav_custom.php`, which is
+  project-owned and tracked.
+- To add content to the footer without touching upstream files, inject via JS
+  in `usersc/includes/footer.php` (included by UserSpice after the footer renders).
+- To add content to the header/nav, use `usersc/templates/customizer/file_nav_custom.php`.
+
 ## Development Setup
 
 ### System Requirements

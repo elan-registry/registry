@@ -165,52 +165,15 @@ function updateCarDetails(array &$car): void
                 <input type="hidden" name="action" id="action" value="<?= htmlspecialchars($action, ENT_QUOTES, 'UTF-8'); ?>" />
                 <input type="hidden" name="car_id" id="car_id" value="<?= htmlspecialchars((string)($cardetails['id'] ?? ''), ENT_QUOTES, 'UTF-8'); ?>" />
                 <div id="message" class="d-none"></div>
-                <div class="accordion" id="editCarAccordion">
 
-                  <!-- Section 1: Car Details — auto-open -->
-                  <div class="accordion-item">
-                    <h2 class="accordion-header" id="heading-section1">
-                      <button class="accordion-button" type="button"
-                              data-bs-toggle="collapse" data-bs-target="#section1"
-                              aria-expanded="true" aria-controls="section1">
-                        <i class="fas fa-car me-2"></i>
-                        <strong>Car Details</strong>
-                        <span class="section-indicator ms-auto me-2" id="indicator-section1"></span>
-                      </button>
-                    </h2>
-                    <div id="section1" class="accordion-collapse collapse show"
-                         aria-labelledby="heading-section1">
-                      <div class="accordion-body">
-                        <?php include_once $abs_us_root . $us_url_root . 'app/views/_edit_car_1.php'; ?>
-                        <?php include_once $abs_us_root . $us_url_root . 'app/views/_edit_car_2.php'; ?>
-                      </div>
-                    </div>
-                  </div>
+                <h5 class="form-section-heading"><i class="fas fa-car me-2"></i>Car Details</h5>
+                <?php include_once $abs_us_root . $us_url_root . 'app/views/_edit_car_1.php'; ?>
+                <?php include_once $abs_us_root . $us_url_root . 'app/views/_edit_car_2.php'; ?>
 
-                  <!-- Section 2: Photos — collapsed, skippable -->
-                  <div class="accordion-item">
-                    <h2 class="accordion-header" id="heading-section2">
-                      <button class="accordion-button collapsed" type="button"
-                              data-bs-toggle="collapse" data-bs-target="#section2"
-                              aria-expanded="false" aria-controls="section2">
-                        <i class="fas fa-camera me-2"></i>
-                        <strong>Photos</strong>
-                        <span class="section-indicator ms-auto me-2" id="indicator-section2"></span>
-                      </button>
-                    </h2>
-                    <div id="section2" class="accordion-collapse collapse"
-                         aria-labelledby="heading-section2">
-                      <div class="accordion-body">
-                        <?php include_once $abs_us_root . $us_url_root . 'app/views/_edit_car_3.php'; ?>
-                        <div class="d-flex justify-content-end mt-3">
-                          <button type="button" class="btn btn-outline-secondary btn-sm"
-                                  id="skip-photos-btn">Skip this section</button>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
+                <hr class="my-4">
 
-                </div><!-- /#editCarAccordion -->
+                <h5 class="form-section-heading"><i class="fas fa-camera me-2"></i>Photos <small class="text-muted fw-normal" style="font-size:0.7rem;letter-spacing:0">optional</small></h5>
+                <?php include_once $abs_us_root . $us_url_root . 'app/views/_edit_car_3.php'; ?>
 
                 <div class="d-flex justify-content-end mt-3 mb-4">
                   <button type="button" id="submit" data-label="Add Car"
@@ -470,7 +433,21 @@ require_once $abs_us_root . $us_url_root . 'users/includes/html_footer.php'; //c
 
     $(document).ready(function() {
         flatpickr('#purchasedate', { dateFormat: 'Y-m-d', allowInput: true });
-        flatpickr('#solddate',     { dateFormat: 'Y-m-d', allowInput: true });
+        const solddatePicker = flatpickr('#solddate', { dateFormat: 'Y-m-d', allowInput: true });
+        const solddateRow = document.getElementById('solddate-row');
+        const solddateInput = document.getElementById('solddate');
+
+        document.getElementById('sold-toggle').addEventListener('change', function() {
+            if (this.checked) {
+                solddateRow.classList.remove('d-none');
+                if (!solddateInput.value) {
+                    solddatePicker.setDate(new Date());
+                }
+            } else {
+                solddateRow.classList.add('d-none');
+                solddatePicker.clear();
+            }
+        });
 
         // BEGIN FILEPOND
 
@@ -569,7 +546,6 @@ require_once $abs_us_root . $us_url_root . 'users/includes/html_footer.php'; //c
                 );
                 return;
             }
-            markSectionInteracted(2);
             if (car_id && car_id !== '' && fileItem.origin === FilePond.FileOrigin.LOCAL) {
                 const filename = fileItem.getMetadata('serverFilename');
                 new ElanRegistryAPI().post('<?= $us_url_root ?>app/cars/actions/edit.php', {
@@ -587,34 +563,7 @@ require_once $abs_us_root . $us_url_root . 'users/includes/html_footer.php'; //c
 
         // Clear file-level errors when a new file is added
         pond.on('addfile', function() {
-            markSectionInteracted(2);
             $('#message').hide();
-        });
-
-        const sectionInteracted = { 1: false, 2: false };
-
-        function markSectionInteracted(num) {
-            if (!sectionInteracted[num]) {
-                sectionInteracted[num] = true;
-                const el = document.getElementById('indicator-section' + num);
-                if (el) {
-                    const icon = document.createElement('i');
-                    icon.className = 'fas fa-check-circle text-success';
-                    el.replaceChildren(icon);
-                }
-            }
-        }
-
-        $('#section1').on('focus change blur', 'input, select, textarea', function() {
-            markSectionInteracted(1);
-        });
-
-        $('#skip-photos-btn').on('click', function() {
-            const el = document.getElementById('section2');
-            if (el) {
-                bootstrap.Collapse.getOrCreateInstance(el).hide();
-            }
-            markSectionInteracted(2);
         });
 
         document.getElementById('submit').addEventListener('click', function(e) {
@@ -712,13 +661,6 @@ require_once $abs_us_root . $us_url_root . 'users/includes/html_footer.php'; //c
         }
 
         function displayValidationErrors(data) {
-            const fieldSectionMap = {
-                year: 'section1', model: 'section1', chassis: 'section1',
-                color: 'section1', engine: 'section1',
-                purchasedate: 'section1', solddate: 'section1',
-                website: 'section1', comments: 'section1'
-            };
-
             let html = '<div class="alert alert-danger mb-0">';
             html += '<strong>Submission failed.</strong>';
             if (data.message) {
@@ -744,17 +686,6 @@ require_once $abs_us_root . $us_url_root . 'users/includes/html_footer.php'; //c
             html += '</div>';
             $('#message').show().html(html);
 
-            // Expand the panel containing the first error field
-            let targetSection = 'section1';
-            if (data.errors && !Array.isArray(data.errors.general)) {
-                const firstField = Object.keys(data.errors)[0];
-                targetSection = fieldSectionMap[firstField] || 'section1';
-            }
-            const targetEl = document.getElementById(targetSection);
-            if (targetEl) {
-                bootstrap.Collapse.getOrCreateInstance(targetEl).show();
-            }
-
             // Scroll to message
             const msgEl = document.getElementById('message');
             if (msgEl) {
@@ -775,7 +706,11 @@ require_once $abs_us_root . $us_url_root . 'users/includes/html_footer.php'; //c
                 if (data.cardetails.comments) $('#comments').val(data.cardetails.comments);
                 if (data.cardetails.website) $('#website').val(data.cardetails.website);
                 if (data.cardetails.purchasedate) $('#purchasedate').val(data.cardetails.purchasedate);
-                if (data.cardetails.solddate) $('#solddate').val(data.cardetails.solddate);
+                if (data.cardetails.solddate) {
+                    solddateInput.value = data.cardetails.solddate;
+                    document.getElementById('sold-toggle').checked = true;
+                    solddateRow.classList.remove('d-none');
+                }
             }
         }
     });
@@ -827,6 +762,15 @@ require_once $abs_us_root . $us_url_root . 'users/includes/html_footer.php'; //c
 
     // Initialize ModelLoader with API endpoint
     ModelLoader.init('<?= $us_url_root ?>app/cars/actions/get-models.php');
+
+    // Comments character counter
+    const commentsEl = document.getElementById('comments');
+    const commentsCount = document.getElementById('comments-count');
+    function updateCommentsCount() {
+        commentsCount.textContent = commentsEl.value.length;
+    }
+    updateCommentsCount();
+    commentsEl.addEventListener('input', updateCommentsCount);
 
     /*
      * When year changes, update the model list and show the appropriate chassis help text
@@ -938,9 +882,13 @@ require_once $abs_us_root . $us_url_root . 'users/includes/html_footer.php'; //c
         $('#chassis').toggleClass('is-valid', isValid)
                      .toggleClass('is-invalid', !isValid);
 
-        // Show/hide validation error
+        // Show/hide override section and validation error
         const overrideEnabled = $('#chassis_override').is(':checked');
-        if (!isValid && errorReason && !overrideEnabled) {
+        $('#chassis_override_section').toggleClass('d-none', isValid);
+        if (isValid) {
+            $('#chassis_override').prop('checked', false);
+            $('#chassis_validation_error').addClass('hidden').hide();
+        } else if (errorReason && !overrideEnabled) {
             $('#chassis_validation_error').removeClass('hidden').show();
             $('#chassis_error_reason').text(errorReason);
         } else {
