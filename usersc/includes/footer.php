@@ -21,6 +21,23 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 //This will go in every template.
 ?>
 
+<!-- Privacy Policy link injected into footer without modifying upstream template -->
+<script nonce="<?=htmlspecialchars($usespice_nonce ?? '')?>">
+(function () {
+    var container = document.querySelector('#footer .container');
+    if (container) {
+        var p = document.createElement('p');
+        p.className = 'text-center small';
+        var a = document.createElement('a');
+        a.href = '<?=$us_url_root?>app/privacy.php';
+        a.className = 'text-muted';
+        a.textContent = 'Privacy Policy';
+        p.appendChild(a);
+        container.appendChild(p);
+    }
+}());
+</script>
+
 <!-- ElanRegistry API Client - Pattern A standardized AJAX -->
 <script nonce="<?=htmlspecialchars($usespice_nonce ?? '')?>" src="<?=$us_url_root?>app/assets/js/api-client.min.js"></script>
 
