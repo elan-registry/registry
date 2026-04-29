@@ -124,9 +124,11 @@ function getBaseUrl(): string {
     }
 
     // Fallback for CLI or early-boot contexts where server globals are not set
+    global $user;
     static $baseUrl = null;
     if ($baseUrl === null) {
         $defaultUrl = 'https://elanregistry.org';
+        $logUserId = (isset($user) && $user->isLoggedIn()) ? (int) $user->data()->id : 0;
         $dbError = false;
         try {
             $db = DB::getInstance();
@@ -140,7 +142,7 @@ function getBaseUrl(): string {
             $category = $dbError ? LogCategories::LOG_CATEGORY_SYSTEM_ERROR : LogCategories::LOG_CATEGORY_EMAIL_SETTINGS;
             $reason = $dbError ? 'database unavailable' : 'verify_url not configured in email settings';
             try {
-                logger(0, $category,
+                logger($logUserId, $category,
                     "getBaseUrl() falling back to hardcoded production URL — $reason; emails from this environment will link to $defaultUrl");
             } catch (\Throwable $e) {
                 // logger unavailable; proceed with fallback silently
