@@ -67,6 +67,11 @@
   Client-side image resize (to `elan_image_display_max_size`) before upload.
   Fixed XSS vulnerability in edit car form validation error display (escapeHtml applied to server error messages).
   Added `basename()` normalization to server-side `removeImages` file parameter.
+- **Playwright regression tests for Bootstrap 5 JS API** ([#732](https://github.com/unibrain1/elanregistry/issues/732)):
+  Added `tests/playwright/bs5-migration.test.js` covering Flatpickr date picker initialization
+  on the edit car form, Statistics page `ElanRegistryAPI` availability and tab AJAX lazy-loading,
+  and the navigation dropdown `firstChild` patch in `footer.php` (no TypeError on outside-click).
+  New `npm run playwright:bs5` script for targeted execution.
 - **StatisticsApiTest integration tests** ([#740](https://github.com/unibrain1/elanregistry/issues/740)):
   Removed `try/catch (Throwable)` anti-pattern that was converting assertion failures into silent
   skips; corrected asserted strings to match the actual `LogCategories` constants and `error.message`
@@ -82,10 +87,12 @@
 - [#741](https://github.com/unibrain1/elanregistry/issues/741) — Migrate photo upload from Dropzone to FilePond with improved UX and security fixes
 - [#743](https://github.com/unibrain1/elanregistry/issues/743) — Fix Step 3 photo upload layout for mobile
 - [#744](https://github.com/unibrain1/elanregistry/issues/744) — Fix mobile CSS regressions in add/edit car form
+- [#732](https://github.com/unibrain1/elanregistry/issues/732) — Add Playwright regression tests for Bootstrap 5 JS API migration critical paths
 - [#740](https://github.com/unibrain1/elanregistry/issues/740) — Fix silently-skipping integration tests in StatisticsApiTest
 
 ## Summary
 
-9 issues resolved: full Bootstrap 5 migration (self-hosted libraries, template rebase, class migration,
-mobile responsiveness), first-party JS/CSS minification with esbuild, FilePond image upload library migration
-with mobile layout fix, add/edit car form mobile CSS regressions, and StatisticsApiTest integration test fixes.
+10 issues resolved: full Bootstrap 5 migration (self-hosted libraries, template rebase, class migration,
+mobile responsiveness), Playwright regression tests for BS5 JS API patterns, first-party JS/CSS minification
+with esbuild, FilePond image upload library migration with mobile layout fix, add/edit car form mobile CSS
+regressions, and StatisticsApiTest integration test fixes.
