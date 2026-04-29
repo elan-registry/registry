@@ -100,6 +100,11 @@
   Updated all internal links, form actions, email view helpers, cron scripts, Playwright tests,
   PHPUnit tests, and documentation. Includes a DB migration (`FIX-751`) to update the UserSpice
   page permissions entry.
+- **Ownership guard regression tests for image endpoints** ([#742](https://github.com/unibrain1/elanregistry/issues/742)):
+  Added Playwright security tests (`tests/playwright/security/car-image-ownership.spec.ts`) verifying
+  that `fetchImages` and `removeImages` AJAX actions return HTTP 403 JSON for non-existent or
+  unauthorized car IDs. These tests cover the ownership guard added in #741 and will catch any
+  future regression that removes the check. Included in `npm run playwright:security`.
 - **StatisticsApiTest integration tests** ([#740](https://github.com/unibrain1/elanregistry/issues/740)):
   Removed `try/catch (Throwable)` anti-pattern that was converting assertion failures into silent
   skips; corrected asserted strings to match the actual `LogCategories` constants and `error.message`
@@ -119,11 +124,12 @@
 - [#750](https://github.com/unibrain1/elanregistry/issues/750) — Flatten and regroup add/edit car form for improved usability
 - [#732](https://github.com/unibrain1/elanregistry/issues/732) — Add Playwright regression tests for Bootstrap 5 JS API migration critical paths
 - [#740](https://github.com/unibrain1/elanregistry/issues/740) — Fix silently-skipping integration tests in StatisticsApiTest
+- [#742](https://github.com/unibrain1/elanregistry/issues/742) — Add ownership guard regression tests for fetchImages and removeImages
 - [#751](https://github.com/unibrain1/elanregistry/issues/751) — Rename `app/cars/edit.php` → `app/cars/form.php`
 
 ## Summary
 
-13 issues resolved: full Bootstrap 5 migration (self-hosted libraries, template rebase, class migration,
+14 issues resolved: full Bootstrap 5 migration (self-hosted libraries, template rebase, class migration,
 mobile responsiveness), Playwright regression tests for BS5 JS API patterns, first-party JS/CSS minification
 with esbuild, FilePond image upload library migration with mobile layout fix, add/edit car form redesigned
 as Bootstrap 5 accordion with sticky submit footer (replacing 4-step wizard), add/edit car form mobile CSS
