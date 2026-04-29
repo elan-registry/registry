@@ -19,14 +19,6 @@ if (!securePage($php_self)) {
         ->send();
 }
 
-// Only administrators can perform backup operations
-if (!hasPerm([2], $user->data()->id)) {
-    ApiResponse::forbidden('Administrator access required')
-        ->withLogging($user->data()->id, LogCategories::LOG_CATEGORY_SECURITY,
-            'Non-admin attempted backup operations')
-        ->send();
-}
-
 // CSRF protection for all POST operations
 if (!isset($_POST['csrf']) || !Token::check($_POST['csrf'])) {
     ApiResponse::forbidden('Invalid CSRF token')

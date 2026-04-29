@@ -107,7 +107,7 @@
       </li>
     <?php endif; ?>
 
-    <?php if (checkMenu(2, $user->data()->id)): ?>
+    <?php if (isRegistryAdmin($user->data()->id)): ?>
       <li class='dropdown'>
         <a class='sub-toggle' href='#' id='menu_1_638b71f2ed026_dropdown_admin' role='button' aria-haspopup='true' aria-expanded='false' data-target='#menu_1_638b71f2ed026_dropdown_admin'>
           <i class='fa fa-cogs'></i>
@@ -118,15 +118,24 @@
           <li class=''>
             <a class='' href='<?= $us_url_root ?>app/admin/manage-consolidated.php'>
               <i class='fa fa-car'></i>
-              <span class='labelText'>Manage Registry</span>
+              <span class='labelText'>Manage Cars/Owners</span>
             </a>
           </li>
+          <?php if (hasPerm([2], $user->data()->id)): ?>
+          <li class=''>
+            <a class='' href='<?= $us_url_root ?>app/admin/manage-maintenance.php'>
+              <i class='fa fa-tools'></i>
+              <span class='labelText'>Registry Maintenance</span>
+            </a>
+          </li>
+          <?php endif; ?>
           <li class=''>
             <a class='' href='<?= $us_url_root ?>docs/admin/index.php'>
               <i class='fa fa-question-circle'></i>
               <span class='labelText'>Admin Guide</span>
             </a>
           </li>
+          <?php if (hasPerm([2], $user->data()->id)): ?>
           <div class='dropdown-divider'></div>
           <li class=''>
             <a class='' href='<?= $us_url_root ?>users/admin.php'>
@@ -134,6 +143,7 @@
               <span class='labelText'>Admin Dashboard</span>
             </a>
           </li>
+          <?php endif; ?>
         </ul>
       </li>
     <?php endif; ?>

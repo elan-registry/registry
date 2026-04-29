@@ -40,6 +40,14 @@ None.
   ([#775](https://github.com/unibrain1/elanregistry/pull/775)):
   Bumps datatables.net and datatables.net-bs4 to 1.13.11 (security fix).
 
+- **Split manage-consolidated into car management and system maintenance** ([#610](https://github.com/unibrain1/elanregistry/issues/610)):
+  `manage-consolidated.php` now handles car/owner management (Admins and Editors);
+  new `manage-maintenance.php` handles system maintenance and settings tabs (Admin only).
+- **Enforced admin-only page access via UserSpice PageManager** ([#610](https://github.com/unibrain1/elanregistry/issues/610)):
+  Removed redundant `hasPerm([2])` from `backup-operations.php`; access control now
+  centralized in UserSpice pages table with role-based permissions; operational endpoints
+  use `isRegistryAdmin()` for additional validation.
+
 ## Issues Resolved
 
 - [#571](https://github.com/unibrain1/elanregistry/issues/571) —
@@ -48,6 +56,8 @@ None.
   Convert validation alert() dialogs to app notification system
 - [#573](https://github.com/unibrain1/elanregistry/issues/573) —
   Convert remaining native dialogs and improve error messaging
+- [#610](https://github.com/unibrain1/elanregistry/issues/610) —
+  Separate system maintenance functionality from car management; enforce admin-only access via PageManager
 - [#634](https://github.com/unibrain1/elanregistry/issues/634) —
   Add path boundary guard to unlink() calls in backup operations
 - [#775](https://github.com/unibrain1/elanregistry/pull/775) —
@@ -55,6 +65,7 @@ None.
 
 ## Summary
 
-4 issues and 1 dependency update resolved; replaces all native browser dialogs across the
-admin interface with Bootstrap 5 modals and the app notification system, updates
-datatables.net to 1.13.11, and hardens file deletion with path boundary guards.
+5 issues and 1 dependency update resolved; replaces all native browser dialogs across the
+admin interface with Bootstrap 5 modals and the app notification system, refactors admin
+pages to separate system maintenance from car management with role-based access control,
+updates datatables.net to 1.13.11, and hardens file deletion with path boundary guards.
