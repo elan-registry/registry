@@ -1,6 +1,6 @@
 # Elan Registry v2.19.0 Release Notes
 
-**Release Date:** [DATE]
+**Release Date:** 2026-04-29
 **Type:** Minor Release - Template Modernization & Bootstrap 5
 
 ## Required Actions After Deployment
