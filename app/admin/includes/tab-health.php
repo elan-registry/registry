@@ -51,6 +51,8 @@ if (!empty($fixScripts)) {
 
 $pendingMigrations = count(array_filter($scriptRunStatus, fn($s) => !$s['has_run']));
 
+$backupStatsFallback = false;
+
 try {
     $backupStats = $backupManager->getEnhancedBackupStatistics();
     $oldBackupsCount = 0;
@@ -64,6 +66,7 @@ try {
     $showCleanupPrompt = $oldBackupsCount > 0;
 } catch (BackupException $e) {
     logger($user->data()->id, $e->getLogCategory(), 'Enhanced backup stats failed: ' . $e->getMessage());
+    $backupStatsFallback = true;
     try {
         $backupStats = getBackupStatistics();
         $backupStats['health_score'] = 85;
@@ -148,6 +151,9 @@ try {
                     <?= ($backupStats['automated']['count'] + $backupStats['manual']['count'] + $backupStats['rollback']['count']) ?> total files
                     <?php if (isset($backupStats['health_score'])): ?>
                         | Score: <?= $backupStats['health_score'] ?>/100
+                        <?php if ($backupStatsFallback): ?>
+                            <span class="badge text-bg-warning ms-1" title="Enhanced stats unavailable; this score is an estimate">estimated</span>
+                        <?php endif; ?>
                     <?php endif; ?>
                 </small>
             </div>

@@ -11,6 +11,8 @@ or script execution. Use numbered steps with commands.]
 
 ## User-Facing Changes
 
+Changes visible to public registry visitors (car listings, owner pages, search, etc.).
+
 ### New Features
 
 - **[Feature Name]** ([#NNN](https://github.com/unibrain1/elanregistry/issues/NNN)): One-line description of the feature and its benefit to users.
@@ -19,22 +21,17 @@ or script execution. Use numbered steps with commands.]
 
 - **[Improvement Name]** ([#NNN](https://github.com/unibrain1/elanregistry/issues/NNN)): One-line description of the improvement and its benefit.
 
-### Bug Fixes
+## Admin-Facing Changes
 
-- **[Fix Name]** ([#NNN](https://github.com/unibrain1/elanregistry/issues/NNN)): One-line description of what was fixed.
+Changes visible only to administrators (admin dashboard, maintenance tools, settings, etc.).
+Uses the same subsections (New Features, Improvements) as User-Facing Changes above.
 
-## Technical Changes
-
-- **[Change Name]** ([#NNN](https://github.com/unibrain1/elanregistry/issues/NNN)): One-line description of the technical change.
+- **[Change Name]** ([#NNN](https://github.com/unibrain1/elanregistry/issues/NNN)): One-line description.
 
 ## Issues Resolved
 
-- [#NNN](https://github.com/unibrain1/elanregistry/issues/NNN) — Issue title
-- [#NNN](https://github.com/unibrain1/elanregistry/issues/NNN) — Issue title
-
-## Summary
-
-[One to two sentences: total issues resolved, PRs merged, key themes.]
+- [#NNN](https://github.com/unibrain1/elanregistry/issues/NNN) — GitHub issue title (verbatim)
+- [#NNN](https://github.com/unibrain1/elanregistry/issues/NNN) — GitHub issue title (verbatim)
 
 ---
 
@@ -55,30 +52,29 @@ When generating release notes:
 
 1. **Gather all changes** from the milestone: closed issues, merged PRs, and
    commits since the last release tag.
-2. **User-Facing Changes** should focus on the benefit to the user, not
-   implementation details. Each item is one line. Remove subsections (New
-   Features, Improvements, Bug Fixes) if they have no entries.
-3. **Technical Changes** are one line each with an issue/PR link. These cover
-   code quality, refactoring, CI/CD, test infrastructure, and internal
-   improvements that don't directly affect users.
-4. **Issues Resolved** lists every closed issue in the milestone, sorted by
-   issue number. Use the format `- [#NNN](URL) — Title`.
-5. **Required Actions** should only appear when there are actual post-deployment
+2. **User-Facing Changes** are changes visible to public registry visitors
+   (car listings, owner pages, search, etc.). **Admin-Facing Changes** are
+   changes visible only to administrators (admin dashboard, maintenance tools,
+   settings). Keep these sections separate. Each item is one line, benefit-focused.
+   Remove a section or subsection entirely if it has no entries.
+3. **Issues Resolved** lists every closed issue in the milestone, sorted by
+   issue number. Use the exact GitHub issue/PR title verbatim.
+   Format: `- [#NNN](URL) — GitHub issue title`
+4. **Required Actions** should only appear when there are actual post-deployment
    steps (SQL migrations, config changes, dependency installs). Otherwise state
    "None".
-6. **Be concise.** No multi-line descriptions. No verbose explanations. Link to
-   the issue/PR for details.
-7. **No emoji** in section headers.
+5. **Be concise.** No multi-line descriptions. One line per entry. The Issues
+   Resolved list carries the narrative — link to the issue/PR for details.
+6. **No emoji** in section headers.
 
 ### Section Guidelines
 
 | Section | Purpose | Style |
 | ------- | ------- | ----- |
 | Required Actions | Post-deploy manual steps | Numbered steps with commands |
-| User-Facing Changes | What users will notice | Benefit-focused, one line each |
-| Technical Changes | Internal improvements | Brief, one line each with link |
-| Issues Resolved | Complete closure list | Sorted by issue number |
-| Summary | Quick overview | 1–2 sentences |
+| User-Facing Changes | What public visitors will notice | Benefit-focused, one line each; subsections New Features and Improvements only |
+| Admin-Facing Changes | What administrators will notice | Same format; keep separate from user-facing |
+| Issues Resolved | Complete closure list | Sorted by issue number, verbatim GH title |
 
 ### Release Requirements
 
