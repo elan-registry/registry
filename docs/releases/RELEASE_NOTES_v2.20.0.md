@@ -38,7 +38,14 @@ None.
   Six alert() calls in admin tabs converted to showNotification() from manage-consolidated.js;
   showNotification() hardened against XSS by escaping message before HTML interpolation.
 - **Remaining dialog cleanup** ([#573](https://github.com/unibrain1/elanregistry/issues/573)):
-  Feature stub alerts, error alert, and backup prompt() evaluated and standardized.
+  Three feature stub `alert()` calls in owner sidebar converted to `showNotification(..., 'info')`.
+  Native `prompt()` for backup reason replaced with a Bootstrap 5 input modal; `showInputDialog()`
+  helper added to `manage-consolidated.js` mirroring the `showConfirmDialog()` pattern.
+  `input-modal.php` created and included in `manage-maintenance.php`. Pre-existing stored XSS
+  risks in admin JS (car/owner data interpolated into `innerHTML` without escaping) resolved by
+  applying `escapeHtml()` consistently across `manage-consolidated.js` and `backup-operations.js`.
+  Backup button now passes `this` explicitly instead of relying on the implicit `event` global.
+  Three follow-up issues filed for unimplemented owner sidebar features (#786, #787, #788).
 - **Dependency update: datatables.net 1.10.23 → 1.13.11**
   ([#775](https://github.com/unibrain1/elanregistry/pull/775)):
   Bumps datatables.net and datatables.net-bs4 to 1.13.11 (security fix).
