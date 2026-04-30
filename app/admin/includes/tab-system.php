@@ -327,7 +327,7 @@ foreach ($fixScripts as $script) {
                     <button type="button" class="btn btn-sm btn-outline-primary" onclick="runSchemaValidation(this)">
                         <i class="fas fa-check-double"></i> Validate Schema
                     </button>
-                    <button type="button" class="btn btn-sm btn-outline-success ms-2" onclick="runSchemaMaintenance()">
+                    <button type="button" class="btn btn-sm btn-outline-success ms-2" onclick="runSchemaMaintenance(this)">
                         <i class="fas fa-tools"></i> Run Maintenance
                     </button>
                 </div>
@@ -487,105 +487,88 @@ foreach ($fixScripts as $script) {
             </div>
         </div>
 
-        <!-- Confirmation Modal (Reusable) -->
-        <div class="modal fade" id="confirmationModal" tabindex="-1" role="dialog">
-            <div class="modal-dialog" role="document">
-                <div class="modal-content">
-                    <div class="modal-header bg-warning text-dark">
-                        <h5 class="modal-title"><i class="fas fa-exclamation-triangle"></i> <span id="confirmTitle">Confirm Action</span></h5>
-                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-                    </div>
-                    <div class="modal-body" id="confirmMessage">
-                        Are you sure?
-                    </div>
-                    <div class="modal-footer">
-                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                        <button type="button" class="btn btn-primary" id="confirmButton">Confirm</button>
-                    </div>
-                </div>
-            </div>
-        </div>
     </div>
 </div>
 
 <script>
-// Helper function to show confirmation modal
-function showConfirmDialog(title, message, onConfirm) {
-    document.getElementById('confirmTitle').textContent = title;
-    document.getElementById('confirmMessage').innerHTML = message;
-
-    // Remove any existing click handlers
-    const confirmBtn = document.getElementById('confirmButton');
-    const newConfirmBtn = confirmBtn.cloneNode(true);
-    confirmBtn.parentNode.replaceChild(newConfirmBtn, confirmBtn);
-
-    // Add new click handler
-    document.getElementById('confirmButton').addEventListener('click', function() {
-        bootstrap.Modal.getInstance(document.getElementById('confirmationModal'))?.hide();
-        onConfirm();
-    });
-
-    bootstrap.Modal.getOrCreateInstance(document.getElementById('confirmationModal')).show();
-}
-
-// Dismiss cleanup prompt
 function dismissCleanupPrompt() {
-    document.querySelector('.alert-warning').style.display = 'none';
+    const alertEl = document.querySelector('.alert-warning');
+    if (alertEl) {
+        alertEl.style.display = 'none';
+    }
 }
 
-// Schema maintenance using Enhanced Schema Manager
-function runSchemaMaintenance() {
-    if (!confirm('Run comprehensive schema maintenance?\n\nThis will:\n• Create backup before changes\n• Ensure all required fields and tables\n• Validate schema integrity\n\nContinue?')) {
+function runSchemaMaintenance(btn) {
+    const originalHTML = btn.innerHTML;
+
+    showConfirmDialog(
+        'Run Schema Maintenance',
+        'This will:\n\u2022 Create backup before changes\n\u2022 Ensure all required fields and tables\n\u2022 Validate schema integrity\n\nContinue?',
+        function() {
+            runSchemaMaintenanceConfirmed(btn, originalHTML);
+        }
+    );
+}
+
+function runSchemaMaintenanceConfirmed(btn, originalHTML) {
+    const csrfInput = document.querySelector('input[name="csrf"]');
+    if (!csrfInput || !csrfInput.value) {
+        showNotification('Security token missing or expired. Please reload the page and try again.', 'danger');
         return;
     }
+    const csrfToken = csrfInput.value;
 
-    const btn = event.target;
-    const originalHTML = btn.innerHTML;
     btn.disabled = true;
     btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Running...';
-
-    // Get CSRF token from any form on the page
-    const csrfToken = document.querySelector('input[name="csrf"]')?.value || '';
 
     fetch('includes/system/schema-operations.php', {
         method: 'POST',
         headers: {
             'Content-Type': 'application/x-www-form-urlencoded',
         },
-        body: `action=perform_maintenance&csrf=${csrfToken}`
+        body: `action=perform_maintenance&csrf=${encodeURIComponent(csrfToken)}`
     })
-    .then(response => response.json())
+    .then(response => {
+        if (!response.ok) {
+            throw new Error(`Server error (HTTP ${response.status})`);
+        }
+        return response.json().catch(() => {
+            throw new Error('Server returned an unexpected response. Check server logs before retrying.');
+        });
+    })
     .then(data => {
         btn.disabled = false;
         btn.innerHTML = originalHTML;
 
-        // Remove any existing result
         const existingResult = document.querySelector('#maintenance-result');
         if (existingResult) {
             existingResult.remove();
         }
 
-        // Show maintenance result
         const alertDiv = document.createElement('div');
         alertDiv.id = 'maintenance-result';
 
         if (data.success) {
             alertDiv.className = 'alert alert-success mt-2';
-            let operations = data.operations || ['Maintenance completed'];
-            alertDiv.innerHTML = `<i class="fas fa-check-circle"></i> Schema maintenance completed successfully:<ul class="mb-0 mt-2">${operations.map(op => `<li>${op}</li>`).join('')}</ul>`;
+            alertDiv.innerHTML = '<i class="fas fa-check-circle"></i> Schema maintenance completed successfully:';
+            const ul = document.createElement('ul');
+            ul.className = 'mb-0 mt-2';
+            (data.operations || ['Maintenance completed']).forEach(op => {
+                const li = document.createElement('li');
+                li.textContent = op;
+                ul.appendChild(li);
+            });
+            alertDiv.appendChild(ul);
         } else {
             alertDiv.className = 'alert alert-danger mt-2';
-            alertDiv.innerHTML = `<i class="fas fa-exclamation-circle"></i> Schema maintenance failed: ${data.error || data.message || 'Unknown error'}`;
+            alertDiv.innerHTML = '<i class="fas fa-exclamation-circle"></i> Schema maintenance failed: ';
+            const errSpan = document.createElement('span');
+            errSpan.textContent = data.error || data.message || 'Unknown error';
+            alertDiv.appendChild(errSpan);
         }
 
         btn.parentNode.appendChild(alertDiv);
-
-        // Auto-remove after 10 seconds
-        setTimeout(() => {
-            if (document.querySelector('#maintenance-result')) {
-                document.querySelector('#maintenance-result').remove();
-            }
-        }, 10000);
+        setTimeout(() => alertDiv.remove(), 10000);
     })
     .catch(error => {
         btn.disabled = false;
@@ -594,14 +577,12 @@ function runSchemaMaintenance() {
         const alertDiv = document.createElement('div');
         alertDiv.id = 'maintenance-result';
         alertDiv.className = 'alert alert-danger mt-2';
-        alertDiv.innerHTML = '<i class="fas fa-exclamation-circle"></i> Schema maintenance failed: ' + error.message;
+        alertDiv.innerHTML = '<i class="fas fa-exclamation-circle"></i> Schema maintenance failed: ';
+        const errSpan = document.createElement('span');
+        errSpan.textContent = error.message;
+        alertDiv.appendChild(errSpan);
         btn.parentNode.appendChild(alertDiv);
-
-        setTimeout(() => {
-            if (document.querySelector('#maintenance-result')) {
-                document.querySelector('#maintenance-result').remove();
-            }
-        }, 10000);
+        setTimeout(() => alertDiv.remove(), 10000);
     });
 }
 

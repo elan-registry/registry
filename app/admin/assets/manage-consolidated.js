@@ -1,4 +1,4 @@
-/* exported formatNumber, formatDate, prefersReducedMotion, initializeCarManagement, showNotification, switchToOwnerManagementTab, openAdminContactModal */
+/* exported formatNumber, formatDate, prefersReducedMotion, initializeCarManagement, showNotification, switchToOwnerManagementTab, openAdminContactModal, showConfirmDialog */
 /**
  * manage-consolidated.js
  * Consolidated Management Interface JavaScript
@@ -412,21 +412,28 @@ $(document).ready(function() {
      * Initialize all features
      */
     function initialize() {
-        try {
-            initializeTabNavigation();
-            initializeFormValidation();
-            initializeAutoResize();
-            initializeMobileNavigation();
-            initializeKeyboardNavigation();
-            initializeLazyLoading();
-            initializeErrorHandling();
-            initializeDevelopmentMode();
-            initializeCarManagement();
-
-            // Mark initialization complete
-            $('body').addClass('consolidated-interface-ready');
-        } catch (error) {
-            console.error('[ConsolidatedInterface] Initialization failed:', error);
+        let hasFailure = false;
+        [
+            initializeTabNavigation,
+            initializeFormValidation,
+            initializeAutoResize,
+            initializeMobileNavigation,
+            initializeKeyboardNavigation,
+            initializeLazyLoading,
+            initializeErrorHandling,
+            initializeDevelopmentMode,
+            initializeCarManagement,
+        ].forEach(function(fn) {
+            try {
+                fn();
+            } catch (error) {
+                hasFailure = true;
+                console.error('[ConsolidatedInterface] ' + fn.name + ' failed:', error);
+            }
+        });
+        $('body').addClass('consolidated-interface-ready');
+        if (hasFailure) {
+            showNotification('Some admin features may not be available. Reload the page or contact support if problems persist.', 'warning');
         }
     }
 
@@ -1414,4 +1421,64 @@ function openAdminContactModal(carData, ownerData, qualityIssue = '', targetEmai
 
     // Show the modal
     bootstrap.Modal.getOrCreateInstance(document.getElementById('adminContactModal')).show();
+}
+
+/**
+ * Show the shared #confirmationModal with the given title and plain-text message.
+ * @param {string} title - Dialog title (rendered as plain text)
+ * @param {string} message - Body text; \n renders as line break via pre-line styling
+ * @param {Function} onConfirm - Required. Called when the user clicks Confirm, or when
+ *   the native confirm() fallback is accepted (used when the modal element is absent).
+ */
+function showConfirmDialog(title, message, onConfirm) {
+    'use strict';
+    const modal = document.getElementById('confirmationModal');
+    if (!modal) {
+        console.error('[showConfirmDialog] #confirmationModal not found in DOM');
+        showNotification('Confirmation dialog unavailable. Using browser dialog.', 'warning');
+        if (onConfirm && confirm(message)) {
+            try { onConfirm(); } catch (err) { console.error('[showConfirmDialog] onConfirm threw in fallback:', err); }
+        }
+        return;
+    }
+
+    const titleEl = modal.querySelector('#confirmTitle');
+    const msgEl = modal.querySelector('#confirmMessage');
+    const confirmBtn = modal.querySelector('#confirmButton');
+    if (!titleEl || !msgEl || !confirmBtn) {
+        console.error('[showConfirmDialog] Modal inner elements missing');
+        showNotification('Confirmation dialog unavailable. Using browser dialog.', 'warning');
+        if (onConfirm && confirm(message)) {
+            try { onConfirm(); } catch (err) { console.error('[showConfirmDialog] onConfirm threw in fallback:', err); }
+        }
+        return;
+    }
+
+    titleEl.textContent = title;
+    msgEl.style.whiteSpace = 'pre-line';
+    msgEl.textContent = message;
+
+    const newBtn = confirmBtn.cloneNode(true);
+    confirmBtn.parentNode.replaceChild(newBtn, confirmBtn);
+
+    newBtn.addEventListener('click', function() {
+        this.disabled = true;
+        try {
+            bootstrap.Modal.getInstance(modal)?.hide();
+        } catch (err) {
+            console.error('[showConfirmDialog] Bootstrap modal hide failed:', err);
+            modal.style.display = 'none';
+            document.body.classList.remove('modal-open');
+        }
+        if (onConfirm) {
+            try {
+                onConfirm();
+            } catch (err) {
+                console.error('[showConfirmDialog] onConfirm threw:', err);
+                showNotification('An unexpected error occurred. Please try again.', 'danger');
+            }
+        }
+    });
+
+    bootstrap.Modal.getOrCreateInstance(modal).show();
 }
