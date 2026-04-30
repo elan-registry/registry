@@ -29,8 +29,11 @@ None.
   `php.lang.security.unlink-use.unlink-use` findings.
 
 - **confirm() → #confirmationModal** ([#571](https://github.com/unibrain1/elanregistry/issues/571)):
-  Three confirm() calls in tab-manage_cars.php and tab-system.php converted to the existing
-  confirmationModal pattern.
+  Car merge and schema maintenance confirm() calls converted to the shared Bootstrap
+  confirmationModal. `showConfirmDialog()` added to manage-consolidated.js (textContent-only,
+  XSS-safe). Modal HTML added to both admin pages; duplicate definition removed from
+  tab-system.php. Schema maintenance button now passes `this` explicitly instead of relying
+  on the global event object.
 - **alert() → showNotification()** ([#572](https://github.com/unibrain1/elanregistry/issues/572)):
   Six alert() calls in admin tabs converted to showNotification() from manage-consolidated.js;
   showNotification() hardened against XSS by escaping message before HTML interpolation.
