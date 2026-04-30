@@ -159,11 +159,6 @@ try {
                     <?php endif; ?>
                 </div>
 
-                <div class="mt-2">
-                    <button class="btn btn-sm btn-outline-info" onclick="viewOwnerCars(<?= $ownerId // nosemgrep: php.lang.security.taint-unsafe-echo-tag.taint-unsafe-echo-tag ?>)">
-                        <i class="fas fa-eye"></i> View All Cars
-                    </button>
-                </div>
             <?php else: ?>
                 <div class="text-muted text-center">
                     <i class="fas fa-car fa-2x mb-2"></i>
@@ -241,11 +236,6 @@ try {
 
     <script>
     // Quick action functions
-    function viewOwnerCars(ownerId) {
-        // See #786 — implement switchToOwnerManagementTab with car-mgmt filter
-        showNotification('Car management view will be available soon', 'info');
-    }
-
     function viewOwnerHistory(ownerId) {
         // See #787 — implement owner history view
         showNotification('Detailed history view will be available in a future update', 'info');

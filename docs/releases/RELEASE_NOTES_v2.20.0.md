@@ -21,6 +21,8 @@ None.
   "Estimated" badge shown next to backup health score when enhanced stats are unavailable.
 - **Removed unimplemented Owner Cleanup tab** ([#780](https://github.com/unibrain1/elanregistry/issues/780)):
   The Owner Cleanup tab has been removed from the Registry Management admin panel as it was never fully implemented.
+- **Removed stub 'View All Cars' button from owner sidebar** ([#786](https://github.com/unibrain1/elanregistry/issues/786)):
+  The 'View All Cars' button in the owner sidebar has been removed as the feature was not needed.
 
 ## Issues Resolved
 
@@ -34,3 +36,4 @@ None.
 - [#775](https://github.com/unibrain1/elanregistry/pull/775) — chore(deps): bump datatables.net and datatables.net-bs4
 - [#785](https://github.com/unibrain1/elanregistry/issues/785) — bug(admin): fabricated backup health score shown without caveat when enhanced stats fail
 - [#780](https://github.com/unibrain1/elanregistry/issues/780) — tech-debt: remove unimplemented Owner Cleanup tab from admin panel
+- [#786](https://github.com/unibrain1/elanregistry/issues/786) — Remove stub 'View All Cars' button from owner sidebar
