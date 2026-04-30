@@ -518,6 +518,7 @@ $line = 1; // Where messages go
                             // Remove 600px thumbnail if it exists
                             if (file_exists($old_600)) {
                                 $realOld600 = realpath($old_600);
+                                // Trailing '/' is intentional: prevents /path/cars/1 from matching /path/cars/10/file.jpg
                                 if ($realOld600 === false || $realCarImageDir === false || !str_starts_with($realOld600, $realCarImageDir . '/')) {
                                     outputMessage("    ⚠️  Path validation failed for: {$base_name}.{$extension} — skipping");
                                     logger($user->data()->id, LogCategories::LOG_CATEGORY_FIX_SCRIPT, "Path boundary check failed for thumbnail deletion: {$old_600}");

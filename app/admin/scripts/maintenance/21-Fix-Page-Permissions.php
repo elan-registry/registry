@@ -63,6 +63,8 @@ if (!$db) {
     die("Database connection failed");
 }
 
+$csrfToken = Token::generate();
+
 // Permission IDs
 define('PERM_USER', 1);
 define('PERM_ADMIN', 2);
@@ -281,6 +283,12 @@ function analyzePermissions($db): array {
 // Handle POST requests for AJAX - MUST be before any HTML output
 if ($method === 'POST' && isset($_POST['action'])) {
     header('Content-Type: application/json');
+
+    if (!isset($_POST['csrf']) || !Token::check($_POST['csrf'])) {
+        http_response_code(403);
+        echo json_encode(['success' => false, 'error' => 'Invalid security token']);
+        exit;
+    }
 
     if ($_POST['action'] === 'analyze') {
         // STEP 1: Analysis
@@ -562,6 +570,7 @@ require_once $abs_us_root . $us_url_root . 'users/includes/template/prep.php';
             <script>
                 let analysisData = null;
                 let processStarted = false;
+                const CSRF_TOKEN = '<?= htmlspecialchars($csrfToken, ENT_QUOTES, 'UTF-8') ?>';
 
                 function updateProgress(current, total, statusMessage) {
                     if (total === 0) return;
@@ -636,7 +645,7 @@ require_once $abs_us_root . $us_url_root . 'users/includes/template/prep.php';
                         headers: {
                             'Content-Type': 'application/x-www-form-urlencoded',
                         },
-                        body: 'action=analyze'
+                        body: 'action=analyze&csrf=' + encodeURIComponent(CSRF_TOKEN)
                     })
                     .then(response => response.json())
                     .then(data => {
@@ -800,7 +809,7 @@ require_once $abs_us_root . $us_url_root . 'users/includes/template/prep.php';
                         headers: {
                             'Content-Type': 'application/x-www-form-urlencoded',
                         },
-                        body: 'action=details'
+                        body: 'action=details&csrf=' + encodeURIComponent(CSRF_TOKEN)
                     })
                     .then(response => response.json())
                     .then(data => {

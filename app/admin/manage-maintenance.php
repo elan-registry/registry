@@ -163,7 +163,7 @@ try {
                             <div class="tab-content" id="managementTabContent">
 
                                 <?php
-                                $tabFile = 'includes/tab-' . str_replace('-', '_', $activeTab) . '.php';
+                                $tabFile = 'includes/tab-' . str_replace('-', '_', $activeTab) . '.php'; // $activeTab already whitelist-validated above
                                 $tabPath = __DIR__ . '/' . $tabFile;
 
                                 if (file_exists($tabPath)) {
