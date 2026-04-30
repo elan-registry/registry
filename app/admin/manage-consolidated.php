@@ -10,7 +10,6 @@ declare(strict_types=1);
  * TAB 1: Car/Owner Relationships - Car reassignment, deletion, and ownership transfers
  * TAB 2: Manage Cars - Individual car management and bulk operations
  * TAB 3: Manage Owners - User profile management and owner data administration
- * TAB 4: Owner Cleanup - User account cleanup information and spam management overview
  *
  * @author Elan Registry Development Team
  * @copyright 2025
@@ -43,7 +42,6 @@ $validTabs = [
     'car-mgmt' => 'Car/Owner Relationships',
     'manage-cars' => 'Manage Cars',
     'owner-mgmt' => 'Manage Owners',
-    'cleanup' => 'Owner Cleanup'
 ];
 
 $activeTab = isset($_GET['tab']) && array_key_exists($_GET['tab'], $validTabs) ? $_GET['tab'] : 'car-mgmt';
@@ -431,14 +429,6 @@ if (Input::exists('post')) {
                                         <?php if ($systemStatus['owner_issues'] > 0) { ?>
                                             <span class="badge text-bg-warning badge-sm ms-1"><?= $systemStatus['owner_issues'] ?></span>
                                         <?php } ?>
-                                    </a>
-                                </li>
-
-                                <!-- Owner Cleanup Tab -->
-                                <li class="nav-item">
-                                    <a class="nav-link <?= $activeTab === 'cleanup' ? 'active' : '' ?>"
-                                       href="?tab=cleanup" role="tab">
-                                        <i class="fas fa-shield-alt"></i> Owner Cleanup
                                     </a>
                                 </li>
 
