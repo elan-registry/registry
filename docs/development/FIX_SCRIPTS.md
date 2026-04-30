@@ -1,22 +1,37 @@
-# FIX Script Creation Guidelines
+# Admin Script Creation Guidelines
 
 This document provides comprehensive guidelines for creating database
-maintenance scripts (FIX scripts) for the Lotus Elan Registry.
+maintenance and one-time fix scripts for the Lotus Elan Registry.
 
 ## Overview
 
-FIX scripts are standardized database maintenance and data correction scripts
-that follow a consistent pattern for UI, error handling, and logging.
+Admin scripts are standardized PHP utilities used for database maintenance and
+data correction. They follow a consistent pattern for UI, error handling, and
+logging. As of the v2.20.0 restructuring, admin scripts live under
+`app/admin/scripts/` and are split into two categories by purpose:
 
-## When creating FIX scripts, ALWAYS use the standardized template
+- **`app/admin/scripts/fix/`** — One-time migration / fix scripts. Run once,
+  recorded in `fix_script_runs`, then archived to `_ARCHIVE/` when no longer
+  needed. Sequentially numbered (`##-Descriptive-Name.php`).
+- **`app/admin/scripts/maintenance/`** — Repeatable system maintenance scripts
+  that are safe to run multiple times (e.g., permission audits, thumbnail
+  regeneration, orphan cleanup). Sequentially numbered for consistent ordering
+  in the admin UI.
 
-1. **Use Template**: Start with `FIX/_TEMPLATE_Fix-Script.php`
+If the script runs once and is then done forever, it belongs in `fix/`. If the
+script can usefully be re-run as part of routine maintenance, it belongs in
+`maintenance/`.
+
+## When creating admin scripts, ALWAYS use the standardized template
+
+1. **Use Template**: Start with
+   `app/admin/scripts/fix/_TEMPLATE_Fix-Script.php`
 2. **Sequential Naming**: Use format `##-Descriptive-Name.php` (e.g.,
    `13-Fix-Something.php`)
 3. **UI Standards**: Maintain two-step process (description → start button →
    progress tracking)
-4. **Progress Tracking**: Use `outputMessage()` for progress updates and step
-   indicators
+4. **Progress Tracking**: Use `outputMessage()` / `logProgress()` for progress
+   updates and step indicators
 5. **Logging**: Use simple `INSERT INTO fix_script_runs (script_name) VALUES
    (?)` format
 6. **Database**: Always use proper transactions and error handling
@@ -34,13 +49,14 @@ The standardized template provides:
 
 ```php
 <?php
-// FIX/##-Descriptive-Name.php
+// app/admin/scripts/fix/##-Descriptive-Name.php
+//   (or app/admin/scripts/maintenance/##-Descriptive-Name.php)
 
-require_once '../users/init.php';
+require_once '../../../../users/init.php';
 require_once $abs_us_root.$us_url_root.'users/includes/template/prep.php';
 
 // Security check
-if (!securePage($_SERVER['PHP_SELF'])) {
+if (!securePage($php_self)) {
     die();
 }
 
@@ -95,7 +111,7 @@ if (Input::exists()) {
 2. **Always log errors** using the logger() function
 3. **Always validate CSRF tokens** for form submissions
 4. **Always provide clear progress updates** to users
-5. **Always include return navigation** to FIX index
+5. **Always include return navigation** to the admin maintenance page
 6. **Always log script execution** to fix_script_runs table
 
 ## Best Practices
@@ -109,10 +125,14 @@ if (Input::exists()) {
 - Use descriptive variable names
 - Follow established coding standards
 
-## Archiving Completed Scripts
+## Archiving Completed Fix Scripts
 
-When a FIX script has been successfully run on production and will never need to
-run again, move it to `FIX/_ARCHIVE/` and update the archive README.
+When a `fix/` script has been successfully run on production and will never
+need to run again, move it to `app/admin/scripts/fix/_ARCHIVE/` and update the
+archive README.
+
+Maintenance scripts under `maintenance/` are not archived — they are intended
+to be re-run, so they stay in place indefinitely.
 
 **Do not delete scripts immediately** — move them to `_ARCHIVE/` first so the
 git history and the README serve as an audit trail.
@@ -125,22 +145,23 @@ git history and the README serve as an audit trail.
 
 ### Archive process
 
-1. Move the script: `git mv FIX/##-Name.php FIX/_ARCHIVE/##-Name.php`
-2. Add an entry to `FIX/_ARCHIVE/README.md`:
+1. Move the script:
+   `git mv app/admin/scripts/fix/##-Name.php app/admin/scripts/fix/_ARCHIVE/##-Name.php`
+2. Add an entry to `app/admin/scripts/fix/_ARCHIVE/README.md`:
 
 ```markdown
 | `##-Name.php` | Brief description | What it did in one sentence |
 ```
 
-1. Commit with message: `chore: archive completed FIX script ##-Name`
+1. Commit with message: `chore: archive completed fix script ##-Name`
 
 ### Bulk cleanup
 
 When multiple archived scripts accumulate, they can be deleted in a single
 commit to reduce repository size. Before deleting:
 
-1. Ensure `FIX/_ARCHIVE/README.md` lists every script being removed with its
-   purpose — this is the permanent record.
+1. Ensure `app/admin/scripts/fix/_ARCHIVE/README.md` lists every script being
+   removed with its purpose — this is the permanent record.
 2. Include git recovery instructions in the README (see existing README for
    template).
 3. Commit the deletions and README update together.
@@ -150,13 +171,13 @@ commit to reduce repository size. Before deleting:
 To restore a deleted script from git history:
 
 ```bash
-git log --all --oneline -- FIX/_ARCHIVE/<filename>.php
-git show <commit>:FIX/_ARCHIVE/<filename>.php > recovered-script.php
+git log --all --oneline -- app/admin/scripts/fix/_ARCHIVE/<filename>.php
+git show <commit>:app/admin/scripts/fix/_ARCHIVE/<filename>.php > recovered-script.php
 ```
 
 ## See Also
 
-- `/FIX/_TEMPLATE_Fix-Script.php` - The standardized template
-- `/FIX/_ARCHIVE/README.md` - Record of all archived/deleted scripts
-- `/FIX/README.md` - FIX scripts directory documentation
+- `/app/admin/scripts/fix/_TEMPLATE_Fix-Script.php` - The standardized template
+- `/app/admin/scripts/fix/_ARCHIVE/README.md` - Record of all archived/deleted scripts
+- `/app/admin/scripts/fix/README.md` - Fix scripts directory documentation
 - [CODING_STANDARDS.md](CODING_STANDARDS.md) - Coding standards and conventions

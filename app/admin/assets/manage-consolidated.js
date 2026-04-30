@@ -95,7 +95,7 @@ $(document).ready(function() {
     }
 
     // Add loading states to external links
-    $('a[href*="manage.php"], a[href*="data-quality.php"], a[href*="/FIX/"]').on('click', function() {
+    $('a[href*="manage.php"], a[href*="data-quality.php"], a[href*="/scripts/fix/"], a[href*="/scripts/maintenance/"]').on('click', function() {
         const $link = $(this);
         if (!$link.hasClass('btn-sm')) {
             showLoadingState($link);

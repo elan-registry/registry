@@ -11,12 +11,12 @@ declare(strict_types=1);
  * [ADDITIONAL_NOTES]
  *
  * DEPLOYMENT INSTRUCTIONS:
- * 1. Copy this file to FIX/ directory with proper naming: ##-Descriptive-Name.php
+ * 1. Copy this file to app/admin/scripts/fix/ (one-time migrations) or app/admin/scripts/maintenance/ (repeatable tasks) with proper naming: ##-Descriptive-Name.php
  * 2. Replace all [PLACEHOLDERS] with appropriate content
- * 3. Scripts are accessed via FIX/index.php menu or direct URL
+ * 3. Scripts are accessed via manage-maintenance.php (Maintenance tab) or direct URL
  * 4. Use sequential numbering (01, 02, 03...) for proper execution order
  * 5. All scripts auto-log completion to fix_script_runs table
- * 6. See FIX/README.md for detailed instructions and best practices
+ * 6. See app/admin/scripts/fix/README.md for detailed instructions and best practices
  *
  * TEMPLATE FEATURES:
  * - Simple, reliable text-based progress output (no JavaScript complexity)
@@ -29,7 +29,7 @@ declare(strict_types=1);
 // UI Constants for progress output
 define('SECTION_SEPARATOR', '═══════════════════════════════════════════════════════');
 
-require_once '../users/init.php';
+require_once '../../../../users/init.php';
 require_once $abs_us_root . $us_url_root . 'users/includes/template/prep.php';
 
 // Optional: Include BackupManager if you need database backups
@@ -226,8 +226,8 @@ $db = DB::getInstance();
                     ?></pre>
 
                     <div class="text-center mt-3">
-                        <a href="index.php" class="btn btn-primary btn-lg">
-                            <i class="fa fa-arrow-left"></i> Return to FIX Menu
+                        <a href="../../manage-maintenance.php?tab=maintenance" class="btn btn-primary btn-lg">
+                            <i class="fa fa-arrow-left"></i> Return to Maintenance
                         </a>
                     </div>
                 </div>

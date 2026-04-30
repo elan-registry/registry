@@ -245,7 +245,7 @@ $autoCreationMessages = processSettingsAutoCreation();
             <!-- System Maintenance -->
             <div class="card border-secondary mb-4">
                 <div class="card-header bg-dark text-white">
-                    <h5 class="mb-0"><i class="fas fa-tools"></i> System Maintenance</h5>
+                    <h5 class="mb-0"><i class="fas fa-tools"></i> Backup Configuration</h5>
                     <small class="text-light">Backup and system maintenance settings</small>
                 </div>
                 <div class="card-body">

@@ -15,8 +15,8 @@ declare(strict_types=1);
  * - SPECIAL PRIVATE pages: PRIVATE with NO permissions (listed below)
  *
  * ADMIN-ONLY PAGES (will be set to private=1 with Admin+Editor permissions):
- * - FIX/* - All FIX maintenance scripts
- * - *admin* - Any path containing "admin" (includes app/admin/*, app/verify/*, etc.)
+ * - app/admin/scripts/* - All admin maintenance scripts
+ * - *admin* - Any path containing "admin" (includes app/admin/*, docs/admin/*, etc.)
  * - docs/*admin* - Admin documentation pages
  *
  * OWNER/USER PRIVATE PAGES (will be set to private=1 with User permission):
@@ -40,7 +40,7 @@ declare(strict_types=1);
  * - users/* - Core UserSpice framework files
  *
  * DEPLOYMENT INSTRUCTIONS:
- * 1. Access via FIX/index.php menu or direct URL
+ * 1. Access via app/admin/scripts/ menu or direct URL
  * 2. Script uses two-step confirmation for safety
  * 3. Automatic backup created before any changes
  * 4. All changes logged to UserSpice audit system
@@ -49,7 +49,7 @@ ini_set('display_errors', 1);
 ini_set('display_startup_errors', 1);
 error_reporting(E_ALL);
 
-require_once '../users/init.php';
+require_once '../../../../users/init.php';
 
 if (!securePage($php_self)) {
     die();
@@ -84,8 +84,8 @@ function shouldBePrivateNoPermissions($pagePath): bool {
  * Check if a page is ADMIN-ONLY (should have Admin+Editor permissions)
  */
 function shouldHaveAdminPermissions($pagePath): bool {
-    // FIX scripts are admin-only
-    if (strpos($pagePath, 'FIX/') === 0) {
+    // Admin scripts are admin-only
+    if (strpos($pagePath, 'app/admin/scripts/') === 0) {
         return true;
     }
 
@@ -118,7 +118,7 @@ function shouldBePrivate($pagePath): bool {
     }
 
     $patterns = [
-        '#^FIX/#',                           // FIX/* scripts
+        '#^app/admin/scripts/#',             // app/admin/scripts/* maintenance & fix scripts
         '#^app/admin/#',                     // app/admin/* pages
         '#admin#',                           // Any path containing "admin"
         '#^app/cars/actions#',               // app/cars/actions* endpoints
@@ -162,7 +162,6 @@ function analyzePermissions($db): array {
         LEFT JOIN permission_page_matches pm ON p.id = pm.page_id
         LEFT JOIN permissions pr ON pm.permission_id = pr.id
         WHERE p.page LIKE 'app/%'
-           OR p.page LIKE 'FIX/%'
            OR p.page LIKE 'usersc/%'
            OR p.page LIKE 'docs/%'
            OR p.page LIKE '40%.php'
@@ -173,6 +172,9 @@ function analyzePermissions($db): array {
     $pages = $db->query($query)->results();
 
     foreach ($pages as $page) {
+        if (str_contains($page->page, '_TEMPLATE_')) {
+            continue;
+        }
         $permIds = $page->perm_ids ? explode(',', $page->perm_ids) : [];
         $hasPerms = !empty($permIds);
         $hasAdmin = in_array(PERM_ADMIN, $permIds);
@@ -326,6 +328,7 @@ if ($method === 'POST' && isset($_POST['action'])) {
                 'issues' => $issues
             ]);
         } catch (Exception $e) {
+            logger($user->data()->id, LogCategories::LOG_CATEGORY_PERMISSION_FIX_ERROR, "Failed to get details: " . $e->getMessage());
             echo json_encode([
                 'success' => false,
                 'error' => 'Failed to get details: ' . $e->getMessage()
@@ -336,7 +339,7 @@ if ($method === 'POST' && isset($_POST['action'])) {
 }
 
 // Include standardized backup functions
-require_once 'backup-functions.php';
+require_once $abs_us_root . $us_url_root . 'usersc/includes/backup_functions.php';
 
 // Now load the template (this outputs HTML headers)
 require_once $abs_us_root . $us_url_root . 'users/includes/template/prep.php';
@@ -427,7 +430,7 @@ require_once $abs_us_root . $us_url_root . 'users/includes/template/prep.php';
                             <div class="alert alert-warning">
                                 <h5><i class="fa fa-exclamation-triangle"></i> PRIVATE Page Patterns (will be private=1 with Admin+Editor):</h5>
                                 <ul class="mb-0">
-                                    <li><strong>FIX/*</strong> - All FIX maintenance scripts</li>
+                                    <li><strong>app/admin/scripts/*</strong> - All admin maintenance scripts</li>
                                     <li><strong>app/admin/*</strong> - All admin pages</li>
                                     <li><strong>*admin*</strong> - Any path containing "admin"</li>
                                     <li><strong>app/cars/actions*</strong> - All car action endpoints</li>
@@ -593,7 +596,7 @@ require_once $abs_us_root . $us_url_root . 'users/includes/template/prep.php';
             ${stats}
         </div>
         <div class="text-center">
-            <button onclick="if(window.opener){window.opener.location.reload(); window.close();} else {window.location.href='index.php';}" class="btn btn-outline-primary">
+            <button onclick="if(window.opener){window.opener.location.reload(); window.close();} else {window.location.href='../../manage-maintenance.php?tab=maintenance';}" class="btn btn-outline-primary">
                 <i class="fa fa-arrow-left"></i> Return to FIX Menu
             </button>
         </div>
@@ -646,7 +649,7 @@ require_once $abs_us_root . $us_url_root . 'users/includes/template/prep.php';
                                     <p>${data.error}</p>
                                 </div>
                                 <div class="text-center">
-                                    <button onclick="window.location.href='index.php';" class="btn btn-primary">
+                                    <button onclick="window.location.href='../../manage-maintenance.php?tab=maintenance';" class="btn btn-primary">
                                         <i class="fa fa-arrow-left"></i> Return to FIX Menu
                                     </button>
                                 </div>
@@ -661,7 +664,7 @@ require_once $abs_us_root . $us_url_root . 'users/includes/template/prep.php';
                                     <p>All page permissions are correctly configured.</p>
                                 </div>
                                 <div class="text-center">
-                                    <button onclick="window.location.href='index.php';" class="btn btn-outline-primary">
+                                    <button onclick="window.location.href='../../manage-maintenance.php?tab=maintenance';" class="btn btn-outline-primary">
                                         <i class="fa fa-arrow-left"></i> Return to FIX Menu
                                     </button>
                                 </div>
@@ -808,7 +811,7 @@ require_once $abs_us_root . $us_url_root . 'users/includes/template/prep.php';
                             detailsHTML += `<h6 class="text-success">✅ Set to Public (${data.issues.set_public.length} pages):</h6>`;
                             detailsHTML += '<table class="table table-sm table-bordered permission-table mb-4"><thead><tr><th>Page</th><th>Current</th><th>Will Be</th></tr></thead><tbody>';
                             data.issues.set_public.forEach(issue => {
-                                detailsHTML += `<tr><td>${issue.page}</td><td><span class="badge badge-primary">PRIVATE</span></td><td><span class="badge badge-success">PUBLIC - No Permissions</span></td></tr>`;
+                                detailsHTML += `<tr><td>${issue.page}</td><td><span class="badge text-bg-primary">PRIVATE</span></td><td><span class="badge text-bg-success">PUBLIC - No Permissions</span></td></tr>`;
                             });
                             detailsHTML += '</tbody></table>';
                         }
@@ -827,7 +830,7 @@ require_once $abs_us_root . $us_url_root . 'users/includes/template/prep.php';
                             detailsHTML += `<h6 class="text-danger">⚠️ Set to Private - Admin (${data.issues.set_private_admin.length} pages):</h6>`;
                             detailsHTML += '<table class="table table-sm table-bordered permission-table mb-4"><thead><tr><th>Page</th><th>Current</th><th>Will Be</th></tr></thead><tbody>';
                             data.issues.set_private_admin.forEach(issue => {
-                                detailsHTML += `<tr><td>${formatPageName(issue)}</td><td><span class="badge badge-danger">PUBLIC</span></td><td><span class="badge badge-primary">PRIVATE - Administrator, Editor</span></td></tr>`;
+                                detailsHTML += `<tr><td>${formatPageName(issue)}</td><td><span class="badge text-bg-danger">PUBLIC</span></td><td><span class="badge text-bg-primary">PRIVATE - Administrator, Editor</span></td></tr>`;
                             });
                             detailsHTML += '</tbody></table>';
                         }
@@ -837,7 +840,7 @@ require_once $abs_us_root . $us_url_root . 'users/includes/template/prep.php';
                             detailsHTML += `<h6 class="text-danger">⚠️ Set to Private - Owner (${data.issues.set_private_user.length} pages):</h6>`;
                             detailsHTML += '<table class="table table-sm table-bordered permission-table mb-4"><thead><tr><th>Page</th><th>Current</th><th>Will Be</th></tr></thead><tbody>';
                             data.issues.set_private_user.forEach(issue => {
-                                detailsHTML += `<tr><td>${formatPageName(issue)}</td><td><span class="badge badge-danger">PUBLIC</span></td><td><span class="badge badge-primary">PRIVATE - User</span></td></tr>`;
+                                detailsHTML += `<tr><td>${formatPageName(issue)}</td><td><span class="badge text-bg-danger">PUBLIC</span></td><td><span class="badge text-bg-primary">PRIVATE - User</span></td></tr>`;
                             });
                             detailsHTML += '</tbody></table>';
                         }
@@ -847,7 +850,7 @@ require_once $abs_us_root . $us_url_root . 'users/includes/template/prep.php';
                             detailsHTML += `<h6 class="text-info">ℹ️ Set to Private, No Permissions (${data.issues.set_private_no_perms.length} pages):</h6>`;
                             detailsHTML += '<table class="table table-sm table-bordered permission-table mb-4"><thead><tr><th>Page</th><th>Current</th><th>Will Be</th></tr></thead><tbody>';
                             data.issues.set_private_no_perms.forEach(issue => {
-                                detailsHTML += `<tr><td>${formatPageName(issue)}</td><td><span class="badge badge-secondary">${issue.current}</span></td><td><span class="badge badge-info">PRIVATE - No Permissions</span></td></tr>`;
+                                detailsHTML += `<tr><td>${formatPageName(issue)}</td><td><span class="badge text-bg-secondary">${issue.current}</span></td><td><span class="badge text-bg-info">PRIVATE - No Permissions</span></td></tr>`;
                             });
                             detailsHTML += '</tbody></table>';
                         }
@@ -857,7 +860,7 @@ require_once $abs_us_root . $us_url_root . 'users/includes/template/prep.php';
                             detailsHTML += `<h6 class="text-warning">⚠️ Remove Permissions from Public Pages (${data.issues.remove_perms.length} pages):</h6>`;
                             detailsHTML += '<table class="table table-sm table-bordered permission-table mb-4"><thead><tr><th>Page</th><th>Current</th><th>Will Be</th></tr></thead><tbody>';
                             data.issues.remove_perms.forEach(issue => {
-                                detailsHTML += `<tr><td>${formatPageName(issue)}</td><td><span class="badge badge-secondary">${issue.perms}</span></td><td><span class="badge badge-success">PUBLIC - No Permissions</span></td></tr>`;
+                                detailsHTML += `<tr><td>${formatPageName(issue)}</td><td><span class="badge text-bg-secondary">${issue.perms}</span></td><td><span class="badge text-bg-success">PUBLIC - No Permissions</span></td></tr>`;
                             });
                             detailsHTML += '</tbody></table>';
                         }
@@ -867,7 +870,7 @@ require_once $abs_us_root . $us_url_root . 'users/includes/template/prep.php';
                             detailsHTML += `<h6 class="text-primary">ℹ️ Add Admin Permissions (${data.issues.add_perms_admin.length} pages):</h6>`;
                             detailsHTML += '<table class="table table-sm table-bordered permission-table mb-4"><thead><tr><th>Page</th><th>Current</th><th>Will Add</th></tr></thead><tbody>';
                             data.issues.add_perms_admin.forEach(issue => {
-                                detailsHTML += `<tr><td>${formatPageName(issue)}</td><td><span class="badge badge-secondary">${issue.current}</span></td><td><span class="badge badge-primary">${issue.missing}</span></td></tr>`;
+                                detailsHTML += `<tr><td>${formatPageName(issue)}</td><td><span class="badge text-bg-secondary">${issue.current}</span></td><td><span class="badge text-bg-primary">${issue.missing}</span></td></tr>`;
                             });
                             detailsHTML += '</tbody></table>';
                         }
@@ -877,7 +880,7 @@ require_once $abs_us_root . $us_url_root . 'users/includes/template/prep.php';
                             detailsHTML += `<h6 class="text-primary">ℹ️ Add Owner Permissions (${data.issues.add_perms_user.length} pages):</h6>`;
                             detailsHTML += '<table class="table table-sm table-bordered permission-table mb-4"><thead><tr><th>Page</th><th>Current</th><th>Will Add</th></tr></thead><tbody>';
                             data.issues.add_perms_user.forEach(issue => {
-                                detailsHTML += `<tr><td>${formatPageName(issue)}</td><td><span class="badge badge-secondary">${issue.current}</span></td><td><span class="badge badge-success">${issue.required}</span></td></tr>`;
+                                detailsHTML += `<tr><td>${formatPageName(issue)}</td><td><span class="badge text-bg-secondary">${issue.current}</span></td><td><span class="badge text-bg-success">${issue.required}</span></td></tr>`;
                             });
                             detailsHTML += '</tbody></table>';
                         }
@@ -936,7 +939,7 @@ require_once $abs_us_root . $us_url_root . 'users/includes/template/prep.php';
 
 function abortProcess() {
                     if (confirm('Are you sure you want to abort? No changes will be made.')) {
-                        window.location.href = 'index.php';
+                        window.location.href = '../../manage-maintenance.php?tab=maintenance';
                     }
                 }
             </script>
@@ -1310,10 +1313,10 @@ function abortProcess() {
 
 <!-- Return buttons -->
 <div style="margin-top: 20px; text-align: center;">
-    <button onclick="if(window.opener){window.opener.location.reload(); window.close();} else {window.location.href='../app/admin/manage-consolidated.php?tab=system';}" class="btn btn-outline-primary">
+    <button onclick="if(window.opener){window.opener.location.reload(); window.close();} else {window.location.href='../../manage-maintenance.php?tab=maintenance';}" class="btn btn-outline-primary">
         <i class="fa fa-arrow-left" aria-hidden="true"></i> Return to Admin Console
     </button>
-    <button onclick="window.location.href='index.php';" class="btn btn-outline-secondary ml-2">
+    <button onclick="window.location.href='../../manage-maintenance.php?tab=maintenance';" class="btn btn-outline-secondary ml-2">
         <i class="fa fa-list" aria-hidden="true"></i> FIX Menu
     </button>
 </div>
