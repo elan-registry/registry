@@ -48,7 +48,7 @@ public function createSchemaBackup(string $operation, array $tables = []): strin
 ```php
 $backupManager = new BackupManager(
     $db,
-    $abs_us_root . $us_url_root . 'FIX/backups/'
+    $abs_us_root . $us_url_root . 'app/admin/scripts/fix/backups/'
 );
 $backupPath = $backupManager->createSchemaBackup(
     'Update User Permissions',
@@ -83,7 +83,7 @@ public function createManualBackup(
 **Example**:
 
 ```php
-$backupManager = new BackupManager($db, $abs_us_root . $us_url_root . 'FIX/backups/');
+$backupManager = new BackupManager($db, $abs_us_root . $us_url_root . 'app/admin/scripts/fix/backups/');
 $backupPath = $backupManager->createManualBackup(
     'Pre-Migration Backup',
     ['users', 'cars', 'profiles'],
@@ -110,7 +110,7 @@ public function performEnhancedCleanup(): array
 **Example**:
 
 ```php
-$backupManager = new BackupManager($db, $abs_us_root . $us_url_root . 'FIX/backups/');
+$backupManager = new BackupManager($db, $abs_us_root . $us_url_root . 'app/admin/scripts/fix/backups/');
 $results = $backupManager->performEnhancedCleanup();
 echo "Deleted {$results['automated']['deleted']} automated backups\n";
 echo "Health improved by {$results['health_improvement']} points\n";
@@ -136,7 +136,7 @@ public function getEnhancedBackupStatistics(): array
 **Example**:
 
 ```php
-$backupManager = new BackupManager($db, $abs_us_root . $us_url_root . 'FIX/backups/');
+$backupManager = new BackupManager($db, $abs_us_root . $us_url_root . 'app/admin/scripts/fix/backups/');
 $stats = $backupManager->getEnhancedBackupStatistics();
 
 echo "Health Score: {$stats['health_score']}/100\n";
@@ -170,7 +170,7 @@ public function verifyBackupIntegrity(string $backupPath): array
 **Example**:
 
 ```php
-$backupManager = new BackupManager($db, $abs_us_root . $us_url_root . 'FIX/backups/');
+$backupManager = new BackupManager($db, $abs_us_root . $us_url_root . 'app/admin/scripts/fix/backups/');
 $integrity = $backupManager->verifyBackupIntegrity($backupPath);
 
 if ($integrity['valid']) {
@@ -206,7 +206,7 @@ rollback_user-permissions-fix_development_20251217_163045.sql
 ## Directory Structure
 
 ```text
-FIX/backups/
+app/admin/scripts/fix/backups/
 ├── automated/      # Automated backups (schema operations)
 ├── manual/         # Manual on-demand backups
 └── rollback/       # Backups specifically for rollback purposes
@@ -281,7 +281,7 @@ $backupPath = createStandardizedBackup(
 // FIX script using BackupManager class
 require_once $abs_us_root . $us_url_root . 'app/admin/includes/classes/BackupManager.php';
 
-$backupDir = $abs_us_root . $us_url_root . 'FIX/backups/';
+$backupDir = $abs_us_root . $us_url_root . 'app/admin/scripts/fix/backups/';
 $backupManager = new BackupManager($db, $backupDir);
 
 $backupPath = $backupManager->createSchemaBackup('my-fix-script', ['users', 'permissions']);
@@ -318,7 +318,7 @@ backward compatibility.
 // Create comprehensive backup before database migration
 $backupManager = new BackupManager(
     $db,
-    $abs_us_root . $us_url_root . 'FIX/backups/'
+    $abs_us_root . $us_url_root . 'app/admin/scripts/fix/backups/'
 );
 
 $allTables = [
@@ -343,7 +343,7 @@ echo "Backup created: " . basename($backupPath) . "\n";
 // In admin panel code
 $backupManager = new BackupManager(
     $db,
-    $abs_us_root . $us_url_root . 'FIX/backups/',
+    $abs_us_root . $us_url_root . 'app/admin/scripts/fix/backups/',
     $user->data()->id
 );
 
@@ -371,7 +371,7 @@ echo "</div>";
 // Run cleanup via cron or admin action
 $backupManager = new BackupManager(
     $db,
-    $abs_us_root . $us_url_root . 'FIX/backups/'
+    $abs_us_root . $us_url_root . 'app/admin/scripts/fix/backups/'
 );
 
 $beforeStats = $backupManager->getEnhancedBackupStatistics();
@@ -410,13 +410,13 @@ The backup system calculates a health score (0-100) based on:
 
 **Problem**: `Failed to create backup directory`
 
-**Solution**: Check directory permissions. Ensure the web server can write to `FIX/backups/`:
+**Solution**: Check directory permissions. Ensure the web server can write to `app/admin/scripts/fix/backups/`:
 
 ```bash
-chmod 755 FIX/backups/
-chmod 755 FIX/backups/automated/
-chmod 755 FIX/backups/manual/
-chmod 755 FIX/backups/rollback/
+chmod 755 app/admin/scripts/fix/backups/
+chmod 755 app/admin/scripts/fix/backups/automated/
+chmod 755 app/admin/scripts/fix/backups/manual/
+chmod 755 app/admin/scripts/fix/backups/rollback/
 ```
 
 ### Backup File Empty

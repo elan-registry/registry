@@ -603,7 +603,8 @@ Use structured TODO/FIXME comments:
   /unit/                       # PHPUnit tests
   /playwright/                 # Browser tests
 
-/FIX/                          # Administrative maintenance scripts
+/app/admin/scripts/fix/        # One-time admin migration / fix scripts
+/app/admin/scripts/maintenance/  # Repeatable system maintenance scripts
 
 ```text
 

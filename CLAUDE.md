@@ -49,7 +49,9 @@ edge caching and CDN for global users (US, EU, AU).
 
 - **Page Security**: All protected pages require `securePage($php_self)` check.
   See [GitHub Wiki: UserSpice Integration Guide](https://github.com/unibrain1/elanregistry/wiki/Customization-and-Integration-Patterns).
-- **New PHP Directories**: Update `$path` array in `/z_us_root.php`
+- **New PHP Directories**: Update `$path` array in `/z_us_root.php`. New
+  admin scripts go under `app/admin/scripts/fix/` (one-time migrations) or
+  `app/admin/scripts/maintenance/` (repeatable maintenance).
 - **Database**: MySQL 8.0+ with audit trails via triggers.
   See [DATABASE.md](docs/development/DATABASE.md).
 - **Classes**: See [CLASSES.md](docs/development/CLASSES.md) for Car,

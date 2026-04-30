@@ -1,0 +1,7 @@
+# Prevent directory listing
+Options -Indexes
+
+# Block direct access to non-PHP files (README, docs, etc.)
+<FilesMatch "\.(md|txt|sql|bak|log)$">
+    Require all denied
+</FilesMatch>

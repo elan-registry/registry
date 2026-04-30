@@ -184,7 +184,7 @@ data for verification and potential updates.
 - `idx_series_normalized` (series_normalized) - Filtering by normalized series
 - `idx_type_code` (type_code) - Filtering by Lotus type code
 
-**Populated By**: FIX script `FIX/26-Load-Car-Models.php`
+**Populated By**: Fix script `app/admin/scripts/fix/26-Load-Car-Models.php`
 
 **Accessed Via**: `ElanRegistry\Reference\CarModel` class
 
@@ -284,7 +284,7 @@ ID.
 3. Transfer car ownership to `noowner` user (preserves registry data)
 4. All changes automatically logged via database triggers
 
-**Maintenance Utilities** (`/FIX/02-Cleanup-Orphaned-Profiles.php`):
+**Maintenance Utilities** (`/app/admin/scripts/fix/02-Cleanup-Orphaned-Profiles.php`):
 
 - Cleanup orphaned profiles and relationships
 - Reassign ownerless cars to `noowner`

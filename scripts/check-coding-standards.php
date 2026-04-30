@@ -81,7 +81,7 @@ class CodingStandardsChecker
                 if (strpos($path, '/vendor/') !== false ||
                     strpos($path, '/node_modules/') !== false ||
                     strpos($path, '/usersc/plugins/') !== false ||
-                    strpos($path, '/FIX/_ARCHIVE/') !== false ||
+                    strpos($path, '/scripts/fix/_ARCHIVE/') !== false ||
                     strpos($path, '/tests/') !== false ||
                     strpos($path, '/.git/') !== false) {
                     continue;

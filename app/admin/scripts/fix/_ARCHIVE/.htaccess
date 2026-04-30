@@ -1,0 +1,7 @@
+# Prevent directory listing
+Options -Indexes
+
+# Block all PHP scripts in the archive — these are historical and should not be executed
+<FilesMatch "\.php$">
+    Require all denied
+</FilesMatch>

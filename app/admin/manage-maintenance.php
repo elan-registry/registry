@@ -9,8 +9,9 @@ declare(strict_types=1);
  * registry-wide configuration. Split out from manage-consolidated.php to
  * separate operational maintenance from day-to-day car/owner administration.
  *
- * TAB 1: System Maintenance - Database maintenance, FIX scripts, backups
- * TAB 2: Settings - ElanRegistry configuration (Google APIs, CDNs, media, email)
+ * TAB 1: Health - Read-only system health monitoring
+ * TAB 2: Maintenance - Backups, one-time migrations, recurring maintenance tasks
+ * TAB 3: Configuration - ElanRegistry settings (Google APIs, CDNs, media, email)
  *
  * Access control is enforced by PageManager (admin-only). All state-changing
  * operations on this page are performed via AJAX endpoints
@@ -46,11 +47,12 @@ try {
 }
 
 $validTabs = [
-    'system' => 'System Maintenance',
-    'settings' => 'Settings'
+    'health'      => 'Health',
+    'maintenance' => 'Maintenance',
+    'settings'    => 'Configuration',
 ];
 
-$activeTab = isset($_GET['tab']) && array_key_exists($_GET['tab'], $validTabs) ? $_GET['tab'] : 'system';
+$activeTab = isset($_GET['tab']) && array_key_exists($_GET['tab'], $validTabs) ? $_GET['tab'] : 'health';
 $pageTitle = 'Registry Maintenance - ' . $validTabs[$activeTab];
 
 // Generate CSRF token for AJAX requests
@@ -129,19 +131,27 @@ try {
                         <div class="card-header p-0">
                             <ul class="nav nav-tabs card-header-tabs" id="managementTabs" role="tablist">
 
-                                <!-- System Maintenance Tab -->
+                                <!-- Health Tab -->
                                 <li class="nav-item">
-                                    <a class="nav-link <?= $activeTab === 'system' ? 'active' : '' ?>"
-                                       href="?tab=system" role="tab">
-                                        <i class="fas fa-tools"></i> System Maintenance
+                                    <a class="nav-link <?= $activeTab === 'health' ? 'active' : '' ?>"
+                                       href="?tab=health" role="tab">
+                                        <i class="fas fa-heartbeat"></i> Health
                                     </a>
                                 </li>
 
-                                <!-- Settings Tab -->
+                                <!-- Maintenance Tab -->
+                                <li class="nav-item">
+                                    <a class="nav-link <?= $activeTab === 'maintenance' ? 'active' : '' ?>"
+                                       href="?tab=maintenance" role="tab">
+                                        <i class="fas fa-tools"></i> Maintenance
+                                    </a>
+                                </li>
+
+                                <!-- Configuration Tab -->
                                 <li class="nav-item">
                                     <a class="nav-link <?= $activeTab === 'settings' ? 'active' : '' ?>"
                                        href="?tab=settings" role="tab">
-                                        <i class="fas fa-cog"></i> Settings
+                                        <i class="fas fa-cog"></i> Configuration
                                     </a>
                                 </li>
 
@@ -153,7 +163,7 @@ try {
                             <div class="tab-content" id="managementTabContent">
 
                                 <?php
-                                $tabFile = 'includes/tab-' . str_replace('-', '_', $activeTab) . '.php';
+                                $tabFile = 'includes/tab-' . str_replace('-', '_', $activeTab) . '.php'; // $activeTab already whitelist-validated above
                                 $tabPath = __DIR__ . '/' . $tabFile;
 
                                 if (file_exists($tabPath)) {
