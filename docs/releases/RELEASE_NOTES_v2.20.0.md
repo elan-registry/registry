@@ -38,14 +38,6 @@ None.
   The unimplemented 'View All Cars', 'View Full History', and 'Send Email' buttons have been
   removed from the owner sidebar.
 
-## Technical Changes
-
-- **`getBaseUrl()` fallback logging** ([#641](https://github.com/unibrain1/elanregistry/issues/641)):
-  Warning logged when `getBaseUrl()` falls back to the hardcoded production URL on database
-  failure, surfacing silent misconfiguration.
-- **DataTables dependency update** ([#775](https://github.com/unibrain1/elanregistry/pull/775)):
-  `datatables.net` and `datatables.net-bs4` bumped to latest versions.
-
 ## Issues Resolved
 
 - [#571](https://github.com/unibrain1/elanregistry/issues/571) — Convert native confirm() dialogs to app modal for destructive actions
