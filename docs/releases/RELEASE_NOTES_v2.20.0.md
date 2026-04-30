@@ -43,6 +43,15 @@ None.
   ([#775](https://github.com/unibrain1/elanregistry/pull/775)):
   Bumps datatables.net and datatables.net-bs4 to 1.13.11 (security fix).
 
+- **Admin script infrastructure: fix/ and maintenance/ directories** ([#595](https://github.com/unibrain1/elanregistry/issues/595)):
+  Replaced the developer-facing `/FIX/` directory with `app/admin/scripts/fix/` (one-time
+  migrations) and `app/admin/scripts/maintenance/` (repeatable admin utilities). Both
+  directories are registered in `z_us_root.php`, protected by `.htaccess`, and surfaced in
+  `manage-maintenance.php` with a three-tab UI (Health, Maintenance, Configuration) featuring
+  risk-based color coding, batch script-run status queries, and hidden-by-default completed
+  migrations. Scripts 21 (Fix Page Permissions) and 24 (Regenerate Thumbnails) promoted to
+  the maintenance directory with CSRF protection and security hardening.
+
 - **Split manage-consolidated into car management and system maintenance** ([#610](https://github.com/unibrain1/elanregistry/issues/610)):
   `manage-consolidated.php` now handles car/owner management (Admins and Editors);
   new `manage-maintenance.php` handles system maintenance and settings tabs (Admin only).
@@ -63,6 +72,8 @@ None.
   Convert validation alert() dialogs to app notification system
 - [#573](https://github.com/unibrain1/elanregistry/issues/573) —
   Convert remaining native dialogs and improve error messaging
+- [#595](https://github.com/unibrain1/elanregistry/issues/595) —
+  Promote FIX scripts to admin management tools; restructure into fix/ and maintenance/ directories
 - [#610](https://github.com/unibrain1/elanregistry/issues/610) —
   Separate system maintenance functionality from car management; enforce admin-only access via PageManager
 - [#634](https://github.com/unibrain1/elanregistry/issues/634) —
@@ -74,8 +85,9 @@ None.
 
 ## Summary
 
-6 issues and 1 dependency update resolved; replaces all native browser dialogs across the
+7 issues and 1 dependency update resolved; replaces all native browser dialogs across the
 admin interface with Bootstrap 5 modals and the app notification system, refactors admin
 pages to separate system maintenance from car management with role-based access control,
-updates datatables.net to 1.13.11, hardens file deletion with path boundary guards, and
-improves environment misconfiguration visibility in email URL generation.
+restructures developer FIX scripts into a proper admin maintenance UI, updates datatables.net
+to 1.13.11, hardens file deletion with path boundary guards, and improves environment
+misconfiguration visibility in email URL generation.
