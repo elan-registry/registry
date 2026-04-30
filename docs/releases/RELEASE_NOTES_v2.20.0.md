@@ -21,8 +21,12 @@ None.
   "Estimated" badge shown next to backup health score when enhanced stats are unavailable.
 - **Removed unimplemented Owner Cleanup tab** ([#780](https://github.com/unibrain1/elanregistry/issues/780)):
   The Owner Cleanup tab has been removed from the Registry Management admin panel as it was never fully implemented.
-- **Removed stub 'View All Cars' button from owner sidebar** ([#786](https://github.com/unibrain1/elanregistry/issues/786)):
-  The 'View All Cars' button in the owner sidebar has been removed as the feature was not needed.
+- **Removed stub buttons from owner sidebar**
+  ([#786](https://github.com/unibrain1/elanregistry/issues/786),
+  [#787](https://github.com/unibrain1/elanregistry/issues/787),
+  [#788](https://github.com/unibrain1/elanregistry/issues/788)):
+  The unimplemented 'View All Cars', 'View Full History', and 'Send Email' buttons have been
+  removed from the owner sidebar.
 
 ## Issues Resolved
 
@@ -37,3 +41,5 @@ None.
 - [#785](https://github.com/unibrain1/elanregistry/issues/785) — bug(admin): fabricated backup health score shown without caveat when enhanced stats fail
 - [#780](https://github.com/unibrain1/elanregistry/issues/780) — tech-debt: remove unimplemented Owner Cleanup tab from admin panel
 - [#786](https://github.com/unibrain1/elanregistry/issues/786) — Remove stub 'View All Cars' button from owner sidebar
+- [#787](https://github.com/unibrain1/elanregistry/issues/787) — Remove stub 'View Full History' button from owner sidebar
+- [#788](https://github.com/unibrain1/elanregistry/issues/788) — Remove stub 'Send Email' button from owner sidebar

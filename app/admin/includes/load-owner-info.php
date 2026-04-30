@@ -199,13 +199,6 @@ try {
                     <?php endforeach; ?>
                 </div>
 
-                <?php if ($historyCount > 3): ?>
-                    <div class="mt-2">
-                        <button class="btn btn-sm btn-outline-secondary" onclick="viewOwnerHistory(<?= $ownerId // nosemgrep: php.lang.security.taint-unsafe-echo-tag.taint-unsafe-echo-tag ?>)">
-                            <i class="fas fa-history"></i> View Full History
-                        </button>
-                    </div>
-                <?php endif; ?>
             </div>
         </div>
     <?php endif; ?>
@@ -219,9 +212,6 @@ try {
         </div>
         <div class="card-body">
             <div class="d-grid gap-2">
-                <button class="btn btn-sm btn-outline-primary" onclick="contactOwner(<?= $ownerId // nosemgrep: php.lang.security.taint-unsafe-echo-tag.taint-unsafe-echo-tag ?>)">
-                    <i class="fas fa-envelope"></i> Send Email
-                </button>
                 <?php if ($carCount > 0): ?>
                     <button class="btn btn-sm btn-outline-success" onclick="syncLocationToCars(<?= $ownerId // nosemgrep: php.lang.security.taint-unsafe-echo-tag.taint-unsafe-echo-tag ?>)">
                         <i class="fas fa-sync"></i> Sync Location to Cars
@@ -234,18 +224,6 @@ try {
         </div>
     </div>
 
-    <script>
-    // Quick action functions
-    function viewOwnerHistory(ownerId) {
-        // See #787 — implement owner history view
-        showNotification('Detailed history view will be available in a future update', 'info');
-    }
-
-    function contactOwner(ownerId) {
-        // See #788 — wire to openAdminContactModal() with owner context
-        showNotification('Owner contact functionality will be integrated with the existing contact system', 'info');
-    }
-    </script>
 
     <?php
 
