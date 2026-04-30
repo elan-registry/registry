@@ -70,9 +70,6 @@ try {
             $filesize = filesize($backupPath);
             $sizeFormatted = formatBytes($filesize);
 
-            // Log successful backup
-            logger($user->data()->id, LogCategories::LOG_CATEGORY_BACKUP_MANAGER, "Manual backup completed: {$filename} ({$sizeFormatted})");
-
             ApiResponse::success('Backup created successfully')
                 ->withDataArray([
                     'filename' => $filename,
@@ -214,9 +211,6 @@ try {
                            $cleanupResult['manual']['deleted'] +
                            $cleanupResult['rollback']['deleted'];
 
-            // Log cleanup results
-            logger($user->data()->id, LogCategories::LOG_CATEGORY_BACKUP_MANAGER, "Backup cleanup completed: {$totalDeleted} of {$totalScanned} files deleted (Automated: {$cleanupResult['automated']['deleted']}, Manual: {$cleanupResult['manual']['deleted']}, Rollback: {$cleanupResult['rollback']['deleted']})");
-
             ApiResponse::success("Cleanup completed: {$totalDeleted} of {$totalScanned} files deleted")
                 ->withDataArray([
                     'cleanup' => $cleanupResult,
@@ -327,7 +321,7 @@ try {
  * @param int $bytes
  * @return string
  */
-function formatBytes($bytes): string {
+function formatBytes(int $bytes): string {
     $units = ['B', 'KB', 'MB', 'GB'];
     $bytes = max($bytes, 0);
     $pow = floor(($bytes ? log($bytes) : 0) / log(1024));

@@ -18,7 +18,7 @@ class BackupManager {
     private string $backupBaseDir;
 
     // Enhanced retention policies
-    private $retentionPolicies = [
+    private array $retentionPolicies = [
         'automated' => [
             'production' => 30,     // 30 days
             'development' => 7      // 7 days
@@ -76,12 +76,12 @@ class BackupManager {
             $scriptName = 'schema-' . strtolower(str_replace([' ', '_'], '-', $operation));
             $backupPath = $this->createStandardizedBackup($scriptName, $tables, 'automated', 'development');
 
-            ($this->logger)(1, 'BackupManager', "Schema backup created for operation '{$operation}': {$backupPath}");
+            ($this->logger)(1, LogCategories::LOG_CATEGORY_BACKUP_MANAGER, "Schema backup created for operation '{$operation}': {$backupPath}");
 
             return $backupPath;
 
         } catch (BackupException $e) {
-            ($this->logger)(1, 'BackupError', "Schema backup failed for operation '{$operation}': " . $e->getMessage());
+            ($this->logger)(1, LogCategories::LOG_CATEGORY_BACKUP_ERROR, "Schema backup failed for operation '{$operation}': " . $e->getMessage());
             throw $e;
         }
     }
@@ -111,12 +111,12 @@ class BackupManager {
                 $logMessage .= ' | Metadata: ' . json_encode($metadata);
             }
 
-            ($this->logger)(1, 'BackupManager', $logMessage);
+            ($this->logger)(1, LogCategories::LOG_CATEGORY_BACKUP_MANAGER, $logMessage);
 
             return $backupPath;
 
         } catch (BackupException $e) {
-            ($this->logger)(1, 'BackupError', "Manual backup failed for '{$reason}': " . $e->getMessage());
+            ($this->logger)(1, LogCategories::LOG_CATEGORY_BACKUP_ERROR, "Manual backup failed for '{$reason}': " . $e->getMessage());
             throw $e;
         }
     }
@@ -145,7 +145,7 @@ class BackupManager {
             return $stats;
 
         } catch (BackupException $e) {
-            ($this->logger)(1, 'BackupError', 'Failed to get enhanced backup statistics: ' . $e->getMessage());
+            ($this->logger)(1, LogCategories::LOG_CATEGORY_BACKUP_ERROR, 'Failed to get enhanced backup statistics: ' . $e->getMessage());
             throw $e;
         }
     }
@@ -364,12 +364,12 @@ class BackupManager {
             $result['health_score_after'] = $afterStats['health_score'];
             $result['health_improvement'] = $afterStats['health_score'] - $beforeStats['health_score'];
 
-            ($this->logger)(1, 'BackupManager', 'Enhanced cleanup completed - Health score improved by ' . $result['health_improvement'] . ' points');
+            ($this->logger)(1, LogCategories::LOG_CATEGORY_BACKUP_MANAGER, 'Enhanced cleanup completed - Health score improved by ' . $result['health_improvement'] . ' points');
 
             return $result;
 
         } catch (BackupException $e) {
-            ($this->logger)(1, 'BackupError', 'Enhanced cleanup failed: ' . $e->getMessage());
+            ($this->logger)(1, LogCategories::LOG_CATEGORY_BACKUP_ERROR, 'Enhanced cleanup failed: ' . $e->getMessage());
             throw $e;
         }
     }
@@ -563,7 +563,7 @@ class BackupManager {
 
         } catch (BackupException $e) {
             $errorMsg = "Error backing up table {$tableName}: " . $e->getMessage();
-            ($this->logger)(1, 'BackupError', $errorMsg);
+            ($this->logger)(1, LogCategories::LOG_CATEGORY_BACKUP_ERROR, $errorMsg);
 
             // Re-throw critical errors, return warning comment for non-critical
             if (strpos($e->getMessage(), 'Invalid table name') !== false) {

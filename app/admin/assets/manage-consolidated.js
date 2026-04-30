@@ -1386,20 +1386,18 @@ function switchToOwnerManagementTab(userId) {
  * Function to open admin contact modal for owner communication
  */
 function openAdminContactModal(carData, ownerData, qualityIssue = '', targetEmail = '') {
-    // Populate car information
-    document.getElementById('contactCarInfo').innerHTML = `
-        <div><strong>Car ID:</strong> ${carData.id}</div>
-        <div><strong>Year/Model:</strong> ${carData.year || 'N/A'} ${carData.model || 'N/A'}</div>
-        <div><strong>Chassis:</strong> ${carData.chassis || 'Missing'}</div>
-        <div><strong>Series:</strong> ${carData.series || 'Missing'}</div>
-    `;
+    document.getElementById('contactCarInfo').innerHTML = [
+        `<div><strong>Car ID:</strong> ${escapeHtml(String(carData.id ?? ''))}</div>`,
+        `<div><strong>Year/Model:</strong> ${escapeHtml(carData.year || 'N/A')} ${escapeHtml(carData.model || 'N/A')}</div>`,
+        `<div><strong>Chassis:</strong> ${escapeHtml(carData.chassis || 'Missing')}</div>`,
+        `<div><strong>Series:</strong> ${escapeHtml(carData.series || 'Missing')}</div>`,
+    ].join('');
 
-    // Populate owner information
-    document.getElementById('contactOwnerInfo').innerHTML = `
-        <div><strong>Name:</strong> ${ownerData.name || 'Unknown'}</div>
-        <div><strong>Email:</strong> ${ownerData.email || 'Unknown'}</div>
-        <div><strong>User ID:</strong> ${ownerData.id || 'Unknown'}</div>
-    `;
+    document.getElementById('contactOwnerInfo').innerHTML = [
+        `<div><strong>Name:</strong> ${escapeHtml(ownerData.name || 'Unknown')}</div>`,
+        `<div><strong>Email:</strong> ${escapeHtml(ownerData.email || 'Unknown')}</div>`,
+        `<div><strong>User ID:</strong> ${escapeHtml(String(ownerData.id ?? 'Unknown'))}</div>`,
+    ].join('');
 
     // Set hidden field values
     document.getElementById('contactCarId').value = carData.id;

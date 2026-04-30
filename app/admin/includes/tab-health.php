@@ -44,8 +44,8 @@ if (!empty($fixScripts)) {
         foreach ($runs as $row) {
             $scriptRunStatus[$row->script_name] = ['has_run' => true, 'last_run' => $row->last_run];
         }
-    } catch (AdminOperationException $e) {
-        logger($user->data()->id, $e->getLogCategory(), 'Failed to batch-check script run status: ' . $e->getMessage());
+    } catch (\Exception $e) {
+        logger($user->data()->id, LogCategories::LOG_CATEGORY_DATABASE_MAINTENANCE, 'Failed to batch-check script run status: ' . $e->getMessage());
     }
 }
 

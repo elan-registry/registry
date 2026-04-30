@@ -579,6 +579,12 @@ require_once $abs_us_root . $us_url_root . 'users/includes/template/prep.php';
                 let processStarted = false;
                 const CSRF_TOKEN = '<?= htmlspecialchars($csrfToken, ENT_QUOTES, 'UTF-8') ?>';
 
+                function escapeHtml(s) {
+                    if (s == null) return '';
+                    return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;')
+                        .replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#039;');
+                }
+
                 function updateProgress(current, total, statusMessage) {
                     if (total === 0) return;
 
@@ -591,11 +597,11 @@ require_once $abs_us_root . $us_url_root . 'users/includes/template/prep.php';
 
                     if (statusMessage) {
                         const statusElement = document.getElementById('currentStatus');
-                        const statusIcon = percentage >= 100 ?
-                            '<i class="fa fa-check-circle text-success"></i>' :
-                            '<i class="fa fa-cog fa-spin"></i>';
-
-                        statusElement.innerHTML = statusIcon + ' ' + statusMessage;
+                        const icon = document.createElement('i');
+                        icon.className = percentage >= 100
+                            ? 'fa fa-check-circle text-success'
+                            : 'fa fa-cog fa-spin';
+                        statusElement.replaceChildren(icon, document.createTextNode(' ' + statusMessage));
                     }
                 }
 
@@ -636,7 +642,7 @@ require_once $abs_us_root . $us_url_root . 'users/includes/template/prep.php';
                         line.className += ' text-primary';
                     }
 
-                    line.innerHTML = message;
+                    line.textContent = message;
                     container.appendChild(line);
                     container.scrollTop = container.scrollHeight;
                 }
@@ -662,7 +668,7 @@ require_once $abs_us_root . $us_url_root . 'users/includes/template/prep.php';
                             resultsElement.innerHTML = `
                                 <div class="alert alert-danger">
                                     <h4><i class="fa fa-exclamation-circle"></i> Analysis Error</h4>
-                                    <p>${data.error}</p>
+                                    <p>${escapeHtml(data.error)}</p>
                                 </div>
                                 <div class="text-center">
                                     <button onclick="window.location.href='../../manage-maintenance.php?tab=maintenance';" class="btn btn-primary">
@@ -706,9 +712,9 @@ require_once $abs_us_root . $us_url_root . 'users/includes/template/prep.php';
                             // Helper function to format page display
                             const formatPageItem = (issue) => {
                                 if (issue.title) {
-                                    return `<div><strong>${issue.title}</strong><br/><small style="color: #666;">${issue.page}</small></div>`;
+                                    return `<div><strong>${escapeHtml(issue.title)}</strong><br/><small style="color: #666;">${escapeHtml(issue.page)}</small></div>`;
                                 } else {
-                                    return `<div>${issue.page}</div>`;
+                                    return `<div>${escapeHtml(issue.page)}</div>`;
                                 }
                             };
 
@@ -827,7 +833,7 @@ require_once $abs_us_root . $us_url_root . 'users/includes/template/prep.php';
                             detailsHTML += `<h6 class="text-success">✅ Set to Public (${data.issues.set_public.length} pages):</h6>`;
                             detailsHTML += '<table class="table table-sm table-bordered permission-table mb-4"><thead><tr><th>Page</th><th>Current</th><th>Will Be</th></tr></thead><tbody>';
                             data.issues.set_public.forEach(issue => {
-                                detailsHTML += `<tr><td>${issue.page}</td><td><span class="badge text-bg-primary">PRIVATE</span></td><td><span class="badge text-bg-success">PUBLIC - No Permissions</span></td></tr>`;
+                                detailsHTML += `<tr><td>${escapeHtml(issue.page)}</td><td><span class="badge text-bg-primary">PRIVATE</span></td><td><span class="badge text-bg-success">PUBLIC - No Permissions</span></td></tr>`;
                             });
                             detailsHTML += '</tbody></table>';
                         }
@@ -835,9 +841,9 @@ require_once $abs_us_root . $us_url_root . 'users/includes/template/prep.php';
                         // Helper function to format page name with title
                         const formatPageName = (issue) => {
                             if (issue.title) {
-                                return `<strong>${issue.title}</strong><br/><small style="color: #666;">${issue.page}</small>`;
+                                return `<strong>${escapeHtml(issue.title)}</strong><br/><small style="color: #666;">${escapeHtml(issue.page)}</small>`;
                             } else {
-                                return issue.page;
+                                return escapeHtml(issue.page);
                             }
                         };
 
@@ -866,7 +872,7 @@ require_once $abs_us_root . $us_url_root . 'users/includes/template/prep.php';
                             detailsHTML += `<h6 class="text-info">ℹ️ Set to Private, No Permissions (${data.issues.set_private_no_perms.length} pages):</h6>`;
                             detailsHTML += '<table class="table table-sm table-bordered permission-table mb-4"><thead><tr><th>Page</th><th>Current</th><th>Will Be</th></tr></thead><tbody>';
                             data.issues.set_private_no_perms.forEach(issue => {
-                                detailsHTML += `<tr><td>${formatPageName(issue)}</td><td><span class="badge text-bg-secondary">${issue.current}</span></td><td><span class="badge text-bg-info">PRIVATE - No Permissions</span></td></tr>`;
+                                detailsHTML += `<tr><td>${formatPageName(issue)}</td><td><span class="badge text-bg-secondary">${escapeHtml(issue.current)}</span></td><td><span class="badge text-bg-info">PRIVATE - No Permissions</span></td></tr>`;
                             });
                             detailsHTML += '</tbody></table>';
                         }
@@ -876,7 +882,7 @@ require_once $abs_us_root . $us_url_root . 'users/includes/template/prep.php';
                             detailsHTML += `<h6 class="text-warning">⚠️ Remove Permissions from Public Pages (${data.issues.remove_perms.length} pages):</h6>`;
                             detailsHTML += '<table class="table table-sm table-bordered permission-table mb-4"><thead><tr><th>Page</th><th>Current</th><th>Will Be</th></tr></thead><tbody>';
                             data.issues.remove_perms.forEach(issue => {
-                                detailsHTML += `<tr><td>${formatPageName(issue)}</td><td><span class="badge text-bg-secondary">${issue.perms}</span></td><td><span class="badge text-bg-success">PUBLIC - No Permissions</span></td></tr>`;
+                                detailsHTML += `<tr><td>${formatPageName(issue)}</td><td><span class="badge text-bg-secondary">${escapeHtml(issue.perms)}</span></td><td><span class="badge text-bg-success">PUBLIC - No Permissions</span></td></tr>`;
                             });
                             detailsHTML += '</tbody></table>';
                         }
@@ -886,7 +892,7 @@ require_once $abs_us_root . $us_url_root . 'users/includes/template/prep.php';
                             detailsHTML += `<h6 class="text-primary">ℹ️ Add Admin Permissions (${data.issues.add_perms_admin.length} pages):</h6>`;
                             detailsHTML += '<table class="table table-sm table-bordered permission-table mb-4"><thead><tr><th>Page</th><th>Current</th><th>Will Add</th></tr></thead><tbody>';
                             data.issues.add_perms_admin.forEach(issue => {
-                                detailsHTML += `<tr><td>${formatPageName(issue)}</td><td><span class="badge text-bg-secondary">${issue.current}</span></td><td><span class="badge text-bg-primary">${issue.missing}</span></td></tr>`;
+                                detailsHTML += `<tr><td>${formatPageName(issue)}</td><td><span class="badge text-bg-secondary">${escapeHtml(issue.current)}</span></td><td><span class="badge text-bg-primary">${escapeHtml(issue.missing)}</span></td></tr>`;
                             });
                             detailsHTML += '</tbody></table>';
                         }
@@ -896,7 +902,7 @@ require_once $abs_us_root . $us_url_root . 'users/includes/template/prep.php';
                             detailsHTML += `<h6 class="text-primary">ℹ️ Add Owner Permissions (${data.issues.add_perms_user.length} pages):</h6>`;
                             detailsHTML += '<table class="table table-sm table-bordered permission-table mb-4"><thead><tr><th>Page</th><th>Current</th><th>Will Add</th></tr></thead><tbody>';
                             data.issues.add_perms_user.forEach(issue => {
-                                detailsHTML += `<tr><td>${formatPageName(issue)}</td><td><span class="badge text-bg-secondary">${issue.current}</span></td><td><span class="badge text-bg-success">${issue.required}</span></td></tr>`;
+                                detailsHTML += `<tr><td>${formatPageName(issue)}</td><td><span class="badge text-bg-secondary">${escapeHtml(issue.current)}</span></td><td><span class="badge text-bg-success">${escapeHtml(issue.required)}</span></td></tr>`;
                             });
                             detailsHTML += '</tbody></table>';
                         }
@@ -968,20 +974,20 @@ function abortProcess() {
                 $global_successes = 0;
 
                 function outputMessage($message, $percentage = null): void {
-                    // If running in iframe, call parent window functions
+                    $safe = addslashes(htmlspecialchars($message, ENT_QUOTES, 'UTF-8'));
                     echo '<script>
                         if (window.parent && window.parent.addLogMessage) {
-                            window.parent.addLogMessage("' . addslashes($message) . '");
+                            window.parent.addLogMessage("' . $safe . '");
                         } else if (window.addLogMessage) {
-                            addLogMessage("' . addslashes($message) . '");
+                            addLogMessage("' . $safe . '");
                         }
                     </script>';
                     if ($percentage !== null) {
                         echo '<script>
                             if (window.parent && window.parent.updateProgress) {
-                                window.parent.updateProgress(' . $percentage . ', 100, "' . addslashes($message) . '");
+                                window.parent.updateProgress(' . $percentage . ', 100, "' . $safe . '");
                             } else if (window.updateProgress) {
-                                updateProgress(' . $percentage . ', 100, "' . addslashes($message) . '");
+                                updateProgress(' . $percentage . ', 100, "' . $safe . '");
                             }
                         </script>';
                     }
