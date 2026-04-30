@@ -58,7 +58,7 @@ test.describe('Admin confirmation modal — manage-consolidated', () => {
 test.describe('Admin confirmation modal — manage-maintenance', () => {
     test.beforeEach(async ({ page }) => {
         await ensureLoggedIn(page);
-        await page.goto('/app/admin/manage-maintenance.php?tab=system', { waitUntil: 'networkidle' });
+        await page.goto('/app/admin/manage-maintenance.php?tab=maintenance', { waitUntil: 'networkidle' });
     });
 
     test('confirmation modal element is present in DOM', async ({ page }) => {
@@ -119,5 +119,55 @@ test.describe('Admin confirmation modal — manage-maintenance', () => {
         // The message body should be plain text, not HTML markup
         const textContent = await msgEl.textContent();
         expect(textContent.trim().length).toBeGreaterThan(0);
+    });
+});
+
+// ---------------------------------------------------------------------------
+// Area 3: manage-maintenance.php — input modal DOM (#inputModal)
+// ---------------------------------------------------------------------------
+
+test.describe('Admin input modal — manage-maintenance', () => {
+    test.beforeEach(async ({ page }) => {
+        await ensureLoggedIn(page);
+        await page.goto('/app/admin/manage-maintenance.php?tab=maintenance', { waitUntil: 'networkidle' });
+    });
+
+    test('input modal and all required child elements are present in DOM', async ({ page }) => {
+        await expect(page.locator('#inputModal')).toBeAttached();
+        await expect(page.locator('#inputModalTitle')).toBeAttached();
+        await expect(page.locator('#inputModalMessage')).toBeAttached();
+        await expect(page.locator('#inputModalValue')).toBeAttached();
+        await expect(page.locator('#inputModalConfirm')).toBeAttached();
+    });
+
+    test('input modal is hidden on page load', async ({ page }) => {
+        await expect(page.locator('#inputModal')).not.toBeVisible();
+    });
+
+    test('Create Manual Backup button opens input modal', async ({ page }) => {
+        const backupBtn = page.locator('button[onclick*="createManualBackup"]');
+        if (await backupBtn.count() === 0) {
+            test.skip('Create Manual Backup button not found');
+            return;
+        }
+
+        await backupBtn.first().click();
+        await expect(page.locator('#inputModal')).toBeVisible({ timeout: 3000 });
+        await expect(page.locator('#inputModalTitle')).toContainText('Create Manual Backup');
+        await expect(page.locator('#inputModalValue')).toHaveValue('Admin Panel Manual Backup');
+    });
+
+    test('Cancel dismisses the input modal without triggering backup', async ({ page }) => {
+        const backupBtn = page.locator('button[onclick*="createManualBackup"]');
+        if (await backupBtn.count() === 0) {
+            test.skip('Create Manual Backup button not found');
+            return;
+        }
+
+        await backupBtn.first().click();
+        await expect(page.locator('#inputModal')).toBeVisible({ timeout: 3000 });
+
+        await page.locator('#inputModal .btn-secondary').click();
+        await expect(page.locator('#inputModal')).not.toBeVisible({ timeout: 3000 });
     });
 });

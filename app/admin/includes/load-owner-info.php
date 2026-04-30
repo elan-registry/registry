@@ -242,23 +242,18 @@ try {
     <script>
     // Quick action functions
     function viewOwnerCars(ownerId) {
-        // Switch to car management tab and filter by owner
-        if (typeof switchToTab === 'function') {
-            switchToTab('car_mgmt');
-            // TODO: Add owner filter functionality to car management
-        } else {
-            alert('Car management view will be available soon');
-        }
+        // See #786 — implement switchToOwnerManagementTab with car-mgmt filter
+        showNotification('Car management view will be available soon', 'info');
     }
 
     function viewOwnerHistory(ownerId) {
-        // Could open a modal or navigate to a detailed history view
-        alert('Detailed history view will be available in a future update');
+        // See #787 — implement owner history view
+        showNotification('Detailed history view will be available in a future update', 'info');
     }
 
     function contactOwner(ownerId) {
-        // Could open the admin contact modal
-        alert('Owner contact functionality will be integrated with the existing contact system');
+        // See #788 — wire to openAdminContactModal() with owner context
+        showNotification('Owner contact functionality will be integrated with the existing contact system', 'info');
     }
     </script>
 

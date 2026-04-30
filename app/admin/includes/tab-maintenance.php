@@ -178,7 +178,7 @@ function scriptDisplayName(string $filename): string {
         </div>
 
         <div class="text-center mt-3">
-            <button type="button" class="btn btn-success" onclick="createManualBackup()">
+            <button type="button" class="btn btn-success" onclick="createManualBackup(this)">
                 <i class="fas fa-save"></i> Create Manual Backup
             </button>
             <button type="button" class="btn btn-outline-info ms-2" onclick="listBackupFiles()">
