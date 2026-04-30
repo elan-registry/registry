@@ -61,6 +61,8 @@ foreach ($allMaintenanceItems as $item) {
 
 sort($maintenanceScripts, SORT_NATURAL);
 
+$backupStatsFallback = false;
+
 try {
     $backupStats = $backupManager->getEnhancedBackupStatistics();
     $oldBackupsCount = 0;
@@ -74,6 +76,7 @@ try {
     $showCleanupPrompt = $oldBackupsCount > 0;
 } catch (BackupException $e) {
     logger($user->data()->id, $e->getLogCategory(), 'Enhanced backup stats failed: ' . $e->getMessage());
+    $backupStatsFallback = true;
     try {
         $backupStats = getBackupStatistics();
         $backupStats['health_score'] = 85;
