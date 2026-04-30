@@ -290,6 +290,13 @@ if ($method === 'POST' && isset($_POST['action'])) {
         exit;
     }
 
+    if (!isAdmin()) {
+        http_response_code(403);
+        logger($user->data()->id, LogCategories::LOG_CATEGORY_SECURITY, 'Non-admin attempted AJAX action on page permissions script');
+        echo json_encode(['success' => false, 'error' => 'Insufficient permissions']);
+        exit;
+    }
+
     if ($_POST['action'] === 'analyze') {
         // STEP 1: Analysis
         logger($user->data()->id, LogCategories::LOG_CATEGORY_PERMISSION_FIX, 'Starting permission analysis');

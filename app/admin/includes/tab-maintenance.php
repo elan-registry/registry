@@ -98,6 +98,7 @@ $scriptRunStatus = array_fill_keys($fixScripts, ['has_run' => false, 'last_run' 
 $maintenanceRunStatus = array_fill_keys($maintenanceScripts, ['has_run' => false, 'last_run' => null]);
 
 $allScriptNames = array_merge($fixScripts, $maintenanceScripts);
+$scriptRunStatusError = false;
 if (!empty($allScriptNames)) {
     try {
         $placeholders = implode(',', array_fill(0, count($allScriptNames), '?'));
@@ -111,8 +112,9 @@ if (!empty($allScriptNames)) {
                 $maintenanceRunStatus[$row->script_name] = ['has_run' => true, 'last_run' => $row->last_run];
             }
         }
-    } catch (AdminOperationException $e) {
-        logger($user->data()->id, $e->getLogCategory(), 'Failed to batch-check script run status: ' . $e->getMessage());
+    } catch (\Exception $e) {
+        $scriptRunStatusError = true;
+        logger($user->data()->id, LogCategories::LOG_CATEGORY_DATABASE_MAINTENANCE, 'Failed to batch-check script run status: ' . $e->getMessage());
     }
 }
 
@@ -222,6 +224,15 @@ function scriptDisplayName(string $filename): string {
         </div>
     </div>
 </div>
+
+<?php if ($scriptRunStatusError): ?>
+<div class="alert alert-danger">
+    <i class="fas fa-exclamation-circle"></i>
+    <strong>Script run history unavailable.</strong>
+    Could not load completion records from the database — all scripts are shown as pending.
+    Do not re-run a script you know has already completed. Check server logs for details.
+</div>
+<?php endif; ?>
 
 <!-- One-time Migrations -->
 <div class="card border-warning mb-4">
