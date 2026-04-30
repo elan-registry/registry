@@ -191,7 +191,6 @@ INSERT INTO `pages` (`id`, `page`, `title`, `private`, `re_auth`, `core`) VALUES
 (295, 'app/cars/actions/request-transfer.php', NULL, 1, 0, 0),
 (299, 'app/admin/includes/process-admin-contact.php', 'Admin - Process Contact Form', 1, 0, 0),
 (300, 'app/admin/includes/tab-car_mgmt.php', 'Admin - Car Management Tab', 1, 0, 0),
-(301, 'app/admin/includes/tab-cleanup.php', 'Admin - Cleanup Management Tab', 1, 0, 0),
 (304, 'app/admin/includes/tab-placeholder.php', 'Admin - Tab Placeholder', 1, 0, 0),
 (305, 'app/admin/includes/tab-settings.php', 'Admin - Settings Tab', 1, 0, 0),
 (306, 'app/admin/includes/tab-system.php', 'Admin - System Management Tab', 1, 0, 0),
@@ -226,13 +225,13 @@ INSERT IGNORE INTO `permission_page_matches` (`permission_id`, `page_id`) VALUES
 
 -- Administrator (permission_id = 2) - Full admin access
 (2, 68), (2, 157), (2, 256), (2, 280), (2, 283), (2, 294), (2, 299), (2, 300),
-(2, 301), (2, 304), (2, 305), (2, 306), (2, 308), (2, 309), (2, 310), (2, 311),
+(2, 304), (2, 305), (2, 306), (2, 308), (2, 309), (2, 310), (2, 311),
 (2, 312), (2, 313), (2, 314), (2, 315), (2, 317), (2, 327), (2, 331), (2, 336),
 (2, 337), (2, 338), (2, 339),
 
 -- Editor (permission_id = 3) - Content editor access
 (3, 3), (3, 4), (3, 157), (3, 256), (3, 283), (3, 294), (3, 299), (3, 300),
-(3, 301), (3, 304), (3, 305), (3, 306), (3, 308), (3, 309), (3, 310), (3, 311),
+(3, 304), (3, 305), (3, 306), (3, 308), (3, 309), (3, 310), (3, 311),
 (3, 312), (3, 313), (3, 314), (3, 315), (3, 317), (3, 327), (3, 328), (3, 329),
 (3, 330), (3, 331), (3, 336);
 

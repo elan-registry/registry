@@ -19,6 +19,8 @@ None.
   Remaining native browser dialogs replaced with the app notification system.
 - **Backup health score caveat** ([#785](https://github.com/unibrain1/elanregistry/issues/785)):
   "Estimated" badge shown next to backup health score when enhanced stats are unavailable.
+- **Removed unimplemented Owner Cleanup tab** ([#780](https://github.com/unibrain1/elanregistry/issues/780)):
+  The Owner Cleanup tab has been removed from the Registry Management admin panel as it was never fully implemented.
 
 ## Issues Resolved
 
@@ -31,3 +33,4 @@ None.
 - [#641](https://github.com/unibrain1/elanregistry/issues/641) — improvement: getBaseUrl() silently falls back to production URL on database failure without logging
 - [#775](https://github.com/unibrain1/elanregistry/pull/775) — chore(deps): bump datatables.net and datatables.net-bs4
 - [#785](https://github.com/unibrain1/elanregistry/issues/785) — bug(admin): fabricated backup health score shown without caveat when enhanced stats fail
+- [#780](https://github.com/unibrain1/elanregistry/issues/780) — tech-debt: remove unimplemented Owner Cleanup tab from admin panel
