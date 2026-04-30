@@ -513,7 +513,7 @@ function runSchemaMaintenance(btn) {
 function runSchemaMaintenanceConfirmed(btn, originalHTML) {
     const csrfInput = document.querySelector('input[name="csrf"]');
     if (!csrfInput || !csrfInput.value) {
-        showNotification('Security token missing. Please reload the page and try again.', 'danger');
+        showNotification('Security token missing or expired. Please reload the page and try again.', 'danger');
         return;
     }
     const csrfToken = csrfInput.value;

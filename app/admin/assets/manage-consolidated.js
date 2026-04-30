@@ -1435,6 +1435,7 @@ function showConfirmDialog(title, message, onConfirm) {
     const modal = document.getElementById('confirmationModal');
     if (!modal) {
         console.error('[showConfirmDialog] #confirmationModal not found in DOM');
+        showNotification('Confirmation dialog unavailable. Using browser dialog.', 'warning');
         if (onConfirm && confirm(message)) {
             try { onConfirm(); } catch (err) { console.error('[showConfirmDialog] onConfirm threw in fallback:', err); }
         }
@@ -1446,6 +1447,7 @@ function showConfirmDialog(title, message, onConfirm) {
     const confirmBtn = modal.querySelector('#confirmButton');
     if (!titleEl || !msgEl || !confirmBtn) {
         console.error('[showConfirmDialog] Modal inner elements missing');
+        showNotification('Confirmation dialog unavailable. Using browser dialog.', 'warning');
         if (onConfirm && confirm(message)) {
             try { onConfirm(); } catch (err) { console.error('[showConfirmDialog] onConfirm threw in fallback:', err); }
         }
@@ -1461,7 +1463,13 @@ function showConfirmDialog(title, message, onConfirm) {
 
     newBtn.addEventListener('click', function() {
         this.disabled = true;
-        bootstrap.Modal.getInstance(modal)?.hide();
+        try {
+            bootstrap.Modal.getInstance(modal)?.hide();
+        } catch (err) {
+            console.error('[showConfirmDialog] Bootstrap modal hide failed:', err);
+            modal.style.display = 'none';
+            document.body.classList.remove('modal-open');
+        }
         if (onConfirm) {
             try {
                 onConfirm();
