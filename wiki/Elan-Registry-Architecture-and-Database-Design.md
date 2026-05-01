@@ -1,18 +1,20 @@
 # Elan Registry: Architecture and Database Design
 
-**Last Updated:** 2026-04-26 (v2.18.2)
+**Last Updated:** 2026-05-01 (v2.20.0)
 
 ## Overview
 
-The Elan Registry is a PHP-based car registry web application built on the UserSpice 6 authentication framework.
-The system manages a database of Lotus Elan and Elan +2 vehicles with comprehensive owner, transaction, and technical documentation.
+The Elan Registry is a PHP-based car registry web application built on the UserSpice 6
+authentication framework. The system manages a database of Lotus Elan and Elan +2 vehicles
+with comprehensive owner, transaction, and technical documentation.
 It's hosted at <https://elanregistry.org> with global CDN distribution via Cloudflare.
 
 **Key Facts:**
 
 - **Language:** PHP 8.2+
 - **Database:** MySQL 8.0+
-- **Template Framework:** Bootstrap 4.5.3 (migrating to Bootstrap 5)
+- **Template Framework:** Bootstrap 5.3.3 (Customizer template with `elanregistry` child
+  theme)
 - **Authentication:** UserSpice 6 framework
 - **Real-time Features:** WebSocket notifications, live connection status
 - **Environment Configuration:** `.env` file via `vlucas/phpdotenv`
@@ -49,29 +51,51 @@ Main application functionality organized by feature:
 /app/
 ├── /cars/               # Car registry management
 │   ├── index.php       # List all cars (public)
-│   ├── details.php     # Single car detail view (public)
+│   ├── detail.php      # Single car detail view (public)
 │   ├── form.php        # Add/edit car form (authenticated)
 │   ├── delete.php      # Delete car action (authenticated)
 │   ├── factory.php     # Production Records reference (public)
 │   └── /ajax/          # AJAX endpoints for car operations
 ├── /reports/           # Analytics and statistics
 │   └── statistics.php  # Registry statistics dashboard (public)
-├── /admin/             # Admin pages
-│   ├── manage-consolidated.php  # Unified admin dashboard
-│   └── /actions/       # Admin action handlers
+├── /admin/             # Admin pages and maintenance interface
+│   ├── manage-consolidated.php  # Main admin dashboard (car/owner mgmt)
+│   ├── manage-maintenance.php    # Maintenance portal (health, backups, etc)
+│   ├── /scripts/        # Administrative scripts (one-time + repeatable)
+│   │   ├── /fix/        # One-time migration and fix scripts
+│   │   │   ├── _TEMPLATE_Fix-Script.php
+│   │   │   ├── _ARCHIVE/  # Archived/completed scripts
+│   │   │   └── README.md
+│   │   └── /maintenance/  # Repeatable maintenance tasks
+│   │       ├── 21-Fix-Page-Permissions.php
+│   │       ├── 24-Regenerate-Optimized-Thumbnails.php
+│   │       └── .htaccess
+│   ├── /includes/       # Admin tab content and modal templates
+│   │   ├── tab-car_mgmt.php        # Car/owner relationships (consolidated)
+│   │   ├── tab-manage_cars.php     # Manage cars interface
+│   │   ├── tab-owner_mgmt.php      # Manage owners interface
+│   │   ├── tab-health.php          # System health monitoring [NEW v2.20]
+│   │   ├── tab-maintenance.php     # Maintenance scripts portal [NEW]
+│   │   ├── tab-settings.php        # Configuration settings
+│   │   ├── confirmation-modal.php  # Confirmation dialog [NEW v2.20]
+│   │   ├── input-modal.php         # Input prompt dialog [NEW v2.20]
+│   │   └── *.php (other includes)
+│   ├── /assets/         # Admin page assets (CSS, JS, images)
+│   └── /verify/         # Car verification workflow
 ├── /contact/           # Feedback and contact forms
 │   └── index.php       # Contact form (authenticated)
 └── /ajax/              # General-purpose AJAX endpoints
     └── *.php           # Feature-specific endpoints
 ```
 
-### /docs/ — Documentation System (v2.18.2 Reorganization)
+### /docs/ — Documentation System
 
-The documentation system has been reorganized into four distinct categories with different access levels and serving mechanisms:
+The documentation system has been reorganized into four distinct categories with
+different access levels and serving mechanisms:
 
 ```text
 /docs/
-├── /guides/                  # User how-to documentation (markdown → guide-viewer.php)
+├── /guides/                  # User how-to documentation
 │   ├── index.php            # Guides index page
 │   ├── ADD_CAR_GUIDE.md
 │   ├── CAR_TRANSFER_USER_GUIDE.md
@@ -86,12 +110,8 @@ The documentation system has been reorganized into four distinct categories with
 │   ├── workshop.php              # Workshop resources
 │   ├── technical-articles.php    # Technical articles collection
 │   ├── /assets/            # PDF files for reference section
-│   │   ├── Elan_26_36_Workshop_Manual.pdf
-│   │   ├── Elan_S1_S2_Coupe_Masterpartslist.pdf
-│   │   ├── 2016 Jan Elan Engine Types.pdf
-│   │   └── ...
 │   └── /images/            # Reference page images
-├── /admin/                  # Admin documentation (markdown → guide-viewer.php, requires admin access)
+├── /admin/                  # Admin documentation (admin access required)
 │   ├── index.php           # Admin docs index
 │   ├── CAR_TRANSFER_ADMIN_GUIDE.md
 │   ├── CAR_TRANSFER_ADMIN_QUICK_REFERENCE.md
@@ -113,19 +133,16 @@ The documentation system has been reorganized into four distinct categories with
 │   ├── USERSPICE_FUNCTIONS.md
 │   ├── PAGE_LOADING_FLOW.md
 │   ├── EMAIL_SYSTEM.md
-│   ├── DataTables setup documentation
-│   ├── CSS customization guide
-│   ├── Testing procedures
 │   └── /adr/              # Architecture Decision Records
 ├── /testing/              # Testing documentation
 ├── /assets/              # Legacy PDF fallback directory (deprecated)
-├── /faq/                 # Legacy FAQ directory (deprecated, see /guides/)
+├── /faq/                 # Legacy FAQ directory (deprecated)
 ├── car-stories.php       # Car stories listing page (public)
-├── guide-viewer.php      # Markdown document viewer for guides and admin docs
-├── pdf-viewer.php        # PDF viewer (accepts subdir parameter: reference, stories)
+├── guide-viewer.php      # Markdown document viewer
+├── pdf-viewer.php        # PDF viewer (reference, stories)
 ├── index.php             # Documentation hub landing page
 ├── README.md             # Documentation index and navigation guide
-└── .htaccess            # URL redirects for documentation reorganization
+└── .htaccess            # URL redirects for documentation
 ```
 
 #### Documentation Categories
@@ -175,32 +192,20 @@ The documentation system uses two main viewer pages:
 
 #### DocumentConfig Class
 
-The `DocumentConfig` class (`/usersc/classes/DocumentConfig.php`) centralizes documentation configuration:
+The `DocumentConfig` class (`/usersc/classes/DocumentConfig.php`) centralizes
+documentation configuration:
 
 ```php
-DocumentConfig::getCategories() // Returns 'guides' and 'admin' with paths and permissions
-DocumentConfig::getDocumentInfo() // Returns document metadata (title, icon, description)
+DocumentConfig::getCategories() // Returns 'guides' and 'admin' with paths
+DocumentConfig::getDocumentInfo() // Returns document metadata
 ```
 
-Note: The `reference` section uses standalone PHP pages and does not use DocumentConfig routing.
+Note: The `reference` section uses standalone PHP pages and does not use
+DocumentConfig routing.
 
-#### URL Redirects (v2.18.2)
+#### URL Redirects
 
-Old documentation URLs redirect automatically via `/docs/.htaccess`:
-
-| Old URL | New URL |
-| ------- | ------- |
-| `/docs/reference-library.php` | `/docs/reference/` |
-| `/docs/faq/index.php` | `/docs/guides/index.php` |
-| `/docs/faq/paint-colors.php` | `/docs/reference/paint-colors.php` |
-| `/docs/faq/admin/index.php` | `/docs/admin/index.php` |
-| `/docs/chassis-validation.php` | `/docs/reference/chassis-validation.php` |
-| `/docs/embed.php` | `/docs/pdf-viewer.php` |
-| `/docs/view.php` | `/docs/guide-viewer.php` |
-| `/docs/assets/Elan_26_36_Workshop_Manual.pdf` | `/docs/reference/assets/Elan_26_36_Workshop_Manual.pdf` |
-| `/docs/assets/...` (reference PDFs) | `/docs/reference/assets/...` |
-| `/docs/assets/...` (story PDFs) | `/docs/stories/assets/...` |
-| `/docs/faq/screenshots/*` | `/docs/guides/screenshots/*` |
+Old documentation URLs redirect automatically via `/docs/.htaccess`.
 
 ### /usersc/ — Custom Application Code
 
@@ -213,21 +218,16 @@ Contains all custom classes, helpers, plugins, and template overrides:
 │   ├── ElanRegistryOwner.php   # Owner profile entity
 │   ├── ApiResponse.php   # Standardized API response format
 │   ├── DocumentConfig.php   # Documentation metadata and routing
-│   ├── LocationService.php   # OpenStreetMap integration with caching
+│   ├── LocationService.php   # OpenStreetMap integration
 │   ├── Logger.php        # Application logging
 │   ├── LogCategories.php   # Log category constants
 │   └── ...
 ├── /plugins/             # UserSpice plugins (Brevo email, etc.)
 ├── /templates/           # Template overrides and customizations
-│   └── /ElanRegistry/    # Active template (Bootstrap 4.5.3)
-│       ├── /assets/functions/
-│       │   ├── nav.php          # File-based navigation menu (v2.18.2)
-│       │   ├── header.php
-│       │   ├── footer.php
-│       │   └── ...
-│       ├── /css/
-│       ├── /js/
-│       └── /views/
+│   └── /customizer/      # Active template (Bootstrap 5.3.3)
+│       └── file_nav_custom.php  # Project-owned navigation
+├── /js/                  # Self-hosted third-party JS libraries
+├── /css/                 # Self-hosted third-party CSS libraries
 ├── /includes/            # Include files and helpers
 │   ├── server_globals.php   # Validated $_SERVER globals
 │   ├── init.php           # Core initialization
@@ -237,7 +237,8 @@ Contains all custom classes, helpers, plugins, and template overrides:
 
 ### /users/ — UserSpice Framework (Read-Only)
 
-The UserSpice 6 framework directory. **Never edit files in `/users/`** — modifications break framework compatibility during updates. Use `/usersc/` for all customizations.
+The UserSpice 6 framework directory. **Never edit files in `/users/`** — modifications
+break framework compatibility during updates. Use `/usersc/` for all customizations.
 
 Key framework locations:
 
@@ -247,15 +248,149 @@ Key framework locations:
 
 ---
 
+## Admin Panel Architecture (v2.20.0)
+
+The admin interface has been split into two focused portals:
+
+### Registry Management (`manage-consolidated.php`)
+
+**Purpose:** Day-to-day car and owner administration.
+
+**Access:** Admin authentication required via UserSpice permission system.
+
+**Tabs:**
+
+- **Car/Owner Relationships** — Link cars to owners, handle transfers, manage
+  relationships
+- **Manage Cars** — Full car record editing, deletion, status management
+- **Manage Owners** — Owner profile management, contact info, preferences
+
+**Includes:**
+
+- `tab-car_mgmt.php` — Car/owner relationship interface
+- `tab-manage_cars.php` — Car management interface (86 KB)
+- `tab-owner_mgmt.php` — Owner management interface (57 KB)
+- Plus supporting include files for form processing
+
+### Registry Maintenance (`manage-maintenance.php`) [NEW v2.20.0]
+
+**Purpose:** System maintenance, monitoring, backups, and configuration.
+
+**Access:** Admin authentication required via UserSpice permission system.
+
+**Tabs:**
+
+- **Health** (`tab-health.php`) [NEW] — Read-only system health monitoring
+  - Database status and statistics
+  - Backup storage monitoring
+  - Pending migration scripts list (from `/app/admin/scripts/fix/`)
+  - All data is read-only; no state changes
+
+- **Maintenance** (`tab-maintenance.php`) [NEW] — Maintenance and backup
+  operations
+  - One-time fix scripts (from `/app/admin/scripts/fix/`)
+  - Repeatable maintenance tasks (from `/app/admin/scripts/maintenance/`)
+  - Database backup/restore operations
+  - Schema operations and migrations
+  - State-changing operations performed via AJAX endpoints
+
+- **Configuration** (`tab-settings.php`) — ElanRegistry settings
+  - Google Maps API configuration
+  - CDN URLs (bootstrap, jQuery, fonts, custom CSS)
+  - Media and storage settings
+  - Email service configuration
+
+**Includes:**
+
+- `tab-health.php` — System health monitoring
+- `tab-maintenance.php` — Maintenance scripts portal
+- `tab-settings.php` — Configuration management
+- `confirmation-modal.php` [NEW] — Confirmation dialog for destructive operations
+- `input-modal.php` [NEW] — Input prompt dialog for backup naming
+
+### Administrative Scripts (v2.20.0)
+
+Scripts are organized into two directories under `/app/admin/scripts/`:
+
+#### Fix Scripts (`/app/admin/scripts/fix/`)
+
+**Purpose:** One-time migration and cleanup scripts that run at most once per
+installation.
+
+**Storage:** Database table `fix_script_runs` tracks completion status.
+
+**Scripts:**
+
+- Numbered format: `##-Descriptive-Name.php`
+- Template: `_TEMPLATE_Fix-Script.php` for new scripts
+- Archive: `_ARCHIVE/` directory for completed/obsolete scripts
+
+**Access:**
+
+- Via tab-maintenance.php interface (recommended)
+- Direct URL access via numbered filenames
+- `.htaccess` blocks access to `_TEMPLATE*.php` and directory listing
+- Requires UserSpice authentication
+
+**Features:**
+
+- Progress tracking in `fix_script_runs` table
+- Run status indicators (✅ run, ➖ never run)
+- Transaction support for atomic operations
+- Comprehensive error handling and logging
+- Completion reporting
+
+#### Maintenance Tasks (`/app/admin/scripts/maintenance/`)
+
+**Purpose:** Repeatable maintenance operations that run multiple times (not just
+once).
+
+**Scripts:**
+
+- Named format: `##-Descriptive-Name.php`
+- No completion tracking in database (can run repeatedly)
+
+**Access:**
+
+- Via tab-maintenance.php interface (recommended)
+- Direct URL access via numbered filenames
+- `.htaccess` prevents directory listing and blocks non-PHP files
+- Requires UserSpice authentication
+
+**Features:**
+
+- Can be run multiple times without completion tracking
+- Suitable for periodic cleanup, optimization, and sync operations
+- Same error handling and logging as fix scripts
+
+### New Modal Components (v2.20.0)
+
+Two reusable modal components for admin operations:
+
+**`confirmation-modal.php`**
+
+- Asks user to confirm destructive operations (delete, reset, etc.)
+- Displays warning message and requires explicit confirmation
+- Returns confirmation status to calling code
+
+**`input-modal.php`**
+
+- Prompts user for input (e.g., backup name, migration parameters)
+- Validates input before submitting
+- Returns input value to calling code
+
+---
+
 ## Navigation Architecture (v2.18.2)
 
 Navigation has been converted from database-driven to file-based configuration.
 
 ### File-Based Navigation
 
-**Location:** `/usersc/templates/ElanRegistry/assets/functions/nav.php`
+**Location:** `/usersc/templates/customizer/file_nav_custom.php`
 
-This file defines the main navigation structure and is included in the template header. Changes to navigation structure are made directly to this file.
+This file defines the main navigation structure and is included by the Customizer
+template. It is the only project-tracked file in the `customizer/` directory.
 
 ### Top-Level Menu Items (6 items)
 
@@ -298,7 +433,8 @@ This file defines the main navigation structure and is included in the template 
 
 ### Schema Overview
 
-The system uses MySQL 8.0+ with comprehensive schema for car registry, owner management, transaction tracking, and audit logs.
+The system uses MySQL 8.0+ with comprehensive schema for car registry, owner
+management, transaction tracking, and audit logs.
 
 **Core Tables:**
 
@@ -310,15 +446,19 @@ The system uses MySQL 8.0+ with comprehensive schema for car registry, owner man
 - **`settings`** — Application configuration (33+ custom columns)
 - **`contact_form_submissions`** — Feedback and contact form data
 - **`email_log`** — Email transmission log for Brevo integration
+- **`fix_script_runs`** [NEW v2.20.0] — Tracks completion of one-time fix scripts
 
-**Audit Trail:** Automatic capture via database triggers on cars table. See `docs/development/DATABASE.md` for complete schema.
+**Audit Trail:** Automatic capture via database triggers on cars table. See
+`docs/development/DATABASE.md` for complete schema.
 
 ### Performance Optimization
 
-**Data Denormalization:** Owner information (name, email, etc.) is cached in the cars table to avoid expensive joins.
-The denormalized data is kept in sync via trigger on owner updates.
+**Data Denormalization:** Owner information (name, email, etc.) is cached in the
+cars table to avoid expensive joins. The denormalized data is kept in sync via
+trigger on owner updates.
 
-**Caching:** LocationService implements 5-minute server-side caching for OpenStreetMap API responses.
+**Caching:** LocationService implements 5-minute server-side caching for
+OpenStreetMap API responses.
 
 ---
 
@@ -335,6 +475,7 @@ The system employs **defense in depth** with multiple overlapping security layer
    - `securePage($php_self)` check on protected pages
    - Role-based menu visibility (admin, users, public)
    - Admin panel requires `checkMenu(2, $userId)` permission
+   - Admin scripts require UserSpice authentication via `.htaccess`
 
 3. **Input Validation**
    - All user input validated and sanitized
@@ -344,6 +485,7 @@ The system employs **defense in depth** with multiple overlapping security layer
 4. **CSRF Protection**
    - CSRF tokens on all forms
    - Token validation via UserSpice framework
+   - Token generation in both main admin pages
 
 5. **Security Headers**
    - Content Security Policy (CSP) with script/style allowlist
@@ -359,6 +501,7 @@ The system employs **defense in depth** with multiple overlapping security layer
 
 7. **Directory Protection**
    - `.htaccess` rules prevent direct file browsing
+   - Admin scripts require authentication
    - `/docs/assets/` protected from directory listing
    - Environment files protected from access
 
@@ -366,6 +509,7 @@ The system employs **defense in depth** with multiple overlapping security layer
    - Application-level logging via Logger class (90+ categories)
    - Database-level audit via triggers on sensitive tables
    - Email transmission logged for compliance
+   - Admin script runs logged in `fix_script_runs` table
 
 ---
 
@@ -389,11 +533,14 @@ if (!checkMenu(2, $user->data()->id)) {
 }
 ```
 
-See [UserSpice Integration Guide](https://github.com/unibrain1/elanregistry/wiki/Customization-and-Integration-Patterns) for details.
+See [UserSpice Integration
+Guide](https://github.com/unibrain1/elanregistry/wiki/Customization-and-Integration-Patterns)
+for details.
 
 ### Adding New PHP Directories
 
-When adding a new PHP directory (e.g., `/app/new-feature/`), update the `$path` array in `/z_us_root.php` to register it with UserSpice:
+When adding a new PHP directory (e.g., `/app/new-feature/`), update the `$path`
+array in `/z_us_root.php` to register it with UserSpice:
 
 ```php
 $path = [
@@ -408,7 +555,8 @@ $path = [
 
 ### Database Operations
 
-Use prepared statements for all queries. See `docs/development/DATABASE.md` for schema details and `docs/development/CLASSES.md` for ORM patterns.
+Use prepared statements for all queries. See `docs/development/DATABASE.md` for
+schema details and `docs/development/CLASSES.md` for ORM patterns.
 
 **Example:**
 
@@ -420,7 +568,8 @@ $car = $stmt->fetch();
 
 ### Email Integration
 
-Email is handled by Brevo plugin with UserSpice `sendMail()` function. See `docs/development/EMAIL_SYSTEM.md` for configuration and template setup.
+Email is handled by Brevo plugin with UserSpice `sendMail()` function. See
+`docs/development/EMAIL_SYSTEM.md` for configuration and template setup.
 
 ### External Services
 
@@ -432,7 +581,8 @@ The system integrates with:
 - **reCAPTCHA** — Contact form protection
 - **Brevo** — Transactional email service
 
-All external service credentials stored in database settings (`$settings` global) and configurable via admin panel without code deployment.
+All external service credentials stored in database settings (`$settings` global)
+and configurable via admin panel without code deployment.
 
 ---
 
@@ -440,42 +590,59 @@ All external service credentials stored in database settings (`$settings` global
 
 ### Active Template
 
-**Location:** `/usersc/templates/ElanRegistry/`
+**Location:** `/usersc/templates/customizer/` (upstream Customizer template) with
+`elanregistry` child theme
 
-**Framework:** Bootstrap 4.5.3 (actively migrating to Bootstrap 5)
+**Framework:** Bootstrap 5.3.3
 
 **Dependencies:**
 
-- jQuery (required by UserSpice 6, cannot be removed)
-- Bootstrap CSS/JS
-- Font Awesome icons
-- Custom Elan Registry CSS
+- jQuery (required by UserSpice 6, cannot be removed; loaded via
+  `users/js/jquery.php`)
+- Bootstrap 5.3.3 CSS/JS (loaded by Customizer `header.php`; self-hosted in
+  `usersc/css/` and `usersc/js/`)
+- Font Awesome icons (self-hosted in `usersc/css/`)
+- DataTables (self-hosted in `usersc/js/` and `usersc/css/`)
+- Flatpickr date picker (self-hosted in `usersc/js/` and `usersc/css/`)
+- FilePond 4.x + plugins (self-hosted in `usersc/js/` and `usersc/css/`)
+- Chart.js (self-hosted in `usersc/js/`)
 
-### Template References
+**Template Customization Rule:** `usersc/templates/customizer/` is gitignored
+upstream. The **only** project-tracked file in this directory is
+`file_nav_custom.php`. To add header/nav content, edit that file. To inject
+footer content, use `usersc/includes/footer.php`.
 
-**UserSpice 6 Reference Templates:**
+### Self-Hosted Frontend Libraries (v2.19.0+)
 
-- `/users/journal/` (Bootstrap 5.2) — Reference for BS5 migration
-- `/users/customizer/` (Bootstrap 5.3) — Modern reference implementation
+All third-party JS/CSS libraries are source-controlled and versioned in:
 
-Use these templates as patterns when migrating components to Bootstrap 5.
+- `usersc/js/` — Third-party JavaScript
+- `usersc/css/` — Third-party CSS
 
-### CDN Configuration
+This replaces the previous database-driven CDN configuration. Benefits: Dependabot
+security alerts for JS/CSS dependencies, offline-capable, version-controlled
+upgrades.
 
-CDN URLs are stored in database settings with HTML entity encoding:
+### Build Pipeline (v2.19.0+)
 
-- `elan_bootstrap_cdn` — Bootstrap CSS/JS
-- `elan_jquery_cdn` — jQuery (UserSpice 6 dependency)
-- `elan_fontawesome_cdn` — Font Awesome icons
-- `elan_custom_css_cdn` — Custom CSS
+First-party JS and CSS are minified with **esbuild** and committed to git as
+`.min.js` / `.min.css` files:
 
-**Note:** Decoded via `html_entity_decode()` in `header.php` for security.
+```bash
+npm run build       # Regenerate all minified assets
+npm run lint        # ESLint for JavaScript
+npm run lint:fix    # ESLint with auto-fix
+```
+
+The pre-commit hook auto-rebuilds minified files when source files change.
 
 ### Architecture Decision Records
 
 Frontend dependency changes and CSP updates require updating ADRs:
 
-- `docs/development/adr/ADR-006-Frontend-Dependencies.md`
+- `docs/development/adr/ADR-015-Self-Hosted-Frontend-Libraries.md` (supersedes
+  ADR-006)
+- `docs/development/adr/ADR-016-File-Based-Navigation.md`
 - `docs/development/adr/ADR-007-Content-Security-Policy.md`
 
 ---
@@ -498,7 +665,8 @@ Key classes are documented in `docs/development/CLASSES.md`:
 
 **Available Since:** v2.13.0
 
-Validated server environment globals are initialized in `usersc/includes/server_globals.php` and available on every page after `init.php`:
+Validated server environment globals are initialized in
+`usersc/includes/server_globals.php` and available on every page after `init.php`:
 
 ```php
 $scheme         // http or https
@@ -514,7 +682,8 @@ $referer       // HTTP Referer header
 $user_agent    // Client User-Agent
 ```
 
-**IMPORTANT:** Never use raw `$_SERVER` directly. Use these validated globals instead. See `docs/development/PAGE_LOADING_FLOW.md` for usage examples.
+**IMPORTANT:** Never use raw `$_SERVER` directly. Use these validated globals
+instead. See `docs/development/PAGE_LOADING_FLOW.md` for usage examples.
 
 ---
 
@@ -544,7 +713,7 @@ See `docs/development/ERROR_HANDLING.md` for:
 
 ## Testing
 
-### PHP Testing
+### PHP Testing (PHPUnit 12)
 
 ```bash
 composer test:quick     # Unit tests only (~30s)
@@ -553,9 +722,10 @@ composer test:full      # All PHP tests
 composer test:coverage  # Coverage report
 ```
 
-### Code Quality
+### Build & Code Quality
 
 ```bash
+npm run build           # Minify all first-party JS/CSS (esbuild)
 composer check:php      # PHP standards + PHPStan
 composer check          # Full: PHP standards + PHPStan + ESLint
 npm run lint            # ESLint for JavaScript
@@ -572,6 +742,7 @@ npm run playwright:test         # All tests
 npm run playwright:security     # Security checks
 npm run playwright:maps         # Maps & charts
 npm run playwright:csp          # CSP validation
+npm run playwright:bs5          # Bootstrap 5 JS API regression tests
 ```
 
 **Against Deployed:**
@@ -613,8 +784,9 @@ See `docs/development/CODING_STANDARDS.md` for complete standards.
 
 **GitHub Resources:**
 
-- [Architecture Guide](https://github.com/unibrain1/elanregistry/wiki/Elan-Registry-Architecture-and-Database-Design) (this page)
-- [UserSpice Integration Guide](https://github.com/unibrain1/elanregistry/wiki/Customization-and-Integration-Patterns)
+- [Architecture Guide](https://github.com/unibrain1/elanregistry/wiki)
+- [UserSpice Integration
+  Guide](https://github.com/unibrain1/elanregistry/wiki/Customization-and-Integration-Patterns)
 - [Development Workflow](https://github.com/unibrain1/elanregistry/wiki/Development-Workflow)
 
 ---
@@ -623,6 +795,8 @@ See `docs/development/CODING_STANDARDS.md` for complete standards.
 
 | Version | Date | Changes |
 | ------- | ---- | ------- |
-| 2.18.2 | 2026-04-26 | Documentation reorganization: guides/reference/admin/stories split, file-based navigation, DocumentConfig updates |
+| 2.20.0 | 2026-05-01 | Admin panel split: manage-consolidated.php (car/owner mgmt) + manage-maintenance.php (system health/backups/settings); FIX scripts restructured to app/admin/scripts/fix/ (one-time) + app/admin/scripts/maintenance/ (repeatable); new tabs: tab-health.php, tab-maintenance.php; new modals: confirmation-modal.php, input-modal.php; fix_script_runs table |
+| 2.19.0 | 2026-04-29 | Bootstrap 5.3.3 Customizer template; self-hosted frontend libraries; esbuild build pipeline; FilePond replaces Dropzone; `edit.php` → `form.php`; PHPUnit 12 |
+| 2.18.2 | 2026-04-26 | Documentation reorganization: guides/reference/admin/stories split, file-based navigation |
 | 2.18.0+ | 2026-03-20+ | Server environment globals, improved AJAX patterns, CSP refinements |
 | Earlier | — | Previous architecture versions |
