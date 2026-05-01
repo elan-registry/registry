@@ -400,7 +400,7 @@ curl -s -X POST "https://semgrep.dev/api/v1/deployments/jim_unibrain_org/triage"
 See `.semgrepignore` in the repo root. Key exclusions:
 
 - `users/` — UserSpice framework core (not our code)
-- `FIX/` — one-time admin migration scripts
+- `app/admin/scripts/fix/` — one-time admin migration scripts
 - `docs/stories/` — archived third-party HTML
 - `vendor/`, `node_modules/` — dependencies
 - `tests/`, `database/4-sample-data.sql` — test fixtures

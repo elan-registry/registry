@@ -19,14 +19,6 @@ if (!securePage($php_self)) {
         ->send();
 }
 
-// Only administrators can perform backup operations
-if (!hasPerm([2], $user->data()->id)) {
-    ApiResponse::forbidden('Administrator access required')
-        ->withLogging($user->data()->id, LogCategories::LOG_CATEGORY_SECURITY,
-            'Non-admin attempted backup operations')
-        ->send();
-}
-
 // CSRF protection for all POST operations
 if (!isset($_POST['csrf']) || !Token::check($_POST['csrf'])) {
     ApiResponse::forbidden('Invalid CSRF token')
@@ -77,9 +69,6 @@ try {
             $filename = basename($backupPath);
             $filesize = filesize($backupPath);
             $sizeFormatted = formatBytes($filesize);
-
-            // Log successful backup
-            logger($user->data()->id, LogCategories::LOG_CATEGORY_BACKUP_MANAGER, "Manual backup completed: {$filename} ({$sizeFormatted})");
 
             ApiResponse::success('Backup created successfully')
                 ->withDataArray([
@@ -222,9 +211,6 @@ try {
                            $cleanupResult['manual']['deleted'] +
                            $cleanupResult['rollback']['deleted'];
 
-            // Log cleanup results
-            logger($user->data()->id, LogCategories::LOG_CATEGORY_BACKUP_MANAGER, "Backup cleanup completed: {$totalDeleted} of {$totalScanned} files deleted (Automated: {$cleanupResult['automated']['deleted']}, Manual: {$cleanupResult['manual']['deleted']}, Rollback: {$cleanupResult['rollback']['deleted']})");
-
             ApiResponse::success("Cleanup completed: {$totalDeleted} of {$totalScanned} files deleted")
                 ->withDataArray([
                     'cleanup' => $cleanupResult,
@@ -239,7 +225,7 @@ try {
             break;
 
         case 'delete_backup':
-            // Sanitize filename at assignment — basename() strips directory components to prevent path traversal
+            // basename() strips ../ traversal sequences; realpath() below provides defense-in-depth against symlinks — both are required
             $filename = basename($_POST['filename'] ?? '');
             logger($user->data()->id, LogCategories::LOG_CATEGORY_BACKUP_MANAGER, "Delete backup requested: {$filename}");
 
@@ -261,11 +247,26 @@ try {
             $deleted = false;
             $types = ['automated', 'manual', 'rollback'];
 
+            $realBackupDir = realpath($backupDir);
+            if ($realBackupDir === false) {
+                ApiResponse::error('Backup directory unavailable', 500)
+                    ->withLogging($user->data()->id, LogCategories::LOG_CATEGORY_BACKUP_ERROR,
+                        "Delete backup: realpath() failed for backup dir '{$backupDir}' — server misconfiguration")
+                    ->send();
+            }
+
             foreach ($types as $type) {
                 $filepath = $backupDir . $type . '/' . $filename;
 
                 if (file_exists($filepath)) {
-                    if (unlink($filepath)) {
+                    $realpath = realpath($filepath);
+                    if ($realpath === false || !str_starts_with($realpath, $realBackupDir . '/')) {
+                        ApiResponse::error('Access denied', 403)
+                            ->withLogging($user->data()->id, LogCategories::LOG_CATEGORY_BACKUP_ERROR,
+                                "Delete backup: path traversal attempt blocked for '{$filename}'")
+                            ->send();
+                    }
+                    if (unlink($realpath)) { // nosemgrep: php.lang.security.unlink-use.unlink-use -- path verified within backup directory
                         $deleted = true;
                         logger($user->data()->id, LogCategories::LOG_CATEGORY_BACKUP_MANAGER,
                             "Backup deleted via API: {$filename} (type: {$type})");
@@ -273,7 +274,7 @@ try {
                     } else {
                         ApiResponse::error('Failed to delete backup file', 500)
                             ->withLogging($user->data()->id, LogCategories::LOG_CATEGORY_BACKUP_ERROR,
-                                "Failed to unlink backup file: {$filepath}")
+                                "Failed to unlink backup file: {$realpath}")
                             ->send();
                     }
                 }
@@ -320,7 +321,7 @@ try {
  * @param int $bytes
  * @return string
  */
-function formatBytes($bytes): string {
+function formatBytes(int $bytes): string {
     $units = ['B', 'KB', 'MB', 'GB'];
     $bytes = max($bytes, 0);
     $pow = floor(($bytes ? log($bytes) : 0) / log(1024));

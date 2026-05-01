@@ -9,45 +9,48 @@
 
 /* eslint-disable no-implicit-globals */
 /* exported createManualBackup, listBackupFiles, downloadBackup, deleteBackup, performBackupCleanup, runSchemaValidation */
+/* global showInputDialog, showNotification, escapeHtml, ElanRegistryAPI */
 
 /**
  * Create a manual backup via AJAX
  */
-function createManualBackup() {
+function createManualBackup(triggerButton) {
     'use strict';
 
-    const reason = window.prompt('Enter backup reason (or leave blank for default):', 'Admin Panel Manual Backup');
-    if (reason === null) {
-        return; // User cancelled
-    }
+    showInputDialog(
+        'Create Manual Backup',
+        'Enter a reason for this backup (or leave blank for default):',
+        'Admin Panel Manual Backup',
+        function (reason) {
+            triggerButton.disabled = true;
+            const originalText = triggerButton.innerHTML;
+            triggerButton.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Creating backup...';
 
-    const button = event.target;
-    const originalText = button.innerHTML;
-    button.disabled = true;
-    button.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Creating backup...';
+            const endpoint = window.elanUrlRoot
+                ? window.elanUrlRoot.replace(/\/$/, '') + '/app/admin/includes/system/backup-operations.php'
+                : '/app/admin/includes/system/backup-operations.php';
 
-    // Use ElanRegistryAPI for proper CSRF token handling
-    const endpoint = window.elanUrlRoot ? window.elanUrlRoot.replace(/\/$/, '') + '/app/admin/includes/system/backup-operations.php' : '/app/admin/includes/system/backup-operations.php';
-    new ElanRegistryAPI().post(endpoint, {
-        action: 'create_manual_backup',
-        reason: reason
-    })
-        .then(response => {
-            if (response.success) {
-                // Refresh backup list
-                listBackupFiles();
-            } else {
-                showNotification(`Backup failed: ${response.message}`, 'error');
-            }
-        })
-        .catch(error => {
-            console.error('Backup creation error:', error);
-            showNotification(`Error: ${error.message || 'Failed to create backup'}`, 'error');
-        })
-        .finally(() => {
-            button.disabled = false;
-            button.innerHTML = originalText;
-        });
+            new ElanRegistryAPI().post(endpoint, {
+                action: 'create_manual_backup',
+                reason: reason
+            })
+                .then(response => {
+                    if (response.success) {
+                        listBackupFiles();
+                    } else {
+                        showNotification(`Backup failed: ${response.message}`, 'error');
+                    }
+                })
+                .catch(error => {
+                    console.error('Backup creation error:', error);
+                    showNotification(`Error: ${error.message || 'Failed to create backup'}`, 'error');
+                })
+                .finally(() => {
+                    triggerButton.disabled = false;
+                    triggerButton.innerHTML = originalText;
+                });
+        }
+    );
 }
 
 /**
@@ -57,6 +60,11 @@ function listBackupFiles() {
     'use strict';
 
     const modalContent = document.getElementById('backupListContent');
+    if (!modalContent) {
+        console.error('[listBackupFiles] #backupListContent not found in DOM');
+        showNotification('Backup list unavailable. Please reload the page.', 'danger');
+        return;
+    }
     modalContent.innerHTML = '<div class="text-center"><i class="fas fa-spinner fa-spin"></i> Loading backups...</div>';
 
     // Use ElanRegistryAPI for proper CSRF token handling
@@ -71,13 +79,13 @@ function listBackupFiles() {
             bootstrap.Modal.getOrCreateInstance(document.getElementById('backupListModal')).show();
         } else {
             showNotification(`Error loading backups: ${response.message}`, 'error');
-            modalContent.innerHTML = `<div class="alert alert-danger">${response.message}</div>`;
+            modalContent.innerHTML = `<div class="alert alert-danger">${escapeHtml(response.message)}</div>`;
         }
     })
     .catch(error => {
         console.error('List backups error:', error);
         showNotification(`Error: ${error.message || 'Failed to load backups'}`, 'error');
-        modalContent.innerHTML = `<div class="alert alert-danger">Error loading backups: ${error.message}</div>`;
+        modalContent.innerHTML = `<div class="alert alert-danger">Error loading backups: ${escapeHtml(error.message || 'Unknown error')}</div>`;
     });
 }
 
@@ -261,35 +269,32 @@ function performBackupCleanup() {
     confirmButton.parentNode.replaceChild(newConfirmButton, confirmButton);
 
     newConfirmButton.addEventListener('click', function performCleanup() {
-        // Close modal
         const _confirmEl = document.getElementById('confirmationModal');
         if (_confirmEl) bootstrap.Modal.getInstance(_confirmEl)?.hide();
 
-        const button = event.target;
-        const originalText = button.innerHTML;
-        button.disabled = true;
-        button.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Cleaning up...';
+        const originalText = newConfirmButton.innerHTML;
+        newConfirmButton.disabled = true;
+        newConfirmButton.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Cleaning up...';
 
-    const endpoint = window.elanUrlRoot ? window.elanUrlRoot.replace(/\/$/, '') + '/app/admin/includes/system/backup-operations.php' : '/app/admin/includes/system/backup-operations.php';
-    new ElanRegistryAPI().post(endpoint, {
-        action: 'cleanup_backups'
-    })
-    .then(response => {
-        if (response.success) {
-            // Refresh stats
-            location.reload();
-        } else {
-            showNotification(`Cleanup failed: ${response.message}`, 'error');
-        }
-    })
-    .catch(error => {
-        console.error('Cleanup error:', error);
-        showNotification(`Error: ${error.message || 'Failed to cleanup backups'}`, 'error');
-    })
-    .finally(() => {
-        button.disabled = false;
-        button.innerHTML = originalText;
-    });
+        const endpoint = window.elanUrlRoot ? window.elanUrlRoot.replace(/\/$/, '') + '/app/admin/includes/system/backup-operations.php' : '/app/admin/includes/system/backup-operations.php';
+        new ElanRegistryAPI().post(endpoint, {
+            action: 'cleanup_backups'
+        })
+        .then(response => {
+            if (response.success) {
+                location.reload();
+            } else {
+                showNotification(`Cleanup failed: ${response.message}`, 'error');
+            }
+        })
+        .catch(error => {
+            console.error('Cleanup error:', error);
+            showNotification(`Error: ${error.message || 'Failed to cleanup backups'}`, 'error');
+        })
+        .finally(() => {
+            newConfirmButton.disabled = false;
+            newConfirmButton.innerHTML = originalText;
+        });
     });
 
     // Show modal
@@ -356,22 +361,3 @@ function displayValidationResults(response) {
     container.innerHTML = html;
 }
 
-/**
- * Escape HTML to prevent XSS
- * @param {string} unsafe - String to escape
- * @return {string} - Escaped string
- */
-function escapeHtml(unsafe) {
-    'use strict';
-
-    if (typeof unsafe !== 'string') {
-        return unsafe;
-    }
-
-    return unsafe
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;')
-        .replace(/'/g, '&#039;');
-}

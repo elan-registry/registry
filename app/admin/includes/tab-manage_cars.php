@@ -1479,7 +1479,7 @@ $(document).ready(function() {
 
             if (selectedCars.length !== 2 || selectedReason.length !== 1) {
                 e.preventDefault();
-                alert('Please select exactly 2 cars and 1 merge reason.');
+                showNotification('Please select exactly 2 cars and 1 merge reason.', 'danger');
                 return false;
             }
 
@@ -1500,16 +1500,13 @@ $(document).ready(function() {
                     break;
             }
 
-            const confirmed = confirm(
-                `Are you sure you want to merge cars #${car1Id} and #${car2Id}?\n\n` +
-                `Reason: ${reasonText}\n\n` +
-                `This action cannot be undone. The history will be preserved, but one car record will be permanently deleted.`
-            );
+            e.preventDefault();
 
-            if (!confirmed) {
-                e.preventDefault();
-                return false;
-            }
+            showConfirmDialog(
+                'Confirm Car Merge',
+                `Are you sure you want to merge cars #${car1Id} and #${car2Id}?\n\nReason: ${reasonText}\n\nThis action cannot be undone. The history will be preserved, but one car record will be permanently deleted.`,
+                function() { $form[0].submit(); }
+            );
         });
 
         // Initialize button state

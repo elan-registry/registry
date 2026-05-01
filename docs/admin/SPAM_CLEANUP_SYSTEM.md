@@ -1,12 +1,12 @@
 # Automated SPAM and Inactive User Cleanup System
 
-**Issue #232 Implementation**
-
-This system automatically identifies and removes SPAM accounts and inactive users from the Lotus Elan Registry to maintain database quality and reduce administrative overhead.
+This system automatically identifies and removes SPAM accounts and inactive users from the
+Lotus Elan Registry to maintain database quality and reduce administrative overhead.
 
 ## Overview
 
 The cleanup system operates in two phases:
+
 1. **SPAM Detection**: Immediate removal of detected SPAM accounts
 2. **Inactive User Management**: Grace period notification and eventual removal of inactive accounts
 
@@ -23,7 +23,7 @@ The cleanup system operates in two phases:
 
 - **`/users/cron/spam_inactive_cleanup.php`** - Main cleanup cron script
 - **`/tests/test_spam_cleanup_queries.php`** - Validation and testing script
-- **`/FIX/Generate-Test-Data-For-SPAM-Cleanup.php`** - Test user generation script
+- **`/app/admin/scripts/fix/Generate-Test-Data-For-SPAM-Cleanup.php`** - Test user generation script
 - **`/usersc/includes/admin_panel_custom_settings.php`** - Admin settings interface
 - **`/docs/SPAM_CLEANUP_SYSTEM.md`** - This documentation
 
@@ -71,7 +71,7 @@ Set up your server cron to call the UserSpice cron system:
 
 ### 5. Testing
 
-1. **Create test data**: Run `/FIX/Generate-Test-Data-For-SPAM-Cleanup.php` to create test users
+1. **Create test data**: Run `/app/admin/scripts/fix/Generate-Test-Data-For-SPAM-Cleanup.php` to create test users
 2. **Enable cleanup**: Turn **ON** the "Enable Automated Cleanup" toggle in admin settings
 3. **Execute test run**: Trigger the cron job via the web interface or run manually
 4. **Review dry-run logs**: Click "View Dry Run Logs" link next to the Dry Run Mode toggle
@@ -80,7 +80,9 @@ Set up your server cron to call the UserSpice cron system:
 
 ## Configuration Options
 
-All settings are managed through the **Admin Dashboard → Elan Registry Settings** page (`/users/admin.php?view=custom`). The system automatically creates the necessary database fields when first accessed.
+All settings are managed through the **Admin Dashboard → Elan Registry Settings** page
+(`/users/admin.php?view=custom`). The system automatically creates the necessary database
+fields when first accessed.
 
 ### User Interface Features
 
@@ -93,7 +95,7 @@ All settings are managed through the **Admin Dashboard → Elan Registry Setting
 ### Available Settings
 
 | Setting | Description | Default |
-|---------|-------------|---------|
+| ------- | ----------- | ------- |
 | **Enable Automated Cleanup** | Master switch to enable/disable the entire system | Disabled |
 | **Dry Run Mode** | Test mode - logs actions without deleting users | Enabled |
 | **Inactive User Threshold** | Days before considering users without cars as inactive | 30 days |
@@ -103,6 +105,7 @@ All settings are managed through the **Admin Dashboard → Elan Registry Setting
 | **Max Cleanup Percentage** | Maximum percentage of total users to cleanup per run | 5.0% |
 
 ### Configuration Notes
+
 - Changes take effect immediately on next cron execution
 - Dry run mode is highly recommended for initial testing
 - Grace period emails require UserSpice email system configuration
@@ -113,6 +116,7 @@ All settings are managed through the **Admin Dashboard → Elan Registry Setting
 The system identifies SPAM accounts using these criteria:
 
 ### 1. Legacy Data Anomalies
+
 - Join date before 1980 (data migration artifacts)
 - Never logged in (`last_login = '0000-00-00 00:00:00'`)
 - Email not verified (`email_verified = 0`)
@@ -120,6 +124,7 @@ The system identifies SPAM accounts using these criteria:
 - Not protected accounts (`admin`, `noowner`)
 
 ### 2. Suspicious Registration Patterns
+
 - Registered after 2020
 - Never logged in
 - Email not verified
@@ -159,6 +164,7 @@ For inactive users (not SPAM):
 ## Monitoring and Logs
 
 ### Log Categories
+
 - `SpamCleanup` - General cleanup process logs
 - `SpamDeletion` - Individual SPAM account deletions
 - `InactiveCleanup` - Inactive user process logs
@@ -168,9 +174,11 @@ For inactive users (not SPAM):
 - `SpamCleanupError` - Error conditions
 
 ### Email Notifications
+
 Grace period emails are sent as professional **HTML emails** with **plain text fallback**:
 
 **HTML Email Features:**
+
 - Lotus Elan Registry branding with logo
 - Professional styling with warning boxes
 - Action buttons for "Log In Now" and "Add Your Lotus Elan"  
@@ -178,11 +186,13 @@ Grace period emails are sent as professional **HTML emails** with **plain text f
 - Lotus green accent colors (#16a34a)
 
 **Development Testing:**
+
 - **Mailtrap.io Integration**: All emails sent to Mailtrap for testing
 - **Visual Preview**: See exactly how emails will appear before production
 - **Content Validation**: Test both HTML and plain text versions
 
 ### Log Locations
+
 - **UserSpice Logs**: Admin Dashboard → System Logs
 - **Server Logs**: Check your web server error logs
 - **Cron Logs**: UserSpice Cron Manager shows execution history
@@ -190,11 +200,13 @@ Grace period emails are sent as professional **HTML emails** with **plain text f
 ## Testing and Validation
 
 ### Pre-Production Testing
+
 1. Run `php tests/test_spam_cleanup_queries.php`
 2. Review the safety assessment output
 3. Ensure cleanup percentage is reasonable
 
 ### Dry-Run Testing
+
 1. Enable "Dry Run Mode" toggle in admin settings
 2. Execute cron job
 3. Review logs to see what WOULD be deleted
@@ -202,13 +214,14 @@ Grace period emails are sent as professional **HTML emails** with **plain text f
 5. Adjust criteria if needed
 
 ### Production Deployment
+
 1. Verify dry-run results are acceptable
 2. Go to **Admin Dashboard → Custom Settings**
 3. Disable **Dry Run Mode**
 4. Monitor first few executions closely
 5. Check logs regularly for issues
 
-## Email Notifications
+## Grace Period Email Details
 
 When **Send Grace Period Emails** is enabled in admin settings:
 
@@ -218,6 +231,7 @@ When **Send Grace Period Emails** is enabled in admin settings:
 - 7-day countdown warning
 
 Email template includes:
+
 - Personal greeting with username
 - Explanation of inactive status
 - Clear action steps (login and add car)
@@ -229,16 +243,19 @@ Email template includes:
 ### Common Issues
 
 **Cron not executing:**
+
 - Check server cron configuration
 - Verify IP address in UserSpice settings
 - Check UserSpice cron manager for active status
 
 **Too many/few users identified:**
+
 - Review criteria in test script
 - Adjust `$INACTIVE_DAYS` or other parameters
 - Check safety percentage limits
 
 **Email notifications not sending:**
+
 - Verify **Send Grace Period Emails** is enabled in admin settings
 - Check UserSpice email configuration
 - Review email function availability
@@ -246,11 +263,13 @@ Email template includes:
 ### Error Recovery
 
 **Safety abort triggered:**
+
 - Review why so many users were identified
 - Consider adjusting criteria or limits
 - Run in dry-run mode to investigate
 
 **Database errors:**
+
 - Check UserSpice database connection
 - Verify table structures haven't changed
 - Review database permissions
@@ -273,12 +292,15 @@ Email template includes:
 ## Maintenance
 
 ### Regular Tasks
+
 1. **Monthly**: Review cleanup logs and statistics
 2. **Quarterly**: Adjust criteria based on user patterns
 3. **Annually**: Review and update email templates
 
 ### Updates
+
 When updating the system:
+
 1. Test changes in dry-run mode first
 2. Backup user data before major changes
 3. Monitor logs after updates

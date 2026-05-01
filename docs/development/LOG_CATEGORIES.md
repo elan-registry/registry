@@ -311,7 +311,7 @@ if (empty($email)) {
 ### Example 3: Database Maintenance Script
 
 ```php
-// In FIX/_TEMPLATE_Fix-Script.php
+// In app/admin/scripts/fix/_TEMPLATE_Fix-Script.php
 define(
     'LOG_CATEGORY_PLACEHOLDER',
     LogCategories::LOG_CATEGORY_DATABASE_MAINTENANCE

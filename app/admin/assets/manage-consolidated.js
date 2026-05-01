@@ -1,4 +1,4 @@
-/* exported formatNumber, formatDate, prefersReducedMotion, initializeCarManagement, showNotification, switchToOwnerManagementTab, openAdminContactModal */
+/* exported formatNumber, formatDate, prefersReducedMotion, initializeCarManagement, showNotification, switchToOwnerManagementTab, openAdminContactModal, showConfirmDialog, showInputDialog, escapeHtml */
 /**
  * manage-consolidated.js
  * Consolidated Management Interface JavaScript
@@ -7,29 +7,23 @@
  * including tab navigation, form validation, and user experience improvements
  */
 
+/**
+ * Escape HTML to prevent XSS attacks.
+ * @param {*} unsafe - Value to escape; non-strings are returned as-is
+ * @return {string|*} - HTML-escaped string, or the original value if not a string
+ */
+function escapeHtml(unsafe) {
+    if (typeof unsafe !== 'string') { return unsafe; }
+    return unsafe
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+}
+
 $(document).ready(function() {
     'use strict';
-
-    // ==========================================================================
-    // Security Utilities
-    // ==========================================================================
-
-    /**
-     * Escape HTML to prevent XSS attacks
-     * @param {string} unsafe - Unsafe string that may contain HTML
-     * @return {string} - HTML-escaped safe string
-     */
-    function _escapeHtml(unsafe) {
-        if (typeof unsafe !== 'string') {
-            return unsafe;
-        }
-        return unsafe
-            .replace(/&/g, "&amp;")
-            .replace(/</g, "&lt;")
-            .replace(/>/g, "&gt;")
-            .replace(/"/g, "&quot;")
-            .replace(/'/g, "&#039;");
-    }
 
     // ==========================================================================
     // Tab Management and Navigation
@@ -95,7 +89,7 @@ $(document).ready(function() {
     }
 
     // Add loading states to external links
-    $('a[href*="manage.php"], a[href*="data-quality.php"], a[href*="/FIX/"]').on('click', function() {
+    $('a[href*="manage.php"], a[href*="data-quality.php"], a[href*="/scripts/fix/"], a[href*="/scripts/maintenance/"]').on('click', function() {
         const $link = $(this);
         if (!$link.hasClass('btn-sm')) {
             showLoadingState($link);
@@ -350,6 +344,7 @@ $(document).ready(function() {
      * Show notifications to user
      */
     function showNotification(message, type = 'info') {
+        const safeMessage = $('<div>').text(message).html();
         const alertClass = `alert-${type === 'error' ? 'danger' : type}`;
         const iconClass = type === 'error' ? 'fa-exclamation-triangle' :
                          type === 'success' ? 'fa-check-circle' :
@@ -358,7 +353,7 @@ $(document).ready(function() {
         const $notification = $(`
             <div class="alert ${alertClass} alert-dismissible fade show position-fixed"
                  style="top: 20px; right: 20px; z-index: 9999; min-width: 300px;">
-                <i class="fas ${iconClass}"></i> ${message}
+                <i class="fas ${iconClass}"></i> ${safeMessage}
                 <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
             </div>
         `);
@@ -411,21 +406,28 @@ $(document).ready(function() {
      * Initialize all features
      */
     function initialize() {
-        try {
-            initializeTabNavigation();
-            initializeFormValidation();
-            initializeAutoResize();
-            initializeMobileNavigation();
-            initializeKeyboardNavigation();
-            initializeLazyLoading();
-            initializeErrorHandling();
-            initializeDevelopmentMode();
-            initializeCarManagement();
-
-            // Mark initialization complete
-            $('body').addClass('consolidated-interface-ready');
-        } catch (error) {
-            console.error('[ConsolidatedInterface] Initialization failed:', error);
+        let hasFailure = false;
+        [
+            initializeTabNavigation,
+            initializeFormValidation,
+            initializeAutoResize,
+            initializeMobileNavigation,
+            initializeKeyboardNavigation,
+            initializeLazyLoading,
+            initializeErrorHandling,
+            initializeDevelopmentMode,
+            initializeCarManagement,
+        ].forEach(function(fn) {
+            try {
+                fn();
+            } catch (error) {
+                hasFailure = true;
+                console.error('[ConsolidatedInterface] ' + fn.name + ' failed:', error);
+            }
+        });
+        $('body').addClass('consolidated-interface-ready');
+        if (hasFailure) {
+            showNotification('Some admin features may not be available. Reload the page or contact support if problems persist.', 'warning');
         }
     }
 
@@ -520,8 +522,8 @@ function initializeCarManagement() {
             const ownerName = car.fname && car.lname ? `${car.fname} ${car.lname}` : 'Unknown Owner';
 
             $('#carInfo').html(
-                `<strong>${car.year || 'Unknown'} ${car.type || 'Unknown'}</strong><br>` +
-                `Chassis: ${car.chassis || 'Unknown'} | Color: ${car.color || 'Unknown'}`
+                `<strong>${escapeHtml(car.year || 'Unknown')} ${escapeHtml(car.type || 'Unknown')}</strong><br>` +
+                `Chassis: ${escapeHtml(car.chassis || 'Unknown')} | Color: ${escapeHtml(car.color || 'Unknown')}`
             );
             $('#currentOwner').text(`${ownerName} (${car.email || 'No email'})`);
             $('#carDetails').show();
@@ -571,10 +573,10 @@ function initializeCarManagement() {
             const joinDate = new Date(user.join_date).toLocaleDateString();
 
             $('#userInfo').html(
-                `<strong>${userName}</strong><br>` +
-                `Email: ${user.email}<br>` +
-                `Location: ${location}<br>` +
-                `Member since: ${joinDate}`
+                `<strong>${escapeHtml(userName)}</strong><br>` +
+                `Email: ${escapeHtml(user.email)}<br>` +
+                `Location: ${escapeHtml(location)}<br>` +
+                `Member since: ${escapeHtml(joinDate)}`
             );
             $('#userDetails').show();
             updateReassignButton();
@@ -621,8 +623,8 @@ function initializeCarManagement() {
             const ownerName = car.fname && car.lname ? `${car.fname} ${car.lname}` : 'Unknown Owner';
 
             $('#deleteCarInfo').html(
-                `<strong>${car.year || 'Unknown'} ${car.type || 'Unknown'}</strong><br>` +
-                `Chassis: ${car.chassis || 'Unknown'} | Color: ${car.color || 'Unknown'} | Series: ${car.series || 'Unknown'}`
+                `<strong>${escapeHtml(car.year || 'Unknown')} ${escapeHtml(car.type || 'Unknown')}</strong><br>` +
+                `Chassis: ${escapeHtml(car.chassis || 'Unknown')} | Color: ${escapeHtml(car.color || 'Unknown')} | Series: ${escapeHtml(car.series || 'Unknown')}`
             );
             $('#deleteCurrentOwner').text(`${ownerName} (${car.email || 'No email'})`);
             $('#deleteCarDetails').show();
@@ -745,9 +747,9 @@ function initializeCarManagement() {
 
         // Populate modal with car details
         $('#modal-car-details').html(
-            `<strong>${carName}</strong><br>` +
-            `<small class="text-muted">Current Owner: ${currentOwner}</small><br>` +
-            `<small class="text-muted">Email: ${selectedCar.email || 'No email'}</small>`
+            `<strong>${escapeHtml(carName)}</strong><br>` +
+            `<small class="text-muted">Current Owner: ${escapeHtml(currentOwner)}</small><br>` +
+            `<small class="text-muted">Email: ${escapeHtml(selectedCar.email || 'No email')}</small>`
         );
 
         // Populate modal with user details
@@ -761,9 +763,9 @@ function initializeCarManagement() {
             const userLocation = selectedUser.city && selectedUser.state ?
                 `${selectedUser.city}, ${selectedUser.state} ${selectedUser.country}` : 'Unknown Location';
             $('#modal-user-details').html(
-                `<strong>${newOwner}</strong><br>` +
-                `<small class="text-muted">Email: ${selectedUser.email}</small><br>` +
-                `<small class="text-muted">Location: ${userLocation}</small>`
+                `<strong>${escapeHtml(newOwner)}</strong><br>` +
+                `<small class="text-muted">Email: ${escapeHtml(selectedUser.email)}</small><br>` +
+                `<small class="text-muted">Location: ${escapeHtml(userLocation)}</small>`
             );
         }
 
@@ -803,20 +805,20 @@ function initializeCarManagement() {
             `<div class="row">` +
                 `<div class="col-md-6">` +
                     `<h6 class="text-danger">Car Information</h6>` +
-                    `<p><strong>ID:</strong> ${car.id}</p>` +
-                    `<p><strong>Year:</strong> ${car.year || 'Unknown'}</p>` +
-                    `<p><strong>Type:</strong> ${car.type || 'Unknown'}</p>` +
-                    `<p><strong>Chassis:</strong> ${car.chassis || 'Unknown'}</p>` +
-                    `<p><strong>Color:</strong> ${car.color || 'Unknown'}</p>` +
-                    `<p><strong>Series:</strong> ${car.series || 'Unknown'}</p>` +
+                    `<p><strong>ID:</strong> ${escapeHtml(String(car.id))}</p>` +
+                    `<p><strong>Year:</strong> ${escapeHtml(car.year || 'Unknown')}</p>` +
+                    `<p><strong>Type:</strong> ${escapeHtml(car.type || 'Unknown')}</p>` +
+                    `<p><strong>Chassis:</strong> ${escapeHtml(car.chassis || 'Unknown')}</p>` +
+                    `<p><strong>Color:</strong> ${escapeHtml(car.color || 'Unknown')}</p>` +
+                    `<p><strong>Series:</strong> ${escapeHtml(car.series || 'Unknown')}</p>` +
                 `</div>` +
                 `<div class="col-md-6">` +
                     `<h6 class="text-danger">Owner Information</h6>` +
-                    `<p><strong>Owner:</strong> ${ownerName}</p>` +
-                    `<p><strong>Email:</strong> ${car.email || 'Unknown'}</p>` +
-                    `<p><strong>Location:</strong> ${location}</p>` +
-                    `<p><strong>Created:</strong> ${createdDate}</p>` +
-                    `<p><strong>Modified:</strong> ${modifiedDate}</p>` +
+                    `<p><strong>Owner:</strong> ${escapeHtml(ownerName)}</p>` +
+                    `<p><strong>Email:</strong> ${escapeHtml(car.email || 'Unknown')}</p>` +
+                    `<p><strong>Location:</strong> ${escapeHtml(location)}</p>` +
+                    `<p><strong>Created:</strong> ${escapeHtml(createdDate)}</p>` +
+                    `<p><strong>Modified:</strong> ${escapeHtml(modifiedDate)}</p>` +
                 `</div>` +
             `</div>`
         );
@@ -1084,26 +1086,26 @@ function initializeCarManagement() {
 
         // Populate car details
         const carDetails = `
-            <strong>${data.year} ${data.type}</strong>
-            ${data.series ? `<span class="badge text-bg-secondary badge-sm ms-1">${data.series}</span>` : ''}
+            <strong>${escapeHtml(data.year)} ${escapeHtml(data.type)}</strong>
+            ${data.series ? `<span class="badge text-bg-secondary badge-sm ms-1">${escapeHtml(data.series)}</span>` : ''}
             <br><small class="text-muted">
-                <i class="fas fa-barcode"></i> Chassis: ${data.chassis}
-                ${data.color ? ` • Color: ${data.color}` : ''}
+                <i class="fas fa-barcode"></i> Chassis: ${escapeHtml(data.chassis)}
+                ${data.color ? ` • Color: ${escapeHtml(data.color)}` : ''}
             </small>
         `;
         $('#modal-transfer-car-details').html(carDetails);
 
         // Populate current owner details
         const currentOwnerDetails = `
-            <strong>${data.currentOwner}</strong><br>
-            <small class="text-muted"><i class="fas fa-envelope"></i> ${data.currentEmail}</small>
+            <strong>${escapeHtml(data.currentOwner)}</strong><br>
+            <small class="text-muted"><i class="fas fa-envelope"></i> ${escapeHtml(data.currentEmail)}</small>
         `;
         $('#modal-current-owner-details').html(currentOwnerDetails);
 
         // Populate requester details
         const requesterDetails = `
-            <strong>${data.requester}</strong><br>
-            <small class="text-muted"><i class="fas fa-envelope"></i> ${data.requesterEmail}</small>
+            <strong>${escapeHtml(data.requester)}</strong><br>
+            <small class="text-muted"><i class="fas fa-envelope"></i> ${escapeHtml(data.requesterEmail)}</small>
         `;
         $('#modal-requester-details').html(requesterDetails);
 
@@ -1116,11 +1118,11 @@ function initializeCarManagement() {
                 </div>
                 <div class="col-md-6">
                     <strong>Submitted Data:</strong><br>
-                    ${data.submittedYear ? `Year: ${data.submittedYear}<br>` : ''}
-                    ${data.submittedModel ? `Model: ${data.submittedModel}<br>` : ''}
-                    ${data.submittedChassis ? `Chassis: ${data.submittedChassis}<br>` : ''}
-                    ${data.submittedColor ? `Color: ${data.submittedColor}<br>` : ''}
-                    ${data.submittedEngine ? `Engine: ${data.submittedEngine}<br>` : ''}
+                    ${data.submittedYear ? `Year: ${escapeHtml(data.submittedYear)}<br>` : ''}
+                    ${data.submittedModel ? `Model: ${escapeHtml(data.submittedModel)}<br>` : ''}
+                    ${data.submittedChassis ? `Chassis: ${escapeHtml(data.submittedChassis)}<br>` : ''}
+                    ${data.submittedColor ? `Color: ${escapeHtml(data.submittedColor)}<br>` : ''}
+                    ${data.submittedEngine ? `Engine: ${escapeHtml(data.submittedEngine)}<br>` : ''}
                 </div>
             </div>
         `;
@@ -1211,26 +1213,26 @@ function initializeCarManagement() {
 
         // Populate car details
         const carDetails = `
-            <strong>${data.carYear} ${data.carType}</strong>
-            ${data.carSeries ? `<span class="badge text-bg-secondary badge-sm ms-1">${data.carSeries}</span>` : ''}
+            <strong>${escapeHtml(data.carYear)} ${escapeHtml(data.carType)}</strong>
+            ${data.carSeries ? `<span class="badge text-bg-secondary badge-sm ms-1">${escapeHtml(data.carSeries)}</span>` : ''}
             <br><small class="text-muted">
-                <i class="fas fa-barcode"></i> Chassis: ${data.carChassis}
-                ${data.carColor ? ` • Color: ${data.carColor}` : ''}
+                <i class="fas fa-barcode"></i> Chassis: ${escapeHtml(data.carChassis)}
+                ${data.carColor ? ` • Color: ${escapeHtml(data.carColor)}` : ''}
             </small>
         `;
         $('#modal-transfer-car-details').html(carDetails);
 
         // Populate current owner details
         const currentOwnerDetails = `
-            <strong>${data.currentOwner}</strong><br>
-            <small class="text-muted"><i class="fas fa-envelope"></i> ${data.currentEmail}</small>
+            <strong>${escapeHtml(data.currentOwner)}</strong><br>
+            <small class="text-muted"><i class="fas fa-envelope"></i> ${escapeHtml(data.currentEmail)}</small>
         `;
         $('#modal-current-owner-details').html(currentOwnerDetails);
 
         // Populate requester details
         const requesterDetails = `
-            <strong>${data.requesterName}</strong><br>
-            <small class="text-muted"><i class="fas fa-envelope"></i> ${data.requesterEmail}</small>
+            <strong>${escapeHtml(data.requesterName)}</strong><br>
+            <small class="text-muted"><i class="fas fa-envelope"></i> ${escapeHtml(data.requesterEmail)}</small>
         `;
         $('#modal-requester-details').html(requesterDetails);
 
@@ -1349,6 +1351,7 @@ function initializeCarManagement() {
  * @param {string} type - Bootstrap alert type (success, danger, info, warning)
  */
 function showNotification(message, type = 'info') {
+    const safeMessage = $('<div>').text(message).html();
     const $messageContainer = $('#messageContainer');
     if (!$messageContainer.length) {
         $('body').prepend('<div id="messageContainer" style="position: fixed; top: 70px; right: 20px; z-index: 9999; max-width: 400px;"></div>');
@@ -1356,7 +1359,7 @@ function showNotification(message, type = 'info') {
     const alertClass = `alert alert-${type} alert-dismissible fade show`;
     const alertHtml = `
         <div class="${alertClass}" role="alert">
-            ${message}
+            ${safeMessage}
             <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
         </div>
     `;
@@ -1383,20 +1386,18 @@ function switchToOwnerManagementTab(userId) {
  * Function to open admin contact modal for owner communication
  */
 function openAdminContactModal(carData, ownerData, qualityIssue = '', targetEmail = '') {
-    // Populate car information
-    document.getElementById('contactCarInfo').innerHTML = `
-        <div><strong>Car ID:</strong> ${carData.id}</div>
-        <div><strong>Year/Model:</strong> ${carData.year || 'N/A'} ${carData.model || 'N/A'}</div>
-        <div><strong>Chassis:</strong> ${carData.chassis || 'Missing'}</div>
-        <div><strong>Series:</strong> ${carData.series || 'Missing'}</div>
-    `;
+    document.getElementById('contactCarInfo').innerHTML = [
+        `<div><strong>Car ID:</strong> ${escapeHtml(String(carData.id ?? ''))}</div>`,
+        `<div><strong>Year/Model:</strong> ${escapeHtml(carData.year || 'N/A')} ${escapeHtml(carData.model || 'N/A')}</div>`,
+        `<div><strong>Chassis:</strong> ${escapeHtml(carData.chassis || 'Missing')}</div>`,
+        `<div><strong>Series:</strong> ${escapeHtml(carData.series || 'Missing')}</div>`,
+    ].join('');
 
-    // Populate owner information
-    document.getElementById('contactOwnerInfo').innerHTML = `
-        <div><strong>Name:</strong> ${ownerData.name || 'Unknown'}</div>
-        <div><strong>Email:</strong> ${ownerData.email || 'Unknown'}</div>
-        <div><strong>User ID:</strong> ${ownerData.id || 'Unknown'}</div>
-    `;
+    document.getElementById('contactOwnerInfo').innerHTML = [
+        `<div><strong>Name:</strong> ${escapeHtml(ownerData.name || 'Unknown')}</div>`,
+        `<div><strong>Email:</strong> ${escapeHtml(ownerData.email || 'Unknown')}</div>`,
+        `<div><strong>User ID:</strong> ${escapeHtml(String(ownerData.id ?? 'Unknown'))}</div>`,
+    ].join('');
 
     // Set hidden field values
     document.getElementById('contactCarId').value = carData.id;
@@ -1412,4 +1413,125 @@ function openAdminContactModal(carData, ownerData, qualityIssue = '', targetEmai
 
     // Show the modal
     bootstrap.Modal.getOrCreateInstance(document.getElementById('adminContactModal')).show();
+}
+
+/**
+ * Show the shared #confirmationModal with the given title and plain-text message.
+ * @param {string} title - Dialog title (rendered as plain text)
+ * @param {string} message - Body text; \n renders as line break via pre-line styling
+ * @param {Function} onConfirm - Required. Called when the user clicks Confirm, or when
+ *   the native confirm() fallback is accepted (used when the modal element is absent).
+ */
+function showConfirmDialog(title, message, onConfirm) {
+    'use strict';
+    const modal = document.getElementById('confirmationModal');
+    if (!modal) {
+        console.error('[showConfirmDialog] #confirmationModal not found in DOM');
+        showNotification('Confirmation dialog unavailable. Using browser dialog.', 'warning');
+        if (onConfirm && confirm(message)) {
+            try { onConfirm(); } catch (err) { console.error('[showConfirmDialog] onConfirm threw in fallback:', err); }
+        }
+        return;
+    }
+
+    const titleEl = modal.querySelector('#confirmTitle');
+    const msgEl = modal.querySelector('#confirmMessage');
+    const confirmBtn = modal.querySelector('#confirmButton');
+    if (!titleEl || !msgEl || !confirmBtn) {
+        console.error('[showConfirmDialog] Modal inner elements missing');
+        showNotification('Confirmation dialog unavailable. Using browser dialog.', 'warning');
+        if (onConfirm && confirm(message)) {
+            try { onConfirm(); } catch (err) { console.error('[showConfirmDialog] onConfirm threw in fallback:', err); }
+        }
+        return;
+    }
+
+    titleEl.textContent = title;
+    msgEl.style.whiteSpace = 'pre-line';
+    msgEl.textContent = message;
+
+    const newBtn = confirmBtn.cloneNode(true);
+    confirmBtn.parentNode.replaceChild(newBtn, confirmBtn);
+
+    newBtn.addEventListener('click', function() {
+        this.disabled = true;
+        try {
+            bootstrap.Modal.getInstance(modal)?.hide();
+        } catch (err) {
+            console.error('[showConfirmDialog] Bootstrap modal hide failed:', err);
+            modal.style.display = 'none';
+            document.body.classList.remove('modal-open');
+        }
+        if (onConfirm) {
+            try {
+                onConfirm();
+            } catch (err) {
+                console.error('[showConfirmDialog] onConfirm threw:', err);
+                showNotification('An unexpected error occurred. Please try again.', 'danger');
+            }
+        }
+    });
+
+    bootstrap.Modal.getOrCreateInstance(modal).show();
+}
+
+/**
+ * Show a modal dialog with a text input field and invoke a callback with the value.
+ * @param {string} title - Modal title text
+ * @param {string} message - Prompt message displayed above the textarea
+ * @param {string} defaultValue - Initial value pre-filled in the textarea
+ * @param {function(string): void} onConfirm - Called with the textarea value when OK is clicked;
+ *   not called if the user dismisses the dialog via Cancel or the X button
+ */
+function showInputDialog(title, message, defaultValue, onConfirm) {
+    'use strict';
+    const modal = document.getElementById('inputModal');
+    if (!modal) {
+        console.error('[showInputDialog] #inputModal not found in DOM');
+        showNotification('Input dialog unavailable. Please reload the page.', 'danger');
+        return;
+    }
+
+    const titleEl = modal.querySelector('#inputModalTitle');
+    const msgEl = modal.querySelector('#inputModalMessage');
+    const valueEl = modal.querySelector('#inputModalValue');
+    const confirmBtn = modal.querySelector('#inputModalConfirm');
+    if (!titleEl || !msgEl || !valueEl || !confirmBtn) {
+        console.error('[showInputDialog] Modal inner elements missing');
+        showNotification('Input dialog unavailable. Please reload the page.', 'danger');
+        return;
+    }
+
+    titleEl.textContent = title;
+    msgEl.textContent = message;
+    valueEl.value = defaultValue || '';
+
+    const newBtn = confirmBtn.cloneNode(true);
+    confirmBtn.parentNode.replaceChild(newBtn, confirmBtn);
+
+    newBtn.addEventListener('click', function () {
+        const value = valueEl.value;
+        try {
+            bootstrap.Modal.getInstance(modal)?.hide();
+        } catch (err) {
+            console.error('[showInputDialog] Bootstrap modal hide failed:', err);
+        }
+        if (onConfirm) {
+            try {
+                onConfirm(value);
+            } catch (err) {
+                console.error('[showInputDialog] onConfirm threw:', err);
+                showNotification('An unexpected error occurred. Please try again.', 'danger');
+            }
+        }
+    });
+
+    modal.addEventListener('shown.bs.modal', () => valueEl.focus(), { once: true });
+
+    try {
+        bootstrap.Modal.getOrCreateInstance(modal).show();
+    } catch (err) {
+        console.error('[showInputDialog] Bootstrap modal show failed:', err);
+        showNotification('Input dialog could not open. Please reload the page.', 'danger');
+    }
 }

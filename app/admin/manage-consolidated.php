@@ -10,9 +10,6 @@ declare(strict_types=1);
  * TAB 1: Car/Owner Relationships - Car reassignment, deletion, and ownership transfers
  * TAB 2: Manage Cars - Individual car management and bulk operations
  * TAB 3: Manage Owners - User profile management and owner data administration
- * TAB 4: System Maintenance - Database maintenance, FIX scripts, and system utilities
- * TAB 5: Owner Cleanup - User account cleanup information and spam management overview
- * TAB 6: Settings - Complete ElanRegistry configuration (Google APIs, CDNs, media, email)
  *
  * @author Elan Registry Development Team
  * @copyright 2025
@@ -45,9 +42,6 @@ $validTabs = [
     'car-mgmt' => 'Car/Owner Relationships',
     'manage-cars' => 'Manage Cars',
     'owner-mgmt' => 'Manage Owners',
-    'cleanup' => 'Owner Cleanup',
-    'system' => 'System Maintenance',
-    'settings' => 'Settings'
 ];
 
 $activeTab = isset($_GET['tab']) && array_key_exists($_GET['tab'], $validTabs) ? $_GET['tab'] : 'car-mgmt';
@@ -143,7 +137,7 @@ try {
     // Store separated counts
     $systemStatus['car_issues'] = $carIssues;
     $systemStatus['owner_issues'] = $ownerIssues;
-    $systemStatus['quality_issues'] = $carIssues + $ownerIssues; // Total for backwards compatibility
+    $systemStatus['quality_issues'] = $carIssues + $ownerIssues;
 
 } catch (PDOException $e) {
     // Fail silently for header stats - main functionality should still work
@@ -372,7 +366,7 @@ if (Input::exists('post')) {
                             <h1 class="h2 mb-2 text-gray-800">
                                 <i class="fas fa-cogs"></i> Registry Management
                             </h1>
-                            <p class="text-muted mb-0">Administrative tools for car registry, data quality, and system maintenance</p>
+                            <p class="text-muted mb-0">Administrative tools for car registry and ownership management</p>
                         </div>
                         <div class="text-end">
                             <div class="mb-2">
@@ -435,30 +429,6 @@ if (Input::exists('post')) {
                                         <?php if ($systemStatus['owner_issues'] > 0) { ?>
                                             <span class="badge text-bg-warning badge-sm ms-1"><?= $systemStatus['owner_issues'] ?></span>
                                         <?php } ?>
-                                    </a>
-                                </li>
-
-                                <!-- Owner Cleanup Tab -->
-                                <li class="nav-item">
-                                    <a class="nav-link <?= $activeTab === 'cleanup' ? 'active' : '' ?>"
-                                       href="?tab=cleanup" role="tab">
-                                        <i class="fas fa-shield-alt"></i> Owner Cleanup
-                                    </a>
-                                </li>
-
-                                <!-- System Maintenance Tab -->
-                                <li class="nav-item">
-                                    <a class="nav-link <?= $activeTab === 'system' ? 'active' : '' ?>"
-                                       href="?tab=system" role="tab">
-                                        <i class="fas fa-tools"></i> System Maintenance
-                                    </a>
-                                </li>
-
-                                <!-- Settings Tab -->
-                                <li class="nav-item">
-                                    <a class="nav-link <?= $activeTab === 'settings' ? 'active' : '' ?>"
-                                       href="?tab=settings" role="tab">
-                                        <i class="fas fa-cog"></i> Settings
                                     </a>
                                 </li>
 
@@ -787,6 +757,8 @@ if (Input::exists('post')) {
     </div>
 </div>
 
+<?php include 'includes/confirmation-modal.php'; ?>
+
 <?php require_once $abs_us_root . $us_url_root . 'users/includes/html_footer.php'; ?>
 
 <!-- Location Picker Styles -->
@@ -803,4 +775,3 @@ if (Input::exists('post')) {
     document.documentElement.setAttribute('data-csrf-token', '<?= $csrfToken ?>');
 </script>
 <script src="assets/manage-consolidated.min.js"></script>
-<script src="assets/backup-operations.min.js"></script>
