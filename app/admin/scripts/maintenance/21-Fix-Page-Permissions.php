@@ -76,93 +76,24 @@ define('PERM_USER', 1);
 define('PERM_ADMIN', 2);
 define('PERM_EDITOR', 3);
 
-/**
- * Check if a page should be PRIVATE with NO permissions (special case)
- */
+/** @see PagePermissionClassifier::shouldBePrivateNoPermissions() */
 function shouldBePrivateNoPermissions(string $pagePath): bool {
-    $specialPages = [
-        'usersc/join.php',
-        'usersc/login.php'
-    ];
-    return in_array($pagePath, $specialPages);
+    return PagePermissionClassifier::shouldBePrivateNoPermissions($pagePath);
 }
 
-/**
- * Check if a page is an ADMIN page (should have at least Admin permission)
- *
- * Returns true for any page that should be restricted to admin-tier roles.
- * Use shouldBeAdminOnly() to further distinguish between admin-only and
- * admin+editor tiers.
- */
+/** @see PagePermissionClassifier::shouldHaveAdminPermissions() */
 function shouldHaveAdminPermissions(string $pagePath): bool {
-    if (strpos($pagePath, 'app/admin/scripts/') === 0) {
-        return true;
-    }
-
-    if (strpos($pagePath, 'admin') !== false) {
-        return true;
-    }
-
-    return false;
+    return PagePermissionClassifier::shouldHaveAdminPermissions($pagePath);
 }
 
-/**
- * Check if an admin page should be ADMIN-ONLY (Administrator permission only,
- * no Editor permission). All other admin pages get Admin+Editor.
- *
- * @param  string $pagePath The page path to check
- * @return bool   True if the page should be admin-only, false if admin+editor
- */
+/** @see PagePermissionClassifier::shouldBeAdminOnly() */
 function shouldBeAdminOnly(string $pagePath): bool {
-    if (strpos($pagePath, 'app/admin/scripts/') === 0) {
-        return true;
-    }
-
-    $adminOnlyPages = [
-        'app/admin/manage-maintenance.php',
-        'app/admin/includes/tab-health.php',
-        'app/admin/includes/tab-maintenance.php',
-    ];
-    return in_array($pagePath, $adminOnlyPages);
+    return PagePermissionClassifier::shouldBeAdminOnly($pagePath);
 }
 
-/**
- * Determine if a page should be PRIVATE based on pattern matching
- */
+/** @see PagePermissionClassifier::shouldBePrivate() */
 function shouldBePrivate(string $pagePath): bool {
-    // Error pages (404.php, 403.php, etc.) in root should be PUBLIC
-    if (preg_match('#^40\d\.php$#', $pagePath)) {
-        return false;
-    }
-
-    // docs/* pages should generally be PUBLIC
-    // EXCEPT docs/admin/* (and any path containing "admin") which should be PRIVATE-ADMIN
-    if (strpos($pagePath, 'docs/') === 0) {
-        // docs/*admin* should be PRIVATE
-        if (strpos($pagePath, 'admin') !== false) {
-            return true;
-        }
-        // Other docs pages should be PUBLIC
-        return false;
-    }
-
-    $patterns = [
-        '#^app/admin/scripts/#',             // app/admin/scripts/* maintenance & fix scripts
-        '#^app/admin/#',                     // app/admin/* pages
-        '#admin#',                           // Any path containing "admin"
-        '#^app/cars/actions#',               // app/cars/actions* endpoints
-        '#^app/contact/#',                   // app/contact/* pages
-        '#edit#',                            // Any path containing "edit"
-        '#^usersc/#'                         // usersc/* pages
-    ];
-
-    foreach ($patterns as $pattern) {
-        if (preg_match($pattern, $pagePath)) {
-            return true;
-        }
-    }
-
-    return false;
+    return PagePermissionClassifier::shouldBePrivate($pagePath);
 }
 
 /**
