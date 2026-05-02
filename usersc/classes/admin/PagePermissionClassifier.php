@@ -40,6 +40,9 @@ class PagePermissionClassifier
 
     /**
      * Check if a page should be PRIVATE with NO permissions (special case).
+     *
+     * @param  string $pagePath The page path to classify
+     * @return bool   True if the page should be private with no permission entries
      */
     public static function shouldBePrivateNoPermissions(string $pagePath): bool
     {
@@ -52,6 +55,9 @@ class PagePermissionClassifier
      * Returns true for any page that should be restricted to admin-tier roles.
      * Use shouldBeAdminOnly() to further distinguish between admin-only and
      * admin+editor tiers.
+     *
+     * @param  string $pagePath The page path to classify
+     * @return bool   True if the page requires at least Administrator permission
      */
     public static function shouldHaveAdminPermissions(string $pagePath): bool
     {
@@ -84,6 +90,9 @@ class PagePermissionClassifier
 
     /**
      * Determine if a page should be PRIVATE based on pattern matching.
+     *
+     * @param  string $pagePath The page path to classify
+     * @return bool   True if the page should be private (any permission tier), false if public
      */
     public static function shouldBePrivate(string $pagePath): bool
     {
