@@ -9,6 +9,18 @@ None.
 
 ## Admin-Facing Changes
 
+### Bug Fixes
+
+- **Fix Page Permissions: user_settings.php access restored** ([#795](https://github.com/unibrain1/elanregistry/issues/795)):
+  `usersc/user_settings.php` was incorrectly classified as a special-case private page with no
+  permissions, making it inaccessible to all roles. It is now correctly classified as a
+  private owner page (requires User permission), consistent with all other `usersc/*` pages.
+- **Fix Page Permissions: maintenance portal restricted to Administrators** ([#797](https://github.com/unibrain1/elanregistry/issues/797)):
+  The Fix Page Permissions maintenance script now distinguishes between two admin permission
+  tiers. Maintenance portal pages (`manage-maintenance.php`, scripts under
+  `app/admin/scripts/`) are set to Administrator-only access. The main admin panel
+  (`manage-consolidated.php` and its tabs) retains Administrator + Editor access.
+
 ### Improvements
 
 - **Styled Confirmation Dialogs** ([#571](https://github.com/unibrain1/elanregistry/issues/571)):
@@ -53,3 +65,5 @@ None.
 - [#786](https://github.com/unibrain1/elanregistry/issues/786) — Remove stub 'View All Cars' button from owner sidebar
 - [#787](https://github.com/unibrain1/elanregistry/issues/787) — Remove stub 'View Full History' button from owner sidebar
 - [#788](https://github.com/unibrain1/elanregistry/issues/788) — Remove stub 'Send Email' button from owner sidebar
+- [#795](https://github.com/unibrain1/elanregistry/issues/795) — bug: usersc/user_settings.php incorrectly classified as special-case (no permissions)
+- [#797](https://github.com/unibrain1/elanregistry/issues/797) — bug: maintenance portal pages not restricted to Administrator-only access

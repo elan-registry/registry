@@ -10,13 +10,20 @@ declare(strict_types=1);
  *
  * PERMISSION ARCHITECTURE:
  * - PUBLIC pages (private = 0): No permission entries required, accessible to all users
- * - PRIVATE-ADMIN pages (private = 1): Must have Administrator (ID=2) and Editor (ID=3) permissions
+ * - PRIVATE-ADMIN-ONLY pages (private = 1): Must have Administrator (ID=2) permission only
+ * - PRIVATE-ADMIN+EDITOR pages (private = 1): Must have Administrator (ID=2) and Editor (ID=3) permissions
  * - PRIVATE-OWNER pages (private = 1): Must have User (ID=1) permission
  * - SPECIAL PRIVATE pages: PRIVATE with NO permissions (listed below)
  *
- * ADMIN-ONLY PAGES (will be set to private=1 with Admin+Editor permissions):
- * - app/admin/scripts/* - All admin maintenance scripts
- * - *admin* - Any path containing "admin" (includes app/admin/*, docs/admin/*, etc.)
+ * ADMIN-ONLY PAGES (will be set to private=1 with Administrator permission only):
+ * - app/admin/scripts/* - All admin maintenance & fix scripts
+ * - app/admin/manage-maintenance.php - Maintenance portal page
+ * - app/admin/includes/tab-health.php - Health tab include
+ * - app/admin/includes/tab-maintenance.php - Maintenance tab include
+ *
+ * ADMIN+EDITOR PAGES (will be set to private=1 with Admin+Editor permissions):
+ * - app/admin/* - All other admin pages (not in admin-only list above)
+ * - *admin* - Any other path containing "admin" (includes docs/admin/*, etc.)
  * - docs/*admin* - Admin documentation pages
  *
  * OWNER/USER PRIVATE PAGES (will be set to private=1 with User permission):
@@ -28,7 +35,6 @@ declare(strict_types=1);
  * SPECIAL CASE PRIVATE PAGES (will be set to private=1 with NO permissions):
  * - usersc/join.php - Registration page (public access, no permissions needed)
  * - usersc/login.php - Login page (public access, no permissions needed)
- * - usersc/user_settings.php - User settings page (no permissions set)
  *
  * PUBLIC PAGES (will be set to private=0 with no permissions):
  * - Everything else in app/* that doesn't match PRIVATE patterns
@@ -70,72 +76,24 @@ define('PERM_USER', 1);
 define('PERM_ADMIN', 2);
 define('PERM_EDITOR', 3);
 
-/**
- * Check if a page should be PRIVATE with NO permissions (special case)
- */
-function shouldBePrivateNoPermissions($pagePath): bool {
-    $specialPages = [
-        'usersc/join.php',
-        'usersc/login.php',
-        'usersc/user_settings.php'
-    ];
-    return in_array($pagePath, $specialPages);
+/** @see PagePermissionClassifier::shouldBePrivateNoPermissions() */
+function shouldBePrivateNoPermissions(string $pagePath): bool {
+    return PagePermissionClassifier::shouldBePrivateNoPermissions($pagePath);
 }
 
-/**
- * Check if a page is ADMIN-ONLY (should have Admin+Editor permissions)
- */
-function shouldHaveAdminPermissions($pagePath): bool {
-    // Admin scripts are admin-only
-    if (strpos($pagePath, 'app/admin/scripts/') === 0) {
-        return true;
-    }
-
-    // Any page containing "admin" is admin-only (includes docs/admin/*)
-    if (strpos($pagePath, 'admin') !== false) {
-        return true;
-    }
-
-    return false;
+/** @see PagePermissionClassifier::shouldHaveAdminPermissions() */
+function shouldHaveAdminPermissions(string $pagePath): bool {
+    return PagePermissionClassifier::shouldHaveAdminPermissions($pagePath);
 }
 
-/**
- * Determine if a page should be PRIVATE based on pattern matching
- */
-function shouldBePrivate($pagePath): bool {
-    // Error pages (404.php, 403.php, etc.) in root should be PUBLIC
-    if (preg_match('#^40\d\.php$#', $pagePath)) {
-        return false;
-    }
+/** @see PagePermissionClassifier::shouldBeAdminOnly() */
+function shouldBeAdminOnly(string $pagePath): bool {
+    return PagePermissionClassifier::shouldBeAdminOnly($pagePath);
+}
 
-    // docs/* pages should generally be PUBLIC
-    // EXCEPT docs/admin/* (and any path containing "admin") which should be PRIVATE-ADMIN
-    if (strpos($pagePath, 'docs/') === 0) {
-        // docs/*admin* should be PRIVATE
-        if (strpos($pagePath, 'admin') !== false) {
-            return true;
-        }
-        // Other docs pages should be PUBLIC
-        return false;
-    }
-
-    $patterns = [
-        '#^app/admin/scripts/#',             // app/admin/scripts/* maintenance & fix scripts
-        '#^app/admin/#',                     // app/admin/* pages
-        '#admin#',                           // Any path containing "admin"
-        '#^app/cars/actions#',               // app/cars/actions* endpoints
-        '#^app/contact/#',                   // app/contact/* pages
-        '#edit#',                            // Any path containing "edit"
-        '#^usersc/#'                         // usersc/* pages
-    ];
-
-    foreach ($patterns as $pattern) {
-        if (preg_match($pattern, $pagePath)) {
-            return true;
-        }
-    }
-
-    return false;
+/** @see PagePermissionClassifier::shouldBePrivate() */
+function shouldBePrivate(string $pagePath): bool {
+    return PagePermissionClassifier::shouldBePrivate($pagePath);
 }
 
 /**
@@ -144,11 +102,12 @@ function shouldBePrivate($pagePath): bool {
 function analyzePermissions($db): array {
     $issues = [
         'set_public' => [],                    // Pages that should be public but are private
-        'set_private_admin' => [],             // Pages that should be private-admin but are public
+        'set_private_admin' => [],             // Pages that should be private admin+editor but are public
         'set_private_user' => [],              // Pages that should be private-user but are public
         'set_private_no_perms' => [],          // Pages that should be private with NO permissions
         'remove_perms' => [],                  // Public pages that have permissions
-        'add_perms_admin' => [],               // Private-admin pages missing Admin+Editor permissions
+        'add_perms_admin' => [],               // Private admin+editor pages missing Admin+Editor permissions
+        'fix_admin_only_perms' => [],          // Admin-only pages with wrong perms (missing Admin or has Editor)
         'add_perms_user' => [],                // Private-user pages missing User permission
     ];
 
@@ -188,6 +147,14 @@ function analyzePermissions($db): array {
 
         $pageTitle = '';
 
+        // Guard: a page cannot be both special-no-perms and an admin page — that would
+        // strip the Administrator permission that protects it. Log and skip if this occurs.
+        if ($shouldBePrivateNoPermsFlag && $isAdminPage) {
+            logger($user->data()->id, LogCategories::LOG_CATEGORY_PERMISSION_FIX,
+                "CONFLICT: page is both special-no-perms and admin-tier — skipping: {$page->page}");
+            continue;
+        }
+
         // Handle special case: pages that should be PRIVATE with NO permissions
         if ($shouldBePrivateNoPermsFlag) {
             if ($page->private == 0 || $hasPerms) {
@@ -202,10 +169,21 @@ function analyzePermissions($db): array {
                 ];
             }
         } elseif ($shouldBePrivateFlag) {
-            if ($isAdminPage) {
-                // Page SHOULD be PRIVATE with Admin+Editor permissions
+            if ($isAdminPage && shouldBeAdminOnly($page->page)) {
+                // Must be private=1, Administrator only, no Editor
+                if (($page->private != 1) || !$hasAdmin || $hasEditor) {
+                    $issues['fix_admin_only_perms'][] = [
+                        'id' => $page->id,
+                        'page' => $page->page,
+                        'title' => $pageTitle,
+                        'current' => $page->private == 0 ? 'PUBLIC' : 'PRIVATE (' . ($page->perm_names ?: 'no permissions') . ')',
+                        'required' => 'PRIVATE with Administrator only',
+                        'action' => 'SET TO PRIVATE, ADD Administrator, REMOVE Editor'
+                    ];
+                }
+            } elseif ($isAdminPage) {
+                // Must be private=1 with Admin+Editor
                 if ($page->private == 0) {
-                    // Currently public, but should be private
                     $issues['set_private_admin'][] = [
                         'id' => $page->id,
                         'page' => $page->page,
@@ -215,7 +193,6 @@ function analyzePermissions($db): array {
                         'action' => 'SET TO PRIVATE, ADD Administrator, Editor'
                     ];
                 } elseif (!$hasAdmin || !$hasEditor) {
-                    // Already private, but missing permissions
                     $issues['add_perms_admin'][] = [
                         'id' => $page->id,
                         'page' => $page->page,
@@ -306,7 +283,7 @@ if ($method === 'POST' && isset($_POST['action'])) {
             $totalIssues = count($issues['set_public']) + count($issues['set_private_admin']) +
                           count($issues['set_private_user']) + count($issues['set_private_no_perms']) +
                           count($issues['remove_perms']) + count($issues['add_perms_admin']) +
-                          count($issues['add_perms_user']);
+                          count($issues['add_perms_user']) + count($issues['fix_admin_only_perms']);
 
             logger($user->data()->id, LogCategories::LOG_CATEGORY_PERMISSION_FIX, "Analysis completed, found {$totalIssues} issues");
 
@@ -320,7 +297,8 @@ if ($method === 'POST' && isset($_POST['action'])) {
                     'set_private_no_perms' => count($issues['set_private_no_perms']),
                     'remove_perms' => count($issues['remove_perms']),
                     'add_perms_admin' => count($issues['add_perms_admin']),
-                    'add_perms_user' => count($issues['add_perms_user'])
+                    'add_perms_user' => count($issues['add_perms_user']),
+                    'fix_admin_only_perms' => count($issues['fix_admin_only_perms'])
                 ],
                 'issues' => $issues
             ]);
@@ -436,22 +414,37 @@ require_once $abs_us_root . $us_url_root . 'users/includes/template/prep.php';
                                 <ul class="mb-0">
                                     <li>Sets pages as PUBLIC (private=0) by default with no permissions</li>
                                     <li>Marks pages as PRIVATE (private=1) based on pattern matching</li>
-                                    <li>Ensures PRIVATE pages have Administrator and Editor permissions</li>
+                                    <li>Assigns role-based permissions to PRIVATE pages (admin-only, admin+editor, or owner)</li>
                                     <li>Removes all permissions from PUBLIC pages</li>
                                     <li>Creates automatic backup before making any changes</li>
                                 </ul>
                             </div>
 
                             <div class="alert alert-warning">
-                                <h5><i class="fa fa-exclamation-triangle"></i> PRIVATE Page Patterns (will be private=1 with Admin+Editor):</h5>
-                                <ul class="mb-0">
-                                    <li><strong>app/admin/scripts/*</strong> - All admin maintenance scripts</li>
-                                    <li><strong>app/admin/*</strong> - All admin pages</li>
-                                    <li><strong>*admin*</strong> - Any path containing "admin"</li>
+                                <h5><i class="fa fa-exclamation-triangle"></i> PRIVATE Page Patterns:</h5>
+                                <p class="mb-2"><strong>Admin-Only (private=1, Administrator permission only):</strong></p>
+                                <ul>
+                                    <li><strong>app/admin/scripts/*</strong> - All admin fix &amp; maintenance scripts</li>
+                                    <li><strong>app/admin/manage-maintenance.php</strong> - Maintenance portal</li>
+                                    <li><strong>app/admin/includes/tab-health.php</strong> - Health tab include</li>
+                                    <li><strong>app/admin/includes/tab-maintenance.php</strong> - Maintenance tab include</li>
+                                </ul>
+                                <p class="mb-2"><strong>Admin + Editor (private=1, Administrator + Editor permissions):</strong></p>
+                                <ul>
+                                    <li><strong>app/admin/*</strong> - All other admin pages</li>
+                                    <li><strong>*admin*</strong> - Any other path containing "admin"</li>
+                                </ul>
+                                <p class="mb-2"><strong>Owner (private=1, User permission):</strong></p>
+                                <ul>
                                     <li><strong>app/cars/actions*</strong> - All car action endpoints</li>
                                     <li><strong>app/contact/*</strong> - All contact form pages</li>
                                     <li><strong>*edit*</strong> - Any path containing "edit"</li>
                                     <li><strong>usersc/*</strong> - All UserSpice customization pages</li>
+                                </ul>
+                                <p class="mb-2"><strong>Special Case (private=1, no permissions):</strong></p>
+                                <ul class="mb-0">
+                                    <li><strong>usersc/join.php</strong> - Registration page</li>
+                                    <li><strong>usersc/login.php</strong> - Login page</li>
                                 </ul>
                             </div>
 
@@ -699,11 +692,12 @@ require_once $abs_us_root . $us_url_root . 'users/includes/template/prep.php';
                                     <p>Found <strong>${data.totalIssues}</strong> permission issues that need to be fixed:</p>
                                     <ul>
                                         ${data.counts.set_public > 0 ? `<li>${data.counts.set_public} pages are PRIVATE but should be PUBLIC</li>` : ''}
-                                        ${data.counts.set_private_admin > 0 ? `<li>${data.counts.set_private_admin} pages are PUBLIC but should be PRIVATE (admin)</li>` : ''}
+                                        ${data.counts.set_private_admin > 0 ? `<li>${data.counts.set_private_admin} pages are PUBLIC but should be PRIVATE (admin+editor)</li>` : ''}
                                         ${data.counts.set_private_user > 0 ? `<li>${data.counts.set_private_user} pages are PUBLIC but should be PRIVATE (owner)</li>` : ''}
                                         ${data.counts.set_private_no_perms > 0 ? `<li>${data.counts.set_private_no_perms} pages should be PRIVATE with no permissions</li>` : ''}
                                         ${data.counts.remove_perms > 0 ? `<li>${data.counts.remove_perms} PUBLIC pages have permissions to remove</li>` : ''}
-                                        ${data.counts.add_perms_admin > 0 ? `<li>${data.counts.add_perms_admin} PRIVATE (admin) pages need Administrator + Editor permissions</li>` : ''}
+                                        ${data.counts.add_perms_admin > 0 ? `<li>${data.counts.add_perms_admin} PRIVATE (admin+editor) pages need Administrator + Editor permissions</li>` : ''}
+                                        ${data.counts.fix_admin_only_perms > 0 ? `<li>${data.counts.fix_admin_only_perms} pages need to be fixed to PRIVATE with Administrator only (admin-only)</li>` : ''}
                                         ${data.counts.add_perms_user > 0 ? `<li>${data.counts.add_perms_user} PRIVATE (owner) pages need User permission</li>` : ''}
                                     </ul>
                                 </div>
@@ -728,11 +722,21 @@ require_once $abs_us_root . $us_url_root . 'users/includes/template/prep.php';
                                 listHTML += '</div></div>';
                             }
 
-                            // Set pages to private (admin)
+                            // Set pages to private (admin+editor)
                             if (data.issues.set_private_admin && data.issues.set_private_admin.length > 0) {
-                                listHTML += `<div class="mt-4"><h6 class="text-danger">⚠️ Set to Private - Admin (${data.issues.set_private_admin.length}): PUBLIC but should be PRIVATE</h6>`;
+                                listHTML += `<div class="mt-4"><h6 class="text-danger">⚠️ Set to Private - Admin+Editor (${data.issues.set_private_admin.length}): PUBLIC but should be PRIVATE</h6>`;
                                 listHTML += '<div style="background-color: #f8f9fa; padding: 10px; border-radius: 4px; font-size: 0.85rem;">';
                                 data.issues.set_private_admin.forEach(issue => {
+                                    listHTML += formatPageItem(issue);
+                                });
+                                listHTML += '</div></div>';
+                            }
+
+                            // Fix admin-only permissions (admin scripts, maintenance portal, etc.)
+                            if (data.issues.fix_admin_only_perms && data.issues.fix_admin_only_perms.length > 0) {
+                                listHTML += `<div class="mt-4"><h6 class="text-danger">⚠️ Fix Admin-Only Permissions (${data.issues.fix_admin_only_perms.length}): should be PRIVATE with Administrator only</h6>`;
+                                listHTML += '<div style="background-color: #f8f9fa; padding: 10px; border-radius: 4px; font-size: 0.85rem;">';
+                                data.issues.fix_admin_only_perms.forEach(issue => {
                                     listHTML += formatPageItem(issue);
                                 });
                                 listHTML += '</div></div>';
@@ -768,9 +772,9 @@ require_once $abs_us_root . $us_url_root . 'users/includes/template/prep.php';
                                 listHTML += '</div></div>';
                             }
 
-                            // Add permissions (admin)
+                            // Add permissions (admin+editor)
                             if (data.issues.add_perms_admin && data.issues.add_perms_admin.length > 0) {
-                                listHTML += `<div class="mt-4"><h6 class="text-primary">ℹ️ Add Admin Permissions (${data.issues.add_perms_admin.length}): need Administrator + Editor</h6>`;
+                                listHTML += `<div class="mt-4"><h6 class="text-primary">ℹ️ Add Admin+Editor Permissions (${data.issues.add_perms_admin.length}): need Administrator + Editor</h6>`;
                                 listHTML += '<div style="background-color: #f8f9fa; padding: 10px; border-radius: 4px; font-size: 0.85rem;">';
                                 data.issues.add_perms_admin.forEach(issue => {
                                     listHTML += formatPageItem(issue);
@@ -847,12 +851,22 @@ require_once $abs_us_root . $us_url_root . 'users/includes/template/prep.php';
                             }
                         };
 
-                        // Set pages to private (admin)
+                        // Set pages to private (admin+editor)
                         if (data.issues.set_private_admin && data.issues.set_private_admin.length > 0) {
-                            detailsHTML += `<h6 class="text-danger">⚠️ Set to Private - Admin (${data.issues.set_private_admin.length} pages):</h6>`;
+                            detailsHTML += `<h6 class="text-danger">⚠️ Set to Private - Admin+Editor (${data.issues.set_private_admin.length} pages):</h6>`;
                             detailsHTML += '<table class="table table-sm table-bordered permission-table mb-4"><thead><tr><th>Page</th><th>Current</th><th>Will Be</th></tr></thead><tbody>';
                             data.issues.set_private_admin.forEach(issue => {
                                 detailsHTML += `<tr><td>${formatPageName(issue)}</td><td><span class="badge text-bg-danger">PUBLIC</span></td><td><span class="badge text-bg-primary">PRIVATE - Administrator, Editor</span></td></tr>`;
+                            });
+                            detailsHTML += '</tbody></table>';
+                        }
+
+                        // Fix admin-only permissions (admin scripts, maintenance portal, etc.)
+                        if (data.issues.fix_admin_only_perms && data.issues.fix_admin_only_perms.length > 0) {
+                            detailsHTML += `<h6 class="text-danger">⚠️ Fix Admin-Only Permissions (${data.issues.fix_admin_only_perms.length} pages):</h6>`;
+                            detailsHTML += '<table class="table table-sm table-bordered permission-table mb-4"><thead><tr><th>Page</th><th>Current</th><th>Will Be</th></tr></thead><tbody>';
+                            data.issues.fix_admin_only_perms.forEach(issue => {
+                                detailsHTML += `<tr><td>${formatPageName(issue)}</td><td><span class="badge text-bg-secondary">${escapeHtml(issue.current)}</span></td><td><span class="badge text-bg-primary">PRIVATE - Administrator only</span></td></tr>`;
                             });
                             detailsHTML += '</tbody></table>';
                         }
@@ -887,9 +901,9 @@ require_once $abs_us_root . $us_url_root . 'users/includes/template/prep.php';
                             detailsHTML += '</tbody></table>';
                         }
 
-                        // Add permissions (admin)
+                        // Add permissions (admin+editor)
                         if (data.issues.add_perms_admin && data.issues.add_perms_admin.length > 0) {
-                            detailsHTML += `<h6 class="text-primary">ℹ️ Add Admin Permissions (${data.issues.add_perms_admin.length} pages):</h6>`;
+                            detailsHTML += `<h6 class="text-primary">ℹ️ Add Admin+Editor Permissions (${data.issues.add_perms_admin.length} pages):</h6>`;
                             detailsHTML += '<table class="table table-sm table-bordered permission-table mb-4"><thead><tr><th>Page</th><th>Current</th><th>Will Add</th></tr></thead><tbody>';
                             data.issues.add_perms_admin.forEach(issue => {
                                 detailsHTML += `<tr><td>${formatPageName(issue)}</td><td><span class="badge text-bg-secondary">${escapeHtml(issue.current)}</span></td><td><span class="badge text-bg-primary">${escapeHtml(issue.missing)}</span></td></tr>`;
@@ -1022,7 +1036,7 @@ function abortProcess() {
                 $totalChanges = count($issues['set_public']) + count($issues['set_private_admin']) +
                                count($issues['set_private_user']) + count($issues['set_private_no_perms']) +
                                count($issues['remove_perms']) + count($issues['add_perms_admin']) +
-                               count($issues['add_perms_user']);
+                               count($issues['add_perms_user']) + count($issues['fix_admin_only_perms']);
 
                 outputMessage("Found {$totalChanges} changes to make");
                 outputMessage("");
@@ -1180,10 +1194,10 @@ function abortProcess() {
                         }
                     }
 
-                    // Add permissions (admin) to private pages
+                    // Add permissions (admin+editor) to private pages
                     if (!empty($issues['add_perms_admin'])) {
                         outputMessage("");
-                        outputMessage("=== Adding Admin Permissions to Private Pages ===");
+                        outputMessage("=== Adding Admin+Editor Permissions to Private Pages ===");
                         foreach ($issues['add_perms_admin'] as $issue) {
                             $global_attempts++;
                             $currentChange++;
@@ -1215,6 +1229,43 @@ function abortProcess() {
                                 logger($user->data()->id, LogCategories::LOG_CATEGORY_PERMISSION_FIX, "Added admin permissions to page: {$issue['page']} (ID: {$issue['id']})");
                             } catch (Exception $e) {
                                 outputMessage("✗ Failed to update {$issue['page']}: " . $e->getMessage(), $percentage);
+                            }
+                        }
+                    }
+
+                    // Fix admin-only permissions (set private=1, add Admin if missing, remove Editor)
+                    if (!empty($issues['fix_admin_only_perms'])) {
+                        outputMessage("");
+                        outputMessage("=== Setting Pages to Private - Admin Only ===");
+                        foreach ($issues['fix_admin_only_perms'] as $issue) {
+                            $global_attempts++;
+                            $currentChange++;
+                            $percentage = round(($currentChange / $totalChanges) * 100);
+
+                            try {
+                                // Set page to private
+                                $db->update('pages', $issue['id'], ['private' => 1]);
+
+                                // Add Administrator permission if not exists
+                                $existingAdmin = $db->query("SELECT id FROM permission_page_matches WHERE page_id = ? AND permission_id = ?",
+                                    [$issue['id'], PERM_ADMIN])->count();
+                                if ($existingAdmin == 0) {
+                                    $db->insert('permission_page_matches', [
+                                        'permission_id' => PERM_ADMIN,
+                                        'page_id' => $issue['id']
+                                    ]);
+                                }
+
+                                // Remove Editor permission if present
+                                $db->query("DELETE FROM permission_page_matches WHERE page_id = ? AND permission_id = ?",
+                                    [$issue['id'], PERM_EDITOR]);
+
+                                $global_successes++;
+                                outputMessage("✅ Set to PRIVATE with Administrator only (no Editor): {$issue['page']}", $percentage);
+                                logger($user->data()->id, LogCategories::LOG_CATEGORY_PERMISSION_FIX, "Set page to PRIVATE with Admin only (no Editor): {$issue['page']} (ID: {$issue['id']})");
+                            } catch (Exception $e) {
+                                outputMessage("✗ Failed to update {$issue['page']}: " . $e->getMessage(), $percentage);
+                                logger($user->data()->id, LogCategories::LOG_CATEGORY_PERMISSION_FIX_ERROR, "Failed to set page to PRIVATE with Admin only (no Editor): {$issue['page']} (ID: {$issue['id']}) - " . $e->getMessage());
                             }
                         }
                     }
@@ -1258,7 +1309,7 @@ function abortProcess() {
                             $remainingIssues = count($issuesAfter['set_public']) + count($issuesAfter['set_private_admin']) +
                                               count($issuesAfter['set_private_user']) + count($issuesAfter['set_private_no_perms']) +
                                               count($issuesAfter['remove_perms']) + count($issuesAfter['add_perms_admin']) +
-                                              count($issuesAfter['add_perms_user']);
+                                              count($issuesAfter['add_perms_user']) + count($issuesAfter['fix_admin_only_perms']);
 
                             if ($remainingIssues == 0) {
                                 outputMessage("✅ SUCCESS: All permissions fixed correctly!");
