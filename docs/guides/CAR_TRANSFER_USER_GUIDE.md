@@ -220,7 +220,7 @@ Contact registry administrators if:
 
 ### How to Contact Support
 
-**Email:** [Administrator contact information from registry]
+**Need help?** Use the [online contact form](/app/contact/index.php).
 
 **Subject Line:** Include "Transfer Request - [Chassis Number]" for faster processing
 

@@ -7,6 +7,13 @@
 
 None.
 
+## User-Facing Changes
+
+- **Contact form link in car transfer guide and footer** ([#811](https://github.com/unibrain1/elanregistry/issues/811)):
+  The unfilled placeholder in the car transfer guide's "How to Contact Support" section is replaced
+  with a direct link to the online contact form. A "Contact Us" link is also added to the site
+  footer alongside the existing Privacy Policy link (`Privacy Policy | Contact Us`).
+
 ## Admin-Facing Changes
 
 ### Bug Fixes
@@ -98,3 +105,4 @@ None.
   BackupManager path-traversal guard, and getBaseUrl() fallback
 - [#801](https://github.com/unibrain1/elanregistry/issues/801) — tech-debt: extract duplicated script-enumeration logic
   from tab-health.php and tab-maintenance.php
+- [#811](https://github.com/unibrain1/elanregistry/issues/811) — Add contact form link to car transfer guide and footer

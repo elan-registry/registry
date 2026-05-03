@@ -61,9 +61,12 @@ class MarkdownParser
                 $url = htmlspecialchars($matches[2], ENT_QUOTES, 'UTF-8');
                 // Only allow safe image URLs
                 if (self::isSafeUrl($url)) {
-                    // If baseUrl is provided, prepend it to relative paths in the docs directory
                     if (!empty($baseUrl) && strpos($url, '#') !== 0 && strpos($url, '/') !== 0 && parse_url($url, PHP_URL_SCHEME) === null) {
+                        // Relative path: prepend baseUrl + docs/ directory
                         $url = $baseUrl . 'docs/' . $url;
+                    } elseif (!empty($baseUrl) && strpos($url, '/') === 0) {
+                        // Root-relative path: prepend baseUrl so /app/foo resolves correctly on any install path
+                        $url = rtrim($baseUrl, '/') . $url;
                     }
                     return '<img src="' . $url . '" alt="' . $alt . '" class="img-fluid" />';
                 }
@@ -80,9 +83,12 @@ class MarkdownParser
                 $url = htmlspecialchars($matches[2], ENT_QUOTES, 'UTF-8');
                 // Only allow safe URL schemes
                 if (self::isSafeUrl($url)) {
-                    // If baseUrl is provided, prepend it to relative paths in the docs directory
                     if (!empty($baseUrl) && strpos($url, '#') !== 0 && strpos($url, '/') !== 0 && parse_url($url, PHP_URL_SCHEME) === null) {
+                        // Relative path: prepend baseUrl + docs/ directory
                         $url = $baseUrl . 'docs/' . $url;
+                    } elseif (!empty($baseUrl) && strpos($url, '/') === 0) {
+                        // Root-relative path: prepend baseUrl so /app/foo resolves correctly on any install path
+                        $url = rtrim($baseUrl, '/') . $url;
                     }
                     // Don't open anchor links or absolute paths in new tab
                     $target = (strpos($url, '#') === 0 || strpos($url, '/') === 0) ? '' : ' target="_blank"';
