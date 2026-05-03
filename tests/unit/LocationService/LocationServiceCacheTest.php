@@ -8,12 +8,15 @@ use PHPUnit\Framework\Attributes\Group;
 /**
  * Unit tests for LocationService silent-failure logging in the file-cache path.
  *
- * These tests exercise the three @-suppressed I/O calls that were hardened to
- * call logger() on failure (v2.20.0):
+ * These tests exercise the I/O error paths that were hardened to call logger()
+ * on failure (v2.20.0):
  *
- *   1. getCache()  — unlink failure on an expired cache file
- *   2. setCache()  — mkdir failure when cache directory cannot be created
- *   3. setCache()  — file_put_contents failure when the cache file cannot be written
+ *   1. getCache()  — file_get_contents failure on an unreadable cache file
+ *   2. getCache()  — unlink failure on an expired cache file
+ *   3. getCache()  — corrupt JSON (json_last_error branch) with unlink failure
+ *   4. setCache()  — json_encode() failure for non-serialisable values
+ *   5. setCache()  — mkdir failure when cache directory cannot be created
+ *   6. setCache()  — file_put_contents failure when the cache file cannot be written
  *
  * === Logger Spy Strategy ===
  *
@@ -198,7 +201,15 @@ final class LocationServiceCacheTest extends TestCase
         chmod($this->cacheDir, 0555);
 
         $service = new LocationService();
-        $result  = $this->privateMethod($service, 'getCache')->invoke($service, $key);
+
+        // unlink() emits an E_WARNING when it cannot remove the file; capture it
+        // so PHPUnit does not flag the test as producing an unexpected warning.
+        set_error_handler(static function (): bool { return true; }, E_WARNING);
+        try {
+            $result = $this->privateMethod($service, 'getCache')->invoke($service, $key);
+        } finally {
+            restore_error_handler();
+        }
 
         $this->assertNull(
             $result,
@@ -262,7 +273,15 @@ final class LocationServiceCacheTest extends TestCase
 
         $key     = 'mkdir_fail_key';
         $service = new LocationService();
-        $this->privateMethod($service, 'setCache')->invoke($service, $key, ['data' => 'value']);
+
+        // mkdir() emits an E_WARNING when the parent directory is not writable;
+        // capture it so PHPUnit does not flag the test as producing an unexpected warning.
+        set_error_handler(static function (): bool { return true; }, E_WARNING);
+        try {
+            $this->privateMethod($service, 'setCache')->invoke($service, $key, ['data' => 'value']);
+        } finally {
+            restore_error_handler();
+        }
 
         // Restore permissions for tearDown
         chmod($userscDir, 0755);
@@ -366,6 +385,37 @@ final class LocationServiceCacheTest extends TestCase
         $this->assertFileDoesNotExist(
             $this->cacheFilePath($key),
             'No cache file should exist when file_put_contents() fails — the logger call is on the same if-branch.'
+        );
+    }
+
+    /**
+     * setCache() returns early without writing a file when json_encode() fails.
+     *
+     * json_encode() returns false for values that cannot be serialised to JSON,
+     * such as strings containing non-UTF-8 bytes.  The absence of a cache file
+     * proves the early-return branch (and its logger call) was reached.
+     */
+    #[Group('fast')]
+    public function test_setCache_returnsEarly_andCreatesNoCacheFile_whenJsonEncodeFails(): void
+    {
+        $key = 'json_encode_fail_key';
+        // "\xFF\xFE" is invalid UTF-8 — json_encode() returns false for it
+        $nonUtf8Value = "\xFF\xFE invalid bytes";
+
+        $service = new LocationService();
+
+        // json_encode() emits an E_WARNING for non-UTF-8 input; capture it so
+        // PHPUnit does not flag the test as producing an unexpected warning.
+        set_error_handler(static function (): bool { return true; }, E_WARNING);
+        try {
+            $this->privateMethod($service, 'setCache')->invoke($service, $key, $nonUtf8Value);
+        } finally {
+            restore_error_handler();
+        }
+
+        $this->assertFileDoesNotExist(
+            $this->cacheFilePath($key),
+            'No cache file should be created when json_encode() fails for the cached value.'
         );
     }
 
@@ -514,53 +564,108 @@ final class LocationServiceCacheTest extends TestCase
     }
 
     // =========================================================================
-    // Tests: getCache() — corrupt/invalid cache file triggers the unlink branch
+    // Tests: getCache() — file_get_contents failure on unreadable file
     //
-    // A cache file with missing or invalid JSON is treated as expired and
-    // enters the same realpath-guarded unlink block as a time-expired entry.
-    // These tests verify that unlink failure on a corrupt file is also covered
-    // by the logger() fix.
+    // Strategy: create a valid cache file then remove its read permission.
+    // file_exists() returns true but file_get_contents() returns false.
+    // Assert getCache() returns null, proving the read-failure logger branch
+    // was reached.
     // =========================================================================
 
     /**
-     * A corrupt cache file (missing "expires" key) that cannot be deleted leaves
-     * the file in place, proving the unlink-failure branch (and logger call) was
-     * reached for this sub-condition too.
+     * getCache() returns null when the cache file exists but cannot be read.
+     *
+     * A PHP E_WARNING is emitted by file_get_contents(); captured here so
+     * PHPUnit does not flag it as an unexpected warning.
      */
     #[Group('fast')]
-    public function test_getCache_returnsNull_andLeavesCorruptFile_whenUnlinkFails(): void
+    public function test_getCache_returnsNull_whenCacheFileIsUnreadable(): void
+    {
+        if (posix_getuid() === 0) {
+            $this->markTestSkipped('Cannot test read failure as root — chmod 0000 has no effect.');
+        }
+
+        $key       = 'unreadable_file_test';
+        $cacheFile = $this->cacheFilePath($key);
+        $this->writeCacheFile($key, ['data' => 'value']);
+
+        chmod($cacheFile, 0000);
+
+        $service         = new LocationService();
+        $capturedWarning = null;
+        set_error_handler(
+            static function (int $errno, string $errstr) use (&$capturedWarning): bool {
+                if ($errno === E_WARNING) {
+                    $capturedWarning = $errstr;
+                    return true;
+                }
+                return false;
+            },
+            E_WARNING
+        );
+        try {
+            $result = $this->privateMethod($service, 'getCache')->invoke($service, $key);
+        } finally {
+            restore_error_handler();
+        }
+
+        $this->assertNull($result, 'getCache() must return null when the cache file cannot be read.');
+        $this->assertNotNull(
+            $capturedWarning,
+            'A PHP E_WARNING should be emitted when file_get_contents() fails on an unreadable file.'
+        );
+    }
+
+    // =========================================================================
+    // Tests: getCache() — missing "expires" key triggers the expired-entry branch
+    //
+    // A cache file whose JSON is valid but lacks an "expires" key enters the
+    // !isset($data['expires']) branch (line 522), the same realpath-guarded
+    // unlink block as a time-expired entry.
+    // =========================================================================
+
+    /**
+     * A cache file with valid JSON but no "expires" key that cannot be deleted
+     * leaves the file in place, proving the unlink-failure branch was reached.
+     */
+    #[Group('fast')]
+    public function test_getCache_returnsNull_andLeavesFile_whenUnlinkFails_missingExpiresKey(): void
     {
         if (posix_getuid() === 0) {
             $this->markTestSkipped('Cannot test unlink failure as root — chmod 0555 has no effect.');
         }
 
-        $key       = 'corrupt_cache_unlink_fail';
+        $key       = 'missing_expires_unlink_fail';
         $cacheFile = $this->cacheFilePath($key);
 
-        // Write a cache file with valid JSON but no "expires" key — triggers !isset($data['expires'])
+        // Valid JSON, but no "expires" key — triggers !isset($data['expires'])
         file_put_contents($cacheFile, json_encode(['value' => 'orphaned', 'no_expiry' => true]));
 
-        // Lock the directory so unlink() inside getCache() cannot remove the corrupt file
         chmod($this->cacheDir, 0555);
 
         $service = new LocationService();
-        $result  = $this->privateMethod($service, 'getCache')->invoke($service, $key);
+        set_error_handler(static function (): bool { return true; }, E_WARNING);
+        try {
+            $result = $this->privateMethod($service, 'getCache')->invoke($service, $key);
+        } finally {
+            restore_error_handler();
+        }
 
-        $this->assertNull($result, 'getCache() must return null for a corrupt cache entry.');
+        $this->assertNull($result, 'getCache() must return null when the "expires" key is missing.');
         $this->assertFileExists(
             $cacheFile,
-            'Corrupt cache file must remain when unlink() fails — proving the failure branch was reached.'
+            'Cache file must remain when unlink() fails — proving the unlink-failure branch was reached.'
         );
     }
 
     /**
-     * A corrupt cache file (missing "expires" key) is deleted when the directory
-     * is writable — the same unlink path runs for corrupt entries as for expired ones.
+     * A cache file with valid JSON but no "expires" key is deleted when the
+     * directory is writable.
      */
     #[Group('fast')]
-    public function test_getCache_returnsNull_andDeletesCorruptFile_whenUnlinkSucceeds(): void
+    public function test_getCache_returnsNull_andDeletesFile_whenUnlinkSucceeds_missingExpiresKey(): void
     {
-        $key       = 'corrupt_cache_unlink_ok';
+        $key       = 'missing_expires_unlink_ok';
         $cacheFile = $this->cacheFilePath($key);
 
         file_put_contents($cacheFile, json_encode(['value' => 'orphaned', 'no_expiry' => true]));
@@ -568,10 +673,74 @@ final class LocationServiceCacheTest extends TestCase
         $service = new LocationService();
         $result  = $this->privateMethod($service, 'getCache')->invoke($service, $key);
 
-        $this->assertNull($result, 'getCache() must return null for a corrupt cache entry.');
+        $this->assertNull($result, 'getCache() must return null when the "expires" key is missing.');
         $this->assertFileDoesNotExist(
             $cacheFile,
-            'Corrupt cache file should be deleted when unlink() succeeds.'
+            'Cache file should be deleted when unlink() succeeds.'
+        );
+    }
+
+    // =========================================================================
+    // Tests: getCache() — corrupt JSON (json_last_error() branch, line 511)
+    //
+    // Strategy: write a file containing syntactically invalid JSON so that
+    // json_decode() fails and json_last_error() !== JSON_ERROR_NONE.  This
+    // exercises the distinct logger() call at line 512 and the unlink
+    // sub-branch at lines 515-519, which are separate from the missing-expires
+    // branch above.
+    // =========================================================================
+
+    /**
+     * A cache file containing invalid JSON that cannot be deleted leaves the
+     * file in place, proving the corrupt-JSON logger branch was reached.
+     */
+    #[Group('fast')]
+    public function test_getCache_returnsNull_andLeavesFile_whenUnlinkFails_corruptJson(): void
+    {
+        if (posix_getuid() === 0) {
+            $this->markTestSkipped('Cannot test unlink failure as root — chmod 0555 has no effect.');
+        }
+
+        $key       = 'corrupt_json_unlink_fail';
+        $cacheFile = $this->cacheFilePath($key);
+
+        file_put_contents($cacheFile, '{not valid json');
+
+        chmod($this->cacheDir, 0555);
+
+        $service = new LocationService();
+        set_error_handler(static function (): bool { return true; }, E_WARNING);
+        try {
+            $result = $this->privateMethod($service, 'getCache')->invoke($service, $key);
+        } finally {
+            restore_error_handler();
+        }
+
+        $this->assertNull($result, 'getCache() must return null for a cache file with invalid JSON.');
+        $this->assertFileExists(
+            $cacheFile,
+            'Cache file must remain when unlink() fails — proving the corrupt-JSON logger branch was reached.'
+        );
+    }
+
+    /**
+     * A cache file with invalid JSON is deleted when the directory is writable.
+     */
+    #[Group('fast')]
+    public function test_getCache_returnsNull_andDeletesFile_whenUnlinkSucceeds_corruptJson(): void
+    {
+        $key       = 'corrupt_json_unlink_ok';
+        $cacheFile = $this->cacheFilePath($key);
+
+        file_put_contents($cacheFile, '{not valid json');
+
+        $service = new LocationService();
+        $result  = $this->privateMethod($service, 'getCache')->invoke($service, $key);
+
+        $this->assertNull($result, 'getCache() must return null for a cache file with invalid JSON.');
+        $this->assertFileDoesNotExist(
+            $cacheFile,
+            'Invalid-JSON cache file should be deleted when unlink() succeeds.'
         );
     }
 

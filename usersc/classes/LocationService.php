@@ -569,7 +569,13 @@ class LocationService
             'expires' => time() + $ttl
         ];
 
-        if (file_put_contents($cacheFile, json_encode($data)) === false) {
+        $encoded = json_encode($data);
+        if ($encoded === false) {
+            logger(0, LogCategories::LOG_CATEGORY_FILE_ERROR,
+                'LocationService: json_encode() failed for cache key: ' . $key);
+            return;
+        }
+        if (file_put_contents($cacheFile, $encoded) === false) {
             logger(0, LogCategories::LOG_CATEGORY_FILE_ERROR, 'LocationService: failed to write cache file: ' . $cacheFile);
         }
     }
