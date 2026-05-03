@@ -488,7 +488,9 @@ Key classes are documented in `docs/development/CLASSES.md`:
 - **`ElanRegistryOwner`** — Owner profile with contact/preference data
 - **`ApiResponse`** — Standardized response format for AJAX endpoints
 - **`DocumentConfig`** — Documentation metadata and routing
-- **`LocationService`** — OpenStreetMap integration with caching
+- **`LocationService`** — OpenStreetMap integration with server-side caching and logged I/O error handling
+- **`PagePermissionClassifier`** (`usersc/classes/admin/`) — Classifies pages into permission tiers (admin-only, admin+editor,
+  private user, special no-perms) for the Fix Page Permissions maintenance script
 - **`Logger`** — Application event logging
 - **`LogCategories`** — Logging category constants
 
