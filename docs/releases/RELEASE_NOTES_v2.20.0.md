@@ -24,6 +24,11 @@ None.
   The `showMessage()` function in the consolidated admin panel now escapes its message
   parameter before rendering as HTML, preventing stored XSS via server-supplied error
   messages that could contain crafted content from car or owner records.
+- **Fix silent cache I/O failures in LocationService** ([#798](https://github.com/unibrain1/elanregistry/issues/798)):
+  Cache write, directory-creation, and expired-file-deletion failures in `LocationService`
+  were suppressed with `@` operators and never logged. All three paths now check return values
+  and log failures via `logger()` with `LOG_CATEGORY_FILE_ERROR` so operational errors are
+  visible in the audit trail.
 
 ### Improvements
 
@@ -72,3 +77,4 @@ None.
 - [#795](https://github.com/unibrain1/elanregistry/issues/795) — bug: usersc/user_settings.php incorrectly classified as special-case (no permissions)
 - [#797](https://github.com/unibrain1/elanregistry/issues/797) — bug: maintenance portal pages not restricted to Administrator-only access
 - [#789](https://github.com/unibrain1/elanregistry/issues/789) — Fix stored XSS: escape HTML in admin panel dynamic content
+- [#798](https://github.com/unibrain1/elanregistry/issues/798) — tech-debt: silent failures in LocationService and BackupManager swallow errors without logging
