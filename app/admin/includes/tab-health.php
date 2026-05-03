@@ -4,6 +4,8 @@ declare(strict_types=1);
 use ElanRegistry\Exceptions\AdminOperationException;
 use ElanRegistry\Exceptions\BackupException;
 
+require_once $abs_us_root . $us_url_root . 'app/admin/includes/system/script-enumeration.php';
+
 /**
  * tab-health.php
  * System Health Tab Content
@@ -14,26 +16,7 @@ use ElanRegistry\Exceptions\BackupException;
 $backupManager = new BackupManager($db, $abs_us_root . $us_url_root . BACKUP_BASE_DIR, (int)$user->data()->id);
 
 $fixDirectory = $abs_us_root . $us_url_root . 'app/admin/scripts/fix/';
-$allItems = scandir($fixDirectory) ?: [];
-
-$fixScripts = [];
-foreach ($allItems as $item) {
-    $fullPath = $fixDirectory . $item;
-
-    if (is_dir($fullPath) || pathinfo($item, PATHINFO_EXTENSION) !== 'php') {
-        continue;
-    }
-
-    if (in_array($item, ['index.php', '_TEMPLATE_Fix-Script.php', 'backup-functions.php'])) {
-        continue;
-    }
-
-    if (preg_match('/^(backup_|rollback_|.*_backup_|test-)/', $item)) {
-        continue;
-    }
-
-    $fixScripts[] = $item;
-}
+$fixScripts   = enumerateScriptFiles($fixDirectory);
 
 $scriptRunStatus = array_fill_keys($fixScripts, ['has_run' => false, 'last_run' => null]);
 if (!empty($fixScripts)) {
