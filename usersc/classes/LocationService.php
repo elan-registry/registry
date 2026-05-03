@@ -387,22 +387,27 @@ class LocationService
             }
 
             $response = curl_exec($ch);
-            $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
 
             if ($response === false) {
                 logger(0, LogCategories::LOG_CATEGORY_LOCATION_SERVICE,
                     'LocationService: cURL error (' . curl_errno($ch) . '): ' . curl_error($ch));
+                /** @phpstan-ignore-next-line Deprecated but required for PHP 7.x compatibility */
+                curl_close($ch);
+                return false;
             }
 
+            $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
             // Close curl handle (suppressed deprecation warning - still needed for compatibility)
             /** @phpstan-ignore-next-line Deprecated but required for PHP 7.x compatibility */
             curl_close($ch);
 
-            if ($httpCode === 200 && $response !== false) {
-                return $response;
+            if ($httpCode !== 200) {
+                logger(0, LogCategories::LOG_CATEGORY_LOCATION_SERVICE,
+                    'LocationService: unexpected HTTP ' . $httpCode . ' from ' . $url);
+                return false;
             }
 
-            return false;
+            return $response;
         }
 
         // Fallback to file_get_contents
@@ -505,6 +510,14 @@ class LocationService
         $data = json_decode($raw, true);
         if (json_last_error() !== JSON_ERROR_NONE) {
             logger(0, LogCategories::LOG_CATEGORY_FILE_ERROR, 'LocationService: corrupt cache file (' . json_last_error_msg() . '): ' . $cacheFile);
+            $realCacheFile = realpath($cacheFile);
+            $realCacheDir = realpath($cacheDir);
+            if ($realCacheFile !== false && $realCacheDir !== false && str_starts_with($realCacheFile, $realCacheDir . '/')) {
+                if (!@unlink($realCacheFile)) { // nosemgrep: php.lang.security.unlink-use.unlink-use -- path verified within cache directory
+                    logger(0, LogCategories::LOG_CATEGORY_FILE_ERROR, 'LocationService: failed to delete corrupt cache file: ' . $realCacheFile);
+                }
+            }
+            return null;
         }
         if (!$data || !isset($data['expires']) || $data['expires'] < time()) {
             $realCacheFile = realpath($cacheFile);
