@@ -61,6 +61,12 @@ None.
 
 ## Technical Changes
 
+- **Extract duplicated script-enumeration logic into shared helper** ([#801](https://github.com/unibrain1/elanregistry/issues/801)):
+  Identical 21-line directory-scan blocks in `tab-health.php` and `tab-maintenance.php` replaced
+  with calls to a new `enumerateScriptFiles(string $directory): array` helper in
+  `app/admin/includes/system/script-enumeration.php`. Also eliminates a second near-duplicate
+  block in `tab-maintenance.php` for the maintenance scripts directory.
+
 - **Test coverage for security-critical code paths** ([#800](https://github.com/unibrain1/elanregistry/issues/800)):
   Added automated tests for three previously uncovered paths identified in the PR #794 deep review:
   `escapeHtml()` now has a Playwright test with seven XSS vectors (`<script>`, `"`, `'`, `&`, `>`,
@@ -90,3 +96,5 @@ None.
 - [#798](https://github.com/unibrain1/elanregistry/issues/798) — tech-debt: silent failures in LocationService and BackupManager swallow errors without logging
 - [#800](https://github.com/unibrain1/elanregistry/issues/800) — tech-debt: add missing test coverage for escapeHtml(),
   BackupManager path-traversal guard, and getBaseUrl() fallback
+- [#801](https://github.com/unibrain1/elanregistry/issues/801) — tech-debt: extract duplicated script-enumeration logic
+  from tab-health.php and tab-maintenance.php
