@@ -389,11 +389,16 @@ class LocationService
             $response = curl_exec($ch);
             $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
 
+            if ($response === false) {
+                logger(0, LogCategories::LOG_CATEGORY_LOCATION_SERVICE,
+                    'LocationService: cURL error (' . curl_errno($ch) . '): ' . curl_error($ch));
+            }
+
             // Close curl handle (suppressed deprecation warning - still needed for compatibility)
             /** @phpstan-ignore-next-line Deprecated but required for PHP 7.x compatibility */
             curl_close($ch);
 
-            if ($httpCode === 200) {
+            if ($httpCode === 200 && $response !== false) {
                 return $response;
             }
 
@@ -409,7 +414,13 @@ class LocationService
             ]
         ]);
 
-        return @file_get_contents($url, false, $context);
+        $response = @file_get_contents($url, false, $context);
+        if ($response === false) {
+            $lastError = error_get_last();
+            logger(0, LogCategories::LOG_CATEGORY_LOCATION_SERVICE,
+                'LocationService: file_get_contents fallback failed: ' . ($lastError['message'] ?? 'unknown error'));
+        }
+        return $response;
     }
 
     /**
@@ -485,12 +496,23 @@ class LocationService
             return null;
         }
 
-        $data = @json_decode(file_get_contents($cacheFile), true);
+        $raw = file_get_contents($cacheFile);
+        if ($raw === false) {
+            logger(0, LogCategories::LOG_CATEGORY_FILE_ERROR, 'LocationService: failed to read cache file: ' . $cacheFile);
+            return null;
+        }
+
+        $data = json_decode($raw, true);
+        if (json_last_error() !== JSON_ERROR_NONE) {
+            logger(0, LogCategories::LOG_CATEGORY_FILE_ERROR, 'LocationService: corrupt cache file (' . json_last_error_msg() . '): ' . $cacheFile);
+        }
         if (!$data || !isset($data['expires']) || $data['expires'] < time()) {
             $realCacheFile = realpath($cacheFile);
             $realCacheDir = realpath($cacheDir);
             if ($realCacheFile !== false && $realCacheDir !== false && str_starts_with($realCacheFile, $realCacheDir . '/')) {
-                @unlink($realCacheFile); // nosemgrep: php.lang.security.unlink-use.unlink-use -- path verified within cache directory; failure is non-fatal (stale cache)
+                if (!@unlink($realCacheFile)) { // nosemgrep: php.lang.security.unlink-use.unlink-use -- path verified within cache directory
+                    logger(0, LogCategories::LOG_CATEGORY_FILE_ERROR, 'LocationService: failed to delete expired cache file: ' . $realCacheFile);
+                }
             }
             return null;
         }
@@ -521,9 +543,11 @@ class LocationService
         global $abs_us_root, $us_url_root;
         $cacheDir = $abs_us_root . $us_url_root . 'usersc/cache/';
 
-        // Create cache directory if it doesn't exist
-        if (!is_dir($cacheDir)) {
-            @mkdir($cacheDir, 0755, true);
+        // Double is_dir() guards against a TOCTOU race where another process creates the directory
+        // between the first check and @mkdir(); a false return in that case is not a real failure.
+        if (!is_dir($cacheDir) && !@mkdir($cacheDir, 0755, true) && !is_dir($cacheDir)) {
+            logger(0, LogCategories::LOG_CATEGORY_FILE_ERROR, 'LocationService: failed to create cache directory: ' . $cacheDir);
+            return;
         }
 
         $cacheFile = $cacheDir . md5($key) . '.cache';
@@ -532,6 +556,8 @@ class LocationService
             'expires' => time() + $ttl
         ];
 
-        @file_put_contents($cacheFile, json_encode($data));
+        if (file_put_contents($cacheFile, json_encode($data)) === false) {
+            logger(0, LogCategories::LOG_CATEGORY_FILE_ERROR, 'LocationService: failed to write cache file: ' . $cacheFile);
+        }
     }
 }
