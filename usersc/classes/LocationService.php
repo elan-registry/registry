@@ -419,7 +419,7 @@ class LocationService
             ]
         ]);
 
-        $response = @file_get_contents($url, false, $context);
+        $response = file_get_contents($url, false, $context);
         if ($response === false) {
             $lastError = error_get_last();
             logger(0, LogCategories::LOG_CATEGORY_LOCATION_SERVICE,
@@ -513,7 +513,7 @@ class LocationService
             $realCacheFile = realpath($cacheFile);
             $realCacheDir = realpath($cacheDir);
             if ($realCacheFile !== false && $realCacheDir !== false && str_starts_with($realCacheFile, $realCacheDir . '/')) {
-                if (!@unlink($realCacheFile)) { // nosemgrep: php.lang.security.unlink-use.unlink-use -- path verified within cache directory
+                if (!unlink($realCacheFile)) { // nosemgrep: php.lang.security.unlink-use.unlink-use -- path verified within cache directory
                     logger(0, LogCategories::LOG_CATEGORY_FILE_ERROR, 'LocationService: failed to delete corrupt cache file: ' . $realCacheFile);
                 }
             }
@@ -523,7 +523,7 @@ class LocationService
             $realCacheFile = realpath($cacheFile);
             $realCacheDir = realpath($cacheDir);
             if ($realCacheFile !== false && $realCacheDir !== false && str_starts_with($realCacheFile, $realCacheDir . '/')) {
-                if (!@unlink($realCacheFile)) { // nosemgrep: php.lang.security.unlink-use.unlink-use -- path verified within cache directory
+                if (!unlink($realCacheFile)) { // nosemgrep: php.lang.security.unlink-use.unlink-use -- path verified within cache directory
                     logger(0, LogCategories::LOG_CATEGORY_FILE_ERROR, 'LocationService: failed to delete expired cache file: ' . $realCacheFile);
                 }
             }
@@ -557,8 +557,8 @@ class LocationService
         $cacheDir = $abs_us_root . $us_url_root . 'usersc/cache/';
 
         // Double is_dir() guards against a TOCTOU race where another process creates the directory
-        // between the first check and @mkdir(); a false return in that case is not a real failure.
-        if (!is_dir($cacheDir) && !@mkdir($cacheDir, 0755, true) && !is_dir($cacheDir)) {
+        // between the first check and mkdir(); a false return in that case is not a real failure.
+        if (!is_dir($cacheDir) && !mkdir($cacheDir, 0755, true) && !is_dir($cacheDir)) {
             logger(0, LogCategories::LOG_CATEGORY_FILE_ERROR, 'LocationService: failed to create cache directory: ' . $cacheDir);
             return;
         }
