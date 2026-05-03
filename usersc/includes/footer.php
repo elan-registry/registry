@@ -21,18 +21,26 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 //This will go in every template.
 ?>
 
-<!-- Privacy Policy link injected into footer without modifying upstream template -->
+<!-- Privacy Policy and Contact Us links injected into footer without modifying upstream template -->
 <script nonce="<?=htmlspecialchars($usespice_nonce ?? '')?>">
 (function () {
     var container = document.querySelector('#footer .container');
     if (container) {
         var p = document.createElement('p');
         p.className = 'text-center small';
-        var a = document.createElement('a');
-        a.href = '<?=$us_url_root?>app/privacy.php';
-        a.className = 'text-muted';
-        a.textContent = 'Privacy Policy';
-        p.appendChild(a);
+        var aPrivacy = document.createElement('a');
+        aPrivacy.href = '<?=$us_url_root?>app/privacy.php';
+        aPrivacy.className = 'text-muted';
+        aPrivacy.textContent = 'Privacy Policy';
+        p.appendChild(aPrivacy);
+        <?php if (isset($user) && $user->isLoggedIn()) { ?>
+        p.appendChild(document.createTextNode(' | '));
+        var aContact = document.createElement('a');
+        aContact.href = '<?=$us_url_root?>app/contact/index.php';
+        aContact.className = 'text-muted';
+        aContact.textContent = 'Contact Us';
+        p.appendChild(aContact);
+        <?php } ?>
         container.appendChild(p);
     }
 }());

@@ -162,6 +162,29 @@ Document findings in the plan under **Bug Escape Analysis**.
 
 Wait for Explore results before proceeding.
 
+### Step 5.5: Triage Pre-Existing Issues Found During Exploration
+
+Explore agents regularly surface pre-existing issues — missing validation,
+security gaps, dead code, inconsistencies — that are unrelated to the current
+issue. **Do not silently note them as "pre-existing" and move on.**
+
+For each one found, apply the containment + severity matrix immediately:
+
+| Containment | Severity | Action |
+| --- | --- | --- |
+| In files already in scope for this PR | High | Fold into current PR — note in plan and PR description |
+| In files already in scope for this PR | Low | Fix in current PR if < ~30 min; otherwise defer |
+| Outside current PR scope | High | New issue in current milestone (`bug` + `triage` labels) |
+| Outside current PR scope | Low | New issue with `triage` label only; no milestone |
+
+For each found issue, state it explicitly to the user:
+
+> "While exploring, I found [description]. This is [in scope / out of scope]
+> and [high / low] severity, so I recommend [action]. Does that seem right?"
+
+Wait for confirmation, then act — create the issue or note it in the plan —
+before continuing. Use `/found` for the same classification outside this workflow.
+
 ### Step 6: Interview Mode - Issue Refinement and Questions
 
 **For Small issues:** Skip the PM agent. Ask only questions you genuinely can't answer
@@ -424,6 +447,9 @@ the version from the milestone branch name (e.g., `milestone/v2.17.0` ->
 - **Read before modifying** - always read files before suggesting changes
 - **Test thoroughly** - run diagnostics and tests before considering work complete
 - **Tier agent usage** - assess complexity first; Small issues skip PM, pre-implementation architect, and multi-agent Explore
+- **Triage pre-existing issues immediately** (Step 5.5) — never silently note something as "pre-existing"; apply the
+  containment + severity matrix and either fold it in, create an issue in the current milestone, or defer with `triage` label.
+  Use `/found` for standalone capture.
 - **Investigate testing gaps for bugs** - for `bug` labeled issues, include escape analysis in the plan
 - **Verify UserSpice integration** (Step 7.1) - do not duplicate framework functionality
 - **Assess database and security impacts** (Step 7.2) - identify schema changes and security requirements upfront

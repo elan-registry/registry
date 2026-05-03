@@ -529,9 +529,10 @@ function initializeCarManagement() {
             $('#carDetails').show();
             updateReassignButton();
         }).catch(function(error) {
+            console.error('Error fetching car details:', error);
             $btn.prop('disabled', false);
             $btn.html(originalHtml);
-            showMessage('Error fetching car details: ' + (error.message || error), 'danger');
+            showMessage('Error fetching car details: ' + ((error instanceof Error ? error.message : String(error)) || 'Unknown error'), 'danger');
             $('#carDetails').hide();
             selectedCar = null;
             updateReassignButton();
@@ -581,9 +582,10 @@ function initializeCarManagement() {
             $('#userDetails').show();
             updateReassignButton();
         }).catch(function(error) {
+            console.error('Error fetching user details:', error);
             $btn.prop('disabled', false);
             $btn.html(originalHtml);
-            showMessage('Error fetching user details: ' + (error.message || error), 'danger');
+            showMessage('Error fetching user details: ' + ((error instanceof Error ? error.message : String(error)) || 'Unknown error'), 'danger');
             $('#userDetails').hide();
             selectedUser = null;
             updateReassignButton();
@@ -630,9 +632,10 @@ function initializeCarManagement() {
             $('#deleteCarDetails').show();
             updateDeleteButton();
         }).catch(function(error) {
+            console.error('Error fetching car details:', error);
             $btn.prop('disabled', false);
             $btn.html(originalHtml);
-            showMessage('Error fetching car details: ' + (error.message || error), 'danger');
+            showMessage('Error fetching car details: ' + ((error instanceof Error ? error.message : String(error)) || 'Unknown error'), 'danger');
             $('#deleteCarDetails').hide();
             selectedDeleteCar = null;
             updateDeleteButton();
@@ -936,10 +939,11 @@ function initializeCarManagement() {
         const $messageContainer = $('#messageContainer');
         if (!$messageContainer.length) return;
 
-        const alertClass = `alert alert-${type} alert-dismissible fade show`;
+        const safeType = ['info', 'warning', 'danger', 'success'].includes(type) ? type : 'info';
+        const alertClass = `alert alert-${safeType} alert-dismissible fade show`;
         const alertHtml = `
             <div class="${alertClass}" role="alert">
-                ${message}
+                ${escapeHtml(message)}
                 <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
             </div>
         `;
@@ -947,7 +951,7 @@ function initializeCarManagement() {
         $messageContainer.html(alertHtml);
 
         // Auto-dismiss after 5 seconds for non-error messages
-        if (type !== 'danger') {
+        if (safeType !== 'danger') {
             setTimeout(() => {
                 const $alert = $messageContainer.find('.alert');
                 if ($alert.length) {
