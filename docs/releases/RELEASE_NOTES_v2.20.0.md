@@ -20,6 +20,10 @@ None.
   tiers. Maintenance portal pages (`manage-maintenance.php`, scripts under
   `app/admin/scripts/`) are set to Administrator-only access. The main admin panel
   (`manage-consolidated.php` and its tabs) retains Administrator + Editor access.
+- **Fix stored XSS in admin panel error messages** ([#789](https://github.com/unibrain1/elanregistry/issues/789)):
+  The `showMessage()` function in the consolidated admin panel now escapes its message
+  parameter before rendering as HTML, preventing stored XSS via server-supplied error
+  messages that could contain crafted content from car or owner records.
 
 ### Improvements
 
@@ -67,3 +71,4 @@ None.
 - [#788](https://github.com/unibrain1/elanregistry/issues/788) — Remove stub 'Send Email' button from owner sidebar
 - [#795](https://github.com/unibrain1/elanregistry/issues/795) — bug: usersc/user_settings.php incorrectly classified as special-case (no permissions)
 - [#797](https://github.com/unibrain1/elanregistry/issues/797) — bug: maintenance portal pages not restricted to Administrator-only access
+- [#789](https://github.com/unibrain1/elanregistry/issues/789) — Fix stored XSS: escape HTML in admin panel dynamic content
