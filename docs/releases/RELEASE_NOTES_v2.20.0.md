@@ -59,6 +59,16 @@ None.
   The unimplemented 'View All Cars', 'View Full History', and 'Send Email' buttons have been
   removed from the owner sidebar.
 
+## Technical Changes
+
+- **Test coverage for security-critical code paths** ([#800](https://github.com/unibrain1/elanregistry/issues/800)):
+  Added automated tests for three previously uncovered paths identified in the PR #794 deep review:
+  `escapeHtml()` now has a Playwright test with seven XSS vectors (`<script>`, `"`, `'`, `&`, `>`,
+  combined attribute injection, and non-string passthrough); `BackupManager::cleanupOldBackups()`
+  now has PHPUnit tests for the `realpath()` path-traversal guard (symlink traversal blocked, valid
+  old file deleted); and `getBaseUrl()` now has integration tests for the server-globals-absent
+  fallback path.
+
 ## Issues Resolved
 
 - [#571](https://github.com/unibrain1/elanregistry/issues/571) — Convert native confirm() dialogs to app modal for destructive actions
@@ -78,3 +88,5 @@ None.
 - [#797](https://github.com/unibrain1/elanregistry/issues/797) — bug: maintenance portal pages not restricted to Administrator-only access
 - [#789](https://github.com/unibrain1/elanregistry/issues/789) — Fix stored XSS: escape HTML in admin panel dynamic content
 - [#798](https://github.com/unibrain1/elanregistry/issues/798) — tech-debt: silent failures in LocationService and BackupManager swallow errors without logging
+- [#800](https://github.com/unibrain1/elanregistry/issues/800) — tech-debt: add missing test coverage for escapeHtml(),
+  BackupManager path-traversal guard, and getBaseUrl() fallback

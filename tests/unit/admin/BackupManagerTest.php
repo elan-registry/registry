@@ -339,6 +339,93 @@ final class BackupManagerTest extends TestCase
     }
 
     /**
+     * Test that cleanupOldBackups blocks symlink path traversal.
+     *
+     * Creates a symlink inside the backup directory pointing to a file
+     * OUTSIDE the backup base. After ageing the symlink past the retention
+     * cutoff, performEnhancedCleanup() must NOT delete the target file —
+     * the realpath guard detects the traversal and skips the entry.
+     *
+     * The filename embeds `_development_` so that extractEnvironmentFromFilename()
+     * resolves a real retention tier rather than falling through to its default,
+     * keeping the test sensitive to changes in the environment-extraction regex.
+     *
+     * @return void
+     */
+    #[Group('fast')]
+    #[Group('unit')]
+    public function testCleanupBlocksSymlinkTraversal(): void
+    {
+        if (!function_exists('symlink') || (PHP_OS_FAMILY === 'Windows' && !extension_loaded('com_dotnet'))) {
+            $this->markTestSkipped('symlink() unavailable on this platform');
+        }
+
+        // Create a directory and target file OUTSIDE the backup base
+        $outsideDir = sys_get_temp_dir() . '/outside_' . uniqid() . '/';
+        mkdir($outsideDir);
+        $secretPath = $outsideDir . 'secret.txt';
+        file_put_contents($secretPath, 'sensitive data that must not be deleted');
+
+        try {
+            $symlinkPath = $this->testBackupDir
+                . 'automated/elanregistry_automated_development_2024-01-01T000000_schema.sql';
+
+            if (!@symlink($secretPath, $symlinkPath)) {
+                $this->markTestSkipped('symlink() call failed (insufficient privileges or unsupported filesystem)');
+            }
+
+            // Age the symlink past any retention cutoff (100 days old)
+            touch($symlinkPath, time() - 100 * 86400);
+
+            $result = $this->backupManager->performEnhancedCleanup();
+
+            // Target file outside backup base must still exist
+            $this->assertFileExists($secretPath, 'Path-traversal target was deleted');
+
+            // The realpath guard blocked deletion; deleted count for automated must be 0
+            $this->assertSame(0, $result['automated']['deleted']);
+        } finally {
+            if (is_link($symlinkPath ?? '')) {
+                unlink($symlinkPath);
+            }
+            $this->recursiveRemoveDirectory($outsideDir);
+        }
+    }
+
+    /**
+     * Test that cleanupOldBackups deletes a real old file inside the backup base.
+     *
+     * Companion to testCleanupBlocksSymlinkTraversal: verifies that the
+     * realpath guard does NOT block legitimate deletions of aged backup files
+     * that genuinely live within the backup directory.
+     *
+     * The filename embeds `_development_` so that extractEnvironmentFromFilename()
+     * resolves a real retention tier rather than falling through to its default,
+     * keeping the test sensitive to changes in the environment-extraction regex.
+     *
+     * @return void
+     */
+    #[Group('fast')]
+    #[Group('unit')]
+    public function testCleanupDeletesOldFileWithinBackupBase(): void
+    {
+        // Create a real backup file (not a symlink) inside the backup base.
+        // Filename matches extractEnvironmentFromFilename regex
+        // /_(development|test|production)_/ so retention is resolved.
+        $oldBackup = $this->testBackupDir
+            . 'automated/elanregistry_automated_development_2024-01-01T000000_schema.sql';
+        file_put_contents($oldBackup, "-- old backup content\n");
+
+        // Age past development/automated retention (default 7 days)
+        touch($oldBackup, time() - 100 * 86400);
+
+        $result = $this->backupManager->performEnhancedCleanup();
+
+        $this->assertSame(1, $result['automated']['deleted']);
+        $this->assertFileDoesNotExist($oldBackup);
+    }
+
+    /**
      * Helper: Create a mock database object
      *
      * @return object Mock database object with query method
