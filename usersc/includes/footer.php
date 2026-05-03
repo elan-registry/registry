@@ -33,12 +33,14 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
         aPrivacy.className = 'text-muted';
         aPrivacy.textContent = 'Privacy Policy';
         p.appendChild(aPrivacy);
+        <?php if (isset($user) && $user->isLoggedIn()) { ?>
         p.appendChild(document.createTextNode(' | '));
         var aContact = document.createElement('a');
         aContact.href = '<?=$us_url_root?>app/contact/index.php';
         aContact.className = 'text-muted';
         aContact.textContent = 'Contact Us';
         p.appendChild(aContact);
+        <?php } ?>
         container.appendChild(p);
     }
 }());
