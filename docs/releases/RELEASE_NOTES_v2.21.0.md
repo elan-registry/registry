@@ -1,6 +1,6 @@
 # Elan Registry v2.21.0 Release Notes
 
-**Release Date:** [DATE]
+**Release Date:** 2026-05-04
 **Type:** Minor Release - UserSpice 6.0.8 Update
 
 ## Required Actions After Deployment
