@@ -18,13 +18,13 @@ GNU General Public License for more details.
 You should have received a copy of the GNU General Public License
 along with this program. If not, see <http://www.gnu.org/licenses/>.
 */
-ini_set("allow_url_fopen", 1);
 if (!defined('USERSPICE_LOGIN_CALLED')) {
    define('USERSPICE_LOGIN_CALLED', true);
    require_once '../users/init.php';
 }
-require_once $abs_us_root . $us_url_root . 'usersc/includes/elanregistry_prep.php';
+require_once $abs_us_root . $us_url_root . 'usersc/includes/elanregistry_prep.php'; // ER: custom prep — replaces users/includes/template/prep.php
 
+// ER START: TOTP handler loading
 // Ensure session is started for TOTP intermediate storage
 if (session_status() == PHP_SESSION_NONE) {
     session_start();
@@ -36,6 +36,7 @@ if($settings->totp > 0 && version_compare(PHP_VERSION, '8.2.0', '>=')) {
     $settings->totp = 0; // Disable TOTP if not supported
     $currentSessionName = $config['session']['session_name'];
 }
+// ER END
 
 $hooks = getMyHooks();
 if(isset($oauthHooks) && is_array($oauthHooks)) {
@@ -44,24 +45,17 @@ if(isset($oauthHooks) && is_array($oauthHooks)) {
 
 includeHook($hooks, 'pre');
 
-// Include security validation functions
-require_once $abs_us_root . $us_url_root . 'usersc/includes/security_validation.php';
-
 $emailSet = $db->query("SELECT * FROM email")->first();
 if (!isset($settings->no_passwords)) {
     $settings->no_passwords = 0;
 }
-if ($emailSet->email_login == "yourEmail@gmail.com" || $emailSet->email_login == "" || $emailSet->email_pass == "1234" || $settings->no_passwords == 1) {
+$allowPasswords = passwordsAllowed($settings->no_passwords);
+if ($emailSet->email_login == "yourEmail@gmail.com" || $emailSet->email_login == "" || $emailSet->email_pass == "1234" || !$allowPasswords) {
     $showForgot = false;
 } else {
     $showForgot = true;
 }
 
-if ($settings->no_passwords == 1) {
-    $topPad = "";
-} else {
-    $topPad = "";
-}
 if ($showForgot == true && $settings->registration == 1) {
     $bottomClass = "col-12 col-lg-6";
     $showBottom = true;
@@ -81,11 +75,12 @@ if (Input::get('err') != '') {
     $errors[] = Input::get('err');
 }
 
+// ER START: TOTP handler initialization and pending state detection
 // Initialize TOTP handler
 $totpHandler = null;
 $totpEnabled = false;
 if (isset($settings->totp) && ($settings->totp > 1)) {
-  
+
         $siteName = isset($settings->site_name) ? $settings->site_name : 'UserSpice';
         $totpHandler = new TOTPHandler($db, $siteName);
         $totpEnabled = true;
@@ -99,9 +94,10 @@ if (isset($_SESSION[$currentSessionName . '_totp_user_id_to_verify']) && !empty(
     $awaitingTOTP = true;
     $tempUserId = $_SESSION[$currentSessionName . '_totp_user_id_to_verify'];
 }
+// ER END
 
 // Check if user is already fully logged in
-if ($user->isLoggedIn() && !$awaitingTOTP) {
+if ($user->isLoggedIn() && !$awaitingTOTP) { // ER: !$awaitingTOTP — prevent redirect when waiting for TOTP step 2
 
     Redirect::to($us_url_root . $settings->redirect_uri_after_login);
 }
@@ -112,8 +108,9 @@ if (!empty($_POST)) {
     $token = Input::get('csrf');
 
     if (Token::check($token)) {
-        $_SESSION[$currentSessionName . '_totp_verified'] = false;
+        $_SESSION[$currentSessionName . '_totp_verified'] = false; // ER: reset on each POST; set to true only after full TOTP verification
 
+        // ER START: TOTP verification step (step 2 of two-step login)
         // Check if this is a TOTP verification step
         if ($awaitingTOTP && !empty($_POST['totp_code'])) {
             // Check rate limit for TOTP verification
@@ -131,7 +128,6 @@ if (!empty($_POST)) {
                         if ($totpHandler->verifyBackupCode($tempUserId, $totpCode)) {
                             if ($totpHandler->invalidateBackupCode($tempUserId, $totpCode)) {
                                 $verified = true;
-                                // logger($tempUserId, "Login", "TOTP login successful using backup code.");
                             } else {
                                 $errors[] = lang("2FA_ERR_BACKUP_INVALIDATE_FAIL");
                             }
@@ -142,7 +138,6 @@ if (!empty($_POST)) {
                         $userSecret = $totpHandler->getUserSecret($tempUserId);
                         if ($userSecret && $totpHandler->verifyCode($userSecret, $totpCode)) {
                             $verified = true;
-                            // logger($tempUserId, "Login", "TOTP login successful using authenticator app.");
                         } else {
                             $errors[] = lang("2FA_ERR_INVALID_CODE");
                         }
@@ -175,24 +170,18 @@ if (!empty($_POST)) {
                             $hooks = getMyHooks(['page' => 'loginSuccess']);
                             includeHook($hooks, 'body');
 
-                            // Get stored redirect info
-                            $finalDest = $_SESSION[$currentSessionName . '_totp_final_dest'] ?? null;
-                            $inputRedirect = $_SESSION[$currentSessionName . '_totp_input_redirect'] ?? null;
+                            $dest = $_SESSION[$currentSessionName . '_login_dest'] ?? '';
 
-                            // Clear TOTP session variables
+                            // Clear pending TOTP state; _totp_verified is intentionally retained for downstream hooks
                             unset($_SESSION[$currentSessionName . '_totp_user_id_to_verify']);
                             unset($_SESSION[$currentSessionName . '_totp_remember_me']);
-                            unset($_SESSION[$currentSessionName . '_totp_final_dest']);
-                            unset($_SESSION[$currentSessionName . '_totp_input_redirect']);
-                            // logger(1,"cls","case 1");
+                            unset($_SESSION[$currentSessionName . '_login_dest']);
                             if (file_exists($abs_us_root . $us_url_root . 'usersc/scripts/custom_login_script.php')) {
                                 require_once $abs_us_root . $us_url_root . 'usersc/scripts/custom_login_script.php';
                             }
                             // Redirect to destination
-                            if (!empty($inputRedirect)) {
-                                Redirect::to(html_entity_decode($inputRedirect));
-                            } elseif (!empty($finalDest)) {
-                                Redirect::to($finalDest);
+                            if (!empty($dest)) {
+                                Redirect::sanitized($dest);
                             } else {
                                 $default_dest = Config::get('homepage') ?: 'account.php';
                                 Redirect::to($us_url_root . $default_dest);
@@ -202,8 +191,6 @@ if (!empty($_POST)) {
                             // Clear session related to TOTP pending state to reset the flow
                             unset($_SESSION[$currentSessionName . '_totp_user_id_to_verify']);
                             unset($_SESSION[$currentSessionName . '_totp_remember_me']);
-                            unset($_SESSION[$currentSessionName . '_totp_final_dest']);
-                            unset($_SESSION[$currentSessionName . '_totp_input_redirect']);
                             $awaitingTOTP = false; // Reset to show regular login form
                         }
                     } else {
@@ -212,12 +199,13 @@ if (!empty($_POST)) {
                             'method' => $useBackup ? 'backup_code' : 'authenticator_app',
                             'user_agent' => $user_agent ?? ''
                         ]);
-                        // logger($tempUserId, "VerifyTOTP", "TOTP verification failed for user ID: $tempUserId");
                         // Keep the TOTP form displayed for retry
                     }
                 }
             }
-        } else {
+        }
+        // ER END
+        else {
             // Regular username/password login
             $validate = new Validate();
             $validation = $validate->check(
@@ -232,29 +220,29 @@ if (!empty($_POST)) {
             $username = Input::get('username');
             $password = trim(Input::get('password'));
             $remember = false;
-            $totpCode = Input::get('totp_code');
+            $totpCode = Input::get('totp_code'); // ER: inline TOTP code (optional, submitted with credentials)
 
             includeHook($hooks, 'post');
 
-            // Re-check validation after hooks (fixes reCAPTCHA bypass bug)
+            // Re-check validation after hooks (fixes reCAPTCHA bypass bug) // ER: prevents reCAPTCHA bypass
             $validated = $validation->passed();
 
             if ($validated) {
+                // ER START: rate limiting
                 // Check rate limit for login attempts
                 $userRecord = $db->query("SELECT id FROM users WHERE username = ? OR email = ?", [$username, $username])->first();
                 $userId = $userRecord ? $userRecord->id : null;
-                
+
                 if (!checkRateLimit('login_attempt', $userId, $username)) {
-                    
                     $errors[] = getRateLimitErrorMessage('login_attempt');
-                } else {
+                } else { // ER END
                     // Attempt to login with credentials
                     $tempUser = new User();
                     $rawpassword = $_POST['password'];
                     $login = $tempUser->loginEmail($username, $password, $remember, $rawpassword);
 
                     if ($login) {
-                        // Credentials are valid - now check if TOTP is required
+                        // ER START: TOTP enforcement after valid credentials
                         $requireTOTP = false;
                         $userHasTOTP = false;
 
@@ -276,28 +264,23 @@ if (!empty($_POST)) {
                                         'user_agent' => $user_agent ?? ''
                                     ]);
 
-                                    $user = $tempUser; // Set user object for further processing
-                                    
+                                    $user = $tempUser; // isLoggedIn() must reflect the authenticated user for hooks and redirect logic
+
                                     // TOTP verified, complete login immediately
                                     $hooks = getMyHooks(['page' => 'loginSuccess']);
                                     includeHook($hooks, 'body');
-                                    $dest = sanitizedDest('dest');
+                                    $dest = $_SESSION[$currentSessionName . '_login_dest'] ?? '';
+                                    unset($_SESSION[$currentSessionName . '_login_dest']);
                                     $_SESSION[$currentSessionName . '_last_confirm'] = date("Y-m-d H:i:s");
                                     $_SESSION[$currentSessionName . '_totp_verified'] = true;
-                                    // logger($tempUser->data()->id, "Login", "Successful login with inline TOTP verification.");
-                                   
-                                    // logger(1,"cls","case 2");
                                     if (file_exists($abs_us_root . $us_url_root . 'usersc/scripts/custom_login_script.php')) {
                                         require_once $abs_us_root . $us_url_root . 'usersc/scripts/custom_login_script.php';
                                     }
                                     if (!empty($dest)) {
-                                        $redirect = validateRedirectParameter(Input::get('redirect'));
-                                        if (!empty($redirect) || $redirect !== '') Redirect::to(html_entity_decode($redirect));
-                                        else Redirect::to($dest);
+                                        Redirect::sanitized($dest);
                                     } else {
-                                        if (($default_dest = Config::get('homepage')) || ($default_dest = 'account.php')) {
-                                            Redirect::to($us_url_root . $default_dest);
-                                        }
+                                        $default_dest = Config::get('homepage') ?: 'account.php';
+                                        Redirect::to($us_url_root . $default_dest);
                                     }
                                 } else {
                                     // Invalid TOTP code
@@ -309,21 +292,14 @@ if (!empty($_POST)) {
                                     $errors[] = lang("2FA_ERR_INVALID_CODE");
                                     unset($_SESSION[$currentSessionName . '_totp_user_id_to_verify']);
                                     unset($_SESSION[$currentSessionName . '_totp_remember_me']);
-                                    unset($_SESSION[$currentSessionName . '_totp_final_dest']);
-                                    unset($_SESSION[$currentSessionName . '_totp_input_redirect']);
                                     $awaitingTOTP = false;
                                 }
                             } else {
-                                // TOTP required but not provided - set up for next step
+                                // TOTP required but not provided — start two-step verification.
+                                // _login_dest was already set by securePage(); it carries through the form resubmit.
                                 unset($_SESSION[$currentSessionName]);
                                 $_SESSION[$currentSessionName . '_totp_user_id_to_verify'] = $tempUser->data()->id;
                                 $_SESSION[$currentSessionName . '_totp_remember_me'] = $remember;
-
-                                $dest = sanitizedDest('dest');
-                                $_SESSION[$currentSessionName . '_totp_final_dest'] = $dest;
-                                $_SESSION[$currentSessionName . '_totp_input_redirect'] = validateRedirectParameter(Input::get('redirect'));
-
-                                // logger($tempUser->data()->id, "Login", "Valid credentials provided. Awaiting TOTP verification.");
 
                                 // Set state for current page to show TOTP form
                                 $awaitingTOTP = true;
@@ -331,45 +307,42 @@ if (!empty($_POST)) {
 
                                 $successes[] = "Credentials verified. Please enter your authentication code.";
                             }
-                        } else {
+                        }
+                        // ER END
+                        else {
                             // Record successful login
-                            handleAuthSuccess('login_attempt', $tempUser->data()->id, $username, [], [
+                            handleAuthSuccess('login_attempt', $tempUser->data()->id, $username, [], [ // ER: auth event
                                 'method' => 'standard_login',
                                 'user_agent' => $user_agent ?? ''
                             ]);
-                            $user = $tempUser; // Set user object for further processing
+                            $user = $tempUser; // isLoggedIn() must reflect the authenticated user for hooks and redirect logic
 
                             // No TOTP required - complete normal login
                             $hooks = getMyHooks(['page' => 'loginSuccess']);
-                           
                             includeHook($hooks, 'body');
-                            $dest = sanitizedDest('dest');
+                            $dest = $_SESSION[$currentSessionName . '_login_dest'] ?? '';
+                            unset($_SESSION[$currentSessionName . '_login_dest']);
                             $_SESSION[$currentSessionName . '_last_confirm'] = date("Y-m-d H:i:s");
-                            // logger(1,"cls","case 3");
-                   
+
                             if (file_exists($abs_us_root . $us_url_root . 'usersc/scripts/custom_login_script.php')) {
                                 require_once $abs_us_root . $us_url_root . 'usersc/scripts/custom_login_script.php';
                             }
                             if (!empty($dest)) {
-                                $redirect = validateRedirectParameter(Input::get('redirect'));
-                                if (!empty($redirect) || $redirect !== '') Redirect::to(html_entity_decode($redirect));
-                                else Redirect::to($dest);
+                                Redirect::sanitized($dest);
                             } else {
-                                if (($default_dest = Config::get('homepage')) || ($default_dest = 'account.php')) {
-                                    Redirect::to($us_url_root . $default_dest);
-                                }
+                                $default_dest = Config::get('homepage') ?: 'account.php';
+                                Redirect::to($us_url_root . $default_dest);
                             }
                         }
                     } else {
                         // Record failed login attempt
-                        handleAuthFailure('login_attempt', $userId, $username, [], [
+                        handleAuthFailure('login_attempt', $userId, $username, [], [ // ER: auth event
                             'username_attempted' => $username,
                             'user_agent' => $user_agent ?? ''
                         ]);
                         
                         $eventhooks = getMyHooks(['page' => 'loginFail']);
                         includeHook($eventhooks, 'body');
-                        // logger("0", "Login Fail", "A failed login on login.php");
                         $msg = lang("SIGNIN_FAIL");
                         $msg2 = lang("SIGNIN_PLEASE_CHK");
                         $errors[] = '<strong>' . $msg . '</strong>' . $msg2;
@@ -388,9 +361,7 @@ if (!empty($_POST)) {
     sessionValMessages($errors, $successes, NULL);
 }
 
-if (empty($dest = sanitizedDest('dest'))) {
-    $dest = '';
-}
+$dest = $_SESSION[$currentSessionName . '_login_dest'] ?? '';
 
 ?>
 <style media="screen">
@@ -420,7 +391,7 @@ if (empty($dest = sanitizedDest('dest'))) {
                     <b><?= $awaitingTOTP ? "Two-Factor Authentication" : lang("SIGNIN_TITLE") ?></b>
                     <a href="<?= $us_url_root ?>" aria-label="Close" class="btn-close" style="top: 1rem!important;"></a>
                 </div>
-                <div class="modal-body p-4 <?= $topPad ?>">
+                <div class="modal-body p-4">
 
                     <div class="usmsgblock">
                         <?php
@@ -441,7 +412,7 @@ if (empty($dest = sanitizedDest('dest'))) {
 
                     <?php includeHook($hooks, 'body'); ?>
 
-                    <?php if ($awaitingTOTP): ?>
+                    <?php if ($awaitingTOTP): // ER START: TOTP awaiting-verification form ?>
                         <div class="text-center mb-3">
                             <i class="fa fa-shield-alt fa-2x text-primary"></i>
                             <h5 class="mt-2"><?= lang("2FA_VERIFY_TITLE") ?></h5>
@@ -485,13 +456,14 @@ if (empty($dest = sanitizedDest('dest'))) {
                             </a>
                         </div>
 
-                    <?php elseif ($settings->no_passwords == 0): ?>
+                    <?php // ER END ?>
+                    <?php elseif ($allowPasswords): ?>
                         <form name="login" id="login-form" class="form-signin" method="post" action="">
                             <?= tokenHere(); ?>
                             <div class="form-outline mb-4">
                                 <label class="form-label" for="username"><?= lang("SIGNIN_UORE") ?></label>
                                 <input type="text" id="username" name="username" class="form-control form-control-lg"
-                                    value="<?= isset($_POST['username']) ? htmlspecialchars($_POST['username'], ENT_QUOTES, 'UTF-8') : '' ?>"
+                                    value="<?= safeReturn(Input::get('username')) ?>"
                                     required autocomplete="username">
                             </div>
 
@@ -506,7 +478,7 @@ if (empty($dest = sanitizedDest('dest'))) {
                                 </div>
                             </div>
 
-                            <?php if ($totpEnabled): ?>
+                            <?php if ($totpEnabled): // ER START: inline TOTP field ?>
                                 <div class="totp-section">
                                     <div class="form-outline mb-4">
                                         <label class="form-label" for="totp_code_inline">
@@ -519,10 +491,9 @@ if (empty($dest = sanitizedDest('dest'))) {
                                         </div>
                                     </div>
                                 </div>
-                            <?php endif; ?>
+                            <?php endif; // ER END ?>
 
                             <?php includeHook($hooks, 'form'); ?>
-                            <input type="hidden" name="redirect" value="<?= htmlspecialchars(validateRedirectParameter(Input::get('redirect')), ENT_QUOTES, 'UTF-8') ?>" />
                             <button class="submit col-12 btn btn-primary rounded submit px-3" id="next_button" type="submit">
                                 <i class="fa fa-sign-in"></i> <?= lang("SIGNIN_BUTTONTEXT") ?>
                             </button>
@@ -565,7 +536,7 @@ if (empty($dest = sanitizedDest('dest'))) {
     </div>
 </div>
 </div>
-<script>
+<script nonce="<?= htmlspecialchars($userspice_nonce ?? '') ?>">
     $(document).ready(function() {
         const loginModal = new bootstrap.Modal(document.getElementById('loginModal'), {
             backdrop: 'static',
@@ -583,7 +554,7 @@ if (empty($dest = sanitizedDest('dest'))) {
             }, 500);
         <?php endif; ?>
 
-        <?php if ($settings->no_passwords == 0): ?>
+        <?php if ($allowPasswords): ?>
             const togglePassword = document.querySelector('#togglePassword');
             const togglePasswordIcon = document.querySelector('#togglePasswordIcon');
             const password = document.querySelector('#password');
@@ -604,6 +575,7 @@ if (empty($dest = sanitizedDest('dest'))) {
             }
         <?php endif; ?>
 
+        // ER START: TOTP input formatting and auto-submit
         // Auto-format TOTP code inputs (digits only)
         const totpInputs = document.querySelectorAll('input[name="totp_code"]:not(#backup_code)');
         totpInputs.forEach(function(input) {
@@ -638,15 +610,13 @@ if (empty($dest = sanitizedDest('dest'))) {
                 }
             });
         }
+        // ER END
     });
 
-    function toggleBackupForm() {
-        // Function kept for compatibility but no longer needed since backup form is always visible
-    }
 </script>
 
 <?php if ($settings->passkeys == 1 && !$awaitingTOTP): ?>
-    <script>
+    <script nonce="<?= htmlspecialchars($userspice_nonce ?? '') ?>">
         function showPasskeyStatus(message, type = 'info') {
             const status = document.getElementById('passkeyStatus');
             if (!status) return;
@@ -697,7 +667,7 @@ if (empty($dest = sanitizedDest('dest'))) {
 async function authenticatePasskeyLogin() {
     showPasskeyStatus('Requesting authentication challenge...');
     try {
-        const dest = '<?= $dest ?>';
+        const dest = <?= safeJsonEncodeForJs($dest) ?>;
         
         // First request - get challenge using POST
         const challengeData = {
@@ -767,7 +737,14 @@ async function authenticatePasskeyLogin() {
         if (result.success) {
             showPasskeyStatus('Login successful! Redirecting...', 'success');
             if (result.redirect) {
-                window.location.href = result.redirect;
+                try {
+                    const redirectUrl = new URL(result.redirect, window.location.origin);
+                    window.location.href = redirectUrl.origin === window.location.origin
+                        ? redirectUrl.pathname + redirectUrl.search
+                        : '<?= $us_url_root . $settings->redirect_uri_after_login ?>';
+                } catch (e) {
+                    window.location.href = '<?= $us_url_root . $settings->redirect_uri_after_login ?>';
+                }
             } else {
                 window.location.href = '<?= $us_url_root . $settings->redirect_uri_after_login ?>';
             }
