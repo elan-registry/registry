@@ -170,12 +170,14 @@ class ServerGlobalsTest extends TestCase
     }
 
     /**
-     * Test that REQUEST_SCHEME is documented as a required value
+     * Test that proxy-aware scheme detection via Server::getScheme() is used.
+     * Replaced direct REQUEST_SCHEME check; getScheme() handles HTTPS, proxy
+     * headers, and port 443 detection internally.
      */
     public function testDocumentsRequestSchemeUsage(): void
     {
         $content = (string) file_get_contents($this->globalsFile);
-        $this->assertStringContainsString('REQUEST_SCHEME', $content);
+        $this->assertStringContainsString('getScheme', $content);
     }
 
     /**
