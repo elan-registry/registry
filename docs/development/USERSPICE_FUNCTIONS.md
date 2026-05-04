@@ -414,9 +414,6 @@ File: `users/classes/Server.php`
 sanitized, and proxy-aware accessors. All globals in `usersc/includes/server_globals.php`
 are set via this class.
 
-**Elan Registry usage:** Pass `CLOUDFLARE_CIDRS` to proxy-aware methods so `X-Forwarded-Proto`
-and `X-Forwarded-For` headers are only trusted when `REMOTE_ADDR` is a known Cloudflare IP.
-
 ### Server::get($key, $default = '')
 
 Fetch and sanitize a `$_SERVER` value. Applies context-aware sanitization based on the key
