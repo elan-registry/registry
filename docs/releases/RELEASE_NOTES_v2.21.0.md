@@ -21,6 +21,8 @@ No direct user-facing feature changes in this release. All changes are infrastru
 - **UserSpice 6.0.8 upgrade** ([#805](https://github.com/unibrain1/elanregistry/issues/805)): Closes CVE-2026-30964 (passkey path); applies DB performance indexes.
 - **User Manager columns reconciled** ([#808](https://github.com/unibrain1/elanregistry/issues/808)): Override aligned to 6.0.8; custom columns preserved.
 - **Customizer template updated to 2.1.0** ([#807](https://github.com/unibrain1/elanregistry/issues/807)): iPad mini layout fix; Lotus green CSS re-saved.
+- **USERSPICE_FUNCTIONS.md updated for 6.0.8** ([#810](https://github.com/unibrain1/elanregistry/issues/810)):
+  Documents Server class, TOTPHandler, Redirect::sanitized(), safeReturn(), and passwordsAllowed().
 
 ## Issues Resolved
 
