@@ -42,9 +42,10 @@ declare(strict_types=1);
 
 // HTTP Scheme Detection
 // Uses Server::getScheme() with the Cloudflare CIDR list defined in users/init.php.
-// X-Forwarded-Proto is trusted only when REMOTE_ADDR matches a Cloudflare IP;
-// direct HTTPS ($SERVER['HTTPS'] set) is always trusted regardless of proxy.
-// Falls back to 'http' when neither signal is present (local dev, plain HTTP).
+// X-Forwarded-Proto (and RFC 7239 Forwarded: proto=) are trusted only when
+// REMOTE_ADDR matches a Cloudflare IP; direct HTTPS ($_SERVER['HTTPS'] set) is
+// always trusted regardless of proxy. Falls back to 'https' if SERVER_PORT is 443,
+// otherwise 'http' (plain HTTP, local dev).
 $scheme   = Server::getScheme(CLOUDFLARE_CIDRS);
 $is_https = ($scheme === 'https');
 
