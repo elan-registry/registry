@@ -170,12 +170,18 @@ class ServerGlobalsTest extends TestCase
     }
 
     /**
-     * Test that REQUEST_SCHEME is documented as a required value
+     * Test that proxy-aware scheme detection via Server::getScheme() is used
+     * rather than reading a raw $_SERVER key directly.
      */
     public function testDocumentsRequestSchemeUsage(): void
     {
         $content = (string) file_get_contents($this->globalsFile);
-        $this->assertStringContainsString('REQUEST_SCHEME', $content);
+        $this->assertStringContainsString('getScheme', $content);
+        $this->assertStringNotContainsString(
+            'HTTP_X_FORWARDED_PROTO',
+            $content,
+            'server_globals.php must not access X-Forwarded-Proto directly — use Server::getScheme()'
+        );
     }
 
     /**

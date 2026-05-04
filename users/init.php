@@ -4,12 +4,37 @@ define('USERSPICE_ACTIVE_LOGGING', false);
 // Load UserSpice core autoloader
 require_once __DIR__ . '/classes/class.autoloader.php';
 
+// ER START: trusted-proxy HTTPS detection for Cloudflare
+// Cloudflare terminates TLS before requests reach the origin, so $_SERVER['HTTPS']
+// is not set on the origin server. We must read X-Forwarded-Proto (or the RFC 7239
+// Forwarded: proto= header), but only when the request comes from a known Cloudflare
+// IP (to prevent header spoofing). Server::getScheme() checks direct HTTPS first,
+// then the proxy headers only when REMOTE_ADDR is in one of these CIDRs.
+//
+// Source: https://www.cloudflare.com/ips-v4  /  https://www.cloudflare.com/ips-v6
+// Last verified: 2026-05-04. Re-verify at https://www.cloudflare.com/ips-v4 and
+// https://www.cloudflare.com/ips-v6 on each significant Cloudflare infrastructure
+// announcement or annually.
+if (!defined('CLOUDFLARE_CIDRS')) {
+    define('CLOUDFLARE_CIDRS', [
+        // IPv4
+        '173.245.48.0/20', '103.21.244.0/22', '103.22.200.0/22', '103.31.4.0/22',
+        '141.101.64.0/18', '108.162.192.0/18', '190.93.240.0/20', '188.114.96.0/20',
+        '197.234.240.0/22', '198.41.128.0/17', '162.158.0.0/15', '104.16.0.0/13',
+        '104.24.0.0/14',   '172.64.0.0/13',   '131.0.72.0/22',
+        // IPv6
+        '2400:cb00::/32', '2606:4700::/32', '2803:f800::/32', '2405:b500::/32',
+        '2405:8100::/32', '2a06:98c0::/29', '2c0f:f248::/32',
+    ]);
+}
+// ER END
+
 // Set secure session cookie parameters before starting session
 session_set_cookie_params([
     'lifetime' => 0,           // Session cookie (expires when browser closes)
     'path' => '/',             // Available across entire site
     'domain' => '',            // Use default domain
-    'secure' => Server::get('HTTPS') !== '', // Only send over HTTPS if available
+    'secure' => Server::getScheme(CLOUDFLARE_CIDRS) === 'https', // ER: proxy-aware HTTPS detection
     'httponly' => true,        // Prevent JavaScript access to session cookie
     'samesite' => 'Strict'     // CSRF protection - only send with same-site requests
 ]);
