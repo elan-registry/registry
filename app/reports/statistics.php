@@ -360,7 +360,7 @@ window.elanMapMarkers = <?= $mapMarkersJson ?>;
 <script src="<?=$us_url_root?>usersc/js/chart.umd.min.js"></script>
 
 <!-- Load Statistics JavaScript first -->
-<script src="<?= $us_url_root ?>app/assets/js/statistics.min.js"></script>
+<script src="<?= $us_url_root ?>app/assets/js/statistics.min.js?v=<?= filemtime($abs_us_root . $us_url_root . 'app/assets/js/statistics.min.js') ?>"></script>
 
 <!-- Initialize MapLibre and Statistics -->
 <script>
