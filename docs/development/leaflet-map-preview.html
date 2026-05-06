@@ -1,0 +1,294 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Map Preview — Issue #724 (Shortbread / VersaTiles)</title>
+
+  <!-- Bootstrap 5 -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css">
+  <!-- MapLibre GL JS -->
+  <link href="https://cdn.jsdelivr.net/npm/maplibre-gl@4.7.1/dist/maplibre-gl.css" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
+
+  <style>
+    /* ── Markers ── */
+    .elan-marker {
+      width: 18px; height: 18px;
+      border-radius: 50% 50% 50% 0;
+      border: 2px solid rgba(0,0,0,0.4);
+      transform: rotate(-45deg);
+      cursor: pointer;
+    }
+    .elan-marker-wrapper {
+      width: 22px; height: 22px;
+      display: flex; align-items: center; justify-content: center;
+      transform: rotate(45deg);
+    }
+    .elan-marker.s1     { background: #e53e3e; }
+    .elan-marker.s2     { background: #3182ce; }
+    .elan-marker.s3     { background: #d69e2e; }
+    .elan-marker.s4     { background: #e2e8f0; border-color: rgba(0,0,0,0.5); }
+    .elan-marker.sprint { background: #805ad5; }
+    .elan-marker.plus2  { background: #38a169; }
+    .elan-marker.unknown{ background: #718096; }
+
+    /* ── Popups ── */
+    .maplibregl-popup-content { min-width: 200px; font-size: 14px; padding: 12px; }
+    .maplibregl-popup-content h6 { margin-bottom: 6px; font-weight: 600; }
+    .maplibregl-popup-content p  { margin-bottom: 4px; }
+    .popup-img {
+      width: 100px; height: 75px; object-fit: cover;
+      float: right; margin: 0 0 8px 10px; border-radius: 4px;
+    }
+    .popup-clearfix { clear: both; }
+
+    /* ── Map containers ── */
+    #map-details { height: 400px; width: 100%; }
+    #map-world   { height: 420px; width: 100%; }
+    @media (max-width: 575.98px) {
+      #map-details { height: 220px !important; }
+      #map-world   { height: 280px !important; }
+    }
+
+    /* ── Legend ── */
+    .legend-dot {
+      display: inline-block; width: 12px; height: 12px;
+      border-radius: 50%; margin-right: 3px; vertical-align: middle;
+      border: 1px solid rgba(0,0,0,0.25);
+    }
+
+    /* ── Error state ── */
+    .map-error-overlay {
+      position: absolute; inset: 0;
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      background: #f8f9fa; z-index: 1000;
+    }
+  </style>
+</head>
+<body class="bg-light">
+
+<div class="container py-4">
+
+  <div class="alert alert-info small mb-4">
+    <strong>Tile layer:</strong> VersaTiles Colorful — true Shortbread vector tile schema
+    (<code>tiles.versatiles.org</code>), rendered via MapLibre GL JS + <code>@versatiles/style</code>.
+  </div>
+
+  <!-- SECTION 1: Car Details map -->
+  <h4 class="mb-1">Preview 1 — Car Details page map</h4>
+  <p class="text-muted small mb-3">Single-car location. Zoom 8, teardrop marker, popup on click.</p>
+
+  <div class="card shadow-sm mb-5">
+    <div class="card-header">
+      <strong>1967 Lotus Elan S2 — EL7314</strong>
+      <span class="text-muted ms-2 small">Hethel, Norfolk, United Kingdom</span>
+    </div>
+    <div class="card-body p-0">
+      <div id="map-details"></div>
+    </div>
+  </div>
+
+  <!-- SECTION 2: Statistics world map -->
+  <h4 class="mb-1">Preview 2 — Statistics page world map</h4>
+  <p class="text-muted small mb-3">
+    Registry-wide map with one colored marker per car. Popup on click.
+    Marker data inlined as JSON — no separate HTTP request.
+  </p>
+
+  <div class="mb-2">
+    <small class="text-muted">
+      <span class="legend-dot" style="background:#e53e3e;"></span> S1 &nbsp;
+      <span class="legend-dot" style="background:#3182ce;"></span> S2 &nbsp;
+      <span class="legend-dot" style="background:#d69e2e;"></span> S3 &nbsp;
+      <span class="legend-dot" style="background:#e2e8f0; border-color:rgba(0,0,0,.4);"></span> S4 &nbsp;
+      <span class="legend-dot" style="background:#805ad5;"></span> Sprint &nbsp;
+      <span class="legend-dot" style="background:#38a169;"></span> +2
+    </small>
+  </div>
+
+  <div class="card shadow-sm mb-5">
+    <div class="card-body p-0">
+      <div id="map-world"></div>
+    </div>
+  </div>
+
+  <!-- SECTION 3: Error state -->
+  <h4 class="mb-1">Preview 3 — Error / fallback state</h4>
+  <p class="text-muted small mb-3">Shown when tiles or marker data fail to load.</p>
+  <div class="card shadow-sm mb-5">
+    <div class="card-body p-0">
+      <div style="position:relative; height:200px; background:#f8f9fa; border-radius:0 0 .375rem .375rem;">
+        <div class="map-error-overlay rounded-bottom">
+          <p class="text-muted mb-2">Map unavailable. Please try refreshing.</p>
+          <button class="btn btn-sm btn-outline-secondary" onclick="alert('Retry clicked')">Retry</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script type="module">
+// @versatiles/style generates a complete MapLibre GL style for VersaTiles Shortbread tiles
+import { colorful } from 'https://cdn.jsdelivr.net/npm/@versatiles/style@latest/dist/index.js';
+
+const VERSATILES_BASE = 'https://tiles.versatiles.org';
+const language = (navigator.language || 'en').split('-')[0];  // e.g. 'en-US' → 'en'
+const style = colorful({ baseUrl: VERSATILES_BASE, language });
+
+// ── Helpers ──────────────────────────────────────────────────────────────────
+
+function markerClassForSeries(series) {
+  const s = (series || '').toLowerCase();
+  if (s.includes('sprint')) return 'sprint';
+  if (s.includes('+2'))     return 'plus2';
+  if (s.includes('s1'))     return 's1';
+  if (s.includes('s2'))     return 's2';
+  if (s.includes('s3'))     return 's3';
+  if (s.includes('s4'))     return 's4';
+  return 'unknown';
+}
+
+function makeMarkerElement(seriesClass) {
+  const wrapper = document.createElement('div');
+  wrapper.className = 'elan-marker-wrapper';
+  const dot = document.createElement('div');
+  dot.className = `elan-marker ${seriesClass}`;
+  wrapper.appendChild(dot);
+  return wrapper;
+}
+
+// Build popup DOM safely — no innerHTML interpolation of data values
+function buildPopupNode(car) {
+  const wrap = document.createElement('div');
+
+  if (car.image) {
+    const img = document.createElement('img');
+    img.src = car.image;
+    img.alt = 'Car photo';
+    img.className = 'popup-img';
+    img.onerror = () => { img.style.display = 'none'; };
+    wrap.appendChild(img);
+  }
+
+  const h6 = document.createElement('h6');
+  h6.textContent = car.name;
+  wrap.appendChild(h6);
+
+  const addPara = (label, value) => {
+    if (!value) return;
+    const p = document.createElement('p');
+    const strong = document.createElement('strong');
+    strong.textContent = label + ': ';
+    p.appendChild(strong);
+    p.appendChild(document.createTextNode(value));
+    wrap.appendChild(p);
+  };
+
+  addPara('Series',   car.series);
+  addPara('Variant',  car.variant);
+  addPara('Location', [car.city, car.state, car.country].filter(Boolean).join(', '));
+  addPara('Owner',    car.owner);
+
+  if (car.id) {
+    const p = document.createElement('p');
+    const a = document.createElement('a');
+    a.href        = `/app/cars/details.php?car_id=${encodeURIComponent(car.id)}`;
+    a.target      = '_blank';
+    a.rel         = 'noopener';
+    a.textContent = 'View Details';
+    p.appendChild(a);
+    wrap.appendChild(p);
+  }
+
+  const clear = document.createElement('div');
+  clear.className = 'popup-clearfix';
+  wrap.appendChild(clear);
+  return wrap;
+}
+
+function addMarker(map, lngLat, car) {
+  const popup = new maplibregl.Popup({ offset: 25 }).setDOMContent(buildPopupNode(car));
+  new maplibregl.Marker({ element: makeMarkerElement(markerClassForSeries(car.series)), anchor: 'bottom' })
+    .setLngLat(lngLat)
+    .setPopup(popup)
+    .addTo(map);
+}
+
+// ── Map 1: Car Details — single marker, zoom 8 ───────────────────────────────
+// MapLibre GL uses [longitude, latitude] order (GeoJSON), not [lat, lng]
+
+const detailsMap = new maplibregl.Map({
+  container:  'map-details',
+  style,
+  center:     [1.111, 52.553],  // Hethel, Norfolk
+  zoom:       8,
+  scrollZoom: false
+});
+detailsMap.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'top-right');
+detailsMap.addControl(new maplibregl.ScaleControl({ unit: 'metric' }), 'bottom-left');
+
+const sampleCar = {
+  id:      'EL7314',
+  name:    '1967 Lotus Elan S2 — EL7314',
+  series:  'S2',
+  variant: 'Fixed Head Coupé',
+  city:    'Hethel',
+  state:   '',
+  country: 'United Kingdom',
+  owner:   'Jim Boone',
+  image:   ''
+};
+
+detailsMap.on('load', () => {
+  addMarker(detailsMap, [1.111, 52.553], sampleCar);
+
+  // Open popup immediately so the style is visible on first load
+  new maplibregl.Popup({ offset: 25, closeOnClick: false })
+    .setLngLat([1.111, 52.553])
+    .setDOMContent(buildPopupNode(sampleCar))
+    .addTo(detailsMap);
+});
+
+// ── Map 2: Statistics world map — multi-marker ───────────────────────────────
+
+const worldMap = new maplibregl.Map({
+  container:  'map-world',
+  style,
+  center:     [-20, 40],  // [lng, lat]
+  zoom:       2,
+  scrollZoom: true
+});
+worldMap.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'top-right');
+worldMap.addControl(new maplibregl.FullscreenControl(), 'top-right');
+
+// Mirrors the inlined JSON that statistics.php will emit.
+// Jitter: lat + sin(id)*0.01, lon + cos(id)*0.01 — computed server-side
+const sampleMarkers = [
+  { id:1,  name:'1966-S1-EL5001',    series:'S1',     variant:'Roadster', city:'London',       state:'',    country:'United Kingdom', owner:'Alice R.',    lat:51.511,  lon:-0.118   },
+  { id:2,  name:'1968-S2-EL7100',    series:'S2',     variant:'FHC',      city:'Portland',     state:'OR',  country:'United States',  owner:'Bob M.',      lat:45.524,  lon:-122.680 },
+  { id:3,  name:'1971-S3-EL9200',    series:'S3',     variant:'SE',       city:'Sydney',       state:'NSW', country:'Australia',      owner:'Carol T.',    lat:-33.870, lon:151.208  },
+  { id:4,  name:'1973-S4-EL2100',    series:'S4',     variant:'Special',  city:'Toronto',      state:'ON',  country:'Canada',         owner:'David K.',    lat:43.655,  lon:-79.381  },
+  { id:5,  name:'1972-Sprint-EL3300',series:'Sprint', variant:'',         city:'München',      state:'',    country:'Germany',        owner:'Eva W.',      lat:48.137,  lon:11.576   },
+  { id:6,  name:'1973-+2-EL4500',    series:'+2',     variant:'130/5',    city:'Auckland',     state:'',    country:'New Zealand',    owner:'Frank L.',    lat:-36.848, lon:174.763  },
+  { id:7,  name:'1967-S2-EL6800',    series:'S2',     variant:'Roadster', city:'Cape Town',    state:'',    country:'South Africa',   owner:'Grace P.',    lat:-33.925, lon:18.424   },
+  { id:8,  name:'1969-S3-EL8100',    series:'S3',     variant:'FHC',      city:'Tokyo',        state:'',    country:'Japan',          owner:'Hiroshi Y.',  lat:35.689,  lon:139.692  },
+  { id:9,  name:'1970-S3-EL8900',    series:'S3',     variant:'SE',       city:'Paris',        state:'',    country:'France',         owner:'Isabelle N.', lat:48.856,  lon:2.348    },
+  { id:10, name:'1966-S1-EL5500',    series:'S1',     variant:'',         city:'Chicago',      state:'IL',  country:'United States',  owner:'Jack D.',     lat:41.884,  lon:-87.628  },
+  { id:11, name:'1972-+2-EL4200',    series:'+2',     variant:'130/5',    city:'Stockholm',    state:'',    country:'Sweden',         owner:'Karin S.',    lat:59.334,  lon:18.066   },
+  { id:12, name:'1973-S4-EL2700',    series:'S4',     variant:'Special',  city:'Buenos Aires', state:'',    country:'Argentina',      owner:'Luis C.',     lat:-34.601, lon:-58.380  },
+];
+
+worldMap.on('load', () => {
+  sampleMarkers.forEach(car => {
+    const lat = car.lat + Math.sin(car.id) * 0.01;
+    const lon = car.lon + Math.cos(car.id) * 0.01;
+    addMarker(worldMap, [lon, lat], car);  // [lng, lat] for MapLibre
+  });
+});
+</script>
+
+</body>
+</html>

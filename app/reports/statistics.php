@@ -24,12 +24,65 @@ if (!securePage($php_self)) {
 
 // Initialize data service
 $dataService = new StatisticsDataService($db);
+
+// Build inlined map marker data — targeted query, deterministic jitter
+$db->query(
+    "SELECT id, year, series, chassis, variant, image, type, city, state, country, fname AS owner, lat, lon
+     FROM cars WHERE lat != 0 AND lon != 0"
+);
+if ($db->error()) {
+    logger(0, LogCategories::LOG_CATEGORY_ERROR, 'Map marker query failed: ' . $db->errorString());
+}
+$markerRows = $db->results();
+
+$mapMarkers = [];
+foreach ($markerRows as $car) {
+    $images = [];
+    if (!empty($car->image)) {
+        $decoded = json_decode($car->image, true);
+        if (json_last_error() === JSON_ERROR_NONE && is_array($decoded)) {
+            $images = $decoded;
+        } else {
+            $images = explode(',', $car->image);
+        }
+    }
+    $mapMarkers[] = [
+        'id'      => (int)$car->id,
+        'name'    => trim(($car->year ?? '') . '-' . ($car->series ?? '') . '-' . ($car->chassis ?? '')),
+        'series'  => (string)($car->series ?? ''),
+        'variant' => (string)($car->variant ?? ''),
+        'image'   => !empty($images) ? ((int)$car->id . '/' . $images[0]) : '',
+        'city'    => (string)($car->city ?? ''),
+        'state'   => (string)($car->state ?? ''),
+        'country' => (string)($car->country ?? ''),
+        'owner'   => trim((string)($car->owner ?? '')),
+        'lat'     => (float)$car->lat + sin((int)$car->id) * 0.01,
+        'lon'     => (float)$car->lon + cos((int)$car->id) * 0.01,
+    ];
+}
 ?>
 
 <style>
 .chart-container { height: 400px; }
 @media (max-width: 575.98px) { .chart-container { height: 250px; } }
+.elan-legend-dot {
+    display: inline-block; width: 12px; height: 12px;
+    border-radius: 50%; margin-right: 3px; vertical-align: middle;
+    border: 1px solid rgba(0,0,0,0.2);
+}
+.elan-marker { width:18px; height:18px; border-radius:50% 50% 50% 0; border:2px solid rgba(0,0,0,0.4); transform:rotate(-45deg); cursor:pointer; }
+.elan-marker-wrapper { width:22px; height:22px; display:flex; align-items:center; justify-content:center; transform:rotate(45deg); }
+.elan-marker.s1     { background:#e53e3e; }
+.elan-marker.s2     { background:#3182ce; }
+.elan-marker.s3     { background:#d69e2e; }
+.elan-marker.s4     { background:#e2e8f0; border-color:rgba(0,0,0,0.5); }
+.elan-marker.sprint { background:#805ad5; }
+.elan-marker.plus2  { background:#38a169; }
+.elan-marker.unknown{ background:#718096; }
 </style>
+
+<link rel="stylesheet" href="<?= $us_url_root ?>usersc/css/maplibre-gl.css">
+<script src="<?= $us_url_root ?>usersc/js/maplibre-gl.min.js"></script>
 
 <div class="page-wrapper">
     <div class="container-fluid">
@@ -101,14 +154,35 @@ $dataService = new StatisticsDataService($db);
                                                     <div class="map-container">
                                                         <div id="map"></div>
                                                     </div>
-                                                    <div class="mt-3">
-                                                        <small class="text-muted">
-                                                            26 <img alt="yellow pin" src="https://maps.gstatic.com/mapfiles/ridefinder-images/mm_20_yellow.png" /> |
-                                                            36 <img alt="white pin" src="https://maps.gstatic.com/mapfiles/ridefinder-images/mm_20_white.png" /> |
-                                                            45 <img alt="red pin" src="https://maps.gstatic.com/mapfiles/ridefinder-images/mm_20_red.png" /> |
-                                                            50 <img alt="blue pin" src="https://maps.gstatic.com/mapfiles/ridefinder-images//mm_20_blue.png" /> |
-                                                            26R <img alt="purple pin" src="https://maps.gstatic.com/mapfiles/ridefinder-images/mm_20_purple.png" />
-                                                        </small>
+                                                    <div class="mt-2 d-flex flex-wrap justify-content-center gap-3" id="map-series-filter">
+                                                        <div class="form-check form-check-inline mb-0">
+                                                            <input class="form-check-input" type="checkbox" id="filter-all" checked>
+                                                            <label class="form-check-label small" for="filter-all">All</label>
+                                                        </div>
+                                                        <div class="form-check form-check-inline mb-0">
+                                                            <input class="form-check-input" type="checkbox" id="filter-s1" data-series="s1" checked>
+                                                            <label class="form-check-label small" for="filter-s1"><span class="elan-legend-dot" style="background:#e53e3e;"></span> S1</label>
+                                                        </div>
+                                                        <div class="form-check form-check-inline mb-0">
+                                                            <input class="form-check-input" type="checkbox" id="filter-s2" data-series="s2" checked>
+                                                            <label class="form-check-label small" for="filter-s2"><span class="elan-legend-dot" style="background:#3182ce;"></span> S2</label>
+                                                        </div>
+                                                        <div class="form-check form-check-inline mb-0">
+                                                            <input class="form-check-input" type="checkbox" id="filter-s3" data-series="s3" checked>
+                                                            <label class="form-check-label small" for="filter-s3"><span class="elan-legend-dot" style="background:#d69e2e;"></span> S3</label>
+                                                        </div>
+                                                        <div class="form-check form-check-inline mb-0">
+                                                            <input class="form-check-input" type="checkbox" id="filter-s4" data-series="s4" checked>
+                                                            <label class="form-check-label small" for="filter-s4"><span class="elan-legend-dot" style="background:#e2e8f0; border:1px solid rgba(0,0,0,.4);"></span> S4</label>
+                                                        </div>
+                                                        <div class="form-check form-check-inline mb-0">
+                                                            <input class="form-check-input" type="checkbox" id="filter-sprint" data-series="sprint" checked>
+                                                            <label class="form-check-label small" for="filter-sprint"><span class="elan-legend-dot" style="background:#805ad5;"></span> Sprint</label>
+                                                        </div>
+                                                        <div class="form-check form-check-inline mb-0">
+                                                            <input class="form-check-input" type="checkbox" id="filter-plus2" data-series="plus2" checked>
+                                                            <label class="form-check-label small" for="filter-plus2"><span class="elan-legend-dot" style="background:#38a169;"></span> +2</label>
+                                                        </div>
                                                     </div>
                                                 </div>
                                             </div>
@@ -254,10 +328,22 @@ window.statisticsRawData = {
 
 // Configuration
 window.statisticsConfig = {
-    mapsApiKey: '<?= $settings->elan_google_maps_key ?? "" ?>',
     baseUrl: '<?= $us_url_root ?>app/reports/',
-    imageUrl: '<?= $us_url_root . $settings->elan_image_dir ?>'
+    imageUrl: '<?= $us_url_root . $settings->elan_image_dir ?>',
+    versatileStyleUrl: '<?= $us_url_root ?>usersc/js/versatiles-colorful.json'
 };
+</script>
+
+<?php
+try {
+    $mapMarkersJson = json_encode($mapMarkers, JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP | JSON_THROW_ON_ERROR);
+} catch (\JsonException $e) {
+    logger(0, LogCategories::LOG_CATEGORY_ERROR, 'Failed to encode map markers: ' . $e->getMessage());
+    $mapMarkersJson = '[]';
+}
+?>
+<script>
+window.elanMapMarkers = <?= $mapMarkersJson ?>;
 </script>
 
 <!-- Load Chart.js -->
@@ -266,39 +352,17 @@ window.statisticsConfig = {
 <!-- Load Statistics JavaScript first -->
 <script src="<?= $us_url_root ?>app/assets/js/statistics.min.js"></script>
 
-<!-- Initialize Google Maps and Statistics -->
+<!-- Initialize MapLibre and Statistics -->
 <script>
-// Global initMap function for Google Maps callback
-function initMap() {
-    // Wait for statisticsInitMap to be available
-    function tryInitMap() {
-        if (window.statisticsInitMap) {
-            window.statisticsInitMap();
-        } else {
-            setTimeout(tryInitMap, 100); // Retry every 100ms
-        }
-    }
-
-    tryInitMap();
-}
-
-// Wait for DOM and Chart.js to be ready
 document.addEventListener('DOMContentLoaded', function() {
     if (typeof Chart === 'undefined') {
         console.error('Chart.js failed to load');
         return;
     }
 
-
-    // Wait a moment for statistics.js to fully load before loading Google Maps
-    setTimeout(() => {
-        // Load Google Maps API dynamically with proper loading parameter
-        const mapsScript = document.createElement('script');
-        mapsScript.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent('<?= $settings->elan_google_maps_key ?? '' ?>')}&callback=initMap&libraries=geometry,places&loading=async`;
-        mapsScript.async = true;
-        mapsScript.defer = true;
-        document.head.appendChild(mapsScript);
-    }, 500); // Give statistics.js 500ms to fully load
+    if (window.statisticsInitMap) {
+        window.statisticsInitMap();
+    }
 });
 </script>
 <?php require_once $abs_us_root . $us_url_root . 'users/includes/html_footer.php'; ?>

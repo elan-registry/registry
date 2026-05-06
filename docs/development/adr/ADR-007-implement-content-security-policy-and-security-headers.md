@@ -136,9 +136,9 @@ third-party domains required by the application:
 | `default-src` | `'self'` | Catch-all fallback for unlisted resource types |
 | `script-src` | `'self' 'unsafe-inline' 'unsafe-eval'` + CDN domains | Allow UserSpice inline JS and all CDN script sources |
 | `style-src` | `'self' 'unsafe-inline'` + CDN domains | Allow Bootstrap/Bootswatch/FontAwesome inline and CDN styles |
-| `img-src` | `'self' data: blob:` + image domains | Allow embedded SVGs (`data:`), canvas exports (`blob:`), Google Maps tiles, Gravatar avatars |
+| `img-src` | `'self' data: blob:` + image domains | Allow embedded SVGs (`data:`), canvas exports (`blob:`), MapLibre GL JS / VersaTiles map tiles (`https://tiles.versatiles.org`), Gravatar avatars |
 | `font-src` | `'self'` + font CDN domains | FontAwesome kit and Google Fonts |
-| `connect-src` | `'self'` + API domains | AJAX calls to application endpoints, Google Maps API, Cloudflare Analytics beacon |
+| `connect-src` | `'self'` + API domains | AJAX calls to application endpoints, MapLibre GL JS tile fetches (`https://tiles.versatiles.org`), Cloudflare Analytics beacon |
 | `frame-src` | `'self' https://challenges.cloudflare.com` | Cloudflare Turnstile CAPTCHA iframe on registration page |
 | `frame-ancestors` | `'self'` | Anti-clickjacking: prevents cross-origin iframes (CSP3, preferred method) |
 | `object-src` | `'none'` | Blocks Flash/plugin embeds entirely |
@@ -147,39 +147,43 @@ third-party domains required by the application:
 **Whitelisted CDN Domains (script-src):**
 
 ```text
-https://maps.googleapis.com        Google Maps JavaScript API
-https://www.gstatic.com            Google static assets
-https://ssl.gstatic.com            Google SSL static assets
-https://challenges.cloudflare.com  Cloudflare Turnstile CAPTCHA
-https://cdn.jsdelivr.net           jQuery, Bootstrap, Dropzone, Chart.js, Datepicker
-https://cdnjs.cloudflare.com       Datepicker (alternative CDN)
-https://unpkg.com                  General CDN (future use)
-https://code.jquery.com            jQuery UI
-https://ajax.googleapis.com        Google CDN (legacy)
-https://maxcdn.bootstrapcdn.com    Bootstrap CDN (legacy)
-https://stackpath.bootstrapcdn.com Bootstrap CDN (legacy)
-https://cdn.datatables.net         DataTables JS
-https://kit.fontawesome.com        Font Awesome Kit
-https://cdn.popper.js.org          Popper.js
-https://static.cloudflareinsights.com  Cloudflare Analytics
+https://challenges.cloudflare.com     Cloudflare Turnstile CAPTCHA
+https://code.jquery.com               jQuery (UserSpice loads from CDN via users/js/jquery.php)
+https://static.cloudflareinsights.com Cloudflare Analytics beacon
+https://cdnjs.cloudflare.com          Bootstrap CSS/JS and Chart.js (UserSpice admin dashboard)
 ```
+
+> **2026-05-06 (v2.22.0):** Removed `https://maps.googleapis.com`,
+> `https://www.gstatic.com`, and `https://ssl.gstatic.com` from `script-src`
+> when the application migrated off Google Maps. MapLibre GL JS replaced the
+> Google Maps JavaScript API and is served as a vendored asset
+> (`usersc/js/maplibre-gl.min.js`, ADR-015), so no third-party `script-src`
+> entry is required for map rendering. Map tile fetches use
+> `https://tiles.versatiles.org`, which is whitelisted under `img-src` and
+> `connect-src` rather than `script-src`.
 
 **Whitelisted CDN Domains (style-src):**
 
 ```text
-https://fonts.googleapis.com       Google Fonts CSS
-https://cdn.jsdelivr.net           Bootstrap/Dropzone/Datepicker CSS
-https://cdnjs.cloudflare.com       Datepicker CSS
-https://maxcdn.bootstrapcdn.com    Bootstrap CSS (legacy)
-https://stackpath.bootstrapcdn.com Bootstrap CSS (legacy)
-https://bootswatch.com             Bootswatch theme
-https://cdn.bootswatch.com         Bootswatch CDN
-https://cdn.datatables.net         DataTables CSS
-https://use.fontawesome.com        Font Awesome CSS (legacy)
-https://kit.fontawesome.com        Font Awesome Kit CSS
-https://ka-f.fontawesome.com       Font Awesome Kit delivery
-https://www.gstatic.com            Google-injected styles (Maps)
+https://cdnjs.cloudflare.com       Bootstrap CSS and Chart.js (UserSpice admin dashboard)
 ```
+
+> **2026-05-06 (v2.22.0):** Removed `https://www.gstatic.com` from `style-src`
+> alongside the Google Maps removal. The previous entry covered Google-injected
+> styles for Maps; MapLibre GL JS uses the vendored `usersc/css/maplibre-gl.css`
+> stylesheet served from `'self'` and requires no third-party `style-src` entry.
+
+**Whitelisted Tile Domains (img-src and connect-src):**
+
+```text
+https://tiles.versatiles.org       MapLibre GL JS map tiles (raster + vector tiles)
+```
+
+The VersaTiles tile server is reached as an image origin (raster tiles, glyphs,
+and sprite PNGs) and as a `fetch()` origin (vector tile PBFs and the style
+JSON), so it appears in both `img-src` and `connect-src`. It does not appear
+in `script-src` because the MapLibre GL JS library itself is vendored locally
+(ADR-015).
 
 #### 2. HTTP Strict Transport Security (HSTS)
 
@@ -345,11 +349,9 @@ monitoring is handled entirely via Playwright end-to-end tests
 - Monitor `pageerror` events for CSP-related errors
 - Test multiple page types: home page, car listings, car details, login page,
 
-  statistics page (which loads Google Charts)
+  statistics page (which loads MapLibre GL JS and Chart.js)
 
-- Verify critical external domains (gstatic.com, cloudflareinsights.com) load
-
-  without failure
+- Verify critical external domains (cloudflareinsights.com) load without failure
 
 PHPUnit unit tests (`tests/unit/security/SecurityHeadersTest.php`) and integration
 tests (`tests/integration/ErrorPageHeadersTest.php`) verify static correctness of
@@ -363,6 +365,7 @@ via HTTP response inspection.
 | --- | --- | --- |
 | 2026-04-22 | Replace reCAPTCHA CSP entries with Cloudflare Turnstile | #630 |
 | 2026-04-27 | Remove 11 stale/library CDN domains from CSP allowlist (libraries self-hosted per ADR-015) | #405 |
+| 2026-05-06 | Remove Google Maps domains (`maps.googleapis.com`, `maps.gstatic.com`, `gstatic.com`, `ssl.gstatic.com`, `www.gstatic.com`) from CSP allowlist; add `https://tiles.versatiles.org` to `img-src` and `connect-src` for MapLibre GL JS tile fetches | v2.22.0 |
 
 > **2026-04-27 (#405):** Removed the following domains from the CSP allowlist:
 >
@@ -377,6 +380,18 @@ via HTTP response inspection.
 > Font Awesome is served from `users/fonts/css/`. Remaining CDN domains
 > (`cdn.jsdelivr.net`, `cdnjs.cloudflare.com`) will be removed in #618 when
 > Bootstrap migrates to self-hosted.
+
+> **2026-05-06 (v2.22.0):** Removed all Google Maps related domains from the
+> CSP allowlist: `https://maps.googleapis.com`, `https://maps.gstatic.com`,
+> `https://gstatic.com`, `https://ssl.gstatic.com`, and
+> `https://www.gstatic.com`. MapLibre GL JS plus the VersaTiles tile service
+> replaced the Google Maps JavaScript API in v2.22.0. The MapLibre GL JS
+> library is vendored locally (`usersc/js/maplibre-gl.min.js` and
+> `usersc/css/maplibre-gl.css`, ADR-015), so no third-party `script-src` or
+> `style-src` entry is required for map rendering. Map tiles are fetched from
+> `https://tiles.versatiles.org`, which is whitelisted under both `img-src`
+> (raster tiles, sprites, glyphs) and `connect-src` (vector tile PBFs and the
+> style JSON).
 
 ## Known Issues
 
@@ -662,9 +677,10 @@ Add a `Permissions-Policy` header to restrict browser feature access
 
 **Not adopted (but identified as planned) because:**
 
-- The application does not use browser geolocation APIs (Google Maps loads from
+- The application does not use browser geolocation APIs (MapLibre GL JS
 
-  a CDN; address coordinates are geocoded server-side via ElanRegistryOwner).
+  renders from vendored assets and pre-computed marker coordinates; address
+  coordinates are geocoded server-side via ElanRegistryOwner).
 
 - No camera, microphone, payment, or other restricted API access occurs.
 - The benefit is minimal for this application's feature set.

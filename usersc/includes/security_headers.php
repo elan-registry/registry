@@ -13,32 +13,25 @@ The content-security-policy HTTP header provides an additional layer of security
 
 // Content Security Policy for ElanRegistry
 // Most libraries are self-hosted — CDN origins needed for:
-//   - Google Maps (maps feature), Cloudflare Turnstile (CAPTCHA), Cloudflare Analytics,
-//     code.jquery.com (UserSpice loads jQuery from there via users/js/jquery.php),
+//   - VersaTiles (map tiles for self-hosted MapLibre GL JS), Cloudflare Turnstile (CAPTCHA),
+//     Cloudflare Analytics, code.jquery.com (UserSpice loads jQuery from there via users/js/jquery.php),
 //     cdnjs.cloudflare.com (Customizer template loads Bootstrap CSS/JS; UserSpice dashboard loads Chart.js)
+// worker-src blob: required because MapLibre GL JS spawns tile-processing Web Workers from blob URLs
 header("Content-Security-Policy: " .
     "default-src 'self'; " .
     "script-src 'self' 'unsafe-inline' 'unsafe-eval' " .
-        "https://maps.googleapis.com " .
-        "https://www.gstatic.com " .
-        "https://ssl.gstatic.com " .
         "https://challenges.cloudflare.com " .
         "https://code.jquery.com " .
         "https://static.cloudflareinsights.com " .
         "https://cdnjs.cloudflare.com; " .
     "style-src 'self' 'unsafe-inline' " .
-        "https://www.gstatic.com " .
         "https://cdnjs.cloudflare.com; " .
     "img-src 'self' data: blob: " .
-        "https://maps.googleapis.com " .
-        "https://maps.gstatic.com " .
-        "https://www.gravatar.com " .
-        "https://ssl.gstatic.com; " .
+        "https://tiles.versatiles.org " .
+        "https://www.gravatar.com; " .
     "font-src 'self'; " .
     "connect-src 'self' " .
-        "https://maps.googleapis.com " .
-        "https://www.gstatic.com " .
-        "https://ssl.gstatic.com " .
+        "https://tiles.versatiles.org " .
         "https://challenges.cloudflare.com " .
         "https://cloudflareinsights.com " .
         "https://static.cloudflareinsights.com; " .

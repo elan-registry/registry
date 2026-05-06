@@ -62,6 +62,16 @@ jQuery UI) continue to be loaded from their existing self-hosted locations in
 | jQuery UI | 1.12.1 | `usersc/js/jquery-ui.min.js` |
 | flatpickr JS | 4.6.13 | `usersc/js/flatpickr.min.js` |
 | flatpickr CSS | 4.6.13 | `usersc/css/flatpickr.min.css` |
+| MapLibre GL JS | 4.7.1 | `usersc/js/maplibre-gl.min.js` + `usersc/css/maplibre-gl.css` (replaces Google Maps, v2.22.0) |
+
+> **VersaTiles style note:** `usersc/js/versatiles-colorful.json` is a
+> generated build artifact produced from the
+> [`@versatiles/style`](https://www.npmjs.com/package/@versatiles/style)
+> npm package. It provides the VersaTiles "Colorful" tile style consumed by
+> MapLibre GL JS. The JSON is committed to the repository for the same
+> source-control and Dependabot-coverage reasons that apply to the vendored
+> JS/CSS assets above; the upstream package version is pinned in
+> `package.json`.
 
 > **Bootstrap note:** The Customizer template's `header.php` loads Bootstrap
 > 5.3.3 from `cdnjs.cloudflare.com` (upstream default, with SRI hashes). The
@@ -115,10 +125,12 @@ declared version.
   vendored library has a known CVE.
 
 - **Reduced CSP allowlist surface.** Removing CDN-hosted scripts allowed
-  removing `https://code.jquery.com`, `https://cdn.datatables.net`, and
-  `https://kit.fontawesome.com` from the CSP `script-src` allowlist (ADR-007).
-  Bootstrap is loaded from `cdnjs.cloudflare.com` via the upstream Customizer
-  template (SRI-hashed); `cdnjs.cloudflare.com` is in the CSP allowlist.
+  removing `https://cdn.datatables.net` and `https://kit.fontawesome.com` from
+  the CSP `script-src` allowlist (ADR-007). `https://code.jquery.com` remains
+  because UserSpice loads jQuery from that CDN via `users/js/jquery.php` and
+  cannot be removed without patching the framework. Bootstrap is loaded from
+  `cdnjs.cloudflare.com` via the upstream Customizer template (SRI-hashed);
+  `cdnjs.cloudflare.com` is in the CSP allowlist.
 
 - **Code/data alignment.** The deployed code and the deployed assets move
   together. No more drift between an updated `header.php` and stale `settings`

@@ -86,12 +86,6 @@ ON DUPLICATE KEY UPDATE
 
 -- NOTE: These settings require manual configuration with actual API keys and credentials
 
--- Google API Keys (PLACEHOLDER - Replace with actual keys)
-UPDATE settings SET 
-  elan_google_maps_key = '[GOOGLE_MAPS_API_KEY_REQUIRED]',
-  elan_google_geo_key = '[GOOGLE_GEOCODING_API_KEY_REQUIRED]'
-WHERE id = 1;
-
 -- NOTE: reCAPTCHA configuration removed - plugin is optional
 -- If you install reCAPTCHA plugin later, configure keys via Admin Panel → Plugin Manager
 
@@ -193,7 +187,7 @@ INSERT INTO `pages` (`id`, `page`, `title`, `private`, `re_auth`, `core`) VALUES
 (300, 'app/admin/includes/tab-car_mgmt.php', 'Admin - Car Management Tab', 1, 0, 0),
 (304, 'app/admin/includes/tab-placeholder.php', 'Admin - Tab Placeholder', 1, 0, 0),
 (305, 'app/admin/includes/tab-settings.php', 'Admin - Settings Tab', 1, 0, 0),
-(306, 'app/admin/includes/tab-system.php', 'Admin - System Management Tab', 1, 0, 0),
+(306, 'app/admin/includes/tab-health.php', 'Admin - System Health Tab', 1, 0, 0),
 (309, 'app/admin/includes/load-owner-info.php', 'Admin - Load Owner Information', 1, 0, 0),
 (310, 'app/admin/includes/load-owner-profile.php', 'Admin - Load Owner Profile', 1, 0, 0),
 (311, 'app/admin/includes/process-owner-search.php', 'Admin - Owner Search Process', 1, 0, 0),

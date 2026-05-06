@@ -155,10 +155,10 @@ $(document).ready(function () {
 });
 
 /**
- * Initialize Overview Tab with essential charts and Google Maps
+ * Initialize Overview Tab with essential charts and the MapLibre map
  */
 function initializeOverviewTab() {
-  // Don't initialize map here - let Google Maps API callback handle it
+  // Map initialization is handled by statisticsInitMap (called from statistics.php)
   // Initialize essential charts
   createTimelineChart();
   createAgeChart();
@@ -190,7 +190,9 @@ function loadTabContent(tabName) {
   spinner.show();
 
   new ElanRegistryAPI()
-    .get(`${window.statisticsConfig.baseUrl}api/statistics-data.php`, { tab: tabName })
+    .get(`${window.statisticsConfig.baseUrl}api/statistics-data.php`, {
+      tab: tabName
+    })
     .then(function (response) {
       renderTabContent(tabName, response.data);
     })
@@ -1197,176 +1199,239 @@ function createDataCompletenessChart(data) {
   });
 }
 
-// ===== GOOGLE MAPS INTEGRATION =====
+// ===== MAPLIBRE GL JS INTEGRATION =====
 
 /**
- * Initialize Google Map (called by Google Maps API)
+ * Build the static "map unavailable" error UI using safe DOM APIs.
+ * @param {HTMLElement} el - The map container element to populate.
+ */
+function renderMapErrorUI(el) {
+  while (el.firstChild) {
+    el.removeChild(el.firstChild);
+  }
+  const wrap = document.createElement("div");
+  wrap.className =
+    "d-flex flex-column align-items-center justify-content-center h-100 text-muted p-3";
+
+  const msg = document.createElement("p");
+  msg.className = "mb-2";
+  msg.textContent = "Map unavailable. Please try refreshing.";
+  wrap.appendChild(msg);
+
+  const btn = document.createElement("button");
+  btn.className = "btn btn-sm btn-outline-secondary";
+  btn.type = "button";
+  btn.textContent = "Retry";
+  btn.addEventListener("click", function () {
+    location.reload();
+  });
+  wrap.appendChild(btn);
+
+  el.appendChild(wrap);
+}
+
+/**
+ * Initialize MapLibre map
  */
 function statisticsInitMap() {
-  if (typeof google !== "undefined" && google.maps) {
-    const mapElement = document.getElementById("map");
-    if (mapElement) {
-      // Initialize map with appropriate styling
-      const map = new google.maps.Map(mapElement, {
-        zoom: 2,
-        center: { lat: 40, lng: -20 }, // Center on Atlantic to show both US and Europe
-        mapTypeId: google.maps.MapTypeId.ROADMAP,
-        styles: [
-          {
-            featureType: "water",
-            elementType: "geometry",
-            stylers: [{ color: "#e9e9e9" }]
-          }
-        ]
-      });
-
-      // Load markers from XML endpoint
-      loadMapMarkers(map);
-    }
+  const mapEl = document.getElementById("map");
+  if (!mapEl) return;
+  if (typeof maplibregl === "undefined") {
+    renderMapErrorUI(mapEl);
+    return;
   }
+
+  const map = new maplibregl.Map({
+    container: "map",
+    style: window.statisticsConfig.versatileStyleUrl,
+    center: [-20, 30],
+    zoom: 1,
+    attributionControl: false
+  });
+
+  map.addControl(new maplibregl.AttributionControl({ compact: true }), "bottom-right");
+  map.once("idle", function () {
+    var attrEl = document.querySelector(".maplibregl-ctrl-attrib");
+    if (attrEl) attrEl.classList.remove("maplibregl-compact-show");
+  });
+  map.addControl(
+    new maplibregl.NavigationControl({ showCompass: false }),
+    "top-right"
+  );
+  map.addControl(new maplibregl.FullscreenControl(), "top-right");
+
+  map.on("load", function () {
+    loadMapMarkers(map);
+  });
+
+  map.on("error", function (e) {
+    // Tile and source load errors are transient — let MapLibre retry
+    if (e.sourceId !== undefined || (e.error && typeof e.error.status === "number")) {
+      console.warn("[ElanRegistry] Map tile/source error (non-fatal):", e.error);
+      return;
+    }
+    const el = document.getElementById("map");
+    if (el) {
+      renderMapErrorUI(el);
+    }
+  });
 }
 
-// Export initMap function to global scope for Google Maps callback
-window.statisticsInitMap = statisticsInitMap;
-
-/**
- * Load map markers from XML data
- */
 function loadMapMarkers(map) {
-  const xmlUrl = `${window.statisticsConfig.baseUrl}../cars/mapmarkers.xml.php`;
+  const markers = window.elanMapMarkers;
+  if (!Array.isArray(markers) || markers.length === 0) return;
 
-  // Use fetch to load XML data
-  fetch(xmlUrl)
-    .then((response) => {
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-      return response.text();
-    })
-    .then((xmlText) => {
-      const parser = new DOMParser();
-      const xmlDoc = parser.parseFromString(xmlText, "text/xml");
+  const seriesClassMap = {
+    sprint: "sprint",
+    "+2": "plus2",
+    s1: "s1",
+    s2: "s2",
+    s3: "s3",
+    s4: "s4"
+  };
 
-      // Check for XML parsing errors
-      if (xmlDoc.documentElement.nodeName === "parsererror") {
-        console.error("XML parsing error:", xmlDoc.documentElement.textContent);
-        throw new Error("XML parsing error");
-      }
+  function markerClassForSeries(series) {
+    const s = (series || "").toLowerCase();
+    for (const [key, cls] of Object.entries(seriesClassMap)) {
+      if (s.includes(key)) return cls;
+    }
+    return "unknown";
+  }
 
-      const markers = xmlDoc.documentElement.getElementsByTagName("marker");
+  function buildPopupNode(car) {
+    const wrap = document.createElement("div");
+    wrap.style.minWidth = "200px";
+    wrap.style.fontSize = "14px";
 
-      const infoWindow = new google.maps.InfoWindow();
-
-      // Define marker colors based on series
-      const seriesColors = {
-        s1: "red",
-        s2: "blue",
-        s3: "yellow",
-        s4: "white",
-        sprint: "purple",
-        "+2": "green"
+    if (car.image) {
+      const img = document.createElement("img");
+      img.src = window.statisticsConfig.imageUrl + car.image;
+      img.alt = "Car photo";
+      img.style.cssText =
+        "width:100px;height:75px;object-fit:cover;float:right;margin:0 0 8px 10px;border-radius:4px;";
+      img.onerror = function () {
+        this.style.display = "none";
       };
+      wrap.appendChild(img);
+    }
 
-      // Add markers to map
-      Array.from(markers).forEach((markerData) => {
-        const lat = parseFloat(markerData.getAttribute("lat"));
-        const lng = parseFloat(markerData.getAttribute("lng"));
-        const series = markerData.getAttribute("series") || "";
+    const h6 = document.createElement("h6");
+    h6.style.cssText = "margin-bottom:6px;font-weight:600;";
+    h6.textContent = car.name;
+    wrap.appendChild(h6);
 
-        if (!isNaN(lat) && !isNaN(lng)) {
-          // Determine marker color based on series
-          let color = "red"; // default
-          for (const [seriesType, seriesColor] of Object.entries(
-            seriesColors
-          )) {
-            if (series.toLowerCase().includes(seriesType)) {
-              color = seriesColor;
-              break;
-            }
-          }
+    function addPara(label, value) {
+      if (!value) return;
+      const p = document.createElement("p");
+      p.style.marginBottom = "4px";
+      const strong = document.createElement("strong");
+      strong.textContent = label + ": ";
+      p.appendChild(strong);
+      p.appendChild(document.createTextNode(value));
+      wrap.appendChild(p);
+    }
 
-          // Create marker with appropriate icon
-          const iconUrl = `https://maps.gstatic.com/mapfiles/ridefinder-images/mm_20_${color}.png`;
+    addPara("Series", car.series);
+    addPara("Variant", car.variant);
+    addPara(
+      "Location",
+      [car.city, car.state, car.country].filter(Boolean).join(", ")
+    );
+    addPara("Owner", car.owner);
 
-          const marker = new google.maps.Marker({
-            position: { lat: lat, lng: lng },
-            map: map,
-            icon: iconUrl,
-            title: `${markerData.getAttribute("name") || "Car"} - ${
-              markerData.getAttribute("city") || ""
-            }`
-          });
+    if (car.id) {
+      const p = document.createElement("p");
+      p.style.marginBottom = "4px";
+      const a = document.createElement("a");
+      a.href =
+        window.statisticsConfig.baseUrl +
+        "../cars/details.php?car_id=" +
+        encodeURIComponent(car.id);
+      a.target = "_blank";
+      a.rel = "noopener";
+      a.textContent = "View Details";
+      p.appendChild(a);
+      wrap.appendChild(p);
+    }
 
-          // Get car details for info window
-          const carName = markerData.getAttribute("name") || "Elan";
-          const imageUrl = markerData.getAttribute("image");
+    const clear = document.createElement("div");
+    clear.style.clear = "both";
+    wrap.appendChild(clear);
+    return wrap;
+  }
 
-          // Get car ID for details link
-          const carId = markerData.getAttribute("id");
+  const markerList = [];
 
-          // Create info window content
-          const infoContent = `
-                        <div class="map-info-window">
-                            ${
-                              imageUrl
-                                ? `<img src="${window.statisticsConfig.imageUrl}${imageUrl}" alt="Car Image" style="width: 100px; height: 75px; object-fit: cover; float: right; margin-left: 10px; border-radius: 4px;" onerror="this.style.display='none'">`
-                                : ""
-                            }
-                            <h6>${carName}</h6>
-                            <p><strong>Series:</strong> ${series}</p>
-                            ${
-                              markerData.getAttribute("variant")
-                                ? `<p><strong>Variant:</strong> ${markerData.getAttribute(
-                                    "variant"
-                                  )}</p>`
-                                : ""
-                            }
-                            <p><strong>Location:</strong> ${[
-                              markerData.getAttribute("city"),
-                              markerData.getAttribute("state"),
-                              markerData.getAttribute("country")
-                            ]
-                              .filter(Boolean)
-                              .join(", ")}</p>
-                            ${
-                              markerData.getAttribute("owner")
-                                ? `<p><strong>Owner:</strong> ${markerData.getAttribute(
-                                    "owner"
-                                  )}</p>`
-                                : ""
-                            }
-                            ${
-                              carId
-                                ? `<p><a href="${window.statisticsConfig.baseUrl}../cars/details.php?car_id=${carId}" target="_blank" style="color: #007bff; text-decoration: none;"><i class="fas fa-external-link-alt"></i> View Details</a></p>`
-                                : ""
-                            }
-                            <div style="clear: both;"></div>
-                        </div>
-                    `;
+  markers.forEach(function (car) {
+    const seriesClass = markerClassForSeries(car.series);
 
-          // Add click listener for info window
-          marker.addListener("click", () => {
-            infoWindow.setContent(infoContent);
-            infoWindow.open(map, marker);
-          });
-        }
-      });
-    })
-    .catch((error) => {
-      console.error("Error loading map markers:", error);
+    const el = document.createElement("div");
+    el.className = "elan-marker-wrapper";
+    const dot = document.createElement("div");
+    dot.className = "elan-marker " + seriesClass;
+    el.appendChild(dot);
 
-      // Show error message on map
-      const errorDiv = document.createElement("div");
-      errorDiv.className = "alert alert-warning";
-      errorDiv.innerHTML =
-        "<small>Unable to load car locations at this time.</small>";
+    const popup = new maplibregl.Popup({ offset: 25 }).setDOMContent(
+      buildPopupNode(car)
+    );
 
-      const mapElement = document.getElementById("map");
-      if (mapElement) {
-        mapElement.appendChild(errorDiv);
-      }
-    });
+    new maplibregl.Marker({ element: el, anchor: "bottom" })
+      .setLngLat([car.lon, car.lat])
+      .setPopup(popup)
+      .addTo(map);
+
+    markerList.push({ seriesClass: seriesClass, el: el });
+  });
+
+  initMarkerFilter(markerList);
 }
+
+function initMarkerFilter(markerList) {
+  const allCheckbox = document.getElementById("filter-all");
+  const seriesCheckboxes = document.querySelectorAll("#map-series-filter input[data-series]");
+
+  if (!allCheckbox || seriesCheckboxes.length === 0) {
+    console.warn("[ElanRegistry] initMarkerFilter: filter DOM elements not found; marker filtering disabled.");
+    return;
+  }
+
+  function getCheckedSeries() {
+    const checked = new Set();
+    seriesCheckboxes.forEach(function (cb) {
+      if (cb.checked) checked.add(cb.dataset.series);
+    });
+    return checked;
+  }
+
+  function applyFilter() {
+    const checked = getCheckedSeries();
+    markerList.forEach(function (item) {
+      item.el.style.display = checked.has(item.seriesClass) ? "" : "none";
+    });
+  }
+
+  function syncAllCheckbox() {
+    const allChecked = Array.from(seriesCheckboxes).every(function (cb) { return cb.checked; });
+    allCheckbox.checked = allChecked;
+    allCheckbox.indeterminate = !allChecked && Array.from(seriesCheckboxes).some(function (cb) { return cb.checked; });
+  }
+
+  allCheckbox.addEventListener("change", function () {
+    const state = allCheckbox.checked;
+    seriesCheckboxes.forEach(function (cb) { cb.checked = state; });
+    allCheckbox.indeterminate = false;
+    applyFilter();
+  });
+
+  seriesCheckboxes.forEach(function (cb) {
+    cb.addEventListener("change", function () {
+      syncAllCheckbox();
+      applyFilter();
+    });
+  });
+}
+
+window.statisticsInitMap = statisticsInitMap;
 
 /**
  * Cleanup function to destroy charts when needed
@@ -1380,5 +1445,3 @@ function destroyAllCharts() {
   window.statisticsCharts = {};
 }
 
-// Final export at end of file to ensure it's available
-window.statisticsInitMap = statisticsInitMap;

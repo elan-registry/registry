@@ -265,13 +265,6 @@ Run `./scripts/update-version.sh` to generate VERSION file locally after creatin
 
 **CRITICAL:** After deploying code changes to production, always verify and update:
 
-### Google Maps API Configuration
-
-- **Problem:** File reorganization affects API referrer restrictions
-- **Solution:** Update Google Cloud Console API restrictions to include new
-  file paths
-- **Check:** Verify maps display correctly on statistics and detail pages
-
 ### UserSpice Page Permissions
 
 - **Problem:** New pages and redirects need proper access permissions configured
@@ -282,7 +275,7 @@ Run `./scripts/update-version.sh` to generate VERSION file locally after creatin
 
 After each deployment, verify:
 
-- [ ] Google Maps display correctly on all pages
+- [ ] Maps display correctly: world map on Statistics page, single-marker map on car Details pages (no API key required — uses self-hosted MapLibre GL JS + VersaTiles)
 - [ ] All redirected pages work and maintain proper permissions
 - [ ] New pages have appropriate UserSpice permission levels
 - [ ] Contact forms send to correct email addresses
@@ -362,7 +355,7 @@ Before deploying the phpdotenv version (v2.18.0+), ensure the production `.env` 
 
 1. **Version mismatch**: Ensure VERSION file content matches git tag exactly
 2. **Permission errors**: Check UserSpice admin panel for new page permissions
-3. **API failures**: Verify Google Cloud Console API restrictions are updated
+3. **Map not rendering**: Check browser console for CSP violations; verify `usersc/js/maplibre-gl.min.js`, `usersc/css/maplibre-gl.css`, and `usersc/js/versatiles-colorful.json` are deployed
 4. **Email not working**: Check Brevo/Sendinblue API configuration
 5. **Database connection**: Verify production database credentials
 

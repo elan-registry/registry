@@ -160,7 +160,6 @@ if (!empty($_POST)) {
         // Extend user_setttings.php with some PROFILE information
         // Update Location (city, state, country, lat, lon)
         $locationChanged = false;
-        $geocodingAttempted = false;
         $newCity = Input::get('city');
         $newState = Input::get('state');
         $newCountry = Input::get('country');
@@ -216,17 +215,10 @@ if (!empty($_POST)) {
                 ];
 
                 // Add coordinates if provided by location picker
-                if (!empty($newLat) && !empty($newLon)) {
+                $hasCoordinates = !empty($newLat) && !empty($newLon);
+                if ($hasCoordinates) {
                     $locationFields['lat'] = (float)$newLat;
                     $locationFields['lon'] = (float)$newLon;
-                } else {
-                    // Fallback to old geocoding method if coordinates not provided
-                    /** @deprecated Fallback only - location picker should provide coordinates */
-                    $geocodingAttempted = true;
-                    $geoResult = ElanRegistryOwner::geocodeAddress($newCity, $newState, $newCountry);
-                    if (!empty($geoResult)) {
-                        $locationFields = array_merge($locationFields, $geoResult);
-                    }
                 }
 
                 // Update profile with all location data
@@ -241,7 +233,11 @@ if (!empty($_POST)) {
                     'lon' => $locationFields['lon'] ?? null
                 ];
 
-                $successes[] = 'Location updated successfully.';
+                if ($hasCoordinates) {
+                    $successes[] = 'Location updated successfully.';
+                } else {
+                    $successes[] = 'Location text updated. Use the location picker to add coordinates for map display.';
+                }
                 logger((int)$user->data()->id, LogCategories::LOG_CATEGORY_USER, "Updated location to: $city, $state, $country" .
                     (isset($locationFields['lat']) ? " ({$locationFields['lat']}, {$locationFields['lon']})" : ''));
             } else {
@@ -300,8 +296,6 @@ if (!empty($_POST)) {
                     logger((int)$user->data()->id, LogCategories::LOG_CATEGORY_USER, "Location sync: Updated $carsUpdated cars with new coordinates");
                 }
             }
-        } elseif ($geocodingAttempted) {
-            logger((int)$user->data()->id, LogCategories::LOG_CATEGORY_USER, 'Geocoding failed - preserving existing lat/lon coordinates');
         }
 
         //Update Website

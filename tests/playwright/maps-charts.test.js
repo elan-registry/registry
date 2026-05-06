@@ -1,186 +1,92 @@
-// tests/playwright/maps-charts.test.js
+// @ts-check
 const { test, expect } = require('@playwright/test');
 
-test.describe('Maps and Charts Functionality', () => {
-  test('Google Maps loads on statistics page', async ({ page }) => {
-    await page.goto('http://localhost:9999/elan_registry/app/reports/statistics.php');
+test.describe('Maps and Charts', () => {
+
+  test('statistics page world map renders with MapLibre GL JS', async ({ page }) => {
+    await page.goto('/app/reports/statistics.php');
     await page.waitForLoadState('networkidle');
-    
-    // Wait for the map container to be present
-    await page.waitForSelector('#map', { timeout: 10000 });
-    
-    const mapContainer = page.locator('#map');
-    await expect(mapContainer).toBeVisible();
-    
-    // Wait longer for Google Maps to fully load and render
-    await page.waitForTimeout(8000);
-    
-    // Check if map has loaded by looking for Google Maps indicators
-    const mapCanvas = page.locator('#map canvas, #map div[style*="transform"], #map img[src*="gstatic.com"]');
-    const canvasCount = await mapCanvas.count();
-    
-    if (canvasCount > 0) {
-      // Map has loaded, check if content is rendered (may be initially hidden)
-      const mapContent = page.locator('#map div, #map canvas, #map img');
-      await expect(mapContent.first()).toBeAttached();
-    } else {
-      // If no Google Maps elements found, just verify container exists (API may have issues)
-      await expect(mapContainer).toBeVisible();
-    }
+
+    // MapLibre GL JS injects .maplibregl-map onto the container
+    const mapEl = page.locator('#map.maplibregl-map');
+    await expect(mapEl).toBeVisible({ timeout: 15000 });
+
+    // Canvas is created by MapLibre GL JS
+    const canvas = page.locator('.maplibregl-canvas');
+    await expect(canvas).toBeAttached({ timeout: 15000 });
   });
 
-  test('Chart.js charts load on statistics page', async ({ page }) => {
-    await page.goto('http://localhost:9999/elan_registry/app/reports/statistics.php');
-
-    // Wait for initial chart containers (Overview tab)
-    const overviewChartContainers = [
-      '#timelineChart',
-      '#ageChart'
-    ];
-    
-    for (const containerId of overviewChartContainers) {
-      const container = page.locator(containerId);
-      if (await container.count() > 0) {
-        await expect(container).toBeVisible();
-        
-        // Wait for chart to render
-        await page.waitForTimeout(2000);
-        
-        // Check if chart SVG or canvas is present
-        const chartElement = container.locator('svg, canvas, div[dir="ltr"]');
-        const elementCount = await chartElement.count();
-        
-        if (elementCount > 0) {
-          await expect(chartElement.first()).toBeVisible();
-        }
-      }
-    }
-  });
-
-  test('map markers XML endpoint works', async ({ page }) => {
-    // Test the XML endpoint directly
-    const response = await page.request.get('http://localhost:9999/elan_registry/app/cars/mapmarkers.xml.php');
-    
-    expect(response.status()).toBe(200);
-    
-    const contentType = response.headers()['content-type'] || '';
-    expect(contentType).toContain('xml');
-    
-    const xmlContent = await response.text();
-    expect(xmlContent).toContain('<?xml');
-    expect(xmlContent).toContain('<markers>');
-  });
-
-  test('car details page map loads', async ({ page }) => {
-    await page.goto('http://localhost:9999/elan_registry/app/cars/details.php?car_id=1');
-    
-    // Look for map container on car details page
-    const mapContainer = page.locator('#map, .map-container');
-    const mapCount = await mapContainer.count();
-    
-    if (mapCount > 0) {
-      await expect(mapContainer.first()).toBeVisible();
-      
-      // Wait for map to potentially load
-      await page.waitForTimeout(3000);
-    }
-  });
-
-  test('statistics page handles large datasets', async ({ page }) => {
-    await page.goto('http://localhost:9999/elan_registry/app/reports/statistics.php');
-    
-    // Wait for page to fully load
+  test('statistics page marker data is inlined as JSON', async ({ page }) => {
+    await page.goto('/app/reports/statistics.php');
     await page.waitForLoadState('networkidle');
-    
-    // Check that statistics cards are present
-    const statCards = page.locator('.card, .registry-card');
-    const cardCount = await statCards.count();
-    
-    expect(cardCount).toBeGreaterThan(0);
-    
-    // Check that no JavaScript errors occurred during loading
-    const consoleErrors = [];
-    page.on('console', msg => {
-      if (msg.type() === 'error') {
-        consoleErrors.push(msg.text());
-      }
+
+    const markerCount = await page.evaluate(() => {
+      return Array.isArray(window.elanMapMarkers) ? window.elanMapMarkers.length : -1;
     });
-    
-    await page.waitForTimeout(5000);
-    
-    // Filter out acceptable errors (API warnings, etc.)
-    const criticalErrors = consoleErrors.filter(error => 
-      !error.includes('Google') && 
-      !error.includes('API') &&
-      !error.includes('Invalid XML') // This might happen if no data
-    );
-    
-    expect(criticalErrors.length).toBeLessThanOrEqual(1); // Allow for minor issues
+    expect(markerCount).toBeGreaterThan(0);
   });
 
-  test('charts are responsive on mobile', async ({ page }) => {
-    // Set mobile viewport
+  test('Chart.js timeline chart renders on statistics page', async ({ page }) => {
+    await page.goto('/app/reports/statistics.php');
+    await page.waitForLoadState('networkidle');
+    const chart = page.locator('#timelineChart');
+    await expect(chart).toBeVisible({ timeout: 10000 });
+  });
+
+  test('Chart.js age chart renders on statistics page', async ({ page }) => {
+    await page.goto('/app/reports/statistics.php');
+    await page.waitForLoadState('networkidle');
+    const chart = page.locator('#ageChart');
+    await expect(chart).toBeVisible({ timeout: 10000 });
+  });
+
+  test('car details page map renders with MapLibre GL JS', async ({ page }) => {
+    // Use car_id=1 or the smallest available; if auth-gated the test verifies the container exists
+    await page.goto('/app/cars/details.php?car_id=1');
+    await page.waitForLoadState('networkidle');
+
+    const container = page.locator('.map-container, #map');
+    await expect(container).toBeAttached({ timeout: 5000 });
+  });
+
+  test('statistics page chart data loads', async ({ page }) => {
+    await page.goto('/app/reports/statistics.php');
+    await page.waitForLoadState('networkidle');
+
+    const hasData = await page.evaluate(() => {
+      return typeof window.statisticsRawData !== 'undefined' ||
+             typeof Chart !== 'undefined';
+    });
+    expect(hasData).toBe(true);
+  });
+
+  test('charts are responsive on mobile viewport', async ({ page }) => {
     await page.setViewportSize({ width: 375, height: 667 });
-    
-    await page.goto('http://localhost:9999/elan_registry/app/reports/statistics.php');
-    
-    // Wait for charts to load
-    await page.waitForTimeout(5000);
-    
-    // Check that chart containers are still visible and responsive
-    const chartContainer = page.locator('#chart_country');
-    if (await chartContainer.count() > 0) {
-      await expect(chartContainer).toBeVisible();
-      
-      // Check that container width adapts to mobile
-      const boundingBox = await chartContainer.boundingBox();
-      if (boundingBox) {
-        expect(boundingBox.width).toBeLessThanOrEqual(375);
-      }
-    }
+    await page.goto('/app/reports/statistics.php');
+    await page.waitForLoadState('networkidle');
+
+    const chart = page.locator('#timelineChart');
+    await expect(chart).toBeVisible({ timeout: 10000 });
   });
 
-  test('map interactions work', async ({ page }) => {
-    await page.goto('http://localhost:9999/elan_registry/app/reports/statistics.php');
-    
-    // Wait for map to load
-    await page.waitForSelector('#map', { timeout: 10000 });
-    await page.waitForTimeout(5000);
-    
-    const mapContainer = page.locator('#map');
-    
-    // Try to interact with the map (if it loaded)
-    const mapCanvas = mapContainer.locator('canvas, div[style*="cursor"]');
-    const canvasCount = await mapCanvas.count();
-    
-    if (canvasCount > 0) {
-      // Try clicking on the map
-      await mapCanvas.first().click();
-      
-      // Should not cause JavaScript errors
-      await page.waitForTimeout(1000);
-    }
+  test('no requests to Google Maps domains on statistics page', async ({ page }) => {
+    const googleMapsRequests = [];
+    page.on('request', request => {
+      const url = request.url();
+      try {
+        const hostname = new URL(url).hostname;
+        if (hostname === 'maps.googleapis.com' || hostname.endsWith('.maps.googleapis.com') ||
+            hostname === 'maps.gstatic.com' || hostname.endsWith('.maps.gstatic.com')) {
+          googleMapsRequests.push(url);
+        }
+      } catch (_) { /* ignore non-URL strings */ }
+    });
+
+    await page.goto('/app/reports/statistics.php');
+    await page.waitForLoadState('networkidle');
+    await page.waitForTimeout(2000);
+
+    expect(googleMapsRequests).toHaveLength(0);
   });
 
-  test('chart data loads correctly', async ({ page }) => {
-    await page.goto('http://localhost:9999/elan_registry/app/reports/statistics.php');
-    
-    // Check that the page has the statistics data
-    const pageContent = await page.content();
-    
-    // Should contain data for charts
-    expect(pageContent).toMatch(/statisticsRawData|chart|Chart\.js/);
-    
-    // Wait for charts to render
-    await page.waitForTimeout(5000);
-    
-    // Check that at least one chart rendered
-    const chartElements = page.locator('#chart_country svg, #chart_type svg, #chart_age svg');
-    const chartCount = await chartElements.count();
-    
-    // At least one chart should have rendered (if data exists)
-    if (chartCount > 0) {
-      await expect(chartElements.first()).toBeVisible();
-    }
-  });
 });
