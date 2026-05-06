@@ -295,7 +295,6 @@ The admin interface has been split into two focused portals:
   - State-changing operations performed via AJAX endpoints
 
 - **Configuration** (`tab-settings.php`) — ElanRegistry settings
-  - Google Maps API configuration
   - CDN URLs (bootstrap, jQuery, fonts, custom CSS)
   - Media and storage settings
   - Email service configuration
@@ -576,8 +575,8 @@ Email is handled by Brevo plugin with UserSpice `sendMail()` function. See
 The system integrates with:
 
 - **Cloudflare** — CDN and edge caching
-- **OpenStreetMap** — Location services with client caching
-- **Google Maps** — Map display (API key in settings)
+- **OpenStreetMap / Nominatim** — Location geocoding with client caching
+- **VersaTiles** (`tiles.versatiles.org`) — Map tile server for self-hosted MapLibre GL JS; no API key required
 - **reCAPTCHA** — Contact form protection
 - **Brevo** — Transactional email service
 
@@ -606,6 +605,7 @@ and configurable via admin panel without code deployment.
 - Flatpickr date picker (self-hosted in `usersc/js/` and `usersc/css/`)
 - FilePond 4.x + plugins (self-hosted in `usersc/js/` and `usersc/css/`)
 - Chart.js (self-hosted in `usersc/js/`)
+- MapLibre GL JS 4.7.1 (self-hosted in `usersc/js/` and `usersc/css/`; map style JSON at `usersc/js/versatiles-colorful.json`)
 
 **Template Customization Rule:** `usersc/templates/customizer/` is gitignored
 upstream. The **only** project-tracked file in this directory is
@@ -797,6 +797,7 @@ See `docs/development/CODING_STANDARDS.md` for complete standards.
 
 | Version | Date | Changes |
 | ------- | ---- | ------- |
+| 2.22.0 | 2026-05-06 | Google Maps replaced with self-hosted MapLibre GL JS 4.7.1 + VersaTiles Colorful; Google Geocoding API code removed (LocationGeocoder.php deleted); elan_google_maps_key and elan_google_geo_key settings dropped; Google domains removed from CSP |
 | 2.20.0 | 2026-05-01 | Admin panel split: manage-consolidated.php (car/owner mgmt) + manage-maintenance.php (system health/backups/settings); FIX scripts restructured to app/admin/scripts/fix/ (one-time) + app/admin/scripts/maintenance/ (repeatable); new tabs: tab-health.php, tab-maintenance.php; new modals: confirmation-modal.php, input-modal.php; fix_script_runs table |
 | 2.19.0 | 2026-04-29 | Bootstrap 5.3.3 Customizer template; self-hosted frontend libraries; esbuild build pipeline; FilePond replaces Dropzone; `edit.php` → `form.php`; PHPUnit 12 |
 | 2.18.2 | 2026-04-26 | Documentation reorganization: guides/reference/admin/stories split, file-based navigation |
