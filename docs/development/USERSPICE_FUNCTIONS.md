@@ -8,7 +8,7 @@
 > capabilities, leverage existing framework functions, and avoid duplicating
 > functionality.
 >
-> **Generated:** 2026-01-28
+> **Last verified against:** UserSpice 6.0.8 (2026-05-04)
 
 ---
 
@@ -24,7 +24,9 @@
 - [Input Class](#input-class)
 - [Config Class](#config-class)
 - [Redirect Class](#redirect-class)
+- [Server Class](#server-class)
 - [Menu Class](#menu-class)
+- [TOTPHandler Class](#totphandler-class)
 - [Permission & Access Control](#permission--access-control)
 - [User Helper Functions](#user-helper-functions)
 - [Page Management](#page-management)
@@ -383,6 +385,83 @@ Redirects to a specified location.
 
 Safely redirects with path validation. Falls back to JavaScript/meta refresh.
 
+### Redirect::sanitized($location, $args = null, $code = 302, $opts = [])
+
+**New in 6.0.8.** Secure redirect with open-redirect and XSS prevention. Enforces same-origin
+by default — if `$location` resolves to an external host, it is stripped to the path only.
+
+```php
+// Safe redirect using session-stored destination
+$dest = $_SESSION[$currentSessionName . '_login_dest'] ?? '';
+Redirect::sanitized($dest);
+
+// With allowed external host whitelist
+Redirect::sanitized($url, null, 302, ['allowed_hosts' => ['partner.example.com']]);
+```
+
+Options array keys: `same_origin` (bool, default `true`), `allowed_hosts` (array of allowed external hosts), `base_path` (string), `max_len` (int, default 8192).
+
+**Use instead of:** `Redirect::to()` for any destination that came from user input, session, or a
+query parameter. Replaces the removed `validateRedirectParameter()` helper.
+
+---
+
+## Server Class
+
+File: `users/classes/Server.php`
+
+**New in 6.0.8.** Replaces direct `$_SERVER` access throughout the codebase with type-safe,
+sanitized, and proxy-aware accessors. All globals in `usersc/includes/server_globals.php`
+are set via this class.
+
+### Server::get($key, $default = '')
+
+Fetch and sanitize a `$_SERVER` value. Applies context-aware sanitization based on the key
+name (host, IP, port, URI, method, user-agent, etc.). Safe for all `$_SERVER` keys.
+
+```php
+$method = Server::get('REQUEST_METHOD', 'GET');
+$host   = Server::get('HTTP_HOST', '');
+$ip     = Server::get('REMOTE_ADDR', '');
+```
+
+**Use instead of:** Direct `$_SERVER['KEY']` access. CLAUDE.md rule: never use raw `$_SERVER`.
+
+### Server::getScheme($trustedProxyCidrs = [])
+
+Returns `'https'` or `'http'`. Checks direct TLS first (`$_SERVER['HTTPS']`), then
+`X-Forwarded-Proto` / RFC 7239 `Forwarded: proto=` — but only if `REMOTE_ADDR` is in
+`$trustedProxyCidrs`. Falls back to port 443 detection, then `'http'`.
+
+```php
+$scheme   = Server::getScheme(CLOUDFLARE_CIDRS);
+$is_https = ($scheme === 'https');
+```
+
+### Server::getClientIp($trustedProxyCidrs = [])
+
+Best-effort client IP. Reads `X-Forwarded-For` / RFC 7239 `Forwarded: for=` when `REMOTE_ADDR` is in trusted proxies; otherwise returns `REMOTE_ADDR`.
+
+```php
+$clientIp = Server::getClientIp(CLOUDFLARE_CIDRS);
+```
+
+### Server::getHost($trustedProxyCidrs = [])
+
+Returns hostname without port. Reads `X-Forwarded-Host` when behind a trusted proxy.
+
+### Server::getOrigin($trustedProxyCidrs = [])
+
+Returns `scheme://host`. Returns empty string if the host fails validation.
+
+```php
+$origin = Server::getOrigin(CLOUDFLARE_CIDRS);
+```
+
+### Server::clientIsFromTrustedProxy($cidrs)
+
+Returns `true` if `REMOTE_ADDR` is in any of the provided CIDR ranges. Used internally by the proxy-aware methods.
+
 ---
 
 ## Menu Class
@@ -410,6 +489,68 @@ Internal - checks user permission for a menu item.
 ### Menu::recursivelyDeleteMenuItem($itemId)
 
 Recursively deletes a menu item and its children.
+
+---
+
+## TOTPHandler Class
+
+File: `users/auth/TOTPHandler.php`
+
+**New in 6.0.8.** Complete TOTP (Time-based One-Time Password) two-factor authentication
+handler. Uses PragmaRX Google2FA. Secrets are encrypted at rest; backup codes are hashed.
+
+**Graceful disable:** If `$settings->totp` is `0` or `1`, or if PHP < 8.2, TOTP is disabled and `TOTPHandler` should not be instantiated.
+
+```php
+$totpHandler = null;
+if (isset($settings->totp) && $settings->totp > 1 && version_compare(PHP_VERSION, '8.2.0', '>=')) {
+    $totpHandler = new TOTPHandler($db, $settings->site_name ?? 'UserSpice');
+}
+```
+
+### TOTPHandler::generateSecret()
+
+Generate a new cryptographically random TOTP secret key.
+
+### TOTPHandler::getQRCodeImageDataUri($email, $secret)
+
+Return a QR code data URI for display in the TOTP setup flow. Tries SVG (Bacon 2.x), then GD, then Bacon 1.x PNG — gracefully degrades.
+
+### TOTPHandler::verifyCode($secret, $code, $window = 1)
+
+Verify a 6-digit TOTP code against the user's secret. `$window` allows clock drift (default: ±1 step / 30 seconds).
+
+### TOTPHandler::storeUserTOTP($userId, $secret, $backupCodes)
+
+Store an encrypted TOTP secret and hashed backup codes for a user. Sets `verified = 0` until `activateUserTOTP()` is called.
+
+### TOTPHandler::activateUserTOTP($userId)
+
+Mark TOTP as verified (`verified = 1`) and set `users.totp_enabled = 1`.
+
+### TOTPHandler::isTOTPEnabled($userId)
+
+Returns `true` if the user has a verified TOTP secret.
+
+### TOTPHandler::getUserSecret($userId)
+
+Retrieve and decrypt the user's TOTP secret. Returns `null` if not found or not verified.
+
+### TOTPHandler::generateBackupCodes($count = 10, $length = 10)
+
+Generate an array of one-time backup codes using `random_int()`.
+
+### TOTPHandler::verifyBackupCode($userId, $code)
+
+Check if a backup code is valid without consuming it.
+
+### TOTPHandler::invalidateBackupCode($userId, $code)
+
+Consume (invalidate) a backup code after successful use.
+
+### TOTPHandler::disableTOTP($userId)
+
+Remove the user's TOTP secret and set `users.totp_enabled = 0`.
 
 ---
 
@@ -861,6 +1002,29 @@ tokenHere();
 // Outputs: <input type="hidden" name="csrf" value="...">
 ```
 
+### safeReturn($string)
+
+**New in 6.0.8.** HTML-encode a string for safe output in HTML context. Applies `htmlspecialchars()` with `ENT_QUOTES` and UTF-8. Returns `''` for null input.
+
+```php
+echo safeReturn($user->data()->username);
+```
+
+**Use for:** Any user-controlled string echoed into HTML. Complement to `hed()` (which decodes HTML entities). File: `users/helpers/us_helpers.php`.
+
+### passwordsAllowed($no_passwords_setting)
+
+**New in 6.0.8.** Centralised check: are password-based logins permitted given the site's `$settings->no_passwords` value?
+
+```php
+// 0 = passwords enabled, 1 = disabled, 2 = localhost only
+if (!passwordsAllowed($settings->no_passwords)) {
+    // show passkey/passwordless-only login UI
+}
+```
+
+Returns `true` (passwords allowed), `false` (disabled), or `true` only on localhost. File: `users/helpers/us_helpers.php`.
+
 ### sanitizedDest($varname = 'dest')
 
 Validates/sanitizes destination URL parameter against database pages.
@@ -1128,11 +1292,14 @@ These exist in `users/helpers/deprecated.php`. Avoid using in new code.
 | `money` | Display | Format as US currency |
 | `offsetDate` | Utility | Calculate date offset |
 | `oxfordList` | Utility | Array to Oxford comma list |
+| `passwordsAllowed` | Utility | Check if password login is allowed (0/1/2 setting) |
 | `pluginActive` | Plugins | Check if plugin is active |
 | `randomstring` | Utility | Random alphanumeric string |
 | `random_password` | Utility | Random secure password |
 | `redirect` | Redirect | HTTP redirect |
+| `Redirect::sanitized` | Redirect | Secure open-redirect-proof redirect (new in 6.0.8) |
 | `Redirect::safe` | Redirect | Safe redirect with validation |
+| `safeReturn` | Display | HTML-encode string for safe output (XSS prevention) |
 | `registerHooks` | Plugins | Register plugin hooks |
 | `removePage` | Page Mgmt | Remove page-permission links |
 | `removePermission` | Permissions | Remove user permissions |
@@ -1140,10 +1307,15 @@ These exist in `users/helpers/deprecated.php`. Avoid using in new code.
 | `returnError` | Utility | JSON error response and exit |
 | `sanitize` | Utility | Sanitize string/array/object |
 | `securePage` | Permissions | **Core** page access control |
+| `Server::get` | Server | Type-safe sanitized `$_SERVER` fetch |
+| `Server::getClientIp` | Server | Proxy-aware client IP address |
+| `Server::getOrigin` | Server | Proxy-aware scheme://host origin |
+| `Server::getScheme` | Server | Proxy-aware HTTPS/HTTP detection |
 | `Session::*` | Session | Session CRUD operations |
 | `size` | Display | Human-readable file size |
 | `time2str` | Utility | Relative time string |
 | `Token::check` | Token | Verify CSRF token |
+| `TOTPHandler::*` | TOTP | Two-factor authentication — generate, verify, manage |
 | `Token::generate` | Token | Generate CSRF token |
 | `tokenHere` | Utility | Output CSRF hidden input |
 | `updateEmail` | User Helpers | Update user email |
