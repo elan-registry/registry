@@ -167,9 +167,13 @@ test.describe('CSP Validation Tests', () => {
     const googleMapsRequests = [];
     page.on('request', request => {
       const url = request.url();
-      if (url.includes('maps.googleapis.com') || url.includes('maps.gstatic.com')) {
-        googleMapsRequests.push(url);
-      }
+      try {
+        const hostname = new URL(url).hostname;
+        if (hostname === 'maps.googleapis.com' || hostname.endsWith('.maps.googleapis.com') ||
+            hostname === 'maps.gstatic.com' || hostname.endsWith('.maps.gstatic.com')) {
+          googleMapsRequests.push(url);
+        }
+      } catch (_) { /* ignore non-URL strings */ }
     });
 
     // Check statistics page
