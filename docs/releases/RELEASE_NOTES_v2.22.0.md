@@ -1,6 +1,6 @@
 # Elan Registry v2.22.0 Release Notes
 
-**Release Date:** [DATE]
+**Release Date:** May 6, 2026
 **Type:** Minor Release - Google-Free Maps
 
 ## Required Actions After Deployment
