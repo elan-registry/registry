@@ -74,9 +74,8 @@ export default [
                 // Chart.js
                 Chart: "readonly",
 
-                // Google Maps
-                google: "readonly",
-                MarkerClusterer: "readonly",
+                // MapLibre GL JS (self-hosted, loaded via <script> tag)
+                maplibregl: "readonly",
 
                 // ElanRegistry custom globals
                 ElanRegistryAPI: "readonly",

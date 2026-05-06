@@ -703,39 +703,100 @@ window.carDetailsConfig = {
 
 
 
-<?php 
-$hasValidLocation = (!empty($carData->lat) && !empty($carData->lon) &&
-                   $carData->lat !== null && $carData->lon !== null &&
-                   is_numeric($carData->lat) && is_numeric($carData->lon));
-?>
-
-<?php if ($hasValidLocation) { ?>
-<!-- Google Maps for car location -->
+<?php if (!empty($carData->lat) && $carData->lat != 0 && !empty($carData->lon) && $carData->lon != 0): ?>
+<link rel="stylesheet" href="<?= $us_url_root ?>usersc/css/maplibre-gl.css">
+<script src="<?= $us_url_root ?>usersc/js/maplibre-gl.min.js"></script>
 <script>
-window.initMap = function() {
-    const carLocation = {
-        lat: <?= (float)$carData->lat ?>,
-        lng: <?= (float)$carData->lon ?>
-    };
-
-    const mapElement = document.getElementById("map");
-    if (mapElement) {
-        const map = new google.maps.Map(mapElement, {
-            zoom: 8,
-            center: carLocation,
-            streetViewControl: false
-        });
-
-        const marker = new google.maps.Marker({
-            position: carLocation,
-            map: map,
-            title: "Car Location"
-        });
+(function () {
+    if (typeof maplibregl === 'undefined') {
+        var mapEl = document.getElementById('map');
+        if (mapEl) {
+            var wrap = document.createElement('div');
+            wrap.className = 'd-flex flex-column align-items-center justify-content-center h-100 text-muted';
+            var msg = document.createElement('p');
+            msg.className = 'mb-2';
+            msg.textContent = 'Map unavailable. Please try refreshing.';
+            var btn = document.createElement('button');
+            btn.className = 'btn btn-sm btn-outline-secondary';
+            btn.type = 'button';
+            btn.textContent = 'Retry';
+            btn.addEventListener('click', function () { location.reload(); });
+            wrap.appendChild(msg);
+            wrap.appendChild(btn);
+            mapEl.appendChild(wrap);
+        }
+        return;
     }
-};
+
+    const lat = <?= (float)$carData->lat ?>;
+    const lon = <?= (float)$carData->lon ?>;
+    const series = <?= json_encode((string)($carData->series ?? '')) ?>;
+
+    const seriesClass = (function(s) {
+        s = s.toLowerCase();
+        if (s.includes('sprint')) return 'sprint';
+        if (s.includes('+2'))     return 'plus2';
+        if (s.includes('s1'))     return 's1';
+        if (s.includes('s2'))     return 's2';
+        if (s.includes('s3'))     return 's3';
+        if (s.includes('s4'))     return 's4';
+        return 'unknown';
+    })(series);
+
+    const map = new maplibregl.Map({
+        container: 'map',
+        style: '<?= $us_url_root ?>usersc/js/versatiles-colorful.json',
+        center: [lon, lat],
+        zoom: 8,
+        scrollZoom: false,
+        attributionControl: false
+    });
+
+    map.addControl(new maplibregl.AttributionControl({ compact: true }), 'bottom-right');
+    map.once('idle', function () {
+        var attrEl = document.querySelector('#map .maplibregl-ctrl-attrib');
+        if (attrEl) attrEl.classList.remove('maplibregl-compact-show');
+    });
+    map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'top-right');
+    map.addControl(new maplibregl.ScaleControl({ unit: 'metric' }), 'bottom-left');
+
+    map.on('load', function () {
+        const el = document.createElement('div');
+        el.className = 'elan-marker-wrapper';
+        const dot = document.createElement('div');
+        dot.className = 'elan-marker ' + seriesClass;
+        el.appendChild(dot);
+
+        new maplibregl.Marker({ element: el, anchor: 'bottom' })
+            .setLngLat([lon, lat])
+            .addTo(map);
+    });
+
+    map.on('error', function (e) {
+        // Tile-level and source errors are often transient; let MapLibre retry
+        if (e.sourceId !== undefined) return;
+        const mapEl = document.getElementById('map');
+        if (!mapEl) return;
+        while (mapEl.firstChild) {
+            mapEl.removeChild(mapEl.firstChild);
+        }
+        const wrap = document.createElement('div');
+        wrap.className = 'd-flex flex-column align-items-center justify-content-center h-100 text-muted';
+        const msg = document.createElement('p');
+        msg.className = 'mb-2';
+        msg.textContent = 'Map unavailable. Please try refreshing.';
+        const btn = document.createElement('button');
+        btn.className = 'btn btn-sm btn-outline-secondary';
+        btn.type = 'button';
+        btn.textContent = 'Retry';
+        btn.addEventListener('click', function () { location.reload(); });
+        wrap.appendChild(msg);
+        wrap.appendChild(btn);
+        mapEl.appendChild(wrap);
+    });
+}());
 </script>
-<script async defer src="https://maps.googleapis.com/maps/api/js?key=<?= $settings->elan_google_maps_key ?>&callback=initMap"></script>
-<?php } ?>
+<?php endif; ?>
 
 <!-- Simple History Toggle JavaScript -->
 <script>
@@ -782,4 +843,22 @@ document.addEventListener('DOMContentLoaded', function() {
 @media (max-width: 575.98px) {
     #map { height: 220px !important; }
 }
+.elan-marker {
+    width: 18px; height: 18px;
+    border-radius: 50% 50% 50% 0;
+    border: 2px solid rgba(0,0,0,0.4);
+    transform: rotate(-45deg);
+}
+.elan-marker-wrapper {
+    width: 22px; height: 22px;
+    display: flex; align-items: center; justify-content: center;
+    transform: rotate(45deg);
+}
+.elan-marker.s1     { background: #e53e3e; }
+.elan-marker.s2     { background: #3182ce; }
+.elan-marker.s3     { background: #d69e2e; }
+.elan-marker.s4     { background: #e2e8f0; border-color: rgba(0,0,0,0.5); }
+.elan-marker.sprint { background: #805ad5; }
+.elan-marker.plus2  { background: #38a169; }
+.elan-marker.unknown{ background: #718096; }
 </style>

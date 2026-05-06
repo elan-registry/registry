@@ -37,11 +37,6 @@ if (!function_exists('processSettingsAutoCreation')) {
             // 'elan_backup_age' => ['type' => 'INT(11)', 'default' => '30', 'description' => 'Backup retention period in days']
         ];
 
-        // Google Maps settings
-        $googleSettingsFields = [
-            'elan_google_maps_key' => ['type' => 'TEXT', 'default' => '', 'description' => 'Google Maps API Key for car location maps']
-        ];
-
         // Additional Media settings
         $additionalMediaFields = [
             'elan_image_dir' => ['type' => 'VARCHAR(255)', 'default' => 'userimages/', 'description' => 'Directory path where car images are stored'],
@@ -53,7 +48,6 @@ if (!function_exists('processSettingsAutoCreation')) {
             $imageSettingsFields,
             $emailSettingsFields,
             $maintenanceSettingsFields,
-            $googleSettingsFields,
             $additionalMediaFields
         );
 
@@ -210,38 +204,6 @@ $autoCreationMessages = processSettingsAutoCreation();
 
     <div class="row">
         <div class="col-md-6">
-            <!-- Google Maps Integration -->
-            <div class="card border-info mb-4">
-                <div class="card-header bg-info text-white">
-                    <h5 class="mb-0"><i class="fab fa-google"></i> Google Maps Integration</h5>
-                    <small class="text-light">API key for displaying car locations on maps</small>
-                </div>
-                <div class="card-body">
-                    <div class="mb-3">
-                        <label for="elan_google_maps_key" class="fw-bold">
-                            <i class="fas fa-map"></i> Google Maps API Key
-                        </label>
-                        <input type="text"
-                               class="form-control ajxtxt"
-                               data-desc="Google Maps API Key"
-                               name="elan_google_maps_key"
-                               id="elan_google_maps_key"
-                               value="<?= htmlspecialchars($settings->elan_google_maps_key ?? '') ?>"
-                               placeholder="AIzaSy...">
-                        <small class="form-text text-muted">
-                            <i class="fas fa-external-link-alt"></i> Required for car location maps and statistics page
-                            <a href="https://console.cloud.google.com/apis/credentials" target="_blank" class="ms-2">Get API Key</a>
-                        </small>
-                    </div>
-
-                    <div class="mt-3">
-                        <button type="button" class="btn btn-outline-info btn-sm" onclick="testGoogleMapsAPI(this)">
-                            <i class="fas fa-flask"></i> Test Maps API Key
-                        </button>
-                    </div>
-                </div>
-            </div>
-
             <!-- System Maintenance -->
             <div class="card border-secondary mb-4">
                 <div class="card-header bg-dark text-white">
@@ -476,114 +438,6 @@ $(document).ready(function() {
             });
     });
 });
-
-// Test Google Maps API functionality
-function testGoogleMapsAPI(buttonElement) {
-    const mapsKey = $('#elan_google_maps_key').val();
-
-    if (!mapsKey) {
-        showNotification('Please enter a Google Maps API key to test.', 'warning');
-        return;
-    }
-
-    const btn = $(buttonElement);
-    if (btn.length === 0) {
-        showNotification('Error: Invalid button element. Please refresh the page.', 'danger');
-        return;
-    }
-
-    const originalText = btn.html();
-    btn.html('<i class="fas fa-spinner fa-spin"></i> Testing...').prop('disabled', true);
-
-    // Remove any existing result message
-    $('#apiTestResult').remove();
-
-    // Helper functions
-    function showSuccess(btn, originalText) {
-        btn.html(originalText).prop('disabled', false);
-        const successMsg = $('<span id="apiTestResult" class="ms-2 text-success fw-bold">' +
-            '<i class="fas fa-check-circle"></i> Maps API Valid - Test Successful' +
-            '</span>');
-        btn.after(successMsg);
-
-        setTimeout(() => {
-            $('#apiTestResult').fadeOut(300, function() {
-                $(this).remove();
-            });
-        }, 5000);
-    }
-
-    function showError(btn, originalText, message) {
-        btn.html(originalText).prop('disabled', false);
-        const errorMsg = $('<span id="apiTestResult" class="ms-2 text-danger fw-bold">' +
-            '<i class="fas fa-times-circle"></i> ' + message +
-            '</span>');
-        btn.after(errorMsg);
-
-        setTimeout(() => {
-            $('#apiTestResult').fadeOut(300, function() {
-                $(this).remove();
-            });
-        }, 7000);
-    }
-
-    // Check if Maps API already loaded
-    if (window.google && window.google.maps) {
-        showSuccess(btn, originalText);
-        return;
-    }
-
-    // Test Maps API by loading it
-    const testUrl = `https://maps.googleapis.com/maps/api/js?key=${mapsKey}&callback=testMapsCallback&loading=async`;
-
-    let callbackExecuted = false;
-    const timeoutMs = 10000;
-
-    window.testMapsCallback = function() {
-        if (callbackExecuted) return;
-        callbackExecuted = true;
-
-        showSuccess(btn, originalText);
-
-        setTimeout(() => {
-            if (window.testMapsCallback) {
-                delete window.testMapsCallback;
-            }
-        }, 2000);
-    };
-
-    const script = document.createElement('script');
-    script.src = testUrl;
-    script.async = true;
-    script.defer = true;
-
-    script.onerror = function(error) {
-        if (callbackExecuted) return;
-        callbackExecuted = true;
-
-        showError(btn, originalText, 'Maps API Error');
-
-        setTimeout(() => {
-            if (script.parentNode) {
-                document.head.removeChild(script);
-            }
-            delete window.testMapsCallback;
-        }, 2000);
-    };
-
-    const timeout = setTimeout(() => {
-        if (!callbackExecuted) {
-            showError(btn, originalText, 'Test timeout');
-
-            if (script.parentNode) {
-                document.head.removeChild(script);
-            }
-            delete window.testMapsCallback;
-        }
-    }, timeoutMs);
-
-    document.head.appendChild(script);
-}
 
 // Test Email Configuration
 function testEmailConfiguration() {

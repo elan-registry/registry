@@ -36,13 +36,24 @@ const vendorFiles = [
 Promise.all([
   ...jsFiles.map(f => esbuild.build({ entryPoints: [f], minify: true, outfile: f.replace(/\.js$/, '.min.js') })),
   ...cssFiles.map(f => esbuild.build({ entryPoints: [f], minify: true, outfile: f.replace(/\.css$/, '.min.css') })),
-]).then(() => {
+]).then(async () => {
   console.log(`Built ${jsFiles.length + cssFiles.length} files.`);
 
   for (const [src, dest] of vendorFiles) {
     fs.copyFileSync(src, dest);
   }
   console.log(`Copied ${vendorFiles.length} vendor files.`);
+
+  // Copy MapLibre GL JS self-hosted assets
+  fs.copyFileSync('node_modules/maplibre-gl/dist/maplibre-gl.js', 'usersc/js/maplibre-gl.min.js');
+  fs.copyFileSync('node_modules/maplibre-gl/dist/maplibre-gl.css', 'usersc/css/maplibre-gl.css');
+  console.log('Copied MapLibre GL JS assets.');
+
+  // Generate VersaTiles Colorful style JSON
+  const { colorful } = await import('@versatiles/style');
+  const style = colorful({ baseUrl: 'https://tiles.versatiles.org', language: 'en' });
+  fs.writeFileSync('usersc/js/versatiles-colorful.json', JSON.stringify(style));
+  console.log('Generated usersc/js/versatiles-colorful.json');
 }).catch((err) => {
   console.error('Build failed:', err?.message ?? err);
   process.exit(1);

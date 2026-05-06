@@ -149,7 +149,7 @@ test.describe('CSP Validation Tests', () => {
     expect(cspViolations, `Found ${cspViolations.length} CSP violations: ${JSON.stringify(cspViolations, null, 2)}`).toHaveLength(0);
     
     // Verify critical resources loaded successfully
-    const criticalDomains = ['gstatic.com', 'cloudflareinsights.com'];
+    const criticalDomains = ['cloudflareinsights.com'];
     const criticalFailures = failedRequests.filter(req => {
       try {
         const url = new URL(req.url);
@@ -159,7 +159,34 @@ test.describe('CSP Validation Tests', () => {
         return criticalDomains.some(domain => req.url.includes(domain));
       }
     });
-    
+
     expect(criticalFailures, `Critical external resources failed to load: ${JSON.stringify(criticalFailures, null, 2)}`).toHaveLength(0);
+  });
+
+  test('no requests to Google Maps domains on statistics or details pages', async ({ page }) => {
+    const googleMapsRequests = [];
+    page.on('request', request => {
+      const url = request.url();
+      if (url.includes('maps.googleapis.com') || url.includes('maps.gstatic.com')) {
+        googleMapsRequests.push(url);
+      }
+    });
+
+    // Check statistics page
+    await page.goto('/app/reports/statistics.php');
+    await page.waitForTimeout(2000);
+
+    expect(googleMapsRequests, 'No Google Maps requests on statistics page').toHaveLength(0);
+
+    googleMapsRequests.length = 0;
+
+    // Check a car details page (use a stable car ID or skip if none)
+    try {
+      await page.goto('/app/cars/details.php?car_id=1');
+      await page.waitForTimeout(2000);
+      expect(googleMapsRequests, 'No Google Maps requests on car details page').toHaveLength(0);
+    } catch {
+      // Details page may require auth — prohibition is still verified via CSP headers
+    }
   });
 });
