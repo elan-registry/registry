@@ -241,12 +241,10 @@ The `.env.local` file contains local development database credentials:
 
 ### API Key Security
 
-Configure Google Maps API keys in **Google Cloud Console**:
-
-- **Domain Restrictions**: Restrict to your domains only
-- **API Restrictions**: Enable only the Maps JavaScript API (geocoding
-- **Monitoring**: Set usage quotas and monitor for unusual activity
-- **Separate Keys**: Use different keys for development/staging/production
+As of v2.22.0 the application uses no external map API keys. Map display uses
+self-hosted **MapLibre GL JS** with **VersaTiles** tile servers — no Google
+Maps key required. Location geocoding uses **Nominatim** (OpenStreetMap) which
+also requires no API key.
 
 ### Database Security
 
@@ -270,12 +268,6 @@ Configure Google Maps API keys in **Google Cloud Console**:
 - Check database server accessibility from application host
 - Verify database user permissions (SELECT, INSERT, UPDATE, DELETE as needed)
 
-**Google Maps Issues**:
-
-- Verify API keys are correctly set in environment
-- Check Google Cloud Console for domain/API restrictions
-- Ensure billing is enabled for Google Cloud project
-
 **Debug Environment Loading**:
 
 ```php
@@ -289,5 +281,6 @@ if (empty($_ENV['DB_HOST'])) {
 
 - [vlucas/phpdotenv Documentation](https://github.com/vlucas/phpdotenv)
 - [ADR-014: Replace secure-env-php with phpdotenv](adr/ADR-014-replace-secure-env-php-with-phpdotenv.md)
-- [Google Maps API Documentation](https://developers.google.com/maps/documentation)
-- [Nominatim API Documentation](https://nominatim.org/release-docs/latest/api/Search/) — used for location search and reverse geocoding
+- [MapLibre GL JS Documentation](https://maplibre.org/maplibre-gl-js/docs/)
+- [VersaTiles Documentation](https://versatiles.org/) — tile server used for map display
+- [Nominatim API Documentation](https://nominatim.org/release-docs/latest/api/Search/) — used for location geocoding (lat/lon lookup on car save)
