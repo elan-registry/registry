@@ -1282,8 +1282,7 @@ if (!function_exists('getSettings')) {
         // Return mock settings object
         return (object) [
             'id' => (string) $id,
-            'elan_image_dir' => '/userimages/',
-            'elan_google_geo_key' => 'mock_api_key'
+            'elan_image_dir' => '/userimages/'
         ];
     }
 }

@@ -7,7 +7,7 @@
 
 Run the following FIX scripts in order after deploying:
 
-1. FIX script from #433: removes `elan_google_geo_key` from the `settings` table
+1. `01-Remove-elan-google-geo-key.php` — removes `elan_google_geo_key` from the `settings` table (#433)
 2. FIX script from #724: removes `elan_google_maps_key` from the `settings` table (must run after #433 FIX script)
 
 ## User-Facing Changes

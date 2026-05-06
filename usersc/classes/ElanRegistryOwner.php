@@ -85,51 +85,6 @@ class ElanRegistryOwner
     }
 
     /**
-     * Geocode a location address to coordinates
-     *
-     * @deprecated 2.11.0 Backend geocoding replaced by frontend LocationPicker.
-     *                    Scheduled for removal in v3.0.0 (Issue #433).
-     *                    Use LocationService directly or get coordinates from frontend.
-     *
-     * Public static helper method for geocoding that can be used from any context
-     * (forms, system operations, etc.) without requiring an ElanRegistryOwner instance.
-     *
-     * This is the ONLY public entry point for geocoding operations. LocationGeocoder
-     * is an internal implementation detail and should never be instantiated directly.
-     *
-     * DEPRECATION NOTICE:
-     * As of v2.11.0, all location collection uses LocationPicker (frontend) with
-     * OpenStreetMap APIs. Coordinates are obtained during user input, not after.
-     * This method remains as a fallback but will be removed in v3.0.0.
-     *
-     * @param string $city City name
-     * @param string $state State/province name
-     * @param string $country Country name
-     * @return array Array with 'lat' and 'lon' keys, or empty array on failure
-     * @see LocationService
-     * @see Issue #433
-     */
-    public static function geocodeAddress(string $city, string $state, string $country): array
-    {
-        // Get API key from settings
-        $settings = getSettings();
-
-        if (empty($settings->elan_google_geo_key)) {
-            logger(0, LogCategories::LOG_CATEGORY_GEOCODE, 'ElanRegistryOwner: Google Maps API key not configured');
-            return [];
-        }
-
-        // Create geocoder instance
-        $geocoder = new LocationGeocoder($settings->elan_google_geo_key);
-
-        // Attempt geocoding
-        $result = $geocoder->geocode($city, $state, $country);
-
-        // Return geocoding results or empty array if failed
-        return $result ?? [];
-    }
-
-    /**
      * Create a new owner (user + profile)
      *
      * @param array $fields Key value pairs for owner data
@@ -177,12 +132,6 @@ class ElanRegistryOwner
             // Create profile record
             $profileFields['user_id'] = $userId;
             $profileFields['ctime'] = date(AppConstants::DATETIME_FORMAT);
-
-            // Apply geocoding if location data provided
-            if (!empty($profileFields['city']) && !empty($profileFields['state']) && !empty($profileFields['country'])) {
-                $geoFields = $this->applyGeocoding($profileFields['city'], $profileFields['state'], $profileFields['country']);
-                $profileFields = array_merge($profileFields, $geoFields);
-            }
 
             if (!$this->_db->insert($this->profileTableName, $profileFields)) {
                 throw new OwnerCreationException('Database error during profile creation: ' . $this->_db->errorString());
@@ -263,24 +212,6 @@ class ElanRegistryOwner
             // Update profile fields if any
             if (!empty($profileFields)) {
                 // Note: profiles table doesn't have mtime field (UserSpice standard)
-
-                // Apply geocoding ONLY if location data changed AND coordinates not provided from frontend
-                $hasLocationChange = !empty($profileFields['city']) || !empty($profileFields['state']) || !empty($profileFields['country']);
-                $hasCoordinates = !empty($profileFields['lat']) && !empty($profileFields['lon']);
-
-                if ($hasLocationChange && !$hasCoordinates) {
-                    // Coordinates not provided - use fallback geocoding (deprecated path)
-                    $currentOwner = $this->data();
-                    $city = $profileFields['city'] ?? $currentOwner->city ?? '';
-                    $state = $profileFields['state'] ?? $currentOwner->state ?? '';
-                    $country = $profileFields['country'] ?? $currentOwner->country ?? '';
-
-                    if (!empty($city) && !empty($state) && !empty($country)) {
-                        $geoFields = $this->applyGeocoding($city, $state, $country);
-                        $profileFields = array_merge($profileFields, $geoFields);
-                    }
-                }
-                // If coordinates provided from frontend, use them as-is (no geocoding needed)
 
                 // UserSpice DB::update() uses array for custom WHERE: ['column' => 'value']
                 $updateResult = $this->_db->update($this->profileTableName, ['user_id' => $userId], $profileFields);
@@ -489,9 +420,9 @@ class ElanRegistryOwner
     }
 
     /**
-     * Update location with geocoding integration
+     * Update owner location fields
      *
-     * @param array $locationData Array with city, state, country
+     * @param array $locationData Array with city, state, country (and optionally lat, lon)
      * @return bool True if location updated successfully
      */
     public function updateLocation(array $locationData): bool
@@ -507,9 +438,7 @@ class ElanRegistryOwner
             }
         }
 
-        // Apply geocoding
-        $geoFields = $this->applyGeocoding($locationData['city'], $locationData['state'], $locationData['country']);
-        $updateFields = array_merge($locationData, $geoFields);
+        $updateFields = $locationData;
         // Note: profiles table doesn't have mtime field (UserSpice standard)
 
         if ($this->_db->update($this->profileTableName, $this->_data->id, $updateFields, 'user_id')) {
@@ -706,27 +635,4 @@ class ElanRegistryOwner
         return array_intersect_key($fields, array_flip($profileFieldNames));
     }
 
-    /**
-     * Apply geocoding to location data
-     *
-     * @deprecated 2.11.0 Backend geocoding replaced by frontend LocationPicker.
-     *                    Scheduled for removal in v3.0.0 (Issue #433).
-     *
-     * DEPRECATION NOTICE:
-     * This method is no longer called in normal operation since coordinates
-     * now come from the frontend LocationPicker. It remains as a fallback
-     * for legacy code paths only. Will be removed in v3.0.0.
-     *
-     * @param string $city City name
-     * @param string $state State name
-     * @param string $country Country name
-     * @return array Array with lat/lon fields if geocoding successful
-     * @see LocationService
-     * @see Issue #433
-     */
-    private function applyGeocoding(string $city, string $state, string $country): array
-    {
-        // Delegate to static helper method
-        return self::geocodeAddress($city, $state, $country);
-    }
 }

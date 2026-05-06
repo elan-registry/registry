@@ -243,7 +243,6 @@ ALTER TABLE `settings`
   ADD COLUMN `us_css3` varchar(255) COLLATE utf8mb4_unicode_ci NOT NULL,
   ADD COLUMN `elan_backup_age` int(11) NOT NULL,
   ADD COLUMN `elan_google_maps_key` mediumtext COLLATE utf8mb4_unicode_ci NOT NULL,
-  ADD COLUMN `elan_google_geo_key` mediumtext COLLATE utf8mb4_unicode_ci NOT NULL,
   ADD COLUMN `elan_image_dir` mediumtext COLLATE utf8mb4_unicode_ci NOT NULL,
   ADD COLUMN `elan_image_max` int(11) NOT NULL,
   ADD COLUMN `fun` mediumtext COLLATE utf8mb4_unicode_ci,

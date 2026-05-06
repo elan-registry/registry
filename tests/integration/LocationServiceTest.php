@@ -9,7 +9,7 @@ use ElanRegistry\Exceptions\LocationServiceException;
 use PHPUnit\Framework\Attributes\Group;
 
 /**
- * LocationGeocoderTest / LocationServiceTest
+ * LocationServiceTest
  *
  * Integration tests for location geocoding services using OpenStreetMap APIs:
  * - Forward geocoding (address → coordinates) via Photon/Nominatim
@@ -19,14 +19,11 @@ use PHPUnit\Framework\Attributes\Group;
  * - Coordinate precision
  * - Error handling
  *
- * LocationService is the modern replacement for deprecated LocationGeocoder.
- * Uses free OpenStreetMap APIs (Photon/Nominatim) instead of Google Maps.
- *
  * Tests assume user ID 1 for rate limiting and logging context.
  */
 #[Group('Integration')]
 #[Group('Geocoding')]
-class LocationGeocoderTest extends IntegrationTestCase
+class LocationServiceTest extends IntegrationTestCase
 {
     protected const TEST_USER_ID = 1;
     private LocationService $service;

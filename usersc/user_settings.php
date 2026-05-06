@@ -160,7 +160,6 @@ if (!empty($_POST)) {
         // Extend user_setttings.php with some PROFILE information
         // Update Location (city, state, country, lat, lon)
         $locationChanged = false;
-        $geocodingAttempted = false;
         $newCity = Input::get('city');
         $newState = Input::get('state');
         $newCountry = Input::get('country');
@@ -219,14 +218,6 @@ if (!empty($_POST)) {
                 if (!empty($newLat) && !empty($newLon)) {
                     $locationFields['lat'] = (float)$newLat;
                     $locationFields['lon'] = (float)$newLon;
-                } else {
-                    // Fallback to old geocoding method if coordinates not provided
-                    /** @deprecated Fallback only - location picker should provide coordinates */
-                    $geocodingAttempted = true;
-                    $geoResult = ElanRegistryOwner::geocodeAddress($newCity, $newState, $newCountry);
-                    if (!empty($geoResult)) {
-                        $locationFields = array_merge($locationFields, $geoResult);
-                    }
                 }
 
                 // Update profile with all location data
@@ -300,8 +291,6 @@ if (!empty($_POST)) {
                     logger((int)$user->data()->id, LogCategories::LOG_CATEGORY_USER, "Location sync: Updated $carsUpdated cars with new coordinates");
                 }
             }
-        } elseif ($geocodingAttempted) {
-            logger((int)$user->data()->id, LogCategories::LOG_CATEGORY_USER, 'Geocoding failed - preserving existing lat/lon coordinates');
         }
 
         //Update Website

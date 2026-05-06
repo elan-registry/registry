@@ -38,14 +38,6 @@ $locationData = [
 if (!empty($lat) && !empty($lon)) {
     $locationData['lat'] = (float)$lat;
     $locationData['lon'] = (float)$lon;
-} else {
-    // Fallback to old geocoding method if coordinates not provided
-    // (for backward compatibility or if location picker fails)
-    /** @deprecated Fallback only - location picker should provide coordinates */
-    $geoResult = ElanRegistryOwner::geocodeAddress($city, $state, $country);
-    if (!empty($geoResult)) {
-        $locationData = array_merge($locationData, $geoResult);
-    }
 }
 
 // Update profile with all location data at once
