@@ -778,6 +778,7 @@ window.carDetailsConfig = {
             console.warn('[ElanRegistry] Map tile/source error (non-fatal):', e.error);
             return;
         }
+        console.error('[ElanRegistry] Fatal map error on car details page:', e.error);
         const mapEl = document.getElementById('map');
         if (!mapEl) return;
         while (mapEl.firstChild) {
