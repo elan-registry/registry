@@ -59,10 +59,12 @@
     "filepond-plugin-image-preview": "^4.6.12",
     "filepond-plugin-image-resize": "^2.0.10",
     "filepond-plugin-image-transform": "^3.8.7",
-    "flatpickr": "^4.6.13"
+    "flatpickr": "^4.6.13",
+    "maplibre-gl": "4.7.1"
   },
   "devDependencies": {
     "@playwright/test": "^1.56.1",
+    "@versatiles/style": "^5.10.2",
     "dotenv": "^17.2.3",
     "esbuild": "^0.25.12",
     "eslint": "^9.0.0"
