@@ -585,13 +585,26 @@ require_once $abs_us_root . $us_url_root . 'users/includes/html_footer.php'; //c
             btn.disabled = true;
             btn.textContent = 'Saving\u2026';
 
-            pond.processFiles().then(function() {
-                return submitCarForm();
-            }).catch(function(err) {
+            // Only process new files — LOCAL files (already on server) don't need
+            // client-side transform before submit; processing them caused the slow-save regression.
+            const newFileIds = pond.getFiles()
+                .filter(function(item) { return item.origin !== FilePond.FileOrigin.LOCAL; })
+                .map(function(item) { return item.id; });
+
+            const handleProcessError = function(err) {
+                console.error('[form.php] Photo processing error:', err);
                 $('#message').show().html('<div class="alert alert-danger">An error occurred processing the photos. Please try again.</div>');
                 btn.disabled = false;
                 btn.textContent = btn.dataset.label;
-            });
+            };
+
+            if (newFileIds.length > 0) {
+                pond.processFiles(newFileIds).then(function() {
+                    return submitCarForm();
+                }).catch(handleProcessError);
+            } else {
+                submitCarForm().catch(handleProcessError);
+            }
         });
 
         async function submitCarForm() {
