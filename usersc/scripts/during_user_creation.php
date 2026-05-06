@@ -38,10 +38,15 @@ $locationData = [
 if (!empty($lat) && !empty($lon)) {
     $locationData['lat'] = (float)$lat;
     $locationData['lon'] = (float)$lon;
+} else {
+    logger(0, LogCategories::LOG_CATEGORY_USER, "New user {$theNewId}: no coordinates provided during registration; location picker may not have been used");
 }
 
 // Update profile with all location data at once
-$db->update('profiles', ["user_id", "=", $theNewId], $locationData);
+$updateResult = $db->update('profiles', ["user_id", "=", $theNewId], $locationData);
+if (!$updateResult) {
+    logger(0, LogCategories::LOG_CATEGORY_DATABASE_ERROR, "Failed to set location during user creation for user_id={$theNewId}");
+}
 
 // Even if you do not want to add additional fields to the the join form, this is a great opportunity to add this user to another database table.
 // Get creative!

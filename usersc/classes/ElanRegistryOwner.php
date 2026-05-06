@@ -441,15 +441,27 @@ class ElanRegistryOwner
         $updateFields = $locationData;
         // Note: profiles table doesn't have mtime field (UserSpice standard)
 
-        if ($this->_db->update($this->profileTableName, $this->_data->id, $updateFields, 'user_id')) {
-            // Reload owner data
-            $this->find($this->_data->id);
+        try {
+            $this->_db->query("BEGIN");
 
-            logger($this->_data->id, LogCategories::LOG_CATEGORY_OWNER_ACTIONS, "Location updated: {$locationData['city']}, {$locationData['state']}, {$locationData['country']}");
-            return true;
+            if (!$this->_db->update($this->profileTableName, $this->_data->id, $updateFields, 'user_id')) {
+                $this->_db->query("ROLLBACK");
+                logger($this->_data->id, LogCategories::LOG_CATEGORY_OWNER_ACTIONS, "updateLocation() DB update failed: " . $this->_db->errorString());
+                return false;
+            }
+
+            $this->_db->query("COMMIT");
+        } catch (Exception $e) {
+            $this->_db->query("ROLLBACK");
+            logger($this->_data->id, LogCategories::LOG_CATEGORY_OWNER_ACTIONS, "Location update failed: " . $e->getMessage());
+            throw $e;
         }
 
-        return false;
+        // Reload owner data
+        $this->find($this->_data->id);
+
+        logger($this->_data->id, LogCategories::LOG_CATEGORY_OWNER_ACTIONS, "Location updated: {$locationData['city']}, {$locationData['state']}, {$locationData['country']}");
+        return true;
     }
 
     /**

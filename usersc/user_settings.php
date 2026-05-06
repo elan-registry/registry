@@ -215,7 +215,8 @@ if (!empty($_POST)) {
                 ];
 
                 // Add coordinates if provided by location picker
-                if (!empty($newLat) && !empty($newLon)) {
+                $hasCoordinates = !empty($newLat) && !empty($newLon);
+                if ($hasCoordinates) {
                     $locationFields['lat'] = (float)$newLat;
                     $locationFields['lon'] = (float)$newLon;
                 }
@@ -232,7 +233,11 @@ if (!empty($_POST)) {
                     'lon' => $locationFields['lon'] ?? null
                 ];
 
-                $successes[] = 'Location updated successfully.';
+                if ($hasCoordinates) {
+                    $successes[] = 'Location updated successfully.';
+                } else {
+                    $successes[] = 'Location text updated. Use the location picker to add coordinates for map display.';
+                }
                 logger((int)$user->data()->id, LogCategories::LOG_CATEGORY_USER, "Updated location to: $city, $state, $country" .
                     (isset($locationFields['lat']) ? " ({$locationFields['lat']}, {$locationFields['lon']})" : ''));
             } else {
