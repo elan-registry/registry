@@ -1287,7 +1287,9 @@ function loadMapMarkers(map) {
     s1: "s1",
     s2: "s2",
     s3: "s3",
-    s4: "s4"
+    s4: "s4",
+    "1500": "elan1500",
+    "26r": "r26"
   };
 
   function markerClassForSeries(series) {

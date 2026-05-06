@@ -76,9 +76,11 @@ foreach ($markerRows as $car) {
 .elan-marker.s2     { background:#3182ce; }
 .elan-marker.s3     { background:#d69e2e; }
 .elan-marker.s4     { background:#e2e8f0; border-color:rgba(0,0,0,0.5); }
-.elan-marker.sprint { background:#805ad5; }
-.elan-marker.plus2  { background:#38a169; }
-.elan-marker.unknown{ background:#718096; }
+.elan-marker.sprint  { background:#805ad5; }
+.elan-marker.plus2   { background:#38a169; }
+.elan-marker.elan1500{ background:#dd6b20; }
+.elan-marker.r26     { background:#0bc5ea; }
+.elan-marker.unknown { background:#718096; }
 </style>
 
 <link rel="stylesheet" href="<?= $us_url_root ?>usersc/css/maplibre-gl.css">
@@ -182,6 +184,14 @@ foreach ($markerRows as $car) {
                                                         <div class="form-check form-check-inline mb-0">
                                                             <input class="form-check-input" type="checkbox" id="filter-plus2" data-series="plus2" checked>
                                                             <label class="form-check-label small" for="filter-plus2"><span class="elan-legend-dot" style="background:#38a169;"></span> +2</label>
+                                                        </div>
+                                                        <div class="form-check form-check-inline mb-0">
+                                                            <input class="form-check-input" type="checkbox" id="filter-elan1500" data-series="elan1500" checked>
+                                                            <label class="form-check-label small" for="filter-elan1500"><span class="elan-legend-dot" style="background:#dd6b20;"></span> Elan 1500</label>
+                                                        </div>
+                                                        <div class="form-check form-check-inline mb-0">
+                                                            <input class="form-check-input" type="checkbox" id="filter-r26" data-series="r26" checked>
+                                                            <label class="form-check-label small" for="filter-r26"><span class="elan-legend-dot" style="background:#0bc5ea;"></span> 26R</label>
                                                         </div>
                                                     </div>
                                                 </div>
