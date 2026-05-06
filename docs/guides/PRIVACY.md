@@ -1,174 +1,57 @@
 # Privacy Policy
 
-**Effective Date:** September 6, 2025
+**Effective: May 6, 2026**
+
+The Elan Registry is a community database for Lotus Elan cars, run by enthusiasts for enthusiasts. This page explains what information we collect, what we do with it, and what rights you have over your data.
+
+The short version: we collect what's needed to run the registry, we keep your personal details private, and you can change or delete your data at any time. If you decide to leave, we'll remove your personal information but may keep the car records themselves so the registry stays useful to the community.
+
+## What we collect
+
+When you sign up, we ask for a username and password (the password is hashed, never stored as plain text), your first and last name, and an email address. We also note when you registered.
+
+For each car you add, we store the usual specs: model, year, chassis number, color, engine, plus dates of purchase or sale and any notes you want to include. You can add website links too.
+
+If you upload photos, we strip all EXIF metadata before saving them. That includes GPS coordinates, camera details, and timestamps.
+
+We ask for a city, state, and country so cars can be browsed by region, but we deliberately fuzz the location data so it isn't pinpoint accurate. Nobody needs to know exactly where your Elan lives.
+
+On the technical side, we log IP addresses for security, use a session cookie to keep you logged in, and keep system logs for debugging. Standard stuff.
+
+There's also an internal messaging system. If another registered user wants to contact you, the first message goes through our site so your email address stays hidden. After that you can take the conversation offsite if you both want to.
+
+## What we do with it
+
+We use your information to run the registry, let users contact each other safely, power search and browsing, and keep the site secure.
+
+What we don't do: sell your data, share it with third parties, show your last name or email publicly, track your exact location, or keep detailed browsing histories.
+
+## Security
+
+Passwords are hashed. Personal information is hidden from other users. We apply security updates and monitor the site for issues. Nothing is ever 100% secure on the internet, but we take reasonable steps to protect what you've trusted us with.
+
+## Your rights under GDPR
+
+You can ask for a copy of the personal data we hold on you, correct anything that's wrong, request deletion, restrict how we process your data, object to certain kinds of processing, or get an exportable copy of everything. To do any of these, email registrar@elanregistry.org.
+
+## What happens if you delete your account
+
+We try to balance two things here: your right to be forgotten and the registry's value as a historical record.
+
+When you ask us to delete your account, your personal data is removed permanently. That means your login, name, email, location, and contact preferences. The cars you registered, however, are reassigned to a system account called "noowner" and stay in the database as anonymized records. The technical specifications and history remain available to the community, but any link between you and them is gone.
+
+We do it this way because the registry's usefulness depends on being reasonably complete, and a car's history doesn't really belong to any one owner over the long run. If you'd rather have your cars removed entirely along with your account, just say so when you make your deletion request and we'll handle it that way instead.
+
+All deletion actions are logged for our own audit purposes.
+
+## Contact
+
+Questions about this policy, or want to exercise any of the rights above? Email registrar@elanregistry.org.
+
+## Updates
+
+If we change this policy, we'll update the effective date at the top of the page and post the new version here. Anything significant, we'll announce to users.
 
 ---
 
-## Overview
-
-The Elan Registry is a community-driven database for Lotus Elan cars. This Privacy Policy explains how we collect, use, and protect your personal information in compliance with the General Data Protection Regulation (GDPR).
-
-**Key Principles:**
-- We only collect information necessary for the registry
-- Your personal data is kept private and secure
-- You control your data and can request changes or deletion
-- Car information may be preserved for community benefit even if you leave
-
----
-
-## What Information We Collect
-
-### 📋 **Account Information**
-- Username and password (encrypted)
-- First name and last name
-- Email address
-- Registration date
-
-### 🚗 **Car Registry Data**
-- Car specifications (model, year, chassis number, color, engine)
-- Purchase/sale dates
-- Comments and descriptions
-- Website links (if provided)
-
-### 📸 **Photo Uploads**
-- **Privacy Protection:** We automatically remove all EXIF metadata from uploaded photos
-- **What's Removed:** GPS location data, camera information, timestamps, and device details
-- **Why:** To protect your privacy and prevent location tracking
-
-### 📍 **Location Information**
-- City, state, and country for registry display
-- **Privacy Protection:** Location data includes intentional error and is not guaranteed to be exact
-- Used only for general registry purposes
-
-### 🔧 **Technical Data**
-- **IP Addresses:** Logged for security and administrative purposes
-- **Session Cookies:** Used for login authentication and user experience
-- **System Logs:** Actions and errors logged for debugging and security
-
-### 💬 **Communication System**
-- Internal contact system that hides email addresses
-- Initial contact goes through our system
-- Further communication is between users directly
-
----
-
-## How We Use Your Information
-
-### ✅ **What We Do**
-- Maintain and operate the car registry
-- Enable registered users to contact each other safely
-- Provide search and browsing functionality
-- Ensure security and prevent abuse
-
-### ❌ **What We Don't Do**
-- Sell or share your personal information with third parties
-- Display your Last Name publicly
-- Display your email address publicly
-- Track your exact location
-- Keep detailed browsing history
-
----
-
-## Data Protection & Security
-
-### 🔒 **Security Measures**
-- Passwords are encrypted and never stored in plain text
-- Personal information is kept private from other users
-- Access controls limit who can see your data
-- Regular security updates and monitoring
-
-### 🛡️ **Privacy Controls**
-- Your full name and email are never displayed publicly
-- Location information includes built-in privacy protection
-- Contact system prevents email address disclosure
-- Photo metadata is automatically stripped
-
----
-
-## Your Rights Under GDPR
-
-You have complete control over your personal data:
-
-### 📄 **Access**
-Request a copy of all personal data we have about you
-
-### ✏️ **Correction**
-Update or correct any inaccurate information
-
-### 🗑️ **Deletion**
-Request removal of your personal data
-
-### ⏸️ **Restriction**
-Limit how we process your data
-
-### 🚫 **Objection**
-Object to certain types of data processing
-
-### 📤 **Portability**
-Get your data in a portable format
-
----
-
-## Account Deletion: What Happens
-
-When you request account deletion, we balance your privacy rights with community benefit:
-
-### ✅ **What Gets Deleted (Your Personal Data)**
-- Your user account and login credentials
-- Personal profile information (name, email, location)
-- Contact preferences and settings
-- Direct association between you and your cars
-
-### 🚗 **What Gets Preserved (Anonymized Car Data)**
-- Car technical specifications and history
-- Registry completeness for community research
-- Database integrity and consistency
-
-### 📋 **The Process**
-1. **Immediate:** Your personal data is permanently removed
-2. **Car Ownership:** Transferred to a system account called "noowner"
-3. **Anonymization:** Cars become community data, not linked to you
-4. **Audit Trail:** All actions are logged for compliance
-
-### 🤔 **Why This Approach?**
-- **Community Benefit:** Preserves valuable car history for researchers and enthusiasts
-- **GDPR Compliant:** Removes your personal data while maintaining legitimate business interest
-- **Database Integrity:** Prevents broken links and maintains data quality
-- **Transparency:** Complete audit trail of all deletion activities
-
-**Important:** Deletion may reduce registry completeness, but we respect your right to be forgotten while preserving community value.
-
----
-
-## Contact & Questions
-
-### 📧 **Get In Touch**
-For questions about this policy or your data rights:
-**Email:** info@elanregistry.org
-
-### 📝 **Exercising Your Rights**
-To access, correct, or delete your data, please contact the site administrator with your request.
-
----
-
-## Policy Updates
-
-We may update this Privacy Policy occasionally. When we do:
-- Changes will be posted on this page
-- The effective date will be updated
-- Significant changes may be announced to users
-
----
-
-## Compliance Statement
-
-This Privacy Policy is designed to comply with:
-- **General Data Protection Regulation (GDPR)**
-- **Data protection best practices**
-- **Community transparency standards**
-
-We are committed to protecting your privacy while maintaining a valuable resource for the Lotus Elan community.
-
----
-
-*Last Updated: September 6, 2025*
+_Last updated: May 6, 2026_
