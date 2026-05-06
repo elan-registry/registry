@@ -12,7 +12,7 @@ When you sign up, we ask for a username and password (the password is hashed, ne
 
 For each car you add, we store the usual specs: model, year, chassis number, color, engine, plus dates of purchase or sale and any notes you want to include. You can add website links too.
 
-If you upload photos, we strip all EXIF metadata before saving them. That includes GPS coordinates, camera details, and timestamps. Y
+If you upload photos, we strip all EXIF metadata before saving them. That includes GPS coordinates, camera details, and timestamps.
 
 We ask for a city, state, and country so cars can be browsed by region, but we deliberately fuzz the location data so it isn't pinpoint accurate. Nobody needs to know exactly where your Elan lives.
 
