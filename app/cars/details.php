@@ -773,8 +773,11 @@ window.carDetailsConfig = {
     });
 
     map.on('error', function (e) {
-        // Tile-level and source errors are often transient; let MapLibre retry
-        if (e.sourceId !== undefined) return;
+        // Tile and source load errors are transient — let MapLibre retry
+        if (e.sourceId !== undefined || (e.error && typeof e.error.status === 'number')) {
+            console.warn('[ElanRegistry] Map tile/source error (non-fatal):', e.error);
+            return;
+        }
         const mapEl = document.getElementById('map');
         if (!mapEl) return;
         while (mapEl.firstChild) {

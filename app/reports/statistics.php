@@ -334,8 +334,16 @@ window.statisticsConfig = {
 };
 </script>
 
+<?php
+try {
+    $mapMarkersJson = json_encode($mapMarkers, JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP | JSON_THROW_ON_ERROR);
+} catch (\JsonException $e) {
+    logger(0, LogCategories::LOG_CATEGORY_ERROR, 'Failed to encode map markers: ' . $e->getMessage());
+    $mapMarkersJson = '[]';
+}
+?>
 <script>
-window.elanMapMarkers = <?= json_encode($mapMarkers, JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP | JSON_THROW_ON_ERROR) ?>;
+window.elanMapMarkers = <?= $mapMarkersJson ?>;
 </script>
 
 <!-- Load Chart.js -->

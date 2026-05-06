@@ -1235,7 +1235,11 @@ function renderMapErrorUI(el) {
  */
 function statisticsInitMap() {
   const mapEl = document.getElementById("map");
-  if (!mapEl || typeof maplibregl === "undefined") return;
+  if (!mapEl) return;
+  if (typeof maplibregl === "undefined") {
+    renderMapErrorUI(mapEl);
+    return;
+  }
 
   const map = new maplibregl.Map({
     container: "map",
@@ -1261,8 +1265,11 @@ function statisticsInitMap() {
   });
 
   map.on("error", function (e) {
-    // Tile-level and source errors are often transient; let MapLibre retry
-    if (e.sourceId !== undefined) return;
+    // Tile and source load errors are transient — let MapLibre retry
+    if (e.sourceId !== undefined || (e.error && typeof e.error.status === "number")) {
+      console.warn("[ElanRegistry] Map tile/source error (non-fatal):", e.error);
+      return;
+    }
     const el = document.getElementById("map");
     if (el) {
       renderMapErrorUI(el);
