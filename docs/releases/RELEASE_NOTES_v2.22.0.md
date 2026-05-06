@@ -26,6 +26,7 @@ Run the following FIX scripts in order after deploying:
 
 - **Removed Google Maps API Key Setting** ([#724](https://github.com/unibrain1/elanregistry/issues/724)): Google Maps API key field and "Test Maps API Key" button removed from Admin Settings; `elan_google_maps_key` cleaned up via FIX script.
 - **Fixed Dangling Page Reference in Seed SQL** ([#799](https://github.com/unibrain1/elanregistry/issues/799)): `database/3-configuration.sql` now correctly references `tab-health.php` (page ID 306) instead of the deleted `tab-system.php`.
+- **Architecture Wiki Restored to Main** ([#828](https://github.com/unibrain1/elanregistry/pull/828)): v2.20.0 architecture documentation update (admin panel split, scripts restructure, new tabs) was accidentally committed to `master` and is now synced to `main` and the live GitHub wiki.
 - **Removed Deprecated Google Geocoding Code** ([#433](https://github.com/unibrain1/elanregistry/issues/433)): Deleted `LocationGeocoder.php` and removed deprecated `geocodeAddress()`/`applyGeocoding()` methods from `ElanRegistryOwner`; cleaned up `elan_google_geo_key` via FIX script.
 
 ## Issues Resolved
