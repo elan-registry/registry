@@ -18,6 +18,7 @@ Run the following FIX scripts in order after deploying:
 
 ### Improvements
 
+- **Updated Privacy Policy** ([#771](https://github.com/unibrain1/elanregistry/issues/771)): Privacy Policy updated to reflect the v2.22.0 Google-free migration — location/mapping section now discloses OpenStreetMap tile servers and Nominatim geocoding; confirms no Google services are in use. Effective date updated to May 6, 2026.
 - **Faster Car Saves** ([#796](https://github.com/unibrain1/elanregistry/issues/796)): Fixed v2.19.0 regression where FilePond re-processed all existing images on every form submit, causing slow saves even for simple text-only changes.
 
 ## Admin-Facing Changes
@@ -33,5 +34,6 @@ Run the following FIX scripts in order after deploying:
 
 - [#433](https://github.com/unibrain1/elanregistry/issues/433) — CLEANUP: Remove deprecated Google Geocoding API code
 - [#724](https://github.com/unibrain1/elanregistry/issues/724) — feat: replace Google Maps with Leaflet/OpenStreetMap for all map display
+- [#771](https://github.com/unibrain1/elanregistry/issues/771) — Update Privacy Policy for v2.22.0 Google-free migration
 - [#796](https://github.com/unibrain1/elanregistry/issues/796) — Bug: saving a car is slow even for simple text-only changes (v2.19.0 regression)
 - [#799](https://github.com/unibrain1/elanregistry/issues/799) — bug: database/3-configuration.sql references deleted tab-system.php (page ID 306)
