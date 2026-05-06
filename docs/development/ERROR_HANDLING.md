@@ -148,7 +148,7 @@ handling and logging.
 | OwnerSearchException | 500 | OwnerSearch | Owner search |
 | ValidationException | 422 | ValidationError | Generic validation |
 | LocationServiceException | 400 | LocationService | Location API |
-| GeocodingException | 400 | Geocode | Maps geocoding |
+| GeocodingException | 500 | Geocode | Reserved for future geocoding errors |
 | ImageProcessingException | 500 | ImageRemoval | Image resize/upload |
 | SchemaException | 500 | SchemaOperationError | Database schema |
 | BackupException | 500 | BackupManager | Backup operations |

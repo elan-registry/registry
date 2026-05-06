@@ -87,9 +87,8 @@ ON DUPLICATE KEY UPDATE
 -- NOTE: These settings require manual configuration with actual API keys and credentials
 
 -- Google API Keys (PLACEHOLDER - Replace with actual keys)
-UPDATE settings SET 
-  elan_google_maps_key = '[GOOGLE_MAPS_API_KEY_REQUIRED]',
-  elan_google_geo_key = '[GOOGLE_GEOCODING_API_KEY_REQUIRED]'
+UPDATE settings SET
+  elan_google_maps_key = '[GOOGLE_MAPS_API_KEY_REQUIRED]'
 WHERE id = 1;
 
 -- NOTE: reCAPTCHA configuration removed - plugin is optional

@@ -39,17 +39,14 @@ if (!empty($lat) && !empty($lon)) {
     $locationData['lat'] = (float)$lat;
     $locationData['lon'] = (float)$lon;
 } else {
-    // Fallback to old geocoding method if coordinates not provided
-    // (for backward compatibility or if location picker fails)
-    /** @deprecated Fallback only - location picker should provide coordinates */
-    $geoResult = ElanRegistryOwner::geocodeAddress($city, $state, $country);
-    if (!empty($geoResult)) {
-        $locationData = array_merge($locationData, $geoResult);
-    }
+    logger(0, LogCategories::LOG_CATEGORY_USER, "New user {$theNewId}: no coordinates provided during registration; location picker may not have been used");
 }
 
 // Update profile with all location data at once
-$db->update('profiles', ["user_id", "=", $theNewId], $locationData);
+$updateResult = $db->update('profiles', ["user_id", "=", $theNewId], $locationData);
+if (!$updateResult) {
+    logger(0, LogCategories::LOG_CATEGORY_DATABASE_ERROR, "Failed to set location during user creation for user_id={$theNewId}");
+}
 
 // Even if you do not want to add additional fields to the the join form, this is a great opportunity to add this user to another database table.
 // Get creative!

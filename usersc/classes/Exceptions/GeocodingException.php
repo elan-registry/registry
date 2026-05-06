@@ -10,12 +10,9 @@ use Throwable;
 /**
  * GeocodingException
  *
- * Exception thrown when geocoding operations fail.
- * Used when Google Maps API calls fail, return invalid data,
- * or when network/API key issues occur.
- *
- * Also thrown when LocationGeocoder is instantiated directly
- * instead of through ElanRegistryOwner::geocodeAddress().
+ * Reserved exception for geocoding operation failures.
+ * No active callers as of v2.22.0 (LocationGeocoder removed in v2.22.0).
+ * Retained for future geocoding integrations.
  *
  * @package ElanRegistry
  * @subpackage Exceptions
@@ -53,7 +50,7 @@ class GeocodingException extends ElanRegistryException
      */
     protected static function getDefaultLogCategory(): string
     {
-        return LogCategories::LOG_CATEGORY_SYSTEM_ERROR;
+        return LogCategories::LOG_CATEGORY_GEOCODE;
     }
 
     /**

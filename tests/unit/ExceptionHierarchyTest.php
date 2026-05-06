@@ -397,7 +397,7 @@ class ExceptionHierarchyTest extends TestCase
             'OwnerValidationException' => [OwnerValidationException::class, 'ValidationError'],
             'OwnerUpdateException' => [OwnerUpdateException::class, 'OwnerActions'],
             'ImageProcessingException' => [ImageProcessingException::class, 'FileError'],
-            'GeocodingException' => [GeocodingException::class, 'SystemError'],
+            'GeocodingException' => [GeocodingException::class, 'Geocode'],
             'BackupException' => [BackupException::class, 'BackupError'],
             'SchemaException' => [SchemaException::class, 'DatabaseError'],
             'ValidationException' => [ValidationException::class, 'ValidationError'],
