@@ -25,6 +25,9 @@ ini_set('allow_url_fopen', 1);
 // usersc/includes/security_headers.php loaded during UserSpice initialization
 require_once '../users/init.php';
 require_once $abs_us_root.$us_url_root.'usersc/includes/elanregistry_prep.php';
+
+use ElanRegistry\Input;
+
 $pw_settings = $db->query("SELECT * FROM us_password_strength WHERE id = 1")->first();
 if (!isset($pw_settings->meter_active)) {
     $pw_settings->meter_active = 0;
@@ -89,8 +92,8 @@ if (Input::exists()) {
         exit;
     }
 
-    $fname = Input::get('fname');
-    $lname = Input::get('lname');
+    $fname = ucfirst(Input::raw('fname') ?? '');
+    $lname = ucfirst(Input::raw('lname') ?? '');
     $email = Input::get('email');
     $username = Input::get('username');
 
@@ -166,7 +169,7 @@ if (Input::exists()) {
             $user = new User();
             $join_date = date('Y-m-d H:i:s');
             $params = [
-                      'fname' => Input::get('fname'),
+                      'fname' => $fname,
                       'email' => $email,
                       'username' => $username,
                       'vericode' => $vericode,
@@ -187,9 +190,9 @@ if (Input::exists()) {
                 }
                 $fields = [
                     'username' => $username,
-                    'fname' => ucfirst(Input::get('fname')),
-                    'lname' => ucfirst(Input::get('lname')),
-                    'email' => Input::get('email'),
+                    'fname' => $fname,
+                    'lname' => $lname,
+                    'email' => $email,
                     'password' => password_hash(Input::get('password', true), PASSWORD_BCRYPT, ['cost' => 13]),
                     'permissions' => 1,
                     'join_date' => $join_date,
