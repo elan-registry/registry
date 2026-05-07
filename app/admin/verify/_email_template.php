@@ -155,7 +155,7 @@
             </tr>
             <tr>
                 <td>Chassis</td>
-                <td><?= $car->chassis ?>
+                <td><?= htmlspecialchars((string)($car->chassis ?? ''), ENT_QUOTES, 'UTF-8') ?>
                 </td>
             </tr>
             <tr>
@@ -170,7 +170,7 @@
             </tr>
             <tr>
                 <td>Color</td>
-                <td><?= $car->color ?>
+                <td><?= htmlspecialchars((string)($car->color ?? ''), ENT_QUOTES, 'UTF-8') ?>
                 </td>
             </tr>
             <tr>
@@ -185,7 +185,7 @@
             </tr>
             <tr>
                 <td>Comment</td>
-                <td><?= $car->comments ?>
+                <td><?= htmlspecialchars((string)($car->comments ?? ''), ENT_QUOTES, 'UTF-8') ?>
                 </td>
             </tr>
             <tr>
@@ -197,7 +197,7 @@
                 <td>Website</td>
                 <?php
                 if (!empty($car->website)) {
-                    echo '<td> <a target="_blank" href="' . $car->website . '">Website</a></td>';
+                    echo '<td> <a target="_blank" href="' . htmlspecialchars((string)$car->website, ENT_QUOTES, 'UTF-8') . '">Website</a></td>';
                 } else {
                     echo "<td></td>";
                 }

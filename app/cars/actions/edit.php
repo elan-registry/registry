@@ -375,13 +375,12 @@ function updateChassis(array &$cardetails): void
     
     // Check if validation override is enabled
     // Checkbox only sends value when checked, so check if parameter exists and has value '1'
-    $chassisOverrideRaw = Input::get('chassis_override');
+    $chassisOverrideRaw = \ElanRegistry\Input::raw('chassis_override');
     $chassisOverride = ($chassisOverrideRaw === '1');
-    
-    // Update 'chassis'
-    if (Input::get('chassis')) {
-        $cardetails['chassis'] = Input::get('chassis');
-        $chassis = $cardetails['chassis'];
+
+    $chassis = \ElanRegistry\Input::raw('chassis');
+    if ($chassis !== null && $chassis !== '') {
+        $cardetails['chassis'] = $chassis;
         $year = (int)$cardetails['year'];
         $model = $cardetails['model']; // Contains series|variant|type format
         
@@ -401,13 +400,17 @@ function updateChassis(array &$cardetails): void
         } catch (ElanRegistryException $e) {
             $errors[] = 'Chassis validation error: ' . $e->getUserMessage();
             return;
+        } catch (\Throwable $e) {
+            logger($user->data()->id, LogCategories::LOG_CATEGORY_SYSTEM_ERROR, 'Unexpected ChassisValidator error for chassis "' . htmlspecialchars($chassis, ENT_QUOTES, 'UTF-8') . '": ' . $e->getMessage());
+            $errors[] = 'An unexpected error occurred validating the chassis number. Please try again.';
+            return;
         }
         
         // Handle validation result
         if ($result['valid'] && !$result['override_used']) {
-            $successes[] = 'Chassis: ' . $cardetails['chassis'];
+            $successes[] = 'Chassis: ' . htmlspecialchars($cardetails['chassis'], ENT_QUOTES, 'UTF-8');
         } elseif ($result['valid'] && $result['override_used']) {
-            $successes[] = 'Chassis: ' . $cardetails['chassis'] . ' (Override used)';
+            $successes[] = 'Chassis: ' . htmlspecialchars($cardetails['chassis'], ENT_QUOTES, 'UTF-8') . ' (Override used)';
             $chassis_override_used = true; // Track that override was used for comments
         } else {
             $errors[] = '<strong>ERROR:</strong> Chassis Validation Failed: ' . $result['error_reason'];
@@ -425,10 +428,10 @@ function updateChassis(array &$cardetails): void
  */
 function updateColor(array &$cardetails): void
 {
-    // Update 'color'
-    if (Input::get('color')) {
-        $cardetails['color'] = Input::get('color');
-        $successes[] = 'Color: ' . $cardetails['color'];
+    $color = \ElanRegistry\Input::raw('color');
+    if ($color !== null && $color !== '') {
+        $cardetails['color'] = $color;
+        $successes[] = 'Color: ' . htmlspecialchars($color, ENT_QUOTES, 'UTF-8');
     } else {
         $cardetails['color'] = null;
     }
@@ -442,11 +445,10 @@ function updateColor(array &$cardetails): void
  */
 function updateEngine(array &$cardetails): void
 {
-    // Update 'engine'
-    if (Input::get('engine')) {
-        $cardetails['engine'] = Input::get('engine');
-        $cardetails['engine'] = str_replace(" ", "", strtoupper(trim($cardetails['engine'])));
-        $successes[] = 'Engine: ' . $cardetails['engine'];
+    $engine = \ElanRegistry\Input::raw('engine');
+    if ($engine !== null && $engine !== '') {
+        $cardetails['engine'] = str_replace(" ", "", strtoupper(trim($engine)));
+        $successes[] = 'Engine: ' . htmlspecialchars($cardetails['engine'], ENT_QUOTES, 'UTF-8');
     } else {
         $cardetails['engine'] = null;
     }
@@ -496,10 +498,10 @@ function updateSolddate(array &$cardetails): void
  */
 function updateWebsite(array &$cardetails): void
 {
-    // Update 'website'
-    if (Input::get('website')) {
-        $cardetails['website'] = Input::get('website');
-        $successes[] = 'Website: ' . $cardetails['website'];
+    $website = \ElanRegistry\Input::raw('website');
+    if ($website !== null && $website !== '') {
+        $cardetails['website'] = $website;
+        $successes[] = 'Website: ' . htmlspecialchars($website, ENT_QUOTES, 'UTF-8');
     } else {
         $cardetails['website'] = null;
     }
