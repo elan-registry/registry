@@ -67,7 +67,10 @@ if ($post_attempted) {
     $comments = Input::raw('comments');
 
     // Validate required fields
-    if (empty($name) || empty($email_from) || empty($id_from) || empty($comments)) {
+    if ($name === null || $name === '' ||
+        $email_from === null || $email_from === '' ||
+        $id_from === null || $id_from === '' ||
+        $comments === null || $comments === '') {
         $errors[] = 'We are sorry, but there appears to be a problem with the form you submitted.';
     }
 
