@@ -72,6 +72,24 @@ final class Issue838RegressionTest extends TestCase
     }
 
     /**
+     * A comment consisting solely of "0" must not be silently discarded.
+     *
+     * The fix changed the empty-value guard from a truthy check (where PHP treats
+     * "0" as falsy) to an explicit !== null && !== '' check. This verifies "0"
+     * is preserved as a non-empty comment value.
+     */
+    public function testLiteralZeroCommentIsNotDiscarded(): void
+    {
+        $_POST['comments'] = '0';
+
+        $result = Input::raw('comments');
+
+        $this->assertSame('0', $result, 'Input::raw() must return "0" unchanged');
+        $this->assertNotNull($result, '"0" must not be treated as absent');
+        $this->assertNotSame('', $result, '"0" must pass the !== "" guard in updateComments()');
+    }
+
+    /**
      * Re-saving a value retrieved via Input::raw() must not accumulate encoding.
      *
      * The upstream \Input::get() bug caused double-encoding: first save wrote
