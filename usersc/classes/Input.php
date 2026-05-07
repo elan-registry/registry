@@ -6,11 +6,11 @@ namespace ElanRegistry;
 /**
  * Project-owned input helper.
  *
- * Supplements the upstream UserSpice Input class without modifying it.
- * Use Input::raw() (with `use ElanRegistry\Input;`) for all values destined
- * for the database. Use the global \Input::get() only where the returned value
- * is rendered directly into HTML without further escaping (legacy pattern; avoid
- * in new code — it encodes at read time, not at output time).
+ * Supplements the upstream UserSpice \Input class without modifying it.
+ * Files that import this class with `use ElanRegistry\Input` can call:
+ *   - Input::raw()  — unencoded value for database storage
+ *   - Input::get()  — HTML-encoded value (delegates to \Input::get())
+ *   - Input::exists() — POST/GET presence check (delegates to \Input::exists())
  *
  * @since v2.23.0
  * @see https://github.com/unibrain1/elanregistry/issues/843
@@ -47,5 +47,40 @@ class Input
             return null;
         }
         return $trim ? trim($value) : $value;
+    }
+
+    /**
+     * Delegates to \Input::get() — returns an HTML-encoded value from $_POST or $_GET.
+     *
+     * When the key is absent, returns $default_value as-is (not HTML-encoded).
+     *
+     * @param string $item            The POST/GET key to retrieve.
+     * @param mixed  $trim_or_default Boolean to control trimming, or a non-bool default value.
+     * @param bool   $fallback        If true, uses htmlentities instead of htmlspecialchars (both use ENT_QUOTES).
+     * @param mixed  $default_value   Fallback when the key is absent (used when 2nd param is bool).
+     * @return mixed The sanitized value or the default value.
+     */
+    public static function get(string $item, mixed $trim_or_default = true, bool $fallback = false, mixed $default_value = ''): mixed
+    {
+        return \Input::get($item, $trim_or_default, $fallback, $default_value);
+    }
+
+    /**
+     * Delegates to \Input::exists() — checks whether the named superglobal is non-empty.
+     *
+     * Checks $_POST when $type is 'post', $_GET when $type is 'get'.
+     *
+     * @param string $type 'post' or 'get' (default 'post').
+     * @return bool True when the superglobal is non-empty.
+     * @throws \InvalidArgumentException When $type is not 'post' or 'get'.
+     */
+    public static function exists(string $type = 'post'): bool
+    {
+        if ($type !== 'post' && $type !== 'get') {
+            throw new \InvalidArgumentException(
+                "ElanRegistry\\Input::exists() expects 'post' or 'get', got '{$type}'."
+            );
+        }
+        return \Input::exists($type);
     }
 }

@@ -4,6 +4,7 @@ declare(strict_types=1);
 use ElanRegistry\Exceptions\CarValidationException;
 use ElanRegistry\Exceptions\ElanRegistryException;
 use ElanRegistry\Exceptions\ImageProcessingException;
+use ElanRegistry\Input;
 
 /**
  * editCar.php - Car management endpoint
@@ -375,10 +376,10 @@ function updateChassis(array &$cardetails): void
     
     // Check if validation override is enabled
     // Checkbox only sends value when checked, so check if parameter exists and has value '1'
-    $chassisOverrideRaw = \ElanRegistry\Input::raw('chassis_override');
+    $chassisOverrideRaw = Input::raw('chassis_override');
     $chassisOverride = ($chassisOverrideRaw === '1');
 
-    $chassis = \ElanRegistry\Input::raw('chassis');
+    $chassis = Input::raw('chassis');
     if ($chassis !== null && $chassis !== '') {
         $cardetails['chassis'] = $chassis;
         $year = (int)$cardetails['year'];
@@ -428,7 +429,7 @@ function updateChassis(array &$cardetails): void
  */
 function updateColor(array &$cardetails): void
 {
-    $color = \ElanRegistry\Input::raw('color');
+    $color = Input::raw('color');
     if ($color !== null && $color !== '') {
         $cardetails['color'] = $color;
         $successes[] = 'Color: ' . htmlspecialchars($color, ENT_QUOTES, 'UTF-8');
@@ -445,7 +446,7 @@ function updateColor(array &$cardetails): void
  */
 function updateEngine(array &$cardetails): void
 {
-    $engine = \ElanRegistry\Input::raw('engine');
+    $engine = Input::raw('engine');
     if ($engine !== null && $engine !== '') {
         $cardetails['engine'] = str_replace(" ", "", strtoupper(trim($engine)));
         $successes[] = 'Engine: ' . htmlspecialchars($cardetails['engine'], ENT_QUOTES, 'UTF-8');
@@ -498,7 +499,7 @@ function updateSolddate(array &$cardetails): void
  */
 function updateWebsite(array &$cardetails): void
 {
-    $website = \ElanRegistry\Input::raw('website');
+    $website = Input::raw('website');
     if ($website !== null && $website !== '') {
         $cardetails['website'] = $website;
         $successes[] = 'Website: ' . htmlspecialchars($website, ENT_QUOTES, 'UTF-8');
@@ -518,7 +519,7 @@ function updateComments(array &$cardetails): void
     global $successes, $chassis_override_used;
     
     // Update 'comments'
-    $comments = \ElanRegistry\Input::raw('comments');
+    $comments = Input::raw('comments');
     if ($comments !== null && $comments !== '') {
         $cardetails['comments'] = $comments;
         $successes[] = 'Comments: Updated';
