@@ -516,8 +516,9 @@ function updateComments(array &$cardetails): void
     global $successes, $chassis_override_used;
     
     // Update 'comments'
-    if (Input::get('comments')) {
-        $cardetails['comments'] = Input::get('comments');
+    $comments = \ElanRegistry\Input::raw('comments');
+    if ($comments !== null && $comments !== '') {
+        $cardetails['comments'] = $comments;
         $successes[] = 'Comments: Updated';
     } else {
         $cardetails['comments'] = null;
