@@ -287,20 +287,41 @@ See [LOG_CATEGORIES.md](LOG_CATEGORIES.md) and [ERROR_HANDLING.md](ERROR_HANDLIN
 All user input **MUST** be validated and sanitized:
 
 ```php
+use ElanRegistry\Input;
+
 public function updateColor(array &$cardetails): void
 {
-    $color = Input::get('color');
-  
+    $color = Input::raw('color');
+
     // ✅ REQUIRED - Validate input
     if (empty($color) || strlen($color) > 50) {
         throw new ValidationException('Invalid color value');
     }
-  
-    // ✅ REQUIRED - Sanitize for output
-    $cardetails['color'] = htmlspecialchars(trim($color), ENT_QUOTES, 'UTF-8');
+
+    // Store plain text; escape at output with htmlspecialchars()
+    $cardetails['color'] = $color;
 }
 
-```text
+```
+
+### **Input Handling and Output Encoding**
+
+Store plain text via `Input::raw()`; escape at the **output** context (templates, email).
+
+```php
+// ✅ CORRECT — plain text in DB, escaped at render time
+<?= htmlspecialchars($car->color, ENT_QUOTES, 'UTF-8') ?>
+
+// ❌ WRONG — encodes at storage (double-encoding bug)
+$color = \Input::get('color');
+$cardetails['color'] = htmlspecialchars($color, ENT_QUOTES, 'UTF-8');
+```
+
+**Rules:**
+- `Input::raw()` (via `use ElanRegistry\Input`) → values going to the database
+- `\Input::get()` → legacy pattern only (value used directly in HTML, no further escaping)
+- `htmlspecialchars()` → always at output (HTML templates, email templates)
+- Parameterised queries handle SQL safety; encoding at storage is never a SQL defence
 
 ### **Database Operations**
 Always use parameterized queries:
