@@ -57,9 +57,23 @@ final class CarValidatorTest extends TestCase
 
     public function testValidateAndSanitizeFieldsSanitizesChassis(): void
     {
-        $fields = ['chassis' => '<script>ABC123</script>'];
+        $fields = ['chassis' => '  ABC123  '];
         $result = $this->validator->validateAndSanitizeFields($fields, false);
         $this->assertEquals('ABC123', $result['chassis']);
+    }
+
+    public function testValidateAndSanitizeFieldsPreservesSpecialCharsInColor(): void
+    {
+        $fields = ['color' => "Lagoon Blue & Grey"];
+        $result = $this->validator->validateAndSanitizeFields($fields, false);
+        $this->assertSame("Lagoon Blue & Grey", $result['color']);
+    }
+
+    public function testValidateAndSanitizeFieldsPreservesSpecialCharsInEngine(): void
+    {
+        $fields = ['engine' => 'Twin-Cam <36>'];
+        $result = $this->validator->validateAndSanitizeFields($fields, false);
+        $this->assertSame('Twin-Cam <36>', $result['engine']);
     }
 
     public function testValidateAndSanitizeFieldsRejectShortChassis(): void
@@ -303,24 +317,30 @@ final class CarValidatorTest extends TestCase
     }
 
     // ============================================================
-    // sanitizeString tests
+    // normalizeString tests
     // ============================================================
 
-    public function testSanitizeStringStripsHtml(): void
+    public function testNormalizeStringPreservesHtml(): void
     {
-        $result = $this->validator->sanitizeString('<b>Bold</b> text', 100);
-        $this->assertEquals('Bold text', $result);
+        $result = $this->validator->normalizeString('<b>Bold</b> text', 100);
+        $this->assertEquals('<b>Bold</b> text', $result);
     }
 
-    public function testSanitizeStringTrimsWhitespace(): void
+    public function testNormalizeStringPreservesSpecialCharacters(): void
     {
-        $result = $this->validator->sanitizeString('  hello  ', 100);
+        $result = $this->validator->normalizeString('clearance <2cm & engine "Twin Cam"', 100);
+        $this->assertEquals('clearance <2cm & engine "Twin Cam"', $result);
+    }
+
+    public function testNormalizeStringTrimsWhitespace(): void
+    {
+        $result = $this->validator->normalizeString('  hello  ', 100);
         $this->assertEquals('hello', $result);
     }
 
-    public function testSanitizeStringTruncates(): void
+    public function testNormalizeStringTruncates(): void
     {
-        $result = $this->validator->sanitizeString('Long string here', 4);
+        $result = $this->validator->normalizeString('Long string here', 4);
         $this->assertEquals('Long', $result);
     }
 

@@ -53,7 +53,7 @@ class CarValidator
             switch ($key) {
                 case 'chassis':
                     if (!empty($value)) {
-                        $validatedFields[$key] = $this->sanitizeString($value, 50);
+                        $validatedFields[$key] = $this->normalizeString($value, 50);
                         if (strlen($validatedFields[$key]) < 3) {
                             throw new CarValidationException('Chassis number must be at least 3 characters long');
                         }
@@ -65,7 +65,7 @@ class CarValidator
                 case 'model':
                     if (!empty($value)) {
                         // Sanitize input
-                        $validatedFields[$key] = $this->sanitizeString($value, 100);
+                        $validatedFields[$key] = $this->normalizeString($value, 100);
 
                         // Validate format: "series|variant|type"
                         $parts = explode('|', $validatedFields[$key]);
@@ -115,13 +115,13 @@ class CarValidator
                 case 'color':
                 case 'engine':
                     if (!empty($value)) {
-                        $validatedFields[$key] = $this->sanitizeString($value, 100);
+                        $validatedFields[$key] = $this->normalizeString($value, 100);
                     }
                     break;
 
                 case 'comments':
                     if (!empty($value)) {
-                        $validatedFields[$key] = $this->sanitizeString($value, 5000);
+                        $validatedFields[$key] = $this->normalizeString($value, 5000);
                     }
                     break;
 
@@ -167,7 +167,7 @@ class CarValidator
                 case 'state':
                 case 'country':
                     if (!empty($value)) {
-                        $validatedFields[$key] = $this->sanitizeString($value, 100);
+                        $validatedFields[$key] = $this->normalizeString($value, 100);
                     }
                     break;
 
@@ -191,15 +191,16 @@ class CarValidator
     }
 
     /**
-     * Sanitize string input
+     * Normalize string input by trimming whitespace and enforcing a maximum length.
+     * HTML tags and special characters are preserved; output escaping is the caller's responsibility.
      *
-     * @param string $input Input string to sanitize
+     * @param string $input Input string to normalize
      * @param int $maxLength Maximum allowed length
-     * @return string Sanitized string
+     * @return string Normalized string
      */
-    public function sanitizeString(string $input, int $maxLength): string
+    public function normalizeString(string $input, int $maxLength): string
     {
-        $sanitized = trim(strip_tags($input));
+        $sanitized = trim($input);
 
         if (strlen($sanitized) > $maxLength) {
             $sanitized = substr($sanitized, 0, $maxLength);
