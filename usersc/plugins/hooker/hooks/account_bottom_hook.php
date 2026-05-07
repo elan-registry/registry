@@ -200,7 +200,7 @@ $cars = Car::findByOwner($user_id);
                                     <i class="fas fa-comment text-secondary"></i> Your Comments
                                 </h6>
                                 <div class="bg-light p-3 rounded">
-                                    <?= nl2br(htmlspecialchars($carData->comments)) ?>
+                                    <?= nl2br(htmlspecialchars($carData->comments, ENT_QUOTES, 'UTF-8')) ?>
                                 </div>
                                 <?php } ?>
 
@@ -303,7 +303,7 @@ $cars = Car::findByOwner($user_id);
                                     
                                     <?php if (!empty($factoryData->note)) { ?>
                                     <dt class="col-sm-5 text-muted">Notes</dt>
-                                    <dd class="col-sm-7"><?= htmlspecialchars($factoryData->note) ?></dd>
+                                    <dd class="col-sm-7"><?= htmlspecialchars($factoryData->note, ENT_QUOTES, 'UTF-8') ?></dd>
                                     <?php } ?>
                                 </dl>
                             </div>

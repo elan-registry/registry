@@ -200,7 +200,7 @@ if (!empty($_GET)) {
                                         }
                                     } else {
                                         echo "<div class='text-white-50'><i class='fas fa-sign-in-alt'></i> Log in to contact owner</div>";
-                                        echo "<input type='hidden' name='car_id' id='car_id' value='" . $carData->id . "' />";
+                                        echo "<input type='hidden' name='car_id' id='car_id' value='" . htmlspecialchars((string)$carData->id, ENT_QUOTES, 'UTF-8') . "' />";
                                     }
                                     ?>
                                 </div>
@@ -305,7 +305,7 @@ if (!empty($_GET)) {
                                 <i class="fas fa-comment text-secondary"></i> Owner Comments
                             </h6>
                             <div class="bg-light p-3 rounded">
-                                <?= nl2br(htmlspecialchars($carData->comments)) ?>
+                                <?= nl2br(htmlspecialchars($carData->comments, ENT_QUOTES, 'UTF-8')) ?>
                             </div>
                             <?php } ?>
 
@@ -476,7 +476,7 @@ if (!empty($_GET)) {
                             <hr>
                             <h6 class="text-muted mb-2">Factory Notes</h6>
                             <div class="bg-light p-3 rounded">
-                                <small><?= htmlspecialchars($factoryData->note) ?></small>
+                                <small><?= htmlspecialchars($factoryData->note, ENT_QUOTES, 'UTF-8') ?></small>
                             </div>
                             <?php } ?>
                         </div>
