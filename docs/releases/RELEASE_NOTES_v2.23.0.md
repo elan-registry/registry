@@ -31,6 +31,7 @@ The script creates a `BackupManager` snapshot of `cars`, `users`, and `profiles`
 ## Technical Changes
 
 - **`ElanRegistry\Input::raw()` storage-safe input method** ([#843](https://github.com/unibrain1/elanregistry/issues/843)): New project-owned `ElanRegistry\Input` class in `usersc/classes/Input.php` provides `Input::raw()` — a POST/GET reader that performs no HTML encoding, establishing the correct pattern for all values destined for the database. `CODING_STANDARDS.md` updated with input/output encoding guidance.
+- **Output escaping on car detail and account templates** ([#840](https://github.com/unibrain1/elanregistry/issues/840)): `htmlspecialchars(…, ENT_QUOTES, 'UTF-8')` applied to all unescaped car and factory data output points in `app/cars/details.php` and `usersc/plugins/hooker/hooks/account_bottom_hook.php` (~40 output points total). Location fields (`city`, `state`, `country`) also hardened. Website href restricted to `http`/`https` schemes only and `rel="noopener noreferrer"` added. Regression test added in `tests/playwright/car-details-output-escaping.test.js`.
 
 ## Issues Resolved
 
