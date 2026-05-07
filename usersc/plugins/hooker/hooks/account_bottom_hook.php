@@ -43,6 +43,8 @@ $cars = Car::findByOwner($user_id);
         } else {
             // Display cars with enhanced styling similar to details page
             foreach ($cars as $car) {
+                $carData = $car->data();
+                $factoryData = $car->factory();
             ?>
                 <!-- Car Hero Section -->
                 <div class="card registry-card bg-info text-white mb-4">
@@ -51,8 +53,8 @@ $cars = Car::findByOwner($user_id);
                             <div class="col-md-8">
                                 <h3 class="mb-0">
                                     <i class="fas fa-car me-2"></i>
-                                    <?= $car->data()->year ?> Lotus Elan <?= $car->data()->series ?>
-                                    <?= !empty($car->data()->variant) ? ' (' . $car->data()->variant . ')' : '' ?>
+                                    <?= htmlspecialchars((string)($carData->year ?? ''), ENT_QUOTES, 'UTF-8') ?> Lotus Elan <?= htmlspecialchars($carData->series ?? '', ENT_QUOTES, 'UTF-8') ?>
+                                    <?= !empty($carData->variant) ? ' (' . htmlspecialchars($carData->variant, ENT_QUOTES, 'UTF-8') . ')' : '' ?>
                                 </h3>
                                 <div class="row mt-3">
                                     <div class="col-sm-6 col-lg-3 mb-2">
@@ -60,7 +62,7 @@ $cars = Car::findByOwner($user_id);
                                             <i class="fas fa-hashtag me-3 fa-lg"></i>
                                             <div>
                                                 <div class="text-white-75 fw-medium mb-1">Registry ID</div>
-                                                <div class="fw-bold fs-5"><?= $car->data()->id ?></div>
+                                                <div class="fw-bold fs-5"><?= $carData->id ?></div>
                                             </div>
                                         </div>
                                     </div>
@@ -69,7 +71,7 @@ $cars = Car::findByOwner($user_id);
                                             <i class="fas fa-barcode me-3 fa-lg"></i>
                                             <div>
                                                 <div class="text-white-75 fw-medium mb-1">Chassis</div>
-                                                <div class="fw-bold fs-5"><?= $car->data()->chassis ?: 'Not specified' ?></div>
+                                                <div class="fw-bold fs-5"><?= htmlspecialchars($carData->chassis ?: 'Not specified', ENT_QUOTES, 'UTF-8') ?></div>
                                             </div>
                                         </div>
                                     </div>
@@ -78,7 +80,7 @@ $cars = Car::findByOwner($user_id);
                                             <i class="fas fa-palette me-3 fa-lg"></i>
                                             <div>
                                                 <div class="text-white-75 fw-medium mb-1">Color</div>
-                                                <div class="fw-bold fs-5"><?= $car->data()->color ?: 'Not specified' ?></div>
+                                                <div class="fw-bold fs-5"><?= htmlspecialchars($carData->color ?: 'Not specified', ENT_QUOTES, 'UTF-8') ?></div>
                                             </div>
                                         </div>
                                     </div>
@@ -87,7 +89,7 @@ $cars = Car::findByOwner($user_id);
                                             <i class="fas fa-cog me-3 fa-lg"></i>
                                             <div>
                                                 <div class="text-white-75 fw-medium mb-1">Engine</div>
-                                                <div class="fw-bold fs-5"><?= $car->data()->engine ?: 'Not specified' ?></div>
+                                                <div class="fw-bold fs-5"><?= htmlspecialchars($carData->engine ?: 'Not specified', ENT_QUOTES, 'UTF-8') ?></div>
                                             </div>
                                         </div>
                                     </div>
@@ -97,12 +99,12 @@ $cars = Car::findByOwner($user_id);
                                 <form method='POST' action='<?= $us_url_root ?>app/cars/form.php' class="d-inline me-2">
                                     <input type="hidden" name="csrf" value="<?= Token::generate(); ?>" />
                                     <input type="hidden" name="action" value="updateCar" />
-                                    <input type="hidden" name="car_id" value="<?= $car->data()->id ?>" />
+                                    <input type="hidden" name="car_id" value="<?= $carData->id ?>" />
                                     <button class="btn btn-light btn-lg" type="submit">
                                         <i class="fas fa-edit"></i> Update Car
                                     </button>
                                 </form>
-                                <a class="btn btn-outline-light btn-lg" role="button" href="<?= $us_url_root ?>app/cars/details.php?car_id=<?= $car->data()->id ?>">
+                                <a class="btn btn-outline-light btn-lg" role="button" href="<?= $us_url_root ?>app/cars/details.php?car_id=<?= $carData->id ?>">
                                     <i class="fas fa-eye"></i> View Details
                                 </a>
                             </div>
@@ -122,23 +124,23 @@ $cars = Car::findByOwner($user_id);
                                     <dt class="col-sm-4 text-muted">
                                         <i class="fas fa-calendar text-primary"></i> Model Year
                                     </dt>
-                                    <dd class="col-sm-8"><?= $car->data()->year ?: '<em class="text-muted">Not specified</em>' ?></dd>
+                                    <dd class="col-sm-8"><?= $carData->year ? htmlspecialchars((string)$carData->year, ENT_QUOTES, 'UTF-8') : '<em class="text-muted">Not specified</em>' ?></dd>
                                     
                                     <dt class="col-sm-4 text-muted">
                                         <i class="fas fa-list text-primary"></i> Series
                                     </dt>
-                                    <dd class="col-sm-8"><?= $car->data()->series ?: '<em class="text-muted">Not specified</em>' ?></dd>
+                                    <dd class="col-sm-8"><?= $carData->series ? htmlspecialchars($carData->series, ENT_QUOTES, 'UTF-8') : '<em class="text-muted">Not specified</em>' ?></dd>
                                     
                                     <dt class="col-sm-4 text-muted">
                                         <i class="fas fa-tag text-primary"></i> Type
                                     </dt>
-                                    <dd class="col-sm-8"><?= $car->data()->type ?: '<em class="text-muted">Not specified</em>' ?></dd>
+                                    <dd class="col-sm-8"><?= $carData->type ? htmlspecialchars($carData->type, ENT_QUOTES, 'UTF-8') : '<em class="text-muted">Not specified</em>' ?></dd>
                                     
                                     <dt class="col-sm-4 text-muted">
                                         <i class="fas fa-barcode text-primary"></i> Chassis
                                     </dt>
                                     <dd class="col-sm-8">
-                                        <strong><?= $car->data()->chassis ?: '<em class="text-muted">Not specified</em>' ?></strong>
+                                        <strong><?= $carData->chassis ? htmlspecialchars($carData->chassis, ENT_QUOTES, 'UTF-8') : '<em class="text-muted">Not specified</em>' ?></strong>
                                     </dd>
                                 </dl>
 
@@ -149,42 +151,42 @@ $cars = Car::findByOwner($user_id);
                                 </h6>
                                 <dl class="row mb-4">
                                     <dt class="col-sm-4 text-muted">Color</dt>
-                                    <dd class="col-sm-8"><?= $car->data()->color ?: '<em class="text-muted">Not specified</em>' ?></dd>
+                                    <dd class="col-sm-8"><?= $carData->color ? htmlspecialchars($carData->color, ENT_QUOTES, 'UTF-8') : '<em class="text-muted">Not specified</em>' ?></dd>
                                     
                                     <dt class="col-sm-4 text-muted">Engine</dt>
-                                    <dd class="col-sm-8"><?= $car->data()->engine ?: '<em class="text-muted">Not specified</em>' ?></dd>
+                                    <dd class="col-sm-8"><?= $carData->engine ? htmlspecialchars($carData->engine, ENT_QUOTES, 'UTF-8') : '<em class="text-muted">Not specified</em>' ?></dd>
                                 </dl>
 
-                                <?php if (!empty($car->data()->purchasedate) || !empty($car->data()->solddate) || !empty($car->data()->website)) { ?>
+                                <?php if (!empty($carData->purchasedate) || !empty($carData->solddate) || !empty($carData->website)) { ?>
                                 <hr>
                                 <h6 class="text-muted mb-3">
                                     <i class="fas fa-history text-secondary"></i> Ownership & History
                                 </h6>
                                 <dl class="row mb-4">
-                                    <?php if (!empty($car->data()->purchasedate)) { ?>
+                                    <?php if (!empty($carData->purchasedate)) { ?>
                                     <dt class="col-sm-4 text-muted">Purchase Date</dt>
                                     <dd class="col-sm-8">
                                         <?php 
-                                        $purchaseDate = new DateTime($car->data()->purchasedate);
+                                        $purchaseDate = new DateTime($carData->purchasedate);
                                         echo $purchaseDate->format('F j, Y');
                                         ?>
                                     </dd>
                                     <?php } ?>
                                     
-                                    <?php if (!empty($car->data()->solddate)) { ?>
+                                    <?php if (!empty($carData->solddate)) { ?>
                                     <dt class="col-sm-4 text-muted">Sold Date</dt>
                                     <dd class="col-sm-8">
                                         <?php 
-                                        $soldDate = new DateTime($car->data()->solddate);
+                                        $soldDate = new DateTime($carData->solddate);
                                         echo $soldDate->format('F j, Y');
                                         ?>
                                     </dd>
                                     <?php } ?>
                                     
-                                    <?php if (!empty($car->data()->website)) { ?>
+                                    <?php if (!empty($carData->website) && in_array(strtolower((string)parse_url($carData->website, PHP_URL_SCHEME)), ['http', 'https'], true)) { ?>
                                     <dt class="col-sm-4 text-muted">Website</dt>
                                     <dd class="col-sm-8">
-                                        <a href="<?= $car->data()->website ?>" target="_blank" rel="noopener" class="btn btn-outline-primary btn-sm">
+                                        <a href="<?= htmlspecialchars($carData->website, ENT_QUOTES, 'UTF-8') ?>" target="_blank" rel="noopener noreferrer" class="btn btn-outline-primary btn-sm">
                                             <i class="fas fa-external-link-alt"></i> Visit Website
                                         </a>
                                     </dd>
@@ -192,13 +194,13 @@ $cars = Car::findByOwner($user_id);
                                 </dl>
                                 <?php } ?>
 
-                                <?php if (!empty($car->data()->comments)) { ?>
+                                <?php if (!empty($carData->comments)) { ?>
                                 <hr>
                                 <h6 class="text-muted mb-3">
                                     <i class="fas fa-comment text-secondary"></i> Your Comments
                                 </h6>
                                 <div class="bg-light p-3 rounded">
-                                    <?= nl2br(htmlspecialchars($car->data()->comments)) ?>
+                                    <?= nl2br(htmlspecialchars($carData->comments)) ?>
                                 </div>
                                 <?php } ?>
 
@@ -210,7 +212,7 @@ $cars = Car::findByOwner($user_id);
                                         <small class="text-muted d-block">Added to Registry</small>
                                         <strong>
                                             <?php 
-                                            $createdDate = new DateTime($car->data()->ctime);
+                                            $createdDate = new DateTime($carData->ctime);
                                             echo $createdDate->format('M j, Y');
                                             ?>
                                         </strong>
@@ -220,7 +222,7 @@ $cars = Car::findByOwner($user_id);
                                         <small class="text-muted d-block">Last Updated</small>
                                         <strong>
                                             <?php 
-                                            $modifiedDate = new DateTime($car->data()->mtime);
+                                            $modifiedDate = new DateTime($carData->mtime);
                                             echo $modifiedDate->format('M j, Y');
                                             ?>
                                         </strong>
@@ -241,7 +243,7 @@ $cars = Car::findByOwner($user_id);
                             </div>
                         </div>
                         <!-- Factory Data Card -->
-                        <?php if (!is_null($car->factory())) { ?>
+                        <?php if (!is_null($factoryData)) { ?>
                         <div class="card registry-card">
                             <div class="card-header">
                                 <h4 class="mb-0">
@@ -257,41 +259,41 @@ $cars = Car::findByOwner($user_id);
                                 
                                 <dl class="row">
                                     <dt class="col-sm-5 text-muted">Production Year</dt>
-                                    <dd class="col-sm-7"><?= $car->factory()->year ?: '<em class="text-muted">Unknown</em>' ?></dd>
+                                    <dd class="col-sm-7"><?= $factoryData->year ? htmlspecialchars((string)$factoryData->year, ENT_QUOTES, 'UTF-8') : '<em class="text-muted">Unknown</em>' ?></dd>
                                     
                                     <dt class="col-sm-5 text-muted">Production Month</dt>
-                                    <dd class="col-sm-7"><?= $car->factory()->month ?: '<em class="text-muted">Unknown</em>' ?></dd>
+                                    <dd class="col-sm-7"><?= $factoryData->month ? htmlspecialchars((string)$factoryData->month, ENT_QUOTES, 'UTF-8') : '<em class="text-muted">Unknown</em>' ?></dd>
                                     
                                     <dt class="col-sm-5 text-muted">Production Batch</dt>
-                                    <dd class="col-sm-7"><?= $car->factory()->batch ?: '<em class="text-muted">Unknown</em>' ?></dd>
+                                    <dd class="col-sm-7"><?= $factoryData->batch ? htmlspecialchars((string)$factoryData->batch, ENT_QUOTES, 'UTF-8') : '<em class="text-muted">Unknown</em>' ?></dd>
                                     
                                     <dt class="col-sm-5 text-muted">Factory Type</dt>
-                                    <dd class="col-sm-7"><?= $car->factory()->type ?: '<em class="text-muted">Unknown</em>' ?></dd>
+                                    <dd class="col-sm-7"><?= $factoryData->type ? htmlspecialchars((string)$factoryData->type, ENT_QUOTES, 'UTF-8') : '<em class="text-muted">Unknown</em>' ?></dd>
                                     
                                     <dt class="col-sm-5 text-muted">Factory Chassis</dt>
                                     <dd class="col-sm-7">
-                                        <strong><?= $car->factory()->serial ?: '<em class="text-muted">Unknown</em>' ?></strong>
+                                        <strong><?= $factoryData->serial ? htmlspecialchars((string)$factoryData->serial, ENT_QUOTES, 'UTF-8') : '<em class="text-muted">Unknown</em>' ?></strong>
                                     </dd>
                                     
                                     <dt class="col-sm-5 text-muted">Chassis Suffix</dt>
-                                    <dd class="col-sm-7"><?= $car->factory()->suffix ?: '<em class="text-muted">Unknown</em>' ?></dd>
+                                    <dd class="col-sm-7"><?= $factoryData->suffix ? htmlspecialchars((string)$factoryData->suffix, ENT_QUOTES, 'UTF-8') : '<em class="text-muted">Unknown</em>' ?></dd>
                                     
                                     <dt class="col-sm-5 text-muted">Factory Engine</dt>
                                     <dd class="col-sm-7">
-                                        <?= $car->factory()->engineletter ?><?= $car->factory()->enginenumber ?>
+                                        <?= htmlspecialchars((string)($factoryData->engineletter ?? ''), ENT_QUOTES, 'UTF-8') ?><?= htmlspecialchars((string)($factoryData->enginenumber ?? ''), ENT_QUOTES, 'UTF-8') ?>
                                     </dd>
                                     
                                     <dt class="col-sm-5 text-muted">Gearbox</dt>
-                                    <dd class="col-sm-7"><?= $car->factory()->gearbox ?: '<em class="text-muted">Unknown</em>' ?></dd>
+                                    <dd class="col-sm-7"><?= $factoryData->gearbox ? htmlspecialchars((string)$factoryData->gearbox, ENT_QUOTES, 'UTF-8') : '<em class="text-muted">Unknown</em>' ?></dd>
                                     
                                     <dt class="col-sm-5 text-muted">Factory Color</dt>
-                                    <dd class="col-sm-7"><?= $car->factory()->color ?: '<em class="text-muted">Unknown</em>' ?></dd>
+                                    <dd class="col-sm-7"><?= $factoryData->color ? htmlspecialchars((string)$factoryData->color, ENT_QUOTES, 'UTF-8') : '<em class="text-muted">Unknown</em>' ?></dd>
                                     
                                     <dt class="col-sm-5 text-muted">Build Date</dt>
                                     <dd class="col-sm-7">
                                         <?php 
-                                        if ($car->factory()->builddate) {
-                                            $buildDate = new DateTime($car->factory()->builddate);
+                                        if ($factoryData->builddate) {
+                                            $buildDate = new DateTime($factoryData->builddate);
                                             echo $buildDate->format('F j, Y');
                                         } else {
                                             echo '<em class="text-muted">Unknown</em>';
@@ -299,9 +301,9 @@ $cars = Car::findByOwner($user_id);
                                         ?>
                                     </dd>
                                     
-                                    <?php if (!empty($car->factory()->note)) { ?>
+                                    <?php if (!empty($factoryData->note)) { ?>
                                     <dt class="col-sm-5 text-muted">Notes</dt>
-                                    <dd class="col-sm-7"><?= htmlspecialchars($car->factory()->note) ?></dd>
+                                    <dd class="col-sm-7"><?= htmlspecialchars($factoryData->note) ?></dd>
                                     <?php } ?>
                                 </dl>
                             </div>

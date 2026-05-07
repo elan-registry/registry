@@ -90,7 +90,7 @@ if (!empty($_GET)) {
                             <li class="breadcrumb-item"><a href="<?= $us_url_root ?>" class="text-primary"><i class="fas fa-home"></i> Home</a></li>
                             <li class="breadcrumb-item"><a href="<?= $us_url_root ?>app/cars/index.php" class="text-primary"><i class="fas fa-list"></i> Cars</a></li>
                             <li class="breadcrumb-item active text-muted" aria-current="page">
-                                <i class="fas fa-car"></i> <?= $carData->year ?> <?= $carData->series ?> 
+                                <i class="fas fa-car"></i> <?= htmlspecialchars((string)($carData->year ?? ''), ENT_QUOTES, 'UTF-8') ?> <?= htmlspecialchars($carData->series ?? '', ENT_QUOTES, 'UTF-8') ?> 
                             </li>
                         </ol>
                     </nav>
@@ -106,8 +106,8 @@ if (!empty($_GET)) {
                                 <div class="col-md-8">
                                     <h1 class="mb-0">
                                         <i class="fas fa-car me-2"></i>
-                                        <?= $carData->year ?> Lotus Elan <?= $carData->series ?>
-                                        <?= !empty($carData->variant) ? ' (' . $carData->variant . ')' : '' ?>
+                                        <?= htmlspecialchars((string)($carData->year ?? ''), ENT_QUOTES, 'UTF-8') ?> Lotus Elan <?= htmlspecialchars($carData->series ?? '', ENT_QUOTES, 'UTF-8') ?>
+                                        <?= !empty($carData->variant) ? ' (' . htmlspecialchars($carData->variant, ENT_QUOTES, 'UTF-8') . ')' : '' ?>
                                     </h1>
                                     <div class="row mt-4">
                                         <div class="col-sm-6 col-lg-3 mb-3">
@@ -124,7 +124,7 @@ if (!empty($_GET)) {
                                                 <i class="fas fa-barcode me-3 fa-lg"></i>
                                                 <div>
                                                     <div class="text-white-75 fw-medium mb-1">Chassis</div>
-                                                    <div class="fw-bold fs-5"><?= $carData->chassis ?: 'Not specified' ?></div>
+                                                    <div class="fw-bold fs-5"><?= htmlspecialchars($carData->chassis ?: 'Not specified', ENT_QUOTES, 'UTF-8') ?></div>
                                                 </div>
                                             </div>
                                         </div>
@@ -133,7 +133,7 @@ if (!empty($_GET)) {
                                                 <i class="fas fa-palette me-3 fa-lg"></i>
                                                 <div>
                                                     <div class="text-white-75 fw-medium mb-1">Color</div>
-                                                    <div class="fw-bold fs-5"><?= $carData->color ?: 'Not specified' ?></div>
+                                                    <div class="fw-bold fs-5"><?= htmlspecialchars($carData->color ?: 'Not specified', ENT_QUOTES, 'UTF-8') ?></div>
                                                 </div>
                                             </div>
                                         </div>
@@ -142,7 +142,7 @@ if (!empty($_GET)) {
                                                 <i class="fas fa-cog me-3 fa-lg"></i>
                                                 <div>
                                                     <div class="text-white-75 fw-medium mb-1">Engine</div>
-                                                    <div class="fw-bold fs-5"><?= $carData->engine ?: 'Not specified' ?></div>
+                                                    <div class="fw-bold fs-5"><?= htmlspecialchars($carData->engine ?: 'Not specified', ENT_QUOTES, 'UTF-8') ?></div>
                                                 </div>
                                             </div>
                                         </div>
@@ -224,29 +224,29 @@ if (!empty($_GET)) {
                                     <i class="fas fa-calendar text-primary"></i> Model Year
                                 </dt>
                                 <dd class="col-sm-8">
-                                    <?= $carData->year ?>
+                                    <?= htmlspecialchars((string)($carData->year ?? ''), ENT_QUOTES, 'UTF-8') ?>
                                 </dd>
                                 
                                 <dt class="col-sm-4 text-muted">
                                     <i class="fas fa-tag text-primary"></i> Series
                                 </dt>
                                 <dd class="col-sm-8">
-                                    <?= $carData->series ?>
-                                    <?= !empty($carData->variant) ? ' - ' . $carData->variant : '' ?>
+                                    <?= htmlspecialchars($carData->series ?? '', ENT_QUOTES, 'UTF-8') ?>
+                                    <?= !empty($carData->variant) ? ' - ' . htmlspecialchars($carData->variant, ENT_QUOTES, 'UTF-8') : '' ?>
                                 </dd>
                                 
                                 <dt class="col-sm-4 text-muted">
                                     <i class="fas fa-car text-primary"></i> Type
                                 </dt>
                                 <dd class="col-sm-8">
-                                    <?= $carData->type ?: '<em class="text-muted">Not specified</em>' ?>
+                                    <?= $carData->type ? htmlspecialchars($carData->type, ENT_QUOTES, 'UTF-8') : '<em class="text-muted">Not specified</em>' ?>
                                 </dd>
                                 
                                 <dt class="col-sm-4 text-muted">
                                     <i class="fas fa-barcode text-primary"></i> Chassis
                                 </dt>
                                 <dd class="col-sm-8">
-                                    <strong><?= $carData->chassis ?: '<em class="text-muted">Not specified</em>' ?></strong>
+                                    <strong><?= $carData->chassis ? htmlspecialchars($carData->chassis, ENT_QUOTES, 'UTF-8') : '<em class="text-muted">Not specified</em>' ?></strong>
                                 </dd>
                             </dl>
 
@@ -259,12 +259,12 @@ if (!empty($_GET)) {
                             <dl class="row mb-4">
                                 <dt class="col-sm-4 text-muted">Color</dt>
                                 <dd class="col-sm-8">
-                                    <?= $carData->color ?: '<em class="text-muted">Not specified</em>' ?>
+                                    <?= $carData->color ? htmlspecialchars($carData->color, ENT_QUOTES, 'UTF-8') : '<em class="text-muted">Not specified</em>' ?>
                                 </dd>
                                 
                                 <dt class="col-sm-4 text-muted">Engine</dt>
                                 <dd class="col-sm-8">
-                                    <?= $carData->engine ?: '<em class="text-muted">Not specified</em>' ?>
+                                    <?= $carData->engine ? htmlspecialchars($carData->engine, ENT_QUOTES, 'UTF-8') : '<em class="text-muted">Not specified</em>' ?>
                                 </dd>
                             </dl>
 
@@ -289,10 +289,10 @@ if (!empty($_GET)) {
                                 </dd>
                                 <?php } ?>
                                 
-                                <?php if (!empty($carData->website)) { ?>
+                                <?php if (!empty($carData->website) && in_array(strtolower((string)parse_url($carData->website, PHP_URL_SCHEME)), ['http', 'https'], true)) { ?>
                                 <dt class="col-sm-4 text-muted">Website</dt>
                                 <dd class="col-sm-8">
-                                    <a href="<?= $carData->website ?>" target="_blank" class="btn btn-outline-primary btn-sm">
+                                    <a href="<?= htmlspecialchars($carData->website, ENT_QUOTES, 'UTF-8') ?>" target="_blank" rel="noopener noreferrer" class="btn btn-outline-primary btn-sm">
                                         <i class="fas fa-external-link-alt"></i> Visit Website
                                     </a>
                                 </dd>
@@ -347,7 +347,7 @@ if (!empty($_GET)) {
                                     <i class="fas fa-user text-primary"></i> Owner Name
                                 </dt>
                                 <dd class="col-sm-8">
-                                    <?= !empty($carData->fname) ? ucfirst($carData->fname) : '<em class="text-muted">Not specified</em>' ?>
+                                    <?= !empty($carData->fname) ? htmlspecialchars(ucfirst($carData->fname), ENT_QUOTES, 'UTF-8') : '<em class="text-muted">Not specified</em>' ?>
                                 </dd>
                                 
                                 <dt class="col-sm-4 text-muted">
@@ -359,7 +359,7 @@ if (!empty($_GET)) {
                                     if (!empty($carData->city)) $location[] = html_entity_decode($carData->city);
                                     if (!empty($carData->state)) $location[] = html_entity_decode($carData->state);
                                     if (!empty($carData->country)) $location[] = html_entity_decode($carData->country);
-                                    echo !empty($location) ? implode(', ', $location) : '<em class="text-muted">Location not specified</em>';
+                                    echo !empty($location) ? htmlspecialchars(implode(', ', $location), ENT_QUOTES, 'UTF-8') : '<em class="text-muted">Location not specified</em>';
                                     ?>
                                 </dd>
                             </dl>
@@ -434,35 +434,35 @@ if (!empty($_GET)) {
                             
                             <dl class="row">
                                 <dt class="col-sm-5 text-muted">Production Year</dt>
-                                <dd class="col-sm-7"><?= $factoryData->year ?: '<em class="text-muted">Unknown</em>' ?></dd>
+                                <dd class="col-sm-7"><?= $factoryData->year ? htmlspecialchars((string)$factoryData->year, ENT_QUOTES, 'UTF-8') : '<em class="text-muted">Unknown</em>' ?></dd>
                                 
                                 <dt class="col-sm-5 text-muted">Production Month</dt>
-                                <dd class="col-sm-7"><?= $factoryData->month ?: '<em class="text-muted">Unknown</em>' ?></dd>
+                                <dd class="col-sm-7"><?= $factoryData->month ? htmlspecialchars((string)$factoryData->month, ENT_QUOTES, 'UTF-8') : '<em class="text-muted">Unknown</em>' ?></dd>
                                 
                                 <dt class="col-sm-5 text-muted">Production Batch</dt>
-                                <dd class="col-sm-7"><?= $factoryData->batch ?: '<em class="text-muted">Unknown</em>' ?></dd>
+                                <dd class="col-sm-7"><?= $factoryData->batch ? htmlspecialchars((string)$factoryData->batch, ENT_QUOTES, 'UTF-8') : '<em class="text-muted">Unknown</em>' ?></dd>
                                 
                                 <dt class="col-sm-5 text-muted">Factory Type</dt>
-                                <dd class="col-sm-7"><?= $factoryData->type ?: '<em class="text-muted">Unknown</em>' ?></dd>
+                                <dd class="col-sm-7"><?= $factoryData->type ? htmlspecialchars((string)$factoryData->type, ENT_QUOTES, 'UTF-8') : '<em class="text-muted">Unknown</em>' ?></dd>
                                 
                                 <dt class="col-sm-5 text-muted">Factory Chassis</dt>
                                 <dd class="col-sm-7">
-                                    <strong><?= $factoryData->serial ?: '<em class="text-muted">Unknown</em>' ?></strong>
+                                    <strong><?= $factoryData->serial ? htmlspecialchars((string)$factoryData->serial, ENT_QUOTES, 'UTF-8') : '<em class="text-muted">Unknown</em>' ?></strong>
                                 </dd>
                                 
                                 <dt class="col-sm-5 text-muted">Chassis Suffix</dt>
-                                <dd class="col-sm-7"><?= $factoryData->suffix ?: '<em class="text-muted">Unknown</em>' ?></dd>
+                                <dd class="col-sm-7"><?= $factoryData->suffix ? htmlspecialchars((string)$factoryData->suffix, ENT_QUOTES, 'UTF-8') : '<em class="text-muted">Unknown</em>' ?></dd>
                                 
                                 <dt class="col-sm-5 text-muted">Factory Engine</dt>
                                 <dd class="col-sm-7">
-                                    <?= $factoryData->engineletter ?><?= $factoryData->enginenumber ?>
+                                    <?= htmlspecialchars((string)($factoryData->engineletter ?? ''), ENT_QUOTES, 'UTF-8') ?><?= htmlspecialchars((string)($factoryData->enginenumber ?? ''), ENT_QUOTES, 'UTF-8') ?>
                                 </dd>
                                 
                                 <dt class="col-sm-5 text-muted">Gearbox</dt>
-                                <dd class="col-sm-7"><?= $factoryData->gearbox ?: '<em class="text-muted">Unknown</em>' ?></dd>
+                                <dd class="col-sm-7"><?= $factoryData->gearbox ? htmlspecialchars((string)$factoryData->gearbox, ENT_QUOTES, 'UTF-8') : '<em class="text-muted">Unknown</em>' ?></dd>
                                 
                                 <dt class="col-sm-5 text-muted">Factory Color</dt>
-                                <dd class="col-sm-7"><?= $factoryData->color ?: '<em class="text-muted">Unknown</em>' ?></dd>
+                                <dd class="col-sm-7"><?= $factoryData->color ? htmlspecialchars((string)$factoryData->color, ENT_QUOTES, 'UTF-8') : '<em class="text-muted">Unknown</em>' ?></dd>
                                 
                                 <?php if ($buildDate) { ?>
                                 <dt class="col-sm-5 text-muted">Build Date</dt>
