@@ -401,7 +401,7 @@ function updateChassis(array &$cardetails): void
             $errors[] = 'Chassis validation error: ' . $e->getUserMessage();
             return;
         } catch (\Throwable $e) {
-            logger($user->data()->id, LogCategories::LOG_CATEGORY_SYSTEM_ERROR, 'Unexpected ChassisValidator error for chassis "' . $chassis . '": ' . $e->getMessage());
+            logger($user->data()->id, LogCategories::LOG_CATEGORY_SYSTEM_ERROR, 'Unexpected ChassisValidator error for chassis "' . htmlspecialchars($chassis, ENT_QUOTES, 'UTF-8') . '": ' . $e->getMessage());
             $errors[] = 'An unexpected error occurred validating the chassis number. Please try again.';
             return;
         }

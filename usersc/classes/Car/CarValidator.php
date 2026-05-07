@@ -192,11 +192,16 @@ class CarValidator
 
     /**
      * Normalize string input by trimming whitespace and enforcing a maximum length.
-     * HTML tags and special characters are preserved; output escaping is the caller's responsibility.
+     *
+     * IMPORTANT: HTML tags and special characters are preserved as part of the
+     * encode-at-output pattern. The caller MUST apply htmlspecialchars() at the
+     * output context (HTML templates, emails) to prevent XSS vulnerabilities.
      *
      * @param string $input Input string to normalize
      * @param int $maxLength Maximum allowed length
-     * @return string Normalized string
+     * @return string Normalized string with preserved HTML entities
+     * @since v2.23.0 Renamed from sanitizeString() - no longer strips HTML tags
+     * @see https://github.com/unibrain1/elanregistry/issues/841
      */
     public function normalizeString(string $input, int $maxLength): string
     {
