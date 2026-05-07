@@ -1,6 +1,8 @@
 <?php
 declare(strict_types=1);
 
+use ElanRegistry\Input;
+
 /**
  * send_form_email.php
  * Handles feedback form submissions and sends emails to the registry admin.
@@ -58,11 +60,11 @@ if ($post_attempted) {
     $email_to = getFeedbackEmail();
     $email_subject = "[ELANREGISTRY] Feedback";
 
-    // Get form data using secure Input::get()
-    $name = Input::get('name');
-    $email_from = Input::get('email');
-    $id_from = Input::get('id');
-    $comments = Input::get('comments');
+    // Raw values — the email view template escapes via EmailTemplate methods
+    $name = Input::raw('name');
+    $email_from = Input::raw('email');
+    $id_from = Input::raw('id');
+    $comments = Input::raw('comments');
 
     // Validate required fields
     if (empty($name) || empty($email_from) || empty($id_from) || empty($comments)) {

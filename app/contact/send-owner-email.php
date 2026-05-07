@@ -1,6 +1,8 @@
 <?php
 declare(strict_types=1);
 
+use ElanRegistry\Input;
+
 /**
  * contact_owner_email.php
  * Processes contact owner requests and sends emails between users.
@@ -42,8 +44,8 @@ if (Input::exists('post')) {
         $action = Input::get('action');
         if ($action === 'send_message' && Input::get('from_user_id') && Input::get('to_user_id') && Input::get('message')) {
             // Validate message input
-            $message = Input::get('message');
-            if (empty(trim($message))) {
+            $message = Input::raw('message'); // raw — _email_contact_owner.php escapes via EmailTemplate
+            if ($message === null || $message === '') {
                 $errors[] = 'Message cannot be empty';
                 include($abs_us_root . $us_url_root . 'usersc/scripts/token_error.php');
                 exit();
