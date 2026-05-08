@@ -23,6 +23,8 @@ define('HTML_ENTITY_REGEXP', '&(amp|lt|gt|quot|#039|apos);');
 require_once '../../../../users/init.php';
 require_once $abs_us_root . $us_url_root . 'users/includes/template/prep.php';
 
+use ElanRegistry\Exceptions\BackupException;
+
 if (!securePage($php_self)) {
     die();
 }
@@ -76,6 +78,14 @@ function hasHtmlEntities(string $value): bool
  */
 function countColumnAffected(object $db, string $table, string $column): int
 {
+    static $allowedTables  = ['cars', 'users', 'profiles'];
+    static $allowedColumns = null;
+    if ($allowedColumns === null) {
+        $allowedColumns = array_merge(CARS_COLUMNS, USERS_COLUMNS, PROFILES_COLUMNS);
+    }
+    if (!in_array($table, $allowedTables, true) || !in_array($column, $allowedColumns, true)) {
+        throw new \InvalidArgumentException("Disallowed table or column: {$table}.{$column}");
+    }
     $sql    = "SELECT COUNT(*) AS cnt FROM `{$table}` WHERE `{$column}` REGEXP ?";
     $result = $db->query($sql, [HTML_ENTITY_REGEXP])->first();
     return (int) ($result->cnt ?? 0);
@@ -113,6 +123,21 @@ function logProgress(string $message, string $type = 'info'): void
  */
 function decodeTable(object $db, string $table, string $idColumn, array $columns, array &$changeCounts, array &$unstableValues): int
 {
+    static $allowedTables  = ['cars', 'users', 'profiles'];
+    static $allowedIdCols  = ['id', 'user_id'];
+    static $allowedColumns = null;
+    if ($allowedColumns === null) {
+        $allowedColumns = array_merge(CARS_COLUMNS, USERS_COLUMNS, PROFILES_COLUMNS);
+    }
+    if (!in_array($table, $allowedTables, true) || !in_array($idColumn, $allowedIdCols, true)) {
+        throw new \InvalidArgumentException("Disallowed table or id column: {$table}.{$idColumn}");
+    }
+    foreach ($columns as $col) {
+        if (!in_array($col, $allowedColumns, true)) {
+            throw new \InvalidArgumentException("Disallowed column: {$col}");
+        }
+    }
+
     $rows    = $db->query('SELECT `' . $idColumn . '`, ' . implode(', ', $columns) . ' FROM `' . $table . '`')->results();
     $changed = 0;
 
@@ -139,11 +164,19 @@ function decodeTable(object $db, string $table, string $idColumn, array $columns
 
         if (!empty($updates)) {
             $params[] = $row->$idColumn;
-            $db->query(
-                'UPDATE `' . $table . '` SET ' . implode(', ', $updates) . ' WHERE `' . $idColumn . '` = ?',
-                $params
-            );
-            $changed++;
+            try {
+                $db->query(
+                    'UPDATE `' . $table . '` SET ' . implode(', ', $updates) . ' WHERE `' . $idColumn . '` = ?',
+                    $params
+                );
+                $changed++;
+            } catch (\Exception $e) {
+                throw new \RuntimeException(
+                    "Failed to update {$table} {$idColumn}={$row->$idColumn}: " . $e->getMessage(),
+                    0,
+                    $e
+                );
+            }
         }
     }
 
@@ -321,7 +354,7 @@ $isProcessing = ($method === 'POST' && isset($_POST['start']));
                             LogCategories::LOG_CATEGORY_FIX_SCRIPT,
                             '03 decode: backup created at ' . $backupPath
                         );
-                    } catch (\ElanRegistry\Exceptions\BackupException $e) {
+                    } catch (BackupException $e) {
                         $results['errors']++;
                         logProgress('FATAL: Backup failed — aborting migration. No data was modified.', 'error');
                         logProgress('Error: ' . $e->getMessage(), 'error');
@@ -378,7 +411,11 @@ $isProcessing = ($method === 'POST' && isset($_POST['start']));
                                     c.state   = p.state,
                                     c.country = p.country
                                 WHERE ' . $resyncWhere;
-                            $db->query($resyncUpdateSql);
+                            try {
+                                $db->query($resyncUpdateSql);
+                            } catch (\Exception $e) {
+                                throw new \RuntimeException('Failed to re-sync cars denormalised columns: ' . $e->getMessage(), 0, $e);
+                            }
 
                             logProgress("Re-synced {$resyncCount} cars row(s)", $resyncCount > 0 ? 'success' : 'info');
                             $results['processed'] += $resyncCount;
@@ -437,7 +474,7 @@ $isProcessing = ($method === 'POST' && isset($_POST['start']));
                                 logProgress("Warnings: {$results['warnings']}", 'warning');
                             }
 
-                        } catch (Exception $e) {
+                        } catch (\Exception $e) {
                             $results['errors']++;
                             logProgress('FATAL ERROR: ' . $e->getMessage(), 'error');
                             logger(
