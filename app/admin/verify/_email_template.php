@@ -71,7 +71,7 @@
 
         <!-- pre-header end -->
         <!-- header -->
-        <p>Hello <?= ucfirst($car->fname) ?>,
+        <p>Hello <?= htmlspecialchars(ucfirst((string)($car->fname ?? '')), ENT_QUOTES, 'UTF-8') ?>,
         </p>
         <p>It's been awhile since you created or updated the information in the Lotus Elan Registry.
             Please review the information below and let me know if the information is current, if you've sold the car,
@@ -100,32 +100,32 @@
             </tr>
             <tr>
                 <td>First Name</td>
-                <td><?= $car->fname ?>
+                <td><?= htmlspecialchars((string)($car->fname ?? ''), ENT_QUOTES, 'UTF-8') ?>
                 </td>
             </tr>
             <tr>
                 <td>Last Name</td>
-                <td><?= $car->lname ?>
+                <td><?= htmlspecialchars((string)($car->lname ?? ''), ENT_QUOTES, 'UTF-8') ?>
                 </td>
             </tr>
             <tr>
                 <td>Email</td>
-                <td><?= $car->email ?>
+                <td><?= htmlspecialchars((string)($car->email ?? ''), ENT_QUOTES, 'UTF-8') ?>
                 </td>
             </tr>
             <tr>
                 <td>City</td>
-                <td><?= $car->city ?>
+                <td><?= htmlspecialchars((string)($car->city ?? ''), ENT_QUOTES, 'UTF-8') ?>
                 </td>
             </tr>
             <tr>
                 <td>State</td>
-                <td><?= $car->state ?>
+                <td><?= htmlspecialchars((string)($car->state ?? ''), ENT_QUOTES, 'UTF-8') ?>
                 </td>
             </tr>
             <tr>
                 <td>Country</td>
-                <td><?= $car->country ?>
+                <td><?= htmlspecialchars((string)($car->country ?? ''), ENT_QUOTES, 'UTF-8') ?>
                 </td>
             </tr>
             <tr>
