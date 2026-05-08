@@ -87,8 +87,11 @@ function countColumnAffected(object $db, string $table, string $column): int
         throw new \InvalidArgumentException("Disallowed table or column: {$table}.{$column}");
     }
     $sql    = "SELECT COUNT(*) AS cnt FROM `{$table}` WHERE `{$column}` REGEXP ?";
-    $result = $db->query($sql, [HTML_ENTITY_REGEXP])->first();
-    return (int) ($result->cnt ?? 0);
+    $result = $db->query($sql, [HTML_ENTITY_REGEXP]);
+    if ($db->error()) {
+        throw new \RuntimeException("DB error counting affected rows in {$table}.{$column}: " . $db->errorString());
+    }
+    return (int) ($result->first()->cnt ?? 0);
 }
 
 /**
@@ -138,7 +141,11 @@ function decodeTable(object $db, string $table, string $idColumn, array $columns
         }
     }
 
-    $rows    = $db->query('SELECT `' . $idColumn . '`, ' . implode(', ', $columns) . ' FROM `' . $table . '`')->results();
+    $selectResult = $db->query('SELECT `' . $idColumn . '`, ' . implode(', ', $columns) . ' FROM `' . $table . '`');
+    if ($db->error()) {
+        throw new \RuntimeException("DB error reading {$table}: " . $db->errorString());
+    }
+    $rows    = $selectResult->results();
     $changed = 0;
 
     foreach ($rows as $row) {
@@ -164,19 +171,16 @@ function decodeTable(object $db, string $table, string $idColumn, array $columns
 
         if (!empty($updates)) {
             $params[] = $row->$idColumn;
-            try {
-                $db->query(
-                    'UPDATE `' . $table . '` SET ' . implode(', ', $updates) . ' WHERE `' . $idColumn . '` = ?',
-                    $params
-                );
-                $changed++;
-            } catch (\Exception $e) {
+            $db->query(
+                'UPDATE `' . $table . '` SET ' . implode(', ', $updates) . ' WHERE `' . $idColumn . '` = ?',
+                $params
+            );
+            if ($db->error()) {
                 throw new \RuntimeException(
-                    "Failed to update {$table} {$idColumn}={$row->$idColumn}: " . $e->getMessage(),
-                    0,
-                    $e
+                    "DB error updating {$table} {$idColumn}={$row->$idColumn}: " . $db->errorString()
                 );
             }
+            $changed++;
         }
     }
 
@@ -400,7 +404,11 @@ $isProcessing = ($method === 'POST' && isset($_POST['start']));
                                 INNER JOIN users u    ON c.user_id = u.id
                                 INNER JOIN profiles p ON p.user_id = u.id
                                 WHERE ' . $resyncWhere;
-                            $resyncCount = (int) $db->query($resyncSelectSql)->first()->cnt;
+                            $resyncResult = $db->query($resyncSelectSql);
+                            if ($db->error()) {
+                                throw new \RuntimeException('DB error counting rows to re-sync: ' . $db->errorString());
+                            }
+                            $resyncCount = (int) $resyncResult->first()->cnt;
 
                             $resyncUpdateSql = 'UPDATE cars c
                                 INNER JOIN users u    ON c.user_id = u.id
@@ -411,10 +419,9 @@ $isProcessing = ($method === 'POST' && isset($_POST['start']));
                                     c.state   = p.state,
                                     c.country = p.country
                                 WHERE ' . $resyncWhere;
-                            try {
-                                $db->query($resyncUpdateSql);
-                            } catch (\Exception $e) {
-                                throw new \RuntimeException('Failed to re-sync cars denormalised columns: ' . $e->getMessage(), 0, $e);
+                            $db->query($resyncUpdateSql);
+                            if ($db->error()) {
+                                throw new \RuntimeException('DB error re-syncing cars denormalised columns: ' . $db->errorString());
                             }
 
                             logProgress("Re-synced {$resyncCount} cars row(s)", $resyncCount > 0 ? 'success' : 'info');
