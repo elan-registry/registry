@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use ElanRegistry\Input;
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 
 /**
@@ -49,9 +50,8 @@ final class Issue841RegressionTest extends TestCase
 
     /**
      * Input::raw() must return literal values for all four fields without HTML-encoding.
-     *
-     * @dataProvider specialCharacterFieldProvider
      */
+    #[DataProvider('specialCharacterFieldProvider')]
     public function testRawInputDoesNotEncodeSpecialCharacters(string $field, string $value): void
     {
         $_POST[$field] = $value;
@@ -88,9 +88,8 @@ final class Issue841RegressionTest extends TestCase
      *
      * The updater functions changed from a truthy guard (where PHP treats "0" as falsy)
      * to an explicit !== null && !== '' check. This verifies "0" is treated as a valid value.
-     *
-     * @dataProvider zeroValueFieldProvider
      */
+    #[DataProvider('zeroValueFieldProvider')]
     public function testLiteralZeroIsNotDiscarded(string $field): void
     {
         $_POST[$field] = '0';
@@ -117,9 +116,8 @@ final class Issue841RegressionTest extends TestCase
 
     /**
      * Re-saving a value retrieved via Input::raw() must not accumulate encoding.
-     *
-     * @dataProvider idempotencyFieldProvider
      */
+    #[DataProvider('idempotencyFieldProvider')]
     public function testRawInputIsIdempotentOnResave(string $field, string $value): void
     {
         $_POST[$field] = $value;
@@ -151,9 +149,8 @@ final class Issue841RegressionTest extends TestCase
 
     /**
      * XSS vectors stored via Input::raw() must be escaped only at render time.
-     *
-     * @dataProvider xssFieldProvider
      */
+    #[DataProvider('xssFieldProvider')]
     public function testXssInputEscapedCorrectlyAtDisplayLayer(string $field): void
     {
         $xssPayload = '<script>alert(1)</script>';

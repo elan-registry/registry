@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/../IntegrationTestCase.php';
 
+use ElanRegistry\Input;
 use PHPUnit\Framework\Attributes\Group;
 
 /**
@@ -385,5 +386,99 @@ final class CarDatabaseOperationsTest extends IntegrationTestCase
 
         // Should reflect update
         $this->assertEquals('Concurrent Test', $car2->data()->color);
+    }
+
+    /**
+     * Car text field updates must store plain text, not HTML-encoded values.
+     *
+     * Simulates the full action layer: Input::raw() retrieves the POST value,
+     * the Car class stores it, and the DB row contains plain text — no entities.
+     */
+    #[Group('integration')]
+    public function testCarUpdateStoresTextFieldsAsPlainText(): void
+    {
+        $specialChars = "O'Brien & Co <élan>";
+
+        // Simulate what edit.php does: get raw POST values → update Car
+        $_POST['color']    = $specialChars;
+        $_POST['comments'] = $specialChars;
+        try {
+            $storedColor    = Input::raw('color');
+            $storedComments = Input::raw('comments');
+
+            $car = new Car($this->testCarId);
+            $car->update([
+                'id'       => $this->testCarId,
+                'token'    => Token::generate(),
+                'color'    => $storedColor,
+                'comments' => $storedComments,
+            ]);
+
+            // Read directly from DB to verify no entity encoding in either field
+            // (color and comments go through separate update functions in edit.php)
+            $query = $this->db->query(
+                'SELECT color, comments FROM cars WHERE id = ?',
+                [$this->testCarId]
+            );
+            $row = $query->first();
+
+            foreach (['color' => $row->color, 'comments' => $row->comments] as $col => $dbValue) {
+                $this->assertSame(
+                    $specialChars,
+                    $dbValue,
+                    "DB column '{$col}' must store plain text, not HTML-encoded value"
+                );
+                $this->assertStringNotContainsString('&amp;',  $dbValue, "DB column '{$col}' must not contain &amp;");
+                $this->assertStringNotContainsString('&#039;', $dbValue, "DB column '{$col}' must not contain &#039;");
+                $this->assertStringNotContainsString('&lt;',   $dbValue, "DB column '{$col}' must not contain &lt;");
+            }
+        } finally {
+            unset($_POST['color'], $_POST['comments']);
+        }
+    }
+
+    /**
+     * Saving a car text field twice must not accumulate HTML encoding.
+     *
+     * Verifies the idempotency invariant: read from DB → save again → DB value unchanged.
+     * This is the core regression for the double-encoding defect.
+     */
+    #[Group('integration')]
+    public function testCarUpdateIsIdempotentOnResave(): void
+    {
+        $specialChars = "O'Brien & Co";
+
+        // First save
+        $car = new Car($this->testCarId);
+        $car->update([
+            'id'    => $this->testCarId,
+            'token' => Token::generate(),
+            'color' => $specialChars,
+        ]);
+
+        // Read back from DB
+        $query1   = $this->db->query('SELECT color FROM cars WHERE id = ?', [$this->testCarId]);
+        $afterFirstSave = $query1->first()->color;
+
+        // Second save (re-save with the DB-read value — simulates edit-without-change)
+        $car->update([
+            'id'    => $this->testCarId,
+            'token' => Token::generate(),
+            'color' => $afterFirstSave,
+        ]);
+
+        $query2   = $this->db->query('SELECT color FROM cars WHERE id = ?', [$this->testCarId]);
+        $afterSecondSave = $query2->first()->color;
+
+        $this->assertSame(
+            $afterFirstSave,
+            $afterSecondSave,
+            'DB value must be identical after a second save — no encoding accumulation'
+        );
+        $this->assertSame(
+            $specialChars,
+            $afterSecondSave,
+            'DB must contain the original plain-text value after two saves'
+        );
     }
 }
