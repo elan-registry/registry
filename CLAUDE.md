@@ -159,6 +159,17 @@ Use centralized error handling with typed exceptions, LogCategories constants,
 and ApiResponse for AJAX endpoints.
 See [ERROR_HANDLING.md](docs/development/ERROR_HANDLING.md) for patterns.
 
+### Input/Output Encoding (v2.23.0+)
+
+- **Storage**: Use `ElanRegistry\Input::raw()` for all text fields destined for
+  the database — returns the POST value unencoded. Never use UserSpice's
+  `\Input::get()` for stored values (it applies `htmlspecialchars()` before
+  returning, causing double-encoding on display).
+- **Output**: Apply `htmlspecialchars($value, ENT_QUOTES, 'UTF-8')` at the
+  render layer only — never before storage.
+- See [CODING_STANDARDS.md](docs/development/CODING_STANDARDS.md) for the full
+  encode-at-output pattern and field coverage.
+
 ### Frontend API Client (Pattern A - v2.12.0+)
 
 All new AJAX endpoints must use `ElanRegistryAPI` client with Pattern A
@@ -203,7 +214,7 @@ for the triage workflow, API commands, and known false positive patterns.
 Most work follows a structured milestone lifecycle with five commands:
 
 ```text
-/start-milestone v2.17.0     — Create milestone branch, draft release notes
+/start-milestone v2.17.0     — Create milestone branch, prompt fix-script cleanup, draft release notes
   /start-issue 423            — Branch, plan, implement, test, security review
   /simplify                   — Clean up the code (optional, recommended)
   /commit                     — Commit changes locally
