@@ -46,6 +46,42 @@ git checkout -b milestone/$ARGUMENTS
 git push -u origin milestone/$ARGUMENTS
 ```
 
+### Step 3.5: Clean up fix scripts from the previous release
+
+List all unarchived fix scripts (excludes `_TEMPLATE_Fix-Script.php`; the
+`_ARCHIVE/` subdirectory and non-PHP files are naturally excluded by the
+pattern):
+
+```bash
+find app/admin/scripts/fix/ -maxdepth 1 -name "*.php" \
+  ! -name "_TEMPLATE_Fix-Script.php"
+```
+
+If the command returns no output, skip this step silently and continue to
+Step 4.
+
+If scripts are found, prompt the developer to classify each one:
+
+- **Confirmed ran on production** → move to `app/admin/scripts/fix/_ARCHIVE/`
+- **Promote to maintenance** (safe to re-run after future releases) →
+  move to `app/admin/scripts/maintenance/`
+- **Not yet confirmed / hold** → leave in place; note why
+
+Use `git mv` to move files so the renames are staged automatically:
+
+```bash
+git mv app/admin/scripts/fix/NN-Script.php app/admin/scripts/fix/_ARCHIVE/
+```
+
+If any files were moved, commit them as the first commit on the new milestone
+branch:
+
+```bash
+git commit -m "chore: archive fix scripts from vX.Y.Z"
+```
+
+Skip the commit if no files were moved.
+
 ### Step 4: List the milestone's open issues
 
 ```bash
