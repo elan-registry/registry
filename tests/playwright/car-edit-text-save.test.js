@@ -868,3 +868,142 @@ test.describe('Car edit form — text-only save (regression #796)', () => {
         expect(realUploads[0].filename).toBe('new-photo.jpg');
     });
 });
+
+// ---------------------------------------------------------------------------
+// Encode-at-output regression — issue #844
+// ---------------------------------------------------------------------------
+//
+// Verifies that the v2.23.0 encode-at-output reform cannot silently regress.
+// Three scenarios:
+//   1. Form submission sends plain text (not entity-encoded) in the POST body
+//   2. Details page renders special chars as readable text (requires MAMP DB)
+//   3. Edit form textarea pre-fills with plain text on next load (requires MAMP DB)
+//
+// Test 1 mocks edit.php and passes anywhere; tests 2 and 3 require a
+// MAMP database with car_id=650 having special chars in the comments field
+// (after the migration script has been run).
+
+test.describe('encode-at-output regression — special chars in car text fields (#844)', () => {
+    const SPECIAL_CHARS = "O'Brien & Co <é> \"test\"";
+    const CAR_ID_WITH_SPECIAL_CHARS = 650; // car_id=650 has known special chars post-migration
+
+    test.beforeEach(async ({ page }) => {
+        await ensureLoggedIn(page);
+    });
+
+    test('form submits special chars as plain text (not entity-encoded)', async ({ page }) => {
+        // 1. Capture POST body sent to edit.php
+        let capturedPostBody = null;
+
+        await page.route('**/app/cars/actions/edit.php', async (route, request) => {
+            if (request.method() === 'POST') {
+                const body = request.postData();
+                // Only capture non-null, non-empty bodies — a null or empty postData()
+                // means no body was sent, which would defeat the polling sentinel below.
+                if (body !== null && body !== '') {
+                    capturedPostBody = body;
+                }
+            }
+            await route.fulfill({
+                status: 200,
+                contentType: 'application/json',
+                body: JSON.stringify({ success: true, message: 'Car updated successfully.' }),
+            });
+        });
+
+        // 2. Navigate to edit form for car_id=1
+        await page.goto('app/cars/form.php?car_id=1', { waitUntil: 'domcontentloaded' });
+
+        const currentUrl = page.url();
+        if (currentUrl.includes('login') || currentUrl.includes('Please Log In') || currentUrl.includes('Permission Denied')) {
+            test.skip(true, 'Session not established — skipping form submit test');
+            return;
+        }
+
+        // 3. Fill text fields with special characters
+        const commentsField = page.locator('#comments');
+        const engineField   = page.locator('#engine');
+        const colorField    = page.locator('#color');
+
+        if (!(await commentsField.isVisible().catch(() => false))) {
+            test.skip(true, 'Car edit form did not render — skipping');
+            return;
+        }
+
+        await commentsField.fill(SPECIAL_CHARS);
+        await engineField.fill(SPECIAL_CHARS);
+        await colorField.fill(SPECIAL_CHARS);
+
+        // 4. Submit the form
+        const submitBtn = page.locator('#submit');
+        await submitBtn.click();
+
+        // 5. Poll for the POST to be captured (up to 8 seconds, matching the pattern used
+        //    elsewhere in this file — see the #796 and #838 test blocks above).
+        const deadline = Date.now() + 8000;
+        while (capturedPostBody === null && Date.now() < deadline) {
+            await page.waitForTimeout(100);
+        }
+
+        // 6. Assert POST body contains plain text — not entity-encoded strings
+        expect(capturedPostBody, 'Form submit POST was not captured').not.toBeNull();
+
+        const body = capturedPostBody;
+        expect(body, 'POST body must not contain &amp; (HTML entity for &)').not.toContain('&amp;');
+        expect(body, "POST body must not contain &#039; (HTML entity for ')").not.toContain('&#039;');
+        expect(body, 'POST body must not contain &lt; (HTML entity for <)').not.toContain('&lt;');
+        expect(body, 'POST body must not contain &quot; (HTML entity for ")').not.toContain('&quot;');
+        expect(body, 'POST body must contain the raw text value').toContain('Brien');
+    });
+
+    test('details page renders special chars as readable text', async ({ page }) => {
+        // Navigate to the details page for a car with known special chars
+        await page.goto(`app/cars/details.php?car_id=${CAR_ID_WITH_SPECIAL_CHARS}`, {
+            waitUntil: 'domcontentloaded',
+        });
+
+        const currentUrl = page.url();
+        if (currentUrl.includes('login') || currentUrl.includes('Please Log In') || currentUrl.includes('Permission Denied')) {
+            test.skip(true, 'Not authenticated — skipping details page test');
+            return;
+        }
+
+        // Check for 404/not found indicators
+        const bodyText = await page.locator('body').textContent();
+        if (bodyText.includes('not found') || bodyText.includes('does not exist') || bodyText.includes('404')) {
+            test.skip(true, `Car ${CAR_ID_WITH_SPECIAL_CHARS} not found in MAMP DB — skipping`);
+            return;
+        }
+
+        // Assert no visible HTML entity strings in any text content
+        expect(bodyText, 'Details page must not render literal &amp; entity strings').not.toContain('&amp;');
+        expect(bodyText, "Details page must not render literal &#039; entity strings").not.toContain('&#039;');
+        expect(bodyText, 'Details page must not render literal &lt; entity strings').not.toContain('&lt;');
+    });
+
+    test('edit form textarea pre-fills with plain readable text', async ({ page }) => {
+        // Navigate to the edit form for a car with known special chars
+        await page.goto(`app/cars/form.php?car_id=${CAR_ID_WITH_SPECIAL_CHARS}`, {
+            waitUntil: 'domcontentloaded',
+        });
+
+        const currentUrl = page.url();
+        if (currentUrl.includes('login') || currentUrl.includes('Please Log In') || currentUrl.includes('Permission Denied')) {
+            test.skip(true, 'Not authenticated — skipping edit form pre-fill test');
+            return;
+        }
+
+        const commentsField = page.locator('#comments');
+        if (!(await commentsField.isVisible().catch(() => false))) {
+            test.skip(true, 'Comments field not visible — car may not be in MAMP DB, skipping');
+            return;
+        }
+
+        const textareaValue = await commentsField.inputValue();
+
+        // Assert no HTML entity strings in the textarea value
+        expect(textareaValue, 'Textarea must not pre-fill with &amp; entity strings').not.toContain('&amp;');
+        expect(textareaValue, "Textarea must not pre-fill with &#039; entity strings").not.toContain('&#039;');
+        expect(textareaValue, 'Textarea must not pre-fill with &lt; entity strings').not.toContain('&lt;');
+    });
+});
