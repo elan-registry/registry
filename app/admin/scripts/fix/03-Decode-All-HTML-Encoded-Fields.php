@@ -379,7 +379,15 @@ $isProcessing = ($method === 'POST' && isset($_POST['start']));
                                 logProgress("STEP {$stepNum}: Decode {$table} table (" . implode(', ', $spec['cols']) . ')', 'step');
                                 logProgress(SECTION_SEPARATOR, 'step');
 
-                                $changed = decodeTable($db, $table, $spec['pk'], $spec['cols'], $changeCounts, $unstableValues);
+                                $db->query('START TRANSACTION');
+                                try {
+                                    $changed = decodeTable($db, $table, $spec['pk'], $spec['cols'], $changeCounts, $unstableValues);
+                                    $db->query('COMMIT');
+                                } catch (\Throwable $tableError) {
+                                    $db->query('ROLLBACK');
+                                    logProgress("ROLLBACK: {$table} decode failed — restore from backup if data inconsistent.", 'error');
+                                    throw $tableError;
+                                }
                                 logProgress("{$table}: {$changed} row(s) updated", $changed > 0 ? 'success' : 'info');
                                 $results['processed'] += $changed;
                                 $stepNum++;
@@ -419,9 +427,17 @@ $isProcessing = ($method === 'POST' && isset($_POST['start']));
                                     c.state   = p.state,
                                     c.country = p.country
                                 WHERE ' . $resyncWhere;
-                            $db->query($resyncUpdateSql);
-                            if ($db->error()) {
-                                throw new \RuntimeException('DB error re-syncing cars denormalised columns: ' . $db->errorString());
+                            $db->query('START TRANSACTION');
+                            try {
+                                $db->query($resyncUpdateSql);
+                                if ($db->error()) {
+                                    throw new \RuntimeException('DB error re-syncing cars denormalised columns: ' . $db->errorString());
+                                }
+                                $db->query('COMMIT');
+                            } catch (\Throwable $resyncError) {
+                                $db->query('ROLLBACK');
+                                logProgress('ROLLBACK: cars re-sync failed — restore from backup if data inconsistent.', 'error');
+                                throw $resyncError;
                             }
 
                             logProgress("Re-synced {$resyncCount} cars row(s)", $resyncCount > 0 ? 'success' : 'info');
@@ -437,6 +453,11 @@ $isProcessing = ($method === 'POST' && isset($_POST['start']));
                             if (!$inserted) {
                                 $results['warnings']++;
                                 logProgress('WARNING: Could not record completion in fix_script_runs', 'warning');
+                                logger(
+                                    $user->data()->id,
+                                    LogCategories::LOG_CATEGORY_FIX_SCRIPT,
+                                    '03 decode: fix_script_runs insert failed — completion not recorded'
+                                );
                             }
 
                             logger(
@@ -481,13 +502,13 @@ $isProcessing = ($method === 'POST' && isset($_POST['start']));
                                 logProgress("Warnings: {$results['warnings']}", 'warning');
                             }
 
-                        } catch (\Exception $e) {
+                        } catch (\Throwable $e) {
                             $results['errors']++;
-                            logProgress('FATAL ERROR: ' . $e->getMessage(), 'error');
+                            logProgress('FATAL ERROR (' . get_class($e) . '): ' . $e->getMessage(), 'error');
                             logger(
                                 $user->data()->id,
                                 LogCategories::LOG_CATEGORY_FIX_SCRIPT,
-                                '03 decode: fatal error — ' . $e->getMessage()
+                                '03 decode: fatal error (' . get_class($e) . ') — ' . $e->getMessage()
                             );
                         }
                     }

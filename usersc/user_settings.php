@@ -79,7 +79,7 @@ if (!empty($_POST)) {
         //Update display name
         //if (($settings->change_un == 0) || (($settings->change_un == 2) && ($user->data()->un_changed == 1)))
         if ($userdetails->username != $_POST['username'] && ($settings->change_un == 1 || (($settings->change_un == 2) && ($user->data()->un_changed == 0)))) {
-            $displayname = Input::get('username');
+            $displayname = Input::raw('username');
             $fields = [
                 'username' => $displayname,
                 'un_changed' => 1,
@@ -162,9 +162,9 @@ if (!empty($_POST)) {
         // Extend user_setttings.php with some PROFILE information
         // Update Location (city, state, country, lat, lon)
         $locationChanged = false;
-        $newCity = Input::raw('city');
-        $newState = Input::raw('state');
-        $newCountry = Input::raw('country');
+        $newCity = Input::raw('city') ?? '';
+        $newState = Input::raw('state') ?? '';
+        $newCountry = Input::raw('country') ?? '';
         $newLat = Input::get('lat');
         $newLon = Input::get('lon');
 

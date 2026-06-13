@@ -220,6 +220,9 @@ function updateCar(array &$cardetails): void
     } catch (ElanRegistryException $e) {
         logger($user->data()->id, LogCategories::LOG_CATEGORY_CAR_ERRORS, 'Car Update Error: ' . $e->getMessage());
         $errors[] = 'Car Update Error: ' . $e->getUserMessage();
+    } catch (\Throwable $e) {
+        logger($user->data()->id, LogCategories::LOG_CATEGORY_CAR_ERRORS, 'Car Update Unexpected Error (' . get_class($e) . '): ' . $e->getMessage());
+        $errors[] = 'Car Update failed due to an unexpected error.';
     }
 }
 /**
@@ -250,6 +253,9 @@ function addCar(array &$cardetails): void
     } catch (ElanRegistryException $e) {
         logger($user->data()->id, LogCategories::LOG_CATEGORY_CAR_ERRORS, 'Car Creation Error: ' . $e->getMessage());
         $errors[] = 'Car Creation Error: ' . $e->getUserMessage();
+    } catch (\Throwable $e) {
+        logger($user->data()->id, LogCategories::LOG_CATEGORY_CAR_ERRORS, 'Car Creation Unexpected Error (' . get_class($e) . '): ' . $e->getMessage());
+        $errors[] = 'Car Creation failed due to an unexpected error.';
     }
 }
 
@@ -327,11 +333,11 @@ function buildCarDetails(array &$cardetails, ?int $carId = null): void
 function updateYear(array &$cardetails): void
 {
     global $errors, $successes;
-    
-    //Update Year
-    if (Input::get('year')) {
-        $cardetails['year'] =  Input::get('year');
-        $successes[] = 'Year: ' . $cardetails['year'];
+
+    $year = Input::raw('year');
+    if ($year !== null && $year !== '') {
+        $cardetails['year'] = $year;
+        $successes[] = 'Year: ' . htmlspecialchars($year, ENT_QUOTES, 'UTF-8');
     } else {
         $errors[] = "Please select Year";
     }
@@ -346,19 +352,17 @@ function updateYear(array &$cardetails): void
 function updateModel(array &$cardetails): void
 {
     global $errors, $successes;
-    
-    // Update 'model'
-    if (Input::get('model')) {
-        $cardetails['model'] = Input::get('model');
-        // Model isn't really a thing.
-        // We need to explode it into the proper columns
+
+    $model = Input::raw('model');
+    if ($model !== null && $model !== '') {
+        $cardetails['model'] = $model;
+        // model is a composite "series|variant|type" from a fixed dropdown — explode into columns
         list($series, $variant, $type) = explode('|', $cardetails['model']);
-        /* MST value is from form, so I shouldn't have to do this but to be safe ... */
         $cardetails['series'] = filter_var($series, FILTER_UNSAFE_RAW);
         $cardetails['variant'] = filter_var($variant, FILTER_UNSAFE_RAW);
         $cardetails['type'] = filter_var($type, FILTER_UNSAFE_RAW);
 
-        $successes[] = 'Model: ' . $cardetails['model'];
+        $successes[] = 'Model: ' . htmlspecialchars($model, ENT_QUOTES, 'UTF-8');
     } else {
         $errors[] = "Please select Model";
     }

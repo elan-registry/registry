@@ -96,7 +96,7 @@
 
             <tr class="email-header-row">
                 <th id="column">User ID</th>
-                <td id="column"><?= $car->user_id ?></th>
+                <td id="column"><?= (int)$car->user_id ?></th>
             </tr>
             <tr>
                 <td>First Name</td>
@@ -196,8 +196,11 @@
             <tr>
                 <td>Website</td>
                 <?php
-                if (!empty($car->website)) {
-                    echo '<td> <a target="_blank" href="' . htmlspecialchars((string)$car->website, ENT_QUOTES, 'UTF-8') . '">Website</a></td>';
+                $websiteScheme = !empty($car->website)
+                    ? strtolower((string)parse_url((string)$car->website, PHP_URL_SCHEME))
+                    : '';
+                if (!empty($car->website) && in_array($websiteScheme, ['http', 'https'], true)) {
+                    echo '<td> <a target="_blank" rel="noopener noreferrer" href="' . htmlspecialchars((string)$car->website, ENT_QUOTES, 'UTF-8') . '">Website</a></td>';
                 } else {
                     echo "<td></td>";
                 }

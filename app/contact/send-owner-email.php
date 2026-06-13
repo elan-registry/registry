@@ -42,11 +42,10 @@ if (Input::exists('post')) {
         exit;
     } else {
         $action = Input::get('action');
-        if ($action === 'send_message' && Input::get('from_user_id') && Input::get('to_user_id') && Input::get('message')) {
-            // Validate message input
-            $message = Input::raw('message'); // raw — _email_contact_owner.php escapes via EmailTemplate
-            if ($message === null || $message === '') {
-                $errors[] = 'Message cannot be empty';
+        $message = Input::raw('message'); // raw — _email_contact_owner.php escapes via EmailTemplate
+        if ($action === 'send_message' && Input::get('from_user_id') && Input::get('to_user_id') && $message !== null && $message !== '') {
+            if (strlen($message) > 2000) {
+                $errors[] = 'Message is too long (maximum 2000 characters)';
                 include($abs_us_root . $us_url_root . 'usersc/scripts/token_error.php');
                 exit();
             }
@@ -116,6 +115,12 @@ if (Input::exists('post')) {
             }
         } else {
             $errors[] = 'Not enough parameters provided';
+            $safeAction = preg_replace('/[\r\n\t]/', '', (string)$action);
+            logger(
+                isset($user) && $user->isLoggedIn() ? $user->data()->id : 0,
+                LogCategories::LOG_CATEGORY_EMAIL_ERROR,
+                'send-owner-email.php: missing parameters — action=' . $safeAction
+            );
         }
     } // End Post with data
     

@@ -356,9 +356,9 @@ if (!empty($_GET)) {
                                 <dd class="col-sm-8">
                                     <?php
                                     $location = [];
-                                    if (!empty($carData->city)) $location[] = html_entity_decode($carData->city);
-                                    if (!empty($carData->state)) $location[] = html_entity_decode($carData->state);
-                                    if (!empty($carData->country)) $location[] = html_entity_decode($carData->country);
+                                    if (!empty($carData->city)) $location[] = $carData->city;
+                                    if (!empty($carData->state)) $location[] = $carData->state;
+                                    if (!empty($carData->country)) $location[] = $carData->country;
                                     echo !empty($location) ? htmlspecialchars(implode(', ', $location), ENT_QUOTES, 'UTF-8') : '<em class="text-muted">Location not specified</em>';
                                     ?>
                                 </dd>
