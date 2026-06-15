@@ -467,10 +467,9 @@ function updateEngine(array &$cardetails): void
  */
 function updatePurchasedate(array &$cardetails): void
 {
-    // Update 'purchasedate'
-    if (Input::get('purchasedate')) {
-        $cardetails['purchasedate'] = Input::get('purchasedate');
-        $cardetails['purchasedate'] = date("Y-m-d", strtotime($cardetails['purchasedate']));
+    $raw = Input::raw('purchasedate');
+    if ($raw !== null && $raw !== '') {
+        $cardetails['purchasedate'] = date("Y-m-d", strtotime($raw));
         $successes[] = 'Purchase Date: ' . $cardetails['purchasedate'];
     } else {
         $cardetails['purchasedate'] = null;
@@ -485,10 +484,9 @@ function updatePurchasedate(array &$cardetails): void
  */
 function updateSolddate(array &$cardetails): void
 {
-    // Update 'solddate'
-    if (Input::get('solddate')) {
-        $cardetails['solddate'] = Input::get('solddate');
-        $cardetails['solddate'] = date("Y-m-d", strtotime($cardetails['solddate']));
+    $raw = Input::raw('solddate');
+    if ($raw !== null && $raw !== '') {
+        $cardetails['solddate'] = date("Y-m-d", strtotime($raw));
         $successes[] = 'Sold Date: ' . $cardetails['solddate'];
     } else {
         $cardetails['solddate'] = null;

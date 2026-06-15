@@ -1,6 +1,6 @@
 # Elan Registry: Architecture and Database Design
 
-**Last Updated:** 2026-05-01 (v2.20.0)
+**Last Updated:** 2026-06-15 (v2.23.0)
 
 ## Overview
 

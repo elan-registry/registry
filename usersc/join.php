@@ -94,8 +94,8 @@ if (Input::exists()) {
 
     $fname = ucfirst(Input::raw('fname') ?? '');
     $lname = ucfirst(Input::raw('lname') ?? '');
-    $email = Input::get('email');
-    $username = Input::get('username');
+    $email = Input::raw('email') ?? '';
+    $username = Input::raw('username') ?? '';
 
     $validation = new Validate();
         if (pluginActive('userInfo', true)) {
