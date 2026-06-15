@@ -49,12 +49,8 @@ if (Input::exists('post')) {
                 include($abs_us_root . $us_url_root . 'usersc/scripts/token_error.php');
                 exit();
             }
-            if (strlen($message) > 2000) {
-                $errors[] = 'Message is too long (maximum 2000 characters)';
-                include($abs_us_root . $us_url_root . 'usersc/scripts/token_error.php');
-                exit();
-            }
-            
+
+
             // Security: Get user data from database instead of trusting serialized data
             $fromUserId = (int) Input::get('from_user_id');
             $toUserId = (int) Input::get('to_user_id');

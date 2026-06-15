@@ -358,9 +358,9 @@ function updateModel(array &$cardetails): void
         $cardetails['model'] = $model;
         // model is a composite "series|variant|type" from a fixed dropdown — explode into columns
         list($series, $variant, $type) = explode('|', $cardetails['model']);
-        $cardetails['series'] = filter_var($series, FILTER_UNSAFE_RAW);
-        $cardetails['variant'] = filter_var($variant, FILTER_UNSAFE_RAW);
-        $cardetails['type'] = filter_var($type, FILTER_UNSAFE_RAW);
+        $cardetails['series'] = $series;
+        $cardetails['variant'] = $variant;
+        $cardetails['type'] = $type;
 
         $successes[] = 'Model: ' . htmlspecialchars($model, ENT_QUOTES, 'UTF-8');
     } else {

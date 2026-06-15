@@ -130,7 +130,7 @@
             </tr>
             <tr>
                 <td>Join Date</td>
-                <td><?= $car->join_date ?>
+                <td><?= htmlspecialchars((string)($car->join_date ?? ''), ENT_QUOTES, 'UTF-8') ?>
                 </td>
             </tr>
         </table>
@@ -141,16 +141,16 @@
             <col width="85%" />
             <tr class="email-header-row">
                 <th scope=column>Car ID</th>
-                <th scope=column><?= $car->id ?></th>
+                <th scope=column><?= htmlspecialchars((string)($car->id ?? ''), ENT_QUOTES, 'UTF-8') ?></th>
             </tr>
             <tr>
                 <td>Year</td>
-                <td><?= $car->year ?>
+                <td><?= htmlspecialchars((string)($car->year ?? ''), ENT_QUOTES, 'UTF-8') ?>
                 </td>
             </tr>
             <tr>
                 <td>Type</td>
-                <td><?= $car->type ?>
+                <td><?= htmlspecialchars((string)($car->type ?? ''), ENT_QUOTES, 'UTF-8') ?>
                 </td>
             </tr>
             <tr>
@@ -160,12 +160,12 @@
             </tr>
             <tr>
                 <td>Series</td>
-                <td><?= $car->series ?>
+                <td><?= htmlspecialchars((string)($car->series ?? ''), ENT_QUOTES, 'UTF-8') ?>
                 </td>
             </tr>
             <tr>
                 <td>Variant</td>
-                <td><?= $car->variant ?>
+                <td><?= htmlspecialchars((string)($car->variant ?? ''), ENT_QUOTES, 'UTF-8') ?>
                 </td>
             </tr>
             <tr>
@@ -175,12 +175,12 @@
             </tr>
             <tr>
                 <td>Purchase Date</td>
-                <td><?= $car->purchasedate ?>
+                <td><?= htmlspecialchars((string)($car->purchasedate ?? ''), ENT_QUOTES, 'UTF-8') ?>
                 </td>
             </tr>
             <tr>
                 <td>Sold Date</td>
-                <td><?= $car->solddate ?>
+                <td><?= htmlspecialchars((string)($car->solddate ?? ''), ENT_QUOTES, 'UTF-8') ?>
                 </td>
             </tr>
             <tr>
