@@ -71,7 +71,7 @@
 
         <!-- pre-header end -->
         <!-- header -->
-        <p>Hello <?= ucfirst($car->fname) ?>,
+        <p>Hello <?= htmlspecialchars(ucfirst((string)($car->fname ?? '')), ENT_QUOTES, 'UTF-8') ?>,
         </p>
         <p>It's been awhile since you created or updated the information in the Lotus Elan Registry.
             Please review the information below and let me know if the information is current, if you've sold the car,
@@ -96,41 +96,41 @@
 
             <tr class="email-header-row">
                 <th id="column">User ID</th>
-                <td id="column"><?= $car->user_id ?></th>
+                <td id="column"><?= (int)$car->user_id ?></th>
             </tr>
             <tr>
                 <td>First Name</td>
-                <td><?= $car->fname ?>
+                <td><?= htmlspecialchars((string)($car->fname ?? ''), ENT_QUOTES, 'UTF-8') ?>
                 </td>
             </tr>
             <tr>
                 <td>Last Name</td>
-                <td><?= $car->lname ?>
+                <td><?= htmlspecialchars((string)($car->lname ?? ''), ENT_QUOTES, 'UTF-8') ?>
                 </td>
             </tr>
             <tr>
                 <td>Email</td>
-                <td><?= $car->email ?>
+                <td><?= htmlspecialchars((string)($car->email ?? ''), ENT_QUOTES, 'UTF-8') ?>
                 </td>
             </tr>
             <tr>
                 <td>City</td>
-                <td><?= $car->city ?>
+                <td><?= htmlspecialchars((string)($car->city ?? ''), ENT_QUOTES, 'UTF-8') ?>
                 </td>
             </tr>
             <tr>
                 <td>State</td>
-                <td><?= $car->state ?>
+                <td><?= htmlspecialchars((string)($car->state ?? ''), ENT_QUOTES, 'UTF-8') ?>
                 </td>
             </tr>
             <tr>
                 <td>Country</td>
-                <td><?= $car->country ?>
+                <td><?= htmlspecialchars((string)($car->country ?? ''), ENT_QUOTES, 'UTF-8') ?>
                 </td>
             </tr>
             <tr>
                 <td>Join Date</td>
-                <td><?= $car->join_date ?>
+                <td><?= htmlspecialchars((string)($car->join_date ?? ''), ENT_QUOTES, 'UTF-8') ?>
                 </td>
             </tr>
         </table>
@@ -141,51 +141,51 @@
             <col width="85%" />
             <tr class="email-header-row">
                 <th scope=column>Car ID</th>
-                <th scope=column><?= $car->id ?></th>
+                <th scope=column><?= htmlspecialchars((string)($car->id ?? ''), ENT_QUOTES, 'UTF-8') ?></th>
             </tr>
             <tr>
                 <td>Year</td>
-                <td><?= $car->year ?>
+                <td><?= htmlspecialchars((string)($car->year ?? ''), ENT_QUOTES, 'UTF-8') ?>
                 </td>
             </tr>
             <tr>
                 <td>Type</td>
-                <td><?= $car->type ?>
+                <td><?= htmlspecialchars((string)($car->type ?? ''), ENT_QUOTES, 'UTF-8') ?>
                 </td>
             </tr>
             <tr>
                 <td>Chassis</td>
-                <td><?= $car->chassis ?>
+                <td><?= htmlspecialchars((string)($car->chassis ?? ''), ENT_QUOTES, 'UTF-8') ?>
                 </td>
             </tr>
             <tr>
                 <td>Series</td>
-                <td><?= $car->series ?>
+                <td><?= htmlspecialchars((string)($car->series ?? ''), ENT_QUOTES, 'UTF-8') ?>
                 </td>
             </tr>
             <tr>
                 <td>Variant</td>
-                <td><?= $car->variant ?>
+                <td><?= htmlspecialchars((string)($car->variant ?? ''), ENT_QUOTES, 'UTF-8') ?>
                 </td>
             </tr>
             <tr>
                 <td>Color</td>
-                <td><?= $car->color ?>
+                <td><?= htmlspecialchars((string)($car->color ?? ''), ENT_QUOTES, 'UTF-8') ?>
                 </td>
             </tr>
             <tr>
                 <td>Purchase Date</td>
-                <td><?= $car->purchasedate ?>
+                <td><?= htmlspecialchars((string)($car->purchasedate ?? ''), ENT_QUOTES, 'UTF-8') ?>
                 </td>
             </tr>
             <tr>
                 <td>Sold Date</td>
-                <td><?= $car->solddate ?>
+                <td><?= htmlspecialchars((string)($car->solddate ?? ''), ENT_QUOTES, 'UTF-8') ?>
                 </td>
             </tr>
             <tr>
                 <td>Comment</td>
-                <td><?= $car->comments ?>
+                <td><?= htmlspecialchars((string)($car->comments ?? ''), ENT_QUOTES, 'UTF-8') ?>
                 </td>
             </tr>
             <tr>
@@ -196,8 +196,11 @@
             <tr>
                 <td>Website</td>
                 <?php
-                if (!empty($car->website)) {
-                    echo '<td> <a target="_blank" href="' . $car->website . '">Website</a></td>';
+                $websiteScheme = !empty($car->website)
+                    ? strtolower((string)parse_url((string)$car->website, PHP_URL_SCHEME))
+                    : '';
+                if (!empty($car->website) && in_array($websiteScheme, ['http', 'https'], true)) {
+                    echo '<td> <a target="_blank" rel="noopener noreferrer" href="' . htmlspecialchars((string)$car->website, ENT_QUOTES, 'UTF-8') . '">Website</a></td>';
                 } else {
                     echo "<td></td>";
                 }

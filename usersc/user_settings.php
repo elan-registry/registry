@@ -25,6 +25,8 @@ require_once $abs_us_root . $us_url_root . 'usersc/includes/elanregistry_prep.ph
 
 
 <?php
+use ElanRegistry\Input;
+
 if (!securePage($php_self)) {
     die();
 }
@@ -77,7 +79,7 @@ if (!empty($_POST)) {
         //Update display name
         //if (($settings->change_un == 0) || (($settings->change_un == 2) && ($user->data()->un_changed == 1)))
         if ($userdetails->username != $_POST['username'] && ($settings->change_un == 1 || (($settings->change_un == 2) && ($user->data()->un_changed == 0)))) {
-            $displayname = Input::get('username');
+            $displayname = Input::raw('username');
             $fields = [
                 'username' => $displayname,
                 'un_changed' => 1,
@@ -109,7 +111,7 @@ if (!empty($_POST)) {
         }
         //Update first name
         if ($userdetails->fname != $_POST['fname']) {
-            $fname = ucfirst(Input::get('fname'));
+            $fname = ucfirst(Input::raw('fname') ?? '');
             $fields = ['fname' => $fname];
             $validation->check($_POST, [
                 'fname' => [
@@ -134,7 +136,7 @@ if (!empty($_POST)) {
         }
         //Update last name
         if ($userdetails->lname != $_POST['lname']) {
-            $lname = ucfirst(Input::get('lname'));
+            $lname = ucfirst(Input::raw('lname') ?? '');
             $fields = ['lname' => $lname];
             $validation->check($_POST, [
                 'lname' => [
@@ -160,9 +162,9 @@ if (!empty($_POST)) {
         // Extend user_setttings.php with some PROFILE information
         // Update Location (city, state, country, lat, lon)
         $locationChanged = false;
-        $newCity = Input::get('city');
-        $newState = Input::get('state');
-        $newCountry = Input::get('country');
+        $newCity = Input::raw('city') ?? '';
+        $newState = Input::raw('state') ?? '';
+        $newCountry = Input::raw('country') ?? '';
         $newLat = Input::get('lat');
         $newLon = Input::get('lon');
 
@@ -300,7 +302,7 @@ if (!empty($_POST)) {
 
         //Update Website
         if ($profiledetails->website != $_POST['website']) {
-            $website = Input::get('website');
+            $website = Input::raw('website');
             $fields = ['website' => $website];
 
             // Sanitize URL by removing illegal characters manually (replacing deprecated FILTER_SANITIZE_URL)
@@ -493,7 +495,7 @@ if ($userQ2->count() > 0) {
                             <?php if (($settings->change_un == 0) || (($settings->change_un == 2) && ($userdetails->un_changed == 1))) {
                             ?>
                                 <div class="input-group">
-                                    <input class='form-control' type='text' id='username' name='username' value='<?= $userdetails->username ?>' readonly />
+                                    <input class='form-control' type='text' id='username' name='username' value='<?= htmlspecialchars($userdetails->username ?? '', ENT_QUOTES, 'UTF-8') ?>' readonly />
                                     <span class="input-group-text" data-bs-toggle="tooltip" title="<?php if ($settings->change_un == 0) {
                                                                                                     ?>The Administrator has disabled changing usernames.<?php
                                                                                                                                                     }
@@ -504,19 +506,19 @@ if ($userQ2->count() > 0) {
                             <?php
                             } else {
                             ?>
-                                <input class='form-control' type='text' id='username' name='username' value='<?= $userdetails->username ?>'>
+                                <input class='form-control' type='text' id='username' name='username' value='<?= htmlspecialchars($userdetails->username ?? '', ENT_QUOTES, 'UTF-8') ?>'>
                             <?php
                             } ?>
                         </div>
 
                         <div class="mb-3">
                             <label for="fname">First Name</label>
-                            <input class='form-control' type='text' id='fname' name='fname' value='<?= $userdetails->fname ?>' />
+                            <input class='form-control' type='text' id='fname' name='fname' value='<?= htmlspecialchars($userdetails->fname ?? '', ENT_QUOTES, 'UTF-8') ?>' />
                         </div>
 
                         <div class="mb-3">
                             <label for="lname">Last Name</label>
-                            <input class='form-control' type='text' id='lname' name='lname' value='<?= $userdetails->lname ?>' />
+                            <input class='form-control' type='text' id='lname' name='lname' value='<?= htmlspecialchars($userdetails->lname ?? '', ENT_QUOTES, 'UTF-8') ?>' />
                         </div>
                         <!-- Extend user_setttings.php with some PROFILE information -->
                         <div class="mb-3">
@@ -531,17 +533,17 @@ if ($userQ2->count() > 0) {
 
                         <div class="mb-3">
                             <label for="website">Website</label>
-                            <input class='form-control' type='text' id='website' name='website' value='<?= $profiledetails->website ?>' />
+                            <input class='form-control' type='text' id='website' name='website' value='<?= htmlspecialchars($profiledetails->website ?? '', ENT_QUOTES, 'UTF-8') ?>' />
                         </div>
                         <!-- END Extend user_setttings.php with some PROFILE information -->
 
                         <div class="mb-3">
                             <label for="email">Email</label>
-                            <input class='form-control' type='text' id='email' name='email' value='<?= $userdetails->email ?>' />
+                            <input class='form-control' type='text' id='email' name='email' value='<?= htmlspecialchars($userdetails->email ?? '', ENT_QUOTES, 'UTF-8') ?>' />
                             <?php if (!IS_NULL($userdetails->email_new)) {
                             ?><br />
                                 <div class="alert alert-danger">
-                                    <p><strong>Please note</strong> there is a pending request to update your email to <?= $userdetails->email_new ?>.</p>
+                                    <p><strong>Please note</strong> there is a pending request to update your email to <?= htmlspecialchars($userdetails->email_new ?? '', ENT_QUOTES, 'UTF-8') ?>.</p>
                                     <p>Please use the verification email to complete this request.</p>
                                     <p>If you need a new verification email, please re-enter the email above and submit the request again.</p>
                                 </div><?php

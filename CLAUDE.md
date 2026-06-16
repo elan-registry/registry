@@ -42,8 +42,11 @@ edge caching and CDN for global users (US, EU, AU).
 - `/error/` - Branded HTTP error pages (403, 404, 500)
 - `/users/` - UserSpice authentication system
 - `/usersc/` - UserSpice customizations (templates, plugins, overrides)
-- `/usersc/classes/` - Custom application classes
-- `/tests/` - PHPUnit and Playwright test files
+- `/usersc/classes/` - Custom application classes (PSR-4: `ElanRegistry\` →
+  `usersc/classes/`, `ElanRegistry\Exceptions\` → `usersc/classes/Exceptions/`)
+- `/tests/` - PHPUnit and Playwright tests: `unit/` (mocked, no DB),
+  `integration/` (real DB), `regression/`, `playwright/` (browser),
+  `manual/`, `fixtures/`
 
 **Key Integration Points:**
 
@@ -73,6 +76,9 @@ edge caching and CDN for global users (US, EU, AU).
 - `usersc/templates/customizer/` is **gitignored upstream** — do NOT modify any
   files in this directory. The sole exception is `file_nav_custom.php`, which is
   project-owned and tracked.
+- `/users/` is the **UserSpice 6 upstream framework** — do NOT modify files
+  here. Extend behavior via custom classes in `usersc/classes/` under the
+  `ElanRegistry\` namespace instead.
 - To add content to the footer without touching upstream files, inject via JS
   in `usersc/includes/footer.php` (included by UserSpice after the footer renders).
 - To add content to the header/nav, use `usersc/templates/customizer/file_nav_custom.php`.
@@ -159,6 +165,17 @@ Use centralized error handling with typed exceptions, LogCategories constants,
 and ApiResponse for AJAX endpoints.
 See [ERROR_HANDLING.md](docs/development/ERROR_HANDLING.md) for patterns.
 
+### Input/Output Encoding (v2.23.0+)
+
+- **Storage**: Use `ElanRegistry\Input::raw()` for all text fields destined for
+  the database — returns the POST value unencoded. Never use UserSpice's
+  `\Input::get()` for stored values (it applies `htmlspecialchars()` before
+  returning, causing double-encoding on display).
+- **Output**: Apply `htmlspecialchars($value, ENT_QUOTES, 'UTF-8')` at the
+  render layer only — never before storage.
+- See [CODING_STANDARDS.md](docs/development/CODING_STANDARDS.md) for the full
+  encode-at-output pattern and field coverage.
+
 ### Frontend API Client (Pattern A - v2.12.0+)
 
 All new AJAX endpoints must use `ElanRegistryAPI` client with Pattern A
@@ -203,7 +220,7 @@ for the triage workflow, API commands, and known false positive patterns.
 Most work follows a structured milestone lifecycle with five commands:
 
 ```text
-/start-milestone v2.17.0     — Create milestone branch, draft release notes
+/start-milestone v2.17.0     — Create milestone branch, prompt fix-script cleanup, draft release notes
   /start-issue 423            — Branch, plan, implement, test, security review
   /simplify                   — Clean up the code (optional, recommended)
   /commit                     — Commit changes locally

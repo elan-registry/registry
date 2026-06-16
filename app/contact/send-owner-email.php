@@ -1,6 +1,8 @@
 <?php
 declare(strict_types=1);
 
+use ElanRegistry\Input;
+
 /**
  * contact_owner_email.php
  * Processes contact owner requests and sends emails between users.
@@ -40,20 +42,15 @@ if (Input::exists('post')) {
         exit;
     } else {
         $action = Input::get('action');
-        if ($action === 'send_message' && Input::get('from_user_id') && Input::get('to_user_id') && Input::get('message')) {
-            // Validate message input
-            $message = Input::get('message');
-            if (empty(trim($message))) {
-                $errors[] = 'Message cannot be empty';
-                include($abs_us_root . $us_url_root . 'usersc/scripts/token_error.php');
-                exit();
-            }
+        $message = Input::raw('message'); // raw — _email_contact_owner.php escapes via EmailTemplate
+        if ($action === 'send_message' && Input::get('from_user_id') && Input::get('to_user_id') && $message !== null && $message !== '') {
             if (strlen($message) > 2000) {
                 $errors[] = 'Message is too long (maximum 2000 characters)';
                 include($abs_us_root . $us_url_root . 'usersc/scripts/token_error.php');
                 exit();
             }
-            
+
+
             // Security: Get user data from database instead of trusting serialized data
             $fromUserId = (int) Input::get('from_user_id');
             $toUserId = (int) Input::get('to_user_id');
@@ -114,6 +111,12 @@ if (Input::exists('post')) {
             }
         } else {
             $errors[] = 'Not enough parameters provided';
+            $safeAction = preg_replace('/[\r\n\t]/', '', (string)$action);
+            logger(
+                isset($user) && $user->isLoggedIn() ? $user->data()->id : 0,
+                LogCategories::LOG_CATEGORY_EMAIL_ERROR,
+                'send-owner-email.php: missing parameters — action=' . $safeAction
+            );
         }
     } // End Post with data
     

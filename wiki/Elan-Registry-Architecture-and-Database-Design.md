@@ -1,6 +1,6 @@
 # Elan Registry: Architecture and Database Design
 
-**Last Updated:** 2026-05-01 (v2.20.0)
+**Last Updated:** 2026-06-15 (v2.23.0)
 
 ## Overview
 
@@ -476,10 +476,17 @@ The system employs **defense in depth** with multiple overlapping security layer
    - Admin panel requires `checkMenu(2, $userId)` permission
    - Admin scripts require UserSpice authentication via `.htaccess`
 
-3. **Input Validation**
+3. **Input Validation & Encoding** (v2.23.0+)
    - All user input validated and sanitized
    - Prepared statements for all SQL queries
    - White-list input validation where possible
+   - **Encode-at-output pattern**: text fields stored raw via
+     `ElanRegistry\Input::raw()` and escaped with
+     `htmlspecialchars($v, ENT_QUOTES, 'UTF-8')` at the render layer only.
+     Never use UserSpice's `\Input::get()` for values destined for storage —
+     it applies `htmlspecialchars()` before returning, which causes
+     double-encoding on display. See
+     `docs/development/CODING_STANDARDS.md` for field coverage.
 
 4. **CSRF Protection**
    - CSRF tokens on all forms
@@ -658,6 +665,11 @@ Key classes are documented in `docs/development/CLASSES.md`:
 - **`LocationService`** — OpenStreetMap integration with server-side caching and logged I/O error handling
 - **`PagePermissionClassifier`** (`usersc/classes/admin/`) — Classifies pages into permission tiers (admin-only, admin+editor,
   private user, special no-perms) for the Fix Page Permissions maintenance script
+- **`ElanRegistry\Input`** (v2.23.0+, `usersc/classes/Input.php`) —
+  Storage-safe POST/GET reader. `Input::raw()` returns the value unmodified,
+  bypassing UserSpice's `htmlspecialchars()` pre-encoding so text fields
+  reach the database raw and can be escaped at output. Mandatory for any
+  field destined for storage.
 - **`Logger`** — Application event logging
 - **`LogCategories`** — Logging category constants
 
@@ -797,6 +809,7 @@ See `docs/development/CODING_STANDARDS.md` for complete standards.
 
 | Version | Date | Changes |
 | ------- | ---- | ------- |
+| 2.23.0 | 2026-05-11 | Encode-at-output reform: `ElanRegistry\Input::raw()` added in `usersc/classes/Input.php` for storage-safe input; double-encoding fixed across car, owner, and user/profile text fields, outbound emails, and templates; one-time migration script `03-Decode-All-HTML-Encoded-Fields.php` decodes legacy encoded data in `cars`, `users`, `profiles`; encode-at-output regression suite added |
 | 2.22.0 | 2026-05-06 | Google Maps replaced with self-hosted MapLibre GL JS 4.7.1 + VersaTiles Colorful; Google Geocoding API code removed (LocationGeocoder.php deleted); elan_google_maps_key and elan_google_geo_key settings dropped; Google domains removed from CSP |
 | 2.20.0 | 2026-05-01 | Admin panel split: manage-consolidated.php (car/owner mgmt) + manage-maintenance.php (system health/backups/settings); FIX scripts restructured to app/admin/scripts/fix/ (one-time) + app/admin/scripts/maintenance/ (repeatable); new tabs: tab-health.php, tab-maintenance.php; new modals: confirmation-modal.php, input-modal.php; fix_script_runs table |
 | 2.19.0 | 2026-04-29 | Bootstrap 5.3.3 Customizer template; self-hosted frontend libraries; esbuild build pipeline; FilePond replaces Dropzone; `edit.php` → `form.php`; PHPUnit 12 |

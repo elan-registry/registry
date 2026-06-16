@@ -4,6 +4,7 @@ declare(strict_types=1);
 use ElanRegistry\Exceptions\CarValidationException;
 use ElanRegistry\Exceptions\ElanRegistryException;
 use ElanRegistry\Exceptions\ImageProcessingException;
+use ElanRegistry\Input;
 
 /**
  * editCar.php - Car management endpoint
@@ -219,6 +220,9 @@ function updateCar(array &$cardetails): void
     } catch (ElanRegistryException $e) {
         logger($user->data()->id, LogCategories::LOG_CATEGORY_CAR_ERRORS, 'Car Update Error: ' . $e->getMessage());
         $errors[] = 'Car Update Error: ' . $e->getUserMessage();
+    } catch (\Throwable $e) {
+        logger($user->data()->id, LogCategories::LOG_CATEGORY_CAR_ERRORS, 'Car Update Unexpected Error (' . get_class($e) . '): ' . $e->getMessage());
+        $errors[] = 'Car Update failed due to an unexpected error.';
     }
 }
 /**
@@ -249,6 +253,9 @@ function addCar(array &$cardetails): void
     } catch (ElanRegistryException $e) {
         logger($user->data()->id, LogCategories::LOG_CATEGORY_CAR_ERRORS, 'Car Creation Error: ' . $e->getMessage());
         $errors[] = 'Car Creation Error: ' . $e->getUserMessage();
+    } catch (\Throwable $e) {
+        logger($user->data()->id, LogCategories::LOG_CATEGORY_CAR_ERRORS, 'Car Creation Unexpected Error (' . get_class($e) . '): ' . $e->getMessage());
+        $errors[] = 'Car Creation failed due to an unexpected error.';
     }
 }
 
@@ -326,11 +333,11 @@ function buildCarDetails(array &$cardetails, ?int $carId = null): void
 function updateYear(array &$cardetails): void
 {
     global $errors, $successes;
-    
-    //Update Year
-    if (Input::get('year')) {
-        $cardetails['year'] =  Input::get('year');
-        $successes[] = 'Year: ' . $cardetails['year'];
+
+    $year = Input::raw('year');
+    if ($year !== null && $year !== '') {
+        $cardetails['year'] = $year;
+        $successes[] = 'Year: ' . htmlspecialchars($year, ENT_QUOTES, 'UTF-8');
     } else {
         $errors[] = "Please select Year";
     }
@@ -345,19 +352,17 @@ function updateYear(array &$cardetails): void
 function updateModel(array &$cardetails): void
 {
     global $errors, $successes;
-    
-    // Update 'model'
-    if (Input::get('model')) {
-        $cardetails['model'] = Input::get('model');
-        // Model isn't really a thing.
-        // We need to explode it into the proper columns
-        list($series, $variant, $type) = explode('|', $cardetails['model']);
-        /* MST value is from form, so I shouldn't have to do this but to be safe ... */
-        $cardetails['series'] = filter_var($series, FILTER_UNSAFE_RAW);
-        $cardetails['variant'] = filter_var($variant, FILTER_UNSAFE_RAW);
-        $cardetails['type'] = filter_var($type, FILTER_UNSAFE_RAW);
 
-        $successes[] = 'Model: ' . $cardetails['model'];
+    $model = Input::raw('model');
+    if ($model !== null && $model !== '') {
+        $cardetails['model'] = $model;
+        // model is a composite "series|variant|type" from a fixed dropdown — explode into columns
+        list($series, $variant, $type) = explode('|', $cardetails['model']);
+        $cardetails['series'] = $series;
+        $cardetails['variant'] = $variant;
+        $cardetails['type'] = $type;
+
+        $successes[] = 'Model: ' . htmlspecialchars($model, ENT_QUOTES, 'UTF-8');
     } else {
         $errors[] = "Please select Model";
     }
@@ -375,13 +380,12 @@ function updateChassis(array &$cardetails): void
     
     // Check if validation override is enabled
     // Checkbox only sends value when checked, so check if parameter exists and has value '1'
-    $chassisOverrideRaw = Input::get('chassis_override');
+    $chassisOverrideRaw = Input::raw('chassis_override');
     $chassisOverride = ($chassisOverrideRaw === '1');
-    
-    // Update 'chassis'
-    if (Input::get('chassis')) {
-        $cardetails['chassis'] = Input::get('chassis');
-        $chassis = $cardetails['chassis'];
+
+    $chassis = Input::raw('chassis');
+    if ($chassis !== null && $chassis !== '') {
+        $cardetails['chassis'] = $chassis;
         $year = (int)$cardetails['year'];
         $model = $cardetails['model']; // Contains series|variant|type format
         
@@ -401,13 +405,17 @@ function updateChassis(array &$cardetails): void
         } catch (ElanRegistryException $e) {
             $errors[] = 'Chassis validation error: ' . $e->getUserMessage();
             return;
+        } catch (\Throwable $e) {
+            logger($user->data()->id, LogCategories::LOG_CATEGORY_SYSTEM_ERROR, 'Unexpected ChassisValidator error for chassis "' . htmlspecialchars($chassis, ENT_QUOTES, 'UTF-8') . '": ' . $e->getMessage());
+            $errors[] = 'An unexpected error occurred validating the chassis number. Please try again.';
+            return;
         }
         
         // Handle validation result
         if ($result['valid'] && !$result['override_used']) {
-            $successes[] = 'Chassis: ' . $cardetails['chassis'];
+            $successes[] = 'Chassis: ' . htmlspecialchars($cardetails['chassis'], ENT_QUOTES, 'UTF-8');
         } elseif ($result['valid'] && $result['override_used']) {
-            $successes[] = 'Chassis: ' . $cardetails['chassis'] . ' (Override used)';
+            $successes[] = 'Chassis: ' . htmlspecialchars($cardetails['chassis'], ENT_QUOTES, 'UTF-8') . ' (Override used)';
             $chassis_override_used = true; // Track that override was used for comments
         } else {
             $errors[] = '<strong>ERROR:</strong> Chassis Validation Failed: ' . $result['error_reason'];
@@ -425,10 +433,10 @@ function updateChassis(array &$cardetails): void
  */
 function updateColor(array &$cardetails): void
 {
-    // Update 'color'
-    if (Input::get('color')) {
-        $cardetails['color'] = Input::get('color');
-        $successes[] = 'Color: ' . $cardetails['color'];
+    $color = Input::raw('color');
+    if ($color !== null && $color !== '') {
+        $cardetails['color'] = $color;
+        $successes[] = 'Color: ' . htmlspecialchars($color, ENT_QUOTES, 'UTF-8');
     } else {
         $cardetails['color'] = null;
     }
@@ -442,11 +450,10 @@ function updateColor(array &$cardetails): void
  */
 function updateEngine(array &$cardetails): void
 {
-    // Update 'engine'
-    if (Input::get('engine')) {
-        $cardetails['engine'] = Input::get('engine');
-        $cardetails['engine'] = str_replace(" ", "", strtoupper(trim($cardetails['engine'])));
-        $successes[] = 'Engine: ' . $cardetails['engine'];
+    $engine = Input::raw('engine');
+    if ($engine !== null && $engine !== '') {
+        $cardetails['engine'] = str_replace(" ", "", strtoupper(trim($engine)));
+        $successes[] = 'Engine: ' . htmlspecialchars($cardetails['engine'], ENT_QUOTES, 'UTF-8');
     } else {
         $cardetails['engine'] = null;
     }
@@ -460,10 +467,9 @@ function updateEngine(array &$cardetails): void
  */
 function updatePurchasedate(array &$cardetails): void
 {
-    // Update 'purchasedate'
-    if (Input::get('purchasedate')) {
-        $cardetails['purchasedate'] = Input::get('purchasedate');
-        $cardetails['purchasedate'] = date("Y-m-d", strtotime($cardetails['purchasedate']));
+    $raw = Input::raw('purchasedate');
+    if ($raw !== null && $raw !== '') {
+        $cardetails['purchasedate'] = date("Y-m-d", strtotime($raw));
         $successes[] = 'Purchase Date: ' . $cardetails['purchasedate'];
     } else {
         $cardetails['purchasedate'] = null;
@@ -478,10 +484,9 @@ function updatePurchasedate(array &$cardetails): void
  */
 function updateSolddate(array &$cardetails): void
 {
-    // Update 'solddate'
-    if (Input::get('solddate')) {
-        $cardetails['solddate'] = Input::get('solddate');
-        $cardetails['solddate'] = date("Y-m-d", strtotime($cardetails['solddate']));
+    $raw = Input::raw('solddate');
+    if ($raw !== null && $raw !== '') {
+        $cardetails['solddate'] = date("Y-m-d", strtotime($raw));
         $successes[] = 'Sold Date: ' . $cardetails['solddate'];
     } else {
         $cardetails['solddate'] = null;
@@ -496,10 +501,10 @@ function updateSolddate(array &$cardetails): void
  */
 function updateWebsite(array &$cardetails): void
 {
-    // Update 'website'
-    if (Input::get('website')) {
-        $cardetails['website'] = Input::get('website');
-        $successes[] = 'Website: ' . $cardetails['website'];
+    $website = Input::raw('website');
+    if ($website !== null && $website !== '') {
+        $cardetails['website'] = $website;
+        $successes[] = 'Website: ' . htmlspecialchars($website, ENT_QUOTES, 'UTF-8');
     } else {
         $cardetails['website'] = null;
     }
@@ -516,8 +521,9 @@ function updateComments(array &$cardetails): void
     global $successes, $chassis_override_used;
     
     // Update 'comments'
-    if (Input::get('comments')) {
-        $cardetails['comments'] = Input::get('comments');
+    $comments = Input::raw('comments');
+    if ($comments !== null && $comments !== '') {
+        $cardetails['comments'] = $comments;
         $successes[] = 'Comments: Updated';
     } else {
         $cardetails['comments'] = null;

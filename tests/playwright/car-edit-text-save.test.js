@@ -498,6 +498,234 @@ test.describe('Car edit form — text-only save (regression #796)', () => {
     });
 
     // -----------------------------------------------------------------------
+    // Regression test for issue #838: owner comments double-encoded on save.
+    //
+    // Before the fix, updateComments() called \Input::get('comments') which
+    // runs htmlspecialchars() on the raw POST value.  Special characters like
+    // é, ´, &, ñ were stored as &eacute;, &#039;, &amp;, &ntilde; in the DB.
+    // The display layer then ran htmlspecialchars() again at render time,
+    // producing literal entity text visible to users.
+    //
+    // After the fix, updateComments() calls ElanRegistry\Input::raw('comments')
+    // which returns the decoded POST value without any HTML encoding.
+    //
+    // This test verifies two things:
+    //   A. The captured POST body `comments` field equals the raw Unicode string
+    //      (no HTML entities in what is transmitted to the server).
+    //   B. When the server responds with the same plain-text value (simulating
+    //      the stored and then returned DB row), the textarea displays the
+    //      unencoded Unicode characters — not entity strings like &amp;#180;s.
+    // -----------------------------------------------------------------------
+    test('comments with special characters save and reload as plain text', async ({ page }) => {
+        const SPECIAL_CHARS_INPUT = "it´s original registration — é & ñ";
+
+        // ------------------------------------------------------------------
+        // 1. Mock fetchImages (empty pond — not relevant to this test) and
+        //    capture the form-submit POST.
+        // ------------------------------------------------------------------
+        await page.route('**/app/cars/actions/edit.php', async (route, request) => {
+            const postData = request.postData() || '';
+            if (postData.includes('action=fetchImages')) {
+                await route.fulfill({
+                    status: 200,
+                    contentType: 'application/json',
+                    body: JSON.stringify({ success: true, images: [] })
+                });
+                return;
+            }
+            await route.fallback();
+        });
+
+        // ------------------------------------------------------------------
+        // 2. Navigate to the car edit form (car 650 from the bug report).
+        //    The PHP page renders server-side; we only mock the JS API calls.
+        // ------------------------------------------------------------------
+        await page.goto('app/cars/form.php?car_id=650', { waitUntil: 'domcontentloaded' });
+
+        const currentUrl = page.url();
+        if (currentUrl.includes('login') || currentUrl.includes('Please Log In')) {
+            test.skip('Session not established — skipping special-characters regression test');
+            return;
+        }
+
+        // Wait for FilePond to initialise (confirms the full form JS has loaded)
+        await page.waitForFunction(
+            () => typeof window.FilePond !== 'undefined' && document.querySelector('.filepond--root') !== null,
+            { timeout: 15000 }
+        );
+
+        // Verify the comments textarea rendered in the DOM
+        const commentsTextarea = page.locator('#comments');
+        const textareaVisible = await commentsTextarea.isVisible().catch(() => false);
+        if (!textareaVisible) {
+            test.skip('Comments textarea not found — form did not render (DB unavailable or car not found)');
+            return;
+        }
+
+        // ------------------------------------------------------------------
+        // 3. Fill the comments textarea with the special-character string and
+        //    register a higher-priority route (LIFO) that:
+        //      - Captures the raw POST body for Assertion A
+        //      - Returns a mocked cardetails response that echoes the same
+        //        plain-text value back (simulating the fixed DB round-trip)
+        //        for Assertion B.
+        // ------------------------------------------------------------------
+        await commentsTextarea.fill(SPECIAL_CHARS_INPUT);
+
+        let capturedComments = null;
+
+        await page.route('**/app/cars/actions/edit.php', async (route, request) => {
+            if (request.method() === 'POST') {
+                const postData = request.postData() || '';
+                if (!postData.includes('action=fetchImages') && !postData.includes('action=removeImages')) {
+                    // Parse multipart to extract the comments text field.
+                    // Fail loudly if Content-Type or postDataBuffer() is unexpected —
+                    // silent nulls here would produce a misleading 8s timeout below.
+                    const contentType = request.headers()['content-type'] || '';
+                    const boundaryMatch = contentType.match(/boundary=([^\s;]+)/);
+                    if (!boundaryMatch) {
+                        throw new Error(
+                            `[car-edit-text-save #838] Expected multipart/form-data but got: "${contentType}". ` +
+                            'Did the JS submit mechanism change?'
+                        );
+                    }
+                    const bodyBuffer = request.postDataBuffer();
+                    if (!bodyBuffer) {
+                        throw new Error(
+                            '[car-edit-text-save #838] request.postDataBuffer() returned null — ' +
+                            'Playwright could not retain the POST body.'
+                        );
+                    }
+                    const fields = parseMultipart(bodyBuffer, boundaryMatch[1]);
+                    const commentsEntries = fields.get('comments');
+                    if (commentsEntries && commentsEntries.length > 0) {
+                        capturedComments = commentsEntries[0].value;
+                    }
+
+                    // Return a mocked success response that echoes the unencoded
+                    // plain-text comments back as the server would after the fix.
+                    await route.fulfill({
+                        status: 200,
+                        contentType: 'application/json',
+                        body: JSON.stringify({
+                            success: true,
+                            cardetails: {
+                                id: 650,
+                                comments: SPECIAL_CHARS_INPUT
+                            }
+                        })
+                    });
+                    return;
+                }
+            }
+            await route.fallback();
+        });
+
+        // ------------------------------------------------------------------
+        // 4. Click submit to trigger the form save.
+        // ------------------------------------------------------------------
+        const submitBtn = page.locator('#submit');
+        const submitVisible = await submitBtn.isVisible().catch(() => false);
+        if (!submitVisible) {
+            test.skip('Submit button not found — form did not render');
+            return;
+        }
+
+        await submitBtn.click();
+
+        // Poll for the captured POST body (up to 8 seconds)
+        const deadline = Date.now() + 8000;
+        while (capturedComments === null && Date.now() < deadline) {
+            await page.waitForTimeout(100);
+        }
+
+        // ------------------------------------------------------------------
+        // 5. Assertion A: the POST body transmitted the raw Unicode string,
+        //    not HTML-encoded entities.
+        //    Before the fix the browser FormData would still send the raw
+        //    value (encoding happens server-side), so this assertion confirms
+        //    the client is not pre-encoding the value.  It also serves as a
+        //    baseline that our multipart parser correctly reads text fields.
+        // ------------------------------------------------------------------
+        expect(
+            capturedComments,
+            'POST body must contain the comments field — was the form submitted?'
+        ).not.toBeNull();
+
+        // Ensure none of the common entity patterns produced by htmlspecialchars()
+        // appear in the transmitted value.  If they do, something is encoding
+        // before the POST (not the expected server-side regression, but still wrong).
+        expect(
+            capturedComments,
+            'POST comments must not contain HTML entity &amp; — value should be raw Unicode'
+        ).not.toContain('&amp;');
+
+        expect(
+            capturedComments,
+            'POST comments must not contain HTML entity &#039; — value should be raw Unicode'
+        ).not.toContain('&#039;');
+
+        expect(
+            capturedComments,
+            'POST comments must not contain HTML entity &eacute; — value should be raw Unicode'
+        ).not.toContain('&eacute;');
+
+        expect(
+            capturedComments,
+            'POST comments must not contain HTML entity &ntilde; — value should be raw Unicode'
+        ).not.toContain('&ntilde;');
+
+        // The exact raw Unicode string must be present
+        expect(
+            capturedComments,
+            'POST comments must equal the raw Unicode input exactly (regression #838)'
+        ).toBe(SPECIAL_CHARS_INPUT);
+
+        // ------------------------------------------------------------------
+        // 6. Assertion B: after the mocked server response, submitCarForm()
+        //    calls $('#comments').val(data.cardetails.comments) with the
+        //    plain-text value returned by the server.  The textarea must show
+        //    the same unencoded string — not entity-escaped text like
+        //    "it&amp;#180;s..." that would appear if the server returned a
+        //    double-encoded value and jQuery set it verbatim into the DOM.
+        // ------------------------------------------------------------------
+
+        // Wait for submitCarForm() to process the mock response and update the textarea.
+        // The JS path is: fetch → response.json() → $('#comments').val(data.cardetails.comments).
+        // We poll the textarea value until it changes or the timeout expires.
+        await page.waitForFunction(
+            (expected) => {
+                const el = document.getElementById('comments');
+                return el && el.value === expected;
+            },
+            SPECIAL_CHARS_INPUT,
+            { timeout: 5000 }
+        ).catch((err) => {
+            // Only swallow TimeoutError — the assertion below produces the clear failure message.
+            // Any other error (navigation, crashed page) should propagate immediately.
+            if (err.constructor.name !== 'TimeoutError') { throw err; }
+        });
+
+        const textareaValue = await commentsTextarea.inputValue();
+
+        expect(
+            textareaValue,
+            'Textarea must NOT display HTML entities after reload ' +
+            '(regression #838: double-encoding would show &amp;#180;s instead of ´s)'
+        ).not.toContain('&amp;');
+
+        expect(
+            textareaValue,
+            'Textarea must NOT display the HTML entity &#039; after reload (regression #838)'
+        ).not.toContain('&#039;');
+
+        expect(
+            textareaValue,
+            'Textarea must display the raw Unicode string after mock server response (regression #838)'
+        ).toBe(SPECIAL_CHARS_INPUT);
+    });
+
+    // -----------------------------------------------------------------------
     // Mixed scenario: one existing (LOCAL) image + one new upload.
     // This is the most common real-world path: adding a photo to a car that
     // already has images. Verifies that:
@@ -638,5 +866,144 @@ test.describe('Car edit form — text-only save (regression #796)', () => {
             'Only the new file should appear in file[] — the LOCAL image must not be re-uploaded'
         ).toBe(1);
         expect(realUploads[0].filename).toBe('new-photo.jpg');
+    });
+});
+
+// ---------------------------------------------------------------------------
+// Encode-at-output regression — issue #844
+// ---------------------------------------------------------------------------
+//
+// Verifies that the v2.23.0 encode-at-output reform cannot silently regress.
+// Three scenarios:
+//   1. Form submission sends plain text (not entity-encoded) in the POST body
+//   2. Details page renders special chars as readable text (requires MAMP DB)
+//   3. Edit form textarea pre-fills with plain text on next load (requires MAMP DB)
+//
+// Test 1 mocks edit.php and passes anywhere; tests 2 and 3 require a
+// MAMP database with car_id=650 having special chars in the comments field
+// (after the migration script has been run).
+
+test.describe('encode-at-output regression — special chars in car text fields (#844)', () => {
+    const SPECIAL_CHARS = "O'Brien & Co <é> \"test\"";
+    const CAR_ID_WITH_SPECIAL_CHARS = 650; // car_id=650 has known special chars post-migration
+
+    test.beforeEach(async ({ page }) => {
+        await ensureLoggedIn(page);
+    });
+
+    test('form submits special chars as plain text (not entity-encoded)', async ({ page }) => {
+        // 1. Capture POST body sent to edit.php
+        let capturedPostBody = null;
+
+        await page.route('**/app/cars/actions/edit.php', async (route, request) => {
+            if (request.method() === 'POST') {
+                const body = request.postData();
+                // Only capture non-null, non-empty bodies — a null or empty postData()
+                // means no body was sent, which would defeat the polling sentinel below.
+                if (body !== null && body !== '') {
+                    capturedPostBody = body;
+                }
+            }
+            await route.fulfill({
+                status: 200,
+                contentType: 'application/json',
+                body: JSON.stringify({ success: true, message: 'Car updated successfully.' }),
+            });
+        });
+
+        // 2. Navigate to edit form for car_id=1
+        await page.goto('app/cars/form.php?car_id=1', { waitUntil: 'domcontentloaded' });
+
+        const currentUrl = page.url();
+        if (currentUrl.includes('login') || currentUrl.includes('Please Log In') || currentUrl.includes('Permission Denied')) {
+            test.skip(true, 'Session not established — skipping form submit test');
+            return;
+        }
+
+        // 3. Fill text fields with special characters
+        const commentsField = page.locator('#comments');
+        const engineField   = page.locator('#engine');
+        const colorField    = page.locator('#color');
+
+        if (!(await commentsField.isVisible().catch(() => false))) {
+            test.skip(true, 'Car edit form did not render — skipping');
+            return;
+        }
+
+        await commentsField.fill(SPECIAL_CHARS);
+        await engineField.fill(SPECIAL_CHARS);
+        await colorField.fill(SPECIAL_CHARS);
+
+        // 4. Submit the form
+        const submitBtn = page.locator('#submit');
+        await submitBtn.click();
+
+        // 5. Poll for the POST to be captured (up to 8 seconds, matching the pattern used
+        //    elsewhere in this file — see the #796 and #838 test blocks above).
+        const deadline = Date.now() + 8000;
+        while (capturedPostBody === null && Date.now() < deadline) {
+            await page.waitForTimeout(100);
+        }
+
+        // 6. Assert POST body contains plain text — not entity-encoded strings
+        expect(capturedPostBody, 'Form submit POST was not captured').not.toBeNull();
+
+        const body = capturedPostBody;
+        expect(body, 'POST body must not contain &amp; (HTML entity for &)').not.toContain('&amp;');
+        expect(body, "POST body must not contain &#039; (HTML entity for ')").not.toContain('&#039;');
+        expect(body, 'POST body must not contain &lt; (HTML entity for <)').not.toContain('&lt;');
+        expect(body, 'POST body must not contain &quot; (HTML entity for ")').not.toContain('&quot;');
+        expect(body, 'POST body must contain the raw text value').toContain('Brien');
+    });
+
+    test('details page renders special chars as readable text', async ({ page }) => {
+        // Navigate to the details page for a car with known special chars
+        await page.goto(`app/cars/details.php?car_id=${CAR_ID_WITH_SPECIAL_CHARS}`, {
+            waitUntil: 'domcontentloaded',
+        });
+
+        const currentUrl = page.url();
+        if (currentUrl.includes('login') || currentUrl.includes('Please Log In') || currentUrl.includes('Permission Denied')) {
+            test.skip(true, 'Not authenticated — skipping details page test');
+            return;
+        }
+
+        // Check for 404/not found indicators
+        const bodyText = await page.locator('body').textContent();
+        if (bodyText.includes('not found') || bodyText.includes('does not exist') || bodyText.includes('404')) {
+            test.skip(true, `Car ${CAR_ID_WITH_SPECIAL_CHARS} not found in MAMP DB — skipping`);
+            return;
+        }
+
+        // Assert no visible HTML entity strings in any text content
+        expect(bodyText, 'Details page must not render literal &amp; entity strings').not.toContain('&amp;');
+        expect(bodyText, "Details page must not render literal &#039; entity strings").not.toContain('&#039;');
+        expect(bodyText, 'Details page must not render literal &lt; entity strings').not.toContain('&lt;');
+    });
+
+    test('edit form textarea pre-fills with plain readable text', async ({ page }) => {
+        // Navigate to the edit form for a car with known special chars
+        await page.goto(`app/cars/form.php?car_id=${CAR_ID_WITH_SPECIAL_CHARS}`, {
+            waitUntil: 'domcontentloaded',
+        });
+
+        const currentUrl = page.url();
+        if (currentUrl.includes('login') || currentUrl.includes('Please Log In') || currentUrl.includes('Permission Denied')) {
+            test.skip(true, 'Not authenticated — skipping edit form pre-fill test');
+            return;
+        }
+
+        const commentsField = page.locator('#comments');
+        if (!(await commentsField.isVisible().catch(() => false))) {
+            test.skip(true, 'Comments field not visible — car may not be in MAMP DB, skipping');
+            return;
+        }
+
+        const textareaValue = await commentsField.inputValue();
+
+        // Assert no HTML entity strings in the textarea value
+        expect(textareaValue, 'Textarea must not pre-fill with &amp; entity strings').not.toContain('&amp;');
+        expect(textareaValue, "Textarea must not pre-fill with &#039; entity strings").not.toContain('&#039;');
+        expect(textareaValue, 'Textarea must not pre-fill with &lt; entity strings').not.toContain('&lt;');
     });
 });
