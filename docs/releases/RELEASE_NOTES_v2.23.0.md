@@ -1,6 +1,6 @@
 # Elan Registry v2.23.0 Release Notes
 
-**Release Date:** [DATE]
+**Release Date:** 2026-06-16
 **Type:** Minor Release - Encode-at-Output Reform
 
 ## Required Actions After Deployment
