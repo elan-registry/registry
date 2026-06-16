@@ -398,13 +398,15 @@ $isProcessing = ($method === 'POST' && isset($_POST['start']));
                             logProgress("STEP {$stepNum}: Re-sync denormalised cars.fname/lname/city/state/country", 'step');
                             logProgress(SECTION_SEPARATOR, 'step');
 
+                            // COLLATE clause resolves utf8mb4_unicode_ci vs utf8mb4_general_ci
+                            // mismatch when cars/users/profiles have different default collations.
                             $resyncWhere = 'c.user_id IS NOT NULL
                                 AND NOT (
-                                    c.fname   <=> u.fname
-                                    AND c.lname   <=> u.lname
-                                    AND c.city    <=> p.city
-                                    AND c.state   <=> p.state
-                                    AND c.country <=> p.country
+                                    c.fname   COLLATE utf8mb4_unicode_ci <=> u.fname   COLLATE utf8mb4_unicode_ci
+                                    AND c.lname   COLLATE utf8mb4_unicode_ci <=> u.lname   COLLATE utf8mb4_unicode_ci
+                                    AND c.city    COLLATE utf8mb4_unicode_ci <=> p.city    COLLATE utf8mb4_unicode_ci
+                                    AND c.state   COLLATE utf8mb4_unicode_ci <=> p.state   COLLATE utf8mb4_unicode_ci
+                                    AND c.country COLLATE utf8mb4_unicode_ci <=> p.country COLLATE utf8mb4_unicode_ci
                                 )';
 
                             $resyncSelectSql = 'SELECT COUNT(*) AS cnt
