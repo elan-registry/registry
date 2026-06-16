@@ -1,5 +1,6 @@
 ---
 description: Create a PR to merge a completed milestone branch into main, finalize docs and release notes
+model: claude-opus-4-7
 ---
 
 # Finish Milestone
@@ -12,6 +13,26 @@ notes, update wiki documentation, and prepare for release.
 - `$ARGUMENTS` — the milestone version number (e.g., `v2.17.0`)
 
 ## Workflow
+
+### Step 0: Initialize TaskList
+
+Before any other action, create one tracking task per workflow step using
+TaskCreate. Suggested task subjects:
+
+1. Verify the milestone branch exists
+2. Check for open issues still in the milestone
+3. Switch to milestone branch and ensure up to date
+4. Gather all merged PRs targeting the milestone branch
+5. Get the full diff against main
+6. Finalize release notes
+7. Update wiki documentation (or skip)
+8. Update CLAUDE.md if needed
+9. Security review (Step 9.5) + local multi-agent review (Step 9.7)
+10. Create the PR targeting main
+11. Note CI milestone review trigger
+12. Output summary
+
+Set each task to `in_progress` when you begin it and `completed` on success.
 
 ### Step 1: Verify the milestone branch exists
 

@@ -1,8 +1,17 @@
 ---
 description: Create a new GitHub issue with PM-driven scope refinement and expert input
+model: claude-opus-4-7
 ---
 
 # Create Issue Command
+
+## Step 0: Initialize TaskList
+
+Before any other action, create one tracking task per major step below using
+TaskCreate (existing-issue search, PM scope refinement, expert input from
+architect/test/docs agents, issue body draft, user review, issue creation,
+next-step suggestion).
+
 
 This command helps create well-defined GitHub issues by engaging specialized
 agents to refine scope, architecture, testing, and documentation requirements.
@@ -249,7 +258,7 @@ User: Looks good
 
 You: [creates issue via gh]
 
-Issue #547 created: https://github.com/jimboone/elan-registry/issues/547
+Issue #547 created: https://github.com/unibrain1/elanregistry/issues/547
 
 Would you like to:
 1. Start working on it now? (`/issue 547`)

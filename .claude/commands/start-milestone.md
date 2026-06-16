@@ -1,8 +1,16 @@
 ---
 description: Begin work on a milestone by creating a milestone branch and drafting release notes
+model: claude-sonnet-4-6
 ---
 
 # Start Milestone
+
+## Step 0: Initialize TaskList
+
+Before any other action, create one tracking task per major step below using
+TaskCreate (branch creation, fix-script cleanup, release-notes draft, issue
+ordering, output). Set to `in_progress`/`completed` as you progress.
+
 
 Begin work on a milestone by creating a milestone branch from main, drafting
 release notes, and recommending an issue order.

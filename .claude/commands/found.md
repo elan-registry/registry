@@ -1,5 +1,6 @@
 ---
 description: Capture a pre-existing issue found during development and classify it for immediate fix or deferral
+model: claude-haiku-4-5-20251001
 ---
 
 # Found: Capture Pre-Existing Issue

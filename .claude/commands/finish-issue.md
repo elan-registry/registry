@@ -1,8 +1,17 @@
 ---
 description: Monitor CI, squash-merge an issue PR into the milestone branch, and close the issue
+model: claude-sonnet-4-6
 ---
 
 # Finish Issue
+
+## Step 0: Initialize TaskList
+
+Before any other action, create one tracking task per major step below using
+TaskCreate. Set to `in_progress` when starting each, `completed` on success.
+This is a CI-polling workflow that can take 10+ minutes — visible progress
+matters.
+
 
 Monitor a PR's CI checks, then squash-merge into the milestone branch, close
 the issue, delete the branch, and return to the milestone branch.

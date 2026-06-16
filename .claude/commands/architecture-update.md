@@ -1,8 +1,16 @@
 ---
 description: Update ElanRegistry architecture documentation in wiki/ with codebase audit and Mermaid diagrams
+model: claude-opus-4-7
 ---
 
 # Architecture Documentation Update
+
+## Step 0: Initialize TaskList
+
+Before any other action, create one tracking task per major step below using
+TaskCreate (branch + fetch wiki, codebase audit, doc split decision, parallel
+agent launches, synthesis, diagram embedding, markdownlint, commit, summary).
+
 
 Update the ElanRegistry architecture documentation in the `wiki/` directory.
 Fetches the current wiki page, audits it against the codebase, updates all

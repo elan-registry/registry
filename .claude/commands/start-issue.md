@@ -1,8 +1,29 @@
 ---
 description: Start work on a GitHub issue within a milestone workflow
+model: claude-opus-4-7
 ---
 
 # GitHub Issue Workflow Command
+
+## Step 0: Initialize TaskList
+
+Before any other action, create one tracking task per major step below using
+TaskCreate. Because this command branches by tier (Trivial / Small / Medium /
+Large), keep tasks high-level enough to cover any tier — examples:
+
+1. Read issue and assess size
+2. Create branch and switch
+3. Explore (codebase research)
+4. Clarify scope (Medium/Large only)
+5. Plan and confirm with user
+6. Implement
+7. Test
+8. Document
+9. Security review
+10. Final review and summary
+
+Set each to `in_progress`/`completed` as you progress.
+
 
 This command helps you start working on a GitHub issue within a milestone
 workflow by creating a branch, entering plan mode, and developing an
@@ -17,7 +38,7 @@ Launch agents via the Task tool. Use parallel instances when work can be partiti
 | --- | --- | --- | --- |
 | Explore | `Explore` | `haiku` | Codebase research |
 | Plan | `Plan` | `sonnet` | Implementation strategy |
-| Software Developer | `software-developer` | `sonnet` | **Primary coding agent** |
+| Software Developer | `software-developer` | `sonnet` (Trivial/Small), `opus` (Medium/Large) | **Primary coding agent** — see per-tier override below |
 | Senior Architect | `senior-architect` | `sonnet` | Architecture, security, code review |
 | Senior Product Manager | `senior-product-manager` | `sonnet` | Issue refinement, scope, criteria |
 | Senior Test Engineer | `senior-test-engineer` | `sonnet` | Test strategy and writing |
@@ -27,6 +48,23 @@ Launch agents via the Task tool. Use parallel instances when work can be partiti
 **Scale agent usage to issue complexity** — see tiers below. Over-invoking agents is waste.
 **Always invoke for code changes:** software-developer, senior-test-engineer (unless trivial fix).
 **Skip** docs agent for internal refactoring; test agent for docs-only changes.
+
+**Per-tier model override for `software-developer`** — the agent's default
+model (set in `.claude/agents/software-developer.md`) is Opus. For
+Trivial/Small issues, override to Sonnet to avoid Opus overkill on routine
+CRUD-style work:
+
+```text
+Agent({
+  subagent_type: "software-developer",
+  model: "sonnet",          // Trivial/Small only — omit for Medium/Large
+  description: "...",
+  prompt: "..."
+})
+```
+
+Omit `model` for Medium/Large issues so the agent inherits its default
+(Opus) — those tiers need the deeper reasoning.
 
 ## Issue Complexity Tiers
 
@@ -338,6 +376,9 @@ Once the user approves the plan, execute using agents strategically:
      modify, and any relevant context from the Explore/architect research
    - Example: For 3 independent files, launch 3 software-developer agents
      simultaneously. For 2 tightly coupled files, use 1 agent for both.
+   - **Model override by tier:** Pass `model: "sonnet"` for Trivial/Small
+     issues. Omit `model` for Medium/Large (agent default is Opus). See the
+     per-tier override note in the agent table at the top of this file.
 
 3. **Launch agents in parallel for post-implementation work.** Only launch
    agents that are relevant to the changes made:
