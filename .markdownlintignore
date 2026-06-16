@@ -1,3 +1,7 @@
 # Agent prompt files have YAML frontmatter and long description strings
 # that don't conform to standard markdown linting rules
 .claude/agents/
+
+# Release notes contain long GitHub issue URLs embedded in markdown links
+# that structurally exceed the 160-char line limit without loss of meaning
+docs/releases/

@@ -1,0 +1,66 @@
+# Elan Registry v2.24.0 Release Notes
+
+**Release Date:** [DATE]
+**Type:** Minor Release - UX Polish & Visual Consistency
+
+## Required Actions After Deployment
+
+None.
+
+## User-Facing Changes
+
+### New Features
+
+- **Application version in footer** ([#876](https://github.com/unibrain1/elanregistry/issues/876)): Current version tag now visible in the public footer for at-a-glance deployment confirmation.
+- **Breadcrumb navigation** ([#767](https://github.com/unibrain1/elanregistry/issues/767)): Reference sub-pages, Car Stories, and Guides now include breadcrumb trails for easier orientation.
+- **Identification guide photo lightbox** ([#833](https://github.com/unibrain1/elanregistry/issues/833)): Photos in the identification guide open in a full-screen lightbox for closer inspection.
+- **Identification guide table of contents** ([#835](https://github.com/unibrain1/elanregistry/issues/835)): In-page ToC with jump links added to the identification guide.
+
+### Improvements
+
+- **Lotus-green color system** ([#757](https://github.com/unibrain1/elanregistry/issues/757)): Site-wide CSS custom property color system with Lotus green as primary — consistent brand color across all pages.
+- **Navigation active state and Register CTA** ([#758](https://github.com/unibrain1/elanregistry/issues/758)): Active nav item now visually indicated; Register button promoted as a CTA for unauthenticated visitors.
+- **Login page branding** ([#759](https://github.com/unibrain1/elanregistry/issues/759)): Branded background on login page; password vs. magic-link paths more clearly differentiated.
+- **Car details hero banner** ([#760](https://github.com/unibrain1/elanregistry/issues/760)): Lotus-green hero banner on car detail pages; Contact Owner button more prominent; mobile layout shows photo first.
+- **Statistics overview** ([#761](https://github.com/unibrain1/elanregistry/issues/761)): Timeline charts moved above the fold; stat card colors unified.
+- **Statistics chart color consistency** ([#762](https://github.com/unibrain1/elanregistry/issues/762)): Geographic, Production, and Colors tabs now use a consistent color palette.
+- **Car list refinements** ([#763](https://github.com/unibrain1/elanregistry/issues/763)): Reduced default columns, series filter pills, and placeholder images for cars without photos.
+- **Homepage button prominence** ([#764](https://github.com/unibrain1/elanregistry/issues/764)): Log In / Sign Up button prominence swapped; Important Resources moved to Reference Library.
+- **Content page card header colors** ([#765](https://github.com/unibrain1/elanregistry/issues/765)): Reference, Stories, Guides, and Chassis Validation pages use consistent card header colors.
+- **Factory records unverified warning** ([#766](https://github.com/unibrain1/elanregistry/issues/766)): Amber alert for unverified factory records; introductory context paragraph added.
+- **Paint colors page** ([#769](https://github.com/unibrain1/elanregistry/issues/769)): Larger colour swatches, more prominent filter tabs, Car Stories second CTA added.
+- **Add/Edit Car form** ([#772](https://github.com/unibrain1/elanregistry/issues/772)): Fixed premature validation icons, Purchase Date input, and checkbox layout.
+- **Identification guide two-column layout** ([#834](https://github.com/unibrain1/elanregistry/issues/834)): Modernised two-column layout for the identification guide.
+- **26R Race car model corrected** ([#849](https://github.com/unibrain1/elanregistry/issues/849)): Misclassified 26R Race entry in car_models corrected; statistics map filter updated.
+
+## Technical Changes
+
+- **UserSpice 6.1.0 upgrade** ([#874](https://github.com/unibrain1/elanregistry/issues/874)): Framework upgraded to UserSpice 6.1.0.
+- **MarkdownParser replaced with league/commonmark** ([#815](https://github.com/unibrain1/elanregistry/issues/815)): Custom MarkdownParser class replaced with the league/commonmark library.
+- **ESLint no-implicit-globals fixed in statistics.js** ([#871](https://github.com/unibrain1/elanregistry/issues/871)): ESLint warnings resolved in app/assets/js/statistics.js.
+
+## Issues Resolved
+
+- [#734](https://github.com/unibrain1/elanregistry/issues/734) — Stop tracking navigation.php when upstream bug is fixed
+- [#757](https://github.com/unibrain1/elanregistry/issues/757) — ux: establish CSS custom property color system with Lotus green as primary
+- [#758](https://github.com/unibrain1/elanregistry/issues/758) — ux: nav active state indicator and Register as CTA button
+- [#759](https://github.com/unibrain1/elanregistry/issues/759) — ux: login page branded background and clarify password vs magic-link paths
+- [#760](https://github.com/unibrain1/elanregistry/issues/760) — ux: car details hero banner — Lotus green, prominent contact owner button, mobile photo-first
+- [#761](https://github.com/unibrain1/elanregistry/issues/761) — ux: statistics overview — move timeline charts above fold, unify stat card colors
+- [#762](https://github.com/unibrain1/elanregistry/issues/762) — ux: statistics chart color consistency across Geographic, Production, and Colors tabs
+- [#763](https://github.com/unibrain1/elanregistry/issues/763) — ux: car list — reduce default columns, series filter pills, placeholder images
+- [#764](https://github.com/unibrain1/elanregistry/issues/764) — ux: homepage — swap Log In/Sign Up button prominence; move Important Resources to Reference Library
+- [#765](https://github.com/unibrain1/elanregistry/issues/765) — ux: content page card header color consistency — Reference, Stories, Guides, Chassis Validation
+- [#766](https://github.com/unibrain1/elanregistry/issues/766) — ux: factory records — amber alert for unverified warning; add introductory context
+- [#767](https://github.com/unibrain1/elanregistry/issues/767) — ux: add breadcrumb navigation to Reference sub-pages, Car Stories, and Guides
+- [#769](https://github.com/unibrain1/elanregistry/issues/769) — ux: paint colors — larger swatches, more prominent filter tabs, Car Stories second CTA
+- [#772](https://github.com/unibrain1/elanregistry/issues/772) — UX: Fix Add/Edit Car form — premature validation icons, Purchase Date input, checkbox layout
+- [#812](https://github.com/unibrain1/elanregistry/issues/812) — Track upstream fix: Brevo plugin override.php signature mismatch (bugs.userspice.com/2334)
+- [#815](https://github.com/unibrain1/elanregistry/issues/815) — refactor: replace custom MarkdownParser with league/commonmark
+- [#833](https://github.com/unibrain1/elanregistry/issues/833) — ux: identification guide — photo lightbox
+- [#834](https://github.com/unibrain1/elanregistry/issues/834) — ux: identification guide — two-column layout modernization
+- [#835](https://github.com/unibrain1/elanregistry/issues/835) — ux: identification guide — in-page table of contents
+- [#849](https://github.com/unibrain1/elanregistry/issues/849) — fix: correct misclassified 26R Race entry in car_models and update statistics map filter
+- [#871](https://github.com/unibrain1/elanregistry/issues/871) — lint: fix ESLint no-implicit-globals warnings in app/assets/js/statistics.js
+- [#874](https://github.com/unibrain1/elanregistry/issues/874) — Upgrade to Userspice 6.1.0
+- [#876](https://github.com/unibrain1/elanregistry/issues/876) — feat: display application version in public footer
