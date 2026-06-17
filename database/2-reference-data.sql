@@ -10064,7 +10064,6 @@ VALUES
   (1963, 1964, 'Racing Version ( Number 26-R-xx )', 'Racing Version', 'S1', 'Race', '26R', 'S1|Race|26R'),
   (1964, 1966, 'Roadster S2 ( Type 26 S2 Roadster )', 'Roadster S2', 'S2', 'Roadster', '26', 'S2|Roadster|26'),
   (1964, 1966, 'Racing Version ( Number 26-S2-xx )', 'Racing Version', 'S2', 'Race', '26R', 'S2|Race|26R'),
-  (1965, 1965, 'Racing Version ( Type 26 26R Race )', 'Racing Version', '26R', 'Race', '26', '26R|Race|26'),
   (1965, 1966, 'Coupe S3 Pre-Airflow ( Type 36 S3 FHC-preairflow )', 'Coupe S3 Pre-Airflow', 'S3', 'FHC-preairflow', '36', 'S3|FHC-preairflow|36'),
   (1966, 1966, 'Roadster S2 S/E ( Type 26 S2 S/E Roadster )', 'Roadster S2 S/E', 'S2 SE', 'Roadster', '26', 'S2 SE|Roadster|26'),
   (1966, 1968, 'Coupe S3 Airflow ( Type 36 S3 FHC )', 'Coupe S3 Airflow', 'S3', 'FHC', '36', 'S3|FHC|36'),

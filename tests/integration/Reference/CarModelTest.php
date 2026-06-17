@@ -6,6 +6,8 @@ namespace Tests\Integration\Reference;
 
 use PHPUnit\Framework\TestCase;
 use ElanRegistry\Reference\CarModel;
+use ElanRegistry\Car\CarValidator;
+use ElanRegistry\Exceptions\CarValidationException;
 
 use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\Attributes\Group;
@@ -29,13 +31,7 @@ class CarModelTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
-
-        // Initialize CarModel with database connection
         $this->carModel = new CarModel();
-
-        // Verify car_models table is populated (requires FIX script to be run first)
-        $reflectionMethod = new \ReflectionMethod(CarModel::class, '__construct');
-        $this->assertNotNull($reflectionMethod, 'CarModel should be instantiable');
     }
 
     /**
@@ -119,6 +115,18 @@ class CarModelTest extends TestCase
         // Should be Plus 2S 130 models only
         $series = array_unique(array_map(fn($m) => $m->series_normalized, $models));
         $this->assertContains('+2S/130', $series);
+    }
+
+    /**
+     * @test
+     * getAvailableInYear(1965) does not include the removed 26R|Race|26 misclassification
+     */
+    public function testGetAvailableInYear1965ExcludesBadRow(): void
+    {
+        $models = $this->carModel->getAvailableInYear(1965);
+
+        $modelValues = array_map(fn($m) => $m->model_value, $models);
+        $this->assertNotContains('26R|Race|26', $modelValues);
     }
 
     /**
@@ -271,6 +279,42 @@ class CarModelTest extends TestCase
 
     /**
      * @test
+     * byValue() returns null for removed misclassified 26R Race row
+     */
+    public function testBadRowDoesNotExist(): void
+    {
+        $model = $this->carModel->byValue('26R|Race|26');
+        $this->assertNull($model);
+    }
+
+    /**
+     * @test
+     * byValue() returns correct S1 Race model
+     */
+    public function testByValueS1Race26R(): void
+    {
+        $model = $this->carModel->byValue('S1|Race|26R');
+        $this->assertNotNull($model);
+        $this->assertSame('S1', $model->series);
+        $this->assertSame('Race', $model->variant);
+        $this->assertSame('26R', $model->type_code);
+    }
+
+    /**
+     * @test
+     * byValue() returns correct S2 Race model
+     */
+    public function testByValueS2Race26R(): void
+    {
+        $model = $this->carModel->byValue('S2|Race|26R');
+        $this->assertNotNull($model);
+        $this->assertSame('S2', $model->series);
+        $this->assertSame('Race', $model->variant);
+        $this->assertSame('26R', $model->type_code);
+    }
+
+    /**
+     * @test
      * getSeriesInYear() returns series available in 1970
      */
     public function testGetSeriesInYear1970(): void
@@ -387,6 +431,24 @@ class CarModelTest extends TestCase
 
     /**
      * @test
+     * exists() returns true for S1 Race model
+     */
+    public function testExistsS1Race26R(): void
+    {
+        $this->assertTrue($this->carModel->exists('S1', 'Race', '26R'));
+    }
+
+    /**
+     * @test
+     * exists() returns true for S2 Race model
+     */
+    public function testExistsS2Race26R(): void
+    {
+        $this->assertTrue($this->carModel->exists('S2', 'Race', '26R'));
+    }
+
+    /**
+     * @test
      * exists() returns false for invalid variant
      */
     public function testExistsInvalidVariant(): void
@@ -429,6 +491,58 @@ class CarModelTest extends TestCase
             $this->assertContains($model->type_code, $validTypeCodes,
                 "Model {$model->model_value} has invalid type_code: {$model->type_code}");
         }
+    }
+
+    /**
+     * @test
+     * Every Race variant has series in S1 or S2
+     */
+    public function testRaceModelsHaveCorrectSeriesValues(): void
+    {
+        $raceModels = $this->getRaceModels();
+
+        foreach ($raceModels as $model) {
+            $this->assertContains($model->series, ['S1', 'S2'],
+                "Race model {$model->model_value} has unexpected series '{$model->series}' — must be S1 or S2");
+        }
+    }
+
+    /**
+     * @test
+     * Every Race variant has type_code 26R
+     */
+    public function testRaceModelsHaveCorrectTypeCode(): void
+    {
+        $raceModels = $this->getRaceModels();
+
+        foreach ($raceModels as $model) {
+            $this->assertSame('26R', $model->type_code,
+                "Race model {$model->model_value} has unexpected type_code '{$model->type_code}' — must be 26R");
+        }
+    }
+
+    /**
+     * Returns all Race-variant models, asserting at least one exists.
+     *
+     * @return array<object>
+     */
+    private function getRaceModels(): array
+    {
+        $raceModels = array_filter($this->carModel->getAll(), fn($m) => $m->variant === 'Race');
+        $this->assertNotEmpty($raceModels, 'There should be at least one Race model in the reference data');
+        return $raceModels;
+    }
+
+    /**
+     * @test
+     * CarValidator rejects the removed misclassified 26R|Race|26 model value
+     */
+    public function testValidateModelRejectsRemovedBadRow(): void
+    {
+        $validator = new CarValidator();
+
+        $this->expectException(CarValidationException::class);
+        $validator->validateAndSanitizeFields(['model' => '26R|Race|26'], true);
     }
 
     /**

@@ -45,7 +45,14 @@ restore the backup: `cp override.php.bak override.php`.
 - **Paint colors page** ([#769](https://github.com/unibrain1/elanregistry/issues/769)): Larger colour swatches, more prominent filter tabs, Car Stories second CTA added.
 - **Add/Edit Car form** ([#772](https://github.com/unibrain1/elanregistry/issues/772)): Fixed premature validation icons, Purchase Date input, and checkbox layout.
 - **Identification guide two-column layout** ([#834](https://github.com/unibrain1/elanregistry/issues/834)): Modernised two-column layout for the identification guide.
-- **26R Race car model corrected** ([#849](https://github.com/unibrain1/elanregistry/issues/849)): Misclassified 26R Race entry in car_models corrected; statistics map filter updated.
+
+### Bug Fixes
+
+- **26R Race cars now appear under the cyan 26R map filter** ([#849](https://github.com/unibrain1/elanregistry/issues/849)): Race cars on the statistics map were silently falling into the S1/S2 filter buckets, leaving the cyan 26R filter empty. The map now classifies markers by variant first so all Race cars appear in the 26R bucket. The misclassified `26R|Race|26` reference row that was the underlying cause has been removed from seed data.
+
+## Admin-Facing Changes
+
+- **One-time fix script: 26R Race model correction** ([#849](https://github.com/unibrain1/elanregistry/issues/849)): New script `04-Correct-26R-Race-Model-Classification.php` under Admin → Maintenance. Run once on each deployed environment after upgrading to v2.24.0 — migrates any car previously entered against the misclassified `26R|Race|26` model to the correct S2 Race classification and removes the bad reference row. Idempotent: a second run reports zero changes.
 
 ## Technical Changes
 

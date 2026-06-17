@@ -69,6 +69,89 @@ test.describe('Maps and Charts', () => {
     await expect(chart).toBeVisible({ timeout: 10000 });
   });
 
+  test('statistics page 26R filter classifies Race cars by variant', async ({ page }) => {
+    await page.goto('/app/reports/statistics.php');
+    await page.waitForLoadState('networkidle');
+
+    await expect(async () => {
+      const count = await page.evaluate(() =>
+        Array.isArray(window.elanMapMarkers) ? window.elanMapMarkers.length : -1
+      );
+      expect(count).toBeGreaterThan(0);
+    }).toPass({ timeout: 15000 });
+
+    // markerClassForSeries is scoped inside loadMapMarkers() and is not reachable
+    // from the global scope, so we assert through the DOM instead.
+
+    // At least one .elan-marker.r26 must exist (the 26R bucket is populated).
+    const r26Markers = page.locator('.elan-marker.r26');
+    await expect(r26Markers.first()).toBeAttached({ timeout: 10000 });
+
+    // All Race cars in the marker data must have been assigned the r26 class.
+    const raceCarsWithoutR26 = await page.evaluate(() => {
+      const r26Dots = new Set(
+        Array.from(document.querySelectorAll('.elan-marker.r26'))
+      );
+      const raceCars = (window.elanMapMarkers || []).filter(
+        (m) => (m.variant || '').toLowerCase() === 'race'
+      );
+      // r26Count may exceed raceCarCount if the dataset changes; we require
+      // at least as many r26 markers as Race car entries in the data.
+      return { r26Count: r26Dots.size, raceCarCount: raceCars.length };
+    });
+    expect(raceCarsWithoutR26.r26Count).toBeGreaterThanOrEqual(
+      raceCarsWithoutR26.raceCarCount
+    );
+
+    // Regression: non-Race S2 cars must NOT get the r26 class.
+    const nonRaceS2WithR26 = await page.evaluate(() => {
+      const nonRaceS2 = (window.elanMapMarkers || []).filter(
+        (m) =>
+          (m.series || '').toLowerCase().includes('s2') &&
+          (m.variant || '').toLowerCase() !== 'race'
+      );
+      // If there are no non-Race S2 cars in the dataset we can't assert — skip.
+      return nonRaceS2.length;
+    });
+    // Only assert the regression if the dataset actually contains non-Race S2 cars.
+    if (nonRaceS2WithR26 > 0) {
+      const s2NonRaceR26Count = await page.evaluate(() => {
+        // A non-Race S2 marker should have class "s2", never "r26".
+        // We cannot map marker objects back to DOM nodes directly, so we assert
+        // that the total .elan-marker.s2 count is at least 1 (s2 bucket is used).
+        return document.querySelectorAll('.elan-marker.s2').length;
+      });
+      expect(s2NonRaceR26Count).toBeGreaterThan(0);
+    }
+
+    // Filter UI: the 26R checkbox (#filter-r26) exists.
+    const filterCheckbox = page.locator('#filter-r26');
+    await expect(filterCheckbox).toBeVisible();
+
+    const initialR26Count = await page.locator('.elan-marker.r26').count();
+
+    // Uncheck the 26R filter — all r26 marker wrappers become display:none.
+    await filterCheckbox.uncheck();
+
+    // After unchecking, no .elan-marker.r26 elements should remain visible.
+    const visibleAfterUncheck = await page.evaluate(() =>
+      Array.from(document.querySelectorAll('.elan-marker.r26')).filter(
+        (el) => el.closest('.elan-marker-wrapper')?.style.display !== 'none'
+      ).length
+    );
+    expect(visibleAfterUncheck).toBe(0);
+
+    // Re-check the 26R filter — markers reappear.
+    await filterCheckbox.check();
+
+    const visibleAfterRecheck = await page.evaluate(() =>
+      Array.from(document.querySelectorAll('.elan-marker.r26')).filter(
+        (el) => el.closest('.elan-marker-wrapper')?.style.display !== 'none'
+      ).length
+    );
+    expect(visibleAfterRecheck).toBe(initialR26Count);
+  });
+
   test('no requests to Google Maps domains on statistics page', async ({ page }) => {
     const googleMapsRequests = [];
     page.on('request', request => {

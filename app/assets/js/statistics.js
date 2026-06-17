@@ -1288,11 +1288,11 @@ function loadMapMarkers(map) {
     s2: "s2",
     s3: "s3",
     s4: "s4",
-    "1500": "elan1500",
-    "26r": "r26"
+    "1500": "elan1500"
   };
 
-  function markerClassForSeries(series) {
+  function markerClassForSeries(series, variant) {
+    if ((variant || "").toLowerCase() === "race") return "r26";
     const s = (series || "").toLowerCase();
     for (const [key, cls] of Object.entries(seriesClassMap)) {
       if (s.includes(key)) return cls;
@@ -1365,7 +1365,7 @@ function loadMapMarkers(map) {
   const markerList = [];
 
   markers.forEach(function (car) {
-    const seriesClass = markerClassForSeries(car.series);
+    const seriesClass = markerClassForSeries(car.series, car.variant);
 
     const el = document.createElement("div");
     el.className = "elan-marker-wrapper";
