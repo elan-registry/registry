@@ -1205,7 +1205,7 @@ function createDataCompletenessChart(data) {
  * Build the static "map unavailable" error UI using safe DOM APIs.
  * @param {HTMLElement} el - The map container element to populate.
  */
-function renderMapErrorUI(el) {
+const renderMapErrorUI = (el) => {
   while (el.firstChild) {
     el.removeChild(el.firstChild);
   }
@@ -1228,7 +1228,7 @@ function renderMapErrorUI(el) {
   wrap.appendChild(btn);
 
   el.appendChild(wrap);
-}
+};
 
 /**
  * Initialize MapLibre map
@@ -1388,7 +1388,7 @@ function loadMapMarkers(map) {
   initMarkerFilter(markerList);
 }
 
-function initMarkerFilter(markerList) {
+const initMarkerFilter = (markerList) => {
   const allCheckbox = document.getElementById("filter-all");
   const seriesCheckboxes = document.querySelectorAll("#map-series-filter input[data-series]");
 
@@ -1431,7 +1431,7 @@ function initMarkerFilter(markerList) {
       applyFilter();
     });
   });
-}
+};
 
 window.statisticsInitMap = statisticsInitMap;
 
