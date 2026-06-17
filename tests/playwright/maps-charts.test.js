@@ -95,9 +95,8 @@ test.describe('Maps and Charts', () => {
       const raceCars = (window.elanMapMarkers || []).filter(
         (m) => (m.variant || '').toLowerCase() === 'race'
       );
-      // Each Race car marker should be represented by a dot with the r26 class.
-      // We verify the total count of .elan-marker.r26 elements matches the
-      // number of Race cars (all race cars go into the r26 bucket).
+      // r26Count may exceed raceCarCount if the dataset changes; we require
+      // at least as many r26 markers as Race car entries in the data.
       return { r26Count: r26Dots.size, raceCarCount: raceCars.length };
     });
     expect(raceCarsWithoutR26.r26Count).toBeGreaterThanOrEqual(

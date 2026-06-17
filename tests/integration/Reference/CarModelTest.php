@@ -119,6 +119,18 @@ class CarModelTest extends TestCase
 
     /**
      * @test
+     * getAvailableInYear(1965) does not include the removed 26R|Race|26 misclassification
+     */
+    public function testGetAvailableInYear1965ExcludesBadRow(): void
+    {
+        $models = $this->carModel->getAvailableInYear(1965);
+
+        $modelValues = array_map(fn($m) => $m->model_value, $models);
+        $this->assertNotContains('26R|Race|26', $modelValues);
+    }
+
+    /**
+     * @test
      * getAvailableInYear() throws for invalid year (too early)
      */
     public function testGetAvailableInYearThrowsForYearTooEarly(): void
@@ -415,6 +427,24 @@ class CarModelTest extends TestCase
 
         $dhc = $this->carModel->exists('Sprint', 'DHC', '45');
         $this->assertTrue($dhc);
+    }
+
+    /**
+     * @test
+     * exists() returns true for S1 Race model
+     */
+    public function testExistsS1Race26R(): void
+    {
+        $this->assertTrue($this->carModel->exists('S1', 'Race', '26R'));
+    }
+
+    /**
+     * @test
+     * exists() returns true for S2 Race model
+     */
+    public function testExistsS2Race26R(): void
+    {
+        $this->assertTrue($this->carModel->exists('S2', 'Race', '26R'));
     }
 
     /**

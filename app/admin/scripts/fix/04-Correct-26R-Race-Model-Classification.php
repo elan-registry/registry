@@ -131,6 +131,9 @@ $isProcessing = ($method === 'POST' && isset($_POST['start']));
 
                     /**
                      * Emit a timestamped, typed progress line and flush output.
+                     *
+                     * @param string $message Message to display
+                     * @param string $type    One of: info|success|error|warning|step
                      */
                     function logProgress(string $message, string $type = 'info'): void
                     {
