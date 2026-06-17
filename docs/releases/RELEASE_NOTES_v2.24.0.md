@@ -59,7 +59,7 @@ restore the backup: `cp override.php.bak override.php`.
 - **UserSpice 6.1.0 upgrade** ([#874](https://github.com/unibrain1/elanregistry/issues/874)): Framework upgraded to UserSpice 6.1.0; navigation.php upstream bug resolved (#734).
 - **Brevo plugin `reply_name` forwarding** ([#812](https://github.com/unibrain1/elanregistry/issues/812)): Brevo plugin v1.6.0 now correctly forwards `reply_name` to the API. Stale workaround comments removed from `send-feedback.php` and `send-owner-email.php`. Requires activating the updated `override.RENAME.php` → `override.php` on each server (see Required Actions).
 - **MarkdownParser replaced with league/commonmark** ([#815](https://github.com/unibrain1/elanregistry/issues/815)): Custom MarkdownParser class replaced with the league/commonmark library.
-- **ESLint no-implicit-globals fixed in statistics.js** ([#871](https://github.com/unibrain1/elanregistry/issues/871)): ESLint warnings resolved in app/assets/js/statistics.js.
+- **ESLint no-implicit-globals fixed in statistics.js** ([#871](https://github.com/unibrain1/elanregistry/issues/871)): `renderMapErrorUI` and `initMarkerFilter` converted from top-level `function` declarations to `const` arrow functions, eliminating the two ESLint `no-implicit-globals` warnings.
 
 ## Issues Resolved
 
