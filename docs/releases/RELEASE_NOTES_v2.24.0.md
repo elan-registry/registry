@@ -5,7 +5,21 @@
 
 ## Required Actions After Deployment
 
-None.
+### Activate updated Brevo email override on each server
+
+The Brevo plugin (v1.6.0) ships an updated `override.RENAME.php` that fixes
+the `reply_name` forwarding gap (issue #812). Because the plugin directory is
+not managed by git, this file must be activated manually on each server:
+
+```bash
+cd /path/to/usersc/plugins/sendinblue/
+cp override.php override.php.bak   # keep a rollback copy
+cp override.RENAME.php override.php
+```
+
+After activating, send a test feedback email from the site and confirm the
+reply-to name appears correctly in the received message. If anything is wrong,
+restore the backup: `cp override.php.bak override.php`.
 
 ## User-Facing Changes
 
@@ -35,13 +49,15 @@ None.
 
 ## Technical Changes
 
-- **UserSpice 6.1.0 upgrade** ([#874](https://github.com/unibrain1/elanregistry/issues/874)): Framework upgraded to UserSpice 6.1.0.
+- **UserSpice 6.1.0 upgrade** ([#874](https://github.com/unibrain1/elanregistry/issues/874)): Framework upgraded to UserSpice 6.1.0; navigation.php upstream bug resolved (#734).
+- **Brevo plugin `reply_name` forwarding** ([#812](https://github.com/unibrain1/elanregistry/issues/812)): Brevo plugin v1.6.0 now correctly forwards `reply_name` to the API. Stale workaround comments removed from `send-feedback.php` and `send-owner-email.php`. Requires activating the updated `override.RENAME.php` → `override.php` on each server (see Required Actions).
 - **MarkdownParser replaced with league/commonmark** ([#815](https://github.com/unibrain1/elanregistry/issues/815)): Custom MarkdownParser class replaced with the league/commonmark library.
 - **ESLint no-implicit-globals fixed in statistics.js** ([#871](https://github.com/unibrain1/elanregistry/issues/871)): ESLint warnings resolved in app/assets/js/statistics.js.
 
 ## Issues Resolved
 
 - [#734](https://github.com/unibrain1/elanregistry/issues/734) — Stop tracking navigation.php when upstream bug is fixed
+- [#812](https://github.com/unibrain1/elanregistry/issues/812) — Track upstream fix: Brevo plugin override.php signature mismatch (bugs.userspice.com/2334)
 - [#757](https://github.com/unibrain1/elanregistry/issues/757) — ux: establish CSS custom property color system with Lotus green as primary
 - [#758](https://github.com/unibrain1/elanregistry/issues/758) — ux: nav active state indicator and Register as CTA button
 - [#759](https://github.com/unibrain1/elanregistry/issues/759) — ux: login page branded background and clarify password vs magic-link paths
