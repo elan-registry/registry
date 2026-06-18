@@ -26,8 +26,8 @@ $cards = [
         'url'         => 'reference/index.php',
         'buttonText'  => 'Browse',
         'buttonIcon'  => 'fa-arrow-right',
-        'headerClass' => 'bg-info text-white',
-        'buttonClass' => 'btn-info btn-sm',
+        'headerClass' => 'card-header-er-primary',
+        'buttonClass' => 'btn-primary btn-sm',
         'description' => 'Workshop manuals, technical articles, identification guides, and paint reference for Lotus Elan owners.',
         'colClass'    => 'col-md-4',
     ],
@@ -37,8 +37,8 @@ $cards = [
         'url'         => 'car-stories.php',
         'buttonText'  => 'Browse',
         'buttonIcon'  => 'fa-arrow-right',
-        'headerClass' => 'bg-warning text-dark',
-        'buttonClass' => 'btn-warning btn-sm',
+        'headerClass' => 'card-header-er-primary',
+        'buttonClass' => 'btn-primary btn-sm',
         'description' => 'Individual car histories, owner stories, and historical archives from the Elan community.',
         'colClass'    => 'col-md-4',
     ],
@@ -48,16 +48,16 @@ $cards = [
         'url'         => 'guides/index.php',
         'buttonText'  => 'Browse',
         'buttonIcon'  => 'fa-arrow-right',
-        'headerClass' => 'bg-success text-white',
-        'buttonClass' => 'btn-success btn-sm',
+        'headerClass' => 'card-header-er-primary',
+        'buttonClass' => 'btn-primary btn-sm',
         'description' => 'How to add your car, transfer ownership, and use the registry effectively.',
         'colClass'    => 'col-md-4',
     ],
 ];
 
 $navLinks = [
-    ['label' => 'Registry Home', 'url' => $us_url_root, 'icon' => 'fa-home', 'btnClass' => 'btn-outline-info'],
-    ['label' => 'Browse Cars',   'url' => $us_url_root . 'app/cars/', 'icon' => 'fa-car', 'btnClass' => 'btn-outline-success'],
+    ['label' => 'Registry Home', 'url' => $us_url_root, 'icon' => 'fa-home', 'btnClass' => 'btn-outline-primary'],
+    ['label' => 'Browse Cars',   'url' => $us_url_root . 'app/cars/', 'icon' => 'fa-car', 'btnClass' => 'btn-outline-primary'],
 ];
 
 ?>

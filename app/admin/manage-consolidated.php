@@ -481,7 +481,7 @@ if (Input::exists('post')) {
                 <h5 class="modal-title card-header-er-primary-text" id="reassignConfirmModalLabel">
                     <i class="fas fa-user-friends"></i> Confirm Car Reassignment
                 </h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
             <div class="modal-body">
                 <div class="alert alert-primary mb-3">
@@ -594,7 +594,7 @@ if (Input::exists('post')) {
                 <h5 class="modal-title card-header-er-primary-text" id="transferDecisionModalLabel">
                     <i class="fas fa-exchange-alt"></i> <span id="transferDecisionTitle">Confirm Transfer Decision</span>
                 </h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
             <div class="modal-body">
                 <div id="transferDecisionMessage" class="alert mb-3">
@@ -686,7 +686,7 @@ if (Input::exists('post')) {
                 <h5 class="modal-title card-header-er-primary-text" id="adminContactModalLabel">
                     <i class="fas fa-shield-alt"></i> Administrator Contact Owner
                 </h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
             <form id="adminContactForm" method="POST" action="<?= $us_url_root ?>app/admin/includes/process-admin-contact.php">
                 <div class="modal-body">

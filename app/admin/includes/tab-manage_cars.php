@@ -786,7 +786,7 @@ $qualityScore = $totalCars > 0 ? max(0, 100 - (($carIssues / $totalCars) * 100))
                 <h5 class="modal-title card-header-er-primary-text" id="adminContactModalLabel">
                     <i class="fas fa-shield-alt"></i> Administrator Contact Owner
                 </h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
             <form id="adminContactForm" method="POST" action="<?= $us_url_root ?>app/admin/includes/process-admin-contact.php">
                 <div class="modal-body">
