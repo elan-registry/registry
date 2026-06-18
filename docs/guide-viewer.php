@@ -14,9 +14,17 @@ declare(strict_types=1);
  */
 
 require_once '../users/init.php';
+require_once $abs_us_root . $us_url_root . 'usersc/classes/DocumentConfig.php';
+
+// Hint for the nav active-state matcher (see usersc/templates/customizer/file_nav_custom.php).
+// Must be set before elanregistry_prep.php, which triggers the nav render. Falls back to
+// 'guides' if the doc is unknown — the request will fail validation below regardless.
+$nav_section = (\ElanRegistry\Documentation\DocumentConfig::validateDocument($_GET['doc'] ?? '')['category'] ?? 'guides') === 'admin'
+    ? 'admin'
+    : 'guides';
+
 require_once $abs_us_root . $us_url_root . 'usersc/includes/elanregistry_prep.php';
 require_once $abs_us_root . $us_url_root . 'usersc/classes/MarkdownParser.php';
-require_once $abs_us_root . $us_url_root . 'usersc/classes/DocumentConfig.php';
 
 use ElanRegistry\Documentation\MarkdownParser;
 use ElanRegistry\Documentation\DocumentConfig;

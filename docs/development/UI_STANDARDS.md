@@ -40,7 +40,7 @@ palette or hardcoded hex values in project-owned PHP, CSS, or JS files.
 | `--er-link-hover` | `#073763` | 11.4:1 AAA | Link hover / visited |
 | `--er-neutral` | `#6C757D` | 4.7:1 AA | Muted text, secondary UI (`text-muted`) |
 | `--er-neutral-light` | `#F4F5F3` | 1.05:1 (bg) | Page background tint, table stripes, L3 card headers |
-| `--er-neutral-dark` | `#1F2421` | 15.7:1 AAA | Dark sections, hero banners, `--er-neutral-dark` |
+| `--er-neutral-dark` | `#3B413D` | 9.4:1 AAA | Dark sections, hero banners, `--er-neutral-dark` |
 | `--er-true-black` | `#010101` | 20.9:1 AAA | Authentic Lotus black — text on yellow |
 
 ### Bootstrap Cascade
@@ -149,6 +149,11 @@ For heading text inside each level:
 
 <!-- Warning — administrative use, unverified data actions -->
 <button class="btn btn-warning">Override</button>
+
+<!-- Lotus Yellow CTA — high-contrast filled button for loud CTAs that must pop
+     on dark backgrounds (e.g. public-nav Register link). Yellow + --er-on-accent
+     text, NEVER white text. -->
+<a class="btn btn-er-yellow btn-sm">Register</a>
 ```
 
 **Do not use `btn-success` as a generic primary CTA.** Reserve it for genuine approval/completion states (e.g., "Approve transfer request").
