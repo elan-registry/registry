@@ -1215,7 +1215,7 @@ $qualityScore = $totalCars > 0 ? max(0, 100 - (($carIssues / $totalCars) * 100))
 .timestamp-label {
     font-size: 0.75rem;
     font-weight: 600;
-    color: #6c757d;
+    color: var(--er-neutral);
     text-transform: uppercase;
     margin-bottom: 2px;
 }
@@ -1223,13 +1223,13 @@ $qualityScore = $totalCars > 0 ? max(0, 100 - (($carIssues / $totalCars) * 100))
 .timestamp-value {
     font-size: 0.9rem;
     font-weight: 600;
-    color: #495057;
+    color: var(--er-neutral-dark);
     margin-bottom: 1px;
 }
 
 .timestamp-time {
     font-size: 0.7rem;
-    color: #868e96;
+    color: var(--er-neutral);
 }
 
 /* Field comparison highlighting */
@@ -1272,11 +1272,11 @@ $qualityScore = $totalCars > 0 ? max(0, 100 - (($carIssues / $totalCars) * 100))
 }
 
 .form-validation input.is-invalid {
-    border-color: #dc3545;
+    border-color: var(--er-danger);
 }
 
 .form-validation input.is-valid {
-    border-color: #28a745;
+    border-color: var(--er-primary);
 }
 
 .badge-lg {

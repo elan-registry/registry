@@ -91,7 +91,7 @@
 
 /* Selected Location Display */
 .location-picker-container .alert-success {
-    border-left: 4px solid #28a745;
+    border-left: 4px solid var(--er-primary);
     animation: slideIn 0.3s ease;
 }
 
@@ -108,7 +108,7 @@
 
 /* Error Message Display */
 .location-picker-container .alert-danger {
-    border-left: 4px solid #dc3545;
+    border-left: 4px solid var(--er-danger);
     animation: shake 0.5s ease;
 }
 

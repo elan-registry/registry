@@ -35,7 +35,7 @@
 .nav-tabs .nav-link {
     border: none;
     border-radius: 0;
-    color: #6c757d;
+    color: var(--er-neutral);
     font-weight: 500;
     padding: 0.75rem 1rem;
     transition: all 0.2s ease;
@@ -43,14 +43,14 @@
 }
 
 .nav-tabs .nav-link:hover {
-    color: #007bff;
-    background-color: rgba(0, 123, 255, 0.05);
+    color: var(--er-primary);
+    background-color: rgba(var(--er-primary-rgb), 0.05);
 }
 
 .nav-tabs .nav-link.active {
     background-color: #fff;
-    border-bottom: 3px solid #007bff;
-    color: #007bff;
+    border-bottom: 3px solid var(--er-primary);
+    color: var(--er-primary);
     font-weight: 600;
 }
 
@@ -86,45 +86,27 @@
     padding: 0.25rem 0.5rem;
 }
 
-/* System status badges */
-.badge-success {
-    background-color: #28a745;
-}
-
-.badge-warning {
-    background-color: #ffc107;
-    color: #212529;
-}
-
-.badge-danger {
-    background-color: #dc3545;
-}
-
-.badge-info {
-    background-color: #17a2b8;
-}
-
 /* ==========================================================================
    Header Styles
    ========================================================================== */
 
 .text-gray-800 {
-    color: #495057 !important;
+    color: var(--er-neutral-dark) !important;
 }
 
 .page-container h1.h2 {
-    color: #495057;
+    color: var(--er-neutral-dark);
     font-weight: 600;
 }
 
 .page-container h1.h2 i {
-    color: #007bff;
+    color: var(--er-primary);
     margin-right: 0.5rem;
 }
 
 /* System stats in header */
 .text-muted {
-    color: #6c757d !important;
+    color: var(--er-neutral) !important;
 }
 
 .text-muted i {
@@ -143,71 +125,6 @@
 .card-header {
     background-color: rgba(0, 0, 0, 0.03);
     border-bottom: 1px solid rgba(0, 0, 0, 0.125);
-}
-
-/* Colored card borders */
-.card.border-primary {
-    border-color: #007bff;
-}
-
-.card.border-success {
-    border-color: #28a745;
-}
-
-.card.border-warning {
-    border-color: #ffc107;
-}
-
-.card.border-danger {
-    border-color: #dc3545;
-}
-
-.card.border-info {
-    border-color: #17a2b8;
-}
-
-.card.border-secondary {
-    border-color: #6c757d;
-}
-
-.card.border-dark {
-    border-color: #343a40;
-}
-
-/* Colored card headers */
-.card-header.bg-primary {
-    background-color: #007bff !important;
-    color: #fff;
-}
-
-.card-header.bg-success {
-    background-color: #28a745 !important;
-    color: #fff;
-}
-
-.card-header.bg-warning {
-    background-color: #ffc107 !important;
-    color: #212529;
-}
-
-.card-header.bg-danger {
-    background-color: #dc3545 !important;
-    color: #fff;
-}
-
-.card-header.bg-info {
-    background-color: #17a2b8 !important;
-    color: #fff;
-}
-
-.card-header.bg-dark {
-    background-color: #343a40 !important;
-    color: #fff;
-}
-
-.card-header.bg-light {
-    background-color: #f8f9fa !important;
-    color: #495057;
 }
 
 /* ==========================================================================
@@ -270,24 +187,14 @@
     border-color: #ced4da;
 }
 
-.form-control:focus {
-    border-color: #007bff;
-    box-shadow: 0 0 0 0.2rem rgba(0, 123, 255, 0.25);
-}
-
 .form-label {
     font-weight: 500;
-    color: #495057;
+    color: var(--er-neutral-dark);
     margin-bottom: 0.5rem;
 }
 
 .input-group .btn {
     border-left: 0;
-}
-
-.input-group .form-control:focus + .input-group-append .btn {
-    border-color: #007bff;
-    box-shadow: 0 0 0 0.2rem rgba(0, 123, 255, 0.25);
 }
 
 /* Custom switch styles */
@@ -449,12 +356,12 @@
 
 /* Focus styles for keyboard navigation */
 .nav-tabs .nav-link:focus {
-    outline: 2px solid #007bff;
+    outline: 2px solid var(--er-primary);
     outline-offset: 2px;
 }
 
 .btn:focus {
-    outline: 2px solid #007bff;
+    outline: 2px solid var(--er-primary);
     outline-offset: 2px;
 }
 
@@ -465,8 +372,8 @@
     }
 
     .nav-tabs .nav-link.active {
-        border: 1px solid #007bff;
-        background-color: #007bff;
+        border: 1px solid var(--er-primary);
+        background-color: var(--er-primary);
         color: #fff;
     }
 
@@ -500,8 +407,8 @@
 }
 
 .owner-comparison-card.newer-owner {
-    border-color: #28a745;
-    box-shadow: 0 0 0 0.2rem rgba(40, 167, 69, 0.15);
+    border-color: var(--er-primary);
+    box-shadow: 0 0 0 0.2rem rgba(var(--er-primary-rgb), 0.15);
 }
 
 .owner-comparison-card .card-body {
@@ -510,13 +417,13 @@
 
 /* Field comparison highlighting */
 .field-match {
-    background-color: rgba(40, 167, 69, 0.05);
+    background-color: rgba(var(--er-primary-rgb), 0.08);
     padding: 0.25rem;
     border-radius: 0.25rem;
 }
 
 .field-differ {
-    background-color: rgba(255, 193, 7, 0.1);
+    background-color: rgba(var(--er-warning-rgb), 0.1);
     padding: 0.25rem;
     border-radius: 0.25rem;
 }
@@ -533,7 +440,7 @@
 
 .timestamp-label {
     font-size: 0.75rem;
-    color: #6c757d;
+    color: var(--er-neutral);
     font-weight: 500;
     margin-bottom: 0.25rem;
 }
@@ -541,12 +448,12 @@
 .timestamp-value {
     font-size: 0.875rem;
     font-weight: 600;
-    color: #495057;
+    color: var(--er-neutral-dark);
 }
 
 .timestamp-time {
     font-size: 0.7rem;
-    color: #6c757d;
+    color: var(--er-neutral);
 }
 
 /* Car list container */
