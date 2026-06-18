@@ -1,3 +1,50 @@
+<?php
+/**
+ * Active-state matcher. Each top-level item declares the paths it "owns";
+ * the first match wins, so more-specific entries (Add Car) precede broader
+ * prefixes (List Cars). Trailing '/' marks a prefix; bare paths are exact.
+ * $php_self is normalized against $us_url_root so subfolder installs (e.g.
+ * MAMP at /elan-registry/) match the same patterns as production at /.
+ *
+ * Generic viewer pages (pdf-viewer.php, guide-viewer.php) can't be classified
+ * by path alone — they set $nav_section before this template renders and we
+ * honor it directly.
+ */
+$navActive = $nav_section ?? '';
+if ($navActive === '') {
+    $navActive = (static function (string $current, string $root): string {
+    if ($root !== '' && $root !== '/' && str_starts_with($current, $root)) {
+        $current = '/' . ltrim(substr($current, strlen($root)), '/');
+    }
+    // Order matters: exact paths and more-specific entries first so they win
+    // over broader prefixes (e.g. factory.php beats the /app/cars/ prefix).
+    $sections = [
+        'add_car'    => ['/app/cars/form.php'],
+        'reference'  => ['/app/cars/factory.php', '/docs/reference/'],
+        'list_cars'  => ['/app/cars/'],
+        'statistics' => ['/app/reports/statistics.php'],
+        'stories'    => ['/docs/car-stories.php', '/docs/stories/'],
+        'guides'     => ['/docs/guides/'],
+        'register'   => ['/users/join.php', '/usersc/join.php'],
+        'login'      => ['/users/login.php', '/usersc/login.php'],
+        'admin'      => ['/app/admin/', '/docs/admin/', '/users/admin.php'],
+        'account'    => ['/users/account.php', '/app/contact/', '/users/logout.php'],
+    ];
+    foreach ($sections as $key => $patterns) {
+        foreach ($patterns as $p) {
+            if (substr($p, -1) === '/') {
+                if (str_starts_with($current, $p)) {
+                    return $key;
+                }
+            } elseif ($p === $current) {
+                return $key;
+            }
+        }
+    }
+    return '';
+    })($php_self ?? '/', $us_url_root ?? '/');
+}
+?>
 <!-- ElanRegistry navigation menu using the Customizer us_menu CSS class system. -->
 <ul class='us_menu horizontal dark' style=' z-index: 50;' id='us_menu_1_638b71f2ed026'>
   <div class='us_brand full_screen'>
@@ -19,7 +66,7 @@
     </div>
   </div>
 
-  <li class=''>
+  <li class='<?= $navActive === 'list_cars' ? 'active' : '' ?>'>
     <a class='' href='<?= $us_url_root ?>app/cars/index.php'>
       <i class='fa fa-car'></i>
       <span class='labelText'>List Cars</span>
@@ -27,7 +74,7 @@
   </li>
 
   <?php if (isset($user) && $user->isLoggedIn()): ?>
-    <li class=''>
+    <li class='<?= $navActive === 'add_car' ? 'active' : '' ?>'>
       <a class='btn btn-primary btn-sm ms-1' href='<?= $us_url_root ?>app/cars/form.php'>
         <i class='fa fa-plus'></i>
         <span class='labelText'>Add Car</span>
@@ -35,14 +82,14 @@
     </li>
   <?php endif; ?>
 
-  <li class=''>
+  <li class='<?= $navActive === 'statistics' ? 'active' : '' ?>'>
     <a class='' href='<?= $us_url_root ?>app/reports/statistics.php'>
       <i class='fa fa-pie-chart'></i>
       <span class='labelText'>Statistics</span>
     </a>
   </li>
 
-  <li class='dropdown'>
+  <li class='dropdown <?= $navActive === 'reference' ? 'active' : '' ?>'>
     <a class='sub-toggle' href='#' id='menu_1_638b71f2ed026_dropdown_reference' role='button' aria-haspopup='true' aria-expanded='false' data-target='#menu_1_638b71f2ed026_dropdown_reference'>
       <i class='fa fa-book'></i>
       <span class='labelText'>Reference</span>
@@ -82,14 +129,14 @@
     </ul>
   </li>
 
-  <li class=''>
+  <li class='<?= $navActive === 'stories' ? 'active' : '' ?>'>
     <a class='' href='<?= $us_url_root ?>docs/car-stories.php'>
       <i class='fa fa-book-open'></i>
       <span class='labelText'>Car Stories</span>
     </a>
   </li>
 
-  <li class=''>
+  <li class='<?= $navActive === 'guides' ? 'active' : '' ?>'>
     <a class='' href='<?= $us_url_root ?>docs/guides/index.php'>
       <i class='fa fa-question-circle'></i>
       <span class='labelText'>Guides</span>
@@ -108,7 +155,7 @@
     <?php endif; ?>
 
     <?php if (isRegistryAdmin($user->data()->id)): ?>
-      <li class='dropdown'>
+      <li class='dropdown <?= $navActive === 'admin' ? 'active' : '' ?>'>
         <a class='sub-toggle' href='#' id='menu_1_638b71f2ed026_dropdown_admin' role='button' aria-haspopup='true' aria-expanded='false' data-target='#menu_1_638b71f2ed026_dropdown_admin'>
           <i class='fa fa-cogs'></i>
           <span class='labelText'>Admin</span>
@@ -148,7 +195,7 @@
       </li>
     <?php endif; ?>
 
-    <li class='dropdown'>
+    <li class='dropdown <?= $navActive === 'account' ? 'active' : '' ?>'>
       <a class='sub-toggle' href='#' id='menu_1_638b71f2ed026_dropdown_account' role='button' aria-haspopup='true' aria-expanded='false' data-target='#menu_1_638b71f2ed026_dropdown_account'>
         <i class='fa fa-user'></i>
         <span class='labelText'><?= echousername($user->data()->id); ?></span>
@@ -180,15 +227,15 @@
   <?php else: ?>
 
     <?php if ($settings->registration == 1): ?>
-      <li class=''>
-        <a class='' href='<?= $us_url_root ?>users/join.php'>
+      <li class='<?= $navActive === 'register' ? 'active' : '' ?>'>
+        <a class='btn btn-er-yellow btn-sm ms-1' href='<?= $us_url_root ?>users/join.php'>
           <i class='fa fa-plus-square'></i>
           <span class='labelText'>Register</span>
         </a>
       </li>
     <?php endif; ?>
 
-    <li class=''>
+    <li class='<?= $navActive === 'login' ? 'active' : '' ?>'>
       <a class='' href='<?= $us_url_root ?>users/login.php'>
         <i class='fa fa-sign-in'></i>
         <span class='labelText'>Log In</span>

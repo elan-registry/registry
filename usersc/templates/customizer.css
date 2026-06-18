@@ -39,7 +39,7 @@
   /* Neutrals */
   --er-neutral: #6c757d;
   --er-neutral-light: #f4f5f3;
-  --er-neutral-dark: #1f2421;
+  --er-neutral-dark: #3b413d;
   --er-true-black: #010101;
 
   /* On-color text */
@@ -439,6 +439,31 @@ ul.us_menu.dark .us_sub-menu li,
 ul.us_menu.dark li:hover,
 ul.us_menu.dark ul.us_sub-menu {
   background-color: var(--er-neutral-dark) !important;
+}
+
+/* Active nav section — 3px Lotus Yellow underline echoes the L1 card stripe. */
+ul.us_menu.dark > li.active > a {
+  box-shadow: inset 0 -3px 0 var(--er-accent);
+  font-weight: 600;
+}
+
+/* Lotus Yellow CTA button — high-contrast filled button for loud CTAs that
+   must pop on dark backgrounds (currently the public-nav Register link).
+   Yellow + true-black mirrors the er-badge-yellow rule: never white text.
+   !important on color overrides upstream menu.css's
+   `ul.us_menu.dark a { color: rgba(255,255,255,.55) }` which otherwise wins
+   on specificity when the button is rendered inside the nav. */
+.btn-er-yellow {
+  background-color: var(--er-accent);
+  border-color: var(--er-accent);
+  color: var(--er-on-accent) !important;
+  font-weight: 600;
+}
+.btn-er-yellow:hover,
+.btn-er-yellow:focus-visible {
+  background-color: var(--er-accent-dark);
+  border-color: var(--er-accent-dark);
+  color: var(--er-on-accent) !important;
 }
 
 /* Form focus — Bootstrap hardcodes #86b7fe focus border at component scope;

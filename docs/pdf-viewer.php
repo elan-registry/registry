@@ -9,6 +9,11 @@ declare(strict_types=1);
  * Requires authentication and uses Bootstrap for layout.
  */
 require_once '../users/init.php';
+
+// Hint for the nav active-state matcher (see usersc/templates/customizer/file_nav_custom.php).
+// Must be set before elanregistry_prep.php, which triggers the nav render.
+$nav_section = (($_GET['subdir'] ?? '') === 'stories') ? 'stories' : 'reference';
+
 require_once $abs_us_root . $us_url_root . 'usersc/includes/elanregistry_prep.php';
 
 if (!securePage($php_self)) {
