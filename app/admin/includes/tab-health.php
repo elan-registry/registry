@@ -156,9 +156,9 @@ try {
     </div>
 </div>
 
-<div class="card border-secondary">
-    <div class="card-header bg-secondary text-white">
-        <h5 class="mb-0"><i class="fas fa-info-circle"></i> Database Health Status</h5>
+<div class="card border-primary">
+    <div class="card-header card-header-er-primary">
+        <h5 class="mb-0 card-header-er-primary-text"><i class="fas fa-info-circle"></i> Database Health Status</h5>
     </div>
     <div class="card-body">
         <div class="table-responsive">

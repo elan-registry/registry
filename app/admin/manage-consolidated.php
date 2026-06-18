@@ -74,7 +74,7 @@ try {
     $tablesStmt = $db->query("SHOW TABLES LIKE ?", ['car_transfer_requests']);
     $tables = $tablesStmt->results();
     if (!empty($tables)) {
-        $transferStmt = $db->query("SELECT COUNT(*) as count FROM car_transfer_requests WHERE status = ?", ['pending']);
+        $transferStmt = $db->query("SELECT COUNT(*) as count FROM car_transfer_requests WHERE status = ? AND expires_at > NOW()", ['pending']);
         $transferResult = $transferStmt->first();
         $transferCount = $transferResult ? (int)$transferResult->count : 0;
     }

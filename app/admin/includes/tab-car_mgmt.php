@@ -197,11 +197,11 @@ try {
 <!-- Administrative Tools - Secondary Section -->
 <div class="row mb-4">
     <div class="col-12">
-        <div class="card border-warning">
-            <div class="card-header bg-warning text-dark">
-                <h5 class="mb-0">
+        <div class="card border-primary">
+            <div class="card-header card-header-er-primary">
+                <h5 class="mb-0 card-header-er-primary-text">
                     <i class="fas fa-shield-alt"></i> Administrative Tools
-                    <small class="ms-2 text-muted">For exceptional cases only</small>
+                    <small class="ms-2 card-header-er-primary-text">For exceptional cases only</small>
                 </h5>
             </div>
             <div class="card-body">
@@ -214,9 +214,9 @@ try {
                 <div class="row">
                     <!-- Car Reassignment - Administrative Exception -->
                     <div class="col-lg-8 col-md-12 mb-4">
-                        <div class="card border-warning">
-                            <div class="card-header bg-warning text-dark">
-                                <h6 class="mb-0">
+                        <div class="card border-primary">
+                            <div class="card-header card-header-er-primary">
+                                <h6 class="mb-0 card-header-er-primary-text">
                                     <i class="fas fa-user-friends"></i> Manual Car Reassignment
                                     <span class="badge text-bg-warning badge-sm ms-2">Administrative Use Only</span>
                                 </h6>
@@ -305,8 +305,8 @@ try {
                     <!-- Car Deletion - Rare Administrative Action -->
                     <div class="col-lg-4 col-md-12 mb-4">
                         <div class="card border-danger">
-                            <div class="card-header bg-danger text-white">
-                                <h6 class="mb-0">
+                            <div class="card-header bg-danger">
+                                <h6 class="mb-0 text-white">
                                     <i class="fas fa-trash-alt"></i> Permanent Car Deletion
                                 </h6>
                             </div>
@@ -360,37 +360,6 @@ try {
     </div>
 </div>
 
-<!-- Quick Statistics -->
-<div class="row g-3 mt-1">
-    <div class="col-md-3">
-        <div class="er-stat-tile">
-            <div class="er-stat-label"><i class="fas fa-hourglass-half"></i> Pending</div>
-            <div class="er-stat-number"><?= $transferStats['pending'] ?></div>
-            <div class="er-stat-label">Transfer Requests</div>
-        </div>
-    </div>
-    <div class="col-md-3">
-        <div class="er-stat-tile">
-            <div class="er-stat-label"><i class="fas fa-check-circle"></i> Approved</div>
-            <div class="er-stat-number"><?= $transferStats['completed_today'] ?></div>
-            <div class="er-stat-label">Today</div>
-        </div>
-    </div>
-    <div class="col-md-3">
-        <div class="er-stat-tile">
-            <div class="er-stat-label"><i class="fas fa-times-circle"></i> Denied</div>
-            <div class="er-stat-number"><?= $transferStats['denied_today'] ?></div>
-            <div class="er-stat-label">Today</div>
-        </div>
-    </div>
-    <div class="col-md-3">
-        <div class="er-stat-tile">
-            <div class="er-stat-label"><i class="fas fa-car"></i> Total Cars</div>
-            <div class="er-stat-number"><?= number_format($systemStatus['total_cars']) ?></div>
-            <div class="er-stat-label">In Registry</div>
-        </div>
-    </div>
-</div>
 
 <?php if ($preloadCarId && $preloadCarData): ?>
 <script>

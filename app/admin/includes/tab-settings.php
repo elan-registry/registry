@@ -205,10 +205,10 @@ $autoCreationMessages = processSettingsAutoCreation();
     <div class="row">
         <div class="col-md-6">
             <!-- System Maintenance -->
-            <div class="card border-secondary mb-4">
-                <div class="card-header bg-dark text-white">
-                    <h5 class="mb-0"><i class="fas fa-tools"></i> Backup Configuration</h5>
-                    <small class="text-light">Backup and system maintenance settings</small>
+            <div class="card border-primary mb-4">
+                <div class="card-header card-header-er-primary">
+                    <h5 class="mb-0 card-header-er-primary-text"><i class="fas fa-tools"></i> Backup Configuration</h5>
+                    <small class="card-header-er-primary-text">Backup and system maintenance settings</small>
                 </div>
                 <div class="card-body">
                     <div class="alert alert-primary">
@@ -227,10 +227,10 @@ $autoCreationMessages = processSettingsAutoCreation();
 
         <div class="col-md-6">
             <!-- Media Management -->
-            <div class="card border-warning mb-4">
-                <div class="card-header bg-warning text-dark">
-                    <h5 class="mb-0"><i class="fas fa-images"></i> Media Management</h5>
-                    <small class="text-dark">File upload and image handling settings</small>
+            <div class="card border-primary mb-4">
+                <div class="card-header card-header-er-primary">
+                    <h5 class="mb-0 card-header-er-primary-text"><i class="fas fa-images"></i> Media Management</h5>
+                    <small class="card-header-er-primary-text">File upload and image handling settings</small>
                 </div>
                 <div class="card-body">
                     <div class="mb-3">
@@ -289,9 +289,9 @@ $autoCreationMessages = processSettingsAutoCreation();
 
             <!-- Email Configuration -->
             <div class="card border-primary mb-4">
-                <div class="card-header bg-primary text-white">
-                    <h5 class="mb-0"><i class="fas fa-envelope"></i> Email & Communication</h5>
-                    <small class="text-light">Administrative email addresses and notification settings</small>
+                <div class="card-header card-header-er-primary">
+                    <h5 class="mb-0 card-header-er-primary-text"><i class="fas fa-envelope"></i> Email &amp; Communication</h5>
+                    <small class="card-header-er-primary-text">Administrative email addresses and notification settings</small>
                 </div>
                 <div class="card-body">
                     <div class="mb-3">
