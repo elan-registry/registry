@@ -3,6 +3,9 @@
  *
  * Modern location collection component styles
  *
+ * All rules scoped to .location-picker-container — component used on the
+ * Edit Car form (app/cars/form.php).
+ *
  * @package ElanRegistry
  * @version 2.11.0
  * @since 2.11.0
@@ -173,11 +176,4 @@
     }
 }
 
-/* Reduced Motion Support */
-@media (prefers-reduced-motion: reduce) {
-    .location-picker-container * {
-        animation-duration: 0.01ms !important;
-        animation-iteration-count: 1 !important;
-        transition-duration: 0.01ms !important;
-    }
-}
+/* Reduced motion: handled globally in customizer.css */

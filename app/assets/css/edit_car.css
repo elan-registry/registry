@@ -1,3 +1,15 @@
+/**
+ * edit_car.css
+ * Page-specific styles for the Edit Car form (app/cars/form.php).
+ *
+ * Globally reusable rules (.form-section-heading, .fit-image) now live in
+ * customizer.css. Each block here is intentionally scoped to #editCar or to
+ * the FilePond plugin which is only loaded on this page.
+ */
+
+/* Page-specific: scoped to #editCar to suppress the default outline on all
+   form inputs in this specific form (FilePond and plain inputs).
+   Supplements the global .form-control:focus rule in customizer.css. */
 #editCar input:focus,
 #editCar textarea:focus {
     border-color: var(--er-primary) !important;
@@ -5,37 +17,24 @@
     outline-width: 0;
 }
 
+/* Page-specific: button margin specific to the stacked form layout in
+   the edit car page */
 #editCar input[type=button],
 #editCar input[type=submit] {
     margin: 10px 0;
 }
 
+/* Page-specific: overrides the global .registry-card on this page to enable
+   FilePond's z-index stacking. The z-index:0 creates a stacking context
+   needed for the drag-and-drop overlay to render correctly. */
 .card {
     z-index: 0;
     border: none;
-    position: relative
+    position: relative;
 }
 
-.fit-image {
-    width: 100%;
-    object-fit: cover
-}
-
-/* Section headings */
-
-.form-section-heading {
-    font-size: 0.75rem;
-    font-weight: 700;
-    letter-spacing: 0.12em;
-    text-transform: uppercase;
-    color: var(--er-primary);
-    border-bottom: 2px solid var(--er-primary);
-    padding-bottom: 0.4rem;
-    margin-bottom: 1.5rem;
-}
-
-/* FilePond */
-
+/* Page-specific: FilePond plugin overrides — FilePond is only loaded on
+   this page, so styling lives here rather than in customizer.css. */
 .filepond--root {
     margin-bottom: 0;
 }
