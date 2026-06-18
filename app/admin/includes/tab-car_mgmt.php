@@ -82,13 +82,13 @@ try {
 <!-- Transfer Request Management Section -->
 <div class="row mb-4">
     <div class="col-12">
-        <div class="card border-info">
-            <div class="card-header bg-info text-white">
-                <h5 class="mb-0"><i class="fas fa-exchange-alt"></i> Pending Transfer Requests</h5>
+        <div class="card border-primary">
+            <div class="card-header card-header-er-primary">
+                <h5 class="mb-0 card-header-er-primary-text"><i class="fas fa-exchange-alt"></i> Pending Transfer Requests</h5>
             </div>
             <div class="card-body">
                 <?php if (empty($transfers)): ?>
-                    <div class="alert alert-info">
+                    <div class="alert alert-primary">
                         <i class="fas fa-info-circle"></i> No pending transfer requests at this time.
                     </div>
                 <?php else: ?>
@@ -127,7 +127,7 @@ try {
                                             <?= date('M j, Y', strtotime($transfer->expires_at)) ?>
                                         </td>
                                         <td>
-                                            <button type="button" class="btn btn-info btn-sm mb-1 view-transfer-details"
+                                            <button type="button" class="btn btn-primary btn-sm mb-1 view-transfer-details"
                                                     data-transfer-id="<?= $transfer->id ?>"
                                                     data-car-id="<?= $transfer->existing_car_id ?>"
                                                     data-chassis="<?= htmlspecialchars($transfer->chassis) ?>"
@@ -231,7 +231,7 @@ try {
                                                 <div class="input-group">
                                                     <input type="number" class="form-control" id="reassign_car_id" name="car_id"
                                                            placeholder="Enter Car ID" required>
-                                                    <button class="btn btn-outline-info" type="button" id="lookupCarBtn">
+                                                    <button class="btn btn-outline-primary" type="button" id="lookupCarBtn">
                                                         <i class="fas fa-search"></i>
                                                     </button>
                                                 </div>
@@ -239,7 +239,7 @@ try {
 
                                                 <!-- Car Details Display -->
                                                 <div id="carDetails" class="mt-2" style="display: none;">
-                                                    <div class="alert alert-info alert-sm">
+                                                    <div class="alert alert-primary alert-sm">
                                                         <h6 class="alert-heading mb-1"><i class="fas fa-car"></i> Car Details</h6>
                                                         <div id="carInfo"></div>
                                                         <div class="mt-2">
@@ -258,7 +258,7 @@ try {
                                                 <div class="input-group">
                                                     <input type="number" class="form-control" id="reassign_user_id" name="user_id"
                                                            placeholder="Enter User ID" required>
-                                                    <button class="btn btn-outline-info" type="button" id="lookupUserBtn">
+                                                    <button class="btn btn-outline-primary" type="button" id="lookupUserBtn">
                                                         <i class="fas fa-search"></i>
                                                     </button>
                                                 </div>
@@ -274,7 +274,7 @@ try {
 
                                                 <!-- User Details Display -->
                                                 <div id="userDetails" class="mt-2" style="display: none;">
-                                                    <div class="alert alert-success alert-sm">
+                                                    <div class="alert alert-primary alert-sm">
                                                         <h6 class="alert-heading mb-1"><i class="fas fa-user"></i> New Owner</h6>
                                                         <div id="userInfo"></div>
                                                     </div>
@@ -308,7 +308,6 @@ try {
                             <div class="card-header bg-danger text-white">
                                 <h6 class="mb-0">
                                     <i class="fas fa-trash-alt"></i> Permanent Car Deletion
-                                    <span class="badge text-bg-light badge-sm ms-2">Extremely Rare</span>
                                 </h6>
                             </div>
                             <div class="card-body">
@@ -323,7 +322,7 @@ try {
                                         <div class="input-group">
                                             <input type="number" class="form-control" id="delete_car_id" name="car_id"
                                                    placeholder="Car ID" required>
-                                            <button class="btn btn-outline-info" type="button" id="lookupDeleteCarBtn">
+                                            <button class="btn btn-outline-primary" type="button" id="lookupDeleteCarBtn">
                                                 <i class="fas fa-search"></i>
                                             </button>
                                         </div>
@@ -362,41 +361,33 @@ try {
 </div>
 
 <!-- Quick Statistics -->
-<div class="row">
+<div class="row g-3 mt-1">
     <div class="col-md-3">
-        <div class="card bg-primary text-white">
-            <div class="card-body text-center">
-                <h5><i class="fas fa-hourglass-half"></i> Pending</h5>
-                <h2><?= $transferStats['pending'] ?></h2>
-                <small>Transfer Requests</small>
-            </div>
+        <div class="er-stat-tile">
+            <div class="er-stat-label"><i class="fas fa-hourglass-half"></i> Pending</div>
+            <div class="er-stat-number"><?= $transferStats['pending'] ?></div>
+            <div class="er-stat-label">Transfer Requests</div>
         </div>
     </div>
     <div class="col-md-3">
-        <div class="card bg-success text-white">
-            <div class="card-body text-center">
-                <h5><i class="fas fa-check-circle"></i> Approved</h5>
-                <h2><?= $transferStats['completed_today'] ?></h2>
-                <small>Today</small>
-            </div>
+        <div class="er-stat-tile">
+            <div class="er-stat-label"><i class="fas fa-check-circle"></i> Approved</div>
+            <div class="er-stat-number"><?= $transferStats['completed_today'] ?></div>
+            <div class="er-stat-label">Today</div>
         </div>
     </div>
     <div class="col-md-3">
-        <div class="card bg-danger text-white">
-            <div class="card-body text-center">
-                <h5><i class="fas fa-times-circle"></i> Denied</h5>
-                <h2><?= $transferStats['denied_today'] ?></h2>
-                <small>Today</small>
-            </div>
+        <div class="er-stat-tile">
+            <div class="er-stat-label"><i class="fas fa-times-circle"></i> Denied</div>
+            <div class="er-stat-number"><?= $transferStats['denied_today'] ?></div>
+            <div class="er-stat-label">Today</div>
         </div>
     </div>
     <div class="col-md-3">
-        <div class="card bg-info text-white">
-            <div class="card-body text-center">
-                <h5><i class="fas fa-car"></i> Total Cars</h5>
-                <h2><?= number_format($systemStatus['total_cars']) ?></h2>
-                <small>In Registry</small>
-            </div>
+        <div class="er-stat-tile">
+            <div class="er-stat-label"><i class="fas fa-car"></i> Total Cars</div>
+            <div class="er-stat-number"><?= number_format($systemStatus['total_cars']) ?></div>
+            <div class="er-stat-label">In Registry</div>
         </div>
     </div>
 </div>
@@ -425,7 +416,7 @@ document.addEventListener("DOMContentLoaded", function() {
         const messageContainer = document.getElementById("messageContainer");
         if (messageContainer) {
             const alertDiv = document.createElement("div");
-            alertDiv.className = "alert alert-info alert-dismissible fade show";
+            alertDiv.className = "alert alert-primary alert-dismissible fade show";
             alertDiv.innerHTML = `
                 <i class="fas fa-info-circle"></i> <strong>Data Quality Integration:</strong>
                 Car ID <?= $preloadCarId // nosemgrep: php.lang.security.taint-unsafe-echo-tag.taint-unsafe-echo-tag ?> has been pre-loaded from the Data Quality dashboard for editing.

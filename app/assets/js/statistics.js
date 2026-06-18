@@ -11,16 +11,16 @@
 // Global chart instances to manage cleanup
 window.statisticsCharts = {};
 
-// Bootstrap color palette for consistent theming
+// Elan Registry brand palette (issue #757 — mirrors --er-* tokens in customizer.css)
 const BOOTSTRAP_COLORS = {
-  primary: "#007bff",
-  secondary: "#6c757d",
-  success: "#28a745",
-  danger: "#dc3545",
-  warning: "#ffc107",
-  info: "#17a2b8",
-  light: "#f8f9fa",
-  dark: "#343a40"
+  primary:   "#00563F",  // BRG — bar charts
+  secondary: "#6C757D",
+  success:   "#00563F",  // unified with primary (no separate success green for charts)
+  danger:    "#A52218",
+  warning:   "#B8860B",
+  info:      "#0B5394",  // ink blue — line charts
+  light:     "#F4F5F3",
+  dark:      "#1F2421"
 };
 
 // Extended color palette for charts with many data points

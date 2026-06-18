@@ -54,8 +54,8 @@ $validationRules = [
             <div class="row mb-4">
                 <div class="col-12">
                     <div class="card registry-card">
-                        <div class="card-header bg-info text-white">
-                            <h4 class="mb-0">
+                        <div class="card-header card-header-er-primary">
+                            <h4 class="mb-0 card-header-er-primary-text">
                                 <i class="fas fa-info-circle"></i> Overview
                             </h4>
                         </div>
@@ -94,8 +94,8 @@ $validationRules = [
             <div class="row mb-4">
                 <div class="col-12">
                     <div class="card registry-card">
-                        <div class="card-header bg-success text-white">
-                            <h4 class="mb-0">
+                        <div class="card-header card-header-er-primary">
+                            <h4 class="mb-0 card-header-er-primary-text">
                                 <i class="fas fa-car"></i> Production Car Chassis Formats
                             </h4>
                         </div>
@@ -106,7 +106,7 @@ $validationRules = [
                                 <h5 class="text-primary">
                                     <i class="fas fa-calendar-alt"></i> Pre-1970 Format (1963-1969)
                                 </h5>
-                                <div class="alert alert-info">
+                                <div class="alert alert-primary">
                                     <strong>Rule:</strong> <?= $validationRules['production_cars']['pre_1970'] ?>
                                 </div>
                                 <div class="row">
@@ -240,8 +240,8 @@ $validationRules = [
             <div class="row mb-4">
                 <div class="col-12">
                     <div class="card registry-card">
-                        <div class="card-header bg-info text-white">
-                            <h4 class="mb-0">
+                        <div class="card-header card-header-er-primary">
+                            <h4 class="mb-0 card-header-er-primary-text">
                                 <i class="fas fa-font"></i> Model-Specific Letter Codes
                             </h4>
                         </div>
@@ -326,8 +326,8 @@ $validationRules = [
             <div class="row mb-4">
                 <div class="col-12">
                     <div class="card registry-card">
-                        <div class="card-header bg-dark text-white">
-                            <h4 class="mb-0">
+                        <div class="card-header card-header-er-primary">
+                            <h4 class="mb-0 card-header-er-primary-text">
                                 <i class="fas fa-flag-checkered"></i> Race Car Chassis Formats
                             </h4>
                         </div>
@@ -429,9 +429,9 @@ $validationRules = [
                                 </ul>
                             </div>
 
-                            <div class="card border-left-info">
+                            <div class="card border-left-primary">
                                 <div class="card-body">
-                                    <h6 class="text-info">
+                                    <h6 class="text-primary">
                                         <i class="fas fa-info-circle"></i> Best Practice
                                     </h6>
                                     <p class="mb-0">
@@ -449,9 +449,9 @@ $validationRules = [
             <!-- Reference Source Section -->
             <div class="row mb-4">
                 <div class="col-12">
-                    <div class="card registry-card border-info">
-                        <div class="card-header bg-info text-white">
-                            <h4 class="mb-0">
+                    <div class="card registry-card">
+                        <div class="card-header card-header-er-primary">
+                            <h4 class="mb-0 card-header-er-primary-text">
                                 <i class="fas fa-book"></i> Reference Source
                             </h4>
                         </div>

@@ -25,9 +25,9 @@ class DocumentPortalTemplate
     private const REQUIRED_LINK_KEYS = ['label', 'url'];
 
     private const DEFAULT_CARD_CLASS   = 'registry-card h-100';
-    private const DEFAULT_HEADER_CLASS = 'bg-info text-white';
-    private const DEFAULT_BUTTON_CLASS = 'btn-info btn-sm';
-    private const DEFAULT_BTN_CLASS    = 'btn-outline-info';
+    private const DEFAULT_HEADER_CLASS = 'card-header-er-primary';
+    private const DEFAULT_BUTTON_CLASS = 'btn-primary btn-sm';
+    private const DEFAULT_BTN_CLASS    = 'btn-outline-primary';
     private const DEFAULT_COL_CLASS    = 'col-lg-4';
 
     /**
@@ -49,9 +49,11 @@ class DocumentPortalTemplate
 
         $title       = htmlspecialchars($config['title'], ENT_QUOTES, 'UTF-8');
         $description = htmlspecialchars($config['description'], ENT_QUOTES, 'UTF-8');
-        $headerClass = isset($config['headerClass'])
-            ? ' ' . htmlspecialchars($config['headerClass'], ENT_QUOTES, 'UTF-8')
-            : '';
+        $headerClass = ' ' . htmlspecialchars(
+            $config['headerClass'] ?? self::DEFAULT_HEADER_CLASS,
+            ENT_QUOTES,
+            'UTF-8'
+        );
 
         $hasLeadText = isset($config['leadText']) && $config['leadText'] !== '';
         $isAdmin     = !empty($config['isAdmin']);
@@ -60,8 +62,8 @@ class DocumentPortalTemplate
         $html .= "<div class='col-12'>";
         $html .= "<div class='card registry-card'>";
         $html .= "<div class='card-header{$headerClass}'>";
-        $html .= "<h1 class='mb-0'>" . self::renderIcon($config['titleIcon'] ?? '') . "{$title}</h1>";
-        $html .= "<p class='text-muted mb-0'>{$description}</p>";
+        $html .= "<h1 class='mb-0 card-header-er-primary-text'>" . self::renderIcon($config['titleIcon'] ?? '') . "{$title}</h1>";
+        $html .= "<p class='card-header-er-primary-text mb-0'>{$description}</p>";
         $html .= "</div>";
 
         if ($hasLeadText || $isAdmin) {
@@ -129,7 +131,7 @@ class DocumentPortalTemplate
 
         $html  = "<div class='card {$cardClass}'>";
         $html .= "<div class='card-header {$headerClass}'{$headerStyleAttr}>";
-        $html .= "<h5 class='mb-0'><i class='fas {$icon}'></i> {$title}</h5>";
+        $html .= "<h5 class='mb-0 card-header-er-primary-text'><i class='fas {$icon}'></i> {$title}</h5>";
         $html .= "</div>";
 
         if (isset($card['cardImage']) && $card['cardImage'] !== '') {

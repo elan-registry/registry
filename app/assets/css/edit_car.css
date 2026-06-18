@@ -1,10 +1,8 @@
 #editCar input:focus,
 #editCar textarea:focus {
-    -moz-box-shadow: none !important;
-    -webkit-box-shadow: none !important;
-    box-shadow: none !important;
-    border: 1px solid #3f8704;
-    outline-width: 0
+    border-color: var(--er-primary) !important;
+    box-shadow: 0 0 0 0.25rem rgba(var(--er-primary-rgb), 0.25) !important;
+    outline-width: 0;
 }
 
 #editCar input[type=button],
@@ -30,8 +28,8 @@
     font-weight: 700;
     letter-spacing: 0.12em;
     text-transform: uppercase;
-    color: #3f8704;
-    border-bottom: 2px solid #3f8704;
+    color: var(--er-primary);
+    border-bottom: 2px solid var(--er-primary);
     padding-bottom: 0.4rem;
     margin-bottom: 1.5rem;
 }
@@ -43,13 +41,13 @@
 }
 
 .filepond--panel-root {
-    background-color: #f4fbf4 !important;
-    border: 2px dashed #3f8704 !important;
+    background-color: var(--er-primary-light) !important;
+    border: 2px dashed var(--er-primary) !important;
     border-radius: 6px !important;
 }
 
 .filepond--drop-label label {
-    color: #3f8704;
+    color: var(--er-primary);
     font-weight: 500;
     cursor: pointer;
 }

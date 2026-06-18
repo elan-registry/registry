@@ -244,7 +244,7 @@ final class EmailTemplateTest extends TestCase
     public function testCreateButtonHasInlineBackgroundColor(): void
     {
         $cases = [
-            ['primary',   '#029acf'],
+            ['primary',   '#00563F'],
             ['secondary', '#6c757d'],
             ['success',   '#28a745'],
             ['danger',    '#dc3545'],
@@ -258,7 +258,7 @@ final class EmailTemplateTest extends TestCase
     public function testCreateMessageBoxHasInlineStyles(): void
     {
         $cases = [
-            ['default',  '#029acf'],
+            ['default',  '#00563F'],
             ['alert',    '#dc3545'],
             ['message',  '#469408'],
             ['success',  '#28a745'],
@@ -273,7 +273,7 @@ final class EmailTemplateTest extends TestCase
     public function testRenderHeaderHasInlineBackgroundColor(): void
     {
         $html = $this->template->render('Subject', 'Subtitle', 'Content');
-        $this->assertStringContainsString('background-color: #029acf', $html);
+        $this->assertStringContainsString('background-color: #00563F', $html);
     }
 
     public function testCreateButtonEscapesHtmlInText(): void
@@ -300,7 +300,7 @@ final class EmailTemplateTest extends TestCase
     public function testCreateButtonUnknownStyleFallsBackToPrimary(): void
     {
         $html = $this->template->createButton('Click', 'https://example.com', 'nonexistent');
-        $this->assertStringContainsString('background-color: #029acf', $html);
+        $this->assertStringContainsString('background-color: #00563F', $html);
     }
 
     // ============================================================

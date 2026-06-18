@@ -33,8 +33,8 @@ Based on UserSpice 5 registration system
 
       <!-- Registration Form -->
       <div class="card registry-card">
-        <div class="card-header">
-          <h2 class="mb-0"><i class="fas fa-user-plus"></i> <strong>Create Your Account</strong></h2>
+        <div class="card-header card-header-er-primary">
+          <h2 class="mb-0 card-header-er-primary-text"><i class="fas fa-user-plus"></i> <strong>Create Your Account</strong></h2>
         </div>
         <div class="card-body">
           <form class="needs-validation" action="" method="POST" id="payment-form" novalidate>

@@ -16,16 +16,16 @@
 
 /* GPS Button */
 .location-picker-container .btn-outline-primary {
-    border-color: #007bff;
-    color: #007bff;
+    border-color: var(--er-primary);
+    color: var(--er-primary);
     transition: all 0.3s ease;
 }
 
 .location-picker-container .btn-outline-primary:hover:not(:disabled) {
-    background-color: #007bff;
+    background-color: var(--er-primary);
     color: white;
     transform: translateY(-1px);
-    box-shadow: 0 4px 8px rgba(0, 123, 255, 0.2);
+    box-shadow: 0 4px 8px rgba(var(--er-primary-rgb), 0.2);
 }
 
 .location-picker-container .btn-outline-primary:disabled {
@@ -39,8 +39,8 @@
 }
 
 .location-picker-container input[type="text"]:focus {
-    border-color: #007bff;
-    box-shadow: 0 0 0 0.2rem rgba(0, 123, 255, 0.25);
+    border-color: var(--er-primary);
+    box-shadow: 0 0 0 0.2rem rgba(var(--er-primary-rgb), 0.25);
 }
 
 /* Loading Spinner */
@@ -50,7 +50,7 @@
 }
 
 .location-picker-container .fa-spinner {
-    color: #007bff;
+    color: var(--er-primary);
 }
 
 /* Autocomplete Results Dropdown */
@@ -69,7 +69,7 @@
 .location-picker-container .list-group-item:hover,
 .location-picker-container .list-group-item.active {
     background-color: #f8f9fa;
-    border-left-color: #007bff;
+    border-left-color: var(--er-primary);
 }
 
 .location-picker-container .list-group-item:first-child {
@@ -84,7 +84,7 @@
 
 /* Source Badge */
 .location-picker-container .badge-info {
-    background-color: #17a2b8;
+    background-color: var(--er-link);
     font-size: 0.7rem;
     text-transform: capitalize;
 }
@@ -144,7 +144,7 @@
 
 /* Accessibility Improvements */
 .location-picker-container .list-group-item:focus {
-    outline: 2px solid #007bff;
+    outline: 2px solid var(--er-primary);
     outline-offset: -2px;
     z-index: 1;
 }

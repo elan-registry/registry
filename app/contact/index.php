@@ -21,8 +21,8 @@ if (!securePage($php_self)) {
 		<div class="page-container">
 		<br>
 		<div class="card registry-card">
-			<div class="card-header">
-				<h2 class="mb-0"><i class='fas fa-comment text-primary'></i> Feedback</h2>
+			<div class="card-header card-header-er-primary">
+				<h2 class="mb-0 card-header-er-primary-text"><i class='fas fa-comment text-primary'></i> Feedback</h2>
 			</div>
 			<div class="card-body">
 				<!-- User Information -->

@@ -106,7 +106,7 @@ final class DocumentPortalTemplateTest extends TestCase
         ]);
 
         $this->assertStringContainsString("<i class='fas fa-question-circle'></i>", $html);
-        $this->assertStringContainsString("<h1 class='mb-0'><i class='fas fa-question-circle'></i> FAQ &amp; User Guides</h1>", $html);
+        $this->assertStringContainsString("<h1 class='mb-0 card-header-er-primary-text'><i class='fas fa-question-circle'></i> FAQ &amp; User Guides</h1>", $html);
     }
 
     public function testRenderPortalHeaderOmitsTitleIconWhenAbsent(): void

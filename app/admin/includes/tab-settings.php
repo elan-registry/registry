@@ -189,7 +189,7 @@ $autoCreationMessages = processSettingsAutoCreation();
     </div>
 <?php endforeach; ?>
 
-<div class="alert alert-success">
+<div class="alert alert-primary">
     <h4><i class="fas fa-cog"></i> Registry Settings</h4>
     <p class="mb-0">Comprehensive configuration management for the Elan Registry system with automatic database field creation.</p>
 </div>
@@ -211,7 +211,7 @@ $autoCreationMessages = processSettingsAutoCreation();
                     <small class="text-light">Backup and system maintenance settings</small>
                 </div>
                 <div class="card-body">
-                    <div class="alert alert-info">
+                    <div class="alert alert-primary">
                         <i class="fas fa-info-circle"></i> <strong>Backup Configuration Moved</strong>
                         <p class="mb-0 mt-2">Backup retention periods are now configured in <code>usersc/includes/config.php</code> for better application-wide consistency.</p>
                         <p class="mb-0 mt-2 small"><strong>Configuration:</strong></p>

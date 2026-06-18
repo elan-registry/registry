@@ -361,28 +361,37 @@ if (Input::exists('post')) {
             <!-- Page Header -->
             <div class="row mb-4">
                 <div class="col-12">
-                    <div class="d-sm-flex align-items-center justify-content-between">
+                    <div class="d-sm-flex align-items-center justify-content-between flex-wrap gap-3">
                         <div>
                             <h1 class="h2 mb-2 text-gray-800">
                                 <i class="fas fa-cogs"></i> Registry Management
                             </h1>
                             <p class="text-muted mb-0">Administrative tools for car registry and ownership management</p>
                         </div>
-                        <div class="text-end">
-                            <div class="mb-2">
-                                <span class="badge text-bg-success badge-lg">
+                        <div>
+                            <div class="d-flex gap-3 flex-wrap mb-2">
+                                <div class="er-stat-tile">
+                                    <div class="er-stat-number"><?= number_format($systemStatus['total_cars']) ?></div>
+                                    <div class="er-stat-label">Total Cars</div>
+                                </div>
+                                <div class="er-stat-tile">
+                                    <div class="er-stat-number"><?= number_format($systemStatus['total_users']) ?></div>
+                                    <div class="er-stat-label">Total Users</div>
+                                </div>
+                                <?php if ($systemStatus['pending_transfers'] > 0) { ?>
+                                    <div class="er-stat-tile">
+                                        <div class="er-stat-number text-warning"><?= $systemStatus['pending_transfers'] ?></div>
+                                        <div class="er-stat-label">Pending Transfers</div>
+                                    </div>
+                                <?php } ?>
+                            </div>
+                            <div class="text-end">
+                                <span class="badge text-bg-primary badge-lg me-2">
                                     <i class="fas fa-check-circle"></i> System Operational
                                 </span>
-                            </div>
-                            <div>
                                 <small class="text-muted">
-                                    <i class="fas fa-database"></i> <?= number_format($systemStatus['total_cars']) ?> cars &nbsp;
-                                    <i class="fas fa-users"></i> <?= number_format($systemStatus['total_users']) ?> users
-                                    <?php if ($systemStatus['pending_transfers'] > 0) { ?>
-                                        &nbsp;<i class="fas fa-exchange-alt"></i> <?= $systemStatus['pending_transfers'] ?> pending transfers
-                                    <?php } ?>
-                                    <br><i class="fas fa-clock"></i> Updated: <?= date('M j, Y g:i A', strtotime($systemStatus['last_updated'])) ?>
-                                    <br><i class="fas fa-code-branch"></i> <?= htmlspecialchars(ApplicationVersion::get()) ?>
+                                    <i class="fas fa-clock"></i> <?= date('M j, Y g:i A', strtotime($systemStatus['last_updated'])) ?>
+                                    &nbsp;<i class="fas fa-code-branch"></i> <?= htmlspecialchars(ApplicationVersion::get()) ?>
                                 </small>
                             </div>
                         </div>
@@ -405,7 +414,7 @@ if (Input::exists('post')) {
                                        href="?tab=car-mgmt" role="tab">
                                         <i class="fas fa-car"></i> Car/Owner Relationships
                                         <?php if ($systemStatus['pending_transfers'] > 0) { ?>
-                                            <span class="badge text-bg-info badge-sm ms-1"><?= $systemStatus['pending_transfers'] ?></span>
+                                            <span class="badge text-bg-warning badge-sm ms-1"><?= $systemStatus['pending_transfers'] ?></span>
                                         <?php } ?>
                                     </a>
                                 </li>
@@ -468,14 +477,14 @@ if (Input::exists('post')) {
 <div class="modal fade" id="reassignConfirmModal" tabindex="-1" role="dialog" aria-labelledby="reassignConfirmModalLabel" aria-hidden="true">
     <div class="modal-dialog modal-lg" role="document">
         <div class="modal-content">
-            <div class="modal-header bg-warning text-dark">
-                <h5 class="modal-title" id="reassignConfirmModalLabel">
+            <div class="modal-header card-header-er-primary">
+                <h5 class="modal-title card-header-er-primary-text" id="reassignConfirmModalLabel">
                     <i class="fas fa-user-friends"></i> Confirm Car Reassignment
                 </h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
             <div class="modal-body">
-                <div class="alert alert-info mb-3">
+                <div class="alert alert-primary mb-3">
                     <i class="fas fa-info-circle"></i> <strong>Administrative Transfer:</strong> This will immediately transfer car ownership and log the change in the car's history.
                 </div>
 
@@ -489,8 +498,8 @@ if (Input::exists('post')) {
                         </div>
                     </div>
                     <div class="col-md-6">
-                        <h6 class="text-success"><i class="fas fa-user"></i> New Owner</h6>
-                        <div id="modal-user-info" class="card border-success">
+                        <h6 class="text-primary"><i class="fas fa-user"></i> New Owner</h6>
+                        <div id="modal-user-info" class="card border-primary">
                             <div class="card-body p-3">
                                 <div id="modal-user-details"></div>
                             </div>
@@ -501,9 +510,9 @@ if (Input::exists('post')) {
                 <div class="mt-3">
                     <p class="mb-2"><strong>This action will:</strong></p>
                     <ul class="list-unstyled">
-                        <li><i class="fas fa-check text-success"></i> Transfer ownership immediately</li>
-                        <li><i class="fas fa-check text-success"></i> Log the change in car history</li>
-                        <li><i class="fas fa-check text-success"></i> Update all registry records</li>
+                        <li><i class="fas fa-check text-primary"></i> Transfer ownership immediately</li>
+                        <li><i class="fas fa-check text-primary"></i> Log the change in car history</li>
+                        <li><i class="fas fa-check text-primary"></i> Update all registry records</li>
                         <li><i class="fas fa-exclamation-triangle text-warning"></i> Cannot be undone easily</li>
                     </ul>
                 </div>
@@ -512,7 +521,7 @@ if (Input::exists('post')) {
                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
                     <i class="fas fa-times"></i> Cancel
                 </button>
-                <button type="button" class="btn btn-warning" id="confirmReassignBtn">
+                <button type="button" class="btn btn-primary" id="confirmReassignBtn">
                     <i class="fas fa-user-friends"></i> Confirm Reassignment
                 </button>
             </div>
@@ -581,8 +590,8 @@ if (Input::exists('post')) {
 <div class="modal fade" id="transferDecisionModal" tabindex="-1" role="dialog" aria-labelledby="transferDecisionModalLabel" aria-hidden="true">
     <div class="modal-dialog modal-lg" role="document">
         <div class="modal-content">
-            <div class="modal-header" id="transferDecisionModalHeader">
-                <h5 class="modal-title" id="transferDecisionModalLabel">
+            <div class="modal-header card-header-er-primary" id="transferDecisionModalHeader">
+                <h5 class="modal-title card-header-er-primary-text" id="transferDecisionModalLabel">
                     <i class="fas fa-exchange-alt"></i> <span id="transferDecisionTitle">Confirm Transfer Decision</span>
                 </h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
@@ -602,7 +611,7 @@ if (Input::exists('post')) {
                         </div>
                     </div>
                     <div class="col-md-6">
-                        <h6 class="text-info"><i class="fas fa-users"></i> Transfer Parties</h6>
+                        <h6 class="text-primary"><i class="fas fa-users"></i> Transfer Parties</h6>
                         <div class="mb-3">
                             <strong class="text-muted">Current Owner:</strong>
                             <div id="modal-current-owner-info" class="card border-secondary mt-1">
@@ -612,8 +621,8 @@ if (Input::exists('post')) {
                             </div>
                         </div>
                         <div>
-                            <strong class="text-success">Requesting User:</strong>
-                            <div id="modal-requester-info" class="card border-success mt-1">
+                            <strong class="text-primary">Requesting User:</strong>
+                            <div id="modal-requester-info" class="card border-primary mt-1">
                                 <div class="card-body p-2">
                                     <div id="modal-requester-details"></div>
                                 </div>
@@ -624,7 +633,7 @@ if (Input::exists('post')) {
 
                 <div class="mt-3">
                     <h6><i class="fas fa-calendar-alt"></i> Request Information</h6>
-                    <div id="modal-transfer-request-info" class="card border-info">
+                    <div id="modal-transfer-request-info" class="card border-primary">
                         <div class="card-body p-3">
                             <div id="modal-transfer-request-details"></div>
                         </div>
@@ -673,15 +682,15 @@ if (Input::exists('post')) {
 <div class="modal fade" id="adminContactModal" tabindex="-1" role="dialog" aria-labelledby="adminContactModalLabel" aria-hidden="true">
     <div class="modal-dialog modal-lg" role="document">
         <div class="modal-content">
-            <div class="modal-header bg-warning text-dark">
-                <h5 class="modal-title" id="adminContactModalLabel">
+            <div class="modal-header card-header-er-primary">
+                <h5 class="modal-title card-header-er-primary-text" id="adminContactModalLabel">
                     <i class="fas fa-shield-alt"></i> Administrator Contact Owner
                 </h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
             <form id="adminContactForm" method="POST" action="<?= $us_url_root ?>app/admin/includes/process-admin-contact.php">
                 <div class="modal-body">
-                    <div class="alert alert-info">
+                    <div class="alert alert-primary">
                         <i class="fas fa-info-circle"></i> <strong>Administrator Contact:</strong>
                         This will send an email to the car owner.
                     </div>
@@ -748,7 +757,7 @@ if (Input::exists('post')) {
                 </div>
                 <div class="modal-footer">
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                    <button type="submit" class="btn btn-warning">
+                    <button type="submit" class="btn btn-primary">
                         <i class="fas fa-envelope"></i> Send Administrator Message
                     </button>
                 </div>

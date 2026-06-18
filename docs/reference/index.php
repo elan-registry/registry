@@ -25,8 +25,8 @@ $cards = [
         'icon'        => 'fa-wrench',
         'url'         => 'workshop.php',
         'buttonText'  => 'Browse',
-        'headerClass' => 'bg-info text-white',
-        'buttonClass' => 'btn-info btn-sm',
+        'headerClass' => 'card-header-er-primary',
+        'buttonClass' => 'btn-primary btn-sm',
         'description' => 'Workshop manual, parts lists, and engine reference documents for Elan maintenance and restoration.',
     ],
     [
@@ -34,8 +34,8 @@ $cards = [
         'icon'        => 'fa-file-alt',
         'url'         => 'technical-articles.php',
         'buttonText'  => 'Browse',
-        'headerClass' => 'bg-success text-white',
-        'buttonClass' => 'btn-success btn-sm',
+        'headerClass' => 'card-header-er-primary',
+        'buttonClass' => 'btn-primary btn-sm',
         'description' => 'Club Lotus technical articles covering gearknobs, steering wheels, engine types, and more.',
     ],
     [
@@ -43,8 +43,8 @@ $cards = [
         'icon'        => 'fa-barcode',
         'url'         => 'chassis-validation.php',
         'buttonText'  => 'View Rules',
-        'headerClass' => 'bg-info text-white',
-        'buttonClass' => 'btn-info btn-sm',
+        'headerClass' => 'card-header-er-primary',
+        'buttonClass' => 'btn-primary btn-sm',
         'description' => 'Complete chassis number validation rules for all Elan and Plus 2 models, including pre-1970 and post-1970 formats.',
     ],
     [
@@ -52,8 +52,8 @@ $cards = [
         'icon'        => 'fa-palette',
         'url'         => 'paint-colors.php',
         'buttonText'  => 'Browse',
-        'headerClass' => 'bg-info text-white',
-        'buttonClass' => 'btn-info btn-sm',
+        'headerClass' => 'card-header-er-primary',
+        'buttonClass' => 'btn-primary btn-sm',
         'description' => 'Factory paint colors, codes, date ranges, and supplier cross-references for all Elan and Plus 2 models.',
     ],
 ];
