@@ -100,9 +100,9 @@ $yearsSince = (int) (new DateTime())->diff(new DateTime('2003-01-01'))->y;
 		<div class='row'>
 			<div class='col-lg-5'>
 				<div class='card registry-card'>
-					<div class='card-header'>
-						<h1 class='mb-0'><i class='fas fa-car'></i> <?php echo htmlspecialchars($settings->site_name ?? 'Lotus Elan Registry', ENT_QUOTES, 'UTF-8'); ?></h1>
-						<p class='text-muted'>A place to document Lotus Elan and Lotus Elan Plus 2</p>
+					<div class='card-header card-header-er-primary'>
+						<h1 class='mb-0 card-header-er-primary-text'><i class='fas fa-car'></i> <?php echo htmlspecialchars($settings->site_name ?? 'Lotus Elan Registry', ENT_QUOTES, 'UTF-8'); ?></h1>
+						<p class='card-header-er-primary-text'>A place to document Lotus Elan and Lotus Elan Plus 2</p>
 					</div>
 					<div class='card-body'>
 
@@ -136,8 +136,8 @@ $yearsSince = (int) (new DateTime())->diff(new DateTime('2003-01-01'))->y;
 				</div> <!-- card -->
 
 				<div class='card registry-card'>
-					<div class="card-header">
-						<h2 class='mb-0'><i class='fas fa-chart-bar'></i> How are we doing?</h2>
+					<div class="card-header card-header-er-primary">
+						<h2 class='mb-0 card-header-er-primary-text'><i class='fas fa-chart-bar'></i> How are we doing?</h2>
 					</div>
 					<div class="card-body">
 						<?php foreach ($count as $key => $value): ?>
@@ -151,7 +151,7 @@ $yearsSince = (int) (new DateTime())->diff(new DateTime('2003-01-01'))->y;
 									<span class="text-muted small"><?= (int) $value ?> / <?= htmlspecialchars((string) $notes[$key], ENT_QUOTES, 'UTF-8') ?></span>
 								</div>
 								<div class="progress" style="height: 18px;" role="progressbar" aria-label="<?= $key_display ?> registration" aria-valuenow="<?= $pct ?>" aria-valuemin="0" aria-valuemax="100">
-									<div class="progress-bar bg-success" style="width: <?= $pct ?>%">
+									<div class="progress-bar bg-primary" style="width: <?= $pct ?>%">
 										<?php if ($pct >= 8): ?><?= $pct ?>%<?php endif; ?>
 									</div>
 								</div>
@@ -180,8 +180,8 @@ $yearsSince = (int) (new DateTime())->diff(new DateTime('2003-01-01'))->y;
 			<!-- /.col-lg-8 -->
 			<div class='col-lg-7'>
 				<div class='card registry-card'>
-					<div class='card-header'>
-						<h2 class='mb-0'><i class='fas fa-star'></i> One of the Cars</h2>
+					<div class='card-header card-header-er-primary'>
+						<h2 class='mb-0 card-header-er-primary-text'><i class='fas fa-star'></i> One of the Cars</h2>
 					</div>
 					<div class='card-body'>
 						<?php
@@ -209,7 +209,7 @@ $yearsSince = (int) (new DateTime())->diff(new DateTime('2003-01-01'))->y;
 									<td><?= htmlspecialchars((string) $car->data()->type, ENT_QUOTES, 'UTF-8') ?></td>
 								</tr>
 								<tr>
-									<td colspan='2'><a class='btn btn-success btn-sm' href='<?= htmlspecialchars($us_url_root, ENT_QUOTES, 'UTF-8') ?>app/cars/details.php?car_id=<?= (int) $car->data()->id ?>'><i class='fas fa-eye'></i> Details</a></td>
+									<td colspan='2'><a class='btn btn-primary btn-sm' href='<?= htmlspecialchars($us_url_root, ENT_QUOTES, 'UTF-8') ?>app/cars/details.php?car_id=<?= (int) $car->data()->id ?>'><i class='fas fa-eye'></i> Details</a></td>
 								</tr>
 							</table>
 						<?php
@@ -231,8 +231,8 @@ $yearsSince = (int) (new DateTime())->diff(new DateTime('2003-01-01'))->y;
 		<div class='row'>
 			<div class='col-md-5'>
 				<div class='card registry-card'>
-					<div class='card-header'>
-						<h2 class='mb-0'><i class='fas fa-heart'></i> Thanks</h2>
+					<div class='card-header card-header-er-primary'>
+						<h2 class='mb-0 card-header-er-primary-text'><i class='fas fa-heart'></i> Thanks</h2>
 					</div>
 					<div class='card-body'>
 						<p class='card-text'>Thank you to the many people on the Elan mailing list and the
@@ -252,8 +252,8 @@ $yearsSince = (int) (new DateTime())->diff(new DateTime('2003-01-01'))->y;
 			<!-- /.col-md-4 -->
 			<div class='col-md-7'>
 				<div class='card registry-card'>
-					<div class='card-header'>
-						<h2 class='mb-0'><i class='fas fa-link'></i> Important Resources</h2>
+					<div class='card-header card-header-er-primary'>
+						<h2 class='mb-0 card-header-er-primary-text'><i class='fas fa-link'></i> Important Resources</h2>
 					</div>
 					<div class='card-body'>
 						<div class='list-group'>

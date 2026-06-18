@@ -72,7 +72,7 @@ $htmlContent = MarkdownParser::sanitizeHtml($htmlContent);
 // Get document information and navigation
 $info = $documentData['info'];
 $isAdmin    = ($documentData['category'] === 'admin');
-$accentColor = $isAdmin ? '#dc3545' : '#007bff';
+$accentColor = $isAdmin ? 'var(--er-danger)' : 'var(--er-primary)';
 $breadcrumb = DocumentConfig::getBreadcrumb($documentData, $us_url_root);
 
 ?>
@@ -117,9 +117,9 @@ $breadcrumb = DocumentConfig::getBreadcrumb($documentData, $us_url_root);
         <div class='row'>
             <div class='col-12'>
                 <div class='card registry-card'>
-                    <div class='card-header <?= $isAdmin ? 'bg-danger' : 'bg-info' ?> text-white'>
-                        <h1 class='mb-0'><i class='<?= $info['icon'] ?>'></i> <?= htmlspecialchars($info['title'], ENT_QUOTES, 'UTF-8') ?></h1>
-                        <p class='text-light mb-0'><?= htmlspecialchars($info['description'], ENT_QUOTES, 'UTF-8') ?></p>
+                    <div class='card-header <?= $isAdmin ? 'card-header-er-dark' : 'card-header-er-primary' ?>'>
+                        <h1 class='mb-0 card-header-er-primary-text'><i class='<?= $info['icon'] ?>'></i> <?= htmlspecialchars($info['title'], ENT_QUOTES, 'UTF-8') ?></h1>
+                        <p class='card-header-er-primary-text mb-0'><?= htmlspecialchars($info['description'], ENT_QUOTES, 'UTF-8') ?></p>
                     </div>
                 </div>
             </div>
@@ -142,10 +142,10 @@ $breadcrumb = DocumentConfig::getBreadcrumb($documentData, $us_url_root);
         <div class='row mt-4 mb-4'>
             <div class='col-12 text-center'>
                 <?php if ($isAdmin) { ?>
-                    <a href='admin/index.php' class='btn btn-outline-primary mr-2'><i class='fas fa-arrow-left'></i> Back to Admin Docs</a>
-                    <a href='<?= $us_url_root ?>app/admin/manage-consolidated.php' class='btn btn-outline-success mr-2'><i class='fas fa-tools'></i> Admin Panel</a>
+                    <a href='admin/index.php' class='btn btn-outline-primary me-2'><i class='fas fa-arrow-left'></i> Back to Admin Docs</a>
+                    <a href='<?= $us_url_root ?>app/admin/manage-consolidated.php' class='btn btn-outline-primary me-2'><i class='fas fa-tools'></i> Admin Panel</a>
                 <?php } else { ?>
-                    <a href='guides/index.php' class='btn btn-outline-primary mr-2'><i class='fas fa-arrow-left'></i> Back to Owner Guides</a>
+                    <a href='guides/index.php' class='btn btn-outline-primary me-2'><i class='fas fa-arrow-left'></i> Back to Owner Guides</a>
                 <?php } ?>
                 <a href='<?= $us_url_root ?>' class='btn btn-outline-secondary'><i class='fas fa-home'></i> Registry Home</a>
             </div>
@@ -178,7 +178,7 @@ $breadcrumb = DocumentConfig::getBreadcrumb($documentData, $us_url_root);
 }
 
 .document-content h2 {
-    color: #495057;
+    color: var(--er-neutral-dark);
     border-bottom: 1px solid #dee2e6;
     padding-bottom: 0.3rem;
     margin-top: 1.5rem;
@@ -186,13 +186,13 @@ $breadcrumb = DocumentConfig::getBreadcrumb($documentData, $us_url_root);
 }
 
 .document-content h3 {
-    color: #6c757d;
+    color: var(--er-neutral);
     margin-top: 1.25rem;
     margin-bottom: 0.75rem;
 }
 
 .document-content h4, .document-content h5 {
-    color: #6c757d;
+    color: var(--er-neutral);
     margin-top: 1rem;
     margin-bottom: 0.5rem;
 }
@@ -262,17 +262,17 @@ $breadcrumb = DocumentConfig::getBreadcrumb($documentData, $us_url_root);
 }
 
 .breadcrumb-item a {
-    color: #007bff;
+    color: var(--er-link);
     text-decoration: none;
 }
 
 .breadcrumb-item a:hover {
-    color: #0056b3;
+    color: var(--er-link-hover);
     text-decoration: underline;
 }
 
 .breadcrumb-item.active {
-    color: #495057;
+    color: var(--er-neutral-dark);
     font-weight: 500;
 }
 

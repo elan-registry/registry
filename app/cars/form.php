@@ -191,7 +191,7 @@ function updateCarDetails(array &$car): void
     <div class="modal-dialog modal-lg" role="document">
         <div class="modal-content">
             <div class="modal-header bg-primary text-white">
-                <h5 class="modal-title" id="chassisValidationModalLabel">
+                <h5 class="modal-title card-header-er-primary-text" id="chassisValidationModalLabel">
                     <i class="fas fa-barcode"></i> Chassis Validation Rules - Quick Reference
                 </h5>
                 <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
@@ -228,7 +228,7 @@ function updateCarDetails(array &$car): void
                     <div class="col-md-6">
                         <div class="card border-primary">
                             <div class="card-header bg-primary text-white">
-                                <h6 class="mb-0"><i class="fas fa-car-side"></i> Elan Models</h6>
+                                <h6 class="mb-0 card-header-er-primary-text"><i class="fas fa-car-side"></i> Elan Models</h6>
                             </div>
                             <div class="card-body">
                                 <p><strong>Valid codes:</strong> A, B, C, D, E, F, G, H, J, K</p>
@@ -271,7 +271,7 @@ function updateCarDetails(array &$car): void
                     </div>
                 </div>
 
-                <div class="alert alert-info mb-0">
+                <div class="alert alert-primary mb-0">
                     <h6 class="alert-heading"><i class="fas fa-info-circle"></i> Override Option</h6>
                     <p class="mb-0">If your chassis number doesn't validate but you have historical documentation supporting it, you can use the validation override checkbox with caution.</p>
                 </div>
@@ -321,7 +321,7 @@ function updateCarDetails(array &$car): void
             <div class="modal-body">
                 <p>Are you sure you want to request ownership transfer for this chassis number?</p>
 
-                <div class="alert alert-info mb-3">
+                <div class="alert alert-primary mb-3">
                     <small><i class="fas fa-info-circle"></i> The current owner and Registry Administrators will be notified of your request.</small>
                 </div>
 

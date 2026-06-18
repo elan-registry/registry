@@ -15,8 +15,8 @@ $lastlogin = new DateTime($ownerData->last_login);
 ?>
 
 <div class="card registry-card">
-    <div class="card-header">
-        <h4 class="mb-0"><i class="fas fa-user-circle"></i> Account Information</h4>
+    <div class="card-header card-header-er-primary">
+        <h4 class="mb-0 card-header-er-primary-text"><i class="fas fa-user-circle"></i> Account Information</h4>
     </div>
     <div class="card-body">
         <!-- Name Section -->

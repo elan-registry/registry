@@ -103,9 +103,9 @@ function scriptDisplayName(string $filename): string {
 </div>
 
 <!-- Backups -->
-<div class="card border-success mb-4">
-    <div class="card-header bg-success text-white">
-        <h5 class="mb-0"><i class="fas fa-shield-alt"></i> Backups</h5>
+<div class="card border-primary mb-4">
+    <div class="card-header card-header-er-primary">
+        <h5 class="mb-0 card-header-er-primary-text"><i class="fas fa-shield-alt"></i> Backups</h5>
     </div>
     <div class="card-body">
         <div class="row">
@@ -122,12 +122,12 @@ function scriptDisplayName(string $filename): string {
             </div>
             <div class="col-md-4">
                 <div class="text-center">
-                    <div class="text-info mb-2">
+                    <div class="text-primary mb-2">
                         <i class="fas fa-user" style="font-size: 2rem;"></i>
                     </div>
                     <h6>Manual Backups</h6>
                     <p class="small text-muted mb-2">Administrator-initiated backups</p>
-                    <div class="badge text-bg-info"><?= $backupStats['manual']['count'] ?> files</div>
+                    <div class="badge text-bg-primary"><?= $backupStats['manual']['count'] ?> files</div>
                     <div class="small text-muted"><?= round($backupStats['manual']['total_size'] / 1024 / 1024, 1) ?>MB</div>
                 </div>
             </div>
@@ -145,10 +145,10 @@ function scriptDisplayName(string $filename): string {
         </div>
 
         <div class="text-center mt-3">
-            <button type="button" class="btn btn-success" onclick="createManualBackup(this)">
+            <button type="button" class="btn btn-primary" onclick="createManualBackup(this)">
                 <i class="fas fa-save"></i> Create Manual Backup
             </button>
-            <button type="button" class="btn btn-outline-info ms-2" onclick="listBackupFiles()">
+            <button type="button" class="btn btn-outline-primary ms-2" onclick="listBackupFiles()">
                 <i class="fas fa-list"></i> List Backup Files
             </button>
             <?php if ($showCleanupPrompt): ?>
@@ -163,7 +163,7 @@ function scriptDisplayName(string $filename): string {
             <button type="button" class="btn btn-outline-primary btn-sm ms-2" onclick="runSchemaValidation(this)">
                 <i class="fas fa-check-circle"></i> Validate Schema
             </button>
-            <button type="button" class="btn btn-outline-success btn-sm ms-2" onclick="runSchemaMaintenance(this)">
+            <button type="button" class="btn btn-outline-primary btn-sm ms-2" onclick="runSchemaMaintenance(this)">
                 <i class="fas fa-tools"></i> Run Maintenance
             </button>
         </div>
@@ -276,7 +276,7 @@ function scriptDisplayName(string $filename): string {
                                     <?php foreach ($completedFixScripts as $script): ?>
                                         <tr>
                                             <td>
-                                                <span class="badge text-bg-success" title="Script completed successfully">
+                                                <span class="badge text-bg-primary" title="Script completed successfully">
                                                     <i class="fas fa-check"></i> Completed
                                                 </span>
                                             </td>
@@ -307,7 +307,7 @@ function scriptDisplayName(string $filename): string {
             <?php endif; ?>
 
             <div class="mt-3">
-                <div class="alert alert-info">
+                <div class="alert alert-primary">
                     <h6><i class="fas fa-info-circle"></i> Script Execution Notes</h6>
                     <ul class="mb-0 small">
                         <li>Scripts open in a new window/tab for execution</li>
@@ -322,10 +322,10 @@ function scriptDisplayName(string $filename): string {
 </div>
 
 <!-- Maintenance Tasks -->
-<div class="card border-info mb-4">
-    <div class="card-header bg-info text-white">
-        <h5 class="mb-0"><i class="fas fa-sync-alt"></i> Maintenance Tasks</h5>
-        <small class="text-white">Scripts safe to run anytime to refresh data or fix common issues.</small>
+<div class="card border-primary mb-4">
+    <div class="card-header card-header-er-primary">
+        <h5 class="mb-0 card-header-er-primary-text"><i class="fas fa-sync-alt"></i> Maintenance Tasks</h5>
+        <small class="card-header-er-primary-text">Scripts safe to run anytime to refresh data or fix common issues.</small>
     </div>
     <div class="card-body">
         <?php if (empty($maintenanceScripts)): ?>
@@ -357,7 +357,7 @@ function scriptDisplayName(string $filename): string {
                                 </td>
                                 <td>
                                     <a href="scripts/maintenance/<?= urlencode($script) ?>"
-                                       class="btn btn-sm btn-outline-info"
+                                       class="btn btn-sm btn-outline-primary"
                                        target="_blank"
                                        title="Run <?= htmlspecialchars($script) ?>">
                                         <i class="fas fa-play"></i> Run Script

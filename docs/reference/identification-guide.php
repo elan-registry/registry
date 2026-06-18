@@ -30,12 +30,12 @@ $imgPath = $us_url_root . 'docs/reference/images/identify/';
         <div class="row">
             <div class="col-12">
                 <div class="card registry-card">
-                    <div class="card-header">
-                        <h1 class="mb-0"><i class="fas fa-search"></i> Lotus Elan Identification Guide</h1>
-                        <p class="text-muted mb-0">A quick guide to identifying each Elan and Plus 2 variant</p>
+                    <div class="card-header card-header-er-primary">
+                        <h1 class="mb-0 card-header-er-primary-text"><i class="fas fa-search"></i> Lotus Elan Identification Guide</h1>
+                        <p class="card-header-er-primary-text mb-0">A quick guide to identifying each Elan and Plus 2 variant</p>
                     </div>
                     <div class="card-body">
-                        <div class="alert alert-info mb-0">
+                        <div class="alert alert-primary mb-0">
                             <i class="fas fa-info-circle"></i>
                             <strong>Note:</strong> This is not a comprehensive list of differences between the cars — it is a quick identification guide. Lotus made many undocumented running changes throughout production. If in doubt, post a question to the <a href="http://www.lotuselan.net/forums/" target="_blank" rel="noopener">LotusElan.net forum</a> and ask.
                         </div>
@@ -67,8 +67,8 @@ $imgPath = $us_url_root . 'docs/reference/images/identify/';
         <div class="row mt-4">
             <div class="col-12">
                 <div class="card registry-card">
-                    <div class="card-header">
-                        <h2 class="mb-0" id="roadster">Roadster / Drophead</h2>
+                    <div class="card-header card-header-er-primary">
+                        <h2 class="mb-0 card-header-er-primary-text" id="roadster">Roadster / Drophead</h2>
                     </div>
                     <div class="card-body">
 
@@ -216,8 +216,8 @@ $imgPath = $us_url_root . 'docs/reference/images/identify/';
         <div class="row mt-4">
             <div class="col-12">
                 <div class="card registry-card">
-                    <div class="card-header">
-                        <h2 class="mb-0" id="coupe">Coup&eacute;</h2>
+                    <div class="card-header card-header-er-primary">
+                        <h2 class="mb-0 card-header-er-primary-text" id="coupe">Coup&eacute;</h2>
                     </div>
                     <div class="card-body">
 
@@ -329,8 +329,8 @@ $imgPath = $us_url_root . 'docs/reference/images/identify/';
         <div class="row mt-4">
             <div class="col-12">
                 <div class="card registry-card">
-                    <div class="card-header">
-                        <h2 class="mb-0" id="racing">Racing Version</h2>
+                    <div class="card-header card-header-er-primary">
+                        <h2 class="mb-0 card-header-er-primary-text" id="racing">Racing Version</h2>
                     </div>
                     <div class="card-body">
 
@@ -375,8 +375,8 @@ $imgPath = $us_url_root . 'docs/reference/images/identify/';
         <div class="row mt-4">
             <div class="col-12">
                 <div class="card registry-card">
-                    <div class="card-header">
-                        <h2 class="mb-0" id="plus2">Plus 2</h2>
+                    <div class="card-header card-header-er-primary">
+                        <h2 class="mb-0 card-header-er-primary-text" id="plus2">Plus 2</h2>
                     </div>
                     <div class="card-body">
 

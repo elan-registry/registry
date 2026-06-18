@@ -34,8 +34,8 @@ if (file_exists($mdFile)) {
             <div class="row">
                 <div class="col-12">
                     <div class="card registry-card">
-                        <div class="card-header">
-                            <h2 class="mb-0">Privacy Policy</h2>
+                        <div class="card-header card-header-er-primary">
+                            <h2 class="mb-0 card-header-er-primary-text">Privacy Policy</h2>
                         </div>
                         <div class="card-body">
                             <div class="content-wrapper">

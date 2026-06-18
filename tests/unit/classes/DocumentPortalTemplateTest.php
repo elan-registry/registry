@@ -106,7 +106,7 @@ final class DocumentPortalTemplateTest extends TestCase
         ]);
 
         $this->assertStringContainsString("<i class='fas fa-question-circle'></i>", $html);
-        $this->assertStringContainsString("<h1 class='mb-0'><i class='fas fa-question-circle'></i> FAQ &amp; User Guides</h1>", $html);
+        $this->assertStringContainsString("<h1 class='mb-0 card-header-er-primary-text'><i class='fas fa-question-circle'></i> FAQ &amp; User Guides</h1>", $html);
     }
 
     public function testRenderPortalHeaderOmitsTitleIconWhenAbsent(): void
@@ -745,5 +745,72 @@ final class DocumentPortalTemplateTest extends TestCase
         DocumentPortalTemplate::renderNavFooter([
             ['label' => 'Home'],
         ]);
+    }
+
+    // --- Color token regression tests (issue #757) ---
+
+    public function testRenderPortalHeaderUsesDefaultHeaderClass(): void
+    {
+        $html = DocumentPortalTemplate::renderPortalHeader([
+            'title'       => 'Title',
+            'description' => 'Desc',
+        ]);
+
+        $this->assertStringContainsString("card-header card-header-er-primary", $html);
+    }
+
+    public function testRenderPortalHeaderDescriptionHasPrimaryTextClass(): void
+    {
+        $html = DocumentPortalTemplate::renderPortalHeader([
+            'title'       => 'Title',
+            'description' => 'Desc',
+        ]);
+
+        $this->assertStringContainsString("class='card-header-er-primary-text mb-0'", $html);
+    }
+
+    public function testRenderDocumentCardTitleHeadingHasPrimaryTextClass(): void
+    {
+        $html = DocumentPortalTemplate::renderDocumentCard([
+            'title'      => 'Card Title',
+            'icon'       => 'fa-car',
+            'url'        => '/test',
+            'buttonText' => 'View',
+        ]);
+
+        $this->assertStringContainsString("class='mb-0 card-header-er-primary-text'", $html);
+    }
+
+    public function testRenderDocumentCardUsesDefaultHeaderClass(): void
+    {
+        $html = DocumentPortalTemplate::renderDocumentCard([
+            'title'      => 'Title',
+            'icon'       => 'fa-car',
+            'url'        => '/test',
+            'buttonText' => 'View',
+        ]);
+
+        $this->assertStringContainsString("card-header card-header-er-primary", $html);
+    }
+
+    public function testRenderDocumentCardUsesDefaultButtonClass(): void
+    {
+        $html = DocumentPortalTemplate::renderDocumentCard([
+            'title'      => 'Title',
+            'icon'       => 'fa-car',
+            'url'        => '/test',
+            'buttonText' => 'View',
+        ]);
+
+        $this->assertStringContainsString("btn btn-primary btn-sm", $html);
+    }
+
+    public function testRenderNavFooterUsesDefaultBtnClass(): void
+    {
+        $html = DocumentPortalTemplate::renderNavFooter([
+            ['label' => 'Home', 'url' => '/'],
+        ]);
+
+        $this->assertStringContainsString('btn btn-outline-primary', $html);
     }
 }

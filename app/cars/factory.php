@@ -23,13 +23,14 @@ if (!securePage($php_self)) {
       <div class="row">
         <div class="col-12">
           <div class="card registry-card">
-            <div class="card-header">
-              <h2 class="mb-0">Elan Factory Information</h2>
-              <div class="mt-2">
-                <h5><strong>WARNING</strong> - This information has not been verified against the Lotus archives.</h5>
-              </div>
+            <div class="card-header card-header-er-primary">
+              <h2 class="mb-0 card-header-er-primary-text">Elan Factory Information</h2>
             </div>
             <div class="card-body">
+              <div class="alert alert-warning">
+                <i class="fas fa-exclamation-triangle me-1"></i>
+                <strong>WARNING</strong> — This information has not been verified against the Lotus archives.
+              </div>
               <table id="cartable" class="table table-striped table-bordered table-sm w-100 registry-table" aria-describedby="card-header">
                 <thead>
                   <tr>
@@ -184,7 +185,7 @@ require_once $abs_us_root . $us_url_root . 'users/includes/html_footer.php'; //c
             // Car exists - create link to car details
             const detailsUrl = us_url_root + 'app/cars/details.php?car_id=' + response.car_id;
             container.html(
-              '<a href="' + detailsUrl + '" class="btn btn-sm btn-success" target="_blank">' +
+              '<a href="' + detailsUrl + '" class="btn btn-sm btn-primary" target="_blank">' +
               '<i class="fas fa-car"></i> View Car #' + response.car_id +
               '</a>'
             );

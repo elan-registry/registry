@@ -134,16 +134,12 @@ class EmailTemplate
      */
     private function getBoxStyleClass(string $style): string
     {
-        switch ($style) {
-            case 'message':
-                return 'content-box content-box-message';
-            case 'alert':
-                return 'content-box content-box-alert';
-            case 'success':
-                return 'content-box content-box-success';
-            default:
-                return 'content-box';
-        }
+        return match ($style) {
+            'message' => 'content-box content-box-message',
+            'alert'   => 'content-box content-box-alert',
+            'success' => 'content-box content-box-success',
+            default   => 'content-box',
+        };
     }
 
     /**
@@ -158,7 +154,7 @@ class EmailTemplate
             'message' => '#469408',
             'alert'   => '#dc3545',
             'success' => '#28a745',
-            'default' => '#029acf',
+            'default' => '#00563F',
         ];
         return $colors[$style] ?? $colors['default'];
     }
@@ -188,7 +184,7 @@ class EmailTemplate
     private function getButtonInlineStyles(string $style): string
     {
         $colors = [
-            'primary'   => '#029acf',
+            'primary'   => '#00563F',
             'secondary' => '#6c757d',
             'success'   => '#28a745',
             'danger'    => '#dc3545',
@@ -237,7 +233,7 @@ class EmailTemplate
 
         /* Header Styles */
         .header {
-            background-color: #029acf;
+            background-color: #00563F;
             color: white;
             padding: 20px;
             text-align: center;
@@ -256,7 +252,7 @@ class EmailTemplate
 
         .content-box {
             background-color: #f8f9fa;
-            border: 2px solid #029acf;
+            border: 2px solid #00563F;
             border-radius: 8px;
             padding: 20px;
             margin: 20px 0;
@@ -275,7 +271,7 @@ class EmailTemplate
         }
 
         .content-box h3 {
-            color: #029acf;
+            color: #00563F;
             margin-top: 0;
         }
 
@@ -319,7 +315,7 @@ class EmailTemplate
         }
 
         .btn-primary {
-            background-color: #029acf;
+            background-color: #00563F;
             color: #ffffff;
         }
 
@@ -350,7 +346,7 @@ class EmailTemplate
 
         /* Utility Classes */
         .lotus-green { color: #469408; }
-        .lotus-blue { color: #029acf; }
+        .lotus-primary { color: #00563F; }
         .lotus-red { color: #dc3545; }
         .text-center { text-align: center; }
 
@@ -373,7 +369,7 @@ class EmailTemplate
                 <table role=\"presentation\" border=\"0\" cellpadding=\"0\" cellspacing=\"0\" width=\"600\" style=\"width: 600px; background-color: #ffffff;\">
                     <tr>
                         <td>
-                            <div class=\"header\" style=\"background-color: #029acf; color: #ffffff; padding: 20px; text-align: center;\">
+                            <div class=\"header\" style=\"background-color: #00563F; color: #ffffff; padding: 20px; text-align: center;\">
                                 <img src=\"{$safeLogoUrl}\" alt=\"Lotus Logo\" class=\"logo\" style=\"width: 48px; height: 48px; display: block; margin: 0 auto 10px auto;\">
                                 <h1 style=\"color: #ffffff; margin: 0 0 5px 0; font-size: 24px;\">Lotus Elan Registry</h1>
                                 <p>" . htmlspecialchars($subtitle, ENT_QUOTES, 'UTF-8') . "</p>
