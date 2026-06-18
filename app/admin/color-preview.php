@@ -374,7 +374,35 @@ $pageTitle = 'Color Preview — Elan Registry Token System';
         </div>
     </div>
 
-    <!-- 10. Token reference table -->
+    <!-- 10. Navigation patterns -->
+    <div class="er-section-heading">Navigation</div>
+    <div class="card mb-2">
+        <div class="card-body p-0">
+            <ul class="us_menu dark" style="margin:0; padding: 0.75rem 1.25rem; display:flex; gap:1.5rem; list-style:none; align-items:center;">
+                <li><a href="#" style="color:#fff; text-decoration:none;">List Cars</a></li>
+                <li class="active"><a href="#" style="color:#fff; text-decoration:none;">Statistics</a></li>
+                <li><a href="#" style="color:#fff; text-decoration:none;">Reference</a></li>
+                <li style="margin-left:auto;">
+                    <a href="#" class="btn btn-er-yellow btn-sm">
+                        <i class="fa fa-plus-square"></i> Register
+                    </a>
+                </li>
+                <li><a href="#" style="color:#fff; text-decoration:none;">Log In</a></li>
+            </ul>
+        </div>
+    </div>
+    <p class="text-muted small mb-3">
+        Active section carries a 3px Lotus Yellow underline (<code>--er-accent</code>)
+        and bolder weight; matching is by path prefix so detail pages still
+        highlight their parent section. Public-nav Register uses
+        <code>btn btn-er-yellow btn-sm</code> &mdash; solid Lotus Yellow with
+        <code>--er-on-accent</code> text for maximum CTA visibility on the dark
+        nav, hover darkens to <code>--er-accent-dark</code>. Distinct from the
+        logged-in <code>btn-primary</code> Add Car so the two states read as
+        separate calls to action.
+    </p>
+
+    <!-- 11. Token reference table -->
     <div class="er-section-heading">Token reference</div>
     <div class="table-responsive">
         <table class="table table-sm er-token-table">
@@ -398,7 +426,7 @@ $pageTitle = 'Color Preview — Elan Registry Token System';
                 <tr><td><span class="er-token-swatch" style="background: #073763;"></span></td><td><code>--er-link-hover</code></td><td>#073763</td><td>11.4:1 AAA</td><td>Link hover / visited</td></tr>
                 <tr><td><span class="er-token-swatch" style="background: #6C757D;"></span></td><td><code>--er-neutral</code></td><td>#6C757D</td><td>4.7:1 AA</td><td>Muted text, secondary UI</td></tr>
                 <tr><td><span class="er-token-swatch" style="background: #F4F5F3;"></span></td><td><code>--er-neutral-light</code></td><td>#F4F5F3</td><td>1.05:1 (bg)</td><td>Page bg tint, table stripes</td></tr>
-                <tr><td><span class="er-token-swatch" style="background: #1F2421;"></span></td><td><code>--er-neutral-dark</code></td><td>#1F2421</td><td>15.7:1 AAA</td><td>Hero banners, dark sections</td></tr>
+                <tr><td><span class="er-token-swatch" style="background: #3B413D;"></span></td><td><code>--er-neutral-dark</code></td><td>#3B413D</td><td>9.4:1 AAA</td><td>Hero banners, dark sections</td></tr>
                 <tr><td><span class="er-token-swatch" style="background: #010101;"></span></td><td><code>--er-true-black</code></td><td>#010101</td><td>20.9:1 AAA</td><td>Authentic Lotus black &mdash; text on yellow</td></tr>
             </tbody>
         </table>

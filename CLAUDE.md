@@ -8,6 +8,7 @@ working with code in this repository.
 **Essential reading:**
 
 - `CLAUDE.md` (this file) - Overview and quick reference
+- `docs/development/UI_STANDARDS.md` - **UI component standards** (color tokens, card hierarchy, component patterns) — read before any UI change
 - `docs/development/EMAIL_SYSTEM.md` - Brevo email plugin setup and configuration
 - `docs/development/CODING_STANDARDS.md` - Code quality requirements
 - `docs/development/QUICK_REFERENCE.md` - Common tasks lookup
