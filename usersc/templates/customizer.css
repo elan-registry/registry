@@ -169,6 +169,61 @@
   border-top: 5px solid var(--er-accent);
 }
 
+/* Nested card levels L2–L4
+   Use inside a card-header-er-primary (L1) parent to create visual depth.
+   Each level signals subordination without losing the brand identity. */
+
+/* L2 — Group / Subsection */
+.card-header-er-l2 {
+  background-color: #e8f0ed !important;  /* solid light BRG tint — immune to dark parent bg */
+  border-left: 4px solid var(--er-primary) !important;
+  border-top: none;
+}
+.card-header-er-l2-text {
+  color: var(--er-neutral-dark);          /* dark text on light tint — high contrast */
+  font-weight: 600;
+}
+
+/* L3 — Item / Record */
+.card-header-er-l3 {
+  background-color: var(--er-neutral-light) !important;
+  border-left: 3px solid var(--er-neutral) !important;
+}
+.card-header-er-l3-text {
+  color: var(--er-neutral-dark);
+  font-weight: 500;
+}
+
+/* L4 — Detail panel */
+.card-header-er-l4 {
+  background-color: #fff !important;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.1);
+  padding: 0.375rem 0.75rem;
+}
+.card-header-er-l4-text {
+  color: var(--er-neutral);
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+/* Specificity firewall for L2–L4 inside colored-border cards.
+   The UserSpice-generated Bootstrap CSS contains rules like
+   .card.border-primary .card-header { background: !important } at (0,3,0).
+   These selectors use (0,4,0) to win when both sides have !important. */
+.card[class*="border"] .card-header.card-header-er-l2 {
+  background-color: #e8f0ed !important;
+  border-left: 4px solid var(--er-primary) !important;
+}
+.card[class*="border"] .card-header.card-header-er-l3 {
+  background-color: var(--er-neutral-light) !important;
+  border-left: 3px solid var(--er-neutral) !important;
+}
+.card[class*="border"] .card-header.card-header-er-l4 {
+  background-color: #fff !important;
+}
+
 /* Nav menu — override UserSpice dark (#212529) with er-neutral-dark token.
    !important required: menu.css loads after customizer.css at same specificity. */
 ul.us_menu.dark,

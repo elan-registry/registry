@@ -282,7 +282,99 @@ $pageTitle = 'Color Preview — Elan Registry Token System';
         </div>
     </div>
 
-    <!-- 9. Token reference table -->
+    <!-- 9. Nested card levels -->
+    <div class="er-section-heading">Nested card levels (L1 → L4)</div>
+    <p class="text-muted mb-3">Use these four levels whenever cards are embedded within cards. Each step down reduces visual weight, keeping the BRG brand anchor at the outermost level.</p>
+    <div class="card registry-card mb-4">
+        <div class="card-header card-header-er-primary">
+            <h4 class="mb-0 card-header-er-primary-text">
+                <i class="fas fa-layer-group me-2"></i> L1 — Section Card
+                <small class="ms-2 card-header-er-primary-text fw-normal">Top-level page section. Uses <code style="color:rgba(255,255,255,0.7)">card-header-er-primary</code>.</small>
+            </h4>
+        </div>
+        <div class="card-body">
+            <p class="text-muted mb-3">L1 is the anchor for any nested structure. Everything below it steps down in visual weight.</p>
+
+            <!-- L2 -->
+            <div class="card border mb-3">
+                <div class="card-header card-header-er-l2">
+                    <h5 class="mb-0 card-header-er-l2-text">
+                        <i class="fas fa-object-group me-2"></i> L2 — Group / Subsection
+                        <small class="ms-2 text-muted fw-normal">Uses <code>card-header-er-l2</code>. For grouping within a section (e.g. duplicate car group, report category).</small>
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <p class="text-muted mb-3 small">L2 uses a solid light BRG-tinted background (#e8f0ed) with a 4 px BRG left-border accent. Heading text is dark for maximum contrast on the light background.</p>
+
+                    <div class="row">
+                        <!-- L3 item A -->
+                        <div class="col-md-6 mb-3">
+                            <div class="card border">
+                                <div class="card-header card-header-er-l3">
+                                    <h6 class="mb-0 card-header-er-l3-text">
+                                        <i class="fas fa-file-alt me-1"></i> L3 — Item / Record
+                                        <small class="ms-2 text-muted fw-normal">Uses <code>card-header-er-l3</code>.</small>
+                                    </h6>
+                                </div>
+                                <div class="card-body p-2">
+                                    <p class="small text-muted mb-2">L3 uses <code>--er-neutral-light</code> background and a 3 px muted grey left border. For individual records, cars, or list items within a group.</p>
+
+                                    <!-- L4 -->
+                                    <div class="card border-0 mb-0">
+                                        <div class="card-header card-header-er-l4">
+                                            <span class="card-header-er-l4-text">
+                                                <i class="fas fa-info-circle me-1"></i> L4 — Detail Panel &mdash; Uses <code>card-header-er-l4</code>
+                                            </span>
+                                        </div>
+                                        <div class="card-body p-2 bg-white">
+                                            <p class="small text-muted mb-0">L4 is transparent with a hairline divider. Header uses small uppercase label text. For supplementary detail panels nested inside an item.</p>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- L3 item B (second item in the group) -->
+                        <div class="col-md-6 mb-3">
+                            <div class="card border">
+                                <div class="card-header card-header-er-l3">
+                                    <h6 class="mb-0 card-header-er-l3-text">
+                                        <i class="fas fa-file-alt me-1"></i> L3 — Second Item in Same Group
+                                    </h6>
+                                </div>
+                                <div class="card-body p-2">
+                                    <p class="small text-muted mb-2">Multiple L3 cards can exist within one L2 group.</p>
+                                    <div class="card border-0 mb-0">
+                                        <div class="card-header card-header-er-l4">
+                                            <span class="card-header-er-l4-text">
+                                                <i class="fas fa-cog me-1"></i> L4 — Detail Panel
+                                            </span>
+                                        </div>
+                                        <div class="card-body p-2 bg-white">
+                                            <p class="small text-muted mb-0">L4 is the innermost level — keep content concise.</p>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Usage guidance -->
+            <div class="alert alert-primary mb-0">
+                <strong>Usage rules:</strong>
+                <ul class="mb-0 mt-1 small">
+                    <li><strong>L1</strong> <code>card-header-er-primary</code> — one per page section or tab pane. Never nest L1 inside L1.</li>
+                    <li><strong>L2</strong> <code>card-header-er-l2</code> — groups within a section (duplicate groups, report categories, tool sub-areas).</li>
+                    <li><strong>L3</strong> <code>card-header-er-l3</code> — individual records or items within an L2 group.</li>
+                    <li><strong>L4</strong> <code>card-header-er-l4</code> — supplementary detail panels inside an L3 item. Skip if content is simple prose.</li>
+                </ul>
+            </div>
+        </div>
+    </div>
+
+    <!-- 10. Token reference table -->
     <div class="er-section-heading">Token reference</div>
     <div class="table-responsive">
         <table class="table table-sm er-token-table">

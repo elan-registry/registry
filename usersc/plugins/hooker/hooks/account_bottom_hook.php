@@ -109,8 +109,8 @@ $formatDate = static fn(string $date, string $format = 'F j, Y'): string
                 <div class="row mb-4">
                     <div class="col-lg-6 mb-4">
                         <div class="card registry-card">
-                            <div class="card-header card-header-er-primary">
-                                <h4 class="mb-0 card-header-er-primary-text"><i class="fas fa-info-circle"></i> Vehicle Information</h4>
+                            <div class="card-header card-header-er-l2">
+                                <h4 class="mb-0 card-header-er-l2-text"><i class="fas fa-info-circle"></i> Vehicle Information</h4>
                             </div>
                             <div class="card-body">
                                 <dl class="row mb-4">
@@ -139,8 +139,8 @@ $formatDate = static fn(string $date, string $format = 'F j, Y'): string
 
                                 <hr>
 
-                                <h6 class="text-muted mb-3">
-                                    <i class="fas fa-palette text-secondary"></i> Appearance &amp; Technical
+                                <h6 class="card-header-er-l4-text mb-2">
+                                    <i class="fas fa-palette"></i> Appearance &amp; Technical
                                 </h6>
                                 <dl class="row mb-4">
                                     <dt class="col-sm-4 text-muted">Color</dt>
@@ -152,8 +152,8 @@ $formatDate = static fn(string $date, string $format = 'F j, Y'): string
 
                                 <?php if (!empty($carData->purchasedate) || !empty($carData->solddate) || !empty($carData->website)) { ?>
                                 <hr>
-                                <h6 class="text-muted mb-3">
-                                    <i class="fas fa-history text-secondary"></i> Ownership &amp; History
+                                <h6 class="card-header-er-l4-text mb-2">
+                                    <i class="fas fa-history"></i> Ownership &amp; History
                                 </h6>
                                 <dl class="row mb-4">
                                     <?php if (!empty($carData->purchasedate)) { ?>
@@ -179,8 +179,8 @@ $formatDate = static fn(string $date, string $format = 'F j, Y'): string
 
                                 <?php if (!empty($carData->comments)) { ?>
                                 <hr>
-                                <h6 class="text-muted mb-3">
-                                    <i class="fas fa-comment text-secondary"></i> Your Comments
+                                <h6 class="card-header-er-l4-text mb-2">
+                                    <i class="fas fa-comment"></i> Your Comments
                                 </h6>
                                 <div class="bg-light p-3 rounded">
                                     <?= nl2br(htmlspecialchars($carData->comments, ENT_QUOTES, 'UTF-8')) ?>
@@ -208,8 +208,8 @@ $formatDate = static fn(string $date, string $format = 'F j, Y'): string
                     <div class="col-lg-6 mb-4">
                         <!-- Car Images -->
                         <div class="card registry-card mb-4">
-                            <div class="card-header card-header-er-primary">
-                                <h4 class="mb-0 card-header-er-primary-text"><i class="fas fa-images"></i> Photos</h4>
+                            <div class="card-header card-header-er-l2">
+                                <h4 class="mb-0 card-header-er-l2-text"><i class="fas fa-images"></i> Photos</h4>
                             </div>
                             <div class="card-body">
                                 <?php echo CarView::displayCarousel($car); ?>
@@ -218,8 +218,8 @@ $formatDate = static fn(string $date, string $format = 'F j, Y'): string
                         <!-- Factory Data Card -->
                         <?php if (!is_null($factoryData)) { ?>
                         <div class="card registry-card">
-                            <div class="card-header card-header-er-primary">
-                                <h4 class="mb-0 card-header-er-primary-text">
+                            <div class="card-header card-header-er-l2">
+                                <h4 class="mb-0 card-header-er-l2-text">
                                     <i class="fas fa-industry"></i> Factory Data
                                     <span class="badge bg-warning ms-2">Unverified</span>
                                 </h4>

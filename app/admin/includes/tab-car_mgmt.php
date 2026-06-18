@@ -214,9 +214,9 @@ try {
                 <div class="row">
                     <!-- Car Reassignment - Administrative Exception -->
                     <div class="col-lg-8 col-md-12 mb-4">
-                        <div class="card border-primary">
-                            <div class="card-header card-header-er-primary">
-                                <h6 class="mb-0 card-header-er-primary-text">
+                        <div class="card border">
+                            <div class="card-header card-header-er-l2">
+                                <h6 class="mb-0 card-header-er-l2-text">
                                     <i class="fas fa-user-friends"></i> Manual Car Reassignment
                                     <span class="badge text-bg-warning badge-sm ms-2">Administrative Use Only</span>
                                 </h6>

@@ -361,16 +361,16 @@ $qualityScore = $totalCars > 0 ? max(0, 100 - (($carIssues / $totalCars) * 100))
     <?php if ($report['count'] > 0 && !in_array($key, ['owners_missing_info', 'inactive_owners', 'users_without_cars', 'duplicate_emails', 'duplicate_cars'])) { ?>
         <div class="row mb-4" id="report-<?= $key ?>">
             <div class="col-12">
-                <div class="card border-<?= $severityClass($report['severity']) ?>">
-                    <div class="card-header bg-dark" data-bs-toggle="collapse" data-bs-target="#collapse-<?= $key ?>" aria-expanded="false" style="cursor: pointer;">
+                <div class="card border-primary">
+                    <div class="card-header card-header-er-primary" data-bs-toggle="collapse" data-bs-target="#collapse-<?= $key ?>" aria-expanded="false" style="cursor: pointer;">
                         <div class="d-flex justify-content-between align-items-center">
-                            <h4 class="mb-0 text-white">
-                                <i class="<?= $report['icon'] ?> text-<?= $severityClass($report['severity']) ?>"></i> <?= $report['title'] ?>
-                                <span class="badge text-bg-<?= $severityClass($report['severity']) ?> ms-2"><?= $report['count'] ?></span>
+                            <h4 class="mb-0 card-header-er-primary-text">
+                                <i class="<?= $report['icon'] ?>"></i> <?= $report['title'] ?>
+                                <span class="badge text-bg-warning ms-2"><?= $report['count'] ?></span>
                             </h4>
                             <div class="d-flex align-items-center">
-                                <small class="text-light me-3">Impact: <?= $report['impact'] ?></small>
-                                <i class="fas fa-chevron-down text-light collapse-icon"></i>
+                                <small class="card-header-er-primary-text me-3">Impact: <?= $report['impact'] ?></small>
+                                <i class="fas fa-chevron-down card-header-er-primary-text collapse-icon"></i>
                             </div>
                         </div>
                     </div>
@@ -869,16 +869,16 @@ $qualityScore = $totalCars > 0 ? max(0, 100 - (($carIssues / $totalCars) * 100))
 <?php if (isset($dataQualityReports['duplicate_cars']) && $dataQualityReports['duplicate_cars']['count'] > 0) { ?>
 <div class="row mt-4" id="duplicateDetectionSection">
     <div class="col-12">
-        <div class="card border-warning">
-            <div class="card-header bg-dark" data-bs-toggle="collapse" data-bs-target="#collapse-duplicate-detection" aria-expanded="false" style="cursor: pointer;">
+        <div class="card border-primary">
+            <div class="card-header card-header-er-primary" data-bs-toggle="collapse" data-bs-target="#collapse-duplicate-detection" aria-expanded="false" style="cursor: pointer;">
                 <div class="d-flex justify-content-between align-items-center">
-                    <h4 class="mb-0 text-white">
-                        <i class="fas fa-search text-warning"></i> Duplicate Detection & Management
+                    <h4 class="mb-0 card-header-er-primary-text">
+                        <i class="fas fa-search"></i> Duplicate Detection & Management
                         <span class="badge text-bg-warning ms-2"><?= $dataQualityReports['duplicate_cars']['count'] ?></span>
                     </h4>
                     <div class="d-flex align-items-center">
-                        <small class="text-light me-3">Impact: Medium - May indicate duplicate registrations or data entry errors</small>
-                        <i class="fas fa-chevron-down text-light collapse-icon"></i>
+                        <small class="card-header-er-primary-text me-3">Impact: Medium - May indicate duplicate registrations or data entry errors</small>
+                        <i class="fas fa-chevron-down card-header-er-primary-text collapse-icon"></i>
                     </div>
                 </div>
             </div>
@@ -933,10 +933,10 @@ $qualityScore = $totalCars > 0 ? max(0, 100 - (($carIssues / $totalCars) * 100))
                     foreach ($groupedDuplicates as $chassis => $cars) {
                         $groupIndex++;
                     ?>
-                        <div class="duplicate-group card mb-4 border-warning">
-                            <div class="card-header bg-warning bg-opacity-10 d-flex justify-content-between align-items-center">
-                                <h5 class="mb-0">
-                                    <button class="btn btn-link text-decoration-none p-0" type="button" data-bs-toggle="collapse" data-bs-target="#group<?= $groupIndex ?>" aria-expanded="true">
+                        <div class="duplicate-group card mb-3 border">
+                            <div class="card-header card-header-er-l2 d-flex justify-content-between align-items-center">
+                                <h5 class="mb-0 card-header-er-l2-text">
+                                    <button class="btn btn-link text-decoration-none p-0 card-header-er-l2-text" type="button" data-bs-toggle="collapse" data-bs-target="#group<?= $groupIndex ?>" aria-expanded="true">
                                         <i class="fas fa-chevron-down"></i>
                                         Group <?= $groupIndex ?>: <?= explode('_', $chassis)[1] ?>-<?= explode('_', $chassis)[0] ?>
                                     </button>
@@ -1055,11 +1055,11 @@ $qualityScore = $totalCars > 0 ? max(0, 100 - (($carIssues / $totalCars) * 100))
                                                 ?>
                                                     <div class="col-lg-6 col-md-6 mb-3 d-flex">
                                                         <div class="card <?= $cardClass ?> w-100">
-                                                            <div class="card-header d-flex justify-content-between align-items-center">
+                                                            <div class="card-header card-header-er-l3 d-flex justify-content-between align-items-center">
                                                                 <div class="form-check">
                                                                     <input class="form-check-input car-select" type="checkbox" name="cars[]" value="<?= $car->id ?>" id="car<?= $car->id ?>">
                                                                     <label class="form-check-label" for="car<?= $car->id ?>">
-                                                                        <strong>Car #<?= $car->id ?></strong>
+                                                                        <strong class="card-header-er-l3-text">Car #<?= $car->id ?></strong>
                                                                         <?php if ($isNewer) { ?>
                                                                             <span class="badge text-bg-primary badge-sm ms-1">NEWER</span>
                                                                         <?php } ?>
@@ -1071,7 +1071,7 @@ $qualityScore = $totalCars > 0 ? max(0, 100 - (($carIssues / $totalCars) * 100))
                                                             </div>
 
                                                             <!-- Prominent Date Section -->
-                                                            <div class="card-header bg-light border-top-0 pt-2 pb-2">
+                                                            <div class="card-header card-header-er-l4">
                                                                 <div class="row text-center">
                                                                     <div class="col-6">
                                                                         <div class="timestamp-info">
@@ -1095,7 +1095,7 @@ $qualityScore = $totalCars > 0 ? max(0, 100 - (($carIssues / $totalCars) * 100))
                                                             <div class="card-body">
                                                                 <div class="row">
                                                                     <div class="col-sm-6">
-                                                                        <h6 class="text-primary">Vehicle Info</h6>
+                                                                        <h6 class="card-header-er-l4-text">Vehicle Info</h6>
                                                                         <p class="mb-1 <?= $vehicleMatches['year'] ? 'field-match' : 'field-differ' ?>">
                                                                             <strong>Year:</strong>
                                                                             <span class="field-value"><?= $car->year ?></span>
@@ -1119,7 +1119,7 @@ $qualityScore = $totalCars > 0 ? max(0, 100 - (($carIssues / $totalCars) * 100))
                                                                         </p>
                                                                     </div>
                                                                     <div class="col-sm-6">
-                                                                        <h6 class="text-primary">Owner Info</h6>
+                                                                        <h6 class="card-header-er-l4-text">Owner Info</h6>
                                                                         <p class="mb-1 <?= $ownerMatches['fname'] && $ownerMatches['lname'] ? 'field-match' : 'field-differ' ?>">
                                                                             <strong>Owner:</strong>
                                                                             <span class="field-value"><?= $car->fname ?> <?= $car->lname ?></span>
@@ -1191,16 +1191,16 @@ $qualityScore = $totalCars > 0 ? max(0, 100 - (($carIssues / $totalCars) * 100))
 }
 
 .car-comparison-card.selected {
-    border: 2px solid #007bff;
-    background-color: #f8f9ff;
+    border: 2px solid var(--er-primary);
+    background-color: rgba(var(--er-primary-rgb), 0.03);
 }
 
 .car-comparison-card.newer-car {
-    border-left: 4px solid #28a745;
+    border-left: 4px solid var(--er-primary);
 }
 
 .car-comparison-card.newer-car .card-header {
-    background-color: rgba(40, 167, 69, 0.05);
+    background-color: rgba(var(--er-primary-rgb), 0.04);
 }
 
 .duplicate-group {
@@ -1234,16 +1234,16 @@ $qualityScore = $totalCars > 0 ? max(0, 100 - (($carIssues / $totalCars) * 100))
 
 /* Field comparison highlighting */
 .field-match {
-    background-color: rgba(40, 167, 69, 0.1);
-    border-left: 3px solid #28a745;
+    background-color: rgba(var(--er-primary-rgb), 0.08);
+    border-left: 3px solid var(--er-primary);
     padding: 4px 8px;
     margin: 2px 0;
     border-radius: 4px;
 }
 
 .field-differ {
-    background-color: rgba(220, 53, 69, 0.1);
-    border-left: 3px solid #dc3545;
+    background-color: rgba(var(--er-danger-rgb), 0.08);
+    border-left: 3px solid var(--er-danger);
     padding: 4px 8px;
     margin: 2px 0;
     border-radius: 4px;
@@ -1251,12 +1251,12 @@ $qualityScore = $totalCars > 0 ? max(0, 100 - (($carIssues / $totalCars) * 100))
 
 .field-match .field-value {
     font-weight: 500;
-    color: #155724;
+    color: var(--er-primary);
 }
 
 .field-differ .field-value {
     font-weight: 500;
-    color: #721c24;
+    color: var(--er-danger);
 }
 
 .field-match i.fa-check {
