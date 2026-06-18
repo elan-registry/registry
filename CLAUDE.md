@@ -75,9 +75,7 @@ edge caching and CDN for global users (US, EU, AU).
 
 - `usersc/templates/customizer/` is **gitignored upstream** — do NOT modify any
   files in this directory. The sole exception is `file_nav_custom.php`, which is
-  project-owned and tracked. (`navigation.php` was previously tracked as a
-  workaround for an upstream bug; that bug was fixed in UserSpice 6.1.0 and the
-  file is no longer tracked — see issue #734.)
+  project-owned and tracked.
 - `/users/` is the **UserSpice 6 upstream framework** — do NOT modify files
   here. Extend behavior via custom classes in `usersc/classes/` under the
   `ElanRegistry\` namespace instead.
