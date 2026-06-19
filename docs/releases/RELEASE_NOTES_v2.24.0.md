@@ -34,7 +34,6 @@ restore the backup: `cp override.php.bak override.php`.
 
 - **Lotus-green color system** ([#757](https://github.com/unibrain1/elanregistry/issues/757)): Site-wide CSS custom property color system with Lotus green as primary — consistent brand color across all pages.
 - **Navigation active state and Register CTA** ([#758](https://github.com/unibrain1/elanregistry/issues/758)): Active nav item now visually indicated; Register button promoted as a CTA for unauthenticated visitors.
-- **Login page branding** ([#759](https://github.com/unibrain1/elanregistry/issues/759)): Branded background on login page; password vs. magic-link paths more clearly differentiated.
 - **Car details hero banner** ([#760](https://github.com/unibrain1/elanregistry/issues/760)): Lotus-green hero banner on car detail pages; Contact Owner button more prominent; mobile layout shows photo first.
 - **Statistics overview** ([#761](https://github.com/unibrain1/elanregistry/issues/761)): Timeline charts moved above the fold; stat card colors unified.
 - **Statistics chart color consistency** ([#762](https://github.com/unibrain1/elanregistry/issues/762)): Geographic, Production, and Colors tabs now use a consistent color palette.
@@ -67,7 +66,6 @@ restore the backup: `cp override.php.bak override.php`.
 - [#812](https://github.com/unibrain1/elanregistry/issues/812) — Track upstream fix: Brevo plugin override.php signature mismatch (bugs.userspice.com/2334)
 - [#757](https://github.com/unibrain1/elanregistry/issues/757) — ux: establish CSS custom property color system with Lotus green as primary
 - [#758](https://github.com/unibrain1/elanregistry/issues/758) — ux: nav active state indicator and Register as CTA button
-- [#759](https://github.com/unibrain1/elanregistry/issues/759) — ux: login page branded background and clarify password vs magic-link paths
 - [#760](https://github.com/unibrain1/elanregistry/issues/760) — ux: car details hero banner — Lotus green, prominent contact owner button, mobile photo-first
 - [#761](https://github.com/unibrain1/elanregistry/issues/761) — ux: statistics overview — move timeline charts above fold, unify stat card colors
 - [#762](https://github.com/unibrain1/elanregistry/issues/762) — ux: statistics chart color consistency across Geographic, Production, and Colors tabs
