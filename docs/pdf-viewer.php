@@ -16,6 +16,8 @@ $nav_section = (($_GET['subdir'] ?? '') === 'stories') ? 'stories' : 'reference'
 
 require_once $abs_us_root . $us_url_root . 'usersc/includes/elanregistry_prep.php';
 
+use ElanRegistry\Documentation\DocumentPortalTemplate;
+
 if (!securePage($php_self)) {
     die();
 }
@@ -80,6 +82,7 @@ if (!empty($_GET['doc'])) {
 <div id='page-wrapper'>
     <!-- Page Content -->
     <div class='container'>
+        <?= DocumentPortalTemplate::renderBreadcrumb($nav_section, $us_url_root, $path_parts['filename'] ?? '', 'fa-file-pdf') ?>
         <div class='card card-default'>
             <div class='card-header'>
                 <h1><?= !empty($path_parts['filename']) ? htmlspecialchars($path_parts['filename'], ENT_QUOTES, 'UTF-8') : 'Document Viewer' ?></h1>

@@ -89,6 +89,7 @@ foreach ($markerRows as $car) {
 <div class="page-wrapper">
     <div class="container-fluid">
         <div class="page-container">
+            <?= \ElanRegistry\Documentation\DocumentPortalTemplate::renderBreadcrumb('statistics', $us_url_root) ?>
             <!-- Page Header -->
             <div class="row mb-4">
                 <div class="col-12">

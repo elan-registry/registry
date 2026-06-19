@@ -210,7 +210,7 @@ final class DocumentConfigTest extends TestCase
 
         $breadcrumb = DocumentConfig::getBreadcrumb($documentData, '/');
 
-        $this->assertEquals('Registry', $breadcrumb[0]['text']);
+        $this->assertEquals('Home', $breadcrumb[0]['text']);
         $this->assertStringContainsString('home', $breadcrumb[0]['icon']);
     }
 

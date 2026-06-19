@@ -66,6 +66,7 @@ $storyCards = [
 ?>
 <div class="page-wrapper">
     <div class="container">
+        <?= DocumentPortalTemplate::renderBreadcrumb('stories', $us_url_root) ?>
         <?= DocumentPortalTemplate::renderPortalHeader([
             'title'       => 'Car Stories',
             'titleIcon'   => 'fa-book-open',

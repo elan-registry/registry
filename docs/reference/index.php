@@ -103,6 +103,7 @@ $cards = [
 ?>
 <div class="page-wrapper">
     <div class="container">
+        <?= DocumentPortalTemplate::renderBreadcrumb('reference', $us_url_root) ?>
         <?= DocumentPortalTemplate::renderPortalHeader([
             'title'       => 'Technical Reference',
             'description' => 'Manuals, technical articles, and identification resources for Lotus Elan owners',

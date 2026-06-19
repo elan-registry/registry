@@ -16,6 +16,8 @@ declare(strict_types=1);
 require_once '../../users/init.php';
 require_once $abs_us_root . $us_url_root . 'usersc/includes/elanregistry_prep.php';
 
+use ElanRegistry\Documentation\DocumentPortalTemplate;
+
 if (!securePage($php_self)) {
     die();
 }
@@ -25,6 +27,7 @@ $imgPath = $us_url_root . 'docs/reference/images/identify/';
 ?>
 <div class="page-wrapper">
     <div class="container">
+        <?= DocumentPortalTemplate::renderBreadcrumb('reference', $us_url_root, 'Identification Guide', 'fa-search') ?>
 
         <!-- Page Header -->
         <div class="row">

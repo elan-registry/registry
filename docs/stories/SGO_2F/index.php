@@ -23,6 +23,7 @@ if (!securePage($php_self)) {
 
 <div class="page-wrapper">
     <div class="container">
+        <?= DocumentPortalTemplate::renderBreadcrumb('stories', $us_url_root, 'Elan Plus 2 — SGO 2F', 'fa-car') ?>
 
         <?= DocumentPortalTemplate::renderPortalHeader([
             'title'       => 'Elan Plus 2 — SGO 2F',
