@@ -54,8 +54,8 @@ jQuery UI) continue to be loaded from their existing self-hosted locations in
 | --- | --- | --- |
 | Bootstrap CSS | 5.3.3 | `usersc/css/bootstrap.min.css` (error pages only — see note) |
 | Bootstrap JS | 5.3.3 | `usersc/js/bootstrap.bundle.min.js` (error pages only — see note) |
-| DataTables JS (BS4 bundle) | dt-1.10.23 + extensions | `usersc/js/datatables.min.js` |
-| DataTables CSS (BS4 bundle) | dt-1.10.23 + extensions | `usersc/css/datatables.min.css` |
+| DataTables JS (BS5 bundle) | dt-2.3.8, Buttons 3.2.6, ColVis 3.2.6, FixedHeader 4.0.6, Responsive 3.0.8 | `usersc/js/datatables.min.js` |
+| DataTables CSS (BS5 bundle) | dt-2.3.8, Buttons 3.2.6, ColVis 3.2.6, FixedHeader 4.0.6, Responsive 3.0.8 | `usersc/css/datatables.min.css` |
 | Dropzone JS | 5.7.6 | `usersc/js/dropzone.min.js` |
 | Dropzone CSS | 5.7.6 | `usersc/css/dropzone.min.css` |
 | Chart.js | 4.5.1 | `usersc/js/chart.umd.min.js` |
@@ -72,7 +72,7 @@ jQuery UI) continue to be loaded from their existing self-hosted locations in
 > source-control and Dependabot-coverage reasons that apply to the vendored
 > JS/CSS assets above; the upstream package version is pinned in
 > `package.json`.
-
+>
 > **Bootstrap note:** The Customizer template's `header.php` loads Bootstrap
 > 5.3.3 from `cdnjs.cloudflare.com` (upstream default, with SRI hashes). The
 > vendored Bootstrap files are retained solely for the standalone error pages
