@@ -19,6 +19,48 @@ if (!securePage($php_self)) {
     die();
 }
 
+$externalCards = [
+    [
+        'title'        => 'The Lotus Elan Sprint',
+        'icon'         => 'fa-globe',
+        'url'          => 'https://www.lotuselansprint.com/',
+        'buttonText'   => 'Visit',
+        'buttonTarget' => '_blank',
+        'headerClass'  => 'card-header-er-primary',
+        'buttonClass'  => 'btn-primary btn-sm',
+        'description'  => 'This site is dedicated to the Lotus Elan Sprint, the final iteration of the Lotus Elan.',
+    ],
+    [
+        'title'        => 'LotusElan.Net',
+        'icon'         => 'fa-users',
+        'url'          => 'https://www.lotuselan.net/',
+        'buttonText'   => 'Visit',
+        'buttonTarget' => '_blank',
+        'headerClass'  => 'card-header-er-primary',
+        'buttonClass'  => 'btn-primary btn-sm',
+        'description'  => 'A great online community for the Lotus Elan.',
+    ],
+    [
+        'title'       => 'Type 26 Registry',
+        'icon'        => 'fa-history',
+        'url'         => '../stories/type26register.php',
+        'buttonText'  => 'Browse Archive',
+        'headerClass' => 'card-header-er-dark',
+        'buttonClass' => 'btn-secondary btn-sm',
+        'description' => 'An incomplete archive of type26register.com retrieved from the Wayback Machine, preserving historical information about Type 26 Elans as of July 2010.',
+    ],
+    [
+        'title'        => 'Elan Registry on GitHub',
+        'icon'         => 'fa-code-branch',
+        'url'          => 'https://github.com/unibrain1/elanregistry',
+        'buttonText'   => 'View',
+        'buttonTarget' => '_blank',
+        'headerClass'  => 'card-header-er-primary',
+        'buttonClass'  => 'btn-primary btn-sm',
+        'description'  => 'The open source code behind this registry. Contributions and bug reports welcome.',
+    ],
+];
+
 $cards = [
     [
         'title'       => 'Workshop & Parts',
@@ -66,6 +108,8 @@ $cards = [
             'description' => 'Manuals, technical articles, and identification resources for Lotus Elan owners',
         ]) ?>
         <?= DocumentPortalTemplate::renderDocumentCardGrid($cards) ?>
+        <?= DocumentPortalTemplate::renderSectionHeading('fa-external-link-alt', 'External Resources') ?>
+        <?= DocumentPortalTemplate::renderDocumentCardGrid($externalCards, 'col-lg-3 col-md-6') ?>
     </div>
 </div>
 
