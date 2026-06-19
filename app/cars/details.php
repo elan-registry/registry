@@ -198,10 +198,11 @@ if (!empty($_GET)) {
                                             </form>
                                     <?php
                                         }
-                                    } else {
-                                        echo "<div class='text-white-50'><i class='fas fa-sign-in-alt'></i> Log in to contact owner</div>";
-                                        echo "<input type='hidden' name='car_id' id='car_id' value='" . htmlspecialchars((string)$carData->id, ENT_QUOTES, 'UTF-8') . "' />";
-                                    }
+                                    } else { ?>
+                                        <a href="<?= htmlspecialchars($us_url_root . 'users/login.php', ENT_QUOTES, 'UTF-8') ?>" class="btn btn-outline-light btn-sm">
+                                            <i class="fas fa-sign-in-alt me-1"></i> Log in to contact owner
+                                        </a>
+                                    <?php }
                                     ?>
                                 </div>
                             </div>
@@ -211,7 +212,7 @@ if (!empty($_GET)) {
             </div>
 
             <div class="row">
-                <div class="col-lg-6 mb-4">
+                <div class="col-lg-6 mb-4 order-last order-lg-first">
                     <!-- Vehicle Information Card -->
                     <div class="card registry-card mb-4">
                         <div class="card-header">
@@ -402,7 +403,7 @@ if (!empty($_GET)) {
                     </div>
                 </div>
                 
-                <div class="col-lg-6 mb-4">
+                <div class="col-lg-6 mb-4 order-first order-lg-last">
                     <!-- Car Images -->
                     <div class="card registry-card mb-4">
                         <div class="card-header">

@@ -82,7 +82,7 @@ $yearsSince = (int) (new DateTime())->diff(new DateTime('2003-01-01'))->y;
 <div class="page-wrapper">
 	<div class='container'>
 		<div class='row'>
-			<div class='col-lg-5'>
+			<div class='col-lg-5 order-last order-lg-first'>
 				<div class='card registry-card'>
 					<div class='card-header card-header-er-primary'>
 						<h1 class='mb-0 card-header-er-primary-text'><i class='fas fa-car'></i> <?php echo htmlspecialchars($settings->site_name ?? 'Lotus Elan Registry', ENT_QUOTES, 'UTF-8'); ?></h1>
@@ -140,7 +140,7 @@ $yearsSince = (int) (new DateTime())->diff(new DateTime('2003-01-01'))->y;
 				</div>
 
 			</div>
-			<div class='col-lg-7'>
+			<div class='col-lg-7 order-first order-lg-last'>
 				<div class='card registry-card'>
 					<div class='card-header card-header-er-primary'>
 						<h2 class='mb-0 card-header-er-primary-text'><i class='fas fa-star'></i> One of the Cars</h2>
@@ -180,7 +180,11 @@ $yearsSince = (int) (new DateTime())->diff(new DateTime('2003-01-01'))->y;
 						?>
 					</div>
 				</div>
-				<div class='card registry-card mt-4'>
+			</div>
+		</div>
+		<div class="row mt-4">
+			<div class="col-12">
+				<div class='card registry-card'>
 					<div class='card-header card-header-er-primary'>
 						<h2 class='mb-0 card-header-er-primary-text'><i class='fas fa-heart'></i> Thanks</h2>
 					</div>
