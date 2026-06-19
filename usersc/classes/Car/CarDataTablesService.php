@@ -101,20 +101,42 @@ class CarDataTablesService
             }
         }
 
+        // Per-column search — supports series filter pills and future column-specific filters
+        $columnSearchClauses = [];
+        $columnSearchParams = [];
+        if (isset($request['columns']) && is_array($request['columns'])) {
+            foreach ($request['columns'] as $column) {
+                $colSearch = isset($column['search']['value']) ? trim((string) $column['search']['value']) : '';
+                if ($colSearch === '' || !isset($column['data'])) {
+                    continue;
+                }
+                $colName = $this->validateColumnName($column['data'], $tableName);
+                if ($colName === false) {
+                    continue;
+                }
+                $columnSearchClauses[] = "`{$colName}` = ?";
+                $columnSearchParams[] = $colSearch;
+            }
+        }
+        $columnWhere = !empty($columnSearchClauses) ? 'AND ' . implode(' AND ', $columnSearchClauses) : '';
+
+        $combinedWhere = $searchWhere . ' ' . $columnWhere;
+        $combinedParams = array_merge($searchParams, $columnSearchParams);
+
         // All SQL below is safe: $tableName from VALID_TABLES const map,
         // column names validated via validateColumnName() whitelist,
-        // search values use prepared statement parameters ($searchParams)
+        // search values use prepared statement parameters ($combinedParams)
         $countSql = sprintf('SELECT COUNT(*) as count FROM `%s`', $tableName);
         $totalRecords = $db->query($countSql)->first()->count;
 
         $totalFiltered = $totalRecords;
-        if (!empty($searchWhere)) {
-            $filterSql = sprintf('SELECT COUNT(*) as count FROM `%s` WHERE 1 %s', $tableName, $searchWhere);
-            $totalFiltered = $db->query($filterSql, $searchParams)->first()->count;
+        if (trim($combinedWhere) !== '') {
+            $filterSql = sprintf('SELECT COUNT(*) as count FROM `%s` WHERE 1 %s', $tableName, $combinedWhere);
+            $totalFiltered = $db->query($filterSql, $combinedParams)->first()->count;
         }
 
-        $dataSql = sprintf('SELECT * FROM `%s` WHERE 1 %s %s LIMIT %d, %d', $tableName, $searchWhere, $orderBy, $start, $length);
-        $data = $db->query($dataSql, $searchParams)->results();
+        $dataSql = sprintf('SELECT * FROM `%s` WHERE 1 %s %s LIMIT %d, %d', $tableName, $combinedWhere, $orderBy, $start, $length);
+        $data = $db->query($dataSql, $combinedParams)->results();
 
         return [
             'draw' => $draw,

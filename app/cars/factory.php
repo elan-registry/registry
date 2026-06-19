@@ -78,12 +78,11 @@ require_once $abs_us_root . $us_url_root . 'users/includes/html_footer.php'; //c
     responsive: true,
     pageLength: 25,
     scrollX: true,
-    "aLengthMenu": [
+    "lengthMenu": [
       [25, 50, 100, -1],
       [25, 50, 100, "All"]
     ],
-    caseInsensitive: true,
-    "aaSorting": [
+    "order": [
       [0, "asc"]
     ],
     "language": {
@@ -145,11 +144,11 @@ require_once $abs_us_root . $us_url_root . 'users/includes/html_footer.php'; //c
         data: "serial",
         render: function(data, type, row, meta) {
           if (type === 'display' && data) {
-            // Return placeholder that will be populated via AJAX
-            return '<div class="registry-link-container" data-chassis="' + data + '">' +
-                   '<span class="text-muted small">' +
-                   '<i class="fas fa-spinner fa-spin"></i> Checking...' +
-                   '</span></div>';
+            var div = document.createElement('div');
+            div.className = 'registry-link-container';
+            div.dataset.chassis = data;
+            div.innerHTML = '<span class="text-muted small"><i class="fas fa-spinner fa-spin"></i> Checking...</span>';
+            return div.outerHTML;
           }
           if (type === 'sort' || type === 'type') {
             return data || '';

@@ -7,19 +7,10 @@
 
 ### Activate updated Brevo email override on each server
 
-The Brevo plugin (v1.6.0) ships an updated `override.RENAME.php` that fixes
-the `reply_name` forwarding gap (issue #812). Because the plugin directory is
-not managed by git, this file must be activated manually on each server:
-
-```bash
-cd /path/to/usersc/plugins/sendinblue/
-cp override.php override.php.bak   # keep a rollback copy
-cp override.RENAME.php override.php
-```
+Verify Brevo plugin settings.  Disable and reactive from the settings page. 
 
 After activating, send a test feedback email from the site and confirm the
-reply-to name appears correctly in the received message. If anything is wrong,
-restore the backup: `cp override.php.bak override.php`.
+reply-to name appears correctly in the received message.
 
 ## User-Facing Changes
 
@@ -32,34 +23,58 @@ restore the backup: `cp override.php.bak override.php`.
 
 ### Improvements
 
-- **Lotus-green color system** ([#757](https://github.com/unibrain1/elanregistry/issues/757)): Site-wide CSS custom property color system with Lotus green as primary — consistent brand color across all pages.
-- **Navigation active state and Register CTA** ([#758](https://github.com/unibrain1/elanregistry/issues/758)): Active nav item now visually indicated; Register button promoted as a CTA for unauthenticated visitors.
-- **Login page branding** ([#759](https://github.com/unibrain1/elanregistry/issues/759)): Branded background on login page; password vs. magic-link paths more clearly differentiated.
-- **Car details hero banner** ([#760](https://github.com/unibrain1/elanregistry/issues/760)): Lotus-green hero banner on car detail pages; Contact Owner button more prominent; mobile layout shows photo first.
+- **Lotus-green color system** ([#757](https://github.com/unibrain1/elanregistry/issues/757))
+- **Navigation active state and Register CTA** ([#758](https://github.com/unibrain1/elanregistry/issues/758)):
+- **Car details hero banner** ([#760](https://github.com/unibrain1/elanregistry/issues/760))
 - **Statistics overview** ([#761](https://github.com/unibrain1/elanregistry/issues/761)): Timeline charts moved above the fold; stat card colors unified.
 - **Statistics chart color consistency** ([#762](https://github.com/unibrain1/elanregistry/issues/762)): Geographic, Production, and Colors tabs now use a consistent color palette.
-- **Car list refinements** ([#763](https://github.com/unibrain1/elanregistry/issues/763)): Reduced default columns, series filter pills, and placeholder images for cars without photos.
-- **Homepage button prominence** ([#764](https://github.com/unibrain1/elanregistry/issues/764)): Log In / Sign Up button prominence swapped; Important Resources moved to Reference Library.
-- **Content page card header colors** ([#765](https://github.com/unibrain1/elanregistry/issues/765)): Reference, Stories, Guides, and Chassis Validation pages use consistent card header colors.
-- **Factory records unverified warning** ([#766](https://github.com/unibrain1/elanregistry/issues/766)): Amber alert for unverified factory records; introductory context paragraph added.
-- **Paint colors page** ([#769](https://github.com/unibrain1/elanregistry/issues/769)): Larger colour swatches, more prominent filter tabs, Car Stories second CTA added.
-- **Add/Edit Car form** ([#772](https://github.com/unibrain1/elanregistry/issues/772)): Fixed premature validation icons, Purchase Date input, and checkbox layout.
-- **Identification guide two-column layout** ([#834](https://github.com/unibrain1/elanregistry/issues/834)): Modernised two-column layout for the identification guide.
+- **Car list refinements** ([#763](https://github.com/unibrain1/elanregistry/issues/763)): Series
+  filter pills for quick browsing by model; Date Added column hidden by default (togglable);
+  placeholder icon for cars without photos; DataTables upgraded to 2.3.8 with Bootstrap 5 styling.
+- **Homepage button prominence** ([#764](https://github.com/unibrain1/elanregistry/issues/764)):
+  Log In / Sign Up button prominence swapped; Important Resources moved to Reference Library.
+- **Content page card header colors** ([#765](https://github.com/unibrain1/elanregistry/issues/765)):
+  Reference, Stories, Guides, and Chassis Validation pages use consistent card header colors.
+- **Factory records unverified warning** ([#766](https://github.com/unibrain1/elanregistry/issues/766)):
+  Amber alert for unverified factory records; introductory context paragraph added.
+- **Paint colors page** ([#769](https://github.com/unibrain1/elanregistry/issues/769)):
+  Larger colour swatches, more prominent filter tabs, Car Stories second CTA added.
+- **Add/Edit Car form** ([#772](https://github.com/unibrain1/elanregistry/issues/772)):
+  Fixed premature validation icons, Purchase Date input, and checkbox layout.
+- **Identification guide two-column layout** ([#834](https://github.com/unibrain1/elanregistry/issues/834)):
+  Modernised two-column layout for the identification guide.
 
 ### Bug Fixes
 
-- **26R Race cars now appear under the cyan 26R map filter** ([#849](https://github.com/unibrain1/elanregistry/issues/849)): Race cars on the statistics map were silently falling into the S1/S2 filter buckets, leaving the cyan 26R filter empty. The map now classifies markers by variant first so all Race cars appear in the 26R bucket. The misclassified `26R|Race|26` reference row that was the underlying cause has been removed from seed data.
+- **26R Race cars now appear under the cyan 26R map filter**
+  ([#849](https://github.com/unibrain1/elanregistry/issues/849)): Race cars on the statistics map
+  were silently falling into the S1/S2 filter buckets, leaving the cyan 26R filter empty. The map
+  now classifies markers by variant first so all Race cars appear in the 26R bucket. The
+  misclassified `26R|Race|26` reference row that was the underlying cause has been removed from
+  seed data.
 
 ## Admin-Facing Changes
 
-- **One-time fix script: 26R Race model correction** ([#849](https://github.com/unibrain1/elanregistry/issues/849)): New script `04-Correct-26R-Race-Model-Classification.php` under Admin → Maintenance. Run once on each deployed environment after upgrading to v2.24.0 — migrates any car previously entered against the misclassified `26R|Race|26` model to the correct S2 Race classification and removes the bad reference row. Idempotent: a second run reports zero changes.
+- **One-time fix script: 26R Race model correction**
+  ([#849](https://github.com/unibrain1/elanregistry/issues/849)): New script
+  `04-Correct-26R-Race-Model-Classification.php` under Admin → Maintenance. Run once on each
+  deployed environment after upgrading to v2.24.0 — migrates any car previously entered against
+  the misclassified `26R|Race|26` model to the correct S2 Race classification and removes the bad
+  reference row. Idempotent: a second run reports zero changes.
 
 ## Technical Changes
 
-- **UserSpice 6.1.0 upgrade** ([#874](https://github.com/unibrain1/elanregistry/issues/874)): Framework upgraded to UserSpice 6.1.0; navigation.php upstream bug resolved (#734).
-- **Brevo plugin `reply_name` forwarding** ([#812](https://github.com/unibrain1/elanregistry/issues/812)): Brevo plugin v1.6.0 now correctly forwards `reply_name` to the API. Stale workaround comments removed from `send-feedback.php` and `send-owner-email.php`. Requires activating the updated `override.RENAME.php` → `override.php` on each server (see Required Actions).
-- **MarkdownParser replaced with league/commonmark** ([#815](https://github.com/unibrain1/elanregistry/issues/815)): Custom MarkdownParser class replaced with the league/commonmark library.
-- **ESLint no-implicit-globals fixed in statistics.js** ([#871](https://github.com/unibrain1/elanregistry/issues/871)): `renderMapErrorUI` and `initMarkerFilter` converted from top-level `function` declarations to `const` arrow functions, eliminating the two ESLint `no-implicit-globals` warnings.
+- **UserSpice 6.1.0 upgrade** ([#874](https://github.com/unibrain1/elanregistry/issues/874)):
+  Framework upgraded to UserSpice 6.1.0; navigation.php upstream bug resolved (#734).
+- **Brevo plugin `reply_name` forwarding** ([#812](https://github.com/unibrain1/elanregistry/issues/812)):
+  Brevo plugin v1.6.0 now correctly forwards `reply_name` to the API. Stale workaround comments
+  removed from `send-feedback.php` and `send-owner-email.php`. Requires activating the updated
+  `override.RENAME.php` → `override.php` on each server (see Required Actions).
+- **MarkdownParser replaced with league/commonmark** ([#815](https://github.com/unibrain1/elanregistry/issues/815)):
+  Custom MarkdownParser class replaced with the league/commonmark library.
+- **ESLint no-implicit-globals fixed in statistics.js** ([#871](https://github.com/unibrain1/elanregistry/issues/871)):
+  `renderMapErrorUI` and `initMarkerFilter` converted from top-level `function` declarations to
+  `const` arrow functions, eliminating the two ESLint `no-implicit-globals` warnings.
 
 ## Issues Resolved
 
@@ -67,7 +82,6 @@ restore the backup: `cp override.php.bak override.php`.
 - [#812](https://github.com/unibrain1/elanregistry/issues/812) — Track upstream fix: Brevo plugin override.php signature mismatch (bugs.userspice.com/2334)
 - [#757](https://github.com/unibrain1/elanregistry/issues/757) — ux: establish CSS custom property color system with Lotus green as primary
 - [#758](https://github.com/unibrain1/elanregistry/issues/758) — ux: nav active state indicator and Register as CTA button
-- [#759](https://github.com/unibrain1/elanregistry/issues/759) — ux: login page branded background and clarify password vs magic-link paths
 - [#760](https://github.com/unibrain1/elanregistry/issues/760) — ux: car details hero banner — Lotus green, prominent contact owner button, mobile photo-first
 - [#761](https://github.com/unibrain1/elanregistry/issues/761) — ux: statistics overview — move timeline charts above fold, unify stat card colors
 - [#762](https://github.com/unibrain1/elanregistry/issues/762) — ux: statistics chart color consistency across Geographic, Production, and Colors tabs
