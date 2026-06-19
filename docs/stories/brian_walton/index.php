@@ -20,6 +20,7 @@ if (!securePage($php_self)) {
 
 <div class="page-wrapper">
 	<div class="container">
+		<?= DocumentPortalTemplate::renderBreadcrumb('stories', $us_url_root, 'Elan Experimental Rally Car', 'fa-flag-checkered') ?>
 
 		<?= DocumentPortalTemplate::renderPortalHeader([
 			'title'       => 'Elan Experimental Rally Car',

@@ -44,6 +44,7 @@ $validationRules = [
 
 <div class="page-wrapper">
     <div class="container">
+        <?= DocumentPortalTemplate::renderBreadcrumb('reference', $us_url_root, 'Chassis Validation', 'fa-barcode') ?>
         <?= DocumentPortalTemplate::renderPortalHeader([
             'title'       => 'Chassis Validation Rules',
             'titleIcon'   => 'fa-barcode',

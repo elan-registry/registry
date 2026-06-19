@@ -196,7 +196,7 @@ class DocumentConfig
     public static function getBreadcrumb(array $documentData, string $usUrlRoot): array
     {
         $breadcrumb = [
-            ['url' => $usUrlRoot, 'icon' => 'fas fa-home', 'text' => 'Registry'],
+            ['url' => $usUrlRoot, 'icon' => 'fas fa-home', 'text' => 'Home'],
         ];
 
         switch ($documentData['category']) {

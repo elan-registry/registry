@@ -17,6 +17,8 @@ declare(strict_types=1);
 require_once '../../users/init.php';
 require_once $abs_us_root . $us_url_root . 'usersc/includes/elanregistry_prep.php';
 
+use ElanRegistry\Documentation\DocumentPortalTemplate;
+
 // Security check - ensure page access is authorized
 if (!securePage($php_self)) {
     die();
@@ -143,6 +145,7 @@ function renderChip(string $chipFile, string $altText, string $basePath): string
 ?>
 <div class="page-wrapper">
     <div class="container">
+        <?= DocumentPortalTemplate::renderBreadcrumb('reference', $us_url_root, 'Paint Colors', 'fa-palette') ?>
         <!-- Page Header -->
         <div class="row">
             <div class="col-12">

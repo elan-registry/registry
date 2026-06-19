@@ -53,6 +53,7 @@ $cards = [
 ?>
 <div class="page-wrapper">
     <div class='container'>
+        <?= DocumentPortalTemplate::renderBreadcrumb('guides', $us_url_root) ?>
         <?= DocumentPortalTemplate::renderPortalHeader([
             'title'       => 'Owner Guides',
             'titleIcon'   => 'fa-question-circle',

@@ -10,6 +10,8 @@ declare(strict_types=1);
 require_once '../../users/init.php';
 require_once $abs_us_root . $us_url_root . 'usersc/includes/elanregistry_prep.php';
 
+use ElanRegistry\Documentation\DocumentPortalTemplate;
+
 // Security: Only allow access to authorized users
 if (!securePage($php_self)) {
   die();
@@ -44,6 +46,7 @@ function renderFilterRow(string $label, int $col, string $prop, array $rows): vo
 <div class="page-wrapper">
   <div class="container-fluid">
     <div class="page-container">
+    <?= DocumentPortalTemplate::renderBreadcrumb('list_cars', $us_url_root) ?>
     <div class="row">
       <div class="col-12">
         <div class="card registry-card mb-4">

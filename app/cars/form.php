@@ -16,6 +16,8 @@ declare(strict_types=1);
 require_once '../../users/init.php';
 require_once $abs_us_root . $us_url_root . 'usersc/includes/elanregistry_prep.php';
 
+use ElanRegistry\Documentation\DocumentPortalTemplate;
+
 if (!securePage($php_self)) {
     die();
 }
@@ -142,6 +144,7 @@ function updateCarDetails(array &$car): void
 <div class="page-wrapper">
     <div class="container-fluid">
         <div class="page-container">
+            <?= DocumentPortalTemplate::renderBreadcrumb('add_car', $us_url_root, $action === 'addCar' ? '' : 'Edit Car', $action === 'addCar' ? '' : 'fa-edit') ?>
             <div class="row justify-content-center">
                 <div class="col-xl-10 col-lg-11 col-md-12">
             <?php

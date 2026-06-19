@@ -125,6 +125,7 @@ $cards = [
 ?>
 <div class="page-wrapper">
     <div class="container">
+        <?= DocumentPortalTemplate::renderBreadcrumb('reference', $us_url_root, 'Technical Articles', 'fa-file-alt') ?>
         <?= DocumentPortalTemplate::renderPortalHeader([
             'title'       => 'Technical Articles',
             'titleIcon'   => 'fa-file-alt',

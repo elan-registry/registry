@@ -85,6 +85,7 @@ $cards = [
 ?>
 <div class="page-wrapper">
     <div class="container">
+        <?= DocumentPortalTemplate::renderBreadcrumb('reference', $us_url_root, 'Workshop & Parts', 'fa-wrench') ?>
         <?= DocumentPortalTemplate::renderPortalHeader([
             'title'       => 'Workshop & Parts',
             'titleIcon'   => 'fa-wrench',

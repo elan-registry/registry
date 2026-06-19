@@ -9,6 +9,8 @@
 require_once '../../users/init.php';
 require_once $abs_us_root . $us_url_root . 'usersc/includes/elanregistry_prep.php';
 
+use ElanRegistry\Documentation\DocumentPortalTemplate;
+
 if (!securePage($php_self)) {
     die();
 }
@@ -17,6 +19,7 @@ $type26index = $us_url_root . "docs/stories/type26register.com/index.html";
 ?>
 <div id="page-wrapper">
     <div class="container">
+        <?= DocumentPortalTemplate::renderBreadcrumb('stories', $us_url_root, 'Type 26 Register Archive', 'fa-history') ?>
         <div class="well">
             <div class="row">
                 <div class="col-sm-12">

@@ -26,6 +26,7 @@ $nav_section = (\ElanRegistry\Documentation\DocumentConfig::validateDocument($_G
 require_once $abs_us_root . $us_url_root . 'usersc/includes/elanregistry_prep.php';
 require_once $abs_us_root . $us_url_root . 'usersc/classes/MarkdownParser.php';
 
+use ElanRegistry\Documentation\DocumentPortalTemplate;
 use ElanRegistry\Documentation\MarkdownParser;
 use ElanRegistry\Documentation\DocumentConfig;
 
@@ -87,27 +88,7 @@ $breadcrumb = DocumentConfig::getBreadcrumb($documentData, $us_url_root);
 <div class="page-wrapper">
     <!-- Page Content -->
     <div class='container'>
-        <!-- Navigation Breadcrumb -->
-        <div class='row mb-3'>
-            <div class='col-12'>
-                <nav aria-label="breadcrumb">
-                    <ol class="breadcrumb">
-                        <?php foreach ($breadcrumb as $item) { ?>
-                            <?php if (isset($item['active']) && $item['active']) { ?>
-                                <li class="breadcrumb-item active" aria-current="page"><?= htmlspecialchars($item['text'], ENT_QUOTES, 'UTF-8') ?></li>
-                            <?php } else { ?>
-                                <li class="breadcrumb-item">
-                                    <a href="<?= htmlspecialchars($item['url'], ENT_QUOTES, 'UTF-8') ?>">
-                                        <?php if (isset($item['icon'])) { ?><i class="<?= htmlspecialchars($item['icon'], ENT_QUOTES, 'UTF-8') ?>"></i> <?php } ?>
-                                        <?= htmlspecialchars($item['text'], ENT_QUOTES, 'UTF-8') ?>
-                                    </a>
-                                </li>
-                            <?php } ?>
-                        <?php } ?>
-                    </ol>
-                </nav>
-            </div>
-        </div>
+        <?= DocumentPortalTemplate::renderBreadcrumbFromItems($breadcrumb) ?>
 
         <?php if ($isAdmin) { ?>
         <!-- Admin Warning -->
@@ -263,19 +244,13 @@ $breadcrumb = DocumentConfig::getBreadcrumb($documentData, $us_url_root);
     font-weight: bold;
 }
 
-.breadcrumb {
-    background-color: #f8f9fa;
-    border-radius: 0.25rem;
-    padding: 0.75rem 1rem;
-}
-
 .breadcrumb-item a {
-    color: var(--er-link);
+    color: var(--er-primary);
     text-decoration: none;
 }
 
 .breadcrumb-item a:hover {
-    color: var(--er-link-hover);
+    color: var(--er-primary);
     text-decoration: underline;
 }
 
