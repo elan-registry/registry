@@ -1,14 +1,11 @@
 <?php
 
+declare(strict_types=1);
+
 /**
- * list_cars.php
- * Displays a searchable, sortable table of all cars in the registry.
+ * Car list — searchable, sortable table of all registered cars.
  *
- * Uses DataTables for client-side features and AJAX for server-side data loading.
- * Includes site template header and footer for consistent layout.
- *
- * @author Elan Registry Admin
- * @copyright 2025
+ * @package ElanRegistry
  */
 require_once '../../users/init.php';
 require_once $abs_us_root . $us_url_root . 'usersc/includes/elanregistry_prep.php';
@@ -16,6 +13,31 @@ require_once $abs_us_root . $us_url_root . 'usersc/includes/elanregistry_prep.ph
 // Security: Only allow access to authorized users
 if (!securePage($php_self)) {
   die();
+}
+
+$filterSeries   = $db->query("SELECT DISTINCT series_normalized AS series  FROM car_models WHERE series_normalized  IS NOT NULL AND series_normalized  != '' ORDER BY series_normalized")->results();
+$filterTypes    = $db->query("SELECT DISTINCT type_code         AS type   FROM car_models WHERE type_code          IS NOT NULL AND type_code          != '' ORDER BY type_code")->results();
+$filterVariants = $db->query("SELECT DISTINCT variant                      FROM car_models WHERE variant            IS NOT NULL AND variant            != '' ORDER BY variant")->results();
+
+/**
+ * Render a row of filter pills for a single DataTables column.
+ *
+ * @param string   $label  Visible label (e.g. "Series")
+ * @param int      $col    DataTables column index
+ * @param string   $prop   Object property name on each result row
+ * @param object[] $rows   Query results from $db->query()->results()
+ */
+function renderFilterRow(string $label, int $col, string $prop, array $rows): void
+{
+    $safeLabel = htmlspecialchars($label, ENT_QUOTES, 'UTF-8');
+    echo '<div class="d-flex flex-wrap gap-2 align-items-center mb-2">';
+    echo "<span class=\"text-muted small\" style=\"min-width:4rem\">{$safeLabel}:</span>";
+    echo "<button class=\"btn btn-primary btn-sm filter-pill active\" data-col=\"{$col}\" data-value=\"\">All</button>";
+    foreach ($rows as $row) {
+        $val = htmlspecialchars((string) $row->$prop, ENT_QUOTES, 'UTF-8');
+        echo "<button class=\"btn btn-outline-secondary btn-sm filter-pill\" data-col=\"{$col}\" data-value=\"{$val}\">{$val}</button>";
+    }
+    echo '</div>';
 }
 ?>
 
@@ -30,11 +52,21 @@ if (!securePage($php_self)) {
             <p class="card-header-er-primary-text mb-0 small">All Lotus Elan and Plus 2 cars registered in the registry</p>
           </div>
           <div class="card-body">
+            <div class="mb-3">
+              <?php renderFilterRow('Series',  4, 'series',  $filterSeries); ?>
+              <?php renderFilterRow('Type',    2, 'type',    $filterTypes); ?>
+              <?php renderFilterRow('Variant', 5, 'variant', $filterVariants); ?>
+              <div class="d-flex justify-content-end">
+                <button id="toggle-date-added" class="btn btn-outline-secondary btn-sm">
+                  <i class="fas fa-calendar-alt"></i> Show Date Added
+                </button>
+              </div>
+            </div>
             <div class="table-responsive">
               <table id="cartable" class="table table-striped table-bordered table-hover table-sm w-100" aria-describedby="card-header">
                 <thead>
                   <tr>
-                    <th scope="col">ID</th>
+                    <th scope="col">Details</th>
                     <th scope="col">Year</th>
                     <th scope="col">Type</th>
                     <th scope="col">Chassis</th>
@@ -55,6 +87,7 @@ if (!securePage($php_self)) {
         </div> <!-- card -->
       </div> <!-- col-12 -->
     </div> <!-- row -->
+    </div> <!-- page-container -->
   </div> <!-- container-fluid -->
 </div><!-- page-wrapper -->
 <!-- End of main content section -->
@@ -103,37 +136,39 @@ window.ELAN_CONFIG = {
     fixedHeader: true,
     responsive: true,
     pageLength: 15,
-    'aLengthMenu': [
+    lengthMenu: [
       [10, 25, 50, 100, -1],
       [10, 25, 50, 100, 'All']
     ],
-    caseInsensitive: true,
-    'aaSorting': [
+    order: [
       [1, 'asc'],
       [2, 'asc'],
       [3, 'asc']
     ],
-    'language': {
-      'emptyTable': 'No Cars'
+    language: {
+      emptyTable: 'No Cars'
     },
-    'processing': true,
-    'serverSide': true,
-    'serverMethod': 'post',
-    'ajax': {
-      'url': '../action/getDataTables.php',
-      'dataSrc': 'data',
+    processing: true,
+    serverSide: true,
+    serverMethod: 'post',
+    ajax: {
+      url: '../action/getDataTables.php',
+      dataSrc: 'data',
       data: function(d) {
         d.csrf = csrf;
         d.table = 'cars';
       }
     },
-    'columns': [{
+    columnDefs: [
+      { visible: false, targets: [12] }
+    ],
+    columns: [{
       data: 'id',
-      'searchable': false,
-      'orderable': false,
+      searchable: false,
+      orderable: false,
       responsivePriority: 1,
-      'render': function(data, type, row, meta) {
-        return '<a class="btn btn-primary btn-sm" href="' + us_url_root + 'app/cars/details.php?car_id=' + data + '">Details';
+      render: function(data, type, row) {
+        return '<a class="btn btn-primary btn-sm" href="' + us_url_root + 'app/cars/details.php?car_id=' + data + '"><i class="fas fa-eye"></i> Details</a>';
       }
     }, {
       data: 'year',
@@ -155,13 +190,14 @@ window.ELAN_CONFIG = {
       responsivePriority: 2
     }, {
       data: 'image',
-      'searchable': false,
+      searchable: false,
+      orderable: false,
       responsivePriority: 3,
-      'render': function(data, type, row) {
+      render: function(data, type, row) {
         if (data) {
           return carousel(row);
         } else {
-          return '';
+          return '<img src="' + us_url_root + 'app/assets/img/elan-placeholder.svg" alt="No photo" style="height:50px;opacity:0.5;" title="No photo available">';
         }
       }
     }, {
@@ -178,11 +214,30 @@ window.ELAN_CONFIG = {
       responsivePriority: 3
     }, {
       data: 'ctime',
-      'searchable': true,
+      searchable: true,
       responsivePriority: 3
     }]
   });
+
+  document.querySelectorAll('.filter-pill').forEach(function(btn) {
+    btn.addEventListener('click', function() {
+      var col = this.dataset.col;
+      var val = this.dataset.value;
+      document.querySelectorAll('.filter-pill[data-col="' + col + '"]').forEach(function(b) {
+        b.classList.remove('active', 'btn-primary');
+        b.classList.add('btn-outline-secondary');
+      });
+      this.classList.add('active', 'btn-primary');
+      this.classList.remove('btn-outline-secondary');
+      table.column(parseInt(col)).search(val).draw();
+    });
+  });
+
+  document.getElementById('toggle-date-added').addEventListener('click', function() {
+    var col = table.column(12);
+    col.visible(!col.visible());
+    this.innerHTML = col.visible()
+      ? '<i class="fas fa-calendar-alt"></i> Hide Date Added'
+      : '<i class="fas fa-calendar-alt"></i> Show Date Added';
+  });
 </script>
-    </div> <!-- page-container -->
-  </div> <!-- container-fluid -->
-</div> <!-- page-wrapper -->

@@ -74,13 +74,8 @@ if (Input::exists('post')) {
         $length = (int) Input::get('length');
         $table = Input::get('table');
         
-        // Get search value from nested array
-        $searchValue = '';
-        $searchData = Input::get('search');
-        if (is_array($searchData) && isset($searchData['value'])) {
-            $searchValue = htmlspecialchars(strip_tags($searchData['value']), ENT_QUOTES, 'UTF-8');
-        }
-        
+        $searchValue = isset($_POST['search']['value']) ? trim((string) $_POST['search']['value']) : '';
+
         $request = [
             'draw' => $draw,
             'start' => $start,
@@ -88,8 +83,8 @@ if (Input::exists('post')) {
             'search' => [
                 'value' => $searchValue
             ],
-            'order' => Input::get('order') ?? [],
-            'columns' => Input::get('columns') ?? []
+            'order'   => $_POST['order'] ?? [],
+            'columns' => $_POST['columns'] ?? []
         ];
         
         // Handle special endpoints
