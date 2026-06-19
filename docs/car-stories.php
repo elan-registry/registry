@@ -63,19 +63,6 @@ $storyCards = [
     ],
 ];
 
-$archiveCards = [
-    [
-        'title'       => 'Type26Register.com Archive',
-        'icon'        => 'fa-history',
-        'url'         => $storiesBase . 'type26register.php',
-        'buttonText'  => 'Browse Archive',
-        'buttonIcon'  => 'fa-folder-open',
-        'headerClass' => 'card-header-er-dark',
-        'buttonClass' => 'btn-secondary btn-sm',
-        'description' => 'An incomplete archive of type26register.com retrieved from the Wayback Machine, preserving valuable historical information about Type 26 Elans as of July 2010.',
-    ],
-];
-
 ?>
 <div class="page-wrapper">
     <div class="container">
@@ -98,9 +85,6 @@ $archiveCards = [
         </div>
 
         <?= DocumentPortalTemplate::renderDocumentCardGrid($storyCards) ?>
-
-        <?= DocumentPortalTemplate::renderSectionHeading('fa-archive', 'Historical Archives') ?>
-        <?= DocumentPortalTemplate::renderDocumentCardGrid($archiveCards, 'col-lg-6') ?>
 
     </div>
 </div>
