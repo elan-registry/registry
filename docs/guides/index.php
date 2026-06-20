@@ -58,7 +58,6 @@ $cards = [
             'title'       => 'Owner Guides',
             'titleIcon'   => 'fa-question-circle',
             'description' => 'Documentation and guides for using the Lotus Elan Registry',
-            'leadText'    => 'How-to guides and policies for using the Lotus Elan Registry.',
         ]) ?>
         <?= DocumentPortalTemplate::renderDocumentCardGrid($cards) ?>
     </div>

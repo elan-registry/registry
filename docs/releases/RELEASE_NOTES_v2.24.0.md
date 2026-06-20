@@ -35,6 +35,8 @@ reply-to name appears correctly in the received message.
   Log In / Sign Up button prominence swapped; Important Resources moved to Reference Library.
 - **Content page card header colors** ([#765](https://github.com/unibrain1/elanregistry/issues/765)):
   Reference, Stories, Guides, and Chassis Validation pages use consistent card header colors.
+  Reference Library "Chassis Validation Rules" card button standardized to "Browse"; redundant
+  intro line removed from the Guides page header.
 - **Factory records unverified warning** ([#766](https://github.com/unibrain1/elanregistry/issues/766)):
   Amber alert for unverified factory records; introductory context paragraph added.
 - **Paint colors page** ([#769](https://github.com/unibrain1/elanregistry/issues/769)):
