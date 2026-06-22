@@ -51,6 +51,8 @@ reply-to name appears correctly in the received message.
 
 ### Bug Fixes
 
+- **WCAG AA contrast fix for L2 card header muted text** ([#892](https://github.com/unibrain1/elanregistry/issues/892)): `.text-muted` inside `.card-header-er-l2` now renders at `rgba(0,0,0,0.60)` (~4.8:1 contrast) instead of `#6c757d` (~3.3:1), meeting the WCAG AA minimum of 4.5:1 on the pale green `#e8f0ed` background.
+
 - **26R Race cars now appear under the cyan 26R map filter**
   ([#849](https://github.com/unibrain1/elanregistry/issues/849)): Race cars on the statistics map
   were silently falling into the S1/S2 filter buckets, leaving the cyan 26R filter empty. The map
@@ -106,3 +108,4 @@ reply-to name appears correctly in the received message.
 - [#871](https://github.com/unibrain1/elanregistry/issues/871) — lint: fix ESLint no-implicit-globals warnings in app/assets/js/statistics.js
 - [#874](https://github.com/unibrain1/elanregistry/issues/874) — Upgrade to Userspice 6.1.0
 - [#876](https://github.com/unibrain1/elanregistry/issues/876) — feat: display application version in public footer
+- [#892](https://github.com/unibrain1/elanregistry/issues/892) — ux: fix text-muted contrast in L2 card headers (WCAG AA)

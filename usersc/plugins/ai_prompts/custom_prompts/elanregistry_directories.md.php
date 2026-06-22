@@ -1,0 +1,144 @@
+<?php /* UserSpice AI Prompt — protected from HTTP access. Markdown content below. */ __halt_compiler(); ?>
+
+# ElanRegistry — Directory & File Conventions
+
+The shipped `where_to_look` prompt covers `users/` and `usersc/`. This prompt covers
+the ElanRegistry-specific subtree under `app/` and the project-level conventions that
+aren't generic UserSpice.
+
+---
+
+## Full project layout (ElanRegistry additions in bold)
+
+```
+projectroot/
+├── users/            # UserSpice core — never edit
+├── usersc/           # UserSpice customizations — ElanRegistry classes, plugins, templates
+│   ├── classes/      # Custom PHP classes (Car, ElanRegistryOwner, ApiResponse, ...)
+│   ├── plugins/      # ai_prompts, db_explainer, and others
+│   ├── includes/     # server_globals.php, custom_functions.php, footer.php, ...
+│   └── templates/    # customizer/ child theme (bootstrap 5.3.3)
+├── app/              # ElanRegistry application pages
+│   ├── action/       # Form-submission handlers (non-AJAX mutations)
+│   ├── admin/        # Admin-only pages
+│   │   ├── assets/   # Admin JS/CSS source files
+│   │   ├── includes/ # Admin PHP includes and classes
+│   │   └── scripts/
+│   │       ├── fix/          # One-time migration scripts (run once, never again)
+│   │       └── maintenance/  # Repeatable maintenance scripts (safe to re-run)
+│   ├── assets/       # First-party JS/CSS source files (built → minified in place)
+│   ├── cars/
+│   │   └── actions/  # Car-specific parsers (AJAX endpoints)
+│   ├── contact/      # Contact form pages
+│   ├── reports/
+│   │   └── api/      # Report API parsers
+│   └── views/        # Reusable view partials
+├── docs/             # User-facing docs (guides/, reference/, stories/, admin/)
+├── error/            # Branded HTTP error pages (403, 404, 500)
+└── z_us_root.php     # Path registry — must be updated for every new directory
+```
+
+---
+
+## The `$path` array in `z_us_root.php`
+
+UserSpice's path resolver reads `z_us_root.php` to locate the project root.
+**Every new directory you create under the project root must be added to the `$path` array.**
+If you add a directory and forget this step, `require_once` statements from files in that
+directory will fail silently because `$abs_us_root` and `$us_url_root` won't resolve correctly.
+
+```php
+// z_us_root.php — add your new directory to this array
+$path = [
+    '',
+    'users/',
+    'usersc/',
+    'app/',
+    'app/admin/',
+    'app/admin/scripts/fix/',
+    'app/admin/scripts/maintenance/',
+    'app/cars/',
+    'app/cars/actions/',
+    'app/reports/',
+    'app/reports/api/',
+    // ... add 'your/new/directory/' here
+];
+```
+
+---
+
+## AJAX parsers: where they go in ElanRegistry
+
+The shipped `secure_page_pattern` says AJAX endpoints must live in a `parsers/` subfolder.
+In ElanRegistry, **parsers are colocated with their calling page's subtree**, not next to the
+calling file itself:
+
+| AJAX endpoint for | Lives in |
+|---|---|
+| Car operations | `app/cars/actions/` |
+| Report data | `app/reports/api/` |
+| Admin operations | `app/admin/` (or `app/admin/includes/` for shared handlers) |
+
+The `parsers/` naming is not required in ElanRegistry as long as the directory is registered
+in `z_us_root.php` and the endpoint follows the Pattern A / ApiResponse convention.
+
+---
+
+## Fix scripts vs maintenance scripts
+
+`app/admin/scripts/fix/` — **one-time migration scripts**
+- Run once against a specific environment and never again
+- Examples: backfilling a new column, correcting historical data
+- Name them with a date prefix: `2025-06-01_backfill_chassis_format.php`
+
+`app/admin/scripts/maintenance/` — **repeatable maintenance scripts**
+- Safe to re-run multiple times
+- Examples: rebuilding a cache, pruning orphaned images, re-indexing
+- Name them descriptively without a date
+
+---
+
+## First-party JS and CSS
+
+Source files live under `app/assets/` (public) and `app/admin/assets/` (admin).
+After editing any source file, run:
+
+```bash
+npm run build   # minifies app/assets/js/, app/assets/css/, app/admin/assets/
+```
+
+Minified output is committed alongside source. Never edit the `.min.js` / `.min.css`
+files directly.
+
+Frontend libraries (Bootstrap, DataTables, etc.) are vendored to `usersc/js/` and
+`usersc/css/` — do not use CDN links. See ADR-015 in `docs/development/adr/`.
+
+---
+
+## Template customization constraints
+
+- `usersc/templates/customizer/` is **gitignored by UserSpice upstream** — never modify
+  files there. The only tracked exception is `file_nav_custom.php` (project-owned).
+- To add to the footer: inject via JS in `usersc/includes/footer.php`.
+- To add to the nav: use `usersc/templates/customizer/file_nav_custom.php`.
+- To add `<head>` tags: use `usersc/includes/head_tags.php`.
+
+---
+
+## Server globals (available on every page after `init.php`)
+
+ElanRegistry initializes these in `usersc/includes/server_globals.php`.
+Use them instead of `$_SERVER` directly.
+
+```php
+$scheme       // 'http' or 'https'
+$is_https     // bool
+$host         // validated HTTP_HOST
+$method       // 'GET', 'POST', etc.
+$request_uri  // sanitized REQUEST_URI
+$current_url  // full URL of the current request
+$php_self     // validated PHP_SELF — use in securePage($php_self)
+$remote_addr  // client IP (Cloudflare-resolved)
+$referer      // HTTP_REFERER or ''
+$user_agent   // HTTP_USER_AGENT
+```

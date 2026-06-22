@@ -77,6 +77,10 @@ usersc/plugins/*
 usersc/plugins/hooker/*
 !usersc/plugins/hooker/hooks/
 !usersc/plugins/hooker/hooks/*
+!usersc/plugins/ai_prompts/
+usersc/plugins/ai_prompts/*
+!usersc/plugins/ai_prompts/custom_prompts/
+!usersc/plugins/ai_prompts/custom_prompts/*
 
 ########################################
 # Usersc Templates, Widgets, Install
