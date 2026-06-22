@@ -86,11 +86,11 @@ $shareYourStory = static function (string $alertVariant, string $rowClasses = 'm
             'description' => 'Individual car histories, owner stories, and community articles',
         ]) ?>
 
-        <?php $shareYourStory('success') ?>
+        <?php $shareYourStory('warning') ?>
 
         <?= DocumentPortalTemplate::renderDocumentCardGrid($storyCards) ?>
 
-        <?php $shareYourStory('warning', 'mt-5') ?>
+        <?php $shareYourStory('warning') ?>
 
     </div>
 </div>
