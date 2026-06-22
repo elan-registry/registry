@@ -63,6 +63,19 @@ $storyCards = [
     ],
 ];
 
+$shareYourStory = static function (string $alertVariant, string $rowClasses = 'mt-4') use ($us_url_root): void { ?>
+        <div class="row <?= $rowClasses ?>">
+            <div class="col-12">
+                <div class="alert alert-<?= $alertVariant ?>">
+                    <i class="fas fa-pen-alt"></i>
+                    <strong>Share Your Story:</strong>
+                    Have a story about your Elan? We'd love to feature it here!
+                    <a href="<?= $us_url_root ?>app/contact/" class="alert-link">Contact us</a>
+                    to share your car's unique history.
+                </div>
+            </div>
+        </div>
+<?php };
 ?>
 <div class="page-wrapper">
     <div class="container">
@@ -73,19 +86,11 @@ $storyCards = [
             'description' => 'Individual car histories, owner stories, and community articles',
         ]) ?>
 
-        <div class="row mt-4">
-            <div class="col-12">
-                <div class="alert alert-success">
-                    <i class="fas fa-pen-alt"></i>
-                    <strong>Share Your Story:</strong>
-                    Have a story about your Elan? We'd love to feature it here!
-                    <a href="<?= $us_url_root ?>app/contact/" class="alert-link">Contact us</a>
-                    to share your car's unique history.
-                </div>
-            </div>
-        </div>
+        <?php $shareYourStory('success') ?>
 
         <?= DocumentPortalTemplate::renderDocumentCardGrid($storyCards) ?>
+
+        <?php $shareYourStory('warning', 'mt-5') ?>
 
     </div>
 </div>

@@ -192,13 +192,13 @@ function renderChip(string $chipFile, string $altText, string $basePath): string
         <div class="row mt-3">
             <div class="col-12">
                 <div class="card registry-card">
-                    <div class="card-body py-2">
+                    <div class="card-body py-3 d-flex flex-wrap gap-2 align-items-center">
                         <strong>Jump to:</strong>
-                        <a href="#early-colors" class="btn btn-outline-primary btn-sm mx-1">Early Colors</a>
-                        <a href="#official-colors" class="btn btn-outline-primary btn-sm mx-1">Official Colors (L01&ndash;L26)</a>
-                        <a href="#special-finishes" class="btn btn-outline-primary btn-sm mx-1">Special Finishes</a>
-                        <a href="#paint-suppliers" class="btn btn-outline-primary btn-sm mx-1">Paint Suppliers</a>
-                        <a href="#paint-codes" class="btn btn-outline-primary btn-sm mx-1">Paint Code Reference</a>
+                        <a href="#early-colors" data-section="early-colors" class="btn btn-outline-primary rounded-pill">Early Colors</a>
+                        <a href="#official-colors" data-section="official-colors" class="btn btn-outline-primary rounded-pill">Official Colors (L01&ndash;L26)</a>
+                        <a href="#special-finishes" data-section="special-finishes" class="btn btn-outline-primary rounded-pill">Special Finishes</a>
+                        <a href="#paint-suppliers" data-section="paint-suppliers" class="btn btn-outline-primary rounded-pill">Paint Suppliers</a>
+                        <a href="#paint-codes" data-section="paint-codes" class="btn btn-outline-primary rounded-pill">Paint Code Reference</a>
                     </div>
                 </div>
             </div>
@@ -398,12 +398,28 @@ function renderChip(string $chipFile, string $altText, string $basePath): string
 
 <style>
     .paint-chip {
-        max-width: 80px;
-        max-height: 80px;
+        min-width: 48px;
+        min-height: 48px;
         border: 1px solid #dee2e6;
         border-radius: 4px;
     }
 </style>
+<script nonce="<?= htmlspecialchars($userspice_nonce ?? '', ENT_QUOTES, 'UTF-8') ?>">
+(function () {
+    const tabs = document.querySelectorAll('[data-section]');
+    if (!tabs.length) return;
+    const setActive = (id) => tabs.forEach(t => t.classList.toggle('active', t.dataset.section === id));
+    if (location.hash) setActive(location.hash.slice(1));
+    const observer = new IntersectionObserver((entries) => {
+        entries.forEach(e => { if (e.isIntersecting) setActive(e.target.id); });
+    }, { rootMargin: '-20% 0px -70% 0px', threshold: 0 });
+    tabs.forEach(t => {
+        const el = document.getElementById(t.dataset.section);
+        if (el) observer.observe(el);
+    });
+    tabs.forEach(t => t.addEventListener('click', () => setActive(t.dataset.section)));
+})();
+</script>
 
 <?php
 require_once $abs_us_root . $us_url_root . 'users/includes/html_footer.php';
