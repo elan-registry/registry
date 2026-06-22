@@ -21,6 +21,16 @@ working with code in this repository.
 - `docs/development/DATABASE.md` - Database schema and relationships
 - [GitHub Wiki: UserSpice Integration Guide](https://github.com/unibrain1/elanregistry/wiki/Customization-and-Integration-Patterns) - UserSpice integration
 
+**UserSpice context (AI Prompts plugin):** Before any UserSpice task, read the
+shipped prompts starting at:
+`usersc/plugins/ai_prompts/prompts/00_start_here.md.php`
+Then load ElanRegistry-specific augmentation from `custom_prompts/`:
+
+- `elanregistry_overrides` — four places ElanRegistry diverges from standard UserSpice
+- `elanregistry_classes` — Car, ElanRegistryOwner, ApiResponse, LogCategories, and others
+- `elanregistry_directories` — `app/` subtree, `$path` in `z_us_root.php`, parsers location
+- `elanregistry_database` — DB Explainer workflow and ElanRegistry-specific tables
+
 **As needed:** See [docs/README.md](docs/README.md) for the complete documentation
 index (error handling, classes, DataTables, CSS, testing, UserSpice functions,
 etc.). Always check `docs/development/USERSPICE_FUNCTIONS.md` before building
