@@ -27,6 +27,7 @@ if (!securePage($php_self)) {
               <h2 class="mb-0 card-header-er-primary-text">Elan Factory Information</h2>
             </div>
             <div class="card-body">
+              <p class="mb-3">These records are transcribed from original Lotus factory production logs that document each Elan as it left the factory, capturing its configuration at the time of manufacture — body type, engine, gearbox, and color. Where a matching car exists in the Elan Registry, a link is provided; factory data may differ from current registry records due to subsequent modifications, registration changes, or transcription variations in the original handwritten logs.</p>
               <div class="alert alert-warning">
                 <i class="fas fa-exclamation-triangle me-1"></i>
                 <strong>WARNING:</strong> This information has not been verified against the Lotus archives.
