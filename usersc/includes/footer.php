@@ -19,6 +19,8 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
 //This will go in every template.
+require_once $abs_us_root . $us_url_root . 'app/version.php';
+$er_footer_version_tag = ApplicationVersion::tagOnly();
 ?>
 
 <!-- Privacy Policy and Contact Us links injected into footer without modifying upstream template -->
@@ -41,6 +43,11 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
         aContact.textContent = 'Contact Us';
         p.appendChild(aContact);
         <?php } ?>
+        p.appendChild(document.createTextNode(' | '));
+        var verSpan = document.createElement('span');
+        verSpan.className = 'text-muted';
+        verSpan.textContent = '<?=htmlspecialchars($er_footer_version_tag, ENT_QUOTES, 'UTF-8')?>';
+        p.appendChild(verSpan);
         container.appendChild(p);
     }
 }());
