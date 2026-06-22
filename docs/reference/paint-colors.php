@@ -345,7 +345,7 @@ function renderChip(string $chipFile, string $altText, string $basePath): string
                                     </tr>
                                     <tr>
                                         <td><strong>Glasurit (BASF)</strong></td>
-                                        <td>Over 100 years in coatings. Offers Glasurit Classic Car Colors with a library of 200,000+ colors for classic car refinishing.</td>
+                                        <td>Over 100 years in coatings. Offers <a href="https://www.glasurit.com/en-int/classic-car-colors" target="_blank" rel="noopener noreferrer">Glasurit Classic Car Colors</a> with a library of 200,000+ colors for classic car refinishing.</td>
                                     </tr>
                                 </tbody>
                             </table>
