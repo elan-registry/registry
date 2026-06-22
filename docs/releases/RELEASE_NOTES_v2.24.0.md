@@ -26,7 +26,7 @@ reply-to name appears correctly in the received message.
 - **Lotus-green color system** ([#757](https://github.com/unibrain1/elanregistry/issues/757)): Site-wide CSS custom property color system with Lotus green as primary — consistent brand color across all pages.
 - **Navigation active state and Register CTA** ([#758](https://github.com/unibrain1/elanregistry/issues/758)): Active nav item now visually indicated; Register button promoted as a CTA for unauthenticated visitors.
 - **Car details and homepage mobile UX** ([#760](https://github.com/unibrain1/elanregistry/issues/760)): Lotus-green hero banner on car detail pages; "Log in to contact owner" promoted to a visible outline button linking to login; photo renders above spec table on mobile on both the car detail page and the homepage.
-- **Statistics overview** ([#761](https://github.com/unibrain1/elanregistry/issues/761)): Timeline charts moved above the fold; stat card colors unified.
+- **Statistics overview** ([#761](https://github.com/unibrain1/elanregistry/issues/761)): Timeline and Registration Activity charts moved above the stat tiles so they are immediately visible on a 1920×1080 display without scrolling. Stat tiles migrated to the `er-stat-tile` component (dark background, Lotus Yellow accent) for visual consistency with the color system from #757; all four metrics now use a unified appearance.
 - **Statistics chart color consistency** ([#762](https://github.com/unibrain1/elanregistry/issues/762)): Geographic, Production, and Colors tabs now use a consistent color palette.
 - **Car list refinements** ([#763](https://github.com/unibrain1/elanregistry/issues/763)): Series
   filter pills for quick browsing by model; Date Added column hidden by default (togglable);
