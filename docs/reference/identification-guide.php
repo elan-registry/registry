@@ -9,7 +9,7 @@ declare(strict_types=1);
  * body details, and distinguishing features.
  *
  * @package ElanRegistry
- * @version 2.16.0
+ * @version 2.24.0
  * @author Jim Boone
  */
 
@@ -575,6 +575,7 @@ $placeholder = $us_url_root . 'app/assets/img/elan-placeholder.svg';
                                 <h4 class="mb-0 card-header-er-l2-text">Plus 2S 130 <small class="ms-2 text-muted fw-normal">Type 50 +2 130</small></h4>
                             </div>
                             <div class="card-body">
+                                <!-- Four stacked photos; equal columns prevent the image stack from being too narrow -->
                                 <div class="row">
                                     <div class="col-md-6">
                                         <img src="<?= $imgPath ?>plus2s130a.jpg" alt="Type 50 Plus 2S 130 exterior front" class="img-fluid identify-photo mb-2">
