@@ -22,7 +22,7 @@ Use this table to choose the right class for your task:
 | Access owner profile and user data | ElanRegistryOwner | User profile integration, custom user methods | `$owner = new ElanRegistryOwner($uid)` |
 | Validate VIN/chassis format | ChassisValidator | Specialized validation for vehicle identifiers | `$validator->validate('26/0001')` |
 | Create database backups | BackupManager | Backup/restore operations, database dumping | `$backup = new BackupManager(...)` |
-| Convert markdown to HTML | MarkdownParser | Documentation rendering, safe HTML conversion | `$parser = new MarkdownParser(...)` |
+| Convert markdown to HTML | MarkdownRenderer | Documentation rendering, XSS-safe HTML via league/commonmark | `MarkdownRenderer::convert($markdown, $baseUrl)` |
 | Get car images | CarImage | Image metadata and associations | `$images = CarImage::getByCarId($carId)` |
 | Query car models by year/series | CarModel | Reference data for model filtering | `$models = (new CarModel())->getAvailableInYear(1970)` |
 
@@ -564,51 +564,44 @@ if ($result !== true) {
 > to the Brevo API. See issue #601 and the TODO comment in `custom_functions.php` for what to
 > review when #601 is resolved.
 
-### MarkdownParser
+### MarkdownRenderer
 
-**Location**: `/usersc/classes/MarkdownParser.php`
+**Location**: `/usersc/classes/MarkdownRenderer.php`
 
 **Namespace**: `ElanRegistry\Documentation`
 
-**Purpose**: Markdown to HTML converter for documentation rendering.
+**Purpose**: Markdown to HTML converter for documentation rendering. Wraps
+`league/commonmark` 2.x with GFM support, heading permalink anchors, and
+external-link safety attributes. Replaced the bespoke `MarkdownParser` in
+v2.24.0 (#815).
 
 **Key Features**:
 
-- Lightweight markdown parsing
-- Security-focused HTML generation
-- XSS protection
-- Support for headers, lists, code blocks, links, emphasis
-- Table of contents generation
-- Anchor link creation
+- CommonMark-compliant parsing via `league/commonmark` 2.x
+- GitHub Flavored Markdown (tables, strikethrough, task lists)
+- Heading permalink anchors (prerequisite for TOC — #768)
+- External links open in new tab with `rel="noopener noreferrer"`
+- `img-fluid` Bootstrap class added to all images
+- Relative and root-relative URL resolution against `$baseUrl`
 
 **Common Usage**:
 
 ```php
-use ElanRegistry\Documentation\MarkdownParser;
+use ElanRegistry\Documentation\MarkdownRenderer;
 
-// Parse markdown to HTML
-$parser = new MarkdownParser();
-$html = $parser->parse($markdownContent);
+// Convert markdown to safe HTML
+$html = MarkdownRenderer::convert($markdownContent, $us_url_root);
 
-// Used by documentation viewer
-// See /docs/guide-viewer.php for integration example
+// Used by documentation viewer and privacy page
+// See /docs/guide-viewer.php and /app/privacy.php
 ```
-
-**Supported Markdown**:
-
-- Headers (H1-H6)
-- Bold and italic text
-- Links and images
-- Code blocks (fenced and indented)
-- Ordered and unordered lists
-- Blockquotes
-- Horizontal rules
 
 **Security**:
 
-- All output is HTML-escaped by default
-- Safe handling of user-generated content
-- Prevents XSS attacks
+- `html_input: 'strip'` removes raw HTML embedded in Markdown (XSS via inline HTML)
+- `allow_unsafe_links: false` blocks `javascript:`, `data:`, `vbscript:` in links
+- Post-processing strips `data:` URIs from image `src` attributes
+- `ExternalLinkExtension` adds `rel="noopener noreferrer"` to all external links
 
 ### DocumentConfig
 
@@ -847,11 +840,10 @@ BackupManager
 EmailTemplate
 └── Used by: Transfer requests, notifications
 
-MarkdownParser
-└── Used by: DocumentConfig, docs/guide-viewer.php
+MarkdownRenderer
+└── Used by: docs/guide-viewer.php, app/privacy.php
 
 DocumentConfig
-├── Uses: MarkdownParser
 └── Used by: docs/guide-viewer.php
 ```
 

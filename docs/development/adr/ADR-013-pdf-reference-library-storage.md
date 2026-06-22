@@ -148,7 +148,7 @@ uses the `breadcrumb`and`category` columns.
 | ------ | ------------------------------ | ----------- |
 | `docs/view.php` | `validateDocument()`, `hasAccess()`, `getBreadcrumb()` | Query`reference_documents`table; use`ReferenceDocument` class |
 | `usersc/classes/DocumentConfig.php` | Class definition | Remove after migration |
-| `usersc/classes/Exceptions/DocumentationException.php` | Exception for DocumentConfig | Retain; used by MarkdownParser |
+| `usersc/classes/Exceptions/DocumentationException.php` | Exception for DocumentConfig | Retain; used by MarkdownRenderer |
 | `tests/unit/classes/DocumentConfigTest.php` | Unit tests for DocumentConfig | Replace with ReferenceDocument tests |
 | `tests/integration/DocumentationViewerTest.php` | Integration tests referencing DocumentConfig | Update to test database-driven flow |
 | `tests/unit/system/AutoloaderTest.php` | Verifies DocumentConfig autoloading | Remove DocumentConfig assertion |

@@ -41,7 +41,7 @@ class UserspiceCustomAutoloader
      * Hybrid autoloader - tries PSR-4 first, then recursive scan
      *
      * This dual approach provides:
-     * - Fast loading for namespaced classes (MarkdownParser, DocumentConfig)
+     * - Fast loading for namespaced classes (MarkdownRenderer, DocumentConfig)
      * - Backward compatibility for non-namespaced classes (Car, ElanRegistryOwner)
      * - Zero-change migration path when adding namespaces to existing classes
      *
@@ -68,7 +68,7 @@ class UserspiceCustomAutoloader
      * Handles classes in ElanRegistry namespace:
      * - ElanRegistry\Car
      * - ElanRegistry\Exceptions\CarNotFoundException
-     * - ElanRegistry\Documentation\MarkdownParser
+     * - ElanRegistry\Documentation\MarkdownRenderer
      *
      * Direct path calculation provides optimal performance.
      *
@@ -130,7 +130,7 @@ class UserspiceCustomAutoloader
         }
 
         // Extract just the class name from fully qualified name
-        // e.g., "ElanRegistry\Documentation\MarkdownParser" -> "MarkdownParser"
+        // e.g., "Car" -> "Car"
         $classNameParts = explode('\\', $className);
         $simpleClassName = end($classNameParts);
         $filename = $simpleClassName . static::$fileExt;
