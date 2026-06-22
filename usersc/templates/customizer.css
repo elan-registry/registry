@@ -428,6 +428,15 @@
   background-color: #e8f0ed !important;
   border-left: 4px solid var(--er-primary) !important;
 }
+/* WCAG AA fix: .text-muted on #e8f0ed falls to ~3.3:1 — override to
+   rgba(0,0,0,0.60) which yields ~4.8:1. Two rules needed: one for the
+   base selector and one for the border-variant specificity firewall. */
+.card-header-er-l2 .text-muted {
+  color: rgba(0, 0, 0, 0.60) !important;
+}
+.card[class*="border"] .card-header.card-header-er-l2 .text-muted {
+  color: rgba(0, 0, 0, 0.60) !important;
+}
 .card[class*="border"] .card-header.card-header-er-l3 {
   background-color: var(--er-neutral-light) !important;
   border-left: 3px solid var(--er-neutral) !important;
