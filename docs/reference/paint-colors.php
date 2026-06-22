@@ -326,8 +326,8 @@ function renderChip(string $chipFile, string $altText, string $basePath): string
                     <div class="card-body">
                         <p>The Lotus &ldquo;L&rdquo; prefix codes indicate nitro-cellulose paint. Two suppliers originally provided paint to the Lotus factory:</p>
                         <ul>
-                            <li><strong>Pinchin, Johnson</strong> &mdash; Later taken over by Courtaulds and merged into International Paint.</li>
-                            <li><strong>ICI</strong> &mdash; ICI Paints was taken over by Nexa Autocolor, which is now a brand of PPG.</li>
+                            <li><strong>Pinchin, Johnson:</strong> Later taken over by Courtaulds and merged into International Paint.</li>
+                            <li><strong>ICI:</strong> ICI Paints was taken over by Nexa Autocolor, which is now a brand of PPG.</li>
                         </ul>
                         <h4>Modern Paint Matching Services</h4>
                         <div class="table-responsive">

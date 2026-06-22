@@ -29,7 +29,7 @@ if (!securePage($php_self)) {
             <div class="card-body">
               <div class="alert alert-warning">
                 <i class="fas fa-exclamation-triangle me-1"></i>
-                <strong>WARNING</strong> — This information has not been verified against the Lotus archives.
+                <strong>WARNING:</strong> This information has not been verified against the Lotus archives.
               </div>
               <table id="cartable" class="table table-striped table-bordered table-sm w-100 registry-table" aria-describedby="card-header">
                 <thead>

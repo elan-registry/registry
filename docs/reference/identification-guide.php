@@ -41,7 +41,7 @@ $placeholder = $us_url_root . 'app/assets/img/elan-placeholder.svg';
                     <div class="card-body">
                         <div class="alert alert-primary mb-0">
                             <i class="fas fa-info-circle"></i>
-                            <strong>Note:</strong> This is not a comprehensive list of differences between the cars — it is a quick identification guide. Lotus made many undocumented running changes throughout production. If in doubt, post a question to the <a href="http://www.lotuselan.net/forums/" target="_blank" rel="noopener">LotusElan.net forum</a> and ask.
+                            <strong>Note:</strong> This is not a comprehensive list of differences between the cars; it is a quick identification guide. Lotus made many undocumented running changes throughout production. If in doubt, post a question to the <a href="http://www.lotuselan.net/forums/" target="_blank" rel="noopener">LotusElan.net forum</a> and ask.
                         </div>
                     </div>
                 </div>
@@ -250,7 +250,7 @@ $placeholder = $us_url_root . 'app/assets/img/elan-placeholder.svg';
                                             <li>Doors with fixed window frames</li>
                                             <li>Square tail lights</li>
                                             <li>Badged as Sprint</li>
-                                            <li>Unique two-tone paint (could be deleted as option)</li>
+                                            <li>Unique two-tone paint; could be deleted as a factory option</li>
                                             <li>Square-profile wheelarches</li>
                                             <li><a href="http://www.lotuselansprint.com" target="_blank" rel="noopener">Complete Sprint Details</a></li>
                                         </ul>
@@ -403,7 +403,7 @@ $placeholder = $us_url_root . 'app/assets/img/elan-placeholder.svg';
                                             <li>Doors with fixed window frames</li>
                                             <li>Square tail lights</li>
                                             <li>Badged as Sprint</li>
-                                            <li>Unique two-tone paint (could be deleted as option)</li>
+                                            <li>Unique two-tone paint; could be deleted as a factory option</li>
                                             <li>Square-profile wheelarches</li>
                                             <li><a href="http://www.lotuselansprint.com" target="_blank" rel="noopener">Complete Sprint Details</a></li>
                                         </ul>
@@ -494,8 +494,8 @@ $placeholder = $us_url_root . 'app/assets/img/elan-placeholder.svg';
                                     <div class="col-md-8">
                                         <ul class="mb-0">
                                             <li>VIN/Chassis number starts with <strong>50/0001</strong></li>
-                                            <li>2 large gauges &mdash; Speedometer, Tachometer</li>
-                                            <li>4 small gauges &mdash; Water Temp, Oil Pressure, Ammeter, Fuel</li>
+                                            <li>2 large gauges: Speedometer, Tachometer</li>
+                                            <li>4 small gauges: Water Temp, Oil Pressure, Ammeter, Fuel</li>
                                         </ul>
                                     </div>
                                 </div>
@@ -514,8 +514,8 @@ $placeholder = $us_url_root . 'app/assets/img/elan-placeholder.svg';
                                     <div class="col-md-8">
                                         <ul class="mb-0">
                                             <li>VIN/Chassis number starts with <strong>50/0857</strong> (US); <strong>50/0929</strong> (all markets)</li>
-                                            <li>2 large gauges &mdash; Speedometer, Tachometer</li>
-                                            <li>4 small gauges &mdash; Water Temp, Oil Pressure, Ammeter, Fuel</li>
+                                            <li>2 large gauges: Speedometer, Tachometer</li>
+                                            <li>4 small gauges: Water Temp, Oil Pressure, Ammeter, Fuel</li>
                                             <li>Remote boot release, flush interior door handles, modified exhaust</li>
                                         </ul>
                                     </div>
@@ -536,8 +536,8 @@ $placeholder = $us_url_root . 'app/assets/img/elan-placeholder.svg';
                                     <div class="col-md-8">
                                         <ul class="mb-0">
                                             <li>VIN/Chassis number starts with <strong>50/1593</strong></li>
-                                            <li>2 large gauges &mdash; Speedometer, Tachometer</li>
-                                            <li>6 small gauges &mdash; Oil, Water Temp, Battery Condition, Temp, Fuel, Clock</li>
+                                            <li>2 large gauges: Speedometer, Tachometer</li>
+                                            <li>6 small gauges: Oil, Water Temp, Battery Condition, Temp, Fuel, Clock</li>
                                             <li>4 warning lights in centre of dash (Hazard, Parking Brake, Brake Fail, Rear Screen)</li>
                                             <li>New luxury interior including revised seats and centre console</li>
                                             <li>Fog/driving lamps below the bumper</li>
@@ -559,8 +559,8 @@ $placeholder = $us_url_root . 'app/assets/img/elan-placeholder.svg';
                                     <div class="col-md-8">
                                         <ul class="mb-0">
                                             <li>VIN/Chassis number starts with <strong>50/2447</strong></li>
-                                            <li>2 large gauges &mdash; Speedometer, Tachometer</li>
-                                            <li>6 small gauges &mdash; Oil, Water Temp, Battery Condition, Temp, Fuel, Clock</li>
+                                            <li>2 large gauges: Speedometer, Tachometer</li>
+                                            <li>6 small gauges: Oil, Water Temp, Battery Condition, Temp, Fuel, Clock</li>
                                             <li>4 warning lights in centre of dash (Hazard, Parking Brake, Brake Fail, Rear Screen)</li>
                                             <li>Luxury interior including revised seats and centre console</li>
                                             <li>Fog/driving lamps below the bumper</li>
@@ -586,8 +586,8 @@ $placeholder = $us_url_root . 'app/assets/img/elan-placeholder.svg';
                                     <div class="col-md-6">
                                         <ul class="mb-0">
                                             <li>VIN/Chassis number starts with <strong>71.01&hellip;0001</strong></li>
-                                            <li>2 large gauges &mdash; Speedometer, Tachometer</li>
-                                            <li>6 small gauges &mdash; Oil, Water Temp, Battery Condition, Temp, Fuel, Clock</li>
+                                            <li>2 large gauges: Speedometer, Tachometer</li>
+                                            <li>6 small gauges: Oil, Water Temp, Battery Condition, Temp, Fuel, Clock</li>
                                             <li>3 warning lights in centre of dash (Hazard, Park/Brake Fail, Rear Screen)</li>
                                             <li>Luxury interior including revised seats and centre console</li>
                                             <li>Big Valve engine</li>

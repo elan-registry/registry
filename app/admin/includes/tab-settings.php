@@ -282,7 +282,7 @@ $autoCreationMessages = processSettingsAutoCreation();
                                    value="<?= $settings->elan_image_upload_max_size ?? '2.00' ?>">
                             <span class="input-group-text">MB</span>
                         </div>
-                        <small class="form-text text-muted">Maximum file size for individual photo uploads (0.5-10 MB)</small>
+                        <small class="form-text text-muted">Maximum file size for individual photo uploads. Accepted range: 0.5–10 MB.</small>
                     </div>
                 </div>
             </div>

@@ -18,7 +18,7 @@
             <span class='input-group-text'><i aria-hidden='true' class='fas fa-calendar'></i></span>
             <input class='form-control' name='purchasedate' id='purchasedate' value='<?= htmlspecialchars((string)($cardetails['purchasedate'] ?? ''), ENT_QUOTES, 'UTF-8') ?>' type='text' placeholder='YYYY-MM-DD' pattern='\d{4}-\d{2}-\d{2}' inputmode='numeric' />
         </div>
-        <small id='purchasedateHelp' class='form-text text-muted'>Approximate date you purchased the car &mdash; use <strong>YYYY-MM-DD</strong> format (e.g. 1973-06-15).</small>
+        <small id='purchasedateHelp' class='form-text text-muted'>Approximate date you purchased the car. Use <strong>YYYY-MM-DD</strong> format (e.g. 1973-06-15).</small>
     </div>
 </div>
 
@@ -41,7 +41,7 @@
             <span class='input-group-text'><i aria-hidden='true' class='fas fa-calendar'></i></span>
             <input class='form-control' name='solddate' id='solddate' value='<?= htmlspecialchars((string)($cardetails['solddate'] ?? ''), ENT_QUOTES, 'UTF-8') ?>' type='text' placeholder='YYYY-MM-DD' pattern='\d{4}-\d{2}-\d{2}' inputmode='numeric' />
         </div>
-        <small id='solddateHelp' class='form-text text-muted'>Approximate date you sold the car &mdash; use <strong>YYYY-MM-DD</strong> format (e.g. 1985-03-01).</small>
+        <small id='solddateHelp' class='form-text text-muted'>Approximate date you sold the car. Use <strong>YYYY-MM-DD</strong> format (e.g. 1985-03-01).</small>
     </div>
 </div>
 
