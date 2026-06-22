@@ -204,7 +204,7 @@ function updateCarDetails(array &$car): void
                 <div class="row mb-4">
                     <div class="col-md-4">
                         <div class="text-center p-3 border rounded bg-light">
-                            <h6 class="text-primary mb-2">Pre-1970 (1963-1969)</h6>
+                            <h6 class="text-primary mb-2">1963–1969</h6>
                             <code class="d-block mb-2">1234</code>
                             <small class="text-muted">4 digits only</small>
                         </div>
@@ -219,7 +219,7 @@ function updateCarDetails(array &$car): void
                     </div>
                     <div class="col-md-4">
                         <div class="text-center p-3 border rounded bg-light">
-                            <h6 class="text-success mb-2">Post-1970 (1971-1974)</h6>
+                            <h6 class="text-success mb-2">1971–1974</h6>
                             <code class="d-block mb-2">7301019999B</code>
                             <small class="text-muted">11 characters YYMMBBXXXXC</small>
                         </div>
@@ -235,7 +235,7 @@ function updateCarDetails(array &$car): void
                             </div>
                             <div class="card-body">
                                 <p><strong>Valid codes:</strong> A, B, C, D, E, F, G, H, J, K</p>
-                                <p class="text-danger mb-0"><strong>Invalid:</strong> I (never used)</p>
+                                <p class="text-danger mb-0"><strong>Invalid:</strong> I — not used</p>
                             </div>
                         </div>
                     </div>
@@ -477,7 +477,7 @@ require_once $abs_us_root . $us_url_root . 'users/includes/html_footer.php'; //c
             imageResizeMode: 'downscale',
             credits: false,
             labelIdle: 'Drop photos here or <span class="filepond--label-action">Browse</span>',
-            labelFileTypeNotAllowed: 'Invalid file type — only images are allowed',
+            labelFileTypeNotAllowed: 'Invalid file type. Only images are allowed.',
             fileValidateTypeLabelExpectedTypes: 'Expects {allTypes}',
             labelMaxFileSizeExceeded: 'Photo is too large',
             labelMaxFileSize: 'Maximum size is {filesize}',
