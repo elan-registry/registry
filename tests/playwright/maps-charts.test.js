@@ -33,10 +33,10 @@ test.describe('Maps and Charts', () => {
     await expect(chart).toBeVisible({ timeout: 10000 });
   });
 
-  test('Chart.js age chart renders on statistics page', async ({ page }) => {
+  test('Chart.js recent activity chart renders on statistics page', async ({ page }) => {
     await page.goto('/app/reports/statistics.php');
     await page.waitForLoadState('networkidle');
-    const chart = page.locator('#ageChart');
+    const chart = page.locator('#recentActivityChart');
     await expect(chart).toBeVisible({ timeout: 10000 });
   });
 

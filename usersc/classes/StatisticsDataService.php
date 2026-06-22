@@ -247,38 +247,6 @@ class StatisticsDataService {
         );
     }
 
-    /**
-     * Get data quality age analysis
-     *
-     * @return array Age-based data quality metrics
-     */
-    public function getAgeData(): array {
-        return $this->executeQuery(
-            "SELECT
-               periods.age,
-               COALESCE(data.count, 0) as count
-             FROM (
-               SELECT '15 days' as age, 1 as sort_order
-               UNION SELECT '30 days' as age, 2 as sort_order
-               UNION SELECT '60 days' as age, 3 as sort_order
-               UNION SELECT '90 days' as age, 4 as sort_order
-             ) periods
-             LEFT JOIN (
-               SELECT
-                 CASE
-                   WHEN ctime >= DATE_SUB(CURDATE(), INTERVAL 15 DAY) THEN '15 days'
-                   WHEN ctime >= DATE_SUB(CURDATE(), INTERVAL 30 DAY) THEN '30 days'
-                   WHEN ctime >= DATE_SUB(CURDATE(), INTERVAL 60 DAY) THEN '60 days'
-                   WHEN ctime >= DATE_SUB(CURDATE(), INTERVAL 90 DAY) THEN '90 days'
-                 END AS age,
-                 COUNT(*) as count
-               FROM cars
-               WHERE ctime >= DATE_SUB(CURDATE(), INTERVAL 90 DAY)
-               GROUP BY age
-             ) data ON periods.age = data.age
-             ORDER BY periods.sort_order"
-        );
-    }
 
     // === DATA QUALITY ===
 

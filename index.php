@@ -78,6 +78,20 @@ foreach ($count as $key => $value) {
 
 $yearsSince = (int) (new DateTime())->diff(new DateTime('2003-01-01'))->y;
 
+$timelineData = [];
+try {
+    $timelineData = (new StatisticsDataService($db))->getTimelineData();
+} catch (\Throwable $e) {
+    logger(0, LogCategories::LOG_CATEGORY_SYSTEM_ERROR, 'Homepage timeline query failed: ' . $e->getMessage());
+}
+
+$timelineJson = '[]';
+try {
+    $timelineJson = json_encode($timelineData, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_THROW_ON_ERROR);
+} catch (\JsonException $e) {
+    logger(0, LogCategories::LOG_CATEGORY_SYSTEM_ERROR, 'Homepage timeline json_encode failed: ' . $e->getMessage());
+}
+
 ?>
 <div class="page-wrapper">
 	<div class='container'>
@@ -180,7 +194,17 @@ $yearsSince = (int) (new DateTime())->diff(new DateTime('2003-01-01'))->y;
 						?>
 					</div>
 				</div>
+
+				<div class='card registry-card mt-4'>
+					<div class='card-header card-header-er-primary'>
+						<h2 class='mb-0 card-header-er-primary-text'><i class='fas fa-chart-line'></i> Registry Growth</h2>
+					</div>
+					<div class='card-body' style='height: 220px;'>
+						<canvas id='homepageTimelineChart'></canvas>
+					</div>
+				</div>
 			</div>
+
 		</div>
 		<div class="row mt-4">
 			<div class="col-12">
@@ -206,4 +230,55 @@ $yearsSince = (int) (new DateTime())->diff(new DateTime('2003-01-01'))->y;
 		</div>
 	</div>
 </div>
+<script>
+var homepageTimelineData = <?= $timelineJson ?>;
+</script>
+<script src="<?= htmlspecialchars($us_url_root, ENT_QUOTES, 'UTF-8') ?>usersc/js/chart.umd.min.js"></script>
+<script>
+(function () {
+    try {
+        var canvasEl = document.getElementById('homepageTimelineChart');
+        if (!canvasEl) { return; }
+
+        var data = homepageTimelineData || [];
+        var monthlyCounts = {};
+        data.forEach(function (item) {
+            var date = new Date(item.ctime);
+            if (isNaN(date.getTime())) { return; }
+            var key = date.getFullYear() + '-' + String(date.getMonth() + 1).padStart(2, '0');
+            monthlyCounts[key] = (monthlyCounts[key] || 0) + 1;
+        });
+        var sortedMonths = Object.keys(monthlyCounts).sort();
+        var cumulative = 0;
+        var chartData = sortedMonths.map(function (month) {
+            cumulative += monthlyCounts[month];
+            return { x: month, y: cumulative };
+        });
+        new Chart(canvasEl.getContext('2d'), {
+            type: 'line',
+            data: {
+                datasets: [{
+                    data: chartData,
+                    borderColor: '#00563F',
+                    backgroundColor: '#00563F20',
+                    fill: true,
+                    tension: 0.4,
+                    pointRadius: 0
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                    x: { type: 'category', ticks: { maxTicksLimit: 8 } },
+                    y: { beginAtZero: false }
+                },
+                plugins: { legend: { display: false } }
+            }
+        });
+    } catch (err) {
+        console.error('[ElanRegistry] Homepage growth chart failed:', err);
+    }
+}());
+</script>
 <?php require_once $abs_us_root . $us_url_root . 'users/includes/html_footer.php'; ?>

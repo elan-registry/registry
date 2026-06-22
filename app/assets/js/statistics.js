@@ -1,4 +1,4 @@
-/* exported getColorForName, initializeOverviewTab, setupTabLazyLoading, loadTabContent, renderTabContent, renderGeographicTab, renderProductionTab, renderColorsTab, renderQualityTab, renderSeriesTable, updateOverviewMetrics, createTimelineChart, createAgeChart, createCountryChart, createCountryDistributionChart, createUSStatesChart, createTypeChart, createSeriesChart, createVariantChart, createProductionYearChart, createEarlyLateChart, createColorDistributionChart, createColorByYearChart, createColorBySeriesChart, createDataCompletenessChart, statisticsInitMap, loadMapMarkers, destroyAllCharts */
+/* exported getColorForName, initializeOverviewTab, setupTabLazyLoading, loadTabContent, renderTabContent, renderGeographicTab, renderProductionTab, renderColorsTab, renderQualityTab, renderSeriesTable, updateOverviewMetrics, createTimelineChart, createRecentActivityChart, createCountryChart, createCountryDistributionChart, createUSStatesChart, createTypeChart, createSeriesChart, createVariantChart, createProductionYearChart, createEarlyLateChart, createColorDistributionChart, createColorByYearChart, createColorBySeriesChart, createDataCompletenessChart, statisticsInitMap, loadMapMarkers, destroyAllCharts */
 /**
  * statistics.js
  * JavaScript functionality for the enhanced statistics page
@@ -159,9 +159,8 @@ $(document).ready(function () {
  */
 function initializeOverviewTab() {
   // Map initialization is handled by statisticsInitMap (called from statistics.php)
-  // Initialize essential charts
-  createTimelineChart();
-  createAgeChart();
+  try { createTimelineChart(); } catch (e) { console.error("[ElanRegistry] createTimelineChart failed:", e); }
+  try { createRecentActivityChart(); } catch (e) { console.error("[ElanRegistry] createRecentActivityChart failed:", e); }
 }
 
 /**
@@ -588,7 +587,7 @@ function createTimelineChart() {
     data: {
       datasets: [
         {
-          label: "Total Registrations",
+          label: "Registry Growth",
           data: chartData,
           borderColor: BOOTSTRAP_COLORS.primary,
           backgroundColor: BOOTSTRAP_COLORS.primary + "20",
@@ -625,26 +624,67 @@ function createTimelineChart() {
 }
 
 /**
- * Create Age Chart (Bar Chart)
+ * Create Recent Activity Chart — 13-week zoom of the Registry Timeline.
+ * Reuses statisticsRawData.timeline; no separate backend query needed.
  */
-function createAgeChart() {
-  const data = window.statisticsRawData.age || [];
+function createRecentActivityChart() {
+  const data = window.statisticsRawData.timeline || [];
 
-  const labels = data.map((item) => item.age);
-  const values = data.map((item) => parseInt(item.count));
+  // Returns the ISO date string (YYYY-MM-DD) of the Monday that contains `date`.
+  function weekMonday(date) {
+    const d = new Date(date);
+    d.setDate(d.getDate() - ((d.getDay() + 6) % 7));
+    d.setHours(0, 0, 0, 0);
+    return d;
+  }
 
-  const ctx = document.getElementById("ageChart").getContext("2d");
-  window.statisticsCharts.age = new Chart(ctx, {
-    type: "bar",
+  // Build ordered list of 13 week-start Mondays, oldest first
+  const thisMonday = weekMonday(new Date());
+  const weeks = [];
+  for (let i = 12; i >= 0; i--) {
+    const d = new Date(thisMonday);
+    d.setDate(thisMonday.getDate() - i * 7);
+    weeks.push(d);
+  }
+  const cutoff = weeks[0];
+
+  // Bucket each registration into its week's Monday
+  const weeklyCounts = {};
+  data.forEach((item) => {
+    const date = new Date(item.ctime);
+    if (date < cutoff) return;
+    const key = weekMonday(date).toISOString().slice(0, 10);
+    weeklyCounts[key] = (weeklyCounts[key] || 0) + 1;
+  });
+
+  // Build cumulative count series across the 13-week window
+  let cumulative = 0;
+  const labels = [];
+  const cumulativeCounts = [];
+  weeks.forEach((monday) => {
+    const key = monday.toISOString().slice(0, 10);
+    cumulative += weeklyCounts[key] || 0;
+    labels.push(monday.toLocaleDateString("en-GB", { month: "short", day: "numeric" }));
+    cumulativeCounts.push(cumulative);
+  });
+
+  const canvasEl = document.getElementById("recentActivityChart");
+  if (!canvasEl) {
+    console.error("[ElanRegistry] createRecentActivityChart: canvas #recentActivityChart not found");
+    return;
+  }
+  window.statisticsCharts.recentActivity = new Chart(canvasEl.getContext("2d"), {
+    type: "line",
     data: {
       labels: labels,
       datasets: [
         {
           label: "New Registrations",
-          data: values,
-          backgroundColor: BOOTSTRAP_COLORS.info,
-          borderColor: BOOTSTRAP_COLORS.info,
-          borderWidth: 1
+          data: cumulativeCounts,
+          borderColor: BOOTSTRAP_COLORS.primary,
+          backgroundColor: BOOTSTRAP_COLORS.primary + "20",
+          fill: true,
+          tension: 0.4
         }
       ]
     },
@@ -652,17 +692,21 @@ function createAgeChart() {
       responsive: true,
       maintainAspectRatio: false,
       scales: {
-        y: {
-          beginAtZero: true,
-          title: {
-            display: true,
-            text: "Number of Cars"
-          }
-        },
         x: {
           title: {
             display: true,
-            text: "Registration Period"
+            text: "Week"
+          }
+        },
+        y: {
+          beginAtZero: true,
+          ticks: {
+            precision: 0,
+            stepSize: 1
+          },
+          title: {
+            display: true,
+            text: "New Registrations"
           }
         }
       },
