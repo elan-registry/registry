@@ -24,10 +24,9 @@ $nav_section = (\ElanRegistry\Documentation\DocumentConfig::validateDocument($_G
     : 'guides';
 
 require_once $abs_us_root . $us_url_root . 'usersc/includes/elanregistry_prep.php';
-require_once $abs_us_root . $us_url_root . 'usersc/classes/MarkdownParser.php';
 
 use ElanRegistry\Documentation\DocumentPortalTemplate;
-use ElanRegistry\Documentation\MarkdownParser;
+use ElanRegistry\Documentation\MarkdownRenderer;
 use ElanRegistry\Documentation\DocumentConfig;
 
 // Security check - ensure page access is authorized
@@ -64,6 +63,7 @@ if (!file_exists($documentData['path']) || !is_readable($documentData['path'])) 
 }
 
 // Read the markdown content with error handling
+$markdownContent = '';
 try {
     $markdownContent = file_get_contents($documentData['path']);
     if ($markdownContent === false) {
@@ -75,8 +75,12 @@ try {
 }
 
 // Convert markdown to HTML using the utility class
-$htmlContent = MarkdownParser::toHtml($markdownContent, $us_url_root);
-$htmlContent = MarkdownParser::sanitizeHtml($htmlContent);
+try {
+    $htmlContent = MarkdownRenderer::convert($markdownContent, $us_url_root);
+} catch (\RuntimeException $e) {
+    logger($user->data()->id ?? 0, LogCategories::LOG_CATEGORY_SYSTEM_ERROR, 'Markdown rendering failed for "' . $doc . '": ' . $e->getMessage());
+    Redirect::to($us_url_root . '500.php');
+}
 
 // Get document information and navigation
 $info = $documentData['info'];

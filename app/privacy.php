@@ -6,25 +6,30 @@ declare(strict_types=1);
  * privacy.php
  * Displays the privacy policy for the Lotus Elan Registry project.
  *
- * Loads PRIVACY.md, converts markdown to HTML using MarkdownParser, and renders it using the site template.
+ * Loads PRIVACY.md, converts markdown to HTML using MarkdownRenderer, and renders it using the site template.
  *
  * @author Elan Registry Admin
  * @copyright 2025
  */
 require_once '../users/init.php';
 require_once $abs_us_root . $us_url_root . 'usersc/includes/elanregistry_prep.php';
-require_once $abs_us_root . $us_url_root . 'usersc/classes/MarkdownParser.php';
 
-use ElanRegistry\Documentation\MarkdownParser;
+use ElanRegistry\Documentation\MarkdownRenderer;
 
 $mdFile = __DIR__ . '/../docs/guides/PRIVACY.md';
 $policy = '';
-if (file_exists($mdFile)) {
+if (!file_exists($mdFile)) {
+    logger(0, LogCategories::LOG_CATEGORY_SYSTEM_ERROR, 'privacy.php: PRIVACY.md not found at ' . $mdFile);
+} else {
     $markdownContent = file_get_contents($mdFile);
-    if ($markdownContent !== false) {
-        // Convert markdown to HTML using centralized parser with application root path
-        $policy = MarkdownParser::toHtml($markdownContent, $us_url_root);
-        $policy = MarkdownParser::sanitizeHtml($policy);
+    if ($markdownContent === false) {
+        logger(0, LogCategories::LOG_CATEGORY_SYSTEM_ERROR, 'privacy.php: failed to read PRIVACY.md at ' . $mdFile);
+    } else {
+        try {
+            $policy = MarkdownRenderer::convert($markdownContent, $us_url_root);
+        } catch (\RuntimeException $e) {
+            logger(0, LogCategories::LOG_CATEGORY_SYSTEM_ERROR, 'privacy.php: MarkdownRenderer::convert() failed: ' . $e->getMessage());
+        }
     }
 }
 ?>

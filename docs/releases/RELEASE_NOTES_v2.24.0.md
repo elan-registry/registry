@@ -78,7 +78,7 @@ reply-to name appears correctly in the received message.
   removed from `send-feedback.php` and `send-owner-email.php`. Requires activating the updated
   `override.RENAME.php` → `override.php` on each server (see Required Actions).
 - **MarkdownParser replaced with league/commonmark** ([#815](https://github.com/unibrain1/elanregistry/issues/815)):
-  Custom MarkdownParser class replaced with the league/commonmark library.
+  Custom regex-based MarkdownParser (430 lines) replaced with league/commonmark 2.8.2. Gains GFM tables, heading permalink anchors (prerequisite for #768), blockquote and nested list support. Improved sanitization with `html_input: 'strip'` and `allow_unsafe_links: false`; external links now open in new tab with `rel=noopener noreferrer`. No user-facing functional change.
 - **ESLint no-implicit-globals fixed in statistics.js** ([#871](https://github.com/unibrain1/elanregistry/issues/871)):
   `renderMapErrorUI` and `initMarkerFilter` converted from top-level `function` declarations to
   `const` arrow functions, eliminating the two ESLint `no-implicit-globals` warnings.
