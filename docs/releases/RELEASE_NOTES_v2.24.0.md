@@ -44,7 +44,10 @@ reply-to name appears correctly in the received message.
 - **Add/Edit Car form** ([#772](https://github.com/unibrain1/elanregistry/issues/772)):
   Fixed premature validation icons, Purchase Date input, and checkbox layout.
 - **Identification guide two-column layout** ([#834](https://github.com/unibrain1/elanregistry/issues/834)):
-  Modernised two-column layout for the identification guide.
+  Every car-model entry is now its own card with a Lotus-green model header
+  and image-left / specs-right two-column body. Previously photoless models
+  display the standard Elan placeholder image so the layout stays consistent
+  end-to-end.
 
 ### Bug Fixes
 
