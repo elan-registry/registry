@@ -24,8 +24,8 @@ $cards = [
         'url'         => '../guide-viewer.php?doc=ADD_CAR_GUIDE.md',
         'buttonText'  => 'Read Guide',
         'buttonIcon'  => 'fa-book-open',
-        'headerClass' => 'bg-success text-white',
-        'buttonClass' => 'btn-success btn-sm',
+        'headerClass' => 'card-header-er-primary',
+        'buttonClass' => 'btn-primary btn-sm',
         'description' => "Step-by-step guide to registering your Lotus Elan or +2. Learn about chassis validation, photo uploads, and completing your car's profile.",
     ],
     [
@@ -34,8 +34,8 @@ $cards = [
         'url'         => '../guide-viewer.php?doc=CAR_TRANSFER_USER_GUIDE.md',
         'buttonText'  => 'Read Guide',
         'buttonIcon'  => 'fa-book-open',
-        'headerClass' => 'bg-info text-white',
-        'buttonClass' => 'btn-info btn-sm',
+        'headerClass' => 'card-header-er-primary',
+        'buttonClass' => 'btn-primary btn-sm',
         'description' => 'Complete guide for requesting ownership transfers of cars in the registry. Learn the step-by-step process and what to expect.',
     ],
     [
@@ -44,8 +44,8 @@ $cards = [
         'url'         => '../guide-viewer.php?doc=CAR_TRANSFER_FAQ.md',
         'buttonText'  => 'View FAQ',
         'buttonIcon'  => 'fa-question-circle',
-        'headerClass' => 'bg-info text-white',
-        'buttonClass' => 'btn-info btn-sm',
+        'headerClass' => 'card-header-er-primary',
+        'buttonClass' => 'btn-primary btn-sm',
         'description' => 'Frequently asked questions about car ownership transfers, common issues, and quick solutions.',
     ],
 ];
@@ -53,11 +53,11 @@ $cards = [
 ?>
 <div class="page-wrapper">
     <div class='container'>
+        <?= DocumentPortalTemplate::renderBreadcrumb('guides', $us_url_root) ?>
         <?= DocumentPortalTemplate::renderPortalHeader([
             'title'       => 'Owner Guides',
             'titleIcon'   => 'fa-question-circle',
             'description' => 'Documentation and guides for using the Lotus Elan Registry',
-            'leadText'    => 'How-to guides and policies for using the Lotus Elan Registry.',
         ]) ?>
         <?= DocumentPortalTemplate::renderDocumentCardGrid($cards) ?>
     </div>

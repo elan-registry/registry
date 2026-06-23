@@ -10,7 +10,7 @@ use Throwable;
  * DocumentationException
  *
  * Exception thrown when documentation loading or rendering fails.
- * Used by MarkdownParser and DocumentConfig classes.
+ * Used by MarkdownRenderer and DocumentConfig classes.
  *
  * @package ElanRegistry
  * @subpackage Exceptions

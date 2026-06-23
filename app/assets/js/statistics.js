@@ -1,4 +1,4 @@
-/* exported getColorForName, initializeOverviewTab, setupTabLazyLoading, loadTabContent, renderTabContent, renderGeographicTab, renderProductionTab, renderColorsTab, renderQualityTab, renderSeriesTable, updateOverviewMetrics, createTimelineChart, createAgeChart, createCountryChart, createCountryDistributionChart, createUSStatesChart, createTypeChart, createSeriesChart, createVariantChart, createProductionYearChart, createEarlyLateChart, createColorDistributionChart, createColorByYearChart, createColorBySeriesChart, createDataCompletenessChart, statisticsInitMap, loadMapMarkers, destroyAllCharts */
+/* exported getColorForName, initializeOverviewTab, setupTabLazyLoading, loadTabContent, renderTabContent, renderGeographicTab, renderProductionTab, renderColorsTab, renderQualityTab, renderSeriesTable, updateOverviewMetrics, createTimelineChart, createRecentActivityChart, createCountryChart, createCountryDistributionChart, createUSStatesChart, createTypeChart, createSeriesChart, createVariantChart, createProductionYearChart, createEarlyLateChart, createColorDistributionChart, createColorByYearChart, createColorBySeriesChart, createDataCompletenessChart, statisticsInitMap, loadMapMarkers, destroyAllCharts */
 /**
  * statistics.js
  * JavaScript functionality for the enhanced statistics page
@@ -11,33 +11,78 @@
 // Global chart instances to manage cleanup
 window.statisticsCharts = {};
 
-// Bootstrap color palette for consistent theming
+// Elan Registry brand palette (issue #757 — mirrors --er-* tokens in customizer.css)
 const BOOTSTRAP_COLORS = {
-  primary: "#007bff",
-  secondary: "#6c757d",
-  success: "#28a745",
-  danger: "#dc3545",
-  warning: "#ffc107",
-  info: "#17a2b8",
-  light: "#f8f9fa",
-  dark: "#343a40"
+  primary:   "#00563F",  // BRG — bar charts
+  secondary: "#6C757D",
+  success:   "#00563F",  // unified with primary (no separate success green for charts)
+  danger:    "#A52218",
+  warning:   "#B8860B",
+  info:      "#0B5394",  // ink blue — line charts
+  light:     "#F4F5F3",
+  dark:      "#1F2421"
 };
 
-// Extended color palette for charts with many data points
+// Categorical palette: Tableau 10 (entries 1–10) extended with two Tableau 20 colors (mauve, sage)
 const CHART_COLORS = [
-  "#FF6384",
-  "#36A2EB",
-  "#FFCE56",
-  "#4BC0C0",
-  "#9966FF",
-  "#FF9F40",
-  "#FF6384",
-  "#C9CBCF",
-  "#4BC0C0",
-  "#FF6384",
-  "#36A2EB",
-  "#FFCE56"
+  "#4E79A7",  // steel blue
+  "#F28E2B",  // orange
+  "#E15759",  // red
+  "#76B7B2",  // teal
+  "#59A14F",  // green
+  "#EDC948",  // yellow
+  "#B07AA1",  // purple
+  "#FF9DA7",  // pink
+  "#9C755F",  // brown
+  "#BAB0AC",  // grey
+  "#D4A6C8",  // mauve
+  "#86BCB6"   // sage
 ];
+
+// Returns true when a hex color is too light to read on a white background.
+// Uses ITU-R BT.601 perceived-luminance weights (range 0–255); threshold 200
+// corresponds to approximately 78% brightness. Returns false (treat as dark)
+// on invalid input so callers degrade gracefully with no spurious grey borders.
+const isLightColor = (hex) => {
+  if (typeof hex !== "string" || !/^#[0-9A-Fa-f]{6}$/.test(hex)) {
+    console.error("[ElanRegistry] isLightColor: invalid hex value:", hex);
+    return false;
+  }
+  const r = parseInt(hex.slice(1, 3), 16);
+  const g = parseInt(hex.slice(3, 5), 16);
+  const b = parseInt(hex.slice(5, 7), 16);
+  return (r * 299 + g * 587 + b * 114) / 1000 > 200;
+};
+
+// Returns Chart.js border style for a color swatch: light colors get a grey
+// outline so they remain visible on a white background; dark colors get
+// borderWidth: 0 (the swatch color is preserved as borderColor but invisible).
+const swatchBorder = (hex) => {
+  const light = isLightColor(hex);
+  return {
+    borderColor: light ? "#BDBDBD" : hex,
+    borderWidth: light ? 1 : 0
+  };
+};
+
+// Maps known color variants to canonical family names ("carnival red" → "Red").
+// Unrecognized names are title-cased and passed through as their own category,
+// so they appear as separate chart slices rather than being silently dropped.
+const normalizeColorName = (color) => {
+  if (color == null || typeof color !== "string") {
+    console.error("[ElanRegistry] normalizeColorName: received non-string value:", color);
+    return "Unknown";
+  }
+  const lower = color.trim().toLowerCase().replace(/\s+/g, " ");
+  if (["red", "carnival red", "red/white", "dark red"].includes(lower)) return "Red";
+  if (["yellow", "lotus yellow", "bright yellow", "pale yellow", "yellow/white"].includes(lower)) return "Yellow";
+  if (["white", "cirrus white", "pearl white", "off white"].includes(lower)) return "White";
+  if (["blue", "french blue", "lagoon blue", "navy blue", "light blue", "dark blue"].includes(lower)) return "Blue";
+  if (["green", "brg", "british racing green", "dark green", "light green"].includes(lower)) return "Green";
+  if (lower === "black") return "Black";
+  if (["silver", "grey", "gray"].includes(lower)) return "Silver";
+  return lower.split(" ").map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(" ");
+};
 
 // Color mapping for realistic color representation
 function getColorForName(colorName) {
@@ -46,12 +91,12 @@ function getColorForName(colorName) {
   // Define realistic color mappings
   const colorMap = {
     red: "#DC3545",
-    "carnival red": "#DC143C",
-    "dark red": "#8B0000",
+    "carnival red": "#DC3545",
+    "dark red": "#DC3545",
     blue: "#007BFF",
-    "dark blue": "#0056B3",
-    "light blue": "#87CEEB",
-    "navy blue": "#000080",
+    "dark blue": "#007BFF",
+    "light blue": "#007BFF",
+    "navy blue": "#007BFF",
     white: "#F8F9FA",
     "off white": "#FFFACD",
     "pearl white": "#F8F8F8",
@@ -126,12 +171,8 @@ function getColorForName(colorName) {
     hash = hash & hash; // Convert to 32bit integer
   }
 
-  // Log unknown colors for admin awareness (only in development)
-  if (typeof console !== "undefined" && console.warn) {
-    console.warn(
-      `Unknown car color detected: "${colorName}" - using fallback color. Consider adding to color mapping.`
-    );
-  }
+  // Warn when an unrecognized color name falls through to the deterministic hash fallback
+  console.warn(`Unknown car color detected: "${colorName}" - using fallback color. Consider adding to color mapping.`);
 
   return fallbackColors[Math.abs(hash) % fallbackColors.length];
 }
@@ -159,9 +200,8 @@ $(document).ready(function () {
  */
 function initializeOverviewTab() {
   // Map initialization is handled by statisticsInitMap (called from statistics.php)
-  // Initialize essential charts
-  createTimelineChart();
-  createAgeChart();
+  try { createTimelineChart(); } catch (e) { console.error("[ElanRegistry] createTimelineChart failed:", e); }
+  try { createRecentActivityChart(); } catch (e) { console.error("[ElanRegistry] createRecentActivityChart failed:", e); }
 }
 
 /**
@@ -513,7 +553,7 @@ function renderQualityTab(container, data) {
 function renderSeriesTable(counts, notes) {
   let html = "";
   for (const [series, count] of Object.entries(counts)) {
-    const produced = parseInt(notes[series]);
+    const produced = parseInt(notes[series]) || 0;
     const percentage = produced > 0 ? Math.round((count / produced) * 100) : 0;
 
     html += `
@@ -588,7 +628,7 @@ function createTimelineChart() {
     data: {
       datasets: [
         {
-          label: "Total Registrations",
+          label: "Registry Growth",
           data: chartData,
           borderColor: BOOTSTRAP_COLORS.primary,
           backgroundColor: BOOTSTRAP_COLORS.primary + "20",
@@ -625,26 +665,67 @@ function createTimelineChart() {
 }
 
 /**
- * Create Age Chart (Bar Chart)
+ * Create Recent Activity Chart — 13-week zoom of the Registry Timeline.
+ * Reuses statisticsRawData.timeline; no separate backend query needed.
  */
-function createAgeChart() {
-  const data = window.statisticsRawData.age || [];
+function createRecentActivityChart() {
+  const data = window.statisticsRawData.timeline || [];
 
-  const labels = data.map((item) => item.age);
-  const values = data.map((item) => parseInt(item.count));
+  // Returns a Date set to midnight (local time) of the Monday that starts the week containing `date`.
+  function weekMonday(date) {
+    const d = new Date(date);
+    d.setDate(d.getDate() - ((d.getDay() + 6) % 7));
+    d.setHours(0, 0, 0, 0);
+    return d;
+  }
 
-  const ctx = document.getElementById("ageChart").getContext("2d");
-  window.statisticsCharts.age = new Chart(ctx, {
-    type: "bar",
+  // Build ordered list of 13 week-start Mondays, oldest first
+  const thisMonday = weekMonday(new Date());
+  const weeks = [];
+  for (let i = 12; i >= 0; i--) {
+    const d = new Date(thisMonday);
+    d.setDate(thisMonday.getDate() - i * 7);
+    weeks.push(d);
+  }
+  const cutoff = weeks[0];
+
+  // Bucket each registration into its week's Monday
+  const weeklyCounts = {};
+  data.forEach((item) => {
+    const date = new Date(item.ctime);
+    if (date < cutoff) return;
+    const key = weekMonday(date).toISOString().slice(0, 10);
+    weeklyCounts[key] = (weeklyCounts[key] || 0) + 1;
+  });
+
+  // Build cumulative count series across the 13-week window
+  let cumulative = 0;
+  const labels = [];
+  const cumulativeCounts = [];
+  weeks.forEach((monday) => {
+    const key = monday.toISOString().slice(0, 10);
+    cumulative += weeklyCounts[key] || 0;
+    labels.push(monday.toLocaleDateString("en-GB", { month: "short", day: "numeric" }));
+    cumulativeCounts.push(cumulative);
+  });
+
+  const canvasEl = document.getElementById("recentActivityChart");
+  if (!canvasEl) {
+    console.error("[ElanRegistry] createRecentActivityChart: canvas #recentActivityChart not found");
+    return;
+  }
+  window.statisticsCharts.recentActivity = new Chart(canvasEl.getContext("2d"), {
+    type: "line",
     data: {
       labels: labels,
       datasets: [
         {
           label: "New Registrations",
-          data: values,
-          backgroundColor: BOOTSTRAP_COLORS.info,
-          borderColor: BOOTSTRAP_COLORS.info,
-          borderWidth: 1
+          data: cumulativeCounts,
+          borderColor: BOOTSTRAP_COLORS.primary,
+          backgroundColor: BOOTSTRAP_COLORS.primary + "20",
+          fill: true,
+          tension: 0.4
         }
       ]
     },
@@ -652,17 +733,21 @@ function createAgeChart() {
       responsive: true,
       maintainAspectRatio: false,
       scales: {
-        y: {
-          beginAtZero: true,
-          title: {
-            display: true,
-            text: "Number of Cars"
-          }
-        },
         x: {
           title: {
             display: true,
-            text: "Registration Period"
+            text: "Week"
+          }
+        },
+        y: {
+          beginAtZero: true,
+          ticks: {
+            precision: 0,
+            stepSize: 1
+          },
+          title: {
+            display: true,
+            text: "New Registrations"
           }
         }
       },
@@ -679,8 +764,19 @@ function createAgeChart() {
  * Create Country Chart (Doughnut)
  */
 function createCountryChart(data) {
-  const labels = data.map((item) => item.country);
-  const values = data.map((item) => parseInt(item.count));
+  if (!Array.isArray(data)) {
+    console.error("[ElanRegistry] createCountryChart: expected array, got:", data);
+    return;
+  }
+  const sorted = [...data].sort((a, b) => parseInt(b.count) - parseInt(a.count));
+  const top10 = sorted.slice(0, 10);
+  const otherSum = sorted.slice(10).reduce((sum, item) => sum + parseInt(item.count), 0);
+  const labels = top10.map((item) => item.country);
+  const values = top10.map((item) => parseInt(item.count));
+  if (otherSum > 0) {
+    labels.push("Other");
+    values.push(otherSum);
+  }
 
   const ctx = document.getElementById("countryChart").getContext("2d");
   window.statisticsCharts.country = new Chart(ctx, {
@@ -724,8 +820,8 @@ function createCountryDistributionChart(data) {
         {
           label: "Cars Registered",
           data: values,
-          backgroundColor: BOOTSTRAP_COLORS.success,
-          borderColor: BOOTSTRAP_COLORS.success,
+          backgroundColor: BOOTSTRAP_COLORS.primary,
+          borderColor: BOOTSTRAP_COLORS.primary,
           borderWidth: 1
         }
       ]
@@ -896,8 +992,8 @@ function createProductionYearChart(data) {
         {
           label: "Cars Registered",
           data: values,
-          backgroundColor: BOOTSTRAP_COLORS.warning,
-          borderColor: BOOTSTRAP_COLORS.warning,
+          backgroundColor: BOOTSTRAP_COLORS.primary,
+          borderColor: BOOTSTRAP_COLORS.primary,
           borderWidth: 1
         }
       ]
@@ -957,21 +1053,9 @@ function createEarlyLateChart(data) {
  * Create Color Distribution Chart (Doughnut)
  */
 function createColorDistributionChart(data) {
-  // Normalize color names to handle inconsistent capitalization and spacing
-  function normalizeColor(color) {
-    return color
-      .trim()
-      .toLowerCase()
-      .replace(/\s+/g, " ") // Replace multiple spaces with single space
-      .split(" ")
-      .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
-      .join(" ");
-  }
-
-  // Aggregate data by normalized color names
   const normalizedData = {};
   data.forEach((item) => {
-    const normalizedColor = normalizeColor(item.color);
+    const normalizedColor = normalizeColorName(item.color);
     if (!normalizedData[normalizedColor]) {
       normalizedData[normalizedColor] = 0;
     }
@@ -982,10 +1066,8 @@ function createColorDistributionChart(data) {
   const labels = Object.keys(normalizedData);
   const values = Object.values(normalizedData);
 
-  // Generate realistic colors for each color name
-  const backgroundColors = labels.map((colorName) =>
-    getColorForName(colorName)
-  );
+  const backgroundColors = labels.map((colorName) => getColorForName(colorName));
+  const borders = backgroundColors.map(swatchBorder);
 
   const ctx = document
     .getElementById("colorDistributionChart")
@@ -997,7 +1079,9 @@ function createColorDistributionChart(data) {
       datasets: [
         {
           data: values,
-          backgroundColor: backgroundColors
+          backgroundColor: backgroundColors,
+          borderColor: borders.map((b) => b.borderColor),
+          borderWidth: borders.map((b) => b.borderWidth)
         }
       ]
     },
@@ -1017,21 +1101,9 @@ function createColorDistributionChart(data) {
  * Create Color by Year Chart (Line)
  */
 function createColorByYearChart(data) {
-  // Normalize color names to handle inconsistent capitalization and spacing
-  function normalizeColor(color) {
-    return color
-      .trim()
-      .toLowerCase()
-      .replace(/\s+/g, " ") // Replace multiple spaces with single space
-      .split(" ")
-      .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
-      .join(" ");
-  }
-
-  // Group data by normalized color
   const colorData = {};
   data.forEach((item) => {
-    const normalizedColor = normalizeColor(item.color);
+    const normalizedColor = normalizeColorName(item.color);
     if (!colorData[normalizedColor]) {
       colorData[normalizedColor] = {};
     }
@@ -1045,15 +1117,19 @@ function createColorByYearChart(data) {
   const years = [...new Set(data.map((item) => item.year))].sort();
   const datasets = Object.keys(colorData)
     .slice(0, 8)
-    .map((color, index) => {
+    .map((color) => {
       const colorHex = getColorForName(color);
+      const displayColor = isLightColor(colorHex) ? "#9E9E9E" : colorHex;
       return {
         label: color,
         data: years.map((year) => colorData[color][year] || 0),
-        borderColor: colorHex,
-        backgroundColor: colorHex + "20",
+        borderColor: displayColor,
+        backgroundColor: displayColor + "20",
+        _origColor: displayColor,
         fill: false,
-        tension: 0.1
+        tension: 0.1,
+        borderWidth: 2,
+        pointRadius: 3
       };
     });
 
@@ -1071,6 +1147,20 @@ function createColorByYearChart(data) {
         y: {
           beginAtZero: true
         }
+      },
+      onHover: function (event, elements, chart) {
+        const hoveredIndex = elements.length > 0 ? elements[0].datasetIndex : -1;
+        chart.data.datasets.forEach((ds, i) => {
+          if (!ds._origColor) {
+            console.error("[ElanRegistry] onHover: dataset", i, "missing _origColor");
+            return;
+          }
+          const isActive = hoveredIndex === -1 || i === hoveredIndex;
+          ds.borderColor = isActive ? ds._origColor : ds._origColor + "30";
+          ds.borderWidth = hoveredIndex === -1 ? 2 : isActive ? 2.5 : 1;
+          ds.pointRadius = isActive ? 3 : 0;
+        });
+        chart.update("none");
       }
     }
   });
@@ -1080,23 +1170,11 @@ function createColorByYearChart(data) {
  * Create Color by Series Chart (Stacked Bar)
  */
 function createColorBySeriesChart(data) {
-  // Normalize color names to handle inconsistent capitalization and spacing
-  function normalizeColor(color) {
-    return color
-      .trim()
-      .toLowerCase()
-      .replace(/\s+/g, " ") // Replace multiple spaces with single space
-      .split(" ")
-      .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
-      .join(" ");
-  }
-
-  // Group data by series and normalized color
   const seriesData = {};
   const colorSet = new Set();
 
   data.forEach((item) => {
-    const normalizedColor = normalizeColor(item.color);
+    const normalizedColor = normalizeColorName(item.color);
     colorSet.add(normalizedColor);
 
     if (!seriesData[item.series]) {
@@ -1110,11 +1188,15 @@ function createColorBySeriesChart(data) {
 
   const series = Object.keys(seriesData);
   const allColors = Array.from(colorSet);
-  const datasets = allColors.map((color, index) => ({
-    label: color,
-    data: series.map((s) => seriesData[s][color] || 0),
-    backgroundColor: getColorForName(color)
-  }));
+  const datasets = allColors.map((color) => {
+    const colorHex = getColorForName(color);
+    return {
+      label: color,
+      data: series.map((s) => seriesData[s][color] || 0),
+      backgroundColor: colorHex,
+      ...swatchBorder(colorHex)
+    };
+  });
 
   const ctx = document.getElementById("colorBySeriesChart").getContext("2d");
   window.statisticsCharts.colorBySeries = new Chart(ctx, {
@@ -1150,8 +1232,7 @@ function createDataCompletenessChart(data) {
     { label: "Engine Details", value: data.has_engine },
     { label: "Purchase Dates", value: data.has_purchase_date },
     { label: "Photos", value: data.has_image },
-    { label: "Location Data", value: data.has_location },
-    { label: "Verified Cars", value: data.verified_cars }
+    { label: "Location Data", value: data.has_location }
   ];
 
   const labels = fields.map((f) => f.label);
@@ -1205,7 +1286,7 @@ function createDataCompletenessChart(data) {
  * Build the static "map unavailable" error UI using safe DOM APIs.
  * @param {HTMLElement} el - The map container element to populate.
  */
-function renderMapErrorUI(el) {
+const renderMapErrorUI = (el) => {
   while (el.firstChild) {
     el.removeChild(el.firstChild);
   }
@@ -1228,7 +1309,7 @@ function renderMapErrorUI(el) {
   wrap.appendChild(btn);
 
   el.appendChild(wrap);
-}
+};
 
 /**
  * Initialize MapLibre map
@@ -1288,11 +1369,11 @@ function loadMapMarkers(map) {
     s2: "s2",
     s3: "s3",
     s4: "s4",
-    "1500": "elan1500",
-    "26r": "r26"
+    "1500": "elan1500"
   };
 
-  function markerClassForSeries(series) {
+  function markerClassForSeries(series, variant) {
+    if ((variant || "").toLowerCase() === "race") return "r26";
     const s = (series || "").toLowerCase();
     for (const [key, cls] of Object.entries(seriesClassMap)) {
       if (s.includes(key)) return cls;
@@ -1365,7 +1446,7 @@ function loadMapMarkers(map) {
   const markerList = [];
 
   markers.forEach(function (car) {
-    const seriesClass = markerClassForSeries(car.series);
+    const seriesClass = markerClassForSeries(car.series, car.variant);
 
     const el = document.createElement("div");
     el.className = "elan-marker-wrapper";
@@ -1388,7 +1469,7 @@ function loadMapMarkers(map) {
   initMarkerFilter(markerList);
 }
 
-function initMarkerFilter(markerList) {
+const initMarkerFilter = (markerList) => {
   const allCheckbox = document.getElementById("filter-all");
   const seriesCheckboxes = document.querySelectorAll("#map-series-filter input[data-series]");
 
@@ -1431,7 +1512,7 @@ function initMarkerFilter(markerList) {
       applyFilter();
     });
   });
-}
+};
 
 window.statisticsInitMap = statisticsInitMap;
 

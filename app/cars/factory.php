@@ -23,13 +23,15 @@ if (!securePage($php_self)) {
       <div class="row">
         <div class="col-12">
           <div class="card registry-card">
-            <div class="card-header">
-              <h2 class="mb-0">Elan Factory Information</h2>
-              <div class="mt-2">
-                <h5><strong>WARNING</strong> - This information has not been verified against the Lotus archives.</h5>
-              </div>
+            <div class="card-header card-header-er-primary">
+              <h2 class="mb-0 card-header-er-primary-text">Elan Factory Information</h2>
             </div>
             <div class="card-body">
+              <p class="mb-3">These records are transcribed from original Lotus factory production logs that document each Elan as it left the factory, capturing its configuration at the time of manufacture — body type, engine, gearbox, and color. Where a matching car exists in the Elan Registry, a link is provided; factory data may differ from current registry records due to subsequent modifications, registration changes, or transcription variations in the original handwritten logs.</p>
+              <div class="alert alert-warning">
+                <i class="fas fa-exclamation-triangle me-1"></i>
+                <strong>WARNING:</strong> This information has not been verified against the Lotus archives.
+              </div>
               <table id="cartable" class="table table-striped table-bordered table-sm w-100 registry-table" aria-describedby="card-header">
                 <thead>
                   <tr>
@@ -77,12 +79,11 @@ require_once $abs_us_root . $us_url_root . 'users/includes/html_footer.php'; //c
     responsive: true,
     pageLength: 25,
     scrollX: true,
-    "aLengthMenu": [
+    "lengthMenu": [
       [25, 50, 100, -1],
       [25, 50, 100, "All"]
     ],
-    caseInsensitive: true,
-    "aaSorting": [
+    "order": [
       [0, "asc"]
     ],
     "language": {
@@ -144,11 +145,11 @@ require_once $abs_us_root . $us_url_root . 'users/includes/html_footer.php'; //c
         data: "serial",
         render: function(data, type, row, meta) {
           if (type === 'display' && data) {
-            // Return placeholder that will be populated via AJAX
-            return '<div class="registry-link-container" data-chassis="' + data + '">' +
-                   '<span class="text-muted small">' +
-                   '<i class="fas fa-spinner fa-spin"></i> Checking...' +
-                   '</span></div>';
+            var div = document.createElement('div');
+            div.className = 'registry-link-container';
+            div.dataset.chassis = data;
+            div.innerHTML = '<span class="text-muted small"><i class="fas fa-spinner fa-spin"></i> Checking...</span>';
+            return div.outerHTML;
           }
           if (type === 'sort' || type === 'type') {
             return data || '';
@@ -184,7 +185,7 @@ require_once $abs_us_root . $us_url_root . 'users/includes/html_footer.php'; //c
             // Car exists - create link to car details
             const detailsUrl = us_url_root + 'app/cars/details.php?car_id=' + response.car_id;
             container.html(
-              '<a href="' + detailsUrl + '" class="btn btn-sm btn-success" target="_blank">' +
+              '<a href="' + detailsUrl + '" class="btn btn-sm btn-primary" target="_blank">' +
               '<i class="fas fa-car"></i> View Car #' + response.car_id +
               '</a>'
             );

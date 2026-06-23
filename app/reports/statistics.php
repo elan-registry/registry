@@ -89,6 +89,7 @@ foreach ($markerRows as $car) {
 <div class="page-wrapper">
     <div class="container-fluid">
         <div class="page-container">
+            <?= \ElanRegistry\Documentation\DocumentPortalTemplate::renderBreadcrumb('statistics', $us_url_root) ?>
             <!-- Page Header -->
             <div class="row mb-4">
                 <div class="col-12">
@@ -149,8 +150,8 @@ foreach ($markerRows as $car) {
                                     <div class="row mb-4">
                                         <div class="col-12">
                                             <div class="card">
-                                                <div class="card-header">
-                                                    <h4 class="mb-0">Global Car Distribution</h4>
+                                                <div class="card-header card-header-er-primary">
+                                                    <h4 class="mb-0 card-header-er-primary-text">Global Car Distribution</h4>
                                                 </div>
                                                 <div class="card-body text-center">
                                                     <div class="map-container">
@@ -199,52 +200,12 @@ foreach ($markerRows as $car) {
                                         </div>
                                     </div>
 
-                                    <!-- Key Metrics Cards -->
-                                    <div class="row mb-4">
-                                        <div class="col-md-3 mb-3">
-                                            <div class="card bg-primary text-white">
-                                                <div class="card-body text-center">
-                                                    <i class="fas fa-car fa-2x mb-2"></i>
-                                                    <h3 class="mb-0" id="totalCars">-</h3>
-                                                    <small>Total Cars Registered</small>
-                                                </div>
-                                            </div>
-                                        </div>
-                                        <div class="col-md-3 mb-3">
-                                            <div class="card bg-success text-white">
-                                                <div class="card-body text-center">
-                                                    <i class="fas fa-globe fa-2x mb-2"></i>
-                                                    <h3 class="mb-0" id="totalCountries">-</h3>
-                                                    <small>Countries Represented</small>
-                                                </div>
-                                            </div>
-                                        </div>
-                                        <div class="col-md-3 mb-3">
-                                            <div class="card bg-info text-white">
-                                                <div class="card-body text-center">
-                                                    <i class="fas fa-palette fa-2x mb-2"></i>
-                                                    <h3 class="mb-0" id="totalColors">-</h3>
-                                                    <small>Unique Colors</small>
-                                                </div>
-                                            </div>
-                                        </div>
-                                        <div class="col-md-3 mb-3">
-                                            <div class="card bg-warning text-white">
-                                                <div class="card-body text-center">
-                                                    <i class="fas fa-calendar fa-2x mb-2"></i>
-                                                    <h3 class="mb-0" id="registrationGrowth">-</h3>
-                                                    <small>New This Year</small>
-                                                </div>
-                                            </div>
-                                        </div>
-                                    </div>
-
-                                    <!-- Essential Charts -->
+                                    <!-- Charts -->
                                     <div class="row">
                                         <div class="col-lg-6 mb-4">
                                             <div class="card">
-                                                <div class="card-header">
-                                                    <h5 class="mb-0">Registry Timeline</h5>
+                                                <div class="card-header card-header-er-primary">
+                                                    <h5 class="mb-0 card-header-er-primary-text">Registry Growth</h5>
                                                 </div>
                                                 <div class="card-body chart-container">
                                                     <canvas id="timelineChart"></canvas>
@@ -253,12 +214,44 @@ foreach ($markerRows as $car) {
                                         </div>
                                         <div class="col-lg-6 mb-4">
                                             <div class="card">
-                                                <div class="card-header">
-                                                    <h5 class="mb-0">Recent Registration Activity</h5>
+                                                <div class="card-header card-header-er-primary">
+                                                    <h5 class="mb-0 card-header-er-primary-text">Recent Registrations</h5>
                                                 </div>
                                                 <div class="card-body chart-container">
-                                                    <canvas id="ageChart"></canvas>
+                                                    <canvas id="recentActivityChart"></canvas>
                                                 </div>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <!-- Key Metrics -->
+                                    <div class="row mb-4">
+                                        <div class="col-md-3 mb-3">
+                                            <div class="er-stat-tile text-center">
+                                                <i class="fas fa-car fa-2x mb-2"></i>
+                                                <div class="er-stat-number" id="totalCars">-</div>
+                                                <div class="er-stat-label">Total Cars Registered</div>
+                                            </div>
+                                        </div>
+                                        <div class="col-md-3 mb-3">
+                                            <div class="er-stat-tile text-center">
+                                                <i class="fas fa-globe fa-2x mb-2"></i>
+                                                <div class="er-stat-number" id="totalCountries">-</div>
+                                                <div class="er-stat-label">Countries Represented</div>
+                                            </div>
+                                        </div>
+                                        <div class="col-md-3 mb-3">
+                                            <div class="er-stat-tile text-center">
+                                                <i class="fas fa-palette fa-2x mb-2"></i>
+                                                <div class="er-stat-number" id="totalColors">-</div>
+                                                <div class="er-stat-label">Unique Colors</div>
+                                            </div>
+                                        </div>
+                                        <div class="col-md-3 mb-3">
+                                            <div class="er-stat-tile text-center">
+                                                <i class="fas fa-calendar fa-2x mb-2"></i>
+                                                <div class="er-stat-number" id="registrationGrowth">-</div>
+                                                <div class="er-stat-label">New This Year</div>
                                             </div>
                                         </div>
                                     </div>
@@ -266,53 +259,61 @@ foreach ($markerRows as $car) {
 
                                 <!-- Geographic Tab -->
                                 <div class="tab-pane fade" id="geographic" role="tabpanel" aria-labelledby="geographic-tab">
-                                    <div class="d-flex justify-content-between align-items-center mb-3">
-                                        <h4>Geographic Distribution Analysis</h4>
-                                        <div class="spinner-border text-primary" role="status" id="geographic-spinner" style="display: none;">
-                                            <span class="visually-hidden">Loading...</span>
+                                    <div class="card registry-card">
+                                        <div class="card-header card-header-er-primary d-flex justify-content-between align-items-center">
+                                            <h4 class="mb-0 card-header-er-primary-text"><i class="fas fa-globe-americas me-2"></i>Geographic Distribution Analysis</h4>
+                                            <div class="spinner-border spinner-border-sm text-white" role="status" id="geographic-spinner" style="display: none;">
+                                                <span class="visually-hidden">Loading...</span>
+                                            </div>
                                         </div>
-                                    </div>
-                                    <div id="geographic-content">
-                                        <!-- Content will be loaded dynamically -->
+                                        <div class="card-body" id="geographic-content">
+                                            <!-- Content will be loaded dynamically -->
+                                        </div>
                                     </div>
                                 </div>
 
                                 <!-- Production Tab -->
                                 <div class="tab-pane fade" id="production" role="tabpanel" aria-labelledby="production-tab">
-                                    <div class="d-flex justify-content-between align-items-center mb-3">
-                                        <h4>Production Analysis</h4>
-                                        <div class="spinner-border text-primary" role="status" id="production-spinner" style="display: none;">
-                                            <span class="visually-hidden">Loading...</span>
+                                    <div class="card registry-card">
+                                        <div class="card-header card-header-er-primary d-flex justify-content-between align-items-center">
+                                            <h4 class="mb-0 card-header-er-primary-text"><i class="fas fa-industry me-2"></i>Production Analysis</h4>
+                                            <div class="spinner-border spinner-border-sm text-white" role="status" id="production-spinner" style="display: none;">
+                                                <span class="visually-hidden">Loading...</span>
+                                            </div>
                                         </div>
-                                    </div>
-                                    <div id="production-content">
-                                        <!-- Content will be loaded dynamically -->
+                                        <div class="card-body" id="production-content">
+                                            <!-- Content will be loaded dynamically -->
+                                        </div>
                                     </div>
                                 </div>
 
                                 <!-- Colors Tab -->
                                 <div class="tab-pane fade" id="colors" role="tabpanel" aria-labelledby="colors-tab">
-                                    <div class="d-flex justify-content-between align-items-center mb-3">
-                                        <h4>Color Analysis Dashboard</h4>
-                                        <div class="spinner-border text-primary" role="status" id="colors-spinner" style="display: none;">
-                                            <span class="visually-hidden">Loading...</span>
+                                    <div class="card registry-card">
+                                        <div class="card-header card-header-er-primary d-flex justify-content-between align-items-center">
+                                            <h4 class="mb-0 card-header-er-primary-text"><i class="fas fa-palette me-2"></i>Color Analysis</h4>
+                                            <div class="spinner-border spinner-border-sm text-white" role="status" id="colors-spinner" style="display: none;">
+                                                <span class="visually-hidden">Loading...</span>
+                                            </div>
                                         </div>
-                                    </div>
-                                    <div id="colors-content">
-                                        <!-- Content will be loaded dynamically -->
+                                        <div class="card-body" id="colors-content">
+                                            <!-- Content will be loaded dynamically -->
+                                        </div>
                                     </div>
                                 </div>
 
                                 <!-- Data Quality Tab -->
                                 <div class="tab-pane fade" id="quality" role="tabpanel" aria-labelledby="quality-tab">
-                                    <div class="d-flex justify-content-between align-items-center mb-3">
-                                        <h4>Data Quality & Completeness</h4>
-                                        <div class="spinner-border text-primary" role="status" id="quality-spinner" style="display: none;">
-                                            <span class="visually-hidden">Loading...</span>
+                                    <div class="card registry-card">
+                                        <div class="card-header card-header-er-primary d-flex justify-content-between align-items-center">
+                                            <h4 class="mb-0 card-header-er-primary-text"><i class="fas fa-check-circle me-2"></i>Data Quality &amp; Completeness</h4>
+                                            <div class="spinner-border spinner-border-sm text-white" role="status" id="quality-spinner" style="display: none;">
+                                                <span class="visually-hidden">Loading...</span>
+                                            </div>
                                         </div>
-                                    </div>
-                                    <div id="quality-content">
-                                        <!-- Content will be loaded dynamically -->
+                                        <div class="card-body" id="quality-content">
+                                            <!-- Content will be loaded dynamically -->
+                                        </div>
                                     </div>
                                 </div>
                             </div>
@@ -329,7 +330,6 @@ foreach ($markerRows as $car) {
 window.statisticsRawData = {
     // Overview data - loaded immediately
     timeline: <?= json_encode($dataService->getTimelineData()) ?>,
-    age: <?= json_encode($dataService->getAgeData()) ?>,
 
     // Basic counts for overview cards
     countriesCount: <?= count($dataService->getCountryData()) ?>,

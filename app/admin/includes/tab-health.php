@@ -111,10 +111,10 @@ try {
 
 <div class="row mb-4">
     <div class="col-md-4">
-        <div class="card border-success">
+        <div class="card border-primary">
             <div class="card-body text-center">
                 <h6><i class="fas fa-database"></i> Database Health</h6>
-                <div class="text-success mb-2">
+                <div class="text-primary mb-2">
                     <i class="fas fa-check-circle" style="font-size: 2rem;"></i>
                 </div>
                 <p class="mb-0 small">Operational</p>
@@ -156,9 +156,9 @@ try {
     </div>
 </div>
 
-<div class="card border-secondary">
-    <div class="card-header bg-secondary text-white">
-        <h5 class="mb-0"><i class="fas fa-info-circle"></i> Database Health Status</h5>
+<div class="card border-primary">
+    <div class="card-header card-header-er-primary">
+        <h5 class="mb-0 card-header-er-primary-text"><i class="fas fa-info-circle"></i> Database Health Status</h5>
     </div>
     <div class="card-body">
         <div class="table-responsive">
@@ -174,19 +174,19 @@ try {
                 <tbody>
                     <tr>
                         <td><strong>Settings Auto-Creation</strong></td>
-                        <td><span class="badge text-bg-success">Active</span></td>
+                        <td><span class="badge text-bg-primary">Active</span></td>
                         <td>All required fields present and validated</td>
                         <td><small class="text-muted">Real-time</small></td>
                     </tr>
                     <tr>
                         <td><strong>Core Tables</strong></td>
-                        <td><span class="badge text-bg-success">Healthy</span></td>
+                        <td><span class="badge text-bg-primary">Healthy</span></td>
                         <td>Users, cars, profiles, and relationships intact</td>
                         <td><small class="text-muted">System startup</small></td>
                     </tr>
                     <tr>
                         <td><strong>Migration Script Tracking</strong></td>
-                        <td><span class="badge text-bg-success">Operational</span></td>
+                        <td><span class="badge text-bg-primary">Operational</span></td>
                         <td>Migration script execution history maintained</td>
                         <td><small class="text-muted">Per execution</small></td>
                     </tr>

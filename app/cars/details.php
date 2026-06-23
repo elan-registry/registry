@@ -100,11 +100,11 @@ if (!empty($_GET)) {
             <!-- Quick Facts Summary Card -->
             <div class="row mb-4">
                 <div class="col-12">
-                    <div class="card registry-card bg-info text-white">
+                    <div class="card registry-card bg-primary text-white" style="border-top: 5px solid var(--er-accent);">
                         <div class="card-body">
                             <div class="row align-items-center">
                                 <div class="col-md-8">
-                                    <h1 class="mb-0">
+                                    <h1 class="mb-0 card-header-er-primary-text">
                                         <i class="fas fa-car me-2"></i>
                                         <?= htmlspecialchars((string)($carData->year ?? ''), ENT_QUOTES, 'UTF-8') ?> Lotus Elan <?= htmlspecialchars($carData->series ?? '', ENT_QUOTES, 'UTF-8') ?>
                                         <?= !empty($carData->variant) ? ' (' . htmlspecialchars($carData->variant, ENT_QUOTES, 'UTF-8') . ')' : '' ?>
@@ -198,10 +198,11 @@ if (!empty($_GET)) {
                                             </form>
                                     <?php
                                         }
-                                    } else {
-                                        echo "<div class='text-white-50'><i class='fas fa-sign-in-alt'></i> Log in to contact owner</div>";
-                                        echo "<input type='hidden' name='car_id' id='car_id' value='" . htmlspecialchars((string)$carData->id, ENT_QUOTES, 'UTF-8') . "' />";
-                                    }
+                                    } else { ?>
+                                        <a href="<?= htmlspecialchars($us_url_root . 'users/login.php', ENT_QUOTES, 'UTF-8') ?>" class="btn btn-outline-light btn-sm">
+                                            <i class="fas fa-sign-in-alt me-1"></i> Log in to contact owner
+                                        </a>
+                                    <?php }
                                     ?>
                                 </div>
                             </div>
@@ -211,7 +212,7 @@ if (!empty($_GET)) {
             </div>
 
             <div class="row">
-                <div class="col-lg-6 mb-4">
+                <div class="col-lg-6 mb-4 order-last order-lg-first">
                     <!-- Vehicle Information Card -->
                     <div class="card registry-card mb-4">
                         <div class="card-header">
@@ -402,7 +403,7 @@ if (!empty($_GET)) {
                     </div>
                 </div>
                 
-                <div class="col-lg-6 mb-4">
+                <div class="col-lg-6 mb-4 order-first order-lg-last">
                     <!-- Car Images -->
                     <div class="card registry-card mb-4">
                         <div class="card-header">
@@ -427,7 +428,7 @@ if (!empty($_GET)) {
                             </h3>
                         </div>
                         <div class="card-body">
-                            <div class="alert alert-info mb-3">
+                            <div class="alert alert-primary mb-3">
                                 <i class="fas fa-exclamation-triangle"></i>
                                 <strong>Note:</strong> This information has not been verified against the official Lotus archives.
                             </div>
@@ -506,7 +507,7 @@ if (!empty($_GET)) {
                         </div>
                         <div class="card-body">
                             <div class="collapse" id="historyDetails">
-                                <div class="alert alert-info mb-3">
+                                <div class="alert alert-primary mb-3">
                                     <i class="fas fa-info-circle"></i>
                                     <strong>About History:</strong> This table shows all changes made to the car's information over time.
                                     Tap any row to expand hidden columns on mobile devices.
@@ -835,7 +836,7 @@ document.addEventListener('DOMContentLoaded', function() {
 @media print {
     .btn, .breadcrumb, .card-header .row .col-md-4 { display: none !important; }
     .card { border: 1px solid #000 !important; box-shadow: none !important; }
-    .bg-primary { background-color: #0056b3 !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    .bg-primary { background-color: #00563F !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
     .text-white { color: #fff !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
     #historyDetails { display: block !important; }
     #historySummary { display: none !important; }

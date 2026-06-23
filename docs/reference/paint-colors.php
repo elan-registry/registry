@@ -17,6 +17,8 @@ declare(strict_types=1);
 require_once '../../users/init.php';
 require_once $abs_us_root . $us_url_root . 'usersc/includes/elanregistry_prep.php';
 
+use ElanRegistry\Documentation\DocumentPortalTemplate;
+
 // Security check - ensure page access is authorized
 if (!securePage($php_self)) {
     die();
@@ -143,16 +145,17 @@ function renderChip(string $chipFile, string $altText, string $basePath): string
 ?>
 <div class="page-wrapper">
     <div class="container">
+        <?= DocumentPortalTemplate::renderBreadcrumb('reference', $us_url_root, 'Paint Colors', 'fa-palette') ?>
         <!-- Page Header -->
         <div class="row">
             <div class="col-12">
                 <div class="card registry-card">
-                    <div class="card-header">
-                        <h1 class="mb-0"><i class="fas fa-palette"></i> Lotus Elan &amp; Plus 2 Paint Colors Guide</h1>
-                        <p class="text-muted">A comprehensive reference to factory paint colors from 1962 onwards</p>
+                    <div class="card-header card-header-er-primary">
+                        <h1 class="mb-0 card-header-er-primary-text"><i class="fas fa-palette"></i> Lotus Elan &amp; Plus 2 Paint Colors Guide</h1>
+                        <p class="card-header-er-primary-text">A comprehensive reference to factory paint colors from 1962 onwards</p>
                     </div>
                     <div class="card-body">
-                        <div class="alert alert-info mb-0">
+                        <div class="alert alert-primary mb-0">
                             <i class="fas fa-info-circle"></i>
                             <strong>Note:</strong> Paint chips are for illustrative purposes only. Original color charts are over 40 years old and actual shades may vary. Always obtain a physical color sample or use a professional paint matching service for restoration work.
                         </div>
@@ -165,18 +168,18 @@ function renderChip(string $chipFile, string $altText, string $basePath): string
                             <div class="row mt-4">
                                 <div class="col-12">
                                     <div class="card registry-card">
-                                        <div class="card-header bg-info text-white">
-                                            <h5 class="mb-0"><i class="fas fa-file-pdf"></i> Paint Codes PDF — Official Factory Reference</h5>
+                                        <div class="card-header card-header-er-primary">
+                                            <h5 class="mb-0 card-header-er-primary-text"><i class="fas fa-file-pdf"></i> Paint Codes PDF — Official Factory Reference</h5>
                                         </div>
                                         <div class="card-body d-flex flex-column">
                                             <p class="card-text flex-grow-1">Official factory paint codes for all Elan and Plus 2 models — downloadable PDF for offline reference.</p>
                                             <div class="mt-auto">
                                                 <a href="<?= $us_url_root ?>docs/pdf-viewer.php?subdir=reference&doc=<?= rawurlencode('All Elan and Elan Plus 2 Paint Codes.pdf') ?>"
-                                                   target="_blank" rel="noopener noreferrer" class="btn btn-outline-info mr-2">
+                                                   target="_blank" rel="noopener noreferrer" class="btn btn-outline-primary btn-sm me-2">
                                                     <i class="fas fa-eye"></i> Read Online
                                                 </a>
                                                 <a href="<?= $us_url_root ?>docs/reference/assets/<?= rawurlencode('All Elan and Elan Plus 2 Paint Codes.pdf') ?>"
-                                                   download class="btn btn-success">
+                                                   download class="btn btn-secondary btn-sm">
                                                     <i class="fas fa-download"></i> Download PDF
                                                 </a>
                                             </div>
@@ -189,13 +192,13 @@ function renderChip(string $chipFile, string $altText, string $basePath): string
         <div class="row mt-3">
             <div class="col-12">
                 <div class="card registry-card">
-                    <div class="card-body py-2">
+                    <div class="card-body py-3 d-flex flex-wrap gap-2 align-items-center">
                         <strong>Jump to:</strong>
-                        <a href="#early-colors" class="btn btn-outline-secondary btn-sm mx-1">Early Colors</a>
-                        <a href="#official-colors" class="btn btn-outline-secondary btn-sm mx-1">Official Colors (L01&ndash;L26)</a>
-                        <a href="#special-finishes" class="btn btn-outline-secondary btn-sm mx-1">Special Finishes</a>
-                        <a href="#paint-suppliers" class="btn btn-outline-secondary btn-sm mx-1">Paint Suppliers</a>
-                        <a href="#paint-codes" class="btn btn-outline-secondary btn-sm mx-1">Paint Code Reference</a>
+                        <a href="#early-colors" data-section="early-colors" class="btn btn-outline-primary rounded-pill">Early Colors</a>
+                        <a href="#official-colors" data-section="official-colors" class="btn btn-outline-primary rounded-pill">Official Colors (L01&ndash;L26)</a>
+                        <a href="#special-finishes" data-section="special-finishes" class="btn btn-outline-primary rounded-pill">Special Finishes</a>
+                        <a href="#paint-suppliers" data-section="paint-suppliers" class="btn btn-outline-primary rounded-pill">Paint Suppliers</a>
+                        <a href="#paint-codes" data-section="paint-codes" class="btn btn-outline-primary rounded-pill">Paint Code Reference</a>
                     </div>
                 </div>
             </div>
@@ -205,8 +208,8 @@ function renderChip(string $chipFile, string $altText, string $basePath): string
         <div class="row mt-4">
             <div class="col-12">
                 <div class="card registry-card">
-                    <div class="card-header">
-                        <h2 class="mb-0" id="early-colors">Early Colors (No Lotus Code)</h2>
+                    <div class="card-header card-header-er-primary">
+                        <h2 class="mb-0 card-header-er-primary-text" id="early-colors">Early Colors (No Lotus Code)</h2>
                     </div>
                     <div class="card-body">
                         <p>These colors were available on early S1 Elans from October 1962 but were never assigned a Lotus color code. They were borrowed from other British manufacturers.</p>
@@ -243,8 +246,8 @@ function renderChip(string $chipFile, string $altText, string $basePath): string
         <div class="row mt-4">
             <div class="col-12">
                 <div class="card registry-card">
-                    <div class="card-header">
-                        <h2 class="mb-0" id="official-colors">Official Lotus Colors (L01&ndash;L26)</h2>
+                    <div class="card-header card-header-er-primary">
+                        <h2 class="mb-0 card-header-er-primary-text" id="official-colors">Official Lotus Colors (L01&ndash;L26)</h2>
                     </div>
                     <div class="card-body">
                         <p>All officially coded Lotus paint colors used across the Elan and Plus 2 range.</p>
@@ -283,8 +286,8 @@ function renderChip(string $chipFile, string $altText, string $basePath): string
         <div class="row mt-4">
             <div class="col-12">
                 <div class="card registry-card">
-                    <div class="card-header">
-                        <h2 class="mb-0" id="special-finishes">Special Finishes</h2>
+                    <div class="card-header card-header-er-primary">
+                        <h2 class="mb-0 card-header-er-primary-text" id="special-finishes">Special Finishes</h2>
                     </div>
                     <div class="card-body">
                         <p>Non-body finishes used on specific components.</p>
@@ -317,14 +320,14 @@ function renderChip(string $chipFile, string $altText, string $basePath): string
         <div class="row mt-4">
             <div class="col-12">
                 <div class="card registry-card">
-                    <div class="card-header">
-                        <h2 class="mb-0" id="paint-suppliers">Paint Suppliers &amp; Matching</h2>
+                    <div class="card-header card-header-er-primary">
+                        <h2 class="mb-0 card-header-er-primary-text" id="paint-suppliers">Paint Suppliers &amp; Matching</h2>
                     </div>
                     <div class="card-body">
                         <p>The Lotus &ldquo;L&rdquo; prefix codes indicate nitro-cellulose paint. Two suppliers originally provided paint to the Lotus factory:</p>
                         <ul>
-                            <li><strong>Pinchin, Johnson</strong> &mdash; Later taken over by Courtaulds and merged into International Paint.</li>
-                            <li><strong>ICI</strong> &mdash; ICI Paints was taken over by Nexa Autocolor, which is now a brand of PPG.</li>
+                            <li><strong>Pinchin, Johnson:</strong> Later taken over by Courtaulds and merged into International Paint.</li>
+                            <li><strong>ICI:</strong> ICI Paints was taken over by Nexa Autocolor, which is now a brand of PPG.</li>
                         </ul>
                         <h4>Modern Paint Matching Services</h4>
                         <div class="table-responsive">
@@ -342,7 +345,7 @@ function renderChip(string $chipFile, string $altText, string $basePath): string
                                     </tr>
                                     <tr>
                                         <td><strong>Glasurit (BASF)</strong></td>
-                                        <td>Over 100 years in coatings. Offers Glasurit Classic Car Colors with a library of 200,000+ colors for classic car refinishing.</td>
+                                        <td>Over 100 years in coatings. Offers <a href="https://www.glasurit.com/en-int/classic-car-colors" target="_blank" rel="noopener noreferrer">Glasurit Classic Car Colors</a> with a library of 200,000+ colors for classic car refinishing.</td>
                                     </tr>
                                 </tbody>
                             </table>
@@ -356,8 +359,8 @@ function renderChip(string $chipFile, string $altText, string $basePath): string
         <div class="row mt-4">
             <div class="col-12">
                 <div class="card registry-card">
-                    <div class="card-header">
-                        <h2 class="mb-0" id="paint-codes">Paint Code Reference Table</h2>
+                    <div class="card-header card-header-er-primary">
+                        <h2 class="mb-0 card-header-er-primary-text" id="paint-codes">Paint Code Reference Table</h2>
                     </div>
                     <div class="card-body">
                         <p>Full cross-reference of Lotus codes to supplier paint codes, useful when ordering paint for restoration.</p>
@@ -395,12 +398,28 @@ function renderChip(string $chipFile, string $altText, string $basePath): string
 
 <style>
     .paint-chip {
-        max-width: 80px;
-        max-height: 80px;
+        min-width: 48px;
+        min-height: 48px;
         border: 1px solid #dee2e6;
         border-radius: 4px;
     }
 </style>
+<script nonce="<?= htmlspecialchars($userspice_nonce ?? '', ENT_QUOTES, 'UTF-8') ?>">
+(function () {
+    const tabs = document.querySelectorAll('[data-section]');
+    if (!tabs.length) return;
+    const setActive = (id) => tabs.forEach(t => t.classList.toggle('active', t.dataset.section === id));
+    if (location.hash) setActive(location.hash.slice(1));
+    const observer = new IntersectionObserver((entries) => {
+        entries.forEach(e => { if (e.isIntersecting) setActive(e.target.id); });
+    }, { rootMargin: '-20% 0px -70% 0px', threshold: 0 });
+    tabs.forEach(t => {
+        const el = document.getElementById(t.dataset.section);
+        if (el) observer.observe(el);
+    });
+    tabs.forEach(t => t.addEventListener('click', () => setActive(t.dataset.section)));
+})();
+</script>
 
 <?php
 require_once $abs_us_root . $us_url_root . 'users/includes/html_footer.php';

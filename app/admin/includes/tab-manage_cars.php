@@ -271,6 +271,11 @@ function getDataQualityReports(object $db): array {
 
 $dataQualityReports = getDataQualityReports($db);
 
+// Map 'info' severity to brand primary token for CSS classes
+$severityClass = static function (string $severity): string {
+    return $severity === 'info' ? 'primary' : $severity;
+};
+
 // Calculate severity-specific counts for car issues only
 $carCriticalIssues = 0;
 $carWarningIssues = 0;
@@ -325,21 +330,21 @@ $qualityScore = $totalCars > 0 ? max(0, 100 - (($carIssues / $totalCars) * 100))
     <?php foreach ($dataQualityReports as $key => $report) { ?>
         <?php if (in_array($key, ['owners_missing_info', 'inactive_owners', 'users_without_cars', 'duplicate_emails'])) continue; ?>
         <div class="col-lg-3 col-md-6 mb-3">
-            <div class="card border-<?= $report['severity'] ?> h-100">
+            <div class="card border-<?= $severityClass($report['severity']) ?> h-100">
                 <div class="card-body text-center">
-                    <div class="text-<?= $report['severity'] ?> mb-3">
+                    <div class="text-<?= $severityClass($report['severity']) ?> mb-3">
                         <i class="<?= $report['icon'] ?>" style="font-size: 2.5rem;"></i>
                     </div>
                     <h5 class="card-title"><?= $report['title'] ?></h5>
-                    <h3 class="text-<?= $report['severity'] ?> mb-2"><?= $report['count'] ?></h3>
+                    <h3 class="text-<?= $severityClass($report['severity']) ?> mb-2"><?= $report['count'] ?></h3>
                     <p class="card-text small text-muted"><?= $report['description'] ?></p>
                     <?php if ($report['count'] > 0) { ?>
                         <?php if ($key === 'duplicate_cars') { ?>
-                            <a href="#duplicateDetectionSection" class="btn btn-outline-<?= $report['severity'] ?> btn-sm">
+                            <a href="#duplicateDetectionSection" class="btn btn-outline-<?= $severityClass($report['severity']) ?> btn-sm">
                                 <i class="fas fa-eye"></i> View Details
                             </a>
                         <?php } else { ?>
-                            <a href="#report-<?= $key ?>" class="btn btn-outline-<?= $report['severity'] ?> btn-sm">
+                            <a href="#report-<?= $key ?>" class="btn btn-outline-<?= $severityClass($report['severity']) ?> btn-sm">
                                 <i class="fas fa-eye"></i> View Details
                             </a>
                         <?php } ?>
@@ -356,16 +361,16 @@ $qualityScore = $totalCars > 0 ? max(0, 100 - (($carIssues / $totalCars) * 100))
     <?php if ($report['count'] > 0 && !in_array($key, ['owners_missing_info', 'inactive_owners', 'users_without_cars', 'duplicate_emails', 'duplicate_cars'])) { ?>
         <div class="row mb-4" id="report-<?= $key ?>">
             <div class="col-12">
-                <div class="card border-<?= $report['severity'] ?>">
-                    <div class="card-header bg-dark" data-bs-toggle="collapse" data-bs-target="#collapse-<?= $key ?>" aria-expanded="false" style="cursor: pointer;">
+                <div class="card border-primary">
+                    <div class="card-header card-header-er-primary" data-bs-toggle="collapse" data-bs-target="#collapse-<?= $key ?>" aria-expanded="false" style="cursor: pointer;">
                         <div class="d-flex justify-content-between align-items-center">
-                            <h4 class="mb-0 text-white">
-                                <i class="<?= $report['icon'] ?> text-<?= $report['severity'] ?>"></i> <?= $report['title'] ?>
-                                <span class="badge text-bg-<?= $report['severity'] ?> ms-2"><?= $report['count'] ?></span>
+                            <h4 class="mb-0 card-header-er-primary-text">
+                                <i class="<?= $report['icon'] ?>"></i> <?= $report['title'] ?>
+                                <span class="badge text-bg-warning ms-2"><?= $report['count'] ?></span>
                             </h4>
                             <div class="d-flex align-items-center">
-                                <small class="text-light me-3">Impact: <?= $report['impact'] ?></small>
-                                <i class="fas fa-chevron-down text-light collapse-icon"></i>
+                                <small class="card-header-er-primary-text me-3">Impact: <?= $report['impact'] ?></small>
+                                <i class="fas fa-chevron-down card-header-er-primary-text collapse-icon"></i>
                             </div>
                         </div>
                     </div>
@@ -376,7 +381,7 @@ $qualityScore = $totalCars > 0 ? max(0, 100 - (($carIssues / $totalCars) * 100))
                         <?php if ($report['count'] > 0) { ?>
                             <?php if ($key === 'inactive_owners') { ?>
                                 <!-- Summary for inactive owners - no table shown -->
-                                <div class="alert alert-info">
+                                <div class="alert alert-primary">
                                     <h6 class="alert-heading"><i class="fas fa-info-circle"></i> Inactive Car Owners Summary</h6>
                                     <p class="mb-2">Found <strong><?= $report['count'] ?></strong> car owners who have not logged in for over 2 years or never logged in.</p>
                                     <p class="mb-0">These accounts may be abandoned or owners may have lost access. Consider reaching out via email to re-engage these users or verify if their cars should remain in the registry.</p>
@@ -430,7 +435,7 @@ $qualityScore = $totalCars > 0 ? max(0, 100 - (($carIssues / $totalCars) * 100))
                                                     <?php } ?>
                                                 </td>
                                                 <td>
-                                                    <button type="button" class="btn btn-sm btn-outline-success" onclick="openCarDetails(<?= $car->id ?>)" title="Edit Car Details">
+                                                    <button type="button" class="btn btn-sm btn-outline-primary" onclick="openCarDetails(<?= $car->id ?>)" title="Edit Car Details">
                                                         <i class="fas fa-edit"></i> Edit
                                                     </button>
                                                     <button type="button" class="btn btn-sm btn-outline-warning ms-1"
@@ -441,7 +446,7 @@ $qualityScore = $totalCars > 0 ? max(0, 100 - (($carIssues / $totalCars) * 100))
                                                             )" title="Contact Owner via Registry">
                                                         <i class="fas fa-envelope"></i>
                                                     </button>
-                                                    <button type="button" class="btn btn-sm btn-outline-info ms-1" data-bs-toggle="modal" data-bs-target="#chassisValidationModal">
+                                                    <button type="button" class="btn btn-sm btn-outline-primary ms-1" data-bs-toggle="modal" data-bs-target="#chassisValidationModal">
                                                         <i class="fas fa-info-circle"></i> Rules
                                                     </button>
                                                 </td>
@@ -510,7 +515,7 @@ $qualityScore = $totalCars > 0 ? max(0, 100 - (($carIssues / $totalCars) * 100))
                                                     </td>
                                                     <td>
                                                         <?php if (isset($owner->car_count)) { ?>
-                                                            <span class="badge text-bg-success"><?= $owner->car_count ?></span>
+                                                            <span class="badge text-bg-primary"><?= $owner->car_count ?></span>
                                                         <?php } else { ?>
                                                             <span class="badge text-bg-secondary">0</span>
                                                         <?php } ?>
@@ -639,7 +644,7 @@ $qualityScore = $totalCars > 0 ? max(0, 100 - (($carIssues / $totalCars) * 100))
                                                     </td>
                                                 <?php } ?>
                                                 <td>
-                                                    <button type="button" class="btn btn-sm btn-outline-success" onclick="openCarDetails(<?= $car->id ?>)" title="Edit Car Details">
+                                                    <button type="button" class="btn btn-sm btn-outline-primary" onclick="openCarDetails(<?= $car->id ?>)" title="Edit Car Details">
                                                         <i class="fas fa-edit"></i> Edit
                                                     </button>
                                                     <button type="button" class="btn btn-sm btn-outline-warning ms-1"
@@ -659,7 +664,7 @@ $qualityScore = $totalCars > 0 ? max(0, 100 - (($carIssues / $totalCars) * 100))
                             </div>
                             <?php } ?>
                         <?php } else { ?>
-                            <div class="text-center py-4 text-success">
+                            <div class="text-center py-4 text-primary">
                                 <i class="fas fa-check-circle" style="font-size: 3rem;"></i>
                                 <h5 class="mt-3">No Issues Found</h5>
                                 <p class="text-muted">All cars have proper data for this category.</p>
@@ -724,9 +729,9 @@ $qualityScore = $totalCars > 0 ? max(0, 100 - (($carIssues / $totalCars) * 100))
                         </div>
                     </div>
                     <div class="col-md-6">
-                        <div class="card border-success">
-                            <div class="card-header bg-success text-white">
-                                <h6 class="mb-0"><i class="fas fa-plus"></i> +2 Models</h6>
+                        <div class="card border-primary">
+                            <div class="card-header card-header-er-primary">
+                                <h6 class="mb-0 card-header-er-primary-text"><i class="fas fa-plus"></i> +2 Models</h6>
                             </div>
                             <div class="card-body">
                                 <p><strong>Valid codes:</strong> L, M, N only</p>
@@ -739,7 +744,7 @@ $qualityScore = $totalCars > 0 ? max(0, 100 - (($carIssues / $totalCars) * 100))
                 <!-- Examples -->
                 <div class="row mb-3">
                     <div class="col-md-6">
-                        <h6 class="text-success"><i class="fas fa-check-circle"></i> Valid Examples</h6>
+                        <h6 class="text-primary"><i class="fas fa-check-circle"></i> Valid Examples</h6>
                         <ul class="list-unstyled">
                             <li><code class="text-success">1234</code> - Pre-1970</li>
                             <li><code class="text-success">5678A</code> - 1970 Elan</li>
@@ -758,7 +763,7 @@ $qualityScore = $totalCars > 0 ? max(0, 100 - (($carIssues / $totalCars) * 100))
                     </div>
                 </div>
 
-                <div class="alert alert-info mb-0">
+                <div class="alert alert-primary mb-0">
                     <h6 class="alert-heading"><i class="fas fa-info-circle"></i> Override Option</h6>
                     <p class="mb-0">If your chassis number doesn't validate but you have historical documentation supporting it, you can use the validation override checkbox with caution.</p>
                 </div>
@@ -777,15 +782,15 @@ $qualityScore = $totalCars > 0 ? max(0, 100 - (($carIssues / $totalCars) * 100))
 <div class="modal fade" id="adminContactModal" tabindex="-1" role="dialog" aria-labelledby="adminContactModalLabel" aria-hidden="true">
     <div class="modal-dialog modal-lg" role="document">
         <div class="modal-content">
-            <div class="modal-header bg-warning text-dark">
-                <h5 class="modal-title" id="adminContactModalLabel">
+            <div class="modal-header card-header-er-primary">
+                <h5 class="modal-title card-header-er-primary-text" id="adminContactModalLabel">
                     <i class="fas fa-shield-alt"></i> Administrator Contact Owner
                 </h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
             <form id="adminContactForm" method="POST" action="<?= $us_url_root ?>app/admin/includes/process-admin-contact.php">
                 <div class="modal-body">
-                    <div class="alert alert-info">
+                    <div class="alert alert-primary">
                         <i class="fas fa-info-circle"></i> <strong>Administrator Contact:</strong>
                         This will send an email to the car owner.
                     </div>
@@ -851,7 +856,7 @@ $qualityScore = $totalCars > 0 ? max(0, 100 - (($carIssues / $totalCars) * 100))
                 </div>
                 <div class="modal-footer">
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                    <button type="submit" class="btn btn-warning">
+                    <button type="submit" class="btn btn-primary">
                         <i class="fas fa-envelope"></i> Send Administrator Message
                     </button>
                 </div>
@@ -864,23 +869,23 @@ $qualityScore = $totalCars > 0 ? max(0, 100 - (($carIssues / $totalCars) * 100))
 <?php if (isset($dataQualityReports['duplicate_cars']) && $dataQualityReports['duplicate_cars']['count'] > 0) { ?>
 <div class="row mt-4" id="duplicateDetectionSection">
     <div class="col-12">
-        <div class="card border-warning">
-            <div class="card-header bg-dark" data-bs-toggle="collapse" data-bs-target="#collapse-duplicate-detection" aria-expanded="false" style="cursor: pointer;">
+        <div class="card border-primary">
+            <div class="card-header card-header-er-primary" data-bs-toggle="collapse" data-bs-target="#collapse-duplicate-detection" aria-expanded="false" style="cursor: pointer;">
                 <div class="d-flex justify-content-between align-items-center">
-                    <h4 class="mb-0 text-white">
-                        <i class="fas fa-search text-warning"></i> Duplicate Detection & Management
+                    <h4 class="mb-0 card-header-er-primary-text">
+                        <i class="fas fa-search"></i> Duplicate Detection & Management
                         <span class="badge text-bg-warning ms-2"><?= $dataQualityReports['duplicate_cars']['count'] ?></span>
                     </h4>
                     <div class="d-flex align-items-center">
-                        <small class="text-light me-3">Impact: Medium - May indicate duplicate registrations or data entry errors</small>
-                        <i class="fas fa-chevron-down text-light collapse-icon"></i>
+                        <small class="card-header-er-primary-text me-3">Impact: Medium - May indicate duplicate registrations or data entry errors</small>
+                        <i class="fas fa-chevron-down card-header-er-primary-text collapse-icon"></i>
                     </div>
                 </div>
             </div>
             <div class="collapse" id="collapse-duplicate-detection">
                 <div class="card-body">
                 <!-- Merge Reason Explanations -->
-                <div class="alert alert-info mb-4">
+                <div class="alert alert-primary mb-4">
                     <h5 class="alert-heading"><i class="fas fa-info-circle"></i> Merge Reason Guide</h5>
                     <div class="row">
                         <div class="col-md-4 mb-3">
@@ -903,7 +908,7 @@ $qualityScore = $totalCars > 0 ? max(0, 100 - (($carIssues / $totalCars) * 100))
                         </div>
                         <div class="col-md-4 text-end">
                             <small class="text-muted">
-                                <span class="badge text-bg-success badge-sm me-1"><i class="fas fa-check"></i></span>Matching Fields
+                                <span class="badge text-bg-primary badge-sm me-1"><i class="fas fa-check"></i></span>Matching Fields
                                 <span class="badge text-bg-danger badge-sm ms-2"><i class="fas fa-exclamation-triangle"></i></span>Different Fields
                             </small>
                         </div>
@@ -928,10 +933,10 @@ $qualityScore = $totalCars > 0 ? max(0, 100 - (($carIssues / $totalCars) * 100))
                     foreach ($groupedDuplicates as $chassis => $cars) {
                         $groupIndex++;
                     ?>
-                        <div class="duplicate-group card mb-4 border-warning">
-                            <div class="card-header bg-warning bg-opacity-10 d-flex justify-content-between align-items-center">
-                                <h5 class="mb-0">
-                                    <button class="btn btn-link text-decoration-none p-0" type="button" data-bs-toggle="collapse" data-bs-target="#group<?= $groupIndex ?>" aria-expanded="true">
+                        <div class="duplicate-group card mb-3 border">
+                            <div class="card-header card-header-er-l2 d-flex justify-content-between align-items-center">
+                                <h5 class="mb-0 card-header-er-l2-text">
+                                    <button class="btn btn-link text-decoration-none p-0 card-header-er-l2-text" type="button" data-bs-toggle="collapse" data-bs-target="#group<?= $groupIndex ?>" aria-expanded="true">
                                         <i class="fas fa-chevron-down"></i>
                                         Group <?= $groupIndex ?>: <?= explode('_', $chassis)[1] ?>-<?= explode('_', $chassis)[0] ?>
                                     </button>
@@ -989,18 +994,18 @@ $qualityScore = $totalCars > 0 ? max(0, 100 - (($carIssues / $totalCars) * 100))
 
                                             <!-- Perfect Match Recommendation -->
                                             <?php if ($isPerfectMatch) { ?>
-                                                <div class="alert alert-success mb-3">
+                                                <div class="alert alert-primary mb-3">
                                                     <h6 class="alert-heading mb-2">
-                                                        <i class="fas fa-bullseye text-success"></i> Perfect Match Detected
+                                                        <i class="fas fa-bullseye text-primary"></i> Perfect Match Detected
                                                     </h6>
                                                     <p class="mb-2">
                                                         <strong>Recommendation:</strong> These cars have identical vehicle and owner information.
                                                         This appears to be a duplicate entry of the same car.
                                                     </p>
                                                     <div class="d-flex align-items-center">
-                                                        <i class="fas fa-arrow-right text-success me-2"></i>
+                                                        <i class="fas fa-arrow-right text-primary me-2"></i>
                                                         <strong>Suggested Action:</strong>
-                                                        <span class="badge text-bg-success ms-2">Merge as Duplicate</span>
+                                                        <span class="badge text-bg-primary ms-2">Merge as Duplicate</span>
                                                     </div>
                                                 </div>
                                             <?php } ?>
@@ -1015,7 +1020,7 @@ $qualityScore = $totalCars > 0 ? max(0, 100 - (($carIssues / $totalCars) * 100))
                                                             <label class="form-check-label" for="duplicate<?= $groupIndex ?>">
                                                                 <i class="fas fa-clone text-danger"></i> Duplicate Car
                                                                 <?php if ($isPerfectMatch) { ?>
-                                                                    <span class="badge text-bg-success badge-sm ms-1">Recommended</span>
+                                                                    <span class="badge text-bg-primary badge-sm ms-1">Recommended</span>
                                                                 <?php } ?>
                                                             </label>
                                                         </div>
@@ -1050,13 +1055,13 @@ $qualityScore = $totalCars > 0 ? max(0, 100 - (($carIssues / $totalCars) * 100))
                                                 ?>
                                                     <div class="col-lg-6 col-md-6 mb-3 d-flex">
                                                         <div class="card <?= $cardClass ?> w-100">
-                                                            <div class="card-header d-flex justify-content-between align-items-center">
+                                                            <div class="card-header card-header-er-l3 d-flex justify-content-between align-items-center">
                                                                 <div class="form-check">
                                                                     <input class="form-check-input car-select" type="checkbox" name="cars[]" value="<?= $car->id ?>" id="car<?= $car->id ?>">
                                                                     <label class="form-check-label" for="car<?= $car->id ?>">
-                                                                        <strong>Car #<?= $car->id ?></strong>
+                                                                        <strong class="card-header-er-l3-text">Car #<?= $car->id ?></strong>
                                                                         <?php if ($isNewer) { ?>
-                                                                            <span class="badge text-bg-success badge-sm ms-1">NEWER</span>
+                                                                            <span class="badge text-bg-primary badge-sm ms-1">NEWER</span>
                                                                         <?php } ?>
                                                                     </label>
                                                                 </div>
@@ -1066,7 +1071,7 @@ $qualityScore = $totalCars > 0 ? max(0, 100 - (($carIssues / $totalCars) * 100))
                                                             </div>
 
                                                             <!-- Prominent Date Section -->
-                                                            <div class="card-header bg-light border-top-0 pt-2 pb-2">
+                                                            <div class="card-header card-header-er-l4">
                                                                 <div class="row text-center">
                                                                     <div class="col-6">
                                                                         <div class="timestamp-info">
@@ -1090,11 +1095,11 @@ $qualityScore = $totalCars > 0 ? max(0, 100 - (($carIssues / $totalCars) * 100))
                                                             <div class="card-body">
                                                                 <div class="row">
                                                                     <div class="col-sm-6">
-                                                                        <h6 class="text-primary">Vehicle Info</h6>
+                                                                        <h6 class="card-header-er-l4-text">Vehicle Info</h6>
                                                                         <p class="mb-1 <?= $vehicleMatches['year'] ? 'field-match' : 'field-differ' ?>">
                                                                             <strong>Year:</strong>
                                                                             <span class="field-value"><?= $car->year ?></span>
-                                                                            <?= !$vehicleMatches['year'] ? '<i class="fas fa-exclamation-triangle text-warning ms-1" title="Different values"></i>' : '<i class="fas fa-check text-success ms-1" title="Values match"></i>' ?>
+                                                                            <?= !$vehicleMatches['year'] ? '<i class="fas fa-exclamation-triangle text-warning ms-1" title="Different values"></i>' : '<i class="fas fa-check text-primary ms-1" title="Values match"></i>' ?>
                                                                         </p>
                                                                         <p class="mb-1">
                                                                             <strong>Type:</strong> <?= $car->type ?>
@@ -1105,30 +1110,30 @@ $qualityScore = $totalCars > 0 ? max(0, 100 - (($carIssues / $totalCars) * 100))
                                                                         <p class="mb-1 <?= $vehicleMatches['series'] ? 'field-match' : 'field-differ' ?>">
                                                                             <strong>Series:</strong>
                                                                             <span class="field-value"><?= $car->series ?></span>
-                                                                            <?= !$vehicleMatches['series'] ? '<i class="fas fa-exclamation-triangle text-warning ms-1" title="Different values"></i>' : '<i class="fas fa-check text-success ms-1" title="Values match"></i>' ?>
+                                                                            <?= !$vehicleMatches['series'] ? '<i class="fas fa-exclamation-triangle text-warning ms-1" title="Different values"></i>' : '<i class="fas fa-check text-primary ms-1" title="Values match"></i>' ?>
                                                                         </p>
                                                                         <p class="mb-1 <?= $vehicleMatches['color'] ? 'field-match' : 'field-differ' ?>">
                                                                             <strong>Color:</strong>
                                                                             <span class="field-value"><?= $car->color ?></span>
-                                                                            <?= !$vehicleMatches['color'] ? '<i class="fas fa-exclamation-triangle text-warning ms-1" title="Different values"></i>' : '<i class="fas fa-check text-success ms-1" title="Values match"></i>' ?>
+                                                                            <?= !$vehicleMatches['color'] ? '<i class="fas fa-exclamation-triangle text-warning ms-1" title="Different values"></i>' : '<i class="fas fa-check text-primary ms-1" title="Values match"></i>' ?>
                                                                         </p>
                                                                     </div>
                                                                     <div class="col-sm-6">
-                                                                        <h6 class="text-success">Owner Info</h6>
+                                                                        <h6 class="card-header-er-l4-text">Owner Info</h6>
                                                                         <p class="mb-1 <?= $ownerMatches['fname'] && $ownerMatches['lname'] ? 'field-match' : 'field-differ' ?>">
                                                                             <strong>Owner:</strong>
                                                                             <span class="field-value"><?= $car->fname ?> <?= $car->lname ?></span>
-                                                                            <?= !($ownerMatches['fname'] && $ownerMatches['lname']) ? '<i class="fas fa-exclamation-triangle text-warning ms-1" title="Different values"></i>' : '<i class="fas fa-check text-success ms-1" title="Values match"></i>' ?>
+                                                                            <?= !($ownerMatches['fname'] && $ownerMatches['lname']) ? '<i class="fas fa-exclamation-triangle text-warning ms-1" title="Different values"></i>' : '<i class="fas fa-check text-primary ms-1" title="Values match"></i>' ?>
                                                                         </p>
                                                                         <p class="mb-1 <?= $ownerMatches['email'] ? 'field-match' : 'field-differ' ?>">
                                                                             <strong>Email:</strong>
                                                                             <span class="field-value"><?= $car->email ?></span>
-                                                                            <?= !$ownerMatches['email'] ? '<i class="fas fa-exclamation-triangle text-warning ms-1" title="Different values"></i>' : '<i class="fas fa-check text-success ms-1" title="Values match"></i>' ?>
+                                                                            <?= !$ownerMatches['email'] ? '<i class="fas fa-exclamation-triangle text-warning ms-1" title="Different values"></i>' : '<i class="fas fa-check text-primary ms-1" title="Values match"></i>' ?>
                                                                         </p>
                                                                         <p class="mb-1 <?= $ownerMatches['city'] && $ownerMatches['state'] && $ownerMatches['country'] ? 'field-match' : 'field-differ' ?>">
                                                                             <strong>Location:</strong>
                                                                             <span class="field-value"><?= $car->city ?>, <?= $car->state ?> <?= $car->country ?></span>
-                                                                            <?= !($ownerMatches['city'] && $ownerMatches['state'] && $ownerMatches['country']) ? '<i class="fas fa-exclamation-triangle text-warning ms-1" title="Different values"></i>' : '<i class="fas fa-check text-success ms-1" title="Values match"></i>' ?>
+                                                                            <?= !($ownerMatches['city'] && $ownerMatches['state'] && $ownerMatches['country']) ? '<i class="fas fa-exclamation-triangle text-warning ms-1" title="Different values"></i>' : '<i class="fas fa-check text-primary ms-1" title="Values match"></i>' ?>
                                                                         </p>
                                                                     </div>
                                                                 </div>
@@ -1186,16 +1191,16 @@ $qualityScore = $totalCars > 0 ? max(0, 100 - (($carIssues / $totalCars) * 100))
 }
 
 .car-comparison-card.selected {
-    border: 2px solid #007bff;
-    background-color: #f8f9ff;
+    border: 2px solid var(--er-primary);
+    background-color: rgba(var(--er-primary-rgb), 0.03);
 }
 
 .car-comparison-card.newer-car {
-    border-left: 4px solid #28a745;
+    border-left: 4px solid var(--er-primary);
 }
 
 .car-comparison-card.newer-car .card-header {
-    background-color: rgba(40, 167, 69, 0.05);
+    background-color: rgba(var(--er-primary-rgb), 0.04);
 }
 
 .duplicate-group {
@@ -1210,7 +1215,7 @@ $qualityScore = $totalCars > 0 ? max(0, 100 - (($carIssues / $totalCars) * 100))
 .timestamp-label {
     font-size: 0.75rem;
     font-weight: 600;
-    color: #6c757d;
+    color: var(--er-neutral);
     text-transform: uppercase;
     margin-bottom: 2px;
 }
@@ -1218,27 +1223,27 @@ $qualityScore = $totalCars > 0 ? max(0, 100 - (($carIssues / $totalCars) * 100))
 .timestamp-value {
     font-size: 0.9rem;
     font-weight: 600;
-    color: #495057;
+    color: var(--er-neutral-dark);
     margin-bottom: 1px;
 }
 
 .timestamp-time {
     font-size: 0.7rem;
-    color: #868e96;
+    color: var(--er-neutral);
 }
 
 /* Field comparison highlighting */
 .field-match {
-    background-color: rgba(40, 167, 69, 0.1);
-    border-left: 3px solid #28a745;
+    background-color: rgba(var(--er-primary-rgb), 0.08);
+    border-left: 3px solid var(--er-primary);
     padding: 4px 8px;
     margin: 2px 0;
     border-radius: 4px;
 }
 
 .field-differ {
-    background-color: rgba(220, 53, 69, 0.1);
-    border-left: 3px solid #dc3545;
+    background-color: rgba(var(--er-danger-rgb), 0.08);
+    border-left: 3px solid var(--er-danger);
     padding: 4px 8px;
     margin: 2px 0;
     border-radius: 4px;
@@ -1246,12 +1251,12 @@ $qualityScore = $totalCars > 0 ? max(0, 100 - (($carIssues / $totalCars) * 100))
 
 .field-match .field-value {
     font-weight: 500;
-    color: #155724;
+    color: var(--er-primary);
 }
 
 .field-differ .field-value {
     font-weight: 500;
-    color: #721c24;
+    color: var(--er-danger);
 }
 
 .field-match i.fa-check {
@@ -1267,11 +1272,11 @@ $qualityScore = $totalCars > 0 ? max(0, 100 - (($carIssues / $totalCars) * 100))
 }
 
 .form-validation input.is-invalid {
-    border-color: #dc3545;
+    border-color: var(--er-danger);
 }
 
 .form-validation input.is-valid {
-    border-color: #28a745;
+    border-color: var(--er-primary);
 }
 
 .badge-lg {

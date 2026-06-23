@@ -3,7 +3,8 @@
     "description": "Lotus Elan Registry",
     "type": "project",
     "require": {
-        "php": ">=8.2.29"
+        "php": ">=8.2.29",
+        "league/commonmark": "^2.8"
     },
     "authors": [
         {

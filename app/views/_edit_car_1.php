@@ -33,7 +33,7 @@
                         <option value="1973">1973</option>
                         <option value="1974">1974</option>
                     </select>
-                    <span class='input-group-text'><i id="year_icon" aria-hidden='true' class="fas fa-thumbs-down"></i></span>
+                    <span class='input-group-text'><i id="year_icon" aria-hidden='true' class="fas"></i></span>
                 </div>
             </div>
         </div>
@@ -47,7 +47,7 @@
                     <select disabled class="form-select" name="model" id="model">
                         <option value="">--Please Select Model--</option>
                     </select>
-                    <span class='input-group-text'><i id="model_icon" aria-hidden='true' class="fas fa-thumbs-down "></i></span>
+                    <span class='input-group-text'><i id="model_icon" aria-hidden='true' class="fas"></i></span>
                 </div>
             </div>
         </div>
@@ -60,7 +60,7 @@
                 <div class="input-group">
                     <span class="input-group-text"><i aria-hidden="true" class="fas fa-barcode"></i></span>
                     <input data-lpignore="true" disabled class="form-control" type="text" name="chassis" id="chassis" placeholder="<?= htmlspecialchars($carprompt['chassis'], ENT_QUOTES, 'UTF-8') ?>" value="<?= htmlspecialchars((string)($cardetails['chassis'] ?? ''), ENT_QUOTES, 'UTF-8') ?>" />
-                    <span class='input-group-text'><i id="chassis_icon" aria-hidden='true' class="fas fa-thumbs-down "></i></span>
+                    <span class='input-group-text'><i id="chassis_icon" aria-hidden='true' class="fas"></i></span>
                 </div>
 
 

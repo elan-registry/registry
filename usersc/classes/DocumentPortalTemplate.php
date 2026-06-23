@@ -25,10 +25,26 @@ class DocumentPortalTemplate
     private const REQUIRED_LINK_KEYS = ['label', 'url'];
 
     private const DEFAULT_CARD_CLASS   = 'registry-card h-100';
-    private const DEFAULT_HEADER_CLASS = 'bg-info text-white';
-    private const DEFAULT_BUTTON_CLASS = 'btn-info btn-sm';
-    private const DEFAULT_BTN_CLASS    = 'btn-outline-info';
+    private const DEFAULT_HEADER_CLASS = 'card-header-er-primary';
+    private const DEFAULT_BUTTON_CLASS = 'btn-primary btn-sm';
+    private const DEFAULT_BTN_CLASS    = 'btn-outline-primary';
     private const DEFAULT_COL_CLASS    = 'col-lg-4';
+
+    /**
+     * Section map for renderBreadcrumb().
+     * Each entry: label, icon (FA class without 'fas '), url (relative to $urlRoot,
+     * empty = section is never rendered as a linked parent crumb), and parents array.
+     *
+     * @var array<string, array{label: string, icon: string, url: string, parents: list<array{icon: string, text: string, url: string}>}>
+     */
+    private const BREADCRUMB_SECTIONS = [
+        'list_cars'  => ['label' => 'Cars',         'icon' => 'fa-car',            'url' => 'app/cars/index.php',   'parents' => []],
+        'add_car'    => ['label' => 'Add Car',       'icon' => 'fa-plus',           'url' => '',                     'parents' => [['icon' => 'fa-car', 'text' => 'Cars', 'url' => 'app/cars/index.php']]],
+        'statistics' => ['label' => 'Statistics',    'icon' => 'fa-pie-chart',      'url' => '',                     'parents' => []],
+        'reference'  => ['label' => 'Reference',     'icon' => 'fa-book',           'url' => 'docs/reference/',      'parents' => []],
+        'stories'    => ['label' => 'Car Stories',   'icon' => 'fa-book-open',      'url' => 'docs/car-stories.php', 'parents' => []],
+        'guides'     => ['label' => 'Owner Guides',  'icon' => 'fa-question-circle','url' => 'docs/guides/index.php','parents' => []],
+    ];
 
     /**
      * Render the portal heading card (page title + description).
@@ -49,9 +65,11 @@ class DocumentPortalTemplate
 
         $title       = htmlspecialchars($config['title'], ENT_QUOTES, 'UTF-8');
         $description = htmlspecialchars($config['description'], ENT_QUOTES, 'UTF-8');
-        $headerClass = isset($config['headerClass'])
-            ? ' ' . htmlspecialchars($config['headerClass'], ENT_QUOTES, 'UTF-8')
-            : '';
+        $headerClass = ' ' . htmlspecialchars(
+            $config['headerClass'] ?? self::DEFAULT_HEADER_CLASS,
+            ENT_QUOTES,
+            'UTF-8'
+        );
 
         $hasLeadText = isset($config['leadText']) && $config['leadText'] !== '';
         $isAdmin     = !empty($config['isAdmin']);
@@ -60,8 +78,8 @@ class DocumentPortalTemplate
         $html .= "<div class='col-12'>";
         $html .= "<div class='card registry-card'>";
         $html .= "<div class='card-header{$headerClass}'>";
-        $html .= "<h1 class='mb-0'>" . self::renderIcon($config['titleIcon'] ?? '') . "{$title}</h1>";
-        $html .= "<p class='text-muted mb-0'>{$description}</p>";
+        $html .= "<h1 class='mb-0 card-header-er-primary-text'>" . self::renderIcon($config['titleIcon'] ?? '') . "{$title}</h1>";
+        $html .= "<p class='card-header-er-primary-text mb-0'>{$description}</p>";
         $html .= "</div>";
 
         if ($hasLeadText || $isAdmin) {
@@ -129,7 +147,7 @@ class DocumentPortalTemplate
 
         $html  = "<div class='card {$cardClass}'>";
         $html .= "<div class='card-header {$headerClass}'{$headerStyleAttr}>";
-        $html .= "<h5 class='mb-0'><i class='fas {$icon}'></i> {$title}</h5>";
+        $html .= "<h5 class='mb-0 card-header-er-primary-text'><i class='fas {$icon}'></i> {$title}</h5>";
         $html .= "</div>";
 
         if (isset($card['cardImage']) && $card['cardImage'] !== '') {
@@ -263,6 +281,97 @@ class DocumentPortalTemplate
         }
 
         $html .= "</div>";
+        $html .= "</div>";
+
+        return $html;
+    }
+
+    /**
+     * Render a breadcrumb from a pre-built array of crumb items.
+     *
+     * Accepts the format returned by DocumentConfig::getBreadcrumb():
+     *   - Link crumb:   ['url' => '...', 'icon' => 'fas fa-home', 'text' => '...']
+     *   - Active crumb: ['active' => true, 'text' => '...']
+     *
+     * @param list<array{url?: string, icon?: string, text: string, active?: bool}> $items
+     */
+    public static function renderBreadcrumbFromItems(array $items): string
+    {
+        $html  = "<div class='mb-3'>";
+        $html .= "<nav aria-label='breadcrumb'>";
+        $html .= "<ol class='breadcrumb'>";
+
+        foreach ($items as $item) {
+            $text = htmlspecialchars($item['text'], ENT_QUOTES, 'UTF-8');
+            if (!empty($item['active'])) {
+                $html .= "<li class='breadcrumb-item active text-muted' aria-current='page'>{$text}</li>";
+            } else {
+                $url  = htmlspecialchars($item['url'] ?? '', ENT_QUOTES, 'UTF-8');
+                $icon = isset($item['icon']) && $item['icon'] !== ''
+                    ? "<i class='" . htmlspecialchars($item['icon'], ENT_QUOTES, 'UTF-8') . "'></i> "
+                    : '';
+                $html .= "<li class='breadcrumb-item'><a href='{$url}' class='text-primary'>{$icon}{$text}</a></li>";
+            }
+        }
+
+        $html .= "</ol>";
+        $html .= "</nav>";
+        $html .= "</div>";
+
+        return $html;
+    }
+
+    /**
+     * Render a breadcrumb navigation row for a page, derived from its nav section.
+     *
+     * Pages declare their section key and (optionally) their own title and icon;
+     * the parent-chain crumbs are resolved automatically from the section map.
+     *
+     * @param string $section   Nav section key — must be a key in BREADCRUMB_SECTIONS;
+     *                          an unrecognized key renders only the Home crumb
+     * @param string $urlRoot   Value of $us_url_root
+     * @param string $pageTitle Active crumb label; when empty the section label is active
+     * @param string $pageIcon  FA icon class for the active crumb (e.g. 'fa-search')
+     */
+    public static function renderBreadcrumb(
+        string $section,
+        string $urlRoot,
+        string $pageTitle = '',
+        string $pageIcon  = ''
+    ): string {
+        $def  = self::BREADCRUMB_SECTIONS[$section] ?? null;
+        $root = htmlspecialchars($urlRoot, ENT_QUOTES, 'UTF-8');
+
+        $html  = "<div class='mb-3'>";
+        $html .= "<nav aria-label='breadcrumb'>";
+        $html .= "<ol class='breadcrumb'>";
+        $html .= "<li class='breadcrumb-item'><a href='{$root}' class='text-primary'><i class='fas fa-home'></i> Home</a></li>";
+
+        if ($def !== null) {
+            foreach ($def['parents'] as $parent) {
+                $pUrl  = htmlspecialchars($root . $parent['url'], ENT_QUOTES, 'UTF-8');
+                $pIcon = htmlspecialchars($parent['icon'], ENT_QUOTES, 'UTF-8');
+                $pText = htmlspecialchars($parent['text'], ENT_QUOTES, 'UTF-8');
+                $html .= "<li class='breadcrumb-item'><a href='{$pUrl}' class='text-primary'><i class='fas {$pIcon}'></i> {$pText}</a></li>";
+            }
+
+            $secLabel = htmlspecialchars($def['label'], ENT_QUOTES, 'UTF-8');
+            $secIcon  = htmlspecialchars($def['icon'],  ENT_QUOTES, 'UTF-8');
+
+            if ($pageTitle === '') {
+                $html .= "<li class='breadcrumb-item active text-muted' aria-current='page'><i class='fas {$secIcon}'></i> {$secLabel}</li>";
+            } else {
+                if ($def['url'] !== '') {
+                    $secUrl = htmlspecialchars($root . $def['url'], ENT_QUOTES, 'UTF-8');
+                    $html  .= "<li class='breadcrumb-item'><a href='{$secUrl}' class='text-primary'><i class='fas {$secIcon}'></i> {$secLabel}</a></li>";
+                }
+                $activeIcon  = $pageIcon !== '' ? "<i class='fas " . htmlspecialchars($pageIcon, ENT_QUOTES, 'UTF-8') . "'></i> " : '';
+                $html       .= "<li class='breadcrumb-item active text-muted' aria-current='page'>{$activeIcon}" . htmlspecialchars($pageTitle, ENT_QUOTES, 'UTF-8') . "</li>";
+            }
+        }
+
+        $html .= "</ol>";
+        $html .= "</nav>";
         $html .= "</div>";
 
         return $html;

@@ -11,8 +11,8 @@ matching the join flow in _join.php.
   <div class="row justify-content-center">
     <div class="col-12 col-md-6 col-lg-4">
       <div class="card registry-card">
-        <div class="card-header">
-          <h2 class="mb-0"><i class="fas fa-key"></i> <strong><?= lang("PW_RESET"); ?></strong></h2>
+        <div class="card-header card-header-er-primary">
+          <h2 class="mb-0 card-header-er-primary-text"><i class="fas fa-key"></i> <strong><?= lang("PW_RESET"); ?></strong></h2>
         </div>
         <div class="card-body">
           <?php if (!empty($errors)) { display_errors($errors); } ?>

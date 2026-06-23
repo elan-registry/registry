@@ -16,6 +16,8 @@ declare(strict_types=1);
 require_once '../../users/init.php';
 require_once $abs_us_root . $us_url_root . 'usersc/includes/elanregistry_prep.php';
 
+use ElanRegistry\Documentation\DocumentPortalTemplate;
+
 if (!securePage($php_self)) {
     die();
 }
@@ -54,8 +56,6 @@ $cardetails['image']        = null;
 $carprompt['chassis']       = 'Enter Chassis Number';
 $carprompt['color']         = 'Enter the current color of the car';
 $carprompt['engine']        = 'Enter Engine number - LPAxxxxx';
-$carprompt['purchasedate']  = 'YYYY-MM-DD';
-$carprompt['solddate']      = 'YYYY-MM-DD';
 $carprompt['comments']      = 'Please give a brief history of your car and anything special';
 $carprompt['website']       = 'Website URL';
 
@@ -142,6 +142,7 @@ function updateCarDetails(array &$car): void
 <div class="page-wrapper">
     <div class="container-fluid">
         <div class="page-container">
+            <?= DocumentPortalTemplate::renderBreadcrumb('add_car', $us_url_root, $action === 'addCar' ? '' : 'Edit Car', $action === 'addCar' ? '' : 'fa-edit') ?>
             <div class="row justify-content-center">
                 <div class="col-xl-10 col-lg-11 col-md-12">
             <?php
@@ -191,7 +192,7 @@ function updateCarDetails(array &$car): void
     <div class="modal-dialog modal-lg" role="document">
         <div class="modal-content">
             <div class="modal-header bg-primary text-white">
-                <h5 class="modal-title" id="chassisValidationModalLabel">
+                <h5 class="modal-title card-header-er-primary-text" id="chassisValidationModalLabel">
                     <i class="fas fa-barcode"></i> Chassis Validation Rules - Quick Reference
                 </h5>
                 <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
@@ -201,7 +202,7 @@ function updateCarDetails(array &$car): void
                 <div class="row mb-4">
                     <div class="col-md-4">
                         <div class="text-center p-3 border rounded bg-light">
-                            <h6 class="text-primary mb-2">Pre-1970 (1963-1969)</h6>
+                            <h6 class="text-primary mb-2">1963–1969</h6>
                             <code class="d-block mb-2">1234</code>
                             <small class="text-muted">4 digits only</small>
                         </div>
@@ -216,7 +217,7 @@ function updateCarDetails(array &$car): void
                     </div>
                     <div class="col-md-4">
                         <div class="text-center p-3 border rounded bg-light">
-                            <h6 class="text-success mb-2">Post-1970 (1971-1974)</h6>
+                            <h6 class="text-success mb-2">1971–1974</h6>
                             <code class="d-block mb-2">7301019999B</code>
                             <small class="text-muted">11 characters YYMMBBXXXXC</small>
                         </div>
@@ -228,11 +229,11 @@ function updateCarDetails(array &$car): void
                     <div class="col-md-6">
                         <div class="card border-primary">
                             <div class="card-header bg-primary text-white">
-                                <h6 class="mb-0"><i class="fas fa-car-side"></i> Elan Models</h6>
+                                <h6 class="mb-0 card-header-er-primary-text"><i class="fas fa-car-side"></i> Elan Models</h6>
                             </div>
                             <div class="card-body">
                                 <p><strong>Valid codes:</strong> A, B, C, D, E, F, G, H, J, K</p>
-                                <p class="text-danger mb-0"><strong>Invalid:</strong> I (never used)</p>
+                                <p class="text-danger mb-0"><strong>Invalid:</strong> I — not used</p>
                             </div>
                         </div>
                     </div>
@@ -271,7 +272,7 @@ function updateCarDetails(array &$car): void
                     </div>
                 </div>
 
-                <div class="alert alert-info mb-0">
+                <div class="alert alert-primary mb-0">
                     <h6 class="alert-heading"><i class="fas fa-info-circle"></i> Override Option</h6>
                     <p class="mb-0">If your chassis number doesn't validate but you have historical documentation supporting it, you can use the validation override checkbox with caution.</p>
                 </div>
@@ -321,7 +322,7 @@ function updateCarDetails(array &$car): void
             <div class="modal-body">
                 <p>Are you sure you want to request ownership transfer for this chassis number?</p>
 
-                <div class="alert alert-info mb-3">
+                <div class="alert alert-primary mb-3">
                     <small><i class="fas fa-info-circle"></i> The current owner and Registry Administrators will be notified of your request.</small>
                 </div>
 
@@ -421,8 +422,6 @@ require_once $abs_us_root . $us_url_root . 'users/includes/html_footer.php'; //c
 <script src="<?=$us_url_root?>usersc/js/filepond-plugin-image-transform.min.js"></script>
 <link rel="stylesheet" href="<?=$us_url_root?>usersc/css/filepond.min.css">
 <link rel="stylesheet" href="<?=$us_url_root?>usersc/css/filepond-plugin-image-preview.min.css">
-<script src="<?=$us_url_root?>usersc/js/flatpickr.min.js"></script>
-<link rel="stylesheet" href="<?=$us_url_root?>usersc/css/flatpickr.min.css">
 
 <!-- Dynamic model loading from database -->
 <script src='<?= $us_url_root ?>app/assets/js/model-loader.min.js'></script>
@@ -432,8 +431,6 @@ require_once $abs_us_root . $us_url_root . 'users/includes/html_footer.php'; //c
     const car_id = $('#car_id').val();
 
     $(document).ready(function() {
-        flatpickr('#purchasedate', { dateFormat: 'Y-m-d', allowInput: true });
-        const solddatePicker = flatpickr('#solddate', { dateFormat: 'Y-m-d', allowInput: true });
         const solddateRow = document.getElementById('solddate-row');
         const solddateInput = document.getElementById('solddate');
 
@@ -441,11 +438,11 @@ require_once $abs_us_root . $us_url_root . 'users/includes/html_footer.php'; //c
             if (this.checked) {
                 solddateRow.classList.remove('d-none');
                 if (!solddateInput.value) {
-                    solddatePicker.setDate(new Date());
+                    solddateInput.value = new Date().toISOString().split('T')[0];
                 }
             } else {
                 solddateRow.classList.add('d-none');
-                solddatePicker.clear();
+                solddateInput.value = '';
             }
         });
 
@@ -474,7 +471,7 @@ require_once $abs_us_root . $us_url_root . 'users/includes/html_footer.php'; //c
             imageResizeMode: 'downscale',
             credits: false,
             labelIdle: 'Drop photos here or <span class="filepond--label-action">Browse</span>',
-            labelFileTypeNotAllowed: 'Invalid file type — only images are allowed',
+            labelFileTypeNotAllowed: 'Invalid file type. Only images are allowed.',
             fileValidateTypeLabelExpectedTypes: 'Expects {allTypes}',
             labelMaxFileSizeExceeded: 'Photo is too large',
             labelMaxFileSize: 'Maximum size is {filesize}',

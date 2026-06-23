@@ -623,7 +623,7 @@ $dest = $_SESSION[$currentSessionName . '_login_dest'] ?? '';
             status.textContent = message;
             status.style.display = 'block';
 
-            status.classList.remove('alert-info', 'alert-success', 'alert-danger', 'alert-warning');
+            status.classList.remove('alert-primary', 'alert-success', 'alert-danger', 'alert-warning');
 
             switch (type) {
                 case 'success':
@@ -636,7 +636,7 @@ $dest = $_SESSION[$currentSessionName . '_login_dest'] ?? '';
                     status.classList.add('alert-warning');
                     break;
                 default:
-                    status.classList.add('alert-info');
+                    status.classList.add('alert-primary');
             }
         }
 

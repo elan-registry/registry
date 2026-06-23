@@ -8,6 +8,7 @@ working with code in this repository.
 **Essential reading:**
 
 - `CLAUDE.md` (this file) - Overview and quick reference
+- `docs/development/UI_STANDARDS.md` - **UI component standards** (color tokens, card hierarchy, component patterns) — read before any UI change
 - `docs/development/EMAIL_SYSTEM.md` - Brevo email plugin setup and configuration
 - `docs/development/CODING_STANDARDS.md` - Code quality requirements
 - `docs/development/QUICK_REFERENCE.md` - Common tasks lookup
@@ -19,6 +20,16 @@ working with code in this repository.
 - [GitHub Wiki: Architecture Guide](https://github.com/unibrain1/elanregistry/wiki/Elan-Registry-Architecture-and-Database-Design) - System architecture and patterns
 - `docs/development/DATABASE.md` - Database schema and relationships
 - [GitHub Wiki: UserSpice Integration Guide](https://github.com/unibrain1/elanregistry/wiki/Customization-and-Integration-Patterns) - UserSpice integration
+
+**UserSpice context (AI Prompts plugin):** Before any UserSpice task, read the
+shipped prompts starting at:
+`usersc/plugins/ai_prompts/prompts/00_start_here.md.php`
+Then load ElanRegistry-specific augmentation from `custom_prompts/`:
+
+- `elanregistry_overrides` — four places ElanRegistry diverges from standard UserSpice
+- `elanregistry_classes` — Car, ElanRegistryOwner, ApiResponse, LogCategories, and others
+- `elanregistry_directories` — `app/` subtree, `$path` in `z_us_root.php`, parsers location
+- `elanregistry_database` — DB Explainer workflow and ElanRegistry-specific tables
 
 **As needed:** See [docs/README.md](docs/README.md) for the complete documentation
 index (error handling, classes, DataTables, CSS, testing, UserSpice functions,

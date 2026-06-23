@@ -5,6 +5,10 @@
 # Claude Code / AI tooling
 .claude/
 
+# UserSpice AI dev plugins (dev tooling only — not needed on server)
+usersc/plugins/ai_prompts/
+usersc/plugins/db_explainer/
+
 # GitHub (CI workflows, issue templates, bot configs)
 .github/
 .imgbotconfig

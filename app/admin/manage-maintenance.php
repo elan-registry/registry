@@ -96,25 +96,31 @@ try {
             <!-- Page Header -->
             <div class="row mb-4">
                 <div class="col-12">
-                    <div class="d-sm-flex align-items-center justify-content-between">
+                    <div class="d-sm-flex align-items-center justify-content-between flex-wrap gap-3">
                         <div>
                             <h1 class="h2 mb-2 text-gray-800">
                                 <i class="fas fa-tools"></i> Registry Maintenance
                             </h1>
                             <p class="text-muted mb-0">System maintenance, database operations, and registry settings</p>
                         </div>
-                        <div class="text-end">
-                            <div class="mb-2">
-                                <span class="badge text-bg-success badge-lg">
+                        <div>
+                            <div class="d-flex gap-3 flex-wrap mb-2">
+                                <div class="er-stat-tile">
+                                    <div class="er-stat-number"><?= number_format($systemStatus['total_cars']) ?></div>
+                                    <div class="er-stat-label">Total Cars</div>
+                                </div>
+                                <div class="er-stat-tile">
+                                    <div class="er-stat-number"><?= number_format($systemStatus['total_users']) ?></div>
+                                    <div class="er-stat-label">Total Users</div>
+                                </div>
+                            </div>
+                            <div class="text-end">
+                                <span class="badge text-bg-primary badge-lg me-2">
                                     <i class="fas fa-check-circle"></i> System Operational
                                 </span>
-                            </div>
-                            <div>
                                 <small class="text-muted">
-                                    <i class="fas fa-database"></i> <?= number_format($systemStatus['total_cars']) ?> cars &nbsp;
-                                    <i class="fas fa-users"></i> <?= number_format($systemStatus['total_users']) ?> users
-                                    <br><i class="fas fa-clock"></i> Updated: <?= date('M j, Y g:i A', strtotime($systemStatus['last_updated'])) ?>
-                                    <br><i class="fas fa-code-branch"></i> <?= htmlspecialchars(ApplicationVersion::get()) ?>
+                                    <i class="fas fa-clock"></i> <?= date('M j, Y g:i A', strtotime($systemStatus['last_updated'])) ?>
+                                    &nbsp;<i class="fas fa-code-branch"></i> <?= htmlspecialchars(ApplicationVersion::get()) ?>
                                 </small>
                             </div>
                         </div>

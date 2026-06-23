@@ -28,8 +28,8 @@ $storyCards = [
         'url'          => $storiesBase . 'SGO_2F/index.php',
         'buttonText'   => 'Read Story',
         'buttonIcon'   => 'fa-book-open',
-        'headerClass'  => 'bg-info text-white',
-        'buttonClass'  => 'btn-info btn-sm',
+        'headerClass'  => 'card-header-er-primary',
+        'buttonClass'  => 'btn-primary btn-sm',
         'description'  => 'A detailed history of this remarkable Elan.',
         'metadata'     => 'Registry ID: 50/0164',
         'cardImage'    => $storiesBase . 'SGO_2F/photos/SGO_2F_Nepal_Orange.jpg',
@@ -41,8 +41,8 @@ $storyCards = [
         'url'          => $storiesBase . 'brian_walton/index.php',
         'buttonText'   => 'Read Story',
         'buttonIcon'   => 'fa-book-open',
-        'headerClass'  => 'bg-success text-white',
-        'buttonClass'  => 'btn-success btn-sm',
+        'headerClass'  => 'card-header-er-primary',
+        'buttonClass'  => 'btn-primary btn-sm',
         'description'  => "The fascinating story of Brian Walton's rally-prepared Elan.",
         'metadata'     => 'Registry ID: 36/6086',
         'cardImage'    => $storiesBase . 'brian_walton/brian_walton_s3rally_1.jpg',
@@ -54,8 +54,8 @@ $storyCards = [
         'url'          => $us_url_root . 'docs/pdf-viewer.php?subdir=stories&doc=' . rawurlencode('Mag _issue_50_p12-15_Barry-Shapecraft.pdf'),
         'buttonText'   => 'Read Article',
         'buttonIcon'   => 'fa-book-open',
-        'headerClass'  => 'bg-info text-white',
-        'buttonClass'  => 'btn-info btn-sm',
+        'headerClass'  => 'card-header-er-primary',
+        'buttonClass'  => 'btn-primary btn-sm',
         'description'  => 'Featured in Historic Lotus Racing Magazine, No. 50, Spring 2022.',
         'metadata'     => 'Registry ID: 26/4992',
         'cardImage'    => $us_url_root . 'docs/stories/assets/' . rawurlencode('Mag _issue_50_p12-15_Barry-Shapecraft.png'),
@@ -63,31 +63,10 @@ $storyCards = [
     ],
 ];
 
-$archiveCards = [
-    [
-        'title'       => 'Type26Register.com Archive',
-        'icon'        => 'fa-history',
-        'url'         => $storiesBase . 'type26register.php',
-        'buttonText'  => 'Browse Archive',
-        'buttonIcon'  => 'fa-folder-open',
-        'headerClass' => 'bg-dark text-white',
-        'buttonClass' => 'btn-dark btn-sm',
-        'description' => 'An incomplete archive of type26register.com retrieved from the Wayback Machine, preserving valuable historical information about Type 26 Elans as of July 2010.',
-    ],
-];
-
-?>
-<div class="page-wrapper">
-    <div class="container">
-        <?= DocumentPortalTemplate::renderPortalHeader([
-            'title'       => 'Car Stories',
-            'titleIcon'   => 'fa-book-open',
-            'description' => 'Individual car histories, owner stories, and community articles',
-        ]) ?>
-
-        <div class="row mt-4">
+$shareYourStory = static function (string $alertVariant, string $rowClasses = 'mt-4') use ($us_url_root): void { ?>
+        <div class="row <?= $rowClasses ?>">
             <div class="col-12">
-                <div class="alert alert-success">
+                <div class="alert alert-<?= $alertVariant ?>">
                     <i class="fas fa-pen-alt"></i>
                     <strong>Share Your Story:</strong>
                     Have a story about your Elan? We'd love to feature it here!
@@ -96,11 +75,22 @@ $archiveCards = [
                 </div>
             </div>
         </div>
+<?php };
+?>
+<div class="page-wrapper">
+    <div class="container">
+        <?= DocumentPortalTemplate::renderBreadcrumb('stories', $us_url_root) ?>
+        <?= DocumentPortalTemplate::renderPortalHeader([
+            'title'       => 'Car Stories',
+            'titleIcon'   => 'fa-book-open',
+            'description' => 'Individual car histories, owner stories, and community articles',
+        ]) ?>
+
+        <?php $shareYourStory('warning') ?>
 
         <?= DocumentPortalTemplate::renderDocumentCardGrid($storyCards) ?>
 
-        <?= DocumentPortalTemplate::renderSectionHeading('fa-archive', 'Historical Archives') ?>
-        <?= DocumentPortalTemplate::renderDocumentCardGrid($archiveCards, 'col-lg-6') ?>
+        <?php $shareYourStory('warning') ?>
 
     </div>
 </div>
