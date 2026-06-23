@@ -34,6 +34,12 @@
   Email color token → hex mapping and template structure moved to Color Preview
   (Admin → Color Preview → section 13) with corrected current brand colors.
 
+## Maintenance
+
+- **Image optimization** ([PR #910](https://github.com/unibrain1/elanregistry/pull/910)):
+  12 site images compressed via ImgBot — ~9% overall reduction (4.8 MB → 4.4 MB).
+
 ## Issues Resolved
 
 - [#911](https://github.com/unibrain1/elanregistry/issues/911) — Convert markdown guides and privacy policy to static HTML
+- [PR #910](https://github.com/unibrain1/elanregistry/pull/910) — Optimize images (~9% reduction across 12 files)
