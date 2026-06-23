@@ -26,6 +26,12 @@
   v2.24.0 broke them due to a missing server-side PHP dependency. Both are now
   self-contained static pages with no runtime dependencies.
 
+### Removed
+
+- **How to Add Your Car guide and Car Transfer User Guide** ([#911](https://github.com/unibrain1/elanregistry/issues/911)):
+  These two guides have been retired. The add-car workflow is self-explanatory
+  via the in-app form; transfer questions are covered by the Transfer FAQ.
+
 ## Admin-Facing Changes
 
 ### Improvements
