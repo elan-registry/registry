@@ -289,7 +289,7 @@ class DocumentPortalTemplate
     /**
      * Render a breadcrumb from a pre-built array of crumb items.
      *
-     * Accepts the format returned by DocumentConfig::getBreadcrumb():
+     * Accepts a pre-built breadcrumb item array:
      *   - Link crumb:   ['url' => '...', 'icon' => 'fas fa-home', 'text' => '...']
      *   - Active crumb: ['active' => true, 'text' => '...']
      *

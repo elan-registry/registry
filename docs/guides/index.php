@@ -19,29 +19,9 @@ if (!securePage($php_self)) {
 
 $cards = [
     [
-        'title'       => 'How to Add Your Car',
-        'icon'        => 'fa-car',
-        'url'         => '../guide-viewer.php?doc=ADD_CAR_GUIDE.md',
-        'buttonText'  => 'Read Guide',
-        'buttonIcon'  => 'fa-book-open',
-        'headerClass' => 'card-header-er-primary',
-        'buttonClass' => 'btn-primary btn-sm',
-        'description' => "Step-by-step guide to registering your Lotus Elan or +2. Learn about chassis validation, photo uploads, and completing your car's profile.",
-    ],
-    [
-        'title'       => 'Car Transfer Guide',
-        'icon'        => 'fa-exchange-alt',
-        'url'         => '../guide-viewer.php?doc=CAR_TRANSFER_USER_GUIDE.md',
-        'buttonText'  => 'Read Guide',
-        'buttonIcon'  => 'fa-book-open',
-        'headerClass' => 'card-header-er-primary',
-        'buttonClass' => 'btn-primary btn-sm',
-        'description' => 'Complete guide for requesting ownership transfers of cars in the registry. Learn the step-by-step process and what to expect.',
-    ],
-    [
         'title'       => 'Transfer FAQ',
         'icon'        => 'fa-question',
-        'url'         => '../guide-viewer.php?doc=CAR_TRANSFER_FAQ.md',
+        'url'         => 'car-transfer-faq.php',
         'buttonText'  => 'View FAQ',
         'buttonIcon'  => 'fa-question-circle',
         'headerClass' => 'card-header-er-primary',

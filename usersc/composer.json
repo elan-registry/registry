@@ -11,7 +11,6 @@
     ],
     "require": {
         "php": ">=8.2",
-        "vlucas/phpdotenv": "^5.6",
-        "league/commonmark": "^2.8"
+        "vlucas/phpdotenv": "^5.6"
     }
 }

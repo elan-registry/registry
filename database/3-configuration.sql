@@ -161,7 +161,6 @@ INSERT INTO `pages` (`id`, `page`, `title`, `private`, `re_auth`, `core`) VALUES
 (9003, 'docs/index.php',                          NULL, 0, 0, 0),
 (9004, 'docs/car-stories.php',                    NULL, 0, 0, 0),
 (9005, 'docs/guides/index.php',                   NULL, 0, 0, 0),
-(9006, 'docs/admin/index.php',                    NULL, 1, 0, 0),
 (9007, 'docs/reference/index.php',                NULL, 0, 0, 0),
 (9008, 'docs/reference/chassis-validation.php',   NULL, 0, 0, 0),
 (9009, 'docs/reference/paint-colors.php',         NULL, 0, 0, 0),
@@ -170,6 +169,7 @@ INSERT INTO `pages` (`id`, `page`, `title`, `private`, `re_auth`, `core`) VALUES
 (9012, 'docs/stories/brian_walton/index.php',     NULL, 0, 0, 0),
 (9013, 'docs/stories/type26register.php',         NULL, 0, 0, 0),
 (9014, 'docs/stories/SGO_2F/index.php',           NULL, 0, 0, 0),
+(9017, 'docs/guides/car-transfer-faq.php',        NULL, 0, 0, 0),
 (235, 'app/cars/mapmarkers.xml.php', NULL, 0, 0, 0),
 (236, 'app/contact/index.php', NULL, 1, 0, 0),
 (237, 'app/contact/owner.php', NULL, 1, 0, 0),
@@ -202,8 +202,7 @@ INSERT INTO `pages` (`id`, `page`, `title`, `private`, `re_auth`, `core`) VALUES
 (337, 'app/admin/includes/system/schema-operations.php', NULL, 1, 0, 0),
 (338, 'app/admin/manage-maintenance.php', 'Admin - Registry Maintenance', 1, 0, 0),
 (339, 'app/admin/includes/system/backup-operations.php', 'Admin - Backup Operations', 1, 0, 0),
-(9001, 'docs/pdf-viewer.php',   NULL, 0, 0, 0),
-(9002, 'docs/guide-viewer.php', NULL, 0, 0, 0)
+(9001, 'docs/pdf-viewer.php',   NULL, 0, 0, 0)
 ON DUPLICATE KEY UPDATE
   title = VALUES(title),
   private = VALUES(private),
@@ -222,7 +221,6 @@ INSERT IGNORE INTO `permission_page_matches` (`permission_id`, `page_id`) VALUES
 (2, 304), (2, 305), (2, 306), (2, 308), (2, 309), (2, 310), (2, 311),
 (2, 312), (2, 313), (2, 314), (2, 315), (2, 317), (2, 327), (2, 331), (2, 336),
 (2, 337), (2, 338), (2, 339),
-
 -- Editor (permission_id = 3) - Content editor access
 (3, 3), (3, 4), (3, 157), (3, 256), (3, 283), (3, 294), (3, 299), (3, 300),
 (3, 304), (3, 305), (3, 306), (3, 308), (3, 309), (3, 310), (3, 311),

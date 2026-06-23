@@ -1,0 +1,115 @@
+/*
+ * document-content.css
+ * Typography styles for static documentation pages in docs/guides/.
+ *
+ * WHY THIS FILE EXISTS: Guide pages render static HTML inlined as PHP heredocs.
+ * Because the heredoc content is echoed as a raw string rather than processed as a
+ * PHP template, the individual elements (<h1>, <table>, <code>, etc.) cannot receive
+ * Bootstrap utility classes inline. This scoped stylesheet styles those raw elements
+ * within the .document-content wrapper without touching global styles.
+ */
+
+.document-content img {
+    max-width: 100%;
+    height: auto;
+    margin: 1.5rem 0;
+    border: 1px solid var(--bs-border-color);
+    border-radius: 0.25rem;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.document-content h1 {
+    color: var(--er-primary);
+    border-bottom: 2px solid var(--er-primary);
+    padding-bottom: 0.5rem;
+    margin-top: 2rem;
+    margin-bottom: 1rem;
+}
+
+.document-content h2 {
+    color: var(--er-neutral-dark);
+    border-bottom: 1px solid var(--bs-border-color);
+    padding-bottom: 0.3rem;
+    margin-top: 1.5rem;
+    margin-bottom: 1rem;
+}
+
+.document-content h3 {
+    color: var(--er-neutral);
+    margin-top: 1.25rem;
+    margin-bottom: 0.75rem;
+}
+
+.document-content h4,
+.document-content h5 {
+    color: var(--er-neutral);
+    margin-top: 1rem;
+    margin-bottom: 0.5rem;
+}
+
+.document-content ul,
+.document-content ol {
+    margin-bottom: 1rem;
+    padding-left: 2rem;
+}
+
+.document-content li {
+    margin-bottom: 0.25rem;
+}
+
+.document-content pre {
+    background-color: var(--bs-tertiary-bg);
+    border: 1px solid var(--bs-secondary-bg);
+    border-radius: 0.25rem;
+    padding: 1rem;
+    margin: 1rem 0;
+    overflow-x: auto;
+}
+
+.document-content code {
+    background-color: var(--bs-tertiary-bg);
+    color: var(--bs-code-color);
+    padding: 0.2rem 0.4rem;
+    border-radius: 0.25rem;
+    font-size: 0.875em;
+}
+
+.document-content pre code {
+    background-color: transparent;
+    color: inherit;
+    padding: 0;
+}
+
+.document-content blockquote {
+    border-left: 4px solid var(--er-primary);
+    padding-left: 1rem;
+    margin: 1rem 0;
+    font-style: italic;
+    color: var(--er-neutral);
+}
+
+.document-content table {
+    width: 100%;
+    margin: 1rem 0;
+    border-collapse: collapse;
+}
+
+.document-content table th,
+.document-content table td {
+    border: 1px solid var(--bs-border-color);
+    padding: 0.75rem;
+    text-align: left;
+}
+
+.document-content table th {
+    background-color: var(--bs-tertiary-bg);
+    font-weight: bold;
+}
+
+/* Reset heading margins/borders when a heading is used as an accordion-header */
+.document-content .accordion-header {
+    margin: 0;
+    padding-bottom: 0;
+    border-bottom: none;
+    color: inherit;
+}

@@ -56,12 +56,8 @@ class AutoloaderTest extends TestCase
     public function testNamespacedClassesAutoload(): void
     {
         $this->assertTrue(
-            class_exists('ElanRegistry\\Documentation\\MarkdownRenderer'),
-            'Namespaced MarkdownRenderer class should auto-load'
-        );
-        $this->assertTrue(
-            class_exists('ElanRegistry\\Documentation\\DocumentConfig'),
-            'Namespaced DocumentConfig class should auto-load'
+            class_exists('ElanRegistry\\Documentation\\DocumentPortalTemplate'),
+            'Namespaced DocumentPortalTemplate class should auto-load'
         );
     }
 

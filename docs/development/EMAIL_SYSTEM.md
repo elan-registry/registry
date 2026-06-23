@@ -1,6 +1,8 @@
 # Email System
 
-The Lotus Elan Registry uses Brevo (formerly Sendinblue) as its transactional email service for production and staging environments. This document covers account setup, configuration, troubleshooting, and the developer API.
+The Lotus Elan Registry uses Brevo (formerly Sendinblue) as its transactional email service
+for production and staging environments. This document covers account setup, configuration,
+troubleshooting, and the developer API.
 
 ## Overview
 
@@ -8,9 +10,14 @@ Brevo provides reliable email delivery via HTTP API. We chose Brevo because A2 H
 
 **Plugin location:** `usersc/plugins/sendinblue/`
 
-**How it works:** The plugin's `override.php` file globally overrides UserSpice's built-in `email()` function. When the plugin is active, all calls to `email()` throughout the codebase are routed through Brevo's API. When the plugin is deactivated, UserSpice's native PHPMailer-based `email()` is used instead.
+**How it works:** The plugin's `override.php` file globally overrides UserSpice's built-in
+`email()` function. When the plugin is active, all calls to `email()` throughout the codebase
+are routed through Brevo's API. When the plugin is deactivated, UserSpice's native
+PHPMailer-based `email()` is used instead.
 
-**Architecture decision:** See [ADR-012: Adopt Brevo for Transactional Email Delivery](adr/ADR-012-adopt-brevo-for-transactional-email-delivery.md) for the full rationale and evaluation of alternatives.
+**Architecture decision:** See
+[ADR-012: Adopt Brevo for Transactional Email Delivery](adr/ADR-012-adopt-brevo-for-transactional-email-delivery.md)
+for the full rationale and evaluation of alternatives.
 
 ## Brevo Account Setup (One-Time)
 
@@ -116,7 +123,9 @@ Check the UserSpice logs (category `sendinblue`) for the API error message retur
 **Common causes:**
 
 - **Invalid or expired API key:** Generate a new API key in Brevo (My Profile → Settings → SMTP & API) and update the plugin configuration.
-- **Domain not verified:** Check Brevo's domain status (My Profile → Settings → Senders/Domains/IP → Domains). Click Check Configuration again. DNS propagation may take time.
+- **Domain not verified:** Check Brevo's domain status
+  (My Profile → Settings → Senders/Domains/IP → Domains).
+  Click Check Configuration again. DNS propagation may take time.
 - **Sender email not verified:** Ensure the sender email address matches a verified sender in Brevo (My Profile → Settings → Senders/Domains/IP → Senders).
 
 ### Brevo IP Whitelist
@@ -133,10 +142,12 @@ This is not required for the current elanregistry.org or test.elanregistry.org d
 ### "Forgot Password" Link Hidden on Login Page
 
 The plugin configuration page shows a warning and hides the forgot-password link when:
+
 - The override is active (Brevo plugin is enabled), AND
 - UserSpice still contains placeholder SMTP values
 
-This is a safety indicator. Email delivery is not affected — the plugin routes all emails through Brevo regardless. You can safely ignore this warning once Brevo is properly configured.
+This is a safety indicator. Email delivery is not affected — the plugin routes all emails
+through Brevo regardless. You can safely ignore this warning once Brevo is properly configured.
 
 ### Domain Verification Fails
 
@@ -144,11 +155,14 @@ After adding DNS records to your registrar:
 
 1. Wait 5–15 minutes for DNS propagation
 2. Return to Brevo and click Check Configuration again
-3. If verification still fails, use a DNS lookup tool (e.g., `dig`, `nslookup`) to confirm the records are published:
+3. If verification still fails, use a DNS lookup tool (e.g., `dig`, `nslookup`) to confirm
+   the records are published:
+
    ```bash
    dig elanregistry.org TXT
    dig _dkim.elanregistry.org TXT
    ```
+
 4. Verify the record values match exactly what Brevo expects
 
 ## Developer Reference
@@ -167,7 +181,7 @@ sendinblue($to, $subject, $body, $to_name = "", $options = []): bool
 **Parameters:**
 
 | Parameter | Type | Description |
-|-----------|------|-------------|
+| --- | --- | --- |
 | `$to` | string | Recipient email address (required) |
 | `$subject` | string | Email subject line (required) |
 | `$body` | string | HTML email body (required) |
@@ -181,7 +195,7 @@ sendinblue($to, $subject, $body, $to_name = "", $options = []): bool
 These keys apply when calling `sendinblue()` directly. See [Calling via email()](#calling-via-email) below for the different key names used through the override.
 
 | Key | Type | Description |
-|-----|------|-------------|
+| --- | --- | --- |
 | `from` | string | Override sender email address |
 | `from_name` | string | Override sender display name |
 | `reply` | string | Override reply-to email address |
@@ -205,10 +219,11 @@ if ($result !== true) {
 
 ### Calling via email()
 
-Most application code calls `email()` rather than `sendinblue()` directly. The `override.php` shim translates UserSpice's `email()` option keys to Brevo option keys:
+Most application code calls `email()` rather than `sendinblue()` directly. The `override.php`
+shim translates UserSpice's `email()` option keys to Brevo option keys:
 
 | `email()` option key | Maps to `sendinblue()` key |
-|----------------------|---------------------------|
+| --- | --- |
 | `email` | `from` |
 | `name` | `from_name` |
 | `replyTo` | `reply` |
@@ -242,7 +257,9 @@ sendinblue($to, $subject, $body, '', $options);
 
 ### Sending Templated Emails
 
-If you have a Brevo template configured, use the `template` and `params` keys. `sendinblue()` always requires a non-empty `$body` regardless of whether a template is used (a legacy unconditional guard) — pass a placeholder string when the template supplies all content:
+If you have a Brevo template configured, use the `template` and `params` keys. `sendinblue()`
+always requires a non-empty `$body` regardless of whether a template is used (a legacy
+unconditional guard) — pass a placeholder string when the template supplies all content:
 
 ```php
 $options = [
@@ -278,7 +295,8 @@ sendinblue($to, 'Your Receipt', $body, '', $options);
 
 ### Admin Email Recipients
 
-Registry notification emails are sent to one or more admin addresses configured in the database. Use `getAdminEmails()` from `usersc/includes/custom_functions.php` to retrieve them:
+Registry notification emails are sent to one or more admin addresses configured in the database.
+Use `getAdminEmails()` from `usersc/includes/custom_functions.php` to retrieve them:
 
 ```php
 $adminEmails = array_map('trim', explode(',', getAdminEmails()));
@@ -295,6 +313,6 @@ Admin addresses are managed at Admin → Settings → Admin Emails. The default 
 ## Related Documentation
 
 - [CLASSES.md](CLASSES.md) — EmailTemplate class for branded HTML email wrappers
-- [EMAIL_STYLING_GUIDELINES.md](../faq/admin/EMAIL_STYLING_GUIDELINES.md) — Email template styling standards
+- [Email Colors (color-preview.php)](../../app/admin/color-preview.php) — Email token → hex mapping and template structure (admin only)
 - [ADR-012: Adopt Brevo for Transactional Email Delivery](adr/ADR-012-adopt-brevo-for-transactional-email-delivery.md) — Architecture decision record
 - [DATABASE.md](DATABASE.md) — Database schema reference (includes `plg_sendinblue` table)

@@ -41,7 +41,7 @@ class UserspiceCustomAutoloader
      * Hybrid autoloader - tries PSR-4 first, then recursive scan
      *
      * This dual approach provides:
-     * - Fast loading for namespaced classes (MarkdownRenderer, DocumentConfig)
+     * - Fast loading for namespaced classes (DocumentPortalTemplate)
      * - Backward compatibility for non-namespaced classes (Car, ElanRegistryOwner)
      * - Zero-change migration path when adding namespaces to existing classes
      *
@@ -68,7 +68,7 @@ class UserspiceCustomAutoloader
      * Handles classes in ElanRegistry namespace:
      * - ElanRegistry\Car
      * - ElanRegistry\Exceptions\CarNotFoundException
-     * - ElanRegistry\Documentation\MarkdownRenderer
+     * - ElanRegistry\Documentation\DocumentPortalTemplate
      *
      * Direct path calculation provides optimal performance.
      *

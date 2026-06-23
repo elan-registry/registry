@@ -22,7 +22,6 @@ Use this table to choose the right class for your task:
 | Access owner profile and user data | ElanRegistryOwner | User profile integration, custom user methods | `$owner = new ElanRegistryOwner($uid)` |
 | Validate VIN/chassis format | ChassisValidator | Specialized validation for vehicle identifiers | `$validator->validate('26/0001')` |
 | Create database backups | BackupManager | Backup/restore operations, database dumping | `$backup = new BackupManager(...)` |
-| Convert markdown to HTML | MarkdownRenderer | Documentation rendering, XSS-safe HTML via league/commonmark | `MarkdownRenderer::convert($markdown, $baseUrl)` |
 | Get car images | CarImage | Image metadata and associations | `$images = CarImage::getByCarId($carId)` |
 | Query car models by year/series | CarModel | Reference data for model filtering | `$models = (new CarModel())->getAvailableInYear(1970)` |
 
@@ -564,90 +563,33 @@ if ($result !== true) {
 > to the Brevo API. See issue #601 and the TODO comment in `custom_functions.php` for what to
 > review when #601 is resolved.
 
-### MarkdownRenderer
+### DocumentPortalTemplate
 
-**Location**: `/usersc/classes/MarkdownRenderer.php`
+**Location**: `/usersc/classes/DocumentPortalTemplate.php`
 
 **Namespace**: `ElanRegistry\Documentation`
 
-**Purpose**: Markdown to HTML converter for documentation rendering. Wraps
-`league/commonmark` 2.x with GFM support, heading permalink anchors, and
-external-link safety attributes. Replaced the bespoke `MarkdownParser` in
-v2.24.0 (#815).
-
-**Key Features**:
-
-- CommonMark-compliant parsing via `league/commonmark` 2.x
-- GitHub Flavored Markdown (tables, strikethrough, task lists)
-- Heading permalink anchors (prerequisite for TOC — #768)
-- External links open in new tab with `rel="noopener noreferrer"`
-- `img-fluid` Bootstrap class added to all images
-- Relative and root-relative URL resolution against `$baseUrl`
+**Purpose**: Renders the reusable card grids, portal headers, breadcrumbs, and
+nav footers used across documentation and application index pages.
 
 **Common Usage**:
 
 ```php
-use ElanRegistry\Documentation\MarkdownRenderer;
+use ElanRegistry\Documentation\DocumentPortalTemplate;
 
-// Convert markdown to safe HTML
-$html = MarkdownRenderer::convert($markdownContent, $us_url_root);
+// Breadcrumb derived from a nav section
+echo DocumentPortalTemplate::renderBreadcrumb('guides', $us_url_root, $title, 'fa-car');
 
-// Used by documentation viewer and privacy page
-// See /docs/guide-viewer.php and /app/privacy.php
+// Breadcrumb from explicit items
+echo DocumentPortalTemplate::renderBreadcrumbFromItems($breadcrumb);
+
+// Card grid for an index page
+echo DocumentPortalTemplate::renderDocumentCardGrid($cards);
 ```
 
-**Security**:
-
-- `html_input: 'strip'` removes raw HTML embedded in Markdown (XSS via inline HTML)
-- `allow_unsafe_links: false` blocks `javascript:`, `data:`, `vbscript:` in links
-- Post-processing strips `data:` URIs from image `src` attributes
-- `ExternalLinkExtension` adds `rel="noopener noreferrer"` to all external links
-
-### DocumentConfig
-
-**Location**: `/usersc/classes/DocumentConfig.php`
-
-**Namespace**: `ElanRegistry\Documentation`
-
-**Purpose**: Document metadata and access control configuration for the unified
-documentation system.
-
-**Key Features**:
-
-- Document categorization
-- Access control rules
-- Metadata management
-- Breadcrumb configuration
-- Public vs admin document separation
-
-**Common Usage**:
-
-```php
-use ElanRegistry\Documentation\DocumentConfig;
-
-// Get document metadata
-$config = new DocumentConfig();
-$metadata = $config->getDocumentMetadata('CAR_TRANSFER_USER_GUIDE');
-
-// Check access permissions
-$isPublic = $config->isPublicDocument('CAR_TRANSFER_FAQ');
-
-// Get category information
-$category = $config->getCategory('user-guides');
-```
-
-**Document Categories**:
-
-- `user-guides` - End-user documentation (public)
-- `admin-guides` - Administrator documentation (admin only)
-- `faq` - Frequently asked questions (public)
-- `technical` - Technical documentation (admin only)
-
-**Access Control**:
-
-- Documents in `/docs/guides/` and `/docs/reference/` - Public access
-- Documents in `/docs/admin/` - Admin only
-- Document viewer enforces access rules
+> **Note**: Guide content is pre-rendered to static HTML and inlined as PHP
+> heredocs in the individual guide pages under `docs/guides/`. To update guide
+> content, edit the heredoc directly in the relevant PHP file.
 
 ## Design Patterns
 
@@ -840,11 +782,8 @@ BackupManager
 EmailTemplate
 └── Used by: Transfer requests, notifications
 
-MarkdownRenderer
-└── Used by: docs/guide-viewer.php, app/privacy.php
-
-DocumentConfig
-└── Used by: docs/guide-viewer.php
+DocumentPortalTemplate
+└── Used by: docs/guides/index.php, docs/reference/*, app/cars/index.php, app/reports/statistics.php
 ```
 
 ## Testing

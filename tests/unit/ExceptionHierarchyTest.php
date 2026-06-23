@@ -11,7 +11,6 @@ use ElanRegistry\Exceptions\CarNotFoundException;
 use ElanRegistry\Exceptions\CarPermissionException;
 use ElanRegistry\Exceptions\CarTransferException;
 use ElanRegistry\Exceptions\CarValidationException;
-use ElanRegistry\Exceptions\DocumentationException;
 use ElanRegistry\Exceptions\ElanRegistryException;
 use ElanRegistry\Exceptions\ForbiddenException;
 use ElanRegistry\Exceptions\GeocodingException;
@@ -62,7 +61,6 @@ class ExceptionHierarchyTest extends TestCase
         ValidationException::class,
         UnauthorizedException::class,
         ForbiddenException::class,
-        DocumentationException::class,
         LocationServiceException::class,
     ];
 
@@ -329,7 +327,6 @@ class ExceptionHierarchyTest extends TestCase
         $this->assertEquals(500, (new GeocodingException())->getHttpStatusCode());
         $this->assertEquals(500, (new BackupException('msg'))->getHttpStatusCode());
         $this->assertEquals(500, (new SchemaException('msg'))->getHttpStatusCode());
-        $this->assertEquals(500, (new DocumentationException())->getHttpStatusCode());
         $this->assertEquals(500, (new LocationServiceException())->getHttpStatusCode());
     }
 
@@ -403,7 +400,6 @@ class ExceptionHierarchyTest extends TestCase
             'ValidationException' => [ValidationException::class, 'ValidationError'],
             'UnauthorizedException' => [UnauthorizedException::class, 'SecurityError'],
             'ForbiddenException' => [ForbiddenException::class, 'SecurityError'],
-            'DocumentationException' => [DocumentationException::class, 'SystemError'],
             'LocationServiceException' => [LocationServiceException::class, 'SystemError'],
         ];
     }
@@ -435,7 +431,6 @@ class ExceptionHierarchyTest extends TestCase
             'ValidationException' => [ValidationException::class, 422],
             'UnauthorizedException' => [UnauthorizedException::class, 401],
             'ForbiddenException' => [ForbiddenException::class, 403],
-            'DocumentationException' => [DocumentationException::class, 500],
             'LocationServiceException' => [LocationServiceException::class, 500],
         ];
     }
