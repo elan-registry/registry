@@ -1,6 +1,6 @@
 # Elan Registry v2.24.0 Release Notes
 
-**Release Date:** [DATE]
+**Release Date:** 2026-06-22
 **Type:** Minor Release - UX Polish & Visual Consistency
 
 ## Required Actions After Deployment
@@ -85,6 +85,9 @@ reply-to name appears correctly in the received message.
 - **ESLint no-implicit-globals fixed in statistics.js** ([#871](https://github.com/unibrain1/elanregistry/issues/871)):
   `renderMapErrorUI` and `initMarkerFilter` converted from top-level `function` declarations to
   `const` arrow functions, eliminating the two ESLint `no-implicit-globals` warnings.
+- **Editorial: em-dash and parenthetical cleanup** ([#895](https://github.com/unibrain1/elanregistry/issues/895)):
+  Em dashes replaced and parentheticals simplified in user-facing UI text for cleaner reading
+  and broader rendering compatibility.
 
 ## Issues Resolved
 
@@ -102,7 +105,6 @@ reply-to name appears correctly in the received message.
 - [#767](https://github.com/unibrain1/elanregistry/issues/767) — ux: add breadcrumb navigation to Reference sub-pages, Car Stories, and Guides
 - [#769](https://github.com/unibrain1/elanregistry/issues/769) — ux: paint colors — larger swatches, more prominent filter tabs, Car Stories second CTA
 - [#772](https://github.com/unibrain1/elanregistry/issues/772) — UX: Fix Add/Edit Car form — premature validation icons, Purchase Date input, checkbox layout
-- [#812](https://github.com/unibrain1/elanregistry/issues/812) — Track upstream fix: Brevo plugin override.php signature mismatch (bugs.userspice.com/2334)
 - [#815](https://github.com/unibrain1/elanregistry/issues/815) — refactor: replace custom MarkdownParser with league/commonmark
 - [#833](https://github.com/unibrain1/elanregistry/issues/833) — ux: identification guide — photo lightbox
 - [#834](https://github.com/unibrain1/elanregistry/issues/834) — ux: identification guide — two-column layout modernization
@@ -112,3 +114,4 @@ reply-to name appears correctly in the received message.
 - [#874](https://github.com/unibrain1/elanregistry/issues/874) — Upgrade to Userspice 6.1.0
 - [#876](https://github.com/unibrain1/elanregistry/issues/876) — feat: display application version in public footer
 - [#892](https://github.com/unibrain1/elanregistry/issues/892) — ux: fix text-muted contrast in L2 card headers (WCAG AA)
+- [#895](https://github.com/unibrain1/elanregistry/issues/895) — editorial: replace em dashes and simplify parentheticals in user-facing UI text
