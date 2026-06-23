@@ -77,7 +77,7 @@ try {
 // Convert markdown to HTML using the utility class
 try {
     $htmlContent = MarkdownRenderer::convert($markdownContent, $us_url_root);
-} catch (\RuntimeException $e) {
+} catch (\Throwable $e) {
     logger($user->data()->id ?? 0, LogCategories::LOG_CATEGORY_SYSTEM_ERROR, 'Markdown rendering failed for "' . $doc . '": ' . $e->getMessage());
     Redirect::to($us_url_root . '500.php');
 }

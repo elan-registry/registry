@@ -75,6 +75,8 @@ if (Input::exists('post')) {
         $table = Input::get('table');
         
         $searchValue = isset($_POST['search']['value']) ? trim((string) $_POST['search']['value']) : '';
+        $order   = is_array($_POST['order'] ?? null)   ? $_POST['order']   : [];
+        $columns = is_array($_POST['columns'] ?? null) ? $_POST['columns'] : [];
 
         $request = [
             'draw' => $draw,
@@ -83,8 +85,8 @@ if (Input::exists('post')) {
             'search' => [
                 'value' => $searchValue
             ],
-            'order'   => $_POST['order'] ?? [],
-            'columns' => $_POST['columns'] ?? []
+            'order'   => $order,
+            'columns' => $columns
         ];
         
         // Handle special endpoints
@@ -148,6 +150,21 @@ if (Input::exists('post')) {
 
         // Return error response with DataTables metadata
         ApiResponse::serverError('Server error occurred')
+            ->withDataArray([
+                'draw' => (int) Input::get('draw'),
+                'recordsTotal' => 0,
+                'recordsFiltered' => 0,
+                'data' => []
+            ])
+            ->send();
+    } catch (\Throwable $e) {
+        logger(
+            $user->data()->id ?? 0,
+            LogCategories::LOG_CATEGORY_SYSTEM_ERROR,
+            'DataTables unexpected error: ' . $e->getMessage() . ' — ' . get_class($e)
+        );
+
+        ApiResponse::serverError('An unexpected error occurred')
             ->withDataArray([
                 'draw' => (int) Input::get('draw'),
                 'recordsTotal' => 0,

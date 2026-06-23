@@ -553,7 +553,7 @@ function renderQualityTab(container, data) {
 function renderSeriesTable(counts, notes) {
   let html = "";
   for (const [series, count] of Object.entries(counts)) {
-    const produced = parseInt(notes[series]);
+    const produced = parseInt(notes[series]) || 0;
     const percentage = produced > 0 ? Math.round((count / produced) * 100) : 0;
 
     html += `
