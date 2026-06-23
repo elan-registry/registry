@@ -41,8 +41,11 @@ reply-to name appears correctly in the received message.
   Amber alert for unverified factory records; introductory context paragraph added.
 - **Paint colors page** ([#769](https://github.com/unibrain1/elanregistry/issues/769)):
   Larger colour swatches, more prominent filter tabs, Car Stories second CTA added.
-- **Add/Edit Car form** ([#772](https://github.com/unibrain1/elanregistry/issues/772)):
-  Fixed premature validation icons, Purchase Date input, and checkbox layout.
+- **Add/Edit Car form UX fixes** ([#772](https://github.com/unibrain1/elanregistry/issues/772)):
+  Required fields (Year, Model, Chassis) no longer show a red invalid indicator before the user
+  has interacted with them. Purchase Date and Sold Date fields replaced with native date pickers
+  (no more manual YYYY-MM-DD entry). "I no longer own this car" checkbox given clear visual
+  separation from the date field. Website field icon corrected to a globe.
 - **Identification guide two-column layout** ([#834](https://github.com/unibrain1/elanregistry/issues/834)):
   Every car-model entry is now its own card with a Lotus-green model header
   and image-left / specs-right two-column body. Previously photoless models

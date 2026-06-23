@@ -56,8 +56,6 @@ $cardetails['image']        = null;
 $carprompt['chassis']       = 'Enter Chassis Number';
 $carprompt['color']         = 'Enter the current color of the car';
 $carprompt['engine']        = 'Enter Engine number - LPAxxxxx';
-$carprompt['purchasedate']  = 'YYYY-MM-DD';
-$carprompt['solddate']      = 'YYYY-MM-DD';
 $carprompt['comments']      = 'Please give a brief history of your car and anything special';
 $carprompt['website']       = 'Website URL';
 
@@ -424,8 +422,6 @@ require_once $abs_us_root . $us_url_root . 'users/includes/html_footer.php'; //c
 <script src="<?=$us_url_root?>usersc/js/filepond-plugin-image-transform.min.js"></script>
 <link rel="stylesheet" href="<?=$us_url_root?>usersc/css/filepond.min.css">
 <link rel="stylesheet" href="<?=$us_url_root?>usersc/css/filepond-plugin-image-preview.min.css">
-<script src="<?=$us_url_root?>usersc/js/flatpickr.min.js"></script>
-<link rel="stylesheet" href="<?=$us_url_root?>usersc/css/flatpickr.min.css">
 
 <!-- Dynamic model loading from database -->
 <script src='<?= $us_url_root ?>app/assets/js/model-loader.min.js'></script>
@@ -435,8 +431,6 @@ require_once $abs_us_root . $us_url_root . 'users/includes/html_footer.php'; //c
     const car_id = $('#car_id').val();
 
     $(document).ready(function() {
-        flatpickr('#purchasedate', { dateFormat: 'Y-m-d', allowInput: true });
-        const solddatePicker = flatpickr('#solddate', { dateFormat: 'Y-m-d', allowInput: true });
         const solddateRow = document.getElementById('solddate-row');
         const solddateInput = document.getElementById('solddate');
 
@@ -444,11 +438,11 @@ require_once $abs_us_root . $us_url_root . 'users/includes/html_footer.php'; //c
             if (this.checked) {
                 solddateRow.classList.remove('d-none');
                 if (!solddateInput.value) {
-                    solddatePicker.setDate(new Date());
+                    solddateInput.value = new Date().toISOString().split('T')[0];
                 }
             } else {
                 solddateRow.classList.add('d-none');
-                solddatePicker.clear();
+                solddateInput.value = '';
             }
         });
 
