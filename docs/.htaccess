@@ -17,7 +17,6 @@ Options -Indexes
 
 # Viewer renames
 Redirect 301 /docs/embed.php /docs/pdf-viewer.php
-Redirect 301 /docs/view.php /docs/guide-viewer.php
 
 # Redirects for doc reorganization (#559)
 Redirect 301 /docs/reference-library.php /docs/reference/index.php

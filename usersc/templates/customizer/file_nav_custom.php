@@ -6,9 +6,9 @@
  * $php_self is normalized against $us_url_root so subfolder installs (e.g.
  * MAMP at /elan-registry/) match the same patterns as production at /.
  *
- * Generic viewer pages (pdf-viewer.php, guide-viewer.php) can't be classified
- * by path alone — they set $nav_section before this template renders and we
- * honor it directly.
+ * Generic viewer pages (pdf-viewer.php) and the static guide pages can't be
+ * classified by path alone — they set $nav_section before this template
+ * renders and we honor it directly.
  */
 $navActive = $nav_section ?? '';
 if ($navActive === '') {
@@ -176,12 +176,6 @@ if ($navActive === '') {
             </a>
           </li>
           <?php endif; ?>
-          <li class=''>
-            <a class='' href='<?= $us_url_root ?>docs/admin/index.php'>
-              <i class='fa fa-question-circle'></i>
-              <span class='labelText'>Admin Guide</span>
-            </a>
-          </li>
           <?php if (hasPerm([2], $user->data()->id)): ?>
           <div class='dropdown-divider'></div>
           <li class=''>

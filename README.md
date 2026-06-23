@@ -115,7 +115,7 @@ The registry maintains strict privacy standards and GDPR compliance:
 - **Transparent Policies**: Clear privacy policy available at `/app/privacy.php`
 - **User Rights**: Full data access, correction, and deletion capabilities
 
-For complete privacy details, see `docs/guides/PRIVACY.md`.
+For complete privacy details, see `app/privacy.php`.
 
 ## Contributing
 

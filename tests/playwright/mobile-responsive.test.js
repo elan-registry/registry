@@ -26,6 +26,7 @@ const PUBLIC_PAGES = [
   '/app/contact/owner.php',
   '/app/reports/statistics.php',
   '/app/privacy.php',
+  '/docs/guides/car-transfer-faq.php',
 ];
 
 test.describe('Mobile Responsive (iPhone SE / 375px)', () => {

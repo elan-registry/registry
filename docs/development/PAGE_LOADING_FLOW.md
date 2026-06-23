@@ -269,9 +269,7 @@ users/init.php
 - `BackupManager` - Database backup management
 - `ChassisValidator` - VIN/chassis validation
 - `EmailTemplate` - Email template rendering
-- `MarkdownRenderer` - Markdown to HTML conversion via league/commonmark (namespace:
-  ElanRegistry\Documentation)
-- `DocumentConfig` - Document metadata management (namespace:
+- `DocumentPortalTemplate` - Documentation index/card rendering (namespace:
   ElanRegistry\Documentation)
 - `CarErrorMessages` - Centralized error message definitions
 
@@ -290,7 +288,7 @@ users/init.php
 - **Location:** `usersc/classes/class.autoloader.php`
 - **Type:** Hybrid namespace-aware autoloader (PSR-4 + recursive scan)
 - **PSR-4 Support:** Handles namespaced classes (e.g., `ElanRegistry\Car`,
-  `ElanRegistry\Documentation\MarkdownRenderer`)
+  `ElanRegistry\Documentation\DocumentPortalTemplate`)
 - **Backward Compatibility:** Recursive iterator for non-namespaced classes
 - **Performance:** Cached iterator (< 1ms), direct path for namespaced
   classes (< 0.1ms)

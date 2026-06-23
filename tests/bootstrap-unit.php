@@ -1324,7 +1324,7 @@ if (!function_exists('getAdminEmails')) {
     }
 }
 
-// Mock isRegistryAdmin function - needed by DocumentConfig::hasAccess()
+// Mock isRegistryAdmin function - needed by admin permission checks
 if (!function_exists('isRegistryAdmin')) {
     /**
      * Mock isRegistryAdmin function for testing
