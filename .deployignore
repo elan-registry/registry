@@ -53,9 +53,8 @@ package.json
 package-lock.json
 tsconfig.json
 
-# Composer (dependencies not deployed via git)
-composer.json
-composer.lock
+# Composer lock file stays on server so post-receive hook can run `composer install`.
+# composer.json and composer.lock are deployed; vendor/ is populated by the hook.
 
 # Project documentation not needed on server
 CLAUDE.md
