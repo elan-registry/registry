@@ -442,8 +442,100 @@ $pageTitle = 'Color Preview — Elan Registry Token System';
         <code>statistics.js</code> require targeted edits in Phase B.
     </div>
 
+    <!-- 12. Document content (static guide pages) -->
+    <div class="er-section-heading">Document content (<code>.document-content</code>)</div>
+    <p class="text-muted mb-3">
+        Guide pages (<code>docs/guides/</code>) render static HTML inlined as PHP heredocs.
+        Because the heredoc content is echoed as a raw string rather than processed as a PHP template,
+        the individual elements (<code>&lt;h1&gt;</code>, <code>&lt;table&gt;</code>,
+        <code>&lt;code&gt;</code>, etc.) cannot receive Bootstrap utility classes inline.
+        <code>docs/assets/document-content.css</code> provides scoped typography for those raw elements
+        within the <code>.document-content</code> wrapper without touching global styles. Breadcrumb styles are not included here — Bootstrap&rsquo;s
+        <code>.breadcrumb</code> component handles those via the global <code>--bs-link-color</code>
+        override in <code>customizer.css</code>.
+    </p>
+    <div class="row g-4 mb-4">
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-header card-header-er-primary">
+                    <i class="fas fa-book me-2"></i> Guide page &mdash; <code>.document-content</code>
+                </div>
+                <div class="card-body">
+                    <div class="document-content">
+                        <h1>Section heading</h1>
+                        <h2>Subsection</h2>
+                        <h3>Sub-subsection</h3>
+                        <p>Body text with an <a href="#">inline link</a> and <code>inline code</code>.</p>
+                        <pre><code>// Code block example
+function example(): string {
+    return 'hello';
+}</code></pre>
+                        <blockquote>A blockquote pulling out an important note.</blockquote>
+                        <table>
+                            <thead><tr><th>Column A</th><th>Column B</th></tr></thead>
+                            <tbody>
+                                <tr><td>Row 1A</td><td>Row 1B</td></tr>
+                                <tr><td>Row 2A</td><td>Row 2B</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 13. Email color reference -->
+    <div class="er-section-heading">Email colors (use hex — CSS vars don't work in email clients)</div>
+    <p class="text-muted mb-3">
+        CSS custom properties (<code>--er-primary</code> etc.) are not supported by email clients. Always
+        use literal hex values when writing inline email CSS. The table below maps each design token to
+        its hex equivalent for use in email templates. See
+        <code>docs/development/EMAIL_SYSTEM.md</code> for the full template structure.
+    </p>
+    <div class="row g-4 mb-4">
+        <div class="col-md-6">
+            <table class="table table-sm er-token-table">
+                <thead>
+                    <tr><th>Token</th><th>Hex</th><th>Email use</th></tr>
+                </thead>
+                <tbody>
+                    <tr><td><span class="er-token-swatch" style="background:#00563F;"></span> <code>--er-primary</code></td><td><code>#00563F</code></td><td>Header bg, primary buttons</td></tr>
+                    <tr><td><span class="er-token-swatch" style="background:#003D2C;"></span> <code>--er-primary-dark</code></td><td><code>#003D2C</code></td><td>Button hover state</td></tr>
+                    <tr><td><span class="er-token-swatch" style="background:#A52218;"></span> <code>--er-danger</code></td><td><code>#A52218</code></td><td>Warning boxes, urgent notices</td></tr>
+                    <tr><td><span class="er-token-swatch" style="background:#0B5394;"></span> <code>--er-link</code></td><td><code>#0B5394</code></td><td>Hyperlinks</td></tr>
+                    <tr><td><span class="er-token-swatch" style="background:#6C757D;"></span> <code>--er-neutral</code></td><td><code>#6C757D</code></td><td>Footer text, muted info</td></tr>
+                    <tr><td><span class="er-token-swatch" style="background:#3B413D;"></span> <code>--er-neutral-dark</code></td><td><code>#3B413D</code></td><td>Header text on primary bg</td></tr>
+                    <tr><td><span class="er-token-swatch" style="border:1px solid #ccc; background:#333333;"></span> n/a</td><td><code>#333333</code></td><td>Body text</td></tr>
+                    <tr><td><span class="er-token-swatch" style="border:1px solid #ccc; background:#f8f9fa;"></span> n/a</td><td><code>#f8f9fa</code></td><td>Footer background</td></tr>
+                    <tr><td><span class="er-token-swatch" style="border:1px solid #ccc; background:#dee2e6;"></span> n/a</td><td><code>#dee2e6</code></td><td>Borders / dividers</td></tr>
+                </tbody>
+            </table>
+        </div>
+        <div class="col-md-6">
+            <div class="card h-100">
+                <div class="card-header" style="background:#00563F; color:#fff; font-family:Arial,sans-serif; text-align:center; padding:20px;">
+                    <strong style="font-size:1.1rem;">Lotus Elan Registry</strong><br>
+                    <small style="opacity:0.85;">[Email Subject]</small>
+                </div>
+                <div class="card-body" style="font-family:Arial,sans-serif; color:#333333; padding:20px; font-size:0.9rem;">
+                    <p>Email content area. Links appear in <a href="#" style="color:#0B5394;">#0B5394 link blue</a>. Primary action buttons use <code>#00563F</code>.</p>
+                    <div style="text-align:center; margin:16px 0;">
+                        <span style="display:inline-block; padding:10px 20px; background:#00563F; color:#fff; border-radius:4px; font-weight:bold; font-size:0.85rem;">Primary Button</span>
+                    </div>
+                    <div style="background:#fff3cd; border:1px solid #A52218; border-radius:4px; padding:12px; margin:12px 0; font-size:0.8rem;">
+                        Warning box uses <code>#A52218</code> border.
+                    </div>
+                </div>
+                <div class="card-footer" style="background:#f8f9fa; border-top:1px solid #dee2e6; color:#6C757D; text-align:center; font-family:Arial,sans-serif; font-size:0.8rem; padding:14px;">
+                    The Lotus Elan Registry Team &mdash; <a href="https://elanregistry.org" style="color:#6C757D;">elanregistry.org</a>
+                </div>
+            </div>
+        </div>
+    </div>
+
 </div>
 
+<link rel="stylesheet" href="<?= $us_url_root ?>docs/assets/document-content.css">
 <script nonce="<?= htmlspecialchars($userspice_nonce ?? '') ?>" src="<?= $us_url_root ?>users/js/chart.umd.min.js"></script>
 <script nonce="<?= htmlspecialchars($userspice_nonce ?? '') ?>">
 (function () {

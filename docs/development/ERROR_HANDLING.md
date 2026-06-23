@@ -152,7 +152,6 @@ handling and logging.
 | ImageProcessingException | 500 | ImageRemoval | Image resize/upload |
 | SchemaException | 500 | SchemaOperationError | Database schema |
 | BackupException | 500 | BackupManager | Backup operations |
-| DocumentationException | 404 | DocumentationError | Documentation load |
 | ForbiddenException | 403 | AccessDenied | Permission denied |
 | UnauthorizedException | 401 | AccessDenied | Auth required |
 | AdminOperationException | 500 | AdminActions | Admin operations |

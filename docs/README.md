@@ -5,57 +5,37 @@ project, structured for different audiences and use cases.
 
 ## Quick Navigation
 
-- **🔗 [Unified Document Viewer](view.php)** - Access all documentation
-  through a single interface
-- **👥 [User FAQ](faq/index.php)** - End-user guides and frequently asked
-  questions
-- **🔧 [Admin Documentation](faq/admin/index.php)** - Administrative
-  procedures and technical guides
-- **💻 [Development Docs](development/)** - Technical documentation for
-  developers
+- **👥 [Owner Guides](guides/index.php)** - End-user guides for car owners
+- **💻 [Development Docs](development/)** - Technical documentation for developers
 
 ## Directory Organization
 
-### `/faq/` - User Documentation and FAQ
+### `/guides/` - Owner Guides
 
 **Audience:** End users, car owners, registry members
 **Access:** Public (no authentication required)
 
-- **[index.php](faq/index.php)** - Main FAQ and documentation portal for
-  users
-- **[PRIVACY.md](view.php?doc=PRIVACY.md)** - Privacy policy and data
-  handling practices
-- **[CAR_TRANSFER_USER_GUIDE.md](view.php?doc=CAR_TRANSFER_USER_GUIDE.md)**
-  \- Comprehensive user guide for car ownership transfer requests
-- **[CAR_TRANSFER_FAQ.md](view.php?doc=CAR_TRANSFER_FAQ.md)** - Frequently
-  asked questions about car transfer process
+- **[index.php](guides/index.php)** - Owner guides portal
+- **[Privacy Policy](../app/privacy.php)** - Privacy policy and data handling practices
+- **[Transfer FAQ](guides/car-transfer-faq.php)** - Frequently asked questions about car ownership transfers
 
-### `/faq/admin/` - Administrative Documentation
+### `/reference/` - Technical Reference
 
-**Audience:** Registry administrators, technical staff
-**Access:** Restricted (Administrator/Editor permissions required)
+**Audience:** Car owners, researchers
+**Access:** Public
 
-#### Core Administrative Guides
+- **[index.php](reference/index.php)** - Reference documentation portal
+- **[Chassis Validation](reference/chassis-validation.php)** - Chassis number formats and validation rules
+- **[Paint Colors](reference/paint-colors.php)** - Factory paint color reference
+- **[Technical Articles](reference/technical-articles.php)** - Technical documentation
+- **[Workshop](reference/workshop.php)** - Workshop and parts resources
 
-- **[index.php](faq/admin/index.php)** - Administrative documentation portal
-- **[CAR_TRANSFER_ADMIN_GUIDE.md](view.php?doc=CAR_TRANSFER_ADMIN_GUIDE.md)**
-  \- Complete administrator guide for managing car transfers
-- **[CAR_TRANSFER_ADMIN_QUICK_REFERENCE.md](view.php?doc=CAR_TRANSFER_ADMIN_QUICK_REFERENCE.md)**
-  \- Quick reference guide for daily admin operations
-- **[CAR_TRANSFER_TROUBLESHOOTING.md](view.php?doc=CAR_TRANSFER_TROUBLESHOOTING.md)**
-  \- Systematic troubleshooting procedures for transfer issues
+### `/stories/` - Car Stories
 
-#### System Documentation
+**Audience:** Car owners, enthusiasts
+**Access:** Public
 
-- **[EMAIL_STYLING_GUIDELINES.md](view.php?doc=EMAIL_STYLING_GUIDELINES.md)**
-  \- Email template styling standards and guidelines
-- **[SPAM_CLEANUP_SYSTEM.md](view.php?doc=SPAM_CLEANUP_SYSTEM.md)** -
-  Automated user cleanup system documentation
-
-### Root Level - Strategic Documentation
-
-**Audience:** Product managers, stakeholders, leadership
-**Access:** Public (version controlled)
+- **[car-stories.php](../docs/car-stories.php)** - Car stories portal
 
 ### `/development/` - Development Documentation
 
@@ -64,70 +44,40 @@ project, structured for different audiences and use cases.
 
 #### 🚀 START HERE
 
-Essential documents for getting started:
-
-- **[CLAUDE.md](../CLAUDE.md)** - Root instructions for Claude Code AI
-  assistant (quick reference and index)
-- **[QUICK_REFERENCE.md](development/QUICK_REFERENCE.md)** - Quick reference
-  for common tasks and commands
-- **[INSTALLATION.md](development/INSTALLATION.md)** - Complete installation
-  and setup procedures
+- **[CLAUDE.md](../CLAUDE.md)** - Root instructions for Claude Code AI assistant
+- **[QUICK_REFERENCE.md](development/QUICK_REFERENCE.md)** - Quick reference for common tasks and commands
+- **[INSTALLATION.md](development/INSTALLATION.md)** - Complete installation and setup procedures
 
 #### 📚 CORE DOCUMENTATION
 
-Fundamental architecture and patterns:
-
-- **[Architecture Guide](https://github.com/jimboone/elan-registry/wiki/Architecture)** - System architecture,
-  database, and class patterns (GitHub Wiki)
-- **[PAGE_LOADING_FLOW.md](development/PAGE_LOADING_FLOW.md)** - Complete
-  reference for page initialization and file loading sequence
-- **[DATABASE.md](development/DATABASE.md)** - Complete database schema
-  documentation and table relationships
-- **[UserSpice Integration Guide](https://github.com/jimboone/elan-registry/wiki/Integration)** - UserSpice integration
-  and custom functions (GitHub Wiki)
-- **[CODING_STANDARDS.md](development/CODING_STANDARDS.md)** - Code quality
-  requirements, standards, and project conventions
-- **[STRICT_TYPE_HANDLING.md](development/STRICT_TYPE_HANDLING.md)** - PHP
-  strict type handling patterns and solutions
+- **[Architecture Guide][arch-wiki]** - System architecture, database, and class patterns
+- **[PAGE_LOADING_FLOW.md](development/PAGE_LOADING_FLOW.md)** - Page initialization and file loading sequence
+- **[DATABASE.md](development/DATABASE.md)** - Complete database schema and table relationships
+- **[UserSpice Integration Guide][us-wiki]** - UserSpice integration and custom functions
+- **[CODING_STANDARDS.md](development/CODING_STANDARDS.md)** - Code quality requirements and project conventions
+- **[STRICT_TYPE_HANDLING.md](development/STRICT_TYPE_HANDLING.md)** - PHP strict type handling patterns
 
 #### 🔧 SPECIALIZED TOPICS
 
-Specific workflows and advanced topics:
-
-- **[Development Workflow](https://github.com/jimboone/elan-registry/wiki/Development-Workflow)** -
-  Development processes (wiki)
-- **[DEPLOYMENT.md](development/DEPLOYMENT.md)** - Production deployment
-  procedures
-- **[FIX_SCRIPTS.md](development/FIX_SCRIPTS.md)** - FIX script creation
-  guidelines
-- **[BACKUP_SYSTEM.md](development/BACKUP_SYSTEM.md)** - BackupManager class
-  API and usage patterns
-- **[EMAIL_SYSTEM.md](development/EMAIL_SYSTEM.md)** - Brevo email plugin
-  setup, configuration, environment setup, and troubleshooting
-- **[ERROR_HANDLING.md](development/ERROR_HANDLING.md)** - Error handling
-  patterns, API responses, and frontend integration
-- **[CLASSES.md](development/CLASSES.md)** - Custom application class
-  documentation and patterns
-- **[CSS_AND_ASSETS.md](development/CSS_AND_ASSETS.md)** - Stylesheets, CDN
-  resources, and CSS minification
-- **[DATATABLES.md](development/DATATABLES.md)** - DataTables configuration
-  and server-side processing
-- **[ENVIRONMENT.md](development/ENVIRONMENT.md)** - Environment setup and
-  configuration
-- **[STATIC_ANALYSIS.md](development/STATIC_ANALYSIS.md)** - Code quality and
-  static analysis tools
-- **[RELEASE_NOTES_TEMPLATE.md](development/RELEASE_NOTES_TEMPLATE.md)** -
-  Template for creating release notes
+- **[DEPLOYMENT.md](development/DEPLOYMENT.md)** - Production deployment procedures
+- **[FIX_SCRIPTS.md](development/FIX_SCRIPTS.md)** - Fix script creation guidelines
+- **[BACKUP_SYSTEM.md](development/BACKUP_SYSTEM.md)** - BackupManager class API and usage
+- **[EMAIL_SYSTEM.md](development/EMAIL_SYSTEM.md)** - Brevo email plugin setup and configuration
+- **[ERROR_HANDLING.md](development/ERROR_HANDLING.md)** - Error handling patterns and API responses
+- **[CLASSES.md](development/CLASSES.md)** - Custom application class documentation
+- **[CSS_AND_ASSETS.md](development/CSS_AND_ASSETS.md)** - Stylesheets, CDN resources, and CSS minification
+- **[DATATABLES.md](development/DATATABLES.md)** - DataTables configuration and server-side processing
+- **[ENVIRONMENT.md](development/ENVIRONMENT.md)** - Environment setup and configuration
+- **[STATIC_ANALYSIS.md](development/STATIC_ANALYSIS.md)** - Code quality and static analysis tools
+- **[RELEASE_NOTES_TEMPLATE.md](development/RELEASE_NOTES_TEMPLATE.md)** - Template for creating release notes
 
 ### `/testing/` - Testing Documentation
 
-**Audience:** QA engineers, technical leads, system architects
+**Audience:** QA engineers, technical leads
 **Access:** Public (version controlled)
 
-- **[TESTING.md](testing/TESTING.md)** - Comprehensive testing strategy
-  including PHPUnit and Playwright test execution
-- **[PLAYWRIGHT_E2E.md](testing/PLAYWRIGHT_E2E.md)** - Two-tier Playwright
-  testing strategy (local development vs production)
+- **[TESTING.md](testing/TESTING.md)** - PHPUnit and Playwright test execution
+- **[PLAYWRIGHT_E2E.md](testing/PLAYWRIGHT_E2E.md)** - Two-tier Playwright testing strategy
 
 ### `/releases/` - Release Documentation
 
@@ -135,61 +85,32 @@ Specific workflows and advanced topics:
 **Access:** Public
 
 - Version-specific release notes and change logs
-- Feature announcements and upgrade guides
-
-## Documentation System Features
-
-### Unified Document Viewer
-
-The `view.php` system provides:
-
-- ✅ **Consistent formatting** - All markdown documents rendered with unified
-  styling
-- ✅ **Access control** - Admin documents protected by UserSpice
-  permissions
-- ✅ **Security** - XSS protection and input validation
-- ✅ **Navigation** - Breadcrumb navigation and cross-references
-- ✅ **Mobile responsive** - Optimized for all device sizes
-
-### Content Management
-
-- **Markdown format** - Easy to write and maintain
-- **Version controlled** - Full change history in Git
-- **Categorized access** - Public vs. admin-only content
-- **Cross-referenced** - Automatic linking between related documents
 
 ## Contributing to Documentation
 
-### Writing Guidelines
+### Guide Pages (`/guides/`)
 
-1. **Use clear headings** - Structure content with meaningful headings
-2. **Include examples** - Provide code examples and screenshots where helpful
-3. **Link liberally** - Cross-reference related documentation
-4. **Keep current** - Update documentation when features change
+Guide content is pre-compiled to static HTML and inlined as PHP heredocs in
+individual pages. To update a guide, edit the `$htmlContent` heredoc directly
+in the relevant PHP file. No build step required.
 
 ### File Organization
 
-- Place user-facing docs in `/faq/`
-- Place admin docs in `/faq/admin/`
-- Place testing docs in `/testing/`
-- Place development docs in `/development/`
-- Use descriptive filenames with consistent naming conventions
+- User-facing guides → `docs/guides/`
+- Development docs → `docs/development/` (Markdown)
+- Testing docs → `docs/testing/` (Markdown)
+- Reference pages → `docs/reference/`
 
 ### Access Control
 
-- Public documentation goes in `/faq/` (no authentication required)
-- Admin documentation goes in `/faq/admin/` (requires Administrator/Editor
-  permissions)
-- Development documentation in `/development/` and `/testing/` is public but
-  version-controlled
+- Public guides in `docs/guides/` — no authentication required
+- Admin portal in `docs/admin/` — requires Administrator permissions
+- Development docs in `docs/development/` and `docs/testing/` — public, version-controlled
 
 ## External Documentation
 
-Plugin and vendor documentation remains in their respective directories:
+- `/usersc/plugins/*/README.md` — Individual plugin documentation
+- Third-party docs in `/vendor/` and `/node_modules/`
 
-- `/usersc/plugins/*/README.md` - Individual plugin documentation
-- Third-party vendor documentation in `/vendor/` and `/node_modules/` directories
-
----
-
-*For questions about the documentation system, see the [CAR_TRANSFER_FAQ.md](view.php?doc=CAR_TRANSFER_FAQ.md) or contact the administrators.*
+[arch-wiki]: https://github.com/unibrain1/elanregistry/wiki/Elan-Registry-Architecture-and-Database-Design
+[us-wiki]: https://github.com/unibrain1/elanregistry/wiki/Customization-and-Integration-Patterns

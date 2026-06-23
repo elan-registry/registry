@@ -97,11 +97,7 @@ different access levels and serving mechanisms:
 /docs/
 ├── /guides/                  # User how-to documentation
 │   ├── index.php            # Guides index page
-│   ├── ADD_CAR_GUIDE.md
-│   ├── CAR_TRANSFER_USER_GUIDE.md
-│   ├── CAR_TRANSFER_FAQ.md
-│   ├── PRIVACY.md
-│   └── /screenshots/        # Guide screenshot assets
+│   └── car-transfer-faq.php # Transfer FAQ (static HTML, no runtime deps)
 ├── /reference/              # Technical reference (native PHP pages)
 │   ├── index.php           # Reference library index
 │   ├── identification-guide.php   # Elan identification
@@ -111,16 +107,11 @@ different access levels and serving mechanisms:
 │   ├── technical-articles.php    # Technical articles collection
 │   ├── /assets/            # PDF files for reference section
 │   └── /images/            # Reference page images
-├── /admin/                  # Admin documentation (admin access required)
-│   ├── index.php           # Admin docs index
-│   ├── CAR_TRANSFER_ADMIN_GUIDE.md
-│   ├── CAR_TRANSFER_ADMIN_QUICK_REFERENCE.md
-│   ├── CAR_TRANSFER_TROUBLESHOOTING.md
-│   ├── EMAIL_STYLING_GUIDELINES.md
-│   └── SPAM_CLEANUP_SYSTEM.md
 ├── /stories/               # Car history stories (markdown, no index)
 │   ├── /assets/            # PDF files for stories section
 │   └── *.md files
+├── /assets/               # Shared doc-page CSS
+│   └── document-content.css  # Scoped typography for inlined HTML content
 ├── /development/           # Developer documentation (internal only)
 │   ├── CLAUDE.md
 │   ├── CODING_STANDARDS.md
@@ -135,10 +126,7 @@ different access levels and serving mechanisms:
 │   ├── EMAIL_SYSTEM.md
 │   └── /adr/              # Architecture Decision Records
 ├── /testing/              # Testing documentation
-├── /assets/              # Legacy PDF fallback directory (deprecated)
-├── /faq/                 # Legacy FAQ directory (deprecated)
 ├── car-stories.php       # Car stories listing page (public)
-├── guide-viewer.php      # Markdown document viewer
 ├── pdf-viewer.php        # PDF viewer (reference, stories)
 ├── index.php             # Documentation hub landing page
 ├── README.md             # Documentation index and navigation guide
@@ -150,58 +138,34 @@ different access levels and serving mechanisms:
 **Guides** (`/docs/guides/`)
 
 - User-facing how-to documentation
-- Markdown files rendered via `guide-viewer.php`
+- Self-contained PHP pages with HTML content inlined as heredocs (no runtime dependencies)
 - Public access (no authentication required)
-- Includes: car registration, transfer procedures, privacy policy
+- Includes: car transfer FAQ
 
 **Reference** (`/docs/reference/`)
 
 - Technical reference content
-- Native PHP pages (not markdown)
+- Native PHP pages
 - Public access
 - Includes: identification guides, chassis validation, paint colors, technical articles
 - Related to `/app/cars/factory.php` (Production Records)
-
-**Admin** (`/docs/admin/`)
-
-- Administration and maintenance procedures
-- Markdown files rendered via `guide-viewer.php`
-- Admin authentication required
-- Includes: transfer procedures, admin workflows, troubleshooting
 
 **Stories** (`/docs/stories/`)
 
 - Individual car history narratives
 - Listed via `/docs/car-stories.php`
-- Markdown files
 - No central index (individual story links only)
 
 #### Document Routing
 
-The documentation system uses two main viewer pages:
+The documentation system uses one viewer page:
 
-1. **`guide-viewer.php`** — Renders markdown documents with authentication checks
-   - Serves: `/docs/guides/` and `/docs/admin/`
-   - Uses `DocumentConfig` class for metadata and access control
-   - Handles breadcrumbs, titles, and styling
+- **`pdf-viewer.php`** — Embeds PDF documents
+  - Accepts `subdir` parameter (allowlisted: `reference`, `stories`)
+  - Maps legacy `/docs/assets/` URLs to new locations
+  - Provides PDF.js viewer with controls
 
-2. **`pdf-viewer.php`** — Embeds PDF documents
-   - Accepts `subdir` parameter (allowlisted: `reference`, `stories`)
-   - Maps legacy `/docs/assets/` URLs to new locations
-   - Provides PDF.js viewer with controls
-
-#### DocumentConfig Class
-
-The `DocumentConfig` class (`/usersc/classes/DocumentConfig.php`) centralizes
-documentation configuration:
-
-```php
-DocumentConfig::getCategories() // Returns 'guides' and 'admin' with paths
-DocumentConfig::getDocumentInfo() // Returns document metadata
-```
-
-Note: The `reference` section uses standalone PHP pages and does not use
-DocumentConfig routing.
+Guide and privacy pages are standalone PHP files — no central routing layer.
 
 #### URL Redirects
 
@@ -217,7 +181,6 @@ Contains all custom classes, helpers, plugins, and template overrides:
 │   ├── Car.php           # Car registry entity
 │   ├── ElanRegistryOwner.php   # Owner profile entity
 │   ├── ApiResponse.php   # Standardized API response format
-│   ├── DocumentConfig.php   # Documentation metadata and routing
 │   ├── LocationService.php   # OpenStreetMap integration
 │   ├── Logger.php        # Application logging
 │   ├── LogCategories.php   # Log category constants
@@ -661,7 +624,6 @@ Key classes are documented in `docs/development/CLASSES.md`:
 - **`Car`** — Car entity with properties and methods
 - **`ElanRegistryOwner`** — Owner profile with contact/preference data
 - **`ApiResponse`** — Standardized response format for AJAX endpoints
-- **`DocumentConfig`** — Documentation metadata and routing
 - **`LocationService`** — OpenStreetMap integration with server-side caching and logged I/O error handling
 - **`PagePermissionClassifier`** (`usersc/classes/admin/`) — Classifies pages into permission tiers (admin-only, admin+editor,
   private user, special no-perms) for the Fix Page Permissions maintenance script
@@ -670,6 +632,8 @@ Key classes are documented in `docs/development/CLASSES.md`:
   bypassing UserSpice's `htmlspecialchars()` pre-encoding so text fields
   reach the database raw and can be escaped at output. Mandatory for any
   field destined for storage.
+- **`DocumentPortalTemplate`** — Breadcrumb and portal-header renderer used across docs pages,
+  stories, and car listings (`usersc/classes/DocumentPortalTemplate.php`)
 - **`Logger`** — Application event logging
 - **`LogCategories`** — Logging category constants
 
@@ -809,6 +773,8 @@ See `docs/development/CODING_STANDARDS.md` for complete standards.
 
 | Version | Date | Changes |
 | ------- | ---- | ------- |
+| 2.24.1 | 2026-06-23 | Guide rendering hotfix: replaced `league/commonmark` runtime rendering (never deployed) with static PHP pages; `guide-viewer.php` deleted; Transfer FAQ (`docs/guides/car-transfer-faq.php`) is the sole survivor; `MarkdownRenderer`, `DocumentConfig`, `DocumentationException` classes removed; `docs/admin/` section removed entirely; `document-content.css` added for scoped guide typography |
+| 2.24.0 | 2026-06-22 | UX improvements: factory records context paragraph, paint colors page (larger swatches, filter tabs), statistics timeline charts moved above fold, add/edit car form UX fixes (native date pickers, premature validation icons), identification guide two-column card layout; editorial pass replacing em dashes |
 | 2.23.0 | 2026-05-11 | Encode-at-output reform: `ElanRegistry\Input::raw()` added in `usersc/classes/Input.php` for storage-safe input; double-encoding fixed across car, owner, and user/profile text fields, outbound emails, and templates; one-time migration script `03-Decode-All-HTML-Encoded-Fields.php` decodes legacy encoded data in `cars`, `users`, `profiles`; encode-at-output regression suite added |
 | 2.22.0 | 2026-05-06 | Google Maps replaced with self-hosted MapLibre GL JS 4.7.1 + VersaTiles Colorful; Google Geocoding API code removed (LocationGeocoder.php deleted); elan_google_maps_key and elan_google_geo_key settings dropped; Google domains removed from CSP |
 | 2.20.0 | 2026-05-01 | Admin panel split: manage-consolidated.php (car/owner mgmt) + manage-maintenance.php (system health/backups/settings); FIX scripts restructured to app/admin/scripts/fix/ (one-time) + app/admin/scripts/maintenance/ (repeatable); new tabs: tab-health.php, tab-maintenance.php; new modals: confirmation-modal.php, input-modal.php; fix_script_runs table |
