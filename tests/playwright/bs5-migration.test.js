@@ -1,7 +1,7 @@
 // tests/playwright/bs5-migration.test.js
 //
 // Behavioral regression tests for Bootstrap 5 JS API migration (PR #730).
-// Covers: Flatpickr date pickers, Statistics page ElanRegistryAPI availability,
+// Covers: Date picker fields, Statistics page ElanRegistryAPI availability,
 // and the nav dropdown firstChild patch in footer.php.
 //
 // Requires local MAMP at http://localhost:9999/elan_registry
@@ -9,11 +9,9 @@
 const { test, expect } = require('@playwright/test');
 const { ensureLoggedIn, navigateAndWait } = require('./auth-helper.js');
 
-// ---------------------------------------------------------------------------
-// Area 1: Flatpickr date pickers (app/cars/form.php, Car Details section)
-// ---------------------------------------------------------------------------
+// Date field inputs — native <input type="date"> (converted from Flatpickr in #772)
 
-test.describe('BS5 Migration — Flatpickr date pickers', () => {
+test.describe('Date picker fields (Purchase Date, Sold Date)', () => {
   test.beforeEach(async ({ page }) => {
     await ensureLoggedIn(page);
     await page.goto('/app/cars/form.php', { waitUntil: 'networkidle' });
@@ -21,9 +19,9 @@ test.describe('BS5 Migration — Flatpickr date pickers', () => {
     await expect(page.locator('#section1')).toBeVisible({ timeout: 5000 });
   });
 
-  test('purchase date field opens flatpickr calendar', async ({ page }) => {
-    await page.locator('#purchasedate').click();
-    await expect(page.locator('.flatpickr-calendar')).toBeVisible();
+  test('purchase date input is native date type', async ({ page }) => {
+    await expect(page.locator('#purchasedate')).toHaveAttribute('type', 'date');
+    await expect(page.locator('#purchasedate')).toHaveAttribute('min', '1957-01-01');
   });
 
   test('purchase date stores value in YYYY-MM-DD format', async ({ page }) => {

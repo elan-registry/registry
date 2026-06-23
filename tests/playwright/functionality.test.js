@@ -125,15 +125,45 @@ test.describe('Core Functionality After Refactoring', () => {
       '/app/cars/actions/check-chassis.php',
       '/app/cars/mapmarkers.xml.php'
     ];
-    
+
     for (const endpoint of endpoints) {
       const response = await page.request.post(endpoint, {
         data: { test: 'true' }
       });
-      
+
       // Should not return 404 or 500 errors
       expect(response.status()).not.toBe(404);
       expect(response.status()).not.toBe(500);
     }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Premature validation icons — required fields should be neutral on page load
+// ---------------------------------------------------------------------------
+
+test.describe('Add Car form — no premature validation on page load', () => {
+  test.beforeEach(async ({ page }) => {
+    await ensureLoggedIn(page);
+    await page.goto('/app/cars/form.php', { waitUntil: 'networkidle' });
+  });
+
+  test('Year, Model, and Chassis icons are neutral (no thumbs-down) on load', async ({ page }) => {
+    // On initial page load for add mode, no field has been touched yet.
+    // Icons should not show the invalid/thumbs-down state.
+    await expect(page.locator('#year_icon')).not.toHaveClass(/fa-thumbs-down/);
+    await expect(page.locator('#model_icon')).not.toHaveClass(/fa-thumbs-down/);
+    await expect(page.locator('#chassis_icon')).not.toHaveClass(/fa-thumbs-down/);
+
+    // Also verify no is-invalid class on the icons themselves
+    await expect(page.locator('#year_icon')).not.toHaveClass(/is-invalid/);
+    await expect(page.locator('#model_icon')).not.toHaveClass(/is-invalid/);
+    await expect(page.locator('#chassis_icon')).not.toHaveClass(/is-invalid/);
+  });
+
+  test('Year, Model, and Chassis fields have no invalid border on load', async ({ page }) => {
+    await expect(page.locator('#year')).not.toHaveClass(/is-invalid/);
+    await expect(page.locator('#model')).not.toHaveClass(/is-invalid/);
+    await expect(page.locator('#chassis')).not.toHaveClass(/is-invalid/);
   });
 });

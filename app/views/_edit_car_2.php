@@ -16,14 +16,14 @@
     <div class='col-12 col-sm-9'>
         <div class='input-group'>
             <span class='input-group-text'><i aria-hidden='true' class='fas fa-calendar'></i></span>
-            <input class='form-control' name='purchasedate' id='purchasedate' value='<?= htmlspecialchars((string)($cardetails['purchasedate'] ?? ''), ENT_QUOTES, 'UTF-8') ?>' type='text' placeholder='YYYY-MM-DD' pattern='\d{4}-\d{2}-\d{2}' inputmode='numeric' />
+            <input class='form-control' name='purchasedate' id='purchasedate' value='<?= htmlspecialchars((string)($cardetails['purchasedate'] ?? ''), ENT_QUOTES, 'UTF-8') ?>' type='date' min='1957-01-01' max='<?= date('Y-m-d') ?>' />
         </div>
-        <small id='purchasedateHelp' class='form-text text-muted'>Approximate date you purchased the car. Use <strong>YYYY-MM-DD</strong> format (e.g. 1973-06-15).</small>
+        <small id='purchasedateHelp' class='form-text text-muted'>Approximate date you purchased the car.</small>
     </div>
 </div>
 
 <!-- Sold Date toggle -->
-<div class='mb-3 row'>
+<div class='mb-3 mt-3 row'>
     <div class='col-md-3 col-12'></div>
     <div class='col-12 col-sm-9'>
         <div class='form-check'>
@@ -39,9 +39,9 @@
     <div class='col-12 col-sm-9'>
         <div class='input-group'>
             <span class='input-group-text'><i aria-hidden='true' class='fas fa-calendar'></i></span>
-            <input class='form-control' name='solddate' id='solddate' value='<?= htmlspecialchars((string)($cardetails['solddate'] ?? ''), ENT_QUOTES, 'UTF-8') ?>' type='text' placeholder='YYYY-MM-DD' pattern='\d{4}-\d{2}-\d{2}' inputmode='numeric' />
+            <input class='form-control' name='solddate' id='solddate' value='<?= htmlspecialchars((string)($cardetails['solddate'] ?? ''), ENT_QUOTES, 'UTF-8') ?>' type='date' min='1957-01-01' max='<?= date('Y-m-d') ?>' />
         </div>
-        <small id='solddateHelp' class='form-text text-muted'>Approximate date you sold the car. Use <strong>YYYY-MM-DD</strong> format (e.g. 1985-03-01).</small>
+        <small id='solddateHelp' class='form-text text-muted'>Approximate date you sold the car.</small>
     </div>
 </div>
 
@@ -50,7 +50,7 @@
     <label for='website' class='col-md-3 col-12 col-form-label'>Website</label>
     <div class='col-12 col-sm-9'>
         <div class='input-group'>
-            <span class='input-group-text'><i aria-hidden='true' class='fas fa-palette'></i></span>
+            <span class='input-group-text'><i aria-hidden='true' class='fas fa-globe'></i></span>
             <input class='form-control' type='url' name='website' id='website' placeholder='<?= htmlspecialchars($carprompt['website'], ENT_QUOTES, 'UTF-8') ?>' value='<?= htmlspecialchars((string)($cardetails['website'] ?? ''), ENT_QUOTES, 'UTF-8') ?>' />
         </div>
     </div>
