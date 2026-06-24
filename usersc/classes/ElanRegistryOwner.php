@@ -94,12 +94,18 @@ class ElanRegistryOwner
     public function create(array $fields = []): bool
     {
         if (empty($fields)) {
-            throw new OwnerCreationException('No data provided for owner creation');
+            throw OwnerCreationException::withUserMessage(
+                'No data provided for owner creation',
+                'No data provided for owner creation.'
+            );
         }
 
         // CSRF Protection
         if (!isset($fields['csrf']) || !Token::check($fields['csrf'])) {
-            throw new OwnerCreationException('Invalid CSRF token provided');
+            throw OwnerCreationException::withUserMessage(
+                'Invalid CSRF token provided',
+                'Your session may have expired. Please refresh the page and try again.'
+            );
         }
 
         // Remove token from fields array after validation
@@ -124,7 +130,10 @@ class ElanRegistryOwner
             $userFields['vericode'] = randomstring(15);
 
             if (!$this->_db->insert($this->userTableName, $userFields)) {
-                throw new OwnerCreationException('Database error during user creation: ' . $this->_db->errorString());
+                throw OwnerCreationException::withUserMessage(
+                    'Database error during user creation: ' . $this->_db->errorString(),
+                    'Failed to create owner account. Please try again.'
+                );
             }
 
             $userId = $this->_db->lastId();
@@ -134,7 +143,10 @@ class ElanRegistryOwner
             $profileFields['ctime'] = date(AppConstants::DATETIME_FORMAT);
 
             if (!$this->_db->insert($this->profileTableName, $profileFields)) {
-                throw new OwnerCreationException('Database error during profile creation: ' . $this->_db->errorString());
+                throw OwnerCreationException::withUserMessage(
+                    'Database error during profile creation: ' . $this->_db->errorString(),
+                    'Failed to create owner profile. Please try again.'
+                );
             }
 
             $this->_db->query("COMMIT");
@@ -166,20 +178,29 @@ class ElanRegistryOwner
     {
         if (empty($fields) || !isset($fields['id'])) {
             logger($fields['id'] ?? 0, LogCategories::LOG_CATEGORY_VALIDATION_ERROR, 'Owner update failed: No data or ID provided');
-            throw new OwnerValidationException('No data or ID provided for owner update');
+            throw OwnerValidationException::withUserMessage(
+                'No data or ID provided for owner update',
+                'Unable to process update. Please try again.'
+            );
         }
 
         // CSRF Protection
         if (!isset($fields['csrf']) || !Token::check($fields['csrf'])) {
             logger($fields['id'] ?? 0, LogCategories::LOG_CATEGORY_VALIDATION_ERROR, 'Owner update failed: Invalid CSRF token');
-            throw new OwnerValidationException('Invalid CSRF token provided');
+            throw OwnerValidationException::withUserMessage(
+                'Invalid CSRF token provided',
+                'Your session may have expired. Please refresh the page and try again.'
+            );
         }
 
         // Remove token from fields array after validation
         unset($fields['csrf']);
 
         if (!is_numeric($fields['id']) || $fields['id'] <= 0) {
-            throw new OwnerValidationException('Invalid owner ID provided for update');
+            throw OwnerValidationException::withUserMessage(
+                'Invalid owner ID provided for update',
+                'Unable to identify the owner record. Please try again.'
+            );
         }
 
         $userId = (int)$fields['id'];
@@ -190,7 +211,10 @@ class ElanRegistryOwner
         if (!empty($fieldsToValidate)) {
             $validatedFields = $this->validateAndSanitizeFields($fieldsToValidate, false);
         } else {
-            throw new OwnerValidationException('No fields provided for update');
+            throw OwnerValidationException::withUserMessage(
+                'No fields provided for update',
+                'No changes were submitted. Please enter values to update.'
+            );
         }
 
         // Start transaction for user + profile updates
@@ -205,7 +229,10 @@ class ElanRegistryOwner
             if (!empty($userFields)) {
                 // Note: users table doesn't have mtime field (UserSpice standard)
                 if (!$this->_db->update($this->userTableName, $userId, $userFields)) {
-                    throw new OwnerUpdateException('Database error during user update: ' . $this->_db->errorString());
+                    throw OwnerUpdateException::withUserMessage(
+                        'Database error during user update: ' . $this->_db->errorString(),
+                        'Failed to update owner account. Please try again.'
+                    );
                 }
             }
 
@@ -217,7 +244,10 @@ class ElanRegistryOwner
                 $updateResult = $this->_db->update($this->profileTableName, ['user_id' => $userId], $profileFields);
 
                 if (!$updateResult) {
-                    throw new OwnerUpdateException('Database error during profile update: ' . $this->_db->errorString());
+                    throw OwnerUpdateException::withUserMessage(
+                        'Database error during profile update: ' . $this->_db->errorString(),
+                        'Failed to update owner profile. Please try again.'
+                    );
                 }
             }
 
@@ -428,13 +458,19 @@ class ElanRegistryOwner
     public function updateLocation(array $locationData): bool
     {
         if (!$this->_data) {
-            throw new OwnerValidationException('Owner data not loaded');
+            throw OwnerValidationException::withUserMessage(
+                'Owner data not loaded',
+                'Unable to retrieve owner data. Please try again.'
+            );
         }
 
         $requiredFields = ['city', 'state', 'country'];
         foreach ($requiredFields as $field) {
             if (empty($locationData[$field])) {
-                throw new OwnerValidationException("Required location field '{$field}' is missing");
+                throw OwnerValidationException::withUserMessage(
+                    "Required location field '{$field}' is missing",
+                    "Required location field '{$field}' is missing."
+                );
             }
         }
 
@@ -524,7 +560,10 @@ class ElanRegistryOwner
     {
         foreach ($requiredFields as $field) {
             if (!isset($fields[$field]) || empty(trim($fields[$field]))) {
-                throw new OwnerValidationException("Required field '{$field}' is missing or empty");
+                throw OwnerValidationException::withUserMessage(
+                    "Required field '{$field}' is missing or empty",
+                    "Required field '{$field}' is missing or empty."
+                );
             }
         }
     }
@@ -548,10 +587,16 @@ class ElanRegistryOwner
                     if (!empty($value)) {
                         $validatedFields[$key] = $this->sanitizeString($value, 25);
                         if (strlen($validatedFields[$key]) < 1) {
-                            throw new OwnerValidationException("{$key} must be at least 1 character long");
+                            throw OwnerValidationException::withUserMessage(
+                                "{$key} must be at least 1 character long",
+                                'Name field must be at least 1 character long.'
+                            );
                         }
                     } elseif ($requireAll) {
-                        throw new OwnerValidationException("{$key} is required");
+                        throw OwnerValidationException::withUserMessage(
+                            "{$key} is required",
+                            'A required name field is missing.'
+                        );
                     }
                     break;
 
@@ -559,11 +604,14 @@ class ElanRegistryOwner
                     if (!empty($value)) {
                         $email = filter_var(trim($value), FILTER_VALIDATE_EMAIL);
                         if ($email === false) {
-                            throw new OwnerValidationException('Invalid email format');
+                            throw OwnerValidationException::withUserMessage(
+                                'Invalid email format',
+                                'Invalid email format.'
+                            );
                         }
                         $validatedFields[$key] = $email;
                     } elseif ($requireAll) {
-                        throw new OwnerValidationException('Email is required');
+                        throw OwnerValidationException::withUserMessage('Email is required', 'Email is required.');
                     }
                     break;
 
@@ -579,13 +627,15 @@ class ElanRegistryOwner
                     if (!empty($value)) {
                         $sanitized = preg_replace('/[^a-zA-Z0-9\-._~:\/?#\[\]@!$&\'()*+,;=%]/', '', trim($value));
                         if (!filter_var($sanitized, FILTER_VALIDATE_URL)) {
-                            throw new OwnerValidationException(
+                            throw OwnerValidationException::withUserMessage(
+                                'Website URL must start with http:// or https:// (e.g. https://example.com)',
                                 'Website URL must start with http:// or https:// (e.g. https://example.com)'
                             );
                         }
                         $scheme = strtolower((string) parse_url($sanitized, PHP_URL_SCHEME));
                         if (!in_array($scheme, ['http', 'https'], true)) {
-                            throw new OwnerValidationException(
+                            throw OwnerValidationException::withUserMessage(
+                                'Website URL must use http:// or https:// — other protocols are not allowed',
                                 'Website URL must use http:// or https:// — other protocols are not allowed'
                             );
                         }
@@ -597,7 +647,10 @@ class ElanRegistryOwner
                     if (!empty($value)) {
                         // Basic password validation - UserSpice handles detailed requirements
                         if (strlen($value) < 6) {
-                            throw new OwnerValidationException('Password must be at least 6 characters long');
+                            throw OwnerValidationException::withUserMessage(
+                                'Password must be at least 6 characters long',
+                                'Password must be at least 6 characters long.'
+                            );
                         }
                         $validatedFields[$key] = password_hash($value, PASSWORD_BCRYPT, ['cost' => 12]);
                     }
