@@ -51,7 +51,20 @@
     <div class='col-12 col-sm-9'>
         <div class='input-group'>
             <span class='input-group-text'><i aria-hidden='true' class='fas fa-globe'></i></span>
-            <input class='form-control' type='url' name='website' id='website' placeholder='<?= htmlspecialchars($carprompt['website'], ENT_QUOTES, 'UTF-8') ?>' value='<?= htmlspecialchars((string)($cardetails['website'] ?? ''), ENT_QUOTES, 'UTF-8') ?>' />
+            <input class='form-control' type='url' name='website' id='website' placeholder='<?= htmlspecialchars($carprompt['website'], ENT_QUOTES, 'UTF-8') ?>' value='<?= htmlspecialchars((string)($cardetails['website'] ?? ''), ENT_QUOTES, 'UTF-8') ?>' pattern="https?://.+" />
         </div>
     </div>
 </div>
+<script>
+(function () {
+    var el = document.getElementById('website');
+    function validate() {
+        el.setCustomValidity('');
+        if (el.value !== '' && !el.validity.valid) {
+            el.setCustomValidity('URL must start with http:// or https:// (e.g. https://example.com)');
+        }
+    }
+    el.addEventListener('input', validate);
+    el.addEventListener('blur', function () { validate(); if (el.value !== '') el.reportValidity(); });
+}());
+</script>
