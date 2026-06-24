@@ -128,6 +128,18 @@ if (!empty($_POST)) {
                     uploadImages($cardetails);
                     updateCar($cardetails);
 
+                    if (!empty($errors)) {
+                        ApiResponse::validationError(
+                            ['general' => $errors],
+                            'Cannot save car: update operation failed'
+                        )->withData('cardetails', $cardetails)
+                        ->withLogging(
+                            $user->data()->id,
+                            LogCategories::LOG_CATEGORY_CAR_ERRORS,
+                            'Car update failed post-save validation: ' . json_encode($errors)
+                        )->send();
+                    }
+
                     // Blanks instead of NULL for display
                     foreach ($cardetails as $key => $value) {
                         if (is_null($value)) {

@@ -148,7 +148,15 @@ class CarValidator
                 case 'website':
                     if (!empty($value)) {
                         if (!filter_var($value, FILTER_VALIDATE_URL)) {
-                            throw new CarValidationException('Invalid website URL format');
+                            throw new CarValidationException(
+                                'Website URL must start with http:// or https:// (e.g. https://example.com)'
+                            );
+                        }
+                        $scheme = strtolower((string) parse_url($value, PHP_URL_SCHEME));
+                        if (!in_array($scheme, ['http', 'https'], true)) {
+                            throw new CarValidationException(
+                                'Website URL must use http:// or https:// — other protocols are not allowed'
+                            );
                         }
                         $validatedFields[$key] = filter_var($value, FILTER_SANITIZE_URL);
                     }

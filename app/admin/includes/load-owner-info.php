@@ -89,8 +89,13 @@ try {
             <div class="text-center">
                 <strong>User ID:</strong> <?= $ownerId // nosemgrep: php.lang.security.taint-unsafe-echo-tag.taint-unsafe-echo-tag ?><br>
                 <strong>Email:</strong> <a href="mailto:<?= htmlspecialchars($ownerData->email) ?>"><?= htmlspecialchars($ownerData->email) ?></a><br>
-                <?php if (!empty($ownerData->website)): ?>
-                    <strong>Website:</strong> <a href="<?= htmlspecialchars($ownerData->website) ?>" target="_blank"><?= htmlspecialchars($ownerData->website) ?></a><br>
+                <?php
+                $ownerWebsiteScheme = !empty($ownerData->website)
+                    ? strtolower((string) parse_url((string) $ownerData->website, PHP_URL_SCHEME))
+                    : '';
+                if (!empty($ownerData->website) && in_array($ownerWebsiteScheme, ['http', 'https'], true)):
+                ?>
+                    <strong>Website:</strong> <a href="<?= htmlspecialchars($ownerData->website, ENT_QUOTES, 'UTF-8') ?>" target="_blank" rel="noopener noreferrer"><?= htmlspecialchars($ownerData->website, ENT_QUOTES, 'UTF-8') ?></a><br>
                 <?php endif; ?>
                 <strong>Location:</strong>
                 <?php
