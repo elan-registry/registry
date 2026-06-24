@@ -28,6 +28,7 @@ _Additional deployment actions expected: SQL migrations for new `chassis_overrid
 
 - **Chassis Override Persistence** ([#915](https://github.com/unibrain1/elanregistry/issues/915)): Chassis validation override now persists correctly via a dedicated DB column; includes UI indicator and backfill script for existing records.
 - **Date Range Validation** ([#903](https://github.com/unibrain1/elanregistry/issues/903)): Server-side validation added for car purchase/sold date ranges.
+- **Website Scheme Whitelist — Owner and Settings** ([#921](https://github.com/unibrain1/elanregistry/issues/921)): Extended the http/https scheme whitelist (added to the car validator in #851) to the owner profile and user settings website fields, blocking `javascript:`, `data:`, `ftp://`, and other non-web protocols.
 - **Admin Contact Security** ([#660](https://github.com/unibrain1/elanregistry/issues/660), [#661](https://github.com/unibrain1/elanregistry/issues/661)): Fixed email header injection and unvalidated recipient address in the admin multi-user contact path.
 - **Verification Email Escaping** ([#854](https://github.com/unibrain1/elanregistry/issues/854)): All fields in the admin verification email template are now properly escaped.
 - **Removed Misleading Denylist Sanitizer** ([#917](https://github.com/unibrain1/elanregistry/issues/917)): The legacy `clean_string()` helper in the admin and owner contact paths was a case-sensitive denylist that did not provide real injection protection (header injection is prevented by CR/LF stripping at the call site; XSS is prevented by template-layer escaping). Removed from both call sites; user messages now reach the email body unmangled.
@@ -52,3 +53,4 @@ _Additional deployment actions expected: SQL migrations for new `chassis_overrid
 - [#873](https://github.com/unibrain1/elanregistry/issues/873) — security: registration failure exposes raw exception message to user (usersc/join.php)
 - [#903](https://github.com/unibrain1/elanregistry/issues/903) — harden: server-side validation for car purchase/sold date ranges
 - [#915](https://github.com/unibrain1/elanregistry/issues/915) — fix: chassis override flag — fix client-side bug, persist to DB column, UI indicator, and admin fix script
+- [#921](https://github.com/unibrain1/elanregistry/issues/921) — harden: apply http/https scheme whitelist to ElanRegistryOwner and user_settings website fields
