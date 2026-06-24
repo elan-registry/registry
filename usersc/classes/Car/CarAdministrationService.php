@@ -28,7 +28,6 @@ use Token;
  */
 class CarAdministrationService
 {
-    private const OPERATION_DELETE = 'DELETE';
     private const OPERATION_MERGE = 'MERGE';
 
     /**
@@ -54,32 +53,6 @@ class CarAdministrationService
         try {
             $repo->beginTransaction();
 
-            $historyFields = [
-                'operation' => self::OPERATION_DELETE,
-                'car_id' => $carId,
-                'comments' => "Car ID $carId ($chassis) permanently deleted by admin $adminUserId. Reason: $reason",
-                'ctime' => $carData->ctime ?? date(AppConstants::DATETIME_FORMAT),
-                'mtime' => date(AppConstants::DATETIME_FORMAT),
-                'model' => $carData->model ?? '',
-                'series' => $carData->series ?? '',
-                'variant' => $carData->variant ?? '',
-                'year' => $carData->year ?? '',
-                'type' => $carData->type ?? '',
-                'chassis' => $carData->chassis ?? '',
-                'color' => $carData->color ?? '',
-                'engine' => $carData->engine ?? '',
-                'purchasedate' => $carData->purchasedate ?? null,
-                'solddate' => $carData->solddate ?? null,
-                'image' => $carData->image ?? ''
-            ];
-
-            $historyInserted = $repo->insertHistory($historyFields);
-            if (!$historyInserted) {
-                $technicalMsg = CarErrorMessages::getTechnicalMessage('audit_trail_failed', ['operation' => 'car deletion']);
-                logger($adminUserId, LogCategories::LOG_CATEGORY_CAR_DELETION, $technicalMsg);
-                throw new CarDatabaseException(CarErrorMessages::getAdminMessage('audit_trail_failed', ['operation' => 'car deletion']));
-            }
-
             if (!$repo->deleteCarUser($carId)) {
                 $technicalMsg = CarErrorMessages::getTechnicalMessage('car_relationship_failed', ['error' => 'query returned false']);
                 logger($adminUserId, LogCategories::LOG_CATEGORY_CAR_DELETION, $technicalMsg);
@@ -93,6 +66,7 @@ class CarAdministrationService
             }
 
             $repo->commit();
+            logger($adminUserId, LogCategories::LOG_CATEGORY_CAR_DELETION, "Car ID $carId ($chassis) permanently deleted. Reason: $reason");
             return true;
 
         } catch (\Exception $e) {

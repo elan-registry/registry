@@ -308,16 +308,6 @@ if (Input::exists('post')) {
 
                     $carData = $carQ->first();
 
-                    // Add deletion record to history before removing the car
-                    $fields = [];
-                    $fields['car_id'] = $car_id;
-                    $fields['comments'] = "Car ID $car_id ({$carData->chassis}) permanently deleted by admin " . $currentUserId . ". Reason: Administrative deletion via consolidated management.";
-                    $fields['operation'] = "DELETE";
-                    $fields['ctime'] = date(AppConstants::DATETIME_FORMAT);
-                    $fields['mtime'] = $fields['ctime'];
-
-                    $db->insert("cars_hist", $fields);
-
                     // Remove from car_user relationship table
                     $db->query("DELETE FROM car_user WHERE car_id = ?", [$car_id]);
 

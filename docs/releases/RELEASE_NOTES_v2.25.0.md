@@ -21,8 +21,7 @@ _Additional deployment actions expected: SQL migrations for new `chassis_overrid
 
 ### New Features
 
-- **Car Sharing Audit Trail** ([#609](https://github.com/unibrain1/elanregistry/issues/609)): Share and unshare events are now logged to the application audit trail.
-- **Schema Validation Script** ([#594](https://github.com/unibrain1/elanregistry/issues/594)): New maintenance script to verify trigger/history-table sync after schema changes.
+- **Car Owner Operations Audit Trail** ([#609](https://github.com/unibrain1/elanregistry/issues/609)): Owner-related operations (share, unshare, and related changes) are now logged to the application audit trail.
 
 ### Improvements
 
@@ -35,15 +34,12 @@ _Additional deployment actions expected: SQL migrations for new `chassis_overrid
 - **Car Verification via Car Class** ([#624](https://github.com/unibrain1/elanregistry/issues/624)): `verify_car.php` now uses Car class methods instead of direct DB writes.
 - **Audit Trail for Car Deletion** ([#593](https://github.com/unibrain1/elanregistry/issues/593)): Eliminated duplicate history row written on car deletion.
 - **car_user_hist Triggers and Indexes** ([#592](https://github.com/unibrain1/elanregistry/issues/592)): Added DB triggers and indexes to `car_user_hist` for full audit coverage.
-- **Car Class Transaction Wrapper** ([#259](https://github.com/unibrain1/elanregistry/issues/259)): Added public transaction wrapper method to Car class for consistent DB consistency.
 
 ## Issues Resolved
 
-- [#259](https://github.com/unibrain1/elanregistry/issues/259) — ENHANCE: Add transaction wrapper method to Car class for consistency
 - [#592](https://github.com/unibrain1/elanregistry/issues/592) — Add database triggers and indexes for car_user_hist table
 - [#593](https://github.com/unibrain1/elanregistry/issues/593) — Remove duplicate history row on car deletion
-- [#594](https://github.com/unibrain1/elanregistry/issues/594) — Add schema validation script for trigger/history table sync
-- [#609](https://github.com/unibrain1/elanregistry/issues/609) — security: add application-layer audit logging for car sharing operations
+- [#609](https://github.com/unibrain1/elanregistry/issues/609) — security: add application-layer audit logging for car owner operations
 - [#624](https://github.com/unibrain1/elanregistry/issues/624) — refactor: verify_car.php should use Car class methods instead of direct DB updates
 - [#660](https://github.com/unibrain1/elanregistry/issues/660) — bug: email header injection via $qualityIssue in admin contact subject line
 - [#661](https://github.com/unibrain1/elanregistry/issues/661) — bug: `target_email` unvalidated in admin contact multiple-user path
@@ -52,5 +48,7 @@ _Additional deployment actions expected: SQL migrations for new `chassis_overrid
 - [#854](https://github.com/unibrain1/elanregistry/issues/854) — fix: escape remaining unescaped fields in admin verification email template
 - [#873](https://github.com/unibrain1/elanregistry/issues/873) — security: registration failure exposes raw exception message to user (usersc/join.php)
 - [#903](https://github.com/unibrain1/elanregistry/issues/903) — harden: server-side validation for car purchase/sold date ranges
-- [#915](https://github.com/unibrain1/elanregistry/issues/915) — fix: chassis override flag — fix client-side bug, persist to DB column, UI indicator, and admin fix script
+- [#915](https://github.com/unibrain1/elanregistry/issues/915) — fix: chassis override — persist to DB column, UI indicator, and admin fix script
+- [#917](https://github.com/unibrain1/elanregistry/issues/917) — bug: clean_string() in admin contact paths is a denylist, not an injection defense
 - [#921](https://github.com/unibrain1/elanregistry/issues/921) — harden: apply http/https scheme whitelist to ElanRegistryOwner and user_settings website fields
+- [#927](https://github.com/unibrain1/elanregistry/issues/927) — bug: OwnerValidationException getUserMessage() returns generic default instead of specific validation text

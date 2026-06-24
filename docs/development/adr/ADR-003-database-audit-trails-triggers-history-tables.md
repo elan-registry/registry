@@ -200,12 +200,13 @@ column lists in triggers make this error-prone if not carefully automated.
   The explicit column lists (28+ columns) make this error-prone and must be
   managed carefully through FIX scripts and testing.
 
-- **Double-write on delete.** The `CarAdministrationService::delete()` method
-  writes a manual `'DELETE'` history row before deleting the car, then the
-  `cars_delete` trigger also fires. This creates duplicate history entries that
-  required a cleanup FIX script (FIX 03 -- Remove-Duplicate-History). The
-  architecture violates the principle that triggers should be the sole source
-  of structural audit records.
+- **Double-write on delete — resolved (v2.25.0, #593).** The
+  `CarAdministrationService::delete()` method previously wrote a manual
+  `'DELETE'` history row before deleting the car, then the `cars_delete` trigger
+  also fired, creating duplicate history entries that required FIX script
+  FIX 03. The manual pre-delete insert has been removed; admin context (who
+  deleted, reason) is now written via `logger()`. The `cars_delete` trigger is
+  the sole source of structural audit records on deletion.
 
 - **History rows are mutable.** Two administrative code paths (`verify_car.php`
   and `send_email.php`) UPDATE and DELETE existing `cars_hist` rows, violating
@@ -254,7 +255,7 @@ column lists in triggers make this error-prone if not carefully automated.
 | cars_hist growth impacting query performance | Low | Medium | Indexes on car_id and timestamp; archive old records if table exceeds 10GB |
 | @disable_triggers bleeding across pooled connections | Low | Low | PHP connection lifecycle resets session state; variable defaults to NULL |
 | GDPR deletion requiring history scrubbing | Low-Medium | High | noowner covers prospective writes; historical PII requires targeted UPDATE |
-| Double-writes creating duplicate history rows | Medium | Low | Known delete path issue; addressed by FIX 03; remove app pre-delete writes |
+| Double-writes creating duplicate history rows | Resolved | — | Removed app pre-delete write in v2.25.0 (#593) |
 | car_user_hist audit gaps during implementation | Medium | High | Acknowledged; implementation should include trigger setup and test coverage |
 
 ## Alternatives Considered

@@ -207,6 +207,11 @@ abstract class IntegrationTestCase extends TestCase
 
         $this->createdCarIds[] = $carId;
 
+        // Purge any stale cars_hist rows left from a previous test run that
+        // used the same car ID (possible if the cars table was ever truncated,
+        // which resets AUTO_INCREMENT without clearing history).
+        $this->db->query("DELETE FROM cars_hist WHERE car_id = ?", [$carId]);
+
         return $carId;
     }
 
