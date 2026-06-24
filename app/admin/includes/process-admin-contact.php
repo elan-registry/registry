@@ -30,12 +30,6 @@ if (!isRegistryAdmin()) { // Administrator (2) or Editor (3)
 $errors = [];
 $successes = [];
 
-// Security function to clean email content
-function clean_string(string $string): string {
-    $bad = array('content-type', 'bcc:', 'to:', 'cc:', 'href');
-    return str_replace($bad, '', $string);
-}
-
 // Process form submission
 if (Input::exists('post')) {
     $token = Input::get('csrf');
@@ -122,7 +116,7 @@ if (Input::exists('post')) {
 
                 // Prepare template variables
                 $template = [
-                    'message' => clean_string($message),
+                    'message' => $message,
                     'from' => $fromName,
                     'fromEmail' => $fromEmail,
                     'to' => $toName
