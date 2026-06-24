@@ -5,13 +5,15 @@
 
 ## Required Actions After Deployment
 
-_To be filled in as issues are completed. Expected: SQL migrations for new `chassis_override` column on `cars`, `cars_hist` trigger updates, and `car_user_hist` triggers/indexes (#915, #592)._
+- **Run fix script `05-Fix-Website-Scheme.php`** ([#851](https://github.com/unibrain1/elanregistry/issues/851)): Migrates existing `cars` rows with scheme-less website URLs (e.g. `example.com`) to `https://example.com`; nulls out invalid values (`javascript:`, relative paths, etc.). Run via the Maintenance tab in the admin panel.
+
+_Additional deployment actions expected: SQL migrations for new `chassis_override` column on `cars`, `cars_hist` trigger updates, and `car_user_hist` triggers/indexes (#915, #592)._
 
 ## User-Facing Changes
 
 ### Improvements
 
-- **Website Field URL Handling** ([#851](https://github.com/unibrain1/elanregistry/issues/851)): Website links now display correctly when the URL is missing the http/https scheme.
+- **Website Field URL Validation** ([#851](https://github.com/unibrain1/elanregistry/issues/851)): The website field now validates URLs at save time, requiring `http://` or `https://` with a clear error message. A one-time migration script corrects existing scheme-less URLs (prepends `https://` for bare domains; nulls out invalid values).
 - **Statistics Page Stability** ([#731](https://github.com/unibrain1/elanregistry/issues/731)): Fixed runtime errors on the statistics page for edge-case DOM states.
 - **Registration Error Messages** ([#873](https://github.com/unibrain1/elanregistry/issues/873)): Registration failures now show a clean, generic error message; full exception details are logged for admin review only.
 
