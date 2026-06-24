@@ -133,6 +133,88 @@ final class CarValidatorTest extends TestCase
         $this->validator->validateAndSanitizeFields($fields, false);
     }
 
+    /**
+     * @param array<string, string> $fields
+     */
+    #[DataProvider('dateOutOfRangeProvider')]
+    public function testDateOutOfRangeIsRejected(array $fields, string $expectedPattern): void
+    {
+        $this->expectException(CarValidationException::class);
+        $this->expectExceptionMessageMatches($expectedPattern);
+        $this->validator->validateAndSanitizeFields($fields, false);
+    }
+
+    /**
+     * @return array<string, array{0: array<string, string>, 1: string}>
+     */
+    public static function dateOutOfRangeProvider(): array
+    {
+        $tomorrow = (new \DateTime('tomorrow'))->format('Y-m-d');
+
+        return [
+            'purchasedate before min'  => [['purchasedate' => '1956-12-31'], '/Purchase date must be between/'],
+            'purchasedate in future'   => [['purchasedate' => $tomorrow],    '/Purchase date must be between/'],
+            'solddate before min'      => [['solddate'     => '1900-01-01'], '/Sold date must be between/'],
+            'solddate in future'       => [['solddate'     => $tomorrow],    '/Sold date must be between/'],
+        ];
+    }
+
+    public function testMinBoundaryDateIsAccepted(): void
+    {
+        $result = $this->validator->validateAndSanitizeFields(['purchasedate' => '1957-01-01'], false);
+        $this->assertEquals('1957-01-01', $result['purchasedate']);
+    }
+
+    public function testSolddateMinBoundaryIsAccepted(): void
+    {
+        $result = $this->validator->validateAndSanitizeFields(['solddate' => '1957-01-01'], false);
+        $this->assertEquals('1957-01-01', $result['solddate']);
+    }
+
+    public function testTodayIsAccepted(): void
+    {
+        $today = (new \DateTime('today'))->format('Y-m-d');
+        $result = $this->validator->validateAndSanitizeFields(['purchasedate' => $today], false);
+        $this->assertEquals($today, $result['purchasedate']);
+    }
+
+    public function testSolddateTodayIsAccepted(): void
+    {
+        $today = (new \DateTime('today'))->format('Y-m-d');
+        $result = $this->validator->validateAndSanitizeFields(['solddate' => $today], false);
+        $this->assertEquals($today, $result['solddate']);
+    }
+
+    public function testBothDatesValidWithCorrectOrderingIsAccepted(): void
+    {
+        $result = $this->validator->validateAndSanitizeFields([
+            'purchasedate' => '1970-03-01',
+            'solddate'     => '1985-06-15',
+        ], false);
+        $this->assertEquals('1970-03-01', $result['purchasedate']);
+        $this->assertEquals('1985-06-15', $result['solddate']);
+    }
+
+    public function testSolddateBeforePurchasedateIsRejected(): void
+    {
+        $this->expectException(CarValidationException::class);
+        $this->expectExceptionMessage('Sold date cannot be before purchase date');
+        $this->validator->validateAndSanitizeFields([
+            'purchasedate' => '1980-06-01',
+            'solddate'     => '1979-12-31',
+        ], false);
+    }
+
+    public function testSolddateEqualsPurchasedateIsAccepted(): void
+    {
+        $result = $this->validator->validateAndSanitizeFields([
+            'purchasedate' => '1975-03-15',
+            'solddate'     => '1975-03-15',
+        ], false);
+        $this->assertEquals('1975-03-15', $result['purchasedate']);
+        $this->assertEquals('1975-03-15', $result['solddate']);
+    }
+
     public function testValidateAndSanitizeFieldsValidatesCoordinates(): void
     {
         $fields = ['lat' => '51.5', 'lon' => '-0.1'];

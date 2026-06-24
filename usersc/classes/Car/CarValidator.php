@@ -20,6 +20,8 @@ use DateTime;
  */
 class CarValidator
 {
+    public const MIN_CAR_DATE = '1957-01-01';
+
     /**
      * Validate that required fields are present and not empty
      *
@@ -132,6 +134,16 @@ class CarValidator
                         if (!$date || $date->format('Y-m-d') !== $value) {
                             throw new CarValidationException("Invalid date format for {$key}. Use YYYY-MM-DD format");
                         }
+                        $date->setTime(0, 0, 0);
+                        $min = new DateTime(self::MIN_CAR_DATE);
+                        $max = new DateTime('today');
+                        if ($date < $min || $date > $max) {
+                            $label = ($key === 'purchasedate') ? 'Purchase date' : 'Sold date';
+                            throw new CarValidationException(
+                                "{$label} must be between " . self::MIN_CAR_DATE
+                                . " and " . $max->format('Y-m-d')
+                            );
+                        }
                         $validatedFields[$key] = $value;
                     }
                     break;
@@ -192,6 +204,14 @@ class CarValidator
                 default:
                     $validatedFields[$key] = $value;
                     break;
+            }
+        }
+
+        if (isset($validatedFields['purchasedate'], $validatedFields['solddate'])) {
+            $purchase = new DateTime($validatedFields['purchasedate']);
+            $sold     = new DateTime($validatedFields['solddate']);
+            if ($sold < $purchase) {
+                throw new CarValidationException('Sold date cannot be before purchase date');
             }
         }
 
