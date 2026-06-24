@@ -27,13 +27,6 @@ $errors = [];
 $email_sent = false;
 $post_attempted = Input::exists('post');
 
-// Make sure no one tries to add header like keywords
-function clean_string(string $string): string
-{
-    $bad = array('content-type', 'bcc:', 'to:', 'cc:', 'href');
-    return str_replace($bad, '', $string);
-}
-
 //Forms posted now process it
 if (Input::exists('post')) {
     $token = Input::get('csrf');
@@ -76,7 +69,7 @@ if (Input::exists('post')) {
             $fromName       =  $f['fname'] . ' ' . $f['lname'];
 
             $template       =  array(
-                'message'   => clean_string($message),
+                'message'   => $message,
                 'from'      => $fromName,
                 'to'        => $toName
             );
