@@ -577,13 +577,19 @@ class ElanRegistryOwner
 
                 case 'website':
                     if (!empty($value)) {
-                        // Sanitize URL by removing illegal characters
                         $sanitized = preg_replace('/[^a-zA-Z0-9\-._~:\/?#\[\]@!$&\'()*+,;=%]/', '', trim($value));
-                        if (filter_var($sanitized, FILTER_VALIDATE_URL)) {
-                            $validatedFields[$key] = $sanitized;
-                        } else {
-                            throw new OwnerValidationException('Invalid website URL format');
+                        if (!filter_var($sanitized, FILTER_VALIDATE_URL)) {
+                            throw new OwnerValidationException(
+                                'Website URL must start with http:// or https:// (e.g. https://example.com)'
+                            );
                         }
+                        $scheme = strtolower((string) parse_url($sanitized, PHP_URL_SCHEME));
+                        if (!in_array($scheme, ['http', 'https'], true)) {
+                            throw new OwnerValidationException(
+                                'Website URL must use http:// or https:// — other protocols are not allowed'
+                            );
+                        }
+                        $validatedFields[$key] = $sanitized;
                     }
                     break;
 
