@@ -211,7 +211,9 @@ function setupTabLazyLoading() {
   const loadedTabs = new Set(["overview"]); // Overview is already loaded
 
   $('#statisticsTabs a[data-bs-toggle="tab"]').on("shown.bs.tab", function (e) {
-    const targetTab = $(e.target).attr("href").substring(1); // Remove #
+    const hrefAttr = $(e.target).attr("href") || $(e.target).attr("data-bs-target");
+    const targetTab = hrefAttr ? hrefAttr.substring(1) : null;
+    if (!targetTab) { return; }
 
     if (!loadedTabs.has(targetTab)) {
       loadTabContent(targetTab);
@@ -622,7 +624,9 @@ function createTimelineChart() {
     return { x: month, y: cumulative };
   });
 
-  const ctx = document.getElementById("timelineChart").getContext("2d");
+  const canvasEl = document.getElementById("timelineChart");
+  if (!canvasEl) { return; }
+  const ctx = canvasEl.getContext("2d");
   window.statisticsCharts.timeline = new Chart(ctx, {
     type: "line",
     data: {
@@ -714,7 +718,8 @@ function createRecentActivityChart() {
     console.error("[ElanRegistry] createRecentActivityChart: canvas #recentActivityChart not found");
     return;
   }
-  window.statisticsCharts.recentActivity = new Chart(canvasEl.getContext("2d"), {
+  const ctx = canvasEl.getContext("2d");
+  window.statisticsCharts.recentActivity = new Chart(ctx, {
     type: "line",
     data: {
       labels: labels,
@@ -778,7 +783,9 @@ function createCountryChart(data) {
     values.push(otherSum);
   }
 
-  const ctx = document.getElementById("countryChart").getContext("2d");
+  const canvasEl = document.getElementById("countryChart");
+  if (!canvasEl) { return; }
+  const ctx = canvasEl.getContext("2d");
   window.statisticsCharts.country = new Chart(ctx, {
     type: "doughnut",
     data: {
@@ -809,9 +816,9 @@ function createCountryDistributionChart(data) {
   const labels = data.map((item) => item.country);
   const values = data.map((item) => parseInt(item.count));
 
-  const ctx = document
-    .getElementById("countryDistributionChart")
-    .getContext("2d");
+  const canvasEl = document.getElementById("countryDistributionChart");
+  if (!canvasEl) { return; }
+  const ctx = canvasEl.getContext("2d");
   window.statisticsCharts.countryDistribution = new Chart(ctx, {
     type: "bar",
     data: {
@@ -850,7 +857,9 @@ function createUSStatesChart(data) {
   const labels = data.map((item) => item.normalized_state);
   const values = data.map((item) => parseInt(item.count));
 
-  const ctx = document.getElementById("usStatesChart").getContext("2d");
+  const canvasEl = document.getElementById("usStatesChart");
+  if (!canvasEl) { return; }
+  const ctx = canvasEl.getContext("2d");
   window.statisticsCharts.usStates = new Chart(ctx, {
     type: "bar",
     data: {
@@ -890,7 +899,9 @@ function createTypeChart(data) {
   const labels = data.map((item) => item.type);
   const values = data.map((item) => parseInt(item.count));
 
-  const ctx = document.getElementById("typeChart").getContext("2d");
+  const canvasEl = document.getElementById("typeChart");
+  if (!canvasEl) { return; }
+  const ctx = canvasEl.getContext("2d");
   window.statisticsCharts.type = new Chart(ctx, {
     type: "doughnut",
     data: {
@@ -921,7 +932,9 @@ function createSeriesChart(data) {
   const labels = data.map((item) => item.series);
   const values = data.map((item) => parseInt(item.count));
 
-  const ctx = document.getElementById("seriesChart").getContext("2d");
+  const canvasEl = document.getElementById("seriesChart");
+  if (!canvasEl) { return; }
+  const ctx = canvasEl.getContext("2d");
   window.statisticsCharts.series = new Chart(ctx, {
     type: "doughnut",
     data: {
@@ -952,7 +965,9 @@ function createVariantChart(data) {
   const labels = data.map((item) => item.variant);
   const values = data.map((item) => parseInt(item.count));
 
-  const ctx = document.getElementById("variantChart").getContext("2d");
+  const canvasEl = document.getElementById("variantChart");
+  if (!canvasEl) { return; }
+  const ctx = canvasEl.getContext("2d");
   window.statisticsCharts.variant = new Chart(ctx, {
     type: "doughnut",
     data: {
@@ -983,7 +998,9 @@ function createProductionYearChart(data) {
   const labels = data.map((item) => item.year);
   const values = data.map((item) => parseInt(item.count));
 
-  const ctx = document.getElementById("productionYearChart").getContext("2d");
+  const canvasEl = document.getElementById("productionYearChart");
+  if (!canvasEl) { return; }
+  const ctx = canvasEl.getContext("2d");
   window.statisticsCharts.productionYear = new Chart(ctx, {
     type: "bar",
     data: {
@@ -1022,7 +1039,9 @@ function createEarlyLateChart(data) {
   const labels = data.map((item) => item.period);
   const values = data.map((item) => parseInt(item.count));
 
-  const ctx = document.getElementById("earlyLateChart").getContext("2d");
+  const canvasEl = document.getElementById("earlyLateChart");
+  if (!canvasEl) { return; }
+  const ctx = canvasEl.getContext("2d");
   window.statisticsCharts.earlyLate = new Chart(ctx, {
     type: "pie",
     data: {
@@ -1069,9 +1088,9 @@ function createColorDistributionChart(data) {
   const backgroundColors = labels.map((colorName) => getColorForName(colorName));
   const borders = backgroundColors.map(swatchBorder);
 
-  const ctx = document
-    .getElementById("colorDistributionChart")
-    .getContext("2d");
+  const canvasEl = document.getElementById("colorDistributionChart");
+  if (!canvasEl) { return; }
+  const ctx = canvasEl.getContext("2d");
   window.statisticsCharts.colorDistribution = new Chart(ctx, {
     type: "doughnut",
     data: {
@@ -1133,7 +1152,9 @@ function createColorByYearChart(data) {
       };
     });
 
-  const ctx = document.getElementById("colorByYearChart").getContext("2d");
+  const canvasEl = document.getElementById("colorByYearChart");
+  if (!canvasEl) { return; }
+  const ctx = canvasEl.getContext("2d");
   window.statisticsCharts.colorByYear = new Chart(ctx, {
     type: "line",
     data: {
@@ -1198,7 +1219,9 @@ function createColorBySeriesChart(data) {
     };
   });
 
-  const ctx = document.getElementById("colorBySeriesChart").getContext("2d");
+  const canvasEl = document.getElementById("colorBySeriesChart");
+  if (!canvasEl) { return; }
+  const ctx = canvasEl.getContext("2d");
   window.statisticsCharts.colorBySeries = new Chart(ctx, {
     type: "bar",
     data: {
@@ -1238,7 +1261,9 @@ function createDataCompletenessChart(data) {
   const labels = fields.map((f) => f.label);
   const percentages = fields.map((f) => Math.round((f.value / total) * 100));
 
-  const ctx = document.getElementById("dataCompletenessChart").getContext("2d");
+  const canvasEl = document.getElementById("dataCompletenessChart");
+  if (!canvasEl) { return; }
+  const ctx = canvasEl.getContext("2d");
   window.statisticsCharts.dataCompleteness = new Chart(ctx, {
     type: "radar",
     data: {
