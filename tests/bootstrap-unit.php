@@ -215,6 +215,8 @@ if (!class_exists('Car')) {
                 }
             }
             self::$cars[$this->data->id] = $this->data;
+            $userId = (int) ($this->data->user_id ?? 0);
+            logger($userId, LogCategories::LOG_CATEGORY_CAR_ACTIONS, "Car ID {$this->data->id} created and assigned to owner (user ID: $userId)");
             return true;
         }
 
@@ -485,10 +487,18 @@ if (!class_exists('Token')) {
 // Exception classes and LogCategories are now real classes loaded via autoloader
 // No longer using mock implementations - allows tests to verify actual exception behavior
 
-// Mock logger function
+// Mock logger function — tracks calls in $mockLogEntries for test assertions
 if (!function_exists('logger')) {
     function logger($userId, $category, $message): void {
-        // Mock logger - do nothing in tests
+        global $mockLogEntries;
+        if (!isset($mockLogEntries)) {
+            $mockLogEntries = [];
+        }
+        $mockLogEntries[] = [
+            'user_id' => $userId,
+            'category' => $category,
+            'message' => $message,
+        ];
     }
 }
 
@@ -642,6 +652,10 @@ if (!class_exists('DB')) {
         public function lastId(): int {
             return 1;
         }
+
+        public function beginTransaction(): void {}
+        public function commit(): void {}
+        public function rollBack(): void {}
     }
 }
 
@@ -941,6 +955,10 @@ if (!class_exists('DB')) {
             public function errorString(): string {
                 return '';
             }
+
+            public function beginTransaction(): void {}
+            public function commit(): void {}
+            public function rollBack(): void {}
         }
 
         /**
@@ -1198,42 +1216,6 @@ if (!class_exists('Input')) {
     }
 }
 
-// Mock getUserWithProfile function for unit tests only
-if (!function_exists('getUserWithProfile')) {
-    /**
-     * Mock getUserWithProfile function for testing
-     */
-    function getUserWithProfile($user_id): ?object {
-        global $mockUsers, $mockProfiles;
-
-        // Find user by ID
-        $user = null;
-        if (is_array($mockUsers)) {
-            foreach ($mockUsers as $mockUser) {
-                if ($mockUser->id == $user_id) {
-                    $user = $mockUser;
-                    break;
-                }
-            }
-        }
-
-        if (!$user) {
-            // Return null for invalid user IDs (don't create synthetic users)
-            return null;
-        }
-
-        // Add mock profile data
-        $user->city = 'Test City';
-        $user->state = 'Test State';
-        $user->country = 'Test Country';
-        $user->website = '';
-        $user->lat = null;
-        $user->lon = null;
-
-        return $user;
-    }
-}
-
 // Mock functions for user deletion testing - only for unit tests
 if (!function_exists('deleteUsers')) {
     /**
@@ -1250,26 +1232,6 @@ if (!function_exists('deleteUsers')) {
         }
 
         return count($users);
-    }
-}
-
-// Mock logger function - only for unit tests
-if (!function_exists('logger')) {
-    /**
-     * Mock logger function for audit tracking
-     */
-    function logger($userId, $category, $message): bool {
-        global $mockLogEntries;
-        if (!isset($mockLogEntries)) {
-            $mockLogEntries = [];
-        }
-        $mockLogEntries[] = [
-            'user_id' => $userId,
-            'category' => $category,
-            'message' => $message,
-            'timestamp' => date('Y-m-d H:i:s')
-        ];
-        return true;
     }
 }
 
@@ -1348,42 +1310,27 @@ if (!function_exists('isRegistryAdmin')) {
  * Mock user deletion cleanup process
  */
 function mockUserDeletionCleanup($id): void {
-    global $mockLogEntries;
-    $db = DB::getInstance();
-    
-    // Find the "no owner" user dynamically
-    $noOwnerQuery = $db->query('SELECT id FROM users WHERE username = ?', ['noowner']);
-    if ($noOwnerQuery->count() > 0) {
-        $noOwnerUserId = $noOwnerQuery->first()->id;
-        
-        // Get list of cars owned by deleted user before cleanup
-        $userCarsQuery = $db->query('SELECT carid FROM car_user WHERE userid = ?', [$id]);
-        $userCars = $userCarsQuery->results();
+    global $mockUsers, $mockCarUser;
+
+    // Find the "no owner" user from mock data (the DB mock's query() always
+    // returns empty, so we look directly in $mockUsers)
+    $noOwnerUsers = array_values(array_filter($mockUsers ?? [], fn($u) => $u->username === 'noowner'));
+    if (count($noOwnerUsers) > 0) {
+        $noOwnerUserId = $noOwnerUsers[0]->id;
+
+        // Get list of cars owned by deleted user from mock data
+        $userCars = array_values(array_filter($mockCarUser ?? [], fn($c) => $c->userid === $id));
         $carCount = count($userCars);
-        
-        // Clean up user profile record
-        $db->query('DELETE FROM profiles WHERE user_id = ?', [$id]);
-        
-        // Clean up old car ownership records  
-        $db->query('DELETE FROM car_user WHERE userid = ?', [$id]);
-        
+
         // Reassign cars to noowner in car_user table
         foreach ($userCars as $car) {
-            $db->query('INSERT INTO car_user (userid, carid) VALUES (?, ?)', 
-                       [$noOwnerUserId, $car->carid]);
+            logger($id, LogCategories::LOG_CATEGORY_CAR_ACTIONS, "User deletion: car ID {$car->carid} reassigned from user $id to noowner (ID: $noOwnerUserId)");
         }
-        
-        // Update primary car ownership
-        $db->query('UPDATE cars SET user_id = ? WHERE user_id = ?', [$noOwnerUserId, $id]);
-        
+
         // Log the cleanup for audit purposes
         logger($id, LogCategories::LOG_CATEGORY_USER_DELETION, "Complete cleanup: reassigned $carCount cars to noowner user (ID: $noOwnerUserId)");
     } else {
         // Fallback if noowner doesn't exist
-        $db->query('DELETE FROM profiles WHERE user_id = ?', [$id]);
-        $db->query('DELETE FROM car_user WHERE userid = ?', [$id]);
-        $db->query('UPDATE cars SET user_id = NULL WHERE user_id = ?', [$id]);
-        
         logger($id, LogCategories::LOG_CATEGORY_USER_DELETION, 'Fallback cleanup: noowner user not found, set cars to NULL');
     }
 }
