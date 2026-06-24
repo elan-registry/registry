@@ -35,6 +35,10 @@ _Additional deployment actions expected: SQL migrations for new `chassis_overrid
 - **Audit Trail for Car Deletion** ([#593](https://github.com/unibrain1/elanregistry/issues/593)): Eliminated duplicate history row written on car deletion.
 - **car_user_hist Triggers and Indexes** ([#592](https://github.com/unibrain1/elanregistry/issues/592)): Added DB triggers and indexes to `car_user_hist` for full audit coverage.
 
+### Bug Fixes
+
+- **Owner Validation Error Messages** ([#927](https://github.com/unibrain1/elanregistry/issues/927)): Admin owner edit now shows the specific validation error (e.g. "Website URL must use http:// or https://") instead of a generic fallback when input is invalid.
+
 ## Issues Resolved
 
 - [#592](https://github.com/unibrain1/elanregistry/issues/592) — Add database triggers and indexes for car_user_hist table
