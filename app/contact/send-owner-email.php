@@ -27,7 +27,6 @@ $errors = [];
 $email_sent = false;
 $post_attempted = Input::exists('post');
 
-//Forms posted now process it
 if (Input::exists('post')) {
     $token = Input::get('csrf');
     if (!Token::check($token)) {
@@ -59,14 +58,10 @@ if (Input::exists('post')) {
                 exit();
             }
             
-            $f = (array) $fromUser;
-            $t = (array) $toUser;
-
-            $toEmail        =  $t['email'];
-
-            $toName         =  $t['fname'] . ' ' . $t['lname'];
-            $fromEmail      =  $f['email'];
-            $fromName       =  $f['fname'] . ' ' . $f['lname'];
+            $toEmail   = $toUser->email;
+            $toName    = $toUser->fname . ' ' . $toUser->lname;
+            $fromEmail = $fromUser->email;
+            $fromName  = $fromUser->fname . ' ' . $fromUser->lname;
 
             $template       =  array(
                 'message'   => $message,
