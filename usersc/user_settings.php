@@ -308,14 +308,21 @@ if (!empty($_POST)) {
             // Sanitize URL by removing illegal characters manually (replacing deprecated FILTER_SANITIZE_URL)
             $fields['website'] = preg_replace('/[^a-zA-Z0-9\-._~:/?#[\]@!$&\'()*+,;=%]/', '', trim($fields['website']));
 
-            // Validate url
-            if (filter_var($fields['website'], FILTER_VALIDATE_URL)) {
-                $db->update('profiles', $profileId, $fields);
-                $successes[] = 'website updated.';
-                logger((int)$user->data()->id, LogCategories::LOG_CATEGORY_USER, "Changed website from $profiledetails->website to $website.");
+            // Validate URL format then restrict to http/https schemes
+            $websiteUrl = $fields['website'];
+            if (!filter_var($websiteUrl, FILTER_VALIDATE_URL)) {
+                $errors[] = 'Website URL must start with http:// or https:// (e.g. https://example.com)';
+                logger((int)$user->data()->id, LogCategories::LOG_CATEGORY_VALIDATION_ERROR, "Invalid website URL rejected for user {$userId}");
             } else {
-                //validation did not pass
-                $errors[] = 'The provided website URL is not valid';
+                $websiteScheme = strtolower((string) parse_url($websiteUrl, PHP_URL_SCHEME));
+                if (!in_array($websiteScheme, ['http', 'https'], true)) {
+                    $errors[] = 'Website URL must use http:// or https:// (e.g. https://example.com)';
+                    logger((int)$user->data()->id, LogCategories::LOG_CATEGORY_SECURITY, "Non-http/https website scheme rejected for user {$userId}: scheme='{$websiteScheme}'");
+                } else {
+                    $db->update('profiles', $profileId, $fields);
+                    $successes[] = 'Website updated.';
+                    logger((int)$user->data()->id, LogCategories::LOG_CATEGORY_USER, "Changed website from {$profiledetails->website} to {$websiteUrl}.");
+                }
             }
         } else {
             $website = $profiledetails->website;
