@@ -168,11 +168,23 @@ $db = DB::getInstance();
                             if ($isBareDomainLike) {
                                 $newUrl = 'https://' . $oldUrl;
                                 $db->query('UPDATE cars SET website = ? WHERE id = ?', [$newUrl, $carId]);
+                                if ($db->error()) {
+                                    logProgress("Car #{$carId}: DB error updating website — skipping", 'error');
+                                    logger($user->data()->id, LogCategories::LOG_CATEGORY_FIX_SCRIPT, "05-Fix-Website-Scheme: car #{$carId} DB error on UPDATE (was: '{$oldUrl}')");
+                                    $results['errors']++;
+                                    continue;
+                                }
                                 logProgress("Car #{$carId}: prepended https:// — '" . htmlspecialchars($oldUrl, ENT_QUOTES, 'UTF-8') . "' → '" . htmlspecialchars($newUrl, ENT_QUOTES, 'UTF-8') . "'", 'success');
                                 logger($user->data()->id, LogCategories::LOG_CATEGORY_FIX_SCRIPT, "05-Fix-Website-Scheme: car #{$carId} website updated from '{$oldUrl}' to '{$newUrl}'");
                                 $results['processed']++;
                             } else {
                                 $db->query('UPDATE cars SET website = NULL WHERE id = ?', [$carId]);
+                                if ($db->error()) {
+                                    logProgress("Car #{$carId}: DB error nulling website — skipping", 'error');
+                                    logger($user->data()->id, LogCategories::LOG_CATEGORY_FIX_SCRIPT, "05-Fix-Website-Scheme: car #{$carId} DB error on NULL UPDATE (was: '{$oldUrl}')");
+                                    $results['errors']++;
+                                    continue;
+                                }
                                 logProgress("Car #{$carId}: nulled invalid URL '" . htmlspecialchars($oldUrl, ENT_QUOTES, 'UTF-8') . "' (scheme: '" . htmlspecialchars($scheme, ENT_QUOTES, 'UTF-8') . "')", 'warning');
                                 logger($user->data()->id, LogCategories::LOG_CATEGORY_FIX_SCRIPT, "05-Fix-Website-Scheme: car #{$carId} website nulled (was: '{$oldUrl}')");
                                 $results['processed']++;
@@ -212,7 +224,7 @@ $db = DB::getInstance();
                         logProgress('  • Verify affected cars in the registry that their website fields now display correctly', 'info');
                         logProgress('  • No schema changes — no additional migration steps needed', 'info');
 
-                    } catch (Exception $e) {
+                    } catch (\Throwable $e) {
                         logProgress('FATAL ERROR: ' . $e->getMessage(), 'error');
                         logger($user->data()->id, LogCategories::LOG_CATEGORY_FIX_SCRIPT, 'Fatal error: ' . $e->getMessage());
                     }

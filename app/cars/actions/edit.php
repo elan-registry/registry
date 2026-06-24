@@ -135,8 +135,8 @@ if (!empty($_POST)) {
                         )->withData('cardetails', $cardetails)
                         ->withLogging(
                             $user->data()->id,
-                            LogCategories::LOG_CATEGORY_VALIDATION_ERROR,
-                            'Car update validation failed: ' . json_encode($errors)
+                            LogCategories::LOG_CATEGORY_CAR_ERRORS,
+                            'Car update failed post-save validation: ' . json_encode($errors)
                         )->send();
                     }
 

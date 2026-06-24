@@ -271,6 +271,16 @@ final class CarValidatorTest extends TestCase
         $this->assertStringStartsWith('https://', $result['website']);
     }
 
+    /**
+     * An ftp:// URL passes FILTER_VALIDATE_URL but is rejected by the scheme allowlist.
+     */
+    public function testWebsiteFtpSchemeIsRejected(): void
+    {
+        $this->expectException(CarValidationException::class);
+        $this->expectExceptionMessageMatches('/must use http:\/\/ or https:\/\//');
+        $this->validator->validateAndSanitizeFields(['website' => 'ftp://files.example.com'], false);
+    }
+
     public function testValidateAndSanitizeFieldsRejectsInvalidUserId(): void
     {
         $this->expectException(CarValidationException::class);
