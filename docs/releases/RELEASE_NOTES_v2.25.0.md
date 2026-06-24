@@ -52,3 +52,4 @@ _Additional deployment actions expected: SQL migrations for new `chassis_overrid
 - [#917](https://github.com/unibrain1/elanregistry/issues/917) — bug: clean_string() in admin contact paths is a denylist, not an injection defense
 - [#921](https://github.com/unibrain1/elanregistry/issues/921) — harden: apply http/https scheme whitelist to ElanRegistryOwner and user_settings website fields
 - [#927](https://github.com/unibrain1/elanregistry/issues/927) — bug: OwnerValidationException getUserMessage() returns generic default instead of specific validation text
+- [#931](https://github.com/unibrain1/elanregistry/issues/931) — test: add integration test for manage-consolidated.php car deletion audit trail
