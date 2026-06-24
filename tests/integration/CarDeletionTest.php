@@ -105,7 +105,10 @@ final class CarDeletionTest extends IntegrationTestCase
     }
 
     /**
-     * Test car deletion creates audit trail in history table
+     * Test car deletion creates exactly one audit trail row in cars_hist
+     *
+     * Verifies the trigger-only write path introduced in #593: the DELETE trigger
+     * must fire once and no application-level pre-delete insert must add a second row.
      */
     #[Group('fast')]
     public function testDeleteCarCreatesAuditTrail(): void
@@ -113,17 +116,15 @@ final class CarDeletionTest extends IntegrationTestCase
         $car = new Car($this->testCarId);
         $carId = $car->data()->id;
 
-        $token = Token::generate();
-        $result = $car->delete('Test deletion for audit', $token);
+        $result = $car->delete('Test deletion for audit', Token::generate());
 
         $this->assertTrue($result);
 
-        // Check that history record was created
         $historyQuery = $this->db->query(
             "SELECT * FROM cars_hist WHERE car_id = ? AND operation = 'DELETE'",
             [$carId]
         );
-        $this->assertTrue($historyQuery->count() > 0);
+        $this->assertSame(1, $historyQuery->count(), 'Expected exactly one DELETE row in cars_hist');
     }
 
     /**

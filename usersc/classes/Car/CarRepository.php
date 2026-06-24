@@ -86,7 +86,8 @@ class CarRepository
      */
     public function deleteCar(int $carId): bool
     {
-        return (bool) $this->db->query("DELETE FROM cars WHERE id = ?", [$carId]);
+        $this->db->query("DELETE FROM cars WHERE id = ?", [$carId]);
+        return !$this->db->error();
     }
 
     /**
@@ -97,7 +98,8 @@ class CarRepository
      */
     public function deleteCarUser(int $carId): bool
     {
-        return (bool) $this->db->query("DELETE FROM car_user WHERE car_id = ?", [$carId]);
+        $this->db->query("DELETE FROM car_user WHERE car_id = ?", [$carId]);
+        return !$this->db->error();
     }
 
     /**
