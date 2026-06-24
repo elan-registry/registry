@@ -114,16 +114,33 @@ final class UserDeletionCleanupTest extends TestCase
      */
     public function testAuditLoggingCategoryIsUserDeletion(): void
     {
-        $userId = 999;
-
-        deleteUsers([$userId]);
+        deleteUsers([999]);
 
         global $mockLogEntries;
 
-        $userDeletionLogs = array_filter($mockLogEntries, function ($entry) {
-            return $entry['category'] === 'UserDeletion';
-        });
+        $userDeletionLogs = array_filter(
+            $mockLogEntries,
+            fn($e) => $e['category'] === LogCategories::LOG_CATEGORY_USER_DELETION
+        );
 
-        $this->assertGreaterThanOrEqual(0, count($userDeletionLogs), 'UserDeletion category should be used');
+        $this->assertNotEmpty($userDeletionLogs, 'At least one UserDeletion log entry should be emitted');
+    }
+
+    /**
+     * Test per-car owner reassignment is logged with LOG_CATEGORY_CAR_ACTIONS
+     */
+    public function testUserDeletionLogsPerCarOwnerReassignment(): void
+    {
+        deleteUsers([999]);
+
+        global $mockLogEntries;
+
+        $carActionLogs = array_filter(
+            $mockLogEntries,
+            fn($e) => $e['category'] === LogCategories::LOG_CATEGORY_CAR_ACTIONS
+                && str_contains($e['message'], 'reassigned')
+        );
+
+        $this->assertCount(2, $carActionLogs, 'Each car reassignment should produce a CAR_ACTIONS log entry');
     }
 }

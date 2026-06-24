@@ -21,7 +21,7 @@ _Additional deployment actions expected: SQL migrations for new `chassis_overrid
 
 ### New Features
 
-- **Car Owner Operations Audit Trail** ([#609](https://github.com/unibrain1/elanregistry/issues/609)): Owner-related operations (share, unshare, and related changes) are now logged to the application audit trail.
+- **Car Owner Operations Audit Trail** ([#609](https://github.com/unibrain1/elanregistry/issues/609)): All `car_user` write operations (car creation, user deletion cleanup) are now logged via `logger()` with `LOG_CATEGORY_CAR_ACTIONS`. User deletion cleanup also wrapped in a transaction to prevent partial-migration on failure.
 
 ### Improvements
 

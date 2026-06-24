@@ -53,6 +53,9 @@ final class CarCrudTest extends TestCase
      */
     public function testCreateCarSuccess(): void
     {
+        global $mockLogEntries;
+        $mockLogEntries = [];
+
         $car = new Car();
         $carData = [
             'token' => Token::generate(),
@@ -71,7 +74,7 @@ final class CarCrudTest extends TestCase
         ];
 
         $result = $car->create($carData);
-        
+
         $this->assertTrue($result);
         $this->assertEquals('1973', $car->data()->year);
         $this->assertEquals('S4', $car->data()->series);
@@ -79,6 +82,13 @@ final class CarCrudTest extends TestCase
         $this->assertEquals('FHC', $car->data()->type);
         $this->assertEquals('1234567890123', $car->data()->chassis);
         $this->assertEquals('Red', $car->data()->color);
+
+        $ownerLogs = array_filter(
+            $mockLogEntries,
+            fn($e) => $e['category'] === LogCategories::LOG_CATEGORY_CAR_ACTIONS
+                && str_contains($e['message'], 'created and assigned')
+        );
+        $this->assertNotEmpty($ownerLogs, 'Car creation should log owner assignment with LOG_CATEGORY_CAR_ACTIONS');
     }
     
     /**
