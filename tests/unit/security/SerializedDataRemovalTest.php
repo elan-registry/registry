@@ -12,17 +12,17 @@ use PHPUnit\Framework\TestCase;
  */
 class SerializedDataRemovalTest extends TestCase
 {
-    private $projectRoot;
+    private string $projectRoot;
     
     protected function setUp(): void
     {
         $this->projectRoot = dirname(dirname(dirname(__DIR__)));
     }
-    
+
     /**
      * Test that no serialize() function calls exist in PHP files
      */
-    public function testNoSerializeFunctionCalls()
+    public function testNoSerializeFunctionCalls(): void
     {
         $phpFiles = $this->getPHPFiles();
         $violationFiles = [];
@@ -44,7 +44,7 @@ class SerializedDataRemovalTest extends TestCase
     /**
      * Test that no unserialize() function calls exist in PHP files
      */
-    public function testNoUnserializeFunctionCalls()
+    public function testNoUnserializeFunctionCalls(): void
     {
         $phpFiles = $this->getPHPFiles();
         $violationFiles = [];
@@ -63,19 +63,27 @@ class SerializedDataRemovalTest extends TestCase
     }
     
     /**
-     * Test that contact_owner.php uses secure individual fields instead of serialized data
+     * Test that contact_owner.php uses secure individual fields instead of serialized data.
+     * The sender (from_user_id) is now derived from the session server-side and must NOT
+     * appear as a client-controlled hidden field (#971).
      */
-    public function testContactOwnerUsesSecureFields()
+    public function testContactOwnerUsesSecureFields(): void
     {
         $contactOwnerFile = $this->projectRoot . '/app/contact/owner.php';
         $this->assertFileExists($contactOwnerFile);
-        
+
         $content = file_get_contents($contactOwnerFile);
-        
-        // Should contain the secure individual field approach
-        $this->assertStringContainsString('from_user_id', $content, 'contact_owner.php should use from_user_id field');
-        $this->assertStringContainsString('to_user_id', $content, 'contact_owner.php should use to_user_id field');
-        
+
+        // Recipient field must still be present (server cannot know the target without it)
+        $this->assertStringContainsString('to_user_id', $content, 'contact_owner.php should pass to_user_id field');
+
+        // from_user_id must NOT appear as a form field — sender is session-derived (#971)
+        $this->assertDoesNotMatchRegularExpression(
+            '/name=[\'"]from_user_id[\'"]/',
+            $content,
+            'contact_owner.php must not expose from_user_id as a tamperable form field'
+        );
+
         // Should not contain any serialize calls
         $this->assertStringNotContainsString('serialize(', $content, 'contact_owner.php should not contain serialize() calls');
     }
@@ -83,7 +91,7 @@ class SerializedDataRemovalTest extends TestCase
     /**
      * Test that send-owner-email.php uses secure database lookups
      */
-    public function testContactOwnerEmailUsesSecureLookups()
+    public function testContactOwnerEmailUsesSecureLookups(): void
     {
         $contactEmailFile = $this->projectRoot . '/app/contact/send-owner-email.php';
         $this->assertFileExists($contactEmailFile);
@@ -93,22 +101,27 @@ class SerializedDataRemovalTest extends TestCase
         // Should use secure database lookup pattern
         $this->assertStringContainsString('SELECT id, email, fname, lname FROM users WHERE id = ?', $content,
             'send-owner-email.php should use secure database lookups');
-        
+
+        // Sender must be derived from session, not from POST (#971)
+        $this->assertStringNotContainsString("Input::get('from_user_id')", $content,
+            'send-owner-email.php must not accept from_user_id from POST (#971)');
+        $this->assertStringContainsString('$user->data()->id', $content,
+            'send-owner-email.php must derive sender identity from session');
+
         // Should not contain unserialize calls
         $this->assertStringNotContainsString('unserialize(', $content, 'send-owner-email.php should not contain unserialize() calls');
     }
     
     /**
-     * Test that HTML encoding is used for user ID fields
+     * Test that HTML encoding is used for the to_user_id field.
+     * The from_user_id field was removed (#971) — sender is now session-derived, so
+     * there is no client-supplied from field to encode.
      */
-    public function testUserIdFieldsAreHTMLEncoded()
+    public function testUserIdFieldsAreHTMLEncoded(): void
     {
         $contactOwnerFile = $this->projectRoot . '/app/contact/owner.php';
         $content = file_get_contents($contactOwnerFile);
-        
-        // Should use htmlspecialchars for security
-        $this->assertStringContainsString('htmlspecialchars($from[\'id\'], ENT_QUOTES, \'UTF-8\')', $content,
-            'from_user_id field should be HTML encoded');
+
         $this->assertStringContainsString('htmlspecialchars($to[\'id\'], ENT_QUOTES, \'UTF-8\')', $content,
             'to_user_id field should be HTML encoded');
     }
@@ -116,7 +129,7 @@ class SerializedDataRemovalTest extends TestCase
     /**
      * Test that CSRF protection is maintained
      */
-    public function testCSRFProtectionMaintained()
+    public function testCSRFProtectionMaintained(): void
     {
         $contactOwnerFile = $this->projectRoot . '/app/contact/owner.php';
         $content = file_get_contents($contactOwnerFile);

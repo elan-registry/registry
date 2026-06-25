@@ -35,17 +35,15 @@ if (Input::exists('post')) {
     } else {
         $action = Input::get('action');
         $message = Input::raw('message'); // raw — _email_contact_owner.php escapes via EmailTemplate
-        if ($action === 'send_message' && Input::get('from_user_id') && Input::get('to_user_id') && $message !== null && $message !== '') {
+        if ($action === 'send_message' && Input::get('to_user_id') && $message !== null && $message !== '') {
             if (strlen($message) > 2000) {
                 $errors[] = 'Message is too long (maximum 2000 characters)';
                 include($abs_us_root . $us_url_root . 'usersc/scripts/token_error.php');
                 exit();
             }
 
-
-            // Security: Get user data from database instead of trusting serialized data
-            $fromUserId = (int) Input::get('from_user_id');
-            $toUserId = (int) Input::get('to_user_id');
+            $fromUserId = (int) $user->data()->id;
+            $toUserId   = (int) Input::get('to_user_id');
             
             // Validate user IDs and get user data from database
             $db = DB::getInstance();
@@ -63,10 +61,10 @@ if (Input::exists('post')) {
             $fromEmail = $fromUser->email;
             $fromName  = $fromUser->fname . ' ' . $fromUser->lname;
 
-            $template       =  array(
-                'message'   => $message,
-                'from'      => $fromName,
-                'to'        => $toName
+            $template = array(
+                'message' => $message,
+                'from'    => $fromName,
+                'to'      => $toName,
             );
 
             $body = email_body('_email_contact_owner.php', $template);
