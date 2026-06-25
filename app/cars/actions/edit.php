@@ -109,8 +109,20 @@ if (!empty($_POST)) {
                 break;
 
             case "updateCar":
+                $car_id = (int)Input::get('car_id');
+                if ($car_id <= 0) {
+                    ApiResponse::error('Invalid car ID', 400)
+                        ->withLogging($user->data()->id, LogCategories::LOG_CATEGORY_VALIDATION_ERROR, 'updateCar: invalid car_id in request')
+                        ->send();
+                }
+                $carForAuth = new Car($car_id);
+                if (!$carForAuth->data() || ($user->data()->id != $carForAuth->data()->user_id && !hasPerm([2, 3]))) {
+                    ApiResponse::error('Unauthorized', 403)
+                        ->withLogging($user->data()->id, LogCategories::LOG_CATEGORY_ACCESS_DENIED, 'updateCar: unauthorized for car ' . $car_id)
+                        ->send();
+                }
                 try {
-                    buildCarDetails($cardetails, (int)Input::get('car_id'));
+                    buildCarDetails($cardetails, $car_id);
                     buildImageDetails($cardetails);
 
                     if (!empty($errors)) {
