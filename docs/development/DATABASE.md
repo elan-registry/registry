@@ -117,6 +117,8 @@ to own multiple cars.
 | `userid` | `int` | User ID |
 | `timestamp` | `timestamp` | Change timestamp |
 
+**Note**: This table is populated by database triggers on `car_user` (added in [#592](https://github.com/unibrain1/elanregistry/issues/592)). Indexes on `car_id` and `userid` were added for query performance.
+
 #### `car_transfer_requests` - Ownership transfer workflow
 
 | Column | Type | Description |
@@ -262,9 +264,12 @@ id=5, years=1971-1974, series="S4", variant="FHC", type_code="36", model_value="
 - Triggers updated 2025-09-12 to use current schema (no deprecated columns)
 - Each trigger records operation type (INSERT/UPDATE/DELETE) and timestamp
 
-**Note**: Currently only `cars` table has triggers. The `car_user` relationship
-changes are logged through application-level logging to `car_user_hist` table,
-not database triggers.
+**Car-User Relationship Triggers** (implemented in #592):
+
+- `car_user_insert`: Logs new car-user relationships to `car_user_hist`
+- `car_user_update`: Logs car-user relationship modifications to `car_user_hist` with bypass via
+  `@disable_triggers` variable
+- `car_user_delete`: Logs car-user relationship removals to `car_user_hist`
 
 ### Special System Accounts
 

@@ -300,6 +300,12 @@ ALTER TABLE `car_user`
 ALTER TABLE `car_user_hist`
   ADD UNIQUE KEY `id` (`id`) USING BTREE;
 
+ALTER TABLE `car_user_hist`
+  ADD KEY `idx_car_user_hist_car_id` (`car_id`);
+
+ALTER TABLE `car_user_hist`
+  ADD KEY `idx_car_user_hist_userid` (`userid`);
+
 -- car_transfer_requests table
 ALTER TABLE `car_transfer_requests`
   ADD PRIMARY KEY (`id`),
@@ -410,6 +416,38 @@ CREATE TRIGGER `cars_update` AFTER UPDATE ON `cars` FOR EACH ROW BEGIN
             OLD.user_id, OLD.email, OLD.fname, OLD.lname, OLD.join_date, OLD.city,
             OLD.state, OLD.country, OLD.lat, OLD.lon, OLD.website
         );
+    END IF;
+END$$
+DELIMITER ;
+
+-- -----------------------------------------------------------------------------
+-- Trigger: car_user_delete (Audit trail for car-user relationship removals)
+-- -----------------------------------------------------------------------------
+DELIMITER $$
+CREATE TRIGGER `car_user_delete` AFTER DELETE ON `car_user` FOR EACH ROW BEGIN
+    INSERT INTO car_user_hist (operation, car_id, userid)
+    VALUES ('DELETE', OLD.car_id, OLD.userid);
+END$$
+DELIMITER ;
+
+-- -----------------------------------------------------------------------------
+-- Trigger: car_user_insert (Audit trail for car-user relationship additions)
+-- -----------------------------------------------------------------------------
+DELIMITER $$
+CREATE TRIGGER `car_user_insert` AFTER INSERT ON `car_user` FOR EACH ROW BEGIN
+    INSERT INTO car_user_hist (operation, car_id, userid)
+    VALUES ('INSERT', NEW.car_id, NEW.userid);
+END$$
+DELIMITER ;
+
+-- -----------------------------------------------------------------------------
+-- Trigger: car_user_update (Audit trail for car-user relationship updates)
+-- -----------------------------------------------------------------------------
+DELIMITER $$
+CREATE TRIGGER `car_user_update` AFTER UPDATE ON `car_user` FOR EACH ROW BEGIN
+    IF @disable_triggers IS NULL THEN
+        INSERT INTO car_user_hist (operation, car_id, userid)
+        VALUES ('UPDATE', OLD.car_id, OLD.userid);
     END IF;
 END$$
 DELIMITER ;

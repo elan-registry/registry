@@ -111,9 +111,9 @@ relationship table:
 | `userid` | int |
 | `timestamp` | timestamp DEFAULT CURRENT_TIMESTAMP |
 
-**Current status:** This table is designed but unimplemented. No database
-triggers populate it, and no application code writes to it. Car sharing
-relationship changes are currently unaudited at the database level.
+**Status:** Implemented in #592. AFTER INSERT, AFTER UPDATE, and AFTER DELETE
+triggers on `car_user` now populate this table. Indexes added on `car_id` and
+`userid` for query performance.
 
 ### Application-Level History Writes
 
@@ -218,9 +218,9 @@ column lists in triggers make this error-prone if not carefully automated.
   database-level constraints preventing history row modification remains an
   architectural gap regardless.
 
-- **car_user_hist is unimplemented.** The table exists in the schema but has no
-  triggers and no application code writing to it. Ownership relationship changes
-  (car sharing, transfer) are currently unaudited at the database level.
+- **car_user_hist gap resolved (#592).** AFTER INSERT, AFTER UPDATE, and AFTER DELETE
+  triggers on `car_user` now populate this table. Indexes on `car_id` and `userid`
+  were added for query performance. See the `car_user_hist` section above.
 
 - **GDPR complexity.** Owner PII (name, email, location) is embedded in
   `cars_hist` rows as a direct consequence of the denormalized snapshot design
@@ -237,9 +237,9 @@ column lists in triggers make this error-prone if not carefully automated.
   "legitimate interest" basis covers retention of historical registry data or
   whether PII scrubbing is required on deletion.
 
-- **No indexes on car_user_hist.** The table has only a unique key on `id`, with
-  no indexes on `car_id` or `userid`. If the table were populated, queries to
-  find all changes to a car or by a user would perform full table scans.
+- **Indexes on car_user_hist.** In addition to the unique key on `id`, the table
+  now has indexes on `car_id` and `userid` (added in #592), so queries to find
+  all changes to a car or by a user avoid full table scans.
 
 - **Storage growth.** Every car modification creates a full row copy in
   `cars_hist`, including large text columns (`comments` mediumtext, `image`
@@ -256,7 +256,7 @@ column lists in triggers make this error-prone if not carefully automated.
 | @disable_triggers bleeding across pooled connections | Low | Low | PHP connection lifecycle resets session state; variable defaults to NULL |
 | GDPR deletion requiring history scrubbing | Low-Medium | High | noowner covers prospective writes; historical PII requires targeted UPDATE |
 | Double-writes creating duplicate history rows | Resolved | — | Removed app pre-delete write in v2.25.0 (#593) |
-| car_user_hist audit gaps during implementation | Medium | High | Acknowledged; implementation should include trigger setup and test coverage |
+| car_user_hist audit gaps during implementation | Medium | High | Resolved in #592; triggers and tests added |
 
 ## Alternatives Considered
 
@@ -274,7 +274,8 @@ or service classes) instead of database triggers.
 
 - The `car_user_hist` table provides concrete evidence of this failure mode: the
   table was designed for application-level logging but no code was ever written
-  to populate it, leaving car sharing relationship changes completely unaudited.
+  to populate it, leaving car sharing relationship changes completely unaudited
+  until #592 added triggers to fill the gap.
 
 - Bulk operations and administrative scripts frequently bypass the normal
   application layer. A solution that depends on application-level cooperation

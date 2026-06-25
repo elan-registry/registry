@@ -79,6 +79,7 @@ abstract class IntegrationTestCase extends TestCase
                 try {
                     $this->db->query("DELETE FROM car_user WHERE car_id = ?", [$carId]);
                     $this->db->query("DELETE FROM cars_hist WHERE car_id = ?", [$carId]);
+                    $this->db->query("DELETE FROM car_user_hist WHERE car_id = ?", [$carId]);
                     $this->db->delete('cars', ['id', '=', $carId]);
                 } catch (RuntimeException $e) {
                     // Ignore cleanup errors
