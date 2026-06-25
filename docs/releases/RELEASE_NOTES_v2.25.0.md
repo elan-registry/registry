@@ -44,6 +44,7 @@ _Additional deployment actions expected: SQL migrations for new `chassis_overrid
 - **Timestamp Hour Padding** ([#947](https://github.com/unibrain1/elanregistry/issues/947)): Fixed `AppConstants::DATETIME_FORMAT` using `G` (no leading zero) instead of `H` (zero-padded) for the hour. Morning timestamps `0–9` now correctly produce `09:xx:xx` instead of `9:xx:xx`, ensuring consistent lexicographic sort order.
 - **CSRF Audit Logging Gap** ([#958](https://github.com/unibrain1/elanregistry/issues/958)): Four AJAX endpoints were returning HTTP 403 on CSRF failure with no security log entry. All four now log via `LOG_CATEGORY_SECURITY`, consistent with the rest of the codebase.
 - **Car Update Ownership Check** ([#970](https://github.com/unibrain1/elanregistry/issues/970)): Any authenticated user could update another owner's car record by POSTing a `car_id` they don't own to the `updateCar` endpoint. Added ownership guard matching the existing `fetchImages`/`removeImages` pattern — non-owners receive HTTP 403; admins (group 2/3) are unaffected.
+- **Owner Contact Sender Impersonation** ([#971](https://github.com/unibrain1/elanregistry/issues/971)): Any authenticated user could send a contact email appearing to come from another registered owner by supplying a different `from_user_id` in the POST body. Sender identity is now always derived from the authenticated session — the `from_user_id` POST parameter is ignored and the hidden form field has been removed.
 
 ## Technical Changes
 
@@ -75,3 +76,4 @@ _Additional deployment actions expected: SQL migrations for new `chassis_overrid
 - [#947](https://github.com/unibrain1/elanregistry/issues/947) — bug: AppConstants::DATETIME_FORMAT uses 'G' (no leading zero) instead of 'H'
 - [#958](https://github.com/unibrain1/elanregistry/issues/958) — security: add CSRF failure audit logging to 4 AJAX endpoints
 - [#970](https://github.com/unibrain1/elanregistry/issues/970) — security: add car ownership check to updateCar action in edit.php
+- [#971](https://github.com/unibrain1/elanregistry/issues/971) — security: fix sender impersonation in owner-to-owner contact email
