@@ -20,5 +20,5 @@ class AppConstants
      * Used consistently across Car, ElanRegistryOwner, and admin pages
      * for ctime/mtime fields and other datetime columns.
      */
-    public const DATETIME_FORMAT = 'Y-m-d G:i:s';
+    public const DATETIME_FORMAT = 'Y-m-d H:i:s';
 }
