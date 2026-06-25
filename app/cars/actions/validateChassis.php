@@ -36,7 +36,9 @@ if (strtolower(Server::get('HTTP_X_REQUESTED_WITH', '')) !== 'xmlhttprequest') {
 
 // Check CSRF token for security
 if (!Token::check(Input::get('csrf'))) {
-    ApiResponse::forbidden('CSRF token validation failed')->send();
+    ApiResponse::forbidden('Invalid CSRF token')
+        ->withLogging($user->data()->id ?? 0, LogCategories::LOG_CATEGORY_SECURITY, 'Invalid CSRF token in chassis validation')
+        ->send();
 }
 
 // Get validation parameters
