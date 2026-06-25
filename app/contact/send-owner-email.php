@@ -120,10 +120,21 @@ if ($post_attempted) {
             $fromEmail = $fromUser->email;
             $fromName  = $fromUser->fname . ' ' . $fromUser->lname;
 
+            // Query car details for the email body
+            $db->query('SELECT chassis, year, series, variant, type FROM cars WHERE id = ?', [$carId]);
+            $carRow = $db->first();
+            $carUrl = $current_origin . $us_url_root . 'app/cars/details.php?car_id=' . $carId;
+
             $template = array(
-                'message' => $message,
-                'from'    => $fromName,
-                'to'      => $toName,
+                'message'      => $message,
+                'from'         => $fromName,
+                'to'           => $toName,
+                'car_year'     => $carRow ? (int)$carRow->year     : null,
+                'car_series'   => $carRow ? (string)$carRow->series  : null,
+                'car_variant'  => $carRow ? (string)$carRow->variant : null,
+                'car_type'     => $carRow ? (string)$carRow->type    : null,
+                'car_chassis'  => $carRow ? (string)$carRow->chassis : null,
+                'carUrl'       => $carUrl,
             );
 
             $body = email_body('_email_contact_owner.php', $template);

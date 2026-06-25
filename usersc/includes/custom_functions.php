@@ -38,6 +38,7 @@ $email_field_whitelist = [
     'name', 'accountId', 'comments',
     // Owner contact
     'from', 'to', 'message', 'content',
+    'car_year', 'car_series', 'car_variant', 'car_type', 'car_chassis',
     // Car transfer templates
     'requester', 'currentOwner', 'previousOwner',
     'requesterDetails', 'currentOwnerDetails', 'newOwnerDetails',
