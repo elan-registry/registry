@@ -41,6 +41,7 @@
 ### Bug Fixes
 
 - **Owner Validation Error Messages** ([#927](https://github.com/unibrain1/elanregistry/issues/927)): Admin owner edit now shows the specific validation error (e.g. "Website URL must use http:// or https://") instead of a generic fallback when input is invalid.
+- **Contact Recipient Ownership Check** ([#1014](https://github.com/unibrain1/elanregistry/issues/1014)): `send-owner-email.php` now verifies that `to_user_id` matches `cars.user_id` for the supplied `car_id` before sending. Previously, any authenticated user could POST an arbitrary `to_user_id` to send an unsolicited email to any registered user (IDOR). Mismatched recipients are rejected with an error and logged to `LOG_CATEGORY_ACCESS_DENIED`.
 - **Timestamp Hour Padding** ([#947](https://github.com/unibrain1/elanregistry/issues/947)): Fixed `AppConstants::DATETIME_FORMAT` using `G` (no leading zero) instead of `H` (zero-padded) for the hour. Morning timestamps `0–9` now correctly produce `09:xx:xx` instead of `9:xx:xx`, ensuring consistent lexicographic sort order.
 - **CSRF Audit Logging Gap** ([#958](https://github.com/unibrain1/elanregistry/issues/958)): Four AJAX endpoints were returning HTTP 403 on CSRF failure with no security log entry. All four now log via `LOG_CATEGORY_SECURITY`, consistent with the rest of the codebase.
 - **Car Update Ownership Check** ([#970](https://github.com/unibrain1/elanregistry/issues/970)): Any authenticated user could update another owner's car record by POSTing a `car_id` they don't own to the `updateCar` endpoint. Added ownership guard matching the existing `fetchImages`/`removeImages` pattern — non-owners receive HTTP 403; admins (group 2/3) are unaffected.
@@ -77,3 +78,4 @@
 - [#958](https://github.com/unibrain1/elanregistry/issues/958) — security: add CSRF failure audit logging to 4 AJAX endpoints
 - [#970](https://github.com/unibrain1/elanregistry/issues/970) — security: add car ownership check to updateCar action in edit.php
 - [#971](https://github.com/unibrain1/elanregistry/issues/971) — security: fix sender impersonation in owner-to-owner contact email
+- [#1014](https://github.com/unibrain1/elanregistry/issues/1014) — security: validate to_user_id matches car owner in send-owner-email.php
