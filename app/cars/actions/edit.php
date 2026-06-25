@@ -494,10 +494,16 @@ function updateEngine(array &$cardetails): void
  */
 function updatePurchasedate(array &$cardetails): void
 {
+    global $errors;
     $raw = Input::raw('purchasedate');
     if ($raw !== null && $raw !== '') {
-        $cardetails['purchasedate'] = date("Y-m-d", strtotime($raw));
-        $successes[] = 'Purchase Date: ' . $cardetails['purchasedate'];
+        $parsed = DateTime::createFromFormat('Y-m-d', $raw);
+        if (!$parsed || $parsed->format('Y-m-d') !== $raw) {
+            $errors[] = 'Invalid purchase date — use YYYY-MM-DD format with a real calendar date';
+            return;
+        }
+        $cardetails['purchasedate'] = $raw;
+        $successes[] = 'Purchase Date: ' . $raw;
     } else {
         $cardetails['purchasedate'] = null;
     }
@@ -511,10 +517,16 @@ function updatePurchasedate(array &$cardetails): void
  */
 function updateSolddate(array &$cardetails): void
 {
+    global $errors;
     $raw = Input::raw('solddate');
     if ($raw !== null && $raw !== '') {
-        $cardetails['solddate'] = date("Y-m-d", strtotime($raw));
-        $successes[] = 'Sold Date: ' . $cardetails['solddate'];
+        $parsed = DateTime::createFromFormat('Y-m-d', $raw);
+        if (!$parsed || $parsed->format('Y-m-d') !== $raw) {
+            $errors[] = 'Invalid sold date — use YYYY-MM-DD format with a real calendar date';
+            return;
+        }
+        $cardetails['solddate'] = $raw;
+        $successes[] = 'Sold Date: ' . $raw;
     } else {
         $cardetails['solddate'] = null;
     }
@@ -528,8 +540,14 @@ function updateSolddate(array &$cardetails): void
  */
 function updateWebsite(array &$cardetails): void
 {
+    global $errors;
     $website = Input::raw('website');
     if ($website !== null && $website !== '') {
+        $scheme = strtolower((string) parse_url($website, PHP_URL_SCHEME));
+        if (!in_array($scheme, ['http', 'https'], true)) {
+            $errors[] = 'Website URL must start with http:// or https://';
+            return;
+        }
         $cardetails['website'] = $website;
         $successes[] = 'Website: ' . htmlspecialchars($website, ENT_QUOTES, 'UTF-8');
     } else {

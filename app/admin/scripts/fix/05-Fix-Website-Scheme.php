@@ -44,7 +44,7 @@ $db = DB::getInstance();
     <div class="container-fluid">
         <div class="well">
 
-            <?php if (!isset($_GET['start'])): ?>
+            <?php if (!Input::exists('post') || !Token::check(Input::get('csrf'))): ?>
             <!-- Initial Description -->
             <div class="row">
                 <div class="col-lg-12 mb-4">
@@ -77,9 +77,12 @@ $db = DB::getInstance();
                             </div>
 
                             <div class="text-center">
-                                <a href="?start=1" class="btn btn-success btn-lg">
-                                    <i class="fa fa-play"></i> Continue - Start Website URL Migration
-                                </a>
+                                <form method="post" action="">
+                                    <input type="hidden" name="csrf" value="<?= Token::generate() ?>">
+                                    <button type="submit" class="btn btn-success btn-lg">
+                                        <i class="fa fa-play"></i> Continue - Start Website URL Migration
+                                    </button>
+                                </form>
                             </div>
                         </div>
                     </div>

@@ -82,16 +82,27 @@ if ($post_attempted) {
                 exit();
             }
 
-            $fromUser = $db->query('SELECT id, email, fname, lname FROM users WHERE id = ?', [$fromUserId])->first();
-            $toUser = $db->query('SELECT id, email, fname, lname FROM users WHERE id = ?', [$toUserId])->first();
-            
+            $fromResult = $db->query('SELECT id, email, fname, lname FROM users WHERE id = ?', [$fromUserId]);
+            $toResult   = $db->query('SELECT id, email, fname, lname FROM users WHERE id = ?', [$toUserId]);
+            if ($fromResult->error() || $toResult->error()) {
+                logger(
+                    $user->data()->id,
+                    LogCategories::LOG_CATEGORY_DATABASE_ERROR,
+                    'send-owner-email.php: DB error fetching user data from_id=' . $fromUserId . ' to_id=' . $toUserId
+                );
+                include($abs_us_root . $us_url_root . 'usersc/scripts/token_error.php');
+                exit();
+            }
+            $fromUser = $fromResult->first();
+            $toUser   = $toResult->first();
+
             if (!$fromUser || !$toUser) {
                 $errors[] = 'Invalid user data';
                 include($abs_us_root . $us_url_root . 'usersc/scripts/token_error.php');
                 exit();
             }
             
-            $toEmail   = $toUser->email;
+            $toEmail   = preg_replace('/[\r\n\t]/', '', $toUser->email);
             $toName    = $toUser->fname . ' ' . $toUser->lname;
             $fromEmail = $fromUser->email;
             $fromName  = $fromUser->fname . ' ' . $fromUser->lname;

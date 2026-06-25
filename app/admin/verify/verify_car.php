@@ -89,6 +89,10 @@ if (Input::exists('get') && Input::get('code') && Input::get('action')) {
             return;
         }
 
+        // Intentional: the primary car-state change (markVerified/markSold) already
+        // succeeded and cannot be rolled back here. Log the failure and continue so
+        // the owner receives a confirmation. The cars_hist row will be missing its
+        // operation label — visible in admin verification reports.
         if (!$db->update('cars_hist', $histResult->id, $histUpdate)) {
             logger($car->user_id, LogCategories::LOG_CATEGORY_CAR_VERIFICATION, "Failed to apply audit label to cars_hist row {$histResult->id} for car ID {$car->id} after '{$method}'");
         }
