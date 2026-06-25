@@ -574,17 +574,14 @@ function updateComments(array &$cardetails): void
         $cardetails['comments'] = null;
     }
     
-    // If chassis override was used, append audit note to comments
-    if (isset($chassis_override_used) && $chassis_override_used === true) {
-        $overrideNote = "\nCHASSIS VALIDATION OVERRIDDEN: " . date('Y-m-d H:i:s') . " - Admin override used for chassis validation.";
-        
-        if ($cardetails['comments']) {
-            // Append to existing comments with line break
-            $cardetails['comments'] .= "\n" . $overrideNote;
-        } else {
-            // Set as new comment if no existing comments
-            $cardetails['comments'] = $overrideNote;
-        }
+    // If chassis override was used, add audit note once (skip if already present)
+    if (isset($chassis_override_used) && $chassis_override_used === true
+        && strpos((string) $cardetails['comments'], 'CHASSIS VALIDATION OVERRIDDEN:') === false
+    ) {
+        $overrideNote = 'CHASSIS VALIDATION OVERRIDDEN: ' . date('Y-m-d H:i:s');
+        $cardetails['comments'] = $cardetails['comments']
+            ? $cardetails['comments'] . "\n" . $overrideNote
+            : $overrideNote;
     }
 }
 
