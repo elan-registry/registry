@@ -82,19 +82,32 @@ if ($post_attempted) {
                 exit();
             }
 
-            $fromResult = $db->query('SELECT id, email, fname, lname FROM users WHERE id = ?', [$fromUserId]);
-            $toResult   = $db->query('SELECT id, email, fname, lname FROM users WHERE id = ?', [$toUserId]);
-            if ($fromResult->error() || $toResult->error()) {
+            // DB is a singleton — call first() immediately after each query; do not
+            // store the result and query again before reading, or both variables
+            // will resolve to the last query's data.
+            $db->query('SELECT id, email, fname, lname FROM users WHERE id = ?', [$fromUserId]);
+            if ($db->error()) {
                 logger(
                     $user->data()->id,
                     LogCategories::LOG_CATEGORY_DATABASE_ERROR,
-                    'send-owner-email.php: DB error fetching user data from_id=' . $fromUserId . ' to_id=' . $toUserId
+                    'send-owner-email.php: DB error fetching from-user from_id=' . $fromUserId
                 );
                 include($abs_us_root . $us_url_root . 'usersc/scripts/token_error.php');
                 exit();
             }
-            $fromUser = $fromResult->first();
-            $toUser   = $toResult->first();
+            $fromUser = $db->first();
+
+            $db->query('SELECT id, email, fname, lname FROM users WHERE id = ?', [$toUserId]);
+            if ($db->error()) {
+                logger(
+                    $user->data()->id,
+                    LogCategories::LOG_CATEGORY_DATABASE_ERROR,
+                    'send-owner-email.php: DB error fetching to-user to_id=' . $toUserId
+                );
+                include($abs_us_root . $us_url_root . 'usersc/scripts/token_error.php');
+                exit();
+            }
+            $toUser = $db->first();
 
             if (!$fromUser || !$toUser) {
                 $errors[] = 'Invalid user data';
