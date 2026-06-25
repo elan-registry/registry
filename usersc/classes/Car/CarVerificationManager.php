@@ -109,7 +109,8 @@ class CarVerificationManager
             $soldDate = date('Y-m-d');
         }
 
-        if (!DateTime::createFromFormat('Y-m-d', $soldDate)) {
+        $parsedDate = DateTime::createFromFormat('Y-m-d', $soldDate);
+        if (!$parsedDate || $parsedDate->format('Y-m-d') !== $soldDate) {
             throw new CarValidationException(CarErrorMessages::getMessage('invalid_sold_date', 'user', ['date' => $soldDate]));
         }
 

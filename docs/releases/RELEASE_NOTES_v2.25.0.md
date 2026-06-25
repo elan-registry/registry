@@ -32,6 +32,7 @@ _Additional deployment actions expected: SQL migrations for new `chassis_overrid
 - **Verification Email Escaping** ([#854](https://github.com/unibrain1/elanregistry/issues/854)): All fields in the admin verification email template are now properly escaped.
 - **Removed Misleading Denylist Sanitizer** ([#917](https://github.com/unibrain1/elanregistry/issues/917)): The legacy `clean_string()` helper in the admin and owner contact paths was a case-sensitive denylist that did not provide real injection protection (header injection is prevented by CR/LF stripping at the call site; XSS is prevented by template-layer escaping). Removed from both call sites; user messages now reach the email body unmangled.
 - **Car Verification via Car Class** ([#624](https://github.com/unibrain1/elanregistry/issues/624)): `verify_car.php` now routes verification and sold-status changes through `Car::markVerified()` and `Car::markSold()` instead of direct DB writes, ensuring validation and audit trail consistency. Fixes a pre-existing gap where the "sold" action never set `cars.solddate`.
+- **Overflow Date Rejection in markSold()** ([#935](https://github.com/unibrain1/elanregistry/issues/935)): `CarVerificationManager::markSold()` now rejects calendar-invalid overflow dates (e.g. `2024-02-30`) that PHP's `DateTime::createFromFormat()` previously silently rolled forward, preventing corrupt date values from being persisted to `cars.solddate`.
 - **Audit Trail for Car Deletion** ([#593](https://github.com/unibrain1/elanregistry/issues/593)): Eliminated duplicate history row written on car deletion.
 - **car_user_hist Triggers and Indexes** ([#592](https://github.com/unibrain1/elanregistry/issues/592)): Added DB triggers and indexes to `car_user_hist` for full audit coverage.
 
@@ -57,3 +58,4 @@ _Additional deployment actions expected: SQL migrations for new `chassis_overrid
 - [#921](https://github.com/unibrain1/elanregistry/issues/921) — harden: apply http/https scheme whitelist to ElanRegistryOwner and user_settings website fields
 - [#927](https://github.com/unibrain1/elanregistry/issues/927) — bug: OwnerValidationException getUserMessage() returns generic default instead of specific validation text
 - [#931](https://github.com/unibrain1/elanregistry/issues/931) — test: add integration test for manage-consolidated.php car deletion audit trail
+- [#935](https://github.com/unibrain1/elanregistry/issues/935) — bug: CarVerificationManager::markSold() accepts overflow dates that PHP rolls forward silently
