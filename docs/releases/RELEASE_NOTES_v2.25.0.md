@@ -47,6 +47,7 @@ _Additional deployment actions expected: SQL migrations for new `chassis_overrid
 
 - **`Car::delete()` CSRF now mandatory** ([#930](https://github.com/unibrain1/elanregistry/issues/930)): Changed `Car::delete()` from an optional nullable token to a required `string $token`, consistent with `create()` and `update()`. Removes the opt-in bypass that could be silently exploited by future callers.
 - **Admin delete path routed through `Car::delete()`** ([#956](https://github.com/unibrain1/elanregistry/issues/956)): The admin car deletion handler in `manage-consolidated.php` previously issued raw SQL, bypassing the class-level CSRF guard added in #930. Refactored to call `Car::delete()`, which enforces CSRF validation, authentication, transaction wrapping, and audit logging. Defense-in-depth: page-level guards remain in place.
+- **Integration test car cleanup**: Added `IntegrationTestCase::trackCarId()` so tests that create cars via `Car::create()` directly (rather than through `createTestCar()`) can register the IDs for tearDown deletion. Fixed two methods in `CarDatabaseOperationsTest` (`testCarCreationPersistsToDatabases`, `testMarkSoldUpdatesDatabase`) that were leaving orphaned test cars assigned to the admin account after each test run.
 
 ## Issues Resolved
 
