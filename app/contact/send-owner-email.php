@@ -4,7 +4,7 @@ declare(strict_types=1);
 use ElanRegistry\Input;
 
 /**
- * contact_owner_email.php
+ * send-owner-email.php
  * Processes contact owner requests and sends emails between users.
  *
  * Handles the backend processing for the contact owner functionality, including
@@ -26,8 +26,9 @@ $subject = '[ELANREGISTRY] Owner to Owner Message';
 $errors = [];
 $email_sent = false;
 $post_attempted = Input::exists('post');
+$carId = 0;
 
-if (Input::exists('post')) {
+if ($post_attempted) {
     $token = Input::get('csrf');
     if (!Token::check($token)) {
         include($abs_us_root . $us_url_root . 'usersc/scripts/token_error.php');
@@ -44,9 +45,43 @@ if (Input::exists('post')) {
 
             $fromUserId = (int) $user->data()->id;
             $toUserId   = (int) Input::get('to_user_id');
-            
+            $carId      = (int) Input::get('car_id');
+
+            if ($toUserId <= 0 || $carId <= 0) {
+                logger(
+                    $user->data()->id,
+                    LogCategories::LOG_CATEGORY_ACCESS_DENIED,
+                    'send-owner-email.php: invalid to_user_id=' . $toUserId . ' or car_id=' . $carId
+                );
+                include($abs_us_root . $us_url_root . 'usersc/scripts/token_error.php');
+                exit();
+            }
+
             // Validate user IDs and get user data from database
             $db = DB::getInstance();
+
+            // Verify the recipient owns the car — prevents sending to arbitrary users (IDOR)
+            $carOwnerResult = $db->query('SELECT user_id FROM cars WHERE id = ?', [$carId]);
+            if ($carOwnerResult->error()) {
+                logger(
+                    $user->data()->id,
+                    LogCategories::LOG_CATEGORY_DATABASE_ERROR,
+                    'send-owner-email.php: DB error fetching owner for car_id=' . $carId
+                );
+                include($abs_us_root . $us_url_root . 'usersc/scripts/token_error.php');
+                exit();
+            }
+            $carOwner = $carOwnerResult->first();
+            if (!$carOwner || (int)$carOwner->user_id !== $toUserId) {
+                logger(
+                    $user->data()->id,
+                    LogCategories::LOG_CATEGORY_ACCESS_DENIED,
+                    'send-owner-email.php: to_user_id ' . $toUserId . ' does not match owner of car_id=' . $carId
+                );
+                include($abs_us_root . $us_url_root . 'usersc/scripts/token_error.php');
+                exit();
+            }
+
             $fromUser = $db->query('SELECT id, email, fname, lname FROM users WHERE id = ?', [$fromUserId])->first();
             $toUser = $db->query('SELECT id, email, fname, lname FROM users WHERE id = ?', [$toUserId])->first();
             
@@ -103,8 +138,8 @@ if (Input::exists('post')) {
                 'send-owner-email.php: missing parameters — action=' . $safeAction
             );
         }
-    } // End Post with data
-    
+    } // End CSRF check
+
     // Convert error/success arrays to UserSpice session messages (Issue #237)
     if (!empty($errors)) {
         foreach ($errors as $error) {
@@ -130,7 +165,6 @@ if (Input::exists('post')) {
                     <script>
                         setTimeout(function() {
                             <?php
-                            $carId = Input::get('car_id');
                             if ($carId) {
                                 echo "window.location.href = '" . $us_url_root . "app/cars/details.php?car_id=" . (int)$carId . "';";
                             } else {
