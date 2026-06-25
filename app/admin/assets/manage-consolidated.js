@@ -661,8 +661,8 @@ function initializeCarManagement() {
                 join_date: '2023-01-01'
             };
 
-            // Update UI
-            $userIdField.val('83').prop('disabled', true);
+            // Update UI — use readonly, not disabled: disabled fields are excluded from form submission
+            $userIdField.val('83').prop('readonly', true);
             $lookupBtn.prop('disabled', true);
             $('#userDetails').hide();
             $('#noOwnerDetails').show();
@@ -670,7 +670,7 @@ function initializeCarManagement() {
         } else {
             // Clear No Owner data
             selectedUser = null;
-            $userIdField.val('').prop('disabled', false).focus();
+            $userIdField.val('').prop('readonly', false).focus();
             $lookupBtn.prop('disabled', false);
             $('#userDetails').hide();
             $('#noOwnerDetails').hide();
@@ -746,7 +746,7 @@ function initializeCarManagement() {
         const carName = `${selectedCar.year || 'Unknown'} ${selectedCar.type || 'Unknown'} (${selectedCar.chassis || 'Unknown'})`;
         const currentOwner = selectedCar.fname && selectedCar.lname ? `${selectedCar.fname} ${selectedCar.lname}` : 'Unknown Owner';
         const newOwner = selectedUser.fname && selectedUser.lname ? `${selectedUser.fname} ${selectedUser.lname}` : 'Unknown Name';
-        const isNoOwner = selectedUser.id === 83;
+        const isNoOwner = Number(selectedUser.id) === 83;
 
         // Populate modal with car details
         $('#modal-car-details').html(
@@ -985,6 +985,9 @@ function initializeCarManagement() {
             const $btn = $('#reassignBtn');
             $btn.prop('disabled', true);
             $btn.html('<i class="fas fa-spinner fa-spin"></i> Reassigning...');
+
+            // Ensure user_id field is included in submission (it may be readonly when No Owner is selected)
+            $('#reassign_user_id').prop('readonly', false);
 
             // Hide modal and submit form
             const _reassignEl = document.getElementById('reassignConfirmModal');

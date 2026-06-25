@@ -527,7 +527,7 @@ require_once $abs_us_root . $us_url_root . 'users/includes/html_footer.php'; //c
                     });
                 }, Promise.resolve());
             }).catch(function() {
-                $('#message').show().html(
+                $('#message').removeClass('d-none').html(
                     '<div class="alert alert-warning">Existing photos could not be loaded. ' +
                     'Please refresh the page before making changes to avoid losing photo data.</div>'
                 );
@@ -538,7 +538,7 @@ require_once $abs_us_root . $us_url_root . 'users/includes/html_footer.php'; //c
         // Remove existing images in edit mode
         pond.on('removefile', function(error, fileItem) {
             if (error) {
-                $('#message').show().html(
+                $('#message').removeClass('d-none').html(
                     '<div class="alert alert-warning">A photo could not be removed. Please try again.</div>'
                 );
                 return;
@@ -550,7 +550,7 @@ require_once $abs_us_root . $us_url_root . 'users/includes/html_footer.php'; //c
                     carID: car_id,
                     file: filename
                 }).catch(function() {
-                    $('#message').show().html(
+                    $('#message').removeClass('d-none').html(
                         '<div class="alert alert-warning">A photo could not be removed from the server. ' +
                         'Please refresh the page and try again before submitting.</div>'
                     );
@@ -560,7 +560,7 @@ require_once $abs_us_root . $us_url_root . 'users/includes/html_footer.php'; //c
 
         // Clear file-level errors when a new file is added
         pond.on('addfile', function() {
-            $('#message').hide();
+            $('#message').addClass('d-none');
         });
 
         document.getElementById('submit').addEventListener('click', function(e) {
@@ -575,7 +575,7 @@ require_once $abs_us_root . $us_url_root . 'users/includes/html_footer.php'; //c
             });
 
             if (pondHasErrors) {
-                $('#message').show().html('<div class="alert alert-primary">Error: One or more photos have errors. Please remove them and try again.</div>');
+                $('#message').removeClass('d-none').html('<div class="alert alert-primary">Error: One or more photos have errors. Please remove them and try again.</div>');
                 return;
             }
 
@@ -590,7 +590,7 @@ require_once $abs_us_root . $us_url_root . 'users/includes/html_footer.php'; //c
 
             const handleProcessError = function(err) {
                 console.error('[form.php] Photo processing error:', err);
-                $('#message').show().html('<div class="alert alert-danger">An error occurred processing the photos. Please try again.</div>');
+                $('#message').removeClass('d-none').html('<div class="alert alert-danger">An error occurred processing the photos. Please try again.</div>');
                 btn.disabled = false;
                 btn.textContent = btn.dataset.label;
             };
@@ -666,7 +666,7 @@ require_once $abs_us_root . $us_url_root . 'users/includes/html_footer.php'; //c
                 const btn = document.getElementById('submit');
                 btn.disabled = false;
                 btn.textContent = btn.dataset.label;
-                $('#message').show().html('<div class="alert alert-danger">An error occurred. Please try again.</div>');
+                $('#message').removeClass('d-none').html('<div class="alert alert-danger">An error occurred. Please try again.</div>');
             }
         }
 
@@ -694,7 +694,7 @@ require_once $abs_us_root . $us_url_root . 'users/includes/html_footer.php'; //c
                 html += '</ul>';
             }
             html += '</div>';
-            $('#message').show().html(html);
+            $('#message').removeClass('d-none').html(html);
 
             // Scroll to message
             const msgEl = document.getElementById('message');
@@ -705,7 +705,7 @@ require_once $abs_us_root . $us_url_root . 'users/includes/html_footer.php'; //c
             // Repopulate form fields from submitted data
             if (data.cardetails) {
                 if (data.cardetails.year) {
-                    $('#year').val(data.cardetails.year).trigger('change');
+                    $('#year').val(data.cardetails.year);
                 }
                 if (data.cardetails.model) {
                     $('#model').val(data.cardetails.model).trigger('change');
@@ -731,7 +731,7 @@ require_once $abs_us_root . $us_url_root . 'users/includes/html_footer.php'; //c
     var validChassis = '';
 
     $(document).ready(function() {
-        $('#message').hide();
+        $('#message').addClass('d-none');
 
         // Pre-populate dropdown menus if we are updating a car
 <?php if ($action === 'updateCar'): ?>

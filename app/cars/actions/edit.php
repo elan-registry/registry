@@ -240,10 +240,10 @@ function updateCar(array &$cardetails): void
         }
     } catch (CarValidationException $e) {
         logger($user->data()->id, LogCategories::LOG_CATEGORY_VALIDATION_ERROR, 'Car Update Validation Error: ' . $e->getMessage());
-        $errors[] = 'Car Update Validation Error: ' . $e->getUserMessage();
+        $errors[] = $e->getUserMessage();
     } catch (ElanRegistryException $e) {
         logger($user->data()->id, LogCategories::LOG_CATEGORY_CAR_ERRORS, 'Car Update Error: ' . $e->getMessage());
-        $errors[] = 'Car Update Error: ' . $e->getUserMessage();
+        $errors[] = $e->getUserMessage();
     } catch (\Throwable $e) {
         logger($user->data()->id, LogCategories::LOG_CATEGORY_CAR_ERRORS, 'Car Update Unexpected Error (' . get_class($e) . '): ' . $e->getMessage());
         $errors[] = 'Car Update failed due to an unexpected error.';
@@ -273,10 +273,10 @@ function addCar(array &$cardetails): void
         }
     } catch (CarValidationException $e) {
         logger($user->data()->id, LogCategories::LOG_CATEGORY_VALIDATION_ERROR, 'Car Creation Validation Error: ' . $e->getMessage());
-        $errors[] = 'Car Creation Validation Error: ' . $e->getUserMessage();
+        $errors[] = $e->getUserMessage();
     } catch (ElanRegistryException $e) {
         logger($user->data()->id, LogCategories::LOG_CATEGORY_CAR_ERRORS, 'Car Creation Error: ' . $e->getMessage());
-        $errors[] = 'Car Creation Error: ' . $e->getUserMessage();
+        $errors[] = $e->getUserMessage();
     } catch (\Throwable $e) {
         logger($user->data()->id, LogCategories::LOG_CATEGORY_CAR_ERRORS, 'Car Creation Unexpected Error (' . get_class($e) . '): ' . $e->getMessage());
         $errors[] = 'Car Creation failed due to an unexpected error.';

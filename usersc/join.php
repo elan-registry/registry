@@ -63,6 +63,7 @@ includeHook($hooks, 'pre');
 $form_method = 'POST';
 $form_action = 'join.php';
 $vericode = uniqid().randomstring(15);
+$hashedVericode = hashVericode($vericode);
 
 //Decide whether or not to use email activation
 $act = $db->query('SELECT * FROM email')->first()->email_act;
@@ -197,7 +198,7 @@ if (Input::exists()) {
                     'permissions' => 1,
                     'join_date' => $join_date,
                     'email_verified' => $pre,
-                    'vericode' => $vericode,
+                    'vericode' => $hashedVericode,
                     'vericode_expiry' => $vericode_expiry,
                     'oauth_tos_accepted' => true,
                     'language'=>$newLang,
@@ -294,20 +295,23 @@ if (Input::exists()) {
                 }
             }
 
-    }else{
-      // Record failed registration attempt
-      handleAuthFailure('registration_attempt', null, $email, [], [
-          'username_attempted' => $username ?? '',
-          'email_attempted' => $email ?? '',
-          'validation_errors' => $validation->_errors,
-          'user_agent' => $user_agent ?? ''
-      ]);
-      
-      foreach($validation->_errors as $e){
-        usError($e);
+    } else {
+        // Record failed registration attempt
+        handleAuthFailure('registration_attempt', null, $email, [], [
+            'username_attempted' => $username ?? '',
+            'email_attempted'    => $email ?? '',
+            'validation_errors'  => $validation->_errors,
+            'user_agent'         => $user_agent ?? '',
+        ]);
 
-      }
-  Redirect::to(currentPage());
+        // Log the failure — generic message avoids confirming whether the email exists
+        logger(0, LogCategories::LOG_CATEGORY_SYSTEM_ERROR,
+            'join.php: Registration failed — ' . count($validation->_errors ?? []) . ' validation error(s)');
+
+        // Show a generic message regardless of the specific reason (prevents email enumeration)
+        usError('We could not complete your registration. Please check your information and try again.');
+
+        Redirect::to(currentPage());
     } //Validation
 } //Input exists
 

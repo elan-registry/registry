@@ -20,13 +20,15 @@ use Throwable;
  */
 class CarValidationException extends CarException
 {
+    private bool $hasExplicitUserMessage;
+
     /**
      * Constructor
      *
      * @param string $message Exception message
      * @param int $code Exception code (optional)
      * @param Throwable|null $previous Previous exception for chaining (optional)
-     * @param string|null $userMessage User-friendly message (uses default if null)
+     * @param string|null $userMessage User-friendly message (uses getMessage() if null)
      */
     public function __construct(
         string $message = "",
@@ -34,7 +36,22 @@ class CarValidationException extends CarException
         ?Throwable $previous = null,
         ?string $userMessage = null
     ) {
+        $this->hasExplicitUserMessage = ($userMessage !== null);
         parent::__construct($message, $code, $previous, $userMessage);
+    }
+
+    /**
+     * Validation exception messages are user-safe descriptions of input failures
+     * (e.g. "Purchase date must be between ..."). When no explicit user message
+     * was provided, return the technical message directly rather than the generic
+     * "invalid input" fallback used by other exception types.
+     */
+    public function getUserMessage(): string
+    {
+        if ($this->hasExplicitUserMessage) {
+            return parent::getUserMessage();
+        }
+        return $this->getMessage();
     }
 
     /**
