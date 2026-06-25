@@ -272,8 +272,8 @@ if (!class_exists('Car')) {
         /**
          * Delete car
          */
-        public function delete(string $reason = 'Administrative deletion', ?string $token = null): bool {
-            if ($token !== null && !Token::check($token)) {
+        public function delete(string $reason, string $token): bool {
+            if (!Token::check($token)) {
                 throw new CarDeletionException('Invalid CSRF token provided');
             }
 

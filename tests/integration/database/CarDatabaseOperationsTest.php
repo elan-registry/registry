@@ -132,7 +132,7 @@ final class CarDatabaseOperationsTest extends IntegrationTestCase
     public function testCarDeletionRemovesFromDatabase(): void
     {
         $car = new Car($this->testCarId);
-        $result = $car->delete('Integration test deletion');
+        $result = $car->delete('Integration test deletion', Token::generate());
 
         $this->assertTrue($result);
 
@@ -148,7 +148,7 @@ final class CarDatabaseOperationsTest extends IntegrationTestCase
     public function testCarDeletionCreatesAuditTrail(): void
     {
         $car = new Car($this->testCarId);
-        $result = $car->delete('Integration test audit trail');
+        $result = $car->delete('Integration test audit trail', Token::generate());
 
         $this->assertTrue($result);
 
