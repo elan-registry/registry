@@ -105,6 +105,7 @@ CREATE TABLE `cars` (
   `year` varchar(4) COLLATE utf8mb4_unicode_ci NOT NULL,
   `type` char(3) COLLATE utf8mb4_unicode_ci NOT NULL,
   `chassis` varchar(15) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `chassis_override` TINYINT(1) NOT NULL DEFAULT 0,
   `color` varchar(25) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
   `engine` varchar(15) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
   `purchasedate` date DEFAULT NULL,
@@ -140,6 +141,7 @@ CREATE TABLE `cars_hist` (
   `year` varchar(4) COLLATE utf8mb4_unicode_ci NOT NULL,
   `type` char(3) COLLATE utf8mb4_unicode_ci NOT NULL,
   `chassis` varchar(15) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `chassis_override` TINYINT(1) NOT NULL DEFAULT 0,
   `color` varchar(25) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
   `engine` varchar(15) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
   `purchasedate` date DEFAULT NULL,
@@ -362,14 +364,14 @@ DELIMITER $$
 CREATE TRIGGER `cars_delete` AFTER DELETE ON `cars` FOR EACH ROW BEGIN
     INSERT INTO cars_hist(
         operation, car_id, ctime, mtime, ModifiedBy, model, series, variant,
-        year, type, chassis, color, engine, purchasedate, solddate, comments,
+        year, type, chassis, chassis_override, color, engine, purchasedate, solddate, comments,
         image, user_id, email, fname, lname, join_date, city, state, country,
         lat, lon, website
     )
     VALUES (
         'DELETE', OLD.id, OLD.ctime, OLD.mtime, OLD.ModifiedBy, OLD.model,
-        OLD.series, OLD.variant, OLD.year, OLD.type, OLD.chassis, OLD.color,
-        OLD.engine, OLD.purchasedate, OLD.solddate, OLD.comments, OLD.image,
+        OLD.series, OLD.variant, OLD.year, OLD.type, OLD.chassis, OLD.chassis_override,
+        OLD.color, OLD.engine, OLD.purchasedate, OLD.solddate, OLD.comments, OLD.image,
         OLD.user_id, OLD.email, OLD.fname, OLD.lname, OLD.join_date, OLD.city,
         OLD.state, OLD.country, OLD.lat, OLD.lon, OLD.website
     );
@@ -383,14 +385,14 @@ DELIMITER $$
 CREATE TRIGGER `cars_insert` AFTER INSERT ON `cars` FOR EACH ROW BEGIN
     INSERT INTO cars_hist(
         operation, car_id, ctime, mtime, ModifiedBy, model, series, variant,
-        year, type, chassis, color, engine, purchasedate, solddate, comments,
+        year, type, chassis, chassis_override, color, engine, purchasedate, solddate, comments,
         image, user_id, email, fname, lname, join_date, city, state, country,
         lat, lon, website
     )
     VALUES (
         'INSERT', NEW.id, NEW.ctime, NEW.mtime, NEW.ModifiedBy, NEW.model,
-        NEW.series, NEW.variant, NEW.year, NEW.type, NEW.chassis, NEW.color,
-        NEW.engine, NEW.purchasedate, NEW.solddate, NEW.comments, NEW.image,
+        NEW.series, NEW.variant, NEW.year, NEW.type, NEW.chassis, NEW.chassis_override,
+        NEW.color, NEW.engine, NEW.purchasedate, NEW.solddate, NEW.comments, NEW.image,
         NEW.user_id, NEW.email, NEW.fname, NEW.lname, NEW.join_date, NEW.city,
         NEW.state, NEW.country, NEW.lat, NEW.lon, NEW.website
     );
@@ -405,14 +407,14 @@ CREATE TRIGGER `cars_update` AFTER UPDATE ON `cars` FOR EACH ROW BEGIN
     IF @disable_triggers IS NULL THEN
         INSERT INTO cars_hist(
             operation, car_id, ctime, mtime, ModifiedBy, model, series, variant,
-            year, type, chassis, color, engine, purchasedate, solddate, comments,
+            year, type, chassis, chassis_override, color, engine, purchasedate, solddate, comments,
             image, user_id, email, fname, lname, join_date, city, state, country,
             lat, lon, website
         )
         VALUES (
             'UPDATE', OLD.id, OLD.ctime, OLD.mtime, OLD.ModifiedBy, OLD.model,
-            OLD.series, OLD.variant, OLD.year, OLD.type, OLD.chassis, OLD.color,
-            OLD.engine, OLD.purchasedate, OLD.solddate, OLD.comments, OLD.image,
+            OLD.series, OLD.variant, OLD.year, OLD.type, OLD.chassis, OLD.chassis_override,
+            OLD.color, OLD.engine, OLD.purchasedate, OLD.solddate, OLD.comments, OLD.image,
             OLD.user_id, OLD.email, OLD.fname, OLD.lname, OLD.join_date, OLD.city,
             OLD.state, OLD.country, OLD.lat, OLD.lon, OLD.website
         );

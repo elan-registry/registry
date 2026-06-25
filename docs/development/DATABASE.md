@@ -69,6 +69,7 @@
 | `year` | `varchar(4)` | Manufacturing year |
 | `type` | `char(3)` | Vehicle type code |
 | `chassis` | `varchar(15)` | Chassis number (INDEXED) |
+| `chassis_override` | `TINYINT(1) NOT NULL DEFAULT 0` | Flag indicating whether chassis validation was overridden by the user. Set to `1` when validation was overridden; `0` for normal/valid chassis. |
 | `color` | `varchar(25)` | Vehicle color |
 | `engine` | `varchar(15)` | Engine specification |
 | `purchasedate`, `solddate` | `date` | Purchase and sale dates |
@@ -92,7 +93,7 @@ automatically synchronized from user profiles when user data changes.
 | `operation` | `varchar(32)` | Operation type (INSERT/UPDATE/DELETE) |
 | `car_id` | `int UNSIGNED` | Original car ID |
 | `timestamp` | `timestamp` | Change timestamp |
-| *(All car columns)* | | Mirror of `cars` table structure |
+| *(All car columns)* | | Mirror of `cars` table structure including `chassis_override` |
 
 #### `car_user` - Car sharing relationships
 
@@ -260,8 +261,8 @@ id=5, years=1971-1974, series="S4", variant="FHC", type_code="36", model_value="
 
 **Trigger Details**:
 
-- All triggers capture complete car record snapshots including owner data
-- Triggers updated 2025-09-12 to use current schema (no deprecated columns)
+- All triggers capture complete car record snapshots including owner data and `chassis_override`
+- All triggers use current schema (no deprecated columns); `chassis_override` added in #915
 - Each trigger records operation type (INSERT/UPDATE/DELETE) and timestamp
 
 **Car-User Relationship Triggers** (implemented in #592):

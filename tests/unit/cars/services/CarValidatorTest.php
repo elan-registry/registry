@@ -488,6 +488,38 @@ final class CarValidatorTest extends TestCase
     }
 
     // ============================================================
+    // chassis_override field validation — issue #915
+    // ============================================================
+
+    /**
+     * chassis_override with string '1' must be coerced to integer 1.
+     */
+    public function testChassisOverrideValidatesAsOne(): void
+    {
+        $result = $this->validator->validateAndSanitizeFields(['chassis_override' => '1'], false);
+        $this->assertSame(1, $result['chassis_override']);
+    }
+
+    /**
+     * chassis_override with string '0' must be coerced to integer 0.
+     */
+    public function testChassisOverrideValidatesAsZero(): void
+    {
+        $result = $this->validator->validateAndSanitizeFields(['chassis_override' => '0'], false);
+        $this->assertSame(0, $result['chassis_override']);
+    }
+
+    /**
+     * Any value other than '1' must be coerced to 0 — the field is a boolean flag,
+     * not a free integer.
+     */
+    public function testChassisOverrideCoercesNonOneToZero(): void
+    {
+        $result = $this->validator->validateAndSanitizeFields(['chassis_override' => '99'], false);
+        $this->assertSame(0, $result['chassis_override']);
+    }
+
+    // ============================================================
     // normalizeString tests
     // ============================================================
 

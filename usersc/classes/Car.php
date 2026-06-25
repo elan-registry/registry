@@ -247,7 +247,7 @@ class Car
         // Filter to valid car fields
         $validCarFields = [
             'id', 'user_id', 'year', 'model', 'series', 'variant', 'type',
-            'chassis', 'color', 'engine', 'purchasedate', 'solddate',
+            'chassis', 'chassis_override', 'color', 'engine', 'purchasedate', 'solddate',
             'website', 'comments', 'image', 'mtime',
             'email', 'fname', 'lname', 'join_date', 'city', 'state', 'country', 'lat', 'lon'
         ];

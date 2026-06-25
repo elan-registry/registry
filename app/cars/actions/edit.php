@@ -427,6 +427,7 @@ function updateChassis(array &$cardetails): void
             $validator = new ChassisValidator();
             $result = $validator->validate($chassis, $year, $model, $chassisOverride);
         } catch (ElanRegistryException $e) {
+            logger($user->data()->id, LogCategories::LOG_CATEGORY_SYSTEM_ERROR, 'ChassisValidator ElanRegistryException for chassis "' . htmlspecialchars($chassis, ENT_QUOTES, 'UTF-8') . '": ' . $e->getMessage());
             $errors[] = 'Chassis validation error: ' . $e->getUserMessage();
             return;
         } catch (\Throwable $e) {
@@ -436,11 +437,13 @@ function updateChassis(array &$cardetails): void
         }
         
         // Handle validation result
-        if ($result['valid'] && !$result['override_used']) {
-            $successes[] = 'Chassis: ' . htmlspecialchars($cardetails['chassis'], ENT_QUOTES, 'UTF-8');
-        } elseif ($result['valid'] && $result['override_used']) {
-            $successes[] = 'Chassis: ' . htmlspecialchars($cardetails['chassis'], ENT_QUOTES, 'UTF-8') . ' (Override used)';
-            $chassis_override_used = true; // Track that override was used for comments
+        if ($result['valid']) {
+            $cardetails['chassis_override'] = $result['override_used'] ? 1 : 0;
+            $label = htmlspecialchars($cardetails['chassis'], ENT_QUOTES, 'UTF-8');
+            $successes[] = 'Chassis: ' . $label . ($result['override_used'] ? ' (Override used)' : '');
+            if ($result['override_used']) {
+                $chassis_override_used = true; // Track that override was used for comments
+            }
         } else {
             $errors[] = '<strong>ERROR:</strong> Chassis Validation Failed: ' . $result['error_reason'];
         }
