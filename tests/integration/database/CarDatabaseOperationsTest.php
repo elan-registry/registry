@@ -87,6 +87,7 @@ final class CarDatabaseOperationsTest extends IntegrationTestCase
 
         $this->assertTrue($result);
         $createdId = $car->data()->id;
+        $this->trackCarId((int) $createdId);
 
         // Verify data was persisted
         $query = $this->db->query('SELECT * FROM cars WHERE id = ?', [$createdId]);
@@ -342,6 +343,7 @@ final class CarDatabaseOperationsTest extends IntegrationTestCase
         $car = new Car();
         $car->create($carData);
         $carId = $car->data()->id;
+        $this->trackCarId((int) $carId);
 
         // Mark as sold
         $soldDate = '2023-06-15';

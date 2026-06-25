@@ -263,6 +263,19 @@ abstract class IntegrationTestCase extends TestCase
     }
 
     /**
+     * Register a car ID for cleanup in tearDown
+     *
+     * Call this when a test creates a car via Car::create() directly instead of
+     * through createTestCar(), so the car is cleaned up after the test.
+     *
+     * @param int $carId The car ID to track
+     */
+    protected function trackCarId(int $carId): void
+    {
+        $this->createdCarIds[] = $carId;
+    }
+
+    /**
      * Check if database is currently connected
      *
      * @return bool True if database connection is active
