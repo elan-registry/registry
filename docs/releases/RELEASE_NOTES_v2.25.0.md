@@ -40,6 +40,10 @@ _Additional deployment actions expected: SQL migrations for new `chassis_overrid
 
 - **Owner Validation Error Messages** ([#927](https://github.com/unibrain1/elanregistry/issues/927)): Admin owner edit now shows the specific validation error (e.g. "Website URL must use http:// or https://") instead of a generic fallback when input is invalid.
 
+## Technical Changes
+
+- **`Car::delete()` CSRF now mandatory** ([#930](https://github.com/unibrain1/elanregistry/issues/930)): Changed `Car::delete()` from an optional nullable token to a required `string $token`, consistent with `create()` and `update()`. Removes the opt-in bypass that could be silently exploited by future callers.
+
 ## Issues Resolved
 
 - [#592](https://github.com/unibrain1/elanregistry/issues/592) — Add database triggers and indexes for car_user_hist table
@@ -58,4 +62,5 @@ _Additional deployment actions expected: SQL migrations for new `chassis_overrid
 - [#921](https://github.com/unibrain1/elanregistry/issues/921) — harden: apply http/https scheme whitelist to ElanRegistryOwner and user_settings website fields
 - [#927](https://github.com/unibrain1/elanregistry/issues/927) — bug: OwnerValidationException getUserMessage() returns generic default instead of specific validation text
 - [#931](https://github.com/unibrain1/elanregistry/issues/931) — test: add integration test for manage-consolidated.php car deletion audit trail
+- [#930](https://github.com/unibrain1/elanregistry/issues/930) — refactor: Car::delete() CSRF token is nullable — bypassable by omitting token
 - [#935](https://github.com/unibrain1/elanregistry/issues/935) — bug: CarVerificationManager::markSold() accepts overflow dates that PHP rolls forward silently

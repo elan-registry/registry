@@ -93,6 +93,18 @@ final class CarDeletionTest extends IntegrationTestCase
     }
 
     /**
+     * Test car deletion fails with empty token
+     */
+    #[Group('fast')]
+    public function testDeleteCarFailsWithEmptyToken(): void
+    {
+        $this->expectException(CarDeletionException::class);
+
+        $car = new Car($this->testCarId);
+        $car->delete('Test deletion', '');
+    }
+
+    /**
      * Test car deletion fails when car does not exist
      */
     #[Group('fast')]
@@ -205,19 +217,4 @@ final class CarDeletionTest extends IntegrationTestCase
         }
     }
 
-    /**
-     * Test car deletion with optional token parameter
-     */
-    #[Group('fast')]
-    public function testDeleteCarWithOptionalToken(): void
-    {
-        $car = new Car($this->testCarId);
-        $this->assertTrue($car->exists());
-
-        // Delete without providing token (using default parameter)
-        $result = $car->delete('Test deletion without token');
-
-        $this->assertTrue($result);
-        $this->assertFalse($car->exists());
-    }
 }
