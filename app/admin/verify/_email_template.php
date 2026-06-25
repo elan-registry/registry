@@ -208,7 +208,7 @@
             </tr>
             <tr>
                 <td>Date Added</td>
-                <td><?= $car->ctime ?>
+                <td><?= htmlspecialchars((string)($car->ctime ?? ''), ENT_QUOTES, 'UTF-8') ?>
                 </td>
             </tr>
         </table>

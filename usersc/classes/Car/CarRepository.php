@@ -86,7 +86,8 @@ class CarRepository
      */
     public function deleteCar(int $carId): bool
     {
-        return (bool) $this->db->query("DELETE FROM cars WHERE id = ?", [$carId]);
+        $this->db->query("DELETE FROM cars WHERE id = ?", [$carId]);
+        return !$this->db->error();
     }
 
     /**
@@ -97,7 +98,22 @@ class CarRepository
      */
     public function deleteCarUser(int $carId): bool
     {
-        return (bool) $this->db->query("DELETE FROM car_user WHERE car_id = ?", [$carId]);
+        $this->db->query("DELETE FROM car_user WHERE car_id = ?", [$carId]);
+        return !$this->db->error();
+    }
+
+    /**
+     * Delete all car-user relationships for a user ID
+     *
+     * Used during user deletion cleanup to remove all of a user's car assignments.
+     *
+     * @param int $userId User ID
+     * @return bool True on success
+     */
+    public function deleteCarUserByUserId(int $userId): bool
+    {
+        $this->db->query("DELETE FROM car_user WHERE userid = ?", [$userId]);
+        return !$this->db->error();
     }
 
     /**
@@ -121,7 +137,8 @@ class CarRepository
      */
     public function updateCarUser(int $newUserId, int $carId): bool
     {
-        return (bool) $this->db->query("UPDATE car_user SET userid = ? WHERE car_id = ?", [$newUserId, $carId]);
+        $this->db->query("UPDATE car_user SET userid = ? WHERE car_id = ?", [$newUserId, $carId]);
+        return !$this->db->error();
     }
 
     /**
@@ -216,7 +233,7 @@ class CarRepository
      */
     public function beginTransaction(): void
     {
-        $this->db->query('START TRANSACTION');
+        $this->db->beginTransaction();
     }
 
     /**
@@ -226,7 +243,7 @@ class CarRepository
      */
     public function commit(): void
     {
-        $this->db->query('COMMIT');
+        $this->db->commit();
     }
 
     /**
@@ -236,7 +253,7 @@ class CarRepository
      */
     public function rollback(): void
     {
-        $this->db->query('ROLLBACK');
+        $this->db->rollBack();
     }
 
     /**

@@ -239,18 +239,30 @@ if (Input::exists()) {
                     }
                 }
             } catch (Exception $e) {
-                // Record failed registration attempt
                 handleAuthFailure('registration_attempt', null, $email, [], [
                     'username_attempted' => $username,
                     'email_attempted' => $email,
                     'error' => $e->getMessage(),
                     'user_agent' => $user_agent ?? ''
                 ]);
-                
+
                 if ($eventhooks = getMyHooks(['page' => 'joinFail'])) {
                     includeHook($eventhooks, 'body');
                 }
-                die($e->getMessage());
+
+                $safeToLog = preg_replace('/[\r\n\t]/', ' ', $e->getMessage()) ?? '[message unavailable]';
+                logger($theNewId ?? 0, LogCategories::LOG_CATEGORY_SYSTEM_ERROR,
+                    'join.php: User creation failed — ' . get_class($e),
+                    [
+                        'exception_class' => get_class($e),
+                        'message'         => $safeToLog,
+                        'file'            => $e->getFile(),
+                        'line'            => $e->getLine(),
+                    ]);
+
+                usError('We could not complete your registration. Please try again or contact the administrator.');
+                Redirect::to(currentPage());
+                exit;
             }
             if ($form_valid == true) {
               //this allows the plugin hook to kill the post but it must delete the created user

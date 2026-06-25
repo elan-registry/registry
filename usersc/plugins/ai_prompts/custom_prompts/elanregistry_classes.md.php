@@ -66,8 +66,8 @@ $car->update([
     'csrf'       => Token::generate(),
 ]);
 
-// Delete (soft delete with audit trail)
-$car->delete($userId);
+// Delete (hard delete; cars_hist trigger records the audit trail)
+$car->delete('Reason for deletion', Token::generate());
 ```
 
 **Key database tables:** `cars` (primary), `cars_hist` (trigger-written audit trail),

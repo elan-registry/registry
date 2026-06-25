@@ -1,6 +1,11 @@
 <?php
 declare(strict_types=1);
 
+use ElanRegistry\Exceptions\CarDatabaseException;
+use ElanRegistry\Exceptions\CarDeletionException;
+use ElanRegistry\Exceptions\CarNotFoundException;
+use ElanRegistry\Input as ElanInput;
+
 /**
  * manage-consolidated.php
  * Consolidated Management Interface
@@ -288,6 +293,7 @@ if (Input::exists('post')) {
                 case "delete":
                     $car_id = (int) Input::get('car_id');
                     $confirmation = Input::get('confirmation');
+                    $reason = mb_substr(ElanInput::raw('reason') ?: 'Administrative deletion', 0, 500);
 
                     if (!$car_id) {
                         $errors[] = 'Please provide a valid car ID';
@@ -299,37 +305,27 @@ if (Input::exists('post')) {
                         break;
                     }
 
-                    // Get car details before deletion for logging
-                    $carQ = $db->query("SELECT * FROM cars WHERE id = ?", [$car_id]);
-                    if ($carQ->count() === 0) {
+                    try {
+                        $car = new Car($car_id);
+                        if (!$car->exists()) {
+                            $errors[] = "Car ID $car_id not found";
+                            break;
+                        }
+                        $chassis = $car->data()->chassis;
+                        $car->delete($reason, $token);
+                        $successes[] = "Car ID $car_id ($chassis) has been permanently deleted";
+                    } catch (CarNotFoundException $e) {
+                        // Race: car deleted between the exists() check and delete().
+                        logger($currentUserId, LogCategories::LOG_CATEGORY_CAR_DELETION,
+                            "Car ID $car_id not found during deletion attempt");
                         $errors[] = "Car ID $car_id not found";
-                        break;
-                    }
-
-                    $carData = $carQ->first();
-
-                    // Add deletion record to history before removing the car
-                    $fields = [];
-                    $fields['car_id'] = $car_id;
-                    $fields['comments'] = "Car ID $car_id ({$carData->chassis}) permanently deleted by admin " . $currentUserId . ". Reason: Administrative deletion via consolidated management.";
-                    $fields['operation'] = "DELETE";
-                    $fields['ctime'] = date(AppConstants::DATETIME_FORMAT);
-                    $fields['mtime'] = $fields['ctime'];
-
-                    $db->insert("cars_hist", $fields);
-
-                    // Remove from car_user relationship table
-                    $db->query("DELETE FROM car_user WHERE car_id = ?", [$car_id]);
-
-                    // Remove the car record
-                    $result = $db->query("DELETE FROM cars WHERE id = ?", [$car_id]);
-
-                    if ($db->error()) {
-                        $errors[] = "Failed to delete car: " . $db->errorString();
-                        logger($currentUserId, LogCategories::LOG_CATEGORY_CAR_DELETION, "FAILED: Delete car ID $car_id - " . $db->errorString());
-                    } else {
-                        $successes[] = "Car ID $car_id ({$carData->chassis}) has been permanently deleted";
-                        logger($currentUserId, LogCategories::LOG_CATEGORY_CAR_DELETION, "SUCCESS: Deleted car ID $car_id ({$carData->chassis})");
+                    } catch (CarDeletionException | CarDatabaseException $e) {
+                        // CarAdministrationService::delete() logs technical detail before throwing.
+                        $errors[] = "Failed to delete car. Check the system log for details.";
+                    } catch (\Exception $e) {
+                        logger($currentUserId, LogCategories::LOG_CATEGORY_CAR_DELETION,
+                            "Unexpected error deleting car ID $car_id: " . get_class($e) . ': ' . $e->getMessage());
+                        $errors[] = "An unexpected error occurred. Check the system log for details.";
                     }
                     break;
             }

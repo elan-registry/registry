@@ -345,6 +345,12 @@ try {
                                                placeholder="Type DELETE" required>
                                         <div class="invalid-feedback">You must type DELETE to confirm deletion.</div>
                                     </div>
+                                    <div class="mb-3">
+                                        <label for="delete_reason" class="form-label">Reason for deletion (optional)</label>
+                                        <input type="text" class="form-control" id="delete_reason" name="reason"
+                                               maxlength="500"
+                                               placeholder="e.g. Spam record, test data, duplicate">
+                                    </div>
                                     <button type="submit" class="btn btn-danger btn-sm w-100" id="deleteBtn" disabled>
                                         <i class="fas fa-trash-alt"></i> Permanent Delete
                                     </button>

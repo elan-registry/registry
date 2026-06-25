@@ -31,7 +31,7 @@ foreach ($carData as $car) {
 
 
     if ($car->image && file_exists($abs_us_root . $us_url_root . $settings->elan_image_dir . $car->image)) {
-        $image = '<img src="' . $base_url . $us_url_root . $settings->elan_image_dir . $car->image . '">';
+        $image = '<img src="' . htmlspecialchars($base_url . $us_url_root . $settings->elan_image_dir . (string)$car->image, ENT_QUOTES, 'UTF-8') . '">';
     } else {
         $image = 'No image';
     }

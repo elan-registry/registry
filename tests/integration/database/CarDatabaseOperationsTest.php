@@ -87,6 +87,7 @@ final class CarDatabaseOperationsTest extends IntegrationTestCase
 
         $this->assertTrue($result);
         $createdId = $car->data()->id;
+        $this->trackCarId((int) $createdId);
 
         // Verify data was persisted
         $query = $this->db->query('SELECT * FROM cars WHERE id = ?', [$createdId]);
@@ -132,7 +133,7 @@ final class CarDatabaseOperationsTest extends IntegrationTestCase
     public function testCarDeletionRemovesFromDatabase(): void
     {
         $car = new Car($this->testCarId);
-        $result = $car->delete('Integration test deletion');
+        $result = $car->delete('Integration test deletion', Token::generate());
 
         $this->assertTrue($result);
 
@@ -148,7 +149,7 @@ final class CarDatabaseOperationsTest extends IntegrationTestCase
     public function testCarDeletionCreatesAuditTrail(): void
     {
         $car = new Car($this->testCarId);
-        $result = $car->delete('Integration test audit trail');
+        $result = $car->delete('Integration test audit trail', Token::generate());
 
         $this->assertTrue($result);
 
@@ -342,6 +343,7 @@ final class CarDatabaseOperationsTest extends IntegrationTestCase
         $car = new Car();
         $car->create($carData);
         $carId = $car->data()->id;
+        $this->trackCarId((int) $carId);
 
         // Mark as sold
         $soldDate = '2023-06-15';

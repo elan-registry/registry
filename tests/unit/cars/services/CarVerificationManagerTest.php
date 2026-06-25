@@ -4,9 +4,9 @@ declare(strict_types=1);
 
 use ElanRegistry\Car\CarVerificationManager;
 use ElanRegistry\Exceptions\CarValidationException;
-use PHPUnit\Framework\TestCase;
-
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\Attributes\Group;
+use PHPUnit\Framework\TestCase;
 
 /**
  * Unit tests for CarVerificationManager service class
@@ -71,11 +71,36 @@ final class CarVerificationManagerTest extends TestCase
         $this->assertEquals(date('Y-m-d'), $carData->solddate);
     }
 
-    public function testMarkSoldRejectsInvalidDate(): void
+    /**
+     * @return array<string, array{string}>
+     */
+    public static function invalidSoldDateProvider(): array
+    {
+        return [
+            'non-date string'        => ['not-a-date'],
+            'empty string'           => [''],
+            'slash-delimited format' => ['2024/01/15'],
+            'invalid month 13'       => ['2024-13-01'],
+            'Feb overflow day 30'    => ['2024-02-30'],
+            'Feb overflow day 31'    => ['2024-02-31'],
+            'non-leap Feb 29'        => ['2023-02-29'],
+        ];
+    }
+
+    #[DataProvider('invalidSoldDateProvider')]
+    public function testMarkSoldRejectsInvalidDate(string $date): void
     {
         $this->expectException(CarValidationException::class);
 
         $carData = (object) ['id' => 1, 'solddate' => null];
-        $this->manager->markSold($carData, 'not-a-date', $this->db);
+        $this->manager->markSold($carData, $date, $this->db);
+    }
+
+    public function testMarkSoldAcceptsLeapDay(): void
+    {
+        $carData = (object) ['id' => 1, 'solddate' => null];
+        $result = $this->manager->markSold($carData, '2024-02-29', $this->db);
+        $this->assertTrue($result);
+        $this->assertEquals('2024-02-29', $carData->solddate);
     }
 }

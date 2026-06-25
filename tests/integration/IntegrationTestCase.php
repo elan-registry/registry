@@ -79,6 +79,7 @@ abstract class IntegrationTestCase extends TestCase
                 try {
                     $this->db->query("DELETE FROM car_user WHERE car_id = ?", [$carId]);
                     $this->db->query("DELETE FROM cars_hist WHERE car_id = ?", [$carId]);
+                    $this->db->query("DELETE FROM car_user_hist WHERE car_id = ?", [$carId]);
                     $this->db->delete('cars', ['id', '=', $carId]);
                 } catch (RuntimeException $e) {
                     // Ignore cleanup errors
@@ -207,6 +208,11 @@ abstract class IntegrationTestCase extends TestCase
 
         $this->createdCarIds[] = $carId;
 
+        // Purge any stale cars_hist rows left from a previous test run that
+        // used the same car ID (possible if the cars table was ever truncated,
+        // which resets AUTO_INCREMENT without clearing history).
+        $this->db->query("DELETE FROM cars_hist WHERE car_id = ?", [$carId]);
+
         return $carId;
     }
 
@@ -254,6 +260,19 @@ abstract class IntegrationTestCase extends TestCase
         } catch (RuntimeException $e) {
             return false;
         }
+    }
+
+    /**
+     * Register a car ID for cleanup in tearDown
+     *
+     * Call this when a test creates a car via Car::create() directly instead of
+     * through createTestCar(), so the car is cleaned up after the test.
+     *
+     * @param int $carId The car ID to track
+     */
+    protected function trackCarId(int $carId): void
+    {
+        $this->createdCarIds[] = $carId;
     }
 
     /**

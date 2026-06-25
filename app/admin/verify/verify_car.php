@@ -9,6 +9,8 @@ if (!securePage($php_self)) {
 $query = $db->query("SELECT * FROM email");
 $base_url = $query->first()->verify_url;
 
+$message = '';
+$redirect = $base_url . $us_url_root;
 
 if (Input::exists('get') && Input::get('code') && Input::get('action')) {
     $code = Input::get('code');
@@ -53,49 +55,82 @@ if (Input::exists('get') && Input::get('code') && Input::get('action')) {
         exit;
     }
 
+    // Shared helper: call a Car state-change method, then relabel the most-recent
+    // audit history row so the verification report can distinguish it from ordinary
+    // owner edits (the cars_update trigger records every cars table write as 'UPDATE').
+    // Exits immediately on failure — this page renders output directly, so throwing
+    // or returning would leave a broken partial page.
+    $applyCarStateChange = function (
+        string $method,
+        array $histUpdate,
+        string $logMessage
+    ) use ($car, $db, $base_url, $us_url_root): void {
+        try {
+            $carObj = new Car((int) $car->id);
+            $carObj->$method();
+        } catch (\ElanRegistry\Exceptions\CarException $e) {
+            logger($car->user_id, LogCategories::LOG_CATEGORY_CAR_VERIFICATION, "Verification action '{$method}' failed for car ID {$car->id}: " . $e->getMessage());
+            echo "<h2>An error occurred processing your request. Please contact the registry.</h2>";
+            header('refresh:5;url=' . $base_url . $us_url_root);
+            exit;
+        } catch (\Throwable $e) {
+            logger($car->user_id, LogCategories::LOG_CATEGORY_CAR_VERIFICATION, "Unexpected error during verification action '{$method}' for car ID {$car->id}: " . $e->getMessage());
+            echo "<h2>An error occurred processing your request. Please contact the registry.</h2>";
+            header('refresh:5;url=' . $base_url . $us_url_root);
+            exit;
+        }
+
+        $histResult = $db->query(
+            'SELECT id FROM cars_hist WHERE car_id = ? ORDER BY timestamp DESC, id DESC LIMIT 1',
+            [(int) $car->id]
+        )->first();
+        if (empty($histResult) || empty($histResult->id)) {
+            logger($car->user_id, LogCategories::LOG_CATEGORY_CAR_VERIFICATION, "No cars_hist row found for car ID {$car->id} after '{$method}' — audit label not applied");
+            return;
+        }
+
+        // Intentional: the primary car-state change (markVerified/markSold) already
+        // succeeded and cannot be rolled back here. Log the failure and continue so
+        // the owner receives a confirmation. The cars_hist row will be missing its
+        // operation label — visible in admin verification reports.
+        if (!$db->update('cars_hist', $histResult->id, $histUpdate)) {
+            logger($car->user_id, LogCategories::LOG_CATEGORY_CAR_VERIFICATION, "Failed to apply audit label to cars_hist row {$histResult->id} for car ID {$car->id} after '{$method}'");
+        }
+
+        logger($car->user_id, LogCategories::LOG_CATEGORY_CAR_VERIFICATION, $logMessage);
+    };
+
     switch ($action) {
         case 'verify':
-            $message =  "<h2>Thank you for verifying your car</h2><p>Taking you to the details...</p>";
+            $message = "<h2>Thank you for verifying your car</h2><p>Taking you to the details...</p>";
 
-            // Update last_verified time
-            $db->update("cars", $car->id, ["last_verified" =>  date(AppConstants::DATETIME_FORMAT)]);
-            // Update the History record to show verified
-            // Find the history record
-            $hist_id = $db->query('SELECT car_id, id, MAX(timestamp) AS max FROM cars_hist where car_id = ? GROUP BY id, car_id ORDER BY `max` DESC LIMIT 1', [$car->id])->first()->id;
-            $db->update("cars_hist", $hist_id, ["operation" => "VERIFIED"]);
+            $applyCarStateChange(
+                'markVerified',
+                ['operation' => 'VERIFIED'],
+                "Car verified successfully - ID: {$car->id} Chassis: {$car->chassis}"
+            );
 
-            // Log successful verification
-            logger($car->user_id, LogCategories::LOG_CATEGORY_CAR_VERIFICATION, "Car verified successfully - ID: " . $car->id . " Chassis: " . $car->chassis);
-
-            // Redirect to the car detail page
-            $redirect = $base_url . $us_url_root . 'app/cars/details.php?car_id=' . $car->id;
+            $redirect = $base_url . $us_url_root . 'app/cars/details.php?car_id=' . (int) $car->id;
             break;
 
         case 'edit':
             $message = "<h3>Thank you for updating your car.  Taking you to the Login Screen where you can edit yor information...</h3>";
 
-            // Log edit request
-            logger($car->user_id, LogCategories::LOG_CATEGORY_CAR_VERIFICATION, "Car edit request via verification - ID: " . $car->id . " Chassis: " . $car->chassis);
-            
+            logger($car->user_id, LogCategories::LOG_CATEGORY_CAR_VERIFICATION, "Car edit request via verification - ID: {$car->id} Chassis: {$car->chassis}");
+
             $redirect = $base_url . $us_url_root . 'usersc/account.php?';
             break;
 
         case 'sold':
-            $message =  "<h2>Thank you for letting me know you sold the car.  I'll update the records.</h2><p>Taking you to the details...</p>";
+            $message = "<h2>Thank you for letting me know you sold the car.  I'll update the records.</h2><p>Taking you to the details...</p>";
 
-            $db->update("cars", $car->id, ["last_verified" =>  date(AppConstants::DATETIME_FORMAT)]);
-            // Update the History record to show verified
-            // Find the history record
-            $hist_id = $db->query('SELECT car_id, id, MAX(timestamp) AS max FROM cars_hist where car_id = ? GROUP BY id, car_id ORDER BY `max` DESC LIMIT 1', [$car->id])->first()->id;
-            $db->update("cars_hist", $hist_id, ["operation" => "VERIFIED SOLD", "comments" => "Owner reported car sold"]);
-            
-            // Log sold notification
-            logger($car->user_id, LogCategories::LOG_CATEGORY_CAR_VERIFICATION, "Car reported as sold via verification - ID: " . $car->id . " Chassis: " . $car->chassis);
-            
-            $redirect = $base_url . $us_url_root . 'app/cars/details.php?car_id=' . $car->id;
-            break;
+            $applyCarStateChange(
+                'markSold',
+                ['operation' => 'VERIFIED SOLD', 'comments' => 'Owner reported car sold'],
+                "Car reported as sold via verification - ID: {$car->id} Chassis: {$car->chassis}"
+            );
 
-        default:
+            $redirect = $base_url . $us_url_root . 'app/cars/details.php?car_id=' . (int) $car->id;
             break;
     }
 }

@@ -66,4 +66,139 @@ class ElanRegistryOwnerIntegrationTest extends IntegrationTestCase
             $this->assertEquals($userId, $carData->user_id);
         }
     }
+
+    /**
+     * @param array<string, string> $fields
+     * @return array<string, mixed>
+     */
+    private function callValidateAndSanitize(array $fields, bool $requireAll = false): array
+    {
+        $owner = new ElanRegistryOwner();
+        $method = new \ReflectionMethod($owner, 'validateAndSanitizeFields');
+        /** @var array<string, mixed> */
+        return $method->invoke($owner, $fields, $requireAll);
+    }
+
+    public function testWebsiteHttpIsAccepted(): void
+    {
+        $result = $this->callValidateAndSanitize(['website' => 'http://example.com']);
+        $this->assertEquals('http://example.com', $result['website']);
+    }
+
+    public function testWebsiteHttpsIsAccepted(): void
+    {
+        $result = $this->callValidateAndSanitize(['website' => 'https://example.com']);
+        $this->assertEquals('https://example.com', $result['website']);
+    }
+
+    public function testWebsiteJavascriptSchemeIsRejected(): void
+    {
+        // javascript:alert(1) fails FILTER_VALIDATE_URL — caught by the URL format check
+        // Regression for #927: getUserMessage() must return the specific URL message,
+        // not the generic 'The owner information provided is invalid...' default.
+        try {
+            $this->callValidateAndSanitize(['website' => 'javascript:alert(1)']);
+            $this->fail('Expected OwnerValidationException was not thrown');
+        } catch (\ElanRegistry\Exceptions\OwnerValidationException $e) {
+            $this->assertMatchesRegularExpression('/http.*https/i', $e->getMessage());
+            $this->assertEquals(
+                'Website URL must start with http:// or https:// (e.g. https://example.com)',
+                $e->getUserMessage(),
+                'getUserMessage() must return the specific URL message, not the generic default'
+            );
+            $this->assertNotEquals(
+                'The owner information provided is invalid. Please check your input.',
+                $e->getUserMessage()
+            );
+        }
+    }
+
+    public function testWebsiteJavascriptVoidSchemeIsRejected(): void
+    {
+        // javascript:void(0) passes FILTER_VALIDATE_URL on some PHP versions — blocked by scheme whitelist
+        // Regression for #927: getUserMessage() must return the specific URL message.
+        // The exact throw path (URL format vs scheme whitelist) may vary by PHP version,
+        // so we assert on the shared pattern rather than the exact message string.
+        try {
+            $this->callValidateAndSanitize(['website' => 'javascript:void(0)']);
+            $this->fail('Expected OwnerValidationException was not thrown');
+        } catch (\ElanRegistry\Exceptions\OwnerValidationException $e) {
+            $this->assertMatchesRegularExpression('/http.*https/i', $e->getMessage());
+            $this->assertMatchesRegularExpression(
+                '/http.*https/i',
+                $e->getUserMessage(),
+                'getUserMessage() must return a specific URL message, not the generic default'
+            );
+            $this->assertNotEquals(
+                'The owner information provided is invalid. Please check your input.',
+                $e->getUserMessage()
+            );
+        }
+    }
+
+    public function testWebsiteDataSchemeIsRejected(): void
+    {
+        // data: fails FILTER_VALIDATE_URL — caught by the URL format check
+        // Regression for #927: getUserMessage() must return the specific URL message.
+        try {
+            $this->callValidateAndSanitize(['website' => 'data:text/html,test']);
+            $this->fail('Expected OwnerValidationException was not thrown');
+        } catch (\ElanRegistry\Exceptions\OwnerValidationException $e) {
+            $this->assertMatchesRegularExpression('/http.*https/i', $e->getMessage());
+            $this->assertEquals(
+                'Website URL must start with http:// or https:// (e.g. https://example.com)',
+                $e->getUserMessage(),
+                'getUserMessage() must return the specific URL message, not the generic default'
+            );
+            $this->assertNotEquals(
+                'The owner information provided is invalid. Please check your input.',
+                $e->getUserMessage()
+            );
+        }
+    }
+
+    public function testWebsiteFtpSchemeIsRejected(): void
+    {
+        // ftp: passes FILTER_VALIDATE_URL but is blocked by the scheme whitelist
+        // Regression for #927: getUserMessage() must return the specific URL message.
+        try {
+            $this->callValidateAndSanitize(['website' => 'ftp://example.com/file.txt']);
+            $this->fail('Expected OwnerValidationException was not thrown');
+        } catch (\ElanRegistry\Exceptions\OwnerValidationException $e) {
+            $this->assertEquals(
+                'Website URL must use http:// or https:// — other protocols are not allowed',
+                $e->getMessage()
+            );
+            $this->assertEquals(
+                'Website URL must use http:// or https:// — other protocols are not allowed',
+                $e->getUserMessage(),
+                'getUserMessage() must return the specific URL message, not the generic default'
+            );
+            $this->assertNotEquals(
+                'The owner information provided is invalid. Please check your input.',
+                $e->getUserMessage()
+            );
+        }
+    }
+
+    public function testWebsiteSchemelessDomainIsRejected(): void
+    {
+        // Regression for #927: getUserMessage() must not return the generic default.
+        try {
+            $this->callValidateAndSanitize(['website' => 'example.com']);
+            $this->fail('Expected OwnerValidationException was not thrown');
+        } catch (\ElanRegistry\Exceptions\OwnerValidationException $e) {
+            $this->assertEquals(
+                'Website URL must start with http:// or https:// (e.g. https://example.com)',
+                $e->getUserMessage(),
+                'getUserMessage() must return the specific URL message, not the generic default'
+            );
+        }
+    }
+
+    public function testWebsiteEmptyIsAccepted(): void
+    {
+        $result = $this->callValidateAndSanitize(['website' => '']);
+        $this->assertArrayNotHasKey('website', $result);
+    }
 }

@@ -25,10 +25,17 @@ if (!empty($_POST)) {
         $action = Input::get('action');
         if ($action === 'contact_owner') {
 
-            $carID = Input::get('car_id');
-            // Get the user data from users table  
-            $fromData = $db->findById($user->data()->id, "users")->results()[0];
-            $toData = $db->findById($carID, "cars")->results()[0];
+            $carID = (int) Input::get('car_id');
+            if ($carID <= 0) {
+                Redirect::to('/');
+            }
+            $fromResults = $db->findById($user->data()->id, "users")->results();
+            $toResults   = $db->findById($carID, "cars")->results();
+            if (empty($fromResults) || empty($toResults)) {
+                Redirect::to('/');
+            }
+            $fromData = $fromResults[0];
+            $toData   = $toResults[0];
 
             $from = array(
                 'id'    => $fromData->id,
@@ -66,7 +73,7 @@ if (!empty($_POST)) {
                         <h5 class="text-primary"><i class="fas fa-user-circle"></i> From</h5>
                         <div class="bg-light p-3 rounded">
                             <div class="mb-2">
-                                <strong><?= $from['fname'] . ' ' . $from['lname'] ?></strong>
+                                <strong><?= htmlspecialchars($from['fname'] . ' ' . $from['lname'], ENT_QUOTES, 'UTF-8') ?></strong>
                             </div>
                         </div>
                     </div>
@@ -74,7 +81,7 @@ if (!empty($_POST)) {
                         <h5 class="text-primary"><i class="fas fa-user"></i> To</h5>
                         <div class="bg-light p-3 rounded">
                             <div class="mb-2">
-                                <strong><?= $to['fname'] . ' ' . $to['lname'] ?></strong>
+                                <strong><?= htmlspecialchars($to['fname'] . ' ' . $to['lname'], ENT_QUOTES, 'UTF-8') ?></strong>
                             </div>
                         </div>
                     </div>
@@ -107,7 +114,6 @@ if (!empty($_POST)) {
                     <!-- Hidden Fields -->
                     <input type='hidden' name='csrf' value='<?= Token::generate(); ?>' />
                     <input type='hidden' name='action' value='send_message' />
-                    <input type='hidden' name='from_user_id' value='<?= htmlspecialchars($from['id'], ENT_QUOTES, 'UTF-8'); ?>' />
                     <input type='hidden' name='to_user_id' value='<?= htmlspecialchars($to['id'], ENT_QUOTES, 'UTF-8'); ?>' />
                     <input type='hidden' name='car_id' value='<?= htmlspecialchars($carID, ENT_QUOTES, 'UTF-8'); ?>' />
 

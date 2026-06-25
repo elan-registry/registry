@@ -248,6 +248,11 @@ if (!empty($_GET)) {
                                 </dt>
                                 <dd class="col-sm-8">
                                     <strong><?= $carData->chassis ? htmlspecialchars($carData->chassis, ENT_QUOTES, 'UTF-8') : '<em class="text-muted">Not specified</em>' ?></strong>
+                                    <?php if (!empty($carData->chassis_override)): ?>
+                                        <span class="badge bg-warning text-dark ms-1">
+                                            <i class="fas fa-exclamation-triangle"></i> Validation Override
+                                        </span>
+                                    <?php endif; ?>
                                 </dd>
                             </dl>
 

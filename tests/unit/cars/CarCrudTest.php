@@ -53,6 +53,9 @@ final class CarCrudTest extends TestCase
      */
     public function testCreateCarSuccess(): void
     {
+        global $mockLogEntries;
+        $mockLogEntries = [];
+
         $car = new Car();
         $carData = [
             'token' => Token::generate(),
@@ -71,7 +74,7 @@ final class CarCrudTest extends TestCase
         ];
 
         $result = $car->create($carData);
-        
+
         $this->assertTrue($result);
         $this->assertEquals('1973', $car->data()->year);
         $this->assertEquals('S4', $car->data()->series);
@@ -79,6 +82,13 @@ final class CarCrudTest extends TestCase
         $this->assertEquals('FHC', $car->data()->type);
         $this->assertEquals('1234567890123', $car->data()->chassis);
         $this->assertEquals('Red', $car->data()->color);
+
+        $ownerLogs = array_filter(
+            $mockLogEntries,
+            fn($e) => $e['category'] === LogCategories::LOG_CATEGORY_CAR_ACTIONS
+                && str_contains($e['message'], 'created and assigned')
+        );
+        $this->assertNotEmpty($ownerLogs, 'Car creation should log owner assignment with LOG_CATEGORY_CAR_ACTIONS');
     }
     
     /**
@@ -456,6 +466,69 @@ final class CarCrudTest extends TestCase
 
         // Should handle gracefully - either return empty array or preserve data
         $this->assertTrue(is_array($images) || $images === null);
+    }
+
+    /**
+     * Test car creation with chassis_override flag set — issue #915
+     */
+    public function testCreateCarWithChassisOverride(): void
+    {
+        $car = new Car();
+        $carData = [
+            'token'            => Token::generate(),
+            'user_id'          => $this->testUserId,
+            'year'             => '1973',
+            'model'            => 'Elan S4',
+            'series'           => 'S4',
+            'variant'          => 'SE',
+            'type'             => 'FHC',
+            'chassis'          => '1234567890125',
+            'color'            => 'White',
+            'chassis_override' => 1,
+        ];
+
+        $result = $car->create($carData);
+
+        $this->assertTrue($result);
+        $this->assertSame(1, (int) $car->data()->chassis_override);
+    }
+
+    /**
+     * Test that updating a car persists chassis_override flag — issue #915
+     */
+    public function testUpdateCarChassisOverrideFlag(): void
+    {
+        $car = new Car($this->testCarId);
+
+        $updateData = [
+            'id'               => $this->testCarId,
+            'token'            => Token::generate(),
+            'chassis_override' => 1,
+        ];
+
+        $result = $car->update($updateData);
+
+        $this->assertTrue($result);
+        $this->assertSame(1, (int) $car->data()->chassis_override);
+    }
+
+    /**
+     * Test that chassis_override = 0 survives array_filter in Car::update() — issue #915
+     */
+    public function testUpdateCarChassisOverrideClearsToZero(): void
+    {
+        $car = new Car($this->testCarId);
+
+        $updateData = [
+            'id'               => $this->testCarId,
+            'token'            => Token::generate(),
+            'chassis_override' => 0,
+        ];
+
+        $result = $car->update($updateData);
+
+        $this->assertTrue($result);
+        $this->assertSame(0, (int) $car->data()->chassis_override);
     }
 
     /**

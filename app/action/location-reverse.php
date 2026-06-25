@@ -29,7 +29,9 @@ $userId = $user->isLoggedIn() ? (int)$user->data()->id : 0;
 
 // Verify CSRF token (required for all requests)
 if (!Token::check(Input::get('csrf'))) {
-    ApiResponse::forbidden('Invalid CSRF token')->send();
+    ApiResponse::forbidden('Invalid CSRF token')
+        ->withLogging($userId, LogCategories::LOG_CATEGORY_SECURITY, 'Invalid CSRF token in location reverse')
+        ->send();
 }
 
 try {

@@ -133,6 +133,88 @@ final class CarValidatorTest extends TestCase
         $this->validator->validateAndSanitizeFields($fields, false);
     }
 
+    /**
+     * @param array<string, string> $fields
+     */
+    #[DataProvider('dateOutOfRangeProvider')]
+    public function testDateOutOfRangeIsRejected(array $fields, string $expectedPattern): void
+    {
+        $this->expectException(CarValidationException::class);
+        $this->expectExceptionMessageMatches($expectedPattern);
+        $this->validator->validateAndSanitizeFields($fields, false);
+    }
+
+    /**
+     * @return array<string, array{0: array<string, string>, 1: string}>
+     */
+    public static function dateOutOfRangeProvider(): array
+    {
+        $tomorrow = (new \DateTime('tomorrow'))->format('Y-m-d');
+
+        return [
+            'purchasedate before min'  => [['purchasedate' => '1956-12-31'], '/Purchase date must be between/'],
+            'purchasedate in future'   => [['purchasedate' => $tomorrow],    '/Purchase date must be between/'],
+            'solddate before min'      => [['solddate'     => '1900-01-01'], '/Sold date must be between/'],
+            'solddate in future'       => [['solddate'     => $tomorrow],    '/Sold date must be between/'],
+        ];
+    }
+
+    public function testMinBoundaryDateIsAccepted(): void
+    {
+        $result = $this->validator->validateAndSanitizeFields(['purchasedate' => '1957-01-01'], false);
+        $this->assertEquals('1957-01-01', $result['purchasedate']);
+    }
+
+    public function testSolddateMinBoundaryIsAccepted(): void
+    {
+        $result = $this->validator->validateAndSanitizeFields(['solddate' => '1957-01-01'], false);
+        $this->assertEquals('1957-01-01', $result['solddate']);
+    }
+
+    public function testTodayIsAccepted(): void
+    {
+        $today = (new \DateTime('today'))->format('Y-m-d');
+        $result = $this->validator->validateAndSanitizeFields(['purchasedate' => $today], false);
+        $this->assertEquals($today, $result['purchasedate']);
+    }
+
+    public function testSolddateTodayIsAccepted(): void
+    {
+        $today = (new \DateTime('today'))->format('Y-m-d');
+        $result = $this->validator->validateAndSanitizeFields(['solddate' => $today], false);
+        $this->assertEquals($today, $result['solddate']);
+    }
+
+    public function testBothDatesValidWithCorrectOrderingIsAccepted(): void
+    {
+        $result = $this->validator->validateAndSanitizeFields([
+            'purchasedate' => '1970-03-01',
+            'solddate'     => '1985-06-15',
+        ], false);
+        $this->assertEquals('1970-03-01', $result['purchasedate']);
+        $this->assertEquals('1985-06-15', $result['solddate']);
+    }
+
+    public function testSolddateBeforePurchasedateIsRejected(): void
+    {
+        $this->expectException(CarValidationException::class);
+        $this->expectExceptionMessage('Sold date cannot be before purchase date');
+        $this->validator->validateAndSanitizeFields([
+            'purchasedate' => '1980-06-01',
+            'solddate'     => '1979-12-31',
+        ], false);
+    }
+
+    public function testSolddateEqualsPurchasedateIsAccepted(): void
+    {
+        $result = $this->validator->validateAndSanitizeFields([
+            'purchasedate' => '1975-03-15',
+            'solddate'     => '1975-03-15',
+        ], false);
+        $this->assertEquals('1975-03-15', $result['purchasedate']);
+        $this->assertEquals('1975-03-15', $result['solddate']);
+    }
+
     public function testValidateAndSanitizeFieldsValidatesCoordinates(): void
     {
         $fields = ['lat' => '51.5', 'lon' => '-0.1'];
@@ -179,7 +261,7 @@ final class CarValidatorTest extends TestCase
     public function testValidateAndSanitizeFieldsRejectsInvalidWebsiteUrl(): void
     {
         $this->expectException(CarValidationException::class);
-        $this->expectExceptionMessage('Invalid website URL format');
+        $this->expectExceptionMessage('Website URL must start with http:// or https://');
 
         $fields = ['website' => 'not-a-url'];
         $this->validator->validateAndSanitizeFields($fields, false);
@@ -190,6 +272,95 @@ final class CarValidatorTest extends TestCase
         $fields = ['website' => 'https://example.com'];
         $result = $this->validator->validateAndSanitizeFields($fields, false);
         $this->assertEquals('https://example.com', $result['website']);
+    }
+
+    // ============================================================
+    // website field validation — issue #851
+    // ============================================================
+
+    /**
+     * Empty string for website is accepted — field is optional.
+     */
+    public function testWebsiteEmptyIsAccepted(): void
+    {
+        $result = $this->validator->validateAndSanitizeFields(['website' => ''], false);
+        // Empty value is not stored in the validated array (matches the `if (!empty($value))` guard)
+        $this->assertArrayNotHasKey('website', $result);
+    }
+
+    /**
+     * A bare domain without a scheme is rejected with the structural-invalidity message.
+     */
+    public function testWebsiteSchemelessDomainIsRejected(): void
+    {
+        $this->expectException(CarValidationException::class);
+        $this->expectExceptionMessageMatches('/http:\/\//');
+
+        $this->validator->validateAndSanitizeFields(['website' => 'example.com'], false);
+    }
+
+    /**
+     * A relative path is rejected — it has no scheme and fails FILTER_VALIDATE_URL.
+     */
+    public function testWebsiteRelativePathIsRejected(): void
+    {
+        $this->expectException(CarValidationException::class);
+
+        $this->validator->validateAndSanitizeFields(['website' => '/path/to/page'], false);
+    }
+
+    /**
+     * javascript: scheme passes FILTER_VALIDATE_URL on some PHP versions but must be
+     * rejected by the explicit scheme allowlist check.
+     * The exception message must reference http:// or https://.
+     */
+    public function testWebsiteJavascriptSchemeIsRejected(): void
+    {
+        $this->expectException(CarValidationException::class);
+        $this->expectExceptionMessageMatches('/(http:\/\/|https:\/\/)/');
+
+        $this->validator->validateAndSanitizeFields(['website' => 'javascript:void(0)'], false);
+    }
+
+    /**
+     * data: URIs are rejected — they are structurally invalid per FILTER_VALIDATE_URL
+     * and must not be stored.
+     */
+    public function testWebsiteDataSchemeIsRejected(): void
+    {
+        $this->expectException(CarValidationException::class);
+
+        $this->validator->validateAndSanitizeFields(['website' => 'data:text/html,<h1>x</h1>'], false);
+    }
+
+    /**
+     * A valid http:// URL is accepted and the sanitized URL is returned.
+     */
+    public function testWebsiteHttpIsAccepted(): void
+    {
+        $result = $this->validator->validateAndSanitizeFields(['website' => 'http://www.example.com'], false);
+        $this->assertArrayHasKey('website', $result);
+        $this->assertStringStartsWith('http://', $result['website']);
+    }
+
+    /**
+     * A valid https:// URL is accepted and the sanitized URL is returned.
+     */
+    public function testWebsiteHttpsIsAccepted(): void
+    {
+        $result = $this->validator->validateAndSanitizeFields(['website' => 'https://www.example.com'], false);
+        $this->assertArrayHasKey('website', $result);
+        $this->assertStringStartsWith('https://', $result['website']);
+    }
+
+    /**
+     * An ftp:// URL passes FILTER_VALIDATE_URL but is rejected by the scheme allowlist.
+     */
+    public function testWebsiteFtpSchemeIsRejected(): void
+    {
+        $this->expectException(CarValidationException::class);
+        $this->expectExceptionMessageMatches('/must use http:\/\/ or https:\/\//');
+        $this->validator->validateAndSanitizeFields(['website' => 'ftp://files.example.com'], false);
     }
 
     public function testValidateAndSanitizeFieldsRejectsInvalidUserId(): void
@@ -314,6 +485,38 @@ final class CarValidatorTest extends TestCase
             'invalid user_id' => [['user_id' => 'abc'], false],
             'negative user_id' => [['user_id' => '-1'], false],
         ];
+    }
+
+    // ============================================================
+    // chassis_override field validation — issue #915
+    // ============================================================
+
+    /**
+     * chassis_override with string '1' must be coerced to integer 1.
+     */
+    public function testChassisOverrideValidatesAsOne(): void
+    {
+        $result = $this->validator->validateAndSanitizeFields(['chassis_override' => '1'], false);
+        $this->assertSame(1, $result['chassis_override']);
+    }
+
+    /**
+     * chassis_override with string '0' must be coerced to integer 0.
+     */
+    public function testChassisOverrideValidatesAsZero(): void
+    {
+        $result = $this->validator->validateAndSanitizeFields(['chassis_override' => '0'], false);
+        $this->assertSame(0, $result['chassis_override']);
+    }
+
+    /**
+     * Any value other than '1' must be coerced to 0 — the field is a boolean flag,
+     * not a free integer.
+     */
+    public function testChassisOverrideCoercesNonOneToZero(): void
+    {
+        $result = $this->validator->validateAndSanitizeFields(['chassis_override' => '99'], false);
+        $this->assertSame(0, $result['chassis_override']);
     }
 
     // ============================================================

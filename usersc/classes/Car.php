@@ -184,13 +184,20 @@ class Car
         if (!$repo->insert($this->tableName, $fields)) {
             logger($fields['user_id'] ?? 0, LogCategories::LOG_CATEGORY_DATABASE_ERROR, 'Car creation failed: ' . $repo->errorString());
             throw new CarCreationException('Database error during car creation: ' . $repo->errorString());
-        } else {
-            $id = $repo->lastId();
-            $this->find($id);
-            $this->imageDir = $settings->elan_image_dir . $id . '/';
-            $repo->insertCarUser((int) $this->data()->user_id, $id);
-            return true;
         }
+
+        $id = $repo->lastId();
+        $this->find($id);
+        $this->imageDir = $settings->elan_image_dir . $id . '/';
+        $ownerId = (int) $this->data()->user_id;
+
+        if (!$repo->insertCarUser($ownerId, $id)) {
+            logger($ownerId, LogCategories::LOG_CATEGORY_DATABASE_ERROR, "Car ID $id created but owner assignment (car_user) failed for user ID $ownerId. DB error: " . $repo->errorString());
+            throw new CarCreationException('Car record was created but owner assignment failed. Please try again or contact the administrator.');
+        }
+
+        logger($ownerId, LogCategories::LOG_CATEGORY_CAR_ACTIONS, "Car ID $id created and assigned to owner (user ID: $ownerId)");
+        return true;
     }
 
     /**
@@ -240,7 +247,7 @@ class Car
         // Filter to valid car fields
         $validCarFields = [
             'id', 'user_id', 'year', 'model', 'series', 'variant', 'type',
-            'chassis', 'color', 'engine', 'purchasedate', 'solddate',
+            'chassis', 'chassis_override', 'color', 'engine', 'purchasedate', 'solddate',
             'website', 'comments', 'image', 'mtime',
             'email', 'fname', 'lname', 'join_date', 'city', 'state', 'country', 'lat', 'lon'
         ];
@@ -445,16 +452,15 @@ class Car
      * Delete the car and all associated records
      *
      * @param string $reason Reason for deletion (for audit trail)
-     * @param string|null $token CSRF token (optional)
+     * @param string $token CSRF token (required)
      * @return bool True if deletion was successful
      * @throws Exception If validation fails or database operation fails
      */
-    public function delete(string $reason = 'Administrative deletion', ?string $token = null): bool
+    public function delete(string $reason, string $token): bool
     {
         global $user;
 
-        // CSRF Protection
-        if ($token !== null && !Token::check($token)) {
+        if (!Token::check($token)) {
             throw new CarDeletionException(CarErrorMessages::getMessage('csrf_token_invalid', 'admin', ['operation' => 'car deletion']));
         }
 

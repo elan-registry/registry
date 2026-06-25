@@ -109,8 +109,20 @@ if (!empty($_POST)) {
                 break;
 
             case "updateCar":
+                $car_id = (int)Input::get('car_id');
+                if ($car_id <= 0) {
+                    ApiResponse::error('Invalid car ID', 400)
+                        ->withLogging($user->data()->id, LogCategories::LOG_CATEGORY_VALIDATION_ERROR, 'updateCar: invalid car_id in request')
+                        ->send();
+                }
+                $carForAuth = new Car($car_id);
+                if (!$carForAuth->data() || ($user->data()->id != $carForAuth->data()->user_id && !hasPerm([2, 3]))) {
+                    ApiResponse::error('Unauthorized', 403)
+                        ->withLogging($user->data()->id, LogCategories::LOG_CATEGORY_ACCESS_DENIED, 'updateCar: unauthorized for car ' . $car_id)
+                        ->send();
+                }
                 try {
-                    buildCarDetails($cardetails, (int)Input::get('car_id'));
+                    buildCarDetails($cardetails, $car_id);
                     buildImageDetails($cardetails);
 
                     if (!empty($errors)) {
@@ -127,6 +139,18 @@ if (!empty($_POST)) {
 
                     uploadImages($cardetails);
                     updateCar($cardetails);
+
+                    if (!empty($errors)) {
+                        ApiResponse::validationError(
+                            ['general' => $errors],
+                            'Cannot save car: update operation failed'
+                        )->withData('cardetails', $cardetails)
+                        ->withLogging(
+                            $user->data()->id,
+                            LogCategories::LOG_CATEGORY_CAR_ERRORS,
+                            'Car update failed post-save validation: ' . json_encode($errors)
+                        )->send();
+                    }
 
                     // Blanks instead of NULL for display
                     foreach ($cardetails as $key => $value) {
@@ -403,6 +427,7 @@ function updateChassis(array &$cardetails): void
             $validator = new ChassisValidator();
             $result = $validator->validate($chassis, $year, $model, $chassisOverride);
         } catch (ElanRegistryException $e) {
+            logger($user->data()->id, LogCategories::LOG_CATEGORY_SYSTEM_ERROR, 'ChassisValidator ElanRegistryException for chassis "' . htmlspecialchars($chassis, ENT_QUOTES, 'UTF-8') . '": ' . $e->getMessage());
             $errors[] = 'Chassis validation error: ' . $e->getUserMessage();
             return;
         } catch (\Throwable $e) {
@@ -412,11 +437,13 @@ function updateChassis(array &$cardetails): void
         }
         
         // Handle validation result
-        if ($result['valid'] && !$result['override_used']) {
-            $successes[] = 'Chassis: ' . htmlspecialchars($cardetails['chassis'], ENT_QUOTES, 'UTF-8');
-        } elseif ($result['valid'] && $result['override_used']) {
-            $successes[] = 'Chassis: ' . htmlspecialchars($cardetails['chassis'], ENT_QUOTES, 'UTF-8') . ' (Override used)';
-            $chassis_override_used = true; // Track that override was used for comments
+        if ($result['valid']) {
+            $cardetails['chassis_override'] = $result['override_used'] ? 1 : 0;
+            $label = htmlspecialchars($cardetails['chassis'], ENT_QUOTES, 'UTF-8');
+            $successes[] = 'Chassis: ' . $label . ($result['override_used'] ? ' (Override used)' : '');
+            if ($result['override_used']) {
+                $chassis_override_used = true; // Track that override was used for comments
+            }
         } else {
             $errors[] = '<strong>ERROR:</strong> Chassis Validation Failed: ' . $result['error_reason'];
         }
@@ -467,10 +494,16 @@ function updateEngine(array &$cardetails): void
  */
 function updatePurchasedate(array &$cardetails): void
 {
+    global $errors;
     $raw = Input::raw('purchasedate');
     if ($raw !== null && $raw !== '') {
-        $cardetails['purchasedate'] = date("Y-m-d", strtotime($raw));
-        $successes[] = 'Purchase Date: ' . $cardetails['purchasedate'];
+        $parsed = DateTime::createFromFormat('Y-m-d', $raw);
+        if (!$parsed || $parsed->format('Y-m-d') !== $raw) {
+            $errors[] = 'Invalid purchase date — use YYYY-MM-DD format with a real calendar date';
+            return;
+        }
+        $cardetails['purchasedate'] = $raw;
+        $successes[] = 'Purchase Date: ' . $raw;
     } else {
         $cardetails['purchasedate'] = null;
     }
@@ -484,10 +517,16 @@ function updatePurchasedate(array &$cardetails): void
  */
 function updateSolddate(array &$cardetails): void
 {
+    global $errors;
     $raw = Input::raw('solddate');
     if ($raw !== null && $raw !== '') {
-        $cardetails['solddate'] = date("Y-m-d", strtotime($raw));
-        $successes[] = 'Sold Date: ' . $cardetails['solddate'];
+        $parsed = DateTime::createFromFormat('Y-m-d', $raw);
+        if (!$parsed || $parsed->format('Y-m-d') !== $raw) {
+            $errors[] = 'Invalid sold date — use YYYY-MM-DD format with a real calendar date';
+            return;
+        }
+        $cardetails['solddate'] = $raw;
+        $successes[] = 'Sold Date: ' . $raw;
     } else {
         $cardetails['solddate'] = null;
     }
@@ -501,8 +540,14 @@ function updateSolddate(array &$cardetails): void
  */
 function updateWebsite(array &$cardetails): void
 {
+    global $errors;
     $website = Input::raw('website');
     if ($website !== null && $website !== '') {
+        $scheme = strtolower((string) parse_url($website, PHP_URL_SCHEME));
+        if (!in_array($scheme, ['http', 'https'], true)) {
+            $errors[] = 'Website URL must start with http:// or https://';
+            return;
+        }
         $cardetails['website'] = $website;
         $successes[] = 'Website: ' . htmlspecialchars($website, ENT_QUOTES, 'UTF-8');
     } else {

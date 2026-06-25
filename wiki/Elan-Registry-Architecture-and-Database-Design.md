@@ -1,6 +1,6 @@
 # Elan Registry: Architecture and Database Design
 
-**Last Updated:** 2026-06-15 (v2.23.0)
+**Last Updated:** 2026-06-25 (v2.25.0)
 
 ## Overview
 
@@ -400,9 +400,10 @@ management, transaction tracking, and audit logs.
 
 **Core Tables:**
 
-- **`cars`** — Vehicle records with denormalized owner info for performance
+- **`cars`** — Vehicle records with denormalized owner info for performance (includes `chassis_override` flag as of v2.25.0)
 - **`owners`** — Owner profiles with contact and preference data
-- **`cars_hist`** — Audit trail of all car table modifications via trigger
+- **`cars_hist`** — Audit trail of all car table modifications via trigger (includes `chassis_override` flag as of v2.25.0)
+- **`car_user_hist`** [NEW v2.25.0] — Trigger-written audit trail of all `car_user` relationship changes (INSERT/UPDATE/DELETE)
 - **`users`** — UserSpice authentication (3rd-party framework)
 - **`notifications`** — User notification queue (WebSocket support)
 - **`settings`** — Application configuration (33+ custom columns)
@@ -455,6 +456,7 @@ The system employs **defense in depth** with multiple overlapping security layer
    - CSRF tokens on all forms
    - Token validation via UserSpice framework
    - Token generation in both main admin pages
+   - Fix scripts require POST + CSRF token to execute (as of v2.25.0)
 
 5. **Security Headers**
    - Content Security Policy (CSP) with script/style allowlist
@@ -621,7 +623,8 @@ Frontend dependency changes and CSP updates require updating ADRs:
 
 Key classes are documented in `docs/development/CLASSES.md`:
 
-- **`Car`** — Car entity with properties and methods
+- **`Car`** — Car entity with properties and methods. As of v2.25.0, `delete(string $reason, string $token)` requires
+  a CSRF token — the parameter is no longer nullable or optional
 - **`ElanRegistryOwner`** — Owner profile with contact/preference data
 - **`ApiResponse`** — Standardized response format for AJAX endpoints
 - **`LocationService`** — OpenStreetMap integration with server-side caching and logged I/O error handling
@@ -632,6 +635,8 @@ Key classes are documented in `docs/development/CLASSES.md`:
   bypassing UserSpice's `htmlspecialchars()` pre-encoding so text fields
   reach the database raw and can be escaped at output. Mandatory for any
   field destined for storage.
+- **`CarValidator`** — Validates car form input; includes `chassis_override` field validation (coerces to 0 or 1 integer)
+- **`CarVerificationManager`** — Handles `markVerified()` and `markSold()` with overflow-date rejection
 - **`DocumentPortalTemplate`** — Breadcrumb and portal-header renderer used across docs pages,
   stories, and car listings (`usersc/classes/DocumentPortalTemplate.php`)
 - **`Logger`** — Application event logging
@@ -773,6 +778,7 @@ See `docs/development/CODING_STANDARDS.md` for complete standards.
 
 | Version | Date | Changes |
 | ------- | ---- | ------- |
+| 2.25.0 | 2026-06-25 | Security & data integrity: IDOR ownership checks on contact and car-edit endpoints; sender impersonation fix; car website server-side scheme validation; fix-script CSRF hardening; `Car::delete()` CSRF token now required; `chassis_override` column on `cars`/`cars_hist`; `car_user` audit triggers and indexes; overflow-date rejection in `markSold()`; duplicate `cars_hist` row on deletion removed |
 | 2.24.1 | 2026-06-23 | Guide rendering hotfix: replaced `league/commonmark` runtime rendering (never deployed) with static PHP pages; `guide-viewer.php` deleted; Transfer FAQ (`docs/guides/car-transfer-faq.php`) is the sole survivor; `MarkdownRenderer`, `DocumentConfig`, `DocumentationException` classes removed; `docs/admin/` section removed entirely; `document-content.css` added for scoped guide typography |
 | 2.24.0 | 2026-06-22 | UX improvements: factory records context paragraph, paint colors page (larger swatches, filter tabs), statistics timeline charts moved above fold, add/edit car form UX fixes (native date pickers, premature validation icons), identification guide two-column card layout; editorial pass replacing em dashes |
 | 2.23.0 | 2026-05-11 | Encode-at-output reform: `ElanRegistry\Input::raw()` added in `usersc/classes/Input.php` for storage-safe input; double-encoding fixed across car, owner, and user/profile text fields, outbound emails, and templates; one-time migration script `03-Decode-All-HTML-Encoded-Fields.php` decodes legacy encoded data in `cars`, `users`, `profiles`; encode-at-output regression suite added |

@@ -30,12 +30,6 @@ if (!isRegistryAdmin()) { // Administrator (2) or Editor (3)
 $errors = [];
 $successes = [];
 
-// Security function to clean email content
-function clean_string(string $string): string {
-    $bad = array('content-type', 'bcc:', 'to:', 'cc:', 'href');
-    return str_replace($bad, '', $string);
-}
-
 // Process form submission
 if (Input::exists('post')) {
     $token = Input::get('csrf');
@@ -107,11 +101,12 @@ if (Input::exists('post')) {
                     }
                 }
 
-                // Prepare email data
-                $toEmail = $ownerData->email;
+                // Prepare email data — strip CR/LF from all header-bound values (#660)
+                $toEmail = preg_replace('/[\r\n\t]/', '', $ownerData->email);
                 $toName = trim($ownerData->fname . ' ' . $ownerData->lname);
-                $fromEmail = $adminData->email;
+                $fromEmail = preg_replace('/[\r\n\t]/', '', $adminData->email);
                 $fromName = trim($adminData->fname . ' ' . $adminData->lname);
+                $qualityIssue = preg_replace('/[\r\n\t]/', '', (string)($qualityIssue ?? ''));
 
                 // Email subject
                 $subject = '[ELANREGISTRY] Administrator Message';
@@ -121,7 +116,7 @@ if (Input::exists('post')) {
 
                 // Prepare template variables
                 $template = [
-                    'message' => clean_string($message),
+                    'message' => $message,
                     'from' => $fromName,
                     'fromEmail' => $fromEmail,
                     'to' => $toName
@@ -155,22 +150,19 @@ if (Input::exists('post')) {
                 }
 
                 // Send email
-                $result      = email($toEmail, $subject, $body);
-                $safeFromLog = preg_replace('/[\r\n\t]/', '', $fromEmail);
-                $safeToLog   = preg_replace('/[\r\n\t]/', '', $toEmail);
-                $safeIssue   = preg_replace('/[\r\n\t]/', '', (string)($qualityIssue ?? ''));
+                $result = email($toEmail, $subject, $body);
 
                 if ($result !== true) {
                     $resultStr = is_string($result) ? preg_replace('/[\r\n\t]/', '', $result) : 'unknown delivery error';
                     $errors[] = 'Failed to send email. Please try again.';
-                    logger($user->data()->id, LogCategories::LOG_CATEGORY_EMAIL_ERROR, "Admin contact SEND FAILED to {$safeToLog}: {$resultStr}");
+                    logger($user->data()->id, LogCategories::LOG_CATEGORY_EMAIL_ERROR, "Admin contact SEND FAILED to {$toEmail}: {$resultStr}");
                 } else {
                     if ($ownerId === 'Multiple') {
                         $successes[] = 'Administrator message sent successfully to duplicate accounts at ' . $toEmail;
                     } else {
                         $successes[] = 'Administrator message sent successfully to ' . $toName;
                     }
-                    logger($user->data()->id, LogCategories::LOG_CATEGORY_CAR_ACTIONS, "Admin contact sent - Admin: {$safeFromLog}, Owner: {$safeToLog}, Car: {$carId}, Issue: {$safeIssue}");
+                    logger($user->data()->id, LogCategories::LOG_CATEGORY_CAR_ACTIONS, "Admin contact sent - Admin: {$fromEmail}, Owner: {$toEmail}, Car: {$carId}, Issue: {$qualityIssue}");
                 }
 
             } catch (AdminContactException $e) {

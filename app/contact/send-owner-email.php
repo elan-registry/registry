@@ -4,7 +4,7 @@ declare(strict_types=1);
 use ElanRegistry\Input;
 
 /**
- * contact_owner_email.php
+ * send-owner-email.php
  * Processes contact owner requests and sends emails between users.
  *
  * Handles the backend processing for the contact owner functionality, including
@@ -26,16 +26,9 @@ $subject = '[ELANREGISTRY] Owner to Owner Message';
 $errors = [];
 $email_sent = false;
 $post_attempted = Input::exists('post');
+$carId = 0;
 
-// Make sure no one tries to add header like keywords
-function clean_string(string $string): string
-{
-    $bad = array('content-type', 'bcc:', 'to:', 'cc:', 'href');
-    return str_replace($bad, '', $string);
-}
-
-//Forms posted now process it
-if (Input::exists('post')) {
+if ($post_attempted) {
     $token = Input::get('csrf');
     if (!Token::check($token)) {
         include($abs_us_root . $us_url_root . 'usersc/scripts/token_error.php');
@@ -43,42 +36,81 @@ if (Input::exists('post')) {
     } else {
         $action = Input::get('action');
         $message = Input::raw('message'); // raw — _email_contact_owner.php escapes via EmailTemplate
-        if ($action === 'send_message' && Input::get('from_user_id') && Input::get('to_user_id') && $message !== null && $message !== '') {
+        if ($action === 'send_message' && Input::get('to_user_id') && $message !== null && $message !== '') {
             if (strlen($message) > 2000) {
                 $errors[] = 'Message is too long (maximum 2000 characters)';
                 include($abs_us_root . $us_url_root . 'usersc/scripts/token_error.php');
                 exit();
             }
 
+            $fromUserId = (int) $user->data()->id;
+            $toUserId   = (int) Input::get('to_user_id');
+            $carId      = (int) Input::get('car_id');
 
-            // Security: Get user data from database instead of trusting serialized data
-            $fromUserId = (int) Input::get('from_user_id');
-            $toUserId = (int) Input::get('to_user_id');
-            
+            if ($toUserId <= 0 || $carId <= 0) {
+                logger(
+                    $user->data()->id,
+                    LogCategories::LOG_CATEGORY_ACCESS_DENIED,
+                    'send-owner-email.php: invalid to_user_id=' . $toUserId . ' or car_id=' . $carId
+                );
+                include($abs_us_root . $us_url_root . 'usersc/scripts/token_error.php');
+                exit();
+            }
+
             // Validate user IDs and get user data from database
             $db = DB::getInstance();
-            $fromUser = $db->query('SELECT id, email, fname, lname FROM users WHERE id = ?', [$fromUserId])->first();
-            $toUser = $db->query('SELECT id, email, fname, lname FROM users WHERE id = ?', [$toUserId])->first();
-            
+
+            // Verify the recipient owns the car — prevents sending to arbitrary users (IDOR)
+            $carOwnerResult = $db->query('SELECT user_id FROM cars WHERE id = ?', [$carId]);
+            if ($carOwnerResult->error()) {
+                logger(
+                    $user->data()->id,
+                    LogCategories::LOG_CATEGORY_DATABASE_ERROR,
+                    'send-owner-email.php: DB error fetching owner for car_id=' . $carId
+                );
+                include($abs_us_root . $us_url_root . 'usersc/scripts/token_error.php');
+                exit();
+            }
+            $carOwner = $carOwnerResult->first();
+            if (!$carOwner || (int)$carOwner->user_id !== $toUserId) {
+                logger(
+                    $user->data()->id,
+                    LogCategories::LOG_CATEGORY_ACCESS_DENIED,
+                    'send-owner-email.php: to_user_id ' . $toUserId . ' does not match owner of car_id=' . $carId
+                );
+                include($abs_us_root . $us_url_root . 'usersc/scripts/token_error.php');
+                exit();
+            }
+
+            $fromResult = $db->query('SELECT id, email, fname, lname FROM users WHERE id = ?', [$fromUserId]);
+            $toResult   = $db->query('SELECT id, email, fname, lname FROM users WHERE id = ?', [$toUserId]);
+            if ($fromResult->error() || $toResult->error()) {
+                logger(
+                    $user->data()->id,
+                    LogCategories::LOG_CATEGORY_DATABASE_ERROR,
+                    'send-owner-email.php: DB error fetching user data from_id=' . $fromUserId . ' to_id=' . $toUserId
+                );
+                include($abs_us_root . $us_url_root . 'usersc/scripts/token_error.php');
+                exit();
+            }
+            $fromUser = $fromResult->first();
+            $toUser   = $toResult->first();
+
             if (!$fromUser || !$toUser) {
                 $errors[] = 'Invalid user data';
                 include($abs_us_root . $us_url_root . 'usersc/scripts/token_error.php');
                 exit();
             }
             
-            $f = (array) $fromUser;
-            $t = (array) $toUser;
+            $toEmail   = preg_replace('/[\r\n\t]/', '', $toUser->email);
+            $toName    = $toUser->fname . ' ' . $toUser->lname;
+            $fromEmail = $fromUser->email;
+            $fromName  = $fromUser->fname . ' ' . $fromUser->lname;
 
-            $toEmail        =  $t['email'];
-
-            $toName         =  $t['fname'] . ' ' . $t['lname'];
-            $fromEmail      =  $f['email'];
-            $fromName       =  $f['fname'] . ' ' . $f['lname'];
-
-            $template       =  array(
-                'message'   => clean_string($message),
-                'from'      => $fromName,
-                'to'        => $toName
+            $template = array(
+                'message' => $message,
+                'from'    => $fromName,
+                'to'      => $toName,
             );
 
             $body = email_body('_email_contact_owner.php', $template);
@@ -117,8 +149,8 @@ if (Input::exists('post')) {
                 'send-owner-email.php: missing parameters — action=' . $safeAction
             );
         }
-    } // End Post with data
-    
+    } // End CSRF check
+
     // Convert error/success arrays to UserSpice session messages (Issue #237)
     if (!empty($errors)) {
         foreach ($errors as $error) {
@@ -144,7 +176,6 @@ if (Input::exists('post')) {
                     <script>
                         setTimeout(function() {
                             <?php
-                            $carId = Input::get('car_id');
                             if ($carId) {
                                 echo "window.location.href = '" . $us_url_root . "app/cars/details.php?car_id=" . (int)$carId . "';";
                             } else {

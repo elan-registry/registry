@@ -894,11 +894,12 @@ require_once $abs_us_root . $us_url_root . 'users/includes/html_footer.php'; //c
 
         // Show/hide override section and validation error
         const overrideEnabled = $('#chassis_override').is(':checked');
-        $('#chassis_override_section').toggleClass('d-none', isValid);
-        if (isValid) {
+        // Only hide section when chassis is genuinely valid (without override)
+        $('#chassis_override_section').toggleClass('d-none', isValid && !overrideEnabled);
+        if (isValid && !overrideEnabled) {
             $('#chassis_override').prop('checked', false);
             $('#chassis_validation_error').addClass('hidden').hide();
-        } else if (errorReason && !overrideEnabled) {
+        } else if (!isValid && errorReason && !overrideEnabled) {
             $('#chassis_validation_error').removeClass('hidden').show();
             $('#chassis_error_reason').text(errorReason);
         } else {
