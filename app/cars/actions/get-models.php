@@ -33,7 +33,9 @@ if (!Input::exists('post')) {
 // Validate CSRF token (required for all POST endpoints)
 $token = Input::get('csrf');
 if (!Token::check($token)) {
-    ApiResponse::forbidden('Invalid CSRF token')->send();
+    ApiResponse::forbidden('Invalid CSRF token')
+        ->withLogging($user->data()->id ?? 0, LogCategories::LOG_CATEGORY_SECURITY, 'Invalid CSRF token in get-models')
+        ->send();
 }
 
 $action = Input::get('action');
