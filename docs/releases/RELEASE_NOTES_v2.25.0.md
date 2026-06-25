@@ -44,6 +44,7 @@ _Additional deployment actions expected: SQL migrations for new `chassis_overrid
 ## Technical Changes
 
 - **`Car::delete()` CSRF now mandatory** ([#930](https://github.com/unibrain1/elanregistry/issues/930)): Changed `Car::delete()` from an optional nullable token to a required `string $token`, consistent with `create()` and `update()`. Removes the opt-in bypass that could be silently exploited by future callers.
+- **Admin delete path routed through `Car::delete()`** ([#956](https://github.com/unibrain1/elanregistry/issues/956)): The admin car deletion handler in `manage-consolidated.php` previously issued raw SQL, bypassing the class-level CSRF guard added in #930. Refactored to call `Car::delete()`, which enforces CSRF validation, authentication, transaction wrapping, and audit logging. Defense-in-depth: page-level guards remain in place.
 
 ## Issues Resolved
 
@@ -64,5 +65,6 @@ _Additional deployment actions expected: SQL migrations for new `chassis_overrid
 - [#927](https://github.com/unibrain1/elanregistry/issues/927) — bug: OwnerValidationException getUserMessage() returns generic default instead of specific validation text
 - [#931](https://github.com/unibrain1/elanregistry/issues/931) — test: add integration test for manage-consolidated.php car deletion audit trail
 - [#930](https://github.com/unibrain1/elanregistry/issues/930) — refactor: Car::delete() CSRF token is nullable — bypassable by omitting token
+- [#956](https://github.com/unibrain1/elanregistry/issues/956) — refactor: migrate manage-consolidated.php delete path to Car::delete()
 - [#935](https://github.com/unibrain1/elanregistry/issues/935) — bug: CarVerificationManager::markSold() accepts overflow dates that PHP rolls forward silently
 - [#947](https://github.com/unibrain1/elanregistry/issues/947) — bug: AppConstants::DATETIME_FORMAT uses 'G' (no leading zero) instead of 'H'

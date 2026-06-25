@@ -7,28 +7,46 @@ require_once __DIR__ . '/IntegrationTestCase.php';
 use PHPUnit\Framework\Attributes\Group;
 
 /**
- * Regression guard for the legacy car deletion path in
- * app/admin/manage-consolidated.php.
+ * Regression guard for the car deletion path in
+ * app/admin/manage-consolidated.php after migration to Car::delete().
  *
- * That page issues raw DELETE statements against car_user and cars and
- * relies on the cars_delete DB trigger to write the cars_hist audit row.
- * Issue #593 removed a duplicate application-layer INSERT INTO cars_hist
- * from this path; if a similar manual insert is ever re-introduced above
- * the DELETE FROM cars statement, the cars_hist DELETE row count will
- * climb to 2 and this test will fail. Companion to
- * CarDeletionTest::testDeleteCarCreatesAuditTrail(), which guards the
- * Car::delete() / CarAdministrationService path. See #593, #931.
+ * Prior to #956 that page issued raw DELETE statements directly against
+ * car_user and cars. Issue #956 routes deletion through Car::delete() /
+ * CarAdministrationService::delete(), which handles the transaction,
+ * car_user removal, and audit trail. This test guards against regressions
+ * to that path — specifically verifying that exactly one DELETE row appears
+ * in cars_hist (written by the DB trigger). A second row would indicate an
+ * accidental application-layer re-introduction of a pre-delete INSERT.
+ *
+ * Companion to CarDeletionTest::testDeleteCarCreatesAuditTrail(), which
+ * guards the Car::delete() / CarAdministrationService path directly.
+ *
+ * @see CarDeletionTest
+ * @see #593, #930, #931, #956
  */
 #[Group('integration')]
 final class ManageConsolidatedDeletionTest extends IntegrationTestCase
 {
-    private int $testUserId = 1;
+    private int $testUserId;
     private int $testCarId;
 
     protected function setUp(): void
     {
         parent::setUp();
         $this->requireDatabase();
+
+        // Set up authenticated user context required by Car::delete()
+        global $user;
+        $user = new User();
+        $user->find(1);
+
+        $reflection = new ReflectionClass($user);
+        $isLoggedInProperty = $reflection->getProperty('_isLoggedIn');
+        $isLoggedInProperty->setAccessible(true);
+        $isLoggedInProperty->setValue($user, true);
+
+        $GLOBALS['user'] = $user;
+        $this->testUserId = 1;
 
         try {
             $this->testCarId = $this->createTestCar($this->testUserId, [
@@ -42,10 +60,8 @@ final class ManageConsolidatedDeletionTest extends IntegrationTestCase
     #[Group('fast')]
     public function testManageConsolidatedDeleteCreatesExactlyOneAuditRow(): void
     {
-        // Replicate the raw DB ops performed by
-        // app/admin/manage-consolidated.php (action=delete).
-        $this->db->query("DELETE FROM car_user WHERE car_id = ?", [$this->testCarId]);
-        $this->db->query("DELETE FROM cars WHERE id = ?", [$this->testCarId]);
+        $car = new Car($this->testCarId);
+        $car->delete('Integration test deletion', Token::generate());
 
         $historyQuery = $this->db->query(
             "SELECT * FROM cars_hist WHERE car_id = ? AND operation = 'DELETE'",
@@ -55,8 +71,8 @@ final class ManageConsolidatedDeletionTest extends IntegrationTestCase
         $this->assertSame(
             1,
             $historyQuery->count(),
-            'Expected exactly one DELETE row in cars_hist for the legacy '
-                . 'manage-consolidated.php delete path'
+            'Expected exactly one DELETE row in cars_hist for the '
+                . 'manage-consolidated.php Car::delete() path'
         );
     }
 }
