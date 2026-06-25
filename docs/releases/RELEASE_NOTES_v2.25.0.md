@@ -7,7 +7,9 @@
 
 - **Run fix script `05-Fix-Website-Scheme.php`** ([#851](https://github.com/unibrain1/elanregistry/issues/851)): Migrates existing `cars` rows with scheme-less website URLs (e.g. `example.com`) to `https://example.com`; nulls out invalid values (`javascript:`, relative paths, etc.). Run via the Maintenance tab in the admin panel.
 
-_Additional deployment actions expected: SQL migrations for new `chassis_override` column on `cars`, `cars_hist` trigger updates, and `car_user_hist` triggers/indexes (#915, #592)._
+- **Run fix script `06-Add-Car-User-Hist-Triggers.php`** ([#592](https://github.com/unibrain1/elanregistry/issues/592)): Installs AFTER INSERT/UPDATE/DELETE triggers on `car_user` and adds indexes on `car_user_hist(car_id)` and `car_user_hist(userid)`. Run via the Maintenance tab in the admin panel.
+
+_Additional deployment actions expected: SQL migrations for new `chassis_override` column on `cars` and `cars_hist` trigger updates (#915)._
 
 ## User-Facing Changes
 
