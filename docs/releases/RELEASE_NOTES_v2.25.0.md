@@ -9,7 +9,7 @@
 
 - **Run fix script `06-Add-Car-User-Hist-Triggers.php`** ([#592](https://github.com/unibrain1/elanregistry/issues/592)): Installs AFTER INSERT/UPDATE/DELETE triggers on `car_user` and adds indexes on `car_user_hist(car_id)` and `car_user_hist(userid)`. Run via the Maintenance tab in the admin panel.
 
-_Additional deployment actions expected: SQL migrations for new `chassis_override` column on `cars` and `cars_hist` trigger updates (#915)._
+- **Run fix script `07-Chassis-Override-Schema-Backfill.php`** ([#915](https://github.com/unibrain1/elanregistry/issues/915)): Adds `chassis_override` column to `cars` and `cars_hist`, recreates all three `cars_*` triggers to include the column, and backfills `chassis_override = 1` on cars modified on or after 2025-08-31 or whose comments contain the legacy audit phrase "CHASSIS VALIDATION OVERRIDDEN". Run via the Maintenance tab in the admin panel.
 
 ## User-Facing Changes
 
@@ -27,7 +27,7 @@ _Additional deployment actions expected: SQL migrations for new `chassis_overrid
 
 ### Improvements
 
-- **Chassis Override Persistence** ([#915](https://github.com/unibrain1/elanregistry/issues/915)): Chassis validation override now persists correctly via a dedicated DB column; includes UI indicator and backfill script for existing records.
+- **Chassis Override Persistence** ([#915](https://github.com/unibrain1/elanregistry/issues/915)): Chassis validation override now persists correctly via a dedicated `chassis_override` DB column. Fixes checkbox unchecking bug in client-side JS, adds `chassis_override` to the `Car` class allowlist and validator, adds all three database triggers (`cars_insert`, `cars_update`, `cars_delete`) to capture the column, pre-populates the checkbox on edit form reload, and displays a "Validation Override" badge on the car details page. Includes backfill script for existing records.
 - **Date Range Validation** ([#903](https://github.com/unibrain1/elanregistry/issues/903)): Server-side validation added for car purchase/sold date ranges.
 - **Website Scheme Whitelist — Owner and Settings** ([#921](https://github.com/unibrain1/elanregistry/issues/921)): Extended the http/https scheme whitelist (added to the car validator in #851) to the owner profile and user settings website fields, blocking `javascript:`, `data:`, `ftp://`, and other non-web protocols.
 - **Admin Contact Security** ([#660](https://github.com/unibrain1/elanregistry/issues/660), [#661](https://github.com/unibrain1/elanregistry/issues/661)): Fixed email header injection and unvalidated recipient address in the admin multi-user contact path.

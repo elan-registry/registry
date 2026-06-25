@@ -201,6 +201,10 @@ class CarValidator
                     }
                     break;
 
+                case 'chassis_override':
+                    $validatedFields[$key] = ((int) $value === 1) ? 1 : 0;
+                    break;
+
                 default:
                     $validatedFields[$key] = $value;
                     break;

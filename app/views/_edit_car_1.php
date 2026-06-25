@@ -109,9 +109,11 @@
                     <span id="chassis_error_reason"></span>
                 </div>
                 
-                <div id="chassis_override_section" class="d-none">
+                <?php $chassisOverrideActive = !empty($cardetails['chassis_override']); ?>
+                <div id="chassis_override_section" class="<?= $chassisOverrideActive ? '' : 'd-none' ?>">
                     <div class="form-check mt-2">
-                        <input type="checkbox" class="form-check-input" id="chassis_override" name="chassis_override" value="1">
+                        <input type="checkbox" class="form-check-input" id="chassis_override" name="chassis_override" value="1"
+                               <?= $chassisOverrideActive ? 'checked' : '' ?>>
                         <label class="form-check-label text-warning" for="chassis_override">
                             <strong>⚠️ Override chassis validation</strong><br>
                             <small>Use only if this chassis number is correct but fails validation.</small>
