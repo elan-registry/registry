@@ -21,6 +21,10 @@ None
 
 ## Admin-Facing Changes
 
+### Bug Fixes
+
+- **Misleading rollback log on successful owner updates** ([#928](https://github.com/unibrain1/elanregistry/issues/928)): `ElanRegistryOwner::update()` and `create()` no longer log "Owner update failed" / "Owner creation failed" when a post-commit reload throws. The post-commit `find()` and success-logger calls now run outside the transaction's try/catch block, so the data-was-saved state is correctly reflected even when the reload fails. Also fixes a no-op `ROLLBACK` issued after a successful `COMMIT` in the same case.
+
 ### Improvements
 
 - **Local Playwright test suite fully restored** ([#881](https://github.com/unibrain1/elanregistry/issues/881)): Fixed broken local MAMP config (`elan_registry` typo, leading-slash `goto` calls), updated all test files to work against the local dev environment, converted TypeScript security specs to JavaScript to eliminate Node.js DEP0205 deprecation warnings, upgraded `@playwright/test` from 1.56 to 1.61.1 (also resolves residual DEP0205 from Playwright's own TypeScript loader on Node 26) and downgraded `dotenv` from 17 to 16 (also triggered DEP0205). 118 tests pass; 35 skip gracefully (E2E tests that target production environments, and authenticated tests that skip when `.env.local` credentials are absent).
