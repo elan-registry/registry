@@ -4,7 +4,11 @@ const { ensureLoggedIn } = require('./auth-helper.js');
 
 test.describe('Registry-Specific AJAX Endpoints', () => {
   test.beforeEach(async ({ page }) => {
-    // Most AJAX endpoints require authentication
+    // Most AJAX endpoints require authentication.
+    // Skip when test credentials are not configured in .env.local.
+    if (!process.env.TEST_USERNAME || !process.env.TEST_PASSWORD) {
+      test.skip(true, 'Set TEST_USERNAME and TEST_PASSWORD in .env.local to run authenticated tests');
+    }
     await ensureLoggedIn(page);
   });
 
