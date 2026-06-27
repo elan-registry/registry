@@ -17,7 +17,7 @@
 //
 // All server calls are intercepted with page.route() so no MAMP DB row is needed.
 //
-// Requires local MAMP at http://localhost:9999/elan_registry
+// Requires local MAMP at http://localhost:9999/elan-registry
 
 const { test, expect } = require('@playwright/test');
 const { ensureLoggedIn } = require('./auth-helper.js');
@@ -129,7 +129,7 @@ test.describe('Car edit form — text-only save (regression #796)', () => {
                             success: true,
                             images: [
                                 {
-                                    path: 'http://localhost:9999/elan_registry/usersc/uploads/cars/1/existing-photo.jpg',
+                                    path: 'http://localhost:9999/elan-registry/usersc/uploads/cars/1/existing-photo.jpg',
                                     basename: 'existing-photo.jpg'
                                 }
                             ]
@@ -743,7 +743,7 @@ test.describe('Car edit form — text-only save (regression #796)', () => {
                     contentType: 'application/json',
                     body: JSON.stringify({
                         success: true,
-                        images: [{ path: 'http://localhost:9999/elan_registry/usersc/uploads/cars/1/existing-photo.jpg', basename: 'existing-photo.jpg' }]
+                        images: [{ path: 'http://localhost:9999/elan-registry/usersc/uploads/cars/1/existing-photo.jpg', basename: 'existing-photo.jpg' }]
                     })
                 });
                 return;

@@ -54,7 +54,7 @@ test.describe('CSP Validation Tests', () => {
     const cspViolations = setupCSPViolationMonitoring(page);
     
     // Navigate to statistics page
-    await page.goto('/app/reports/statistics.php');
+    await page.goto('app/reports/statistics.php');
     
     // Wait for page to fully load including external resources
     await page.waitForLoadState('networkidle');
@@ -74,7 +74,7 @@ test.describe('CSP Validation Tests', () => {
     const cspViolations = setupCSPViolationMonitoring(page);
     
     // First get a car ID to test with
-    await page.goto('/app/cars/index.php');
+    await page.goto('app/cars/index.php');
     await page.waitForLoadState('networkidle');
     
     // Click on first car link if available
@@ -94,7 +94,7 @@ test.describe('CSP Validation Tests', () => {
   test('Car listing page should not have CSP violations', async ({ page }) => {
     const cspViolations = setupCSPViolationMonitoring(page);
     
-    await page.goto('/app/cars/index.php');
+    await page.goto('app/cars/index.php');
     await page.waitForLoadState('networkidle');
     await page.waitForTimeout(2000);
     
@@ -114,7 +114,7 @@ test.describe('CSP Validation Tests', () => {
   test('Home page should not have CSP violations', async ({ page }) => {
     const cspViolations = setupCSPViolationMonitoring(page);
 
-    await page.goto('/');
+    await page.goto('');
     await page.waitForLoadState('networkidle');
     await page.waitForTimeout(1000);
 
@@ -136,7 +136,7 @@ test.describe('CSP Validation Tests', () => {
       }
     });
     
-    await page.goto('/app/reports/statistics.php');
+    await page.goto('app/reports/statistics.php');
     await page.waitForLoadState('networkidle');
     await page.waitForTimeout(3000);
     
@@ -177,7 +177,7 @@ test.describe('CSP Validation Tests', () => {
     });
 
     // Check statistics page
-    await page.goto('/app/reports/statistics.php');
+    await page.goto('app/reports/statistics.php');
     await page.waitForTimeout(2000);
 
     expect(googleMapsRequests, 'No Google Maps requests on statistics page').toHaveLength(0);
@@ -186,7 +186,7 @@ test.describe('CSP Validation Tests', () => {
 
     // Check a car details page (use a stable car ID or skip if none)
     try {
-      await page.goto('/app/cars/details.php?car_id=1');
+      await page.goto('app/cars/details.php?car_id=1');
       await page.waitForTimeout(2000);
       expect(googleMapsRequests, 'No Google Maps requests on car details page').toHaveLength(0);
     } catch {

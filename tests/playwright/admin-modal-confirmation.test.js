@@ -4,7 +4,7 @@
 // Covers: modal DOM presence, Cancel/Confirm behavior, XSS prevention via
 // textContent, and CSRF token availability for modal-triggered operations.
 //
-// Requires local MAMP at http://localhost:9999/elan_registry
+// Requires local MAMP at http://localhost:9999/elan-registry
 
 const { test, expect } = require('@playwright/test');
 const { ensureLoggedIn } = require('./auth-helper.js');
@@ -16,7 +16,7 @@ const { ensureLoggedIn } = require('./auth-helper.js');
 test.describe('Admin confirmation modal — manage-consolidated', () => {
     test.beforeEach(async ({ page }) => {
         await ensureLoggedIn(page);
-        await page.goto('/app/admin/manage-consolidated.php?tab=car-mgmt', { waitUntil: 'networkidle' });
+        await page.goto('app/admin/manage-consolidated.php?tab=car-mgmt', { waitUntil: 'networkidle' });
     });
 
     test('confirmation modal element is present in DOM', async ({ page }) => {
@@ -58,7 +58,7 @@ test.describe('Admin confirmation modal — manage-consolidated', () => {
 test.describe('Admin confirmation modal — manage-maintenance', () => {
     test.beforeEach(async ({ page }) => {
         await ensureLoggedIn(page);
-        await page.goto('/app/admin/manage-maintenance.php?tab=maintenance', { waitUntil: 'networkidle' });
+        await page.goto('app/admin/manage-maintenance.php?tab=maintenance', { waitUntil: 'networkidle' });
     });
 
     test('confirmation modal element is present in DOM', async ({ page }) => {
@@ -129,7 +129,7 @@ test.describe('Admin confirmation modal — manage-maintenance', () => {
 test.describe('Admin input modal — manage-maintenance', () => {
     test.beforeEach(async ({ page }) => {
         await ensureLoggedIn(page);
-        await page.goto('/app/admin/manage-maintenance.php?tab=maintenance', { waitUntil: 'networkidle' });
+        await page.goto('app/admin/manage-maintenance.php?tab=maintenance', { waitUntil: 'networkidle' });
     });
 
     test('input modal and all required child elements are present in DOM', async ({ page }) => {

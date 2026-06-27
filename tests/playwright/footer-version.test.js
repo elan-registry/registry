@@ -12,7 +12,7 @@ const { navigateAndWait } = require('./auth-helper.js');
  */
 test.describe('Public footer version display', () => {
   test('homepage footer contains a version tag', async ({ page }) => {
-    await navigateAndWait(page, '/index.php');
+    await navigateAndWait(page, 'index.php');
     await page.waitForLoadState('networkidle');
 
     const footer = page.locator('#footer');

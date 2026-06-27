@@ -25,7 +25,7 @@ test.describe('Admin Consolidated Tabs Debug', () => {
     });
 
     // Navigate to the admin page - use full URL to bypass baseURL issues
-    await page.goto('http://localhost:9999/elan_registry/app/admin/manage-consolidated.php');
+    await page.goto('app/admin/manage-consolidated.php');
     await page.waitForLoadState('networkidle');
 
     // Take initial screenshot regardless of auth state
@@ -44,9 +44,9 @@ test.describe('Admin Consolidated Tabs Debug', () => {
 
       // Try alternate paths
       const alternatePaths = [
-        'http://localhost:9999/elan_registry/app/admin/manage-consolidated.php',
-        'http://localhost:9999/elan_registry/admin/manage-consolidated.php',
-        'http://localhost:9999/elan_registry/manage-consolidated.php'
+        'http://localhost:9999/elan-registry/app/admin/manage-consolidated.php',
+        'http://localhost:9999/elan-registry/admin/manage-consolidated.php',
+        'http://localhost:9999/elan-registry/manage-consolidated.php'
       ];
 
       for (const path of alternatePaths) {
