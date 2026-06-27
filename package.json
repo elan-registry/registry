@@ -8,7 +8,7 @@
     "test": "tests"
   },
   "scripts": {
-    "test": "echo '\n📋 Available Tests:\n\n  PHP Unit Tests (128 tests):\n    composer test:quick\n\n  E2E Tests - Production (24 tests):\n    npm run test:e2e              # All E2E tests on elanregistry.org\n    npm run test:e2e:not-logged-in  # Public pages only\n    npm run test:e2e:logged-in      # Authenticated user tests\n\n  E2E Tests - Test Environment (24 tests):\n    npm run test:e2e:test         # All E2E tests on test.elanregistry.org\n    npm run test:e2e:test:not-logged-in  # Public pages only\n    npm run test:e2e:test:logged-in      # Authenticated user tests\n\n  Local Playwright Tests - Localhost (16 tests, requires MAMP):\n    npm run playwright:test       # All local tests\n    npm run playwright:security   # Security tests (6)\n    npm run playwright:maps       # Maps & charts (8)\n    npm run playwright:csp        # CSP validation (6)\n    npm run playwright:bs5        # BS5 migration regression (8)\n\n  Note: Local tests require web server at http://localhost:9999/elan_registry\n'",
+    "test": "echo '\n📋 Available Tests:\n\n  PHP Unit Tests (128 tests):\n    composer test:quick\n\n  E2E Tests - Production (24 tests):\n    npm run test:e2e              # All E2E tests on elanregistry.org\n    npm run test:e2e:not-logged-in  # Public pages only\n    npm run test:e2e:logged-in      # Authenticated user tests\n\n  E2E Tests - Test Environment (24 tests):\n    npm run test:e2e:test         # All E2E tests on test.elanregistry.org\n    npm run test:e2e:test:not-logged-in  # Public pages only\n    npm run test:e2e:test:logged-in      # Authenticated user tests\n\n  Local Playwright Tests - Localhost (requires MAMP at http://localhost:9999/elan-registry):\n    npm run playwright:test       # All local tests\n    npm run playwright:security   # Security tests\n    npm run playwright:maps       # Maps & charts\n    npm run playwright:csp        # CSP validation\n    npm run playwright:mobile     # Mobile responsive\n\n  Note: Authenticated tests require TEST_USERNAME and TEST_PASSWORD in .env.local\n'",
     "test:quick": "npm run playwright:security",
     "test:smoke": "npm run playwright:test",
     "playwright:install": "npx playwright install",
@@ -16,7 +16,6 @@
     "playwright:security": "playwright test tests/playwright/security.test.js tests/playwright/security/",
     "playwright:maps": "playwright test tests/playwright/maps-charts.test.js",
     "playwright:csp": "playwright test tests/playwright/csp-validation.spec.js",
-    "playwright:bs5": "playwright test tests/playwright/bs5-migration.test.js",
     "playwright:mobile": "playwright test tests/playwright/mobile-responsive.test.js",
     "playwright:headed": "playwright test --headed",
     "playwright:debug": "playwright test --debug",
@@ -63,9 +62,9 @@
     "maplibre-gl": "4.7.1"
   },
   "devDependencies": {
-    "@playwright/test": "^1.56.1",
+    "@playwright/test": "^1.61.1",
     "@versatiles/style": "^5.10.2",
-    "dotenv": "^17.2.3",
+    "dotenv": "^16.6.1",
     "esbuild": "^0.28.1",
     "eslint": "^9.0.0"
   }

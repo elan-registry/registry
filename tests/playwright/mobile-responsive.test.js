@@ -1,6 +1,6 @@
 // tests/playwright/mobile-responsive.test.js
 const { test, expect } = require('@playwright/test');
-const { navigateAndWait, handleAuthRequired } = require('./auth-helper.js');
+const { navigateAndWait } = require('./auth-helper.js');
 
 /**
  * Mobile responsive tests at iPhone SE viewport (375x667).
@@ -17,16 +17,16 @@ const { navigateAndWait, handleAuthRequired } = require('./auth-helper.js');
 const MOBILE_VIEWPORT = { width: 375, height: 667 };
 
 const PUBLIC_PAGES = [
-  '/',
-  '/app/cars/index.php',
-  '/app/cars/details.php?car_id=1',
-  '/app/cars/factory.php',
-  '/app/cars/identify.php',
-  '/app/contact/index.php',
-  '/app/contact/owner.php',
-  '/app/reports/statistics.php',
-  '/app/privacy.php',
-  '/docs/guides/car-transfer-faq.php',
+  '',
+  'app/cars/index.php',
+  'app/cars/details.php?car_id=1091',
+  'app/cars/factory.php',
+  'app/cars/identify.php',
+  'app/contact/index.php',
+  'app/contact/owner.php',
+  'app/reports/statistics.php',
+  'app/privacy.php',
+  'docs/guides/car-transfer-faq.php',
 ];
 
 test.describe('Mobile Responsive (iPhone SE / 375px)', () => {
@@ -51,67 +51,37 @@ test.describe('Mobile Responsive (iPhone SE / 375px)', () => {
   }
 
   test('DataTables responsive collapse indicator present on car listing', async ({ page }) => {
-    await navigateAndWait(page, '/app/cars/index.php');
-    await page.waitForLoadState('networkidle');
+    await page.goto('app/cars/index.php', { waitUntil: 'networkidle' });
 
-    // Wait for DataTables to initialize
-    await page.waitForSelector('.dataTables_wrapper', { timeout: 10000 });
+    // DataTables 1.x uses .dataTables_wrapper; 2.x uses .dt-container
+    await page.waitForSelector('table.dataTable, div.dt-container, div.dataTables_wrapper', { timeout: 15000 });
 
-    // Wait for the DataTables Responsive extension to inject its child-row
-    // control cell (dtr-control class) — auto-retries until visible.
     const firstControl = page.locator('table.dataTable tbody tr td.dtr-control').first();
-    await expect(firstControl).toBeVisible({ timeout: 10000 });
+    await expect(firstControl).toBeVisible({ timeout: 15000 });
   });
 
   test('edit car form progress bar does not cause horizontal overflow', async ({ page }) => {
-    await navigateAndWait(page, '/app/cars/form.php');
+    await navigateAndWait(page, 'app/cars/form.php');
     await page.waitForLoadState('networkidle');
 
-    await handleAuthRequired(
-      page,
-      async () => {
-        const overflow = await page.evaluate(() => ({
-          scrollWidth: document.documentElement.scrollWidth,
-          innerWidth: window.innerWidth,
-        }));
-        expect(overflow.scrollWidth).toBeLessThanOrEqual(overflow.innerWidth);
-      },
-      async () => {
-        const overflow = await page.evaluate(() => ({
-          scrollWidth: document.documentElement.scrollWidth,
-          innerWidth: window.innerWidth,
-        }));
-        expect(overflow.scrollWidth).toBeLessThanOrEqual(overflow.innerWidth);
-      }
-    );
+    // Check overflow regardless of auth state — both paths render a full page at 375px.
+    const overflow = await page.evaluate(() => ({
+      scrollWidth: document.documentElement.scrollWidth,
+      innerWidth: window.innerWidth,
+    }));
+    expect(overflow.scrollWidth).toBeLessThanOrEqual(overflow.innerWidth);
   });
 
   test('admin page tabs do not cause horizontal overflow', async ({ page }) => {
-    // Admin is auth-protected. We don't log in here — instead we navigate
-    // and let UserSpice render whatever it renders (login redirect or admin
-    // page if a session exists). Either way, page-level horizontal overflow
-    // should not occur at 375px.
-    await navigateAndWait(page, '/users/admin.php');
+    // Admin is auth-protected. We don't log in — UserSpice renders either the
+    // admin page or a login redirect. Either way, no horizontal overflow at 375px.
+    await navigateAndWait(page, 'users/admin.php');
     await page.waitForLoadState('networkidle');
 
-    await handleAuthRequired(
-      page,
-      // Authenticated: verify admin tabs render without page overflow
-      async () => {
-        const overflow = await page.evaluate(() => ({
-          scrollWidth: document.documentElement.scrollWidth,
-          innerWidth: window.innerWidth,
-        }));
-        expect(overflow.scrollWidth).toBeLessThanOrEqual(overflow.innerWidth);
-      },
-      // Unauthenticated: still verify the login/redirect page does not overflow
-      async () => {
-        const overflow = await page.evaluate(() => ({
-          scrollWidth: document.documentElement.scrollWidth,
-          innerWidth: window.innerWidth,
-        }));
-        expect(overflow.scrollWidth).toBeLessThanOrEqual(overflow.innerWidth);
-      }
-    );
+    const overflow = await page.evaluate(() => ({
+      scrollWidth: document.documentElement.scrollWidth,
+      innerWidth: window.innerWidth,
+    }));
+    expect(overflow.scrollWidth).toBeLessThanOrEqual(overflow.innerWidth);
   });
 });

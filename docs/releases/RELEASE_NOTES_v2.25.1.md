@@ -19,6 +19,12 @@ None
 - **Image load error recovery** ([#755](https://github.com/unibrain1/elanregistry/issues/755)): FilePond now shows clear error feedback when existing car images fail to load, rather than silently dropping them.
 - **Consistent validation error display** ([#1019](https://github.com/unibrain1/elanregistry/issues/1019)): Form validation errors now use a single consistent visual pattern across all three previously inconsistent display paths.
 
+## Admin-Facing Changes
+
+### Improvements
+
+- **Local Playwright test suite fully restored** ([#881](https://github.com/unibrain1/elanregistry/issues/881)): Fixed broken local MAMP config (`elan_registry` typo, leading-slash `goto` calls), updated all test files to work against the local dev environment, converted TypeScript security specs to JavaScript to eliminate Node.js DEP0205 deprecation warnings, upgraded `@playwright/test` from 1.56 to 1.61.1 (also resolves residual DEP0205 from Playwright's own TypeScript loader on Node 26) and downgraded `dotenv` from 17 to 16 (also triggered DEP0205). 118 tests pass; 35 skip gracefully (E2E tests that target production environments, and authenticated tests that skip when `.env.local` credentials are absent).
+
 ## Issues Resolved
 
 - [#531](https://github.com/unibrain1/elanregistry/issues/531) — Create OwnerView class to consolidate owner presentation logic
