@@ -40,12 +40,12 @@ module.exports = defineConfig({
     {
       name: 'chromium',
       use: { ...devices['Desktop Chrome'] },
-      testIgnore: '**/mobile-responsive.test.js',
+      testIgnore: '**/mobile-responsive.spec.js',
     },
     {
       name: 'Mobile Chrome',
       use: { ...devices['iPhone SE'] },
-      testMatch: '**/mobile-responsive.test.js',
+      testMatch: '**/mobile-responsive.spec.js',
     },
   ],
 
