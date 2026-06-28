@@ -22,6 +22,7 @@ None
 ## Technical Changes
 
 - **Owner display consolidation** ([#531](https://github.com/unibrain1/elanregistry/issues/531)): New `ElanRegistry\OwnerView` static utility class centralises all owner name, quality badge, location, contact info, and missing-fields rendering. Eliminates ~200+ lines of duplicated inline HTML across 8 template files. Consistent quality score thresholds (≥80 success, ≥60 warning, <60 danger) and XSS escaping applied uniformly at the view layer.
+- **Car detail partials** ([#924](https://github.com/unibrain1/elanregistry/issues/924), [#925](https://github.com/unibrain1/elanregistry/issues/925)): Hero action buttons and both car detail cards (Vehicle Information, Factory Data) extracted into shared PHP partials under `usersc/includes/partials/`. Eliminates ~240 lines of duplicated HTML from `details.php`; the new `usersc/account.php` (#923) adopts these partials directly. Accessibility fix: all decorative Font Awesome icons now carry `aria-hidden="true"`; guest contact button corrected from `btn-sm` to `btn`.
 
 ## Admin-Facing Changes
 
