@@ -30,6 +30,10 @@
 
 - **Misleading rollback log on successful owner updates** ([#928](https://github.com/unibrain1/elanregistry/issues/928)): `ElanRegistryOwner::update()` and `create()` no longer log "Owner update failed" / "Owner creation failed" when a post-commit reload throws. The post-commit `find()` and success-logger calls now run outside the transaction's try/catch block, so the data-was-saved state is correctly reflected even when the reload fails. Also fixes a no-op `ROLLBACK` issued after a successful `COMMIT` in the same case.
 
+### New Features
+
+- **Chassis override indicator and filter** ([#1020](https://github.com/unibrain1/elanregistry/issues/1020)): Invalid Chassis Numbers table now shows a check icon for cars with the chassis override flag set, and includes a "Hide cars with override set" checkbox to filter them out — making triage faster by distinguishing cars already handled from those still needing attention.
+
 ### Improvements
 
 - **Local Playwright test suite fully restored** ([#881](https://github.com/unibrain1/elanregistry/issues/881)): Fixed broken local MAMP config (`elan_registry` typo, leading-slash `goto` calls), updated all test files to work against the local dev environment, converted TypeScript security specs to JavaScript to eliminate Node.js DEP0205 deprecation warnings, upgraded `@playwright/test` from 1.56 to 1.61.1 (also resolves residual DEP0205 from Playwright's own TypeScript loader on Node 26) and downgraded `dotenv` from 17 to 16 (also triggered DEP0205). 118 tests pass; 35 skip gracefully (E2E tests that target production environments, and authenticated tests that skip when `.env.local` credentials are absent).
@@ -45,3 +49,4 @@
 - [#925](https://github.com/unibrain1/elanregistry/issues/925) — refactor: extract shared car display card partials (vehicle info, factory data)
 - [#928](https://github.com/unibrain1/elanregistry/issues/928) — bug: ElanRegistryOwner::update() broad catch wraps post-commit find() causing misleading rollback log
 - [#1019](https://github.com/unibrain1/elanregistry/issues/1019) — ux: standardize validation error display across all three error mechanisms
+- [#1020](https://github.com/unibrain1/elanregistry/issues/1020) — admin: show chassis override indicator and add filter to Invalid Chassis Numbers table
