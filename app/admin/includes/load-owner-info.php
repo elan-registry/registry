@@ -73,7 +73,7 @@ try {
                     <small>Cars Owned</small>
                 </div>
                 <div class="col-4">
-                    <h4 class="text-<?= $qualityScore >= 80 ? 'success' : ($qualityScore >= 60 ? 'warning' : 'danger') ?>">
+                    <h4 class="text-<?= ElanRegistryOwner::getQualityBadgeClass($qualityScore) ?>">
                         <?= (int)$qualityScore // nosemgrep: php.lang.security.taint-unsafe-echo-tag.taint-unsafe-echo-tag ?>%
                     </h4>
                     <small>Profile Quality</small>
@@ -107,15 +107,15 @@ try {
     </div>
 
     <!-- Data Quality Card -->
-    <div class="card border-<?= $qualityScore >= 80 ? 'success' : ($qualityScore >= 60 ? 'warning' : 'danger') ?> mb-3">
-        <div class="card-header bg-<?= $qualityScore >= 80 ? 'success' : ($qualityScore >= 60 ? 'warning' : 'danger') ?> text-white">
+    <div class="card border-<?= ElanRegistryOwner::getQualityBadgeClass($qualityScore) ?> mb-3">
+        <div class="card-header bg-<?= ElanRegistryOwner::getQualityBadgeClass($qualityScore) ?> text-white">
             <h6 class="mb-0">
                 <i class="fas fa-clipboard-check"></i> Data Quality
             </h6>
         </div>
         <div class="card-body">
             <div class="progress mb-2">
-                <div class="progress-bar bg-<?= $qualityScore >= 80 ? 'success' : ($qualityScore >= 60 ? 'warning' : 'danger') ?>"
+                <div class="progress-bar bg-<?= ElanRegistryOwner::getQualityBadgeClass($qualityScore) ?>"
                      style="width: <?= (int)$qualityScore // nosemgrep: php.lang.security.taint-unsafe-echo-tag.taint-unsafe-echo-tag ?>%">
                     <?= (int)$qualityScore // nosemgrep: php.lang.security.taint-unsafe-echo-tag.taint-unsafe-echo-tag ?>%
                 </div>

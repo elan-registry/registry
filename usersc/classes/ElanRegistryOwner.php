@@ -325,18 +325,46 @@ class ElanRegistryOwner
             return 0.0;
         }
 
-        $totalFields = 7;
-        $completedFields = 0;
+        return self::qualityScoreFromRow($this->_data);
+    }
 
-        if (!empty($this->_data->fname)) $completedFields++;
-        if (!empty($this->_data->lname)) $completedFields++;
-        if (!empty($this->_data->email)) $completedFields++;
-        if (!empty($this->_data->city)) $completedFields++;
-        if (!empty($this->_data->state)) $completedFields++;
-        if (!empty($this->_data->country)) $completedFields++;
-        if (!empty($this->_data->lat) && !empty($this->_data->lon)) $completedFields++;
+    /**
+     * Calculate quality score from a plain query result row.
+     *
+     * Accepts a raw DB row object so batch loops can score many owners without
+     * constructing a full ElanRegistryOwner for each one.
+     *
+     * @param object $row DB row with owner fields (fname, lname, email, city, state, country, lat, lon)
+     * @return float Score 0–100
+     */
+    public static function qualityScoreFromRow(object $row): float
+    {
+        $completed = 0;
+        if (!empty($row->fname)) $completed++;
+        if (!empty($row->lname)) $completed++;
+        if (!empty($row->email)) $completed++;
+        if (!empty($row->city)) $completed++;
+        if (!empty($row->state)) $completed++;
+        if (!empty($row->country)) $completed++;
+        if (!empty($row->lat) && !empty($row->lon)) $completed++;
+        return round(($completed / 7) * 100, 1);
+    }
 
-        return round(($completedFields / $totalFields) * 100, 1);
+    /**
+     * Return a Bootstrap contextual color class for a quality score.
+     *
+     * @param float $score Quality score 0–100
+     * @return string 'success', 'warning', or 'danger'
+     */
+    public static function getQualityBadgeClass(float $score): string
+    {
+        if ($score >= 80) {
+            return 'success';
+        }
+        if ($score >= 60) {
+            return 'warning';
+        }
+        return 'danger';
     }
 
     /**
