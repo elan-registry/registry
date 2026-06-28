@@ -48,7 +48,7 @@ $targetURL = $us_url_root . $settings->elan_image_dir;
 //Forms posted now process it
 if (!empty($_POST)) {
     if (!$user->isLoggedIn()) {
-        ApiResponse::forbidden('Login required')
+        ApiResponse::unauthorized('Login required')
             ->withLogging(0, LogCategories::LOG_CATEGORY_ACCESS_DENIED, 'Unauthenticated access attempt to edit.php')
             ->send();
     }
@@ -56,171 +56,171 @@ if (!empty($_POST)) {
     $token = Input::get('csrf');
     if (!Token::check($token)) {
         ApiResponse::forbidden('Invalid CSRF token')
-            ->withLogging($user->data()->id, LogCategories::LOG_CATEGORY_SECURITY, 'CSRF check failed in edit.php')
+            ->withLogging($user->data() !== null ? $user->data()->id : 0, LogCategories::LOG_CATEGORY_SECURITY, 'CSRF check failed in edit.php')
             ->send();
     }
 
     $db = DB::getInstance();
 
-        $action = Input::get('action');
-        switch ($action) {
-            case "addCar":
-                try {
-                    buildCarDetails($cardetails);
-                    buildImageDetails($cardetails);
+    $action = Input::get('action');
+    switch ($action) {
+        case "addCar":
+            try {
+                buildCarDetails($cardetails);
+                buildImageDetails($cardetails);
 
-                    if (!empty($errors)) {
-                        ApiResponse::validationError(
-                            ['general' => $errors],
-                            'Cannot add car: validation errors'
-                        )->withData('cardetails', $cardetails)
-                        ->withLogging(
-                            $user->data()->id,
-                            LogCategories::LOG_CATEGORY_VALIDATION_ERROR,
-                            'Car creation validation failed: ' . json_encode($errors)
-                        )->send();
+                if (!empty($errors)) {
+                    ApiResponse::validationError(
+                        ['general' => $errors],
+                        'Cannot add car: validation errors'
+                    )->withData('cardetails', $cardetails)
+                    ->withLogging(
+                        $user->data()->id,
+                        LogCategories::LOG_CATEGORY_VALIDATION_ERROR,
+                        'Car creation validation failed: ' . json_encode($errors)
+                    )->send();
+                }
+
+                uploadImages($cardetails);
+                addCar($cardetails);
+                mvTmpImages($cardetails);
+
+                // Blanks instead of NULL for display
+                foreach ($cardetails as $key => $value) {
+                    if (is_null($value)) {
+                        $cardetails[$key] = "";
                     }
-
-                    uploadImages($cardetails);
-                    addCar($cardetails);
-                    mvTmpImages($cardetails);
-
-                    // Blanks instead of NULL for display
-                    foreach ($cardetails as $key => $value) {
-                        if (is_null($value)) {
-                            $cardetails[$key] = "";
-                        }
-                    }
-
-                    ApiResponse::success('Car added successfully')
-                        ->withData('cardetails', $cardetails)
-                        ->withLogging(
-                            $user->data()->id,
-                            LogCategories::LOG_CATEGORY_CAR_ACTIONS,
-                            'Car added: ID ' . $cardetails['id']
-                        )->send();
-
-                } catch (ElanRegistryException $e) {
-                    ApiResponse::serverError('Failed to add car: ' . $e->getUserMessage())
-                        ->withLogging(
-                            $user->data()->id,
-                            LogCategories::LOG_CATEGORY_CAR_ERRORS,
-                            'Car add error: ' . $e->getMessage()
-                        )->send();
-                } catch (\Exception $e) {
-                    ApiResponse::serverError('Failed to add car: An unexpected error occurred.')
-                        ->withLogging(
-                            $user->data()->id,
-                            LogCategories::LOG_CATEGORY_CAR_ERRORS,
-                            'Car add unexpected error: ' . $e->getMessage()
-                        )->send();
                 }
-                break;
 
-            case "updateCar":
-                $car_id = (int)Input::get('car_id');
-                if ($car_id <= 0) {
-                    ApiResponse::error('Invalid car ID', 400)
-                        ->withLogging($user->data()->id, LogCategories::LOG_CATEGORY_VALIDATION_ERROR, 'updateCar: invalid car_id in request')
-                        ->send();
-                }
-                $carForAuth = new Car($car_id);
-                if (!$carForAuth->data() || ($user->data()->id != $carForAuth->data()->user_id && !hasPerm([2, 3]))) {
-                    ApiResponse::error('Unauthorized', 403)
-                        ->withLogging($user->data()->id, LogCategories::LOG_CATEGORY_ACCESS_DENIED, 'updateCar: unauthorized for car ' . $car_id)
-                        ->send();
-                }
-                try {
-                    buildCarDetails($cardetails, $car_id);
-                    buildImageDetails($cardetails);
+                ApiResponse::success('Car added successfully')
+                    ->withData('cardetails', $cardetails)
+                    ->withLogging(
+                        $user->data()->id,
+                        LogCategories::LOG_CATEGORY_CAR_ACTIONS,
+                        'Car added: ID ' . $cardetails['id']
+                    )->send();
 
-                    if (!empty($errors)) {
-                        ApiResponse::validationError(
-                            ['general' => $errors],
-                            'Cannot update car: validation errors'
-                        )->withData('cardetails', $cardetails)
-                        ->withLogging(
-                            $user->data()->id,
-                            LogCategories::LOG_CATEGORY_VALIDATION_ERROR,
-                            'Car update validation failed: ' . json_encode($errors)
-                        )->send();
-                    }
+            } catch (ElanRegistryException $e) {
+                ApiResponse::serverError('Failed to add car: ' . $e->getUserMessage())
+                    ->withLogging(
+                        $user->data()->id,
+                        LogCategories::LOG_CATEGORY_CAR_ERRORS,
+                        'Car add error: ' . $e->getMessage()
+                    )->send();
+            } catch (\Exception $e) {
+                ApiResponse::serverError('Failed to add car: An unexpected error occurred.')
+                    ->withLogging(
+                        $user->data()->id,
+                        LogCategories::LOG_CATEGORY_CAR_ERRORS,
+                        'Car add unexpected error: ' . $e->getMessage()
+                    )->send();
+            }
+            break;
 
-                    uploadImages($cardetails);
-                    updateCar($cardetails);
-
-                    if (!empty($errors)) {
-                        ApiResponse::validationError(
-                            ['general' => $errors],
-                            'Cannot save car: update operation failed'
-                        )->withData('cardetails', $cardetails)
-                        ->withLogging(
-                            $user->data()->id,
-                            LogCategories::LOG_CATEGORY_CAR_ERRORS,
-                            'Car update failed post-save validation: ' . json_encode($errors)
-                        )->send();
-                    }
-
-                    // Blanks instead of NULL for display
-                    foreach ($cardetails as $key => $value) {
-                        if (is_null($value)) {
-                            $cardetails[$key] = "";
-                        }
-                    }
-
-                    ApiResponse::success('Car updated successfully')
-                        ->withData('cardetails', $cardetails)
-                        ->withLogging(
-                            $user->data()->id,
-                            LogCategories::LOG_CATEGORY_CAR_ACTIONS,
-                            'Car updated: ID ' . $cardetails['id']
-                        )->send();
-
-                } catch (ElanRegistryException $e) {
-                    ApiResponse::serverError('Failed to update car: ' . $e->getUserMessage())
-                        ->withLogging(
-                            $user->data()->id,
-                            LogCategories::LOG_CATEGORY_CAR_ERRORS,
-                            'Car update error: ' . $e->getMessage()
-                        )->send();
-                } catch (\Exception $e) {
-                    ApiResponse::serverError('Failed to update car: An unexpected error occurred.')
-                        ->withLogging(
-                            $user->data()->id,
-                            LogCategories::LOG_CATEGORY_CAR_ERRORS,
-                            'Car update unexpected error: ' . $e->getMessage()
-                        )->send();
-                }
-                break;
-
-            case "fetchImages":
-                $car_id = (int)Input::get('carID');
-                $carForAuth = new Car($car_id);
-                if (!$carForAuth->data() || ($user->data()->id != $carForAuth->data()->user_id && !hasPerm([2, 3]))) {
-                    ApiResponse::error('Unauthorized', 403)
-                        ->withLogging($user->data()->id, LogCategories::LOG_CATEGORY_VALIDATION_ERROR, 'fetchImages: unauthorized for car ' . $car_id)
-                        ->send();
-                }
-                fetchImages($car_id);
-                break;
-
-            case "removeImages":
-                $car_id = (int)Input::get('carID');
-                $carForAuth = new Car($car_id);
-                if (!$carForAuth->data() || ($user->data()->id != $carForAuth->data()->user_id && !hasPerm([2, 3]))) {
-                    ApiResponse::error('Unauthorized', 403)
-                        ->withLogging($user->data()->id, LogCategories::LOG_CATEGORY_VALIDATION_ERROR, 'removeImages: unauthorized for car ' . $car_id)
-                        ->send();
-                }
-                $file = basename((string)Input::get('file'));
-                removeImage($car_id, $file);
-                break;
-
-            default:
-                ApiResponse::error('No valid action', 400)
-                    ->withLogging($user->data()->id, LogCategories::LOG_CATEGORY_VALIDATION_ERROR, 'Invalid action: ' . $action)
+        case "updateCar":
+            $car_id = (int)Input::get('car_id');
+            if ($car_id <= 0) {
+                ApiResponse::error('Invalid car ID', 400)
+                    ->withLogging($user->data()->id, LogCategories::LOG_CATEGORY_VALIDATION_ERROR, 'updateCar: invalid car_id in request')
                     ->send();
-        }
+            }
+            $carForAuth = new Car($car_id);
+            if (!$carForAuth->data() || ($user->data()->id != $carForAuth->data()->user_id && !hasPerm([2, 3]))) {
+                ApiResponse::error('Unauthorized', 403)
+                    ->withLogging($user->data()->id, LogCategories::LOG_CATEGORY_ACCESS_DENIED, 'updateCar: unauthorized for car ' . $car_id)
+                    ->send();
+            }
+            try {
+                buildCarDetails($cardetails, $car_id);
+                buildImageDetails($cardetails);
+
+                if (!empty($errors)) {
+                    ApiResponse::validationError(
+                        ['general' => $errors],
+                        'Cannot update car: validation errors'
+                    )->withData('cardetails', $cardetails)
+                    ->withLogging(
+                        $user->data()->id,
+                        LogCategories::LOG_CATEGORY_VALIDATION_ERROR,
+                        'Car update validation failed: ' . json_encode($errors)
+                    )->send();
+                }
+
+                uploadImages($cardetails);
+                updateCar($cardetails);
+
+                if (!empty($errors)) {
+                    ApiResponse::validationError(
+                        ['general' => $errors],
+                        'Cannot save car: update operation failed'
+                    )->withData('cardetails', $cardetails)
+                    ->withLogging(
+                        $user->data()->id,
+                        LogCategories::LOG_CATEGORY_CAR_ERRORS,
+                        'Car update failed post-save validation: ' . json_encode($errors)
+                    )->send();
+                }
+
+                // Blanks instead of NULL for display
+                foreach ($cardetails as $key => $value) {
+                    if (is_null($value)) {
+                        $cardetails[$key] = "";
+                    }
+                }
+
+                ApiResponse::success('Car updated successfully')
+                    ->withData('cardetails', $cardetails)
+                    ->withLogging(
+                        $user->data()->id,
+                        LogCategories::LOG_CATEGORY_CAR_ACTIONS,
+                        'Car updated: ID ' . $cardetails['id']
+                    )->send();
+
+            } catch (ElanRegistryException $e) {
+                ApiResponse::serverError('Failed to update car: ' . $e->getUserMessage())
+                    ->withLogging(
+                        $user->data()->id,
+                        LogCategories::LOG_CATEGORY_CAR_ERRORS,
+                        'Car update error: ' . $e->getMessage()
+                    )->send();
+            } catch (\Exception $e) {
+                ApiResponse::serverError('Failed to update car: An unexpected error occurred.')
+                    ->withLogging(
+                        $user->data()->id,
+                        LogCategories::LOG_CATEGORY_CAR_ERRORS,
+                        'Car update unexpected error: ' . $e->getMessage()
+                    )->send();
+            }
+            break;
+
+        case "fetchImages":
+            $car_id = (int)Input::get('carID');
+            $carForAuth = new Car($car_id);
+            if (!$carForAuth->data() || ($user->data()->id != $carForAuth->data()->user_id && !hasPerm([2, 3]))) {
+                ApiResponse::forbidden('Unauthorized')
+                    ->withLogging($user->data()->id, LogCategories::LOG_CATEGORY_ACCESS_DENIED, 'fetchImages: unauthorized for car ' . $car_id)
+                    ->send();
+            }
+            fetchImages($car_id);
+            break;
+
+        case "removeImages":
+            $car_id = (int)Input::get('carID');
+            $carForAuth = new Car($car_id);
+            if (!$carForAuth->data() || ($user->data()->id != $carForAuth->data()->user_id && !hasPerm([2, 3]))) {
+                ApiResponse::forbidden('Unauthorized')
+                    ->withLogging($user->data()->id, LogCategories::LOG_CATEGORY_ACCESS_DENIED, 'removeImages: unauthorized for car ' . $car_id)
+                    ->send();
+            }
+            $file = basename((string)Input::get('file'));
+            removeImage($car_id, $file);
+            break;
+
+        default:
+            ApiResponse::error('No valid action', 400)
+                ->withLogging($user->data()->id, LogCategories::LOG_CATEGORY_VALIDATION_ERROR, 'Invalid action: ' . $action)
+                ->send();
+    }
 }
 
 
