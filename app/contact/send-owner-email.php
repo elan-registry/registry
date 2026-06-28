@@ -34,6 +34,15 @@ if ($post_attempted) {
         include($abs_us_root . $us_url_root . 'usersc/scripts/token_error.php');
         exit;
     } else {
+        $senderId = ($user->isLoggedIn() && $user->data()) ? (int)$user->data()->id : null;
+        if (!checkRateLimit('owner_contact_email', $senderId)) {
+            logger($senderId ?? 0, LogCategories::LOG_CATEGORY_ACCESS_DENIED, 'send-owner-email.php: rate limit exceeded from ' . $remote_addr);
+            recordRateLimit('owner_contact_email', false, $senderId);
+            $errors[] = 'Too many messages sent. Please wait before sending another.';
+        } else {
+            recordRateLimit('owner_contact_email', true, $senderId);
+        }
+
         $action = Input::get('action');
         $message = Input::raw('message'); // raw — _email_contact_owner.php escapes via EmailTemplate
         if ($action === 'send_message' && Input::get('to_user_id') && $message !== null && $message !== '') {
