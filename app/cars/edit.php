@@ -2,7 +2,7 @@
 declare(strict_types=1);
 
 /**
- * form.php
+ * edit.php
  * Allows users to add or edit car records in the registry.
  *
  * Handles form input, validation, image uploads, and updates to car data.
@@ -933,8 +933,11 @@ require_once $abs_us_root . $us_url_root . 'users/includes/html_footer.php'; //c
                 $('#color').prop('disabled', false);
                 $('#engine').prop('disabled', false);
             }
-        }).catch(function() {
+        }).catch(function(err) {
+            console.error('[checkChassisAvailability] Availability check failed:', err);
             $('#chassis_check_error').removeClass('d-none');
+            $('#color').prop('disabled', false);
+            $('#engine').prop('disabled', false);
         });
     }
 
