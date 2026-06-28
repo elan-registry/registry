@@ -18,7 +18,7 @@ if (!securePage($php_self)) {
 }
 
 if ($method !== 'POST') {
-    ApiResponse::badRequest('POST method required')->send();
+    ApiResponse::error('POST method required')->send();
 }
 
 if (!isset($_POST['csrf']) || !Token::check($_POST['csrf'])) {
