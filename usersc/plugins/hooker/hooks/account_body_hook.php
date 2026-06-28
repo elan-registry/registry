@@ -1,6 +1,8 @@
 <?php
 if (count(get_included_files()) == 1) die(); //Direct Access Not Permitted Leave this line in place
 
+use ElanRegistry\OwnerView;
+
 global $user;
 
 // Get some interesting user information to display later
@@ -26,7 +28,7 @@ $lastlogin = new DateTime($ownerData->last_login);
                 <small class="text-muted text-uppercase fw-bold">Full Name</small>
             </div>
             <p class="mb-0 ps-3">
-                <?= ucfirst($ownerData->fname) . ' ' . ucfirst($ownerData->lname) ?>
+                <?= OwnerView::displayName($ownerData) ?>
                 <br>
                 <small class="text-muted">@<?= $ownerData->username ?></small>
             </p>
@@ -39,7 +41,7 @@ $lastlogin = new DateTime($ownerData->last_login);
                 <small class="text-muted text-uppercase fw-bold">Email Address</small>
             </div>
             <p class="mb-0 ps-3">
-                <?= $ownerData->email ?>
+                <?= htmlspecialchars($ownerData->email, ENT_QUOTES, 'UTF-8') ?>
             </p>
         </div>
 
@@ -50,12 +52,9 @@ $lastlogin = new DateTime($ownerData->last_login);
                 <small class="text-muted text-uppercase fw-bold">Location</small>
             </div>
             <p class="mb-0 ps-3">
-                <?php 
-                $location = [];
-                if (!empty($ownerData->city)) $location[] = html_entity_decode($ownerData->city);
-                if (!empty($ownerData->state)) $location[] = html_entity_decode($ownerData->state);
-                if (!empty($ownerData->country)) $location[] = html_entity_decode($ownerData->country);
-                echo !empty($location) ? implode(', ', $location) : '<span class="text-muted fst-italic">Not specified</span>';
+                <?php
+                $location = OwnerView::displayLocation($ownerData);
+                echo $location !== '' ? $location : '<span class="text-muted fst-italic">Not specified</span>';
                 ?>
             </p>
         </div>

@@ -9,6 +9,8 @@ declare(strict_types=1);
  * Includes duplicate detection and correction capabilities
  */
 
+use ElanRegistry\OwnerView;
+
 // Import ChassisValidator for validation functionality
 require_once '../../usersc/classes/ChassisValidator.php';
 
@@ -429,7 +431,7 @@ $qualityScore = $totalCars > 0 ? max(0, 100 - (($carIssues / $totalCars) * 100))
                                                 </td>
                                                 <td>
                                                     <?php if ($car->fname && $car->lname) { ?>
-                                                        <?= htmlspecialchars($car->fname . ' ' . $car->lname) ?>
+                                                        <?= OwnerView::displayName($car) // nosemgrep: php.lang.security.taint-unsafe-echo-tag.taint-unsafe-echo-tag ?>
                                                     <?php } else { ?>
                                                         <span class="text-muted">Owner Unknown</span>
                                                     <?php } ?>
@@ -441,7 +443,7 @@ $qualityScore = $totalCars > 0 ? max(0, 100 - (($carIssues / $totalCars) * 100))
                                                     <button type="button" class="btn btn-sm btn-outline-warning ms-1"
                                                             onclick="openAdminContactModal(
                                                                 {id: '<?= $car->id ?>', year: '<?= htmlspecialchars($car->year) ?>', model: '<?= htmlspecialchars($car->model) ?>', chassis: '<?= htmlspecialchars($car->chassis) ?>', series: '<?= htmlspecialchars($car->series ?? '') ?>'},
-                                                                {id: '<?= $car->user_id ?? '' ?>', name: '<?= htmlspecialchars($car->fname && $car->lname ? $car->fname . ' ' . $car->lname : 'Unknown') ?>', email: '<?= htmlspecialchars($car->email ?? '') ?>'},
+                                                                {id: '<?= $car->user_id ?? '' ?>', name: <?= htmlspecialchars(json_encode($car->fname && $car->lname ? $car->fname . ' ' . $car->lname : 'Unknown'), ENT_COMPAT, 'UTF-8') // nosemgrep: php.lang.security.taint-unsafe-echo-tag.taint-unsafe-echo-tag ?>, email: <?= htmlspecialchars(json_encode($car->email ?? ''), ENT_COMPAT, 'UTF-8') // nosemgrep: php.lang.security.taint-unsafe-echo-tag.taint-unsafe-echo-tag ?>},
                                                                 'Invalid Chassis'
                                                             )" title="Contact Owner via Registry">
                                                         <i class="fas fa-envelope"></i>
@@ -484,7 +486,7 @@ $qualityScore = $totalCars > 0 ? max(0, 100 - (($carIssues / $totalCars) * 100))
                                                     </td>
                                                     <td>
                                                         <?php if ($owner->fname || $owner->lname) { ?>
-                                                            <?= htmlspecialchars(trim($owner->fname . ' ' . $owner->lname)) ?>
+                                                            <?= OwnerView::displayName($owner) // nosemgrep: php.lang.security.taint-unsafe-echo-tag.taint-unsafe-echo-tag ?>
                                                         <?php } else { ?>
                                                             <span class="badge text-bg-warning">Missing Name</span>
                                                         <?php } ?>
@@ -498,7 +500,7 @@ $qualityScore = $totalCars > 0 ? max(0, 100 - (($carIssues / $totalCars) * 100))
                                                         <button type="button" class="btn btn-sm btn-outline-warning"
                                                                 onclick="openAdminContactModal(
                                                                     {id: '<?= $owner->car_count ?? 'Multiple' ?>', year: '', model: '', chassis: '', series: ''},
-                                                                    {id: '<?= $owner->id ?>', name: '<?= htmlspecialchars(trim($owner->fname . ' ' . $owner->lname)) ?>', email: '<?= htmlspecialchars($owner->email) ?>'},
+                                                                    {id: '<?= $owner->id ?>', name: <?= htmlspecialchars(json_encode(trim(($owner->fname ?? '') . ' ' . ($owner->lname ?? ''))), ENT_COMPAT, 'UTF-8') // nosemgrep: php.lang.security.taint-unsafe-echo-tag.taint-unsafe-echo-tag ?>, email: <?= htmlspecialchars(json_encode($owner->email ?? ''), ENT_COMPAT, 'UTF-8') // nosemgrep: php.lang.security.taint-unsafe-echo-tag.taint-unsafe-echo-tag ?>},
                                                                     'Missing Information'
                                                                 )" title="Contact Owner via Registry">
                                                             <i class="fas fa-envelope"></i>
@@ -506,9 +508,7 @@ $qualityScore = $totalCars > 0 ? max(0, 100 - (($carIssues / $totalCars) * 100))
                                                     </td>
                                                     <td>
                                                         <?php if ($owner->city || $owner->state || $owner->country) { ?>
-                                                            <?= htmlspecialchars($owner->city ? $owner->city . ', ' : '') ?>
-                                                            <?= htmlspecialchars($owner->state ? $owner->state . ', ' : '') ?>
-                                                            <?= htmlspecialchars($owner->country ?: '') ?>
+                                                            <?= OwnerView::displayLocation($owner) // nosemgrep: php.lang.security.taint-unsafe-echo-tag.taint-unsafe-echo-tag ?>
                                                         <?php } else { ?>
                                                             <span class="badge text-bg-warning">Missing Location</span>
                                                         <?php } ?>
@@ -628,7 +628,7 @@ $qualityScore = $totalCars > 0 ? max(0, 100 - (($carIssues / $totalCars) * 100))
                                                 </td>
                                                 <td>
                                                     <?php if ($car->fname && $car->lname) { ?>
-                                                        <?= htmlspecialchars($car->fname . ' ' . $car->lname) ?>
+                                                        <?= OwnerView::displayName($car) // nosemgrep: php.lang.security.taint-unsafe-echo-tag.taint-unsafe-echo-tag ?>
                                                     <?php } else { ?>
                                                         <span class="text-muted">No owner</span>
                                                     <?php } ?>
@@ -650,7 +650,7 @@ $qualityScore = $totalCars > 0 ? max(0, 100 - (($carIssues / $totalCars) * 100))
                                                     <button type="button" class="btn btn-sm btn-outline-warning ms-1"
                                                             onclick="openAdminContactModal(
                                                                 {id: '<?= $car->id ?>', year: '<?= htmlspecialchars($car->year) ?>', model: '<?= htmlspecialchars($car->model) ?>', chassis: '<?= htmlspecialchars($car->chassis) ?>', series: '<?= htmlspecialchars($car->series ?? '') ?>'},
-                                                                {id: '<?= $car->user_id ?? '' ?>', name: '<?= htmlspecialchars($car->fname && $car->lname ? $car->fname . ' ' . $car->lname : 'Unknown') ?>', email: '<?= htmlspecialchars($car->email ?? '') ?>'},
+                                                                {id: '<?= $car->user_id ?? '' ?>', name: <?= htmlspecialchars(json_encode($car->fname && $car->lname ? $car->fname . ' ' . $car->lname : 'Unknown'), ENT_COMPAT, 'UTF-8') // nosemgrep: php.lang.security.taint-unsafe-echo-tag.taint-unsafe-echo-tag ?>, email: <?= htmlspecialchars(json_encode($car->email ?? ''), ENT_COMPAT, 'UTF-8') // nosemgrep: php.lang.security.taint-unsafe-echo-tag.taint-unsafe-echo-tag ?>},
                                                                 'Missing Information'
                                                             )" title="Contact Owner via Registry">
                                                         <i class="fas fa-envelope"></i>

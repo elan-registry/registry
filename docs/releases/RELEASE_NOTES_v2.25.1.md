@@ -19,6 +19,10 @@ None
 - **Image load error recovery** ([#755](https://github.com/unibrain1/elanregistry/issues/755)): FilePond now shows clear error feedback when existing car images fail to load, rather than silently dropping them.
 - **Consistent validation error display** ([#1019](https://github.com/unibrain1/elanregistry/issues/1019)): Form validation errors now use a single consistent visual pattern across all three previously inconsistent display paths.
 
+## Technical Changes
+
+- **Owner display consolidation** ([#531](https://github.com/unibrain1/elanregistry/issues/531)): New `ElanRegistry\OwnerView` static utility class centralises all owner name, quality badge, location, contact info, and missing-fields rendering. Eliminates ~200+ lines of duplicated inline HTML across 8 template files. Consistent quality score thresholds (≥80 success, ≥60 warning, <60 danger) and XSS escaping applied uniformly at the view layer.
+
 ## Admin-Facing Changes
 
 ### Bug Fixes
