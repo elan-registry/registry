@@ -515,6 +515,20 @@ require_once $abs_us_root . $us_url_root . 'users/includes/html_footer.php'; //c
                 action: 'fetchImages'
             }).then(function(data) {
                 if (data == null || data.success !== true) {
+                    $('#message').removeClass('d-none').html(
+                        '<div class="alert alert-warning">Existing photos could not be loaded. ' +
+                        'Please refresh the page before making changes to avoid losing photo data.</div>'
+                    );
+                    document.getElementById('submit').disabled = true;
+                    return;
+                }
+                if (!Array.isArray(data.images)) {
+                    console.error('[edit.php] fetchImages: unexpected response shape — data.images is not an array', data);
+                    $('#message').removeClass('d-none').html(
+                        '<div class="alert alert-warning">Existing photos could not be loaded. ' +
+                        'Please refresh the page before making changes to avoid losing photo data.</div>'
+                    );
+                    document.getElementById('submit').disabled = true;
                     return;
                 }
                 // Chain serially so FilePond receives files in server-defined order.
@@ -546,7 +560,8 @@ require_once $abs_us_root . $us_url_root . 'users/includes/html_footer.php'; //c
                 }).catch(function(summaryErr) {
                     console.error('[edit.php] Error showing image-load summary:', summaryErr);
                 });
-            }).catch(function() {
+            }).catch(function(err) {
+                console.error('[edit.php] fetchImages API failure:', err);
                 $('#message').removeClass('d-none').html(
                     '<div class="alert alert-warning">Existing photos could not be loaded. ' +
                     'Please refresh the page before making changes to avoid losing photo data.</div>'

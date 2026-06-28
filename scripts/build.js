@@ -11,6 +11,7 @@ const jsFiles = [
   'app/assets/js/imagedisplay.js',
   'app/assets/js/highlightDifferences.js',
   'app/assets/js/model-loader.js',
+  'app/assets/js/car-showcase.js',
   'app/admin/assets/manage-consolidated.js',
   'app/admin/assets/backup-operations.js',
 ];

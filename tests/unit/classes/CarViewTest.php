@@ -144,7 +144,51 @@ final class CarViewTest extends TestCase
 
         $html = CarView::displayCarousel($car);
 
-        // Basic structural elements
         $this->assertStringContainsString('displayCarousel', $html);
+    }
+
+    public function testDisplayCarouselWithInstanceIdShowsPlaceholderForNoImages(): void
+    {
+        $car = new Car();
+
+        $html = CarView::displayCarousel($car, 42);
+
+        $this->assertStringContainsString('No Photos Available', $html);
+    }
+
+    public function testDisplayCarouselWithSameInstanceIdProducesDeterministicOutput(): void
+    {
+        $car = new Car();
+
+        $html1 = CarView::displayCarousel($car, 99);
+        $html2 = CarView::displayCarousel($car, 99);
+
+        $this->assertSame($html1, $html2);
+    }
+
+    public function testDisplayCarouselInstanceIdAppearsInMultiImageCarouselDomIds(): void
+    {
+        $car = $this->createStub(Car::class);
+        $car->method('images')->willReturn([
+            ['path' => '/userimages/cars/img1.jpg'],
+            ['path' => '/userimages/cars/img2.jpg'],
+        ]);
+
+        $html = CarView::displayCarousel($car, 42);
+
+        $this->assertStringContainsString('id="myCarousel-42"', $html);
+        $this->assertStringContainsString('id="carousel-selector-42-0"', $html);
+        $this->assertStringContainsString('id="carousel-selector-42-1"', $html);
+        $this->assertStringContainsString('data-bs-target="#myCarousel-42"', $html);
+    }
+
+    public function testLoadPictureEscapesSpecialCharsInPath(): void
+    {
+        $image = ['path' => '/userimages/cars/my-"test"<car>.jpg'];
+
+        $html = CarView::loadPicture($image, true);
+
+        $this->assertStringNotContainsString('"test"', $html);
+        $this->assertStringContainsString('&quot;test&quot;', $html);
     }
 }
