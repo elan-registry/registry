@@ -59,7 +59,7 @@ try {
         <input type="hidden" name="csrf" value="<?= Token::generate() ?>">
 
         <!-- Profile Quality Indicator -->
-        <div class="alert alert-<?= $qualityScore >= 80 ? 'success' : ($qualityScore >= 60 ? 'warning' : 'danger') ?> mb-4">
+        <div class="alert alert-<?= ElanRegistryOwner::getQualityBadgeClass($qualityScore) ?> mb-4">
             <div class="row align-items-center">
                 <div class="col-md-8">
                     <h6 class="mb-1">
@@ -73,7 +73,7 @@ try {
                 </div>
                 <div class="col-md-4 text-end">
                     <div class="progress" style="height: 8px;">
-                        <div class="progress-bar bg-<?= $qualityScore >= 80 ? 'success' : ($qualityScore >= 60 ? 'warning' : 'danger') ?>"
+                        <div class="progress-bar bg-<?= ElanRegistryOwner::getQualityBadgeClass($qualityScore) ?>"
                              style="width: <?= (int)$qualityScore // nosemgrep: php.lang.security.taint-unsafe-echo-tag.taint-unsafe-echo-tag ?>%"></div>
                     </div>
                 </div>

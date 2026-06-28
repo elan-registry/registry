@@ -259,14 +259,7 @@ function getDuplicateEmailDetails($db, $email): array {
             }
         }
 
-        // Calculate profile quality score
-        $qualityScore = 100;
-        if (!$owner->fname || $owner->fname === '') $qualityScore -= 20;
-        if (!$owner->lname || $owner->lname === '') $qualityScore -= 20;
-        if (!$owner->city || $owner->city === '') $qualityScore -= 15;
-        if (!$owner->state || $owner->state === '') $qualityScore -= 10;
-        if (!$owner->lat || !$owner->lon) $qualityScore -= 20;
-        $owner->quality_score = max(0, $qualityScore);
+        $owner->quality_score = ElanRegistryOwner::qualityScoreFromRow($owner);
     }
 
     return $owners;
@@ -288,13 +281,13 @@ $ownerQualityScore = $totalOwners > 0 ? max(0, 100 - (($qualityIssues / $totalOw
 <div class="row mb-4">
     <!-- Data Health Card -->
     <div class="col-lg-3 col-md-6 mb-3">
-        <div class="card border-<?= $ownerQualityScore >= 80 ? 'success' : ($ownerQualityScore >= 60 ? 'warning' : 'danger') ?> h-100">
+        <div class="card border-<?= ElanRegistryOwner::getQualityBadgeClass($ownerQualityScore) ?> h-100">
             <div class="card-body text-center">
-                <div class="text-<?= $ownerQualityScore >= 80 ? 'success' : ($ownerQualityScore >= 60 ? 'warning' : 'danger') ?> mb-3">
+                <div class="text-<?= ElanRegistryOwner::getQualityBadgeClass($ownerQualityScore) ?> mb-3">
                     <i class="fas fa-<?= $ownerQualityScore >= 80 ? 'check-circle' : ($ownerQualityScore >= 60 ? 'exclamation-triangle' : 'times-circle') ?>" style="font-size: 2.5rem;"></i>
                 </div>
                 <h5 class="card-title">Data Health</h5>
-                <h3 class="text-<?= $ownerQualityScore >= 80 ? 'success' : ($ownerQualityScore >= 60 ? 'warning' : 'danger') ?> mb-2"><?= number_format($ownerQualityScore, 1) ?>%</h3>
+                <h3 class="text-<?= ElanRegistryOwner::getQualityBadgeClass($ownerQualityScore) ?> mb-2"><?= number_format($ownerQualityScore, 1) ?>%</h3>
                 <p class="card-text small text-muted">Overall owner data quality score</p>
             </div>
         </div>
@@ -424,8 +417,7 @@ $ownerQualityScore = $totalOwners > 0 ? max(0, 100 - (($qualityIssues / $totalOw
                                                                     <?php foreach ($owners as $index => $owner) {
                                                                         $isNewer = $index === count($owners) - 1 && count($owners) > 1;
                                                                         $cardClass = $isNewer ? 'owner-comparison-card newer-owner' : 'owner-comparison-card';
-                                                                        $qualityClass = $owner->quality_score >= 80 ? 'success' :
-                                                                                       ($owner->quality_score >= 60 ? 'warning' : 'danger');
+                                                                        $qualityClass = ElanRegistryOwner::getQualityBadgeClass($owner->quality_score);
                                                                     ?>
                                                                         <div class="col-lg-6 col-md-6 mb-3 d-flex">
                                                                             <div class="card <?= $cardClass ?> w-100">
