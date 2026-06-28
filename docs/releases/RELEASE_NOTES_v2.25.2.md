@@ -1,7 +1,7 @@
 # Elan Registry v2.25.2 Release Notes
 
-**Release Date:** [DATE]
-**Type:** Patch Release - Security & Critical Bugs
+**Release Date:** TBD
+**Type:** Patch Release - Security Hardening & Critical Bug Fixes
 
 ## Required Actions After Deployment
 
@@ -9,16 +9,22 @@ None.
 
 ## User-Facing Changes
 
-### Improvements
-
-- **Transfer request rate limiting** ([#973](https://github.com/unibrain1/elanregistry/issues/973)): Transfer request and owner contact email endpoints now enforce rate limits to prevent inbox flooding.
+No changes visible to public registry visitors.
 
 ## Admin-Facing Changes
 
-### Improvements
+### Bug Fixes
 
-- **Quality score consistency** ([#961](https://github.com/unibrain1/elanregistry/issues/961)): Quality score in the owner management tab now matches the score shown on the owner profile page.
-- **Correct error status codes** ([#981](https://github.com/unibrain1/elanregistry/issues/981)): Admin owner-info and owner-profile includes now return HTTP 400/404 on validation errors instead of 200.
+- **Owner location update** ([#942](https://github.com/unibrain1/elanregistry/issues/942)): Fixes a crash when saving owner locations caused by a mismatched DB update call signature.
+- **Website URL validation** ([#943](https://github.com/unibrain1/elanregistry/issues/943)): Owner website URLs are now validated and stored verbatim without silent character-stripping.
+- **Quality score consistency** ([#961](https://github.com/unibrain1/elanregistry/issues/961)): Owner profile quality scores now match between the admin owner management tab and the owner profile page.
+- **HTTP status codes** ([#981](https://github.com/unibrain1/elanregistry/issues/981)): Admin AJAX owner-info and owner-profile endpoints now return HTTP 400 for invalid IDs and 404 for not-found owners instead of 200.
+
+### Security
+
+- **Rate limiting** ([#973](https://github.com/unibrain1/elanregistry/issues/973)): Adds rate limits to the owner contact email, feedback submission, and car transfer request endpoints to prevent abuse.
+- **Login guard** ([#972](https://github.com/unibrain1/elanregistry/issues/972)): Adds an explicit `isLoggedIn()` check to the `edit.php` AJAX endpoint as defense-in-depth.
+- **Schema operations hardening** ([#974](https://github.com/unibrain1/elanregistry/issues/974)): Removes the GET action fallback from `schema-operations.php` and tightens the CSRF guard to reject non-POST requests immediately.
 
 ## Issues Resolved
 
