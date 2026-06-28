@@ -14,7 +14,7 @@ const { ensureLoggedIn } = require('../auth-helper.js');
  */
 
 const ACTIONS_ENDPOINT = 'app/cars/actions/edit.php';
-const FORM_PAGE = 'app/cars/form.php';
+const FORM_PAGE = 'app/cars/edit.php';
 const NONEXISTENT_CAR_ID = 999999;
 
 async function getCsrfFromForm(page) {

@@ -275,8 +275,8 @@ Three first-party CSS source files (compiled to `.min.css` by `npm run build`):
 | File | Loaded by | Contains |
 | --- | --- | --- |
 | `app/admin/assets/manage-consolidated.css` | `manage-consolidated.php` | Admin comparison cards, field-match/differ, timestamp display |
-| `app/assets/css/edit_car.css` | `app/cars/form.php` | FilePond overrides, `#editCar` focus, card z-index for drag-drop |
-| `app/assets/css/location-picker.css` | `app/cars/form.php` | `.location-picker-container`-scoped styles |
+| `app/assets/css/edit_car.css` | `app/cars/edit.php` | FilePond overrides, `#editCar` focus, card z-index for drag-drop |
+| `app/assets/css/location-picker.css` | `app/cars/edit.php` | `.location-picker-container`-scoped styles |
 
 **Everything else is global in `customizer.css`.** If you find yourself writing a style in a page
 file that could apply to multiple pages, move it to `customizer.css` instead. Each rule retained

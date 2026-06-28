@@ -43,7 +43,7 @@ $user_id = 1; // System user for cron operations
 function generateGracePeriodEmailHTML(string $username, int $gracePeriodDays): string {
     $registryUrl = 'https://elanregistry.org';
     $loginUrl = $registryUrl . '/users/login.php';
-    $addCarUrl = $registryUrl . '/app/cars/form.php';
+    $addCarUrl = $registryUrl . '/app/cars/edit.php';
     $logoUrl = $registryUrl . '/usersc/templates/ElanRegistry/assets/images/logo-72x72.png';
     
     $htmlContent = '
@@ -132,7 +132,7 @@ function generateGracePeriodEmailHTML(string $username, int $gracePeriodDays): s
 function generateGracePeriodEmailText(string $username, int $gracePeriodDays): string {
     $registryUrl = 'https://elanregistry.org';
     $loginUrl = $registryUrl . '/users/login.php';
-    $addCarUrl = $registryUrl . '/app/cars/form.php';
+    $addCarUrl = $registryUrl . '/app/cars/edit.php';
     
     return "LOTUS ELAN REGISTRY - Account Inactive Notice
 

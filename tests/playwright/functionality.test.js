@@ -17,7 +17,7 @@ test.describe('Core Functionality After Refactoring', () => {
 
   test('car edit form workflow functions', async ({ page }) => {
     // Navigate to car edit page — accordion only appears when authenticated with a valid car_id
-    await navigateAndWait(page, 'app/cars/form.php');
+    await navigateAndWait(page, 'app/cars/edit.php');
     await expect(page).not.toHaveTitle(/404|Not Found|Server Error/i);
 
     // Skip deep assertions if the accordion isn't present (requires auth + car_id locally)
@@ -38,7 +38,7 @@ test.describe('Core Functionality After Refactoring', () => {
   });
 
   test('chassis validation works', async ({ page }) => {
-    await navigateAndWait(page, 'app/cars/form.php');
+    await navigateAndWait(page, 'app/cars/edit.php');
     await expect(page).not.toHaveTitle(/404|Not Found|Server Error/i);
 
     // Skip deep assertions if the form fields aren't present (requires auth + car_id locally)
@@ -116,7 +116,7 @@ test.describe('Add Car form — no premature validation on page load', () => {
       test.skip(true, 'Set TEST_USERNAME and TEST_PASSWORD in .env.local to run authenticated tests');
     }
     await ensureLoggedIn(page);
-    await page.goto('app/cars/form.php', { waitUntil: 'networkidle' });
+    await page.goto('app/cars/edit.php', { waitUntil: 'networkidle' });
   });
 
   test('Year, Model, and Chassis icons are neutral (no thumbs-down) on load', async ({ page }) => {
