@@ -19,7 +19,7 @@ if ($navActive === '') {
     // Order matters: exact paths and more-specific entries first so they win
     // over broader prefixes (e.g. factory.php beats the /app/cars/ prefix).
     $sections = [
-        'add_car'    => ['/app/cars/form.php'],
+        'add_car'    => ['/app/cars/edit.php'],
         'reference'  => ['/app/cars/factory.php', '/docs/reference/'],
         'list_cars'  => ['/app/cars/'],
         'statistics' => ['/app/reports/statistics.php'],
@@ -75,7 +75,7 @@ if ($navActive === '') {
 
   <?php if (isset($user) && $user->isLoggedIn()): ?>
     <li class='<?= $navActive === 'add_car' ? 'active' : '' ?>'>
-      <a class='btn btn-primary btn-sm ms-1' href='<?= $us_url_root ?>app/cars/form.php'>
+      <a class='btn btn-primary btn-sm ms-1' href='<?= $us_url_root ?>app/cars/edit.php'>
         <i class='fa fa-plus'></i>
         <span class='labelText'>Add Car</span>
       </a>

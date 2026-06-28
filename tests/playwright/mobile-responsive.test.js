@@ -61,7 +61,7 @@ test.describe('Mobile Responsive (iPhone SE / 375px)', () => {
   });
 
   test('edit car form progress bar does not cause horizontal overflow', async ({ page }) => {
-    await navigateAndWait(page, 'app/cars/form.php');
+    await navigateAndWait(page, 'app/cars/edit.php');
     await page.waitForLoadState('networkidle');
 
     // Check overflow regardless of auth state — both paths render a full page at 375px.

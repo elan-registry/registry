@@ -41,7 +41,7 @@ test.describe('Navigation and File Reorganization', () => {
 
   test('car form page loads (reorganized)', async ({ page }) => {
     // Navigate to car form page — verify it loads at the new URL (not 404/500)
-    await navigateAndWait(page, 'app/cars/form.php');
+    await navigateAndWait(page, 'app/cars/edit.php');
     await expect(page).not.toHaveTitle(/404|Not Found|Server Error/i);
   });
 

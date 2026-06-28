@@ -31,7 +31,7 @@ test.describe('UI Consistency After Style Refactoring', () => {
   test('consistent header structure', async ({ page }) => {
     const pages = [
       'app/cars/index.php',
-      'app/cars/form.php',
+      'app/cars/edit.php',
       'app/reports/statistics.php'
     ];
     
@@ -74,7 +74,7 @@ test.describe('UI Consistency After Style Refactoring', () => {
   });
 
   test('consistent button styling', async ({ page }) => {
-    await page.goto('app/cars/form.php');
+    await page.goto('app/cars/edit.php');
 
     // Check for Bootstrap button classes
     const buttons = page.locator('button, input[type="button"], input[type="submit"], .btn');
@@ -150,7 +150,7 @@ test.describe('UI Consistency After Style Refactoring', () => {
 
   test('forms maintain consistent styling', async ({ page }) => {
     const formPages = [
-      'app/cars/form.php',
+      'app/cars/edit.php',
       'app/contact/index.php'
     ];
     
