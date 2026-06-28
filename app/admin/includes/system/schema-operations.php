@@ -17,19 +17,18 @@ if (!securePage($php_self)) {
         ->send();
 }
 
-// CSRF protection for all POST operations
-if ($method === 'POST' && (!isset($_POST['csrf']) || !Token::check($_POST['csrf']))) {
+if ($method !== 'POST') {
+    ApiResponse::badRequest('POST method required')->send();
+}
+
+if (!isset($_POST['csrf']) || !Token::check($_POST['csrf'])) {
     ApiResponse::forbidden('Invalid CSRF token')
         ->withLogging($user->data()->id, LogCategories::LOG_CATEGORY_SECURITY, 'Invalid CSRF token in schema operations')
         ->send();
 }
 
-// Set content type for JSON responses
-header('Content-Type: application/json');
-
 try {
-    $action = preg_replace('/[^\w\-]/', '', $_POST['action'] ?? $_GET['action'] ?? '') ?? '';
-    $action = $action ?: null;
+    $action = preg_replace('/[^\w\-]/', '', $_POST['action'] ?? '') ?: null;
 
     if (!$action) {
         throw new SchemaException('No action specified');
@@ -120,11 +119,6 @@ try {
             break;
 
         case 'perform_maintenance':
-            // CSRF token check for destructive operations
-            if (!Token::check($_POST['csrf'] ?? '')) {
-                throw new SchemaException('Invalid CSRF token');
-            }
-
             $result = $schemaManager->performMaintenance();
             $message = $result['success']
                 ? 'Schema maintenance completed successfully'
@@ -135,7 +129,7 @@ try {
                     ->withDataArray([
                         'operations' => $result['operations'],
                         'backup_created' => $result['backup_created'],
-                        'backup_path' => $result['backup_path'] ?? null,
+                        'backup_path' => isset($result['backup_path']) ? basename($result['backup_path']) : null,
                         'validation_issues' => $result['validation_issues'] ?? []
                     ])
                     ->withLogging($user->data()->id, LogCategories::LOG_CATEGORY_DATABASE_MAINTENANCE, $message)
@@ -145,7 +139,7 @@ try {
                     ->withDataArray([
                         'operations' => $result['operations'],
                         'backup_created' => $result['backup_created'],
-                        'backup_path' => $result['backup_path'] ?? null,
+                        'backup_path' => isset($result['backup_path']) ? basename($result['backup_path']) : null,
                         'validation_issues' => $result['validation_issues'] ?? []
                     ])
                     ->withLogging($user->data()->id, LogCategories::LOG_CATEGORY_DATABASE_MAINTENANCE, $message)
