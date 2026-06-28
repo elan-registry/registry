@@ -923,6 +923,7 @@ require_once $abs_us_root . $us_url_root . 'users/includes/html_footer.php'; //c
             model: validModel,
             chassis: validChassis
         }).then(function(response) {
+            $('#chassis_check_error').addClass('d-none');
             if (response.taken) {
                 validChassis = '';
                 updateChassisUI(false, 'This chassis number is already registered');
@@ -933,7 +934,7 @@ require_once $abs_us_root . $us_url_root . 'users/includes/html_footer.php'; //c
                 $('#engine').prop('disabled', false);
             }
         }).catch(function() {
-            // Chassis availability check failed - handle silently
+            $('#chassis_check_error').removeClass('d-none');
         });
     }
 
