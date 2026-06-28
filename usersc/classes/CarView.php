@@ -33,7 +33,6 @@ class CarView
      */
     public static function loadPicture(array $image, ?bool $thumbnail = null, bool $isPrimary = false): string
     {
-        // Input validation to prevent SonarQube issues
         if (empty($image) || !isset($image['path']) || empty($image['path'])) {
             throw new ImageProcessingException('Invalid image data provided');
         }
@@ -43,23 +42,26 @@ class CarView
         $html = "<!--Start loadPicture -->";
 
         $path = pathinfo($image['path']);
+        $dir  = htmlspecialchars((string) $path['dirname'], ENT_QUOTES, 'UTF-8');
+        $name = htmlspecialchars((string) $path['filename'], ENT_QUOTES, 'UTF-8');
+        $ext  = htmlspecialchars((string) $path['extension'], ENT_QUOTES, 'UTF-8');
 
         if ($thumbnail) {
-            $html .= '<img src="' . $path['dirname'] . "/" .
-                $path['filename'] . $resize . $thumbsize . "." .
-                $path['extension'] . '" width="100" height="75" alt="elan" loading="lazy" class="img-fluid"> ';
+            $html .= '<img src="' . $dir . '/' .
+                $name . $resize . $thumbsize . '.' .
+                $ext . '" width="100" height="75" alt="elan" loading="lazy" class="img-fluid"> ';
         } else {
             // Only lazy load images that are not the primary (first) image in a carousel
             $loadingAttr = $isPrimary ? '' : 'loading="lazy" ';
             $html = '<img ' . $loadingAttr . 'class="card-img-top" src="' .
-                $path['dirname'] . "/" . $path['filename'] . $resize . $thumbsize . "." .$path['extension'] . '"';
+                $dir . '/' . $name . $resize . $thumbsize . '.' . $ext . '"';
             $html .= ' sizes="50vw" ';
             $html .= ' width="100" height="100" ';
             $html .= ' srcset="';
-            $html .= $path['dirname'] . "/" . $path['filename'] . '-resized-' . self::THUMBNAIL_SIZE . '.' . $path['extension'] . ' ' . self::THUMBNAIL_SIZE . 'w,';
-            $html .= $path['dirname'] . "/" . $path['filename'] . '-resized-' . self::IMAGE_SIZE_SMALL . '.' . $path['extension'] . ' ' . self::IMAGE_SIZE_SMALL . 'w,';
-            $html .= $path['dirname'] . "/" . $path['filename'] . '-resized-' . self::IMAGE_SIZE_MEDIUM . '.' . $path['extension'] . ' ' . self::IMAGE_SIZE_MEDIUM . 'w,';
-            $html .= $path['dirname'] . "/" . $path['filename'] . '-resized-' . self::IMAGE_SIZE_LARGE . '.' . $path['extension'] . ' ' . self::IMAGE_SIZE_LARGE . 'w"';
+            $html .= $dir . '/' . $name . '-resized-' . self::THUMBNAIL_SIZE . '.' . $ext . ' ' . self::THUMBNAIL_SIZE . 'w,';
+            $html .= $dir . '/' . $name . '-resized-' . self::IMAGE_SIZE_SMALL . '.' . $ext . ' ' . self::IMAGE_SIZE_SMALL . 'w,';
+            $html .= $dir . '/' . $name . '-resized-' . self::IMAGE_SIZE_MEDIUM . '.' . $ext . ' ' . self::IMAGE_SIZE_MEDIUM . 'w,';
+            $html .= $dir . '/' . $name . '-resized-' . self::IMAGE_SIZE_LARGE . '.' . $ext . ' ' . self::IMAGE_SIZE_LARGE . 'w"';
             $html .= 'alt="Elan" > ';
         }
         $html .= '<!--End loadPicture -->';
@@ -71,13 +73,16 @@ class CarView
      * Display a responsive carousel for car images
      *
      * @param Car $car Car object with image data
+     * @param int|null $instanceId Stable ID for carousel DOM IDs. Pass a page-unique integer
+     *                             (e.g. the car ID) when rendering multiple carousels on one page
+     *                             to prevent DOM ID collisions. Defaults to a random int when null.
      * @return string HTML string for the carousel
      */
-    public static function displayCarousel(Car $car): string
+    public static function displayCarousel(Car $car, ?int $instanceId = null): string
     {
         $carImages = $car->images();
         $html = "<!--Start displayCarousel -->";
-        $carouselId = random_int(self::CAROUSEL_MIN_ID, self::CAROUSEL_MAX_ID); // Use cryptographically secure random
+        $carouselId = $instanceId ?? random_int(self::CAROUSEL_MIN_ID, self::CAROUSEL_MAX_ID);
 
         $count = count($carImages);
         if ($count === 0 || $carImages[0] == '') {
@@ -94,7 +99,7 @@ class CarView
         if ($count === 1) {
             $html .= self::loadPicture($carImages[0], false, true);
         } else {
-            $html .= '<div id="slider"><div id="myCarousel-' . $carouselId .
+            $html .= '<div><div id="myCarousel-' . $carouselId .
                 '" class="carousel slide shadow"> <div class="carousel-inner"><div class="carousel-inner">';
 
             $class = 'carousel-item active';
@@ -121,7 +126,7 @@ class CarView
                 
             foreach ($carImages as $key => $image) {
                 $html .= '<li class="list-inline-item active">';
-                $html .= '<a id="carousel-selector-' . $key . '" class="selected" data-bs-slide-to="'
+                $html .= '<a id="carousel-selector-' . $carouselId . '-' . $key . '" class="selected" data-bs-slide-to="'
                     . $key . '" data-bs-target="#myCarousel-' . $carouselId . '">';
                 $html .= self::loadPicture($image, true);
                 $html .= '</a> </li>';

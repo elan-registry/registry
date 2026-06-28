@@ -11,6 +11,7 @@
 
 ### New Features
 
+- **Recent Additions showcase** ([#1021](https://github.com/unibrain1/elanregistry/issues/1021)): The home page "One of the Cars" card is replaced by a "Recent Additions" showcase that fades through up to 12 cars every 5 seconds, mixing newly added entries (marked with a NEW badge) with random older cars. Manual prev/next navigation is available; auto-rotation respects `prefers-reduced-motion`.
 - **Full-page account experience** ([#923](https://github.com/unibrain1/elanregistry/issues/923)): Account page now renders as a proper full-page override, enabling a complete and consistent owner account experience.
 
 ### Improvements
@@ -50,3 +51,4 @@
 - [#928](https://github.com/unibrain1/elanregistry/issues/928) — bug: ElanRegistryOwner::update() broad catch wraps post-commit find() causing misleading rollback log
 - [#1019](https://github.com/unibrain1/elanregistry/issues/1019) — ux: standardize validation error display across all three error mechanisms
 - [#1020](https://github.com/unibrain1/elanregistry/issues/1020) — admin: show chassis override indicator and add filter to Invalid Chassis Numbers table
+- [#1021](https://github.com/unibrain1/elanregistry/issues/1021) — feat: replace "One of the Cars" with cycling car showcase
