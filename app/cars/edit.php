@@ -517,15 +517,35 @@ require_once $abs_us_root . $us_url_root . 'users/includes/html_footer.php'; //c
                 if (data == null || data.success !== true) {
                     return;
                 }
-                // Chain serially so FilePond receives files in server-defined order
+                // Chain serially so FilePond receives files in server-defined order.
+                // Per-item .catch() absorbs individual load failures; imageLoadErrors is
+                // tallied and a summary banner is shown after all addFile() calls settle.
+                var imageLoadErrors = 0;
                 data.images.reduce(function(chain, img) {
                     return chain.then(function() {
                         return pond.addFile(img.path, {
                             type: 'local',
                             metadata: { serverFilename: img.basename }
+                        }).catch(function(err) {
+                            console.error('[edit.php] Photo could not be loaded:', img.basename, err);
+                            imageLoadErrors++;
                         });
                     });
-                }, Promise.resolve());
+                }, Promise.resolve()).then(function() {
+                    if (imageLoadErrors > 0) {
+                        var isSingular = imageLoadErrors === 1;
+                        var noun       = isSingular ? 'photo' : 'photos';
+                        var itemStr    = isSingular ? 'the failed item' : 'failed items';
+                        $('#message').removeClass('d-none').html(
+                            '<div class="alert alert-warning"><i class="fas fa-exclamation-circle me-1" aria-hidden="true"></i>' +
+                            imageLoadErrors + ' ' + noun + ' could not be loaded. ' +
+                            'You can remove ' + itemStr + ' and continue editing, ' +
+                            'or submit to save your other changes.</div>'
+                        );
+                    }
+                }).catch(function(summaryErr) {
+                    console.error('[edit.php] Error showing image-load summary:', summaryErr);
+                });
             }).catch(function() {
                 $('#message').removeClass('d-none').html(
                     '<div class="alert alert-warning">Existing photos could not be loaded. ' +
@@ -558,29 +578,29 @@ require_once $abs_us_root . $us_url_root . 'users/includes/html_footer.php'; //c
             }
         });
 
-        // Clear file-level errors when a new file is added
-        pond.on('addfile', function() {
-            $('#message').addClass('d-none');
+        // Clear file-level errors when a new file is added successfully
+        pond.on('addfile', function(error) {
+            if (!error) {
+                $('#message').addClass('d-none');
+            }
         });
 
-        document.getElementById('submit').addEventListener('click', function(e) {
+        const submitBtn = document.getElementById('submit');
+        submitBtn.addEventListener('click', function(e) {
             e.stopPropagation();
             e.preventDefault();
 
-            const btn = document.getElementById('submit');
-
-            const pondHasErrors = pond.getFiles().some(function(item) {
-                return item.status === FilePond.FileStatus.LOAD_ERROR ||
-                       item.status === FilePond.FileStatus.PROCESSING_ERROR;
+            const pondHasProcessingErrors = pond.getFiles().some(function(item) {
+                return item.status === FilePond.FileStatus.PROCESSING_ERROR;
             });
 
-            if (pondHasErrors) {
-                $('#message').removeClass('d-none').html('<div class="alert alert-primary">Error: One or more photos have errors. Please remove them and try again.</div>');
+            if (pondHasProcessingErrors) {
+                $('#message').removeClass('d-none').html('<div class="alert alert-danger">Error: One or more photos failed to upload. Please remove them and try again.</div>');
                 return;
             }
 
-            btn.disabled = true;
-            btn.textContent = 'Saving\u2026';
+            submitBtn.disabled = true;
+            submitBtn.textContent = 'Saving\u2026';
 
             // Only process new files — LOCAL files (already on server) don't need
             // client-side transform before submit; processing them caused the slow-save regression.
@@ -589,19 +609,16 @@ require_once $abs_us_root . $us_url_root . 'users/includes/html_footer.php'; //c
                 .map(function(item) { return item.id; });
 
             const handleProcessError = function(err) {
-                console.error('[form.php] Photo processing error:', err);
+                console.error('[edit.php] Photo processing error:', err);
                 $('#message').removeClass('d-none').html('<div class="alert alert-danger">An error occurred processing the photos. Please try again.</div>');
-                btn.disabled = false;
-                btn.textContent = btn.dataset.label;
+                submitBtn.disabled = false;
+                submitBtn.textContent = submitBtn.dataset.label;
             };
 
-            if (newFileIds.length > 0) {
-                pond.processFiles(newFileIds).then(function() {
-                    return submitCarForm();
-                }).catch(handleProcessError);
-            } else {
-                submitCarForm().catch(handleProcessError);
-            }
+            const submission = newFileIds.length > 0
+                ? pond.processFiles(newFileIds).then(submitCarForm)
+                : submitCarForm();
+            submission.catch(handleProcessError);
         });
 
         async function submitCarForm() {
@@ -657,15 +674,13 @@ require_once $abs_us_root . $us_url_root . 'users/includes/html_footer.php'; //c
                 if (data.success === true) {
                     window.location = '<?= $us_url_root ?>app/cars/details.php?car_id=' + data.cardetails.id;
                 } else {
-                    const btn = document.getElementById('submit');
-                    btn.disabled = false;
-                    btn.textContent = btn.dataset.label;
+                    submitBtn.disabled = false;
+                    submitBtn.textContent = submitBtn.dataset.label;
                     displayValidationErrors(data);
                 }
             } catch (err) {
-                const btn = document.getElementById('submit');
-                btn.disabled = false;
-                btn.textContent = btn.dataset.label;
+                submitBtn.disabled = false;
+                submitBtn.textContent = submitBtn.dataset.label;
                 $('#message').removeClass('d-none').html('<div class="alert alert-danger">An error occurred. Please try again.</div>');
             }
         }
