@@ -480,7 +480,7 @@ class ElanRegistryOwner
         try {
             $this->_db->query("BEGIN");
 
-            if (!$this->_db->update($this->profileTableName, $this->_data->id, $updateFields, 'user_id')) {
+            if (!$this->_db->update($this->profileTableName, ['user_id' => $this->_data->id], $updateFields)) {
                 $this->_db->query("ROLLBACK");
                 logger($this->_data->id, LogCategories::LOG_CATEGORY_OWNER_ACTIONS, "updateLocation() DB update failed: " . $this->_db->errorString());
                 return false;
