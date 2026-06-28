@@ -18,6 +18,7 @@
 
 - **Chassis validation feedback** ([#754](https://github.com/unibrain1/elanregistry/issues/754)): Users now see an error message when chassis availability check fails silently instead of receiving no feedback.
 - **Image load error recovery** ([#755](https://github.com/unibrain1/elanregistry/issues/755)): FilePond now shows clear error feedback when existing car images fail to load, rather than silently dropping them.
+- **fetchImages API failure feedback** ([#1031](https://github.com/unibrain1/elanregistry/issues/1031)): When the server returns a failure response or the network call fails during photo hydration, the edit form now shows the warning banner and disables submit — preventing silent photo data loss from a form submit in an unknown state.
 - **Consistent validation error display** ([#1019](https://github.com/unibrain1/elanregistry/issues/1019)): Form validation errors now use a single consistent visual pattern across all three previously inconsistent display paths.
 
 ## Technical Changes
@@ -52,3 +53,4 @@
 - [#1019](https://github.com/unibrain1/elanregistry/issues/1019) — ux: standardize validation error display across all three error mechanisms
 - [#1020](https://github.com/unibrain1/elanregistry/issues/1020) — admin: show chassis override indicator and add filter to Invalid Chassis Numbers table
 - [#1021](https://github.com/unibrain1/elanregistry/issues/1021) — feat: replace "One of the Cars" with cycling car showcase
+- [#1031](https://github.com/unibrain1/elanregistry/issues/1031) — fix: fetchImages silent failures — data.success guard and outer catch logging
