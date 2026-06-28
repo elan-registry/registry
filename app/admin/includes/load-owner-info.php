@@ -31,6 +31,7 @@ if (!isset($_POST['csrf']) || !Token::check($_POST['csrf'])) {
 // Validate owner ID
 $ownerId = (int)($_POST['owner_id'] ?? 0);
 if ($ownerId <= 0) {
+    http_response_code(400);
     echo '<div class="alert alert-danger">Invalid owner ID</div>';
     exit;
 }
@@ -41,6 +42,7 @@ try {
     $ownerData = $owner->data();
 
     if (!$ownerData) {
+        http_response_code(404);
         echo '<div class="alert alert-warning">Owner not found</div>';
         exit;
     }
