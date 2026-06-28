@@ -1,5 +1,8 @@
 <?php
 declare(strict_types=1);
+
+use ElanRegistry\OwnerView;
+
 /**
  * tab-owner_mgmt.php
  * Manage OwnersTab Content
@@ -221,29 +224,24 @@ function getDuplicateEmailDetails($db, $email): array {
 
     // Fetch all cars in one query if there are any
     $carsById = [];
+    $allCarIds = array_filter(array_unique($allCarIds), fn(int $id) => $id > 0);
+
     if (!empty($allCarIds)) {
-        $allCarIds = array_unique($allCarIds);
-        $allCarIds = array_filter($allCarIds, function($id) { return $id > 0; });
+        // Build WHERE clause with prepared statement placeholders
+        $placeholders = implode(',', array_fill(0, count($allCarIds), '?'));
 
-        if (!empty($allCarIds)) {
-            // Build WHERE clause with prepared statement placeholders
-            $placeholderCount = count($allCarIds);
-            $placeholders = array_fill(0, $placeholderCount, '?');
-            $whereclause = implode(',', $placeholders);
+        // phpcs:disable - False positive: Using prepared statements correctly
+        $carsQ = $db->query(
+            "SELECT id, model, series, year, chassis, type
+             FROM cars
+             WHERE id IN (" . $placeholders . ")
+             ORDER BY id ASC",
+            $allCarIds
+        );
+        // phpcs:enable
 
-            // phpcs:disable - False positive: Using prepared statements correctly
-            $carsQ = $db->query(
-                "SELECT id, model, series, year, chassis, type
-                 FROM cars
-                 WHERE id IN (" . $whereclause . ")
-                 ORDER BY id ASC",
-                $allCarIds
-            );
-            // phpcs:enable
-
-            foreach ($carsQ->results() as $car) {
-                $carsById[$car->id] = $car;
-            }
+        foreach ($carsQ->results() as $car) {
+            $carsById[$car->id] = $car;
         }
     }
 
@@ -282,19 +280,25 @@ foreach ($dataQualityReports as $report) {
     $qualityIssues += $report['count'];
 }
 $ownerQualityScore = $totalOwners > 0 ? max(0, 100 - (($qualityIssues / $totalOwners) * 100)) : 100;
+$ownerQualityClass = OwnerView::qualityBadgeClass($ownerQualityScore);
+$ownerQualityIcon  = match (true) {
+    $ownerQualityScore >= 80 => 'check-circle',
+    $ownerQualityScore >= 60 => 'exclamation-triangle',
+    default                  => 'times-circle',
+};
 ?>
 
 <!-- Owner Quality Summary Cards -->
 <div class="row mb-4">
     <!-- Data Health Card -->
     <div class="col-lg-3 col-md-6 mb-3">
-        <div class="card border-<?= $ownerQualityScore >= 80 ? 'success' : ($ownerQualityScore >= 60 ? 'warning' : 'danger') ?> h-100">
+        <div class="card border-<?= $ownerQualityClass ?> h-100">
             <div class="card-body text-center">
-                <div class="text-<?= $ownerQualityScore >= 80 ? 'success' : ($ownerQualityScore >= 60 ? 'warning' : 'danger') ?> mb-3">
-                    <i class="fas fa-<?= $ownerQualityScore >= 80 ? 'check-circle' : ($ownerQualityScore >= 60 ? 'exclamation-triangle' : 'times-circle') ?>" style="font-size: 2.5rem;"></i>
+                <div class="text-<?= $ownerQualityClass ?> mb-3">
+                    <i class="fas fa-<?= $ownerQualityIcon ?>" style="font-size: 2.5rem;"></i>
                 </div>
                 <h5 class="card-title">Data Health</h5>
-                <h3 class="text-<?= $ownerQualityScore >= 80 ? 'success' : ($ownerQualityScore >= 60 ? 'warning' : 'danger') ?> mb-2"><?= number_format($ownerQualityScore, 1) ?>%</h3>
+                <h3 class="text-<?= $ownerQualityClass ?> mb-2"><?= number_format($ownerQualityScore, 1) ?>%</h3>
                 <p class="card-text small text-muted">Overall owner data quality score</p>
             </div>
         </div>
@@ -424,8 +428,6 @@ $ownerQualityScore = $totalOwners > 0 ? max(0, 100 - (($qualityIssues / $totalOw
                                                                     <?php foreach ($owners as $index => $owner) {
                                                                         $isNewer = $index === count($owners) - 1 && count($owners) > 1;
                                                                         $cardClass = $isNewer ? 'owner-comparison-card newer-owner' : 'owner-comparison-card';
-                                                                        $qualityClass = $owner->quality_score >= 80 ? 'success' :
-                                                                                       ($owner->quality_score >= 60 ? 'warning' : 'danger');
                                                                     ?>
                                                                         <div class="col-lg-6 col-md-6 mb-3 d-flex">
                                                                             <div class="card <?= $cardClass ?> w-100">
@@ -438,9 +440,7 @@ $ownerQualityScore = $totalOwners > 0 ? max(0, 100 - (($qualityIssues / $totalOw
                                                                                         <?php } ?>
                                                                                     </div>
                                                                                     <div>
-                                                                                        <span class="badge text-bg-<?= $qualityClass ?> badge-sm">
-                                                                                            Quality: <?= $owner->quality_score ?>%
-                                                                                        </span>
+                                                                                        <span class="badge text-bg-<?= OwnerView::qualityBadgeClass((float) $owner->quality_score) ?> badge-sm">Quality: <?= $owner->quality_score ?>%</span>
                                                                                     </div>
                                                                                 </div>
 
@@ -492,10 +492,7 @@ $ownerQualityScore = $totalOwners > 0 ? max(0, 100 - (($qualityIssues / $totalOw
                                                                                             <p class="mb-1 <?= $fieldMatches['city'] && $fieldMatches['state'] && $fieldMatches['country'] ? 'field-match' : 'field-differ' ?>">
                                                                                                 <strong>Location:</strong>
                                                                                                 <span class="field-value">
-                                                                                                    <?php
-                                                                                                    $locationParts = array_filter([$owner->city, $owner->state, $owner->country]);
-                                                                                                    echo htmlspecialchars(implode(', ', $locationParts) ?: 'Missing');
-                                                                                                    ?>
+                                                                                                    <?= OwnerView::displayLocation($owner) ?: 'Missing' // nosemgrep: php.lang.security.taint-unsafe-echo-tag.taint-unsafe-echo-tag ?>
                                                                                                 </span>
                                                                                                 <?= !($fieldMatches['city'] && $fieldMatches['state'] && $fieldMatches['country']) ?
                                                                                                     '<i class="fas fa-exclamation-triangle text-warning ms-1" title="Different values"></i>' :
@@ -571,7 +568,7 @@ $ownerQualityScore = $totalOwners > 0 ? max(0, 100 - (($qualityIssues / $totalOw
                                                                                             <button type="button" class="btn btn-sm btn-outline-warning"
                                                                                                     onclick="openAdminContactModal(
                                                                                                         {id: '<?= $owner->car_count ?>', year: '', model: '', chassis: '', series: ''},
-                                                                                                        {id: '<?= $owner->id ?>', name: '<?= htmlspecialchars(trim(($owner->fname ?: '') . ' ' . ($owner->lname ?: ''))) ?>', email: '<?= htmlspecialchars($owner->email) ?>'},
+                                                                                                        {id: '<?= $owner->id ?>', name: <?= htmlspecialchars(json_encode(trim(($owner->fname ?? '') . ' ' . ($owner->lname ?? ''))), ENT_COMPAT, 'UTF-8') // nosemgrep: php.lang.security.taint-unsafe-echo-tag.taint-unsafe-echo-tag ?>, email: <?= htmlspecialchars(json_encode($owner->email ?? ''), ENT_COMPAT, 'UTF-8') // nosemgrep: php.lang.security.taint-unsafe-echo-tag.taint-unsafe-echo-tag ?>},
                                                                                                         'Duplicate Email Addresses'
                                                                                                     )"
                                                                                                     title="Contact Owner via Registry">
@@ -616,7 +613,7 @@ $ownerQualityScore = $totalOwners > 0 ? max(0, 100 - (($qualityIssues / $totalOw
                                                                 </td>
                                                                 <td>
                                                                     <?php if ($owner->fname || $owner->lname) { ?>
-                                                                        <?= htmlspecialchars(trim($owner->fname . ' ' . $owner->lname)) ?>
+                                                                        <?= OwnerView::displayName($owner) // nosemgrep: php.lang.security.taint-unsafe-echo-tag.taint-unsafe-echo-tag ?>
                                                                     <?php } else { ?>
                                                                         <span class="badge text-bg-warning">Missing Name</span>
                                                                     <?php } ?>
@@ -624,9 +621,7 @@ $ownerQualityScore = $totalOwners > 0 ? max(0, 100 - (($qualityIssues / $totalOw
                                                                 <td><?= htmlspecialchars($owner->email) ?></td>
                                                                 <td>
                                                                     <?php if ($owner->city || $owner->state || $owner->country) { ?>
-                                                                        <?= htmlspecialchars($owner->city ? $owner->city . ', ' : '') ?>
-                                                                        <?= htmlspecialchars($owner->state ? $owner->state . ', ' : '') ?>
-                                                                        <?= htmlspecialchars($owner->country ?: '') ?>
+                                                                        <?= OwnerView::displayLocation($owner) // nosemgrep: php.lang.security.taint-unsafe-echo-tag.taint-unsafe-echo-tag ?>
                                                                     <?php } else { ?>
                                                                         <span class="badge text-bg-warning">Missing Location</span>
                                                                     <?php } ?>
@@ -667,7 +662,7 @@ $ownerQualityScore = $totalOwners > 0 ? max(0, 100 - (($qualityIssues / $totalOw
                                                                     <button type="button" class="btn btn-sm btn-outline-warning"
                                                                             onclick="openAdminContactModal(
                                                                                 {id: '<?= $owner->car_count ?? 'Multiple' ?>', year: '', model: '', chassis: '', series: ''},
-                                                                                {id: '<?= $owner->id ?>', name: '<?= htmlspecialchars(trim($owner->fname . ' ' . $owner->lname)) ?>', email: '<?= htmlspecialchars($owner->email) ?>'},
+                                                                                {id: '<?= $owner->id ?>', name: <?= htmlspecialchars(json_encode(trim(($owner->fname ?? '') . ' ' . ($owner->lname ?? ''))), ENT_COMPAT, 'UTF-8') // nosemgrep: php.lang.security.taint-unsafe-echo-tag.taint-unsafe-echo-tag ?>, email: <?= htmlspecialchars(json_encode($owner->email ?? ''), ENT_COMPAT, 'UTF-8') // nosemgrep: php.lang.security.taint-unsafe-echo-tag.taint-unsafe-echo-tag ?>},
                                                                                 'Missing Information'
                                                                             )" title="Contact Owner via Registry">
                                                                         <i class="fas fa-envelope"></i>

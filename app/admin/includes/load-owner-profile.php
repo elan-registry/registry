@@ -3,6 +3,7 @@ declare(strict_types=1);
 
 use ElanRegistry\Exceptions\ElanRegistryException;
 use ElanRegistry\Exceptions\OwnerNotFoundException;
+use ElanRegistry\OwnerView;
 
 /**
  * load-owner-profile.php
@@ -59,7 +60,7 @@ try {
         <input type="hidden" name="csrf" value="<?= Token::generate() ?>">
 
         <!-- Profile Quality Indicator -->
-        <div class="alert alert-<?= $qualityScore >= 80 ? 'success' : ($qualityScore >= 60 ? 'warning' : 'danger') ?> mb-4">
+        <div class="alert alert-<?= OwnerView::qualityBadgeClass($qualityScore) ?> mb-4">
             <div class="row align-items-center">
                 <div class="col-md-8">
                     <h6 class="mb-1">
@@ -72,10 +73,7 @@ try {
                     <?php endif; ?>
                 </div>
                 <div class="col-md-4 text-end">
-                    <div class="progress" style="height: 8px;">
-                        <div class="progress-bar bg-<?= $qualityScore >= 80 ? 'success' : ($qualityScore >= 60 ? 'warning' : 'danger') ?>"
-                             style="width: <?= (int)$qualityScore // nosemgrep: php.lang.security.taint-unsafe-echo-tag.taint-unsafe-echo-tag ?>%"></div>
-                    </div>
+                    <?= OwnerView::displayQualityProgressBar($qualityScore) // nosemgrep: php.lang.security.taint-unsafe-echo-tag.taint-unsafe-echo-tag ?>
                 </div>
             </div>
         </div>
