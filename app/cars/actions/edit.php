@@ -47,11 +47,20 @@ $targetURL = $us_url_root . $settings->elan_image_dir;
 
 //Forms posted now process it
 if (!empty($_POST)) {
+    if (!$user->isLoggedIn()) {
+        ApiResponse::forbidden('Login required')
+            ->withLogging(0, LogCategories::LOG_CATEGORY_ACCESS_DENIED, 'Unauthenticated access attempt to edit.php')
+            ->send();
+    }
+
     $token = Input::get('csrf');
     if (!Token::check($token)) {
-        include_once($abs_us_root . $us_url_root . 'usersc/scripts/token_error.php');
-    } else {
-        $db = DB::getInstance();
+        ApiResponse::forbidden('Invalid CSRF token')
+            ->withLogging($user->data()->id, LogCategories::LOG_CATEGORY_SECURITY, 'CSRF check failed in edit.php')
+            ->send();
+    }
+
+    $db = DB::getInstance();
 
         $action = Input::get('action');
         switch ($action) {
@@ -212,7 +221,6 @@ if (!empty($_POST)) {
                     ->withLogging($user->data()->id, LogCategories::LOG_CATEGORY_VALIDATION_ERROR, 'Invalid action: ' . $action)
                     ->send();
         }
-    } // End Post with data
 }
 
 
