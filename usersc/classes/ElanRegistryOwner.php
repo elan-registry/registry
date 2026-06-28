@@ -625,21 +625,21 @@ class ElanRegistryOwner
 
                 case 'website':
                     if (!empty($value)) {
-                        $sanitized = preg_replace('/[^a-zA-Z0-9\-._~:\/?#\[\]@!$&\'()*+,;=%]/', '', trim($value));
-                        if (!filter_var($sanitized, FILTER_VALIDATE_URL)) {
+                        $trimmed = trim($value);
+                        if (!filter_var($trimmed, FILTER_VALIDATE_URL)) {
                             throw OwnerValidationException::withUserMessage(
                                 'Website URL must start with http:// or https:// (e.g. https://example.com)',
                                 'Website URL must start with http:// or https:// (e.g. https://example.com)'
                             );
                         }
-                        $scheme = strtolower((string) parse_url($sanitized, PHP_URL_SCHEME));
+                        $scheme = strtolower((string) parse_url($trimmed, PHP_URL_SCHEME));
                         if (!in_array($scheme, ['http', 'https'], true)) {
                             throw OwnerValidationException::withUserMessage(
                                 'Website URL must use http:// or https:// — other protocols are not allowed',
                                 'Website URL must use http:// or https:// — other protocols are not allowed'
                             );
                         }
-                        $validatedFields[$key] = $sanitized;
+                        $validatedFields[$key] = $trimmed;
                     }
                     break;
 
