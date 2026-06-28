@@ -1,7 +1,8 @@
 <?php
 if (count(get_included_files()) == 1) { die(); }
 
-$_baseUrl = htmlspecialchars($us_url_root, ENT_QUOTES, 'UTF-8');
+$_baseUrl  = htmlspecialchars($us_url_root, ENT_QUOTES, 'UTF-8');
+$heroCarId = (int)($heroCarId ?? 0);
 
 switch ($context) {
     case 'owner_detail': ?>

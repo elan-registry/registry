@@ -2,7 +2,7 @@
 //
 // Regression test for issue #840: missing htmlspecialchars() on car detail fields.
 //
-// Verifies that car field display areas in details.php and account_bottom_hook.php
+// Verifies that car field display areas in details.php and usersc/account.php
 // render as plain text without raw HTML characters that would indicate unescaped
 // output. These fields were "accidentally safe" before the encode-at-output reform
 // because Input::sanitize() pre-encoded values at storage time.

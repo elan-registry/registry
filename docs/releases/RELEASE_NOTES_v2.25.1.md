@@ -5,7 +5,7 @@
 
 ## Required Actions After Deployment
 
-None
+- Run **`01-remove-account-hooks.php`** (`app/admin/scripts/fix/`) — removes the two legacy `account.php` hook rows from `us_plugin_hooks`. The full-page override (`usersc/account.php`) renders the account page directly; the hook rows are no longer needed. Script is idempotent.
 
 ## User-Facing Changes
 

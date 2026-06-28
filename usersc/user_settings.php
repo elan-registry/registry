@@ -302,15 +302,14 @@ if (!empty($_POST)) {
 
         //Update Website
         if ($profiledetails->website != $_POST['website']) {
-            $website = Input::raw('website');
-            $fields = ['website' => $website];
-
             // Sanitize URL by removing illegal characters manually (replacing deprecated FILTER_SANITIZE_URL)
-            $fields['website'] = preg_replace('/[^a-zA-Z0-9\-._~:/?#[\]@!$&\'()*+,;=%]/', '', trim($fields['website']));
+            $websiteUrl = preg_replace('/[^a-zA-Z0-9\-._~:\/?#\[\]@!$&\'()*+,;=%]/', '', trim(Input::raw('website') ?? ''));
+            $fields = ['website' => $websiteUrl];
 
-            // Validate URL format then restrict to http/https schemes
-            $websiteUrl = $fields['website'];
-            if (!filter_var($websiteUrl, FILTER_VALIDATE_URL)) {
+            // Validate URL format then restrict to http/https schemes (empty = clear the field)
+            if ($websiteUrl === '') {
+                $db->update('profiles', $profileId, $fields);
+            } elseif (!filter_var($websiteUrl, FILTER_VALIDATE_URL)) {
                 $errors[] = 'Website URL must start with http:// or https:// (e.g. https://example.com)';
                 logger((int)$user->data()->id, LogCategories::LOG_CATEGORY_VALIDATION_ERROR, "Invalid website URL rejected for user {$userId}");
             } else {
@@ -470,8 +469,13 @@ if (!empty($_POST)) {
             usSuccess($success);
         }
     }
-    
-    // Messages will be displayed by UserSpice session system in template
+
+    // PRG pattern: redirect after POST so refresh doesn't re-submit
+    if (!empty($errors)) {
+        Redirect::to($us_url_root . 'users/user_settings.php');
+    } else {
+        Redirect::to($us_url_root . 'usersc/account.php');
+    }
 }
 // mod to allow edited values to be shown in form after update
 $user2 = new User();
@@ -604,7 +608,7 @@ if ($userQ2->count() > 0) {
 
                         <input type="hidden" name="csrf" value="<?= Token::generate(); ?>" />
                         <p><input class='btn btn-primary' type='submit' value='Update' /></p>
-                        <p><a class="btn btn-info" href="../users/account.php">Cancel</a></p>
+                        <p><a class="btn btn-info" href="<?= htmlspecialchars($us_url_root . 'usersc/account.php', ENT_QUOTES, 'UTF-8') ?>">Cancel</a></p>
 
                     </form>
                     <?php
