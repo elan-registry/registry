@@ -28,7 +28,7 @@ if ($navActive === '') {
         'register'   => ['/users/join.php', '/usersc/join.php'],
         'login'      => ['/users/login.php', '/usersc/login.php'],
         'admin'      => ['/app/admin/', '/docs/admin/', '/users/admin.php'],
-        'account'    => ['/users/account.php', '/app/contact/', '/users/logout.php'],
+        'account'    => ['/users/account.php', '/usersc/account.php', '/app/contact/', '/users/logout.php'],
     ];
     foreach ($sections as $key => $patterns) {
         foreach ($patterns as $p) {
@@ -197,7 +197,7 @@ if ($navActive === '') {
       </a>
       <ul class='us_sub-menu' aria-labelledby='menu_1_638b71f2ed026_dropdown_account' style=' z-index: 50;'>
         <li class=''>
-          <a class='' href='<?= $us_url_root ?>users/account.php'>
+          <a class='' href='<?= $us_url_root ?>usersc/account.php'>
             <i class='fa fa-user'></i>
             <span class='labelText'>Account</span>
           </a>
