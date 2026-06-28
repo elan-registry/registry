@@ -29,8 +29,10 @@ try {
 
     if (!checkRateLimit('transfer_request', $user->data()->id)) {
         logger((int)$user->data()->id, LogCategories::LOG_CATEGORY_ACCESS_DENIED, 'request-transfer.php: rate limit exceeded from ' . $remote_addr);
+        recordRateLimit('transfer_request', false, (int)$user->data()->id);
         throw new CarTransferException('Too many transfer requests. Please wait before trying again.');
     }
+    recordRateLimit('transfer_request', true, (int)$user->data()->id);
 
     // Get and validate input
     $chassis = trim(Input::get('chassis'));

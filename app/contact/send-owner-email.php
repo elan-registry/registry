@@ -37,7 +37,10 @@ if ($post_attempted) {
         $senderId = ($user->isLoggedIn() && $user->data()) ? (int)$user->data()->id : null;
         if (!checkRateLimit('owner_contact_email', $senderId)) {
             logger($senderId ?? 0, LogCategories::LOG_CATEGORY_ACCESS_DENIED, 'send-owner-email.php: rate limit exceeded from ' . $remote_addr);
+            recordRateLimit('owner_contact_email', false, $senderId);
             $errors[] = 'Too many messages sent. Please wait before sending another.';
+        } else {
+            recordRateLimit('owner_contact_email', true, $senderId);
         }
 
         $action = Input::get('action');

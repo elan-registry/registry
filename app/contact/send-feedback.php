@@ -60,7 +60,10 @@ if ($post_attempted) {
 
     if (!checkRateLimit('feedback_submission', $logUserId ?: null)) {
         logger($logUserId, LogCategories::LOG_CATEGORY_ACCESS_DENIED, 'send-feedback.php: rate limit exceeded from ' . $remote_addr);
+        recordRateLimit('feedback_submission', false, $logUserId ?: null);
         $errors[] = 'Too many submissions. Please wait before trying again.';
+    } else {
+        recordRateLimit('feedback_submission', true, $logUserId ?: null);
     }
 
     $email_to = getFeedbackEmail();
