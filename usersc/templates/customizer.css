@@ -270,6 +270,11 @@
   font-size: 0.7rem;
   padding: 0.25rem 0.5rem;
 }
+/* Lotus Yellow badge — text must always use --er-on-accent (near-black), NEVER white */
+.er-badge-yellow {
+  background-color: var(--er-accent);
+  color: var(--er-on-accent);
+}
 
 /* Compact alert variant */
 .alert-sm {

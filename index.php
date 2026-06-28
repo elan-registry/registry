@@ -160,7 +160,7 @@ try {
 								 data-is-new="<?= $carData->is_new ? '1' : '0' ?>">
 								<?php if ($carData->is_new) { ?>
 								<div class="text-end pb-1">
-									<span class="badge text-bg-primary badge-sm">NEW</span>
+									<span class="badge er-badge-yellow badge-sm">NEW</span>
 								</div>
 								<?php } ?>
 								<?= CarView::displayCarousel($showcaseCar, (int) $carData->id) ?>
