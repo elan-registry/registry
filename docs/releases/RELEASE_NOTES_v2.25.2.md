@@ -1,7 +1,7 @@
 # Elan Registry v2.25.2 Release Notes
 
 **Release Date:** TBD
-**Type:** Patch Release - Security Hardening & Code Quality
+**Type:** Patch Release - Security Hardening & Critical Bug Fixes
 
 ## Required Actions After Deployment
 
@@ -9,26 +9,29 @@ None.
 
 ## User-Facing Changes
 
-None in this release.
+No changes visible to public registry visitors.
 
 ## Admin-Facing Changes
 
-### Improvements
+### Bug Fixes
 
-- **Rate limiting for contact and transfer endpoints** ([#973](https://github.com/unibrain1/elanregistry/issues/973)): Owner-contact email, feedback form, and car transfer requests are now rate-limited to prevent abuse.
-- **Schema operations endpoint hardened** ([#974](https://github.com/unibrain1/elanregistry/issues/974)): Removed unsafe GET action fallback; CSRF check now unconditional; server paths no longer exposed in backup responses.
-- **Car edit endpoint authentication fix** ([#972](https://github.com/unibrain1/elanregistry/issues/972)): Added explicit login guard before CSRF check and replaced legacy token error include with structured API response.
-- **DB update call signature fix** ([#942](https://github.com/unibrain1/elanregistry/issues/942)): Fixed inconsistent argument order in `ElanRegistryOwner::updateLocation()` to match UserSpice DB API.
-- **Website URL validation cleanup** ([#943](https://github.com/unibrain1/elanregistry/issues/943)): Removed redundant pre-sanitization regex from URL validation, preventing false rejection of valid URLs.
-- **Unified quality score calculation** ([#961](https://github.com/unibrain1/elanregistry/issues/961)): Centralized duplicate quality score logic from 5 admin files into `ElanRegistryOwner` class methods.
-- **HTTP status codes for owner info endpoints** ([#981](https://github.com/unibrain1/elanregistry/issues/981)): `load-owner-info.php` and `load-owner-profile.php` now return proper 400/404 status codes on error.
+- **Owner location update** ([#942](https://github.com/unibrain1/elanregistry/issues/942)): Fixes a crash when saving owner locations caused by a mismatched DB update call signature.
+- **Website URL validation** ([#943](https://github.com/unibrain1/elanregistry/issues/943)): Owner website URLs are now validated and stored verbatim without silent character-stripping.
+- **Quality score consistency** ([#961](https://github.com/unibrain1/elanregistry/issues/961)): Owner profile quality scores now match between the admin owner management tab and the owner profile page.
+- **HTTP status codes** ([#981](https://github.com/unibrain1/elanregistry/issues/981)): Admin AJAX owner-info and owner-profile endpoints now return HTTP 400 for invalid IDs and 404 for not-found owners instead of 200.
+
+### Security
+
+- **Rate limiting** ([#973](https://github.com/unibrain1/elanregistry/issues/973)): Adds rate limits to the owner contact email, feedback submission, and car transfer request endpoints to prevent abuse.
+- **Login guard** ([#972](https://github.com/unibrain1/elanregistry/issues/972)): Adds an explicit `isLoggedIn()` check to the `edit.php` AJAX endpoint as defense-in-depth.
+- **Schema operations hardening** ([#974](https://github.com/unibrain1/elanregistry/issues/974)): Removes the GET action fallback from `schema-operations.php` and tightens the CSRF guard to reject non-POST requests immediately.
 
 ## Issues Resolved
 
 - [#942](https://github.com/unibrain1/elanregistry/issues/942) — Fix inconsistent DB update signature in ElanRegistryOwner::updateLocation()
-- [#943](https://github.com/unibrain1/elanregistry/issues/943) — Remove preg_replace pre-sanitization from website URL validation
-- [#961](https://github.com/unibrain1/elanregistry/issues/961) — Unify quality score calculation across admin files
-- [#972](https://github.com/unibrain1/elanregistry/issues/972) — Fix CSRF/auth ordering and structured error response in car edit endpoint
-- [#973](https://github.com/unibrain1/elanregistry/issues/973) — Add rate limiting to owner-contact email, feedback form, and transfer request
-- [#974](https://github.com/unibrain1/elanregistry/issues/974) — Remove GET action fallback and harden CSRF guard in schema-operations endpoint
-- [#981](https://github.com/unibrain1/elanregistry/issues/981) — Return proper HTTP status codes from owner info AJAX endpoints
+- [#943](https://github.com/unibrain1/elanregistry/issues/943) — ElanRegistryOwner website validation silently mutates input instead of rejecting it
+- [#961](https://github.com/unibrain1/elanregistry/issues/961) — fix: quality score calculation diverges between tab-owner_mgmt.php and ElanRegistryOwner class
+- [#972](https://github.com/unibrain1/elanregistry/issues/972) — security: add explicit isLoggedIn() guard to edit.php AJAX endpoint
+- [#973](https://github.com/unibrain1/elanregistry/issues/973) — security: add rate limiting to owner contact email, feedback, and transfer request endpoints
+- [#974](https://github.com/unibrain1/elanregistry/issues/974) — security: remove GET action fallback from schema-operations.php
+- [#981](https://github.com/unibrain1/elanregistry/issues/981) — fix: return correct HTTP status codes from load-owner-info and load-owner-profile on validation errors
