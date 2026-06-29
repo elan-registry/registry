@@ -79,7 +79,7 @@ test.describe('Registry-Specific AJAX Endpoints', () => {
     // Navigate to car listing page to establish session
     await page.goto('app/cars/index.php', { waitUntil: 'networkidle' });
 
-    const response = await page.request.post('app/action/getDataTables.php', {
+    const response = await page.request.post('app/api/cars/list.php', {
       form: {
         draw: '1',
         start: '0',

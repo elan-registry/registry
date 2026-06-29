@@ -54,21 +54,20 @@ class InputSanitizationTest extends TestCase
     }
     
     /**
-     * Test that getDataTables.php properly sanitizes search input
+     * Test that the app/api/cars/ endpoints properly sanitize search input
      */
-    public function testGetDataTablesInputSanitization(): void
+    public function testCarsListEndpointSearchInputSanitization(): void
     {
         // Mock search data with potential XSS
         $mockSearchData = [
             'value' => '<script>alert("xss")</script>test'
         ];
-        
+
         Input::setMockData([
             'csrf' => 'valid_token',
             'draw' => '1',
-            'start' => '0', 
+            'start' => '0',
             'length' => '10',
-            'table' => 'cars',
             'search' => $mockSearchData
         ]);
         
