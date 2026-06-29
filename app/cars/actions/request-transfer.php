@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use ElanRegistry\Exceptions\CarTransferException;
+use ElanRegistry\Transfer\TransferEmailService;
 
 /**
  * request-transfer.php - Car Transfer Request Handler
@@ -152,38 +153,28 @@ try {
     $emailMessages = [];
 
     try {
-        require_once $abs_us_root . $us_url_root . 'app/includes/transfer_email_notifications.php';
+        $emailService = new TransferEmailService(DB::getInstance(), 'email', $abs_us_root . $us_url_root);
 
         // Set time limit for email operations
         set_time_limit(60);
 
         // Send notification to current owner with error handling
         try {
-            $ownerNotificationSent = sendTransferRequestNotification($transferRequestId);
-            if ($ownerNotificationSent) {
-                logger($user->data()->id, LogCategories::LOG_CATEGORY_EMAIL_SUCCESS, "Transfer request notification sent to current owner for request #$transferRequestId");
-                $emailMessages[] = 'Current owner notified';
-            } else {
-                logger($user->data()->id, LogCategories::LOG_CATEGORY_EMAIL_ERROR, "Failed to send transfer request notification to current owner for request #$transferRequestId");
-                $emailMessages[] = 'Owner notification failed';
-            }
+            $emailMessages[] = $emailService->sendRequest($transferRequestId)
+                ? 'Current owner notified'
+                : 'Owner notification failed';
         } catch (Exception $emailEx) {
-            logger($user->data()->id, LogCategories::LOG_CATEGORY_EMAIL_ERROR, "Owner notification exception for request #$transferRequestId: " . $emailEx->getMessage());
+            logger($user->data()->id, LogCategories::LOG_CATEGORY_EMAIL_ERROR, "Unexpected exception sending owner notification for request #$transferRequestId: " . $emailEx->getMessage());
             $emailMessages[] = 'Owner notification error';
         }
 
         // Send alert to administrators with error handling
         try {
-            $adminAlertSent = sendTransferRequestAdminAlert($transferRequestId);
-            if ($adminAlertSent) {
-                logger($user->data()->id, LogCategories::LOG_CATEGORY_EMAIL_SUCCESS, "Transfer request admin alert sent for request #$transferRequestId");
-                $emailMessages[] = 'Administrators notified';
-            } else {
-                logger($user->data()->id, LogCategories::LOG_CATEGORY_EMAIL_ERROR, "Failed to send transfer request admin alert for request #$transferRequestId");
-                $emailMessages[] = 'Admin notification failed';
-            }
+            $emailMessages[] = $emailService->sendAdminAlert($transferRequestId)
+                ? 'Administrators notified'
+                : 'Admin notification failed';
         } catch (Exception $emailEx) {
-            logger($user->data()->id, LogCategories::LOG_CATEGORY_EMAIL_ERROR, "Admin notification exception for request #$transferRequestId: " . $emailEx->getMessage());
+            logger($user->data()->id, LogCategories::LOG_CATEGORY_EMAIL_ERROR, "Unexpected exception sending admin alert for request #$transferRequestId: " . $emailEx->getMessage());
             $emailMessages[] = 'Admin notification error';
         }
 

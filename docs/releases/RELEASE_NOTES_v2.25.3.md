@@ -24,6 +24,11 @@ public URL changes.
 
 - **Admin page navigation** ([#1039](https://github.com/unibrain1/elanregistry/issues/1039)): Admin dashboard, maintenance, and design system pages renamed for clarity; design system page now linked from admin navigation.
 
+## Technical Changes
+
+- Extract transfer email notifications into `TransferEmailService` class with injectable DB and mailer
+  dependencies, enabling unit testing without a live database or email server (#1030)
+
 ## Issues Resolved
 
 - [#528](https://github.com/unibrain1/elanregistry/issues/528) — Migrate remaining admin settings $.ajax() calls to ElanRegistryAPI
