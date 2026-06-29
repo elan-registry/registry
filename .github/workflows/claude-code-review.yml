@@ -101,8 +101,24 @@ jobs:
         uses: anthropics/claude-code-action@v1
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
-
           use_sticky_comment: false
+          settings: |
+            {
+              "allowedTools": [
+                "Task",
+                "Read",
+                "Grep",
+                "Glob",
+                "Bash(git diff:*)",
+                "Bash(git log:*)",
+                "Bash(git show:*)",
+                "Bash(git diff --name-only:*)",
+                "Bash(php -l *)",
+                "Bash(composer check:php)",
+                "Bash(vendor/bin/phpstan analyse:*)",
+                "Bash(npm run lint)"
+              ]
+            }
           prompt: |
             You are reviewing an **issue-level PR** targeting a milestone
             branch. Context:
@@ -174,7 +190,6 @@ jobs:
             Each item must cite `file:line` and the specific rule or reason.
             Keep it concise: if there's nothing to say, say so briefly.
 
-          claude_args: "--allowedTools Task,Read,Grep,Glob,Bash(git diff:*),Bash(git log:*),Bash(git show:*),Bash(git diff --name-only:*),Bash(php -l *),Bash(composer check:php),Bash(vendor/bin/phpstan analyse:*),Bash(npm run lint)"
 
   # Deep review for milestone -> main PRs. Runs on open / ready_for_review
   # and when `deep-review` is explicitly requested.
@@ -231,6 +246,26 @@ jobs:
           use_sticky_comment: true
           # Opus is worth it here: this runs once per milestone, not per push.
           model: "claude-opus-4-6"
+          settings: |
+            {
+              "allowedTools": [
+                "Task",
+                "Read",
+                "Grep",
+                "Glob",
+                "Bash(git diff:*)",
+                "Bash(git log:*)",
+                "Bash(git show:*)",
+                "Bash(git diff --name-only:*)",
+                "Bash(gh pr list:*)",
+                "Bash(gh pr view:*)",
+                "Bash(cat merged-prs.txt)",
+                "Bash(php -l *)",
+                "Bash(composer check:php)",
+                "Bash(vendor/bin/phpstan analyse:*)",
+                "Bash(npm run lint)"
+              ]
+            }
           prompt: |
             You are reviewing a **milestone release PR** targeting `main`.
 
@@ -323,7 +358,6 @@ jobs:
             straight to the source. Do not restate per-line findings already
             addressed on the issue PRs — assume those are closed.
 
-          claude_args: "--allowedTools Task,Read,Grep,Glob,Bash(git diff:*),Bash(git log:*),Bash(git show:*),Bash(git diff --name-only:*),Bash(gh pr list:*),Bash(gh pr view:*),Bash(cat merged-prs.txt),Bash(php -l *),Bash(composer check:php),Bash(vendor/bin/phpstan analyse:*),Bash(npm run lint)"
 
 
   # Deep review triggered by a PR comment: `@claude deep-review`.
@@ -367,6 +401,24 @@ jobs:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           use_sticky_comment: true
           model: "claude-opus-4-6"
+          settings: |
+            {
+              "allowedTools": [
+                "Task",
+                "Read",
+                "Grep",
+                "Glob",
+                "Bash(git diff:*)",
+                "Bash(git log:*)",
+                "Bash(git show:*)",
+                "Bash(git diff --name-only:*)",
+                "Bash(gh pr view:*)",
+                "Bash(php -l *)",
+                "Bash(composer check:php)",
+                "Bash(vendor/bin/phpstan analyse:*)",
+                "Bash(npm run lint)"
+              ]
+            }
           prompt: |
             Deep review requested by `@claude deep-review` comment on
             PR #${{ github.event.issue.number }}.
@@ -392,5 +444,4 @@ jobs:
             Suggestions / Strengths / Action Plan sections. Every item must
             cite `file:line`.
 
-          claude_args: "--allowedTools Task,Read,Grep,Glob,Bash(git diff:*),Bash(git log:*),Bash(git show:*),Bash(git diff --name-only:*),Bash(gh pr view:*),Bash(php -l *),Bash(composer check:php),Bash(vendor/bin/phpstan analyse:*),Bash(npm run lint)"
 
