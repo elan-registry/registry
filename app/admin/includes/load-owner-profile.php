@@ -5,56 +5,44 @@ use ElanRegistry\Exceptions\ElanRegistryException;
 use ElanRegistry\Exceptions\OwnerNotFoundException;
 use ElanRegistry\OwnerView;
 
-/**
- * load-owner-profile.php
- * AJAX endpoint for loading owner profile editing form
- *
- * Returns HTML form for editing owner profiles with ElanRegistryOwner integration
- */
-
-// Include required files
 require_once '../../../users/init.php';
 
-// Security check - admin permission required
+header('Content-Type: application/json');
+
 if (!$user->isLoggedIn() || !isRegistryAdmin($user->data()->id)) {
     http_response_code(403);
-    echo '<div class="alert alert-danger">Unauthorized access</div>';
+    echo json_encode(['success' => false, 'message' => 'Unauthorized access']);
     exit;
 }
 
-// CSRF protection
 if (!isset($_POST['csrf']) || !Token::check($_POST['csrf'])) {
     http_response_code(400);
-    echo '<div class="alert alert-danger">Invalid CSRF token</div>';
+    echo json_encode(['success' => false, 'message' => 'Invalid CSRF token']);
     exit;
 }
 
-// Validate owner ID
 $ownerId = (int)($_POST['owner_id'] ?? 0);
 if ($ownerId <= 0) {
     http_response_code(400);
-    echo '<div class="alert alert-danger">Invalid owner ID</div>';
+    echo json_encode(['success' => false, 'message' => 'Invalid owner ID']);
     exit;
 }
 
+$obLevelBefore = ob_get_level();
 try {
-    // Load owner data using ElanRegistryOwner
+    ob_start();
     $owner = new ElanRegistryOwner($ownerId);
     $ownerData = $owner->data();
 
     if (!$ownerData) {
+        if (ob_get_level() > $obLevelBefore) ob_end_clean();
         http_response_code(404);
-        echo '<div class="alert alert-warning">Owner not found</div>';
+        echo json_encode(['success' => false, 'message' => 'Owner not found']);
         exit;
     }
 
-    // Get quality information
     $qualityScore = $owner->getProfileQualityScore();
     $missingFields = $owner->validateProfileCompleteness();
-
-    // Get country list for dropdown
-    $countryQuery = $db->query("SELECT DISTINCT name FROM country ORDER BY name");
-    $countries = $countryQuery->count() > 0 ? $countryQuery->results() : [];
 
     ?>
     <form id="ownerProfileUpdateForm" method="post">
@@ -191,7 +179,6 @@ try {
             $(this).data('original-value', $(this).val());
         });
 
-        // Initialize Location Picker for admin
         if (document.getElementById('location-picker-admin')) {
             const urlRoot = '<?php echo $us_url_root ?? '/'; ?>';
 
@@ -211,7 +198,6 @@ try {
                 required: false
             });
 
-            // Pre-populate with current location if available
             if (currentLocation.city && currentLocation.country) {
                 const displayText = [currentLocation.city, currentLocation.state, currentLocation.country]
                     .filter(Boolean).join(', ');
@@ -224,6 +210,7 @@ try {
     $('#ownerProfileUpdateForm').on('submit', function(e) {
         e.preventDefault();
 
+        const esc = NotificationHelper.escapeHtml;
         const formDataObj = {};
         $(this).serializeArray().forEach(function(item) {
             formDataObj[item.name] = item.value;
@@ -231,35 +218,32 @@ try {
         const submitBtn = $(this).find('button[type="submit"]');
         const originalText = submitBtn.html();
 
-        // Show loading state
         submitBtn.html('<i class="fas fa-spinner fa-spin"></i> Saving...').prop('disabled', true);
 
         new ElanRegistryAPI()
             .post('<?= $us_url_root ?>app/admin/includes/process-owner-update.php', formDataObj)
             .then(function(response) {
-                // Show success message
                 $('#ownerProfileForm').prepend(
                     '<div class="alert alert-success alert-dismissible fade show">' +
-                    '<i class="fas fa-check"></i> ' + response.message +
+                    '<i class="fas fa-check"></i> ' + esc(response.message) +
                     '<button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>' +
                     '</div>'
                 );
 
-                // Reload the profile form to show updated data
                 setTimeout(() => {
                     loadOwnerById(<?= $ownerId // nosemgrep: php.lang.security.taint-unsafe-echo-tag.taint-unsafe-echo-tag ?>);
                 }, 1500);
 
-                // Refresh search results if visible
                 const searchQuery = $('#ownerSearchInput').val();
                 if (searchQuery.length >= 2) {
                     searchOwners(searchQuery);
                 }
             })
             .catch(function(error) {
+                console.error('Owner profile update failed:', error);
                 $('#ownerProfileForm').prepend(
                     '<div class="alert alert-danger alert-dismissible fade show">' +
-                    '<i class="fas fa-exclamation-circle"></i> ' + (error.message || 'Update failed. Please try again.') +
+                    '<i class="fas fa-exclamation-circle"></i> ' + esc(error.message || 'Update failed. Please try again.') +
                     '<button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>' +
                     '</div>'
                 );
@@ -269,8 +253,8 @@ try {
             });
     });
 
-    // Sync location to cars function
     function syncLocationToCars(ownerId) {
+        const esc = NotificationHelper.escapeHtml;
         const btn = $('button[onclick="syncLocationToCars(' + ownerId + ')"]');
         const originalText = btn.html();
 
@@ -281,15 +265,16 @@ try {
             .then(function(response) {
                 $('#ownerProfileForm').prepend(
                     '<div class="alert alert-success alert-dismissible fade show">' +
-                    '<i class="fas fa-check"></i> ' + response.message +
+                    '<i class="fas fa-check"></i> ' + esc(response.message) +
                     '<button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>' +
                     '</div>'
                 );
             })
             .catch(function(error) {
+                console.error('Location sync failed:', error);
                 $('#ownerProfileForm').prepend(
                     '<div class="alert alert-danger alert-dismissible fade show">' +
-                    '<i class="fas fa-exclamation-circle"></i> ' + (error.message || 'Sync failed. Please try again.') +
+                    '<i class="fas fa-exclamation-circle"></i> ' + esc(error.message || 'Sync failed. Please try again.') +
                     '<button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>' +
                     '</div>'
                 );
@@ -302,14 +287,30 @@ try {
 
     <?php
 
+    $html = ob_get_clean();
+    $encoded = json_encode(['success' => true, 'html' => $html]);
+    if ($encoded === false) {
+        logger($user->data()->id, LogCategories::LOG_CATEGORY_SYSTEM_ERROR, 'Owner profile json_encode failed for owner ' . $ownerId . ': ' . json_last_error_msg());
+        http_response_code(500);
+        echo json_encode(['success' => false, 'message' => 'Failed to encode owner profile response.']);
+        exit;
+    }
+    echo $encoded;
+
 } catch (OwnerNotFoundException $e) {
+    if (ob_get_level() > $obLevelBefore) ob_end_clean();
     logger($user->data()->id, $e->getLogCategory(), 'Owner not found: ' . $e->getMessage());
-    echo '<div class="alert alert-danger">Owner not found. Please check the ID and try again.</div>';
+    http_response_code(404);
+    echo json_encode(['success' => false, 'message' => 'Owner not found. Please check the ID and try again.']);
 } catch (ElanRegistryException $e) {
+    if (ob_get_level() > $obLevelBefore) ob_end_clean();
     logger($user->data()->id, $e->getLogCategory(), 'Owner profile load failed: ' . $e->getMessage());
-    echo '<div class="alert alert-danger">' . htmlspecialchars($e->getUserMessage()) . '</div>';
+    http_response_code($e->getHttpStatusCode());
+    echo json_encode(['success' => false, 'message' => $e->getUserMessage()]);
 } catch (Exception $e) {
+    if (ob_get_level() > $obLevelBefore) ob_end_clean();
     logger($user->data()->id, LogCategories::LOG_CATEGORY_SYSTEM_ERROR, 'Owner profile load unexpected error: ' . $e->getMessage());
-    echo '<div class="alert alert-danger">Failed to load owner profile. Please try again.</div>';
+    http_response_code(500);
+    echo json_encode(['success' => false, 'message' => 'Failed to load owner profile. Please try again.']);
 }
 ?>
