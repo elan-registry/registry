@@ -33,14 +33,14 @@ if (!Token::check($token)) {
 
 try {
     $chassis = Input::raw('chassis');
-    if (empty($chassis)) {
+    if (trim($chassis) === '') {
         ApiResponse::error('Chassis number required')->send();
     }
 
     $carQuery = $db->query('SELECT id FROM cars WHERE chassis = ? LIMIT 1', [$chassis]);
     if ($carQuery->count() > 0) {
         ApiResponse::success('Car found')
-            ->withData('car_id', $carQuery->first()->id)
+            ->withData('car_id', (int) $carQuery->first()->id)
             ->send();
     } else {
         ApiResponse::success('No car found for this chassis number')
