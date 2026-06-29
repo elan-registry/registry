@@ -4,7 +4,11 @@ const { ensureLoggedIn } = require('./auth-helper.js');
 
 test.describe('Registry-Specific AJAX Endpoints', () => {
   test.beforeEach(async ({ page }) => {
-    // Most AJAX endpoints require authentication
+    // Most AJAX endpoints require authentication.
+    // Skip when test credentials are not configured in .env.local.
+    if (!process.env.TEST_USERNAME || !process.env.TEST_PASSWORD) {
+      test.skip(true, 'Set TEST_USERNAME and TEST_PASSWORD in .env.local to run authenticated tests');
+    }
     await ensureLoggedIn(page);
   });
 
@@ -137,6 +141,32 @@ test.describe('Registry-Specific AJAX Endpoints', () => {
 
     // Should either work (200) or require better authentication
     expect([200, 401, 403]).toContain(response.status());
+  });
+
+  test('NEW_CAR_IDS on car list page is a JSON int array', async ({ page }) => {
+    // Verifies that CarShowcaseService::getNewCarIds() emits valid JSON to the page.
+    // The const is embedded in the inline script block — shape must be int[].
+    await page.goto('app/cars/index.php', { waitUntil: 'networkidle' });
+
+    const newCarIds = await page.evaluate(() => {
+      if (typeof NEW_CAR_IDS === 'undefined') return null;
+      return NEW_CAR_IDS;
+    });
+
+    // Skip when page requires auth and we're unauthenticated — same guard as functionality.spec.js
+    if (newCarIds === null) {
+      return;
+    }
+
+    expect(Array.isArray(newCarIds)).toBe(true);
+
+    // Every element must be a positive integer (PHP json_encode on int[] produces JS numbers;
+    // > 0 catches cast failures in getNewCarIds() that would produce 0 or negative values)
+    newCarIds.forEach(id => {
+      expect(typeof id).toBe('number');
+      expect(Number.isInteger(id)).toBe(true);
+      expect(id).toBeGreaterThan(0);
+    });
   });
 
   test('car history endpoint returns DataTables JSON structure', async ({ page }) => {

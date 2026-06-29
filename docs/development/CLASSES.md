@@ -18,6 +18,7 @@ Use this table to choose the right class for your task:
 | --- | --- | --- | --- |
 | Load car by ID and get all data | Car | Direct database access, validation, history tracking | `$car = new Car(123)` |
 | Display cars in a list view | CarView | Read-only, optimized for rendering, no mutations | `$view = new CarView()` → `$view->getAllCars()` |
+| Display owner name, quality badge, location | OwnerView | Static HTML generation, no DB, consolidated display logic | `ElanRegistry\OwnerView::displayName($owner)` |
 | Update car data and create history | Car + update() | Automatic history via triggers, audit logging | `$car->update(['color' => 'Blue', ...])` |
 | Access owner profile and user data | ElanRegistryOwner | User profile integration, custom user methods | `$owner = new ElanRegistryOwner($uid)` |
 | Validate VIN/chassis format | ChassisValidator | Specialized validation for vehicle identifiers | `$validator->validate('26/0001')` |
@@ -204,6 +205,60 @@ CarView::displayCarSpecs($carData);
 - Uses constants to avoid magic numbers
 - Static methods for stateless operations
 - Integrates with Resize class for image processing
+
+### OwnerView
+
+**Location**: `/usersc/classes/OwnerView.php`
+
+**Namespace**: `ElanRegistry`
+
+**Purpose**: Static utility class for owner display and HTML generation. Consolidates
+duplicated owner presentation logic (name, quality score, location, contact info) that
+was previously scattered across 8+ template files.
+
+**Key Features**:
+
+- Owner name display with XSS escaping
+- Quality score badge and progress bar (Bootstrap contextual classes)
+- Location formatting (city, state, country)
+- Contact info with website scheme validation (http/https only)
+- Missing profile fields list with warning icons
+- No database operations (view layer only)
+
+**Common Usage**:
+
+```php
+use ElanRegistry\OwnerView;
+
+// Display owner name
+echo OwnerView::displayName($ownerData);          // "Jane Smith" (escaped)
+
+// Quality score badge
+echo OwnerView::displayQualityBadge($score);      // <span class="badge text-bg-success ...">
+
+// Progress bar
+echo OwnerView::displayQualityProgressBar($score);
+
+// Location
+echo OwnerView::displayLocation($ownerData);       // "Portland, Oregon, United States"
+
+// Contact info (email mailto + validated website link)
+echo OwnerView::displayContactInfo($ownerData);
+
+// Missing fields list
+$missing = $owner->validateProfileCompleteness();
+echo OwnerView::displayMissingFields($missing);
+```
+
+**Design Notes**:
+
+- Follows MVC pattern separation (view layer only, mirrors CarView pattern)
+- Quality score thresholds: ≥80 → success, ≥60 → warning, <60 → danger
+- All user data escaped with `htmlspecialchars($val, ENT_QUOTES, 'UTF-8')` at render time
+- Website URLs validated via `parse_url` scheme check; only `http`/`https` rendered as links
+- `qualityBadgeClass(float $score)` is public for direct use in templates
+
+---
 
 ### ElanRegistryOwner
 

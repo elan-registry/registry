@@ -9,6 +9,8 @@
  * @author Elan Registry Admin
  * @copyright 2025
  */
+use ElanRegistry\OwnerView;
+
 require_once '../../users/init.php';
 require_once $abs_us_root.$us_url_root.'usersc/includes/elanregistry_prep.php';
 
@@ -31,10 +33,10 @@ if (!securePage($php_self)) {
 						<h5 class="text-primary"><i class="fas fa-user-circle"></i> Your Information</h5>
 						<div class="bg-light p-3 rounded">
 							<div class="mb-2">
-								<strong><?= $user->data()->fname . ' ' . $user->data()->lname ?></strong>
+								<strong><?= OwnerView::displayName($user->data()) ?></strong>
 							</div>
 							<div class="text-muted">
-								<i class="fas fa-envelope"></i> <?= $user->data()->email ?>
+								<i class="fas fa-envelope"></i> <?= htmlspecialchars($user->data()->email, ENT_QUOTES, 'UTF-8') ?>
 							</div>
 							<small class="text-muted">User ID: <?= $user->data()->id ?></small>
 						</div>
@@ -79,7 +81,7 @@ if (!securePage($php_self)) {
 
 					<!-- Hidden Fields -->
 					<input type="hidden" name="id" value="<?= $user->data()->id ?>" />
-					<input type="hidden" name="name" value="<?= htmlspecialchars($user->data()->fname . ' ' . $user->data()->lname, ENT_QUOTES, 'UTF-8') ?>" />
+					<input type="hidden" name="name" value="<?= htmlspecialchars(($user->data()->fname ?? '') . ' ' . ($user->data()->lname ?? ''), ENT_QUOTES, 'UTF-8') ?>" />
 					<input type="hidden" name="email" value="<?= htmlspecialchars($user->data()->email, ENT_QUOTES, 'UTF-8') ?>" />
 					<input type="hidden" name="csrf" value="<?= htmlspecialchars(Token::generate(), ENT_QUOTES, 'UTF-8'); ?>" />
 					<input type="hidden" name="referrer" value="<?= htmlspecialchars($referer ?: $us_url_root, ENT_QUOTES, 'UTF-8'); ?>" />

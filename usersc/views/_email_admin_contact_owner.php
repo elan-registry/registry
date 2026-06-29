@@ -57,7 +57,7 @@ $content = "
 if ($hasCarContext) {
     $baseUrl = getBaseUrl();
     if ($hasQualityIssue) {
-        $content .= $emailTemplate->createButton('Update Your Car Record', $baseUrl . '/app/cars/form.php?car_id=' . (int)$carContext['id'], 'primary');
+        $content .= $emailTemplate->createButton('Update Your Car Record', $baseUrl . '/app/cars/edit.php?car_id=' . (int)$carContext['id'], 'primary');
     } else {
         $content .= $emailTemplate->createButton('View Your Car', $baseUrl . '/app/cars/details.php?car_id=' . (int)$carContext['id'], 'primary');
     }

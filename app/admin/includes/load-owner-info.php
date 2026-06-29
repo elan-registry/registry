@@ -3,6 +3,7 @@ declare(strict_types=1);
 
 use ElanRegistry\Exceptions\ElanRegistryException;
 use ElanRegistry\Exceptions\OwnerNotFoundException;
+use ElanRegistry\OwnerView;
 
 /**
  * load-owner-info.php
@@ -63,7 +64,7 @@ try {
         <div class="card-header bg-primary text-white">
             <h6 class="mb-0">
                 <i class="fas fa-user"></i>
-                <?= htmlspecialchars($ownerData->fname . ' ' . $ownerData->lname) ?>
+                <?= OwnerView::displayName($ownerData) // nosemgrep: php.lang.security.taint-unsafe-echo-tag.taint-unsafe-echo-tag ?>
             </h6>
         </div>
         <div class="card-body">
@@ -73,7 +74,7 @@ try {
                     <small>Cars Owned</small>
                 </div>
                 <div class="col-4">
-                    <h4 class="text-<?= $qualityScore >= 80 ? 'success' : ($qualityScore >= 60 ? 'warning' : 'danger') ?>">
+                    <h4 class="text-<?= OwnerView::qualityBadgeClass($qualityScore) ?>">
                         <?= (int)$qualityScore // nosemgrep: php.lang.security.taint-unsafe-echo-tag.taint-unsafe-echo-tag ?>%
                     </h4>
                     <small>Profile Quality</small>
@@ -88,46 +89,28 @@ try {
 
             <div class="text-center">
                 <strong>User ID:</strong> <?= $ownerId // nosemgrep: php.lang.security.taint-unsafe-echo-tag.taint-unsafe-echo-tag ?><br>
-                <strong>Email:</strong> <a href="mailto:<?= htmlspecialchars($ownerData->email) ?>"><?= htmlspecialchars($ownerData->email) ?></a><br>
-                <?php
-                $ownerWebsiteScheme = !empty($ownerData->website)
-                    ? strtolower((string) parse_url((string) $ownerData->website, PHP_URL_SCHEME))
-                    : '';
-                if (!empty($ownerData->website) && in_array($ownerWebsiteScheme, ['http', 'https'], true)):
-                ?>
-                    <strong>Website:</strong> <a href="<?= htmlspecialchars($ownerData->website, ENT_QUOTES, 'UTF-8') ?>" target="_blank" rel="noopener noreferrer"><?= htmlspecialchars($ownerData->website, ENT_QUOTES, 'UTF-8') ?></a><br>
-                <?php endif; ?>
+                <strong>Contact:</strong> <?= OwnerView::displayContactInfo($ownerData) // nosemgrep: php.lang.security.taint-unsafe-echo-tag.taint-unsafe-echo-tag ?><br>
                 <strong>Location:</strong>
-                <?php
-                $location = array_filter([$ownerData->city, $ownerData->state, $ownerData->country]);
-                echo !empty($location) ? htmlspecialchars(implode(', ', $location)) : 'Not specified';
-                ?>
+                <?= OwnerView::displayLocation($ownerData) ?: 'Not specified' // nosemgrep: php.lang.security.taint-unsafe-echo-tag.taint-unsafe-echo-tag ?>
             </div>
         </div>
     </div>
 
     <!-- Data Quality Card -->
-    <div class="card border-<?= $qualityScore >= 80 ? 'success' : ($qualityScore >= 60 ? 'warning' : 'danger') ?> mb-3">
-        <div class="card-header bg-<?= $qualityScore >= 80 ? 'success' : ($qualityScore >= 60 ? 'warning' : 'danger') ?> text-white">
+    <div class="card border-<?= OwnerView::qualityBadgeClass($qualityScore) ?> mb-3">
+        <div class="card-header bg-<?= OwnerView::qualityBadgeClass($qualityScore) ?> text-white">
             <h6 class="mb-0">
                 <i class="fas fa-clipboard-check"></i> Data Quality
             </h6>
         </div>
         <div class="card-body">
-            <div class="progress mb-2">
-                <div class="progress-bar bg-<?= $qualityScore >= 80 ? 'success' : ($qualityScore >= 60 ? 'warning' : 'danger') ?>"
-                     style="width: <?= (int)$qualityScore // nosemgrep: php.lang.security.taint-unsafe-echo-tag.taint-unsafe-echo-tag ?>%">
-                    <?= (int)$qualityScore // nosemgrep: php.lang.security.taint-unsafe-echo-tag.taint-unsafe-echo-tag ?>%
-                </div>
+            <div class="mb-2">
+                <?= OwnerView::displayQualityProgressBar($qualityScore, '1rem') // nosemgrep: php.lang.security.taint-unsafe-echo-tag.taint-unsafe-echo-tag ?>
             </div>
 
             <?php if (!empty($missingFields)): ?>
                 <h6 class="text-danger">Missing Fields:</h6>
-                <ul class="list-unstyled">
-                    <?php foreach ($missingFields as $field): ?>
-                        <li><i class="fas fa-exclamation-triangle text-warning"></i> <?= htmlspecialchars($field) ?></li>
-                    <?php endforeach; ?>
-                </ul>
+                <?= OwnerView::displayMissingFields($missingFields) // nosemgrep: php.lang.security.taint-unsafe-echo-tag.taint-unsafe-echo-tag ?>
             <?php else: ?>
                 <div class="text-success">
                     <i class="fas fa-check-circle"></i> Profile is complete!

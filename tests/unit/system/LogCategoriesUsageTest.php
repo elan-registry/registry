@@ -183,7 +183,7 @@ class LogCategoriesUsageTest extends TestCase
      */
     public function testFormPhpJsUsesElanRegistryAPI(): void
     {
-        $filePath = $this->rootDir . '/app/cars/form.php';
+        $filePath = $this->rootDir . '/app/cars/edit.php';
         if (!file_exists($filePath)) {
             $this->markTestSkipped('form.php not found');
         }

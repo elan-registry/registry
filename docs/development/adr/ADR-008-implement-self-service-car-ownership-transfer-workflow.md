@@ -292,7 +292,7 @@ Dedicated button on car detail page to initiate transfer, visible even before us
 | Email templates | [/usersc/views/emails/](../../usersc/views/emails/) (4 templates) |
 | Admin UI (requests table) | [/app/admin/includes/tab-car_mgmt.php](../../app/admin/includes/tab-car_mgmt.php) |
 | Admin JS handlers | [/app/admin/assets/manage-consolidated.js](../../app/admin/assets/manage-consolidated.js) |
-| Owner UI modals | [/app/cars/form.php](../../app/cars/form.php) |
+| Owner UI modals | [/app/cars/edit.php](../../app/cars/edit.php) |
 | Chassis check UI | [/app/cars/includes/_edit_car_1.php](../../app/cars/includes/_edit_car_1.php) |
 | Database schema | [/database/1-schema.sql](../../database/1-schema.sql) |
 | Integration tests | [/tests/integration/transfer/CarTransferWorkflowTest.php](../../tests/integration/transfer/CarTransferWorkflowTest.php) |

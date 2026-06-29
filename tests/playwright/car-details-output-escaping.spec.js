@@ -2,16 +2,16 @@
 //
 // Regression test for issue #840: missing htmlspecialchars() on car detail fields.
 //
-// Verifies that car field display areas in details.php and account_bottom_hook.php
+// Verifies that car field display areas in details.php and usersc/account.php
 // render as plain text without raw HTML characters that would indicate unescaped
 // output. These fields were "accidentally safe" before the encode-at-output reform
 // because Input::sanitize() pre-encoded values at storage time.
 //
-// Requires local MAMP at http://localhost:9999/elan_registry
+// Requires local MAMP at http://localhost:9999/elan-registry
 
 const { test, expect } = require('@playwright/test');
 
-const DETAILS_URL = '/app/cars/details.php?car_id=1';
+const DETAILS_URL = 'app/cars/details.php?car_id=1091';
 
 test.describe('Car details — output escaping (issue #840)', () => {
 
@@ -33,7 +33,7 @@ test.describe('Car details — output escaping (issue #840)', () => {
 
     test('hero quick-facts fields do not contain raw HTML tag characters', async ({ page }) => {
         // .fw-bold.fs-5 divs inside the hero card hold chassis, color, engine, and registry ID
-        const heroFields = page.locator('.card.bg-info .fw-bold.fs-5');
+        const heroFields = page.locator('.card.bg-primary .fw-bold.fs-5');
         const count = await heroFields.count();
         expect(count).toBeGreaterThan(0);
 

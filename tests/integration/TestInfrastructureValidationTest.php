@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-require_once __DIR__ . '/../IntegrationTestCase.php';
+require_once __DIR__ . '/IntegrationTestCase.php';
 
 /**
  * Test Infrastructure Validation
@@ -27,7 +27,7 @@ final class TestInfrastructureValidationTest extends IntegrationTestCase
      */
     public function testFileSystemAccess(): void
     {
-        $projectRoot = dirname(__DIR__, 3);
+        $projectRoot = dirname(__DIR__, 2);
 
         // Test that we can access project files
         $this->assertDirectoryExists($projectRoot . '/app');
@@ -41,7 +41,7 @@ final class TestInfrastructureValidationTest extends IntegrationTestCase
      */
     public function testTestDirectoryStructure(): void
     {
-        $testsDir = dirname(__DIR__, 2);
+        $testsDir = dirname(__DIR__, 1);
 
         $this->assertDirectoryExists($testsDir . '/unit');
         $this->assertDirectoryExists($testsDir . '/integration');
@@ -54,7 +54,7 @@ final class TestInfrastructureValidationTest extends IntegrationTestCase
      */
     public function testConfigurationFiles(): void
     {
-        $projectRoot = dirname(__DIR__, 3);
+        $projectRoot = dirname(__DIR__, 2);
 
         $this->assertFileExists($projectRoot . '/phpunit.xml');
         $this->assertFileExists($projectRoot . '/playwright.config.js');

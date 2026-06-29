@@ -115,7 +115,7 @@ if (!empty($_GET)) {
                                                 <i class="fas fa-hashtag me-3 fa-lg"></i>
                                                 <div>
                                                     <div class="text-white-75 fw-medium mb-1">Registry ID</div>
-                                                    <div class="fw-bold fs-5"><?= $carData->id ?></div>
+                                                    <div class="fw-bold fs-5"><?= (int)$carData->id ?></div>
                                                 </div>
                                             </div>
                                         </div>
@@ -149,60 +149,18 @@ if (!empty($_GET)) {
                                     </div>
                                 </div>
                                 <div class="col-md-4 text-md-end">
-                                    <?php
-                                    if (isset($user) && $user->isLoggedIn()) {
-                                        $isOwner = ($user->data()->id === $car->data()->user_id);
-                                        $isAdmin = isRegistryAdmin($user->data()->id); // Administrator (2) or Editor (3)
-
-                                        if ($isOwner) { ?>
-                                            <form method="POST" action="<?= $us_url_root ?>app/cars/form.php" class="d-inline">
-                                                <input type="hidden" name="csrf" value="<?= Token::generate(); ?>" />
-                                                <input type="hidden" name="action" value="updateCar" />
-                                                <input type="hidden" name="car_id" id="car_id" value="<?= $carData->id ?>" />
-                                                <button class="btn btn-light btn-lg" type="submit">
-                                                    <i class="fas fa-edit"></i> Update Car
-                                                </button>
-                                            </form>
-                                        <?php } elseif ($isAdmin) { ?>
-                                            <div class="alert alert-warning mb-2">
-                                                <i class="fas fa-shield-alt"></i> <strong>Administrative Override:</strong>
-                                                You are editing a car that you do not own using Administrator/Editor privileges.
-                                            </div>
-                                            <form method="POST" action="<?= $us_url_root ?>app/cars/form.php" class="d-inline me-2">
-                                                <input type="hidden" name="csrf" value="<?= Token::generate(); ?>" />
-                                                <input type="hidden" name="action" value="updateCar" />
-                                                <input type="hidden" name="car_id" id="car_id" value="<?= $carData->id ?>" />
-                                                <input type="hidden" name="admin_override" value="1" />
-                                                <button class="btn btn-warning btn-lg" type="submit">
-                                                    <i class="fas fa-edit"></i> Admin Edit Car
-                                                </button>
-                                            </form>
-                                            <form method="POST" action="<?= $us_url_root ?>app/contact/owner.php" class="d-inline">
-                                                <input type="hidden" name="csrf" value="<?= Token::generate(); ?>" />
-                                                <input type="hidden" name="action" value="contact_owner" />
-                                                <input type="hidden" name="car_id" id="car_id" value="<?= $carData->id ?>" />
-                                                <button class="btn btn-light btn-lg" type="submit">
-                                                    <i class="fas fa-envelope"></i> Contact Owner
-                                                </button>
-                                            </form>
                                         <?php
-                                        } else {
-                                        ?>
-                                            <form method="POST" action="<?= $us_url_root ?>app/contact/owner.php" class="d-inline">
-                                                <input type="hidden" name="csrf" value="<?= Token::generate(); ?>" />
-                                                <input type="hidden" name="action" value="contact_owner" />
-                                                <input type="hidden" name="car_id" id="car_id" value="<?= $carData->id ?>" />
-                                                <button class="btn btn-light btn-lg" type="submit">
-                                                    <i class="fas fa-envelope"></i> Contact Owner
-                                                </button>
-                                            </form>
-                                    <?php
-                                        }
-                                    } else { ?>
-                                        <a href="<?= htmlspecialchars($us_url_root . 'users/login.php', ENT_QUOTES, 'UTF-8') ?>" class="btn btn-outline-light btn-sm">
-                                            <i class="fas fa-sign-in-alt me-1"></i> Log in to contact owner
-                                        </a>
-                                    <?php }
+                                    if (!$user->isLoggedIn()) {
+                                        $context = 'guest_detail';
+                                    } elseif ($user->data()->id === $carData->user_id) {
+                                        $context = 'owner_detail';
+                                    } elseif (isRegistryAdmin($user->data()->id)) {
+                                        $context = 'admin_detail';
+                                    } else {
+                                        $context = 'visitor_detail';
+                                    }
+                                    $heroCarId = (int)$carData->id;
+                                    include $abs_us_root . $us_url_root . 'usersc/includes/partials/car_hero_actions.php';
                                     ?>
                                 </div>
                             </div>
@@ -213,134 +171,10 @@ if (!empty($_GET)) {
 
             <div class="row">
                 <div class="col-lg-6 mb-4 order-last order-lg-first">
-                    <!-- Vehicle Information Card -->
-                    <div class="card registry-card mb-4">
-                        <div class="card-header">
-                            <h3 class="mb-0"><i class="fas fa-car text-primary"></i> Vehicle Information</h3>
-                        </div>
-                        <div class="card-body">
-                            <!-- Basic Vehicle Details -->
-                            <dl class="row mb-4">
-                                <dt class="col-sm-4 text-muted">
-                                    <i class="fas fa-calendar text-primary"></i> Model Year
-                                </dt>
-                                <dd class="col-sm-8">
-                                    <?= htmlspecialchars((string)($carData->year ?? ''), ENT_QUOTES, 'UTF-8') ?>
-                                </dd>
-                                
-                                <dt class="col-sm-4 text-muted">
-                                    <i class="fas fa-tag text-primary"></i> Series
-                                </dt>
-                                <dd class="col-sm-8">
-                                    <?= htmlspecialchars($carData->series ?? '', ENT_QUOTES, 'UTF-8') ?>
-                                    <?= !empty($carData->variant) ? ' - ' . htmlspecialchars($carData->variant, ENT_QUOTES, 'UTF-8') : '' ?>
-                                </dd>
-                                
-                                <dt class="col-sm-4 text-muted">
-                                    <i class="fas fa-car text-primary"></i> Type
-                                </dt>
-                                <dd class="col-sm-8">
-                                    <?= $carData->type ? htmlspecialchars($carData->type, ENT_QUOTES, 'UTF-8') : '<em class="text-muted">Not specified</em>' ?>
-                                </dd>
-                                
-                                <dt class="col-sm-4 text-muted">
-                                    <i class="fas fa-barcode text-primary"></i> Chassis
-                                </dt>
-                                <dd class="col-sm-8">
-                                    <strong><?= $carData->chassis ? htmlspecialchars($carData->chassis, ENT_QUOTES, 'UTF-8') : '<em class="text-muted">Not specified</em>' ?></strong>
-                                    <?php if (!empty($carData->chassis_override)): ?>
-                                        <span class="badge bg-warning text-dark ms-1">
-                                            <i class="fas fa-exclamation-triangle"></i> Validation Override
-                                        </span>
-                                    <?php endif; ?>
-                                </dd>
-                            </dl>
-
-                            <hr>
-
-                            <!-- Appearance & Technical -->
-                            <h6 class="text-muted mb-3">
-                                <i class="fas fa-palette text-secondary"></i> Appearance & Technical
-                            </h6>
-                            <dl class="row mb-4">
-                                <dt class="col-sm-4 text-muted">Color</dt>
-                                <dd class="col-sm-8">
-                                    <?= $carData->color ? htmlspecialchars($carData->color, ENT_QUOTES, 'UTF-8') : '<em class="text-muted">Not specified</em>' ?>
-                                </dd>
-                                
-                                <dt class="col-sm-4 text-muted">Engine</dt>
-                                <dd class="col-sm-8">
-                                    <?= $carData->engine ? htmlspecialchars($carData->engine, ENT_QUOTES, 'UTF-8') : '<em class="text-muted">Not specified</em>' ?>
-                                </dd>
-                            </dl>
-
-                            <hr>
-
-                            <!-- Ownership & History -->
-                            <h6 class="text-muted mb-3">
-                                <i class="fas fa-history text-secondary"></i> Ownership & History
-                            </h6>
-                            <dl class="row mb-4">
-                                <?php if ($purchaseDate) { ?>
-                                <dt class="col-sm-4 text-muted">Purchase Date</dt>
-                                <dd class="col-sm-8">
-                                    <?= $purchaseDate->format('F j, Y') ?>
-                                </dd>
-                                <?php } ?>
-                                
-                                <?php if ($soldDate) { ?>
-                                <dt class="col-sm-4 text-muted">Sold Date</dt>
-                                <dd class="col-sm-8">
-                                    <?= $soldDate->format('F j, Y') ?>
-                                </dd>
-                                <?php } ?>
-                                
-                                <?php if (!empty($carData->website) && in_array(strtolower((string)parse_url($carData->website, PHP_URL_SCHEME)), ['http', 'https'], true)) { ?>
-                                <dt class="col-sm-4 text-muted">Website</dt>
-                                <dd class="col-sm-8">
-                                    <a href="<?= htmlspecialchars($carData->website, ENT_QUOTES, 'UTF-8') ?>" target="_blank" rel="noopener noreferrer" class="btn btn-outline-primary btn-sm">
-                                        <i class="fas fa-external-link-alt"></i> Visit Website
-                                    </a>
-                                </dd>
-                                <?php } ?>
-                            </dl>
-
-                            <?php if (!empty($carData->comments)) { ?>
-                            <hr>
-                            <h6 class="text-muted mb-3">
-                                <i class="fas fa-comment text-secondary"></i> Owner Comments
-                            </h6>
-                            <div class="bg-light p-3 rounded">
-                                <?= nl2br(htmlspecialchars($carData->comments, ENT_QUOTES, 'UTF-8')) ?>
-                            </div>
-                            <?php } ?>
-
-                            <!-- Registry Information -->
-                            <hr>
-                            <div class="row text-center">
-                                <div class="col-6">
-                                    <i class="fas fa-plus-circle text-success d-block mb-1"></i>
-                                    <small class="text-muted d-block">Added to Registry</small>
-                                    <strong>
-                                        <?php
-                                        $createdDate = new DateTime($car->data()->ctime);
-                                        echo $createdDate->format('M j, Y');
-                                        ?>
-                                    </strong>
-                                </div>
-                                <div class="col-6">
-                                    <i class="fas fa-edit text-info d-block mb-1"></i>
-                                    <small class="text-muted d-block">Last Updated</small>
-                                    <strong>
-                                        <?php
-                                        $modifiedDate = new DateTime($car->data()->mtime);
-                                        echo $modifiedDate->format('M j, Y');
-                                        ?>
-                                    </strong>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
+                    <?php
+                    $headingTag = 'h3';
+                    include $abs_us_root . $us_url_root . 'usersc/includes/partials/_vehicle_info_card.php';
+                    ?>
 
                     <!-- Owner Information Card -->
                     <div class="card registry-card">
@@ -374,7 +208,7 @@ if (!empty($_GET)) {
                             
                             <div class="text-center">
                                 <small class="text-muted">
-                                    <i class="fas fa-id-card"></i> Registry Owner ID: <?= $car->data()->user_id ?>
+                                    <i class="fas fa-id-card"></i> Registry Owner ID: <?= (int)$car->data()->user_id ?>
                                 </small>
                             </div>
                         </div>
@@ -424,70 +258,10 @@ if (!empty($_GET)) {
                     ?>
 
                     <!-- Factory Data Card -->
-                    <?php if (!is_null($factoryData)) { ?>
-                    <div class="card registry-card">
-                        <div class="card-header">
-                            <h3 class="mb-0">
-                                <i class="fas fa-industry text-primary"></i> Factory Data
-                                <span class="badge bg-warning ms-2">Unverified</span>
-                            </h3>
-                        </div>
-                        <div class="card-body">
-                            <div class="alert alert-primary mb-3">
-                                <i class="fas fa-exclamation-triangle"></i>
-                                <strong>Note:</strong> This information has not been verified against the official Lotus archives.
-                            </div>
-                            
-                            <dl class="row">
-                                <dt class="col-sm-5 text-muted">Production Year</dt>
-                                <dd class="col-sm-7"><?= $factoryData->year ? htmlspecialchars((string)$factoryData->year, ENT_QUOTES, 'UTF-8') : '<em class="text-muted">Unknown</em>' ?></dd>
-                                
-                                <dt class="col-sm-5 text-muted">Production Month</dt>
-                                <dd class="col-sm-7"><?= $factoryData->month ? htmlspecialchars((string)$factoryData->month, ENT_QUOTES, 'UTF-8') : '<em class="text-muted">Unknown</em>' ?></dd>
-                                
-                                <dt class="col-sm-5 text-muted">Production Batch</dt>
-                                <dd class="col-sm-7"><?= $factoryData->batch ? htmlspecialchars((string)$factoryData->batch, ENT_QUOTES, 'UTF-8') : '<em class="text-muted">Unknown</em>' ?></dd>
-                                
-                                <dt class="col-sm-5 text-muted">Factory Type</dt>
-                                <dd class="col-sm-7"><?= $factoryData->type ? htmlspecialchars((string)$factoryData->type, ENT_QUOTES, 'UTF-8') : '<em class="text-muted">Unknown</em>' ?></dd>
-                                
-                                <dt class="col-sm-5 text-muted">Factory Chassis</dt>
-                                <dd class="col-sm-7">
-                                    <strong><?= $factoryData->serial ? htmlspecialchars((string)$factoryData->serial, ENT_QUOTES, 'UTF-8') : '<em class="text-muted">Unknown</em>' ?></strong>
-                                </dd>
-                                
-                                <dt class="col-sm-5 text-muted">Chassis Suffix</dt>
-                                <dd class="col-sm-7"><?= $factoryData->suffix ? htmlspecialchars((string)$factoryData->suffix, ENT_QUOTES, 'UTF-8') : '<em class="text-muted">Unknown</em>' ?></dd>
-                                
-                                <dt class="col-sm-5 text-muted">Factory Engine</dt>
-                                <dd class="col-sm-7">
-                                    <?= htmlspecialchars((string)($factoryData->engineletter ?? ''), ENT_QUOTES, 'UTF-8') ?><?= htmlspecialchars((string)($factoryData->enginenumber ?? ''), ENT_QUOTES, 'UTF-8') ?>
-                                </dd>
-                                
-                                <dt class="col-sm-5 text-muted">Gearbox</dt>
-                                <dd class="col-sm-7"><?= $factoryData->gearbox ? htmlspecialchars((string)$factoryData->gearbox, ENT_QUOTES, 'UTF-8') : '<em class="text-muted">Unknown</em>' ?></dd>
-                                
-                                <dt class="col-sm-5 text-muted">Factory Color</dt>
-                                <dd class="col-sm-7"><?= $factoryData->color ? htmlspecialchars((string)$factoryData->color, ENT_QUOTES, 'UTF-8') : '<em class="text-muted">Unknown</em>' ?></dd>
-                                
-                                <?php if ($buildDate) { ?>
-                                <dt class="col-sm-5 text-muted">Build Date</dt>
-                                <dd class="col-sm-7">
-                                    <?= $buildDate->format('F j, Y') ?>
-                                </dd>
-                                <?php } ?>
-                            </dl>
-                            
-                            <?php if (!empty($factoryData->note)) { ?>
-                            <hr>
-                            <h6 class="text-muted mb-2">Factory Notes</h6>
-                            <div class="bg-light p-3 rounded">
-                                <small><?= htmlspecialchars($factoryData->note, ENT_QUOTES, 'UTF-8') ?></small>
-                            </div>
-                            <?php } ?>
-                        </div>
-                    </div>
-                    <?php } ?>
+                    <?php if (!is_null($factoryData)) {
+                        $headingTag = 'h3';
+                        include $abs_us_root . $us_url_root . 'usersc/includes/partials/_factory_data_card.php';
+                    } ?>
                 </div>
             </div>
 
@@ -577,10 +351,6 @@ if (!empty($_GET)) {
                                     <table><tr><td>Cell Colour Coding Information:</td><td class="table-success">Newly Inserted value</td><td class="table-danger">Deleted Value</td><td class="table-info">Changed value</td></tr></table>
                                 </div>
                             </div>
-                            
-                            <?php
-                            // $carHistory and $historyCount are loaded above
-                            ?>
                             
                             <!-- Summary Stats when collapsed -->
                             <div class="show" id="historySummary">
@@ -699,7 +469,7 @@ window.ELAN_CONFIG = {
 <script src='<?= $us_url_root ?>app/assets/js/imagedisplay.min.js'></script>
 <script src='<?= $us_url_root ?>app/assets/js/highlightDifferences.min.js'></script>
 <script>
-const img_root = '<?= $us_url_root . $settings->elan_image_dir ?>';
+const img_root = <?= json_encode($us_url_root . ($settings->elan_image_dir ?? '')) ?>;
 window.carDetailsConfig = {
     carId: <?= (int)$carData->id ?>,
     csrf: '<?= Token::generate() ?>'
