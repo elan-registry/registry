@@ -24,10 +24,11 @@ class LogCategoriesUsageTest extends TestCase
         'app/cars/actions/edit.php',
         'app/cars/actions/history.php',
         'app/cars/actions/validateChassis.php',
+        'app/cars/actions/request-transfer.php',
         'app/admin/includes/process-transfer-approve.php',
         'app/admin/includes/process-transfer-deny.php',
         'app/admin/includes/process-car-details.php',
-        'usersc/includes/transfer_email_notifications.php',
+        'app/includes/transfer_email_notifications.php',
     ];
 
     /**
@@ -240,7 +241,7 @@ class LogCategoriesUsageTest extends TestCase
      */
     public function testTransferAdminAlertLogsPartialFailureUnderErrorCategory(): void
     {
-        $filePath = $this->rootDir . '/usersc/includes/transfer_email_notifications.php';
+        $filePath = $this->rootDir . '/app/includes/transfer_email_notifications.php';
         if (!file_exists($filePath)) {
             $this->markTestSkipped('transfer_email_notifications.php not found');
         }
@@ -275,7 +276,7 @@ class LogCategoriesUsageTest extends TestCase
      */
     public function testTransferNotificationCatchBlocksIncludeExceptionDetail(): void
     {
-        $filePath = $this->rootDir . '/usersc/includes/transfer_email_notifications.php';
+        $filePath = $this->rootDir . '/app/includes/transfer_email_notifications.php';
         if (!file_exists($filePath)) {
             $this->markTestSkipped('transfer_email_notifications.php not found');
         }
