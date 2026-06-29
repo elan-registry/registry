@@ -254,7 +254,7 @@ $_baseUrl = htmlspecialchars($us_url_root, ENT_QUOTES, 'UTF-8');
                                 <?php
                                 $context   = 'owner_account';
                                 $heroCarId = $carId;
-                                include $abs_us_root . $us_url_root . 'usersc/includes/partials/car_hero_actions.php';
+                                include $abs_us_root . $us_url_root . 'app/views/cars/_car_hero_actions.php';
                                 ?>
                             </div>
                         </div>
@@ -282,7 +282,7 @@ $_baseUrl = htmlspecialchars($us_url_root, ENT_QUOTES, 'UTF-8');
                             <div class="col-lg-6 mb-3">
                                 <?php
                                 $headingTag = 'h4';
-                                include $abs_us_root . $us_url_root . 'usersc/includes/partials/_vehicle_info_card.php';
+                                include $abs_us_root . $us_url_root . 'app/views/cars/_vehicle_info_card.php';
                                 ?>
                             </div>
                             <div class="col-lg-6 mb-3">
@@ -301,7 +301,7 @@ $_baseUrl = htmlspecialchars($us_url_root, ENT_QUOTES, 'UTF-8');
                                 <?php if (!is_null($factoryData)): ?>
                                 <?php
                                 $headingTag = 'h4';
-                                include $abs_us_root . $us_url_root . 'usersc/includes/partials/_factory_data_card.php';
+                                include $abs_us_root . $us_url_root . 'app/views/cars/_factory_data_card.php';
                                 ?>
                                 <?php endif; ?>
                             </div>
