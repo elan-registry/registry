@@ -319,3 +319,20 @@ See [DEPLOYMENT.md](docs/development/DEPLOYMENT.md) for complete procedures.
   owner/repo pair above
 - Milestone descriptions should state the goal, not list issue numbers
 - Remove closed issues from milestones to keep progress tracking accurate
+
+## GitHub Wiki
+
+The wiki is a **separate git repository** cloned at
+`/Users/jimboone/Documents/Developer/Web/elan-registry-wiki`.
+
+To update the live wiki after editing files in `wiki/` on a branch:
+
+```bash
+cp wiki/<file>.md /Users/jimboone/Documents/Developer/Web/elan-registry-wiki/
+cd /Users/jimboone/Documents/Developer/Web/elan-registry-wiki
+git add <file>.md
+git commit -m "docs: <description>"
+git push
+```
+
+Do **not** clone to a temporary location — always use the permanent path above.
