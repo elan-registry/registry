@@ -257,14 +257,7 @@ function getDuplicateEmailDetails($db, $email): array {
             }
         }
 
-        // Calculate profile quality score
-        $qualityScore = 100;
-        if (!$owner->fname || $owner->fname === '') $qualityScore -= 20;
-        if (!$owner->lname || $owner->lname === '') $qualityScore -= 20;
-        if (!$owner->city || $owner->city === '') $qualityScore -= 15;
-        if (!$owner->state || $owner->state === '') $qualityScore -= 10;
-        if (!$owner->lat || !$owner->lon) $qualityScore -= 20;
-        $owner->quality_score = max(0, $qualityScore);
+        $owner->quality_score = ElanRegistryOwner::qualityScoreFromRow($owner);
     }
 
     return $owners;

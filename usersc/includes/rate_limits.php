@@ -120,6 +120,32 @@ $rateLimits = [
         'total_window' => 3600
     ],
 
+    // Contact and communication
+    'owner_contact_email' => [
+        'user_max' => 5,
+        'user_window' => 3600,
+        'ip_max' => 10,
+        'ip_window' => 3600,
+        'total_max' => 20,
+        'total_window' => 3600,
+    ],
+
+    'feedback_submission' => [
+        'ip_max' => 10,
+        'ip_window' => 3600,
+        'total_max' => 50,
+        'total_window' => 3600,
+    ],
+
+    'transfer_request' => [
+        'user_max' => 3,
+        'user_window' => 3600,
+        'ip_max' => 5,
+        'ip_window' => 3600,
+        'total_max' => 20,
+        'total_window' => 3600,
+    ],
+
     // Development/testing - very lenient
     'diagnostics' => [
         'ip_max' => 100,
