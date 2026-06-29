@@ -30,6 +30,9 @@ public URL changes.
   dependencies, enabling unit testing without a live database or email server (#1030)
 - Migrate 7 app-domain email templates from `usersc/views/` to `app/views/email/`, completing the
   `usersc/` boundary (framework customization only); two templates renamed for clarity (#1035)
+- Split `app/action/getDataTables.php` into three dedicated endpoints under `app/api/cars/`:
+  `list.php` (cars DataTable), `factory-list.php` (factory DataTable), `chassis-lookup.php`
+  (chassis-to-car-ID lookup); adds `JSON_THROW_ON_ERROR` to all JSON encoding (#1036)
 
 ## Issues Resolved
 

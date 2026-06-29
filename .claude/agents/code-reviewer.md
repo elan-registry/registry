@@ -38,7 +38,10 @@ Focus on:
 - Validated server globals (`$scheme`, `$is_https`, `$host`, etc.) instead of
   raw `$_SERVER`
 - `securePage($php_self)` check on protected pages
-- `$path` array in `/z_us_root.php` updated for new PHP directories
+- `$path` array in `/z_us_root.php` updated for new PHP directories **only
+  when they contain files that call `securePage()`** — pure API endpoints and
+  action handlers without `securePage()` (e.g. `app/action/`, `app/api/`) are
+  intentionally omitted
 - Use `getUserWithProfile($userId)` for combined user+profile data
 
 **Bug Detection**

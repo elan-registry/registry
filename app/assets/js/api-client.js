@@ -466,7 +466,7 @@ class ElanRegistryAPI {
      * @returns {Promise<Object>} Response data
      * @throws {ApiError} On request failure
      * @example
-     * const cars = await api.get('app/action/getDataTables.php', {
+     * const cars = await api.get('app/api/cars/list.php', {
      *     draw: 1,
      *     start: 0,
      *     length: 10

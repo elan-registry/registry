@@ -94,11 +94,10 @@ require_once $abs_us_root . $us_url_root . 'users/includes/html_footer.php'; //c
     'serverMethod': 'post',
 
     "ajax": {
-      "url": "../action/getDataTables.php",
+      "url": "../api/cars/factory-list.php",
       "dataSrc": "data",
       data: function(d) {
         d.csrf = csrf;
-        d.table = 'factory';
       }
     },
     'columns': [{
@@ -175,18 +174,18 @@ require_once $abs_us_root . $us_url_root . 'users/includes/html_footer.php'; //c
 
       // Make AJAX request to find car by chassis
       new ElanRegistryAPI()
-        .post(us_url_root + 'app/action/getDataTables.php', {
-          table: 'findCarByChassis',
+        .post(us_url_root + 'app/api/cars/chassis-lookup.php', {
           chassis: chassis,
           csrf: csrf
         })
         .then(function(response) {
-          if (response.car_id) {
+          const carId = parseInt(response.car_id, 10);
+          if (Number.isFinite(carId) && carId > 0) {
             // Car exists - create link to car details
-            const detailsUrl = us_url_root + 'app/cars/details.php?car_id=' + response.car_id;
+            const detailsUrl = us_url_root + 'app/cars/details.php?car_id=' + carId;
             container.html(
               '<a href="' + detailsUrl + '" class="btn btn-sm btn-primary" target="_blank">' +
-              '<i class="fas fa-car"></i> View Car #' + response.car_id +
+              '<i class="fas fa-car"></i> View Car #' + carId +
               '</a>'
             );
           } else {

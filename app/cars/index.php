@@ -157,11 +157,10 @@ window.ELAN_CONFIG = {
     serverSide: true,
     serverMethod: 'post',
     ajax: {
-      url: '../action/getDataTables.php',
+      url: '../api/cars/list.php',
       dataSrc: 'data',
       data: function(d) {
         d.csrf = csrf;
-        d.table = 'cars';
       }
     },
     columnDefs: [

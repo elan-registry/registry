@@ -402,9 +402,10 @@ This decision was made in v2.12.0 and is documented retroactively.
   - Integrated error handling with ElanRegistryException
   - Automatic logging via withLogging()
 
-- **1 endpoint** (partial adoption)
-  - `getDataTables.php`: Success path uses raw `echo json_encode()`, error paths use ApiResponse
-  - Lower priority for completion (admin-only)
+- **3 endpoints** (fully migrated in v2.25.3, issue #1036)
+  - `app/api/cars/list.php`, `app/api/cars/factory-list.php`: DataTables success path uses `json_encode(..., JSON_THROW_ON_ERROR)`
+    (DataTables expects raw shape, not `{success, message}` wrapper); error paths use ApiResponse
+  - `app/api/cars/chassis-lookup.php`: Fully ApiResponse-driven
 
 - **5 jQuery.ajax() calls** (deprecated, Issue #481)
   - 3 files in admin tab system: tab-cleanup.php, tab-settings.php, tab-owner_mgmt.php
@@ -427,7 +428,7 @@ This decision was made in v2.12.0 and is documented retroactively.
 - **New endpoints** are required to use Pattern A (ApiResponse + ElanRegistryAPI on frontend)
 - **Existing jQuery.ajax() calls** should be migrated incrementally as related features are updated (Issue #481 tracks this)
 - **Raw fetch() calls** in tab-system.php can remain during v2.13 but should be wrapped in ElanRegistryAPI pattern in future refactoring
-- **getDataTables.php** partial migration can be completed when admin list performance optimization work is undertaken
+- ~~**getDataTables.php** partial migration~~ — completed in v2.25.3 (issue #1036); split into three dedicated endpoints in `app/api/cars/`
 
 ## References
 
