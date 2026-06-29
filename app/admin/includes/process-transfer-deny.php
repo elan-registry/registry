@@ -71,7 +71,7 @@ try {
 
     // Send denial notification email with error handling
     try {
-        require_once $abs_us_root . $us_url_root . 'usersc/includes/transfer_email_notifications.php';
+        require_once $abs_us_root . $us_url_root . 'app/includes/transfer_email_notifications.php';
         $notificationSent = sendTransferResponseNotification(
             $transferId,
             false,

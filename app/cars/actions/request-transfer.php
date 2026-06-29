@@ -152,7 +152,7 @@ try {
     $emailMessages = [];
 
     try {
-        require_once '../../../usersc/includes/transfer_email_notifications.php';
+        require_once $abs_us_root . $us_url_root . 'app/includes/transfer_email_notifications.php';
 
         // Set time limit for email operations
         set_time_limit(60);
@@ -198,7 +198,7 @@ try {
     // Return success response
     ApiResponse::success('Transfer request submitted successfully.' . $emailStatus)
         ->withData('transfer_request_id', $transferRequestId)
-        ->withLogging($user->data()->id, 'CarTransfer', "Transfer request submitted for car ID {$existingCar->id}")
+        ->withLogging($user->data()->id, LogCategories::LOG_CATEGORY_CAR_TRANSFER, "Transfer request submitted for car ID {$existingCar->id}")
         ->send();
 
 } catch (CarTransferException $e) {
@@ -208,7 +208,7 @@ try {
 
 } catch (Exception $e) {
     ApiResponse::serverError('An unexpected error occurred while processing your transfer request.')
-        ->withLogging($user->data()->id ?? 0, 'SystemError', 'Transfer request system error: ' . $e->getMessage())
+        ->withLogging($user->data()->id ?? 0, LogCategories::LOG_CATEGORY_SYSTEM_ERROR, 'Transfer request system error: ' . $e->getMessage())
         ->send();
 }
 ?>
