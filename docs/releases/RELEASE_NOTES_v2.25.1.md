@@ -1,6 +1,6 @@
 # Elan Registry v2.25.1 Release Notes
 
-**Release Date:** [DATE]
+**Release Date:** 2026-06-28
 **Type:** Patch Release - UI & UX Improvements
 
 ## Required Actions After Deployment
