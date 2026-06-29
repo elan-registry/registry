@@ -14,7 +14,37 @@ class CarShowcaseService
     private const RECENT_LIMIT = 6;
     private const RANDOM_LIMIT = 6;
     private const NEW_DAYS = 90;
+    private const NEW_FLOOR = 5;
     private const IMAGE_CONDITION = "image <> '' AND image <> '[]' AND JSON_VALID(image) = 1 AND JSON_LENGTH(image) > 0 AND ctime IS NOT NULL";
+
+    /**
+     * Return IDs of all "new" cars: added within NEW_DAYS days OR among the
+     * NEW_FLOOR most-recently-added (all cars, regardless of images).
+     *
+     * @param object $db UserSpice database object
+     * @return list<int>
+     */
+    public static function getNewCarIds(object $db): array
+    {
+        $db->query("
+            SELECT id FROM cars
+            WHERE ctime > (NOW() - INTERVAL " . self::NEW_DAYS . " DAY)
+            UNION
+            SELECT id FROM (
+                SELECT id FROM cars
+                ORDER BY ctime DESC, id DESC
+                LIMIT " . self::NEW_FLOOR . "
+            ) AS recent
+        ");
+
+        if ($db->error()) {
+            logger(0, LogCategories::LOG_CATEGORY_DATABASE_ERROR, 'CarShowcaseService: getNewCarIds query failed: ' . $db->errorString());
+            return [];
+        }
+
+        $results = $db->results();
+        return array_map(fn($r) => (int) $r->id, $results ?: []);
+    }
 
     /**
      * Return a shuffled pool of up to 12 cars: RECENT_LIMIT most-recently-added
@@ -36,7 +66,7 @@ class CarShowcaseService
         )->results();
 
         if ($db->error()) {
-            logger(0, LogCategories::LOG_CATEGORY_DATABASE_ERROR, 'CarShowcaseService: recent query failed');
+            logger(0, LogCategories::LOG_CATEGORY_DATABASE_ERROR, 'CarShowcaseService: recent query failed: ' . $db->errorString());
             return [];
         }
 
@@ -53,23 +83,24 @@ class CarShowcaseService
         )->results();
 
         if ($db->error()) {
-            logger(0, LogCategories::LOG_CATEGORY_DATABASE_ERROR, 'CarShowcaseService: random query failed');
+            logger(0, LogCategories::LOG_CATEGORY_DATABASE_ERROR, 'CarShowcaseService: random query failed: ' . $db->errorString());
             return $recent;
         }
 
         $pool = array_merge($recent, $random);
         shuffle($pool);
 
-        // is_new: within NEW_DAYS OR in top-5 most-recently-added (ensures badges even on dormant registries)
-        $top5Ids = array_slice($recentIds, 0, 5);
+        // is_new: within NEW_DAYS OR in top-NEW_FLOOR most-recently-added (ensures badges even on dormant registries)
+        $topFloorIds = array_slice($recentIds, 0, self::NEW_FLOOR);
         $threshold = new \DateTime('-' . self::NEW_DAYS . ' days');
 
         foreach ($pool as $car) {
             try {
                 $carDate = new \DateTime((string) $car->ctime);
-                $car->is_new = ($carDate >= $threshold) || in_array((int) $car->id, $top5Ids, true);
-            } catch (\Exception) {
-                $car->is_new = in_array((int) $car->id, $top5Ids, true);
+                $car->is_new = ($carDate >= $threshold) || in_array((int) $car->id, $topFloorIds, true);
+            } catch (\Exception $e) {
+                logger(0, LogCategories::LOG_CATEGORY_DATABASE_ERROR, 'CarShowcaseService: invalid ctime for car id=' . ((int) $car->id) . ': ' . $e->getMessage());
+                $car->is_new = in_array((int) $car->id, $topFloorIds, true);
             }
         }
 

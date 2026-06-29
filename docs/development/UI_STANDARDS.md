@@ -165,8 +165,15 @@ For heading text inside each level:
 <span class="badge text-bg-warning">Unverified</span>   <!-- dark goldenrod, WCAG AA -->
 <span class="badge text-bg-secondary">Archived</span>
 <span class="badge text-bg-danger">Removed</span>
-<!-- Lotus Yellow badge — text must be --er-true-black, NEVER white -->
+<!-- Lotus Yellow badge — text must be --er-on-accent (near-black), NEVER white -->
 <span class="badge er-badge-yellow">Featured</span>
+<!-- NEW badge — recently added car (within 90 days OR top-5 most recent).
+     Uses Lotus Yellow so it pops visually against green primary buttons.
+     Text must be --er-on-accent (near-black), NEVER white.
+     Standalone use (e.g. showcase card): -->
+<span class="badge er-badge-yellow badge-sm">NEW</span>
+<!-- Inside a button (avoids wrapping in narrow table cells, e.g. car list Details column): -->
+<a class="btn btn-primary btn-sm" href="...">Details <span class="badge er-badge-yellow badge-sm">NEW</span></a>
 ```
 
 ### Alerts
