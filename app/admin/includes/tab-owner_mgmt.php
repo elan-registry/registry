@@ -114,7 +114,7 @@ if (isset($_GET['owner_id']) && is_numeric($_GET['owner_id'])) {
  * @return array Array of quality report data with counts and details
  * @throws InvalidArgumentException If database connection is invalid
  */
-function getOwnerQualityReports($db): array {
+function getOwnerQualityReports(DB $db): array {
     if (!$db || !is_object($db)) {
         throw new InvalidArgumentException('Valid database connection required');
     }
@@ -191,7 +191,7 @@ function getOwnerQualityReports($db): array {
  * @param string $email The duplicate email address
  * @return array Array of owner objects with profile and car count data
  */
-function getDuplicateEmailDetails($db, $email): array {
+function getDuplicateEmailDetails(DB $db, string $email): array {
     $ownersQ = $db->query("
         SELECT
             u.id, u.fname, u.lname, u.email, u.join_date, u.last_login,

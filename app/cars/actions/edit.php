@@ -891,7 +891,7 @@ function removeImage(int $carID, string $file): void
  * @param mixed $replacement New value
  * @return void
  */
-function arrayReplaceValue(array &$array, $value, $replacement): void
+function arrayReplaceValue(array &$array, mixed $value, mixed $replacement): void
 {
     $key = array_search($value, $array, true);
     if ($key !== false) {

@@ -103,7 +103,7 @@ class TransferEmailService
             ];
 
             ob_start();
-            include $this->basePath . 'usersc/views/_email_transfer_request.php';
+            include $this->basePath . 'app/views/email/_transfer_request.php';
             $emailBody = ob_get_clean();
 
             $subject = "[ELANREGISTRY] Car Ownership Transfer Request - {$carData->year} {$carData->series} {$carData->variant} (Chassis: {$carData->chassis})";
@@ -172,7 +172,7 @@ class TransferEmailService
             $reviewUrl = getBaseUrl() . '/app/admin/manage-consolidated.php';
 
             ob_start();
-            include $this->basePath . 'usersc/views/_email_transfer_admin.php';
+            include $this->basePath . 'app/views/email/_transfer_admin.php';
             $emailBody = ob_get_clean();
 
             $subject = "[ELANREGISTRY] ADMIN ALERT: Transfer Request #$transferRequestId - {$carData->year} {$carData->series} (Chassis: {$carData->chassis})";
@@ -245,7 +245,7 @@ class TransferEmailService
             $carUrl = getBaseUrl() . '/app/cars/details.php?car_id=' . $carData->id;
 
             ob_start();
-            include $this->basePath . 'usersc/views/_email_transfer_response.php';
+            include $this->basePath . 'app/views/email/_transfer_response.php';
             $emailBody = ob_get_clean();
 
             $status = $isApproved ? 'APPROVED' : 'DENIED';
@@ -316,7 +316,7 @@ class TransferEmailService
             ];
 
             ob_start();
-            include $this->basePath . 'usersc/views/_email_transfer_previous_owner.php';
+            include $this->basePath . 'app/views/email/_transfer_previous_owner.php';
             $emailBody = ob_get_clean();
 
             $status = $isApproved ? 'APPROVED' : 'DENIED';

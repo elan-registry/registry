@@ -541,7 +541,7 @@ class LocationService
      * @param int|null $ttl TTL in seconds (default: CACHE_TTL)
      * @suppress PhanUndeclaredFunction APCu functions only called when available
      */
-    private function setCache(string $key, $value, ?int $ttl = null): void
+    private function setCache(string $key, mixed $value, ?int $ttl = null): void
     {
         $ttl = $ttl ?? self::CACHE_TTL;
 
