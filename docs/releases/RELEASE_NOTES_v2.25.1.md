@@ -54,4 +54,5 @@
 - [#1019](https://github.com/unibrain1/elanregistry/issues/1019) — ux: standardize validation error display across all three error mechanisms
 - [#1020](https://github.com/unibrain1/elanregistry/issues/1020) — admin: show chassis override indicator and add filter to Invalid Chassis Numbers table
 - [#1021](https://github.com/unibrain1/elanregistry/issues/1021) — feat: replace "One of the Cars" with cycling car showcase
+- [#1022](https://github.com/unibrain1/elanregistry/issues/1022) — feat: add NEW badge to recently added cars in the car list
 - [#1031](https://github.com/unibrain1/elanregistry/issues/1031) — fix: fetchImages silent failures — data.success guard and outer catch logging
