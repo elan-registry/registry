@@ -1,6 +1,6 @@
 # Elan Registry v2.25.2 Release Notes
 
-**Release Date:** TBD
+**Release Date:** 2026-06-28
 **Type:** Patch Release - Security Hardening & Critical Bug Fixes
 
 ## Required Actions After Deployment
@@ -22,7 +22,7 @@ No changes visible to public registry visitors.
 
 ### Security
 
-- **Rate limiting** ([#973](https://github.com/unibrain1/elanregistry/issues/973)): Adds rate limits to the owner contact email, feedback submission, and car transfer request endpoints to prevent abuse.
+- **Rate limiting** ([#973](https://github.com/unibrain1/elanregistry/issues/973)): Adds rate limits to the owner contact email, feedback submission, and car transfer request endpoints to prevent abuse. A pre-PR review fix ensures rate-limited requests to the owner contact endpoint skip all database work, not just the final email send.
 - **Login guard** ([#972](https://github.com/unibrain1/elanregistry/issues/972)): Adds an explicit `isLoggedIn()` check to the `edit.php` AJAX endpoint as defense-in-depth.
 - **Schema operations hardening** ([#974](https://github.com/unibrain1/elanregistry/issues/974)): Removes the GET action fallback from `schema-operations.php` and tightens the CSRF guard to reject non-POST requests immediately.
 
