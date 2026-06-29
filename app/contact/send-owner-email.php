@@ -45,7 +45,7 @@ if ($post_attempted) {
 
         $action = Input::get('action');
         $message = Input::raw('message'); // raw — _email_contact_owner.php escapes via EmailTemplate
-        if ($action === 'send_message' && Input::get('to_user_id') && $message !== null && $message !== '') {
+        if (empty($errors) && $action === 'send_message' && Input::get('to_user_id') && $message !== null && $message !== '') {
             if (strlen($message) > 2000) {
                 $errors[] = 'Message is too long (maximum 2000 characters)';
                 include($abs_us_root . $us_url_root . 'usersc/scripts/token_error.php');
