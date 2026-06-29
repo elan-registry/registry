@@ -9,6 +9,8 @@
  * @author Elan Registry Admin
  * @copyright 2025
  */
+use ElanRegistry\OwnerView;
+
 require_once '../../users/init.php';
 require_once $abs_us_root . $us_url_root . 'usersc/includes/elanregistry_prep.php';
 
@@ -73,7 +75,7 @@ if (!empty($_POST)) {
                         <h5 class="text-primary"><i class="fas fa-user-circle"></i> From</h5>
                         <div class="bg-light p-3 rounded">
                             <div class="mb-2">
-                                <strong><?= htmlspecialchars($from['fname'] . ' ' . $from['lname'], ENT_QUOTES, 'UTF-8') ?></strong>
+                                <strong><?= OwnerView::displayName((object)$from) ?></strong>
                             </div>
                         </div>
                     </div>
@@ -81,7 +83,7 @@ if (!empty($_POST)) {
                         <h5 class="text-primary"><i class="fas fa-user"></i> To</h5>
                         <div class="bg-light p-3 rounded">
                             <div class="mb-2">
-                                <strong><?= htmlspecialchars($to['fname'] . ' ' . $to['lname'], ENT_QUOTES, 'UTF-8') ?></strong>
+                                <strong><?= OwnerView::displayName((object)$to) ?></strong>
                             </div>
                         </div>
                     </div>

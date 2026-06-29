@@ -150,20 +150,18 @@ class ElanRegistryOwner
             }
 
             $this->_db->query("COMMIT");
-
-            // Load the created owner data
-            $this->find($userId);
-
-            // Log successful creation
-            logger($userId, LogCategories::LOG_CATEGORY_OWNER_ACTIONS, "Owner created: {$userFields['fname']} {$userFields['lname']} ({$userFields['email']})");
-
-            return true;
-
         } catch (Exception $e) {
             $this->_db->query("ROLLBACK");
-            logger(0, LogCategories::LOG_CATEGORY_DATABASE_ERROR, 'Owner creation failed: ' . $e->getMessage());
+            logger(0, LogCategories::LOG_CATEGORY_DATABASE_ERROR, 'Owner creation transaction failed: ' . $e->getMessage());
             throw $e;
         }
+
+        // Post-commit: reload and log outside the transaction so that a failure
+        // here does not trigger ROLLBACK or log a false "transaction failed" message.
+        $this->find($userId);
+        logger($userId, LogCategories::LOG_CATEGORY_OWNER_ACTIONS, "Owner created: {$userFields['fname']} {$userFields['lname']} ({$userFields['email']})");
+
+        return true;
     }
 
     /**
@@ -252,21 +250,19 @@ class ElanRegistryOwner
             }
 
             $this->_db->query("COMMIT");
-
-            // Reload owner data
-            $this->find($userId);
-
-            // Log successful update
-            $fieldsUpdated = array_merge(array_keys($userFields), array_keys($profileFields));
-            logger($userId, LogCategories::LOG_CATEGORY_OWNER_ACTIONS, "Owner updated - fields: " . implode(', ', $fieldsUpdated));
-
-            return true;
-
         } catch (Exception $e) {
             $this->_db->query("ROLLBACK");
-            logger($userId, LogCategories::LOG_CATEGORY_DATABASE_ERROR, 'Owner update failed: ' . $e->getMessage());
+            logger($userId, LogCategories::LOG_CATEGORY_DATABASE_ERROR, 'Owner update transaction failed: ' . $e->getMessage());
             throw $e;
         }
+
+        // Post-commit: reload and log outside the transaction so that a failure
+        // here does not trigger ROLLBACK or log a false "transaction failed" message.
+        $this->find($userId);
+        $fieldsUpdated = array_merge(array_keys($userFields), array_keys($profileFields));
+        logger($userId, LogCategories::LOG_CATEGORY_OWNER_ACTIONS, "Owner updated - fields: " . implode(', ', $fieldsUpdated));
+
+        return true;
     }
 
     /**

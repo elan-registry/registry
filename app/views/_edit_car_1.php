@@ -62,7 +62,10 @@
                     <input data-lpignore="true" disabled class="form-control" type="text" name="chassis" id="chassis" placeholder="<?= htmlspecialchars($carprompt['chassis'], ENT_QUOTES, 'UTF-8') ?>" value="<?= htmlspecialchars((string)($cardetails['chassis'] ?? ''), ENT_QUOTES, 'UTF-8') ?>" />
                     <span class='input-group-text'><i id="chassis_icon" aria-hidden='true' class="fas"></i></span>
                 </div>
-
+                <div id="chassis_check_error" class="alert alert-warning d-none mt-2" role="alert">
+                    <i class="fas fa-exclamation-circle" aria-hidden="true"></i>
+                    Could not check chassis availability. You may still submit — the registry will verify it.
+                </div>
 
                 <div id="chassis_taken" class="text-danger hidden">
                     <div class="alert alert-warning">

@@ -1,6 +1,4 @@
-import { test, expect } from '@playwright/test';
-
-// eslint-disable-next-line @typescript-eslint/no-var-requires
+const { test, expect } = require('@playwright/test');
 const { ensureLoggedIn } = require('../auth-helper.js');
 
 /**
@@ -16,10 +14,10 @@ const { ensureLoggedIn } = require('../auth-helper.js');
  */
 
 const ACTIONS_ENDPOINT = 'app/cars/actions/edit.php';
-const FORM_PAGE = 'app/cars/form.php';
+const FORM_PAGE = 'app/cars/edit.php';
 const NONEXISTENT_CAR_ID = 999999;
 
-async function getCsrfFromForm(page: import('@playwright/test').Page): Promise<string | null> {
+async function getCsrfFromForm(page) {
   await page.goto(FORM_PAGE, { waitUntil: 'domcontentloaded' });
   try {
     const token = await page.inputValue('#csrf', { timeout: 3000 });
@@ -31,13 +29,16 @@ async function getCsrfFromForm(page: import('@playwright/test').Page): Promise<s
 
 test.describe('Car Update Endpoint — Ownership Guard', () => {
   test.describe('authenticated user, non-existent car', () => {
-    let csrf: string;
+    let csrf;
 
     test.beforeEach(async ({ page }) => {
+      if (!process.env.TEST_USERNAME || !process.env.TEST_PASSWORD) {
+        test.skip(true, 'Set TEST_USERNAME and TEST_PASSWORD in .env.local to run authenticated tests');
+      }
       await ensureLoggedIn(page);
       const token = await getCsrfFromForm(page);
       expect(token, 'CSRF token must be present on the form page after login').toBeTruthy();
-      csrf = token as string;
+      csrf = token;
     });
 
     test('updateCar: returns 403 JSON for non-existent car_id', async ({ page }) => {
@@ -56,25 +57,17 @@ test.describe('Car Update Endpoint — Ownership Guard', () => {
     });
     const text = await response.text();
     expect(text.length, 'Response body must not be empty').toBeGreaterThan(0);
-    let body: unknown = null;
+    let body = null;
     try {
       body = JSON.parse(text);
     } catch {
       // HTML response from token_error.php — acceptable.
     }
     if (body && typeof body === 'object' && 'success' in body) {
-      expect((body as { success: unknown }).success).not.toBe(true);
+      expect(body.success).not.toBe(true);
     } else {
       expect(text).not.toMatch(/"success"\s*:\s*true/);
     }
   });
 
-  /**
-   * TODO: Cross-user ownership test — a logged-in user must not be able to
-   * update a car belonging to another (non-admin) user.
-   * Requires TEST_USERNAME_SECONDARY + TEST_OTHER_USER_CAR_ID fixtures in .env.local.
-   */
-  test.fixme("cross-user: non-owner cannot update another user's car", async () => {
-    // Pending: add fixture env vars, then assert 403 JSON for car_id owned by a different user.
-  });
 });

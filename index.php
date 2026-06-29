@@ -13,29 +13,17 @@
 require_once 'users/init.php';
 require_once $abs_us_root . $us_url_root . 'users/includes/template/prep.php';
 require_once $abs_us_root . $us_url_root . 'usersc/classes/CarView.php';
+use ElanRegistry\Car\CarShowcaseService;
 
 if (!securePage($php_self)) {
 	die();
 }
 
-$randomCarResults = $db->query("SELECT id FROM cars
-    WHERE image <> ''
-    AND image <> '[]'
-    AND JSON_VALID(image) = 1
-    AND JSON_LENGTH(image) > 0
-    ORDER BY RAND() LIMIT 1")->results();
-
-if (!empty($randomCarResults)) {
-    $randomCarId = (int) $randomCarResults[0]->id;
-    $car = new Car($randomCarId);
-} else {
-    $fallbackResults = $db->query("SELECT id FROM cars WHERE image <> '' ORDER BY RAND() LIMIT 1")->results();
-    if (!empty($fallbackResults)) {
-        $randomCarId = (int) $fallbackResults[0]->id;
-        $car = new Car($randomCarId);
-    } else {
-        $car = null;
-    }
+$showcasePool = [];
+try {
+    $showcasePool = CarShowcaseService::buildShowcasePool($db);
+} catch (\Throwable $e) {
+    logger(0, LogCategories::LOG_CATEGORY_SYSTEM_ERROR, 'Homepage showcase pool failed: ' . $e->getMessage());
 }
 
 $seriesResults = $db->query("SELECT
@@ -157,41 +145,76 @@ try {
 			<div class='col-lg-7 order-first order-lg-last'>
 				<div class='card registry-card'>
 					<div class='card-header card-header-er-primary'>
-						<h2 class='mb-0 card-header-er-primary-text'><i class='fas fa-star'></i> One of the Cars</h2>
+						<h2 class='mb-0 card-header-er-primary-text'><i class='fas fa-clock'></i> Recent Additions</h2>
 					</div>
-					<div class='card-body'>
-						<?php if ($car !== null) {
-							echo CarView::displayCarousel($car); ?>
-							<table id='cartable' class='table table-striped table-bordered table-hover table-sm' aria-describedby='Car ID <?= (int) $car->data()->id ?>'>
-								<tr>
-									<th scope='col'><strong>Year :</strong></th>
-									<th scope='col'><?= htmlspecialchars((string) $car->data()->year, ENT_QUOTES, 'UTF-8') ?></th>
-								</tr>
-								<tr>
-									<td><strong>Series :</strong></td>
-									<td><?= htmlspecialchars((string) $car->data()->series, ENT_QUOTES, 'UTF-8') ?></td>
-								</tr>
-								<tr>
-									<td><strong>Variant:</strong></td>
-									<td><?= htmlspecialchars((string) $car->data()->variant, ENT_QUOTES, 'UTF-8') ?></td>
-								</tr>
-								<tr>
-									<td><strong>Type:</strong></td>
-									<td><?= htmlspecialchars((string) $car->data()->type, ENT_QUOTES, 'UTF-8') ?></td>
-								</tr>
-								<tr>
-									<td colspan='2'><a class='btn btn-primary btn-sm' href='<?= htmlspecialchars($us_url_root, ENT_QUOTES, 'UTF-8') ?>app/cars/details.php?car_id=<?= (int) $car->data()->id ?>'><i class='fas fa-eye'></i> Details</a></td>
-								</tr>
-							</table>
-						<?php
-						} else {
-							echo '<div class="text-center py-4">';
-							echo '<i class="fas fa-car text-muted" style="font-size: 3rem;"></i>';
-							echo '<h5 class="text-muted mt-3 mb-2">No Featured Cars Available</h5>';
-							echo '<p class="text-muted">Cars are being added to the registry regularly. Check back soon!</p>';
-							echo '</div>';
-						}
-						?>
+					<div class='card-body p-0'>
+						<?php if (!empty($showcasePool)) { ?>
+						<div id="car-showcase">
+							<?php foreach ($showcasePool as $index => $carData) {
+								$showcaseCar = new Car((int) $carData->id);
+								$d = $showcaseCar->data();
+								if ($d === null) { continue; }
+							?>
+							<div class="<?= $index > 0 ? 'd-none ' : '' ?>px-3 pt-3"
+								 data-showcase-slide="<?= (int) $index ?>"
+								 data-car-id="<?= (int) $carData->id ?>"
+								 data-is-new="<?= $carData->is_new ? '1' : '0' ?>">
+								<?php if ($carData->is_new) { ?>
+								<div class="text-end pb-1">
+									<span class="badge er-badge-yellow badge-sm">NEW</span>
+								</div>
+								<?php } ?>
+								<?= CarView::displayCarousel($showcaseCar, (int) $carData->id) ?>
+								<?php
+								$ownerLocation = array_filter([
+									$d->city ?? '',
+									$d->state ?? '',
+									$d->country ?? '',
+								]);
+								?>
+								<dl class="row g-0 mt-2 mb-0 small">
+									<dt class="col-4">Owner</dt>
+									<dd class="col-8 mb-1"><?= !empty($d->fname) ? htmlspecialchars(ucfirst((string) $d->fname), ENT_QUOTES, 'UTF-8') : '<em class="text-muted">Not specified</em>' ?></dd>
+									<?php if (!empty($ownerLocation)) { ?>
+									<dt class="col-4">Location</dt>
+									<dd class="col-8 mb-1"><?= htmlspecialchars(implode(', ', $ownerLocation), ENT_QUOTES, 'UTF-8') ?></dd>
+									<?php } ?>
+									<dt class="col-4">Year</dt>
+									<dd class="col-8 mb-1"><?= htmlspecialchars((string) $d->year, ENT_QUOTES, 'UTF-8') ?></dd>
+									<dt class="col-4">Series</dt>
+									<dd class="col-8 mb-1"><?= htmlspecialchars((string) $d->series, ENT_QUOTES, 'UTF-8') ?></dd>
+									<dt class="col-4">Variant</dt>
+									<dd class="col-8 mb-1"><?= htmlspecialchars((string) $d->variant, ENT_QUOTES, 'UTF-8') ?></dd>
+									<dt class="col-4">Type</dt>
+									<dd class="col-8 mb-0"><?= htmlspecialchars((string) $d->type, ENT_QUOTES, 'UTF-8') ?></dd>
+								</dl>
+								<div class="mt-2 mb-3">
+									<a class='btn btn-primary btn-sm'
+									   href='<?= htmlspecialchars($us_url_root, ENT_QUOTES, 'UTF-8') ?>app/cars/details.php?car_id=<?= (int) $carData->id ?>'>
+										<i class='fas fa-eye'></i> Details
+									</a>
+								</div>
+							</div>
+							<?php } ?>
+							<?php if (count($showcasePool) > 1) { ?>
+							<div class="d-flex align-items-center justify-content-between px-3 pb-3">
+								<button id="showcase-prev" class="btn btn-sm btn-outline-secondary" aria-label="Previous car">
+									<i class="fas fa-chevron-left" aria-hidden="true"></i>
+								</button>
+								<span id="showcase-counter" class="small text-muted" aria-live="polite" aria-atomic="true"></span>
+								<button id="showcase-next" class="btn btn-sm btn-outline-secondary" aria-label="Next car">
+									<i class="fas fa-chevron-right" aria-hidden="true"></i>
+								</button>
+							</div>
+							<?php } ?>
+						</div>
+						<?php } else { ?>
+						<div class="text-center py-4">
+							<i class="fas fa-car text-muted" style="font-size: 3rem;"></i>
+							<h5 class="text-muted mt-3 mb-2">No Featured Cars Available</h5>
+							<p class="text-muted">Cars are being added to the registry regularly. Check back soon!</p>
+						</div>
+						<?php } ?>
 					</div>
 				</div>
 
@@ -281,4 +304,6 @@ var homepageTimelineData = <?= $timelineJson ?>;
     }
 }());
 </script>
+<style>[data-showcase-slide]{transition:opacity .3s ease-in-out}</style>
+<script src="<?= htmlspecialchars($us_url_root, ENT_QUOTES, 'UTF-8') ?>app/assets/js/car-showcase.min.js"></script>
 <?php require_once $abs_us_root . $us_url_root . 'users/includes/html_footer.php'; ?>

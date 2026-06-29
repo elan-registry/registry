@@ -7,5 +7,5 @@ if (isset($dest) && !empty($dest)) {
     // User was redirected to login from a protected page - send them back
     Redirect::sanitized($dest);
 } else {
-    Redirect::to($us_url_root . 'users/account.php');
+    Redirect::to($us_url_root . 'usersc/account.php');
 }

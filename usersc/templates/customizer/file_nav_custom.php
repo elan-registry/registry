@@ -19,7 +19,7 @@ if ($navActive === '') {
     // Order matters: exact paths and more-specific entries first so they win
     // over broader prefixes (e.g. factory.php beats the /app/cars/ prefix).
     $sections = [
-        'add_car'    => ['/app/cars/form.php'],
+        'add_car'    => ['/app/cars/edit.php'],
         'reference'  => ['/app/cars/factory.php', '/docs/reference/'],
         'list_cars'  => ['/app/cars/'],
         'statistics' => ['/app/reports/statistics.php'],
@@ -28,7 +28,7 @@ if ($navActive === '') {
         'register'   => ['/users/join.php', '/usersc/join.php'],
         'login'      => ['/users/login.php', '/usersc/login.php'],
         'admin'      => ['/app/admin/', '/docs/admin/', '/users/admin.php'],
-        'account'    => ['/users/account.php', '/app/contact/', '/users/logout.php'],
+        'account'    => ['/users/account.php', '/usersc/account.php', '/app/contact/', '/users/logout.php'],
     ];
     foreach ($sections as $key => $patterns) {
         foreach ($patterns as $p) {
@@ -75,7 +75,7 @@ if ($navActive === '') {
 
   <?php if (isset($user) && $user->isLoggedIn()): ?>
     <li class='<?= $navActive === 'add_car' ? 'active' : '' ?>'>
-      <a class='btn btn-primary btn-sm ms-1' href='<?= $us_url_root ?>app/cars/form.php'>
+      <a class='btn btn-primary btn-sm ms-1' href='<?= $us_url_root ?>app/cars/edit.php'>
         <i class='fa fa-plus'></i>
         <span class='labelText'>Add Car</span>
       </a>
@@ -197,7 +197,7 @@ if ($navActive === '') {
       </a>
       <ul class='us_sub-menu' aria-labelledby='menu_1_638b71f2ed026_dropdown_account' style=' z-index: 50;'>
         <li class=''>
-          <a class='' href='<?= $us_url_root ?>users/account.php'>
+          <a class='' href='<?= $us_url_root ?>usersc/account.php'>
             <i class='fa fa-user'></i>
             <span class='labelText'>Account</span>
           </a>
