@@ -408,6 +408,110 @@ if (!CarModel::exists($series, $variant, $type)) {
 
 ---
 
+### TransferEmailService
+
+**Location**: `/usersc/classes/Transfer/TransferEmailService.php`
+
+**Namespace**: `ElanRegistry\Transfer`
+
+**Purpose**: Manages email notifications for car ownership transfer requests, approvals, and denials.
+Extracted from procedural code to enable unit testing without live email or database dependencies
+via injectable mailer and database connections.
+
+**Key Features**:
+
+- Transfer request notifications (to recipient)
+- Admin alerts (to admins reviewing transfers)
+- Approval/denial responses (to requester)
+- Previous owner notifications (for post-approval transfers)
+- Fully injectable dependencies for testing
+- Email bodies rendered via PHP view partials in `usersc/views/_email_transfer_*.php`
+
+**Constructor**:
+
+```php
+use ElanRegistry\Transfer\TransferEmailService;
+
+$emailService = new TransferEmailService(
+    $db,                                      // DB singleton
+    'email',                                  // Callable mailer name
+    $abs_us_root . $us_url_root              // Base path for template includes
+);
+```
+
+**Parameters**:
+
+| Parameter | Type | Description |
+| --- | --- | --- |
+| `$db` | `DB` | Database singleton from UserSpice |
+| `$mailer` | `callable` | Email sender function — signature: `(string $to, string $subject, string $body): bool` |
+| `$basePath` | `string` | Absolute path for template includes (`$abs_us_root . $us_url_root`) |
+
+**Public Methods**:
+
+- `sendRequest(int $transferRequestId): bool` — Notify the current car owner that a transfer has been requested
+- `sendAdminAlert(int $transferRequestId): bool` — Alert admin(s) to review a pending transfer request
+- `sendResponse(int $transferRequestId, bool $isApproved, string $adminNotes = '', ?int $previousOwnerId = null): bool`
+  — Send approval or denial to requester; if approved, also notify the previous owner
+
+**Common Usage**:
+
+```php
+use ElanRegistry\Transfer\TransferEmailService;
+
+$emailService = new TransferEmailService(
+    DB::getInstance(),
+    'email',
+    $abs_us_root . $us_url_root
+);
+
+// When transfer request is created
+$emailService->sendRequest($transferRequestId);
+$emailService->sendAdminAlert($transferRequestId);
+
+// When admin approves transfer
+$emailService->sendResponse($transferRequestId, true, 'Approved', $previousOwnerId);
+
+// When admin denies transfer
+$emailService->sendResponse($transferRequestId, false, 'Documentation incomplete');
+```
+
+**Database Tables Accessed**:
+
+- `car_transfer_requests` - Transfer request details
+- `cars` - Car being transferred
+- `profiles` - Owner/recipient profile data
+- `users` - User emails
+
+**Used By**:
+
+- `app/cars/actions/request-transfer.php` - After creating transfer request
+- `app/admin/includes/process-transfer-approve.php` - When admin approves transfer
+- `app/admin/includes/process-transfer-deny.php` - When admin denies transfer
+
+**Testing**:
+
+The injectable mailer and database dependencies enable unit testing without live email or database:
+
+```php
+// Unit test with anonymous class fakes (anonymous class satisfies object type hint)
+$mockDb = new class {
+    public function query(string $sql, array $params = []): object
+    {
+        return new class { public function count(): int { return 0; } };
+    }
+};
+$mockMailer = fn($to, $subject, $body) => true;
+$service = new TransferEmailService($mockDb, $mockMailer, '/fake/path/');
+$this->assertFalse($service->sendRequest(999));
+```
+
+**See Also**:
+
+- [ERROR_HANDLING.md](ERROR_HANDLING.md) - Exception patterns for email failures
+
+---
+
 ### ChassisValidator
 
 **Location**: `/usersc/classes/ChassisValidator.php`

@@ -28,7 +28,6 @@ class LogCategoriesUsageTest extends TestCase
         'app/admin/includes/process-transfer-approve.php',
         'app/admin/includes/process-transfer-deny.php',
         'app/admin/includes/process-car-details.php',
-        'app/includes/transfer_email_notifications.php',
     ];
 
     /**
@@ -233,70 +232,6 @@ class LogCategoriesUsageTest extends TestCase
             'LogCategories::LOG_CATEGORY_EMAIL_ERROR',
             $content,
             'join.php must log email failures using LogCategories::LOG_CATEGORY_EMAIL_ERROR (Issue #639)'
-        );
-    }
-
-    /**
-     * Regression test for Issue #656: partial admin alert failure must use LOG_CATEGORY_EMAIL_ERROR.
-     */
-    public function testTransferAdminAlertLogsPartialFailureUnderErrorCategory(): void
-    {
-        $filePath = $this->rootDir . '/app/includes/transfer_email_notifications.php';
-        if (!file_exists($filePath)) {
-            $this->markTestSkipped('transfer_email_notifications.php not found');
-        }
-
-        $content = file_get_contents($filePath);
-
-        $this->assertStringContainsString(
-            '$failCount',
-            $content,
-            'sendTransferRequestAdminAlert() must track $failCount for partial-failure logging (Issue #656)'
-        );
-        $this->assertMatchesRegularExpression(
-            '/logger\s*\([^,]+,\s*LogCategories::LOG_CATEGORY_EMAIL_ERROR[^)]*\$failCount/',
-            $content,
-            'Partial admin alert failure must log under LOG_CATEGORY_EMAIL_ERROR with $failCount (Issue #656)'
-        );
-        $this->assertMatchesRegularExpression(
-            '/if\s*\(\s*\$failCount\s*>\s*0\s*\)/',
-            $content,
-            'Error log must be gated on $failCount > 0 (Issue #656)'
-        );
-        $this->assertMatchesRegularExpression(
-            '/if\s*\(\s*\$successCount\s*>\s*0\s*\)/',
-            $content,
-            'Success log must be gated on $successCount > 0 to prevent false success entries (Issue #656)'
-        );
-    }
-
-    /**
-     * Regression test for Issue #655: all catch blocks in transfer_email_notifications.php
-     * must include exception class, file, and line number.
-     */
-    public function testTransferNotificationCatchBlocksIncludeExceptionDetail(): void
-    {
-        $filePath = $this->rootDir . '/app/includes/transfer_email_notifications.php';
-        if (!file_exists($filePath)) {
-            $this->markTestSkipped('transfer_email_notifications.php not found');
-        }
-
-        $content = file_get_contents($filePath);
-
-        $this->assertSame(
-            4,
-            substr_count($content, 'get_class($e)'),
-            'All 4 catch blocks in transfer_email_notifications.php must include get_class($e) (Issue #655)'
-        );
-        $this->assertSame(
-            4,
-            substr_count($content, '$e->getFile()'),
-            'All 4 catch blocks in transfer_email_notifications.php must include $e->getFile() (Issue #655)'
-        );
-        $this->assertSame(
-            4,
-            substr_count($content, '$e->getLine()'),
-            'All 4 catch blocks in transfer_email_notifications.php must include $e->getLine() (Issue #655)'
         );
     }
 
