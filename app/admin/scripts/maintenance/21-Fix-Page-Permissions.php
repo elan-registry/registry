@@ -99,7 +99,7 @@ function shouldBePrivate(string $pagePath): bool {
 /**
  * Analyze current permissions and determine what needs to change
  */
-function analyzePermissions($db): array {
+function analyzePermissions(DB $db): array {
     $issues = [
         'set_public' => [],                    // Pages that should be public but are private
         'set_private_admin' => [],             // Pages that should be private admin+editor but are public
@@ -987,7 +987,7 @@ function abortProcess() {
                 $global_attempts = 0;
                 $global_successes = 0;
 
-                function outputMessage($message, $percentage = null): void {
+                function outputMessage(string $message, ?int $percentage = null): void {
                     $safe = addslashes(htmlspecialchars($message, ENT_QUOTES, 'UTF-8'));
                     echo '<script>
                         if (window.parent && window.parent.addLogMessage) {

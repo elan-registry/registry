@@ -115,10 +115,21 @@ if ($post_attempted) {
         );
 
         // Generate email body using template
-        $body = email_body('_email_feedback.php', $template);
+        try {
+            extract($template, EXTR_SKIP);
+            ob_start();
+            include $abs_us_root . $us_url_root . 'app/views/email/_feedback.php';
+            $body = ob_get_clean() ?: '';
+        } catch (\Throwable $e) {
+            if (ob_get_level() > 0) {
+                ob_end_clean();
+            }
+            logger($logUserId, LogCategories::LOG_CATEGORY_FEEDBACK_FORM, 'send-feedback.php: exception during email template render: ' . $e->getMessage());
+            $body = '';
+        }
 
-        if (empty($body)) {
-            logger($logUserId, LogCategories::LOG_CATEGORY_FEEDBACK_FORM, "send-feedback.php: email_body() returned empty — template missing or failed");
+        if ($body === '') {
+            logger($logUserId, LogCategories::LOG_CATEGORY_FEEDBACK_FORM, 'send-feedback.php: email body render failed — template missing or failed');
             $errors[] = 'Your message could not be sent due to a server configuration error. Please contact the administrator.';
         }
     }

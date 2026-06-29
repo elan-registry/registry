@@ -425,7 +425,7 @@ via injectable mailer and database connections.
 - Approval/denial responses (to requester)
 - Previous owner notifications (for post-approval transfers)
 - Fully injectable dependencies for testing
-- Email bodies rendered via PHP view partials in `usersc/views/_email_transfer_*.php`
+- Email bodies rendered via PHP view partials in `app/views/email/_transfer_*.php`
 
 **Constructor**:
 

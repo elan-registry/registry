@@ -28,6 +28,8 @@ public URL changes.
 
 - Extract transfer email notifications into `TransferEmailService` class with injectable DB and mailer
   dependencies, enabling unit testing without a live database or email server (#1030)
+- Migrate 7 app-domain email templates from `usersc/views/` to `app/views/email/`, completing the
+  `usersc/` boundary (framework customization only); two templates renamed for clarity (#1035)
 
 ## Issues Resolved
 

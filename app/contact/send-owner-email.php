@@ -44,7 +44,7 @@ if ($post_attempted) {
         }
 
         $action = Input::get('action');
-        $message = Input::raw('message'); // raw — _email_contact_owner.php escapes via EmailTemplate
+        $message = Input::raw('message'); // raw — _member_to_owner.php escapes via EmailTemplate
         if (empty($errors) && $action === 'send_message' && Input::get('to_user_id') && $message !== null && $message !== '') {
             if (strlen($message) > 2000) {
                 $errors[] = 'Message is too long (maximum 2000 characters)';
@@ -146,10 +146,21 @@ if ($post_attempted) {
                 'carUrl'       => $carUrl,
             );
 
-            $body = email_body('_email_contact_owner.php', $template);
+            try {
+                extract($template, EXTR_SKIP);
+                ob_start();
+                include $abs_us_root . $us_url_root . 'app/views/email/_member_to_owner.php';
+                $body = ob_get_clean() ?: '';
+            } catch (\Throwable $e) {
+                if (ob_get_level() > 0) {
+                    ob_end_clean();
+                }
+                logger($user->data()->id, LogCategories::LOG_CATEGORY_EMAIL_ERROR, 'send-owner-email.php: exception during email template render: ' . $e->getMessage());
+                $body = '';
+            }
 
-            if (empty($body)) {
-                logger($user->data()->id, LogCategories::LOG_CATEGORY_EMAIL_ERROR, "contact_owner_email.php: email_body() returned empty — template missing or failed");
+            if ($body === '') {
+                logger($user->data()->id, LogCategories::LOG_CATEGORY_EMAIL_ERROR, 'send-owner-email.php: email body render failed — template missing or failed');
                 $errors[] = 'Your message could not be sent due to a server configuration error. Please contact the administrator.';
             }
 

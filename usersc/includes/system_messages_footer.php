@@ -32,6 +32,10 @@ $usSessionMessageClasses = [
   'valSuc' => 'success',
   'valErr' => 'danger',
 ];
+
+// Capture superglobals into local vars before the script block
+$usGetErr = !empty($_GET['err']) ? (string)$_GET['err'] : null;
+$usGetMsg = !empty($_GET['msg']) ? (string)$_GET['msg'] : null;
 ?>
 <style>
 /* Toast notification bar styles (BS4 compatible - no CSS variables) */
@@ -228,11 +232,11 @@ $usSessionMessageClasses = [
   window.usDark    = function(msg){ userSpiceMessage(msg,'dark'); };
 
   // Emit from PHP
-  <?php if (!empty($_GET['err'])): ?>
-    userSpiceMessage(<?php echo json_encode((string)$_GET['err'], JSON_HEX_TAG|JSON_HEX_APOS|JSON_HEX_QUOT|JSON_HEX_AMP); ?>,'<?php echo $usSessionMessageClasses['err']; ?>');
+  <?php if ($usGetErr !== null): ?>
+    userSpiceMessage(<?php echo json_encode($usGetErr, JSON_HEX_TAG|JSON_HEX_APOS|JSON_HEX_QUOT|JSON_HEX_AMP); ?>,'<?php echo $usSessionMessageClasses['err']; ?>');
   <?php endif; ?>
-  <?php if (!empty($_GET['msg'])): ?>
-    userSpiceMessage(<?php echo json_encode((string)$_GET['msg'], JSON_HEX_TAG|JSON_HEX_APOS|JSON_HEX_QUOT|JSON_HEX_AMP); ?>,'<?php echo $usSessionMessageClasses['msg']; ?>');
+  <?php if ($usGetMsg !== null): ?>
+    userSpiceMessage(<?php echo json_encode($usGetMsg, JSON_HEX_TAG|JSON_HEX_APOS|JSON_HEX_QUOT|JSON_HEX_AMP); ?>,'<?php echo $usSessionMessageClasses['msg']; ?>');
   <?php endif; ?>
   <?php foreach (['genMsg','valSuc','valErr'] as $k): if (!empty($usSessionMessages[$k])): ?>
     userSpiceMessage(<?php echo json_encode((string)$usSessionMessages[$k], JSON_HEX_TAG|JSON_HEX_APOS|JSON_HEX_QUOT|JSON_HEX_AMP); ?>,'<?php echo $usSessionMessageClasses[$k]; ?>');
