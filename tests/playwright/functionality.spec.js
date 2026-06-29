@@ -81,6 +81,41 @@ test.describe('Core Functionality After Refactoring', () => {
     );
   });
 
+  test('NEW_CAR_IDS is emitted on car list page and badge renders when applicable', async ({ page }) => {
+    await page.goto('app/cars/index.php', { waitUntil: 'networkidle' });
+
+    // NEW_CAR_IDS must be defined as a JS array of integers
+    const newCarIds = await page.evaluate(() => {
+      if (typeof NEW_CAR_IDS === 'undefined') return null;
+      return NEW_CAR_IDS;
+    });
+
+    // If the page requires auth and we're not logged in, NEW_CAR_IDS won't be present
+    if (newCarIds === null) {
+      return;
+    }
+
+    expect(Array.isArray(newCarIds)).toBe(true);
+    newCarIds.forEach(id => expect(typeof id).toBe('number'));
+
+    // If any cars are flagged as NEW, a badge must be visible in the Details column.
+    // Unconditional assertion catches render-function regressions (e.g. typeof guard breaking).
+    if (newCarIds.length > 0) {
+      await waitForDataTables(page, 15000);
+      const badge = page.locator('td a.btn .badge.er-badge-yellow').first();
+      await expect(badge).toBeVisible();
+      await expect(badge).toContainText('NEW');
+    }
+  });
+
+  test('NEW badge does not appear on factory listing page', async ({ page }) => {
+    await page.goto('app/cars/factory.php', { waitUntil: 'networkidle' });
+
+    // Factory page must NOT define NEW_CAR_IDS
+    const defined = await page.evaluate(() => typeof NEW_CAR_IDS !== 'undefined');
+    expect(defined).toBe(false);
+  });
+
   test('factory listing page functions', async ({ page }) => {
     await page.goto('app/cars/factory.php', { waitUntil: 'networkidle' });
 

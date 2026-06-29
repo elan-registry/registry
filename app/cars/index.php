@@ -11,6 +11,7 @@ require_once '../../users/init.php';
 require_once $abs_us_root . $us_url_root . 'usersc/includes/elanregistry_prep.php';
 
 use ElanRegistry\Documentation\DocumentPortalTemplate;
+use ElanRegistry\Car\CarShowcaseService;
 
 // Security: Only allow access to authorized users
 if (!securePage($php_self)) {
@@ -108,6 +109,7 @@ require_once $abs_us_root . $us_url_root . 'users/includes/html_footer.php'; //c
   const csrf = '<?= Token::generate(); ?>';
   const us_url_root = '<?= $us_url_root ?>';
   const img_root = '<?= $us_url_root . $settings->elan_image_dir ?>';
+  const NEW_CAR_IDS = <?= json_encode(CarShowcaseService::getNewCarIds($db), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_THROW_ON_ERROR) ?>;
 </script>
 
 <!-- Configure thumbnail sizes from settings -->
@@ -171,7 +173,10 @@ window.ELAN_CONFIG = {
       orderable: false,
       responsivePriority: 1,
       render: function(data, type, row) {
-        return '<a class="btn btn-primary btn-sm" href="' + us_url_root + 'app/cars/details.php?car_id=' + data + '"><i class="fas fa-eye"></i> Details</a>';
+        const isNew = typeof NEW_CAR_IDS !== 'undefined'
+          && NEW_CAR_IDS.includes(parseInt(data, 10));
+        const badge = isNew ? ' <span class="badge er-badge-yellow badge-sm">NEW</span>' : '';
+        return '<a class="btn btn-primary btn-sm" href="' + us_url_root + 'app/cars/details.php?car_id=' + data + '"><i class="fas fa-eye"></i> Details' + badge + '</a>';
       }
     }, {
       data: 'year',

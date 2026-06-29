@@ -12,6 +12,7 @@
 ### New Features
 
 - **Recent Additions showcase** ([#1021](https://github.com/unibrain1/elanregistry/issues/1021)): The home page "One of the Cars" card is replaced by a "Recent Additions" showcase that fades through up to 12 cars every 5 seconds, mixing newly added entries (marked with a NEW badge) with random older cars. Manual prev/next navigation is available; auto-rotation respects `prefers-reduced-motion`.
+- **NEW badge on car list** ([#1022](https://github.com/unibrain1/elanregistry/issues/1022)): Recently added cars (within 90 days, or among the 5 most recently registered) now show a NEW badge next to the Details button in the car registry list, making new registrations easy to spot at a glance.
 - **Full-page account experience** ([#923](https://github.com/unibrain1/elanregistry/issues/923)): Account page now renders as a proper full-page override, enabling a complete and consistent owner account experience.
 
 ### Improvements
