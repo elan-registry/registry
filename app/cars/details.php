@@ -160,7 +160,7 @@ if (!empty($_GET)) {
                                         $context = 'visitor_detail';
                                     }
                                     $heroCarId = (int)$carData->id;
-                                    include $abs_us_root . $us_url_root . 'usersc/includes/partials/car_hero_actions.php';
+                                    include $abs_us_root . $us_url_root . 'app/views/cars/_car_hero_actions.php';
                                     ?>
                                 </div>
                             </div>
@@ -173,7 +173,7 @@ if (!empty($_GET)) {
                 <div class="col-lg-6 mb-4 order-last order-lg-first">
                     <?php
                     $headingTag = 'h3';
-                    include $abs_us_root . $us_url_root . 'usersc/includes/partials/_vehicle_info_card.php';
+                    include $abs_us_root . $us_url_root . 'app/views/cars/_vehicle_info_card.php';
                     ?>
 
                     <!-- Owner Information Card -->
@@ -260,7 +260,7 @@ if (!empty($_GET)) {
                     <!-- Factory Data Card -->
                     <?php if (!is_null($factoryData)) {
                         $headingTag = 'h3';
-                        include $abs_us_root . $us_url_root . 'usersc/includes/partials/_factory_data_card.php';
+                        include $abs_us_root . $us_url_root . 'app/views/cars/_factory_data_card.php';
                     } ?>
                 </div>
             </div>
