@@ -49,7 +49,10 @@ on the UserSpice framework.
   `$request_uri`, `$current_url`, `$current_origin`, `$php_self`,
   `$remote_addr`, `$referer`, `$user_agent` instead of raw `$_SERVER`.
 - **Logging**: Use `logger()` with `LogCategories::LOG_CATEGORY_*` constants.
-- **New directories**: Register in `$path` array in `/z_us_root.php`.
+- **New directories**: Register in `$path` array in `/z_us_root.php` **only
+  if the directory contains files that call `securePage()`**. API endpoints
+  and action handlers without `securePage()` (e.g. `app/action/`,
+  `app/api/`) are intentionally omitted.
 
 ### UserSpice Framework
 
