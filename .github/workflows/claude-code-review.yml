@@ -12,8 +12,8 @@ name: Claude Code Review
 #                             cheap issues. This prompt focuses on things static
 #                             tools can't see.
 #
-#   milestone/* -> main     : deep multi-agent review. Runs once on PR open
-#                             or when the `deep-review` label is applied / a
+#   milestone/* -> main     : deep Opus review. Runs once on PR open or when
+#                             the `deep-review` label is applied / a
 #                             `@claude deep-review` comment is posted. The
 #                             commits in this PR were already reviewed per-line
 #                             on their issue PRs, so the focus is cross-issue
@@ -21,6 +21,12 @@ name: Claude Code Review
 #                             accuracy, and deployment readiness.
 #
 # Drafts and [skip-review] / [WIP] titles are skipped in both modes.
+#
+# Posting mechanism (v1 action):
+#   Claude must explicitly post via `gh pr comment` — the action does not
+#   auto-post Claude's output. Prompts must include that instruction and
+#   Bash(gh pr comment:*) must be in the allowedTools list.
+#   track_progress: true shows a live "Claude is reviewing..." indicator.
 
 on:
   pull_request:
@@ -101,94 +107,72 @@ jobs:
         uses: anthropics/claude-code-action@v1
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
-          use_sticky_comment: false
-          settings: |
-            {
-              "allowedTools": [
-                "Task",
-                "Read",
-                "Grep",
-                "Glob",
-                "Bash(git diff:*)",
-                "Bash(git log:*)",
-                "Bash(git show:*)",
-                "Bash(git diff --name-only:*)",
-                "Bash(php -l *)",
-                "Bash(composer check:php)",
-                "Bash(vendor/bin/phpstan analyse:*)",
-                "Bash(npm run lint)"
-              ]
-            }
+          track_progress: true
+          claude_args: >-
+            --allowedTools
+            "Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*),Bash(git diff:*),Bash(git log:*),Bash(git show:*),Bash(git diff --name-only:*),Bash(php -l *),Bash(composer check:php),Bash(vendor/bin/phpstan analyse:*),Bash(npm run lint),Read,Grep,Glob"
           prompt: |
-            You are reviewing an **issue-level PR** targeting a milestone
-            branch. Context:
+            REPO: ${{ github.repository }}
+            PR NUMBER: ${{ steps.ctx.outputs.pr_number }}
+
+            You are reviewing an **issue-level PR** targeting a milestone branch.
 
             - Base: ${{ steps.ctx.outputs.base_ref }}
             - Head: ${{ steps.ctx.outputs.head_ref }}
             - Title: ${{ steps.ctx.outputs.title }}
 
-            The author has almost certainly run `/review-pr` locally before
-            pushing (our workflow calls for it in `/start-issue`), and the
-            parallel GitHub Actions jobs (`Static Analysis` — PHPStan,
-            coding-standards checker, ESLint — plus `CodeQL` and the Semgrep
-            managed scan) catch the obvious issues.
+            The author ran `/review-pr` locally before pushing. The parallel
+            Static Analysis, CodeQL, and Semgrep jobs catch obvious issues.
 
-            **You are the backstop.** Do not re-derive what static tools
-            already report. Focus your token budget on things static analysis
-            cannot see.
+            **You are the backstop.** Focus on what static tools cannot see.
 
             ## Scope
+
             Review only the diff on this PR:
 
             ```bash
-            git diff origin/${{ steps.ctx.outputs.base_ref }}...HEAD
+            gh pr diff ${{ steps.ctx.outputs.pr_number }}
             ```
 
-            Skip `vendor/**`, `node_modules/**`, and minified / generated
-            assets.
+            Skip `vendor/**`, `node_modules/**`, and minified / generated assets.
 
             ## What to check
-            Use the repo's specialist agents via the Task tool for focused
-            analysis. Pick agents based on what changed:
 
-            - **Always**: `code-reviewer` (CLAUDE.md + CODING_STANDARDS.md
-              compliance, bug detection)
-            - **If tests changed or behaviour-bearing PHP changed without
-              tests**: `pr-test-analyzer`
-            - **If catch blocks, fallbacks, or error paths changed**:
-              `silent-failure-hunter`
-            - **If new classes or types were introduced**:
-              `type-design-analyzer`
-            - **If PHPDoc or non-trivial inline comments changed**:
-              `comment-analyzer`
-            - **Security-sensitive changes** (forms, AJAX endpoints, DB
-              writes, file uploads, auth, permissions): `security-reviewer`
-
-            Run agents in parallel where possible.
+            - Does the change fit the architecture (CLAUDE.md patterns)?
+            - Are there silent failures in catch blocks or fallback paths?
+            - Are tests adequate for the behaviour being added?
+            - Does it cross the Users (auth) vs Owners (registry domain) boundary?
+            - Security-sensitive changes: CSRF, prepared statements, input validation
 
             ## What to skip
-            - Type-hint absence, `declare(strict_types=1)` missing, unused
-              imports — PHPStan / coding-standards checker flag these
-            - Obvious SQL concatenation — CodeQL / Semgrep flag these
-            - JS style — ESLint flags these
 
-            Instead, ask: does the change fit the architecture? Are there
-            silent failures? Are new types designed well? Are tests adequate
-            for the behaviour being added? Does it cross the Users (auth) vs
-            Owners (registry domain) terminology boundary?
+            - Type-hint absence, missing `declare(strict_types=1)`, unused imports —
+              PHPStan / coding-standards checker flag these
+            - Obvious SQL concatenation — CodeQL / Semgrep flag these
+            - JS style issues — ESLint flags these
 
             ## Output
-            One sticky comment with sections:
 
-            1. **Blocking** — must fix before merge (critical bugs, security
-               issues, silent failures, CLAUDE.md violations)
-            2. **Important** — should address (design, test gaps, unclear
-               code)
-            3. **Suggestions** — optional improvements
-            4. **Strengths** — what's done well
+            Post your review as a PR comment using:
+
+            ```bash
+            gh pr comment ${{ steps.ctx.outputs.pr_number }} --body "..."
+            ```
+
+            Structure the comment with these sections:
+
+            **Blocking** — must fix before merge (critical bugs, security issues,
+            silent failures, CLAUDE.md violations)
+
+            **Important** — should address (design, test gaps, unclear code)
+
+            **Suggestions** — optional improvements
+
+            **Strengths** — what's done well
 
             Each item must cite `file:line` and the specific rule or reason.
-            Keep it concise: if there's nothing to say, say so briefly.
+            If there is nothing to say in a section, omit it.
+            Only post GitHub comments — do not output the review as a message.
 
 
   # Deep review for milestone -> main PRs. Runs on open / ready_for_review
@@ -243,94 +227,71 @@ jobs:
         uses: anthropics/claude-code-action@v1
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
-          use_sticky_comment: true
+          track_progress: true
           # Opus is worth it here: this runs once per milestone, not per push.
           model: "claude-opus-4-6"
-          settings: |
-            {
-              "allowedTools": [
-                "Task",
-                "Read",
-                "Grep",
-                "Glob",
-                "Bash(git diff:*)",
-                "Bash(git log:*)",
-                "Bash(git show:*)",
-                "Bash(git diff --name-only:*)",
-                "Bash(gh pr list:*)",
-                "Bash(gh pr view:*)",
-                "Bash(cat merged-prs.txt)",
-                "Bash(php -l *)",
-                "Bash(composer check:php)",
-                "Bash(vendor/bin/phpstan analyse:*)",
-                "Bash(npm run lint)"
-              ]
-            }
+          claude_args: >-
+            --allowedTools
+            "Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*),Bash(gh pr list:*),Bash(cat merged-prs.txt),Bash(git diff:*),Bash(git log:*),Bash(git show:*),Bash(git diff --name-only:*),Bash(php -l *),Bash(composer check:php),Bash(vendor/bin/phpstan analyse:*),Bash(npm run lint),Read,Grep,Glob"
           prompt: |
+            REPO: ${{ github.repository }}
+            PR NUMBER: ${{ github.event.pull_request.number }}
+
             You are reviewing a **milestone release PR** targeting `main`.
 
             - Milestone branch: ${{ github.event.pull_request.head.ref }}
             - Title: ${{ github.event.pull_request.title }}
 
             This PR aggregates many issue PRs that were each individually
-            reviewed on their own PR (by Claude + the author running
-            `/review-pr` locally). **Do not review line by line.** That work
+            reviewed on their own PR. **Do not review line by line.** That work
             is already done.
 
             Instead, focus on cross-issue and release-level concerns.
 
             ## Read the merged issue list
 
-            The file `merged-prs.txt` at the repo root contains the list of
-            issue PRs squash-merged into this milestone branch. Use it as
-            your table of contents.
+            ```bash
+            cat merged-prs.txt
+            ```
+
+            The file lists issue PRs squash-merged into this milestone branch.
 
             ## Your tasks
 
-            Dispatch specialist agents in parallel via the Task tool:
-
             1. **Release notes accuracy** — compare `merged-prs.txt` against
-               the milestone's release notes at `docs/releases/RELEASE_NOTES_v*.md`
-               (use `docs/development/RELEASE_NOTES_TEMPLATE.md` as the
-               structural reference only). Every merged PR should be reflected.
-               Flag missing, duplicated, or mis-categorized entries.
+               `docs/releases/RELEASE_NOTES_v*.md`. Every merged PR should be
+               reflected. Flag missing, duplicated, or mis-categorized entries.
 
-            2. **Architecture drift** — launch `senior-architect`. Is the
-               aggregated shape still coherent with the wiki's architecture
-               guide? Any cross-cutting changes that warrant a wiki update
-               per the `/architecture-update` workflow?
+            2. **Architecture drift** — Is the aggregated shape coherent with the
+               architecture (see `CLAUDE.md`)? Any cross-cutting changes that
+               warrant a wiki update?
 
-            3. **Cross-issue integration** — launch `code-reviewer` focused
-               on interactions between the merged PRs: shared types, shared
-               DB schema, shared JS globals, API contract drift between
-               endpoints that different PRs touched. Look at the combined
-               diff:
+            3. **Cross-issue integration** — Are there interactions between merged
+               PRs: shared types, shared DB schema, shared JS globals, API
+               contract drift between endpoints different PRs touched?
 
                ```bash
-               git diff origin/main...HEAD
+               gh pr diff ${{ github.event.pull_request.number }}
                ```
 
-            4. **Security surface of the aggregate** — launch
-               `security-reviewer` over the combined diff. Individual PRs
-               passed security review; the question is whether the *sum*
-               introduces a new vector (e.g., two PRs that each look fine
-               but together create a CSRF bypass).
+            4. **Security surface of the aggregate** — Does the *sum* introduce a
+               new vector (e.g., two PRs that each look fine but together create
+               a CSRF bypass)?
 
-            5. **Silent failures / error budget** — launch
-               `silent-failure-hunter` over error-handling changes in the
-               combined diff. Different authors can disagree on fallback
-               behaviour; flag inconsistency.
-
-            6. **Deployment readiness** — check `docs/development/DEPLOYMENT.md`
-               and `docs/development/ENVIRONMENT.md`. Any new env vars,
-               migrations, feature flags, or pre-deploy steps that need to
-               be listed in the release notes?
+            5. **Deployment readiness** — Any new env vars, migrations, feature
+               flags, or pre-deploy steps missing from the release notes?
 
             ## Output
 
-            One sticky comment, structured:
+            Post your review as a PR comment using:
 
-            # Milestone Review: <milestone>
+            ```bash
+            gh pr comment ${{ github.event.pull_request.number }} --body "..."
+            ```
+
+            Structure the comment with these sections:
+
+            # Milestone Review: <milestone branch>
 
             ## Release contents
             <bullet list of the merged PRs, grouped by theme>
@@ -350,14 +311,9 @@ jobs:
             ## Strengths
             <what's well done at the milestone level>
 
-            ## Recommended next steps
-            1. ...
-            2. ...
-
-            Each issue cites `file:line` or `PR #N` so the reader can jump
-            straight to the source. Do not restate per-line findings already
-            addressed on the issue PRs — assume those are closed.
-
+            Each issue cites `file:line` or `PR #N`. Do not restate per-line
+            findings already addressed on issue PRs.
+            Only post GitHub comments — do not output the review as a message.
 
 
   # Deep review triggered by a PR comment: `@claude deep-review`.
@@ -399,49 +355,38 @@ jobs:
         uses: anthropics/claude-code-action@v1
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
-          use_sticky_comment: true
+          track_progress: true
           model: "claude-opus-4-6"
-          settings: |
-            {
-              "allowedTools": [
-                "Task",
-                "Read",
-                "Grep",
-                "Glob",
-                "Bash(git diff:*)",
-                "Bash(git log:*)",
-                "Bash(git show:*)",
-                "Bash(git diff --name-only:*)",
-                "Bash(gh pr view:*)",
-                "Bash(php -l *)",
-                "Bash(composer check:php)",
-                "Bash(vendor/bin/phpstan analyse:*)",
-                "Bash(npm run lint)"
-              ]
-            }
+          claude_args: >-
+            --allowedTools
+            "Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*),Bash(git diff:*),Bash(git log:*),Bash(git show:*),Bash(git diff --name-only:*),Bash(php -l *),Bash(composer check:php),Bash(vendor/bin/phpstan analyse:*),Bash(npm run lint),Read,Grep,Glob"
           prompt: |
+            REPO: ${{ github.repository }}
+            PR NUMBER: ${{ github.event.issue.number }}
+
             Deep review requested by `@claude deep-review` comment on
             PR #${{ github.event.issue.number }}.
 
-            Run the full specialist-agent suite in parallel via the Task
-            tool:
-
-            - `code-reviewer` — CLAUDE.md + CODING_STANDARDS compliance
-            - `security-reviewer` — OWASP + project security patterns
-            - `silent-failure-hunter` — error paths and fallbacks
-            - `pr-test-analyzer` — test coverage for new behaviour
-            - `comment-analyzer` — PHPDoc accuracy (if comments changed)
-            - `type-design-analyzer` — type design (if classes changed)
-            - `senior-architect` — architecture fit
-
-            Scope is the PR diff:
+            Review the PR diff:
 
             ```bash
-            git diff origin/${{ steps.pr-info.outputs.base_ref }}...HEAD
+            gh pr diff ${{ github.event.issue.number }}
             ```
 
-            Aggregate into one sticky comment with Blocking / Important /
-            Suggestions / Strengths / Action Plan sections. Every item must
-            cite `file:line`.
+            Check across all quality dimensions:
 
+            - **Code quality** — CLAUDE.md + CODING_STANDARDS compliance, bug detection
+            - **Security** — OWASP patterns, CSRF, prepared statements, input validation
+            - **Error handling** — silent failures, catch blocks, fallback paths
+            - **Test coverage** — are new behaviours tested?
+            - **Architecture fit** — does it fit the existing patterns?
 
+            Post your review as a PR comment using:
+
+            ```bash
+            gh pr comment ${{ github.event.issue.number }} --body "..."
+            ```
+
+            Structure the comment with Blocking / Important / Suggestions /
+            Strengths sections. Every item must cite `file:line`.
+            Only post GitHub comments — do not output the review as a message.
