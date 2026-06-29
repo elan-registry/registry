@@ -6,6 +6,10 @@
 ## Required Actions After Deployment
 
 - Run **`01-remove-account-hooks.php`** (`app/admin/scripts/fix/`) — removes the two legacy `account.php` hook rows from `us_plugin_hooks`. The full-page override (`usersc/account.php`) renders the account page directly; the hook rows are no longer needed. Script is idempotent.
+- **Rename the car edit page in `us_pages`** — `app/cars/form.php` was renamed to `app/cars/edit.php`. Update the pages table so `securePage()` resolves correctly for non-admin owners:
+  ```sql
+  UPDATE us_pages SET name = 'app/cars/edit.php' WHERE name = 'app/cars/form.php';
+  ```
 
 ## User-Facing Changes
 

@@ -470,10 +470,9 @@ if (!empty($_POST)) {
         }
     }
 
-    // PRG pattern: redirect after POST so refresh doesn't re-submit
-    if (!empty($errors)) {
-        Redirect::to($us_url_root . 'users/user_settings.php');
-    } else {
+    // PRG redirect on success only; on error, fall through so the form re-renders
+    // with current values and session flash messages from usError() are displayed.
+    if (empty($errors)) {
         Redirect::to($us_url_root . 'usersc/account.php');
     }
 }

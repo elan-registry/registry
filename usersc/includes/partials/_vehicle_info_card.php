@@ -112,14 +112,14 @@ $_subHeadingClass = $headingTag === 'h4' ? 'card-header-er-l4-text mb-2' : 'text
                 <i class="fas fa-plus-circle text-success d-block mb-1" aria-hidden="true"></i>
                 <small class="text-muted d-block">Added to Registry</small>
                 <strong>
-                    <?= (new DateTime($carData->ctime))->format('M j, Y') ?>
+                    <?php try { echo !empty($carData->ctime) ? (new DateTime($carData->ctime))->format('M j, Y') : ''; } catch (\Exception) { echo ''; } ?>
                 </strong>
             </div>
             <div class="col-6">
                 <i class="fas fa-edit text-info d-block mb-1" aria-hidden="true"></i>
                 <small class="text-muted d-block">Last Updated</small>
                 <strong>
-                    <?= (new DateTime($carData->mtime))->format('M j, Y') ?>
+                    <?php try { echo !empty($carData->mtime) ? (new DateTime($carData->mtime))->format('M j, Y') : ''; } catch (\Exception) { echo ''; } ?>
                 </strong>
             </div>
         </div>

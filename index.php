@@ -153,6 +153,7 @@ try {
 							<?php foreach ($showcasePool as $index => $carData) {
 								$showcaseCar = new Car((int) $carData->id);
 								$d = $showcaseCar->data();
+								if ($d === null) { continue; }
 							?>
 							<div class="<?= $index > 0 ? 'd-none ' : '' ?>px-3 pt-3"
 								 data-showcase-slide="<?= (int) $index ?>"

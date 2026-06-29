@@ -90,18 +90,9 @@ class CarShowcaseService
         $pool = array_merge($recent, $random);
         shuffle($pool);
 
-        // is_new: within NEW_DAYS OR in top-NEW_FLOOR most-recently-added (ensures badges even on dormant registries)
-        $topFloorIds = array_slice($recentIds, 0, self::NEW_FLOOR);
-        $threshold = new \DateTime('-' . self::NEW_DAYS . ' days');
-
+        $newIds = self::getNewCarIds($db);
         foreach ($pool as $car) {
-            try {
-                $carDate = new \DateTime((string) $car->ctime);
-                $car->is_new = ($carDate >= $threshold) || in_array((int) $car->id, $topFloorIds, true);
-            } catch (\Exception $e) {
-                logger(0, LogCategories::LOG_CATEGORY_DATABASE_ERROR, 'CarShowcaseService: invalid ctime for car id=' . ((int) $car->id) . ': ' . $e->getMessage());
-                $car->is_new = in_array((int) $car->id, $topFloorIds, true);
-            }
+            $car->is_new = in_array((int) $car->id, $newIds, true);
         }
 
         return $pool;

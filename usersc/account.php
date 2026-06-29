@@ -10,7 +10,7 @@ if (!securePage($php_self)) {
 }
 
 // Handle uncloak POST — form submits to this page with action=""
-if (!empty($_POST['uncloak']) && Token::check()) {
+if (!empty($_POST['uncloak']) && Token::check(\Input::get('token'))) {
     endCloak();
     Redirect::to($us_url_root . 'usersc/account.php');
 }
@@ -19,7 +19,11 @@ $ownerId    = (int)$user->data()->id;
 $ownerData  = getUserWithProfile($ownerId);
 $cars       = Car::findByOwner($ownerId);
 $carCount   = count($cars);
-$signupDate = new DateTime($ownerData->join_date);
+try {
+    $signupDate = !empty($ownerData->join_date) ? new DateTime($ownerData->join_date) : null;
+} catch (\Exception) {
+    $signupDate = null;
+}
 $lastLogin  = !empty($ownerData->last_login) ? new DateTime($ownerData->last_login) : null;
 $hasOwnerMap = is_numeric($ownerData->lat ?? null)
     && is_numeric($ownerData->lon ?? null)
@@ -107,7 +111,7 @@ $_baseUrl = htmlspecialchars($us_url_root, ENT_QUOTES, 'UTF-8');
                             <div class="row text-center g-2 mb-3 mt-3">
                                 <div class="col-4">
                                     <div class="text-muted small">Member since</div>
-                                    <div class="fw-bold text-primary"><?= $signupDate->format('M Y') ?></div>
+                                    <div class="fw-bold text-primary"><?= $signupDate ? $signupDate->format('M Y') : '' ?></div>
                                 </div>
                                 <div class="col-4">
                                     <div class="text-muted small">Cars</div>
@@ -190,9 +194,18 @@ $_baseUrl = htmlspecialchars($us_url_root, ENT_QUOTES, 'UTF-8');
                 $factoryData  = $car->factory();
                 $carId        = (int)$carData->id;
                 $collapseId   = 'car-details-' . $carId;
-                $purchaseDate = !empty($carData->purchasedate) ? new DateTime($carData->purchasedate) : null;
-                $soldDate     = !empty($carData->solddate) ? new DateTime($carData->solddate) : null;
-                $buildDate    = ($factoryData && !empty($factoryData->builddate)) ? new DateTime($factoryData->builddate) : null;
+                $purchaseDate = null;
+                if (!empty($carData->purchasedate)) {
+                    try { $purchaseDate = new DateTime($carData->purchasedate); } catch (\Exception) {}
+                }
+                $soldDate = null;
+                if (!empty($carData->solddate)) {
+                    try { $soldDate = new DateTime($carData->solddate); } catch (\Exception) {}
+                }
+                $buildDate = null;
+                if ($factoryData && !empty($factoryData->builddate)) {
+                    try { $buildDate = new DateTime($factoryData->builddate); } catch (\Exception) {}
+                }
                 $isExpanded   = $carCount === 1;
 
                 // 4th quick-fact: Sold date or owner location
@@ -281,7 +294,7 @@ $_baseUrl = htmlspecialchars($us_url_root, ENT_QUOTES, 'UTF-8');
                                         </h4>
                                     </div>
                                     <div class="card-body">
-                                        <?= CarView::displayCarousel($car) ?>
+                                        <?= CarView::displayCarousel($car, $carId) ?>
                                     </div>
                                 </div>
                                 <!-- Factory Data card (only when factory data exists) -->
