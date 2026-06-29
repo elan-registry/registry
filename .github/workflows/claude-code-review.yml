@@ -174,7 +174,6 @@ jobs:
             Each item must cite `file:line` and the specific rule or reason.
             Keep it concise: if there's nothing to say, say so briefly.
 
-          claude_args: "--allowedTools Task,Read,Grep,Glob,Bash(git diff:*),Bash(git log:*),Bash(git show:*),Bash(git diff --name-only:*),Bash(php -l *),Bash(composer check:php),Bash(vendor/bin/phpstan analyse:*),Bash(npm run lint)"
 
   # Deep review for milestone -> main PRs. Runs on open / ready_for_review
   # and when `deep-review` is explicitly requested.
@@ -323,7 +322,6 @@ jobs:
             straight to the source. Do not restate per-line findings already
             addressed on the issue PRs — assume those are closed.
 
-          claude_args: "--allowedTools Task,Read,Grep,Glob,Bash(git diff:*),Bash(git log:*),Bash(git show:*),Bash(git diff --name-only:*),Bash(gh pr list:*),Bash(gh pr view:*),Bash(cat merged-prs.txt),Bash(php -l *),Bash(composer check:php),Bash(vendor/bin/phpstan analyse:*),Bash(npm run lint)"
 
 
   # Deep review triggered by a PR comment: `@claude deep-review`.
@@ -392,5 +390,4 @@ jobs:
             Suggestions / Strengths / Action Plan sections. Every item must
             cite `file:line`.
 
-          claude_args: "--allowedTools Task,Read,Grep,Glob,Bash(git diff:*),Bash(git log:*),Bash(git show:*),Bash(git diff --name-only:*),Bash(gh pr view:*),Bash(php -l *),Bash(composer check:php),Bash(vendor/bin/phpstan analyse:*),Bash(npm run lint)"
 
