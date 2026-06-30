@@ -79,4 +79,5 @@ try {
         ])
         ->withLogging($user->data()->id ?? 0, LogCategories::LOG_CATEGORY_VALIDATION_ERROR, "ChassisValidator error: " . $e->getMessage())
         ->send();
+
 }

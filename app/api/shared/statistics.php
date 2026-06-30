@@ -97,4 +97,5 @@ try {
             "Statistics API error for tab '{$tab}': " . $e->getMessage()
         )
         ->send();
+
 }

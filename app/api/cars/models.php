@@ -92,7 +92,7 @@ try {
             ApiResponse::error('Invalid action', 400)->send();
     }
 
-} catch (\Exception $e) {
+} catch (\Throwable $e) {
     logger($user->data()->id ?? 0, LogCategories::LOG_CATEGORY_SYSTEM_ERROR,
         "models.php error: {$e->getMessage()}");
     ApiResponse::error('Failed to retrieve models', 500)->send();

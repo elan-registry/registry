@@ -45,7 +45,10 @@ $cardetails = [];
 $targetFilePath = $abs_us_root . $us_url_root . $settings->elan_image_dir;
 $targetURL = $us_url_root . $settings->elan_image_dir;
 
-//Forms posted now process it
+if ($method !== 'POST' || empty($_POST)) {
+    ApiResponse::error('No data received', 400)->send();
+}
+
 if (!empty($_POST)) {
     if (!$user->isLoggedIn()) {
         ApiResponse::unauthorized('Login required')

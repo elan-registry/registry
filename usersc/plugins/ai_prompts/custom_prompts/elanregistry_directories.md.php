@@ -58,6 +58,7 @@ $path = [
     'app/admin/scripts/fix/',
     'app/admin/scripts/maintenance/',
     'app/cars/',
+    'app/api/shared/',       // statistics.php calls securePage()
     // ... add 'your/new/directory/' here
 ];
 ```
