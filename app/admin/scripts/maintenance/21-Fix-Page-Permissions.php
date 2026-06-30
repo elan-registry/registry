@@ -17,20 +17,24 @@ declare(strict_types=1);
  *
  * ADMIN-ONLY PAGES (will be set to private=1 with Administrator permission only):
  * - app/admin/scripts/* - All admin maintenance & fix scripts
- * - app/admin/manage-maintenance.php - Maintenance portal page
+ * - app/admin/maintenance.php - Maintenance portal page
  * - app/admin/includes/tab-health.php - Health tab include
  * - app/admin/includes/tab-maintenance.php - Maintenance tab include
  *
  * ADMIN+EDITOR PAGES (will be set to private=1 with Admin+Editor permissions):
  * - app/admin/* - All other admin pages (not in admin-only list above)
+ *   Examples: app/admin/index.php, app/admin/design-system.php
  * - *admin* - Any other path containing "admin" (includes docs/admin/*, etc.)
- * - docs/*admin* - Admin documentation pages
  *
  * OWNER/USER PRIVATE PAGES (will be set to private=1 with User permission):
- * - app/cars/actions* - All car action endpoints
+ * - app/api/contact/* - Contact API endpoints (send-feedback, send-owner-email)
  * - app/contact/* - All contact form pages
  * - *edit* - Any path containing "edit" (that doesn't also contain "admin")
  * - usersc/* - All UserSpice customization pages (EXCEPT special cases below)
+ * Note: app/api/cars/* and app/api/shared/* endpoints that don't call
+ * securePage() are not registered in the pages table and not managed here
+ * (some app/api/cars/* endpoints enforce authentication inline without
+ * securePage() and are private, but they are outside this script's scope).
  *
  * SPECIAL CASE PRIVATE PAGES (will be set to private=1 with NO permissions):
  * - usersc/join.php - Registration page (public access, no permissions needed)
@@ -425,18 +429,19 @@ require_once $abs_us_root . $us_url_root . 'users/includes/template/prep.php';
                                 <p class="mb-2"><strong>Admin-Only (private=1, Administrator permission only):</strong></p>
                                 <ul>
                                     <li><strong>app/admin/scripts/*</strong> - All admin fix &amp; maintenance scripts</li>
-                                    <li><strong>app/admin/manage-maintenance.php</strong> - Maintenance portal</li>
+                                    <li><strong>app/admin/maintenance.php</strong> - Maintenance portal</li>
                                     <li><strong>app/admin/includes/tab-health.php</strong> - Health tab include</li>
                                     <li><strong>app/admin/includes/tab-maintenance.php</strong> - Maintenance tab include</li>
                                 </ul>
                                 <p class="mb-2"><strong>Admin + Editor (private=1, Administrator + Editor permissions):</strong></p>
                                 <ul>
                                     <li><strong>app/admin/*</strong> - All other admin pages</li>
+                                    <li><strong>app/admin/design-system.php</strong> - Design system reference (example; covered by wildcard above)</li>
                                     <li><strong>*admin*</strong> - Any other path containing "admin"</li>
                                 </ul>
                                 <p class="mb-2"><strong>Owner (private=1, User permission):</strong></p>
                                 <ul>
-                                    <li><strong>app/cars/actions*</strong> - All car action endpoints</li>
+                                    <li><strong>app/api/contact/*</strong> - Contact API endpoints</li>
                                     <li><strong>app/contact/*</strong> - All contact form pages</li>
                                     <li><strong>*edit*</strong> - Any path containing "edit"</li>
                                     <li><strong>usersc/*</strong> - All UserSpice customization pages</li>

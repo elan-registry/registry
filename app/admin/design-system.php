@@ -9,7 +9,7 @@ declare(strict_types=1);
  * stat tiles, form fields, charts) so the visual system can be reviewed in
  * one screen before site-wide rollout.
  *
- * Admin-only via UserSpice securePage(). Tokens themselves live in
+ * Admin/Editor access via UserSpice securePage(). Tokens themselves live in
  * usersc/templates/customizer.css.
  */
 

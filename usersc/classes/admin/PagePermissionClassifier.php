@@ -13,7 +13,7 @@ declare(strict_types=1);
  * - Special-no-perms: PRIVATE with no permission entries (login, join)
  * - Admin-only: PRIVATE with Administrator only (maintenance scripts, portal)
  * - Admin+Editor: PRIVATE with Administrator + Editor (general admin panel)
- * - Owner: PRIVATE with User permission (usersc/*, edit pages, car actions)
+ * - Owner: PRIVATE with User permission (usersc/*, edit pages, app/api/contact/*)
  * - Public: private=0, no permissions (everything else)
  */
 class PagePermissionClassifier
@@ -34,7 +34,6 @@ class PagePermissionClassifier
      */
     private const ADMIN_ONLY_PAGES = [
         'app/admin/maintenance.php',
-        'app/admin/design-system.php',
         'app/admin/includes/tab-health.php',
         'app/admin/includes/tab-maintenance.php',
     ];
@@ -112,7 +111,11 @@ class PagePermissionClassifier
             '#^app/admin/scripts/#',             // app/admin/scripts/* maintenance & fix scripts
             '#^app/admin/#',                     // app/admin/* pages
             '#admin#',                           // Any path containing "admin"
-            '#^app/api/#',                       // app/api/* endpoints — all treated as owner-tier private
+            '#^app/api/#',                       // app/api/* endpoints registered via securePage() are owner-tier private
+                                             //   (currently only app/api/contact/*). Endpoints that enforce auth
+                                             //   inline without securePage() (e.g. app/api/cars/*) and purely
+                                             //   public endpoints (e.g. app/api/shared/statistics.php) must NOT
+                                             //   call securePage() — they are never registered and never reach here.
             '#^app/contact/#',                   // app/contact/* pages
             '#edit#',                            // Any path containing "edit"
             '#^usersc/#'                         // usersc/* pages

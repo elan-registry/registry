@@ -4,10 +4,11 @@ declare(strict_types=1);
 
 /**
  * statistics.php (formerly statistics-data.php)
- * API endpoint for lazy-loading statistics tab data
+ * Public API endpoint for lazy-loading statistics tab data
  *
  * Returns JSON data for specific tab content to enable progressive loading
- * and improve page performance.
+ * and improve page performance. No authentication required — statistics
+ * data is publicly accessible.
  *
  * @author Elan Registry Development Team
  * @copyright 2025
@@ -16,14 +17,6 @@ declare(strict_types=1);
 require_once '../../../users/init.php';
 require_once $abs_us_root . $us_url_root . 'usersc/classes/StatisticsDataService.php';
 
-// Security check
-if (!securePage($php_self)) {
-    ApiResponse::forbidden('Unauthorized access')
-        ->withLogging(0, LogCategories::LOG_CATEGORY_SECURITY, 'Unauthorized statistics endpoint access attempt')
-        ->send();
-}
-
-// Get requested tab
 $tab = Input::get('tab');
 
 if (empty($tab)) {
@@ -32,7 +25,6 @@ if (empty($tab)) {
         ->send();
 }
 
-// Initialize data service
 try {
     if (!isset($db)) {
         ApiResponse::serverError('Database connection not available')
