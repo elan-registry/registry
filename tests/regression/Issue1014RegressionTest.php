@@ -37,7 +37,7 @@ final class Issue1014RegressionTest extends TestCase
     {
         // tests/regression/ is two levels below the project root
         $this->projectRoot = dirname(__DIR__, 2);
-        $this->targetFile  = $this->projectRoot . '/app/contact/send-owner-email.php';
+        $this->targetFile  = $this->projectRoot . '/app/api/contact/send-owner-email.php';
     }
 
     /**

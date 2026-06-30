@@ -90,7 +90,8 @@ if (!empty($_POST)) {
                 </div>
 
                 <!-- Message Form -->
-                <form name="contactform" method="post" action="send-owner-email.php" class="needs-validation" novalidate>
+                <div id="owner-alerts"></div>
+                <form name="contactform" method="post" action="<?= $us_url_root ?>app/api/contact/send-owner-email.php" class="needs-validation" novalidate>
                     <div class="mb-4">
                         <label for="message" class="form-label h5">
                             <i class="fas fa-comment text-primary"></i> Your Message
@@ -114,7 +115,7 @@ if (!empty($_POST)) {
                     </div>
 
                     <!-- Hidden Fields -->
-                    <input type='hidden' name='csrf' value='<?= Token::generate(); ?>' />
+                    <input type='hidden' name='csrf' value='<?= htmlspecialchars(Token::generate(), ENT_QUOTES, 'UTF-8'); ?>' />
                     <input type='hidden' name='action' value='send_message' />
                     <input type='hidden' name='to_user_id' value='<?= htmlspecialchars($to['id'], ENT_QUOTES, 'UTF-8'); ?>' />
                     <input type='hidden' name='car_id' value='<?= htmlspecialchars($carID, ENT_QUOTES, 'UTF-8'); ?>' />
@@ -136,6 +137,49 @@ if (!empty($_POST)) {
     </div> <!-- container-fluid -->
 </div> <!-- page-wrapper -->
 
+
+<script>
+$(document).ready(function () {
+    $('form[name="contactform"]').on('submit', function (e) {
+        e.preventDefault();
+        var $form = $(this);
+        var $btn  = $form.find('button[type="submit"]');
+        var originalHtml = $btn.html();
+
+        $btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i> Sending...');
+        $('#owner-alerts').empty();
+
+        new ElanRegistryAPI().post(
+            '<?= $us_url_root ?>app/api/contact/send-owner-email.php',
+            {
+                action:      $form.find('input[name="action"]').val(),
+                to_user_id:  $form.find('input[name="to_user_id"]').val(),
+                car_id:      $form.find('input[name="car_id"]').val(),
+                message:     $('#message').val()
+            }
+        ).then(function (response) {
+            $('#owner-alerts').html(
+                '<div class="alert alert-success alert-dismissible fade show" role="alert">' +
+                '<i class="fas fa-check-circle me-2"></i>' +
+                NotificationHelper.escapeHtml(response.message) +
+                '<button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>' +
+                '</div>'
+            );
+            $form[0].reset();
+        }).catch(function (error) {
+            $('#owner-alerts').html(
+                '<div class="alert alert-danger alert-dismissible fade show" role="alert">' +
+                '<i class="fas fa-exclamation-circle me-2"></i>' +
+                NotificationHelper.escapeHtml(error.message || 'Failed to send message.') +
+                '<button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>' +
+                '</div>'
+            );
+        }).finally(function () {
+            $btn.prop('disabled', false).html(originalHtml);
+        });
+    });
+});
+</script>
 
 <!-- footers -->
 <?php
