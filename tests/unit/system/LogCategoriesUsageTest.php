@@ -35,8 +35,8 @@ class LogCategoriesUsageTest extends TestCase
      * for all logging category parameters.
      */
     private const CONTACT_ENDPOINT_FILES = [
-        'app/contact/send-feedback.php',
-        'app/contact/send-owner-email.php',
+        'app/api/contact/send-feedback.php',
+        'app/api/contact/send-owner-email.php',
     ];
 
     private string $rootDir;
@@ -399,7 +399,7 @@ class LogCategoriesUsageTest extends TestCase
      */
     public function testSendFeedbackPhpIsModernized(): void
     {
-        $filePath = $this->rootDir . '/app/contact/send-feedback.php';
+        $filePath = $this->rootDir . '/app/api/contact/send-feedback.php';
         if (!file_exists($filePath)) {
             $this->markTestSkipped('send-feedback.php not found');
         }

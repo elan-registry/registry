@@ -56,7 +56,8 @@ if (!securePage($php_self)) {
 				</div>
 
 				<!-- Feedback Form -->
-				<form name="contactform" method="post" action="send-feedback.php" class="needs-validation" novalidate>
+				<div id="feedback-alerts"></div>
+				<form name="contactform" method="post" action="<?= $us_url_root ?>app/api/contact/send-feedback.php" class="needs-validation" novalidate>
 					<div class="mb-4">
 						<label for="comments" class="form-label h5">
 							<i class="fas fa-comment text-primary"></i> Your Feedback
@@ -80,11 +81,7 @@ if (!securePage($php_self)) {
 					</div>
 
 					<!-- Hidden Fields -->
-					<input type="hidden" name="id" value="<?= $user->data()->id ?>" />
-					<input type="hidden" name="name" value="<?= htmlspecialchars(($user->data()->fname ?? '') . ' ' . ($user->data()->lname ?? ''), ENT_QUOTES, 'UTF-8') ?>" />
-					<input type="hidden" name="email" value="<?= htmlspecialchars($user->data()->email, ENT_QUOTES, 'UTF-8') ?>" />
 					<input type="hidden" name="csrf" value="<?= htmlspecialchars(Token::generate(), ENT_QUOTES, 'UTF-8'); ?>" />
-					<input type="hidden" name="referrer" value="<?= htmlspecialchars($referer ?: $us_url_root, ENT_QUOTES, 'UTF-8'); ?>" />
 
 					<!-- Submit Button -->
 					<div class="d-grid gap-2 d-md-flex justify-content-md-end">
@@ -102,6 +99,44 @@ if (!securePage($php_self)) {
 	</div> <!-- container-fluid -->
 </div> <!-- page-wrapper -->
 
+
+<script>
+$(document).ready(function () {
+    $('form[name="contactform"]').on('submit', function (e) {
+        e.preventDefault();
+        var $form = $(this);
+        var $btn  = $form.find('button[type="submit"]');
+        var originalHtml = $btn.html();
+
+        $btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i> Sending...');
+        $('#feedback-alerts').empty();
+
+        new ElanRegistryAPI().post(
+            '<?= $us_url_root ?>app/api/contact/send-feedback.php',
+            { comments: $('#comments').val() }
+        ).then(function (response) {
+            $('#feedback-alerts').html(
+                '<div class="alert alert-success alert-dismissible fade show" role="alert">' +
+                '<i class="fas fa-check-circle me-2"></i>' +
+                NotificationHelper.escapeHtml(response.message) +
+                '<button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>' +
+                '</div>'
+            );
+            $form[0].reset();
+        }).catch(function (error) {
+            $('#feedback-alerts').html(
+                '<div class="alert alert-danger alert-dismissible fade show" role="alert">' +
+                '<i class="fas fa-exclamation-circle me-2"></i>' +
+                NotificationHelper.escapeHtml(error.message || 'Failed to send feedback.') +
+                '<button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>' +
+                '</div>'
+            );
+        }).finally(function () {
+            $btn.prop('disabled', false).html(originalHtml);
+        });
+    });
+});
+</script>
 
 <!-- footers -->
 <?php

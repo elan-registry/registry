@@ -36,6 +36,10 @@ public URL changes.
 - Move 9 remaining AJAX endpoints from `app/cars/actions/`, `app/action/`, and `app/reports/api/`
   into `app/api/cars/` and `app/api/shared/` with resource-named filenames; delete emptied
   source directories; upgrade transfer-request security token to `random_bytes(32)` (#1037)
+- Convert `app/contact/send-feedback.php` and `app/contact/send-owner-email.php` from
+  full-page HTML redirect handlers to Pattern A JSON endpoints under `app/api/contact/`;
+  wire both contact forms to submit via `ElanRegistryAPI` for inline success/error display
+  with no page reload; sender identity read from trusted session, not POST hidden fields (#1038)
 
 ## Issues Resolved
 

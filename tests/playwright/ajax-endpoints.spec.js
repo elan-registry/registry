@@ -129,11 +129,10 @@ test.describe('Registry-Specific AJAX Endpoints', () => {
 
   test('owner contact endpoint requires authentication', async ({ page }) => {
     // Test the owner-to-owner contact system
-    const response = await page.request.post('app/contact/send-owner-email.php', {
+    const response = await page.request.post('app/api/contact/send-owner-email.php', {
       form: {
         car_id: '1',
-        sender_name: 'Test User',
-        sender_email: 'test@example.com',
+        to_user_id: '1',
         message: 'Interest in your Lotus Elan',
         csrf: 'test_token'
       }
@@ -316,5 +315,32 @@ test.describe('Registry-Specific AJAX Endpoints', () => {
       // If not JSON, should still be 403
       expect(response.status()).toBe(403);
     }
+  });
+
+  test('feedback endpoint requires CSRF and returns JSON', async ({ page }) => {
+    const response = await page.request.post('app/api/contact/send-feedback.php', {
+      form: {
+        comments: 'Test feedback',
+        csrf: 'invalid_token'
+      }
+    });
+    expect(response.status()).toBe(403);
+    const jsonResponse = await response.json();
+    expect(jsonResponse).toHaveProperty('success', false);
+  });
+
+  test('contact owner endpoint requires CSRF and returns JSON', async ({ page }) => {
+    const response = await page.request.post('app/api/contact/send-owner-email.php', {
+      form: {
+        action: 'send_message',
+        to_user_id: '1',
+        car_id: '1',
+        message: 'Test message',
+        csrf: 'invalid_token'
+      }
+    });
+    expect(response.status()).toBe(403);
+    const jsonResponse = await response.json();
+    expect(jsonResponse).toHaveProperty('success', false);
   });
 });
