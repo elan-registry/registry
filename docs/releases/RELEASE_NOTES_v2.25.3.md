@@ -48,6 +48,9 @@ public URL changes.
   with no page reload; sender identity read from trusted session, not POST hidden fields (#1038)
 - Add `08-Rename-Admin-Pages.php` fix script to update UserSpice `pages` table URL
   registrations for the three renamed admin pages; run after deployment (#1039)
+- Replace 3 deprecated `$.ajax()` calls in admin settings tab with `ElanRegistryAPI`;
+  add `process-admin-settings.php` Pattern A endpoint with explicit field allowlist and
+  admin-only (level 2) auth guard; fixes security issues in upstream parser (#528)
 
 ## Issues Resolved
 

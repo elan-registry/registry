@@ -317,6 +317,30 @@ test.describe('Registry-Specific AJAX Endpoints', () => {
     }
   });
 
+  test('admin settings endpoint requires admin permissions', async ({ page }) => {
+    // Test the admin-only (level 2) settings update endpoint
+    const response = await page.request.post('app/admin/includes/process-admin-settings.php', {
+      data: {
+        field: 'elan_image_max',
+        value: '10',
+        type: 'num',
+        csrf: 'test_token'
+      }
+    });
+
+    // Regular user should get 403 Forbidden
+    expect(response.status()).toBe(403);
+
+    try {
+      const jsonResponse = await response.json();
+      expect(jsonResponse).toHaveProperty('success', false);
+      expect(jsonResponse).toHaveProperty('message');
+    } catch (error) {
+      // If not JSON, should still be 403
+      expect(response.status()).toBe(403);
+    }
+  });
+
   test('feedback endpoint requires CSRF and returns JSON', async ({ page }) => {
     const response = await page.request.post('app/api/contact/send-feedback.php', {
       form: {

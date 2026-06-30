@@ -339,104 +339,42 @@ $autoCreationMessages = processSettingsAutoCreation();
 
 <script>
 // Settings management JavaScript
-function settingsMessages(data) {
-    console.log(data.msg);
+function settingsMessages(msg, type) {
     $('#settingsMessages').removeClass();
-    $('#settingsMessage').text("");
+    $('#settingsMessage').text('');
     $('#settingsMessages').show();
-    if (data.success == "true") {
-        $('#settingsMessages').addClass("alert alert-success alert-dismissible fade show");
-        $('#settingsMessage').text(data.msg || 'Setting updated successfully');
+    if (type === 'success') {
+        $('#settingsMessages').addClass('alert alert-success alert-dismissible fade show');
+        $('#settingsMessage').text(msg || 'Setting updated successfully');
     } else {
-        $('#settingsMessages').addClass("alert alert-danger alert-dismissible fade show");
-        $('#settingsMessage').text(data.msg || 'Error updating setting');
+        $('#settingsMessages').addClass('alert alert-danger alert-dismissible fade show');
+        $('#settingsMessage').text(msg || 'Error updating setting');
     }
     $('#settingsMessages').delay(3000).fadeOut('slow');
 }
 
 $(document).ready(function() {
-    // Handle toggle switches
-    $(".toggle").change(function() {
-        var value = $(this).prop("checked");
-        $(this).prop("checked", value);
+    const settingsEndpoint = '<?= $us_url_root ?>app/admin/includes/process-admin-settings.php';
 
-        var field = $(this).attr("id");
-        var desc = $(this).attr("data-desc");
-        var table = $(this).attr("data-table") || 'settings';
-        var formData = {
-            'value': value,
-            'field': field,
-            'desc': desc,
-            'table': table,
-            'type': 'toggle',
-            'token': "<?= Token::generate() ?>",
-        };
+    function postSetting(elem, value, type) {
+        new ElanRegistryAPI().post(settingsEndpoint, {
+            field: elem.attr('id'),
+            value: value,
+            desc:  elem.data('desc') || elem.attr('id'),
+            table: elem.data('table') || 'settings',
+            type:  type
+        })
+        .then(function(r) { settingsMessages(r.message, 'success'); })
+        .catch(function(e) {
+            if (!(e instanceof ApiCancelledError)) {
+                settingsMessages(e.message, 'error');
+            }
+        });
+    }
 
-        // @deprecated - migrate to ElanRegistryAPI (Issue #481)
-        $.ajax({
-                type: 'POST',
-                url: '../../users/parsers/admin_settings.php',
-                data: formData,
-                dataType: 'json',
-            })
-            .done(function(data) {
-                settingsMessages(data);
-            });
-    });
-
-    // Handle numeric fields
-    $(".ajxnum").change(function() {
-        var value = $(this).val();
-        var field = $(this).attr("id");
-        var desc = $(this).attr("data-desc");
-        var table = $(this).attr("data-table") || 'settings';
-        var formData = {
-            'value': value,
-            'field': field,
-            'desc': desc,
-            'table': table,
-            'type': 'num',
-            'token': "<?= Token::generate() ?>",
-        };
-
-        // @deprecated - migrate to ElanRegistryAPI (Issue #481)
-        $.ajax({
-                type: 'POST',
-                url: '../../users/parsers/admin_settings.php',
-                data: formData,
-                dataType: 'json',
-            })
-            .done(function(data) {
-                settingsMessages(data);
-            });
-    });
-
-    // Handle text fields
-    $(".ajxtxt").change(function() {
-        var value = $(this).val();
-        var field = $(this).attr("id");
-        var desc = $(this).attr("data-desc");
-        var table = $(this).attr("data-table") || 'settings';
-        var formData = {
-            'value': value,
-            'field': field,
-            'desc': desc,
-            'table': table,
-            'type': 'txt',
-            'token': "<?= Token::generate() ?>",
-        };
-
-        // @deprecated - migrate to ElanRegistryAPI (Issue #481)
-        $.ajax({
-                type: 'POST',
-                url: '../../users/parsers/admin_settings.php',
-                data: formData,
-                dataType: 'json',
-            })
-            .done(function(data) {
-                settingsMessages(data);
-            });
-    });
+    $('.toggle').change(function() { postSetting($(this), $(this).prop('checked'), 'toggle'); });
+    $('.ajxnum').change(function() { postSetting($(this), $(this).val(), 'num'); });
+    $('.ajxtxt').change(function() { postSetting($(this), $(this).val(), 'txt'); });
 });
 
 // Test Email Configuration
