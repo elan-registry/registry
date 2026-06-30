@@ -323,12 +323,11 @@ test.describe('Registry-Specific AJAX Endpoints', () => {
       data: {
         field: 'elan_image_max',
         value: '10',
-        type: 'num',
         csrf: 'test_token'
       }
     });
 
-    // Regular user should get 403 Forbidden
+    // Unauthenticated request should get 403 Forbidden
     expect(response.status()).toBe(403);
 
     try {

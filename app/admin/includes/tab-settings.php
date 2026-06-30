@@ -355,14 +355,14 @@ function settingsMessages(msg, type) {
 
 $(document).ready(function() {
     const settingsEndpoint = '<?= $us_url_root ?>app/admin/includes/process-admin-settings.php';
+    const api = new ElanRegistryAPI();
 
-    function postSetting(elem, value, type) {
-        new ElanRegistryAPI().post(settingsEndpoint, {
+    function postSetting(elem, value) {
+        api.post(settingsEndpoint, {
             field: elem.attr('id'),
             value: value,
             desc:  elem.data('desc') || elem.attr('id'),
             table: elem.data('table') || 'settings',
-            type:  type
         })
         .then(function(r) { settingsMessages(r.message, 'success'); })
         .catch(function(e) {
@@ -372,9 +372,9 @@ $(document).ready(function() {
         });
     }
 
-    $('.toggle').change(function() { postSetting($(this), $(this).prop('checked'), 'toggle'); });
-    $('.ajxnum').change(function() { postSetting($(this), $(this).val(), 'num'); });
-    $('.ajxtxt').change(function() { postSetting($(this), $(this).val(), 'txt'); });
+    $('.toggle').change(function() { postSetting($(this), $(this).prop('checked')); });
+    $('.ajxnum').change(function() { postSetting($(this), $(this).val()); });
+    $('.ajxtxt').change(function() { postSetting($(this), $(this).val()); });
 });
 
 // Test Email Configuration
