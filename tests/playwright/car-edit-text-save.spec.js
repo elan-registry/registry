@@ -115,7 +115,7 @@ test.describe('Car edit form — text-only save (regression #796)', () => {
         //    without hitting the real database.
         // ------------------------------------------------------------------
         await page.route(
-            '**/app/cars/actions/edit.php',
+            '**/app/api/cars/save.php',
             async (route, request) => {
                 const method = request.method();
                 const postData = method === 'POST' ? request.postData() || '' : '';
@@ -198,7 +198,7 @@ test.describe('Car edit form — text-only save (regression #796)', () => {
         // ------------------------------------------------------------------
         let capturedRequest = null;
 
-        await page.route('**/app/cars/actions/edit.php', async (route, request) => {
+        await page.route('**/app/api/cars/save.php', async (route, request) => {
             if (request.method() === 'POST') {
                 const postDataBuffer = request.postDataBuffer();
                 const postDataText = request.postData() || '';
@@ -313,7 +313,7 @@ test.describe('Car edit form — text-only save (regression #796)', () => {
     // -----------------------------------------------------------------------
     test('sentinel blob absent when new file is queued for upload', async ({ page }) => {
         // Mock fetchImages to return no existing images (clean pond)
-        await page.route('**/app/cars/actions/edit.php', async (route, request) => {
+        await page.route('**/app/api/cars/save.php', async (route, request) => {
             const postData = request.postData() || '';
             if (postData.includes('action=fetchImages')) {
                 await route.fulfill({
@@ -341,7 +341,7 @@ test.describe('Car edit form — text-only save (regression #796)', () => {
 
         // Capture the submit POST
         let capturedRequest = null;
-        await page.route('**/app/cars/actions/edit.php', async (route, request) => {
+        await page.route('**/app/api/cars/save.php', async (route, request) => {
             if (request.method() === 'POST') {
                 const postData = request.postData() || '';
                 if (!postData.includes('action=fetchImages') && !postData.includes('action=removeImages')) {
@@ -523,7 +523,7 @@ test.describe('Car edit form — text-only save (regression #796)', () => {
         // 1. Mock fetchImages (empty pond — not relevant to this test) and
         //    capture the form-submit POST.
         // ------------------------------------------------------------------
-        await page.route('**/app/cars/actions/edit.php', async (route, request) => {
+        await page.route('**/app/api/cars/save.php', async (route, request) => {
             const postData = request.postData() || '';
             if (postData.includes('action=fetchImages')) {
                 await route.fulfill({
@@ -574,7 +574,7 @@ test.describe('Car edit form — text-only save (regression #796)', () => {
 
         let capturedComments = null;
 
-        await page.route('**/app/cars/actions/edit.php', async (route, request) => {
+        await page.route('**/app/api/cars/save.php', async (route, request) => {
             if (request.method() === 'POST') {
                 const postData = request.postData() || '';
                 if (!postData.includes('action=fetchImages') && !postData.includes('action=removeImages')) {
@@ -735,7 +735,7 @@ test.describe('Car edit form — text-only save (regression #796)', () => {
     // -----------------------------------------------------------------------
     test('mixed save: existing image preserved in filenames, only new file in file[]', async ({ page }) => {
         // Mock fetchImages to hydrate one existing LOCAL image
-        await page.route('**/app/cars/actions/edit.php', async (route, request) => {
+        await page.route('**/app/api/cars/save.php', async (route, request) => {
             const postData = request.postData() || '';
             if (postData.includes('action=fetchImages')) {
                 await route.fulfill({
@@ -776,7 +776,7 @@ test.describe('Car edit form — text-only save (regression #796)', () => {
 
         // Capture submit POST
         let capturedRequest = null;
-        await page.route('**/app/cars/actions/edit.php', async (route, request) => {
+        await page.route('**/app/api/cars/save.php', async (route, request) => {
             if (request.method() === 'POST') {
                 const postData = request.postData() || '';
                 if (!postData.includes('action=fetchImages') && !postData.includes('action=removeImages')) {
@@ -895,7 +895,7 @@ test.describe('encode-at-output regression — special chars in car text fields 
         // 1. Capture POST body sent to edit.php
         let capturedPostBody = null;
 
-        await page.route('**/app/cars/actions/edit.php', async (route, request) => {
+        await page.route('**/app/api/cars/save.php', async (route, request) => {
             if (request.method() === 'POST') {
                 const body = request.postData();
                 // Only capture non-null, non-empty bodies — a null or empty postData()

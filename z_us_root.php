@@ -6,7 +6,7 @@
  * Determines the root URL for Userspice and redirects to it.
  * Used for path resolution and navigation consistency.
  */
-$path = ['', 'users/', 'usersc/', 'app/', 'app/cars/', 'app/contact/', 'app/reports/', 'app/reports/api/', 'app/admin/', 'app/admin/includes/', 'app/admin/includes/system/', 'app/admin/scripts/fix/', 'app/admin/scripts/maintenance/', 'app/admin/verify/', 'docs/', 'docs/guides/', 'docs/reference/', 'docs/stories/', 'docs/stories/brian_walton/', 'docs/stories/SGO_2F/'];
+$path = ['', 'users/', 'usersc/', 'app/', 'app/cars/', 'app/contact/', 'app/reports/', 'app/api/shared/', 'app/admin/', 'app/admin/includes/', 'app/admin/includes/system/', 'app/admin/scripts/fix/', 'app/admin/scripts/maintenance/', 'app/admin/verify/', 'docs/', 'docs/guides/', 'docs/reference/', 'docs/stories/', 'docs/stories/brian_walton/', 'docs/stories/SGO_2F/'];
 // Only add or remove values in the $path variable separated by commas above
 
 $abs_us_root = Server::get('DOCUMENT_ROOT');

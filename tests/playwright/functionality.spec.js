@@ -126,7 +126,7 @@ test.describe('Core Functionality After Refactoring', () => {
   test('AJAX endpoints respond correctly', async ({ page }) => {
     const endpoints = [
       'app/api/cars/list.php',
-      'app/cars/actions/check-chassis.php',
+      'app/api/cars/chassis-availability.php',
     ];
 
     for (const endpoint of endpoints) {

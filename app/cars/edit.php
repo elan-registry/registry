@@ -743,7 +743,7 @@ require_once $abs_us_root . $us_url_root . 'users/includes/html_footer.php'; //c
 
         // Hydrate existing images in edit mode
         if (car_id && car_id !== '') {
-            new ElanRegistryAPI().post('<?= $us_url_root ?>app/cars/actions/edit.php', {
+            new ElanRegistryAPI().post('<?= $us_url_root ?>app/api/cars/save.php', {
                 carID: car_id,
                 action: 'fetchImages'
             }).then(function(data) {
@@ -813,7 +813,7 @@ require_once $abs_us_root . $us_url_root . 'users/includes/html_footer.php'; //c
             }
             if (car_id && car_id !== '' && fileItem.origin === FilePond.FileOrigin.LOCAL) {
                 const filename = fileItem.getMetadata('serverFilename');
-                new ElanRegistryAPI().post('<?= $us_url_root ?>app/cars/actions/edit.php', {
+                new ElanRegistryAPI().post('<?= $us_url_root ?>app/api/cars/save.php', {
                     action: 'removeImages',
                     carID: car_id,
                     file: filename
@@ -912,7 +912,7 @@ require_once $abs_us_root . $us_url_root . 'users/includes/html_footer.php'; //c
             }
 
             try {
-                const response = await fetch('actions/edit.php', {
+                const response = await fetch('<?= $us_url_root ?>app/api/cars/save.php', {
                     method: 'POST',
                     headers: { 'X-Requested-With': 'XMLHttpRequest' },
                     body: formData
@@ -1029,7 +1029,7 @@ require_once $abs_us_root . $us_url_root . 'users/includes/html_footer.php'; //c
      */
 
     // Initialize ModelLoader with API endpoint
-    ModelLoader.init('<?= $us_url_root ?>app/cars/actions/get-models.php');
+    ModelLoader.init('<?= $us_url_root ?>app/api/cars/models.php');
 
     // Comments character counter
     const commentsEl = document.getElementById('comments');
@@ -1120,7 +1120,7 @@ require_once $abs_us_root . $us_url_root . 'users/includes/html_footer.php'; //c
         }
 
         // Call centralized validation via AJAX
-        new ElanRegistryAPI().post('<?= $us_url_root ?>app/cars/actions/validateChassis.php', {
+        new ElanRegistryAPI().post('<?= $us_url_root ?>app/api/cars/chassis-validate.php', {
             csrf: $('#csrf').val(),
             chassis: _chassis,
             year: validYear,
@@ -1174,7 +1174,7 @@ require_once $abs_us_root . $us_url_root . 'users/includes/html_footer.php'; //c
      * Check if chassis number is already taken (for new cars)
      */
     function checkChassisAvailability() {
-        new ElanRegistryAPI().post('<?= $us_url_root ?>app/cars/actions/check-chassis.php', {
+        new ElanRegistryAPI().post('<?= $us_url_root ?>app/api/cars/chassis-availability.php', {
             csrf: $('#csrf').val(),
             command: 'chassis_check',
             year: validYear,
@@ -1241,7 +1241,7 @@ require_once $abs_us_root . $us_url_root . 'users/includes/html_footer.php'; //c
         const year = validYear;
         const model = validModel;
 
-        new ElanRegistryAPI().post('<?= $us_url_root ?>app/cars/actions/request-transfer.php', {
+        new ElanRegistryAPI().post('<?= $us_url_root ?>app/api/cars/transfer-request.php', {
             csrf: $('#csrf').val(),
             chassis: chassis,
             year: year,

@@ -20,11 +20,11 @@ class LogCategoriesUsageTest extends TestCase
      * for all logging category parameters.
      */
     private const CAR_ENDPOINT_FILES = [
-        'app/cars/actions/check-chassis.php',
-        'app/cars/actions/edit.php',
-        'app/cars/actions/history.php',
-        'app/cars/actions/validateChassis.php',
-        'app/cars/actions/request-transfer.php',
+        'app/api/cars/chassis-availability.php',
+        'app/api/cars/save.php',
+        'app/api/cars/history.php',
+        'app/api/cars/chassis-validate.php',
+        'app/api/cars/transfer-request.php',
         'app/admin/includes/process-transfer-approve.php',
         'app/admin/includes/process-transfer-deny.php',
         'app/admin/includes/process-car-details.php',
@@ -166,7 +166,7 @@ class LogCategoriesUsageTest extends TestCase
      */
     public function testCheckChassisUsesApiResponse(): void
     {
-        $filePath = $this->rootDir . '/app/cars/actions/check-chassis.php';
+        $filePath = $this->rootDir . '/app/api/cars/chassis-availability.php';
         if (!file_exists($filePath)) {
             $this->markTestSkipped('check-chassis.php not found');
         }
@@ -260,7 +260,7 @@ class LogCategoriesUsageTest extends TestCase
     public function testEditPhpCatchBlocksUseGetUserMessage(): void
     {
         $this->assertNoGetMessageInErrorsArray(
-            'app/cars/actions/edit.php',
+            'app/api/cars/save.php',
             'Use $e->getUserMessage() instead (Issue #658).'
         );
     }

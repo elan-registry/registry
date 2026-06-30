@@ -472,7 +472,8 @@ window.ELAN_CONFIG = {
 const img_root = <?= json_encode($us_url_root . ($settings->elan_image_dir ?? '')) ?>;
 window.carDetailsConfig = {
     carId: <?= (int)$carData->id ?>,
-    csrf: '<?= Token::generate() ?>'
+    csrf: '<?= Token::generate() ?>',
+    urlRoot: '<?= $us_url_root ?>'
 };
 </script>
 <script src='<?= $us_url_root ?>app/assets/js/car_details.min.js'></script>

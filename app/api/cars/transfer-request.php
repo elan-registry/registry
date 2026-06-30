@@ -6,7 +6,7 @@ use ElanRegistry\Exceptions\CarTransferException;
 use ElanRegistry\Transfer\TransferEmailService;
 
 /**
- * request-transfer.php - Car Transfer Request Handler
+ * transfer-request.php - Car Transfer Request Handler
  *
  * Handles transfer requests for cars with duplicate chassis numbers.
  * Creates transfer request records in the database and notifies relevant parties.
@@ -92,7 +92,7 @@ try {
     }
 
     // Generate security token
-    $securityToken = hash('sha256', $existingCar->id . $user->data()->id . time() . rand());
+    $securityToken = bin2hex(random_bytes(32));
 
     // Set expiration date (30 days from now)
     $expiresAt = date('Y-m-d H:i:s', strtotime('+30 days'));
@@ -194,7 +194,7 @@ try {
 
 } catch (CarTransferException $e) {
     ApiResponse::error($e->getUserMessage(), 400)
-        ->withLogging($user->data()->id, $e->getLogCategory(), 'Transfer request failed: ' . $e->getMessage())
+        ->withLogging($user->data()->id ?? 0, $e->getLogCategory(), 'Transfer request failed: ' . $e->getMessage())
         ->send();
 
 } catch (Exception $e) {

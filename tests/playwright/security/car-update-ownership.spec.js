@@ -5,7 +5,7 @@ const { ensureLoggedIn } = require('../auth-helper.js');
  * Regression guard for the ownership check on the updateCar AJAX endpoint.
  *
  * Before #970, any authenticated user could update any car by POSTing a
- * `car_id` they don't own to `app/cars/actions/edit.php?action=updateCar`.
+ * `car_id` they don't own to `app/api/cars/save.php?action=updateCar`.
  * The guard added in #970 mirrors the existing fetchImages/removeImages pattern:
  * a non-owner receives HTTP 403 JSON; admins (group 2/3) are unaffected.
  *
@@ -13,7 +13,7 @@ const { ensureLoggedIn } = require('../auth-helper.js');
  * @group ownership
  */
 
-const ACTIONS_ENDPOINT = 'app/cars/actions/edit.php';
+const ACTIONS_ENDPOINT = 'app/api/cars/save.php';
 const FORM_PAGE = 'app/cars/edit.php';
 const NONEXISTENT_CAR_ID = 999999;
 

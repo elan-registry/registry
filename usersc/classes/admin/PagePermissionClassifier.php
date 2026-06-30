@@ -111,7 +111,7 @@ class PagePermissionClassifier
             '#^app/admin/scripts/#',             // app/admin/scripts/* maintenance & fix scripts
             '#^app/admin/#',                     // app/admin/* pages
             '#admin#',                           // Any path containing "admin"
-            '#^app/cars/actions#',               // app/cars/actions* endpoints
+            '#^app/api/#',                       // app/api/* endpoints — all treated as owner-tier private
             '#^app/contact/#',                   // app/contact/* pages
             '#edit#',                            // Any path containing "edit"
             '#^usersc/#'                         // usersc/* pages

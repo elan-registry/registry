@@ -3,7 +3,7 @@
 declare(strict_types=1);
 
 /**
- * check-chassis.php
+ * chassis-availability.php
  * AJAX endpoint for checking if a chassis number is already registered
  *
  * Returns JSON response indicating whether the chassis number is taken.
@@ -21,7 +21,7 @@ if (!Input::exists('post')) {
 $token = Input::get('csrf');
 if (!Token::check($token)) {
     ApiResponse::forbidden('Invalid CSRF token')
-        ->withLogging(0, LogCategories::LOG_CATEGORY_SECURITY, 'Invalid CSRF token in chassis check')
+        ->withLogging($user->data()->id ?? 0, LogCategories::LOG_CATEGORY_SECURITY, 'Invalid CSRF token in chassis check')
         ->send();
 }
 

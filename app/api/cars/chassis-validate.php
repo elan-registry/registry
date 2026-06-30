@@ -3,7 +3,7 @@
 declare(strict_types=1);
 
 /**
- * validateChassis.php
+ * chassis-validate.php
  * AJAX endpoint for real-time chassis validation
  *
  * Provides centralized chassis validation via AJAX for frontend real-time feedback.
@@ -79,4 +79,5 @@ try {
         ])
         ->withLogging($user->data()->id ?? 0, LogCategories::LOG_CATEGORY_VALIDATION_ERROR, "ChassisValidator error: " . $e->getMessage())
         ->send();
+
 }

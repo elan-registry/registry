@@ -7,7 +7,7 @@ require_once __DIR__ . '/IntegrationTestCase.php';
 /**
  * Integration tests for Statistics API endpoints
  *
- * Tests statistics-data.php and validateChassis.php
+ * Tests statistics.php and chassis-validate.php
  * Validates ApiResponse pattern implementation, security checks, and error handling
  *
  * @author Elan Registry Development Team
@@ -304,11 +304,11 @@ class StatisticsApiTest extends IntegrationTestCase
     // =========================================================================
 
     /**
-     * Test that statistics-data.php requires securePage check
+     * Test that statistics.php requires securePage check
      */
     public function testSecurityCheckPresent(): void
     {
-        $filePath = __DIR__ . '/../../app/reports/api/statistics-data.php';
+        $filePath = __DIR__ . '/../../app/api/shared/statistics.php';
         if (!file_exists($filePath)) {
             $this->markTestSkipped('Statistics API file not found');
         }
@@ -320,11 +320,11 @@ class StatisticsApiTest extends IntegrationTestCase
     }
 
     /**
-     * Test that validateChassis.php is reference implementation
+     * Test that chassis-validate.php is reference implementation
      */
     public function testValidateChassisPatternCompliance(): void
     {
-        $filePath = __DIR__ . '/../../app/cars/actions/validateChassis.php';
+        $filePath = __DIR__ . '/../../app/api/cars/chassis-validate.php';
         if (!file_exists($filePath)) {
             $this->markTestSkipped('ValidateChassis file not found');
         }
@@ -345,7 +345,7 @@ class StatisticsApiTest extends IntegrationTestCase
      */
     public function testSecurityViolationLogging(): void
     {
-        $filePath = __DIR__ . '/../../app/reports/api/statistics-data.php';
+        $filePath = __DIR__ . '/../../app/api/shared/statistics.php';
         if (!file_exists($filePath)) {
             $this->markTestSkipped('Statistics API file not found');
         }
@@ -360,7 +360,7 @@ class StatisticsApiTest extends IntegrationTestCase
      */
     public function testValidationErrorLogging(): void
     {
-        $filePath = __DIR__ . '/../../app/reports/api/statistics-data.php';
+        $filePath = __DIR__ . '/../../app/api/shared/statistics.php';
         if (!file_exists($filePath)) {
             $this->markTestSkipped('Statistics API file not found');
         }
@@ -375,7 +375,7 @@ class StatisticsApiTest extends IntegrationTestCase
      */
     public function testDatabaseErrorLogging(): void
     {
-        $filePath = __DIR__ . '/../../app/reports/api/statistics-data.php';
+        $filePath = __DIR__ . '/../../app/api/shared/statistics.php';
         if (!file_exists($filePath)) {
             $this->markTestSkipped('Statistics API file not found');
         }

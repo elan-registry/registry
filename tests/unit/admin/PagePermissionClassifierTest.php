@@ -57,7 +57,7 @@ final class PagePermissionClassifierTest extends TestCase
             'docs admin'                        => ['docs/admin/guide.php',                                     true],
             'user settings (owner page)'        => ['usersc/user_settings.php',                                 false],
             'car listing (public)'              => ['app/cars/index.php',                                       false],
-            'car actions (owner)'               => ['app/cars/actions/save.php',                                false],
+            'car actions (owner)'               => ['app/api/cars/save.php',                                   false],
             'contact form (owner)'              => ['app/contact/form.php',                                     false],
             'error page'                        => ['404.php',                                                  false],
         ];
@@ -112,7 +112,7 @@ final class PagePermissionClassifierTest extends TestCase
             'admin script'                      => ['app/admin/scripts/maintenance/21-Fix-Page-Permissions.php', true],
             'docs admin'                        => ['docs/admin/guide.php',               true],
             // Owner pages are private
-            'car action'                        => ['app/cars/actions/save.php',          true],
+            'car action'                        => ['app/api/cars/save.php',              true],
             'contact page'                      => ['app/contact/form.php',               true],
             'edit page'                         => ['app/cars/edit-car.php',              true],
             'usersc page'                       => ['usersc/user_settings.php',           true],
