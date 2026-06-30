@@ -259,7 +259,7 @@ final class PagePermissionClassifierTest extends TestCase
         }
     }
 
-    public function testPublicApiEndpointClassifierResultIsIrrelevantWhenNotRegistered(): void
+    public function testUnregisteredPublicApiEndpointIsNeverAdminTier(): void
     {
         // statistics.php does not call securePage() and is therefore never registered
         // in the pages table. The classifier marks app/api/* paths as private (matching

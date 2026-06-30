@@ -112,10 +112,10 @@ class PagePermissionClassifier
             '#^app/admin/#',                     // app/admin/* pages
             '#admin#',                           // Any path containing "admin"
             '#^app/api/#',                       // app/api/* endpoints registered via securePage() are owner-tier private
-                                             //   (currently only app/api/contact/*). Endpoints that enforce auth
-                                             //   inline without securePage() (e.g. app/api/cars/*) and purely
-                                             //   public endpoints (e.g. app/api/shared/statistics.php) must NOT
-                                             //   call securePage() — they are never registered and never reach here.
+                                             //   (currently only app/api/contact/*). Endpoints that enforce auth inline
+                                             //   without securePage() (e.g. app/api/cars/*) and purely public endpoints
+                                             //   (e.g. app/api/shared/statistics.php) must NOT call securePage() —
+                                             //   they are never registered and never reach here.
             '#^app/contact/#',                   // app/contact/* pages
             '#edit#',                            // Any path containing "edit"
             '#^usersc/#'                         // usersc/* pages
