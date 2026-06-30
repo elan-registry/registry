@@ -4,7 +4,7 @@ const { ensureLoggedIn } = require('../auth-helper.js');
 /**
  * E2E regression tests for the ownership guard on car image AJAX endpoints.
  *
- * The endpoints under test live in `app/cars/actions/edit.php`:
+ * The endpoints under test live in `app/api/cars/save.php`:
  * - action=fetchImages: returns the list of uploaded images for a car
  * - action=removeImages: deletes a single uploaded image from a car
  *
@@ -24,7 +24,7 @@ const { ensureLoggedIn } = require('../auth-helper.js');
  * @group ownership
  */
 
-const ACTIONS_ENDPOINT = 'app/cars/actions/edit.php';
+const ACTIONS_ENDPOINT = 'app/api/cars/save.php';
 const FORM_PAGE = 'app/cars/edit.php';
 const NONEXISTENT_CAR_ID = 999999;
 

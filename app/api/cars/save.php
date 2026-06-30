@@ -7,7 +7,7 @@ use ElanRegistry\Exceptions\ImageProcessingException;
 use ElanRegistry\Input;
 
 /**
- * editCar.php - Car management endpoint
+ * save.php - Car management endpoint
  * 
  * Handles AJAX requests for car creation, updates, and image management.
  * Provides secure file upload with validation and CSRF protection.

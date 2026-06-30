@@ -20,7 +20,7 @@ use PHPUnit\Framework\TestCase;
  * @category regression
  *
  * Root cause: updateColor(), updateEngine(), updateWebsite(), and updateChassis()
- * in app/cars/actions/edit.php called \Input::get() (upstream UserSpice), which
+ * in app/api/cars/save.php (formerly app/cars/actions/edit.php) called \Input::get() (upstream UserSpice), which
  * applies htmlspecialchars() before returning. Values like "O'Brien Blue" were
  * stored as "O&#039;Brien Blue", and re-saved values accumulated additional encoding.
  *

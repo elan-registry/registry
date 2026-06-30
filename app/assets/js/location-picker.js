@@ -249,7 +249,7 @@
             this.hideError();
 
             try {
-                const response = await fetch(this.options.urlRoot + 'app/action/location-search.php', {
+                const response = await fetch(this.options.urlRoot + 'app/api/shared/location-search.php', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/x-www-form-urlencoded',
@@ -448,7 +448,7 @@
             this.showLoading(true);
 
             try {
-                const response = await fetch(this.options.urlRoot + 'app/action/location-reverse.php', {
+                const response = await fetch(this.options.urlRoot + 'app/api/shared/location-reverse.php', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/x-www-form-urlencoded',

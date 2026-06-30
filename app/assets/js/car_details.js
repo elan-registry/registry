@@ -53,7 +53,7 @@ function initializeHistoryTable() {
                 'emptyTable': 'No history'
             },
             ajax: {
-                url: 'actions/history.php',
+                url: window.carDetailsConfig.urlRoot + 'app/api/cars/history.php',
                 dataSrc: 'history',
                 type: 'POST',
                 data: function(d) {

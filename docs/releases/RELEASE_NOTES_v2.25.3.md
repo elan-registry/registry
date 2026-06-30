@@ -33,6 +33,9 @@ public URL changes.
 - Split `app/action/getDataTables.php` into three dedicated endpoints under `app/api/cars/`:
   `list.php` (cars DataTable), `factory-list.php` (factory DataTable), `chassis-lookup.php`
   (chassis-to-car-ID lookup); adds `JSON_THROW_ON_ERROR` to all JSON encoding (#1036)
+- Move 9 remaining AJAX endpoints from `app/cars/actions/`, `app/action/`, and `app/reports/api/`
+  into `app/api/cars/` and `app/api/shared/` with resource-named filenames; delete emptied
+  source directories; upgrade transfer-request security token to `random_bytes(32)` (#1037)
 
 ## Issues Resolved
 

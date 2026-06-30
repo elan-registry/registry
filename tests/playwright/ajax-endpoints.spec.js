@@ -16,7 +16,7 @@ test.describe('Registry-Specific AJAX Endpoints', () => {
     // Test the Lotus Elan chassis validation endpoint (ApiResponse JSON format)
 
     // Test missing command parameter (should return 400)
-    const missingCommandResponse = await page.request.post('app/cars/actions/check-chassis.php', {
+    const missingCommandResponse = await page.request.post('app/api/cars/chassis-availability.php', {
       data: {
         chassis: '12345678',
         year: '1973',
@@ -33,7 +33,7 @@ test.describe('Registry-Specific AJAX Endpoints', () => {
     }
 
     // Test CSRF validation failure (should return 403)
-    const csrfFailResponse = await page.request.post('app/cars/actions/check-chassis.php', {
+    const csrfFailResponse = await page.request.post('app/api/cars/chassis-availability.php', {
       data: {
         command: 'chassis_check',
         chassis: '12345678',
@@ -51,7 +51,7 @@ test.describe('Registry-Specific AJAX Endpoints', () => {
     }
 
     // Test valid chassis check format (will fail CSRF but should have correct structure)
-    const validFormatResponse = await page.request.post('app/cars/actions/check-chassis.php', {
+    const validFormatResponse = await page.request.post('app/api/cars/chassis-availability.php', {
       data: {
         command: 'chassis_check',
         chassis: '12345678',
@@ -171,7 +171,7 @@ test.describe('Registry-Specific AJAX Endpoints', () => {
 
   test('car history endpoint returns DataTables JSON structure', async ({ page }) => {
     // Test the car history AJAX endpoint
-    const response = await page.request.post('app/cars/actions/history.php', {
+    const response = await page.request.post('app/api/cars/history.php', {
       data: {
         car_id: '1',
         draw: '1',
@@ -208,7 +208,7 @@ test.describe('Registry-Specific AJAX Endpoints', () => {
     // Test the chassis validation endpoint (different from check-chassis.php)
 
     // Test without X-Requested-With header (should fail)
-    const noHeaderResponse = await page.request.post('app/cars/actions/validateChassis.php', {
+    const noHeaderResponse = await page.request.post('app/api/cars/chassis-validate.php', {
       data: {
         chassis: '12345678',
         year: '1973',
@@ -220,7 +220,7 @@ test.describe('Registry-Specific AJAX Endpoints', () => {
     expect(noHeaderResponse.status()).not.toBe(500);
 
     // Test with X-Requested-With header
-    const response = await page.request.post('app/cars/actions/validateChassis.php', {
+    const response = await page.request.post('app/api/cars/chassis-validate.php', {
       headers: {
         'X-Requested-With': 'XMLHttpRequest'
       },

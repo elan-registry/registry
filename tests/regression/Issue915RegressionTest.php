@@ -81,18 +81,18 @@ final class Issue915RegressionTest extends TestCase
      */
     public function testEditPhpWiresChassisOverrideThroughToCardetails(): void
     {
-        $editSource = file_get_contents($this->projectRoot . '/app/cars/actions/edit.php');
+        $editSource = file_get_contents($this->projectRoot . '/app/api/cars/save.php');
 
-        $this->assertNotFalse($editSource, 'edit.php must be readable');
+        $this->assertNotFalse($editSource, 'save.php must be readable');
         $this->assertStringContainsString(
             "Input::raw('chassis_override')",
             $editSource,
-            "edit.php must read chassis_override from POST via Input::raw()"
+            "save.php must read chassis_override from POST via Input::raw()"
         );
         $this->assertStringContainsString(
             "\$cardetails['chassis_override']",
             $editSource,
-            "edit.php must assign chassis_override into \$cardetails so it reaches Car::update()"
+            "save.php must assign chassis_override into \$cardetails so it reaches Car::update()"
         );
     }
 }

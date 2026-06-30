@@ -3,7 +3,7 @@
 declare(strict_types=1);
 
 /**
- * statistics-data.php
+ * statistics.php (formerly statistics-data.php)
  * API endpoint for lazy-loading statistics tab data
  *
  * Returns JSON data for specific tab content to enable progressive loading
@@ -19,7 +19,7 @@ require_once $abs_us_root . $us_url_root . 'usersc/classes/StatisticsDataService
 // Security check
 if (!securePage($php_self)) {
     ApiResponse::forbidden('Unauthorized access')
-        ->withLogging(0, LogCategories::LOG_CATEGORY_SECURITY, 'Unauthorized statistics-data.php access attempt')
+        ->withLogging(0, LogCategories::LOG_CATEGORY_SECURITY, 'Unauthorized statistics endpoint access attempt')
         ->send();
 }
 

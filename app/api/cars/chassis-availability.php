@@ -3,7 +3,7 @@
 declare(strict_types=1);
 
 /**
- * check-chassis.php
+ * chassis-availability.php
  * AJAX endpoint for checking if a chassis number is already registered
  *
  * Returns JSON response indicating whether the chassis number is taken.

@@ -93,7 +93,7 @@ try {
     }
 
 } catch (\Exception $e) {
-    logger(0, LogCategories::LOG_CATEGORY_SYSTEM_ERROR,
-        "get-models.php error: {$e->getMessage()}");
+    logger($user->data()->id ?? 0, LogCategories::LOG_CATEGORY_SYSTEM_ERROR,
+        "models.php error: {$e->getMessage()}");
     ApiResponse::error('Failed to retrieve models', 500)->send();
 }

@@ -21,8 +21,8 @@
 const { test, expect } = require('@playwright/test');
 const { ensureLoggedIn } = require('./auth-helper.js');
 
-const VALIDATE_CHASSIS_URL = '**/app/cars/actions/validateChassis.php';
-const CHECK_CHASSIS_URL    = '**/app/cars/actions/check-chassis.php';
+const VALIDATE_CHASSIS_URL = '**/app/api/cars/chassis-validate.php';
+const CHECK_CHASSIS_URL    = '**/app/api/cars/chassis-availability.php';
 
 const VALID_RESPONSE = JSON.stringify({ success: true, valid: true, error_reason: '' });
 const AVAILABLE_RESPONSE = JSON.stringify({ success: true, taken: false, available: true });

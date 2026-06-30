@@ -3,7 +3,7 @@
 declare(strict_types=1);
 
 /**
- * validateChassis.php
+ * chassis-validate.php
  * AJAX endpoint for real-time chassis validation
  *
  * Provides centralized chassis validation via AJAX for frontend real-time feedback.
