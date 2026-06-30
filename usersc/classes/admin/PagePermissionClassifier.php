@@ -33,7 +33,8 @@ class PagePermissionClassifier
      * Administrator only (no Editor access).
      */
     private const ADMIN_ONLY_PAGES = [
-        'app/admin/manage-maintenance.php',
+        'app/admin/maintenance.php',
+        'app/admin/design-system.php',
         'app/admin/includes/tab-health.php',
         'app/admin/includes/tab-maintenance.php',
     ];

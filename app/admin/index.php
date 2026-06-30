@@ -7,7 +7,7 @@ use ElanRegistry\Exceptions\CarNotFoundException;
 use ElanRegistry\Input as ElanInput;
 
 /**
- * manage-consolidated.php
+ * index.php
  * Consolidated Management Interface
  *
  * Unified administrative interface with tabbed structure:

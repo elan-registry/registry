@@ -8,7 +8,7 @@ use PHPUnit\Framework\Attributes\Group;
 
 /**
  * Regression guard for the car deletion path in
- * app/admin/manage-consolidated.php after migration to Car::delete().
+ * app/admin/index.php after migration to Car::delete().
  *
  * Prior to #956 that page issued raw DELETE statements directly against
  * car_user and cars. Issue #956 routes deletion through Car::delete() /

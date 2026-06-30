@@ -10,13 +10,13 @@ const { test, expect } = require('@playwright/test');
 const { ensureLoggedIn } = require('./auth-helper.js');
 
 // ---------------------------------------------------------------------------
-// Area 1: manage-consolidated.php — modal DOM and car merge tab
+// Area 1: index.php — modal DOM and car merge tab
 // ---------------------------------------------------------------------------
 
-test.describe('Admin confirmation modal — manage-consolidated', () => {
+test.describe('Admin confirmation modal — index', () => {
     test.beforeEach(async ({ page }) => {
         await ensureLoggedIn(page);
-        await page.goto('app/admin/manage-consolidated.php?tab=car-mgmt', { waitUntil: 'networkidle' });
+        await page.goto('app/admin/index.php?tab=car-mgmt', { waitUntil: 'networkidle' });
     });
 
     test('confirmation modal element is present in DOM', async ({ page }) => {
@@ -52,13 +52,13 @@ test.describe('Admin confirmation modal — manage-consolidated', () => {
 });
 
 // ---------------------------------------------------------------------------
-// Area 2: manage-maintenance.php — modal DOM and schema maintenance tab
+// Area 2: maintenance.php — modal DOM and schema maintenance tab
 // ---------------------------------------------------------------------------
 
-test.describe('Admin confirmation modal — manage-maintenance', () => {
+test.describe('Admin confirmation modal — maintenance', () => {
     test.beforeEach(async ({ page }) => {
         await ensureLoggedIn(page);
-        await page.goto('app/admin/manage-maintenance.php?tab=maintenance', { waitUntil: 'networkidle' });
+        await page.goto('app/admin/maintenance.php?tab=maintenance', { waitUntil: 'networkidle' });
     });
 
     test('confirmation modal element is present in DOM', async ({ page }) => {
@@ -123,13 +123,13 @@ test.describe('Admin confirmation modal — manage-maintenance', () => {
 });
 
 // ---------------------------------------------------------------------------
-// Area 3: manage-maintenance.php — input modal DOM (#inputModal)
+// Area 3: maintenance.php — input modal DOM (#inputModal)
 // ---------------------------------------------------------------------------
 
-test.describe('Admin input modal — manage-maintenance', () => {
+test.describe('Admin input modal — maintenance', () => {
     test.beforeEach(async ({ page }) => {
         await ensureLoggedIn(page);
-        await page.goto('app/admin/manage-maintenance.php?tab=maintenance', { waitUntil: 'networkidle' });
+        await page.goto('app/admin/maintenance.php?tab=maintenance', { waitUntil: 'networkidle' });
     });
 
     test('input modal and all required child elements are present in DOM', async ({ page }) => {

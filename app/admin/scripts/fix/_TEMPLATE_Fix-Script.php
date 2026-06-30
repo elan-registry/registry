@@ -13,7 +13,7 @@ declare(strict_types=1);
  * DEPLOYMENT INSTRUCTIONS:
  * 1. Copy this file to app/admin/scripts/fix/ (one-time migrations) or app/admin/scripts/maintenance/ (repeatable tasks) with proper naming: ##-Descriptive-Name.php
  * 2. Replace all [PLACEHOLDERS] with appropriate content
- * 3. Scripts are accessed via manage-maintenance.php (Maintenance tab) or direct URL
+ * 3. Scripts are accessed via maintenance.php (Maintenance tab) or direct URL
  * 4. Use sequential numbering (01, 02, 03...) for proper execution order
  * 5. All scripts auto-log completion to fix_script_runs table
  * 6. See app/admin/scripts/fix/README.md for detailed instructions and best practices
@@ -226,7 +226,7 @@ $db = DB::getInstance();
                     ?></pre>
 
                     <div class="text-center mt-3">
-                        <a href="../../manage-maintenance.php?tab=maintenance" class="btn btn-primary btn-lg">
+                        <a href="../../maintenance.php?tab=maintenance" class="btn btn-primary btn-lg">
                             <i class="fa fa-arrow-left"></i> Return to Maintenance
                         </a>
                     </div>

@@ -2,7 +2,7 @@
 //
 // Tests for escapeHtml() XSS-prevention helper in manage-consolidated.js.
 // Verifies that user-supplied content is safely escaped for DOM insertion.
-// The function is loaded globally on /app/admin/manage-consolidated.php and
+// The function is loaded globally on /app/admin/index.php and
 // is exercised here via page.evaluate() with a battery of XSS vectors.
 //
 // Requires local MAMP at http://localhost:9999/elan-registry
@@ -13,7 +13,7 @@ const { ensureLoggedIn } = require('./auth-helper.js');
 test.describe('escapeHtml() — XSS prevention', () => {
     test.beforeEach(async ({ page }) => {
         await ensureLoggedIn(page);
-        await page.goto('app/admin/manage-consolidated.php?tab=car-mgmt', { waitUntil: 'networkidle' });
+        await page.goto('app/admin/index.php?tab=car-mgmt', { waitUntil: 'networkidle' });
     });
 
     test('escapes <script> tags', async ({ page }) => {
