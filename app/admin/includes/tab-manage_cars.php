@@ -981,7 +981,7 @@ $qualityScore = $totalCars > 0 ? max(0, 100 - (($carIssues / $totalCars) * 100))
                             </div>
                                 <div class="collapse show" id="group<?= $groupIndex ?>">
                                     <div class="card-body">
-                                        <form action="manage-consolidated.php" method="POST" class="merge-form">
+                                        <form action="index.php" method="POST" class="merge-form">
                                             <input type="hidden" name="command" value="merge" />
                                             <input type="hidden" name="csrf" value="<?= Token::generate(); ?>" />
 

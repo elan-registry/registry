@@ -53,7 +53,9 @@ final class PagePermissionClassifierTest extends TestCase
             'admin scripts prefix'              => ['app/admin/scripts/maintenance/21-Fix-Page-Permissions.php', true],
             'admin scripts fix'                 => ['app/admin/scripts/fix/01-something.php',                   true],
             'admin manage page'                 => ['app/admin/manage-consolidated.php',                        true],
-            'admin maintenance page'            => ['app/admin/manage-maintenance.php',                         true],
+            'admin index (dashboard)'           => ['app/admin/index.php',                                       true],
+            'admin maintenance page'            => ['app/admin/maintenance.php',                         true],
+            'admin design-system page'          => ['app/admin/design-system.php',                               true],
             'docs admin'                        => ['docs/admin/guide.php',                                     true],
             'user settings (owner page)'        => ['usersc/user_settings.php',                                 false],
             'car listing (public)'              => ['app/cars/index.php',                                       false],
@@ -82,11 +84,13 @@ final class PagePermissionClassifierTest extends TestCase
             'fix script'                        => ['app/admin/scripts/fix/01-something.php',                   true],
             'scripts root'                      => ['app/admin/scripts/index.php',                              true],
             // Admin-only: maintenance portal pages
-            'manage-maintenance'                => ['app/admin/manage-maintenance.php',                         true],
+            'manage-maintenance'                => ['app/admin/maintenance.php',                         true],
+            'design-system'                     => ['app/admin/design-system.php',                               true],
             'tab-health'                        => ['app/admin/includes/tab-health.php',                        true],
             'tab-maintenance'                   => ['app/admin/includes/tab-maintenance.php',                   true],
             // Admin+Editor: general admin panel
             'manage-consolidated'               => ['app/admin/manage-consolidated.php',                        false],
+            'admin index (dashboard)'           => ['app/admin/index.php',                                      false],
             'tab-cars'                          => ['app/admin/includes/tab-cars.php',                          false],
             'docs admin'                        => ['docs/admin/guide.php',                                     false],
             'non-admin page'                    => ['app/cars/index.php',                                       false],
@@ -108,7 +112,9 @@ final class PagePermissionClassifierTest extends TestCase
     {
         return [
             // Admin pages are private
-            'admin page'                        => ['app/admin/manage-consolidated.php',  true],
+            'admin index (dashboard)'           => ['app/admin/index.php',                true],
+            'admin maintenance'                 => ['app/admin/maintenance.php',           true],
+            'admin design-system'               => ['app/admin/design-system.php',        true],
             'admin script'                      => ['app/admin/scripts/maintenance/21-Fix-Page-Permissions.php', true],
             'docs admin'                        => ['docs/admin/guide.php',               true],
             // Owner pages are private
@@ -181,7 +187,8 @@ final class PagePermissionClassifierTest extends TestCase
     public function testMaintenancePortalPagesAreAdminOnly(): void
     {
         $maintenancePages = [
-            'app/admin/manage-maintenance.php',
+            'app/admin/maintenance.php',
+            'app/admin/design-system.php',
             'app/admin/includes/tab-health.php',
             'app/admin/includes/tab-maintenance.php',
         ];
@@ -216,7 +223,7 @@ final class PagePermissionClassifierTest extends TestCase
     public function testGeneralAdminPagesAreNotAdminOnly(): void
     {
         $adminEditorPages = [
-            'app/admin/manage-consolidated.php',
+            'app/admin/index.php',
             'app/admin/includes/tab-cars.php',
             'docs/admin/guide.php',
         ];

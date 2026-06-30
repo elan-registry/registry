@@ -169,7 +169,7 @@ class TransferEmailService
                 'expires_at'         => $transferData->expires_at ?? '',
             ];
 
-            $reviewUrl = getBaseUrl() . '/app/admin/manage-consolidated.php';
+            $reviewUrl = getBaseUrl() . '/app/admin/index.php';
 
             ob_start();
             include $this->basePath . 'app/views/email/_transfer_admin.php';

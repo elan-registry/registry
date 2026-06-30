@@ -2,11 +2,11 @@
 declare(strict_types=1);
 
 /**
- * manage-maintenance.php
+ * maintenance.php
  * Registry Maintenance Interface
  *
  * Admin-only management interface focused on system maintenance and
- * registry-wide configuration. Split out from manage-consolidated.php to
+ * registry-wide configuration. Split out from index.php to
  * separate operational maintenance from day-to-day car/owner administration.
  *
  * TAB 1: Health - Read-only system health monitoring

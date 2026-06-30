@@ -2,7 +2,7 @@
 declare(strict_types=1);
 
 /**
- * color-preview.php
+ * design-system.php
  * Living reference page for the Elan Registry color token system (issue #757).
  *
  * Renders every --er-* token in context (buttons, card headers, badges,

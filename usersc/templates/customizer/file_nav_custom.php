@@ -163,20 +163,24 @@ if ($navActive === '') {
         </a>
         <ul class='us_sub-menu' aria-labelledby='menu_1_638b71f2ed026_dropdown_admin' style=' z-index: 50;'>
           <li class=''>
-            <a class='' href='<?= $us_url_root ?>app/admin/manage-consolidated.php'>
+            <a class='' href='<?= $us_url_root ?>app/admin/index.php'>
               <i class='fa fa-car'></i>
               <span class='labelText'>Manage Cars/Owners</span>
             </a>
           </li>
           <?php if (hasPerm([2], $user->data()->id)): ?>
           <li class=''>
-            <a class='' href='<?= $us_url_root ?>app/admin/manage-maintenance.php'>
+            <a class='' href='<?= $us_url_root ?>app/admin/maintenance.php'>
               <i class='fa fa-tools'></i>
               <span class='labelText'>Registry Maintenance</span>
             </a>
           </li>
-          <?php endif; ?>
-          <?php if (hasPerm([2], $user->data()->id)): ?>
+          <li class=''>
+            <a class='' href='<?= $us_url_root ?>app/admin/design-system.php'>
+              <i class='fa fa-palette'></i>
+              <span class='labelText'>Design System</span>
+            </a>
+          </li>
           <div class='dropdown-divider'></div>
           <li class=''>
             <a class='' href='<?= $us_url_root ?>users/admin.php'>

@@ -271,7 +271,7 @@ class LogCategoriesUsageTest extends TestCase
     public function testManageConsolidatedPhpCatchBlocksDoNotExposeGetMessage(): void
     {
         $this->assertNoGetMessageInErrorsArray(
-            'app/admin/manage-consolidated.php',
+            'app/admin/index.php',
             'Use a safe static message instead (Issue #659).'
         );
     }
@@ -304,9 +304,9 @@ class LogCategoriesUsageTest extends TestCase
      */
     public function testManageConsolidatedPhpHasNoUserIdFallback(): void
     {
-        $filePath = $this->rootDir . '/app/admin/manage-consolidated.php';
+        $filePath = $this->rootDir . '/app/admin/index.php';
         if (!file_exists($filePath)) {
-            $this->markTestSkipped('manage-consolidated.php not found');
+            $this->markTestSkipped('index.php not found');
         }
 
         $content = (string)file_get_contents($filePath);

@@ -5,6 +5,12 @@
 
 ## Required Actions After Deployment
 
+Run the Rename Admin Pages fix script first to update the UserSpice pages table:
+
+```
+https://elanregistry.org/app/admin/scripts/fix/08-Rename-Admin-Pages.php
+```
+
 Run the Fix Page Permissions maintenance script after deployment to reclassify
 any page permission rows that reference the new `app/api/` and renamed admin
 paths:
@@ -40,6 +46,8 @@ public URL changes.
   full-page HTML redirect handlers to Pattern A JSON endpoints under `app/api/contact/`;
   wire both contact forms to submit via `ElanRegistryAPI` for inline success/error display
   with no page reload; sender identity read from trusted session, not POST hidden fields (#1038)
+- Add `08-Rename-Admin-Pages.php` fix script to update UserSpice `pages` table URL
+  registrations for the three renamed admin pages; run after deployment (#1039)
 
 ## Issues Resolved
 

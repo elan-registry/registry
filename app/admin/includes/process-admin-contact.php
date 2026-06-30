@@ -63,7 +63,6 @@ if (Input::exists('post')) {
             try {
                 $db = DB::getInstance();
 
-
                 // Get admin user data
                 $adminData = $db->query('SELECT id, email, fname, lname FROM users WHERE id = ?', [$user->data()->id])->first();
                 if (!$adminData) {
@@ -198,10 +197,8 @@ if (Input::exists('post')) {
         }
     }
 
-    // Redirect back to data quality tab
-    Redirect::to($us_url_root . 'app/admin/manage-consolidated.php?tab=data-quality');
+    Redirect::to($us_url_root . 'app/admin/index.php?tab=manage-cars');
 } else {
-    // No POST data
-    Redirect::to($us_url_root . 'app/admin/manage-consolidated.php?tab=data-quality');
+    Redirect::to($us_url_root . 'app/admin/index.php?tab=manage-cars');
 }
 ?>

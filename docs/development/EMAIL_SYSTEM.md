@@ -313,6 +313,6 @@ Admin addresses are managed at Admin → Settings → Admin Emails. The default 
 ## Related Documentation
 
 - [CLASSES.md](CLASSES.md) — EmailTemplate class for branded HTML email wrappers
-- [Email Colors (color-preview.php)](../../app/admin/color-preview.php) — Email token → hex mapping and template structure (admin only)
+- [Email Colors (design-system.php)](../../app/admin/design-system.php) — Email token → hex mapping and template structure (admin only)
 - [ADR-012: Adopt Brevo for Transactional Email Delivery](adr/ADR-012-adopt-brevo-for-transactional-email-delivery.md) — Architecture decision record
 - [DATABASE.md](DATABASE.md) — Database schema reference (includes `plg_sendinblue` table)
