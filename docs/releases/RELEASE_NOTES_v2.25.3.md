@@ -1,6 +1,6 @@
 # Elan Registry v2.25.3 Release Notes
 
-**Release Date:** [DATE]
+**Release Date:** 2026-06-30
 **Type:** Patch Release - App/ Directory Reorganization — Phase 1
 
 ## Required Actions After Deployment
@@ -32,6 +32,13 @@ public URL changes.
 
 ## Technical Changes
 
+- Inline `_edit_car_1.php`, `_edit_car_2.php`, `_edit_car_3.php` partial fragments into
+  `app/cars/edit.php` to remove indirection that complicated maintenance (#1033)
+- Move car page partials (hero actions, factory data card, vehicle info card) from
+  `usersc/includes/partials/` into `app/views/cars/` to align with the `usersc/` =
+  framework-only boundary (#1034)
+- Move `transfer_email_notifications.php` from `usersc/includes/` into `app/` as a
+  prerequisite for the service extraction (#1029)
 - Extract transfer email notifications into `TransferEmailService` class with injectable DB and mailer
   dependencies, enabling unit testing without a live database or email server (#1030)
 - Migrate 7 app-domain email templates from `usersc/views/` to `app/views/email/`, completing the
@@ -55,6 +62,10 @@ public URL changes.
   Editor-level; remove unnecessary `securePage()` from public `statistics.php` API
   endpoint; update fix script PHPDoc and on-screen alert to reflect current `app/api/`
   and renamed admin page structure (#1059)
+- Migrate `$.ajax()` calls in admin owner management tab and remaining admin tabs to
+  `ElanRegistryAPI` Pattern A client (#968)
+- Migrate `manage-consolidated.php` car deletion path to `CarAdministrationService` for
+  consistent service-layer ownership of admin-driven deletion (#932)
 
 ## Issues Resolved
 
