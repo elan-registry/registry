@@ -14,6 +14,8 @@ const { ensureLoggedIn } = require('../auth-helper.js');
  */
 
 const ENDPOINT = 'app/api/contact/send-owner-email.php';
+// Any authenticated page works — Token::check() validates against the session
+// token, not an endpoint-scoped one, so the feedback form's CSRF is valid here.
 const CSRF_FORM_PAGE = 'app/contact/index.php';
 const NONEXISTENT_CAR_ID = 999999;
 const WRONG_USER_ID = 999999;

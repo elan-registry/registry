@@ -52,7 +52,7 @@ if ($action !== 'send_message' || !Input::get('to_user_id')) {
     ApiResponse::error('Invalid parameters', 400)->send();
 }
 
-if ($message === null || $message === '') {
+if ($message === null || trim($message) === '') {
     ApiResponse::validationError(['message' => 'Please enter a message.'])->send();
 }
 
