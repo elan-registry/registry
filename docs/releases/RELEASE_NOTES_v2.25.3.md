@@ -51,6 +51,10 @@ public URL changes.
 - Replace 3 deprecated `$.ajax()` calls in admin settings tab with `ElanRegistryAPI`;
   add `process-admin-settings.php` Pattern A endpoint with explicit field allowlist and
   admin-only (level 2) auth guard; fixes security issues in upstream parser (#528)
+- Update `PagePermissionClassifier` to move `design-system.php` from Admin-only to
+  Editor-level; remove unnecessary `securePage()` from public `statistics.php` API
+  endpoint; update fix script PHPDoc and on-screen alert to reflect current `app/api/`
+  and renamed admin page structure (#1059)
 
 ## Issues Resolved
 
