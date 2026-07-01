@@ -161,9 +161,9 @@ test.describe('Factory Page - Registry Link Feature', () => {
     // Intercept network requests
     page.on('request', (request) => {
       const url = request.url();
-      if (url.includes('getDataTables.php') && request.postDataJSON()) {
+      if (url.includes('chassis-lookup.php') && request.postDataJSON()) {
         const postData = request.postDataJSON();
-        if (postData.table === 'findCarByChassis') {
+        if (postData.chassis !== undefined) {
           ajaxRequest = {
             url: url,
             method: request.method(),
@@ -184,9 +184,6 @@ test.describe('Factory Page - Registry Link Feature', () => {
       expect(ajaxRequest.method).toBe('POST');
       console.log('✓ Request method is POST');
 
-      expect(ajaxRequest.data.table).toBe('findCarByChassis');
-      console.log('✓ Request table parameter is "findCarByChassis"');
-
       expect(ajaxRequest.data).toHaveProperty('chassis');
       console.log('✓ Request includes chassis parameter');
 
@@ -206,10 +203,10 @@ test.describe('Factory Page - Registry Link Feature', () => {
 
     page.on('request', (request) => {
       const url = request.url();
-      if (url.includes('getDataTables.php') && url.includes('findCarByChassis')) {
+      if (url.includes('chassis-lookup.php')) {
         try {
           const postData = request.postDataJSON();
-          if (postData.table === 'findCarByChassis') {
+          if (postData.chassis !== undefined) {
             if (!postData.csrf) {
               requestsWithoutCsrf.push({
                 url: url,
@@ -342,7 +339,7 @@ test.describe('Factory Page - Registry Link Feature', () => {
     const responses = [];
 
     page.on('response', async (response) => {
-      if (response.url().includes('getDataTables.php')) {
+      if (response.url().includes('chassis-lookup.php')) {
         responses.push({
           url: response.url(),
           status: response.status()

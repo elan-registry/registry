@@ -16,7 +16,7 @@ test.describe('Registry-Specific AJAX Endpoints', () => {
     // Test the Lotus Elan chassis validation endpoint (ApiResponse JSON format)
 
     // Test missing command parameter (should return 400)
-    const missingCommandResponse = await page.request.post('app/cars/actions/check-chassis.php', {
+    const missingCommandResponse = await page.request.post('app/api/cars/chassis-availability.php', {
       data: {
         chassis: '12345678',
         year: '1973',
@@ -33,7 +33,7 @@ test.describe('Registry-Specific AJAX Endpoints', () => {
     }
 
     // Test CSRF validation failure (should return 403)
-    const csrfFailResponse = await page.request.post('app/cars/actions/check-chassis.php', {
+    const csrfFailResponse = await page.request.post('app/api/cars/chassis-availability.php', {
       data: {
         command: 'chassis_check',
         chassis: '12345678',
@@ -51,7 +51,7 @@ test.describe('Registry-Specific AJAX Endpoints', () => {
     }
 
     // Test valid chassis check format (will fail CSRF but should have correct structure)
-    const validFormatResponse = await page.request.post('app/cars/actions/check-chassis.php', {
+    const validFormatResponse = await page.request.post('app/api/cars/chassis-availability.php', {
       data: {
         command: 'chassis_check',
         chassis: '12345678',
@@ -79,7 +79,7 @@ test.describe('Registry-Specific AJAX Endpoints', () => {
     // Navigate to car listing page to establish session
     await page.goto('app/cars/index.php', { waitUntil: 'networkidle' });
 
-    const response = await page.request.post('app/action/getDataTables.php', {
+    const response = await page.request.post('app/api/cars/list.php', {
       form: {
         draw: '1',
         start: '0',
@@ -129,11 +129,10 @@ test.describe('Registry-Specific AJAX Endpoints', () => {
 
   test('owner contact endpoint requires authentication', async ({ page }) => {
     // Test the owner-to-owner contact system
-    const response = await page.request.post('app/contact/send-owner-email.php', {
+    const response = await page.request.post('app/api/contact/send-owner-email.php', {
       form: {
         car_id: '1',
-        sender_name: 'Test User',
-        sender_email: 'test@example.com',
+        to_user_id: '1',
         message: 'Interest in your Lotus Elan',
         csrf: 'test_token'
       }
@@ -171,7 +170,7 @@ test.describe('Registry-Specific AJAX Endpoints', () => {
 
   test('car history endpoint returns DataTables JSON structure', async ({ page }) => {
     // Test the car history AJAX endpoint
-    const response = await page.request.post('app/cars/actions/history.php', {
+    const response = await page.request.post('app/api/cars/history.php', {
       data: {
         car_id: '1',
         draw: '1',
@@ -208,7 +207,7 @@ test.describe('Registry-Specific AJAX Endpoints', () => {
     // Test the chassis validation endpoint (different from check-chassis.php)
 
     // Test without X-Requested-With header (should fail)
-    const noHeaderResponse = await page.request.post('app/cars/actions/validateChassis.php', {
+    const noHeaderResponse = await page.request.post('app/api/cars/chassis-validate.php', {
       data: {
         chassis: '12345678',
         year: '1973',
@@ -220,7 +219,7 @@ test.describe('Registry-Specific AJAX Endpoints', () => {
     expect(noHeaderResponse.status()).not.toBe(500);
 
     // Test with X-Requested-With header
-    const response = await page.request.post('app/cars/actions/validateChassis.php', {
+    const response = await page.request.post('app/api/cars/chassis-validate.php', {
       headers: {
         'X-Requested-With': 'XMLHttpRequest'
       },
@@ -316,5 +315,55 @@ test.describe('Registry-Specific AJAX Endpoints', () => {
       // If not JSON, should still be 403
       expect(response.status()).toBe(403);
     }
+  });
+
+  test('admin settings endpoint requires admin permissions', async ({ page }) => {
+    // Test the admin-only (level 2) settings update endpoint
+    const response = await page.request.post('app/api/admin/process-settings.php', {
+      data: {
+        field: 'elan_image_max',
+        value: '10',
+        csrf: 'test_token'
+      }
+    });
+
+    // Unauthenticated request should get 403 Forbidden
+    expect(response.status()).toBe(403);
+
+    try {
+      const jsonResponse = await response.json();
+      expect(jsonResponse).toHaveProperty('success', false);
+      expect(jsonResponse).toHaveProperty('message');
+    } catch (error) {
+      // If not JSON, should still be 403
+      expect(response.status()).toBe(403);
+    }
+  });
+
+  test('feedback endpoint requires CSRF and returns JSON', async ({ page }) => {
+    const response = await page.request.post('app/api/contact/send-feedback.php', {
+      form: {
+        comments: 'Test feedback',
+        csrf: 'invalid_token'
+      }
+    });
+    expect(response.status()).toBe(403);
+    const jsonResponse = await response.json();
+    expect(jsonResponse).toHaveProperty('success', false);
+  });
+
+  test('contact owner endpoint requires CSRF and returns JSON', async ({ page }) => {
+    const response = await page.request.post('app/api/contact/send-owner-email.php', {
+      form: {
+        action: 'send_message',
+        to_user_id: '1',
+        car_id: '1',
+        message: 'Test message',
+        csrf: 'invalid_token'
+      }
+    });
+    expect(response.status()).toBe(403);
+    const jsonResponse = await response.json();
+    expect(jsonResponse).toHaveProperty('success', false);
   });
 });

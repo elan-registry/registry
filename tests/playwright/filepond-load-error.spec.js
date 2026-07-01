@@ -82,7 +82,7 @@ async function gotoEditFormWithFakeImages(page) {
 
     // Mock any fetchImages POST to return one fake image entry (the HTML
     // interceptor ensures only car_id 9999 reaches this point in tests).
-    await page.route('**/app/cars/actions/edit.php', async (route, request) => {
+    await page.route('**/app/api/cars/save.php', async (route, request) => {
         const post = request.postData() || '';
         if (post.includes('fetchImages')) {
             await route.fulfill({
@@ -172,7 +172,7 @@ test.describe('fetchImages API failure handling (#1031)', () => {
     test('warning banner appears and submit is disabled when fetchImages returns success:false', async ({ page }) => {
         await injectFakeCarId(page);
 
-        await page.route('**/app/cars/actions/edit.php', async (route, request) => {
+        await page.route('**/app/api/cars/save.php', async (route, request) => {
             const post = request.postData() || '';
             if (post.includes('fetchImages')) {
                 await route.fulfill({
@@ -206,7 +206,7 @@ test.describe('fetchImages API failure handling (#1031)', () => {
 
         await injectFakeCarId(page);
 
-        await page.route('**/app/cars/actions/edit.php', async (route, request) => {
+        await page.route('**/app/api/cars/save.php', async (route, request) => {
             const post = request.postData() || '';
             if (post.includes('fetchImages')) {
                 await route.abort();

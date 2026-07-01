@@ -3,9 +3,10 @@
 declare(strict_types=1);
 
 use ElanRegistry\Exceptions\CarTransferException;
+use ElanRegistry\Transfer\TransferEmailService;
 
 /**
- * request-transfer.php - Car Transfer Request Handler
+ * transfer-request.php - Car Transfer Request Handler
  *
  * Handles transfer requests for cars with duplicate chassis numbers.
  * Creates transfer request records in the database and notifies relevant parties.
@@ -35,12 +36,12 @@ try {
     recordRateLimit('transfer_request', true, (int)$user->data()->id);
 
     // Get and validate input
-    $chassis = trim(Input::get('chassis'));
-    $year = trim(Input::get('year'));
-    $model = trim(Input::get('model'));
-    $color = trim(Input::get('color'));
-    $engine = trim(Input::get('engine'));
-    $comments = trim(Input::get('comments'));
+    $chassis = trim(Input::raw('chassis') ?? '');
+    $year = trim(Input::raw('year') ?? '');
+    $model = trim(Input::raw('model') ?? '');
+    $color = trim(Input::raw('color') ?? '');
+    $engine = trim(Input::raw('engine') ?? '');
+    $comments = trim(Input::raw('comments') ?? '');
 
     // Validate comment length (server-side validation)
     if (strlen($comments) > 1000) {
@@ -91,7 +92,7 @@ try {
     }
 
     // Generate security token
-    $securityToken = hash('sha256', $existingCar->id . $user->data()->id . time() . rand());
+    $securityToken = bin2hex(random_bytes(32));
 
     // Set expiration date (30 days from now)
     $expiresAt = date('Y-m-d H:i:s', strtotime('+30 days'));
@@ -152,63 +153,43 @@ try {
     $emailMessages = [];
 
     try {
-        require_once '../../../usersc/includes/transfer_email_notifications.php';
+        $emailService = new TransferEmailService(DB::getInstance(), 'email', $abs_us_root . $us_url_root);
 
         // Set time limit for email operations
         set_time_limit(60);
 
         // Send notification to current owner with error handling
         try {
-            $ownerNotificationSent = sendTransferRequestNotification($transferRequestId);
-            if ($ownerNotificationSent) {
-                logger($user->data()->id, LogCategories::LOG_CATEGORY_EMAIL_SUCCESS, "Transfer request notification sent to current owner for request #$transferRequestId");
-                $emailMessages[] = 'Current owner notified';
-            } else {
-                logger($user->data()->id, LogCategories::LOG_CATEGORY_EMAIL_ERROR, "Failed to send transfer request notification to current owner for request #$transferRequestId");
-                $emailMessages[] = 'Owner notification failed';
-            }
-        } catch (Exception $emailEx) {
-            logger($user->data()->id, LogCategories::LOG_CATEGORY_EMAIL_ERROR, "Owner notification exception for request #$transferRequestId: " . $emailEx->getMessage());
-            $emailMessages[] = 'Owner notification error';
+            $emailService->sendRequest($transferRequestId);
+        } catch (\Throwable $emailEx) {
+            logger($user->data()->id, LogCategories::LOG_CATEGORY_EMAIL_ERROR, "Unexpected exception sending owner notification for request #$transferRequestId: " . $emailEx->getMessage());
         }
 
         // Send alert to administrators with error handling
         try {
-            $adminAlertSent = sendTransferRequestAdminAlert($transferRequestId);
-            if ($adminAlertSent) {
-                logger($user->data()->id, LogCategories::LOG_CATEGORY_EMAIL_SUCCESS, "Transfer request admin alert sent for request #$transferRequestId");
-                $emailMessages[] = 'Administrators notified';
-            } else {
-                logger($user->data()->id, LogCategories::LOG_CATEGORY_EMAIL_ERROR, "Failed to send transfer request admin alert for request #$transferRequestId");
-                $emailMessages[] = 'Admin notification failed';
-            }
-        } catch (Exception $emailEx) {
-            logger($user->data()->id, LogCategories::LOG_CATEGORY_EMAIL_ERROR, "Admin notification exception for request #$transferRequestId: " . $emailEx->getMessage());
-            $emailMessages[] = 'Admin notification error';
+            $emailService->sendAdminAlert($transferRequestId);
+        } catch (\Throwable $emailEx) {
+            logger($user->data()->id, LogCategories::LOG_CATEGORY_EMAIL_ERROR, "Unexpected exception sending admin alert for request #$transferRequestId: " . $emailEx->getMessage());
         }
 
-    } catch (Exception $generalEmailEx) {
+    } catch (\Throwable $generalEmailEx) {
         logger($user->data()->id, LogCategories::LOG_CATEGORY_EMAIL_ERROR, "General email error for request #$transferRequestId: " . $generalEmailEx->getMessage());
-        $emailMessages[] = 'Email system error';
     }
 
-    // Build email status message
-    $emailStatus = !empty($emailMessages) ? ' Email status: ' . implode(', ', $emailMessages) . '.' : '';
-
     // Return success response
-    ApiResponse::success('Transfer request submitted successfully.' . $emailStatus)
+    ApiResponse::success('Transfer request submitted successfully.')
         ->withData('transfer_request_id', $transferRequestId)
-        ->withLogging($user->data()->id, 'CarTransfer', "Transfer request submitted for car ID {$existingCar->id}")
+        ->withLogging($user->data()->id, LogCategories::LOG_CATEGORY_CAR_TRANSFER, "Transfer request submitted for car ID {$existingCar->id}")
         ->send();
 
 } catch (CarTransferException $e) {
     ApiResponse::error($e->getUserMessage(), 400)
-        ->withLogging($user->data()->id, $e->getLogCategory(), 'Transfer request failed: ' . $e->getMessage())
+        ->withLogging($user->data()->id ?? 0, $e->getLogCategory(), 'Transfer request failed: ' . $e->getMessage())
         ->send();
 
-} catch (Exception $e) {
+} catch (\Throwable $e) {
     ApiResponse::serverError('An unexpected error occurred while processing your transfer request.')
-        ->withLogging($user->data()->id ?? 0, 'SystemError', 'Transfer request system error: ' . $e->getMessage())
+        ->withLogging($user->data()->id ?? 0, LogCategories::LOG_CATEGORY_SYSTEM_ERROR, 'Transfer request system error [' . get_class($e) . ']: ' . $e->getMessage())
         ->send();
 }
 ?>

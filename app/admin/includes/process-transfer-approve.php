@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use ElanRegistry\Exceptions\CarTransferException;
+use ElanRegistry\Transfer\TransferEmailService;
 
 /**
  * process-transfer-approve.php
@@ -100,8 +101,8 @@ try {
 
     // Send approval notification email with error handling
     try {
-        require_once $abs_us_root . $us_url_root . 'usersc/includes/transfer_email_notifications.php';
-        $notificationSent = sendTransferResponseNotification(
+        $emailService = new TransferEmailService(DB::getInstance(), 'email', $abs_us_root . $us_url_root);
+        $notificationSent = $emailService->sendResponse(
             $transferId,
             true,
             "Approved by admin user {$user->data()->id}",
@@ -109,11 +110,11 @@ try {
         );
 
         if ($notificationSent) {
-            logger($user->data()->id, LogCategories::LOG_CATEGORY_EMAIL_SUCCESS, "Transfer approval notification sent for request #$transferId");
+            logger($user->data()->id, LogCategories::LOG_CATEGORY_EMAIL_SUCCESS, "At least one transfer approval notification sent for request #$transferId");
         } else {
-            logger($user->data()->id, LogCategories::LOG_CATEGORY_EMAIL_ERROR, "Failed to send transfer approval notification for request #$transferId");
+            logger($user->data()->id, LogCategories::LOG_CATEGORY_EMAIL_ERROR, "All transfer approval notifications failed for request #$transferId (see email log for details)");
         }
-    } catch (Exception $emailEx) {
+    } catch (\Throwable $emailEx) {
         logger(
             $user->data()->id,
             LogCategories::LOG_CATEGORY_EMAIL_ERROR,
@@ -145,12 +146,12 @@ try {
         )
         ->send();
 
-} catch (Exception $e) {
+} catch (\Throwable $e) {
     ApiResponse::serverError('An unexpected error occurred while processing the transfer.')
         ->withLogging(
             $user->data()->id,
             LogCategories::LOG_CATEGORY_SYSTEM_ERROR,
-            "Transfer approval system error for request #{$transferId}: " . $e->getMessage()
+            "Transfer approval system error for request #{$transferId} [" . get_class($e) . "]: " . $e->getMessage()
         )
         ->send();
 }

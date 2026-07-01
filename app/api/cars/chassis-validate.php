@@ -3,7 +3,7 @@
 declare(strict_types=1);
 
 /**
- * validateChassis.php
+ * chassis-validate.php
  * AJAX endpoint for real-time chassis validation
  *
  * Provides centralized chassis validation via AJAX for frontend real-time feedback.
@@ -69,14 +69,15 @@ try {
         ->withDataArray($result)
         ->send();
 } catch (Throwable $e) {
-    ApiResponse::serverError('Validation error: ' . $e->getMessage())
+    ApiResponse::serverError('An unexpected validation error occurred.')
         ->withDataArray([
             'valid' => false,
-            'error' => 'Validation error: ' . $e->getMessage(),
+            'error' => 'An unexpected validation error occurred.',
             'chassis' => $chassis,
             'format_type' => '',
             'override_used' => false
         ])
         ->withLogging($user->data()->id ?? 0, LogCategories::LOG_CATEGORY_VALIDATION_ERROR, "ChassisValidator error: " . $e->getMessage())
         ->send();
+
 }

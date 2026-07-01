@@ -2,14 +2,14 @@
 declare(strict_types=1);
 
 /**
- * color-preview.php
+ * design-system.php
  * Living reference page for the Elan Registry color token system (issue #757).
  *
  * Renders every --er-* token in context (buttons, card headers, badges,
  * stat tiles, form fields, charts) so the visual system can be reviewed in
  * one screen before site-wide rollout.
  *
- * Admin-only via UserSpice securePage(). Tokens themselves live in
+ * Admin/Editor access via UserSpice securePage(). Tokens themselves live in
  * usersc/templates/customizer.css.
  */
 

@@ -332,26 +332,40 @@ final class EmailTemplateTest extends TestCase
      * project root (trailing slash) and $us_url_root = '' the
      * concatenation produces '<root>/usersc/classes/EmailTemplate.php'.
      *
-     * @return array{abs_us_root: string, us_url_root: string, view_dir: string}
+     * @return array{abs_us_root: string, us_url_root: string, view_dir: string, usersc_view_dir: string}
      */
     private function getTemplatePathVars(): array
     {
         $projectRoot = dirname(__DIR__, 3); // tests/unit/classes → project root
         return [
-            'abs_us_root' => $projectRoot . '/',
-            'us_url_root' => '',
-            'view_dir'    => $projectRoot . '/usersc/views/',
+            'abs_us_root'     => $projectRoot . '/',
+            'us_url_root'     => '',
+            'view_dir'        => $projectRoot . '/app/views/email/',
+            'usersc_view_dir' => $projectRoot . '/usersc/views/',
         ];
+    }
+
+    /**
+     * Absolute path to the UserSpice views directory, for upstream verify
+     * templates that were not moved to app/views/email/
+     * (`_email_template_verify.php` and `_email_template_verify_new.php`).
+     */
+    private function userscViewDir(): string
+    {
+        return $this->getTemplatePathVars()['usersc_view_dir'];
     }
 
     /**
      * Capture the output of a view file after setting the provided
      * variables in the local scope.  Returns the rendered HTML string.
      *
-     * @param string               $filename  View filename (e.g. '_email_contact_owner.php')
+     * @param string               $filename  View filename (e.g. '_member_to_owner.php')
      * @param array<string, mixed> $vars      Variables to expose inside the view
+     * @param string|null          $viewDir   Override the default app/views/email/ directory.
+     *                                        Pass $this->userscViewDir() for UserSpice-owned templates.
+     * @return string Rendered HTML output of the view file.
      */
-    private function renderView(string $filename, array $vars): string
+    private function renderView(string $filename, array $vars, ?string $viewDir = null): string
     {
         $paths = $this->getTemplatePathVars();
         // These two must be set so the require_once inside the view resolves.
@@ -362,17 +376,17 @@ final class EmailTemplateTest extends TestCase
         extract($vars, EXTR_SKIP);
 
         ob_start();
-        require $paths['view_dir'] . $filename;
+        require ($viewDir ?? $paths['view_dir']) . $filename;
         return (string) ob_get_clean();
     }
 
     // ------------------------------------------------------------------
-    // _email_contact_owner.php
+    // _member_to_owner.php
     // ------------------------------------------------------------------
 
     public function testContactOwnerViewRendersWithoutError(): void
     {
-        $html = $this->renderView('_email_contact_owner.php', [
+        $html = $this->renderView('_member_to_owner.php', [
             'to'      => 'Jane Smith',
             'from'    => 'John Doe',
             'message' => 'Hi, interested in your Elan.',
@@ -384,7 +398,7 @@ final class EmailTemplateTest extends TestCase
 
     public function testContactOwnerViewContainsRecipientName(): void
     {
-        $html = $this->renderView('_email_contact_owner.php', [
+        $html = $this->renderView('_member_to_owner.php', [
             'to'      => 'Jane Smith',
             'from'    => 'John Doe',
             'message' => 'Hi there.',
@@ -395,7 +409,7 @@ final class EmailTemplateTest extends TestCase
 
     public function testContactOwnerViewContainsReplyInstruction(): void
     {
-        $html = $this->renderView('_email_contact_owner.php', [
+        $html = $this->renderView('_member_to_owner.php', [
             'to'      => 'Jane Smith',
             'from'    => 'John Doe',
             'message' => 'Hi there.',
@@ -406,7 +420,7 @@ final class EmailTemplateTest extends TestCase
 
     public function testContactOwnerViewContainsSenderName(): void
     {
-        $html = $this->renderView('_email_contact_owner.php', [
+        $html = $this->renderView('_member_to_owner.php', [
             'to'      => 'Jane Smith',
             'from'    => 'John Doe',
             'message' => 'Hi there.',
@@ -417,7 +431,7 @@ final class EmailTemplateTest extends TestCase
 
     public function testContactOwnerViewEscapesXssInRecipientName(): void
     {
-        $html = $this->renderView('_email_contact_owner.php', [
+        $html = $this->renderView('_member_to_owner.php', [
             'to'      => '<script>alert(\'xss\')</script>',
             'from'    => 'John Doe',
             'message' => 'Hi.',
@@ -429,7 +443,7 @@ final class EmailTemplateTest extends TestCase
 
     public function testContactOwnerViewEscapesXssInSenderName(): void
     {
-        $html = $this->renderView('_email_contact_owner.php', [
+        $html = $this->renderView('_member_to_owner.php', [
             'to'      => 'Jane Smith',
             'from'    => '<script>alert(\'xss\')</script>',
             'message' => 'Hi.',
@@ -441,7 +455,7 @@ final class EmailTemplateTest extends TestCase
 
     public function testContactOwnerViewEscapesXssInMessage(): void
     {
-        $html = $this->renderView('_email_contact_owner.php', [
+        $html = $this->renderView('_member_to_owner.php', [
             'to'      => 'Jane Smith',
             'from'    => 'John Doe',
             'message' => '<script>alert(\'xss\')</script>',
@@ -452,12 +466,12 @@ final class EmailTemplateTest extends TestCase
     }
 
     // ------------------------------------------------------------------
-    // _email_feedback.php
+    // _feedback.php
     // ------------------------------------------------------------------
 
     public function testFeedbackViewRendersWithoutError(): void
     {
-        $html = $this->renderView('_email_feedback.php', [
+        $html = $this->renderView('_feedback.php', [
             'name'      =>'Alice Tester',
             'email'     => 'alice@example.com',
             'accountId' => '42',
@@ -470,7 +484,7 @@ final class EmailTemplateTest extends TestCase
 
     public function testFeedbackViewContainsOwnerDetails(): void
     {
-        $html = $this->renderView('_email_feedback.php', [
+        $html = $this->renderView('_feedback.php', [
             'name'      =>'Alice Tester',
             'email'     => 'alice@example.com',
             'accountId' => '42',
@@ -484,7 +498,7 @@ final class EmailTemplateTest extends TestCase
 
     public function testFeedbackViewContainsComments(): void
     {
-        $html = $this->renderView('_email_feedback.php', [
+        $html = $this->renderView('_feedback.php', [
             'name'      =>'Alice Tester',
             'email'     => 'alice@example.com',
             'accountId' => '42',
@@ -496,7 +510,7 @@ final class EmailTemplateTest extends TestCase
 
     public function testFeedbackViewContainsUserFeedbackSubtitle(): void
     {
-        $html = $this->renderView('_email_feedback.php', [
+        $html = $this->renderView('_feedback.php', [
             'name'      =>'Alice Tester',
             'email'     => 'alice@example.com',
             'accountId' => '7',
@@ -508,7 +522,7 @@ final class EmailTemplateTest extends TestCase
 
     public function testFeedbackViewEscapesXssInComments(): void
     {
-        $html = $this->renderView('_email_feedback.php', [
+        $html = $this->renderView('_feedback.php', [
             'name'      =>'Alice Tester',
             'email'     => 'alice@example.com',
             'accountId' => '42',
@@ -521,7 +535,7 @@ final class EmailTemplateTest extends TestCase
 
     public function testFeedbackViewEscapesXssInName(): void
     {
-        $html = $this->renderView('_email_feedback.php', [
+        $html = $this->renderView('_feedback.php', [
             'name'      =>'<script>alert(\'xss\')</script>',
             'email'     => 'alice@example.com',
             'accountId' => '42',
@@ -533,12 +547,12 @@ final class EmailTemplateTest extends TestCase
     }
 
     // ------------------------------------------------------------------
-    // _email_admin_contact_owner.php
+    // _admin_to_owner.php
     // ------------------------------------------------------------------
 
     public function testAdminContactOwnerViewRendersWithoutError(): void
     {
-        $html = $this->renderView('_email_admin_contact_owner.php', [
+        $html = $this->renderView('_admin_to_owner.php', [
             'to'           => 'Jane Smith',
             'from'         => 'Admin User',
             'message'      => 'Please update your car details.',
@@ -552,7 +566,7 @@ final class EmailTemplateTest extends TestCase
 
     public function testAdminContactOwnerViewContainsRecipientAndSender(): void
     {
-        $html = $this->renderView('_email_admin_contact_owner.php', [
+        $html = $this->renderView('_admin_to_owner.php', [
             'to'           => 'Jane Smith',
             'from'         => 'Admin User',
             'message'      => 'Please update your car details.',
@@ -566,7 +580,7 @@ final class EmailTemplateTest extends TestCase
 
     public function testAdminContactOwnerViewContainsRegistryAdministratorLabel(): void
     {
-        $html = $this->renderView('_email_admin_contact_owner.php', [
+        $html = $this->renderView('_admin_to_owner.php', [
             'to'           => 'Jane Smith',
             'from'         => 'Admin User',
             'message'      => 'Update required.',
@@ -579,7 +593,7 @@ final class EmailTemplateTest extends TestCase
 
     public function testAdminContactOwnerViewRendersCarContextWhenProvided(): void
     {
-        $html = $this->renderView('_email_admin_contact_owner.php', [
+        $html = $this->renderView('_admin_to_owner.php', [
             'to'           => 'Jane Smith',
             'from'         => 'Admin User',
             'message'      => 'Update required.',
@@ -596,7 +610,7 @@ final class EmailTemplateTest extends TestCase
 
     public function testAdminContactOwnerViewOmitsCarBoxWhenCarContextEmpty(): void
     {
-        $html = $this->renderView('_email_admin_contact_owner.php', [
+        $html = $this->renderView('_admin_to_owner.php', [
             'to'           => 'Jane Smith',
             'from'         => 'Admin User',
             'message'      => 'General message.',
@@ -610,7 +624,7 @@ final class EmailTemplateTest extends TestCase
 
     public function testAdminContactOwnerViewEscapesXssInMessage(): void
     {
-        $html = $this->renderView('_email_admin_contact_owner.php', [
+        $html = $this->renderView('_admin_to_owner.php', [
             'to'           => 'Jane Smith',
             'from'         => 'Admin User',
             'message'      => '<script>alert(\'xss\')</script>',
@@ -624,7 +638,7 @@ final class EmailTemplateTest extends TestCase
 
     public function testAdminContactOwnerViewEscapesXssInRecipientName(): void
     {
-        $html = $this->renderView('_email_admin_contact_owner.php', [
+        $html = $this->renderView('_admin_to_owner.php', [
             'to'           => '<script>alert(\'xss\')</script>',
             'from'         => 'Admin User',
             'message'      => 'Hello.',
@@ -637,12 +651,12 @@ final class EmailTemplateTest extends TestCase
     }
 
     // ------------------------------------------------------------------
-    // _email_admin_contact_owner.php — quality issue behaviour
+    // _admin_to_owner.php — quality issue behaviour
     // ------------------------------------------------------------------
 
     public function testAdminContactOwnerViewShowsUpdateButtonWhenQualityIssueAndCarPresent(): void
     {
-        $html = $this->renderView('_email_admin_contact_owner.php', [
+        $html = $this->renderView('_admin_to_owner.php', [
             'to'          => 'Alice',
             'from'        => 'Admin Name',
             'message'     => 'Please correct the data.',
@@ -655,7 +669,7 @@ final class EmailTemplateTest extends TestCase
 
     public function testAdminContactOwnerViewShowsRegistryLinkWhenNoQualityIssue(): void
     {
-        $html = $this->renderView('_email_admin_contact_owner.php', [
+        $html = $this->renderView('_admin_to_owner.php', [
             'to'          => 'Alice',
             'from'        => 'Admin Name',
             'message'     => 'General message.',
@@ -669,7 +683,7 @@ final class EmailTemplateTest extends TestCase
 
     public function testAdminContactOwnerViewEscapesXssInQualityIssue(): void
     {
-        $html = $this->renderView('_email_admin_contact_owner.php', [
+        $html = $this->renderView('_admin_to_owner.php', [
             'to'          => 'Alice',
             'from'        => 'Admin Name',
             'message'     => 'Please fix the data.',
@@ -693,7 +707,7 @@ final class EmailTemplateTest extends TestCase
             'vericode'            => 'ABC123DEFG',
             'user_id'             => 7,
             'join_vericode_expiry' => 48,
-        ]);
+        ], $this->userscViewDir());
 
         $this->assertStringContainsString('<!DOCTYPE html>', $html);
         $this->assertStringContainsString('</html>', $html);
@@ -707,7 +721,7 @@ final class EmailTemplateTest extends TestCase
             'vericode'            => 'ABC123DEFG',
             'user_id'             => 7,
             'join_vericode_expiry' => 48,
-        ]);
+        ], $this->userscViewDir());
 
         $this->assertStringContainsString('Bob', $html);
     }
@@ -720,7 +734,7 @@ final class EmailTemplateTest extends TestCase
             'vericode'            => 'MYCODE99',
             'user_id'             => 7,
             'join_vericode_expiry' => 48,
-        ]);
+        ], $this->userscViewDir());
 
         // The verification URL must embed the vericode and user_id.
         $this->assertStringContainsString('verify.php', $html);
@@ -736,7 +750,7 @@ final class EmailTemplateTest extends TestCase
             'vericode'            => 'CODE',
             'user_id'             => 7,
             'join_vericode_expiry' => 48,
-        ]);
+        ], $this->userscViewDir());
 
         $this->assertStringContainsString('48', $html);
     }
@@ -749,7 +763,7 @@ final class EmailTemplateTest extends TestCase
             'vericode'            => 'CODE',
             'user_id'             => 7,
             'join_vericode_expiry' => 48,
-        ]);
+        ], $this->userscViewDir());
 
         $this->assertStringContainsString('Welcome to the Registry', $html);
     }
@@ -762,7 +776,7 @@ final class EmailTemplateTest extends TestCase
             'vericode'            => 'CODE',
             'user_id'             => 7,
             'join_vericode_expiry' => 48,
-        ]);
+        ], $this->userscViewDir());
 
         $this->assertStringNotContainsString('<script>', $html);
         $this->assertStringContainsString('&lt;script&gt;', $html);
@@ -776,7 +790,7 @@ final class EmailTemplateTest extends TestCase
             'vericode'            => 'CODE',
             'user_id'             => 7,
             'join_vericode_expiry' => 48,
-        ]);
+        ], $this->userscViewDir());
 
         // rawurlencode encodes '+' as '%2B', so the raw '+' must not appear in the URL.
         $this->assertStringContainsString('bob%2Btag%40example.com', $html);
@@ -795,7 +809,7 @@ final class EmailTemplateTest extends TestCase
             'user_id'             => 12,
             'join_vericode_expiry' => 24,
             'url'                 => 'users/verify_new.php?email=carol%40example.com&vericode=NEWCODE77',
-        ]);
+        ], $this->userscViewDir());
 
         $this->assertStringContainsString('<!DOCTYPE html>', $html);
         $this->assertStringContainsString('</html>', $html);
@@ -810,7 +824,7 @@ final class EmailTemplateTest extends TestCase
             'user_id'             => 12,
             'join_vericode_expiry' => 24,
             'url'                 => 'users/verify_new.php?vericode=NEWCODE77',
-        ]);
+        ], $this->userscViewDir());
 
         $this->assertStringContainsString('Carol', $html);
     }
@@ -824,7 +838,7 @@ final class EmailTemplateTest extends TestCase
             'user_id'             => 12,
             'join_vericode_expiry' => 24,
             'url'                 => 'users/verify_new.php?vericode=NEWCODE77',
-        ]);
+        ], $this->userscViewDir());
 
         // The verification button and security warning must be present.
         $this->assertStringContainsString('Verify New Email Address', $html);
@@ -840,7 +854,7 @@ final class EmailTemplateTest extends TestCase
             'user_id'             => 12,
             'join_vericode_expiry' => 24,
             'url'                 => 'users/verify_new.php?vericode=NEWCODE77',
-        ]);
+        ], $this->userscViewDir());
 
         $this->assertStringContainsString('Verify New Email Address', $html);
     }
@@ -853,7 +867,7 @@ final class EmailTemplateTest extends TestCase
             'vericode'            => 'NEWCODE77',
             'user_id'             => 12,
             'join_vericode_expiry' => 24,
-        ]);
+        ], $this->userscViewDir());
 
         // URL is built from trusted components (same as UserSpice original):
         // users/verify.php?new=1&email=<email>&vericode=<code>&user_id=<id>
@@ -872,7 +886,7 @@ final class EmailTemplateTest extends TestCase
             'user_id'             => 12,
             'join_vericode_expiry' => 24,
             'url'                 => 'users/verify_new.php?vericode=NEWCODE77',
-        ]);
+        ], $this->userscViewDir());
 
         $this->assertStringContainsString('24', $html);
     }
@@ -886,7 +900,7 @@ final class EmailTemplateTest extends TestCase
             'user_id'             => 12,
             'join_vericode_expiry' => 24,
             'url'                 => 'users/verify_new.php?vericode=NEWCODE77',
-        ]);
+        ], $this->userscViewDir());
 
         $this->assertStringNotContainsString('<script>', $html);
         $this->assertStringContainsString('&lt;script&gt;', $html);
@@ -903,7 +917,7 @@ final class EmailTemplateTest extends TestCase
             'user_id'             => 12,
             'join_vericode_expiry' => 24,
             'url'                 => 'javascript:alert(1)',
-        ]);
+        ], $this->userscViewDir());
 
         $this->assertStringNotContainsString('javascript:', $html);
         $this->assertStringContainsString('users/verify.php', $html);
@@ -920,7 +934,7 @@ final class EmailTemplateTest extends TestCase
             'vericode'             => 'NEWCODE77',
             'user_id'              => 12,
             'join_vericode_expiry' => 24,
-        ]);
+        ], $this->userscViewDir());
 
         $this->assertStringContainsString(
             'href="mailto:registrar@elanregistry.org"',
@@ -947,12 +961,12 @@ final class EmailTemplateTest extends TestCase
     // ============================================================
 
     // ------------------------------------------------------------------
-    // _email_transfer_request.php
+    // _transfer_request.php
     // ------------------------------------------------------------------
 
     public function testTransferRequestViewRendersWithoutError(): void
     {
-        $html = $this->renderView('_email_transfer_request.php', [
+        $html = $this->renderView('_transfer_request.php', [
             'currentOwner'    => (object)['fname' => 'Alice', 'lname' => 'Smith', 'email' => 'alice@example.com', 'id' => 1, 'city' => 'London', 'state' => '', 'country' => 'UK'],
             'requester'       => (object)['fname' => 'Bob', 'lname' => 'Jones', 'email' => 'bob@example.com', 'id' => 2, 'city' => 'Paris', 'state' => '', 'country' => 'FR'],
             'carInfo'         => (object)['id' => 42, 'year' => '1971', 'series' => 'S4', 'variant' => 'SE', 'chassis' => 'ELAN/6/1234', 'color' => 'Yellow', 'engine' => 'Twin Cam'],
@@ -965,7 +979,7 @@ final class EmailTemplateTest extends TestCase
 
     public function testTransferRequestViewRendersSubmittedComments(): void
     {
-        $html = $this->renderView('_email_transfer_request.php', [
+        $html = $this->renderView('_transfer_request.php', [
             'currentOwner'    => (object)['fname' => 'Alice', 'lname' => 'Smith', 'email' => 'alice@example.com', 'id' => 1, 'city' => 'London', 'state' => '', 'country' => 'UK'],
             'requester'       => (object)['fname' => 'Bob', 'lname' => 'Jones', 'email' => 'bob@example.com', 'id' => 2, 'city' => 'Paris', 'state' => '', 'country' => 'FR'],
             'carInfo'         => (object)['id' => 42, 'year' => '1971', 'series' => 'S4', 'variant' => 'SE', 'chassis' => 'ELAN/6/1234', 'color' => 'Yellow', 'engine' => 'Twin Cam'],
@@ -977,7 +991,7 @@ final class EmailTemplateTest extends TestCase
 
     public function testTransferRequestViewOmitsCommentBoxWhenEmpty(): void
     {
-        $html = $this->renderView('_email_transfer_request.php', [
+        $html = $this->renderView('_transfer_request.php', [
             'currentOwner'    => (object)['fname' => 'Alice', 'lname' => 'Smith', 'email' => 'alice@example.com', 'id' => 1, 'city' => 'London', 'state' => '', 'country' => 'UK'],
             'requester'       => (object)['fname' => 'Bob', 'lname' => 'Jones', 'email' => 'bob@example.com', 'id' => 2, 'city' => 'Paris', 'state' => '', 'country' => 'FR'],
             'carInfo'         => (object)['id' => 42, 'year' => '1971', 'series' => 'S4', 'variant' => 'SE', 'chassis' => 'ELAN/6/1234', 'color' => 'Yellow', 'engine' => 'Twin Cam'],
@@ -988,12 +1002,12 @@ final class EmailTemplateTest extends TestCase
     }
 
     // ------------------------------------------------------------------
-    // _email_transfer_response.php
+    // _transfer_response.php
     // ------------------------------------------------------------------
 
     public function testTransferResponseViewApprovedBranchContainsCongratulations(): void
     {
-        $html = $this->renderView('_email_transfer_response.php', [
+        $html = $this->renderView('_transfer_response.php', [
             'requester'       => (object)['fname' => 'Bob', 'lname' => 'Jones', 'email' => 'bob@example.com', 'id' => 2, 'city' => 'Paris', 'state' => '', 'country' => 'FR'],
             'carInfo'         => (object)['id' => 42, 'year' => '1971', 'series' => 'S4', 'variant' => 'SE', 'chassis' => 'ELAN/6/1234', 'color' => 'Yellow'],
             'transferRequest' => (object)['id' => 7, 'request_date' => '2026-01-15 10:00:00', 'completed_date' => '2026-01-20 14:00:00'],
@@ -1009,7 +1023,7 @@ final class EmailTemplateTest extends TestCase
 
     public function testTransferResponseViewDeniedBranchContainsDenialText(): void
     {
-        $html = $this->renderView('_email_transfer_response.php', [
+        $html = $this->renderView('_transfer_response.php', [
             'requester'       => (object)['fname' => 'Bob', 'lname' => 'Jones', 'email' => 'bob@example.com', 'id' => 2, 'city' => 'Paris', 'state' => '', 'country' => 'FR'],
             'carInfo'         => (object)['id' => 42, 'year' => '1971', 'series' => 'S4', 'variant' => 'SE', 'chassis' => 'ELAN/6/1234', 'color' => 'Yellow'],
             'transferRequest' => (object)['id' => 7, 'request_date' => '2026-01-15 10:00:00', 'completed_date' => '2026-01-20 14:00:00'],
@@ -1024,7 +1038,7 @@ final class EmailTemplateTest extends TestCase
 
     public function testTransferResponseViewRendersAdminNotesWhenPresent(): void
     {
-        $html = $this->renderView('_email_transfer_response.php', [
+        $html = $this->renderView('_transfer_response.php', [
             'requester'       => (object)['fname' => 'Bob', 'lname' => 'Jones', 'email' => 'bob@example.com', 'id' => 2, 'city' => 'Paris', 'state' => '', 'country' => 'FR'],
             'carInfo'         => (object)['id' => 42, 'year' => '1971', 'series' => 'S4', 'variant' => 'SE', 'chassis' => 'ELAN/6/1234', 'color' => 'Yellow'],
             'transferRequest' => (object)['id' => 7, 'request_date' => '2026-01-15 10:00:00', 'completed_date' => '2026-01-20 14:00:00'],
@@ -1037,12 +1051,12 @@ final class EmailTemplateTest extends TestCase
     }
 
     // ------------------------------------------------------------------
-    // _email_transfer_previous_owner.php
+    // _transfer_previous_owner.php
     // ------------------------------------------------------------------
 
     public function testTransferPreviousOwnerViewApprovedBranchShowsTransferMessage(): void
     {
-        $html = $this->renderView('_email_transfer_previous_owner.php', [
+        $html = $this->renderView('_transfer_previous_owner.php', [
             'previousOwner'   => (object)['fname' => 'Alice', 'lname' => 'Smith', 'email' => 'alice@example.com', 'id' => 1, 'city' => 'London', 'state' => '', 'country' => 'UK'],
             'requester'       => (object)['fname' => 'Bob', 'lname' => 'Jones', 'email' => 'bob@example.com', 'id' => 2, 'city' => 'Paris', 'state' => '', 'country' => 'FR'],
             'carInfo'         => (object)['id' => 42, 'year' => '1971', 'series' => 'S4', 'variant' => 'SE', 'chassis' => 'ELAN/6/1234', 'color' => 'Yellow', 'engine' => 'Twin Cam'],
@@ -1057,7 +1071,7 @@ final class EmailTemplateTest extends TestCase
 
     public function testTransferPreviousOwnerViewDeniedBranchShowsGoodNews(): void
     {
-        $html = $this->renderView('_email_transfer_previous_owner.php', [
+        $html = $this->renderView('_transfer_previous_owner.php', [
             'previousOwner'   => (object)['fname' => 'Alice', 'lname' => 'Smith', 'email' => 'alice@example.com', 'id' => 1, 'city' => 'London', 'state' => '', 'country' => 'UK'],
             'requester'       => (object)['fname' => 'Bob', 'lname' => 'Jones', 'email' => 'bob@example.com', 'id' => 2, 'city' => 'Paris', 'state' => '', 'country' => 'FR'],
             'carInfo'         => (object)['id' => 42, 'year' => '1971', 'series' => 'S4', 'variant' => 'SE', 'chassis' => 'ELAN/6/1234', 'color' => 'Yellow', 'engine' => 'Twin Cam'],
@@ -1071,12 +1085,12 @@ final class EmailTemplateTest extends TestCase
     }
 
     // ------------------------------------------------------------------
-    // _email_transfer_admin.php
+    // _transfer_admin.php
     // ------------------------------------------------------------------
 
     public function testTransferAdminViewRendersWithoutError(): void
     {
-        $html = $this->renderView('_email_transfer_admin.php', [
+        $html = $this->renderView('_transfer_admin.php', [
             'currentOwner'    => (object)['fname' => 'Alice', 'lname' => 'Smith', 'email' => 'alice@example.com', 'id' => 1, 'city' => 'London', 'state' => '', 'country' => 'UK'],
             'requester'       => (object)['fname' => 'Bob', 'lname' => 'Jones', 'email' => 'bob@example.com', 'id' => 2, 'city' => 'Paris', 'state' => '', 'country' => 'FR'],
             'carInfo'         => (object)['id' => 42, 'year' => '1971', 'series' => 'S4', 'variant' => 'SE', 'chassis' => 'ELAN/6/1234', 'color' => 'Yellow'],
@@ -1090,7 +1104,7 @@ final class EmailTemplateTest extends TestCase
 
     public function testTransferAdminViewRendersSubmittedComments(): void
     {
-        $html = $this->renderView('_email_transfer_admin.php', [
+        $html = $this->renderView('_transfer_admin.php', [
             'currentOwner'    => (object)['fname' => 'Alice', 'lname' => 'Smith', 'email' => 'alice@example.com', 'id' => 1, 'city' => 'London', 'state' => '', 'country' => 'UK'],
             'requester'       => (object)['fname' => 'Bob', 'lname' => 'Jones', 'email' => 'bob@example.com', 'id' => 2, 'city' => 'Paris', 'state' => '', 'country' => 'FR'],
             'carInfo'         => (object)['id' => 42, 'year' => '1971', 'series' => 'S4', 'variant' => 'SE', 'chassis' => 'ELAN/6/1234', 'color' => 'Yellow'],
@@ -1147,7 +1161,7 @@ final class EmailTemplateTest extends TestCase
             'user_id'             => 12,
             'join_vericode_expiry' => 24,
             'url'                 => '//evil.com/steal-cookies',
-        ]);
+        ], $this->userscViewDir());
 
         // ltrim strips the leading '//' so 'evil.com/steal-cookies' is treated as a
         // relative path under the registry origin.  The output URL must be on the
@@ -1164,7 +1178,7 @@ final class EmailTemplateTest extends TestCase
 
     public function testTransferRequestViewEscapesXssInChassis(): void
     {
-        $html = $this->renderView('_email_transfer_request.php', [
+        $html = $this->renderView('_transfer_request.php', [
             'currentOwner'    => (object)['fname' => 'Alice', 'lname' => 'Smith', 'email' => 'alice@example.com', 'id' => 1, 'city' => 'London', 'state' => '', 'country' => 'UK'],
             'requester'       => (object)['fname' => 'Bob', 'lname' => 'Jones', 'email' => 'bob@example.com', 'id' => 2, 'city' => 'Paris', 'state' => '', 'country' => 'FR'],
             'carInfo'         => (object)['id' => 42, 'year' => '1971', 'series' => 'S4', 'variant' => 'SE', 'chassis' => '<script>alert(1)</script>', 'color' => 'Yellow', 'engine' => 'Twin Cam'],
@@ -1177,7 +1191,7 @@ final class EmailTemplateTest extends TestCase
 
     public function testTransferResponseViewEscapesXssInAdminNotes(): void
     {
-        $html = $this->renderView('_email_transfer_response.php', [
+        $html = $this->renderView('_transfer_response.php', [
             'requester'       => (object)['fname' => 'Bob', 'lname' => 'Jones', 'email' => 'bob@example.com', 'id' => 2, 'city' => 'Paris', 'state' => '', 'country' => 'FR'],
             'carInfo'         => (object)['id' => 42, 'year' => '1971', 'series' => 'S4', 'variant' => 'SE', 'chassis' => 'ELAN/6/1234', 'color' => 'Yellow'],
             'transferRequest' => (object)['id' => 7, 'request_date' => '2026-01-15 10:00:00', 'completed_date' => '2026-01-20 14:00:00'],
@@ -1192,7 +1206,7 @@ final class EmailTemplateTest extends TestCase
 
     public function testTransferPreviousOwnerViewEscapesXssInChassis(): void
     {
-        $html = $this->renderView('_email_transfer_previous_owner.php', [
+        $html = $this->renderView('_transfer_previous_owner.php', [
             'previousOwner'   => (object)['fname' => 'Alice', 'lname' => 'Smith', 'email' => 'alice@example.com', 'id' => 1, 'city' => 'London', 'state' => '', 'country' => 'UK'],
             'requester'       => (object)['fname' => 'Bob', 'lname' => 'Jones', 'email' => 'bob@example.com', 'id' => 2, 'city' => 'Paris', 'state' => '', 'country' => 'FR'],
             'carInfo'         => (object)['id' => 42, 'year' => '1971', 'series' => 'S4', 'variant' => 'SE', 'chassis' => '<script>alert(1)</script>', 'color' => 'Yellow', 'engine' => 'Twin Cam'],
@@ -1207,7 +1221,7 @@ final class EmailTemplateTest extends TestCase
 
     public function testTransferAdminViewEscapesXssInSubmittedComments(): void
     {
-        $html = $this->renderView('_email_transfer_admin.php', [
+        $html = $this->renderView('_transfer_admin.php', [
             'currentOwner'    => (object)['fname' => 'Alice', 'lname' => 'Smith', 'email' => 'alice@example.com', 'id' => 1, 'city' => 'London', 'state' => '', 'country' => 'UK'],
             'requester'       => (object)['fname' => 'Bob', 'lname' => 'Jones', 'email' => 'bob@example.com', 'id' => 2, 'city' => 'Paris', 'state' => '', 'country' => 'FR'],
             'carInfo'         => (object)['id' => 42, 'year' => '1971', 'series' => 'S4', 'variant' => 'SE', 'chassis' => 'ELAN/6/1234', 'color' => 'Yellow'],

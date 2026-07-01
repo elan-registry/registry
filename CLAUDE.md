@@ -49,6 +49,12 @@ edge caching and CDN for global users (US, EU, AU).
 **Directory Structure:**
 
 - `/app/` - Main application pages (car listings, details, forms, actions)
+  - `/app/api/` - AJAX JSON endpoints, organized by resource: `cars/` (car CRUD and
+    validation), `contact/` (contact forms, auth-required), `shared/` (public endpoints:
+    statistics, location search), `admin/` (admin-only settings updates). All endpoints
+    follow Pattern A / `ApiResponse`.
+  - `/app/views/` - Reusable view partials: `cars/` (car page components), `email/`
+    (transactional email templates)
 - `/docs/` - User-facing documentation: `guides/` (how-to), `reference/` (technical), `stories/` (car histories)
 - `/error/` - Branded HTTP error pages (403, 404, 500)
 - `/users/` - UserSpice authentication system
@@ -63,8 +69,13 @@ edge caching and CDN for global users (US, EU, AU).
 
 - **Page Security**: All protected pages require `securePage($php_self)` check.
   See [GitHub Wiki: UserSpice Integration Guide](https://github.com/unibrain1/elanregistry/wiki/Customization-and-Integration-Patterns).
-- **New PHP Directories**: Update `$path` array in `/z_us_root.php`. New
-  admin scripts go under `app/admin/scripts/fix/` (one-time migrations) or
+- **New PHP Directories**: Only add a directory to the `$path` array in
+  `/z_us_root.php` when it contains files that call `securePage()`. Pure API
+  endpoints, action handlers, and partials that do not call `securePage()` are
+  **not** added — `app/action/`, `app/api/cars/`, and `app/api/shared/` are examples of this
+  pattern. (`app/api/contact/` is an exception: it contains files that call `securePage()` and
+  is therefore included.)
+  New admin scripts go under `app/admin/scripts/fix/` (one-time migrations) or
   `app/admin/scripts/maintenance/` (repeatable maintenance).
 - **Database**: MySQL 8.0+ with audit trails via triggers.
   See [DATABASE.md](docs/development/DATABASE.md).

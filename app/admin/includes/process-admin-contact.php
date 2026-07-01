@@ -63,7 +63,6 @@ if (Input::exists('post')) {
             try {
                 $db = DB::getInstance();
 
-
                 // Get admin user data
                 $adminData = $db->query('SELECT id, email, fname, lname FROM users WHERE id = ?', [$user->data()->id])->first();
                 if (!$adminData) {
@@ -139,12 +138,24 @@ if (Input::exists('post')) {
                 }
 
                 // Generate email body using template
-                $body = email_body('_email_admin_contact_owner.php', $template);
+                try {
+                    extract($template, EXTR_SKIP);
+                    ob_start();
+                    include $abs_us_root . $us_url_root . 'app/views/email/_admin_to_owner.php';
+                    $body = ob_get_clean() ?: '';
+                } catch (\Throwable $e) {
+                    if (ob_get_level() > 0) {
+                        ob_end_clean();
+                    }
+                    logger($user->data()->id, LogCategories::LOG_CATEGORY_EMAIL_ERROR,
+                        'process-admin-contact.php: exception during email template render: ' . $e->getMessage());
+                    $body = '';
+                }
 
                 if ($body === '') {
                     logger($user->data()->id, LogCategories::LOG_CATEGORY_EMAIL_ERROR,
-                        'process-admin-contact.php: email_body() returned empty — template missing or failed',
-                        ['template' => '_email_admin_contact_owner.php']);
+                        'process-admin-contact.php: email body render failed — template missing or failed',
+                        ['template' => 'app/views/email/_admin_to_owner.php']);
                     $errors[] = 'Email could not be sent. Please try again or contact the administrator.';
                     return;
                 }
@@ -186,10 +197,8 @@ if (Input::exists('post')) {
         }
     }
 
-    // Redirect back to data quality tab
-    Redirect::to($us_url_root . 'app/admin/manage-consolidated.php?tab=data-quality');
+    Redirect::to($us_url_root . 'app/admin/index.php?tab=manage-cars');
 } else {
-    // No POST data
-    Redirect::to($us_url_root . 'app/admin/manage-consolidated.php?tab=data-quality');
+    Redirect::to($us_url_root . 'app/admin/index.php?tab=manage-cars');
 }
 ?>

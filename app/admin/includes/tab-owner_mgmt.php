@@ -8,15 +8,12 @@ use ElanRegistry\OwnerView;
  * Manage OwnersTab Content
  */
 
-// Get system status for statistics
 if (!isset($systemStatus) || !is_array($systemStatus) || !isset($systemStatus['total_users'])) {
-    // Calculate user statistics if not already available
     $userCountQuery = $db->query("SELECT COUNT(*) as count FROM users");
     $systemStatus = $systemStatus ?? [];
     $systemStatus['total_users'] = $userCountQuery->count() > 0 ? $userCountQuery->first()->count : 0;
 }
 
-// Handle direct owner ID parameter from data quality links
 $selectedOwnerId = null;
 if (isset($_GET['owner_id']) && is_numeric($_GET['owner_id'])) {
     $selectedOwnerId = (int)$_GET['owner_id'];
@@ -117,71 +114,72 @@ if (isset($_GET['owner_id']) && is_numeric($_GET['owner_id'])) {
  * @return array Array of quality report data with counts and details
  * @throws InvalidArgumentException If database connection is invalid
  */
-function getOwnerQualityReports($db): array {
+function getOwnerQualityReports(DB $db): array {
     if (!$db || !is_object($db)) {
         throw new InvalidArgumentException('Valid database connection required');
     }
 
     $reports = [];
 
-    // Owner Report: Car Owners Missing Critical Information
-    $ownersWithMissingInfoQ = $db->query("
-        SELECT u.id, u.fname, u.lname, u.email, u.join_date, u.last_login,
-               p.city, p.state, p.country, p.lat, p.lon,
-               COUNT(cu.car_id) as car_count,
-               CASE WHEN u.fname IS NULL OR u.fname = '' THEN 1 ELSE 0 END +
-               CASE WHEN u.lname IS NULL OR u.lname = '' THEN 1 ELSE 0 END +
-               CASE WHEN p.city IS NULL OR p.city = '' THEN 1 ELSE 0 END +
-               CASE WHEN p.lat IS NULL OR p.lon IS NULL THEN 1 ELSE 0 END as missing_count,
-               CONCAT_WS(', ',
-                   CASE WHEN u.fname IS NULL OR u.fname = '' THEN 'First Name' ELSE NULL END,
-                   CASE WHEN u.lname IS NULL OR u.lname = '' THEN 'Last Name' ELSE NULL END,
-                   CASE WHEN p.city IS NULL OR p.city = '' THEN 'City' ELSE NULL END,
-                   CASE WHEN p.lat IS NULL OR p.lon IS NULL THEN 'Coordinates' ELSE NULL END
-               ) as missing_fields_list
-        FROM users u
-        JOIN car_user cu ON u.id = cu.userid
-        LEFT JOIN profiles p ON u.id = p.user_id
-        WHERE u.active = 1 AND (
-            (u.fname IS NULL OR u.fname = '') OR
-            (u.lname IS NULL OR u.lname = '') OR
-            (p.city IS NULL OR p.city = '') OR
-            (p.lat IS NULL OR p.lon IS NULL)
-        )
-        GROUP BY u.id, u.fname, u.lname, u.email, u.join_date, u.last_login, p.city, p.state, p.country, p.lat, p.lon
-        ORDER BY missing_count DESC, car_count DESC, u.last_login DESC
-    ");
-    $reports['owners_missing_info'] = [
-        'title' => 'Car Owners Missing Information',
-        'description' => 'Active car owners with incomplete profile information affecting contact and location features',
-        'icon' => 'fas fa-user-times',
-        'severity' => 'warning',
-        'count' => count($ownersWithMissingInfoQ->results()),
-        'data' => $ownersWithMissingInfoQ->results(),
-        'impact' => 'High - Affects owner contact, mapping, and user experience'
-    ];
+    try {
+        $ownersWithMissingInfoQ = $db->query("
+            SELECT u.id, u.fname, u.lname, u.email, u.join_date, u.last_login,
+                   p.city, p.state, p.country, p.lat, p.lon,
+                   COUNT(cu.car_id) as car_count,
+                   CASE WHEN u.fname IS NULL OR u.fname = '' THEN 1 ELSE 0 END +
+                   CASE WHEN u.lname IS NULL OR u.lname = '' THEN 1 ELSE 0 END +
+                   CASE WHEN p.city IS NULL OR p.city = '' THEN 1 ELSE 0 END +
+                   CASE WHEN p.lat IS NULL OR p.lon IS NULL THEN 1 ELSE 0 END as missing_count,
+                   CONCAT_WS(', ',
+                       CASE WHEN u.fname IS NULL OR u.fname = '' THEN 'First Name' ELSE NULL END,
+                       CASE WHEN u.lname IS NULL OR u.lname = '' THEN 'Last Name' ELSE NULL END,
+                       CASE WHEN p.city IS NULL OR p.city = '' THEN 'City' ELSE NULL END,
+                       CASE WHEN p.lat IS NULL OR p.lon IS NULL THEN 'Coordinates' ELSE NULL END
+                   ) as missing_fields_list
+            FROM users u
+            JOIN car_user cu ON u.id = cu.userid
+            LEFT JOIN profiles p ON u.id = p.user_id
+            WHERE u.active = 1 AND (
+                (u.fname IS NULL OR u.fname = '') OR
+                (u.lname IS NULL OR u.lname = '') OR
+                (p.city IS NULL OR p.city = '') OR
+                (p.lat IS NULL OR p.lon IS NULL)
+            )
+            GROUP BY u.id, u.fname, u.lname, u.email, u.join_date, u.last_login, p.city, p.state, p.country, p.lat, p.lon
+            ORDER BY missing_count DESC, car_count DESC, u.last_login DESC
+        ");
+        $reports['owners_missing_info'] = [
+            'title' => 'Car Owners Missing Information',
+            'description' => 'Active car owners with incomplete profile information affecting contact and location features',
+            'icon' => 'fas fa-user-times',
+            'severity' => 'warning',
+            'count' => count($ownersWithMissingInfoQ->results()),
+            'data' => $ownersWithMissingInfoQ->results(),
+            'impact' => 'High - Affects owner contact, mapping, and user experience'
+        ];
 
-
-
-    // Owner Report: Duplicate Email Analysis
-    $duplicateEmailsQ = $db->query("
-        SELECT email, COUNT(*) as user_count,
-               GROUP_CONCAT(CONCAT(fname, ' ', lname, ' (ID:', id, ')') SEPARATOR ', ') as users_list
-        FROM users
-        WHERE active = 1
-        GROUP BY email
-        HAVING COUNT(*) > 1
-        ORDER BY user_count DESC
-    ");
-    $reports['duplicate_emails'] = [
-        'title' => 'Duplicate Email Addresses',
-        'description' => 'Email addresses associated with multiple active user accounts',
-        'icon' => 'fas fa-envelope-duplicate',
-        'severity' => 'warning',
-        'count' => count($duplicateEmailsQ->results()),
-        'data' => $duplicateEmailsQ->results(),
-        'impact' => 'Medium - May indicate duplicate accounts or shared email usage'
-    ];
+        $duplicateEmailsQ = $db->query("
+            SELECT email, COUNT(*) as user_count,
+                   GROUP_CONCAT(CONCAT(fname, ' ', lname, ' (ID:', id, ')') SEPARATOR ', ') as users_list
+            FROM users
+            WHERE active = 1
+            GROUP BY email
+            HAVING COUNT(*) > 1
+            ORDER BY user_count DESC
+        ");
+        $reports['duplicate_emails'] = [
+            'title' => 'Duplicate Email Addresses',
+            'description' => 'Email addresses associated with multiple active user accounts',
+            'icon' => 'fas fa-envelope-duplicate',
+            'severity' => 'warning',
+            'count' => count($duplicateEmailsQ->results()),
+            'data' => $duplicateEmailsQ->results(),
+            'impact' => 'Medium - May indicate duplicate accounts or shared email usage'
+        ];
+    } catch (\Throwable $e) {
+        logger(0, LogCategories::LOG_CATEGORY_SYSTEM_ERROR, 'getOwnerQualityReports failed: ' . $e->getMessage());
+        // Return partial reports rather than crashing the page
+    }
 
     return $reports;
 }
@@ -193,8 +191,7 @@ function getOwnerQualityReports($db): array {
  * @param string $email The duplicate email address
  * @return array Array of owner objects with profile and car count data
  */
-function getDuplicateEmailDetails($db, $email): array {
-    // Get all users with this email, with car counts via LEFT JOIN
+function getDuplicateEmailDetails(DB $db, string $email): array {
     $ownersQ = $db->query("
         SELECT
             u.id, u.fname, u.lname, u.email, u.join_date, u.last_login,
@@ -213,7 +210,6 @@ function getDuplicateEmailDetails($db, $email): array {
 
     $owners = $ownersQ->results();
 
-    // Collect all car IDs from all owners for batch fetching
     $allCarIds = [];
     foreach ($owners as $owner) {
         if ($owner->car_ids) {
@@ -222,12 +218,10 @@ function getDuplicateEmailDetails($db, $email): array {
         }
     }
 
-    // Fetch all cars in one query if there are any
     $carsById = [];
     $allCarIds = array_filter(array_unique($allCarIds), fn(int $id) => $id > 0);
 
     if (!empty($allCarIds)) {
-        // Build WHERE clause with prepared statement placeholders
         $placeholders = implode(',', array_fill(0, count($allCarIds), '?'));
 
         // phpcs:disable - False positive: Using prepared statements correctly
@@ -245,7 +239,6 @@ function getDuplicateEmailDetails($db, $email): array {
         }
     }
 
-    // Assign cars to owners and calculate quality scores
     foreach ($owners as $owner) {
         $owner->cars = [];
         if ($owner->car_ids) {
@@ -263,10 +256,8 @@ function getDuplicateEmailDetails($db, $email): array {
     return $owners;
 }
 
-// Get owner quality reports for display at bottom of page
 $dataQualityReports = getOwnerQualityReports($db);
 
-// Calculate owner quality statistics
 $totalOwners = $systemStatus['total_users'] ?? 0;
 $qualityIssues = 0;
 foreach ($dataQualityReports as $report) {
@@ -444,8 +435,9 @@ $ownerQualityIcon  = match (true) {
                                                                                             <div class="timestamp-info">
                                                                                                 <i class="fas fa-user-plus text-primary"></i>
                                                                                                 <div class="timestamp-label">Joined</div>
-                                                                                                <div class="timestamp-value"><?= date('M j, Y', strtotime($owner->join_date)) ?></div>
-                                                                                                <div class="timestamp-time"><?= date('g:i A', strtotime($owner->join_date)) ?></div>
+                                                                                                <?php $ts = strtotime($owner->join_date ?? ''); ?>
+                                                                                                <div class="timestamp-value"><?= $ts !== false ? date('M j, Y', $ts) : 'Unknown' ?></div>
+                                                                                                <div class="timestamp-time"><?= $ts !== false ? date('g:i A', $ts) : '' ?></div>
                                                                                             </div>
                                                                                         </div>
                                                                                         <div class="col-6 border-left">
@@ -453,8 +445,9 @@ $ownerQualityIcon  = match (true) {
                                                                                                 <i class="fas fa-clock text-primary"></i>
                                                                                                 <div class="timestamp-label">Last Login</div>
                                                                                                 <?php if ($owner->last_login && $owner->last_login !== '0000-00-00 00:00:00') { ?>
-                                                                                                    <div class="timestamp-value"><?= date('M j, Y', strtotime($owner->last_login)) ?></div>
-                                                                                                    <div class="timestamp-time"><?= date('g:i A', strtotime($owner->last_login)) ?></div>
+                                                                                                    <?php $tsLogin = strtotime($owner->last_login); ?>
+                                                                                                    <div class="timestamp-value"><?= $tsLogin !== false ? date('M j, Y', $tsLogin) : 'Unknown' ?></div>
+                                                                                                    <div class="timestamp-time"><?= $tsLogin !== false ? date('g:i A', $tsLogin) : '' ?></div>
                                                                                                 <?php } else { ?>
                                                                                                     <div class="timestamp-value text-danger">Never</div>
                                                                                                 <?php } ?>
@@ -628,13 +621,13 @@ $ownerQualityIcon  = match (true) {
                                                                 </td>
                                                                 <td>
                                                                     <small class="text-muted">
-                                                                        <?= date('M j, Y', strtotime($owner->join_date)) ?>
+                                                                        <?php $ts = strtotime($owner->join_date ?? ''); echo $ts !== false ? date('M j, Y', $ts) : 'Unknown'; ?>
                                                                     </small>
                                                                 </td>
                                                                 <td>
                                                                     <?php if ($owner->last_login && $owner->last_login !== '0000-00-00 00:00:00') { ?>
                                                                         <small class="text-muted">
-                                                                            <?= date('M j, Y', strtotime($owner->last_login)) ?>
+                                                                            <?php $tsLogin = strtotime($owner->last_login); echo $tsLogin !== false ? date('M j, Y', $tsLogin) : 'Unknown'; ?>
                                                                         </small>
                                                                     <?php } else { ?>
                                                                         <span class="badge text-bg-danger">Never</span>
@@ -679,20 +672,16 @@ $ownerQualityIcon  = match (true) {
     </div>
 </div>
 
-<!-- Scripts for Manage Owners-->
+<!-- Scripts for Manage Owners -->
 <script>
-// Manage OwnersJavaScript
 let currentOwnerId = null;
 let searchTimeout = null;
 
-// Initialize owner management
 $(document).ready(function() {
-    // Auto-load owner if ID provided in URL
     <?php if ($selectedOwnerId): ?>
         loadOwnerById(<?= $selectedOwnerId // nosemgrep: php.lang.security.taint-unsafe-echo-tag.taint-unsafe-echo-tag ?>);
     <?php endif; ?>
 
-    // Setup search functionality
     $('#ownerSearchInput').on('input', function() {
         clearTimeout(searchTimeout);
         const query = $(this).val().trim();
@@ -716,7 +705,6 @@ $(document).ready(function() {
         closeOwnerProfile();
     });
 
-    // Handle Enter key in search
     $('#ownerSearchInput').keypress(function(e) {
         if (e.which === 13) {
             $('#ownerSearchBtn').click();
@@ -724,7 +712,6 @@ $(document).ready(function() {
     });
 });
 
-// Search owners functionality
 function searchOwners(query) {
     $('#ownerSearchResults').html('<div class="text-center py-2"><i class="fas fa-spinner fa-spin"></i> Searching...</div>');
 
@@ -733,12 +720,12 @@ function searchOwners(query) {
         .then(function(response) {
             displaySearchResults(response.owners);
         })
-        .catch(function() {
+        .catch(function(error) {
+            console.error('Owner search failed for query:', query, error);
             $('#ownerSearchResults').html('<div class="alert alert-danger"><i class="fas fa-exclamation-circle"></i> Search failed. Please try again.</div>');
         });
 }
 
-// Display search results
 function displaySearchResults(owners) {
     if (owners.length === 0) {
         $('#ownerSearchResults').html('<div class="alert alert-primary"><i class="fas fa-info-circle"></i> No owners found matching your search.</div>');
@@ -749,16 +736,18 @@ function displaySearchResults(owners) {
     html += '<th>Name</th><th>Email</th><th>Location</th><th>Data Quality</th><th>Actions</th>';
     html += '</tr></thead><tbody>';
 
+    const esc = NotificationHelper.escapeHtml;
     owners.forEach(function(owner) {
         const qualityClass = owner.quality_score >= 80 ? 'success' : (owner.quality_score >= 60 ? 'warning' : 'danger');
-        const location = [owner.city, owner.state, owner.country].filter(Boolean).join(', ') || 'Not specified';
+        const location = esc([owner.city, owner.state, owner.country].filter(Boolean).join(', ') || 'Not specified');
+        const ownerId = parseInt(owner.id, 10);
 
-        html += `<tr onclick="loadOwnerById(${owner.id})" style="cursor: pointer;">`;
-        html += `<td><strong>${owner.fname} ${owner.lname}</strong></td>`;
-        html += `<td>${owner.email}</td>`;
+        html += `<tr onclick="loadOwnerById(${ownerId})" style="cursor: pointer;">`;
+        html += `<td><strong>${esc(owner.fname)} ${esc(owner.lname)}</strong></td>`;
+        html += `<td>${esc(owner.email)}</td>`;
         html += `<td>${location}</td>`;
-        html += `<td><span class="badge badge-${qualityClass}">${owner.quality_score}%</span></td>`;
-        html += `<td><button class="btn btn-sm btn-primary" onclick="event.stopPropagation(); loadOwnerById(${owner.id})"><i class="fas fa-edit"></i> Edit</button></td>`;
+        html += `<td><span class="badge badge-${qualityClass}">${parseInt(owner.quality_score, 10)}%</span></td>`;
+        html += `<td><button class="btn btn-sm btn-primary" onclick="event.stopPropagation(); loadOwnerById(${ownerId})"><i class="fas fa-edit"></i> Edit</button></td>`;
         html += '</tr>';
     });
 
@@ -766,74 +755,55 @@ function displaySearchResults(owners) {
     $('#ownerSearchResults').html(html);
 }
 
-// Load owner by ID
 function loadOwnerById(ownerId) {
     currentOwnerId = ownerId;
     $('#ownerProfilePanel').show();
 
-    // Scroll to the panel smoothly
     $('html, body').animate({
         scrollTop: $('#ownerProfilePanel').offset().top - 100
     }, 500);
 
-    // Update URL without reload
     const currentUrl = new URL(window.location);
     currentUrl.searchParams.set('owner_id', ownerId);
     window.history.replaceState({}, '', currentUrl);
 
-    // Load owner profile form
-    $.ajax({
-        url: 'includes/load-owner-profile.php',
-        method: 'POST',
-        data: {
-            owner_id: ownerId,
-            csrf: '<?= Token::generate() ?>'
-        },
-        success: function(response) {
-            $('#ownerProfileForm').html(response);
-        },
-        error: function() {
+    new ElanRegistryAPI()
+        .post('<?= $us_url_root ?>app/admin/includes/load-owner-profile.php', { owner_id: ownerId })
+        .then(function(response) {
+            $('#ownerProfileForm').html(response.html);
+        })
+        .catch(function(error) {
+            console.error('Failed to load owner profile for ID', ownerId, error);
             $('#ownerProfileForm').html('<div class="alert alert-danger">Failed to load owner profile.</div>');
-        }
-    });
+        });
 
-    // Load owner information sidebar
-    $.ajax({
-        url: 'includes/load-owner-info.php',
-        method: 'POST',
-        data: {
-            owner_id: ownerId,
-            csrf: '<?= Token::generate() ?>'
-        },
-        success: function(response) {
-            $('#ownerInfoSidebar').html(response);
-        },
-        error: function() {
+    new ElanRegistryAPI()
+        .post('<?= $us_url_root ?>app/admin/includes/load-owner-info.php', { owner_id: ownerId })
+        .then(function(response) {
+            $('#ownerInfoSidebar').html(response.html);
+        })
+        .catch(function(error) {
+            console.error('Failed to load owner info for ID', ownerId, error);
             $('#ownerInfoSidebar').html('<div class="alert alert-danger">Failed to load owner information.</div>');
-        }
-    });
+        });
 }
 
-// Clear search results
 function clearSearchResults() {
     $('#ownerSearchInput').val('');
     $('#ownerSearchResults').html('<div class="text-center py-4 text-muted"><i class="fas fa-users fa-2x mb-2"></i><p>Search for owners to view and edit their profiles</p></div>');
 }
 
-// Close owner profile panel
 function closeOwnerProfile() {
     $('#ownerProfilePanel').hide();
     currentOwnerId = null;
 
-    // Remove owner_id from URL
     const currentUrl = new URL(window.location);
     currentUrl.searchParams.delete('owner_id');
     window.history.replaceState({}, '', currentUrl);
 }
 
-// Integration function for data quality tab (updated to point to manage-cars)
+// Redirects to manage-cars tab; called from car quality report links
 function switchToDataQualityTab() {
-    // This function should be available from the main admin interface
     if (typeof switchToTab === 'function') {
         switchToTab('manage-cars');
     } else {
@@ -841,11 +811,10 @@ function switchToDataQualityTab() {
     }
 }
 
-// Function to be called from manage cars tab for direct owner editing
+// Called from manage-cars tab to jump directly to an owner's profile
 function switchToOwnerManagementTab(ownerId) {
     if (typeof switchToTab === 'function') {
         switchToTab('owner-mgmt');
-        // Wait for tab switch then load owner
         setTimeout(() => loadOwnerById(ownerId), 100);
     }
 }

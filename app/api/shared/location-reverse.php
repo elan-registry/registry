@@ -17,7 +17,7 @@ use ElanRegistry\Exceptions\LocationServiceException;
  * @link https://github.com/unibrain1/elanregistry/issues/245
  */
 
-require_once '../../users/init.php';
+require_once '../../../users/init.php';
 
 // Only allow POST requests
 if ($method !== 'POST') {
@@ -54,18 +54,18 @@ try {
     // Return result
     ApiResponse::success('Reverse geocoding completed')
         ->withData('location', $result)
-        ->withLogging($userId, 'LocationService', "Reverse geocoding: lat=$lat, lon=$lon")
+        ->withLogging($userId, LogCategories::LOG_CATEGORY_LOCATION_REVERSE, "Reverse geocoding: lat=$lat, lon=$lon")
         ->send();
 
 } catch (LocationServiceException $e) {
     // Location service specific error (rate limit, API failure, invalid coordinates)
     ApiResponse::error($e->getMessage(), 400)
-        ->withLogging($userId, 'LocationService', 'Reverse geocoding failed: ' . $e->getMessage())
+        ->withLogging($userId, LogCategories::LOG_CATEGORY_LOCATION_REVERSE, 'Reverse geocoding failed: ' . $e->getMessage())
         ->send();
 
 } catch (\Throwable $e) {
     // Catch-all for unexpected errors (database, file system, etc.)
     ApiResponse::serverError('An error occurred while reverse geocoding coordinates')
-        ->withLogging($userId, 'SystemError', 'Reverse geocoding error: ' . $e->getMessage())
+        ->withLogging($userId, LogCategories::LOG_CATEGORY_SYSTEM_ERROR, 'Reverse geocoding error: ' . $e->getMessage())
         ->send();
 }

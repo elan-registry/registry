@@ -5,58 +5,48 @@ use ElanRegistry\Exceptions\ElanRegistryException;
 use ElanRegistry\Exceptions\OwnerNotFoundException;
 use ElanRegistry\OwnerView;
 
-/**
- * load-owner-info.php
- * AJAX endpoint for loading owner information sidebar
- *
- * Returns HTML sidebar with owner statistics, car ownership, and data quality information
- */
-
-// Include required files
 require_once '../../../users/init.php';
 
-// Security check - admin permission required
+header('Content-Type: application/json');
+
 if (!$user->isLoggedIn() || !isRegistryAdmin($user->data()->id)) {
     http_response_code(403);
-    echo '<div class="alert alert-danger">Unauthorized access</div>';
+    echo json_encode(['success' => false, 'message' => 'Unauthorized access']);
     exit;
 }
 
-// CSRF protection
 if (!isset($_POST['csrf']) || !Token::check($_POST['csrf'])) {
     http_response_code(400);
-    echo '<div class="alert alert-danger">Invalid CSRF token</div>';
+    echo json_encode(['success' => false, 'message' => 'Invalid CSRF token']);
     exit;
 }
 
-// Validate owner ID
 $ownerId = (int)($_POST['owner_id'] ?? 0);
 if ($ownerId <= 0) {
     http_response_code(400);
-    echo '<div class="alert alert-danger">Invalid owner ID</div>';
+    echo json_encode(['success' => false, 'message' => 'Invalid owner ID']);
     exit;
 }
 
+$obLevelBefore = ob_get_level();
 try {
-    // Load owner data using ElanRegistryOwner
+    ob_start();
     $owner = new ElanRegistryOwner($ownerId);
     $ownerData = $owner->data();
 
     if (!$ownerData) {
+        if (ob_get_level() > $obLevelBefore) ob_end_clean();
         http_response_code(404);
-        echo '<div class="alert alert-warning">Owner not found</div>';
+        echo json_encode(['success' => false, 'message' => 'Owner not found']);
         exit;
     }
 
-    // Get cars owned
     $ownedCars = $owner->getCarsOwned();
     $carCount = count($ownedCars);
 
-    // Get ownership history
     $ownershipHistory = $owner->getOwnershipHistory();
     $historyCount = count($ownershipHistory);
 
-    // Get quality information
     $qualityScore = $owner->getProfileQualityScore();
     $missingFields = $owner->validateProfileCompleteness();
 
@@ -217,14 +207,30 @@ try {
 
     <?php
 
+    $html = ob_get_clean();
+    $encoded = json_encode(['success' => true, 'html' => $html]);
+    if ($encoded === false) {
+        logger($user->data()->id, LogCategories::LOG_CATEGORY_SYSTEM_ERROR, 'Owner info json_encode failed for owner ' . $ownerId . ': ' . json_last_error_msg());
+        http_response_code(500);
+        echo json_encode(['success' => false, 'message' => 'Failed to encode owner info response.']);
+        exit;
+    }
+    echo $encoded;
+
 } catch (OwnerNotFoundException $e) {
+    if (ob_get_level() > $obLevelBefore) ob_end_clean();
     logger($user->data()->id, $e->getLogCategory(), 'Owner not found: ' . $e->getMessage());
-    echo '<div class="alert alert-danger">Owner not found. Please check the ID and try again.</div>';
+    http_response_code(404);
+    echo json_encode(['success' => false, 'message' => 'Owner not found. Please check the ID and try again.']);
 } catch (ElanRegistryException $e) {
+    if (ob_get_level() > $obLevelBefore) ob_end_clean();
     logger($user->data()->id, $e->getLogCategory(), 'Owner info load failed: ' . $e->getMessage());
-    echo '<div class="alert alert-danger">' . htmlspecialchars($e->getUserMessage()) . '</div>';
+    http_response_code($e->getHttpStatusCode());
+    echo json_encode(['success' => false, 'message' => $e->getUserMessage()]);
 } catch (Exception $e) {
+    if (ob_get_level() > $obLevelBefore) ob_end_clean();
     logger($user->data()->id, LogCategories::LOG_CATEGORY_SYSTEM_ERROR, 'Owner info load unexpected error: ' . $e->getMessage());
-    echo '<div class="alert alert-danger">Failed to load owner information. Please try again.</div>';
+    http_response_code(500);
+    echo json_encode(['success' => false, 'message' => 'Failed to load owner information. Please try again.']);
 }
 ?>

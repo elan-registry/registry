@@ -17,20 +17,24 @@ declare(strict_types=1);
  *
  * ADMIN-ONLY PAGES (will be set to private=1 with Administrator permission only):
  * - app/admin/scripts/* - All admin maintenance & fix scripts
- * - app/admin/manage-maintenance.php - Maintenance portal page
+ * - app/admin/maintenance.php - Maintenance portal page
  * - app/admin/includes/tab-health.php - Health tab include
  * - app/admin/includes/tab-maintenance.php - Maintenance tab include
  *
  * ADMIN+EDITOR PAGES (will be set to private=1 with Admin+Editor permissions):
  * - app/admin/* - All other admin pages (not in admin-only list above)
+ *   Examples: app/admin/index.php, app/admin/design-system.php
  * - *admin* - Any other path containing "admin" (includes docs/admin/*, etc.)
- * - docs/*admin* - Admin documentation pages
  *
  * OWNER/USER PRIVATE PAGES (will be set to private=1 with User permission):
- * - app/cars/actions* - All car action endpoints
+ * - app/api/contact/* - Contact API endpoints (send-feedback, send-owner-email)
  * - app/contact/* - All contact form pages
  * - *edit* - Any path containing "edit" (that doesn't also contain "admin")
  * - usersc/* - All UserSpice customization pages (EXCEPT special cases below)
+ * Note: app/api/cars/* and app/api/shared/* endpoints that don't call
+ * securePage() are not registered in the pages table and not managed here
+ * (some app/api/cars/* endpoints enforce authentication inline without
+ * securePage() and are private, but they are outside this script's scope).
  *
  * SPECIAL CASE PRIVATE PAGES (will be set to private=1 with NO permissions):
  * - usersc/join.php - Registration page (public access, no permissions needed)
@@ -42,8 +46,11 @@ declare(strict_types=1);
  * - docs/* (except docs/*admin*) - Documentation pages
  * - Examples: app/cars/index.php, app/cars/details.php, app/reports/statistics.php, docs/guides/index.php
  *
- * EXCLUDED (not modified):
- * - users/* - Core UserSpice framework files
+ * USERS/* PAGES (corrected to UserSpice installer defaults):
+ * - users/account.php, users/user_settings.php, users/admin_pin.php → PRIVATE, User permission
+ * - users/admin.php, users/update.php → PRIVATE, Administrator only
+ * - users/complete.php → PRIVATE, no permissions
+ * - All other users/* pages → PUBLIC
  *
  * DEPLOYMENT INSTRUCTIONS:
  * 1. Access via app/admin/scripts/ menu or direct URL
@@ -99,7 +106,7 @@ function shouldBePrivate(string $pagePath): bool {
 /**
  * Analyze current permissions and determine what needs to change
  */
-function analyzePermissions($db): array {
+function analyzePermissions(DB $db): array {
     $issues = [
         'set_public' => [],                    // Pages that should be public but are private
         'set_private_admin' => [],             // Pages that should be private admin+editor but are public
@@ -111,7 +118,7 @@ function analyzePermissions($db): array {
         'add_perms_user' => [],                // Private-user pages missing User permission
     ];
 
-    // Get all pages (excluding users/* only)
+    // Get all pages — includes users/* to enforce installer defaults
     $query = "
         SELECT
             p.id,
@@ -126,6 +133,7 @@ function analyzePermissions($db): array {
            OR p.page LIKE 'usersc/%'
            OR p.page LIKE 'docs/%'
            OR p.page LIKE '40%.php'
+           OR p.page LIKE 'users/%'
         GROUP BY p.id, p.page, p.private
         ORDER BY p.page
     ";
@@ -141,6 +149,70 @@ function analyzePermissions($db): array {
         $hasAdmin = in_array(PERM_ADMIN, $permIds);
         $hasEditor = in_array(PERM_EDITOR, $permIds);
         $hasUser = in_array(PERM_USER, $permIds);
+
+        // users/* pages use UserSpice installer defaults, not the pattern classifier
+        $usersSpec = PagePermissionClassifier::getUserSpiceInstallerSpec($page->page);
+        if ($usersSpec !== null) {
+            $expectedPrivate = $usersSpec['private'];
+            $expectedPerms   = $usersSpec['perms'];
+
+            if ($expectedPrivate === 0) {
+                if ($page->private == 1) {
+                    $issues['set_public'][] = [
+                        'id' => $page->id, 'page' => $page->page, 'title' => '',
+                        'current' => 'PRIVATE',
+                        'required' => 'PUBLIC (UserSpice installer default)',
+                        'action'   => 'SET TO PUBLIC, REMOVE all permissions',
+                    ];
+                } elseif ($hasPerms) {
+                    $issues['remove_perms'][] = [
+                        'id' => $page->id, 'page' => $page->page, 'title' => '',
+                        'current' => 'PUBLIC with permissions',
+                        'perms'   => $page->perm_names ?: 'unknown',
+                        'action'  => 'REMOVE all permissions',
+                    ];
+                }
+            } elseif (empty($expectedPerms)) {
+                // private=1, no permissions (users/complete.php)
+                if ($page->private != 1 || $hasPerms) {
+                    $issues['set_private_no_perms'][] = [
+                        'id' => $page->id, 'page' => $page->page, 'title' => '',
+                        'current'  => ($page->private == 0 ? 'PUBLIC' : 'PRIVATE') . ($hasPerms ? ' with permissions' : ''),
+                        'required' => 'PRIVATE with no permissions (UserSpice installer default)',
+                        'action'   => 'SET TO PRIVATE, REMOVE all permissions',
+                    ];
+                }
+            } elseif ($expectedPerms === [2]) {
+                // private=1, Administrator only (users/admin.php, users/update.php)
+                if ($page->private != 1 || !$hasAdmin || $hasEditor || $hasUser) {
+                    $issues['fix_admin_only_perms'][] = [
+                        'id' => $page->id, 'page' => $page->page, 'title' => '',
+                        'current'  => $page->private == 0 ? 'PUBLIC' : 'PRIVATE (' . ($page->perm_names ?: 'no permissions') . ')',
+                        'required' => 'PRIVATE with Administrator only (UserSpice installer default)',
+                        'action'   => 'SET TO PRIVATE, ADD Administrator, REMOVE other permissions',
+                    ];
+                }
+            } elseif ($expectedPerms === [1]) {
+                // private=1, User only (users/account.php, users/user_settings.php, users/admin_pin.php)
+                if ($page->private != 1) {
+                    $issues['set_private_user'][] = [
+                        'id' => $page->id, 'page' => $page->page, 'title' => '',
+                        'current'  => 'PUBLIC',
+                        'required' => 'PRIVATE with User (UserSpice installer default)',
+                        'action'   => 'SET TO PRIVATE, ADD User',
+                    ];
+                } elseif (!$hasUser) {
+                    $issues['add_perms_user'][] = [
+                        'id' => $page->id, 'page' => $page->page, 'title' => '',
+                        'current'  => 'PRIVATE (' . ($page->perm_names ?: 'no permissions') . ')',
+                        'required' => 'User',
+                        'action'   => 'ADD User',
+                    ];
+                }
+            }
+            continue;
+        }
+
         $shouldBePrivateNoPermsFlag = shouldBePrivateNoPermissions($page->page);
         $shouldBePrivateFlag = shouldBePrivate($page->page);
         $isAdminPage = shouldHaveAdminPermissions($page->page);
@@ -425,27 +497,45 @@ require_once $abs_us_root . $us_url_root . 'users/includes/template/prep.php';
                                 <p class="mb-2"><strong>Admin-Only (private=1, Administrator permission only):</strong></p>
                                 <ul>
                                     <li><strong>app/admin/scripts/*</strong> - All admin fix &amp; maintenance scripts</li>
-                                    <li><strong>app/admin/manage-maintenance.php</strong> - Maintenance portal</li>
+                                    <li><strong>app/admin/maintenance.php</strong> - Maintenance portal</li>
                                     <li><strong>app/admin/includes/tab-health.php</strong> - Health tab include</li>
                                     <li><strong>app/admin/includes/tab-maintenance.php</strong> - Maintenance tab include</li>
                                 </ul>
                                 <p class="mb-2"><strong>Admin + Editor (private=1, Administrator + Editor permissions):</strong></p>
                                 <ul>
                                     <li><strong>app/admin/*</strong> - All other admin pages</li>
+                                    <li><strong>app/admin/design-system.php</strong> - Design system reference (example; covered by wildcard above)</li>
                                     <li><strong>*admin*</strong> - Any other path containing "admin"</li>
                                 </ul>
                                 <p class="mb-2"><strong>Owner (private=1, User permission):</strong></p>
                                 <ul>
-                                    <li><strong>app/cars/actions*</strong> - All car action endpoints</li>
+                                    <li><strong>app/api/contact/*</strong> - Contact API endpoints</li>
                                     <li><strong>app/contact/*</strong> - All contact form pages</li>
                                     <li><strong>*edit*</strong> - Any path containing "edit"</li>
                                     <li><strong>usersc/*</strong> - All UserSpice customization pages</li>
                                 </ul>
-                                <p class="mb-2"><strong>Special Case (private=1, no permissions):</strong></p>
+                                <p class="mb-2"><strong>Public — mirroring users/ installer defaults:</strong></p>
                                 <ul class="mb-0">
-                                    <li><strong>usersc/join.php</strong> - Registration page</li>
-                                    <li><strong>usersc/login.php</strong> - Login page</li>
+                                    <li><strong>usersc/login.php</strong> - Login page (public, same as users/login.php)</li>
+                                    <li><strong>usersc/join.php</strong> - Registration page (public, same as users/join.php)</li>
                                 </ul>
+                            </div>
+
+                            <div class="alert alert-info">
+                                <h5><i class="fa fa-users"></i> UserSpice users/* Pages (restored to installer defaults):</h5>
+                                <p class="mb-2"><strong>PRIVATE — User permission:</strong></p>
+                                <ul>
+                                    <li><strong>users/account.php</strong>, <strong>users/user_settings.php</strong>, <strong>users/admin_pin.php</strong></li>
+                                </ul>
+                                <p class="mb-2"><strong>PRIVATE — Administrator only:</strong></p>
+                                <ul>
+                                    <li><strong>users/admin.php</strong>, <strong>users/update.php</strong></li>
+                                </ul>
+                                <p class="mb-2"><strong>PRIVATE — no permissions:</strong></p>
+                                <ul>
+                                    <li><strong>users/complete.php</strong></li>
+                                </ul>
+                                <p class="mb-0"><strong>PUBLIC:</strong> All other users/* pages</p>
                             </div>
 
                             <div class="alert alert-secondary">
@@ -611,7 +701,7 @@ require_once $abs_us_root . $us_url_root . 'users/includes/template/prep.php';
             ${stats}
         </div>
         <div class="text-center">
-            <button onclick="if(window.opener){window.opener.location.reload(); window.close();} else {window.location.href='../../manage-maintenance.php?tab=maintenance';}" class="btn btn-outline-primary">
+            <button onclick="if(window.opener){window.opener.location.reload(); window.close();} else {window.location.href='../../maintenance.php?tab=maintenance';}" class="btn btn-outline-primary">
                 <i class="fa fa-arrow-left"></i> Return to FIX Menu
             </button>
         </div>
@@ -664,7 +754,7 @@ require_once $abs_us_root . $us_url_root . 'users/includes/template/prep.php';
                                     <p>${escapeHtml(data.error)}</p>
                                 </div>
                                 <div class="text-center">
-                                    <button onclick="window.location.href='../../manage-maintenance.php?tab=maintenance';" class="btn btn-primary">
+                                    <button onclick="window.location.href='../../maintenance.php?tab=maintenance';" class="btn btn-primary">
                                         <i class="fa fa-arrow-left"></i> Return to FIX Menu
                                     </button>
                                 </div>
@@ -679,7 +769,7 @@ require_once $abs_us_root . $us_url_root . 'users/includes/template/prep.php';
                                     <p>All page permissions are correctly configured.</p>
                                 </div>
                                 <div class="text-center">
-                                    <button onclick="window.location.href='../../manage-maintenance.php?tab=maintenance';" class="btn btn-outline-primary">
+                                    <button onclick="window.location.href='../../maintenance.php?tab=maintenance';" class="btn btn-outline-primary">
                                         <i class="fa fa-arrow-left"></i> Return to FIX Menu
                                     </button>
                                 </div>
@@ -956,9 +1046,9 @@ require_once $abs_us_root . $us_url_root . 'users/includes/template/prep.php';
                     if (processStarted) return;
                     processStarted = true;
 
-                    // Show progress sections below
-                    document.getElementById('progressSection').style.display = 'block';
-                    document.getElementById('logSection').style.display = 'block';
+                    // Show progress sections — clear inline display:none, let Bootstrap 5's display:flex take over
+                    document.getElementById('progressSection').style.display = '';
+                    document.getElementById('logSection').style.display = '';
 
                     const now = new Date();
                     document.getElementById('startTimeText').textContent = now.toLocaleString();
@@ -975,7 +1065,7 @@ require_once $abs_us_root . $us_url_root . 'users/includes/template/prep.php';
 
 function abortProcess() {
                     if (confirm('Are you sure you want to abort? No changes will be made.')) {
-                        window.location.href = '../../manage-maintenance.php?tab=maintenance';
+                        window.location.href = '../../maintenance.php?tab=maintenance';
                     }
                 }
             </script>
@@ -987,7 +1077,7 @@ function abortProcess() {
                 $global_attempts = 0;
                 $global_successes = 0;
 
-                function outputMessage($message, $percentage = null): void {
+                function outputMessage(string $message, ?int $percentage = null): void {
                     $safe = addslashes(htmlspecialchars($message, ENT_QUOTES, 'UTF-8'));
                     echo '<script>
                         if (window.parent && window.parent.addLogMessage) {
@@ -1052,7 +1142,7 @@ function abortProcess() {
                         foreach ($issues['set_public'] as $issue) {
                             $global_attempts++;
                             $currentChange++;
-                            $percentage = round(($currentChange / $totalChanges) * 100);
+                            $percentage = (int) round(($currentChange / $totalChanges) * 100);
 
                             try {
                                 // Set page to public
@@ -1078,7 +1168,7 @@ function abortProcess() {
                         foreach ($issues['set_private_admin'] as $issue) {
                             $global_attempts++;
                             $currentChange++;
-                            $percentage = round(($currentChange / $totalChanges) * 100);
+                            $percentage = (int) round(($currentChange / $totalChanges) * 100);
 
                             try {
                                 // Set page to private
@@ -1120,7 +1210,7 @@ function abortProcess() {
                         foreach ($issues['set_private_user'] as $issue) {
                             $global_attempts++;
                             $currentChange++;
-                            $percentage = round(($currentChange / $totalChanges) * 100);
+                            $percentage = (int) round(($currentChange / $totalChanges) * 100);
 
                             try {
                                 // Set page to private
@@ -1152,7 +1242,7 @@ function abortProcess() {
                         foreach ($issues['set_private_no_perms'] as $issue) {
                             $global_attempts++;
                             $currentChange++;
-                            $percentage = round(($currentChange / $totalChanges) * 100);
+                            $percentage = (int) round(($currentChange / $totalChanges) * 100);
 
                             try {
                                 // Set page to private
@@ -1178,7 +1268,7 @@ function abortProcess() {
                         foreach ($issues['remove_perms'] as $issue) {
                             $global_attempts++;
                             $currentChange++;
-                            $percentage = round(($currentChange / $totalChanges) * 100);
+                            $percentage = (int) round(($currentChange / $totalChanges) * 100);
 
                             try {
                                 // Remove ALL permissions
@@ -1201,7 +1291,7 @@ function abortProcess() {
                         foreach ($issues['add_perms_admin'] as $issue) {
                             $global_attempts++;
                             $currentChange++;
-                            $percentage = round(($currentChange / $totalChanges) * 100);
+                            $percentage = (int) round(($currentChange / $totalChanges) * 100);
 
                             try {
                                 // Add Administrator permission if not exists
@@ -1240,7 +1330,7 @@ function abortProcess() {
                         foreach ($issues['fix_admin_only_perms'] as $issue) {
                             $global_attempts++;
                             $currentChange++;
-                            $percentage = round(($currentChange / $totalChanges) * 100);
+                            $percentage = (int) round(($currentChange / $totalChanges) * 100);
 
                             try {
                                 // Set page to private
@@ -1256,12 +1346,12 @@ function abortProcess() {
                                     ]);
                                 }
 
-                                // Remove Editor permission if present
-                                $db->query("DELETE FROM permission_page_matches WHERE page_id = ? AND permission_id = ?",
-                                    [$issue['id'], PERM_EDITOR]);
+                                // Remove Editor and User permissions if present — admin-only means Admin(2) exclusively
+                                $db->query("DELETE FROM permission_page_matches WHERE page_id = ? AND permission_id IN (?, ?)",
+                                    [$issue['id'], PERM_EDITOR, PERM_USER]);
 
                                 $global_successes++;
-                                outputMessage("✅ Set to PRIVATE with Administrator only (no Editor): {$issue['page']}", $percentage);
+                                outputMessage("✅ Set to PRIVATE with Administrator only: {$issue['page']}", $percentage);
                                 logger($user->data()->id, LogCategories::LOG_CATEGORY_PERMISSION_FIX, "Set page to PRIVATE with Admin only (no Editor): {$issue['page']} (ID: {$issue['id']})");
                             } catch (Exception $e) {
                                 outputMessage("✗ Failed to update {$issue['page']}: " . $e->getMessage(), $percentage);
@@ -1277,7 +1367,7 @@ function abortProcess() {
                         foreach ($issues['add_perms_user'] as $issue) {
                             $global_attempts++;
                             $currentChange++;
-                            $percentage = round(($currentChange / $totalChanges) * 100);
+                            $percentage = (int) round(($currentChange / $totalChanges) * 100);
 
                             try {
                                 // Add User permission if not exists
@@ -1320,7 +1410,7 @@ function abortProcess() {
                             // Log completion
                             logger($user->data()->id, LogCategories::LOG_CATEGORY_DATABASE_MAINTENANCE, "Permission fix completed - Fixed: {$global_successes}/{$global_attempts} pages");
 
-                        } catch (Exception $e) {
+                        } catch (\Throwable $e) {
                             outputMessage("❌ ERROR during processing: " . $e->getMessage());
                             outputMessage("You can restore from backup if needed");
                             logger($user->data()->id, LogCategories::LOG_CATEGORY_DATABASE_ERROR, "Permission fix failed: " . $e->getMessage());
@@ -1386,10 +1476,10 @@ function abortProcess() {
 
 <!-- Return buttons -->
 <div style="margin-top: 20px; text-align: center;">
-    <button onclick="if(window.opener){window.opener.location.reload(); window.close();} else {window.location.href='../../manage-maintenance.php?tab=maintenance';}" class="btn btn-outline-primary">
+    <button onclick="if(window.opener){window.opener.location.reload(); window.close();} else {window.location.href='../../maintenance.php?tab=maintenance';}" class="btn btn-outline-primary">
         <i class="fa fa-arrow-left" aria-hidden="true"></i> Return to Admin Console
     </button>
-    <button onclick="window.location.href='../../manage-maintenance.php?tab=maintenance';" class="btn btn-outline-secondary ml-2">
+    <button onclick="window.location.href='../../maintenance.php?tab=maintenance';" class="btn btn-outline-secondary ml-2">
         <i class="fa fa-list" aria-hidden="true"></i> FIX Menu
     </button>
 </div>

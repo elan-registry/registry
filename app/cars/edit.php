@@ -23,15 +23,9 @@ if (!securePage($php_self)) {
 }
 
 // Ensure settings have default values for image configuration
-if (!isset($settings->elan_image_upload_max_size)) {
-    $settings->elan_image_upload_max_size = 2;
-}
-if (!isset($settings->elan_image_display_max_size)) {
-    $settings->elan_image_display_max_size = 2048;
-}
-if (!isset($settings->elan_image_thumbnail_sizes)) {
-    $settings->elan_image_thumbnail_sizes = '100,300,768,1024,2048';
-}
+$settings->elan_image_upload_max_size ??= 2;
+$settings->elan_image_display_max_size ??= 2048;
+$settings->elan_image_thumbnail_sizes ??= '100,300,768,1024,2048';
 
 $maximages = $settings->elan_image_max;
 
@@ -168,13 +162,250 @@ function updateCarDetails(array &$car): void
                 <div id="message" class="d-none"></div>
 
                 <h5 class="form-section-heading"><i class="fas fa-car me-2"></i>Car Details</h5>
-                <?php include_once $abs_us_root . $us_url_root . 'app/views/_edit_car_1.php'; ?>
-                <?php include_once $abs_us_root . $us_url_root . 'app/views/_edit_car_2.php'; ?>
+                <!-- Car Info -->
+                <?php
+                if (isset($cardetails['id'])) {
+                ?>
+
+                    <div class="mb-3 row">
+                        <label for="car_id_display" class="col-md-3 col-12 col-form-label">Car ID</label>
+                        <div class="col-12 col-sm-9">
+                            <input type="text" id="car_id_display" class="form-control-plaintext" value="<?= htmlspecialchars((string)($cardetails['id'] ?? ''), ENT_QUOTES, 'UTF-8'); ?>" readonly>
+                        </div>
+                    </div>
+                <?php
+                }
+                ?>
+                <!-- Year -->
+                <div class="mb-3 row">
+                    <label for="year" class="col-md-3 col-12 col-form-label">Year *</label>
+                    <div class="col-12 col-sm-9">
+                        <div class="input-group">
+                            <span class="input-group-text"><i aria-hidden="true" class="fas fa-calendar-check"></i></span>
+                            <select name='year' id='year' class='form-select'>
+                                <option value="">--Choose Year--</option>
+                                <option value="1963">1963</option>
+                                <option value="1964">1964</option>
+                                <option value="1965">1965</option>
+                                <option value="1966">1966</option>
+                                <option value="1967">1967</option>
+                                <option value="1968">1968</option>
+                                <option value="1969">1969</option>
+                                <option value="1970">1970</option>
+                                <option value="1971">1971</option>
+                                <option value="1972">1972</option>
+                                <option value="1973">1973</option>
+                                <option value="1974">1974</option>
+                            </select>
+                            <span class='input-group-text'><i id="year_icon" aria-hidden='true' class="fas"></i></span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Model -->
+                <div class="mb-3 row">
+                    <label for="model" class="col-md-3 col-12 col-form-label">Model *</label>
+                    <div class="col-12 col-sm-9">
+                        <div class="input-group">
+                            <span class="input-group-text"><i aria-hidden="true" class="fas fa-car-side"></i></span>
+                            <select disabled class="form-select" name="model" id="model">
+                                <option value="">--Please Select Model--</option>
+                            </select>
+                            <span class='input-group-text'><i id="model_icon" aria-hidden='true' class="fas"></i></span>
+                        </div>
+                    </div>
+                </div>
+
+
+                <!-- Chassis -->
+                <div class="mb-3 row">
+                    <label for="chassis" class="col-md-3 col-12 col-form-label">Chassis *</label>
+                    <div class="col-12 col-sm-9">
+                        <div class="input-group">
+                            <span class="input-group-text"><i aria-hidden="true" class="fas fa-barcode"></i></span>
+                            <input data-lpignore="true" disabled class="form-control" type="text" name="chassis" id="chassis" placeholder="<?= htmlspecialchars($carprompt['chassis'], ENT_QUOTES, 'UTF-8') ?>" value="<?= htmlspecialchars((string)($cardetails['chassis'] ?? ''), ENT_QUOTES, 'UTF-8') ?>" />
+                            <span class='input-group-text'><i id="chassis_icon" aria-hidden='true' class="fas"></i></span>
+                        </div>
+                        <div id="chassis_check_error" class="alert alert-warning d-none mt-2" role="alert">
+                            <i class="fas fa-exclamation-circle" aria-hidden="true"></i>
+                            Could not check chassis availability. You may still submit — the registry will verify it.
+                        </div>
+
+                        <div id="chassis_taken" class="text-danger hidden">
+                            <div class="alert alert-warning">
+                                <h6><i class="fas fa-exclamation-triangle"></i> Chassis Already Registered</h6>
+                                <p>This chassis number is already in the registry by another owner.</p>
+                                <div class="mt-3">
+                                    <button type="button" class="btn btn-primary btn-sm" id="request_transfer_btn">
+                                        <i class="fas fa-exchange-alt"></i> Request Ownership Transfer
+                                    </button>
+                                    <small class="text-muted d-block mt-2">This will notify the current owner and Registry Administrators of your transfer request.</small>
+                                </div>
+                            </div>
+                        </div>
+                        <div id="chassis_pre1970" class="hidden">
+                            <strong>Before 1970</strong><br>The chassis number should be 4 digits. Do not enter the type (i.e. 26/0001 enter 0001)<br>
+                        </div>
+                        <div id="chassis_1970" class="hidden">
+                            <strong>1970</strong><br>The chassis can have two forms<br>
+                            <ul>
+                                <li>4 Digits plus letter - Do not enter the type (i.e. 26/0001x enter 0001x)</li>
+                                <li>11 digits starting with the Year (i.e. YYmmbbssssT)</li>
+                                <ul>
+                                    <li>YY = 2 digit year</li>
+                                    <li>mm = month</li>
+                                    <li>bb = batch numner</li>
+                                    <li>uuuu = unit number</li>
+                                    <li>T = Type Letter</li>
+                                </ul>
+                            </ul>
+                        </div>
+                        <div id="chassis_post1970" class="hidden">
+                            <strong>After 1970</strong><br>The Chassis number is 11 digits starting with the Year (i.e. YYmmbbssssT)<br>
+                            <ul>
+                                <li>YY = 2 digit year</li>
+                                <li>mm = month</li>
+                                <li>bb = batch numner</li>
+                                <li>uuuu = unit number</li>
+                                <li>T = Type Letter</li>
+                            </ul>
+                        </div>
+
+                        <div id="chassis_validation_error" class="text-danger hidden">
+                            <strong>Chassis Validation Failed:</strong><br>
+                            <span id="chassis_error_reason"></span>
+                        </div>
+
+                        <?php $chassisOverrideActive = !empty($cardetails['chassis_override']); ?>
+                        <div id="chassis_override_section" class="<?= $chassisOverrideActive ? '' : 'd-none' ?>">
+                            <div class="form-check mt-2">
+                                <input type="checkbox" class="form-check-input" id="chassis_override" name="chassis_override" value="1"
+                                       <?= $chassisOverrideActive ? 'checked' : '' ?>>
+                                <label class="form-check-label text-warning" for="chassis_override">
+                                    <strong>⚠️ Override chassis validation</strong><br>
+                                    <small>Use only if this chassis number is correct but fails validation.</small>
+                                </label>
+                            </div>
+
+                            <div class="mt-2">
+                                <button type="button" class="btn btn-sm btn-outline-info" data-bs-toggle="modal" data-bs-target="#chassisValidationModal">
+                                    <i class="fas fa-info-circle"></i> Chassis Validation Rules
+                                </button>
+                                <a href="<?= $us_url_root ?>docs/chassis-validation.php" target="_blank" class="btn btn-sm btn-outline-secondary ms-1">
+                                    <i class="fas fa-external-link-alt"></i> Full Documentation
+                                </a>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Color -->
+                <div class="mb-3 row">
+                    <label for="color" class="col-md-3 col-12 col-form-label">Color</label>
+                    <div class="col-12 col-sm-9">
+                        <div class="input-group">
+                            <span class="input-group-text"><i aria-hidden="true" class="fas fa-palette"></i></span>
+                            <input class="form-control" type="text" name="color" id="color" placeholder="<?= htmlspecialchars($carprompt['color'], ENT_QUOTES, 'UTF-8') ?>" value="<?= htmlspecialchars((string)($cardetails['color'] ?? ''), ENT_QUOTES, 'UTF-8') ?>" />
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Engine Number -->
+                <div class="mb-3 row">
+                    <label for="engine" class="col-md-3 col-12 col-form-label">Engine Number</label>
+                    <div class="col-12 col-sm-9">
+                        <div class="input-group">
+                            <span class="input-group-text"><i aria-hidden="true" class="fas fa-car"></i></span>
+                            <input class="form-control" type="text" name="engine" id="engine" placeholder="<?= htmlspecialchars($carprompt['engine'], ENT_QUOTES, 'UTF-8') ?>" value="<?= htmlspecialchars((string)($cardetails['engine'] ?? ''), ENT_QUOTES, 'UTF-8') ?>" />
+                        </div>
+                    </div>
+                </div>
+                <!-- Comments -->
+                <div class='mb-3 row'>
+                    <label for='comments' class='col-md-3 col-12 col-form-label'>Comments</label>
+                    <div class='col-12 col-sm-9'>
+                        <div class='input-group'>
+                            <span class='input-group-text'><i aria-hidden='true' class='fas fa-comment-alt'></i></span>
+                            <textarea class='form-control' name='comments' id='comments' rows='4' wrap='soft' maxlength='2000' placeholder='<?= htmlspecialchars($carprompt['comments'], ENT_QUOTES, 'UTF-8') ?>'><?= htmlspecialchars((string)($cardetails['comments'] ?? ''), ENT_QUOTES, 'UTF-8') ?></textarea>
+                        </div>
+                        <small class='form-text text-muted text-end d-block'><span id='comments-count'>0</span> / 2000 characters</small>
+                    </div>
+                </div>
+
+                <!-- Purchase Date  -->
+                <div class='mb-3 row'>
+                    <label for='purchasedate' class='col-md-3 col-12 col-form-label'>Purchase Date</label>
+                    <div class='col-12 col-sm-9'>
+                        <div class='input-group'>
+                            <span class='input-group-text'><i aria-hidden='true' class='fas fa-calendar'></i></span>
+                            <input class='form-control' name='purchasedate' id='purchasedate' value='<?= htmlspecialchars((string)($cardetails['purchasedate'] ?? ''), ENT_QUOTES, 'UTF-8') ?>' type='date' min='1957-01-01' max='<?= date('Y-m-d') ?>' aria-describedby='purchasedateHelp' />
+                        </div>
+                        <small id='purchasedateHelp' class='form-text text-muted'>Approximate date you purchased the car.</small>
+                    </div>
+                </div>
+
+                <!-- Sold Date toggle -->
+                <div class='mb-3 mt-3 row'>
+                    <div class='col-md-3 col-12'></div>
+                    <div class='col-12 col-sm-9'>
+                        <div class='form-check'>
+                            <input class='form-check-input' type='checkbox' id='sold-toggle' <?= !empty($cardetails['solddate']) ? 'checked' : '' ?> />
+                            <label class='form-check-label' for='sold-toggle'>I no longer own this car</label>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Sold Date (revealed by toggle) -->
+                <div id='solddate-row' class='mb-3 row <?= empty($cardetails['solddate']) ? 'd-none' : '' ?>'>
+                    <label for='solddate' class='col-md-3 col-12 col-form-label'>Sold Date</label>
+                    <div class='col-12 col-sm-9'>
+                        <div class='input-group'>
+                            <span class='input-group-text'><i aria-hidden='true' class='fas fa-calendar'></i></span>
+                            <input class='form-control' name='solddate' id='solddate' value='<?= htmlspecialchars((string)($cardetails['solddate'] ?? ''), ENT_QUOTES, 'UTF-8') ?>' type='date' min='1957-01-01' max='<?= date('Y-m-d') ?>' aria-describedby='solddateHelp' />
+                        </div>
+                        <small id='solddateHelp' class='form-text text-muted'>Approximate date you sold the car.</small>
+                    </div>
+                </div>
+
+                <!-- Website -->
+                <div class='mb-3 row'>
+                    <label for='website' class='col-md-3 col-12 col-form-label'>Website</label>
+                    <div class='col-12 col-sm-9'>
+                        <div class='input-group'>
+                            <span class='input-group-text'><i aria-hidden='true' class='fas fa-globe'></i></span>
+                            <input class='form-control' type='url' name='website' id='website' placeholder='<?= htmlspecialchars($carprompt['website'], ENT_QUOTES, 'UTF-8') ?>' value='<?= htmlspecialchars((string)($cardetails['website'] ?? ''), ENT_QUOTES, 'UTF-8') ?>' pattern="https?://.+" />
+                        </div>
+                        <div class='invalid-feedback'>URL must start with http:// or https:// (e.g. https://example.com)</div>
+                    </div>
+                </div>
+                <script>
+                (function () {
+                    var el = document.getElementById('website');
+                    function validate() {
+                        el.classList.toggle('is-invalid', el.value !== '' && !el.validity.valid);
+                    }
+                    el.addEventListener('input', validate);
+                    el.addEventListener('blur', validate);
+                }());
+                </script>
 
                 <hr class="my-4">
 
                 <h5 class="form-section-heading"><i class="fas fa-camera me-2"></i>Photos <small class="text-muted fw-normal" style="font-size:0.7rem;letter-spacing:0">optional</small></h5>
-                <?php include_once $abs_us_root . $us_url_root . 'app/views/_edit_car_3.php'; ?>
+                <div class='row'>
+                    <div class='col-12'>
+                        <input type="file" id="myPond" multiple accept="image/*">
+                        <details class="mt-2">
+                            <summary class="text-muted small" style="cursor:pointer">Photo requirements</summary>
+                            <ul class="small text-muted mt-1 mb-0">
+                                <li>Maximum of <?= $settings->elan_image_max ?> photos</li>
+                                <li>Maximum size <?= $settings->elan_image_upload_max_size ?> MB each</li>
+                                <li>Photos only</li>
+                                <li>Tap and hold to reorder &bull; Drag on desktop</li>
+                            </ul>
+                        </details>
+                    </div>
+                </div>
 
                 <div class="d-flex justify-content-end mt-3 mb-4">
                   <button type="button" id="submit" data-label="Add Car"
@@ -431,6 +662,8 @@ require_once $abs_us_root . $us_url_root . 'users/includes/html_footer.php'; //c
     const car_id = $('#car_id').val();
 
     $(document).ready(function() {
+        $('#message').addClass('d-none');
+
         const solddateRow = document.getElementById('solddate-row');
         const solddateInput = document.getElementById('solddate');
 
@@ -464,10 +697,10 @@ require_once $abs_us_root . $us_url_root . 'users/includes/html_footer.php'; //c
             allowReorder: true,
             maxFiles: <?= $maximages ?>,
             acceptedFileTypes: ['image/jpeg', 'image/png', 'image/gif', 'image/webp'],
-            maxFileSize: <?= (int)((isset($settings->elan_image_upload_max_size) ? (float)$settings->elan_image_upload_max_size : 2) * 1024 * 1024) ?>,
+            maxFileSize: <?= (int)((float)$settings->elan_image_upload_max_size * 1024 * 1024) ?>,
             instantUpload: false,
             allowProcess: false,
-            imageResizeTargetWidth: <?= isset($settings->elan_image_display_max_size) ? $settings->elan_image_display_max_size : 2048 ?>,
+            imageResizeTargetWidth: <?= $settings->elan_image_display_max_size ?>,
             imageResizeMode: 'downscale',
             credits: false,
             labelIdle: 'Drop photos here or <span class="filepond--label-action">Browse</span>',
@@ -510,7 +743,7 @@ require_once $abs_us_root . $us_url_root . 'users/includes/html_footer.php'; //c
 
         // Hydrate existing images in edit mode
         if (car_id && car_id !== '') {
-            new ElanRegistryAPI().post('<?= $us_url_root ?>app/cars/actions/edit.php', {
+            new ElanRegistryAPI().post('<?= $us_url_root ?>app/api/cars/save.php', {
                 carID: car_id,
                 action: 'fetchImages'
             }).then(function(data) {
@@ -580,7 +813,7 @@ require_once $abs_us_root . $us_url_root . 'users/includes/html_footer.php'; //c
             }
             if (car_id && car_id !== '' && fileItem.origin === FilePond.FileOrigin.LOCAL) {
                 const filename = fileItem.getMetadata('serverFilename');
-                new ElanRegistryAPI().post('<?= $us_url_root ?>app/cars/actions/edit.php', {
+                new ElanRegistryAPI().post('<?= $us_url_root ?>app/api/cars/save.php', {
                     action: 'removeImages',
                     carID: car_id,
                     file: filename
@@ -679,7 +912,7 @@ require_once $abs_us_root . $us_url_root . 'users/includes/html_footer.php'; //c
             }
 
             try {
-                const response = await fetch('actions/edit.php', {
+                const response = await fetch('<?= $us_url_root ?>app/api/cars/save.php', {
                     method: 'POST',
                     headers: { 'X-Requested-With': 'XMLHttpRequest' },
                     body: formData
@@ -753,16 +986,6 @@ require_once $abs_us_root . $us_url_root . 'users/includes/html_footer.php'; //c
                 }
             }
         }
-    });
-
-    // Car Validation
-    var validYear = '';
-    var validModel = '';
-    var validChassis = '';
-
-    $(document).ready(function() {
-        $('#message').addClass('d-none');
-
         // Pre-populate dropdown menus if we are updating a car
 <?php if ($action === 'updateCar'): ?>
         if ($('#action').val() === 'updateCar') {
@@ -794,6 +1017,11 @@ require_once $abs_us_root . $us_url_root . 'users/includes/html_footer.php'; //c
 <?php endif; ?>
     });
 
+    // Car Validation
+    var validYear = '';
+    var validModel = '';
+    var validChassis = '';
+
     /* *
      *  Validate car form during data entry
      *
@@ -801,7 +1029,7 @@ require_once $abs_us_root . $us_url_root . 'users/includes/html_footer.php'; //c
      */
 
     // Initialize ModelLoader with API endpoint
-    ModelLoader.init('<?= $us_url_root ?>app/cars/actions/get-models.php');
+    ModelLoader.init('<?= $us_url_root ?>app/api/cars/models.php');
 
     // Comments character counter
     const commentsEl = document.getElementById('comments');
@@ -892,7 +1120,7 @@ require_once $abs_us_root . $us_url_root . 'users/includes/html_footer.php'; //c
         }
 
         // Call centralized validation via AJAX
-        new ElanRegistryAPI().post('<?= $us_url_root ?>app/cars/actions/validateChassis.php', {
+        new ElanRegistryAPI().post('<?= $us_url_root ?>app/api/cars/chassis-validate.php', {
             csrf: $('#csrf').val(),
             chassis: _chassis,
             year: validYear,
@@ -946,7 +1174,7 @@ require_once $abs_us_root . $us_url_root . 'users/includes/html_footer.php'; //c
      * Check if chassis number is already taken (for new cars)
      */
     function checkChassisAvailability() {
-        new ElanRegistryAPI().post('<?= $us_url_root ?>app/cars/actions/check-chassis.php', {
+        new ElanRegistryAPI().post('<?= $us_url_root ?>app/api/cars/chassis-availability.php', {
             csrf: $('#csrf').val(),
             command: 'chassis_check',
             year: validYear,
@@ -1013,7 +1241,7 @@ require_once $abs_us_root . $us_url_root . 'users/includes/html_footer.php'; //c
         const year = validYear;
         const model = validModel;
 
-        new ElanRegistryAPI().post('<?= $us_url_root ?>app/cars/actions/request-transfer.php', {
+        new ElanRegistryAPI().post('<?= $us_url_root ?>app/api/cars/transfer-request.php', {
             csrf: $('#csrf').val(),
             chassis: chassis,
             year: year,

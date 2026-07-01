@@ -26,12 +26,14 @@ projectroot/
 │   │   └── scripts/
 │   │       ├── fix/          # One-time migration scripts (run once, never again)
 │   │       └── maintenance/  # Repeatable maintenance scripts (safe to re-run)
+│   ├── api/          # AJAX API endpoints
+│   │   ├── admin/    # Admin-only API endpoints (process-settings.php)
+│   │   ├── cars/     # Car-specific API endpoints (save, history, chassis-validate, etc.)
+│   │   ├── contact/  # Contact form API endpoints (send-feedback, send-owner-email)
+│   │   └── shared/   # Shared API endpoints (statistics, location-search, location-reverse)
 │   ├── assets/       # First-party JS/CSS source files (built → minified in place)
-│   ├── cars/
-│   │   └── actions/  # Car-specific parsers (AJAX endpoints)
+│   ├── cars/         # Car pages (index, details, edit, factory, etc.)
 │   ├── contact/      # Contact form pages
-│   ├── reports/
-│   │   └── api/      # Report API parsers
 │   └── views/        # Reusable view partials
 ├── docs/             # User-facing docs (guides/, reference/, stories/, admin/)
 ├── error/            # Branded HTTP error pages (403, 404, 500)
@@ -58,9 +60,7 @@ $path = [
     'app/admin/scripts/fix/',
     'app/admin/scripts/maintenance/',
     'app/cars/',
-    'app/cars/actions/',
-    'app/reports/',
-    'app/reports/api/',
+    'app/api/contact/',      // contact endpoints call securePage()
     // ... add 'your/new/directory/' here
 ];
 ```
@@ -70,17 +70,21 @@ $path = [
 ## AJAX parsers: where they go in ElanRegistry
 
 The shipped `secure_page_pattern` says AJAX endpoints must live in a `parsers/` subfolder.
-In ElanRegistry, **parsers are colocated with their calling page's subtree**, not next to the
-calling file itself:
+In ElanRegistry, **all AJAX API endpoints live under `app/api/`**, organised by domain:
 
 | AJAX endpoint for | Lives in |
 |---|---|
-| Car operations | `app/cars/actions/` |
-| Report data | `app/reports/api/` |
-| Admin operations | `app/admin/` (or `app/admin/includes/` for shared handlers) |
+| Car operations | `app/api/cars/` |
+| Contact form operations | `app/api/contact/` |
+| Shared / cross-domain data | `app/api/shared/` |
+| Admin settings updates | `app/api/admin/` |
 
-The `parsers/` naming is not required in ElanRegistry as long as the directory is registered
-in `z_us_root.php` and the endpoint follows the Pattern A / ApiResponse convention.
+The `parsers/` naming is not required in ElanRegistry. Directories under `app/api/` are generally
+**not** added to the `$path` array in `z_us_root.php` because they do not call `securePage()`.
+The exception is `app/api/contact/`, which is registered because both contact endpoints call
+`securePage()`. Endpoints in `app/api/cars/`, `app/api/shared/`, and `app/api/admin/` must
+**not** call `securePage()` — they enforce authentication inline.
+All endpoints in `app/api/` must follow the Pattern A / ApiResponse convention.
 
 ---
 

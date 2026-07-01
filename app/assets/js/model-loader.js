@@ -29,7 +29,7 @@
 
         /**
          * Initialize model loader with API URL
-         * @param {string} apiUrl - Full URL to get-models.php endpoint
+         * @param {string} apiUrl - Full URL to models.php endpoint (app/api/cars/models.php)
          */
         init: function(apiUrl) {
             this.apiUrl = apiUrl;

@@ -1,6 +1,6 @@
 # UI Standards — Elan Registry
 
-**Live reference:** [`/app/admin/color-preview.php`](../../app/admin/color-preview.php) —
+**Live reference:** [`/app/admin/design-system.php`](../../app/admin/design-system.php) —
 renders every token, card level, and component pattern in context. Admin-only page.
 
 **Token source:** [`usersc/templates/customizer.css`](../../usersc/templates/customizer.css) —
@@ -10,10 +10,10 @@ the single source of truth for all `--er-*` tokens and global utility classes.
 
 ## The Golden Rule
 
-> **Every new UI component or token must be demonstrated in `color-preview.php` before it is used elsewhere on the site.**
+> **Every new UI component or token must be demonstrated in `design-system.php` before it is used elsewhere on the site.**
 
 When you introduce a new pattern — a new CSS class, a new token, a new component — add a section
-to `color-preview.php` showing it in context first. This keeps the reference page authoritative
+to `design-system.php` showing it in context first. This keeps the reference page authoritative
 and ensures the pattern is visually validated before being applied site-wide.
 
 ---
@@ -281,7 +281,7 @@ Three first-party CSS source files (compiled to `.min.css` by `npm run build`):
 
 | File | Loaded by | Contains |
 | --- | --- | --- |
-| `app/admin/assets/manage-consolidated.css` | `manage-consolidated.php` | Admin comparison cards, field-match/differ, timestamp display |
+| `app/admin/assets/manage-consolidated.css` | `index.php` | Admin comparison cards, field-match/differ, timestamp display |
 | `app/assets/css/edit_car.css` | `app/cars/edit.php` | FilePond overrides, `#editCar` focus, card z-index for drag-drop |
 | `app/assets/css/location-picker.css` | `app/cars/edit.php` | `.location-picker-container`-scoped styles |
 
@@ -295,7 +295,7 @@ in a page-specific file should have a comment explaining why it is not global.
 
 When introducing a new component, token, or pattern:
 
-1. **Add a demo to `color-preview.php`** showing the pattern in context with a label and usage note. This is mandatory — it is the visual contract for the pattern.
+1. **Add a demo to `design-system.php`** showing the pattern in context with a label and usage note. This is mandatory — it is the visual contract for the pattern.
 2. **Add the CSS to `customizer.css`** if it is globally applicable, or to the relevant page-specific file with a scope comment if not.
 3. **Document it in this file** under the appropriate section, including any anti-patterns it replaces.
 4. **Run `npm run build`** if you edited a source CSS file other than `customizer.css` (which is served directly without a build step).
@@ -307,5 +307,5 @@ When introducing a new component, token, or pattern:
 
 - [`docs/development/CODING_STANDARDS.md`](CODING_STANDARDS.md) — PHP coding standards
 - [`docs/development/CSS_AND_ASSETS.md`](CSS_AND_ASSETS.md) — asset pipeline, build process, ADR-015
-- [`app/admin/color-preview.php`](../../app/admin/color-preview.php) — live token and component reference
+- [`app/admin/design-system.php`](../../app/admin/design-system.php) — live token and component reference
 - [`usersc/templates/customizer.css`](../../usersc/templates/customizer.css) — token definitions and global CSS

@@ -90,7 +90,7 @@ declare(strict_types=1);
                     <div class="col-md-4">
                         <h6>Current Implementation</h6>
                         <ul class="list-unstyled small">
-                            <li><strong>File:</strong> manage-consolidated.php</li>
+                            <li><strong>File:</strong> index.php</li>
                             <li><strong>Tab:</strong> <?= htmlspecialchars($activeTab) ?></li>
                             <li><strong>Include:</strong> tab-<?= str_replace('-', '_', $activeTab) ?>.php</li>
                             <li><strong>Framework:</strong> UserSpice 5.x</li>
@@ -99,7 +99,7 @@ declare(strict_types=1);
                     <div class="col-md-4">
                         <h6>URL Routing</h6>
                         <ul class="list-unstyled small">
-                            <li><strong>Base URL:</strong> manage-consolidated.php</li>
+                            <li><strong>Base URL:</strong> index.php</li>
                             <li><strong>Parameter:</strong> ?tab=<?= htmlspecialchars($activeTab) ?></li>
                             <li><strong>Valid Tabs:</strong> <?= count($validTabs) ?></li>
                             <li><strong>Default:</strong> car-mgmt</li>

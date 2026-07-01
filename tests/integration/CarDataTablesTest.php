@@ -410,7 +410,7 @@ final class CarDataTablesTest extends IntegrationTestCase
     /**
      * Test chassis lookup SQL query finds a car with a matching chassis number
      *
-     * The findCarByChassis special endpoint executes this query inline in getDataTables.php.
+     * The app/api/cars/chassis-lookup.php endpoint executes this query inline.
      * We verify the query behavior directly against the real database.
      */
     #[Group('fast')]
@@ -420,7 +420,7 @@ final class CarDataTablesTest extends IntegrationTestCase
         $chassis = 'TC-' . substr(uniqid(), -10); // varchar(15) limit
         $carId = $this->createTestCar($userId, ['chassis' => $chassis]);
 
-        // Execute the same SQL that the findCarByChassis endpoint runs (getDataTables.php:103)
+        // Execute the same SQL that the app/api/cars/chassis-lookup.php endpoint runs
         $result = $this->db->query("SELECT id FROM cars WHERE chassis = ? LIMIT 1", [$chassis]);
 
         $this->assertGreaterThan(0, $result->count());

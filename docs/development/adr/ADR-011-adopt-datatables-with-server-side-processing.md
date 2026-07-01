@@ -38,13 +38,20 @@ Adopt **DataTables 1.10.x** (jQuery plugin) in **server-side processing mode** (
 
 ### Backend Architecture
 
-**Single POST-only endpoint**: `/app/action/getDataTables.php`
+**Three dedicated POST-only endpoints** (v2.25.3+, issue #1036):
+
+- `/app/api/cars/list.php` — car registry DataTable
+- `/app/api/cars/factory-list.php` — factory records DataTable
+- `/app/api/cars/chassis-lookup.php` — chassis-to-car-ID lookup for registry links
+
+Each endpoint:
 
 - Enforces HTTP method via `$method` server global (POST only)
 - Validates CSRF token via `Token::check()` before any data access
-- Delegates data logic to `CarDataTablesService`(extracted from`Car.php` in v2.15.0, issue #463)
-- Returns standard DataTables JSON format: `{draw, recordsTotal, recordsFiltered, data[]}`
-- Handles three logical operations via table parameter: cars, factory, and `findCarByChassis` (registry link lookup)
+- `list.php` and `factory-list.php` delegate data logic to `CarDataTablesService` (extracted from `Car.php` in v2.15.0, issue #463);
+  `chassis-lookup.php` executes its SQL query inline
+- Returns standard DataTables JSON format: `{draw, recordsTotal, recordsFiltered, data[]}` (list/factory-list) or `{success, message, car_id}` (chassis-lookup)
+- Uses `JSON_THROW_ON_ERROR` on all `json_encode()` calls
 
 **Service class**: `usersc/classes/Car/CarDataTablesService.php`
 
@@ -75,13 +82,13 @@ Configuration:
 - Extensions: FixedHeader, Responsive (plus Core)
 
 ```javascript
-const csrfToken = '<?= Token::generate() ?>';
-$('#carsTable').DataTable({
+const csrf = '<?= Token::generate() ?>';
+$('#cartable').DataTable({
     serverSide: true,
     serverMethod: 'post',
     ajax: {
-        url: '/app/action/getDataTables.php',
-        data: { csrf: csrfToken, table: 'cars' }
+        url: '/app/api/cars/list.php',
+        data: function(d) { d.csrf = csrf; }
     },
     columns: [
         { data: 'id', searchable: false, sortable: true, render: detailsButtonRenderer },
@@ -101,14 +108,14 @@ $('#carsTable').DataTable({
 
 Configuration:
 
-- Same server-side pattern, `d.table = 'factory'`
+- Same server-side pattern as cars listing (no `table` parameter — endpoint is implicit)
 - 14 columns; 14th column ("Registry Link") client-rendered via async `checkRegistryLinks()` helper
 - Page length: 25 rows
-- `checkRegistryLinks()`fires one POST per visible row to`findCarByChassis` pseudo-table, checking if each factory record has a match in the registry
+- `checkRegistryLinks()` fires one POST per visible row to `/app/api/cars/chassis-lookup.php`, checking if each factory record has a match in the registry
 
 ```javascript
 // Factory page fires N+1 requests for registry link population
-// Each POST: { table: 'findCarByChassis', chassis: 'ABC123' }
+// Each POST: { chassis: 'ABC123', csrf: token }
 // Potential optimization: batch into single POST with chassis array
 ```
 
@@ -166,12 +173,13 @@ extensions require client-side data access, incompatible with server-side mode.
 - **No Subresource Integrity on DataTables CDN.** The bundled CDN URL format (e.g., `//cdn.datatables.net/1.10.23/js/jquery.dataTables.min.js`) does not support
   per-resource SRI hashing. The SRI concept applies only to the bundled script as a whole, not to modules within it.
 
-- **N+1 AJAX requests on factory page.** The factory listing fires one POST per visible row to `findCarByChassis` to populate the "Registry Link" column. With
+- **N+1 AJAX requests on factory page.** The factory listing fires one POST per visible row to `/app/api/cars/chassis-lookup.php`
+  to populate the "Registry Link" column. With
   25 rows per page, this results in 25 concurrent POSTs per page draw. Under heavy load, this could overwhelm the server or strain the browser's connection
   pool.
 
-- **Inconsistent logic organization.** `findCarByChassis`lookup is handled inline in the`getDataTables.php`endpoint, not delegated to`CarDataTablesService`.
-  This creates a pattern inconsistency: cars and factory queries use the service; lookups do not.
+- **Inconsistent logic organization.** ~~`findCarByChassis` lookup was handled inline in the `getDataTables.php` endpoint, not delegated to `CarDataTablesService`.~~
+  *Resolved in v2.25.3 (issue #1036): `chassis-lookup.php` is now a dedicated endpoint.*
 
 - **Inline DataTables configuration not externalized.** DataTables initialization is hardcoded in page-level `<script>` blocks, not in external JavaScript
   files. This makes configuration harder to reuse and test.
@@ -276,7 +284,7 @@ Custom backend endpoint returning DataTables-compatible JSON, but frontend uses 
 
 - **DataTables Library**: [https://datatables.net](https://datatables.net)
 - **DataTables Server-Side Processing**: [https://datatables.net/manual/server-side](https://datatables.net/manual/server-side)
-- **Backend Endpoint**: [app/action/getDataTables.php](../../app/action/getDataTables.php)
+- **Backend Endpoints**: [app/api/cars/list.php](../../app/api/cars/list.php), [app/api/cars/factory-list.php](../../app/api/cars/factory-list.php), [app/api/cars/chassis-lookup.php](../../app/api/cars/chassis-lookup.php)
 - **Service Class**: [usersc/classes/Car/CarDataTablesService.php](../../usersc/classes/Car/CarDataTablesService.php)
 - **Cars Listing Page**: [app/cars/index.php](../../app/cars/index.php)
 - **Factory Listing Page**: [app/cars/factory.php](../../app/cars/factory.php)

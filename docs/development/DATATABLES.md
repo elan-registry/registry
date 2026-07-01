@@ -44,7 +44,7 @@ const table = $("#cartable").DataTable({
   serverSide: true, // Server-side data loading
   serverMethod: "post",
   ajax: {
-    url: "../action/getDataTables.php",
+    url: "../api/cars/list.php",
     dataSrc: "data"
   }
 });
@@ -74,7 +74,7 @@ const table = $("#cartable").DataTable({
   serverSide: true,
   serverMethod: "post",
   ajax: {
-    url: "../action/getDataTables.php",
+    url: "../api/cars/factory-list.php",
     dataSrc: "data"
   }
 });
@@ -87,17 +87,13 @@ const table = $("#cartable").DataTable({
 - AJAX-based registry link lookup (checks if chassis exists in registry)
 - Custom rendering for "Registry Link" column
 
-### Backend Data Provider
+### Backend Data Providers
 
-**File**: `/app/action/getDataTables.php`
+Three dedicated POST-only endpoints (v2.25.3+, issue #1036):
 
-**Purpose**: Server-side data provider for DataTables AJAX requests
-
-**Tables Supported**:
-
-- `cars` - Car registry data
-- `factory` - Factory information data
-- `findCarByChassis` - Lookup car by chassis number (for factory links)
+- **`app/api/cars/list.php`** — Car registry DataTable (`table=cars` branch, now implicit)
+- **`app/api/cars/factory-list.php`** — Factory records DataTable (`table=factory` branch, now implicit)
+- **`app/api/cars/chassis-lookup.php`** — Chassis-to-car-ID lookup for registry links; returns `{success, message, car_id}`
 
 ## Asset Loading
 
@@ -236,7 +232,7 @@ server-side processing or assess if the UX trade-offs are acceptable.
 
 **Solution**:
 
-- Check `/app/action/getDataTables.php` for PHP errors
+- Check `/app/api/cars/list.php` or `/app/api/cars/factory-list.php` for PHP errors
 - Verify CSRF token is being passed correctly
 - Check database connection and query performance
 - Review server error logs
@@ -281,7 +277,7 @@ Unit tests for DataTables endpoints validate logic without database dependencies
 
 **Example**: `/tests/unit/api/GetDataTablesFindCarByChassisTest.php`
 
-Tests the `findCarByChassis` endpoint logic in `/app/action/getDataTables.php`:
+Tests the chassis lookup logic now in `/app/api/cars/chassis-lookup.php`:
 
 ```php
 /**

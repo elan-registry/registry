@@ -93,7 +93,7 @@ class SerializedDataRemovalTest extends TestCase
      */
     public function testContactOwnerEmailUsesSecureLookups(): void
     {
-        $contactEmailFile = $this->projectRoot . '/app/contact/send-owner-email.php';
+        $contactEmailFile = $this->projectRoot . '/app/api/contact/send-owner-email.php';
         $this->assertFileExists($contactEmailFile);
         
         $content = file_get_contents($contactEmailFile);

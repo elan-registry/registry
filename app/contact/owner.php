@@ -1,10 +1,8 @@
 <?php
 /**
  * contact_owner.php
- * Allows registered users to contact the owner of a car in the registry.
- *
- * Handles form submission, validates CSRF token, and retrieves user/car info for messaging.
- * Uses the site template for layout and security.
+ * Renders the contact-owner form pre-populated with sender and recipient info.
+ * Form submission is handled client-side via ElanRegistryAPI → app/api/contact/send-owner-email.php.
  *
  * @author Elan Registry Admin
  * @copyright 2025
@@ -18,45 +16,33 @@ if (!securePage($php_self)) {
     die();
 }
 
-//Forms posted now process it
-if (!empty($_POST)) {
-    $token = Input::get('csrf');
-    if (!Token::check($token)) {
-        include_once $abs_us_root . $us_url_root . 'usersc/scripts/token_error.php';
-    } else {
-        $action = Input::get('action');
-        if ($action === 'contact_owner') {
+$carID = (int) Input::get('car_id');
+if ($carID <= 0) {
+    Redirect::to('/');
+}
 
-            $carID = (int) Input::get('car_id');
-            if ($carID <= 0) {
-                Redirect::to('/');
-            }
-            $fromResults = $db->findById($user->data()->id, "users")->results();
-            $toResults   = $db->findById($carID, "cars")->results();
-            if (empty($fromResults) || empty($toResults)) {
-                Redirect::to('/');
-            }
-            $fromData = $fromResults[0];
-            $toData   = $toResults[0];
+$carResults = $db->findById($carID, 'cars')->results();
+if (empty($carResults)) {
+    Redirect::to('/');
+}
 
-            $from = array(
-                'id'    => $fromData->id,
-                'fname' => $fromData->fname,
-                'lname' => $fromData->lname,
-                'email' => $fromData->email,
-            );
+$ownerResults = $db->findById((int) $carResults[0]->user_id, 'users')->results();
+if (empty($ownerResults)) {
+    Redirect::to('/');
+}
+$ownerData = $ownerResults[0];
 
-            $to = array(
-                'id' => $toData->user_id,
-                'fname' => $toData->fname,
-                'lname' => $toData->lname,
-                'email' => $toData->email,
-            );
-        } else {
-            Redirect::to('/');
-        }
-    } // End Post with data
-} // End Post
+$from = [
+    'id'    => $user->data()->id,
+    'fname' => $user->data()->fname,
+    'lname' => $user->data()->lname,
+];
+
+$to = [
+    'id'    => $ownerData->id,
+    'fname' => $ownerData->fname,
+    'lname' => $ownerData->lname,
+];
 ?>
 
 
@@ -90,7 +76,8 @@ if (!empty($_POST)) {
                 </div>
 
                 <!-- Message Form -->
-                <form name="contactform" method="post" action="send-owner-email.php" class="needs-validation" novalidate>
+                <div id="owner-alerts"></div>
+                <form name="contactform" method="post" action="<?= $us_url_root ?>app/api/contact/send-owner-email.php" class="needs-validation" novalidate>
                     <div class="mb-4">
                         <label for="message" class="form-label h5">
                             <i class="fas fa-comment text-primary"></i> Your Message
@@ -114,7 +101,7 @@ if (!empty($_POST)) {
                     </div>
 
                     <!-- Hidden Fields -->
-                    <input type='hidden' name='csrf' value='<?= Token::generate(); ?>' />
+                    <input type='hidden' name='csrf' value='<?= htmlspecialchars(Token::generate(), ENT_QUOTES, 'UTF-8'); ?>' />
                     <input type='hidden' name='action' value='send_message' />
                     <input type='hidden' name='to_user_id' value='<?= htmlspecialchars($to['id'], ENT_QUOTES, 'UTF-8'); ?>' />
                     <input type='hidden' name='car_id' value='<?= htmlspecialchars($carID, ENT_QUOTES, 'UTF-8'); ?>' />
@@ -136,6 +123,49 @@ if (!empty($_POST)) {
     </div> <!-- container-fluid -->
 </div> <!-- page-wrapper -->
 
+
+<script>
+$(document).ready(function () {
+    $('form[name="contactform"]').on('submit', function (e) {
+        e.preventDefault();
+        var $form = $(this);
+        var $btn  = $form.find('button[type="submit"]');
+        var originalHtml = $btn.html();
+
+        $btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i> Sending...');
+        $('#owner-alerts').empty();
+
+        new ElanRegistryAPI().post(
+            '<?= $us_url_root ?>app/api/contact/send-owner-email.php',
+            {
+                action:      $form.find('input[name="action"]').val(),
+                to_user_id:  $form.find('input[name="to_user_id"]').val(),
+                car_id:      $form.find('input[name="car_id"]').val(),
+                message:     $('#message').val()
+            }
+        ).then(function (response) {
+            $('#owner-alerts').html(
+                '<div class="alert alert-success alert-dismissible fade show" role="alert">' +
+                '<i class="fas fa-check-circle me-2"></i>' +
+                NotificationHelper.escapeHtml(response.message) +
+                '<button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>' +
+                '</div>'
+            );
+            $form[0].reset();
+        }).catch(function (error) {
+            $('#owner-alerts').html(
+                '<div class="alert alert-danger alert-dismissible fade show" role="alert">' +
+                '<i class="fas fa-exclamation-circle me-2"></i>' +
+                NotificationHelper.escapeHtml(error.message || 'Failed to send message.') +
+                '<button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>' +
+                '</div>'
+            );
+        }).finally(function () {
+            $btn.prop('disabled', false).html(originalHtml);
+        });
+    });
+});
+</script>
 
 <!-- footers -->
 <?php

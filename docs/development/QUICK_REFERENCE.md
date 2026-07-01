@@ -202,7 +202,7 @@ try {
 const api = new ElanRegistryAPI();
 
 try {
-    const result = await api.post('app/action/update-car.php', {
+    const result = await api.post('app/api/cars/save.php', {
         car_id: 123,
         color: 'red'
     });
@@ -344,7 +344,7 @@ if ($carModel->exists('S4', 'FHC', '36')) {
 **Dynamic Dropdown Updates**:
 
 - Model dropdowns in `form.php` load dynamically from database (no JS changes needed)
-- API endpoint: `app/cars/actions/get-models.php`
+- API endpoint: `app/api/cars/models.php`
 - JavaScript module: `app/assets/js/model-loader.js`
 - Models are cached client-side after first load
 

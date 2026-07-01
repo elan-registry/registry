@@ -232,7 +232,7 @@ function loadTabContent(tabName) {
   spinner.show();
 
   new ElanRegistryAPI()
-    .get(`${window.statisticsConfig.baseUrl}api/statistics-data.php`, {
+    .get(window.statisticsConfig.statisticsDataUrl, {
       tab: tabName
     })
     .then(function (response) {

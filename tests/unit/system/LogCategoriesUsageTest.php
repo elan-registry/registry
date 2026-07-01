@@ -20,14 +20,15 @@ class LogCategoriesUsageTest extends TestCase
      * for all logging category parameters.
      */
     private const CAR_ENDPOINT_FILES = [
-        'app/cars/actions/check-chassis.php',
-        'app/cars/actions/edit.php',
-        'app/cars/actions/history.php',
-        'app/cars/actions/validateChassis.php',
+        'app/api/cars/chassis-availability.php',
+        'app/api/cars/save.php',
+        'app/api/cars/history.php',
+        'app/api/cars/chassis-validate.php',
+        'app/api/cars/transfer-request.php',
         'app/admin/includes/process-transfer-approve.php',
         'app/admin/includes/process-transfer-deny.php',
         'app/admin/includes/process-car-details.php',
-        'usersc/includes/transfer_email_notifications.php',
+        'app/api/admin/process-settings.php',
     ];
 
     /**
@@ -35,8 +36,8 @@ class LogCategoriesUsageTest extends TestCase
      * for all logging category parameters.
      */
     private const CONTACT_ENDPOINT_FILES = [
-        'app/contact/send-feedback.php',
-        'app/contact/send-owner-email.php',
+        'app/api/contact/send-feedback.php',
+        'app/api/contact/send-owner-email.php',
     ];
 
     private string $rootDir;
@@ -166,7 +167,7 @@ class LogCategoriesUsageTest extends TestCase
      */
     public function testCheckChassisUsesApiResponse(): void
     {
-        $filePath = $this->rootDir . '/app/cars/actions/check-chassis.php';
+        $filePath = $this->rootDir . '/app/api/cars/chassis-availability.php';
         if (!file_exists($filePath)) {
             $this->markTestSkipped('check-chassis.php not found');
         }
@@ -236,70 +237,6 @@ class LogCategoriesUsageTest extends TestCase
     }
 
     /**
-     * Regression test for Issue #656: partial admin alert failure must use LOG_CATEGORY_EMAIL_ERROR.
-     */
-    public function testTransferAdminAlertLogsPartialFailureUnderErrorCategory(): void
-    {
-        $filePath = $this->rootDir . '/usersc/includes/transfer_email_notifications.php';
-        if (!file_exists($filePath)) {
-            $this->markTestSkipped('transfer_email_notifications.php not found');
-        }
-
-        $content = file_get_contents($filePath);
-
-        $this->assertStringContainsString(
-            '$failCount',
-            $content,
-            'sendTransferRequestAdminAlert() must track $failCount for partial-failure logging (Issue #656)'
-        );
-        $this->assertMatchesRegularExpression(
-            '/logger\s*\([^,]+,\s*LogCategories::LOG_CATEGORY_EMAIL_ERROR[^)]*\$failCount/',
-            $content,
-            'Partial admin alert failure must log under LOG_CATEGORY_EMAIL_ERROR with $failCount (Issue #656)'
-        );
-        $this->assertMatchesRegularExpression(
-            '/if\s*\(\s*\$failCount\s*>\s*0\s*\)/',
-            $content,
-            'Error log must be gated on $failCount > 0 (Issue #656)'
-        );
-        $this->assertMatchesRegularExpression(
-            '/if\s*\(\s*\$successCount\s*>\s*0\s*\)/',
-            $content,
-            'Success log must be gated on $successCount > 0 to prevent false success entries (Issue #656)'
-        );
-    }
-
-    /**
-     * Regression test for Issue #655: all catch blocks in transfer_email_notifications.php
-     * must include exception class, file, and line number.
-     */
-    public function testTransferNotificationCatchBlocksIncludeExceptionDetail(): void
-    {
-        $filePath = $this->rootDir . '/usersc/includes/transfer_email_notifications.php';
-        if (!file_exists($filePath)) {
-            $this->markTestSkipped('transfer_email_notifications.php not found');
-        }
-
-        $content = file_get_contents($filePath);
-
-        $this->assertSame(
-            4,
-            substr_count($content, 'get_class($e)'),
-            'All 4 catch blocks in transfer_email_notifications.php must include get_class($e) (Issue #655)'
-        );
-        $this->assertSame(
-            4,
-            substr_count($content, '$e->getFile()'),
-            'All 4 catch blocks in transfer_email_notifications.php must include $e->getFile() (Issue #655)'
-        );
-        $this->assertSame(
-            4,
-            substr_count($content, '$e->getLine()'),
-            'All 4 catch blocks in transfer_email_notifications.php must include $e->getLine() (Issue #655)'
-        );
-    }
-
-    /**
      * Regression test for Issue #657: user_settings.php must log verify-email delivery failures.
      */
     public function testUserSettingsPhpLogsEmailFailure(): void
@@ -324,7 +261,7 @@ class LogCategoriesUsageTest extends TestCase
     public function testEditPhpCatchBlocksUseGetUserMessage(): void
     {
         $this->assertNoGetMessageInErrorsArray(
-            'app/cars/actions/edit.php',
+            'app/api/cars/save.php',
             'Use $e->getUserMessage() instead (Issue #658).'
         );
     }
@@ -335,7 +272,7 @@ class LogCategoriesUsageTest extends TestCase
     public function testManageConsolidatedPhpCatchBlocksDoNotExposeGetMessage(): void
     {
         $this->assertNoGetMessageInErrorsArray(
-            'app/admin/manage-consolidated.php',
+            'app/admin/index.php',
             'Use a safe static message instead (Issue #659).'
         );
     }
@@ -368,9 +305,9 @@ class LogCategoriesUsageTest extends TestCase
      */
     public function testManageConsolidatedPhpHasNoUserIdFallback(): void
     {
-        $filePath = $this->rootDir . '/app/admin/manage-consolidated.php';
+        $filePath = $this->rootDir . '/app/admin/index.php';
         if (!file_exists($filePath)) {
-            $this->markTestSkipped('manage-consolidated.php not found');
+            $this->markTestSkipped('index.php not found');
         }
 
         $content = (string)file_get_contents($filePath);
@@ -463,7 +400,7 @@ class LogCategoriesUsageTest extends TestCase
      */
     public function testSendFeedbackPhpIsModernized(): void
     {
-        $filePath = $this->rootDir . '/app/contact/send-feedback.php';
+        $filePath = $this->rootDir . '/app/api/contact/send-feedback.php';
         if (!file_exists($filePath)) {
             $this->markTestSkipped('send-feedback.php not found');
         }

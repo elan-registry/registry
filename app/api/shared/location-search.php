@@ -15,7 +15,7 @@ use ElanRegistry\Exceptions\LocationServiceException;
  * @link https://github.com/unibrain1/elanregistry/issues/245
  */
 
-require_once '../../users/init.php';
+require_once '../../../users/init.php';
 
 // Only allow POST requests
 if ($method !== 'POST') {
@@ -58,18 +58,18 @@ try {
     ApiResponse::success('Search completed')
         ->withData('results', $results)
         ->withData('count', count($results))
-        ->withLogging($userId, 'LocationService', 'Location search: ' . $query)
+        ->withLogging($userId, LogCategories::LOG_CATEGORY_LOCATION_SERVICE, 'Location search: ' . $query)
         ->send();
 
 } catch (LocationServiceException $e) {
     // Location service specific error (rate limit, API failure, etc.)
     ApiResponse::error($e->getMessage(), 400)
-        ->withLogging($userId, 'LocationService', 'Location search failed: ' . $e->getMessage())
+        ->withLogging($userId, LogCategories::LOG_CATEGORY_LOCATION_SERVICE, 'Location search failed: ' . $e->getMessage())
         ->send();
 
 } catch (\Throwable $e) {
     // Catch-all for unexpected errors (database, file system, etc.)
     ApiResponse::serverError('An error occurred while searching locations')
-        ->withLogging($userId, 'SystemError', 'Location search error: ' . $e->getMessage())
+        ->withLogging($userId, LogCategories::LOG_CATEGORY_SYSTEM_ERROR, 'Location search error: ' . $e->getMessage())
         ->send();
 }

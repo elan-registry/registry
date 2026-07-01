@@ -352,7 +352,7 @@ A typed exception class `ReferenceDocumentException` extends the application's
 ### Admin Interface and Integration
 
 The admin interface integrates into the existing consolidated management page
-(`app/admin/manage-consolidated.php`) as a new **Reference Library** tab,
+(`app/admin/index.php`) as a new **Reference Library** tab,
 following the established pattern of tab-based administration:
 
 - **Tab content**: `app/admin/includes/tab-reference_library.php` — document
@@ -423,7 +423,7 @@ The design follows existing UserSpice patterns:
 
 1. Add `'reference-library' => 'Reference Library'`to`$validTabs` in
 
-    `app/admin/manage-consolidated.php`.
+    `app/admin/index.php`.
 
 2. Create `app/admin/includes/tab-reference_library.php` with document list,
 
@@ -759,7 +759,7 @@ ADR-013 Phase 1-3    #350 (DocumentPortalTemplate)
 
 - **Consolidated Admin Page**:
 
-  [app/admin/manage-consolidated.php](../../app/admin/manage-consolidated.php)
+  [app/admin/index.php](../../app/admin/index.php)
   — tabbed admin interface; Reference Library tab integrates here.
 
 - **Reference Library Listing**: [docs/reference-library.php](../reference-library.php) — current `scandir()`-based PDF listing (to be migrated).
