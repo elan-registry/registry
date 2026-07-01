@@ -67,6 +67,13 @@ https://elanregistry.org/app/admin/scripts/maintenance/21-Fix-Page-Permissions.p
   Editor-level; remove unnecessary `securePage()` from public `statistics.php` API
   endpoint; update fix script PHPDoc and on-screen alert to reflect current `app/api/`
   and renamed admin page structure (#1059)
+- Extend `21-Fix-Page-Permissions.php` to enforce UserSpice installer defaults for
+  `users/*` pages (previously excluded), classify `usersc/login.php` and `usersc/join.php`
+  as PUBLIC to mirror their `users/` equivalents, and correct admin-only fix to strip
+  Editor and User permissions (not just Editor). Fix Bootstrap 5 flex-layout regression
+  in the progress log, `TypeError` in progress percentage (`round()` returning float into
+  `?int`), and outer catch missing `\Error` subtypes. Correct stale page paths and remove
+  deleted `app/cars/actions/*` entries from `database/3-configuration.sql` seed data (#1059)
 - Migrate `$.ajax()` calls in admin owner management tab and remaining admin tabs to
   `ElanRegistryAPI` Pattern A client (#968)
 - Migrate `manage-consolidated.php` car deletion path to `CarAdministrationService` for
