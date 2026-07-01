@@ -319,7 +319,7 @@ test.describe('Registry-Specific AJAX Endpoints', () => {
 
   test('admin settings endpoint requires admin permissions', async ({ page }) => {
     // Test the admin-only (level 2) settings update endpoint
-    const response = await page.request.post('app/admin/includes/process-admin-settings.php', {
+    const response = await page.request.post('app/api/admin/process-settings.php', {
       data: {
         field: 'elan_image_max',
         value: '10',

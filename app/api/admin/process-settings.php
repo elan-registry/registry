@@ -3,7 +3,7 @@
 declare(strict_types=1);
 
 /**
- * process-admin-settings.php
+ * process-settings.php
  * Pattern A endpoint for updating registry settings from the admin settings tab.
  *
  * Accepts a single field update (field, value, table) and writes it to the settings
