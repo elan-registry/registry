@@ -173,16 +173,11 @@ INSERT INTO `pages` (`id`, `page`, `title`, `private`, `re_auth`, `core`) VALUES
 (235, 'app/cars/mapmarkers.xml.php', NULL, 0, 0, 0),
 (236, 'app/contact/index.php', NULL, 1, 0, 0),
 (237, 'app/contact/owner.php', NULL, 1, 0, 0),
-(238, 'app/contact/send-feedback.php', NULL, 1, 0, 0),
-(239, 'app/contact/send-owner-email.php', NULL, 1, 0, 0),
+(238, 'app/api/contact/send-feedback.php', NULL, 1, 0, 0),
+(239, 'app/api/contact/send-owner-email.php', NULL, 1, 0, 0),
 (240, 'app/reports/statistics.php', NULL, 0, 0, 0),
-(241, 'app/cars/actions/check-chassis.php', NULL, 1, 0, 0),
-(242, 'app/cars/actions/edit.php', NULL, 1, 0, 0),
-(243, 'app/cars/actions/history.php', NULL, 1, 0, 0),
-(261, 'app/cars/actions/validateChassis.php', NULL, 1, 0, 0),
 (278, 'app/reports/api/statistics-data.php', NULL, 0, 0, 0),
-(294, 'app/admin/manage-consolidated.php', 'Admin - Consolidated Management Interface', 1, 0, 0),
-(295, 'app/cars/actions/request-transfer.php', NULL, 1, 0, 0),
+(294, 'app/admin/index.php', 'Admin - Consolidated Management Interface', 1, 0, 0),
 (299, 'app/admin/includes/process-admin-contact.php', 'Admin - Process Contact Form', 1, 0, 0),
 (300, 'app/admin/includes/tab-car_mgmt.php', 'Admin - Car Management Tab', 1, 0, 0),
 (304, 'app/admin/includes/tab-placeholder.php', 'Admin - Tab Placeholder', 1, 0, 0),
@@ -200,7 +195,7 @@ INSERT INTO `pages` (`id`, `page`, `title`, `private`, `re_auth`, `core`) VALUES
 (330, 'app/admin/verify/send_email.php', NULL, 1, 0, 0),
 (331, 'app/admin/verify/verify_car.php', NULL, 1, 0, 0),
 (337, 'app/admin/includes/system/schema-operations.php', NULL, 1, 0, 0),
-(338, 'app/admin/manage-maintenance.php', 'Admin - Registry Maintenance', 1, 0, 0),
+(338, 'app/admin/maintenance.php', 'Admin - Registry Maintenance', 1, 0, 0),
 (339, 'app/admin/includes/system/backup-operations.php', 'Admin - Backup Operations', 1, 0, 0),
 (9001, 'docs/pdf-viewer.php',   NULL, 0, 0, 0)
 ON DUPLICATE KEY UPDATE
@@ -214,7 +209,7 @@ ON DUPLICATE KEY UPDATE
 INSERT IGNORE INTO `permission_page_matches` (`permission_id`, `page_id`) VALUES
 -- User (permission_id = 1) - Standard user pages
 (1, 3), (1, 24), (1, 81), (1, 106), (1, 231), (1, 236), (1, 237), (1, 238), (1, 239),
-(1, 241), (1, 242), (1, 243), (1, 259), (1, 261), (1, 295),
+(1, 259),
 
 -- Administrator (permission_id = 2) - Full admin access
 (2, 68), (2, 157), (2, 256), (2, 280), (2, 283), (2, 294), (2, 299), (2, 300),

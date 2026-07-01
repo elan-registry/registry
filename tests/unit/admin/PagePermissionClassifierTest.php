@@ -26,8 +26,9 @@ final class PagePermissionClassifierTest extends TestCase
     public static function specialNoPermsProvider(): array
     {
         return [
-            'join page'                        => ['usersc/join.php',          true],
-            'login page'                       => ['usersc/login.php',         true],
+            // login/join are now PUBLIC (moved to PUBLIC_USERSC_PAGES, mirroring users/ installer defaults)
+            'join page'                        => ['usersc/join.php',          false],
+            'login page'                       => ['usersc/login.php',         false],
             // #795: user_settings must NOT be in this list
             'user_settings is not special'     => ['usersc/user_settings.php', false],
             'other usersc page'                => ['usersc/profile.php',       false],
@@ -125,8 +126,9 @@ final class PagePermissionClassifierTest extends TestCase
             'contact page'                      => ['app/contact/form.php',               true],
             'edit page'                         => ['app/cars/edit-car.php',              true],
             'usersc page'                       => ['usersc/user_settings.php',           true],
-            'login page'                        => ['usersc/login.php',                   true],
-            'join page'                         => ['usersc/join.php',                    true],
+            // login/join are PUBLIC (PUBLIC_USERSC_PAGES), mirroring users/login.php and users/join.php
+            'login page'                        => ['usersc/login.php',                   false],
+            'join page'                         => ['usersc/join.php',                    false],
             // Public pages
             'car listing'                       => ['app/cars/index.php',                 false],
             'car details'                       => ['app/cars/details.php',               false],
@@ -144,19 +146,26 @@ final class PagePermissionClassifierTest extends TestCase
     }
 
     // -------------------------------------------------------------------------
-    // Invariant: no special-no-perms page is also an admin page
-    // (the conflict guard in analyzePermissions() relies on this never occurring
-    // with valid configuration)
+    // Invariant: usersc/login.php and usersc/join.php are PUBLIC, mirroring
+    // users/login.php and users/join.php from the UserSpice installer defaults.
     // -------------------------------------------------------------------------
 
-    public function testNoSpecialNoPermsPageIsAlsoAdminPage(): void
+    public function testPublicUsercsPagesArePublicNotPrivateOrSpecial(): void
     {
-        $specialPages = ['usersc/join.php', 'usersc/login.php'];
+        $publicUsercPages = ['usersc/join.php', 'usersc/login.php'];
 
-        foreach ($specialPages as $page) {
+        foreach ($publicUsercPages as $page) {
+            $this->assertFalse(
+                PagePermissionClassifier::shouldBePrivate($page),
+                "'{$page}' must be PUBLIC — it mirrors its users/ equivalent which is public at install"
+            );
+            $this->assertFalse(
+                PagePermissionClassifier::shouldBePrivateNoPermissions($page),
+                "'{$page}' must not be special-no-perms — it is PUBLIC"
+            );
             $this->assertFalse(
                 PagePermissionClassifier::shouldHaveAdminPermissions($page),
-                "'{$page}' must not match shouldHaveAdminPermissions — the conflict guard would skip it"
+                "'{$page}' must not be an admin page"
             );
         }
     }

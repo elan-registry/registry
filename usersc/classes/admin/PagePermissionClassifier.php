@@ -10,22 +10,31 @@ declare(strict_types=1);
  * matching against the application's page structure.
  *
  * Permission tiers (in priority order):
- * - Special-no-perms: PRIVATE with no permission entries (login, join)
+ * - users/*: restored to UserSpice installer defaults (see getUserSpiceInstallerSpec())
  * - Admin-only: PRIVATE with Administrator only (maintenance scripts, portal)
  * - Admin+Editor: PRIVATE with Administrator + Editor (general admin panel)
  * - Owner: PRIVATE with User permission (usersc/*, edit pages, app/api/contact/*)
- * - Public: private=0, no permissions (everything else)
+ * - Public: private=0, no permissions (everything else, including usersc/login.php and usersc/join.php)
  */
 class PagePermissionClassifier
 {
     /**
-     * Pages that should be PRIVATE with NO permissions (special case).
+     * usersc/ pages that should be PUBLIC (private=0, no permissions),
+     * mirroring their users/ equivalents which are also public at install.
+     */
+    private const PUBLIC_USERSC_PAGES = [
+        'usersc/login.php',
+        'usersc/join.php',
+    ];
+
+    /**
+     * Pages that should be PRIVATE with NO permissions.
      * These are pages that must be accessible without a permission check
      * (e.g. the login page itself), but should not be publicly indexed.
      */
     private const SPECIAL_NO_PERMS_PAGES = [
-        'usersc/join.php',
-        'usersc/login.php',
+        // Reserved for future use; usersc/login.php and usersc/join.php are in
+        // PUBLIC_USERSC_PAGES instead (they mirror users/login.php and users/join.php).
     ];
 
     /**
@@ -37,6 +46,38 @@ class PagePermissionClassifier
         'app/admin/includes/tab-health.php',
         'app/admin/includes/tab-maintenance.php',
     ];
+
+    /**
+     * UserSpice installer defaults for users/* pages.
+     * Perm IDs: 1 = User, 2 = Administrator.
+     * All users/* pages not listed here default to public (private=0, no permissions).
+     */
+    private const USERS_PAGE_DEFAULTS = [
+        'users/account.php'       => ['private' => 1, 'perms' => [1]],  // User
+        'users/admin.php'         => ['private' => 1, 'perms' => [2]],  // Administrator only
+        'users/user_settings.php' => ['private' => 1, 'perms' => [1]],  // User
+        'users/update.php'        => ['private' => 1, 'perms' => [2]],  // Administrator only
+        'users/admin_pin.php'     => ['private' => 1, 'perms' => [1]],  // User
+        'users/complete.php'      => ['private' => 1, 'perms' => []],   // Private, no permissions
+    ];
+
+    /**
+     * Get the UserSpice installer default permission spec for a users/* page.
+     *
+     * Returns null if $pagePath is not under users/.
+     * Returns ['private' => int, 'perms' => int[]] for any users/* page,
+     * defaulting to public (private=0, perms=[]) for pages not in the known list.
+     *
+     * @param  string     $pagePath The page path to look up
+     * @return array<string,mixed>|null Spec array or null if not a users/* page
+     */
+    public static function getUserSpiceInstallerSpec(string $pagePath): ?array
+    {
+        if (strpos($pagePath, 'users/') !== 0) {
+            return null;
+        }
+        return self::USERS_PAGE_DEFAULTS[$pagePath] ?? ['private' => 0, 'perms' => []];
+    }
 
     /**
      * Check if a page should be PRIVATE with NO permissions (special case).
@@ -96,6 +137,12 @@ class PagePermissionClassifier
      */
     public static function shouldBePrivate(string $pagePath): bool
     {
+        // usersc/login.php and usersc/join.php are PUBLIC — they mirror users/login.php
+        // and users/join.php which are also public at install.
+        if (in_array($pagePath, self::PUBLIC_USERSC_PAGES)) {
+            return false;
+        }
+
         // Error pages (404.php, 403.php, etc.) in root should be PUBLIC
         if (preg_match('#^40\d\.php$#', $pagePath)) {
             return false;
