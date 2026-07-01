@@ -21,8 +21,12 @@ https://elanregistry.org/app/admin/scripts/maintenance/21-Fix-Page-Permissions.p
 
 ## User-Facing Changes
 
-No user-facing changes in this release. All restructuring is internal with no
-public URL changes.
+### Improvements
+
+- **Contact form inline feedback** ([#1038](https://github.com/unibrain1/elanregistry/issues/1038)):
+  Both the owner feedback form and the owner-contact form now display success/error
+  messages inline without a full page reload. Submission errors surface immediately in
+  the form instead of navigating away.
 
 ## Admin-Facing Changes
 
@@ -51,8 +55,9 @@ public URL changes.
   source directories; upgrade transfer-request security token to `random_bytes(32)` (#1037)
 - Convert `app/contact/send-feedback.php` and `app/contact/send-owner-email.php` from
   full-page HTML redirect handlers to Pattern A JSON endpoints under `app/api/contact/`;
-  wire both contact forms to submit via `ElanRegistryAPI` for inline success/error display
-  with no page reload; sender identity read from trusted session, not POST hidden fields (#1038)
+  rewire `app/contact/form.php` (feedback) and `app/contact/owner.php` (owner contact) to
+  submit via `ElanRegistryAPI` for inline success/error display with no page reload;
+  sender identity read from trusted session, not POST hidden fields (#1038)
 - Add `08-Rename-Admin-Pages.php` fix script to update UserSpice `pages` table URL
   registrations for the three renamed admin pages; run after deployment (#1039)
 - Replace 3 deprecated `$.ajax()` calls in admin settings tab with `ElanRegistryAPI`;
