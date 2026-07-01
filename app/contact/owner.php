@@ -1,10 +1,8 @@
 <?php
 /**
  * contact_owner.php
- * Allows registered users to contact the owner of a car in the registry.
- *
- * Handles form submission, validates CSRF token, and retrieves user/car info for messaging.
- * Uses the site template for layout and security.
+ * Renders the contact-owner form pre-populated with sender and recipient info.
+ * Form submission is handled client-side via ElanRegistryAPI → app/api/contact/send-owner-email.php.
  *
  * @author Elan Registry Admin
  * @copyright 2025
@@ -18,45 +16,33 @@ if (!securePage($php_self)) {
     die();
 }
 
-//Forms posted now process it
-if (!empty($_POST)) {
-    $token = Input::get('csrf');
-    if (!Token::check($token)) {
-        include_once $abs_us_root . $us_url_root . 'usersc/scripts/token_error.php';
-    } else {
-        $action = Input::get('action');
-        if ($action === 'contact_owner') {
+$carID = (int) Input::get('car_id');
+if ($carID <= 0) {
+    Redirect::to('/');
+}
 
-            $carID = (int) Input::get('car_id');
-            if ($carID <= 0) {
-                Redirect::to('/');
-            }
-            $fromResults = $db->findById($user->data()->id, "users")->results();
-            $toResults   = $db->findById($carID, "cars")->results();
-            if (empty($fromResults) || empty($toResults)) {
-                Redirect::to('/');
-            }
-            $fromData = $fromResults[0];
-            $toData   = $toResults[0];
+$carResults = $db->findById($carID, 'cars')->results();
+if (empty($carResults)) {
+    Redirect::to('/');
+}
 
-            $from = array(
-                'id'    => $fromData->id,
-                'fname' => $fromData->fname,
-                'lname' => $fromData->lname,
-                'email' => $fromData->email,
-            );
+$ownerResults = $db->findById((int) $carResults[0]->user_id, 'users')->results();
+if (empty($ownerResults)) {
+    Redirect::to('/');
+}
+$ownerData = $ownerResults[0];
 
-            $to = array(
-                'id' => $toData->user_id,
-                'fname' => $toData->fname,
-                'lname' => $toData->lname,
-                'email' => $toData->email,
-            );
-        } else {
-            Redirect::to('/');
-        }
-    } // End Post with data
-} // End Post
+$from = [
+    'id'    => $user->data()->id,
+    'fname' => $user->data()->fname,
+    'lname' => $user->data()->lname,
+];
+
+$to = [
+    'id'    => $ownerData->id,
+    'fname' => $ownerData->fname,
+    'lname' => $ownerData->lname,
+];
 ?>
 
 

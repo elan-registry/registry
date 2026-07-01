@@ -19,6 +19,13 @@ paths:
 https://elanregistry.org/app/admin/scripts/maintenance/21-Fix-Page-Permissions.php
 ```
 
+## Post-Release Actions
+
+- **Wiki architecture update**: The `app/api/{cars,contact,shared,admin}/` consolidation
+  and new `TransferEmailService` class require updates to the GitHub wiki. Run
+  `/architecture-update` after release to refresh `Elan-Registry-Architecture-and-Database-Design.md`
+  and `Car-Transfer-System.md`.
+
 ## User-Facing Changes
 
 ### Improvements
