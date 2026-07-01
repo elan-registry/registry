@@ -27,6 +27,7 @@ projectroot/
 │   │       ├── fix/          # One-time migration scripts (run once, never again)
 │   │       └── maintenance/  # Repeatable maintenance scripts (safe to re-run)
 │   ├── api/          # AJAX API endpoints
+│   │   ├── admin/    # Admin-only API endpoints (process-settings.php)
 │   │   ├── cars/     # Car-specific API endpoints (save, history, chassis-validate, etc.)
 │   │   ├── contact/  # Contact form API endpoints (send-feedback, send-owner-email)
 │   │   └── shared/   # Shared API endpoints (statistics, location-search, location-reverse)
@@ -76,12 +77,13 @@ In ElanRegistry, **all AJAX API endpoints live under `app/api/`**, organised by 
 | Car operations | `app/api/cars/` |
 | Contact form operations | `app/api/contact/` |
 | Shared / cross-domain data | `app/api/shared/` |
-| Admin operations | `app/admin/` (or `app/admin/includes/` for shared handlers) |
+| Admin settings updates | `app/api/admin/` |
 
 The `parsers/` naming is not required in ElanRegistry. Directories under `app/api/` are generally
 **not** added to the `$path` array in `z_us_root.php` because they do not call `securePage()`.
 The exception is `app/api/contact/`, which is registered because both contact endpoints call
-`securePage()`. Endpoints in `app/api/cars/` and `app/api/shared/` must **not** call `securePage()`.
+`securePage()`. Endpoints in `app/api/cars/`, `app/api/shared/`, and `app/api/admin/` must
+**not** call `securePage()` — they enforce authentication inline.
 All endpoints in `app/api/` must follow the Pattern A / ApiResponse convention.
 
 ---

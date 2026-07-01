@@ -61,7 +61,7 @@ https://elanregistry.org/app/admin/scripts/maintenance/21-Fix-Page-Permissions.p
 - Add `08-Rename-Admin-Pages.php` fix script to update UserSpice `pages` table URL
   registrations for the three renamed admin pages; run after deployment (#1039)
 - Replace 3 deprecated `$.ajax()` calls in admin settings tab with `ElanRegistryAPI`;
-  add `process-admin-settings.php` Pattern A endpoint with explicit field allowlist and
+  add a Pattern A endpoint (`app/api/admin/process-settings.php`) with explicit field allowlist and
   admin-only (level 2) auth guard; fixes security issues in upstream parser (#528)
 - Update `PagePermissionClassifier` to move `design-system.php` from Admin-only to
   Editor-level; remove unnecessary `securePage()` from public `statistics.php` API
@@ -71,6 +71,8 @@ https://elanregistry.org/app/admin/scripts/maintenance/21-Fix-Page-Permissions.p
   `ElanRegistryAPI` Pattern A client (#968)
 - Migrate `manage-consolidated.php` car deletion path to `CarAdministrationService` for
   consistent service-layer ownership of admin-driven deletion (#932)
+- Relocate `process-admin-settings.php` from `app/admin/includes/` to
+  `app/api/admin/process-settings.php`, completing the `app/api/` consolidation (#1099)
 
 ## Issues Resolved
 
@@ -87,3 +89,4 @@ https://elanregistry.org/app/admin/scripts/maintenance/21-Fix-Page-Permissions.p
 - [#1038](https://github.com/unibrain1/elanregistry/issues/1038) — refactor: rewrite contact form handlers as JSON API endpoints
 - [#1039](https://github.com/unibrain1/elanregistry/issues/1039) — refactor: rename admin pages and update UserSpice page registrations
 - [#1059](https://github.com/unibrain1/elanregistry/issues/1059) — refactor: update 21-Fix-Page-Permissions to handle app/api/ and renamed admin pages
+- [#1099](https://github.com/unibrain1/elanregistry/issues/1099) — refactor: relocate process-admin-settings.php to app/api/admin/ to complete app/api/ consolidation

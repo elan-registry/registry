@@ -51,7 +51,8 @@ edge caching and CDN for global users (US, EU, AU).
 - `/app/` - Main application pages (car listings, details, forms, actions)
   - `/app/api/` - AJAX JSON endpoints, organized by resource: `cars/` (car CRUD and
     validation), `contact/` (contact forms, auth-required), `shared/` (public endpoints:
-    statistics, location search). All endpoints follow Pattern A / `ApiResponse`.
+    statistics, location search), `admin/` (admin-only settings updates). All endpoints
+    follow Pattern A / `ApiResponse`.
   - `/app/views/` - Reusable view partials: `cars/` (car page components), `email/`
     (transactional email templates)
 - `/docs/` - User-facing documentation: `guides/` (how-to), `reference/` (technical), `stories/` (car histories)

@@ -354,7 +354,7 @@ function settingsMessages(msg, type) {
 }
 
 $(document).ready(function() {
-    const settingsEndpoint = '<?= $us_url_root ?>app/admin/includes/process-admin-settings.php';
+    const settingsEndpoint = '<?= $us_url_root ?>app/api/admin/process-settings.php';
     const api = new ElanRegistryAPI();
 
     function postSetting(elem, value) {

@@ -28,7 +28,7 @@ class LogCategoriesUsageTest extends TestCase
         'app/admin/includes/process-transfer-approve.php',
         'app/admin/includes/process-transfer-deny.php',
         'app/admin/includes/process-car-details.php',
-        'app/admin/includes/process-admin-settings.php',
+        'app/api/admin/process-settings.php',
     ];
 
     /**
