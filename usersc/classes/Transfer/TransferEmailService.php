@@ -5,8 +5,8 @@ declare(strict_types=1);
 namespace ElanRegistry\Transfer;
 
 use DB;
-use Exception;
 use LogCategories;
+use Throwable;
 
 /**
  * TransferEmailService
@@ -26,7 +26,11 @@ class TransferEmailService
         private object $db,
         private mixed $mailer,
         private string $basePath,
-    ) {}
+    ) {
+        if (!is_callable($this->mailer)) {
+            throw new \InvalidArgumentException('TransferEmailService: $mailer must be callable');
+        }
+    }
 
     /**
      * Fetch and validate the transfer row, car row, and pre-built template objects
@@ -117,7 +121,7 @@ class TransferEmailService
             logger($transferData->requested_by_user_id, LogCategories::LOG_CATEGORY_EMAIL_ERROR, "Failed to send transfer request notification to current owner: {$currentOwner->email}");
             return false;
 
-        } catch (Exception $e) {
+        } catch (Throwable $e) {
             if (ob_get_level() > 0) {
                 ob_end_clean();
             }
@@ -199,7 +203,7 @@ class TransferEmailService
             }
             return $successCount > 0;
 
-        } catch (Exception $e) {
+        } catch (Throwable $e) {
             if (ob_get_level() > 0) {
                 ob_end_clean();
             }
@@ -262,7 +266,7 @@ class TransferEmailService
 
             return $requesterNotificationSent || $previousOwnerNotificationSent;
 
-        } catch (Exception $e) {
+        } catch (Throwable $e) {
             if (ob_get_level() > 0) {
                 ob_end_clean();
             }
@@ -331,7 +335,7 @@ class TransferEmailService
             logger($transferData->requested_by_user_id, LogCategories::LOG_CATEGORY_EMAIL_ERROR, "Failed to send transfer decision notification to previous owner: {$previousOwner->email}");
             return false;
 
-        } catch (Exception $e) {
+        } catch (Throwable $e) {
             if (ob_get_level() > 0) {
                 ob_end_clean();
             }

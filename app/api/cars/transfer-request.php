@@ -36,12 +36,12 @@ try {
     recordRateLimit('transfer_request', true, (int)$user->data()->id);
 
     // Get and validate input
-    $chassis = trim(Input::get('chassis'));
-    $year = trim(Input::get('year'));
-    $model = trim(Input::get('model'));
-    $color = trim(Input::get('color'));
-    $engine = trim(Input::get('engine'));
-    $comments = trim(Input::get('comments'));
+    $chassis = trim(Input::raw('chassis') ?? '');
+    $year = trim(Input::raw('year') ?? '');
+    $model = trim(Input::raw('model') ?? '');
+    $color = trim(Input::raw('color') ?? '');
+    $engine = trim(Input::raw('engine') ?? '');
+    $comments = trim(Input::raw('comments') ?? '');
 
     // Validate comment length (server-side validation)
     if (strlen($comments) > 1000) {
@@ -160,34 +160,24 @@ try {
 
         // Send notification to current owner with error handling
         try {
-            $emailMessages[] = $emailService->sendRequest($transferRequestId)
-                ? 'Current owner notified'
-                : 'Owner notification failed';
-        } catch (Exception $emailEx) {
+            $emailService->sendRequest($transferRequestId);
+        } catch (\Throwable $emailEx) {
             logger($user->data()->id, LogCategories::LOG_CATEGORY_EMAIL_ERROR, "Unexpected exception sending owner notification for request #$transferRequestId: " . $emailEx->getMessage());
-            $emailMessages[] = 'Owner notification error';
         }
 
         // Send alert to administrators with error handling
         try {
-            $emailMessages[] = $emailService->sendAdminAlert($transferRequestId)
-                ? 'Administrators notified'
-                : 'Admin notification failed';
-        } catch (Exception $emailEx) {
+            $emailService->sendAdminAlert($transferRequestId);
+        } catch (\Throwable $emailEx) {
             logger($user->data()->id, LogCategories::LOG_CATEGORY_EMAIL_ERROR, "Unexpected exception sending admin alert for request #$transferRequestId: " . $emailEx->getMessage());
-            $emailMessages[] = 'Admin notification error';
         }
 
-    } catch (Exception $generalEmailEx) {
+    } catch (\Throwable $generalEmailEx) {
         logger($user->data()->id, LogCategories::LOG_CATEGORY_EMAIL_ERROR, "General email error for request #$transferRequestId: " . $generalEmailEx->getMessage());
-        $emailMessages[] = 'Email system error';
     }
 
-    // Build email status message
-    $emailStatus = !empty($emailMessages) ? ' Email status: ' . implode(', ', $emailMessages) . '.' : '';
-
     // Return success response
-    ApiResponse::success('Transfer request submitted successfully.' . $emailStatus)
+    ApiResponse::success('Transfer request submitted successfully.')
         ->withData('transfer_request_id', $transferRequestId)
         ->withLogging($user->data()->id, LogCategories::LOG_CATEGORY_CAR_TRANSFER, "Transfer request submitted for car ID {$existingCar->id}")
         ->send();
@@ -197,9 +187,9 @@ try {
         ->withLogging($user->data()->id ?? 0, $e->getLogCategory(), 'Transfer request failed: ' . $e->getMessage())
         ->send();
 
-} catch (Exception $e) {
+} catch (\Throwable $e) {
     ApiResponse::serverError('An unexpected error occurred while processing your transfer request.')
-        ->withLogging($user->data()->id ?? 0, LogCategories::LOG_CATEGORY_SYSTEM_ERROR, 'Transfer request system error: ' . $e->getMessage())
+        ->withLogging($user->data()->id ?? 0, LogCategories::LOG_CATEGORY_SYSTEM_ERROR, 'Transfer request system error [' . get_class($e) . ']: ' . $e->getMessage())
         ->send();
 }
 ?>

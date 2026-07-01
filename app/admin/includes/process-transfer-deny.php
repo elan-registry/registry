@@ -84,7 +84,7 @@ try {
         } else {
             logger($user->data()->id, LogCategories::LOG_CATEGORY_EMAIL_ERROR, "All transfer denial notifications failed for request #$transferId (see email log for details)");
         }
-    } catch (Exception $emailEx) {
+    } catch (\Throwable $emailEx) {
         logger(
             $user->data()->id,
             LogCategories::LOG_CATEGORY_EMAIL_ERROR,
@@ -111,12 +111,12 @@ try {
         )
         ->send();
 
-} catch (Exception $e) {
+} catch (\Throwable $e) {
     ApiResponse::serverError('An unexpected error occurred while processing the transfer.')
         ->withLogging(
             $user->data()->id,
             LogCategories::LOG_CATEGORY_SYSTEM_ERROR,
-            "Transfer denial system error for request #{$transferId}: " . $e->getMessage()
+            "Transfer denial system error for request #{$transferId} [" . get_class($e) . "]: " . $e->getMessage()
         )
         ->send();
 }

@@ -16,6 +16,10 @@ declare(strict_types=1);
 
 require_once '../../../users/init.php';
 
+if ($method !== 'POST') {
+    ApiResponse::error('Method not allowed', 405)->send();
+}
+
 // Admin-only (level 2) — matches maintenance.php access requirement
 if (!$user->isLoggedIn() || !hasPerm([2], $user->data()->id)) {
     ApiResponse::forbidden('Access denied')
@@ -76,12 +80,19 @@ $processedValue = match ($type) {
 
 try {
     $db = DB::getInstance();
-    $updated = $db->update($table, 1, [$field => $processedValue]);
+    $db->update($table, 1, [$field => $processedValue]);
 
-    if (!$updated || $db->error()) {
+    if ($db->error()) {
         ApiResponse::serverError('Database error updating setting')
             ->withLogging($user->data()->id, LogCategories::LOG_CATEGORY_SYSTEM_ERROR,
                 "DB error updating settings.{$field}: " . $db->errorString())
+            ->send();
+    }
+
+    if ($db->count() === 0) {
+        ApiResponse::serverError('Setting could not be saved — no matching row found')
+            ->withLogging($user->data()->id, LogCategories::LOG_CATEGORY_SYSTEM_ERROR,
+                "DB update affected 0 rows for settings.{$field} — row with id=1 missing?")
             ->send();
     }
 

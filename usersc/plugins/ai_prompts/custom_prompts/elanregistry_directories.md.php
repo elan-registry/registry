@@ -28,6 +28,7 @@ projectroot/
 │   │       └── maintenance/  # Repeatable maintenance scripts (safe to re-run)
 │   ├── api/          # AJAX API endpoints
 │   │   ├── cars/     # Car-specific API endpoints (save, history, chassis-validate, etc.)
+│   │   ├── contact/  # Contact form API endpoints (send-feedback, send-owner-email)
 │   │   └── shared/   # Shared API endpoints (statistics, location-search, location-reverse)
 │   ├── assets/       # First-party JS/CSS source files (built → minified in place)
 │   ├── cars/         # Car pages (index, details, edit, factory, etc.)
@@ -58,7 +59,7 @@ $path = [
     'app/admin/scripts/fix/',
     'app/admin/scripts/maintenance/',
     'app/cars/',
-    'app/api/shared/',       // statistics.php calls securePage()
+    'app/api/contact/',      // contact endpoints call securePage()
     // ... add 'your/new/directory/' here
 ];
 ```
@@ -73,13 +74,14 @@ In ElanRegistry, **all AJAX API endpoints live under `app/api/`**, organised by 
 | AJAX endpoint for | Lives in |
 |---|---|
 | Car operations | `app/api/cars/` |
+| Contact form operations | `app/api/contact/` |
 | Shared / cross-domain data | `app/api/shared/` |
 | Admin operations | `app/admin/` (or `app/admin/includes/` for shared handlers) |
 
 The `parsers/` naming is not required in ElanRegistry. Directories under `app/api/` are generally
 **not** added to the `$path` array in `z_us_root.php` because they do not call `securePage()`.
-The exception is `app/api/shared/`, which is registered because `statistics.php` uses `securePage()`.
-Endpoints added to `app/api/cars/` must **not** call `securePage()`.
+The exception is `app/api/contact/`, which is registered because both contact endpoints call
+`securePage()`. Endpoints in `app/api/cars/` and `app/api/shared/` must **not** call `securePage()`.
 All endpoints in `app/api/` must follow the Pattern A / ApiResponse convention.
 
 ---

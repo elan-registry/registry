@@ -66,7 +66,9 @@ edge caching and CDN for global users (US, EU, AU).
 - **New PHP Directories**: Only add a directory to the `$path` array in
   `/z_us_root.php` when it contains files that call `securePage()`. Pure API
   endpoints, action handlers, and partials that do not call `securePage()` are
-  **not** added — `app/action/` and `app/api/` are examples of this pattern.
+  **not** added — `app/action/`, `app/api/cars/`, and `app/api/shared/` are examples of this
+  pattern. (`app/api/contact/` is an exception: it contains files that call `securePage()` and
+  is therefore included.)
   New admin scripts go under `app/admin/scripts/fix/` (one-time migrations) or
   `app/admin/scripts/maintenance/` (repeatable maintenance).
 - **Database**: MySQL 8.0+ with audit trails via triggers.

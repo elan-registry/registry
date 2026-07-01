@@ -82,4 +82,14 @@ try {
         ])
         ->withLogging($user->data()->id ?? 0, LogCategories::LOG_CATEGORY_DATABASE_ERROR, "Failed to load car history for car ID $carID: " . $e->getMessage())
         ->send();
+} catch (\Throwable $e) {
+    ApiResponse::serverError('Failed to load car history')
+        ->withDataArray([
+            'draw' => $draw,
+            'recordsTotal' => 0,
+            'recordsFiltered' => 0,
+            'history' => []
+        ])
+        ->withLogging($user->data()->id ?? 0, LogCategories::LOG_CATEGORY_SYSTEM_ERROR, "Unexpected error loading car history for car ID $carID [" . get_class($e) . "]: " . $e->getMessage())
+        ->send();
 }

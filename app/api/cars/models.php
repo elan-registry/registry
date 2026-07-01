@@ -93,7 +93,8 @@ try {
     }
 
 } catch (\Throwable $e) {
-    logger($user->data()->id ?? 0, LogCategories::LOG_CATEGORY_SYSTEM_ERROR,
-        "models.php error: {$e->getMessage()}");
-    ApiResponse::error('Failed to retrieve models', 500)->send();
+    ApiResponse::serverError('Failed to retrieve models')
+        ->withLogging($user->data()->id ?? 0, LogCategories::LOG_CATEGORY_SYSTEM_ERROR,
+            'models.php unexpected error [' . get_class($e) . ']: ' . $e->getMessage())
+        ->send();
 }

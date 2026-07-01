@@ -69,10 +69,10 @@ try {
         ->withDataArray($result)
         ->send();
 } catch (Throwable $e) {
-    ApiResponse::serverError('Validation error: ' . $e->getMessage())
+    ApiResponse::serverError('An unexpected validation error occurred.')
         ->withDataArray([
             'valid' => false,
-            'error' => 'Validation error: ' . $e->getMessage(),
+            'error' => 'An unexpected validation error occurred.',
             'chassis' => $chassis,
             'format_type' => '',
             'override_used' => false

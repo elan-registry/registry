@@ -452,7 +452,8 @@ $emailService = new TransferEmailService(
 - `sendRequest(int $transferRequestId): bool` — Notify the current car owner that a transfer has been requested
 - `sendAdminAlert(int $transferRequestId): bool` — Alert admin(s) to review a pending transfer request
 - `sendResponse(int $transferRequestId, bool $isApproved, string $adminNotes = '', ?int $previousOwnerId = null): bool`
-  — Send approval or denial to requester; if approved, also notify the previous owner
+  — Send approval or denial to requester and notify the previous/current owner
+  (always sent; uses `$previousOwnerId` for approvals, car's current `user_id` for denials)
 
 **Common Usage**:
 
@@ -485,7 +486,7 @@ $emailService->sendResponse($transferRequestId, false, 'Documentation incomplete
 
 **Used By**:
 
-- `app/cars/actions/request-transfer.php` - After creating transfer request
+- `app/api/cars/transfer-request.php` - After creating transfer request
 - `app/admin/includes/process-transfer-approve.php` - When admin approves transfer
 - `app/admin/includes/process-transfer-deny.php` - When admin denies transfer
 

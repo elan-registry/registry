@@ -214,7 +214,7 @@ $db = DB::getInstance();
 
                     } catch (\Throwable $e) {
                         logProgress('FATAL ERROR: ' . $e->getMessage(), 'error');
-                        logger($user->data()->id, LogCategories::LOG_CATEGORY_FIX_SCRIPT, 'Fatal error: ' . $e->getMessage());
+                        logger($user->data()->id, LogCategories::LOG_CATEGORY_FIX_SCRIPT_ERROR, '08-Rename-Admin-Pages fatal error [' . get_class($e) . ']: ' . $e->getMessage());
                     }
 
                     ?></pre>
