@@ -43,7 +43,19 @@ try {
     $engine = trim(Input::raw('engine') ?? '');
     $comments = trim(Input::raw('comments') ?? '');
 
-    // Validate comment length (server-side validation)
+    // Validate input lengths against DB column widths
+    if (strlen($chassis) > 15) {
+        throw new CarTransferException('Chassis number must be 15 characters or less');
+    }
+    if (strlen($year) > 4) {
+        throw new CarTransferException('Year must be 4 characters or less');
+    }
+    if (strlen($color) > 25) {
+        throw new CarTransferException('Color must be 25 characters or less');
+    }
+    if (strlen($engine) > 15) {
+        throw new CarTransferException('Engine must be 15 characters or less');
+    }
     if (strlen($comments) > 1000) {
         throw new CarTransferException('Transfer explanation must be 1000 characters or less');
     }
@@ -61,6 +73,19 @@ try {
     $series = $modelParts[0];
     $variant = $modelParts[1];
     $type = $modelParts[2];
+
+    if (strlen($model) > 30) {
+        throw new CarTransferException('Model identifier must be 30 characters or less');
+    }
+    if (strlen($series) > 12) {
+        throw new CarTransferException('Series must be 12 characters or less');
+    }
+    if (strlen($variant) > 15) {
+        throw new CarTransferException('Variant must be 15 characters or less');
+    }
+    if (strlen($type) > 3) {
+        throw new CarTransferException('Type must be 3 characters or less');
+    }
 
     $db = DB::getInstance();
 
@@ -184,12 +209,12 @@ try {
 
 } catch (CarTransferException $e) {
     ApiResponse::error($e->getUserMessage(), 400)
-        ->withLogging($user->data()->id ?? 0, $e->getLogCategory(), 'Transfer request failed: ' . $e->getMessage())
+        ->withLogging($user->data()?->id ?? 0, $e->getLogCategory(), 'Transfer request failed: ' . $e->getMessage())
         ->send();
 
 } catch (\Throwable $e) {
     ApiResponse::serverError('An unexpected error occurred while processing your transfer request.')
-        ->withLogging($user->data()->id ?? 0, LogCategories::LOG_CATEGORY_SYSTEM_ERROR, 'Transfer request system error [' . get_class($e) . ']: ' . $e->getMessage())
+        ->withLogging($user->data()?->id ?? 0, LogCategories::LOG_CATEGORY_SYSTEM_ERROR, 'Transfer request system error [' . get_class($e) . ']: ' . $e->getMessage())
         ->send();
 }
 ?>
