@@ -88,7 +88,7 @@ test.describe('Admin confirmation modal — maintenance', () => {
         await expect(page.locator('#confirmationModal')).not.toBeVisible({ timeout: 3000 });
     });
 
-    test('#confirmMessage uses textContent (XSS prevention) when showing confirmation', async ({ page }) => {
+    test('#confirmMessage contains no executable HTML (XSS prevention)', async ({ page }) => {
         const cleanupBtn = page.locator('button[onclick*="performBackupCleanup"]').first();
         if (await cleanupBtn.count() === 0) {
             test.skip('Cleanup Old Backups button not found — no old backups to clean up');
