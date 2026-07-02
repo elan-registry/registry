@@ -18,6 +18,9 @@
 - **Owner email reliability**
   ([#1056](https://github.com/unibrain1/elanregistry/issues/1056)):
   Contact emails that reference a car now fail gracefully if the car record is missing.
+- **Consistent website URL validation**
+  ([#1055](https://github.com/unibrain1/elanregistry/issues/1055)):
+  Website updates on the edit page now use the same URL validation as owner profiles, rejecting malformed URLs consistently.
 
 ## Admin-Facing Changes
 
@@ -27,6 +30,12 @@
 - **Server path removed from backup API**
   ([#977](https://github.com/unibrain1/elanregistry/issues/977)):
   Absolute server filesystem paths are no longer exposed in backup API responses.
+- **Statistics dashboard hardened**
+  ([#1097](https://github.com/unibrain1/elanregistry/issues/1097)):
+  Statistics tab loader no longer injects raw error messages into the DOM; guards against undefined data prevent silent tab failures.
+- **Dead schema-maintenance feature removed**
+  ([#1112](https://github.com/unibrain1/elanregistry/issues/1112)):
+  The unused "Validate Schema" and "Run Maintenance" buttons and their backing code have been removed from the admin Maintenance tab.
 
 ## Issues Resolved
 
