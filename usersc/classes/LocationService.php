@@ -56,19 +56,29 @@ class LocationService
     private const USER_AGENT_CONTACT = 'https://elanregistry.org';
 
     /**
+     * @var string|null Cached version string (read once per process from the VERSION file)
+     */
+    private static ?string $cachedVersion = null;
+
+    /**
      * Build the User-Agent string for geocoding API requests.
      *
      * Reads the application version from the VERSION file (generated
-     * automatically on each release via `git describe`). Falls back to
-     * 'unknown' if the file cannot be read (e.g., in some CI/CD environments).
+     * automatically on each release via `git describe`) and caches it for
+     * the lifetime of the PHP process. Falls back to 'unknown' if the file
+     * cannot be read or is empty.
      *
      * @return string User-Agent header value, e.g. 'ElanRegistry/v2.25.3 (https://elanregistry.org)'
      */
     private static function getUserAgent(): string
     {
-        $versionFile = __DIR__ . '/../../VERSION';
-        $version = is_readable($versionFile) ? trim((string) file_get_contents($versionFile)) : 'unknown';
-        return 'ElanRegistry/' . $version . ' (' . self::USER_AGENT_CONTACT . ')';
+        if (self::$cachedVersion === null) {
+            $versionFile = __DIR__ . '/../../VERSION';
+            $raw = is_readable($versionFile) ? trim((string) file_get_contents($versionFile)) : '';
+            self::$cachedVersion = ($raw !== '') ? $raw : 'unknown';
+        }
+
+        return 'ElanRegistry/' . self::$cachedVersion . ' (' . self::USER_AGENT_CONTACT . ')';
     }
 
     /**
