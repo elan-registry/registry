@@ -1,5 +1,5 @@
 ---
-description: Update ElanRegistry architecture documentation in wiki/ with codebase audit and Mermaid diagrams
+description: Update ElanRegistry architecture documentation in the local wiki repo with codebase audit and Mermaid diagrams
 model: claude-opus-4-7
 ---
 
@@ -8,15 +8,18 @@ model: claude-opus-4-7
 ## Step 0: Initialize TaskList
 
 Before any other action, create one tracking task per major step below using
-TaskCreate (branch + fetch wiki, codebase audit, doc split decision, parallel
-agent launches, synthesis, diagram embedding, markdownlint, commit, summary).
+TaskCreate (pull wiki repo, codebase audit, doc split decision, parallel agent
+launches, synthesis, diagram embedding, markdownlint, commit, summary).
 
-
-Update the ElanRegistry architecture documentation in the `wiki/` directory.
-Fetches the current wiki page, audits it against the codebase, updates all
+Update the ElanRegistry architecture documentation in the local wiki repo at
+`/Users/jimboone/Documents/Developer/Web/elan-registry-wiki/`. Reads the
+current wiki pages from disk, audits them against the codebase, updates all
 content, evaluates whether to split into multiple documents, adds Mermaid
-diagrams throughout, ensures all files pass lint, and prepares everything for
-review on a branch. Does not update the live wiki.
+diagrams throughout, ensures all files pass lint, and commits + pushes to the
+wiki remote. All file reads and writes target the wiki repo path directly.
+
+**Wiki repo path:** `/Users/jimboone/Documents/Developer/Web/elan-registry-wiki/`
+**Main repo path:** `/Users/jimboone/Documents/Developer/Web/elan-registry/` (read-only for codebase audit)
 
 ## Available Agents
 
@@ -32,23 +35,35 @@ when they don't depend on each other.
 
 ## Workflow
 
-### Step 0: Set up a working branch
+### Step 0: Pull the wiki repo to ensure it is up to date
 
-- Confirm you are starting from the `main` branch. If not, switch to main first.
-- Pull the latest changes from `origin/main`.
-- Create a new branch called `docs/architecture-update`.
-- All changes should be made on this branch.
+```bash
+git -C /Users/jimboone/Documents/Developer/Web/elan-registry-wiki pull
+```
 
-### Step 1: Fetch the current wiki document
+List the existing wiki pages to understand what is already there:
 
-- Use WebFetch to retrieve the current content of the architecture document at:
-  `https://raw.githubusercontent.com/wiki/unibrain1/elanregistry/Elan-Registry-Architecture-and-Database-Design.md`
-- Save it to `wiki/Elan-Registry-Architecture-and-Database-Design.md`.
-- This is the authoritative baseline — do not rewrite what is already accurate.
+```bash
+ls /Users/jimboone/Documents/Developer/Web/elan-registry-wiki/*.md
+```
 
-### Step 2: Audit the codebase against the existing doc
+All file reads and writes in subsequent steps use absolute paths under
+`/Users/jimboone/Documents/Developer/Web/elan-registry-wiki/`.
 
-- Walk the full codebase and compare what you find against what is documented.
+### Step 1: Read the current wiki documents
+
+- Read the relevant wiki pages from the local wiki repo using the Read tool.
+  Key pages to read (read all that exist):
+  - `Elan-Registry-Architecture-and-Database-Design.md`
+  - `Car-Transfer-System.md`
+  - `Development-Patterns.md`
+  - `Database-Schema-and-Data-Model.md`
+  - Any other pages listed by the `ls` in Step 0.
+- These are the authoritative baselines — do not rewrite what is already accurate.
+
+### Step 2: Audit the codebase against the existing docs
+
+- Walk the main repo codebase and compare what you find against what is documented.
 - For each section determine if it is: accurate, outdated, incomplete, or
   missing entirely.
 - Use Explore agents in parallel to cover different areas of the codebase
@@ -57,7 +72,9 @@ when they don't depend on each other.
 
 ### Step 3: Update the document content
 
-Ensure the document contains **all** of the following sections. For each:
+Ensure the documentation contains **all** of the following sections across the
+wiki pages (add to the most appropriate existing page, or create a new page if
+warranted). For each:
 
 - If a section already exists and is accurate, preserve it as-is.
 - If a section exists but is outdated or incomplete, update it.
@@ -190,6 +207,8 @@ document:
 ### Step 8: Embed all diagrams into their target documents
 
 - This step is performed by the orchestrating agent only.
+- Write files to their absolute paths under
+  `/Users/jimboone/Documents/Developer/Web/elan-registry-wiki/`.
 - Place each diagram directly below the section heading it relates to.
 - Do not modify any existing prose — only insert diagram blocks.
 - If a section already has a diagram, add new ones alongside rather than
@@ -205,30 +224,48 @@ document:
 
 ### Step 10: Lint all files
 
-- Run `markdownlint` against all modified and newly created files in `wiki/`.
+- Run `markdownlint` against all modified and newly created files in the wiki
+  repo:
+
+  ```bash
+  markdownlint /Users/jimboone/Documents/Developer/Web/elan-registry-wiki/*.md
+  ```
+
 - Fix any lint errors before proceeding — do not skip or suppress warnings.
 - Re-run lint after fixes to confirm all files pass cleanly.
 - If a lint error cannot be auto-resolved, report it and pause for guidance
   before continuing to the commit step.
 
-### Step 11: Commit the changes
+### Step 11: Commit and push to the wiki repo
 
-- Confirm all files in `wiki/` pass lint before staging.
-- Stage all modified and newly created files under `wiki/`.
+- Confirm all modified files pass lint before staging.
+- Stage all modified and newly created `.md` files:
+
+  ```bash
+  git -C /Users/jimboone/Documents/Developer/Web/elan-registry-wiki add *.md
+  ```
+
 - Write a commit message in the format:
-  `docs: update architecture documents with diagrams [date]`
-- Commit to the `docs/architecture-update` branch.
-- **Do not push** — leave that for manual review.
+  `docs: update architecture documents with diagrams [YYYY-MM-DD]`
+- Commit:
+
+  ```bash
+  git -C /Users/jimboone/Documents/Developer/Web/elan-registry-wiki commit -m "docs: update architecture documents with diagrams $(date +%Y-%m-%d)"
+  ```
+
+- Push to the wiki remote:
+
+  ```bash
+  git -C /Users/jimboone/Documents/Developer/Web/elan-registry-wiki push
+  ```
 
 ### Step 12: Report what was done
 
-- List every document created or modified.
+- List every document created or modified (full path in the wiki repo).
 - For each document: list every diagram added and which section it was placed in.
 - Note which task groups completed and if any required a re-run.
 - Note any lint errors that were found and how they were resolved.
-- Note the branch name and commit hash.
-- Remind the user that once satisfied, each document will need to be manually
-  created or updated in the GitHub wiki at:
-  `https://github.com/unibrain1/elanregistry/wiki`
-- If the document was split, provide the exact wiki page titles to create so
-  they are consistent with the filenames used in `wiki/`.
+- Note the commit hash from the wiki repo push.
+- Confirm the changes are live at `https://github.com/unibrain1/elanregistry/wiki`.
+- If the document was split, provide the exact wiki page titles created so
+  they are consistent with the filenames used.
