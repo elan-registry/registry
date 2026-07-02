@@ -42,7 +42,6 @@ class AutoloaderTest extends TestCase
     public function testAdminClassesAutoload(): void
     {
         $this->assertTrue(class_exists('BackupManager'), 'BackupManager class should auto-load from admin/');
-        $this->assertTrue(class_exists('EnhancedSchemaManager'), 'EnhancedSchemaManager class should auto-load from admin/');
     }
 
     /**
@@ -86,7 +85,6 @@ class AutoloaderTest extends TestCase
         // System exceptions
         $this->assertTrue(class_exists('ElanRegistry\\Exceptions\\ImageProcessingException'), 'ImageProcessingException should auto-load');
         $this->assertTrue(class_exists('ElanRegistry\\Exceptions\\BackupException'), 'BackupException should auto-load');
-        $this->assertTrue(class_exists('ElanRegistry\\Exceptions\\SchemaException'), 'SchemaException should auto-load');
     }
 
     /**

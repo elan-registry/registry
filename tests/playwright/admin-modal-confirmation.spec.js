@@ -52,7 +52,7 @@ test.describe('Admin confirmation modal — index', () => {
 });
 
 // ---------------------------------------------------------------------------
-// Area 2: maintenance.php — modal DOM and schema maintenance tab
+// Area 2: maintenance.php — modal DOM and maintenance tab
 // ---------------------------------------------------------------------------
 
 test.describe('Admin confirmation modal — maintenance', () => {
@@ -65,60 +65,11 @@ test.describe('Admin confirmation modal — maintenance', () => {
         await expect(page.locator('#confirmationModal')).toBeAttached();
     });
 
-    test('CSRF token is present for schema maintenance', async ({ page }) => {
+    test('CSRF token is present for maintenance operations', async ({ page }) => {
         const csrfInput = page.locator('input[name="csrf"]');
         await expect(csrfInput).toBeAttached();
         const value = await csrfInput.getAttribute('value');
         expect(value).toBeTruthy();
-    });
-
-    test('schema maintenance button triggers confirmation modal', async ({ page }) => {
-        const maintenanceBtn = page.locator('button[onclick*="runSchemaMaintenance"]');
-        const count = await maintenanceBtn.count();
-        if (count === 0) {
-            test.skip('Schema maintenance button not found — tab may not have loaded');
-            return;
-        }
-
-        await maintenanceBtn.first().click();
-        await expect(page.locator('#confirmationModal')).toBeVisible({ timeout: 3000 });
-        await expect(page.locator('#confirmTitle')).toContainText('Schema Maintenance');
-    });
-
-    test('Cancel button dismisses the modal without action', async ({ page }) => {
-        const maintenanceBtn = page.locator('button[onclick*="runSchemaMaintenance"]');
-        if (await maintenanceBtn.count() === 0) {
-            test.skip('Schema maintenance button not found');
-            return;
-        }
-
-        await maintenanceBtn.first().click();
-        await expect(page.locator('#confirmationModal')).toBeVisible({ timeout: 3000 });
-
-        await page.locator('#confirmationModal .btn-secondary').click();
-        await expect(page.locator('#confirmationModal')).not.toBeVisible({ timeout: 3000 });
-        await expect(page.locator('#maintenance-result')).not.toBeAttached();
-    });
-
-    test('modal message rendered as plain text (XSS prevention)', async ({ page }) => {
-        const maintenanceBtn = page.locator('button[onclick*="runSchemaMaintenance"]');
-        if (await maintenanceBtn.count() === 0) {
-            test.skip('Schema maintenance button not found');
-            return;
-        }
-
-        await maintenanceBtn.first().click();
-        await expect(page.locator('#confirmationModal')).toBeVisible({ timeout: 3000 });
-
-        // Message must not contain rendered HTML — textContent only
-        const msgEl = page.locator('#confirmMessage');
-        const innerHTML = await msgEl.evaluate(el => el.innerHTML);
-        // Should not contain HTML tags from interpolated content
-        expect(innerHTML).not.toMatch(/<script/i);
-        expect(innerHTML).not.toMatch(/<img/i);
-        // The message body should be plain text, not HTML markup
-        const textContent = await msgEl.textContent();
-        expect(textContent.trim().length).toBeGreaterThan(0);
     });
 });
 

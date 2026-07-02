@@ -20,7 +20,6 @@ use ElanRegistry\Exceptions\OwnerCreationException;
 use ElanRegistry\Exceptions\OwnerNotFoundException;
 use ElanRegistry\Exceptions\OwnerUpdateException;
 use ElanRegistry\Exceptions\OwnerValidationException;
-use ElanRegistry\Exceptions\SchemaException;
 use ElanRegistry\Exceptions\UnauthorizedException;
 use ElanRegistry\Exceptions\ValidationException;
 use PHPUnit\Framework\TestCase;
@@ -57,7 +56,6 @@ class ExceptionHierarchyTest extends TestCase
         ImageProcessingException::class,
         GeocodingException::class,
         BackupException::class,
-        SchemaException::class,
         ValidationException::class,
         UnauthorizedException::class,
         ForbiddenException::class,
@@ -326,7 +324,6 @@ class ExceptionHierarchyTest extends TestCase
         $this->assertEquals(500, (new ImageProcessingException())->getHttpStatusCode());
         $this->assertEquals(500, (new GeocodingException())->getHttpStatusCode());
         $this->assertEquals(500, (new BackupException('msg'))->getHttpStatusCode());
-        $this->assertEquals(500, (new SchemaException('msg'))->getHttpStatusCode());
         $this->assertEquals(500, (new LocationServiceException())->getHttpStatusCode());
     }
 
@@ -396,7 +393,6 @@ class ExceptionHierarchyTest extends TestCase
             'ImageProcessingException' => [ImageProcessingException::class, 'FileError'],
             'GeocodingException' => [GeocodingException::class, 'Geocode'],
             'BackupException' => [BackupException::class, 'BackupError'],
-            'SchemaException' => [SchemaException::class, 'DatabaseError'],
             'ValidationException' => [ValidationException::class, 'ValidationError'],
             'UnauthorizedException' => [UnauthorizedException::class, 'SecurityError'],
             'ForbiddenException' => [ForbiddenException::class, 'SecurityError'],
@@ -427,7 +423,6 @@ class ExceptionHierarchyTest extends TestCase
             'ImageProcessingException' => [ImageProcessingException::class, 500],
             'GeocodingException' => [GeocodingException::class, 500],
             'BackupException' => [BackupException::class, 500],
-            'SchemaException' => [SchemaException::class, 500],
             'ValidationException' => [ValidationException::class, 422],
             'UnauthorizedException' => [UnauthorizedException::class, 401],
             'ForbiddenException' => [ForbiddenException::class, 403],
