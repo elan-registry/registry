@@ -167,7 +167,7 @@ class BackupManager {
 
                     if ($fileTime < $expiryTime) {
                         $analysis[$type]['expired']++;
-                    } elseif ($fileTime < $warningTime) {
+                    } elseif ($warningWindow > 0 && $fileTime < $warningTime) {
                         $analysis[$type]['approaching_expiry']++;
                     } else {
                         $analysis[$type]['within_policy']++;
