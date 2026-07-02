@@ -227,7 +227,6 @@ function setupTabLazyLoading() {
  */
 function loadTabContent(tabName) {
   const spinner = $(`#${tabName}-spinner`);
-  const content = $(`#${tabName}-content`);
 
   spinner.show();
 
@@ -236,12 +235,15 @@ function loadTabContent(tabName) {
       tab: tabName
     })
     .then(function (response) {
-      renderTabContent(tabName, response.data);
+      if (response.data) {
+        renderTabContent(tabName, response.data);
+      } else {
+        NotificationHelper.show('Statistics data unavailable.', 'error');
+      }
     })
     .catch(function (error) {
-      content.html(
-        `<div class="alert alert-danger">Failed to load data: ${error.message || error}</div>`
-      );
+      NotificationHelper.show('Failed to load data. Please try again.', 'error');
+      console.error('[ElanRegistry] loadTabContent error:', error);
     })
     .finally(function () {
       spinner.hide();
