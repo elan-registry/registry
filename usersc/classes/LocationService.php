@@ -222,7 +222,7 @@ class LocationService
     {
         $url = self::PHOTON_API_URL . '?q=' . urlencode($query) . '&limit=' . $limit . '&lang=en';
 
-        $response = $this->makeHttpRequest($url);
+        $response = $this->makeHttpRequest($url, self::getUserAgent());
         if (!$response) {
             throw new LocationServiceException('Photon API request failed');
         }
