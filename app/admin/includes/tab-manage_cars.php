@@ -1155,17 +1155,17 @@ $qualityScore = $totalCars > 0 ? max(0, 100 - (($carIssues / $totalCars) * 100))
                                                                         <h6 class="card-header-er-l4-text">Owner Info</h6>
                                                                         <p class="mb-1 <?= $ownerMatches['fname'] && $ownerMatches['lname'] ? 'field-match' : 'field-differ' ?>">
                                                                             <strong>Owner:</strong>
-                                                                            <span class="field-value"><?= $car->fname ?> <?= $car->lname ?></span>
+                                                                            <span class="field-value"><?= htmlspecialchars($car->fname ?? '', ENT_QUOTES, 'UTF-8') ?> <?= htmlspecialchars($car->lname ?? '', ENT_QUOTES, 'UTF-8') ?></span>
                                                                             <?= !($ownerMatches['fname'] && $ownerMatches['lname']) ? '<i class="fas fa-exclamation-triangle text-warning ms-1" title="Different values"></i>' : '<i class="fas fa-check text-primary ms-1" title="Values match"></i>' ?>
                                                                         </p>
                                                                         <p class="mb-1 <?= $ownerMatches['email'] ? 'field-match' : 'field-differ' ?>">
                                                                             <strong>Email:</strong>
-                                                                            <span class="field-value"><?= $car->email ?></span>
+                                                                            <span class="field-value"><?= htmlspecialchars($car->email ?? '', ENT_QUOTES, 'UTF-8') ?></span>
                                                                             <?= !$ownerMatches['email'] ? '<i class="fas fa-exclamation-triangle text-warning ms-1" title="Different values"></i>' : '<i class="fas fa-check text-primary ms-1" title="Values match"></i>' ?>
                                                                         </p>
                                                                         <p class="mb-1 <?= $ownerMatches['city'] && $ownerMatches['state'] && $ownerMatches['country'] ? 'field-match' : 'field-differ' ?>">
                                                                             <strong>Location:</strong>
-                                                                            <span class="field-value"><?= $car->city ?>, <?= $car->state ?> <?= $car->country ?></span>
+                                                                            <span class="field-value"><?= htmlspecialchars($car->city ?? '', ENT_QUOTES, 'UTF-8') ?>, <?= htmlspecialchars($car->state ?? '', ENT_QUOTES, 'UTF-8') ?> <?= htmlspecialchars($car->country ?? '', ENT_QUOTES, 'UTF-8') ?></span>
                                                                             <?= !($ownerMatches['city'] && $ownerMatches['state'] && $ownerMatches['country']) ? '<i class="fas fa-exclamation-triangle text-warning ms-1" title="Different values"></i>' : '<i class="fas fa-check text-primary ms-1" title="Values match"></i>' ?>
                                                                         </p>
                                                                     </div>
