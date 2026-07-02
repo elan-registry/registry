@@ -116,23 +116,29 @@ $toName    = $toUser->fname . ' ' . $toUser->lname;
 $fromEmail = $fromUser->email;
 $fromName  = $fromUser->fname . ' ' . $fromUser->lname;
 
-// Query car details for the email body (non-fatal — template uses nulls gracefully)
 $db->query('SELECT chassis, year, series, variant, type FROM cars WHERE id = ?', [$carId]);
 if ($db->error()) {
-    logger($logUserId ?? 0, LogCategories::LOG_CATEGORY_DATABASE_ERROR, 'send-owner-email.php: DB error fetching car details for car_id=' . $carId . ' — email will send without car details');
+    ApiResponse::serverError()
+        ->withLogging($logUserId ?? 0, LogCategories::LOG_CATEGORY_DATABASE_ERROR, 'send-owner-email.php: DB error fetching car details for car_id=' . $carId)
+        ->send();
 }
 $carRow = $db->first();
+if (!$carRow) {
+    ApiResponse::serverError()
+        ->withLogging($logUserId ?? 0, LogCategories::LOG_CATEGORY_DATABASE_ERROR, 'send-owner-email.php: car not found for car_id=' . $carId . ' (concurrent delete?)')
+        ->send();
+}
 $carUrl = $current_origin . $us_url_root . 'app/cars/details.php?car_id=' . $carId;
 
 $template = array(
     'message'      => $message,
     'from'         => $fromName,
     'to'           => $toName,
-    'car_year'     => $carRow ? (int)$carRow->year     : null,
-    'car_series'   => $carRow ? (string)$carRow->series  : null,
-    'car_variant'  => $carRow ? (string)$carRow->variant : null,
-    'car_type'     => $carRow ? (string)$carRow->type    : null,
-    'car_chassis'  => $carRow ? (string)$carRow->chassis : null,
+    'car_year'     => (int)$carRow->year,
+    'car_series'   => (string)$carRow->series,
+    'car_variant'  => (string)$carRow->variant,
+    'car_type'     => (string)$carRow->type,
+    'car_chassis'  => (string)$carRow->chassis,
     'carUrl'       => $carUrl,
 );
 
