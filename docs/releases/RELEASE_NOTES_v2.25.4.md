@@ -5,7 +5,7 @@
 
 ## Required Actions After Deployment
 
-1. Run fix script: `app/admin/scripts/fix/NN-schema-integrity.php` (issue #992 — promotes
+1. Run fix script: `app/admin/scripts/fix/06-Fix-Schema-Integrity.php` (issue #992 — promotes
    UNIQUE KEY to PRIMARY KEY and adds audit table indexes). Backup the database before running.
 
 ## User-Facing Changes
