@@ -50,8 +50,6 @@
   — bug: LocationService User-Agent contains stale version number
 - [#1081](https://github.com/unibrain1/elanregistry/issues/1081)
   — fix: harden transfer-request.php — Input::raw(), length validation, null guards, and info leak
-- [#1083](https://github.com/unibrain1/elanregistry/issues/1083)
-  — security: exception message leaked to client in chassis-validate.php
 - [#1084](https://github.com/unibrain1/elanregistry/issues/1084)
   — fix: car saved with broken image references — guard mvTmpImages() failures and resize errors in save.php
 - [#1097](https://github.com/unibrain1/elanregistry/issues/1097)
