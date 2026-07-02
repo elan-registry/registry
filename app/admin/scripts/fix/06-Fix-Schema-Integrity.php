@@ -235,7 +235,11 @@ $backupManager = new BackupManager($db, $abs_us_root . $us_url_root . BACKUP_BAS
                                 continue;
                             }
                             $sql = "ALTER TABLE `{$table}` DROP KEY `{$keyName}`, ADD PRIMARY KEY (`id`)";
-                            $db->query($sql);
+                            if (!$db->query($sql)) {
+                                logProgress("{$table}: FAILED — " . $db->errorString(), 'error');
+                                $results['errors']++;
+                                continue;
+                            }
                             logProgress("{$table}: dropped UNIQUE KEY `{$keyName}`, added PRIMARY KEY", 'success');
                             logger(
                                 $user->data()->id,
@@ -267,7 +271,11 @@ $backupManager = new BackupManager($db, $abs_us_root . $us_url_root . BACKUP_BAS
                             // DDL cannot use parameterized queries for identifier names.
                             // All values in $indexWork are hardcoded PHP literals.
                             $sql = "ALTER TABLE `{$item['table']}` ADD KEY `{$item['index']}` (`{$item['column']}`)";
-                            $db->query($sql);
+                            if (!$db->query($sql)) {
+                                logProgress("{$item['table']}: FAILED — " . $db->errorString(), 'error');
+                                $results['errors']++;
+                                continue;
+                            }
                             logProgress("{$item['table']}: added index `{$item['index']}` on `{$item['column']}`", 'success');
                             logger(
                                 $user->data()->id,
@@ -277,11 +285,16 @@ $backupManager = new BackupManager($db, $abs_us_root . $us_url_root . BACKUP_BAS
                             $results['altered']++;
                         }
 
-                        // Log completion
-                        $db->insert('fix_script_runs', [
-                            'script_name' => '06-Fix-Schema-Integrity.php',
-                            'completed_at' => date('Y-m-d H:i:s'),
-                        ]);
+                        // Log completion — only mark as done when no errors occurred
+                        if ($results['errors'] === 0) {
+                            $inserted = $db->insert('fix_script_runs', [
+                                'script_name' => '06-Fix-Schema-Integrity.php',
+                                'completed_at' => date('Y-m-d H:i:s'),
+                            ]);
+                            if (!$inserted) {
+                                logProgress('Warning: could not record completion in fix_script_runs — ' . $db->errorString(), 'warning');
+                            }
+                        }
 
                         logger(
                             $user->data()->id,
@@ -304,7 +317,7 @@ $backupManager = new BackupManager($db, $abs_us_root . $us_url_root . BACKUP_BAS
                         logProgress('  • Verify with SHOW CREATE TABLE cars_hist;', 'info');
                         logProgress('  • Verify with SHOW CREATE TABLE car_user_hist;', 'info');
 
-                    } catch (Exception $e) {
+                    } catch (\Throwable $e) {
                         logProgress('FATAL ERROR: ' . $e->getMessage(), 'error');
                         logger($user->data()->id, LogCategories::LOG_CATEGORY_FIX_SCRIPT, 'Fatal error: ' . $e->getMessage());
                     }
