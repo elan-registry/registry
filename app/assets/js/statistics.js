@@ -235,7 +235,7 @@ function loadTabContent(tabName) {
       tab: tabName
     })
     .then(function (response) {
-      if (response.data) {
+      if (response.data != null) {
         renderTabContent(tabName, response.data);
       } else {
         NotificationHelper.show('Statistics data unavailable.', 'error');

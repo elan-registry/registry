@@ -392,7 +392,7 @@ class StatisticsApiTest extends IntegrationTestCase
     // =========================================================================
 
     /**
-     * Test that statistics.js uses error.message for API error handling
+     * Test that statistics.js uses NotificationHelper for API error handling (not innerHTML injection)
      */
     public function testStatisticsJsErrorHandling(): void
     {
@@ -403,7 +403,8 @@ class StatisticsApiTest extends IntegrationTestCase
 
         $content = file_get_contents($filePath);
         $this->assertIsString($content, "File should be readable");
-        $this->assertStringContainsString('error.message', $content, "Should use error.message in catch handlers");
+        $this->assertStringNotContainsString('content.html(', $content, "Should not use innerHTML injection for error display");
+        $this->assertStringContainsString('NotificationHelper.show(', $content, "Should use NotificationHelper for error display");
     }
 
     /**
