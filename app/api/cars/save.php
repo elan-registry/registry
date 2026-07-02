@@ -101,6 +101,16 @@ if (!empty($_POST)) {
                 addCar($cardetails);
                 mvTmpImages($cardetails);
 
+                if (!empty($errors)) {
+                    ApiResponse::serverError('Car saved but images could not be moved from temp storage')
+                        ->withData('cardetails', $cardetails)
+                        ->withLogging(
+                            $user->data()->id,
+                            LogCategories::LOG_CATEGORY_FILE_ERROR,
+                            'Car ID ' . ($cardetails['id'] ?? 'unknown') . ' saved but image move errors: ' . json_encode($errors)
+                        )->send();
+                }
+
                 // Blanks instead of NULL for display
                 foreach ($cardetails as $key => $value) {
                     if (is_null($value)) {
