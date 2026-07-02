@@ -85,6 +85,19 @@ if (!empty($_POST)) {
                 }
 
                 uploadImages($cardetails);
+
+                if (!empty($errors)) {
+                    ApiResponse::validationError(
+                        ['general' => $errors],
+                        'Cannot add car: image upload failed'
+                    )->withData('cardetails', $cardetails)
+                    ->withLogging(
+                        $user->data()->id,
+                        LogCategories::LOG_CATEGORY_FILE_ERROR,
+                        'Car add aborted: image upload errors: ' . json_encode($errors)
+                    )->send();
+                }
+
                 addCar($cardetails);
                 mvTmpImages($cardetails);
 
@@ -150,6 +163,19 @@ if (!empty($_POST)) {
                 }
 
                 uploadImages($cardetails);
+
+                if (!empty($errors)) {
+                    ApiResponse::validationError(
+                        ['general' => $errors],
+                        'Cannot update car: image upload failed'
+                    )->withData('cardetails', $cardetails)
+                    ->withLogging(
+                        $user->data()->id,
+                        LogCategories::LOG_CATEGORY_FILE_ERROR,
+                        'Car update aborted: image upload errors: ' . json_encode($errors)
+                    )->send();
+                }
+
                 updateCar($cardetails);
 
                 if (!empty($errors)) {
@@ -801,19 +827,23 @@ function fetchImages(int $car_id): void
 function mvTmpImages(array &$cardetails): void
 {
     global $targetFilePath;
+    global $errors;
+    global $user;
 
     $tempPath = $targetFilePath . 'temp' . '/';
-
     $filePath = $targetFilePath . $cardetails['id'] . '/';
+    $userId   = isset($user) ? (int)$user->data()->id : 0;
+
     if (!is_dir($filePath)) {
-        mkdir($filePath, 0755, true);
+        if (!mkdir($filePath, 0755, true)) {
+            logger($userId, LogCategories::LOG_CATEGORY_FILE_ERROR, "mvTmpImages: failed to create directory: {$filePath}");
+            $errors[] = 'Failed to create image directory for car ID ' . $cardetails['id'];
+            return;
+        }
     }
 
-    // Get the car images
-    // Turn images into array
     // Images can be encoded as JSON or simple CSV
     $carImages = json_decode($cardetails['image']);
-
     if (is_null($carImages)) {
         $carImages = explode(',', $cardetails['image']);
     }
@@ -823,8 +853,10 @@ function mvTmpImages(array &$cardetails): void
 
         foreach (glob($tempPath . $tmpfile['filename'] . '*' . $tmpfile['extension']) as $name) {
             $file = pathinfo($name);
-
-            rename($name, $filePath . $file['basename']);
+            if (!rename($name, $filePath . $file['basename'])) {
+                logger($userId, LogCategories::LOG_CATEGORY_FILE_ERROR, "mvTmpImages: failed to move {$name} to {$filePath}{$file['basename']}");
+                $errors[] = "Failed to move image file: {$file['basename']}";
+            }
         }
     }
 }
