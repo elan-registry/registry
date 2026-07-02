@@ -21,7 +21,7 @@ if (!Input::exists('post')) {
 $token = Input::get('csrf');
 if (!Token::check($token)) {
     ApiResponse::forbidden('Invalid CSRF token')
-        ->withLogging($user->data()->id ?? 0, LogCategories::LOG_CATEGORY_SECURITY, 'Invalid CSRF token in chassis check')
+        ->withLogging($user->data()?->id ?? 0, LogCategories::LOG_CATEGORY_SECURITY, 'Invalid CSRF token in chassis check')
         ->send();
 }
 
@@ -31,12 +31,22 @@ if ($command !== 'chassis_check') {
 }
 
 try {
-    $year = Input::get('year');
-    $model = Input::get('model');
-    $chassis = Input::get('chassis');
+    $year = Input::raw('year');
+    $model = Input::raw('model');
+    $chassis = Input::raw('chassis');
 
     if (empty($year) || empty($model) || empty($chassis)) {
         ApiResponse::error('Missing required parameters: year, model, and chassis', 400)->send();
+    }
+
+    if (strlen($chassis) > 15) {
+        ApiResponse::error('Chassis number must be 15 characters or less', 400)->send();
+    }
+    if (strlen($year) > 4) {
+        ApiResponse::error('Year must be 4 characters or less', 400)->send();
+    }
+    if (strlen($model) > 30) {
+        ApiResponse::error('Model must be 30 characters or less', 400)->send();
     }
 
     $modelParts = explode('|', $model);
@@ -61,7 +71,7 @@ try {
 } catch (\Throwable $e) {
     ApiResponse::serverError('Failed to check chassis availability')
         ->withLogging(
-            $user->data()->id ?? 0,
+            $user->data()?->id ?? 0,
             LogCategories::LOG_CATEGORY_DATABASE_ERROR,
             'Chassis check error: ' . $e->getMessage()
         )
