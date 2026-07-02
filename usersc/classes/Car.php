@@ -264,15 +264,11 @@ class Car
         $updateResult = $repo->update($this->tableName, $carId, $filteredFields);
 
         if (!$updateResult) {
-            logger($fields['user_id'] ?? 0, LogCategories::LOG_CATEGORY_CAR_UPDATE, 'DB update returned false (may indicate no changes)');
-        }
-
-        if (!$updateResult) {
             logger($fields['user_id'] ?? 0, LogCategories::LOG_CATEGORY_DATABASE_ERROR, 'Car update failed: query returned false');
             throw new CarDatabaseException('Database update failed - check logs for details');
-        } else {
-            $this->find($carId);
         }
+
+        $this->find($carId);
 
         return true;
     }
