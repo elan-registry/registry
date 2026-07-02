@@ -701,7 +701,7 @@ class ElanRegistryOwner
      *
      * @param string $input Input string to normalize
      * @param int $maxLength Maximum allowed length
-     * @return string Normalized string with preserved HTML entities
+     * @return string Normalized string (raw — caller must apply htmlspecialchars() at the render layer)
      * @since v2.25.4 Renamed from sanitizeString() - no longer strips HTML tags
      * @see https://github.com/unibrain1/elanregistry/issues/941
      */
