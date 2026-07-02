@@ -110,4 +110,24 @@ final class LocationServiceUserAgentTest extends TestCase
         $this->assertSame('ElanRegistry/unknown (https://elanregistry.org)', $ua);
         $this->assertStringNotContainsString('ElanRegistry/ (', $ua);
     }
+
+    /**
+     * Regression guard for #1119: searchPhoton() must pass getUserAgent() to
+     * makeHttpRequest(). Because makeHttpRequest() is private the call cannot
+     * be intercepted at runtime without modifying source, so this test
+     * verifies the call-site argument in the source text — a structural
+     * assertion that fails immediately if the argument is removed.
+     */
+    public function testSearchPhotonPassesUserAgentToMakeHttpRequest(): void
+    {
+        $source = (string) file_get_contents(
+            dirname(__DIR__, 3) . '/usersc/classes/LocationService.php'
+        );
+
+        $this->assertSame(
+            3,
+            substr_count($source, 'makeHttpRequest($url, self::getUserAgent())'),
+            'All three makeHttpRequest() call sites must pass self::getUserAgent() — regression guard for #1119'
+        );
+    }
 }
