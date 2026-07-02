@@ -13,7 +13,9 @@ require_once '../../../../users/init.php';
 header('Content-Type: application/json');
 
 if ($method !== 'POST') {
-    ApiResponse::error('Method not allowed', 405)->send();
+    ApiResponse::error('Method not allowed', 405)
+        ->withLogging(0, LogCategories::LOG_CATEGORY_SECURITY, "Method not allowed: {$method} on backup-operations")
+        ->send();
 }
 
 // Security check
