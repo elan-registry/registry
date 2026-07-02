@@ -124,10 +124,10 @@ final class LocationServiceUserAgentTest extends TestCase
             dirname(__DIR__, 3) . '/usersc/classes/LocationService.php'
         );
 
-        $this->assertStringContainsString(
-            'makeHttpRequest($url, self::getUserAgent())',
-            $source,
-            'searchPhoton() must pass self::getUserAgent() to makeHttpRequest() — regression guard for #1119'
+        $this->assertSame(
+            3,
+            substr_count($source, 'makeHttpRequest($url, self::getUserAgent())'),
+            'All three makeHttpRequest() call sites must pass self::getUserAgent() — regression guard for #1119'
         );
     }
 }
