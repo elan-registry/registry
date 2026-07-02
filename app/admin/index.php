@@ -4,6 +4,7 @@ declare(strict_types=1);
 use ElanRegistry\Exceptions\CarDatabaseException;
 use ElanRegistry\Exceptions\CarDeletionException;
 use ElanRegistry\Exceptions\CarNotFoundException;
+use ElanRegistry\Exceptions\CarPermissionException;
 use ElanRegistry\Input as ElanInput;
 
 /**
@@ -193,6 +194,9 @@ if (Input::exists('post')) {
                         } else {
                             $errors[] = "Failed to reassign car ID $car_id";
                         }
+                    } catch (CarPermissionException $e) {
+                        $errors[] = "Permission denied for car ID {$car_id}.";
+                        logger($currentUserId, LogCategories::LOG_CATEGORY_ACCESS_DENIED, "Car reassignment permission denied for Car ID {$car_id}: " . $e->getMessage());
                     } catch (Exception $e) {
                         $errors[] = 'Transfer failed. Please try again.';
                         logger($currentUserId, LogCategories::LOG_CATEGORY_CAR_TRANSFER_ERROR, "Car reassignment failed for Car ID $car_id: " . $e->getMessage());
