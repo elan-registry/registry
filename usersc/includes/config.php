@@ -31,7 +31,7 @@ define('BACKUP_BASE_DIR', 'backups/');
  * Controls how long each type of backup is kept before automatic cleanup
  */
 define('BACKUP_RETENTION_AUTOMATED', 7);    // Automated backups: 7 days
-define('BACKUP_RETENTION_MANUAL', 15);      // Manual backups: 30 days
+define('BACKUP_RETENTION_MANUAL', 30);      // Manual backups: 30 days
 define('BACKUP_RETENTION_ROLLBACK', 30);    // Rollback backups: 30 days
 
 /**
