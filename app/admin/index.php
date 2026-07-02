@@ -196,7 +196,7 @@ if (Input::exists('post')) {
                         }
                     } catch (CarPermissionException $e) {
                         $errors[] = "Permission denied for car ID {$car_id}.";
-                        logger($currentUserId, LogCategories::LOG_CATEGORY_SECURITY, "Car reassignment permission denied for Car ID {$car_id}: " . $e->getMessage());
+                        logger($currentUserId, LogCategories::LOG_CATEGORY_ACCESS_DENIED, "Car reassignment permission denied for Car ID {$car_id}: " . $e->getMessage());
                     } catch (Exception $e) {
                         $errors[] = 'Transfer failed. Please try again.';
                         logger($currentUserId, LogCategories::LOG_CATEGORY_CAR_TRANSFER_ERROR, "Car reassignment failed for Car ID $car_id: " . $e->getMessage());
