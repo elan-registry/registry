@@ -3,6 +3,8 @@
 // Behavioral tests for the Bootstrap 5 #confirmationModal used on admin pages.
 // Covers: modal DOM presence, Cancel/Confirm behavior, XSS prevention via
 // textContent, and CSRF token availability for modal-triggered operations.
+// Cancel/Confirm and XSS checks target the backup cleanup confirmation modal
+// (button[onclick*="performBackupCleanup"]) in Area 2.
 //
 // Requires local MAMP at http://localhost:9999/elan-registry
 
@@ -70,6 +72,38 @@ test.describe('Admin confirmation modal — maintenance', () => {
         await expect(csrfInput).toBeAttached();
         const value = await csrfInput.getAttribute('value');
         expect(value).toBeTruthy();
+    });
+
+    test('Cancel dismisses the backup cleanup confirmation modal', async ({ page }) => {
+        const cleanupBtn = page.locator('button[onclick*="performBackupCleanup"]').first();
+        if (await cleanupBtn.count() === 0) {
+            test.skip('Cleanup Old Backups button not found — no old backups to clean up');
+            return;
+        }
+
+        await cleanupBtn.click();
+        await expect(page.locator('#confirmationModal')).toBeVisible({ timeout: 3000 });
+
+        await page.locator('#confirmationModal .btn-secondary').click();
+        await expect(page.locator('#confirmationModal')).not.toBeVisible({ timeout: 3000 });
+    });
+
+    test('#confirmMessage uses textContent (XSS prevention) when showing confirmation', async ({ page }) => {
+        const cleanupBtn = page.locator('button[onclick*="performBackupCleanup"]').first();
+        if (await cleanupBtn.count() === 0) {
+            test.skip('Cleanup Old Backups button not found — no old backups to clean up');
+            return;
+        }
+
+        await cleanupBtn.click();
+        await expect(page.locator('#confirmationModal')).toBeVisible({ timeout: 3000 });
+
+        const msgHtml = await page.locator('#confirmMessage').innerHTML();
+        expect(msgHtml).not.toMatch(/<script/i);
+        expect(msgHtml).not.toMatch(/<img/i);
+
+        // Dismiss so the modal doesn't interfere with other tests
+        await page.locator('#confirmationModal .btn-secondary').click();
     });
 });
 
