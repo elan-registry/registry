@@ -30,6 +30,9 @@
 - **Server path removed from backup API**
   ([#977](https://github.com/unibrain1/elanregistry/issues/977)):
   Absolute server filesystem paths are no longer exposed in backup API responses.
+- **Admin owner-field display hardened against stored HTML**
+  ([#941](https://github.com/unibrain1/elanregistry/issues/941)):
+  Owner fields (name, email, city, state, country) in the admin manage-cars duplicate-detection view are now HTML-escaped at render time, closing a stored-XSS path exposed when `sanitizeString()` stopped stripping tags.
 - **Statistics dashboard hardened**
   ([#1097](https://github.com/unibrain1/elanregistry/issues/1097)):
   Statistics tab loader no longer injects raw error messages into the DOM; guards against undefined data prevent silent tab failures.
@@ -58,7 +61,7 @@
 - [#1070](https://github.com/unibrain1/elanregistry/issues/1070)
   — bug: LocationService User-Agent contains stale version number
 - [#1081](https://github.com/unibrain1/elanregistry/issues/1081)
-  — fix: harden transfer-request.php — Input::raw(), length validation, null guards, and info leak
+  — fix: harden transfer-request.php and chassis-availability.php — Input::raw(), length validation, null guards, and info leak
 - [#1084](https://github.com/unibrain1/elanregistry/issues/1084)
   — fix: car saved with broken image references — guard mvTmpImages() failures and resize errors in save.php
 - [#1097](https://github.com/unibrain1/elanregistry/issues/1097)
