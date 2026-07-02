@@ -23,6 +23,14 @@ define('TESTING', true);
 define('TESTING_UNIT_ONLY', true);
 define('UNIT_TEST_SUITE', true);
 
+// Backup retention constants (normally from usersc/includes/config.php)
+if (!defined('BACKUP_RETENTION_AUTOMATED')) {
+    define('BACKUP_RETENTION_AUTOMATED', 7);
+    define('BACKUP_RETENTION_MANUAL', 30);
+    define('BACKUP_RETENTION_ROLLBACK', 30);
+    define('BACKUP_WARNING_THRESHOLD_DAYS', 7);
+}
+
 // Prevent any integration test code from loading
 if (defined('INTEGRATION_TEST_SUITE')) {
     die("ERROR: bootstrap-unit.php cannot be used with INTEGRATION_TEST_SUITE defined");

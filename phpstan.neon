@@ -64,10 +64,9 @@ parameters:
     # Don't report unmatched ignored errors
     reportUnmatchedIgnoredErrors: false
 
-    # Bootstrap file for autoloading
-    # Uncomment and adjust if needed
-    # bootstrapFiles:
-    #     - users/init.php
+    # Bootstrap files — load constants defined outside the analysed classes
+    bootstrapFiles:
+        - usersc/includes/config.php
 
 # Custom rules (can be added via extensions)
 # extensions:

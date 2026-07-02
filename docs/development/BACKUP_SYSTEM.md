@@ -214,31 +214,20 @@ app/admin/scripts/fix/backups/
 
 ## Retention Policies
 
-Retention policies are enforced by environment and backup type:
+Retention is configured in `usersc/includes/config.php` and applies across all
+environments. `BackupManager::getRetentionDays()` and the cleanup preview in
+`backup-operations.php` both read from these constants — they are the single
+source of truth.
 
-### Development Environment
+| Constant | Type | Default |
+| -------- | ---- | ------- |
+| `BACKUP_RETENTION_AUTOMATED` | Automated | 7 days |
+| `BACKUP_RETENTION_MANUAL` | Manual | 30 days |
+| `BACKUP_RETENTION_ROLLBACK` | Rollback | 30 days |
+| `BACKUP_WARNING_THRESHOLD_DAYS` | Warning window | 7 days |
 
-| Type | Retention Days |
-| ---- | -------------- |
-| Automated | 7 days |
-| Manual | 14 days |
-| Rollback | 14 days |
-
-### Test Environment
-
-| Type | Retention Days |
-| ---- | -------------- |
-| Automated | 14 days |
-| Manual | 30 days |
-| Rollback | 30 days |
-
-### Production Environment
-
-| Type | Retention Days |
-| ---- | -------------- |
-| Automated | 30 days |
-| Manual | 90 days |
-| Rollback | 60 days |
+Backups within `BACKUP_WARNING_THRESHOLD_DAYS` of their retention limit are
+flagged as `approaching_expiry` in health statistics and recommendations.
 
 Cleanup is performed by `performEnhancedCleanup()` and removes files older
 than their retention period.

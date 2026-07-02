@@ -17,25 +17,6 @@ class BackupManager {
     private \Closure $logger;
     private string $backupBaseDir;
 
-    // Enhanced retention policies
-    private array $retentionPolicies = [
-        'automated' => [
-            'production' => 30,     // 30 days
-            'development' => 7      // 7 days
-        ],
-        'manual' => [
-            'production' => 90,     // 90 days
-            'development' => 14     // 14 days
-        ],
-        'rollback' => [
-            'production' => 60,     // 60 days
-            'development' => 14     // 14 days
-        ],
-        'schema' => [
-            'production' => 90,     // 90 days for schema changes
-            'development' => 30     // 30 days for development
-        ]
-    ];
 
     /**
      * Constructor
@@ -176,16 +157,17 @@ class BackupManager {
 
             if (is_dir($typeDir)) {
                 $files = glob($typeDir . '*.sql');
-                $retentionDays = $this->retentionPolicies[$type]['development']; // Default to development
+                $retentionDays = $this->getRetentionDays($type);
                 $expiryTime = $now - ($retentionDays * 24 * 60 * 60);
-                $warningTime = $now - (($retentionDays - 7) * 24 * 60 * 60);
+                $warningWindow = max(0, $retentionDays - BACKUP_WARNING_THRESHOLD_DAYS);
+                $warningTime = $now - ($warningWindow * 24 * 60 * 60);
 
                 foreach ($files as $file) {
                     $fileTime = filemtime($file);
 
                     if ($fileTime < $expiryTime) {
                         $analysis[$type]['expired']++;
-                    } elseif ($fileTime < $warningTime) {
+                    } elseif ($warningWindow > 0 && $fileTime < $warningTime) {
                         $analysis[$type]['approaching_expiry']++;
                     } else {
                         $analysis[$type]['within_policy']++;
@@ -274,7 +256,7 @@ class BackupManager {
 
             $totalApproaching = array_sum(array_column($stats['retention_analysis'], 'approaching_expiry'));
             if ($totalApproaching > 0) {
-                $recommendations[] = "{$totalApproaching} backup files will expire within 7 days";
+                $recommendations[] = "{$totalApproaching} backup files will expire within " . BACKUP_WARNING_THRESHOLD_DAYS . " days";
             }
         }
 
@@ -491,7 +473,7 @@ class BackupManager {
         $timestamp = date('Y-m-d H:i:s');
         $tableList = implode(', ', $tables);
 
-        $retentionDays = $this->getRetentionDays($type, $environment);
+        $retentionDays = $this->getRetentionDays($type);
         $rollbackReady = !empty($tables) ? 'yes' : 'no';
 
         return "-- BACKUP METADATA\n" .
@@ -575,38 +557,18 @@ class BackupManager {
     }
 
     /**
-     * Get retention days based on backup type and environment
+     * Get retention days for a backup type from config.php constants.
      *
-     * @param string $type Backup type
-     * @param string $environment Environment
+     * @param string $type Backup type ('automated', 'manual', 'rollback')
      * @return int Number of retention days
      */
-    private function getRetentionDays(string $type, string $environment): int {
-        // Use class retention policies
-        if (isset($this->retentionPolicies[$type][$environment])) {
-            return $this->retentionPolicies[$type][$environment];
-        }
-
-        // Fallback retention policies (same as original function)
-        $fallbackPolicies = [
-            'development' => [
-                'automated' => 7,
-                'manual' => 14,
-                'rollback' => 14
-            ],
-            'test' => [
-                'automated' => 14,
-                'manual' => 30,
-                'rollback' => 30
-            ],
-            'production' => [
-                'automated' => 30,
-                'manual' => 90,
-                'rollback' => 60
-            ]
-        ];
-
-        return $fallbackPolicies[$environment][$type] ?? 30;
+    private function getRetentionDays(string $type): int {
+        return match($type) {
+            'automated' => BACKUP_RETENTION_AUTOMATED,
+            'manual'    => BACKUP_RETENTION_MANUAL,
+            'rollback'  => BACKUP_RETENTION_ROLLBACK,
+            default     => throw new BackupException("Unknown backup type: {$type}"),
+        };
     }
 
     /**
@@ -649,7 +611,7 @@ class BackupManager {
                 $filename = basename($file);
                 $environment = $this->extractEnvironmentFromFilename($filename);
 
-                $fileRetentionDays = $retentionDays ?? $this->getRetentionDays($type, $environment);
+                $fileRetentionDays = $retentionDays ?? $this->getRetentionDays($type);
                 $cutoffTime = time() - ($fileRetentionDays * 24 * 60 * 60);
 
                 if (filemtime($file) < $cutoffTime) {
