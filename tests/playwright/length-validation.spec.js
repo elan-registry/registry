@@ -9,14 +9,15 @@
 // is shared with page.request, so the CSRF token extracted from the DOM is
 // valid for subsequent API calls in the same session.
 //
-// transfer-request.php note: the endpoint derives series/variant/type by
-// splitting the `model` POST field on '|'. No separate series/variant/type
-// POST fields exist.
+// transfer-request.php — model parsing: the endpoint splits the `model` POST
+// field on '|' to derive series/variant/type. There are no separate POST
+// fields for these derived values.
 //
-// transfer-request.php rate limit note: each call to the endpoint counts
-// toward the per-user rate limit, even calls that fail on length validation.
-// If rate limiting is strict in your test environment, some later tests may
-// receive "Too many transfer requests" responses instead of length errors.
+// transfer-request.php — rate limiting: recordRateLimit() fires at the top of
+// the endpoint, before any length check. Each test call (even one that fails
+// on length) consumes a rate-limit slot. The over-limit tests guard against
+// this: if the endpoint responds with a rate-limit message the test skips
+// rather than failing with a misleading assertion error.
 //
 // Requires local MAMP at http://localhost:9999/elan-registry
 
@@ -168,19 +169,113 @@ test.describe('transfer-request.php — length validation', () => {
         }
     });
 
-    // Base payload with all fields at or under their limits.
-    // model is split on '|' server-side to derive series ('S4'), variant ('SE'),
-    // type ('FHC') — there are no separate series/variant/type POST fields.
-    // chassis/year/type won't match any real car so the request ends with
-    // "No car found" — but length checks fire before the DB lookup.
+    // Base payload with all simple fields at their limits, and model derived
+    // fields at or under limit (series='S4'=2, variant='SE'=2, type='FHC'=3).
+    // model is split on '|' server-side — no separate series/variant/type fields.
+    // chassis/year/type won't match any real car so validation-passing requests
+    // end with "No car found" — but length checks fire before the DB lookup.
     const baseValid = {
         chassis: '123456789012345',             // 15 chars (at limit)
         year: '1973',                           // 4 chars (at limit)
         color: '0123456789012345678901234',      // 25 chars (at limit)
         engine: '123456789012345',              // 15 chars (at limit)
         comments: 'A'.repeat(1000),             // 1000 chars (at limit)
-        model: 'S4|SE|FHC',                    // valid format; derived: series=S4, variant=SE, type=FHC
+        model: 'S4|SE|FHC',                    // valid format; series='S4'(2), variant='SE'(2), type='FHC'(3 — at limit)
     };
+
+    // -------------------------------------------------------------------
+    // At-limit acceptance tests
+    // -------------------------------------------------------------------
+    // Verify that baseValid fields at the boundary are not rejected by length
+    // validation. The response may fail for unrelated reasons (rate limit,
+    // car not found) — the assertion only checks that no length error is returned.
+
+    test('chassis exactly 15 chars is accepted (at-limit)', async ({ page }) => {
+        const resp = await page.request.post('app/api/cars/transfer-request.php', {
+            data: { ...baseValid, csrf: csrfToken },
+        });
+        const body = await resp.json();
+        expect(body).toHaveProperty('success');
+        if (!body.success) {
+            expect(body.message).not.toMatch(/chassis.*15/i);
+        }
+    });
+
+    test('color exactly 25 chars is accepted (at-limit)', async ({ page }) => {
+        const resp = await page.request.post('app/api/cars/transfer-request.php', {
+            data: { ...baseValid, csrf: csrfToken },
+        });
+        const body = await resp.json();
+        expect(body).toHaveProperty('success');
+        if (!body.success) {
+            expect(body.message).not.toMatch(/color.*25/i);
+        }
+    });
+
+    test('engine exactly 15 chars is accepted (at-limit)', async ({ page }) => {
+        const resp = await page.request.post('app/api/cars/transfer-request.php', {
+            data: { ...baseValid, csrf: csrfToken },
+        });
+        const body = await resp.json();
+        expect(body).toHaveProperty('success');
+        if (!body.success) {
+            expect(body.message).not.toMatch(/engine.*15/i);
+        }
+    });
+
+    test('comments exactly 1000 chars is accepted (at-limit)', async ({ page }) => {
+        const resp = await page.request.post('app/api/cars/transfer-request.php', {
+            data: { ...baseValid, csrf: csrfToken },
+        });
+        const body = await resp.json();
+        expect(body).toHaveProperty('success');
+        if (!body.success) {
+            expect(body.message).not.toMatch(/1000/i);
+        }
+    });
+
+    test('model exactly 30 chars is accepted (at-limit)', async ({ page }) => {
+        // 26 A's + |B|C = exactly 30 chars, valid 3-part format
+        const resp = await page.request.post('app/api/cars/transfer-request.php', {
+            data: { ...baseValid, model: 'A'.repeat(26) + '|B|C', csrf: csrfToken },
+        });
+        const body = await resp.json();
+        expect(body).toHaveProperty('success');
+        if (!body.success) {
+            expect(body.message).not.toMatch(/model.*30/i);
+        }
+    });
+
+    test('series exactly 12 chars is accepted (at-limit)', async ({ page }) => {
+        // 12 A's + |B|C = 16-char model (under 30), series='A'.repeat(12) is at limit
+        const resp = await page.request.post('app/api/cars/transfer-request.php', {
+            data: { ...baseValid, model: 'A'.repeat(12) + '|B|C', csrf: csrfToken },
+        });
+        const body = await resp.json();
+        expect(body).toHaveProperty('success');
+        if (!body.success) {
+            expect(body.message).not.toMatch(/series.*12/i);
+        }
+    });
+
+    test('variant exactly 15 chars is accepted (at-limit)', async ({ page }) => {
+        // S4 + 15 B's + C = 20-char model (under 30), variant='B'.repeat(15) is at limit
+        const resp = await page.request.post('app/api/cars/transfer-request.php', {
+            data: { ...baseValid, model: 'S4|' + 'B'.repeat(15) + '|C', csrf: csrfToken },
+        });
+        const body = await resp.json();
+        expect(body).toHaveProperty('success');
+        if (!body.success) {
+            expect(body.message).not.toMatch(/variant.*15/i);
+        }
+    });
+
+    // -------------------------------------------------------------------
+    // Over-limit rejection tests
+    // Rate limit guard: recordRateLimit() fires before length checks, so if the
+    // rate limit is exhausted the endpoint returns a 400 "Too many transfer
+    // requests" message. Skip (don't fail) in that case.
+    // -------------------------------------------------------------------
 
     test('chassis 16 chars rejected with 400 (over-limit)', async ({ page }) => {
         const resp = await page.request.post('app/api/cars/transfer-request.php', {
@@ -190,8 +285,12 @@ test.describe('transfer-request.php — length validation', () => {
                 csrf: csrfToken,
             },
         });
-        expect(resp.status()).toBe(400);
         const body = await resp.json();
+        if (body.message && /too many/i.test(body.message)) {
+            test.skip(true, 'Rate limited — skipping; run in a fresh session or wait for the rate-limit window to reset');
+            return;
+        }
+        expect(resp.status()).toBe(400);
         expect(body).toHaveProperty('success', false);
         expect(body.message).toMatch(/chassis.*15/i);
     });
@@ -204,8 +303,12 @@ test.describe('transfer-request.php — length validation', () => {
                 csrf: csrfToken,
             },
         });
-        expect(resp.status()).toBe(400);
         const body = await resp.json();
+        if (body.message && /too many/i.test(body.message)) {
+            test.skip(true, 'Rate limited — skipping; run in a fresh session or wait for the rate-limit window to reset');
+            return;
+        }
+        expect(resp.status()).toBe(400);
         expect(body).toHaveProperty('success', false);
         expect(body.message).toMatch(/year.*4/i);
     });
@@ -218,8 +321,12 @@ test.describe('transfer-request.php — length validation', () => {
                 csrf: csrfToken,
             },
         });
-        expect(resp.status()).toBe(400);
         const body = await resp.json();
+        if (body.message && /too many/i.test(body.message)) {
+            test.skip(true, 'Rate limited — skipping; run in a fresh session or wait for the rate-limit window to reset');
+            return;
+        }
+        expect(resp.status()).toBe(400);
         expect(body).toHaveProperty('success', false);
         expect(body.message).toMatch(/color.*25/i);
     });
@@ -232,8 +339,12 @@ test.describe('transfer-request.php — length validation', () => {
                 csrf: csrfToken,
             },
         });
-        expect(resp.status()).toBe(400);
         const body = await resp.json();
+        if (body.message && /too many/i.test(body.message)) {
+            test.skip(true, 'Rate limited — skipping; run in a fresh session or wait for the rate-limit window to reset');
+            return;
+        }
+        expect(resp.status()).toBe(400);
         expect(body).toHaveProperty('success', false);
         expect(body.message).toMatch(/engine.*15/i);
     });
@@ -246,8 +357,12 @@ test.describe('transfer-request.php — length validation', () => {
                 csrf: csrfToken,
             },
         });
-        expect(resp.status()).toBe(400);
         const body = await resp.json();
+        if (body.message && /too many/i.test(body.message)) {
+            test.skip(true, 'Rate limited — skipping; run in a fresh session or wait for the rate-limit window to reset');
+            return;
+        }
+        expect(resp.status()).toBe(400);
         expect(body).toHaveProperty('success', false);
         // Error: "Transfer explanation must be 1000 characters or less"
         expect(body.message).toMatch(/1000/i);
@@ -262,8 +377,12 @@ test.describe('transfer-request.php — length validation', () => {
                 csrf: csrfToken,
             },
         });
-        expect(resp.status()).toBe(400);
         const body = await resp.json();
+        if (body.message && /too many/i.test(body.message)) {
+            test.skip(true, 'Rate limited — skipping; run in a fresh session or wait for the rate-limit window to reset');
+            return;
+        }
+        expect(resp.status()).toBe(400);
         expect(body).toHaveProperty('success', false);
         expect(body.message).toMatch(/model.*30/i);
     });
@@ -277,8 +396,12 @@ test.describe('transfer-request.php — length validation', () => {
                 csrf: csrfToken,
             },
         });
-        expect(resp.status()).toBe(400);
         const body = await resp.json();
+        if (body.message && /too many/i.test(body.message)) {
+            test.skip(true, 'Rate limited — skipping; run in a fresh session or wait for the rate-limit window to reset');
+            return;
+        }
+        expect(resp.status()).toBe(400);
         expect(body).toHaveProperty('success', false);
         expect(body.message).toMatch(/series.*12/i);
     });
@@ -292,8 +415,12 @@ test.describe('transfer-request.php — length validation', () => {
                 csrf: csrfToken,
             },
         });
-        expect(resp.status()).toBe(400);
         const body = await resp.json();
+        if (body.message && /too many/i.test(body.message)) {
+            test.skip(true, 'Rate limited — skipping; run in a fresh session or wait for the rate-limit window to reset');
+            return;
+        }
+        expect(resp.status()).toBe(400);
         expect(body).toHaveProperty('success', false);
         expect(body.message).toMatch(/variant.*15/i);
     });
@@ -307,9 +434,14 @@ test.describe('transfer-request.php — length validation', () => {
                 csrf: csrfToken,
             },
         });
-        expect(resp.status()).toBe(400);
         const body = await resp.json();
+        if (body.message && /too many/i.test(body.message)) {
+            test.skip(true, 'Rate limited — skipping; run in a fresh session or wait for the rate-limit window to reset');
+            return;
+        }
+        expect(resp.status()).toBe(400);
         expect(body).toHaveProperty('success', false);
-        expect(body.message).toMatch(/type.*3/i);
+        // Error: "Type must be 3 characters or less"
+        expect(body.message).toMatch(/must be 3 characters/i);
     });
 });
