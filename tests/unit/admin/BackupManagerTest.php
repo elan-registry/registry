@@ -426,6 +426,61 @@ final class BackupManagerTest extends TestCase
     }
 
     /**
+     * Verify that cleanup respects per-type retention from config.php constants:
+     * a file aged past the automated window (7 days) but within the manual window (30 days)
+     * must be deleted from automated and kept in manual.
+     *
+     * @return void
+     */
+    #[Group('fast')]
+    #[Group('unit')]
+    public function testCleanupRespectsPerTypeRetentionConstants(): void
+    {
+        // File aged 10 days — past automated (7d) but within manual (30d)
+        $automatedBackup = $this->testBackupDir
+            . 'automated/automated_manual-backup_development_20250101_120000.sql';
+        $manualBackup = $this->testBackupDir
+            . 'manual/manual_manual-backup_development_20250101_120000.sql';
+
+        file_put_contents($automatedBackup, "-- automated\n");
+        file_put_contents($manualBackup, "-- manual\n");
+
+        $ageSeconds = 10 * 86400;
+        touch($automatedBackup, time() - $ageSeconds);
+        touch($manualBackup, time() - $ageSeconds);
+
+        $result = $this->backupManager->performEnhancedCleanup();
+
+        $this->assertSame(1, $result['automated']['deleted'], 'Automated backup past 7-day retention should be deleted');
+        $this->assertSame(0, $result['manual']['deleted'], 'Manual backup within 30-day retention should be kept');
+        $this->assertFileDoesNotExist($automatedBackup);
+        $this->assertFileExists($manualBackup);
+    }
+
+    /**
+     * Verify analyzeRetention() bucket classification: a fresh backup (seconds old)
+     * always lands in within_policy, never approaching_expiry or expired.
+     *
+     * @return void
+     */
+    #[Group('fast')]
+    #[Group('unit')]
+    public function testAnalyzeRetentionClassifiesFreshBackupAsWithinPolicy(): void
+    {
+        $freshBackup = $this->testBackupDir
+            . 'manual/manual_fresh-backup_development_20250101_120000.sql';
+        file_put_contents($freshBackup, "-- fresh\n");
+        // Leave mtime at now (default)
+
+        $stats = $this->backupManager->getEnhancedBackupStatistics();
+
+        $manualAnalysis = $stats['retention_analysis']['manual'] ?? [];
+        $this->assertGreaterThan(0, $manualAnalysis['within_policy'] ?? 0, 'Fresh manual backup should be within_policy');
+        $this->assertSame(0, $manualAnalysis['approaching_expiry'] ?? 0, 'Fresh manual backup should not be approaching_expiry');
+        $this->assertSame(0, $manualAnalysis['expired'] ?? 0, 'Fresh manual backup should not be expired');
+    }
+
+    /**
      * Helper: Create a mock database object
      *
      * @return object Mock database object with query method

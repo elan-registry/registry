@@ -160,15 +160,13 @@ try {
                     $phpFiles = glob($typeDir . '*.php');
                     $files = array_merge($sqlFiles ?: [], $phpFiles ?: []);
 
-                    // Get retention policy for this type
-                    $retentionDays = 7; // Default
-                    if ($type === 'automated') {
-                        $retentionDays = 7; // development
-                    } elseif ($type === 'manual') {
-                        $retentionDays = 14; // development
-                    } elseif ($type === 'rollback') {
-                        $retentionDays = 14; // development
-                    }
+                    // Get retention policy from config.php constants (authoritative source)
+                    $retentionDays = match($type) {
+                        'automated' => BACKUP_RETENTION_AUTOMATED,
+                        'manual'    => BACKUP_RETENTION_MANUAL,
+                        'rollback'  => BACKUP_RETENTION_ROLLBACK,
+                        default     => throw new \RuntimeException("Unknown backup type: {$type}"),
+                    };
 
                     $cutoffTime = time() - ($retentionDays * 24 * 60 * 60);
 
