@@ -74,6 +74,7 @@ try {
     $variant = $modelParts[1];
     $type = $modelParts[2];
 
+    // Validate model-derived field lengths against DB column widths
     if (strlen($model) > 30) {
         throw new CarTransferException('Model identifier must be 30 characters or less');
     }
