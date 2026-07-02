@@ -55,8 +55,8 @@
 - [#1097](https://github.com/unibrain1/elanregistry/issues/1097)
   — fix: statistics.js loadTabContent injects error.message into innerHTML
 - [#1107](https://github.com/unibrain1/elanregistry/issues/1107)
-  — WIP: test: add integration coverage for length-validation paths in chassis-availability.php and transfer-request.php
+  — test: add Playwright coverage for length-validation boundary paths in chassis-availability.php and transfer-request.php
 - [#1112](https://github.com/unibrain1/elanregistry/issues/1112)
-  — WIP: refactor: remove dead schema-maintenance feature from admin Maintenance tab
+  — refactor: remove dead schema-maintenance feature from admin Maintenance tab
 - [#1119](https://github.com/unibrain1/elanregistry/issues/1119)
   — fix(location): add User-Agent header to Photon geocoding requests
