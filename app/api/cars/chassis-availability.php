@@ -39,8 +39,14 @@ try {
         ApiResponse::error('Missing required parameters: year, model, and chassis', 400)->send();
     }
 
-    if (strlen($chassis) > 15 || strlen($year) > 4 || strlen($model) > 30) {
-        ApiResponse::error('Invalid parameter length', 400)->send();
+    if (strlen($chassis) > 15) {
+        ApiResponse::error('Chassis number must be 15 characters or less', 400)->send();
+    }
+    if (strlen($year) > 4) {
+        ApiResponse::error('Year must be 4 characters or less', 400)->send();
+    }
+    if (strlen($model) > 30) {
+        ApiResponse::error('Model must be 30 characters or less', 400)->send();
     }
 
     $modelParts = explode('|', $model);
