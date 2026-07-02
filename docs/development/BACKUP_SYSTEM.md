@@ -441,7 +441,6 @@ $backupManager = new BackupManager($db, $backupDir);
 - **Compatibility Wrapper**: `usersc/includes/backup_functions.php`
 - **Deprecated**: `FIX/backup-functions.php` (redirects to compatibility wrapper)
 - **Admin Integration**: `app/admin/includes/tab-system.php`
-- **Schema Manager**: `app/admin/includes/classes/EnhancedSchemaManager.php`
 
 ## Changelog
 
@@ -449,7 +448,6 @@ $backupManager = new BackupManager($db, $backupDir);
 
 - **Refactored**: Moved backup functions into BackupManager class (OOP architecture)
 - **Added**: Compatibility wrapper for backward compatibility
-- **Fixed**: Issue #365 - Run Maintenance feature now functional
 - **Fixed**: Issue #364 - Backup system reliability improved
 - **Deprecated**: `FIX/backup-functions.php` (now wrapper to compatibility layer)
 

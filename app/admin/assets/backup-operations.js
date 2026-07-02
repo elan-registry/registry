@@ -8,7 +8,7 @@
  */
 
 /* eslint-disable no-implicit-globals */
-/* exported createManualBackup, listBackupFiles, downloadBackup, deleteBackup, performBackupCleanup, runSchemaValidation */
+/* exported createManualBackup, listBackupFiles, downloadBackup, deleteBackup, performBackupCleanup */
 /* global showInputDialog, showNotification, escapeHtml, ElanRegistryAPI */
 
 /**
@@ -301,63 +301,4 @@ function performBackupCleanup() {
     bootstrap.Modal.getOrCreateInstance(document.getElementById('confirmationModal')).show();
 }
 
-/**
- * Run schema validation
- */
-function runSchemaValidation(button) {
-    'use strict';
-
-    if (!button) {
-        console.error('Button element required for validation');
-        return;
-    }
-
-    const originalText = button.innerHTML;
-    button.disabled = true;
-    button.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Validating...';
-
-    const schemaEndpoint = window.elanUrlRoot ? window.elanUrlRoot.replace(/\/$/, '') + '/app/admin/includes/system/schema-operations.php' : '/app/admin/includes/system/schema-operations.php';
-    new ElanRegistryAPI().post(schemaEndpoint, {
-        action: 'validate_schema'
-    })
-    .then(response => {
-        if (response.success) {
-            displayValidationResults(response);
-        } else {
-            showNotification(`Validation failed: ${response.message}`, 'error');
-        }
-    })
-    .catch(error => {
-        console.error('Validation error:', error);
-        showNotification(`Error: ${error.message || 'Failed to validate schema'}`, 'error');
-    })
-    .finally(() => {
-        button.disabled = false;
-        button.innerHTML = originalText;
-    });
-}
-
-/**
- * Display schema validation results
- * @param {Object} response - Validation response
- */
-function displayValidationResults(response) {
-    'use strict';
-
-    const container = document.getElementById('validation-result-container');
-    let html = '<div class="alert alert-info"><h6>Validation Results</h6>';
-
-    if (response.issues && response.issues.length > 0) {
-        html += '<ul>';
-        response.issues.forEach(issue => {
-            html += `<li>${escapeHtml(issue)}</li>`;
-        });
-        html += '</ul>';
-    } else {
-        html += '<p>No issues found. Schema is valid.</p>';
-    }
-
-    html += '</div>';
-    container.innerHTML = html;
-}
 

@@ -173,8 +173,6 @@ grep "ADMIN_" usersc/classes/LogCategories.php
 - `LOG_CATEGORY_DATABASE_MIGRATION` → `DatabaseMigration` (Migrations)
 - `LOG_CATEGORY_DATABASE_OPTIMIZATION` → `DatabaseOptimization`
   (Performance optimization)
-- `LOG_CATEGORY_SCHEMA_OPERATION_ERROR` → `SchemaOperationError` (Schema
-  changes)
 - `LOG_CATEGORY_TABLE_CONVERSION` → `TableConversion` (Table conversion)
 - `LOG_CATEGORY_BACKUP_MANAGER` → `BackupManager` (Backup management)
 - `LOG_CATEGORY_BACKUP_ERROR` → `BackupError` (Backup failures)

@@ -18,7 +18,6 @@ This causes `TypeError` when passing database values to strict-typed function pa
 
 **Known issues fixed:**
 
-- `EnhancedSchemaManager::__construct(?int $userId)` - Fixed with explicit cast
 - `BackupManager::__construct(?int $userId)` - Fixed with explicit cast
 - Type helper functions (`dbInt()`, `dbIntOrNull()`, `currentUserId()`) added to custom_functions.php
 

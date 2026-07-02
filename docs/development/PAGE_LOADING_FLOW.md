@@ -280,8 +280,7 @@ users/init.php
   `CarDeletionException`
 - **Owner exceptions:** `OwnerCreationException`, `OwnerNotFoundException`,
   `OwnerValidationException`, `OwnerUpdateException`
-- **System exceptions:** `ImageProcessingException`, `BackupException`,
-  `SchemaException`
+- **System exceptions:** `ImageProcessingException`, `BackupException`
 
 **Autoloader Details:**
 

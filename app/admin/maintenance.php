@@ -15,8 +15,8 @@ declare(strict_types=1);
  *
  * Access control is enforced by PageManager (admin-only). All state-changing
  * operations on this page are performed via AJAX endpoints
- * (backup-operations.php, schema-operations.php), so this page does not
- * process any direct form submissions.
+ * (backup-operations.php), so this page does not process any direct form
+ * submissions.
  *
  * @author Elan Registry Development Team
  * @copyright 2025

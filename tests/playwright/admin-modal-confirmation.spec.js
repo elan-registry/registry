@@ -3,6 +3,8 @@
 // Behavioral tests for the Bootstrap 5 #confirmationModal used on admin pages.
 // Covers: modal DOM presence, Cancel/Confirm behavior, XSS prevention via
 // textContent, and CSRF token availability for modal-triggered operations.
+// Cancel/Confirm and XSS checks target the backup cleanup confirmation modal
+// (button[onclick*="performBackupCleanup"]) in Area 2.
 //
 // Requires local MAMP at http://localhost:9999/elan-registry
 
@@ -52,7 +54,7 @@ test.describe('Admin confirmation modal — index', () => {
 });
 
 // ---------------------------------------------------------------------------
-// Area 2: maintenance.php — modal DOM and schema maintenance tab
+// Area 2: maintenance.php — modal DOM and maintenance tab
 // ---------------------------------------------------------------------------
 
 test.describe('Admin confirmation modal — maintenance', () => {
@@ -65,60 +67,43 @@ test.describe('Admin confirmation modal — maintenance', () => {
         await expect(page.locator('#confirmationModal')).toBeAttached();
     });
 
-    test('CSRF token is present for schema maintenance', async ({ page }) => {
+    test('CSRF token is present for maintenance operations', async ({ page }) => {
         const csrfInput = page.locator('input[name="csrf"]');
         await expect(csrfInput).toBeAttached();
         const value = await csrfInput.getAttribute('value');
         expect(value).toBeTruthy();
     });
 
-    test('schema maintenance button triggers confirmation modal', async ({ page }) => {
-        const maintenanceBtn = page.locator('button[onclick*="runSchemaMaintenance"]');
-        const count = await maintenanceBtn.count();
-        if (count === 0) {
-            test.skip('Schema maintenance button not found — tab may not have loaded');
+    test('Cancel dismisses the backup cleanup confirmation modal', async ({ page }) => {
+        const cleanupBtn = page.locator('button[onclick*="performBackupCleanup"]').first();
+        if (await cleanupBtn.count() === 0) {
+            test.skip('Cleanup Old Backups button not found — no old backups to clean up');
             return;
         }
 
-        await maintenanceBtn.first().click();
-        await expect(page.locator('#confirmationModal')).toBeVisible({ timeout: 3000 });
-        await expect(page.locator('#confirmTitle')).toContainText('Schema Maintenance');
-    });
-
-    test('Cancel button dismisses the modal without action', async ({ page }) => {
-        const maintenanceBtn = page.locator('button[onclick*="runSchemaMaintenance"]');
-        if (await maintenanceBtn.count() === 0) {
-            test.skip('Schema maintenance button not found');
-            return;
-        }
-
-        await maintenanceBtn.first().click();
+        await cleanupBtn.click();
         await expect(page.locator('#confirmationModal')).toBeVisible({ timeout: 3000 });
 
         await page.locator('#confirmationModal .btn-secondary').click();
         await expect(page.locator('#confirmationModal')).not.toBeVisible({ timeout: 3000 });
-        await expect(page.locator('#maintenance-result')).not.toBeAttached();
     });
 
-    test('modal message rendered as plain text (XSS prevention)', async ({ page }) => {
-        const maintenanceBtn = page.locator('button[onclick*="runSchemaMaintenance"]');
-        if (await maintenanceBtn.count() === 0) {
-            test.skip('Schema maintenance button not found');
+    test('#confirmMessage contains no executable HTML (XSS prevention)', async ({ page }) => {
+        const cleanupBtn = page.locator('button[onclick*="performBackupCleanup"]').first();
+        if (await cleanupBtn.count() === 0) {
+            test.skip('Cleanup Old Backups button not found — no old backups to clean up');
             return;
         }
 
-        await maintenanceBtn.first().click();
+        await cleanupBtn.click();
         await expect(page.locator('#confirmationModal')).toBeVisible({ timeout: 3000 });
 
-        // Message must not contain rendered HTML — textContent only
-        const msgEl = page.locator('#confirmMessage');
-        const innerHTML = await msgEl.evaluate(el => el.innerHTML);
-        // Should not contain HTML tags from interpolated content
-        expect(innerHTML).not.toMatch(/<script/i);
-        expect(innerHTML).not.toMatch(/<img/i);
-        // The message body should be plain text, not HTML markup
-        const textContent = await msgEl.textContent();
-        expect(textContent.trim().length).toBeGreaterThan(0);
+        const msgHtml = await page.locator('#confirmMessage').innerHTML();
+        expect(msgHtml).not.toMatch(/<script/i);
+        expect(msgHtml).not.toMatch(/<img/i);
+
+        // Dismiss so the modal doesn't interfere with other tests
+        await page.locator('#confirmationModal .btn-secondary').click();
     });
 });
 
