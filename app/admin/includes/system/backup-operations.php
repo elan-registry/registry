@@ -12,6 +12,10 @@ require_once '../../../../users/init.php';
 // Set JSON response header
 header('Content-Type: application/json');
 
+if ($method !== 'POST') {
+    ApiResponse::error('Method not allowed', 405)->send();
+}
+
 // Security check
 if (!securePage($php_self)) {
     ApiResponse::forbidden('Access denied')
@@ -74,7 +78,6 @@ try {
                 ->withDataArray([
                     'filename' => $filename,
                     'size' => $sizeFormatted,
-                    'path' => $backupPath
                 ])
                 ->withLogging($user->data()->id, LogCategories::LOG_CATEGORY_BACKUP_MANAGER,
                     "Manual backup completed via API: {$filename} ({$sizeFormatted})")
