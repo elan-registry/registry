@@ -591,7 +591,7 @@ function updateWebsite(array &$cardetails): void
     $website = Input::raw('website');
     if ($website !== null && $website !== '') {
         if (!filter_var($website, FILTER_VALIDATE_URL)) {
-            $errors[] = 'Website URL is not valid';
+            $errors[] = 'Website URL must start with http:// or https:// (e.g. https://example.com)';
             return;
         }
         $scheme = strtolower((string) parse_url($website, PHP_URL_SCHEME));
