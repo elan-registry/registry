@@ -280,9 +280,9 @@ $severityClass = static function (string $severity): string {
 
 // Encode a value as a JSON-quoted JS literal for use inside a JavaScript expression
 // within an HTML onclick attribute. null coerces to "" (not null); output includes JSON quotes.
-function jsStr(mixed $v): string {
+$jsStr = static function (mixed $v): string {
     return htmlspecialchars(json_encode($v ?? '', JSON_THROW_ON_ERROR), ENT_QUOTES, 'UTF-8');
-}
+};
 
 // Calculate severity-specific counts for car issues only
 $carCriticalIssues = 0;
@@ -460,8 +460,8 @@ $qualityScore = $totalCars > 0 ? max(0, 100 - (($carIssues / $totalCars) * 100))
                                                     </button>
                                                     <button type="button" class="btn btn-sm btn-outline-warning ms-1"
                                                             onclick="openAdminContactModal(
-                                                                {id: <?= (int)$car->id ?>, year: <?= jsStr((string)($car->year ?? '')) ?>, model: <?= jsStr($car->model ?? '') ?>, chassis: <?= jsStr($car->chassis ?? '') ?>, series: <?= jsStr($car->series ?? '') ?>},
-                                                                {id: <?= (int)($car->user_id ?? 0) ?>, name: <?= jsStr($car->fname && $car->lname ? $car->fname . ' ' . $car->lname : 'Unknown') // nosemgrep: php.lang.security.taint-unsafe-echo-tag.taint-unsafe-echo-tag ?>, email: <?= jsStr($car->email ?? '') // nosemgrep: php.lang.security.taint-unsafe-echo-tag.taint-unsafe-echo-tag ?>},
+                                                                {id: <?= (int)$car->id ?>, year: <?= $jsStr((string)($car->year ?? '')) ?>, model: <?= $jsStr($car->model ?? '') ?>, chassis: <?= $jsStr($car->chassis ?? '') ?>, series: <?= $jsStr($car->series ?? '') ?>},
+                                                                {id: <?= (int)($car->user_id ?? 0) ?>, name: <?= $jsStr($car->fname && $car->lname ? $car->fname . ' ' . $car->lname : 'Unknown') // nosemgrep: php.lang.security.taint-unsafe-echo-tag.taint-unsafe-echo-tag ?>, email: <?= $jsStr($car->email ?? '') // nosemgrep: php.lang.security.taint-unsafe-echo-tag.taint-unsafe-echo-tag ?>},
                                                                 'Invalid Chassis'
                                                             )" title="Contact Owner via Registry">
                                                         <i class="fas fa-envelope"></i>
@@ -538,8 +538,8 @@ $qualityScore = $totalCars > 0 ? max(0, 100 - (($carIssues / $totalCars) * 100))
                                                         </button>
                                                         <button type="button" class="btn btn-sm btn-outline-warning"
                                                                 onclick="openAdminContactModal(
-                                                                    {id: '<?= $owner->car_count ?? 'Multiple' ?>', year: '', model: '', chassis: '', series: ''},
-                                                                    {id: <?= (int)($owner->id ?? 0) ?>, name: <?= jsStr(trim(($owner->fname ?? '') . ' ' . ($owner->lname ?? ''))) // nosemgrep: php.lang.security.taint-unsafe-echo-tag.taint-unsafe-echo-tag ?>, email: <?= jsStr($owner->email ?? '') // nosemgrep: php.lang.security.taint-unsafe-echo-tag.taint-unsafe-echo-tag ?>},
+                                                                    {id: <?= $jsStr((string)($owner->car_count ?? 'Multiple')) ?>, year: '', model: '', chassis: '', series: ''},
+                                                                    {id: <?= (int)($owner->id ?? 0) ?>, name: <?= $jsStr(trim(($owner->fname ?? '') . ' ' . ($owner->lname ?? ''))) // nosemgrep: php.lang.security.taint-unsafe-echo-tag.taint-unsafe-echo-tag ?>, email: <?= $jsStr($owner->email ?? '') // nosemgrep: php.lang.security.taint-unsafe-echo-tag.taint-unsafe-echo-tag ?>},
                                                                     'Missing Information'
                                                                 )" title="Contact Owner via Registry">
                                                             <i class="fas fa-envelope"></i>
@@ -612,9 +612,9 @@ $qualityScore = $totalCars > 0 ? max(0, 100 - (($carIssues / $totalCars) * 100))
                                                         <button type="button" class="btn btn-sm btn-outline-warning"
                                                                 onclick="openAdminContactModal(
                                                                     {id: 'Multiple', year: '', model: '', chassis: '', series: ''},
-                                                                    {id: 'Multiple', name: <?= jsStr('Users with ' . ($duplicate->email ?? '')) ?>, email: <?= jsStr($duplicate->email ?? '') ?>},
+                                                                    {id: 'Multiple', name: <?= $jsStr('Users with ' . ($duplicate->email ?? '')) ?>, email: <?= $jsStr($duplicate->email ?? '') ?>},
                                                                     'Duplicate Email Addresses',
-                                                                    <?= jsStr($duplicate->email ?? '') ?>
+                                                                    <?= $jsStr($duplicate->email ?? '') ?>
                                                                 )" title="Contact Users via Registry">
                                                             <i class="fas fa-envelope"></i> Contact
                                                         </button>
@@ -688,8 +688,8 @@ $qualityScore = $totalCars > 0 ? max(0, 100 - (($carIssues / $totalCars) * 100))
                                                     </button>
                                                     <button type="button" class="btn btn-sm btn-outline-warning ms-1"
                                                             onclick="openAdminContactModal(
-                                                                {id: <?= (int)$car->id ?>, year: <?= jsStr((string)($car->year ?? '')) ?>, model: <?= jsStr($car->model ?? '') ?>, chassis: <?= jsStr($car->chassis ?? '') ?>, series: <?= jsStr($car->series ?? '') ?>},
-                                                                {id: <?= (int)($car->user_id ?? 0) ?>, name: <?= jsStr($car->fname && $car->lname ? $car->fname . ' ' . $car->lname : 'Unknown') // nosemgrep: php.lang.security.taint-unsafe-echo-tag.taint-unsafe-echo-tag ?>, email: <?= jsStr($car->email ?? '') // nosemgrep: php.lang.security.taint-unsafe-echo-tag.taint-unsafe-echo-tag ?>},
+                                                                {id: <?= (int)$car->id ?>, year: <?= $jsStr((string)($car->year ?? '')) ?>, model: <?= $jsStr($car->model ?? '') ?>, chassis: <?= $jsStr($car->chassis ?? '') ?>, series: <?= $jsStr($car->series ?? '') ?>},
+                                                                {id: <?= (int)($car->user_id ?? 0) ?>, name: <?= $jsStr($car->fname && $car->lname ? $car->fname . ' ' . $car->lname : 'Unknown') // nosemgrep: php.lang.security.taint-unsafe-echo-tag.taint-unsafe-echo-tag ?>, email: <?= $jsStr($car->email ?? '') // nosemgrep: php.lang.security.taint-unsafe-echo-tag.taint-unsafe-echo-tag ?>},
                                                                 'Missing Information'
                                                             )" title="Contact Owner via Registry">
                                                         <i class="fas fa-envelope"></i>
