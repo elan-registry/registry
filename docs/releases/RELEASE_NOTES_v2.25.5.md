@@ -28,8 +28,7 @@ URL migration script for #1040 (app/owner/ path registration).
 ## Issues Resolved
 
 - [#907](https://github.com/unibrain1/elanregistry/issues/907) — tests: CarDataTablesService per-column search integration test
-- [#987](https://github.com/unibrain1/elanregistry/issues/987) — test: add CarOwnershipSecurityTest to guard against unauthorized car edits
-- [#988](https://github.com/unibrain1/elanregistry/issues/988) — test: add OwnerEmailSecurityTest to guard against sender impersonation
+- [#987](https://github.com/unibrain1/elanregistry/issues/987) — test: add security regression tests for unauthorized car edits (CarOwnershipSecurityTest) and sender impersonation (OwnerEmailSecurityTest)
 - [#989](https://github.com/unibrain1/elanregistry/issues/989) — test: add integration tests for 3 untested admin owner-management endpoints
 - [#990](https://github.com/unibrain1/elanregistry/issues/990) — test: add TransferRequestTest for the transfer initiation step
 - [#1040](https://github.com/unibrain1/elanregistry/issues/1040) — refactor: create app/owner/ directory and migrate owner-facing pages (Phase 2)
