@@ -49,7 +49,7 @@ const FETCH_IMAGES_RESPONSE = JSON.stringify({
  * Call before page.goto(); each test sets its own fetchImages API mock.
  */
 async function injectFakeCarId(page) {
-    await page.route('**/app/cars/edit.php', async (route) => {
+    await page.route('**/app/owner/cars/edit.php', async (route) => {
         const response = await route.fetch();
         const rawBody = await response.text();
         // Inject a fake car_id into the hidden input so the fetchImages
@@ -95,7 +95,7 @@ async function gotoEditFormWithFakeImages(page) {
         }
     });
 
-    await page.goto('app/cars/edit.php', { waitUntil: 'domcontentloaded' });
+    await page.goto('app/owner/cars/edit.php', { waitUntil: 'domcontentloaded' });
 
     const url = page.url();
     const bodyText = await page.textContent('body').catch(() => '');
@@ -185,7 +185,7 @@ test.describe('fetchImages API failure handling (#1031)', () => {
             }
         });
 
-        await page.goto('app/cars/edit.php', { waitUntil: 'domcontentloaded' });
+        await page.goto('app/owner/cars/edit.php', { waitUntil: 'domcontentloaded' });
 
         const url = page.url();
         const bodyText = await page.textContent('body').catch(() => '');
@@ -215,7 +215,7 @@ test.describe('fetchImages API failure handling (#1031)', () => {
             }
         });
 
-        await page.goto('app/cars/edit.php', { waitUntil: 'domcontentloaded' });
+        await page.goto('app/owner/cars/edit.php', { waitUntil: 'domcontentloaded' });
 
         const url = page.url();
         const bodyText = await page.textContent('body').catch(() => '');

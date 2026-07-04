@@ -246,7 +246,7 @@ class TransferEmailService
                 'completed_date' => $transferData->completed_date ?: date('Y-m-d H:i:s'),
             ];
 
-            $carUrl = getBaseUrl() . '/app/cars/details.php?car_id=' . $carData->id;
+            $carUrl = getBaseUrl() . '/app/owner/cars/details.php?car_id=' . $carData->id;
 
             ob_start();
             include $this->basePath . 'app/views/email/_transfer_response.php';

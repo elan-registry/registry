@@ -411,7 +411,7 @@ $('#carForm').on('submit', async function(e) {
 
         // Optional: Redirect or update UI
         if (result.data.carId) {
-            window.location.href = `/app/cars/details.php?id=${result.data.carId}`;
+            window.location.href = `/app/owner/cars/details.php?id=${result.data.carId}`;
         }
 
     } catch (error) {

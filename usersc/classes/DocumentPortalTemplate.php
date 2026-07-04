@@ -38,8 +38,8 @@ class DocumentPortalTemplate
      * @var array<string, array{label: string, icon: string, url: string, parents: list<array{icon: string, text: string, url: string}>}>
      */
     private const BREADCRUMB_SECTIONS = [
-        'list_cars'  => ['label' => 'Cars',         'icon' => 'fa-car',            'url' => 'app/cars/index.php',   'parents' => []],
-        'add_car'    => ['label' => 'Add Car',       'icon' => 'fa-plus',           'url' => '',                     'parents' => [['icon' => 'fa-car', 'text' => 'Cars', 'url' => 'app/cars/index.php']]],
+        'list_cars'  => ['label' => 'Cars',         'icon' => 'fa-car',            'url' => 'app/owner/cars/index.php',   'parents' => []],
+        'add_car'    => ['label' => 'Add Car',       'icon' => 'fa-plus',           'url' => '',                     'parents' => [['icon' => 'fa-car', 'text' => 'Cars', 'url' => 'app/owner/cars/index.php']]],
         'statistics' => ['label' => 'Statistics',    'icon' => 'fa-pie-chart',      'url' => '',                     'parents' => []],
         'reference'  => ['label' => 'Reference',     'icon' => 'fa-book',           'url' => 'docs/reference/',      'parents' => []],
         'stories'    => ['label' => 'Car Stories',   'icon' => 'fa-book-open',      'url' => 'docs/car-stories.php', 'parents' => []],

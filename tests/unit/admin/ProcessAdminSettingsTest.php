@@ -121,6 +121,9 @@ final class ProcessAdminSettingsTest extends TestCase
             $matches,
             'FIELD_TYPES constant must be present in process-settings.php'
         );
+        if (empty($matches)) {
+            return; // Assertion above already recorded a failure; avoid cascading undefined-key errors.
+        }
 
         preg_match_all("/'([^']+)'\s*=>/", $matches[1], $keyMatches);
         $actualKeys = $keyMatches[1];

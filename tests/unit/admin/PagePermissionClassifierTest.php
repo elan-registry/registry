@@ -33,7 +33,7 @@ final class PagePermissionClassifierTest extends TestCase
             'user_settings is not special'     => ['usersc/user_settings.php', false],
             'other usersc page'                => ['usersc/profile.php',       false],
             'admin page'                       => ['app/admin/manage.php',     false],
-            'public car listing'               => ['app/cars/index.php',       false],
+            'public car listing'               => ['app/owner/cars/index.php',       false],
         ];
     }
 
@@ -59,10 +59,10 @@ final class PagePermissionClassifierTest extends TestCase
             'admin design-system page'          => ['app/admin/design-system.php',                               true],
             'docs admin'                        => ['docs/admin/guide.php',                                     true],
             'user settings (owner page)'        => ['usersc/user_settings.php',                                 false],
-            'car listing (public)'              => ['app/cars/index.php',                                       false],
+            'car listing (public)'              => ['app/owner/cars/index.php',                                       false],
             'car actions (owner)'               => ['app/api/cars/save.php',                                   false],
             'api send-feedback (not admin)'     => ['app/api/contact/send-feedback.php',                       false],
-            'contact form (owner)'              => ['app/contact/form.php',                                     false],
+            'contact form (owner)'              => ['app/owner/contact/index.php',                              false],
             'error page'                        => ['404.php',                                                  false],
         ];
     }
@@ -95,7 +95,7 @@ final class PagePermissionClassifierTest extends TestCase
             'admin index (dashboard)'           => ['app/admin/index.php',                                      false],
             'tab-cars'                          => ['app/admin/includes/tab-cars.php',                          false],
             'docs admin'                        => ['docs/admin/guide.php',                                     false],
-            'non-admin page'                    => ['app/cars/index.php',                                       false],
+            'non-admin page'                    => ['app/owner/cars/index.php',                                       false],
         ];
     }
 
@@ -123,16 +123,18 @@ final class PagePermissionClassifierTest extends TestCase
             'car action'                        => ['app/api/cars/save.php',              true],
             'api send-feedback (owner)'         => ['app/api/contact/send-feedback.php',    true],
             'api send-owner-email (owner)'      => ['app/api/contact/send-owner-email.php', true],
-            'contact page'                      => ['app/contact/form.php',               true],
-            'edit page'                         => ['app/cars/edit-car.php',              true],
+            'contact page'                      => ['app/owner/contact/index.php',        true],
+            'contact owner page'                => ['app/owner/contact/owner.php',        true],
+            'privacy page (public)'             => ['app/owner/privacy.php',              false],
+            'edit page'                         => ['app/owner/cars/edit.php',             true],
             'usersc page'                       => ['usersc/user_settings.php',           true],
             // login/join are PUBLIC (PUBLIC_USERSC_PAGES), mirroring users/login.php and users/join.php
             'login page'                        => ['usersc/login.php',                   false],
             'join page'                         => ['usersc/join.php',                    false],
             // Public pages
-            'car listing'                       => ['app/cars/index.php',                 false],
-            'car details'                       => ['app/cars/details.php',               false],
-            'statistics'                        => ['app/reports/statistics.php',         false],
+            'car listing'                       => ['app/owner/cars/index.php',                 false],
+            'car details'                       => ['app/owner/cars/details.php',               false],
+            'statistics'                        => ['app/owner/reports/statistics.php',         false],
             'docs guide'                        => ['docs/guides/how-to.php',             false],
             'error 404'                         => ['404.php',                            false],
             'error 403'                         => ['403.php',                            false],

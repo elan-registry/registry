@@ -135,10 +135,10 @@ test.describe('Elan Registry - All Pages (Logged In)', () => {
 
   const pages = [
     { path: '/', name: 'Home' },
-    { path: '/app/cars/index.php', name: 'List Cars' },
-    { path: '/app/reports/statistics.php', name: 'Statistics' },
+    { path: '/app/owner/cars/index.php', name: 'List Cars' },
+    { path: '/app/owner/reports/statistics.php', name: 'Statistics' },
     { path: '/docs/reference/identification-guide.php', name: 'Identification Guide' },
-    { path: '/app/cars/factory.php', name: 'Factory Data' },
+    { path: '/app/owner/cars/factory.php', name: 'Factory Data' },
     { path: '/docs/reference/index.php', name: 'Reference Library' },
     { path: '/docs/car-stories.php', name: 'Car Stories' },
     { path: '/docs/guides/index.php', name: 'Guides' },
@@ -174,10 +174,10 @@ test.describe('Internal Links Discovery and Testing (Logged In)', () => {
 
   const pages = [
     { path: '/', name: 'Home' },
-    { path: '/app/cars/index.php', name: 'List Cars' },
-    { path: '/app/reports/statistics.php', name: 'Statistics' },
+    { path: '/app/owner/cars/index.php', name: 'List Cars' },
+    { path: '/app/owner/reports/statistics.php', name: 'Statistics' },
     { path: '/docs/reference/identification-guide.php', name: 'Identification Guide' },
-    { path: '/app/cars/factory.php', name: 'Factory Data' },
+    { path: '/app/owner/cars/factory.php', name: 'Factory Data' },
     { path: '/docs/reference/index.php', name: 'Reference Library' },
     { path: '/docs/car-stories.php', name: 'Car Stories' },
     { path: '/docs/guides/index.php', name: 'Guides' },

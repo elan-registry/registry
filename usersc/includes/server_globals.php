@@ -61,14 +61,14 @@ $current_origin = $is_https ? "https://{$host}" : "http://{$host}";
 // Request Details
 // REQUEST_METHOD is normalized to uppercase (GET, POST, PUT, DELETE, etc.)
 // REQUEST_URI includes path and query string (/path?query=value)
-// PHP_SELF is the script path (/index.php or /app/cars/details.php)
+// PHP_SELF is the script path (/index.php or /app/owner/cars/details.php)
 $method = Server::get('REQUEST_METHOD', 'GET');
 $request_uri = Server::get('REQUEST_URI', '/');
 $php_self = Server::get('PHP_SELF', '/');
 
 // Full URL Construction
 // Combines scheme, host, and path for complete URL reference
-// Example: https://elanregistry.org/app/cars/details.php?id=123
+// Example: https://elanregistry.org/app/owner/cars/details.php?id=123
 $current_url = $current_origin . $request_uri;
 
 // Optional/Tracking Variables

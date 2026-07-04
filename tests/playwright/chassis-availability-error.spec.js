@@ -35,7 +35,7 @@ const AVAILABLE_RESPONSE = JSON.stringify({ success: true, taken: false, availab
  * Navigate to the add-car form and return false if the session isn't active.
  */
 async function gotoAddCarForm(page) {
-    await page.goto('app/cars/edit.php', { waitUntil: 'domcontentloaded' });
+    await page.goto('app/owner/cars/edit.php', { waitUntil: 'domcontentloaded' });
     const url = page.url();
     if (url.includes('login') || url.includes('Please Log In')) {
         return false;

@@ -9,7 +9,7 @@
  * @author Elan Registry Team
  * @copyright 2025
  */
-require_once '../../users/init.php';
+require_once '../../../users/init.php';
 require_once $abs_us_root . $us_url_root . 'usersc/includes/elanregistry_prep.php';
 
 if (!securePage($php_self)) {
@@ -94,7 +94,7 @@ require_once $abs_us_root . $us_url_root . 'users/includes/html_footer.php'; //c
     'serverMethod': 'post',
 
     "ajax": {
-      "url": "../api/cars/factory-list.php",
+      "url": "../../api/cars/factory-list.php",
       "dataSrc": "data",
       data: function(d) {
         d.csrf = csrf;
@@ -182,7 +182,7 @@ require_once $abs_us_root . $us_url_root . 'users/includes/html_footer.php'; //c
           const carId = parseInt(response.car_id, 10);
           if (Number.isFinite(carId) && carId > 0) {
             // Car exists - create link to car details
-            const detailsUrl = us_url_root + 'app/cars/details.php?car_id=' + carId;
+            const detailsUrl = us_url_root + 'app/owner/cars/details.php?car_id=' + carId;
             container.html(
               '<a href="' + detailsUrl + '" class="btn btn-sm btn-primary" target="_blank">' +
               '<i class="fas fa-car"></i> View Car #' + carId +

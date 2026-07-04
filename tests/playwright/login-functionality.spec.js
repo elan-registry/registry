@@ -160,8 +160,8 @@ test.describe('Login Functionality', () => {
     
     // Navigate to various pages and verify still logged in
     const protectedPages = [
-      'app/cars/index.php',
-      'app/reports/statistics.php',
+      'app/owner/cars/index.php',
+      'app/owner/reports/statistics.php',
       'users/account.php'
     ];
     

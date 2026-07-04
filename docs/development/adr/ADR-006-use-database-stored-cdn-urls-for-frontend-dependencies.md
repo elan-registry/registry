@@ -75,9 +75,9 @@ echo html_entity_decode($settings->elan_fontawesome_cdn);
 
 **Page-specific dependencies** loaded only where needed:
 
-- `app/cars/index.php`, `app/cars/factory.php`, `app/cars/details.php` — DataTables JS/CSS
-- `app/cars/edit.php` — FilePond 4.x + 6 plugins (JS/CSS), Flatpickr (JS/CSS)
-- `app/reports/statistics.php` — Chart.js (with hardcoded fallback if setting not present)
+- `app/owner/cars/index.php`, `app/owner/cars/factory.php`, `app/owner/cars/details.php` — DataTables JS/CSS
+- `app/owner/cars/edit.php` — FilePond 4.x + 6 plugins (JS/CSS), Flatpickr (JS/CSS)
+- `app/owner/reports/statistics.php` — Chart.js (with hardcoded fallback if setting not present)
 
 ### SRI Protection
 

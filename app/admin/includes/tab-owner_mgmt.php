@@ -515,7 +515,7 @@ $ownerQualityIcon  = match (true) {
                                                                                                             <?php foreach ($owner->cars as $car) { ?>
                                                                                                                 <tr>
                                                                                                                     <td>
-                                                                                                                        <a href="<?= $us_url_root ?>app/cars/details.php?car_id=<?= $car->id ?>"
+                                                                                                                        <a href="<?= $us_url_root ?>app/owner/cars/details.php?car_id=<?= $car->id ?>"
                                                                                                                            target="_blank" class="badge text-bg-primary">
                                                                                                                             <?= $car->id ?>
                                                                                                                         </a>

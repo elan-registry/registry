@@ -5,8 +5,34 @@
 
 ## Required Actions After Deployment
 
-TBD — will be updated as issues are completed. Expected: UserSpice `pages` table
-URL migration script for #1040 (app/owner/ path registration).
+### #1040 — app/owner/ page re-registration
+
+After deploying this release, the 8 moved pages must be re-registered in the
+UserSpice `pages` table with their new slugs and assigned correct permissions.
+
+1. **Visit each new URL** to trigger UserSpice auto-registration. Pages requiring
+   login (`edit`, both `contact` pages) must be visited while logged in as an admin;
+   public pages auto-register for any visitor:
+   - `/app/owner/cars/index.php`
+   - `/app/owner/cars/details.php` (any car)
+   - `/app/owner/cars/edit.php` (any car — **must be admin**)
+   - `/app/owner/cars/factory.php`
+   - `/app/owner/contact/index.php` (**must be admin**)
+   - `/app/owner/contact/owner.php` (any car — **must be admin**)
+   - `/app/owner/reports/statistics.php`
+   - `/app/owner/privacy.php`
+
+2. **Run the Fix Page Permissions maintenance script**
+   (`Admin → Maintenance → Fix Page Permissions`) to apply the correct
+   permission tier to the newly registered entries.
+
+3. **Optional: Remove stale old pages table entries.** The old slugs
+   (`app/cars/index.php`, `app/cars/details.php`, `app/cars/edit.php`,
+   `app/cars/factory.php`, `app/contact/index.php`, `app/contact/owner.php`,
+   `app/reports/statistics.php`, `app/privacy.php`) remain in the `pages` table
+   pointing to files that no longer exist. They cause no runtime errors but
+   inflate the page list. Delete them from the `pages` table after confirming
+   the new entries are registered correctly.
 
 ## User-Facing Changes
 

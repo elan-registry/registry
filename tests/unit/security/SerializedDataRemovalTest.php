@@ -69,7 +69,7 @@ class SerializedDataRemovalTest extends TestCase
      */
     public function testContactOwnerUsesSecureFields(): void
     {
-        $contactOwnerFile = $this->projectRoot . '/app/contact/owner.php';
+        $contactOwnerFile = $this->projectRoot . '/app/owner/contact/owner.php';
         $this->assertFileExists($contactOwnerFile);
 
         $content = file_get_contents($contactOwnerFile);
@@ -119,7 +119,7 @@ class SerializedDataRemovalTest extends TestCase
      */
     public function testUserIdFieldsAreHTMLEncoded(): void
     {
-        $contactOwnerFile = $this->projectRoot . '/app/contact/owner.php';
+        $contactOwnerFile = $this->projectRoot . '/app/owner/contact/owner.php';
         $content = file_get_contents($contactOwnerFile);
 
         $this->assertStringContainsString('htmlspecialchars($to[\'id\'], ENT_QUOTES, \'UTF-8\')', $content,
@@ -131,9 +131,9 @@ class SerializedDataRemovalTest extends TestCase
      */
     public function testCSRFProtectionMaintained(): void
     {
-        $contactOwnerFile = $this->projectRoot . '/app/contact/owner.php';
+        $contactOwnerFile = $this->projectRoot . '/app/owner/contact/owner.php';
         $content = file_get_contents($contactOwnerFile);
-        
+
         // Should maintain CSRF token
         $this->assertStringContainsString('Token::generate()', $content, 'CSRF token should be generated');
         $this->assertStringContainsString('name=\'csrf\'', $content, 'CSRF field should be present');

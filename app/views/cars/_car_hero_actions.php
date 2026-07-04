@@ -6,7 +6,7 @@ $heroCarId = (int)($heroCarId ?? 0);
 
 switch ($context) {
     case 'owner_detail': ?>
-        <form method="POST" action="<?= $_baseUrl ?>app/cars/edit.php" class="d-inline">
+        <form method="POST" action="<?= $_baseUrl ?>app/owner/cars/edit.php" class="d-inline">
             <input type="hidden" name="csrf" value="<?= Token::generate(); ?>" />
             <input type="hidden" name="action" value="updateCar" />
             <input type="hidden" name="car_id" value="<?= $heroCarId ?>" />
@@ -21,7 +21,7 @@ switch ($context) {
             <i class="fas fa-shield-alt" aria-hidden="true"></i> <strong>Administrative Override:</strong>
             You are editing a car that you do not own using Administrator/Editor privileges.
         </div>
-        <form method="POST" action="<?= $_baseUrl ?>app/cars/edit.php" class="d-inline me-2">
+        <form method="POST" action="<?= $_baseUrl ?>app/owner/cars/edit.php" class="d-inline me-2">
             <input type="hidden" name="csrf" value="<?= Token::generate(); ?>" />
             <input type="hidden" name="action" value="updateCar" />
             <input type="hidden" name="car_id" value="<?= $heroCarId ?>" />
@@ -30,7 +30,7 @@ switch ($context) {
                 <i class="fas fa-edit" aria-hidden="true"></i> Admin Edit Car
             </button>
         </form>
-        <form method="POST" action="<?= $_baseUrl ?>app/contact/owner.php" class="d-inline">
+        <form method="POST" action="<?= $_baseUrl ?>app/owner/contact/owner.php" class="d-inline">
             <input type="hidden" name="csrf" value="<?= Token::generate(); ?>" />
             <input type="hidden" name="action" value="contact_owner" />
             <input type="hidden" name="car_id" value="<?= $heroCarId ?>" />
@@ -41,7 +41,7 @@ switch ($context) {
         <?php break;
 
     case 'visitor_detail': ?>
-        <form method="POST" action="<?= $_baseUrl ?>app/contact/owner.php" class="d-inline">
+        <form method="POST" action="<?= $_baseUrl ?>app/owner/contact/owner.php" class="d-inline">
             <input type="hidden" name="csrf" value="<?= Token::generate(); ?>" />
             <input type="hidden" name="action" value="contact_owner" />
             <input type="hidden" name="car_id" value="<?= $heroCarId ?>" />
@@ -58,7 +58,7 @@ switch ($context) {
         <?php break;
 
     case 'owner_account': ?>
-        <form method="POST" action="<?= $_baseUrl ?>app/cars/edit.php" class="d-inline me-2">
+        <form method="POST" action="<?= $_baseUrl ?>app/owner/cars/edit.php" class="d-inline me-2">
             <input type="hidden" name="csrf" value="<?= Token::generate(); ?>" />
             <input type="hidden" name="action" value="updateCar" />
             <input type="hidden" name="car_id" value="<?= $heroCarId ?>" />
@@ -66,7 +66,7 @@ switch ($context) {
                 <i class="fas fa-edit" aria-hidden="true"></i> Update Car
             </button>
         </form>
-        <a class="btn btn-outline-light btn-lg" role="button" href="<?= $_baseUrl ?>app/cars/details.php?car_id=<?= $heroCarId ?>">
+        <a class="btn btn-outline-light btn-lg" role="button" href="<?= $_baseUrl ?>app/owner/cars/details.php?car_id=<?= $heroCarId ?>">
             <i class="fas fa-eye" aria-hidden="true"></i> View Details
         </a>
         <?php break;

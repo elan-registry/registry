@@ -18,14 +18,14 @@ const MOBILE_VIEWPORT = { width: 375, height: 667 };
 
 const PUBLIC_PAGES = [
   '',
-  'app/cars/index.php',
-  'app/cars/details.php?car_id=1091',
-  'app/cars/factory.php',
+  'app/owner/cars/index.php',
+  'app/owner/cars/details.php?car_id=1091',
+  'app/owner/cars/factory.php',
   'app/cars/identify.php',
-  'app/contact/index.php',
-  'app/contact/owner.php',
-  'app/reports/statistics.php',
-  'app/privacy.php',
+  'app/owner/contact/index.php',
+  'app/owner/contact/owner.php',
+  'app/owner/reports/statistics.php',
+  'app/owner/privacy.php',
   'docs/guides/car-transfer-faq.php',
 ];
 
@@ -51,7 +51,7 @@ test.describe('Mobile Responsive (iPhone SE / 375px)', () => {
   }
 
   test('DataTables responsive collapse indicator present on car listing', async ({ page }) => {
-    await page.goto('app/cars/index.php', { waitUntil: 'networkidle' });
+    await page.goto('app/owner/cars/index.php', { waitUntil: 'networkidle' });
 
     // DataTables 1.x uses .dataTables_wrapper; 2.x uses .dt-container
     await page.waitForSelector('table.dataTable, div.dt-container, div.dataTables_wrapper', { timeout: 15000 });
@@ -61,7 +61,7 @@ test.describe('Mobile Responsive (iPhone SE / 375px)', () => {
   });
 
   test('edit car form progress bar does not cause horizontal overflow', async ({ page }) => {
-    await navigateAndWait(page, 'app/cars/edit.php');
+    await navigateAndWait(page, 'app/owner/cars/edit.php');
     await page.waitForLoadState('networkidle');
 
     // Check overflow regardless of auth state — both paths render a full page at 375px.
