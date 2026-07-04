@@ -33,7 +33,7 @@ final class ProcessAdminSettingsTest extends TestCase
     protected function setUp(): void
     {
         $this->endpointPath    = dirname(__DIR__, 3) . '/app/api/admin/process-settings.php';
-        $this->endpointContent = (string) file_get_contents($this->endpointPath);
+        $this->endpointContent = file_get_contents($this->endpointPath);
     }
 
     public function testEndpointFileExists(): void
@@ -126,6 +126,7 @@ final class ProcessAdminSettingsTest extends TestCase
         $actualKeys = $keyMatches[1];
         sort($actualKeys);
 
+        // sorted — must match PHP sort() output; keep in alphabetical order when adding keys
         $expectedKeys = [
             'elan_admin_emails',
             'elan_feedback_email',
