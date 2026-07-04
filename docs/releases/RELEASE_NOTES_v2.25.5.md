@@ -1,0 +1,40 @@
+# Elan Registry v2.25.5 Release Notes
+
+**Release Date:** TBD
+**Type:** Patch Release - App Directory Phase 2 & Test Coverage
+
+## Required Actions After Deployment
+
+TBD — will be updated as issues are completed. Expected: UserSpice `pages` table
+URL migration script for #1040 (app/owner/ path registration).
+
+## User-Facing Changes
+
+No user-visible changes in this release.
+
+## Admin-Facing Changes
+
+### Security Fixes
+
+- **XSS: Fix innerHTML injection in admin car modal** ([#1124](https://github.com/unibrain1/elanregistry/issues/1124)): `openAdminContactModal()` in `tab-manage_cars.php` now uses safe DOM methods instead of `innerHTML` to inject car data.
+- **XSS: Fix innerHTML injection in statistics tab renderers** ([#1125](https://github.com/unibrain1/elanregistry/issues/1125)): Statistics page tab renderers in `statistics.js` now use safe DOM construction instead of `innerHTML` for server-sourced data.
+
+### Improvements
+
+- **Internal: Reorganize owner-facing pages under app/owner/** ([#1040](https://github.com/unibrain1/elanregistry/issues/1040)): Moves car listing, details, edit, factory, contact, statistics, and privacy pages to a consistent `app/owner/` directory structure (Phase 2 of app/ reorganization).
+
+## Issues Resolved
+
+- [#907](https://github.com/unibrain1/elanregistry/issues/907) — tests: CarDataTablesService per-column search integration test
+- [#909](https://github.com/unibrain1/elanregistry/issues/909) — tests: unit tests for normalizeColorName JS function in statistics.js
+- [#987](https://github.com/unibrain1/elanregistry/issues/987) — test: add CarOwnershipSecurityTest to guard against unauthorized car edits
+- [#988](https://github.com/unibrain1/elanregistry/issues/988) — test: add OwnerEmailSecurityTest to guard against sender impersonation
+- [#989](https://github.com/unibrain1/elanregistry/issues/989) — test: add integration tests for 3 untested admin owner-management endpoints
+- [#990](https://github.com/unibrain1/elanregistry/issues/990) — test: add TransferRequestTest for the transfer initiation step
+- [#991](https://github.com/unibrain1/elanregistry/issues/991) — test: add ChassisValidatorTest and fill remaining unit test gaps
+- [#1040](https://github.com/unibrain1/elanregistry/issues/1040) — refactor: create app/owner/ directory and migrate owner-facing pages (Phase 2)
+- [#1092](https://github.com/unibrain1/elanregistry/issues/1092) — test: add TransferEmailService success-path and partial-failure unit tests
+- [#1093](https://github.com/unibrain1/elanregistry/issues/1093) — test: add process-admin-settings.php field-allowlist behavioral tests
+- [#1094](https://github.com/unibrain1/elanregistry/issues/1094) — test: replace tautological StatisticsApiTest assertions with behavioral tests
+- [#1124](https://github.com/unibrain1/elanregistry/issues/1124) — security: openAdminContactModal() injects car data via innerHTML in tab-manage_cars.php
+- [#1125](https://github.com/unibrain1/elanregistry/issues/1125) — security: statistics.js tab renderers inject server-sourced data via innerHTML
