@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-require_once __DIR__ . '/IntegrationTestCase.php';
+require_once __DIR__ . '/../IntegrationTestCase.php';
 
 use PHPUnit\Framework\Attributes\Group;
 
@@ -177,21 +177,23 @@ final class TransferRequestTest extends IntegrationTestCase
      * A request for a car the user already owns is detected by the ownership
      * check in transfer-request.php:106–108.
      *
-     * Pins that cars.user_id matches the requesting user's ID when they are
-     * the current owner — the endpoint guards on this before inserting.
+     * Uses the endpoint's actual car-lookup query (year/type/chassis) rather
+     * than a direct id lookup so that any future regression swapping those
+     * columns would break this test.
      */
     public function testRequestForOwnedCarIsRejectedByOwnershipCheck(): void
     {
         $ownerId = $this->createTestUser();
-        $carId   = $this->createTestCar($ownerId);
+        $chassis = 'OWN' . substr(uniqid(), -8); // 11 chars, within VARCHAR(15) limit
+        $this->createTestCar($ownerId, ['year' => '1973', 'type' => 'FHC', 'chassis' => $chassis]);
 
-        // Replicate the endpoint's car lookup
+        // Replicate the endpoint's car lookup (transfer-request.php:94–96)
         $carRow = $this->db->query(
-            'SELECT id, user_id FROM cars WHERE id = ?',
-            [$carId]
+            'SELECT id, user_id FROM cars WHERE year = ? AND type = ? AND chassis = ?',
+            ['1973', 'FHC', $chassis]
         )->first();
 
-        $this->assertNotNull($carRow);
+        $this->assertNotNull($carRow, 'Endpoint car lookup must find the car by year/type/chassis');
 
         // Replicate the endpoint's ownership guard: $existingCar->user_id == $user->data()->id
         $ownerAlreadyOwnsCar = ((int) $carRow->user_id === $ownerId);
