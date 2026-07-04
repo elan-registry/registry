@@ -520,6 +520,8 @@ final class CarDataTablesTest extends IntegrationTestCase
 
         $this->assertGreaterThan(0, $result['recordsFiltered'],
             'At least the S4 car with the unique color must match');
+        $this->assertSame(1, count($result['data']),
+            'Exactly one car must survive the combined filter (S4 + unique color)');
 
         foreach ($result['data'] as $row) {
             $this->assertSame('S4', $row->series,
