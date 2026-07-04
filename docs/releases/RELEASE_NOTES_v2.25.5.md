@@ -10,7 +10,9 @@ URL migration script for #1040 (app/owner/ path registration).
 
 ## User-Facing Changes
 
-No user-visible changes in this release.
+### Improvements
+
+- **Recent Registrations chart ends at today** ([#1128](https://github.com/unibrain1/elanregistry/issues/1128)): The statistics page chart now uses daily buckets over a 91-day rolling window, so the rightmost x-axis label is always today's date rather than the start of the current week.
 
 ## Admin-Facing Changes
 
@@ -38,3 +40,4 @@ No user-visible changes in this release.
 - [#1094](https://github.com/unibrain1/elanregistry/issues/1094) — test: replace tautological StatisticsApiTest assertions with behavioral tests
 - [#1124](https://github.com/unibrain1/elanregistry/issues/1124) — security: openAdminContactModal() injects car data via innerHTML in tab-manage_cars.php
 - [#1125](https://github.com/unibrain1/elanregistry/issues/1125) — security: statistics.js tab renderers inject server-sourced data via innerHTML
+- [#1128](https://github.com/unibrain1/elanregistry/issues/1128) — enhancement: Recent Registrations chart — switch to daily buckets so chart ends at today
