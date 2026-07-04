@@ -609,7 +609,7 @@ class ElanRegistryOwner
                 case 'fname':
                 case 'lname':
                     if (!empty($value)) {
-                        $validatedFields[$key] = $this->sanitizeString($value, 25);
+                        $validatedFields[$key] = $this->normalizeString($value, 25);
                         if (strlen($validatedFields[$key]) < 1) {
                             throw OwnerValidationException::withUserMessage(
                                 "{$key} must be at least 1 character long",
@@ -643,7 +643,7 @@ class ElanRegistryOwner
                 case 'state':
                 case 'country':
                     if (!empty($value)) {
-                        $validatedFields[$key] = $this->sanitizeString($value, 50);
+                        $validatedFields[$key] = $this->normalizeString($value, 50);
                     }
                     break;
 
@@ -693,17 +693,22 @@ class ElanRegistryOwner
     }
 
     /**
-     * Sanitize string input
+     * Normalize string input by trimming whitespace and enforcing a maximum length.
      *
-     * @param string $input Input string to sanitize
+     * IMPORTANT: HTML tags and special characters are preserved as part of the
+     * encode-at-output pattern. The caller MUST apply htmlspecialchars() at the
+     * output context (HTML templates, emails) to prevent XSS vulnerabilities.
+     *
+     * @param string $input Input string to normalize
      * @param int $maxLength Maximum allowed length
-     * @return string Sanitized string
+     * @return string Normalized string (raw — caller must apply htmlspecialchars() at the render layer)
+     * @since v2.25.4 Renamed from sanitizeString() - no longer strips HTML tags
+     * @see https://github.com/unibrain1/elanregistry/issues/941
      */
-    private function sanitizeString(string $input, int $maxLength = 255): string
+    private function normalizeString(string $input, int $maxLength = 255): string
     {
-        // Replace deprecated FILTER_SANITIZE_STRING with strip_tags and trim
-        $sanitized = strip_tags(trim($input));
-        return substr($sanitized, 0, $maxLength);
+        $normalized = trim($input);
+        return strlen($normalized) > $maxLength ? substr($normalized, 0, $maxLength) : $normalized;
     }
 
     /**

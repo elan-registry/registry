@@ -278,7 +278,7 @@ ALTER TABLE `fix_script_runs`
 
 -- cars table
 ALTER TABLE `cars`
-  ADD UNIQUE KEY `id` (`id`),
+  ADD PRIMARY KEY (`id`),
   ADD KEY `idx_cars_chassis` (`chassis`),
   ADD KEY `idx_cars_year` (`year`),
   ADD KEY `idx_cars_series` (`series`),
@@ -288,9 +288,10 @@ ALTER TABLE `cars`
 
 -- cars_hist table
 ALTER TABLE `cars_hist`
-  ADD UNIQUE KEY `id` (`id`) USING BTREE,
+  ADD PRIMARY KEY (`id`),
   ADD KEY `idx_cars_hist_car_id` (`car_id`),
-  ADD KEY `idx_cars_hist_timestamp` (`timestamp`);
+  ADD KEY `idx_cars_hist_timestamp` (`timestamp`),
+  ADD KEY `idx_cars_hist_user_id` (`user_id`);
 
 -- car_user table
 ALTER TABLE `car_user`
@@ -300,12 +301,8 @@ ALTER TABLE `car_user`
 
 -- car_user_hist table
 ALTER TABLE `car_user_hist`
-  ADD UNIQUE KEY `id` (`id`) USING BTREE;
-
-ALTER TABLE `car_user_hist`
-  ADD KEY `idx_car_user_hist_car_id` (`car_id`);
-
-ALTER TABLE `car_user_hist`
+  ADD PRIMARY KEY (`id`),
+  ADD KEY `idx_car_user_hist_car_id` (`car_id`),
   ADD KEY `idx_car_user_hist_userid` (`userid`);
 
 -- car_transfer_requests table

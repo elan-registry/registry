@@ -160,15 +160,7 @@ function scriptDisplayName(string $filename): string {
                     <i class="fas fa-broom"></i> Cleanup Old Backups
                 </button>
             <?php endif; ?>
-            <button type="button" class="btn btn-outline-primary btn-sm ms-2" onclick="runSchemaValidation(this)">
-                <i class="fas fa-check-circle"></i> Validate Schema
-            </button>
-            <button type="button" class="btn btn-outline-primary btn-sm ms-2" onclick="runSchemaMaintenance(this)">
-                <i class="fas fa-tools"></i> Run Maintenance
-            </button>
         </div>
-
-        <div id="validation-result-container" class="mt-2"></div>
 
         <!-- Backup List Modal -->
         <div class="modal fade" id="backupListModal" tabindex="-1" role="dialog">
@@ -378,97 +370,6 @@ function buildIcon(iconClasses) {
     const i = document.createElement('i');
     i.className = iconClasses;
     return i;
-}
-
-function runSchemaMaintenance(btn) {
-    const originalHTML = btn.innerHTML;
-
-    showConfirmDialog(
-        'Run Schema Maintenance',
-        'This will:\n\u2022 Create backup before changes\n\u2022 Ensure all required fields and tables\n\u2022 Validate schema integrity\n\nContinue?',
-        function() {
-            runSchemaMaintenanceConfirmed(btn, originalHTML);
-        }
-    );
-}
-
-function runSchemaMaintenanceConfirmed(btn, originalHTML) {
-    const csrfInput = document.querySelector('input[name="csrf"]');
-    if (!csrfInput || !csrfInput.value) {
-        showNotification('Security token missing or expired. Please reload the page and try again.', 'danger');
-        return;
-    }
-    const csrfToken = csrfInput.value;
-
-    btn.disabled = true;
-    btn.replaceChildren(buildIcon('fas fa-spinner fa-spin'), document.createTextNode(' Running...'));
-
-    fetch('includes/system/schema-operations.php', {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/x-www-form-urlencoded',
-        },
-        body: `action=perform_maintenance&csrf=${encodeURIComponent(csrfToken)}`
-    })
-    .then(response => {
-        if (!response.ok) {
-            throw new Error(`Server error (HTTP ${response.status})`);
-        }
-        return response.json().catch(() => {
-            throw new Error('Server returned an unexpected response. Check server logs before retrying.');
-        });
-    })
-    .then(data => {
-        btn.disabled = false;
-        btn.innerHTML = originalHTML;
-
-        const existingResult = document.querySelector('#maintenance-result');
-        if (existingResult) {
-            existingResult.remove();
-        }
-
-        const alertDiv = document.createElement('div');
-        alertDiv.id = 'maintenance-result';
-
-        if (data.success) {
-            alertDiv.className = 'alert alert-success mt-2';
-            alertDiv.append(buildIcon('fas fa-check-circle'),
-                document.createTextNode(' Schema maintenance completed successfully:'));
-            const ul = document.createElement('ul');
-            ul.className = 'mb-0 mt-2';
-            (data.operations || ['Maintenance completed']).forEach(op => {
-                const li = document.createElement('li');
-                li.textContent = op;
-                ul.appendChild(li);
-            });
-            alertDiv.appendChild(ul);
-        } else {
-            alertDiv.className = 'alert alert-danger mt-2';
-            alertDiv.append(buildIcon('fas fa-exclamation-circle'),
-                document.createTextNode(' Schema maintenance failed: '));
-            const errSpan = document.createElement('span');
-            errSpan.textContent = data.error || data.message || 'Unknown error';
-            alertDiv.appendChild(errSpan);
-        }
-
-        btn.parentNode.appendChild(alertDiv);
-        setTimeout(() => alertDiv.remove(), 10000);
-    })
-    .catch(error => {
-        btn.disabled = false;
-        btn.innerHTML = originalHTML;
-
-        const alertDiv = document.createElement('div');
-        alertDiv.id = 'maintenance-result';
-        alertDiv.className = 'alert alert-danger mt-2';
-        alertDiv.append(buildIcon('fas fa-exclamation-circle'),
-            document.createTextNode(' Schema maintenance failed: '));
-        const errSpan = document.createElement('span');
-        errSpan.textContent = error.message;
-        alertDiv.appendChild(errSpan);
-        btn.parentNode.appendChild(alertDiv);
-        setTimeout(() => alertDiv.remove(), 10000);
-    });
 }
 
 document.addEventListener('DOMContentLoaded', function() {

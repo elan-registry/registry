@@ -21,7 +21,6 @@ use ElanRegistry\Exceptions\LocationServiceException;
  * - Automatic fallback strategy: Photon → Nominatim → cached results
  *
  * @package ElanRegistry
- * @version 2.11.0
  * @since 2.11.0
  * @link https://github.com/unibrain1/elanregistry/issues/245
  */
@@ -52,9 +51,35 @@ class LocationService
     private const RATE_LIMIT_PER_MINUTE = 10;
 
     /**
-     * @var string User agent for API requests
+     * @var string Contact URL sent in User-Agent headers — always the live registry site
      */
-    private const USER_AGENT = 'ElanRegistry/2.11 (https://elanregistry.org)';
+    private const USER_AGENT_CONTACT = 'https://elanregistry.org';
+
+    /**
+     * @var string|null Cached version string (read once per process from the VERSION file)
+     */
+    private static ?string $cachedVersion = null;
+
+    /**
+     * Build the User-Agent string for geocoding API requests.
+     *
+     * Reads the application version from the VERSION file (generated
+     * automatically on each release via `git describe`) and caches it for
+     * the lifetime of the PHP process. Falls back to 'unknown' if the file
+     * cannot be read or is empty.
+     *
+     * @return string User-Agent header value, e.g. 'ElanRegistry/v2.25.3 (https://elanregistry.org)'
+     */
+    private static function getUserAgent(): string
+    {
+        if (self::$cachedVersion === null) {
+            $versionFile = __DIR__ . '/../../VERSION';
+            $raw = is_readable($versionFile) ? trim((string) file_get_contents($versionFile)) : '';
+            self::$cachedVersion = ($raw !== '') ? $raw : 'unknown';
+        }
+
+        return 'ElanRegistry/' . self::$cachedVersion . ' (' . self::USER_AGENT_CONTACT . ')';
+    }
 
     /**
      * Constructor
@@ -197,7 +222,7 @@ class LocationService
     {
         $url = self::PHOTON_API_URL . '?q=' . urlencode($query) . '&limit=' . $limit . '&lang=en';
 
-        $response = $this->makeHttpRequest($url);
+        $response = $this->makeHttpRequest($url, self::getUserAgent());
         if (!$response) {
             throw new LocationServiceException('Photon API request failed');
         }
@@ -227,7 +252,7 @@ class LocationService
             '&limit=' . $limit .
             '&accept-language=en';
 
-        $response = $this->makeHttpRequest($url, self::USER_AGENT);
+        $response = $this->makeHttpRequest($url, self::getUserAgent());
         if (!$response) {
             throw new LocationServiceException('Nominatim API request failed');
         }
@@ -257,7 +282,7 @@ class LocationService
             '&addressdetails=1' .
             '&accept-language=en';
 
-        $response = $this->makeHttpRequest($url, self::USER_AGENT);
+        $response = $this->makeHttpRequest($url, self::getUserAgent());
         if (!$response) {
             throw new LocationServiceException('Nominatim reverse geocoding request failed');
         }

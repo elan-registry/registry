@@ -12,6 +12,12 @@ require_once '../../../../users/init.php';
 // Set JSON response header
 header('Content-Type: application/json');
 
+if ($method !== 'POST') {
+    ApiResponse::error('Method not allowed', 405)
+        ->withLogging(0, LogCategories::LOG_CATEGORY_SECURITY, "Method not allowed: {$method} on backup-operations")
+        ->send();
+}
+
 // Security check
 if (!securePage($php_self)) {
     ApiResponse::forbidden('Access denied')
@@ -74,7 +80,6 @@ try {
                 ->withDataArray([
                     'filename' => $filename,
                     'size' => $sizeFormatted,
-                    'path' => $backupPath
                 ])
                 ->withLogging($user->data()->id, LogCategories::LOG_CATEGORY_BACKUP_MANAGER,
                     "Manual backup completed via API: {$filename} ({$sizeFormatted})")
@@ -155,15 +160,13 @@ try {
                     $phpFiles = glob($typeDir . '*.php');
                     $files = array_merge($sqlFiles ?: [], $phpFiles ?: []);
 
-                    // Get retention policy for this type
-                    $retentionDays = 7; // Default
-                    if ($type === 'automated') {
-                        $retentionDays = 7; // development
-                    } elseif ($type === 'manual') {
-                        $retentionDays = 14; // development
-                    } elseif ($type === 'rollback') {
-                        $retentionDays = 14; // development
-                    }
+                    // Get retention policy from config.php constants (authoritative source)
+                    $retentionDays = match($type) {
+                        'automated' => BACKUP_RETENTION_AUTOMATED,
+                        'manual'    => BACKUP_RETENTION_MANUAL,
+                        'rollback'  => BACKUP_RETENTION_ROLLBACK,
+                        default     => throw new \RuntimeException("Unknown backup type: {$type}"),
+                    };
 
                     $cutoffTime = time() - ($retentionDays * 24 * 60 * 60);
 

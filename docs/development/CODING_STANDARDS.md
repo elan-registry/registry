@@ -118,13 +118,13 @@ ns may be returned as strings depending on PHP/MySQL configuration.
 
 ```php
 // ✅ CORRECT - Explicit type casting
-$schemaManager = new EnhancedSchemaManager($db, (int)$user->data()->id);
+$backupManager = new BackupManager($db, $backupDir, (int)$user->data()->id);
 $carId = (int)$dbRow->id;
 $count = (int)$result->first()->total;
 
 // ❌ WRONG - Missing cast in strict mode
-$schemaManager = new EnhancedSchemaManager($db, $user->data()->id);
-// TypeError: Argument #2 ($userId) must be of type ?int, string given
+$backupManager = new BackupManager($db, $backupDir, $user->data()->id);
+// TypeError: Argument #3 ($userId) must be of type ?int, string given
 
 ```text
 
@@ -318,12 +318,14 @@ $cardetails['color'] = htmlspecialchars($color, ENT_QUOTES, 'UTF-8');
 ```
 
 **Rules:**
+
 - `Input::raw()` (via `use ElanRegistry\Input`) → values going to the database
 - `\Input::get()` → legacy pattern only (value used directly in HTML, no further escaping)
 - `htmlspecialchars()` → always at output (HTML templates, email templates)
 - Parameterised queries handle SQL safety; encoding at storage is never a SQL defence
 
 ### **Database Operations**
+
 Always use parameterized queries:
 
 ```php

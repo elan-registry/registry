@@ -31,7 +31,7 @@ $db->query(
      FROM cars WHERE lat != 0 AND lon != 0"
 );
 if ($db->error()) {
-    logger(0, LogCategories::LOG_CATEGORY_ERROR, 'Map marker query failed: ' . $db->errorString());
+    logger(0, LogCategories::LOG_CATEGORY_DATABASE_ERROR, 'Map marker query failed: ' . $db->errorString());
 }
 $markerRows = $db->results();
 
@@ -349,7 +349,7 @@ window.statisticsConfig = {
 try {
     $mapMarkersJson = json_encode($mapMarkers, JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP | JSON_THROW_ON_ERROR);
 } catch (\JsonException $e) {
-    logger(0, LogCategories::LOG_CATEGORY_ERROR, 'Failed to encode map markers: ' . $e->getMessage());
+    logger(0, LogCategories::LOG_CATEGORY_SYSTEM_ERROR, 'Failed to encode map markers: ' . $e->getMessage());
     $mapMarkersJson = '[]';
 }
 ?>

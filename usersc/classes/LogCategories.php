@@ -411,12 +411,6 @@ class LogCategories
     public const LOG_CATEGORY_DATABASE_OPTIMIZATION = 'DatabaseOptimization';
 
     /**
-     * Schema operation errors
-     * Used when schema changes fail
-     */
-    public const LOG_CATEGORY_SCHEMA_OPERATION_ERROR = 'SchemaOperationError';
-
-    /**
      * Table conversion operations
      * Used when converting table structure or storage engines
      */

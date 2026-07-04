@@ -389,7 +389,7 @@ if (!CarModel::exists($series, $variant, $type)) {
 
 - `validateAndSanitizeFields(array $fields, bool $requireAll): array` - Main validation method
 - `validateRequiredFields(array $fields, array $required): void` - Check required fields are present
-- `sanitizeString(string $input, int $maxLength): string` - HTML strip and truncate
+- `normalizeString(string $input, int $maxLength): string` - Trim whitespace and truncate to max length; caller must apply `htmlspecialchars()` at the render layer
 
 **Exceptions**:
 
