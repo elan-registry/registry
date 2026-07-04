@@ -571,7 +571,7 @@ if ($method === 'POST') {
 }
 
 // Build redirect URL
-$redirect = $current_origin . '/app/cars/details.php?id=' . $carId;
+$redirect = $current_origin . '/app/owner/cars/details.php?id=' . $carId;
 
 // Log with IP
 logger($userId, LogCategories::LOG_CATEGORY_LOGIN, "Login from $remote_addr");

@@ -7,7 +7,7 @@ declare(strict_types=1);
  *
  * @package ElanRegistry
  */
-require_once '../../users/init.php';
+require_once '../../../users/init.php';
 require_once $abs_us_root . $us_url_root . 'usersc/includes/elanregistry_prep.php';
 
 use ElanRegistry\Documentation\DocumentPortalTemplate;
@@ -157,7 +157,7 @@ window.ELAN_CONFIG = {
     serverSide: true,
     serverMethod: 'post',
     ajax: {
-      url: '../api/cars/list.php',
+      url: '../../api/cars/list.php',
       dataSrc: 'data',
       data: function(d) {
         d.csrf = csrf;
@@ -175,7 +175,7 @@ window.ELAN_CONFIG = {
         const isNew = typeof NEW_CAR_IDS !== 'undefined'
           && NEW_CAR_IDS.includes(parseInt(data, 10));
         const badge = isNew ? ' <span class="badge er-badge-yellow badge-sm">NEW</span>' : '';
-        return '<a class="btn btn-primary btn-sm" href="' + us_url_root + 'app/cars/details.php?car_id=' + data + '"><i class="fas fa-eye"></i> Details' + badge + '</a>';
+        return '<a class="btn btn-primary btn-sm" href="' + us_url_root + 'app/owner/cars/details.php?car_id=' + data + '"><i class="fas fa-eye"></i> Details' + badge + '</a>';
       }
     }, {
       data: 'year',

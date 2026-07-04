@@ -12,7 +12,7 @@ declare(strict_types=1);
  * @copyright 2025
  */
 
-require_once '../../users/init.php';
+require_once '../../../users/init.php';
 require_once $abs_us_root . $us_url_root . 'usersc/includes/elanregistry_prep.php';
 
 if (!securePage($php_self)) {
@@ -31,7 +31,7 @@ if (!empty($_GET)) {
         // Log car not found error
         logger($user->data()->id ?? 0, LogCategories::LOG_CATEGORY_VALIDATION_ERROR, "Car details requested for non-existent car ID: $carID");
         // Redirect to list if car not found
-        Redirect::to($us_url_root . '/app/cars/index.php');
+        Redirect::to($us_url_root . 'app/owner/cars/index.php');
     }
     
     // Cache car data objects to eliminate repeated method calls (Performance Optimization)
@@ -75,7 +75,7 @@ if (!empty($_GET)) {
 } else {
     // Shouldn't be here unless someone is mangling the url
     logger($user->data()->id ?? 0, LogCategories::LOG_CATEGORY_VALIDATION_ERROR, 'Car details page accessed without car_id parameter');
-    Redirect::to($us_url_root . '/app/cars/index.php');
+    Redirect::to($us_url_root . 'app/owner/cars/index.php');
 }
 ?>
 <div class="page-wrapper">
@@ -88,7 +88,7 @@ if (!empty($_GET)) {
                     <nav aria-label="breadcrumb">
                         <ol class="breadcrumb">
                             <li class="breadcrumb-item"><a href="<?= $us_url_root ?>" class="text-primary"><i class="fas fa-home"></i> Home</a></li>
-                            <li class="breadcrumb-item"><a href="<?= $us_url_root ?>app/cars/index.php" class="text-primary"><i class="fas fa-list"></i> Cars</a></li>
+                            <li class="breadcrumb-item"><a href="<?= $us_url_root ?>app/owner/cars/index.php" class="text-primary"><i class="fas fa-list"></i> Cars</a></li>
                             <li class="breadcrumb-item active text-muted" aria-current="page">
                                 <i class="fas fa-car"></i> <?= htmlspecialchars((string)($carData->year ?? ''), ENT_QUOTES, 'UTF-8') ?> <?= htmlspecialchars($carData->series ?? '', ENT_QUOTES, 'UTF-8') ?> 
                             </li>

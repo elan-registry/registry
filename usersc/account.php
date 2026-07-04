@@ -171,7 +171,7 @@ $_baseUrl = htmlspecialchars($us_url_root, ENT_QUOTES, 'UTF-8');
                     <i class="fas fa-car me-2" aria-hidden="true"></i>My Cars
                     <span class="badge badge-er-account rounded-pill ms-1" style="font-size:0.7em; vertical-align:middle;"><?= $carCount ?></span>
                 </h2>
-                <a href="<?= $_baseUrl ?>app/cars/edit.php" class="btn btn-primary btn-sm">
+                <a href="<?= $_baseUrl ?>app/owner/cars/edit.php" class="btn btn-primary btn-sm">
                     <i class="fas fa-plus me-1" aria-hidden="true"></i>Add a Car
                 </a>
             </div>
@@ -183,7 +183,7 @@ $_baseUrl = htmlspecialchars($us_url_root, ENT_QUOTES, 'UTF-8');
             <div class="text-center py-5">
                 <i class="fas fa-car fa-3x text-muted mb-3 d-block" aria-hidden="true"></i>
                 <p class="text-muted mb-3">You haven't registered any cars yet. Add your first Lotus Elan to get started!</p>
-                <a class="btn btn-primary btn-lg" href="<?= $_baseUrl ?>app/cars/edit.php">
+                <a class="btn btn-primary btn-lg" href="<?= $_baseUrl ?>app/owner/cars/edit.php">
                     <i class="fas fa-plus me-2" aria-hidden="true"></i>Add Your First Car
                 </a>
             </div>

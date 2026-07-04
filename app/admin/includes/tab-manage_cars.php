@@ -1104,7 +1104,7 @@ $qualityScore = $totalCars > 0 ? max(0, 100 - (($carIssues / $totalCars) * 100))
                                                                         <?php } ?>
                                                                     </label>
                                                                 </div>
-                                                                <a class="btn btn-outline-primary btn-sm" target="_blank" href='<?= $us_url_root ?>app/cars/details.php?car_id=<?= $car->id ?>'>
+                                                                <a class="btn btn-outline-primary btn-sm" target="_blank" href='<?= $us_url_root ?>app/owner/cars/details.php?car_id=<?= $car->id ?>'>
                                                                     <i class="fas fa-external-link-alt"></i> View Details
                                                                 </a>
                                                             </div>

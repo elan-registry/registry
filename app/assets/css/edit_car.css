@@ -1,6 +1,6 @@
 /**
  * edit_car.css
- * Page-specific styles for the Edit Car form (app/cars/form.php).
+ * Page-specific styles for the Edit Car form (app/owner/cars/edit.php).
  *
  * Globally reusable rules (.form-section-heading, .fit-image) now live in
  * customizer.css. Each block here is intentionally scoped to #editCar or to

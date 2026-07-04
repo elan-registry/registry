@@ -128,7 +128,7 @@ if (!$carRow) {
         ->withLogging($logUserId ?? 0, LogCategories::LOG_CATEGORY_DATABASE_ERROR, 'send-owner-email.php: car not found for car_id=' . $carId . ' (concurrent delete?)')
         ->send();
 }
-$carUrl = $current_origin . $us_url_root . 'app/cars/details.php?car_id=' . $carId;
+$carUrl = $current_origin . $us_url_root . 'app/owner/cars/details.php?car_id=' . $carId;
 
 $template = array(
     'message'      => $message,

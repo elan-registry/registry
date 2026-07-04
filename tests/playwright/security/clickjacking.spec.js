@@ -68,7 +68,7 @@ test.describe('Anti-clickjacking Security Headers', () => {
   });
 
   test('car listing page should have X-Frame-Options header', async ({ page }) => {
-    const response = await page.goto('app/cars/');
+    const response = await page.goto('app/owner/cars/index.php');
 
     if (response?.status() === 200) {
       const headers = response?.headers();

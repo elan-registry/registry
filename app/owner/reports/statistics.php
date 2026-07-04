@@ -14,7 +14,7 @@ declare(strict_types=1);
  * @author Elan Registry Analytics Team
  * @copyright 2025
  */
-require_once '../../users/init.php';
+require_once '../../../users/init.php';
 require_once $abs_us_root . $us_url_root . 'usersc/includes/elanregistry_prep.php';
 require_once $abs_us_root . $us_url_root . 'usersc/classes/StatisticsDataService.php';
 
@@ -338,7 +338,7 @@ window.statisticsRawData = {
 
 // Configuration
 window.statisticsConfig = {
-    baseUrl: '<?= $us_url_root ?>app/reports/',
+    baseUrl: '<?= $us_url_root ?>app/owner/reports/',
     statisticsDataUrl: '<?= $us_url_root ?>app/api/shared/statistics.php',
     imageUrl: '<?= $us_url_root . $settings->elan_image_dir ?>',
     versatileStyleUrl: '<?= $us_url_root ?>usersc/js/versatiles-colorful.json'

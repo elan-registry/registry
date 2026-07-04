@@ -77,7 +77,7 @@ test.describe('Registry-Specific AJAX Endpoints', () => {
 
   test('DataTables AJAX endpoint returns car data', async ({ page }) => {
     // Navigate to car listing page to establish session
-    await page.goto('app/cars/index.php', { waitUntil: 'networkidle' });
+    await page.goto('app/owner/cars/index.php', { waitUntil: 'networkidle' });
 
     const response = await page.request.post('app/api/cars/list.php', {
       form: {
@@ -145,7 +145,7 @@ test.describe('Registry-Specific AJAX Endpoints', () => {
   test('NEW_CAR_IDS on car list page is a JSON int array', async ({ page }) => {
     // Verifies that CarShowcaseService::getNewCarIds() emits valid JSON to the page.
     // The const is embedded in the inline script block — shape must be int[].
-    await page.goto('app/cars/index.php', { waitUntil: 'networkidle' });
+    await page.goto('app/owner/cars/index.php', { waitUntil: 'networkidle' });
 
     const newCarIds = await page.evaluate(() => {
       if (typeof NEW_CAR_IDS === 'undefined') return null;

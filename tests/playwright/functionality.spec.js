@@ -4,7 +4,7 @@ const { ensureLoggedIn, navigateAndWait, waitForDataTables, handleAuthRequired }
 
 test.describe('Core Functionality After Refactoring', () => {
   test('DataTables loads and works on car listing', async ({ page }) => {
-    await page.goto('app/cars/index.php', { waitUntil: 'networkidle' });
+    await page.goto('app/owner/cars/index.php', { waitUntil: 'networkidle' });
 
     const searchBox = await waitForDataTables(page, 15000);
 
@@ -17,7 +17,7 @@ test.describe('Core Functionality After Refactoring', () => {
 
   test('car edit form workflow functions', async ({ page }) => {
     // Navigate to car edit page — accordion only appears when authenticated with a valid car_id
-    await navigateAndWait(page, 'app/cars/edit.php');
+    await navigateAndWait(page, 'app/owner/cars/edit.php');
     await expect(page).not.toHaveTitle(/404|Not Found|Server Error/i);
 
     // Skip deep assertions if the accordion isn't present (requires auth + car_id locally)
@@ -38,7 +38,7 @@ test.describe('Core Functionality After Refactoring', () => {
   });
 
   test('chassis validation works', async ({ page }) => {
-    await navigateAndWait(page, 'app/cars/edit.php');
+    await navigateAndWait(page, 'app/owner/cars/edit.php');
     await expect(page).not.toHaveTitle(/404|Not Found|Server Error/i);
 
     // Skip deep assertions if the form fields aren't present (requires auth + car_id locally)
@@ -62,7 +62,7 @@ test.describe('Core Functionality After Refactoring', () => {
   });
 
   test('contact form submission works', async ({ page }) => {
-    await navigateAndWait(page, 'app/contact/index.php');
+    await navigateAndWait(page, 'app/owner/contact/index.php');
 
     await handleAuthRequired(
       page,
@@ -82,7 +82,7 @@ test.describe('Core Functionality After Refactoring', () => {
   });
 
   test('NEW_CAR_IDS is emitted on car list page and badge renders when applicable', async ({ page }) => {
-    await page.goto('app/cars/index.php', { waitUntil: 'networkidle' });
+    await page.goto('app/owner/cars/index.php', { waitUntil: 'networkidle' });
 
     // NEW_CAR_IDS must be defined as a JS array of integers
     const newCarIds = await page.evaluate(() => {
@@ -109,7 +109,7 @@ test.describe('Core Functionality After Refactoring', () => {
   });
 
   test('NEW badge does not appear on factory listing page', async ({ page }) => {
-    await page.goto('app/cars/factory.php', { waitUntil: 'networkidle' });
+    await page.goto('app/owner/cars/factory.php', { waitUntil: 'networkidle' });
 
     // Factory page must NOT define NEW_CAR_IDS
     const defined = await page.evaluate(() => typeof NEW_CAR_IDS !== 'undefined');
@@ -117,7 +117,7 @@ test.describe('Core Functionality After Refactoring', () => {
   });
 
   test('factory listing page functions', async ({ page }) => {
-    await page.goto('app/cars/factory.php', { waitUntil: 'networkidle' });
+    await page.goto('app/owner/cars/factory.php', { waitUntil: 'networkidle' });
 
     await expect(page.locator('h2')).toContainText(/Factory/);
     await waitForDataTables(page, 15000);
@@ -151,7 +151,7 @@ test.describe('Add Car form — no premature validation on page load', () => {
       test.skip(true, 'Set TEST_USERNAME and TEST_PASSWORD in .env.local to run authenticated tests');
     }
     await ensureLoggedIn(page);
-    await page.goto('app/cars/edit.php', { waitUntil: 'networkidle' });
+    await page.goto('app/owner/cars/edit.php', { waitUntil: 'networkidle' });
   });
 
   test('Year, Model, and Chassis icons are neutral (no thumbs-down) on load', async ({ page }) => {

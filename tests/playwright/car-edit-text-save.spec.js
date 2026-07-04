@@ -154,7 +154,7 @@ test.describe('Car edit form — text-only save (regression #796)', () => {
         //    we need the page DOM to be present. We therefore also mock the
         //    page navigation itself only when the page is inaccessible.
         // ------------------------------------------------------------------
-        await page.goto('app/cars/edit.php?car_id=1', { waitUntil: 'domcontentloaded' });
+        await page.goto('app/owner/cars/edit.php?car_id=1', { waitUntil: 'domcontentloaded' });
 
         // If the page redirected to login, skip rather than fail — this test
         // requires an authenticated session with a page that renders the form.
@@ -326,7 +326,7 @@ test.describe('Car edit form — text-only save (regression #796)', () => {
             await route.fallback();
         });
 
-        await page.goto('app/cars/edit.php?car_id=1', { waitUntil: 'domcontentloaded' });
+        await page.goto('app/owner/cars/edit.php?car_id=1', { waitUntil: 'domcontentloaded' });
 
         const currentUrl = page.url();
         if (currentUrl.includes('login')) {
@@ -540,7 +540,7 @@ test.describe('Car edit form — text-only save (regression #796)', () => {
         // 2. Navigate to the car edit form (car 650 from the bug report).
         //    The PHP page renders server-side; we only mock the JS API calls.
         // ------------------------------------------------------------------
-        await page.goto('app/cars/edit.php?car_id=650', { waitUntil: 'domcontentloaded' });
+        await page.goto('app/owner/cars/edit.php?car_id=650', { waitUntil: 'domcontentloaded' });
 
         const currentUrl = page.url();
         if (currentUrl.includes('login') || currentUrl.includes('Please Log In')) {
@@ -751,7 +751,7 @@ test.describe('Car edit form — text-only save (regression #796)', () => {
             await route.fallback();
         });
 
-        await page.goto('app/cars/edit.php?car_id=1', { waitUntil: 'domcontentloaded' });
+        await page.goto('app/owner/cars/edit.php?car_id=1', { waitUntil: 'domcontentloaded' });
 
         const currentUrl = page.url();
         if (currentUrl.includes('login')) {
@@ -912,7 +912,7 @@ test.describe('encode-at-output regression — special chars in car text fields 
         });
 
         // 2. Navigate to edit form for car_id=1
-        await page.goto('app/cars/edit.php?car_id=1', { waitUntil: 'domcontentloaded' });
+        await page.goto('app/owner/cars/edit.php?car_id=1', { waitUntil: 'domcontentloaded' });
 
         const currentUrl = page.url();
         if (currentUrl.includes('login') || currentUrl.includes('Please Log In') || currentUrl.includes('Permission Denied')) {
@@ -958,7 +958,7 @@ test.describe('encode-at-output regression — special chars in car text fields 
 
     test('details page renders special chars as readable text', async ({ page }) => {
         // Navigate to the details page for a car with known special chars
-        await page.goto(`app/cars/details.php?car_id=${CAR_ID_WITH_SPECIAL_CHARS}`, {
+        await page.goto(`app/owner/cars/details.php?car_id=${CAR_ID_WITH_SPECIAL_CHARS}`, {
             waitUntil: 'domcontentloaded',
         });
 
@@ -983,7 +983,7 @@ test.describe('encode-at-output regression — special chars in car text fields 
 
     test('edit form textarea pre-fills with plain readable text', async ({ page }) => {
         // Navigate to the edit form for a car with known special chars
-        await page.goto(`app/cars/edit.php?car_id=${CAR_ID_WITH_SPECIAL_CHARS}`, {
+        await page.goto(`app/owner/cars/edit.php?car_id=${CAR_ID_WITH_SPECIAL_CHARS}`, {
             waitUntil: 'domcontentloaded',
         });
 

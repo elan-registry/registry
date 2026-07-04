@@ -11,7 +11,7 @@
 
 const { test, expect } = require('@playwright/test');
 
-const DETAILS_URL = 'app/cars/details.php?car_id=1091';
+const DETAILS_URL = 'app/owner/cars/details.php?car_id=1091';
 
 test.describe('Car details — output escaping (issue #840)', () => {
 

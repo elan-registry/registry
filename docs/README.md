@@ -16,7 +16,7 @@ project, structured for different audiences and use cases.
 **Access:** Public (no authentication required)
 
 - **[index.php](guides/index.php)** - Owner guides portal
-- **[Privacy Policy](../app/privacy.php)** - Privacy policy and data handling practices
+- **[Privacy Policy](../app/owner/privacy.php)** - Privacy policy and data handling practices
 - **[Transfer FAQ](guides/car-transfer-faq.php)** - Frequently asked questions about car ownership transfers
 
 ### `/reference/` - Technical Reference

@@ -15,7 +15,7 @@ test.describe('Elan Registry - All Pages (Not Logged In)', () => {
       expectedText: 'Lotus Elan Registry',
     },
     {
-      path: '/app/cars/index.php',
+      path: '/app/owner/cars/index.php',
       name: 'List Cars',
       selector: 'h2',
       expectedText: 'List Cars',
@@ -27,7 +27,7 @@ test.describe('Elan Registry - All Pages (Not Logged In)', () => {
       expectedText: 'Join the Lotus Elan Registry',
     },
     {
-      path: '/app/reports/statistics.php',
+      path: '/app/owner/reports/statistics.php',
       name: 'Statistics',
       selector: 'h1',
       expectedText: 'Registry Analytics & Statistics',
@@ -39,7 +39,7 @@ test.describe('Elan Registry - All Pages (Not Logged In)', () => {
       expectedText: 'Lotus Elan Identification Guide',
     },
     {
-      path: '/app/cars/factory.php',
+      path: '/app/owner/cars/factory.php',
       name: 'Factory Data',
       selector: 'h2',
       expectedText: 'Elan Factory Information',
@@ -113,11 +113,11 @@ test.describe('Elan Registry - All Pages (Not Logged In)', () => {
 test.describe('Internal Links Discovery and Testing (Not Logged In)', () => {
   const pages = [
     { path: '/', name: 'Home' },
-    { path: '/app/cars/index.php', name: 'List Cars' },
+    { path: '/app/owner/cars/index.php', name: 'List Cars' },
     { path: '/users/join.php', name: 'Register' },
-    { path: '/app/reports/statistics.php', name: 'Statistics' },
+    { path: '/app/owner/reports/statistics.php', name: 'Statistics' },
     { path: '/docs/reference/identification-guide.php', name: 'Identification Guide' },
-    { path: '/app/cars/factory.php', name: 'Factory Data' },
+    { path: '/app/owner/cars/factory.php', name: 'Factory Data' },
     { path: '/docs/reference-library.php', name: 'Reference Library' },
     { path: '/docs/car-stories.php', name: 'Car Stories' },
     { path: '/docs/faq/index.php', name: 'FAQ' },
@@ -254,8 +254,8 @@ test.describe('Internal Links Discovery and Testing (Not Logged In)', () => {
       if (isDownloadable) {
         downloadableLinks.push(link);
       } else {
-        // Exclude /app/cars/details.php links except for car_id=1 (to avoid testing many individual car pages)
-        if (link.includes('/app/cars/details.php') && !link.includes('car_id=1')) {
+        // Exclude /app/owner/cars/details.php links except for car_id=1 (to avoid testing many individual car pages)
+        if (link.includes('/app/owner/cars/details.php') && !link.includes('car_id=1')) {
           // Skip this link - it's a car details page other than car_id=1
           return;
         }

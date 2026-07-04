@@ -535,10 +535,14 @@ function renderQualityTab(container, data) {
     `;
 
   wrapper.querySelector('[data-metric="total"]').textContent = totalCars.toLocaleString();
-  [['chassis', completeness.has_chassis], ['color', completeness.has_color],
-   ['engine', completeness.has_engine], ['purchase_date', completeness.has_purchase_date],
-   ['image', completeness.has_image], ['location', completeness.has_location]]
-    .forEach(([key, value]) => {
+  [
+    ['chassis',       completeness.has_chassis],
+    ['color',         completeness.has_color],
+    ['engine',        completeness.has_engine],
+    ['purchase_date', completeness.has_purchase_date],
+    ['image',         completeness.has_image],
+    ['location',      completeness.has_location],
+  ].forEach(([key, value]) => {
       const pct = totalCars > 0 ? Math.round((value / totalCars) * 100) : 0;
       wrapper.querySelector(`[data-metric="${key}"]`).textContent = pct + '%';
     });

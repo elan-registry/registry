@@ -281,8 +281,8 @@ Dedicated button on car detail page to initiate transfer, visible even before us
 
 | Item | File |
 | --- | --- |
-| Transfer request creation | [/app/cars/actions/request-transfer.php](../../app/cars/actions/request-transfer.php) |
-| Chassis collision detection | [/app/cars/actions/check-chassis.php](../../app/cars/actions/check-chassis.php) |
+| Transfer request creation | [/app/api/cars/transfer-request.php](../../app/api/cars/transfer-request.php) |
+| Chassis collision detection | [/app/api/cars/chassis-availability.php](../../app/api/cars/chassis-availability.php) |
 | Admin approval endpoint | [/app/admin/includes/process-transfer-approve.php](../../app/admin/includes/process-transfer-approve.php) |
 | Admin denial endpoint | [/app/admin/includes/process-transfer-deny.php](../../app/admin/includes/process-transfer-deny.php) |
 | Car::transfer() facade | [/usersc/classes/Car.php](../../usersc/classes/Car.php) |
@@ -292,8 +292,8 @@ Dedicated button on car detail page to initiate transfer, visible even before us
 | Email templates | [/usersc/views/emails/](../../usersc/views/emails/) (4 templates) |
 | Admin UI (requests table) | [/app/admin/includes/tab-car_mgmt.php](../../app/admin/includes/tab-car_mgmt.php) |
 | Admin JS handlers | [/app/admin/assets/manage-consolidated.js](../../app/admin/assets/manage-consolidated.js) |
-| Owner UI modals | [/app/cars/edit.php](../../app/cars/edit.php) |
-| Chassis check UI | [/app/cars/includes/_edit_car_1.php](../../app/cars/includes/_edit_car_1.php) |
+| Owner UI modals | [/app/owner/cars/edit.php](../../app/owner/cars/edit.php) |
+| Chassis check UI | [/app/owner/cars/edit.php](../../app/owner/cars/edit.php) (integrated into edit page) |
 | Database schema | [/database/1-schema.sql](../../database/1-schema.sql) |
 | Integration tests | [/tests/integration/transfer/CarTransferWorkflowTest.php](../../tests/integration/transfer/CarTransferWorkflowTest.php) |
 | Car repository | [/usersc/classes/Car/CarRepository.php](../../usersc/classes/Car/CarRepository.php) |

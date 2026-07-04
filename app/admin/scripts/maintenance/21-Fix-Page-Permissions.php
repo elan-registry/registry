@@ -28,7 +28,7 @@ declare(strict_types=1);
  *
  * OWNER/USER PRIVATE PAGES (will be set to private=1 with User permission):
  * - app/api/contact/* - Contact API endpoints (send-feedback, send-owner-email)
- * - app/contact/* - All contact form pages
+ * - app/owner/contact/* - All contact form pages
  * - *edit* - Any path containing "edit" (that doesn't also contain "admin")
  * - usersc/* - All UserSpice customization pages (EXCEPT special cases below)
  * Note: app/api/cars/* and app/api/shared/* endpoints that don't call
@@ -36,15 +36,15 @@ declare(strict_types=1);
  * (some app/api/cars/* endpoints enforce authentication inline without
  * securePage() and are private, but they are outside this script's scope).
  *
- * SPECIAL CASE PRIVATE PAGES (will be set to private=1 with NO permissions):
- * - usersc/join.php - Registration page (public access, no permissions needed)
- * - usersc/login.php - Login page (public access, no permissions needed)
+ * PUBLIC PAGES (usersc/* special cases — mirroring UserSpice installer defaults):
+ * - usersc/login.php - Login page (private=0, no permissions — same as users/login.php)
+ * - usersc/join.php  - Registration page (private=0, no permissions — same as users/join.php)
  *
  * PUBLIC PAGES (will be set to private=0 with no permissions):
  * - Everything else in app/* that doesn't match PRIVATE patterns
  * - Error pages in root: 404.php, 403.php, etc.
  * - docs/* (except docs/*admin*) - Documentation pages
- * - Examples: app/cars/index.php, app/cars/details.php, app/reports/statistics.php, docs/guides/index.php
+ * - Examples: app/owner/cars/index.php, app/owner/cars/details.php, app/owner/reports/statistics.php, docs/guides/index.php
  *
  * USERS/* PAGES (corrected to UserSpice installer defaults):
  * - users/account.php, users/user_settings.php, users/admin_pin.php → PRIVATE, User permission
@@ -510,7 +510,7 @@ require_once $abs_us_root . $us_url_root . 'users/includes/template/prep.php';
                                 <p class="mb-2"><strong>Owner (private=1, User permission):</strong></p>
                                 <ul>
                                     <li><strong>app/api/contact/*</strong> - Contact API endpoints</li>
-                                    <li><strong>app/contact/*</strong> - All contact form pages</li>
+                                    <li><strong>app/owner/contact/*</strong> - All contact form pages</li>
                                     <li><strong>*edit*</strong> - Any path containing "edit"</li>
                                     <li><strong>usersc/*</strong> - All UserSpice customization pages</li>
                                 </ul>
@@ -542,10 +542,10 @@ require_once $abs_us_root . $us_url_root . 'users/includes/template/prep.php';
                                 <h5><i class="fa fa-info-circle"></i> PUBLIC Pages (will be private=0 with no permissions):</h5>
                                 <p class="mb-2">All other pages in app/*, including:</p>
                                 <ul class="mb-0">
-                                    <li><strong>app/cars/index.php</strong> - Car listing</li>
-                                    <li><strong>app/cars/details.php</strong> - Car details</li>
-                                    <li><strong>app/reports/statistics.php</strong> - Public statistics</li>
-                                    <li><strong>app/privacy.php</strong> - Privacy policy</li>
+                                    <li><strong>app/owner/cars/index.php</strong> - Car listing</li>
+                                    <li><strong>app/owner/cars/details.php</strong> - Car details</li>
+                                    <li><strong>app/owner/reports/statistics.php</strong> - Public statistics</li>
+                                    <li><strong>app/owner/privacy.php</strong> - Privacy policy</li>
                                     <li>Other public-facing pages</li>
                                 </ul>
                             </div>

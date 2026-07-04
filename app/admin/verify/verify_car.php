@@ -110,7 +110,7 @@ if (Input::exists('get') && Input::get('code') && Input::get('action')) {
                 "Car verified successfully - ID: {$car->id} Chassis: {$car->chassis}"
             );
 
-            $redirect = $base_url . $us_url_root . 'app/cars/details.php?car_id=' . (int) $car->id;
+            $redirect = $base_url . $us_url_root . 'app/owner/cars/details.php?car_id=' . (int) $car->id;
             break;
 
         case 'edit':
@@ -130,7 +130,7 @@ if (Input::exists('get') && Input::get('code') && Input::get('action')) {
                 "Car reported as sold via verification - ID: {$car->id} Chassis: {$car->chassis}"
             );
 
-            $redirect = $base_url . $us_url_root . 'app/cars/details.php?car_id=' . (int) $car->id;
+            $redirect = $base_url . $us_url_root . 'app/owner/cars/details.php?car_id=' . (int) $car->id;
             break;
     }
 }

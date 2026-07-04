@@ -30,7 +30,7 @@ As of v2.11.0, we use **only 3 DataTables extensions** for optimal performance:
 
 ### Car Listing Pages
 
-**File**: `/app/cars/index.php` (List Cars)
+**File**: `/app/owner/cars/index.php` (List Cars)
 
 **Configuration**:
 
@@ -60,7 +60,7 @@ const table = $("#cartable").DataTable({
 
 ### Factory Information Page
 
-**File**: `/app/cars/factory.php` (List Factory)
+**File**: `/app/owner/cars/factory.php` (List Factory)
 
 **Configuration**:
 
@@ -167,13 +167,13 @@ vendored frontend libraries.
 
 ```bash
 # Check for FixedHeader usage
-grep -r "fixedHeader:\s*true" app/cars/
+grep -r "fixedHeader:\s*true" app/owner/cars/
 
 # Check for Responsive usage
-grep -r "responsive:\s*true" app/cars/
+grep -r "responsive:\s*true" app/owner/cars/
 
 # Check for unused extensions
-grep -r "rowGroup\|scroller\|searchBuilder\|searchPanes" app/cars/
+grep -r "rowGroup\|scroller\|searchBuilder\|searchPanes" app/owner/cars/
 ```
 
 ### Server-Side vs Client-Side Processing
@@ -250,13 +250,13 @@ server-side processing or assess if the UX trade-offs are acceptable.
 
 **Manual Testing Checklist**:
 
-1. Navigate to List Cars page (`/app/cars/index.php`)
+1. Navigate to List Cars page (`/app/owner/cars/index.php`)
 2. Verify table loads without JavaScript errors
 3. Test search functionality (type in search box)
 4. Test sorting (click column headers)
 5. Test pagination (navigate between pages)
 6. Test responsive layout (resize browser window)
-7. Repeat for Factory Information page (`/app/cars/factory.php`)
+7. Repeat for Factory Information page (`/app/owner/cars/factory.php`)
 
 **Automated Testing**:
 
@@ -366,7 +366,7 @@ Tests the Registry Link feature on the factory page:
 ```javascript
 test('should load factory page without errors', async ({ page }) => {
   // Navigate to Factory page
-  await page.goto('/app/cars/factory.php');
+  await page.goto('/app/owner/cars/factory.php');
   await page.waitForLoadState('domcontentloaded');
 
   // Verify table renders

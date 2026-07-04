@@ -163,7 +163,7 @@ class PagePermissionClassifier
                                              //   without securePage() (e.g. app/api/cars/*) and purely public endpoints
                                              //   (e.g. app/api/shared/statistics.php) must NOT call securePage() —
                                              //   they are never registered and never reach here.
-            '#^app/contact/#',                   // app/contact/* pages
+            '#^app/owner/contact/#',             // app/owner/contact/* pages
             '#edit#',                            // Any path containing "edit"
             '#^usersc/#'                         // usersc/* pages
         ];

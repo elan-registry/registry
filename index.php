@@ -190,7 +190,7 @@ try {
 								</dl>
 								<div class="mt-2 mb-3">
 									<a class='btn btn-primary btn-sm'
-									   href='<?= htmlspecialchars($us_url_root, ENT_QUOTES, 'UTF-8') ?>app/cars/details.php?car_id=<?= (int) $carData->id ?>'>
+									   href='<?= htmlspecialchars($us_url_root, ENT_QUOTES, 'UTF-8') ?>app/owner/cars/details.php?car_id=<?= (int) $carData->id ?>'>
 										<i class='fas fa-eye'></i> Details
 									</a>
 								</div>
