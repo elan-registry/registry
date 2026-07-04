@@ -313,6 +313,7 @@ function renderGeographicTab(container, data) {
         </div>
     `;
 
+  // No ${...} interpolation — server data goes to Chart.js only.
   container.html(html);
 
   // Create charts
@@ -325,7 +326,9 @@ function renderGeographicTab(container, data) {
  * Render Production Tab Content
  */
 function renderProductionTab(container, data) {
-  const html = `
+  const wrapper = document.createElement('div');
+  // No ${...} interpolation — series rows are populated via renderSeriesTable() below.
+  wrapper.innerHTML = `
         <div class="row">
             <div class="col-lg-6 mb-4">
                 <div class="card">
@@ -397,12 +400,7 @@ function renderProductionTab(container, data) {
                                         <th>% Recorded</th>
                                     </tr>
                                 </thead>
-                                <tbody>
-                                    ${renderSeriesTable(
-                                      data.seriesCounts,
-                                      data.seriesNotes
-                                    )}
-                                </tbody>
+                                <tbody></tbody>
                             </table>
                         </div>
                     </div>
@@ -411,7 +409,8 @@ function renderProductionTab(container, data) {
         </div>
     `;
 
-  container.html(html);
+  renderSeriesTable(wrapper.querySelector('tbody'), data.seriesCounts, data.seriesNotes);
+  container.empty().append(...Array.from(wrapper.childNodes));
 
   // Create charts
   createTypeChart(data.type);
@@ -462,6 +461,7 @@ function renderColorsTab(container, data) {
         </div>
     `;
 
+  // No ${...} interpolation — server data goes to Chart.js only.
   container.html(html);
 
   // Create charts
@@ -477,7 +477,9 @@ function renderQualityTab(container, data) {
   const completeness = data.completeness;
   const totalCars = completeness.total_cars;
 
-  const html = `
+  const wrapper = document.createElement('div');
+  // No ${...} interpolation — numeric values are set via textContent using data-metric selectors below.
+  wrapper.innerHTML = `
         <div class="row">
             <div class="col-lg-8 mb-4">
                 <div class="card">
@@ -497,46 +499,33 @@ function renderQualityTab(container, data) {
                     <div class="card-body">
                         <div class="mb-3">
                             <h6 class="text-muted mb-1">Total Registered Cars</h6>
-                            <h3 class="mb-0 text-primary">${totalCars.toLocaleString()}</h3>
+                            <h3 class="mb-0 text-primary" data-metric="total"></h3>
                         </div>
                         <hr>
                         <div class="small">
                             <div class="d-flex justify-content-between mb-2">
                                 <span>Chassis Numbers:</span>
-                                <span class="fw-bold">${Math.round(
-                                  (completeness.has_chassis / totalCars) * 100
-                                )}%</span>
+                                <span class="fw-bold" data-metric="chassis"></span>
                             </div>
                             <div class="d-flex justify-content-between mb-2">
                                 <span>Color Information:</span>
-                                <span class="fw-bold">${Math.round(
-                                  (completeness.has_color / totalCars) * 100
-                                )}%</span>
+                                <span class="fw-bold" data-metric="color"></span>
                             </div>
                             <div class="d-flex justify-content-between mb-2">
                                 <span>Engine Details:</span>
-                                <span class="fw-bold">${Math.round(
-                                  (completeness.has_engine / totalCars) * 100
-                                )}%</span>
+                                <span class="fw-bold" data-metric="engine"></span>
                             </div>
                             <div class="d-flex justify-content-between mb-2">
                                 <span>Purchase Dates:</span>
-                                <span class="fw-bold">${Math.round(
-                                  (completeness.has_purchase_date / totalCars) *
-                                    100
-                                )}%</span>
+                                <span class="fw-bold" data-metric="purchase_date"></span>
                             </div>
                             <div class="d-flex justify-content-between mb-2">
                                 <span>Photos:</span>
-                                <span class="fw-bold">${Math.round(
-                                  (completeness.has_image / totalCars) * 100
-                                )}%</span>
+                                <span class="fw-bold" data-metric="image"></span>
                             </div>
                             <div class="d-flex justify-content-between">
                                 <span>Location Data:</span>
-                                <span class="fw-bold">${Math.round(
-                                  (completeness.has_location / totalCars) * 100
-                                )}%</span>
+                                <span class="fw-bold" data-metric="location"></span>
                             </div>
                         </div>
                     </div>
@@ -545,31 +534,46 @@ function renderQualityTab(container, data) {
         </div>
     `;
 
-  container.html(html);
+  wrapper.querySelector('[data-metric="total"]').textContent = totalCars.toLocaleString();
+  [['chassis', completeness.has_chassis], ['color', completeness.has_color],
+   ['engine', completeness.has_engine], ['purchase_date', completeness.has_purchase_date],
+   ['image', completeness.has_image], ['location', completeness.has_location]]
+    .forEach(([key, value]) => {
+      const pct = totalCars > 0 ? Math.round((value / totalCars) * 100) : 0;
+      wrapper.querySelector(`[data-metric="${key}"]`).textContent = pct + '%';
+    });
+
+  container.empty().append(...Array.from(wrapper.childNodes));
 
   // Create chart
   createDataCompletenessChart(completeness);
 }
 
 /**
- * Helper function to render series table
+ * Populate a series statistics <tbody> using DOM API (no innerHTML) to prevent XSS.
+ * series keys come from the DB and must not be interpolated into HTML strings.
+ * @param {HTMLTableSectionElement}      tbody  The <tbody> to populate.
+ * @param {Object.<string, number>}      counts Object mapping series key to registered-car count.
+ * @param {Object.<string, number|string>} notes Object mapping series key to total-produced count.
  */
-function renderSeriesTable(counts, notes) {
-  let html = "";
+function renderSeriesTable(tbody, counts, notes) {
   for (const [series, count] of Object.entries(counts)) {
     const produced = parseInt(notes[series]) || 0;
     const percentage = produced > 0 ? Math.round((count / produced) * 100) : 0;
-
-    html += `
-            <tr>
-                <td class="fw-bold">${series.toUpperCase()}</td>
-                <td>${count}</td>
-                <td>${produced.toLocaleString()}</td>
-                <td>${percentage}%</td>
-            </tr>
-        `;
+    const tr = document.createElement('tr');
+    [
+      { text: series.toUpperCase(), cls: 'fw-bold' },
+      { text: count },
+      { text: produced.toLocaleString() },
+      { text: `${percentage}%` },
+    ].forEach(({ text, cls }) => {
+      const td = document.createElement('td');
+      td.textContent = text;
+      if (cls) { td.className = cls; }
+      tr.appendChild(td);
+    });
+    tbody.appendChild(tr);
   }
-  return html;
 }
 
 /**

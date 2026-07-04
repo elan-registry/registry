@@ -19,7 +19,7 @@ URL migration script for #1040 (app/owner/ path registration).
 ### Security Fixes
 
 - **XSS: Harden admin car management tab against stored XSS** ([#1124](https://github.com/unibrain1/elanregistry/issues/1124)): Replaced `innerHTML` template-literal assignments in `openAdminContactModal()` with DOM API calls; switched all onclick car/owner field encoding from single-quoted JS strings to `json_encode()`; added missing `htmlspecialchars()` to six unescaped DB fields in the duplicate-detection section.
-- **XSS: Fix innerHTML injection in statistics tab renderers** ([#1125](https://github.com/unibrain1/elanregistry/issues/1125)): Statistics page tab renderers in `statistics.js` now use safe DOM construction instead of `innerHTML` for server-sourced data.
+- **XSS: Fix innerHTML injection in statistics tab renderers** ([#1125](https://github.com/unibrain1/elanregistry/issues/1125)): `renderSeriesTable()` and `renderQualityTab()` now use DOM API (`createElement`/`textContent`) instead of template-literal `innerHTML`; `renderGeographicTab()` and `renderColorsTab()` annotated as safe (static HTML only).
 
 ### Improvements
 
