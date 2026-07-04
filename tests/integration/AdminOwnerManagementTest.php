@@ -67,9 +67,10 @@ final class AdminOwnerManagementTest extends IntegrationTestCase
         $this->db->insert('profiles', array_merge($defaults, $overrides));
 
         $row = $this->db->query("SELECT id FROM profiles WHERE user_id = ? ORDER BY id DESC LIMIT 1", [$userId])->first();
-        if ($row) {
-            $this->createdProfileIds[] = (int) $row->id;
+        if (!$row) {
+            throw new \RuntimeException("createTestProfile: insert failed for user_id={$userId}");
         }
+        $this->createdProfileIds[] = (int) $row->id;
     }
 
     /**
@@ -93,6 +94,7 @@ final class AdminOwnerManagementTest extends IntegrationTestCase
     public function testOwnerSearchEndpointRequiresRegistryAdmin(): void
     {
         $content = file_get_contents(__DIR__ . '/../../app/admin/includes/process-owner-search.php');
+        $this->assertNotFalse($content, 'Could not read process-owner-search.php');
         $this->assertStringContainsString(
             'isRegistryAdmin',
             $content,
@@ -111,6 +113,7 @@ final class AdminOwnerManagementTest extends IntegrationTestCase
     public function testOwnerSearchEndpointValidatesCsrfToken(): void
     {
         $content = file_get_contents(__DIR__ . '/../../app/admin/includes/process-owner-search.php');
+        $this->assertNotFalse($content, 'Could not read process-owner-search.php');
         $this->assertStringContainsString(
             'Token::check(',
             $content,
@@ -124,6 +127,7 @@ final class AdminOwnerManagementTest extends IntegrationTestCase
     public function testOwnerUpdateEndpointRequiresRegistryAdmin(): void
     {
         $content = file_get_contents(__DIR__ . '/../../app/admin/includes/process-owner-update.php');
+        $this->assertNotFalse($content, 'Could not read process-owner-update.php');
         $this->assertStringContainsString(
             'isRegistryAdmin',
             $content,
@@ -142,6 +146,7 @@ final class AdminOwnerManagementTest extends IntegrationTestCase
     public function testOwnerUpdateEndpointValidatesCsrfToken(): void
     {
         $content = file_get_contents(__DIR__ . '/../../app/admin/includes/process-owner-update.php');
+        $this->assertNotFalse($content, 'Could not read process-owner-update.php');
         $this->assertStringContainsString(
             'Token::check(',
             $content,
@@ -155,6 +160,7 @@ final class AdminOwnerManagementTest extends IntegrationTestCase
     public function testOwnerSyncLocationEndpointRequiresRegistryAdmin(): void
     {
         $content = file_get_contents(__DIR__ . '/../../app/admin/includes/process-owner-sync-location.php');
+        $this->assertNotFalse($content, 'Could not read process-owner-sync-location.php');
         $this->assertStringContainsString(
             'isRegistryAdmin',
             $content,
@@ -173,6 +179,7 @@ final class AdminOwnerManagementTest extends IntegrationTestCase
     public function testOwnerSyncLocationEndpointValidatesCsrfToken(): void
     {
         $content = file_get_contents(__DIR__ . '/../../app/admin/includes/process-owner-sync-location.php');
+        $this->assertNotFalse($content, 'Could not read process-owner-sync-location.php');
         $this->assertStringContainsString(
             'Token::check(',
             $content,
@@ -186,7 +193,7 @@ final class AdminOwnerManagementTest extends IntegrationTestCase
 
     /**
      * Happy path for owner-search: a test user created in the DB is returned
-     * by ElanRegistryOwner::searchOwners() when searched by email prefix.
+     * by ElanRegistryOwner::searchOwners() when searched by first name.
      *
      * Validates that the search logic used by process-owner-search.php finds
      * real owners from the database.
