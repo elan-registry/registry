@@ -704,7 +704,7 @@ function createRecentActivityChart() {
   const dailyCounts = {};
   data.forEach((item) => {
     const date = new Date(item.ctime);
-    if (date < cutoff) return;
+    if (dayKey(date) < dayKey(cutoff)) return;
     const key = dayKey(date);
     dailyCounts[key] = (dailyCounts[key] || 0) + 1;
   });
