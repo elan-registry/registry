@@ -159,20 +159,39 @@ jobs:
             gh pr comment ${{ steps.ctx.outputs.pr_number }} --body "..."
             ```
 
-            Structure the comment with these sections:
+            Structure the comment with these sections (use exactly these headings):
 
-            **Blocking** — must fix before merge (critical bugs, security issues,
-            silent failures, CLAUDE.md violations)
+            ### Blocking
+            Must fix before merge (critical bugs, security issues, silent
+            failures, CLAUDE.md violations). Omit this section entirely if
+            there are no blocking issues — do NOT include an empty section.
 
-            **Important** — should address (design, test gaps, unclear code)
+            ### Important
+            Should address (design, test gaps, unclear code).
 
-            **Suggestions** — optional improvements
+            ### Suggestions
+            Optional improvements.
 
-            **Strengths** — what's done well
+            ### Strengths
+            What's done well.
 
             Each item must cite `file:line` and the specific rule or reason.
-            If there is nothing to say in a section, omit it.
+            If there is nothing to say in a section, omit it entirely.
             Only post GitHub comments — do not output the review as a message.
+
+      - name: Fail if review posted Blocking findings
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUM: ${{ steps.ctx.outputs.pr_number }}
+          REPO: ${{ github.repository }}
+        run: |
+          BODY=$(gh api "repos/${REPO}/issues/${PR_NUM}/comments" \
+            --jq 'last.body // ""' 2>/dev/null || echo "")
+          if echo "$BODY" | grep -qE '^#{1,6} Blocking'; then
+            echo "::error::Review posted Blocking findings — fix them before merging. See the PR comment for details."
+            exit 1
+          fi
+          echo "✓ No Blocking section in review."
 
 
   # Deep review for milestone -> main PRs. Runs on open / ready_for_review
@@ -317,6 +336,20 @@ jobs:
             findings already addressed on issue PRs.
             Only post GitHub comments — do not output the review as a message.
 
+      - name: Fail if review posted Blocking findings
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUM: ${{ github.event.pull_request.number }}
+          REPO: ${{ github.repository }}
+        run: |
+          BODY=$(gh api "repos/${REPO}/issues/${PR_NUM}/comments" \
+            --jq 'last.body // ""' 2>/dev/null || echo "")
+          if echo "$BODY" | grep -qE '^#{1,6} Blocking'; then
+            echo "::error::Review posted Blocking findings — fix them before merging. See the PR comment for details."
+            exit 1
+          fi
+          echo "✓ No Blocking section in review."
+
 
   # Deep review triggered by a PR comment: `@claude deep-review`.
   # Restricted to repository owners and collaborators to prevent abuse.
@@ -389,6 +422,34 @@ jobs:
             gh pr comment ${{ github.event.issue.number }} --body "..."
             ```
 
-            Structure the comment with Blocking / Important / Suggestions /
-            Strengths sections. Every item must cite `file:line`.
+            Structure the comment with these sections (use exactly these headings):
+
+            ### Blocking
+            Must fix before merge. Omit this section entirely if there are no
+            blocking issues — do NOT include an empty section.
+
+            ### Important
+            Should address.
+
+            ### Suggestions
+            Optional improvements.
+
+            ### Strengths
+            What's done well.
+
+            Every item must cite `file:line`.
             Only post GitHub comments — do not output the review as a message.
+
+      - name: Fail if review posted Blocking findings
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUM: ${{ github.event.issue.number }}
+          REPO: ${{ github.repository }}
+        run: |
+          BODY=$(gh api "repos/${REPO}/issues/${PR_NUM}/comments" \
+            --jq 'last.body // ""' 2>/dev/null || echo "")
+          if echo "$BODY" | grep -qE '^#{1,6} Blocking'; then
+            echo "::error::Review posted Blocking findings — fix them before merging. See the PR comment for details."
+            exit 1
+          fi
+          echo "✓ No Blocking section in review."
