@@ -38,6 +38,21 @@ test.describe('Maps and Charts', () => {
     await page.waitForLoadState('networkidle');
     const chart = page.locator('#recentActivityChart');
     await expect(chart).toBeVisible({ timeout: 10000 });
+
+    // Verify the chart ends at today's date and has data points
+    const chartState = await page.evaluate(() => {
+      const instance = window.statisticsCharts && window.statisticsCharts.recentActivity;
+      if (!instance) return null;
+      const labels = instance.data.labels;
+      const data = instance.data.datasets[0].data;
+      return { lastLabel: labels[labels.length - 1], labelCount: labels.length, dataPointCount: data.length };
+    });
+    expect(chartState).not.toBeNull();
+    expect(chartState.labelCount).toBe(91);
+    expect(chartState.dataPointCount).toBe(91);
+    const today = new Date();
+    const expectedLabel = today.toLocaleDateString('en-GB', { month: 'short', day: 'numeric' });
+    expect(chartState.lastLabel).toBe(expectedLabel);
   });
 
   test('car details page map renders with MapLibre GL JS', async ({ page }) => {

@@ -12,7 +12,7 @@ URL migration script for #1040 (app/owner/ path registration).
 
 ### Improvements
 
-- **Recent Registrations chart ends at today** ([#1128](https://github.com/unibrain1/elanregistry/issues/1128)): The statistics page chart now uses daily buckets over a 91-day rolling window, so the rightmost x-axis label is always today's date rather than the start of the current week.
+- **Recent Registrations chart ends at today** ([#1128](https://github.com/unibrain1/elanregistry/issues/1128)): The statistics page chart now buckets registrations by calendar day over a 91-day rolling window (previously 13 weekly buckets keyed by each week's Monday). The rightmost x-axis label is always today's date, and label density is capped via Chart.js `maxTicksLimit` so the axis stays readable.
 
 ## Admin-Facing Changes
 
