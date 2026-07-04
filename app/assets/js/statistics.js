@@ -410,7 +410,7 @@ function renderProductionTab(container, data) {
     `;
 
   renderSeriesTable(wrapper.querySelector('tbody'), data.seriesCounts, data.seriesNotes);
-  container.empty().append(...wrapper.childNodes);
+  container.empty().append(...Array.from(wrapper.childNodes));
 
   // Create charts
   createTypeChart(data.type);
@@ -539,11 +539,11 @@ function renderQualityTab(container, data) {
    ['engine', completeness.has_engine], ['purchase_date', completeness.has_purchase_date],
    ['image', completeness.has_image], ['location', completeness.has_location]]
     .forEach(([key, value]) => {
-      wrapper.querySelector(`[data-metric="${key}"]`).textContent =
-        Math.round((value / totalCars) * 100) + '%';
+      const pct = totalCars > 0 ? Math.round((value / totalCars) * 100) : 0;
+      wrapper.querySelector(`[data-metric="${key}"]`).textContent = pct + '%';
     });
 
-  container.empty().append(...wrapper.childNodes);
+  container.empty().append(...Array.from(wrapper.childNodes));
 
   // Create chart
   createDataCompletenessChart(completeness);
