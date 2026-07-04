@@ -675,47 +675,47 @@ function createTimelineChart() {
 }
 
 /**
- * Create Recent Activity Chart — 13-week zoom of the Registry Timeline.
+ * Create Recent Activity Chart — 91-day zoom of the Registry Timeline.
  * Reuses statisticsRawData.timeline; no separate backend query needed.
  */
 function createRecentActivityChart() {
   const data = window.statisticsRawData.timeline || [];
 
-  // Returns a Date set to midnight (local time) of the Monday that starts the week containing `date`.
-  function weekMonday(date) {
-    const d = new Date(date);
-    d.setDate(d.getDate() - ((d.getDay() + 6) % 7));
-    d.setHours(0, 0, 0, 0);
-    return d;
+  // YYYY-MM-DD key from local date components, so buckets align with the viewer's local calendar day.
+  function dayKey(date) {
+    const y = date.getFullYear();
+    const m = String(date.getMonth() + 1).padStart(2, "0");
+    const d = String(date.getDate()).padStart(2, "0");
+    return `${y}-${m}-${d}`;
   }
 
-  // Build ordered list of 13 week-start Mondays, oldest first
-  const thisMonday = weekMonday(new Date());
-  const weeks = [];
-  for (let i = 12; i >= 0; i--) {
-    const d = new Date(thisMonday);
-    d.setDate(thisMonday.getDate() - i * 7);
-    weeks.push(d);
+  // Build ordered list of 91 days ending today (local midnight), oldest first
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const days = [];
+  for (let i = 90; i >= 0; i--) {
+    const d = new Date(today);
+    d.setDate(today.getDate() - i);
+    days.push(d);
   }
-  const cutoff = weeks[0];
+  const cutoff = days[0];
 
-  // Bucket each registration into its week's Monday
-  const weeklyCounts = {};
+  // Bucket each registration into its calendar day
+  const dailyCounts = {};
   data.forEach((item) => {
     const date = new Date(item.ctime);
     if (date < cutoff) return;
-    const key = weekMonday(date).toISOString().slice(0, 10);
-    weeklyCounts[key] = (weeklyCounts[key] || 0) + 1;
+    const key = dayKey(date);
+    dailyCounts[key] = (dailyCounts[key] || 0) + 1;
   });
 
-  // Build cumulative count series across the 13-week window
+  // Build x-axis labels and cumulative count series across the 91-day window
   let cumulative = 0;
   const labels = [];
   const cumulativeCounts = [];
-  weeks.forEach((monday) => {
-    const key = monday.toISOString().slice(0, 10);
-    cumulative += weeklyCounts[key] || 0;
-    labels.push(monday.toLocaleDateString("en-GB", { month: "short", day: "numeric" }));
+  days.forEach((day) => {
+    cumulative += dailyCounts[dayKey(day)] || 0;
+    labels.push(day.toLocaleDateString("en-GB", { month: "short", day: "numeric" }));
     cumulativeCounts.push(cumulative);
   });
 
@@ -747,7 +747,10 @@ function createRecentActivityChart() {
         x: {
           title: {
             display: true,
-            text: "Week"
+            text: "Date"
+          },
+          ticks: {
+            maxTicksLimit: 13
           }
         },
         y: {
