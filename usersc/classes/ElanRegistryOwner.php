@@ -518,7 +518,7 @@ class ElanRegistryOwner
         }
 
         // Reload owner data
-        $this->find($this->_data->id);
+        $this->find((int) $this->_data->id);
 
         logger($this->_data->id, LogCategories::LOG_CATEGORY_OWNER_ACTIONS, "Location updated: {$locationData['city']}, {$locationData['state']}, {$locationData['country']}");
         return true;

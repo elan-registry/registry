@@ -13,6 +13,8 @@
 
 - **Chassis availability check restored** (hotfix on main, 2026-07-05): Fixed 500 error on the Add Car form where the chassis availability check always failed silently — caused by a missing `use ElanRegistry\Input` import in the endpoint introduced by #1081.
 
+- **ElanRegistryOwner location update fixed** ([#1150](https://github.com/unibrain1/elanregistry/issues/1150)): Fixed `TypeError` when saving owner location via the admin sync — `ElanRegistryOwner::find()` was called with a string user ID instead of `int`, causing a fatal error under strict types.
+
 ## Admin-Facing Changes
 
 ### Improvements
@@ -37,7 +39,7 @@
 
 ### Housekeeping
 
-- **Housekeeping** ([#964](https://github.com/unibrain1/elanregistry/issues/964)): Deleted unused `logging-standard.js` and `custom_totp_policy.php`; removed dead POST-handling block from `contact/owner.php`; archived completed fix script `05-Fix-Website-Scheme.php`. WIP.
+- **Housekeeping** ([#964](https://github.com/unibrain1/elanregistry/issues/964)): Deleted unused `app/assets/js/logging-standard.js` (documentation stub, not loaded by any page).
 
 - **Remove deprecated backup shims** ([#705](https://github.com/unibrain1/elanregistry/issues/705)): Deprecated backup shims and unused `elan_backup_age` setting removed. WIP.
 
@@ -48,6 +50,7 @@
 ## Issues Resolved
 
 - [#623](https://github.com/unibrain1/elanregistry/issues/623) — chore: remove dead code — unused functions, exception classes, and LogCategories constants
+- [#1150](https://github.com/unibrain1/elanregistry/issues/1150) — fix: cast ElanRegistryOwner::find() userId to int to resolve TypeError in location update
 - [#705](https://github.com/unibrain1/elanregistry/issues/705) — chore: remove deprecated backup shims and unused elan_backup_age setting
 - [#939](https://github.com/unibrain1/elanregistry/issues/939) — refactor: remove dead code in CarVerificationManager/Car and route remaining direct DB writes through CarRepository
 - [#959](https://github.com/unibrain1/elanregistry/issues/959) — refactor: extract requireAdminAjax() helper to eliminate 9-file auth+CSRF guard duplication
