@@ -43,7 +43,7 @@ Introduce `ApiResponse` class (`usersc/classes/ApiResponse.php`) as the canonica
 
 **Design Principles:**
 
-- **Immutable Builder Pattern**: `withData()`, `withLogging()`, `withStatusCode()`return new instances (via`clone`)
+- **Immutable Builder Pattern**: `withData()`, `withLogging()` return new instances (via `clone`)
 - **Private Constructor with Factory Methods**: Enforces consistent HTTP status codes:
   - `success(message): ApiResponse` → 200 OK
   - `error(message, statusCode): ApiResponse` → 400 Bad Request (default)
@@ -99,7 +99,6 @@ ApiResponse::success('Car updated')
 The immutable builder pattern provides:
 
 - `toArray()` method for unit testing response structure
-- `toJson()` method for JSON serialization
 - `getStatusCode()`, `isSuccess()`, `getMessage()`, `getPendingLog()` accessors for assertions
 
 **Autoloading:**
@@ -283,8 +282,8 @@ NotificationHelper.escapeHtml(userMessage); // Escapes <, >, &, ", '
 - **Request cancellation prevents race conditions.** Search-as-you-type and other multi-request patterns are protected by `AbortController` timeout and
   cancellation, preventing stale responses from being processed.
 
-- **Builder pattern keeps ApiResponse immutable and testable.** The immutable design with `toArray()`and`toJson()`accessors enables unit testing without mocking
-  the entire response sending infrastructure. Tests can assert on response structure before`send()` is called.
+- **Builder pattern keeps ApiResponse immutable and testable.** The immutable design with `toArray()` accessors enables unit testing without mocking
+  the entire response sending infrastructure. Tests can assert on response structure before `send()` is called.
 
 - **Single injection point ensures client availability.** Loading the client in `footer.php`via nonce-based CSP injection guarantees that`ElanRegistryAPI`,
   `NotificationHelper`, and error classes are available on every page without individual script tag management.

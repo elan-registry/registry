@@ -221,7 +221,7 @@ parameters:
 ## Recommended Implementation Plan
 
 1. **Short-term (Completed):** Add explicit casts where needed ✅
-   - Type helper functions (`dbInt()`, `dbIntOrNull()`, `currentUserId()`) available for object properties
+   - Type helper functions (`dbInt()`, `currentUserId()`) available for object properties
 2. **Medium-term:** Extend DB class with `queryTyped()` method
 3. **Long-term:** Migrate to typed DTOs for critical data
 4. **Ongoing:** Add linting rules to pre-commit hook
