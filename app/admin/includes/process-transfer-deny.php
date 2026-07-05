@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use ElanRegistry\Exceptions\CarTransferException;
+use ElanRegistry\Transfer\CarTransferRepository;
 use ElanRegistry\Transfer\TransferEmailService;
 
 /**
@@ -16,7 +17,6 @@ use ElanRegistry\Transfer\TransferEmailService;
  * @copyright 2025
  */
 
-// Include required files
 require_once '../../../users/init.php';
 
 requireAdminAjax('transfer denial');
@@ -29,30 +29,21 @@ if ($transferId <= 0) {
 }
 
 $db = DB::getInstance();
+$repo = new CarTransferRepository($db);
 
 try {
     // Check that transfer request exists and is pending
-    $transferQuery = $db->query(
-        'SELECT id, requested_by_user_id FROM car_transfer_requests WHERE id = ? AND status = "pending"',
-        [$transferId]
-    );
+    $transfer = $repo->findPendingById((int)$transferId);
 
-    if ($transferQuery->count() === 0) {
+    if (!$transfer) {
         ApiResponse::notFound('Transfer request not found or already processed')
             ->withLogging($user->data()->id, LogCategories::LOG_CATEGORY_CAR_TRANSFER_ERROR, "Transfer denial failed: request #{$transferId} not found or not pending")
             ->send();
     }
 
-    $transfer = $transferQuery->first();
-
     // Update transfer request status to denied
-    $updateResult = $db->query(
-        'UPDATE car_transfer_requests SET status = "denied", admin_notes = ?, completed_date = NOW() WHERE id = ?',
-        ["Denied by admin user {$user->data()->id}", $transferId]
-    );
-
-    if (!$updateResult) {
-        throw new CarTransferException('Failed to update transfer request status');
+    if (!$repo->updateStatus((int)$transferId, 'denied', "Denied by admin user {$user->data()->id}")) {
+        throw new CarTransferException('Failed to update transfer request status to denied');
     }
 
     // Log successful denial

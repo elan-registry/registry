@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use ElanRegistry\Exceptions\CarTransferException;
 use ElanRegistry\Input;
+use ElanRegistry\Transfer\CarTransferRepository;
 use ElanRegistry\Transfer\TransferEmailService;
 
 /**
@@ -19,12 +20,10 @@ use ElanRegistry\Transfer\TransferEmailService;
 require_once '../../../users/init.php';
 
 try {
-    // Check CSRF token
     if (!Input::exists('post') || !Token::check(Input::get('csrf'))) {
         throw new CarTransferException('Invalid request token');
     }
 
-    // Check authentication
     if (!$user->isLoggedIn()) {
         throw new CarTransferException('You must be logged in to request transfers');
     }
@@ -90,6 +89,7 @@ try {
     }
 
     $db = DB::getInstance();
+    $repo = new CarTransferRepository($db);
 
     // Find the existing car
     $existingCarQuery = $db->query(
@@ -109,76 +109,47 @@ try {
     }
 
     // Check for existing pending transfer request
-    $existingTransferQuery = $db->query(
-        'SELECT id FROM car_transfer_requests WHERE existing_car_id = ? AND requested_by_user_id = ? AND status = "pending"',
-        [$existingCar->id, $user->data()->id]
-    );
-
-    if ($existingTransferQuery->count() > 0) {
+    if ($repo->hasPendingForCar((int)$existingCar->id, (int)$user->data()->id)) {
         throw new CarTransferException('You already have a pending transfer request for this car');
     }
 
-    // Generate security token
     $securityToken = bin2hex(random_bytes(32));
+    $expiresAt     = date('Y-m-d H:i:s', strtotime('+30 days'));
+    $userData      = $user->data();
 
-    // Set expiration date (30 days from now)
-    $expiresAt = date('Y-m-d H:i:s', strtotime('+30 days'));
+    $fields = [
+        'existing_car_id' => $existingCar->id,
+        'requested_by_user_id' => $user->data()->id,
+        'security_token' => $securityToken,
+        'expires_at' => $expiresAt,
+        'submitted_model' => $model,
+        'submitted_series' => $series,
+        'submitted_variant' => $variant,
+        'submitted_year' => $year,
+        'submitted_type' => $type,
+        'submitted_chassis' => $chassis,
+        'submitted_color' => $color,
+        'submitted_engine' => $engine,
+        'submitted_comments' => $comments,
+        'submitted_email' => $userData->email,
+        'submitted_fname' => $userData->fname,
+        'submitted_lname' => $userData->lname,
+        'submitted_city' => $userData->city ?? '',
+        'submitted_state' => $userData->state ?? '',
+        'submitted_country' => $userData->country ?? '',
+        'created_by' => $user->data()->id,
+    ];
 
-    // Get user details for submitted fields
-    $userData = $user->data();
+    $transferRequestId = $repo->create($fields);
 
-    // Create transfer request
-    $insertResult = $db->query(
-        'INSERT INTO car_transfer_requests (
-            existing_car_id, requested_by_user_id, security_token, expires_at,
-            submitted_model, submitted_series, submitted_variant, submitted_year, submitted_type,
-            submitted_chassis, submitted_color, submitted_engine, submitted_comments,
-            submitted_email, submitted_fname, submitted_lname, submitted_city, submitted_state, submitted_country,
-            created_by
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-        [
-            $existingCar->id,
-            $user->data()->id,
-            $securityToken,
-            $expiresAt,
-            $model,
-            $series,
-            $variant,
-            $year,
-            $type,
-            $chassis,
-            $color,
-            $engine,
-            $comments,
-            $userData->email,
-            $userData->fname,
-            $userData->lname,
-            $userData->city ?? '',
-            $userData->state ?? '',
-            $userData->country ?? '',
-            $user->data()->id
-        ]
-    );
-
-    if (!$insertResult) {
-        throw new CarTransferException('Failed to create transfer request');
-    }
-
-    // Get the transfer request ID
-    $transferRequestId = $db->lastId();
-
-    // Validate that we got a valid ID
     if ($transferRequestId <= 0) {
-        logger($user->data()->id, LogCategories::LOG_CATEGORY_DATABASE_ERROR, "Failed to get transfer request ID from lastId()");
+        logger($user->data()->id, LogCategories::LOG_CATEGORY_DATABASE_ERROR, "Transfer request DB insert returned no ID for car {$existingCar->id} — see database error log");
         throw new CarTransferException('Failed to retrieve transfer request ID');
     }
 
-    // Log the transfer request creation
     logger($user->data()->id, LogCategories::LOG_CATEGORY_CAR_TRANSFER, "Transfer request created for car ID {$existingCar->id}, chassis {$chassis}, transfer request ID: {$transferRequestId}");
 
     // Send email notifications with timeout protection
-    $emailMessages = [];
-
     try {
         $emailService = new TransferEmailService(DB::getInstance(), 'email', $abs_us_root . $us_url_root);
 
@@ -187,7 +158,10 @@ try {
 
         // Send notification to current owner with error handling
         try {
-            $emailService->sendRequest($transferRequestId);
+            $ownerNotified = $emailService->sendRequest($transferRequestId);
+            if (!$ownerNotified) {
+                logger($user->data()->id, LogCategories::LOG_CATEGORY_EMAIL_ERROR, "Owner notification failed for transfer request #$transferRequestId — owner may not be aware of this request");
+            }
         } catch (\Throwable $emailEx) {
             logger($user->data()->id, LogCategories::LOG_CATEGORY_EMAIL_ERROR, "Unexpected exception sending owner notification for request #$transferRequestId: " . $emailEx->getMessage());
         }
@@ -203,7 +177,6 @@ try {
         logger($user->data()->id, LogCategories::LOG_CATEGORY_EMAIL_ERROR, "General email error for request #$transferRequestId: " . $generalEmailEx->getMessage());
     }
 
-    // Return success response
     ApiResponse::success('Transfer request submitted successfully.')
         ->withData('transfer_request_id', $transferRequestId)
         ->withLogging($user->data()->id, LogCategories::LOG_CATEGORY_CAR_TRANSFER, "Transfer request submitted for car ID {$existingCar->id}")

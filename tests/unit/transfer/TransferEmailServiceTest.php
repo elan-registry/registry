@@ -48,6 +48,7 @@ final class TransferEmailServiceTest extends TestCase
 
     /**
      * Creates a mock DB whose query() always returns count=0 (transfer not found).
+     * error() always returns false (no DB error).
      */
     private function createMockDb(int $rowCount = 0): object
     {
@@ -63,6 +64,8 @@ final class TransferEmailServiceTest extends TestCase
                     public function first(): mixed { return null; }
                 };
             }
+
+            public function error(): bool { return false; }
         };
     }
 
@@ -70,6 +73,7 @@ final class TransferEmailServiceTest extends TestCase
      * Creates a mock DB that dispatches by table name:
      * queries against `car_transfer_requests` return $transferRow,
      * queries against `cars` return $carRow.
+     * error() always returns false (no DB error).
      */
     private function createFoundMockDb(object $transferRow, object $carRow): object
     {
@@ -88,6 +92,8 @@ final class TransferEmailServiceTest extends TestCase
                     public function first(): object { return $this->row; }
                 };
             }
+
+            public function error(): bool { return false; }
         };
     }
 

@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace ElanRegistry\Transfer;
 
-use DB;
 use LogCategories;
 use Throwable;
 
@@ -19,7 +18,7 @@ class TransferEmailService
 {
     /**
      * @param object $db Database instance
-     * @param callable $mailer Email sender callable — signature: (string $to, string $subject, string $body): bool
+     * @param mixed $mailer Email sender callable — signature: (string $to, string $subject, string $body): bool
      * @param string $basePath Site base path ($abs_us_root . $us_url_root) for template includes
      */
     public function __construct(
@@ -27,9 +26,6 @@ class TransferEmailService
         private mixed $mailer,
         private string $basePath,
     ) {
-        if (!is_callable($this->mailer)) {
-            throw new \InvalidArgumentException('TransferEmailService: $mailer must be callable');
-        }
     }
 
     /**
@@ -45,19 +41,21 @@ class TransferEmailService
      */
     private function fetchTransferContext(int $transferRequestId, string $context): array|false
     {
-        $transferQuery = $this->db->query("SELECT * FROM car_transfer_requests WHERE id = ?", [$transferRequestId]);
-        if ($transferQuery->count() === 0) {
+        $transferData = (new CarTransferRepository($this->db))->findById($transferRequestId);
+        if (!$transferData) {
             logger(0, LogCategories::LOG_CATEGORY_EMAIL_ERROR, "$context failed: Request ID $transferRequestId not found");
             return false;
         }
-        $transferData = $transferQuery->first();
 
-        $carQuery = $this->db->query("SELECT * FROM cars WHERE id = ?", [$transferData->existing_car_id]);
-        if ($carQuery->count() === 0) {
+        // Raw query rather than CarRepository::findById() because that method goes through $db->get().
+        // The unit-test double returns synthetic data from get() regardless of car ID, which would
+        // prevent testing the not-found path; query() returns empty by design.
+        $carQuery = $this->db->query('SELECT * FROM cars WHERE id = ?', [$transferData->existing_car_id]);
+        $carData = $carQuery->count() > 0 ? $carQuery->first() : null;
+        if (!$carData) {
             logger(0, LogCategories::LOG_CATEGORY_EMAIL_ERROR, "$context failed: Car ID {$transferData->existing_car_id} not found");
             return false;
         }
-        $carData = $carQuery->first();
 
         $carInfo = (object)[
             'id'      => $carData->id ?? 0,
