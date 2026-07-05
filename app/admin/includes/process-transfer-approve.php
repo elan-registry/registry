@@ -19,19 +19,7 @@ use ElanRegistry\Transfer\TransferEmailService;
 // Include required files
 require_once '../../../users/init.php';
 
-// Security check - admin permission required
-if (!$user->isLoggedIn() || !isRegistryAdmin($user->data()->id)) {
-    ApiResponse::forbidden('Unauthorized access')
-        ->withLogging(0, LogCategories::LOG_CATEGORY_ACCESS_DENIED, 'Unauthorized transfer approval attempt')
-        ->send();
-}
-
-// CSRF protection
-if (!isset($_POST['csrf']) || !Token::check($_POST['csrf'])) {
-    ApiResponse::forbidden('Invalid CSRF token')
-        ->withLogging($user->data()->id, LogCategories::LOG_CATEGORY_SECURITY, 'Invalid CSRF token in transfer approval')
-        ->send();
-}
+requireAdminAjax('transfer approval');
 
 // Validate transfer ID
 $transferId = (int)($_POST['transfer_id'] ?? 0);

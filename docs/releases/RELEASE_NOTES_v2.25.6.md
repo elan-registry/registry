@@ -5,7 +5,7 @@
 
 ## Required Actions After Deployment
 
-None.
+- **Run fix script 09** (`app/admin/scripts/fix/09-Fix-Cars-Update-Trigger-Chassis-Override.php`) on each server after deployment to update the `cars_update` trigger to capture `NEW.chassis_override`.
 
 ## User-Facing Changes
 
@@ -23,25 +23,38 @@ None.
 
 ### Developer-Facing Changes
 
-- **requireAdminAjax() helper** ([#959](https://github.com/unibrain1/elanregistry/issues/959)): Extracted duplicated 16-line admin auth+CSRF guard from 10 files into a single reusable helper.
+- **requireAdminAjax() helper** ([#959](https://github.com/unibrain1/elanregistry/issues/959)): Extracted duplicated 16-line admin auth+CSRF guard from 9 files into a single reusable helper in `custom_functions.php`. Normalizes log categories: auth failures log to `LOG_CATEGORY_ACCESS_DENIED`, CSRF failures to `LOG_CATEGORY_SECURITY`.
 
-- **CarRepository DB write consolidation** ([#939](https://github.com/unibrain1/elanregistry/issues/939)): Remaining direct `$db->update()`/`$db->insert()` calls in CarVerificationManager, CarImageProcessor, and syncLocationToCars routed through CarRepository.
+- **CarVerificationManager / Car cleanup** ([#939](https://github.com/unibrain1/elanregistry/issues/939)): Removed no-op catch blocks in CarVerificationManager and dead owner-cache block in Car::__construct(); routed remaining direct DB writes in CarVerificationManager, CarImageProcessor, and syncLocationToCars through CarRepository. WIP.
 
-- **CarTransferRepository** ([#1062](https://github.com/unibrain1/elanregistry/issues/1062)): New repository class consolidating car_transfer_requests data access from 5 scattered files.
+- **CarTransferRepository** ([#1062](https://github.com/unibrain1/elanregistry/issues/1062)): New repository class consolidating car_transfer_requests data access from scattered files. WIP.
 
-- **manage-consolidated.php CarRepository** ([#1061](https://github.com/unibrain1/elanregistry/issues/1061)): Car merge path in manage-consolidated.php routes through CarRepository.
+- **manage-consolidated.php cleanup** ([#969](https://github.com/unibrain1/elanregistry/issues/969)): Duplicate stat queries consolidated into `getAdminSystemStatus()` helper; car merge path routed through CarRepository. WIP.
 
-- **car_models filter query extraction** ([#1064](https://github.com/unibrain1/elanregistry/issues/1064)): SELECT DISTINCT queries for car listing filter pills moved to CarRepository.
+- **car_models filter query extraction** ([#1064](https://github.com/unibrain1/elanregistry/issues/1064)): SELECT DISTINCT queries for car listing filter pills moved to CarRepository. WIP.
 
-- **getAdminSystemStatus() helper** ([#969](https://github.com/unibrain1/elanregistry/issues/969)): Duplicate stat queries in manage-consolidated.php and manage-maintenance.php consolidated into a single helper.
+- **Admin AJAX rate limiting** ([#1141](https://github.com/unibrain1/elanregistry/issues/1141)): Rate limiting added to admin AJAX endpoints. WIP.
+
+### Housekeeping
+
+- **Housekeeping** ([#964](https://github.com/unibrain1/elanregistry/issues/964)): Deleted unused `logging-standard.js` and `custom_totp_policy.php`; removed dead POST-handling block from `contact/owner.php`; archived completed fix script `05-Fix-Website-Scheme.php`. WIP.
+
+- **Remove deprecated backup shims** ([#705](https://github.com/unibrain1/elanregistry/issues/705)): Deprecated backup shims and unused `elan_backup_age` setting removed. WIP.
+
+- **Remove spam/inactive user cleanup system** ([#1066](https://github.com/unibrain1/elanregistry/issues/1066)): Abandoned spam and inactive user cleanup system removed. WIP.
+
+- **Dead code sweep** ([#623](https://github.com/unibrain1/elanregistry/issues/623)): Unused functions, exception classes, and LogCategories constants removed. WIP.
 
 ## Issues Resolved
 
-- [#939](https://github.com/unibrain1/elanregistry/issues/939) — refactor: route remaining direct DB writes through CarRepository (CarVerificationManager, CarImageProcessor, syncLocationToCars)
-- [#959](https://github.com/unibrain1/elanregistry/issues/959) — refactor: extract requireAdminAjax() helper to eliminate 10-file auth+CSRF guard duplication
-- [#969](https://github.com/unibrain1/elanregistry/issues/969) — refactor: add getAdminSystemStatus() helper to eliminate duplicated stat queries
-- [#1061](https://github.com/unibrain1/elanregistry/issues/1061) — refactor: route manage-consolidated.php car merge path through CarRepository
+- [#623](https://github.com/unibrain1/elanregistry/issues/623) — chore: remove dead code — unused functions, exception classes, and LogCategories constants
+- [#705](https://github.com/unibrain1/elanregistry/issues/705) — chore: remove deprecated backup shims and unused elan_backup_age setting
+- [#939](https://github.com/unibrain1/elanregistry/issues/939) — refactor: remove dead code in CarVerificationManager/Car and route remaining direct DB writes through CarRepository
+- [#959](https://github.com/unibrain1/elanregistry/issues/959) — refactor: extract requireAdminAjax() helper to eliminate 9-file auth+CSRF guard duplication
+- [#964](https://github.com/unibrain1/elanregistry/issues/964) — chore: housekeeping — delete dead assets, remove dead POST block, archive fix script
+- [#969](https://github.com/unibrain1/elanregistry/issues/969) — refactor: clean up manage-consolidated.php — getAdminSystemStatus() helper and CarRepository merge path
 - [#1062](https://github.com/unibrain1/elanregistry/issues/1062) — refactor: create CarTransferRepository to consolidate car_transfer_requests data access
 - [#1064](https://github.com/unibrain1/elanregistry/issues/1064) — refactor: extract car_models filter queries from cars/index.php into CarRepository
+- [#1066](https://github.com/unibrain1/elanregistry/issues/1066) — chore: remove abandoned spam/inactive user cleanup system
 - [#1141](https://github.com/unibrain1/elanregistry/issues/1141) — Add rate limiting to admin AJAX endpoints
 - [#1142](https://github.com/unibrain1/elanregistry/issues/1142) — Add rate limiting or auth to public statistics endpoint

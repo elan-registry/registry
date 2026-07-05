@@ -263,6 +263,38 @@ function currentUserId(): int
     return (int) $user->data()->id;
 }
 
+/**
+ * Guard an admin-only AJAX endpoint: verify the current user is a registry
+ * admin and that the POST payload carries a valid CSRF token. Sends a 403
+ * JSON response and halts execution on any failure.
+ *
+ * Requires users/init.php to have been loaded so that $user is initialized.
+ *
+ * @param string $context Noun phrase identifying the endpoint, used in security
+ *                        log messages. E.g. 'car details' produces
+ *                        "Unauthorized car details attempt" and
+ *                        "Invalid CSRF token in car details". Pass '' to use
+ *                        generic fallback messages.
+ */
+function requireAdminAjax(string $context = ''): void
+{
+    global $user;
+
+    if (!isset($user) || !$user->isLoggedIn() || !isRegistryAdmin($user->data()->id)) {
+        $logMsg = $context !== '' ? "Unauthorized {$context} attempt" : 'Unauthorized admin AJAX access';
+        ApiResponse::forbidden('Unauthorized access')
+            ->withLogging(0, LogCategories::LOG_CATEGORY_ACCESS_DENIED, $logMsg)
+            ->send();
+    }
+
+    if (!isset($_POST['csrf']) || !Token::check($_POST['csrf'])) {
+        $logMsg = $context !== '' ? "Invalid CSRF token in {$context}" : 'Invalid CSRF token in admin AJAX request';
+        ApiResponse::forbidden('Invalid CSRF token')
+            ->withLogging((int) $user->data()->id, LogCategories::LOG_CATEGORY_SECURITY, $logMsg)
+            ->send();
+    }
+}
+
 
 // We need server globals in custom functions as it's used early in the load process.
 require_once $abs_us_root . $us_url_root . 'usersc/includes/server_globals.php';
