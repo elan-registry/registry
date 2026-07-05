@@ -160,7 +160,7 @@ different access levels and serving mechanisms:
 - Native PHP pages (not markdown)
 - Public access
 - Includes: identification guides, chassis validation, paint colors, technical articles
-- Related to `/app/cars/factory.php` (Production Records)
+- Related to `/app/owner/cars/factory.php` (Production Records)
 
 **Admin** (`/docs/admin/`)
 
@@ -394,16 +394,16 @@ template. It is the only project-tracked file in the `customizer/` directory.
 ### Top-Level Menu Items (6 items)
 
 1. **List Cars** — Public car listing
-   - `app/cars/index.php`
+   - `app/owner/cars/index.php`
 
 2. **Statistics** — Registry statistics
-   - `app/reports/statistics.php`
+   - `app/owner/reports/statistics.php`
 
 3. **Reference** (dropdown) — Technical reference with 5 sub-items
    - Reference Library (`docs/reference/index.php`)
    - Identification Guide (`docs/reference/identification-guide.php`)
    - Chassis Validation (`docs/reference/chassis-validation.php`)
-   - Production Records (`app/cars/factory.php`)
+   - Production Records (`app/owner/cars/factory.php`)
    - Paint Colors (`docs/reference/paint-colors.php`)
 
 4. **Car Stories** — Car history narratives
@@ -414,7 +414,7 @@ template. It is the only project-tracked file in the `customizer/` directory.
 
 6. **Account Dropdown** (when logged in)
    - Account settings (`users/account.php`)
-   - Feedback (`app/contact/index.php`)
+   - Feedback (`app/owner/contact/index.php`)
    - Logout (`users/logout.php`)
 
 ### Navigation Changes from Previous Version
@@ -553,10 +553,11 @@ array in `/z_us_root.php` to register it with UserSpice:
 ```php
 $path = [
     'app',
-    'app/cars',
-    'app/reports',
+    'app/owner',
+    'app/owner/cars',
+    'app/owner/reports',
+    'app/owner/contact',
     'app/admin',
-    'app/contact',
     'app/new-feature',  // Add new directory here
 ];
 ```

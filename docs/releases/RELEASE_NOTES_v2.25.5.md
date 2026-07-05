@@ -1,6 +1,6 @@
 # Elan Registry v2.25.5 Release Notes
 
-**Release Date:** TBD
+**Release Date:** 2026-07-05
 **Type:** Patch Release - App Directory Phase 2 & Test Coverage
 
 ## Required Actions After Deployment
