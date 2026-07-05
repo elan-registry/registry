@@ -19,11 +19,11 @@ This causes `TypeError` when passing database values to strict-typed function pa
 **Known issues fixed:**
 
 - `BackupManager::__construct(?int $userId)` - Fixed with explicit cast
-- Type helper functions (`dbInt()`, `dbIntOrNull()`, `currentUserId()`) added to custom_functions.php
+- Type helper functions (`dbInt()`, `currentUserId()`) added to custom_functions.php
 
 ## Type Helper Functions (v2.14.0+)
 
-Three helper functions in `usersc/includes/custom_functions.php` provide safe PDO string-to-int conversion:
+Two helper functions in `usersc/includes/custom_functions.php` provide safe PDO string-to-int conversion:
 
 **`dbInt(mixed $value, string $property = 'id'): int`**
 
@@ -38,23 +38,6 @@ $carId = dbInt($row, 'id');
 dbInt($row, 'null_field');      // null value
 dbInt($row, 'zero_field');      // zero value
 dbInt($row, 'invalid_field');   // non-numeric string
-```
-
-**`dbIntOrNull(mixed $value, string $property = 'id'): ?int`**
-
-Same as `dbInt()` but returns null for empty/null values instead of throwing an exception. Throws `InvalidArgumentException` only on non-numeric, non-null values.
-
-```php
-// Nullable variant - returns null for empty/null
-$optionalId = dbIntOrNull($row, 'optional_id');
-$managerId = dbIntOrNull($carData, 'manager_id');
-
-// Returns null for null/empty
-dbIntOrNull($row, 'null_field');     // Returns null
-dbIntOrNull($row, 'zero_field');     // Returns null
-
-// Error case - throws InvalidArgumentException
-dbIntOrNull($row, 'invalid_field');  // non-numeric string
 ```
 
 **`currentUserId(): int`**

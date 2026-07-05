@@ -363,35 +363,6 @@ final class ApiResponseTest extends TestCase
     }
 
     /**
-     * Test withStatusCode overrides status code
-     *
-     * @return void
-     */
-    #[Group('fast')]
-    public function testWithStatusCode(): void
-    {
-        $response = ApiResponse::error('Custom error')
-            ->withStatusCode(418);
-
-        $this->assertEquals(418, $response->getStatusCode());
-    }
-
-    /**
-     * Test withStatusCode is immutable
-     *
-     * @return void
-     */
-    #[Group('fast')]
-    public function testWithStatusCodeIsImmutable(): void
-    {
-        $original = ApiResponse::error('Error');
-        $modified = $original->withStatusCode(418);
-
-        $this->assertEquals(400, $original->getStatusCode());
-        $this->assertEquals(418, $modified->getStatusCode());
-    }
-
-    /**
      * Test toArray returns minimal response for success
      *
      * @return void
@@ -464,38 +435,6 @@ final class ApiResponseTest extends TestCase
         $this->assertFalse($array['success']);
         $this->assertEquals('Validation failed', $array['message']);
         $this->assertEquals($errors, $array['errors']);
-    }
-
-    /**
-     * Test toJson returns valid JSON string
-     *
-     * @return void
-     */
-    #[Group('fast')]
-    public function testToJson(): void
-    {
-        $response = ApiResponse::success('Done');
-        $json = $response->toJson();
-
-        $this->assertJson($json);
-        $decoded = json_decode($json, true);
-        $this->assertEquals(['success' => true, 'message' => 'Done'], $decoded);
-    }
-
-    /**
-     * Test toJson with special characters
-     *
-     * @return void
-     */
-    #[Group('fast')]
-    public function testToJsonWithSpecialCharacters(): void
-    {
-        $response = ApiResponse::success('Updated "Lotus Elan" & saved <data>');
-        $json = $response->toJson();
-
-        $this->assertJson($json);
-        $decoded = json_decode($json, true);
-        $this->assertEquals('Updated "Lotus Elan" & saved <data>', $decoded['message']);
     }
 
     /**
@@ -650,12 +589,10 @@ final class ApiResponseTest extends TestCase
         $response = ApiResponse::success('Profile updated!')
             ->withData('quality_score', 85)
             ->withData('missing_fields', ['city'])
-            ->withLogging(42, 'OwnerActions', 'Profile updated for user 42')
-            ->withStatusCode(201);
+            ->withLogging(42, 'OwnerActions', 'Profile updated for user 42');
 
         $this->assertTrue($response->isSuccess());
         $this->assertEquals('Profile updated!', $response->getMessage());
-        $this->assertEquals(201, $response->getStatusCode());
 
         $data = $response->getData();
         $this->assertEquals(85, $data['quality_score']);
@@ -762,22 +699,6 @@ final class ApiResponseTest extends TestCase
     {
         $response = ApiResponse::success('Done');
         $this->assertNull($response->getPendingLog());
-    }
-
-    /**
-     * Test response with Unicode characters
-     *
-     * @return void
-     */
-    #[Group('fast')]
-    public function testUnicodeCharacters(): void
-    {
-        $response = ApiResponse::success('Mise à jour réussie! 日本語 🚗');
-        $json = $response->toJson();
-
-        $this->assertJson($json);
-        $decoded = json_decode($json, true);
-        $this->assertEquals('Mise à jour réussie! 日本語 🚗', $decoded['message']);
     }
 
     /**

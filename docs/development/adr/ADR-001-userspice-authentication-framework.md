@@ -160,7 +160,7 @@ that wrap UserSpice internals with type-safe, domain-appropriate interfaces:
 - `isRegistryAdmin(int|string|null $userId = null): bool` -- wraps
   `hasPerm([2, 3])`
 - `currentUserId(): int` -- type-safe current user ID extraction
-- `dbInt()`, `dbIntOrNull()` -- type-safe database value extraction
+- `dbInt()` -- type-safe database value extraction
 
 ## Consequences
 

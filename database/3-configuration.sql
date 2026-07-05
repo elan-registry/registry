@@ -46,18 +46,8 @@ UPDATE settings SET
   
   -- System Configuration Defaults
   navigation_type = 0,
-  elan_backup_age = 1,
   elan_image_dir = 'userimages/',
   elan_image_max = 6,
-
-  -- SPAM Cleanup System Configuration (Development settings)
-  elan_spam_cleanup_enabled = 1,        -- Enabled for testing
-  elan_spam_cleanup_dry_run = 1,        -- Dry-run mode for safety
-  elan_spam_inactive_days = 2,          -- Short period for testing
-  elan_spam_grace_period_days = 1,      -- Short grace period for testing
-  elan_spam_max_deletions = 20,         -- Maximum 20 deletions per run
-  elan_spam_max_percentage = 5.00,      -- Maximum 5% of users per run
-  elan_spam_email_notifications = 1,    -- Email notifications enabled
 
   -- Image Upload & Display Configuration
   elan_image_upload_max_size = 3.00,    -- Maximum upload size in MB
@@ -241,8 +231,7 @@ SELECT
   recaptcha,
   auto_assign_un,
   permission_restriction,
-  elan_image_max,
-  elan_spam_cleanup_enabled
+  elan_image_max
 FROM settings WHERE id = 1;
 
 -- Verify Editor permission was created

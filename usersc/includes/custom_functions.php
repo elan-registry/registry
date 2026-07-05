@@ -214,36 +214,6 @@ function dbInt(mixed $value, string $property = 'id'): int
 }
 
 /**
- * Extract a nullable integer value from a database result object or scalar
- *
- * Same as dbInt() but returns null for null/empty values instead of throwing.
- *
- * @param mixed $value Database result object or scalar value
- * @param string $property Property name to extract from objects (default: 'id')
- * @return int|null The integer value, or null if empty/null
- * @throws InvalidArgumentException If the value is non-null and non-numeric
- */
-function dbIntOrNull(mixed $value, string $property = 'id'): ?int
-{
-    if (is_object($value)) {
-        if (!isset($value->$property)) {
-            return null;
-        }
-        $value = $value->$property;
-    }
-
-    if ($value === null || $value === '') {
-        return null;
-    }
-
-    if (!is_numeric($value)) {
-        throw new InvalidArgumentException("Cannot convert non-numeric value to int (property: $property): $value");
-    }
-
-    return (int) $value;
-}
-
-/**
  * Get the current logged-in user's ID as an integer
  *
  * Provides a type-safe shorthand for (int) $user->data()->id with

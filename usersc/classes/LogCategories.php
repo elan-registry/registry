@@ -112,30 +112,6 @@ class LogCategories
      */
     public const LOG_CATEGORY_USER_CREATION = 'UserCreation';
 
-    /**
-     * Inactive user cleanup operations
-     * Used for identifying and processing inactive accounts
-     */
-    public const LOG_CATEGORY_INACTIVE_CLEANUP = 'InactiveCleanup';
-
-    /**
-     * Inactive user deletion operations
-     * Used when inactive accounts are deleted
-     */
-    public const LOG_CATEGORY_INACTIVE_DELETION = 'InactiveDeletion';
-
-    /**
-     * Inactive user notification
-     * Used when notifying users about account inactivity
-     */
-    public const LOG_CATEGORY_INACTIVE_USER_NOTIFICATION = 'InactiveUserNotification';
-
-    /**
-     * Inactive user notification errors
-     * Used when notification sending fails
-     */
-    public const LOG_CATEGORY_INACTIVE_USER_NOTIFICATION_ERROR = 'InactiveUserNotificationError';
-
     // ========== EMAIL & COMMUNICATIONS CATEGORIES ==========
 
     /**
@@ -405,18 +381,6 @@ class LogCategories
     public const LOG_CATEGORY_DATABASE_MIGRATION = 'DatabaseMigration';
 
     /**
-     * Database optimization operations
-     * Used when optimizing database performance
-     */
-    public const LOG_CATEGORY_DATABASE_OPTIMIZATION = 'DatabaseOptimization';
-
-    /**
-     * Table conversion operations
-     * Used when converting table structure or storage engines
-     */
-    public const LOG_CATEGORY_TABLE_CONVERSION = 'TableConversion';
-
-    /**
      * BackupManager operations
      * Used for database backup creation and management
      */
@@ -449,18 +413,6 @@ class LogCategories
     public const LOG_CATEGORY_VALIDATION_ERROR = 'ValidationError';
 
     /**
-     * Image removal operations
-     * Used when images are deleted
-     */
-    public const LOG_CATEGORY_IMAGE_REMOVAL = 'ImageRemoval';
-
-    /**
-     * Thumbnail optimization operations
-     * Used when optimizing image thumbnails
-     */
-    public const LOG_CATEGORY_THUMBNAIL_OPTIMIZATION = 'ThumbnailOptimization';
-
-    /**
      * FIX script operations
      * Used for administrative maintenance scripts
      */
@@ -485,18 +437,6 @@ class LogCategories
      * Used for administrative access verification
      */
     public const LOG_CATEGORY_ADMIN_VERIFICATION = 'AdminVerification';
-
-    /**
-     * Admin announcements
-     * Used for system-wide announcements and notifications
-     */
-    public const LOG_CATEGORY_ADMIN_ANNOUNCEMENTS = 'AdminAnnouncements';
-
-    /**
-     * Admin template operations
-     * Used for managing email and document templates
-     */
-    public const LOG_CATEGORY_ADMIN_TEMPLATES = 'AdminTemplates';
 
     /**
      * Pages manager operations
@@ -557,18 +497,6 @@ class LogCategories
      * Used for administrative user management
      */
     public const LOG_CATEGORY_USER_MANAGER = 'UserManager';
-
-    /**
-     * Spam cleanup operations
-     * Used when removing spam accounts or content
-     */
-    public const LOG_CATEGORY_SPAM_CLEANUP = 'SpamCleanup';
-
-    /**
-     * Spam cleanup errors
-     * Used when spam cleanup fails
-     */
-    public const LOG_CATEGORY_SPAM_CLEANUP_ERROR = 'SpamCleanupError';
 
     // ========== OAUTH & EXTERNAL AUTH CATEGORIES ==========
 
@@ -728,24 +656,6 @@ class LogCategories
      */
     public const LOG_CATEGORY_ELAN_REGISTRY = 'ElanRegistry';
 
-    /**
-     * Cloaking operations
-     * Used for device/fingerprint cloaking detection
-     */
-    public const LOG_CATEGORY_CLOAKING = 'Cloaking';
-
-    /**
-     * Cross-device validation operations
-     * Used when validating users across devices
-     */
-    public const LOG_CATEGORY_CROSS_DEVICE_VALIDATION = 'CrossDeviceValidation';
-
-    /**
-     * Rate limiting operations
-     * Used for tracking and enforcing rate limits
-     */
-    public const LOG_CATEGORY_RATE_LIMIT = 'RateLimit';
-
     // ========== BACKUP OPERATIONS CATEGORIES ==========
 
     /**
@@ -763,18 +673,6 @@ class LogCategories
     // ========== VARIOUS UTILITY CATEGORIES ==========
 
     /**
-     * Form data operations
-     * Used for form submission and processing tracking
-     */
-    public const LOG_CATEGORY_FORM_DATA = 'FormData';
-
-    /**
-     * Redirect diagnostic logging
-     * Used for redirect troubleshooting
-     */
-    public const LOG_CATEGORY_REDIRECT_DIAG = 'RedirectDiag';
-
-    /**
      * Permission fix operations
      * Used when correcting permission issues
      */
@@ -786,9 +684,4 @@ class LogCategories
      */
     public const LOG_CATEGORY_PERMISSION_FIX_ERROR = 'PermissionFixError';
 
-    /**
-     * Offline mode operations
-     * Used when application operates in offline mode
-     */
-    public const LOG_CATEGORY_OFFLINE = 'Offline';
 }

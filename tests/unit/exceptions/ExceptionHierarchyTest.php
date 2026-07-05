@@ -12,15 +12,12 @@ use ElanRegistry\Exceptions\CarPermissionException;
 use ElanRegistry\Exceptions\CarTransferException;
 use ElanRegistry\Exceptions\CarValidationException;
 use ElanRegistry\Exceptions\ElanRegistryException;
-use ElanRegistry\Exceptions\ForbiddenException;
-use ElanRegistry\Exceptions\GeocodingException;
 use ElanRegistry\Exceptions\ImageProcessingException;
 use ElanRegistry\Exceptions\LocationServiceException;
 use ElanRegistry\Exceptions\OwnerCreationException;
 use ElanRegistry\Exceptions\OwnerNotFoundException;
 use ElanRegistry\Exceptions\OwnerUpdateException;
 use ElanRegistry\Exceptions\OwnerValidationException;
-use ElanRegistry\Exceptions\UnauthorizedException;
 use ElanRegistry\Exceptions\ValidationException;
 use PHPUnit\Framework\TestCase;
 
@@ -54,11 +51,8 @@ class ExceptionHierarchyTest extends TestCase
         OwnerValidationException::class,
         OwnerUpdateException::class,
         ImageProcessingException::class,
-        GeocodingException::class,
         BackupException::class,
         ValidationException::class,
-        UnauthorizedException::class,
-        ForbiddenException::class,
         LocationServiceException::class,
     ];
 
@@ -304,8 +298,6 @@ class ExceptionHierarchyTest extends TestCase
      */
     public function testStatusCodesForSecurityExceptions(): void
     {
-        $this->assertEquals(401, (new UnauthorizedException())->getHttpStatusCode());
-        $this->assertEquals(403, (new ForbiddenException())->getHttpStatusCode());
         $this->assertEquals(403, (new CarPermissionException())->getHttpStatusCode());
     }
 
@@ -322,7 +314,6 @@ class ExceptionHierarchyTest extends TestCase
         $this->assertEquals(500, (new OwnerCreationException())->getHttpStatusCode());
         $this->assertEquals(500, (new OwnerUpdateException())->getHttpStatusCode());
         $this->assertEquals(500, (new ImageProcessingException())->getHttpStatusCode());
-        $this->assertEquals(500, (new GeocodingException())->getHttpStatusCode());
         $this->assertEquals(500, (new BackupException('msg'))->getHttpStatusCode());
         $this->assertEquals(500, (new LocationServiceException())->getHttpStatusCode());
     }
@@ -391,11 +382,8 @@ class ExceptionHierarchyTest extends TestCase
             'OwnerValidationException' => [OwnerValidationException::class, 'ValidationError'],
             'OwnerUpdateException' => [OwnerUpdateException::class, 'OwnerActions'],
             'ImageProcessingException' => [ImageProcessingException::class, 'FileError'],
-            'GeocodingException' => [GeocodingException::class, 'Geocode'],
             'BackupException' => [BackupException::class, 'BackupError'],
             'ValidationException' => [ValidationException::class, 'ValidationError'],
-            'UnauthorizedException' => [UnauthorizedException::class, 'SecurityError'],
-            'ForbiddenException' => [ForbiddenException::class, 'SecurityError'],
             'LocationServiceException' => [LocationServiceException::class, 'SystemError'],
         ];
     }
@@ -421,11 +409,8 @@ class ExceptionHierarchyTest extends TestCase
             'OwnerValidationException' => [OwnerValidationException::class, 422],
             'OwnerUpdateException' => [OwnerUpdateException::class, 500],
             'ImageProcessingException' => [ImageProcessingException::class, 500],
-            'GeocodingException' => [GeocodingException::class, 500],
             'BackupException' => [BackupException::class, 500],
             'ValidationException' => [ValidationException::class, 422],
-            'UnauthorizedException' => [UnauthorizedException::class, 401],
-            'ForbiddenException' => [ForbiddenException::class, 403],
             'LocationServiceException' => [LocationServiceException::class, 500],
         ];
     }

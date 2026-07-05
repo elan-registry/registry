@@ -119,7 +119,6 @@ These functions are loaded globally and available on every page:
 | `getAdminEmails()` | string | Get comma-separated admin emails | `$emails = getAdminEmails()` |
 | `getFeedbackEmail()` | string | Get feedback form email address | `$email = getFeedbackEmail()` |
 | `dbInt($value)` | int | Cast database value to int safely | `$id = dbInt($row->id)` |
-| `dbIntOrNull($value)` | ?int | Cast to nullable int | `$id = dbIntOrNull($row->id)` |
 | `currentUserId()` | int | Get logged-in user's ID (throws if not) | `$uid = currentUserId()` |
 | `logger($userId, $type, $note, $metadata)` | bool | Log user action for audit trail | `logger($uid, LogCategories::LOG_CATEGORY_LOGIN, 'User logged in')` |
 
