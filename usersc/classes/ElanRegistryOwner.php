@@ -565,10 +565,10 @@ class ElanRegistryOwner
                 $historyFields['comments'] = "Car location synchronized with owner profile update. City: {$this->_data->city}, State: {$this->_data->state}, Country: {$this->_data->country}";
                 $historyFields['ctime'] = $locationFields['mtime'];
                 if (!$repo->insertHistory($historyFields)) {
-                    logger((int) $this->_data->id, LogCategories::LOG_CATEGORY_OWNER_ACTIONS, "syncLocationToCars: failed to insert history record for car ID {$car->id}: " . $this->_db->errorString());
+                    logger((int) $this->_data->id, LogCategories::LOG_CATEGORY_OWNER_ACTIONS, "syncLocationToCars: failed to insert history record for car ID {$car->id}: " . $repo->errorString());
                 }
             } else {
-                logger((int) $this->_data->id, LogCategories::LOG_CATEGORY_OWNER_ACTIONS, "syncLocationToCars: DB update returned false for car ID {$car->id}: " . $this->_db->errorString());
+                logger((int) $this->_data->id, LogCategories::LOG_CATEGORY_OWNER_ACTIONS, "syncLocationToCars: DB update returned false for car ID {$car->id}: " . $repo->errorString());
             }
         }
 

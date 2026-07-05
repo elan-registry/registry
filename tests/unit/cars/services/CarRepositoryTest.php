@@ -81,4 +81,28 @@ final class CarRepositoryTest extends TestCase
         $result = $this->repo->insertCarUser(1, 100);
         $this->assertTrue($result);
     }
+
+    public function testUpdateVerificationCodeReturnsTrue(): void
+    {
+        $result = $this->repo->updateVerificationCode(1, 'TESTCODE12345678');
+        $this->assertTrue($result);
+    }
+
+    public function testUpdateLastVerifiedReturnsTrue(): void
+    {
+        $result = $this->repo->updateLastVerified(1, '2026-07-05 12:00:00');
+        $this->assertTrue($result);
+    }
+
+    public function testUpdateSoldDateReturnsTrue(): void
+    {
+        $result = $this->repo->updateSoldDate(1, '2026-07-05');
+        $this->assertTrue($result);
+    }
+
+    public function testUpdateImageReturnsTrue(): void
+    {
+        $result = $this->repo->updateImage(1, '["test.jpg"]');
+        $this->assertTrue($result);
+    }
 }
