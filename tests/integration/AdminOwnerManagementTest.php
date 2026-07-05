@@ -89,101 +89,134 @@ final class AdminOwnerManagementTest extends IntegrationTestCase
     // =========================================================================
 
     /**
-     * process-owner-search.php must require registry-admin before doing any work.
+     * requireAdminAjax() in custom_functions.php must contain both the admin
+     * check and CSRF validation so the chain of trust is intact.
+     */
+    public function testRequireAdminAjaxHelperContainsSecurityChecks(): void
+    {
+        $content = file_get_contents(__DIR__ . '/../../usersc/includes/custom_functions.php');
+        $this->assertNotFalse($content, 'Could not read custom_functions.php');
+        $this->assertStringContainsString(
+            'isRegistryAdmin',
+            $content,
+            'requireAdminAjax() in custom_functions.php must call isRegistryAdmin()'
+        );
+        $this->assertStringContainsString(
+            'Token::check(',
+            $content,
+            'requireAdminAjax() in custom_functions.php must call Token::check() for CSRF validation'
+        );
+    }
+
+    /**
+     * process-owner-search.php must delegate auth+CSRF guard to requireAdminAjax().
      */
     public function testOwnerSearchEndpointRequiresRegistryAdmin(): void
     {
         $content = file_get_contents(__DIR__ . '/../../app/admin/includes/process-owner-search.php');
         $this->assertNotFalse($content, 'Could not read process-owner-search.php');
         $this->assertStringContainsString(
-            'isRegistryAdmin',
+            'requireAdminAjax(',
             $content,
-            'process-owner-search.php must check isRegistryAdmin()'
-        );
-        $this->assertStringContainsString(
-            "ApiResponse::forbidden(",
-            $content,
-            'process-owner-search.php must call ApiResponse::forbidden() for unauthorized requests'
+            'process-owner-search.php must call requireAdminAjax() for auth+CSRF guard'
         );
     }
 
     /**
-     * process-owner-search.php must validate the CSRF token before acting.
+     * process-owner-search.php must delegate auth+CSRF guard to requireAdminAjax().
      */
     public function testOwnerSearchEndpointValidatesCsrfToken(): void
     {
         $content = file_get_contents(__DIR__ . '/../../app/admin/includes/process-owner-search.php');
         $this->assertNotFalse($content, 'Could not read process-owner-search.php');
         $this->assertStringContainsString(
-            'Token::check(',
+            'requireAdminAjax(',
             $content,
-            'process-owner-search.php must call Token::check() for CSRF validation'
+            'process-owner-search.php must call requireAdminAjax() for CSRF validation'
         );
     }
 
     /**
-     * process-owner-update.php must require registry-admin before doing any work.
+     * process-owner-update.php must delegate auth+CSRF guard to requireAdminAjax().
      */
     public function testOwnerUpdateEndpointRequiresRegistryAdmin(): void
     {
         $content = file_get_contents(__DIR__ . '/../../app/admin/includes/process-owner-update.php');
         $this->assertNotFalse($content, 'Could not read process-owner-update.php');
         $this->assertStringContainsString(
-            'isRegistryAdmin',
+            'requireAdminAjax(',
             $content,
-            'process-owner-update.php must check isRegistryAdmin()'
-        );
-        $this->assertStringContainsString(
-            "ApiResponse::forbidden(",
-            $content,
-            'process-owner-update.php must call ApiResponse::forbidden() for unauthorized requests'
+            'process-owner-update.php must call requireAdminAjax() for auth+CSRF guard'
         );
     }
 
     /**
-     * process-owner-update.php must validate the CSRF token before acting.
+     * process-owner-update.php must delegate auth+CSRF guard to requireAdminAjax().
      */
     public function testOwnerUpdateEndpointValidatesCsrfToken(): void
     {
         $content = file_get_contents(__DIR__ . '/../../app/admin/includes/process-owner-update.php');
         $this->assertNotFalse($content, 'Could not read process-owner-update.php');
         $this->assertStringContainsString(
-            'Token::check(',
+            'requireAdminAjax(',
             $content,
-            'process-owner-update.php must call Token::check() for CSRF validation'
+            'process-owner-update.php must call requireAdminAjax() for CSRF validation'
         );
     }
 
     /**
-     * process-owner-sync-location.php must require registry-admin before doing any work.
+     * process-owner-sync-location.php must delegate auth+CSRF guard to requireAdminAjax().
      */
     public function testOwnerSyncLocationEndpointRequiresRegistryAdmin(): void
     {
         $content = file_get_contents(__DIR__ . '/../../app/admin/includes/process-owner-sync-location.php');
         $this->assertNotFalse($content, 'Could not read process-owner-sync-location.php');
         $this->assertStringContainsString(
-            'isRegistryAdmin',
+            'requireAdminAjax(',
             $content,
-            'process-owner-sync-location.php must check isRegistryAdmin()'
-        );
-        $this->assertStringContainsString(
-            "ApiResponse::forbidden(",
-            $content,
-            'process-owner-sync-location.php must call ApiResponse::forbidden() for unauthorized requests'
+            'process-owner-sync-location.php must call requireAdminAjax() for auth+CSRF guard'
         );
     }
 
     /**
-     * process-owner-sync-location.php must validate the CSRF token before acting.
+     * process-owner-sync-location.php must delegate auth+CSRF guard to requireAdminAjax().
      */
     public function testOwnerSyncLocationEndpointValidatesCsrfToken(): void
     {
         $content = file_get_contents(__DIR__ . '/../../app/admin/includes/process-owner-sync-location.php');
         $this->assertNotFalse($content, 'Could not read process-owner-sync-location.php');
         $this->assertStringContainsString(
-            'Token::check(',
+            'requireAdminAjax(',
             $content,
-            'process-owner-sync-location.php must call Token::check() for CSRF validation'
+            'process-owner-sync-location.php must call requireAdminAjax() for CSRF validation'
+        );
+    }
+
+    /**
+     * load-owner-info.php must delegate auth+CSRF guard to requireAdminAjax().
+     */
+    public function testLoadOwnerInfoEndpointHasAdminGuard(): void
+    {
+        $content = file_get_contents(__DIR__ . '/../../app/admin/includes/load-owner-info.php');
+        $this->assertNotFalse($content, 'Could not read load-owner-info.php');
+        $this->assertStringContainsString(
+            'requireAdminAjax(',
+            $content,
+            'load-owner-info.php must call requireAdminAjax() for auth+CSRF guard'
+        );
+    }
+
+    /**
+     * load-owner-profile.php must delegate auth+CSRF guard to requireAdminAjax().
+     */
+    public function testLoadOwnerProfileEndpointHasAdminGuard(): void
+    {
+        $content = file_get_contents(__DIR__ . '/../../app/admin/includes/load-owner-profile.php');
+        $this->assertNotFalse($content, 'Could not read load-owner-profile.php');
+        $this->assertStringContainsString(
+            'requireAdminAjax(',
+            $content,
+            'load-owner-profile.php must call requireAdminAjax() for auth+CSRF guard'
         );
     }
 

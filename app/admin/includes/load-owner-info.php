@@ -9,17 +9,7 @@ require_once '../../../users/init.php';
 
 header('Content-Type: application/json');
 
-if (!$user->isLoggedIn() || !isRegistryAdmin($user->data()->id)) {
-    http_response_code(403);
-    echo json_encode(['success' => false, 'message' => 'Unauthorized access']);
-    exit;
-}
-
-if (!isset($_POST['csrf']) || !Token::check($_POST['csrf'])) {
-    http_response_code(400);
-    echo json_encode(['success' => false, 'message' => 'Invalid CSRF token']);
-    exit;
-}
+requireAdminAjax('owner info');
 
 $ownerId = (int)($_POST['owner_id'] ?? 0);
 if ($ownerId <= 0) {

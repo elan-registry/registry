@@ -14,19 +14,7 @@ use ElanRegistry\Exceptions\LocationServiceException;
 // Include required files
 require_once '../../../users/init.php';
 
-// Security check - admin permission required
-if (!$user->isLoggedIn() || !isRegistryAdmin($user->data()->id)) {
-    ApiResponse::forbidden('Unauthorized access')
-        ->withLogging(0, LogCategories::LOG_CATEGORY_SECURITY, 'Unauthorized location sync attempt')
-        ->send();
-}
-
-// CSRF protection
-if (!isset($_POST['csrf']) || !Token::check($_POST['csrf'])) {
-    ApiResponse::forbidden('Invalid CSRF token')
-        ->withLogging($user->data()->id, LogCategories::LOG_CATEGORY_SECURITY, 'Invalid CSRF token in location sync')
-        ->send();
-}
+requireAdminAjax('location sync');
 
 // Validate owner ID
 $ownerId = (int)($_POST['owner_id'] ?? 0);
@@ -38,13 +26,11 @@ if ($ownerId <= 0) {
 try {
     // Load owner
     $owner = new ElanRegistryOwner($ownerId);
-    if (!$owner->data()) {
+    $ownerData = $owner->data();
+    if (!$ownerData) {
         ApiResponse::notFound('Owner not found')
             ->send();
     }
-
-    // Check if owner has location data
-    $ownerData = $owner->data();
     if (empty($ownerData->lat) || empty($ownerData->lon)) {
         ApiResponse::error(
             'Owner location coordinates are missing. Please update the owner\'s location first.',

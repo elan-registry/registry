@@ -13,19 +13,7 @@ use ElanRegistry\Exceptions\OwnerSearchException;
 // Include required files
 require_once '../../../users/init.php';
 
-// Security check - admin permission required
-if (!$user->isLoggedIn() || !isRegistryAdmin($user->data()->id)) {
-    ApiResponse::forbidden('Unauthorized access')
-        ->withLogging(0, LogCategories::LOG_CATEGORY_SECURITY, 'Unauthorized owner search attempt')
-        ->send();
-}
-
-// CSRF protection
-if (!isset($_POST['csrf']) || !Token::check($_POST['csrf'])) {
-    ApiResponse::forbidden('Invalid CSRF token')
-        ->withLogging($user->data()->id, LogCategories::LOG_CATEGORY_SECURITY, 'Invalid CSRF token in owner search')
-        ->send();
-}
+requireAdminAjax('owner search');
 
 // Validate input
 $query = trim($_POST['query'] ?? '');
