@@ -142,11 +142,6 @@ try {
 
     $transferRequestId = $repo->create($fields);
 
-    if ($transferRequestId <= 0) {
-        logger($user->data()->id, LogCategories::LOG_CATEGORY_DATABASE_ERROR, "Transfer request DB insert returned no ID for car {$existingCar->id} — see database error log");
-        throw new CarTransferException('Failed to retrieve transfer request ID');
-    }
-
     logger($user->data()->id, LogCategories::LOG_CATEGORY_CAR_TRANSFER, "Transfer request created for car ID {$existingCar->id}, chassis {$chassis}, transfer request ID: {$transferRequestId}");
 
     // Send email notifications with timeout protection

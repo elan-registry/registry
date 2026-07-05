@@ -19,7 +19,7 @@ use LogCategories;
  */
 class CarTransferRepository
 {
-    private const VALID_STATUSES = ['pending', 'completed', 'denied', 'approved', 'expired'];
+    private const VALID_STATUSES = ['pending', 'completed', 'denied', 'expired'];
 
     /** Terminal statuses that record a completion timestamp. */
     private const TERMINAL_STATUSES = ['completed', 'denied', 'expired'];
@@ -102,17 +102,21 @@ class CarTransferRepository
     }
 
     /**
-     * Determine whether a user already has a pending transfer request for a car.
+     * Determine whether a user already has an active (pending, non-expired) transfer request for a car.
+     *
+     * Expired requests (status = 'pending' but expires_at in the past) are excluded,
+     * consistent with getPendingWithCarAndUsers(). Without this filter, an expired request
+     * would block re-submission while being invisible to admins.
      *
      * @param int $carId Car ID
      * @param int $userId Requesting user ID
-     * @return bool True if a pending request exists
+     * @return bool True if an active pending request exists
      * @throws \RuntimeException on database error (fail-closed: does not silently permit duplicates)
      */
     public function hasPendingForCar(int $carId, int $userId): bool
     {
         $result = $this->db->query(
-            "SELECT id FROM car_transfer_requests WHERE existing_car_id = ? AND requested_by_user_id = ? AND status = 'pending'",
+            "SELECT id FROM car_transfer_requests WHERE existing_car_id = ? AND requested_by_user_id = ? AND status = 'pending' AND expires_at > NOW()",
             [$carId, $userId]
         );
         if ($this->db->error()) {
@@ -173,7 +177,8 @@ class CarTransferRepository
     /**
      * Count pending, non-expired transfer requests.
      *
-     * @return int Number of pending requests (0 on failure)
+     * @return int Number of pending requests
+     * @throws \RuntimeException on database error
      */
     public function countPending(): int
     {
@@ -182,7 +187,7 @@ class CarTransferRepository
         );
         if ($this->db->error()) {
             logger(0, LogCategories::LOG_CATEGORY_DATABASE_ERROR, 'CarTransferRepository::countPending failed: ' . $this->db->errorString());
-            return 0;
+            throw new \RuntimeException('Database error counting pending transfer requests');
         }
         return $result->count() > 0 ? (int) $result->first()->count : 0;
     }
@@ -191,30 +196,39 @@ class CarTransferRepository
      * Create a transfer request.
      *
      * @param array<string, mixed> $fields Field values
-     * @return int New transfer request ID, or 0 on failure
+     * @return int New transfer request ID (always > 0)
+     * @throws \RuntimeException on insert failure or if the database returns no ID
      */
     public function create(array $fields): int
     {
         if (!$this->db->insert('car_transfer_requests', $fields)) {
             logger(0, LogCategories::LOG_CATEGORY_DATABASE_ERROR, 'CarTransferRepository::create insert failed: ' . $this->db->errorString());
-            return 0;
+            throw new \RuntimeException('Database error creating transfer request');
         }
-        return $this->db->lastId();
+        $id = $this->db->lastId();
+        if ($id <= 0) {
+            logger(0, LogCategories::LOG_CATEGORY_DATABASE_ERROR, 'CarTransferRepository::create returned no ID after insert');
+            throw new \RuntimeException('Database error: no ID returned after creating transfer request');
+        }
+        return $id;
     }
 
     /**
      * Update the status, admin notes, and completion date of a transfer request.
      *
      * Terminal statuses (completed, denied, expired) also record completed_date = NOW().
-     * Non-terminal statuses (pending, approved) leave completed_date unchanged.
+     * Non-terminal statuses (pending) leave completed_date unchanged.
      *
-     * Returns false if the update fails or if no row was matched (e.g. status already changed).
+     * Returns false only when the query succeeds but no row was matched — the expected
+     * TOCTOU case where another admin processed the request first. Throws on DB error
+     * so callers can distinguish "already processed" from "infrastructure failure".
      *
      * @param int $id Transfer request ID
      * @param string $status New status value
      * @param string $adminNotes Admin notes to record
-     * @return bool True if exactly one row was updated
-     * @throws \InvalidArgumentException if $status is not one of: pending, completed, denied, approved, expired
+     * @return bool True if exactly one row was updated; false if no row matched (already processed)
+     * @throws \InvalidArgumentException if $status is not one of: pending, completed, denied, expired
+     * @throws \RuntimeException on database error
      */
     public function updateStatus(int $id, string $status, string $adminNotes): bool
     {
@@ -235,7 +249,8 @@ class CarTransferRepository
         }
 
         if ($this->db->error()) {
-            return false;
+            logger(0, LogCategories::LOG_CATEGORY_DATABASE_ERROR, "CarTransferRepository::updateStatus failed for id=$id status=$status: " . $this->db->errorString());
+            throw new \RuntimeException('Database error updating transfer request status');
         }
         return $result->count() > 0;
     }

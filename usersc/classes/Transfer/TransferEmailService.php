@@ -20,12 +20,16 @@ class TransferEmailService
      * @param object $db Database instance
      * @param mixed $mailer Email sender callable — signature: (string $to, string $subject, string $body): bool
      * @param string $basePath Site base path ($abs_us_root . $us_url_root) for template includes
+     * @throws \InvalidArgumentException if $mailer is not callable
      */
     public function __construct(
         private object $db,
         private mixed $mailer,
         private string $basePath,
     ) {
+        if (!is_callable($this->mailer)) {
+            throw new \InvalidArgumentException('TransferEmailService: $mailer must be callable');
+        }
     }
 
     /**
