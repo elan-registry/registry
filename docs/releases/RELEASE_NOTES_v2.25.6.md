@@ -27,7 +27,7 @@
 
 - **requireAdminAjax() helper** ([#959](https://github.com/unibrain1/elanregistry/issues/959)): Extracted duplicated 16-line admin auth+CSRF guard from 9 files into a single reusable helper in `custom_functions.php`. Normalizes log categories: auth failures log to `LOG_CATEGORY_ACCESS_DENIED`, CSRF failures to `LOG_CATEGORY_SECURITY`.
 
-- **CarVerificationManager / Car cleanup** ([#939](https://github.com/unibrain1/elanregistry/issues/939)): Removed no-op catch blocks in CarVerificationManager and dead owner-cache block in Car::__construct(); routed remaining direct DB writes in CarVerificationManager, CarImageProcessor, and syncLocationToCars through CarRepository. WIP.
+- **CarVerificationManager / Car cleanup** ([#939](https://github.com/unibrain1/elanregistry/issues/939)): Removed no-op catch blocks in CarVerificationManager and CarImageProcessor; removed dead owner-cache block from Car::__construct(); added four named update methods to CarRepository and routed all direct `cars` writes in CarVerificationManager, CarImageProcessor, and ElanRegistryOwner::syncLocationToCars() through them.
 
 - **CarTransferRepository** ([#1062](https://github.com/unibrain1/elanregistry/issues/1062)): New repository class consolidating car_transfer_requests data access from scattered files. WIP.
 
