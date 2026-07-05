@@ -1,6 +1,7 @@
 <?php
 declare(strict_types=1);
 
+use ElanRegistry\Car\CarRepository;
 use ElanRegistry\Exceptions\OwnerCreationException;
 use ElanRegistry\Exceptions\OwnerUpdateException;
 use ElanRegistry\Exceptions\OwnerValidationException;
@@ -551,8 +552,10 @@ class ElanRegistryOwner
             'mtime' => date(AppConstants::DATETIME_FORMAT)
         ];
 
+        $repo = new CarRepository($this->_db);
+
         foreach ($ownedCars as $car) {
-            if ($this->_db->update('cars', $car->id, $locationFields)) {
+            if ($repo->update('cars', (int) $car->id, $locationFields)) {
                 $carsUpdated++;
 
                 // Add history record for location sync
@@ -561,7 +564,11 @@ class ElanRegistryOwner
                 $historyFields['operation'] = 'LOCATION_SYNC';
                 $historyFields['comments'] = "Car location synchronized with owner profile update. City: {$this->_data->city}, State: {$this->_data->state}, Country: {$this->_data->country}";
                 $historyFields['ctime'] = $locationFields['mtime'];
-                $this->_db->insert('cars_hist', $historyFields);
+                if (!$repo->insertHistory($historyFields)) {
+                    logger((int) $this->_data->id, LogCategories::LOG_CATEGORY_OWNER_ACTIONS, "syncLocationToCars: failed to insert history record for car ID {$car->id}: " . $repo->errorString());
+                }
+            } else {
+                logger((int) $this->_data->id, LogCategories::LOG_CATEGORY_OWNER_ACTIONS, "syncLocationToCars: DB update returned false for car ID {$car->id}: " . $repo->errorString());
             }
         }
 

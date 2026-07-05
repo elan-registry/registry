@@ -142,6 +142,54 @@ class CarRepository
     }
 
     /**
+     * Update the verification code for a car
+     *
+     * @param int $carId Car ID
+     * @param string $verificationCode Verification code to set
+     * @return bool True on success
+     */
+    public function updateVerificationCode(int $carId, string $verificationCode): bool
+    {
+        return $this->update('cars', $carId, ['vericode' => $verificationCode]);
+    }
+
+    /**
+     * Update the last-verified timestamp for a car
+     *
+     * @param int $carId Car ID
+     * @param string $dateTime Datetime string in AppConstants::DATETIME_FORMAT
+     * @return bool True on success
+     */
+    public function updateLastVerified(int $carId, string $dateTime): bool
+    {
+        return $this->update('cars', $carId, ['last_verified' => $dateTime]);
+    }
+
+    /**
+     * Update the sold date for a car
+     *
+     * @param int $carId Car ID
+     * @param string $soldDate Date string in Y-m-d format
+     * @return bool True on success
+     */
+    public function updateSoldDate(int $carId, string $soldDate): bool
+    {
+        return $this->update('cars', $carId, ['solddate' => $soldDate]);
+    }
+
+    /**
+     * Update the image JSON for a car
+     *
+     * @param int $carId Car ID
+     * @param string $imageJson JSON-encoded image list (empty string clears all images)
+     * @return bool True on success
+     */
+    public function updateImage(int $carId, string $imageJson): bool
+    {
+        return $this->update('cars', $carId, ['image' => $imageJson]);
+    }
+
+    /**
      * Find a car by verification code
      *
      * @param string $code Verification code
