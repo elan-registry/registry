@@ -5,7 +5,7 @@
 
 ## Required Actions After Deployment
 
-None.
+- **Run fix script 09** (`app/admin/scripts/fix/09-Fix-Cars-Update-Trigger-Chassis-Override.php`) on each server after deployment to update the `cars_update` trigger to capture `NEW.chassis_override`.
 
 ## User-Facing Changes
 

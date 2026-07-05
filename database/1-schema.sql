@@ -410,7 +410,7 @@ CREATE TRIGGER `cars_update` AFTER UPDATE ON `cars` FOR EACH ROW BEGIN
         )
         VALUES (
             'UPDATE', OLD.id, OLD.ctime, OLD.mtime, OLD.ModifiedBy, OLD.model,
-            OLD.series, OLD.variant, OLD.year, OLD.type, OLD.chassis, NEW.chassis_override,
+            OLD.series, OLD.variant, OLD.year, OLD.type, OLD.chassis, NEW.chassis_override, -- NEW: records when flag is SET, not the pre-update value
             OLD.color, OLD.engine, OLD.purchasedate, OLD.solddate, OLD.comments, OLD.image,
             OLD.user_id, OLD.email, OLD.fname, OLD.lname, OLD.join_date, OLD.city,
             OLD.state, OLD.country, OLD.lat, OLD.lon, OLD.website

@@ -123,20 +123,6 @@ final class AdminOwnerManagementTest extends IntegrationTestCase
     }
 
     /**
-     * process-owner-search.php must delegate auth+CSRF guard to requireAdminAjax().
-     */
-    public function testOwnerSearchEndpointValidatesCsrfToken(): void
-    {
-        $content = file_get_contents(__DIR__ . '/../../app/admin/includes/process-owner-search.php');
-        $this->assertNotFalse($content, 'Could not read process-owner-search.php');
-        $this->assertStringContainsString(
-            'requireAdminAjax(',
-            $content,
-            'process-owner-search.php must call requireAdminAjax() for CSRF validation'
-        );
-    }
-
-    /**
      * process-owner-update.php must delegate auth+CSRF guard to requireAdminAjax().
      */
     public function testOwnerUpdateEndpointRequiresRegistryAdmin(): void
@@ -151,20 +137,6 @@ final class AdminOwnerManagementTest extends IntegrationTestCase
     }
 
     /**
-     * process-owner-update.php must delegate auth+CSRF guard to requireAdminAjax().
-     */
-    public function testOwnerUpdateEndpointValidatesCsrfToken(): void
-    {
-        $content = file_get_contents(__DIR__ . '/../../app/admin/includes/process-owner-update.php');
-        $this->assertNotFalse($content, 'Could not read process-owner-update.php');
-        $this->assertStringContainsString(
-            'requireAdminAjax(',
-            $content,
-            'process-owner-update.php must call requireAdminAjax() for CSRF validation'
-        );
-    }
-
-    /**
      * process-owner-sync-location.php must delegate auth+CSRF guard to requireAdminAjax().
      */
     public function testOwnerSyncLocationEndpointRequiresRegistryAdmin(): void
@@ -175,20 +147,6 @@ final class AdminOwnerManagementTest extends IntegrationTestCase
             'requireAdminAjax(',
             $content,
             'process-owner-sync-location.php must call requireAdminAjax() for auth+CSRF guard'
-        );
-    }
-
-    /**
-     * process-owner-sync-location.php must delegate auth+CSRF guard to requireAdminAjax().
-     */
-    public function testOwnerSyncLocationEndpointValidatesCsrfToken(): void
-    {
-        $content = file_get_contents(__DIR__ . '/../../app/admin/includes/process-owner-sync-location.php');
-        $this->assertNotFalse($content, 'Could not read process-owner-sync-location.php');
-        $this->assertStringContainsString(
-            'requireAdminAjax(',
-            $content,
-            'process-owner-sync-location.php must call requireAdminAjax() for CSRF validation'
         );
     }
 
@@ -217,6 +175,62 @@ final class AdminOwnerManagementTest extends IntegrationTestCase
             'requireAdminAjax(',
             $content,
             'load-owner-profile.php must call requireAdminAjax() for auth+CSRF guard'
+        );
+    }
+
+    /**
+     * process-car-details.php must delegate auth+CSRF guard to requireAdminAjax().
+     */
+    public function testProcessCarDetailsEndpointHasAdminGuard(): void
+    {
+        $content = file_get_contents(__DIR__ . '/../../app/admin/includes/process-car-details.php');
+        $this->assertNotFalse($content, 'Could not read process-car-details.php');
+        $this->assertStringContainsString(
+            'requireAdminAjax(',
+            $content,
+            'process-car-details.php must call requireAdminAjax() for auth+CSRF guard'
+        );
+    }
+
+    /**
+     * process-transfer-approve.php must delegate auth+CSRF guard to requireAdminAjax().
+     */
+    public function testProcessTransferApproveEndpointHasAdminGuard(): void
+    {
+        $content = file_get_contents(__DIR__ . '/../../app/admin/includes/process-transfer-approve.php');
+        $this->assertNotFalse($content, 'Could not read process-transfer-approve.php');
+        $this->assertStringContainsString(
+            'requireAdminAjax(',
+            $content,
+            'process-transfer-approve.php must call requireAdminAjax() for auth+CSRF guard'
+        );
+    }
+
+    /**
+     * process-transfer-deny.php must delegate auth+CSRF guard to requireAdminAjax().
+     */
+    public function testProcessTransferDenyEndpointHasAdminGuard(): void
+    {
+        $content = file_get_contents(__DIR__ . '/../../app/admin/includes/process-transfer-deny.php');
+        $this->assertNotFalse($content, 'Could not read process-transfer-deny.php');
+        $this->assertStringContainsString(
+            'requireAdminAjax(',
+            $content,
+            'process-transfer-deny.php must call requireAdminAjax() for auth+CSRF guard'
+        );
+    }
+
+    /**
+     * process-user-details.php must delegate auth+CSRF guard to requireAdminAjax().
+     */
+    public function testProcessUserDetailsEndpointHasAdminGuard(): void
+    {
+        $content = file_get_contents(__DIR__ . '/../../app/admin/includes/process-user-details.php');
+        $this->assertNotFalse($content, 'Could not read process-user-details.php');
+        $this->assertStringContainsString(
+            'requireAdminAjax(',
+            $content,
+            'process-user-details.php must call requireAdminAjax() for auth+CSRF guard'
         );
     }
 

@@ -280,7 +280,7 @@ function requireAdminAjax(string $context = ''): void
 {
     global $user;
 
-    if (!$user->isLoggedIn() || !isRegistryAdmin($user->data()->id)) {
+    if (!isset($user) || !$user->isLoggedIn() || !isRegistryAdmin($user->data()->id)) {
         $logMsg = $context !== '' ? "Unauthorized {$context} attempt" : 'Unauthorized admin AJAX access';
         ApiResponse::forbidden('Unauthorized access')
             ->withLogging(0, LogCategories::LOG_CATEGORY_ACCESS_DENIED, $logMsg)
