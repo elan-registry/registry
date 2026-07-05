@@ -5,10 +5,10 @@ const { navigateAndWait, validateCardStructure } = require('./auth-helper.js');
 test.describe('UI Consistency After Style Refactoring', () => {
   test('consistent card layouts across pages', async ({ page }) => {
     const pages = [
-      'app/cars/index.php',
-      'app/cars/details.php?car_id=1',
-      'app/reports/statistics.php',
-      'app/contact/index.php'
+      'app/owner/cars/index.php',
+      'app/owner/cars/details.php?car_id=1',
+      'app/owner/reports/statistics.php',
+      'app/owner/contact/index.php'
     ];
     
     for (const pagePath of pages) {
@@ -30,9 +30,9 @@ test.describe('UI Consistency After Style Refactoring', () => {
 
   test('consistent header structure', async ({ page }) => {
     const pages = [
-      'app/cars/index.php',
-      'app/cars/edit.php',
-      'app/reports/statistics.php'
+      'app/owner/cars/index.php',
+      'app/owner/cars/edit.php',
+      'app/owner/reports/statistics.php'
     ];
     
     for (const pagePath of pages) {
@@ -60,7 +60,7 @@ test.describe('UI Consistency After Style Refactoring', () => {
     // Set mobile viewport
     await page.setViewportSize({ width: 375, height: 667 });
     
-    await navigateAndWait(page, 'app/cars/index.php');
+    await navigateAndWait(page, 'app/owner/cars/index.php');
     
     // Check that content is still accessible
     const mainContent = page.locator('.page-wrapper, .container, .card');
@@ -74,7 +74,7 @@ test.describe('UI Consistency After Style Refactoring', () => {
   });
 
   test('consistent button styling', async ({ page }) => {
-    await page.goto('app/cars/edit.php');
+    await page.goto('app/owner/cars/edit.php');
 
     // Check for Bootstrap button classes
     const buttons = page.locator('button, input[type="button"], input[type="submit"], .btn');
@@ -90,7 +90,7 @@ test.describe('UI Consistency After Style Refactoring', () => {
   });
 
   test('color scheme consistency', async ({ page }) => {
-    await page.goto('app/cars/index.php');
+    await page.goto('app/owner/cars/index.php');
 
     // Check for consistent color usage
     const cards = page.locator('.card-header');
@@ -110,7 +110,7 @@ test.describe('UI Consistency After Style Refactoring', () => {
       }
     });
     
-    await page.goto('app/reports/statistics.php');
+    await page.goto('app/owner/reports/statistics.php');
     await page.waitForTimeout(3000); // Wait for all scripts to load
     
     // Filter out known acceptable errors for unauthenticated local visits
@@ -150,8 +150,8 @@ test.describe('UI Consistency After Style Refactoring', () => {
 
   test('forms maintain consistent styling', async ({ page }) => {
     const formPages = [
-      'app/cars/edit.php',
-      'app/contact/index.php'
+      'app/owner/cars/edit.php',
+      'app/owner/contact/index.php'
     ];
     
     for (const pagePath of formPages) {

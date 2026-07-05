@@ -17,18 +17,18 @@ if ($navActive === '') {
         $current = '/' . ltrim(substr($current, strlen($root)), '/');
     }
     // Order matters: exact paths and more-specific entries first so they win
-    // over broader prefixes (e.g. factory.php beats the /app/cars/ prefix).
+    // over broader prefixes (e.g. factory.php beats the /app/owner/cars/ prefix).
     $sections = [
-        'add_car'    => ['/app/cars/edit.php'],
-        'reference'  => ['/app/cars/factory.php', '/docs/reference/'],
-        'list_cars'  => ['/app/cars/'],
-        'statistics' => ['/app/reports/statistics.php'],
+        'add_car'    => ['/app/owner/cars/edit.php'],
+        'reference'  => ['/app/owner/cars/factory.php', '/docs/reference/'],
+        'list_cars'  => ['/app/owner/cars/'],
+        'statistics' => ['/app/owner/reports/statistics.php'],
         'stories'    => ['/docs/car-stories.php', '/docs/stories/'],
         'guides'     => ['/docs/guides/'],
         'register'   => ['/users/join.php', '/usersc/join.php'],
         'login'      => ['/users/login.php', '/usersc/login.php'],
         'admin'      => ['/app/admin/', '/docs/admin/', '/users/admin.php'],
-        'account'    => ['/users/account.php', '/usersc/account.php', '/app/contact/', '/users/logout.php'],
+        'account'    => ['/users/account.php', '/usersc/account.php', '/app/owner/contact/', '/users/logout.php'],
     ];
     foreach ($sections as $key => $patterns) {
         foreach ($patterns as $p) {
@@ -67,7 +67,7 @@ if ($navActive === '') {
   </div>
 
   <li class='<?= $navActive === 'list_cars' ? 'active' : '' ?>'>
-    <a class='' href='<?= $us_url_root ?>app/cars/index.php'>
+    <a class='' href='<?= $us_url_root ?>app/owner/cars/index.php'>
       <i class='fa fa-car'></i>
       <span class='labelText'>List Cars</span>
     </a>
@@ -75,7 +75,7 @@ if ($navActive === '') {
 
   <?php if (isset($user) && $user->isLoggedIn()): ?>
     <li class='<?= $navActive === 'add_car' ? 'active' : '' ?>'>
-      <a class='btn btn-primary btn-sm ms-1' href='<?= $us_url_root ?>app/cars/edit.php'>
+      <a class='btn btn-primary btn-sm ms-1' href='<?= $us_url_root ?>app/owner/cars/edit.php'>
         <i class='fa fa-plus'></i>
         <span class='labelText'>Add Car</span>
       </a>
@@ -83,7 +83,7 @@ if ($navActive === '') {
   <?php endif; ?>
 
   <li class='<?= $navActive === 'statistics' ? 'active' : '' ?>'>
-    <a class='' href='<?= $us_url_root ?>app/reports/statistics.php'>
+    <a class='' href='<?= $us_url_root ?>app/owner/reports/statistics.php'>
       <i class='fa fa-pie-chart'></i>
       <span class='labelText'>Statistics</span>
     </a>
@@ -115,7 +115,7 @@ if ($navActive === '') {
         </a>
       </li>
       <li class=''>
-        <a class='' href='<?= $us_url_root ?>app/cars/factory.php'>
+        <a class='' href='<?= $us_url_root ?>app/owner/cars/factory.php'>
           <i class='fa fa-list-alt'></i>
           <span class='labelText'>Production Records</span>
         </a>
@@ -207,7 +207,7 @@ if ($navActive === '') {
           </a>
         </li>
         <li class=''>
-          <a class='' href='<?= $us_url_root ?>app/contact/index.php'>
+          <a class='' href='<?= $us_url_root ?>app/owner/contact/index.php'>
             <i class='fa fa-comments'></i>
             <span class='labelText'>Feedback</span>
           </a>

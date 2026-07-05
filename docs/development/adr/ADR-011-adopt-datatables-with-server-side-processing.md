@@ -70,7 +70,7 @@ Each endpoint:
 
 ### Frontend: Cars Listing
 
-**File**: `/app/cars/index.php`
+**File**: `/app/owner/cars/index.php`
 
 Configuration:
 
@@ -104,7 +104,7 @@ $('#cartable').DataTable({
 
 ### Frontend: Factory Build Records
 
-**File**: `/app/cars/factory.php`
+**File**: `/app/owner/cars/factory.php`
 
 Configuration:
 
@@ -286,8 +286,8 @@ Custom backend endpoint returning DataTables-compatible JSON, but frontend uses 
 - **DataTables Server-Side Processing**: [https://datatables.net/manual/server-side](https://datatables.net/manual/server-side)
 - **Backend Endpoints**: [app/api/cars/list.php](../../app/api/cars/list.php), [app/api/cars/factory-list.php](../../app/api/cars/factory-list.php), [app/api/cars/chassis-lookup.php](../../app/api/cars/chassis-lookup.php)
 - **Service Class**: [usersc/classes/Car/CarDataTablesService.php](../../usersc/classes/Car/CarDataTablesService.php)
-- **Cars Listing Page**: [app/cars/index.php](../../app/cars/index.php)
-- **Factory Listing Page**: [app/cars/factory.php](../../app/cars/factory.php)
+- **Cars Listing Page**: [app/owner/cars/index.php](../../app/owner/cars/index.php)
+- **Factory Listing Page**: [app/owner/cars/factory.php](../../app/owner/cars/factory.php)
 - **DataTables Documentation**: [docs/development/DATATABLES.md](../development/DATATABLES.md)
 - **ADR-001 (UserSpice)**: [docs/adr/ADR-001-userspice-authentication-framework.md](ADR-001-userspice-authentication-framework.md)
 - **ADR-002 (Denormalized cars)**: [docs/adr/ADR-002-denormalized-cars-table-cached-owner-data.md](ADR-002-denormalized-cars-table-cached-owner-data.md)

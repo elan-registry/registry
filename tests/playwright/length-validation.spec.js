@@ -3,7 +3,7 @@
 // Regression tests for issue #1107: length-validation boundary coverage for
 // chassis-availability.php and transfer-request.php (hardened in #1081).
 //
-// Strategy: navigate to app/cars/edit.php to get a real CSRF token from the
+// Strategy: navigate to app/owner/cars/edit.php to get a real CSRF token from the
 // session, then POST directly to each endpoint via page.request with boundary
 // values (at-limit and over-limit). The auth session from ensureLoggedIn()
 // is shared with page.request, so the CSRF token extracted from the DOM is
@@ -33,7 +33,7 @@ const { ensureLoggedIn } = require('./auth-helper.js');
  * Returns null if the page redirects to login (unauthenticated).
  */
 async function getCsrfFromEditPage(page) {
-    await page.goto('app/cars/edit.php', { waitUntil: 'domcontentloaded' });
+    await page.goto('app/owner/cars/edit.php', { waitUntil: 'domcontentloaded' });
     const url = page.url();
     if (url.includes('login') || url.includes('Please Log In')) {
         return null;

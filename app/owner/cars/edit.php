@@ -13,7 +13,7 @@ declare(strict_types=1);
  * @package ElanRegistry
  * @version 2.0
  */
-require_once '../../users/init.php';
+require_once '../../../users/init.php';
 require_once $abs_us_root . $us_url_root . 'usersc/includes/elanregistry_prep.php';
 
 use ElanRegistry\Documentation\DocumentPortalTemplate;
@@ -920,7 +920,7 @@ require_once $abs_us_root . $us_url_root . 'users/includes/html_footer.php'; //c
                 const data = await response.json();
 
                 if (data.success === true) {
-                    window.location = '<?= $us_url_root ?>app/cars/details.php?car_id=' + data.cardetails.id;
+                    window.location = '<?= $us_url_root ?>app/owner/cars/details.php?car_id=' + data.cardetails.id;
                 } else {
                     submitBtn.disabled = false;
                     submitBtn.textContent = submitBtn.dataset.label;
@@ -1266,7 +1266,7 @@ require_once $abs_us_root . $us_url_root . 'users/includes/html_footer.php'; //c
 
     // Handle success modal OK button
     $('#transferSuccessOkBtn').click(function() {
-        window.location.href = '<?= $us_url_root ?>app/cars/';
+        window.location.href = '<?= $us_url_root ?>app/owner/cars/';
     });
 
     // Character counter for transfer comments

@@ -208,27 +208,105 @@ class StatisticsApiTest extends IntegrationTestCase
     }
 
     // =========================================================================
-    // Error Scenario Tests
+    // StatisticsDataService behavioral tests
     // =========================================================================
 
     /**
-     * Test missing tab parameter returns error
+     * StatisticsDataService::getCountryData() returns rows with country and count keys.
+     *
+     * Replaced a tautological test that only asserted empty('') === true.
      */
-    public function testMissingTabParameterValidation(): void
+    public function testGetCountryDataReturnsRowsWithExpectedShape(): void
     {
-        // Validate that empty tab triggers error condition
-        $tab = '';
-        $this->assertTrue(empty($tab), "Empty tab should be invalid");
+        $service = new StatisticsDataService($this->db);
+        $result  = $service->getCountryData();
+
+        $this->assertIsArray($result);
+        $this->assertNotEmpty($result, 'Registry must have at least one car with a country');
+
+        $row = $result[0];
+        $this->assertObjectHasProperty('country', $row);
+        $this->assertObjectHasProperty('count', $row);
     }
 
     /**
-     * Test invalid tab parameter returns error
+     * StatisticsDataService::getTypeData() returns rows with type and count keys.
+     *
+     * Replaced a tautological test that only compared a literal string against
+     * a hardcoded array built in the same test.
      */
-    public function testInvalidTabParameterValidation(): void
+    public function testGetTypeDataReturnsRowsWithExpectedShape(): void
     {
-        $validTabs = ['geographic', 'production', 'colors', 'quality'];
-        $invalidTab = 'invalid_tab_name';
-        $this->assertNotContains($invalidTab, $validTabs, "Invalid tab should not be in valid tabs list");
+        $service = new StatisticsDataService($this->db);
+        $result  = $service->getTypeData();
+
+        $this->assertIsArray($result);
+        $this->assertNotEmpty($result, 'Registry must have at least one car with a type');
+
+        $row = $result[0];
+        $this->assertObjectHasProperty('type', $row);
+        $this->assertObjectHasProperty('count', $row);
+    }
+
+    /**
+     * StatisticsDataService::getSeriesCounts() returns all six expected series keys.
+     *
+     * Replaced a tautological test that asserted keys in a locally-constructed array.
+     */
+    public function testGetSeriesCountsReturnsAllSixKeys(): void
+    {
+        $service = new StatisticsDataService($this->db);
+        $counts  = $service->getSeriesCounts();
+
+        foreach (['s1', 's2', 's3', 's4', 'sprint', '+2'] as $key) {
+            $this->assertArrayHasKey($key, $counts, "seriesCounts must have key '$key'");
+            $this->assertIsNumeric($counts[$key], "seriesCounts['$key'] must be numeric");
+        }
+    }
+
+    /**
+     * StatisticsDataService::getDataCompleteness() returns an object with required fields.
+     *
+     * Replaced a tautological test that asserted a locally-constructed error array.
+     */
+    public function testGetDataCompletenessReturnsObjectWithRequiredFields(): void
+    {
+        $service    = new StatisticsDataService($this->db);
+        $completeness = $service->getDataCompleteness();
+
+        $this->assertNotNull($completeness);
+        foreach (['total_cars', 'has_chassis', 'has_color', 'has_engine', 'has_location'] as $field) {
+            $this->assertObjectHasProperty($field, $completeness, "getDataCompleteness() must return '$field'");
+        }
+        $this->assertGreaterThan(0, (int) $completeness->total_cars, 'Registry must have at least one car');
+    }
+
+    /**
+     * statistics.php endpoint handles missing and invalid tab parameters with 400 responses.
+     *
+     * Replaced a tautological test that asserted hardcoded status codes against
+     * a hardcoded list built in the same test.
+     */
+    public function testStatisticsApiEndpointValidatesTabParameter(): void
+    {
+        $filePath = __DIR__ . '/../../app/api/shared/statistics.php';
+        if (!file_exists($filePath)) {
+            $this->markTestSkipped('Statistics API file not found');
+        }
+
+        $content = file_get_contents($filePath);
+
+        // Missing tab → 400
+        $this->assertStringContainsString('empty($tab)', $content, 'Must check empty($tab) for missing-parameter validation');
+        $this->assertMatchesRegularExpression('/ApiResponse::error\([^)]*400/', $content, 'Must return 400 for missing tab');
+
+        // Invalid tab → 400 via default case
+        $this->assertStringContainsString('default:', $content, 'Switch must have a default case for unknown tabs');
+
+        // All four valid tab names must be present as switch cases
+        foreach (['geographic', 'production', 'colors', 'quality'] as $tab) {
+            $this->assertStringContainsString("case '$tab':", $content, "Switch must handle tab '$tab'");
+        }
     }
 
     /**
@@ -236,67 +314,8 @@ class StatisticsApiTest extends IntegrationTestCase
      */
     public function testDatabaseConnectionValidation(): void
     {
-
         $this->assertNotNull($this->db, "Database connection should be available");
         $this->assertTrue($this->databaseConnected, "Database connection flag should be set");
-    }
-
-    // =========================================================================
-    // Response Format Tests
-    // =========================================================================
-
-    /**
-     * Test ApiResponse success structure
-     */
-    public function testApiResponseSuccessStructure(): void
-    {
-        // Verify that success responses have required fields
-        $successResponse = [
-            'success' => true,
-            'message' => 'Test message',
-            'data' => ['test' => 'data']
-        ];
-
-        $this->assertTrue($successResponse['success'], "Success should be true");
-        $this->assertArrayHasKey('message', $successResponse, "Should have message field");
-        $this->assertArrayHasKey('data', $successResponse, "Should have data field");
-    }
-
-    /**
-     * Test ApiResponse error structure uses message not error
-     */
-    public function testApiResponseErrorStructure(): void
-    {
-        // Verify that error responses use 'message' field not 'error'
-        $errorResponse = [
-            'success' => false,
-            'message' => 'Error message',
-            'status_code' => 400
-        ];
-
-        $this->assertFalse($errorResponse['success'], "Success should be false");
-        $this->assertArrayHasKey('message', $errorResponse, "Should have message field, not error");
-        $this->assertArrayNotHasKey('error', $errorResponse, "Should not have error field");
-    }
-
-    /**
-     * Test API response uses correct HTTP status codes
-     */
-    public function testApiResponseStatusCodes(): void
-    {
-        $validStatusCodes = [200, 400, 403, 500];
-
-        // Test 200 for success
-        $this->assertContains(200, $validStatusCodes, "200 should be valid");
-
-        // Test 400 for bad request
-        $this->assertContains(400, $validStatusCodes, "400 should be valid");
-
-        // Test 403 for forbidden
-        $this->assertContains(403, $validStatusCodes, "403 should be valid");
-
-        // Test 500 for server error
-        $this->assertContains(500, $validStatusCodes, "500 should be valid");
     }
 
     // =========================================================================

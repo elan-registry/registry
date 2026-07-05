@@ -61,3 +61,16 @@ RewriteRule ^FIX/(?!index\.php$|[0-9]+-.*\.php$|[A-Za-z]+-.*\.php$) - [F,L]
 
 # Redirects for migrated pages (#559)
 Redirect 301 /app/cars/identify.php /docs/reference/identification-guide.php
+
+# Redirects for app/owner/ migration (#1040)
+Redirect 301 /app/cars/ /app/owner/cars/
+Redirect 301 /app/contact/ /app/owner/contact/
+Redirect 301 /app/reports/ /app/owner/reports/
+Redirect 301 /app/cars/index.php /app/owner/cars/index.php
+Redirect 301 /app/cars/details.php /app/owner/cars/details.php
+Redirect 301 /app/cars/edit.php /app/owner/cars/edit.php
+Redirect 301 /app/cars/factory.php /app/owner/cars/factory.php
+Redirect 301 /app/contact/index.php /app/owner/contact/index.php
+Redirect 301 /app/contact/owner.php /app/owner/contact/owner.php
+Redirect 301 /app/reports/statistics.php /app/owner/reports/statistics.php
+Redirect 301 /app/privacy.php /app/owner/privacy.php

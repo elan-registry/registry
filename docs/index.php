@@ -57,7 +57,7 @@ $cards = [
 
 $navLinks = [
     ['label' => 'Registry Home', 'url' => $us_url_root, 'icon' => 'fa-home', 'btnClass' => 'btn-outline-primary'],
-    ['label' => 'Browse Cars',   'url' => $us_url_root . 'app/cars/', 'icon' => 'fa-car', 'btnClass' => 'btn-outline-primary'],
+    ['label' => 'Browse Cars',   'url' => $us_url_root . 'app/owner/cars/', 'icon' => 'fa-car', 'btnClass' => 'btn-outline-primary'],
 ];
 
 ?>

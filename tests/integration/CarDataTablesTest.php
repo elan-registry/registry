@@ -440,4 +440,122 @@ final class CarDataTablesTest extends IntegrationTestCase
 
         $this->assertEquals(0, $result->count());
     }
+
+    // =========================================================================
+    // Per-column search tests (#907 — added in v2.24.0 #763)
+    // =========================================================================
+
+    /**
+     * Per-column search for series='S4' returns only S4 rows and
+     * recordsFiltered is less than recordsTotal.
+     *
+     * Pins the $columnSearchClauses path in CarDataTablesService::processRequest()
+     * (lines 104–121). A missing space or broken AND concatenation in
+     * $combinedWhere would silently return wrong results.
+     */
+    #[Group('fast')]
+    public function testPerColumnSeriesSearchFiltersResults(): void
+    {
+        $userId = $this->createTestUser();
+        $this->createTestCar($userId, ['series' => 'S4']);
+        // A second car with a different series ensures recordsTotal > recordsFiltered
+        $this->createTestCar($userId, ['series' => 'Sprint']);
+
+        $car     = new Car();
+        $request = $this->buildDataTablesRequest(
+            ['length' => 50],
+            [[
+                'data'        => 'series',
+                'searchable'  => 'true',
+                'orderable'   => 'true',
+                'search'      => ['value' => 'S4'],
+            ]]
+        );
+
+        $result = $car->getDataTablesData($request, 'cars');
+
+        $this->assertIsArray($result);
+        $this->assertGreaterThan(0, $result['recordsFiltered'],
+            'recordsFiltered must be > 0 when an S4 car exists');
+        $this->assertLessThan($result['recordsTotal'], $result['recordsFiltered'],
+            'recordsFiltered must be less than recordsTotal when only some cars match');
+
+        foreach ($result['data'] as $row) {
+            $this->assertSame('S4', $row->series,
+                'Every returned row must have series = S4');
+        }
+    }
+
+    /**
+     * Combining a global search with a per-column search returns only rows
+     * satisfying BOTH constraints.
+     *
+     * Pins the $searchWhere . ' ' . $columnWhere concatenation in
+     * CarDataTablesService::processRequest() (line 123). If the space is
+     * dropped or the AND keyword is lost, this test returns wrong rows.
+     */
+    #[Group('fast')]
+    public function testCombinedGlobalAndPerColumnSearchIntersectsConstraints(): void
+    {
+        $userId = $this->createTestUser();
+        $uniqueColor = 'TestColor' . substr(uniqid(), -6);
+
+        // Matches color AND series
+        $this->createTestCar($userId, ['color' => $uniqueColor, 'series' => 'S4']);
+        // Matches color but NOT series
+        $this->createTestCar($userId, ['color' => $uniqueColor, 'series' => 'Sprint']);
+
+        $car     = new Car();
+        // Include 'color' as a searchable column so the global search can match it.
+        // The per-column 'series' filter is applied on top, reducing the result set.
+        $request = $this->buildDataTablesRequest(
+            ['search' => ['value' => $uniqueColor], 'length' => 50],
+            [
+                ['data' => 'color',  'searchable' => 'true', 'orderable' => 'true', 'search' => ['value' => '']],
+                ['data' => 'series', 'searchable' => 'true', 'orderable' => 'true', 'search' => ['value' => 'S4']],
+            ]
+        );
+
+        $result = $car->getDataTablesData($request, 'cars');
+
+        $this->assertGreaterThan(0, $result['recordsFiltered'],
+            'At least the S4 car with the unique color must match');
+        $this->assertSame(1, count($result['data']),
+            'Exactly one car must survive the combined filter (S4 + unique color)');
+
+        foreach ($result['data'] as $row) {
+            $this->assertSame('S4', $row->series,
+                'Only the S4 car must survive the combined filter');
+        }
+    }
+
+    /**
+     * A per-column search value that matches no rows returns recordsFiltered = 0
+     * and data = [].
+     *
+     * Pins the COUNT(*) query built from $combinedWhere when the column filter
+     * selects nothing.
+     */
+    #[Group('fast')]
+    public function testPerColumnSearchWithNoMatchReturnsZeroResults(): void
+    {
+        $car     = new Car();
+        $noMatch = 'NOMATCH_' . uniqid();
+        $request = $this->buildDataTablesRequest(
+            ['length' => 10],
+            [[
+                'data'       => 'series',
+                'searchable' => 'true',
+                'orderable'  => 'true',
+                'search'     => ['value' => $noMatch],
+            ]]
+        );
+
+        $result = $car->getDataTablesData($request, 'cars');
+
+        $this->assertSame(0, (int) $result['recordsFiltered'],
+            'recordsFiltered must be 0 when the column value matches nothing');
+        $this->assertSame([], $result['data'],
+            'data must be empty when the column value matches nothing');
+    }
 }

@@ -31,14 +31,14 @@ $er_footer_version_tag = ApplicationVersion::tagOnly();
         var p = document.createElement('p');
         p.className = 'text-center small';
         var aPrivacy = document.createElement('a');
-        aPrivacy.href = '<?=$us_url_root?>app/privacy.php';
+        aPrivacy.href = '<?=$us_url_root?>app/owner/privacy.php';
         aPrivacy.className = 'text-muted';
         aPrivacy.textContent = 'Privacy Policy';
         p.appendChild(aPrivacy);
         <?php if (isset($user) && $user->isLoggedIn()) { ?>
         p.appendChild(document.createTextNode(' | '));
         var aContact = document.createElement('a');
-        aContact.href = '<?=$us_url_root?>app/contact/index.php';
+        aContact.href = '<?=$us_url_root?>app/owner/contact/index.php';
         aContact.className = 'text-muted';
         aContact.textContent = 'Contact Us';
         p.appendChild(aContact);

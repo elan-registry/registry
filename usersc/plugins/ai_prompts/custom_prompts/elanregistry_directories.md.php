@@ -32,8 +32,11 @@ projectroot/
 │   │   ├── contact/  # Contact form API endpoints (send-feedback, send-owner-email)
 │   │   └── shared/   # Shared API endpoints (statistics, location-search, location-reverse)
 │   ├── assets/       # First-party JS/CSS source files (built → minified in place)
-│   ├── cars/         # Car pages (index, details, edit, factory, etc.)
-│   ├── contact/      # Contact form pages
+│   ├── owner/        # Owner-facing pages (moved from top-level app/ subdirectories)
+│   │   ├── cars/     # Car pages (index, details, edit, factory, etc.)
+│   │   ├── contact/  # Contact form pages
+│   │   ├── reports/  # Statistics and reporting pages
+│   │   └── privacy.php
 │   └── views/        # Reusable view partials
 ├── docs/             # User-facing docs (guides/, reference/, stories/, admin/)
 ├── error/            # Branded HTTP error pages (403, 404, 500)
@@ -59,7 +62,10 @@ $path = [
     'app/admin/',
     'app/admin/scripts/fix/',
     'app/admin/scripts/maintenance/',
-    'app/cars/',
+    'app/owner/',
+    'app/owner/cars/',
+    'app/owner/contact/',
+    'app/owner/reports/',
     'app/api/contact/',      // contact endpoints call securePage()
     // ... add 'your/new/directory/' here
 ];

@@ -1285,11 +1285,15 @@ if (!function_exists('getFeedbackEmail')) {
 // Mock getAdminEmails function - needed by transfer email templates
 if (!function_exists('getAdminEmails')) {
     /**
-     * Mock getAdminEmails function for testing
-     * Returns a predictable admin email for assertions
+     * Mock getAdminEmails function for testing.
+     * Set $GLOBALS['mockAdminEmails'] to override the default in a test.
      */
     function getAdminEmails(): string
     {
+        global $mockAdminEmails;
+        if (isset($mockAdminEmails)) {
+            return $mockAdminEmails;
+        }
         return 'admin@elanregistry.org';
     }
 }

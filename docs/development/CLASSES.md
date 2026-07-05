@@ -943,7 +943,7 @@ EmailTemplate
 └── Used by: Transfer requests, notifications
 
 DocumentPortalTemplate
-└── Used by: docs/guides/index.php, docs/reference/*, app/cars/index.php, app/reports/statistics.php
+└── Used by: docs/guides/index.php, docs/reference/*, app/owner/cars/index.php, app/owner/reports/statistics.php
 ```
 
 ## Testing

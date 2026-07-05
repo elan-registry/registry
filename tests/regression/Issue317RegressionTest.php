@@ -51,9 +51,17 @@ final class Issue317RegressionTest extends TestCase
     {
         $testDir = dirname(__DIR__);
 
-        // Check that unit tests directory has test files
-        $unitTests = glob($testDir . '/unit/*.php');
-        $this->assertGreaterThan(0, count($unitTests), 'Unit tests directory should contain test files');
+        // Check that unit tests directory has test files (recursive — tests live in subdirectories)
+        $unitFiles = [];
+        $iter = new RecursiveIteratorIterator(
+            new RecursiveDirectoryIterator($testDir . '/unit', RecursiveDirectoryIterator::SKIP_DOTS)
+        );
+        foreach ($iter as $file) {
+            if ($file->getExtension() === 'php') {
+                $unitFiles[] = $file->getPathname();
+            }
+        }
+        $this->assertGreaterThan(0, count($unitFiles), 'Unit tests directory should contain test files');
 
         // Check that integration tests directory has test files
         $integrationTests = glob($testDir . '/integration/*.php');
