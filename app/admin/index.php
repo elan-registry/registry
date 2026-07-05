@@ -262,13 +262,13 @@ if (Input::exists('post')) {
                     $carRepo = new CarRepository($db);
                     if (!$carRepo->transferHistory((int) $old_car_id, (int) $new_car_id)) {
                         $errors[] = $db->errorString();
-                        logger($currentUserId, LogCategories::LOG_CATEGORY_CAR_MERGE, "FAILED: Could not transfer history from CAR $old_car_id to CAR $new_car_id.");
+                        logger($currentUserId, LogCategories::LOG_CATEGORY_CAR_MERGE, "FAILED: Could not transfer history from CAR $old_car_id to CAR $new_car_id. DB: " . $db->errorString());
                     } elseif (!$carRepo->deleteCarUser((int) $old_car_id)) {
                         $errors[] = $db->errorString();
-                        logger($currentUserId, LogCategories::LOG_CATEGORY_CAR_MERGE, "FAILED: Could not unassign owner from CAR $old_car_id during merge.");
+                        logger($currentUserId, LogCategories::LOG_CATEGORY_CAR_MERGE, "FAILED: Could not unassign owner from CAR $old_car_id during merge. DB: " . $db->errorString());
                     } elseif (!$carRepo->deleteCar((int) $old_car_id)) {
                         $errors[] = $db->errorString();
-                        logger($currentUserId, LogCategories::LOG_CATEGORY_CAR_MERGE, "FAILED: Could not delete CAR $old_car_id after owner unassign.");
+                        logger($currentUserId, LogCategories::LOG_CATEGORY_CAR_MERGE, "FAILED: Could not delete CAR $old_car_id after owner unassign. DB: " . $db->errorString());
                     } else {
                         // Add a record to the history with some information on the assignment
                         $fields['car_id'] = $new_car_id;
