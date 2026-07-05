@@ -29,7 +29,7 @@
 
 - **CarVerificationManager / Car cleanup** ([#939](https://github.com/unibrain1/elanregistry/issues/939)): Removed no-op catch blocks in CarVerificationManager and CarImageProcessor; removed dead owner-cache block from Car::__construct(); added four named update methods to CarRepository and routed all direct `cars` writes in CarVerificationManager, CarImageProcessor, and ElanRegistryOwner::syncLocationToCars() through them.
 
-- **CarTransferRepository** ([#1062](https://github.com/unibrain1/elanregistry/issues/1062)): New repository class consolidating car_transfer_requests data access from scattered files. WIP.
+- **CarTransferRepository** ([#1062](https://github.com/unibrain1/elanregistry/issues/1062)): New `ElanRegistry\Transfer\CarTransferRepository` class consolidating all SQL access to `car_transfer_requests`. Routes six callers (transfer-request.php, process-transfer-approve.php, process-transfer-deny.php, tab-car_mgmt.php, admin/index.php, TransferEmailService) through named methods (`findById`, `findPendingById`, `findPendingWithCarById`, `hasPendingForCar`, `create`, `updateStatus`, `getPendingWithCarAndUsers`, `getTodayStatusCounts`, `countPending`). Includes 8-test integration suite against the real DB covering SQL round-trips and status-filter correctness.
 
 - **manage-consolidated.php cleanup** ([#969](https://github.com/unibrain1/elanregistry/issues/969)): Duplicate stat queries consolidated into `getAdminSystemStatus()` helper; car merge path routed through CarRepository. WIP.
 

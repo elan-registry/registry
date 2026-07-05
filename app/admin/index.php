@@ -6,6 +6,7 @@ use ElanRegistry\Exceptions\CarDeletionException;
 use ElanRegistry\Exceptions\CarNotFoundException;
 use ElanRegistry\Exceptions\CarPermissionException;
 use ElanRegistry\Input as ElanInput;
+use ElanRegistry\Transfer\CarTransferRepository;
 
 /**
  * index.php
@@ -75,16 +76,7 @@ try {
     $userCount = $userCountStmt->first();
     $systemStatus['total_users'] = $userCount ? (int)$userCount->count : 0;
 
-    // Check if transfer requests table exists
-    $transferCount = 0;
-    $tablesStmt = $db->query("SHOW TABLES LIKE ?", ['car_transfer_requests']);
-    $tables = $tablesStmt->results();
-    if (!empty($tables)) {
-        $transferStmt = $db->query("SELECT COUNT(*) as count FROM car_transfer_requests WHERE status = ? AND expires_at > NOW()", ['pending']);
-        $transferResult = $transferStmt->first();
-        $transferCount = $transferResult ? (int)$transferResult->count : 0;
-    }
-    $systemStatus['pending_transfers'] = $transferCount;
+    $systemStatus['pending_transfers'] = (new CarTransferRepository($db))->countPending();
 
     // Calculate quality issues separated by type using basic counts
     $carIssues = 0;
