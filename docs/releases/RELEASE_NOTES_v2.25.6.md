@@ -7,6 +7,8 @@
 
 - **Run fix script 09** (`app/admin/scripts/fix/09-Fix-Cars-Update-Trigger-Chassis-Override.php`) on each server after deployment to update the `cars_update` trigger to capture `NEW.chassis_override`.
 
+- **Run fix script 10** (`app/admin/scripts/fix/10-Remove-Spam-Cleanup-Columns.php`) on each server after deployment to drop the 7 `elan_spam_*` columns from the `settings` table and remove the `spam_inactive_cleanup.php` cron row.
+
 ## User-Facing Changes
 
 ### Bug Fixes
@@ -41,11 +43,11 @@
 
 - **Housekeeping** ([#964](https://github.com/unibrain1/elanregistry/issues/964)): Deleted unused `app/assets/js/logging-standard.js` (documentation stub, not loaded by any page).
 
-- **Remove deprecated backup shims** ([#705](https://github.com/unibrain1/elanregistry/issues/705)): Deprecated backup shims and unused `elan_backup_age` setting removed. WIP.
+- **Remove deprecated backup shims** ([#705](https://github.com/unibrain1/elanregistry/issues/705)): `backup_functions.php` shim deleted; all callers migrated to `BackupManager` directly. `elan_backup_age` setting and its schema definition removed.
 
-- **Remove spam/inactive user cleanup system** ([#1066](https://github.com/unibrain1/elanregistry/issues/1066)): Abandoned spam and inactive user cleanup system removed. WIP.
+- **Remove spam/inactive user cleanup system** ([#1066](https://github.com/unibrain1/elanregistry/issues/1066)): Deleted `users/cron/spam_inactive_cleanup.php` (481 lines) and removed all 7 `elan_spam_*` schema columns. Fix script 10 drops the columns on existing databases.
 
-- **Dead code sweep** ([#623](https://github.com/unibrain1/elanregistry/issues/623)): Unused functions, exception classes, and LogCategories constants removed. WIP.
+- **Dead code sweep** ([#623](https://github.com/unibrain1/elanregistry/issues/623)): Deleted 4 unused exception classes (`ForbiddenException`, `UnauthorizedException`, `GeocodingException`, `FIXScriptException`), removed `dbIntOrNull()` and `withStatusCode()`/`toJson()` from `ApiResponse`, and pruned 18 unused `LogCategories` constants.
 
 ## Issues Resolved
 
