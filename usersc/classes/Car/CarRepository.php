@@ -275,6 +275,45 @@ class CarRepository
     }
 
     /**
+     * Get distinct filter options from car_models for the car listing filter pills.
+     *
+     * Each sub-array contains objects whose property matches the SQL alias:
+     * 'series' elements expose ->series, 'types' elements expose ->type,
+     * and 'variants' elements expose ->variant.
+     *
+     * @return array{series: array<object>, types: array<object>, variants: array<object>}
+     */
+    public function getFilterOptions(): array
+    {
+        return [
+            'series'   => $this->distinctCarModelValues('series_normalized', 'series'),
+            'types'    => $this->distinctCarModelValues('type_code', 'type'),
+            'variants' => $this->distinctCarModelValues('variant'),
+        ];
+    }
+
+    /**
+     * Return distinct non-empty values for a single car_models column, ordered alphabetically.
+     *
+     * IMPORTANT: $column and $alias are interpolated directly into SQL without parameterisation.
+     * This is safe only because the method is private and every call site uses a string literal.
+     * Never pass values derived from request input or runtime configuration.
+     *
+     * @param string $column Database column name
+     * @param string $alias  Result property name; defaults to $column when omitted
+     * @return array<object>
+     */
+    private function distinctCarModelValues(string $column, string $alias = ''): array
+    {
+        $alias = $alias ?: $column;
+        return $this->db->query(
+            "SELECT DISTINCT {$column} AS {$alias} FROM car_models"
+            . " WHERE {$column} IS NOT NULL AND {$column} != ''"
+            . " ORDER BY {$column}"
+        )->results();
+    }
+
+    /**
      * Begin a database transaction
      *
      * @return void

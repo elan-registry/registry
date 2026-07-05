@@ -33,7 +33,7 @@
 
 - **manage-consolidated.php cleanup** ([#969](https://github.com/unibrain1/elanregistry/issues/969)): Duplicate stat queries consolidated into `getAdminSystemStatus()` helper; car merge path routed through CarRepository. WIP.
 
-- **car_models filter query extraction** ([#1064](https://github.com/unibrain1/elanregistry/issues/1064)): SELECT DISTINCT queries for car listing filter pills moved to CarRepository. WIP.
+- **car_models filter query extraction** ([#1064](https://github.com/unibrain1/elanregistry/issues/1064)): Three inline `SELECT DISTINCT` queries for car listing filter pills extracted from `cars/index.php` into `CarRepository::getFilterOptions()`. Page now calls one repository method instead of three raw queries.
 
 - **Admin AJAX rate limiting** ([#1141](https://github.com/unibrain1/elanregistry/issues/1141)): Rate limiting added to admin AJAX endpoints. WIP.
 
