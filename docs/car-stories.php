@@ -70,7 +70,7 @@ $shareYourStory = static function (string $alertVariant, string $rowClasses = 'm
                     <i class="fas fa-pen-alt"></i>
                     <strong>Share Your Story:</strong>
                     Have a story about your Elan? We'd love to feature it here!
-                    <a href="<?= $us_url_root ?>app/contact/" class="alert-link">Contact us</a>
+                    <a href="<?= $us_url_root ?>app/owner/contact/" class="alert-link">Contact us</a>
                     to share your car's unique history.
                 </div>
             </div>

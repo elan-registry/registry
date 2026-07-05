@@ -281,7 +281,12 @@ $severityClass = static function (string $severity): string {
 // Encode a value as a JSON-quoted JS literal for use inside a JavaScript expression
 // within an HTML onclick attribute. null coerces to "" (not null); output includes JSON quotes.
 $jsStr = static function (mixed $v): string {
-    return htmlspecialchars(json_encode($v ?? '', JSON_THROW_ON_ERROR), ENT_QUOTES, 'UTF-8');
+    try {
+        return htmlspecialchars(json_encode($v ?? '', JSON_THROW_ON_ERROR), ENT_QUOTES, 'UTF-8');
+    } catch (\JsonException $e) {
+        logError(0, LogCategories::LOG_CATEGORY_SYSTEM_ERROR, 'tab-manage_cars: json_encode failed for ' . gettype($v) . ': ' . $e->getMessage());
+        return '"[unrenderable]"';
+    }
 };
 
 // Calculate severity-specific counts for car issues only
@@ -1384,7 +1389,7 @@ setTimeout(function() {
 // Function to open car details page for editing
 function openCarDetails(carId) {
     // Open car details page in new tab for editing
-    window.open('../cars/details.php?car_id=' + carId, '_blank');
+    window.open('../../app/owner/cars/details.php?car_id=' + carId, '_blank');
 }
 
 // Function to switch to car management tab with specific car pre-loaded

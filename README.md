@@ -112,10 +112,10 @@ The registry maintains strict privacy standards and GDPR compliance:
 
 - **Privacy by Design**: Location data is intentionally imprecise for user privacy
 - **Data Protection**: Privacy controls and user data management
-- **Transparent Policies**: Clear privacy policy available at `/app/privacy.php`
+- **Transparent Policies**: Clear privacy policy available at `/app/owner/privacy.php`
 - **User Rights**: Full data access, correction, and deletion capabilities
 
-For complete privacy details, see `app/privacy.php`.
+For complete privacy details, see `app/owner/privacy.php`.
 
 ## Contributing
 

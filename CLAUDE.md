@@ -49,6 +49,8 @@ edge caching and CDN for global users (US, EU, AU).
 **Directory Structure:**
 
 - `/app/` - Main application pages (car listings, details, forms, actions)
+  - `/app/owner/` - Owner-facing pages: `cars/` (listings, details, edit, factory),
+    `contact/` (contact form, contact-owner), `reports/` (statistics), `privacy.php`
   - `/app/api/` - AJAX JSON endpoints, organized by resource: `cars/` (car CRUD and
     validation), `contact/` (contact forms, auth-required), `shared/` (public endpoints:
     statistics, location search), `admin/` (admin-only settings updates). All endpoints
@@ -333,8 +335,15 @@ See [DEPLOYMENT.md](docs/development/DEPLOYMENT.md) for complete procedures.
 
 ## GitHub Wiki
 
-The wiki is a **separate git repository** cloned at
-`/Users/jimboone/Documents/Developer/Web/elan-registry-wiki`.
+The wiki is a **separate git repository** at the permanent path:
+
+```text
+/Users/jimboone/Documents/Developer/Web/elan-registry-wiki
+```
+
+**CRITICAL:** ALWAYS use this exact path. NEVER clone to `/tmp/`, a worktree,
+or any other temporary location — there is one permanent clone and it is the
+only place to use.
 
 To update the live wiki after editing files in `wiki/` on a branch:
 
@@ -345,5 +354,3 @@ git add <file>.md
 git commit -m "docs: <description>"
 git push
 ```
-
-Do **not** clone to a temporary location — always use the permanent path above.

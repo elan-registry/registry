@@ -708,6 +708,10 @@ function createRecentActivityChart() {
   const dailyCounts = {};
   data.forEach((item) => {
     const date = new Date(item.ctime);
+    if (isNaN(date.getTime())) {
+      console.error("[ElanRegistry] createRecentActivityChart: unparseable ctime", item.ctime);
+      return;
+    }
     if (dayKey(date) < dayKey(cutoff)) return;
     const key = dayKey(date);
     dailyCounts[key] = (dailyCounts[key] || 0) + 1;

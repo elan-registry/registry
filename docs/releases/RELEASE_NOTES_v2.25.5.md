@@ -11,14 +11,14 @@ After deploying this release, the 8 moved pages must be re-registered in the
 UserSpice `pages` table with their new slugs and assigned correct permissions.
 
 1. **Visit each new URL** to trigger UserSpice auto-registration. Pages requiring
-   login (`edit`, both `contact` pages) must be visited while logged in as an admin;
-   public pages auto-register for any visitor:
+   login must be visited while logged in (any authenticated user with car access
+   works; admin is the simplest option); public pages auto-register for any visitor:
    - `/app/owner/cars/index.php`
    - `/app/owner/cars/details.php` (any car)
-   - `/app/owner/cars/edit.php` (any car — **must be admin**)
+   - `/app/owner/cars/edit.php` (any car — **must be logged in**)
    - `/app/owner/cars/factory.php`
-   - `/app/owner/contact/index.php` (**must be admin**)
-   - `/app/owner/contact/owner.php` (any car — **must be admin**)
+   - `/app/owner/contact/index.php` (**must be logged in**)
+   - `/app/owner/contact/owner.php` (any car — **must be logged in**)
    - `/app/owner/reports/statistics.php`
    - `/app/owner/privacy.php`
 
@@ -36,6 +36,10 @@ UserSpice `pages` table with their new slugs and assigned correct permissions.
 
 ## User-Facing Changes
 
+### Security Fixes
+
+- **XSS: Fix innerHTML injection in statistics tab renderers** ([#1125](https://github.com/unibrain1/elanregistry/issues/1125)): `renderSeriesTable()` and `renderQualityTab()` now use DOM API (`createElement`/`textContent`) instead of template-literal `innerHTML`; `renderGeographicTab()` and `renderColorsTab()` annotated as safe (static HTML only). Affects the public statistics page.
+
 ### Improvements
 
 - **Recent Registrations chart ends at today** ([#1128](https://github.com/unibrain1/elanregistry/issues/1128)): The statistics page chart now buckets registrations by calendar day over a 91-day rolling window (previously 13 weekly buckets keyed by each week's Monday). The rightmost x-axis label is always today's date, and label density is capped via Chart.js `maxTicksLimit` so the axis stays readable.
@@ -45,11 +49,16 @@ UserSpice `pages` table with their new slugs and assigned correct permissions.
 ### Security Fixes
 
 - **XSS: Harden admin car management tab against stored XSS** ([#1124](https://github.com/unibrain1/elanregistry/issues/1124)): Replaced `innerHTML` template-literal assignments in `openAdminContactModal()` with DOM API calls; switched all onclick car/owner field encoding from single-quoted JS strings to `json_encode()`; added missing `htmlspecialchars()` to six unescaped DB fields in the duplicate-detection section.
-- **XSS: Fix innerHTML injection in statistics tab renderers** ([#1125](https://github.com/unibrain1/elanregistry/issues/1125)): `renderSeriesTable()` and `renderQualityTab()` now use DOM API (`createElement`/`textContent`) instead of template-literal `innerHTML`; `renderGeographicTab()` and `renderColorsTab()` annotated as safe (static HTML only).
 
 ### Improvements
 
 - **Internal: Reorganize owner-facing pages under app/owner/** ([#1040](https://github.com/unibrain1/elanregistry/issues/1040)): Moves car listing, details, edit, factory, contact, statistics, and privacy pages to a consistent `app/owner/` directory structure (Phase 2 of app/ reorganization).
+
+## Developer-Facing Changes
+
+### CI/Tooling
+
+- **Claude Code Review CI now fails on Blocking findings**: The `claude-code-review.yml` workflow was updated so that any review comment beginning with `### Blocking` causes the `claude-code-review` check to fail. PRs with unresolved blocking findings can no longer be merged until findings are addressed or the label is removed.
 
 ## Issues Resolved
 
