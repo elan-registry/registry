@@ -7,7 +7,7 @@ use PHPUnit\Framework\TestCase;
 use PHPUnit\Framework\Attributes\Group;
 
 /**
- * Unit tests for type helper functions (dbInt, dbIntOrNull, currentUserId)
+ * Unit tests for type helper functions (dbInt, currentUserId)
  */
 #[Group('fast')]
 final class TypeHelpersTest extends TestCase
@@ -67,43 +67,6 @@ final class TypeHelpersTest extends TestCase
         $obj = (object) ['name' => 'test'];
         $this->expectException(InvalidArgumentException::class);
         dbInt($obj, 'id');
-    }
-
-    // ============================================================
-    // dbIntOrNull() tests
-    // ============================================================
-
-    public function testDbIntOrNullWithObjectProperty(): void
-    {
-        $obj = (object) ['id' => '42'];
-        $this->assertSame(42, dbIntOrNull($obj));
-    }
-
-    public function testDbIntOrNullWithNull(): void
-    {
-        $this->assertNull(dbIntOrNull(null));
-    }
-
-    public function testDbIntOrNullWithEmptyString(): void
-    {
-        $this->assertNull(dbIntOrNull(''));
-    }
-
-    public function testDbIntOrNullWithMissingProperty(): void
-    {
-        $obj = (object) ['name' => 'test'];
-        $this->assertNull(dbIntOrNull($obj, 'id'));
-    }
-
-    public function testDbIntOrNullWithNumericString(): void
-    {
-        $this->assertSame(456, dbIntOrNull('456'));
-    }
-
-    public function testDbIntOrNullThrowsOnNonNumeric(): void
-    {
-        $this->expectException(InvalidArgumentException::class);
-        dbIntOrNull('abc');
     }
 
     // ============================================================

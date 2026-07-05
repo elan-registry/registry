@@ -47,27 +47,19 @@ try {
     }
 
     $showCleanupPrompt = $oldBackupsCount > 0;
-} catch (BackupException $e) {
-    logger($user->data()->id, $e->getLogCategory(), 'Enhanced backup stats failed: ' . $e->getMessage());
+} catch (\Throwable $e) {
+    $category = ($e instanceof BackupException) ? $e->getLogCategory() : LogCategories::LOG_CATEGORY_BACKUP_ERROR;
+    logger($user->data()->id, $category, 'Backup stats unavailable: ' . $e->getMessage());
     $backupStatsFallback = true;
-    try {
-        $backupStats = getBackupStatistics();
-        $backupStats['health_score'] = 85;
-        $backupStats['recommendations'] = [];
-        $showCleanupPrompt = false;
-        $oldBackupsCount = 0;
-    } catch (BackupException $e2) {
-        $backupStats = [
-            'automated' => ['count' => 0, 'total_size' => 0],
-            'manual' => ['count' => 0, 'total_size' => 0],
-            'rollback' => ['count' => 0, 'total_size' => 0],
-            'health_score' => 50,
-            'recommendations' => ['Backup system check needed']
-        ];
-        logger($user->data()->id, $e2->getLogCategory(), 'Fallback backup stats also failed: ' . $e2->getMessage());
-        $showCleanupPrompt = false;
-        $oldBackupsCount = 0;
-    }
+    $backupStats = [
+        'automated' => ['count' => 0, 'total_size' => 0],
+        'manual'    => ['count' => 0, 'total_size' => 0],
+        'rollback'  => ['count' => 0, 'total_size' => 0],
+        'health_score' => 50,
+        'recommendations' => ['Backup system check needed'],
+    ];
+    $showCleanupPrompt = false;
+    $oldBackupsCount = 0;
 }
 ?>
 

@@ -96,8 +96,6 @@ in`users/helpers/users.php`. The hook fires inside a `foreach`loop after the`use
 
 ### Integration Points
 
-- **Automated cleanup** (`users/cron/spam_inactive_cleanup.php`): Excludes noowner via `u.username NOT IN ('admin', 'noowner')` in all three detection queries
-  (legacy spam, suspicious patterns, inactive users)
 - **Admin UI** (`app/admin/assets/manage-consolidated.js`): Provides a "No Owner" checkbox for manual car reassignment. Currently hard-codes noowner ID as 83
 - **Recovery script** (`FIX/_ARCHIVE/02-Cleanup-Orphaned-Profiles.php`): Reassigns orphaned cars (whose user_id points to a deleted user) back to noowner
 - **Privacy policy** (`docs/faq/PRIVACY.md`): Explicitly documents the noowner pattern: "Car Ownership: Transferred to a system account called 'noowner'"
@@ -216,7 +214,6 @@ Create a unique placeholder user per deletion (e.g., `username = 'deleted_12345'
 | --- | --- |
 | Deletion hook script | [/usersc/scripts/after_user_deletion.php](../../usersc/scripts/after_user_deletion.php) |
 | UserSpice deleteUsers() | [/users/helpers/users.php](../../users/helpers/users.php) |
-| Spam/inactive cleanup | [/users/cron/spam_inactive_cleanup.php](../../users/cron/spam_inactive_cleanup.php) |
 | Admin UI (No Owner checkbox) | [/app/admin/assets/manage-consolidated.js](../../app/admin/assets/manage-consolidated.js) |
 | Orphaned car recovery | [/FIX/_ARCHIVE/02-Cleanup-Orphaned-Profiles.php](../../FIX/_ARCHIVE/02-Cleanup-Orphaned-Profiles.php) |
 | Privacy policy | [/docs/faq/PRIVACY.md](../faq/PRIVACY.md) |

@@ -224,20 +224,6 @@ class ApiResponse
     }
 
     /**
-     * Override the HTTP status code (immutable - returns new instance)
-     *
-     * @param int $statusCode HTTP status code
-     *
-     * @return self New ApiResponse instance with new status code
-     */
-    public function withStatusCode(int $statusCode): self
-    {
-        $clone = clone $this;
-        $clone->statusCode = $statusCode;
-        return $clone;
-    }
-
-    /**
      * Get the response as an array (useful for testing)
      *
      * @return array<string, mixed> Response array with success, message, and any additional data
@@ -360,15 +346,4 @@ class ApiResponse
         exit;
     }
 
-    /**
-     * Convert response to JSON string
-     *
-     * @return string JSON-encoded response
-     *
-     * @throws \JsonException If JSON encoding fails
-     */
-    public function toJson(): string
-    {
-        return json_encode($this->toArray(), JSON_THROW_ON_ERROR);
-    }
 }

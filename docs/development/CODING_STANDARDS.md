@@ -156,9 +156,6 @@ $optionalId = $row->optional_id ? (int)$row->optional_id : null;
 $userId = dbInt($carData, 'user_id');
 $carId = dbInt($row, 'id');
 
-// Nullable variant — returns null for empty/null values
-$optionalId = dbIntOrNull($row, 'optional_id');
-
 // Current user ID shorthand — throws RuntimeException if not logged in
 $adminId = currentUserId();
 ```
