@@ -62,8 +62,8 @@ class ElanRegistryOwnerLocationTest extends IntegrationTestCase
         $this->assertEquals('Portland', $owner->data()->city);
         $this->assertEquals('Oregon', $owner->data()->state);
         $this->assertEquals('United States', $owner->data()->country);
-        $this->assertEquals(45.5231, (float)$owner->data()->lat);
-        $this->assertEquals(-122.6765, (float)$owner->data()->lon);
+        $this->assertEqualsWithDelta(45.5231, (float)$owner->data()->lat, 0.001, 'lat must round-trip through MySQL float within 0.001');
+        $this->assertEqualsWithDelta(-122.6765, (float)$owner->data()->lon, 0.001, 'lon must round-trip through MySQL float within 0.001');
     }
 
     /**
