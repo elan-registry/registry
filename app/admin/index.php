@@ -6,6 +6,7 @@ use ElanRegistry\Exceptions\CarDeletionException;
 use ElanRegistry\Exceptions\CarNotFoundException;
 use ElanRegistry\Exceptions\CarPermissionException;
 use ElanRegistry\Input as ElanInput;
+use ElanRegistry\Car\CarRepository;
 use ElanRegistry\Transfer\CarTransferRepository;
 
 /**
@@ -57,24 +58,20 @@ $pageTitle = 'Registry Management - ' . $validTabs[$activeTab];
 // Generate CSRF token for forms
 $csrfToken = Token::generate();
 
-// Get system status for header
+// Get system status for header — defaults guard against DB unavailability
 $systemStatus = [
-    'total_cars' => 0,
-    'total_users' => 0,
+    'total_cars'        => 0,
+    'total_users'       => 0,
+    'last_updated'      => date('Y-m-d H:i:s'),
     'pending_transfers' => 0,
-    'quality_issues' => 0,
-    'last_updated' => date('Y-m-d H:i:s')
+    'quality_issues'    => 0,
 ];
 
 try {
-    // Get basic counts for header display with prepared statements
-    $carCountStmt = $db->query("SELECT COUNT(*) as count FROM cars");
-    $carCount = $carCountStmt->first();
-    $systemStatus['total_cars'] = $carCount ? (int)$carCount->count : 0;
-
-    $userCountStmt = $db->query("SELECT COUNT(*) as count FROM users WHERE active = ?", [1]);
-    $userCount = $userCountStmt->first();
-    $systemStatus['total_users'] = $userCount ? (int)$userCount->count : 0;
+    $systemStatus = getAdminSystemStatus($db) + [
+        'pending_transfers' => 0,
+        'quality_issues'    => 0,
+    ];
 
     $systemStatus['pending_transfers'] = (new CarTransferRepository($db))->countPending();
 
@@ -262,23 +259,25 @@ if (Input::exists('post')) {
                     }
 
                     // Merge the history
-                    $db->query("UPDATE cars_hist SET car_id = ? WHERE car_id = ?", [$new_car_id, $old_car_id]);
-                    if ($db->error()) {
+                    $carRepo = new CarRepository($db);
+                    if (!$carRepo->transferHistory((int) $old_car_id, (int) $new_car_id)) {
                         $errors[] = $db->errorString();
-                        logger($currentUserId, LogCategories::LOG_CATEGORY_CAR_MERGE, "FAILED: Merged CAR $old_car_id to CAR $new_car_id.");
+                        logger($currentUserId, LogCategories::LOG_CATEGORY_CAR_MERGE, "FAILED: Could not transfer history from CAR $old_car_id to CAR $new_car_id. DB: " . $db->errorString());
+                    } elseif (!$carRepo->deleteCarUser((int) $old_car_id)) {
+                        $errors[] = $db->errorString();
+                        logger($currentUserId, LogCategories::LOG_CATEGORY_CAR_MERGE, "FAILED: Could not unassign owner from CAR $old_car_id during merge. DB: " . $db->errorString());
+                    } elseif (!$carRepo->deleteCar((int) $old_car_id)) {
+                        $errors[] = $db->errorString();
+                        logger($currentUserId, LogCategories::LOG_CATEGORY_CAR_MERGE, "FAILED: Could not delete CAR $old_car_id after owner unassign. DB: " . $db->errorString());
                     } else {
-                        // Unassign from the previous owner
-                        $db->query("DELETE FROM car_user WHERE car_id = ?", [$old_car_id]);
-
-                        // Remove old car
-                        $db->query("DELETE FROM cars WHERE id = ?", [$old_car_id]);
-
                         // Add a record to the history with some information on the assignment
                         $fields['car_id'] = $new_car_id;
-                        $fields['ctime'] = date(AppConstants::DATETIME_FORMAT); // Set date of this record
+                        $fields['ctime'] = date(AppConstants::DATETIME_FORMAT);
                         $fields['mtime'] = $fields['ctime'];
 
-                        $db->insert("cars_hist", $fields);
+                        if (!$carRepo->insertHistory($fields)) {
+                            logger($currentUserId, LogCategories::LOG_CATEGORY_DATABASE_ERROR, "WARNING: History insert failed after merging CAR $old_car_id to CAR $new_car_id — merge completed but audit record missing.");
+                        }
 
                         $successes[] = $fields['comments'];
                         logger($currentUserId, LogCategories::LOG_CATEGORY_CAR_MERGE, $fields['comments']);

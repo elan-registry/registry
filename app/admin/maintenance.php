@@ -61,19 +61,13 @@ $csrfToken = Token::generate();
 // Get system status for header (cars + active users only — other counts not
 // relevant to maintenance/settings view)
 $systemStatus = [
-    'total_cars' => 0,
-    'total_users' => 0,
-    'last_updated' => date('Y-m-d H:i:s')
+    'total_cars'   => 0,
+    'total_users'  => 0,
+    'last_updated' => date('Y-m-d H:i:s'),
 ];
 
 try {
-    $carCountStmt = $db->query("SELECT COUNT(*) as count FROM cars");
-    $carCount = $carCountStmt->first();
-    $systemStatus['total_cars'] = $carCount ? (int)$carCount->count : 0;
-
-    $userCountStmt = $db->query("SELECT COUNT(*) as count FROM users WHERE active = ?", [1]);
-    $userCount = $userCountStmt->first();
-    $systemStatus['total_users'] = $userCount ? (int)$userCount->count : 0;
+    $systemStatus = getAdminSystemStatus($db);
 } catch (PDOException $e) {
     // Header stats are cosmetic — a PDOException here may indicate broader DB issues
     // affecting maintenance operations on this page.

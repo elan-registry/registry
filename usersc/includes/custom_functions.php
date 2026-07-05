@@ -295,6 +295,28 @@ function requireAdminAjax(string $context = ''): void
     }
 }
 
+/**
+ * Return the shared admin header counts: total cars, active users, and a timestamp.
+ *
+ * A null result from ->first() (empty result set) returns 0 for that count.
+ * DB::query() swallows most query errors internally — only a PDOException from
+ * a failed prepare (e.g. connection loss) propagates to the caller.
+ *
+ * @param DB $db Database instance
+ * @return array{total_cars: int, total_users: int, last_updated: string}
+ * @throws \PDOException If the database connection or statement preparation fails
+ */
+function getAdminSystemStatus(DB $db): array
+{
+    $carCount  = $db->query("SELECT COUNT(*) as count FROM cars")->first();
+    $userCount = $db->query("SELECT COUNT(*) as count FROM users WHERE active = ?", [1])->first();
+
+    return [
+        'total_cars'   => $carCount  ? (int) $carCount->count  : 0,
+        'total_users'  => $userCount ? (int) $userCount->count : 0,
+        'last_updated' => date('Y-m-d H:i:s'),
+    ];
+}
 
 // We need server globals in custom functions as it's used early in the load process.
 require_once $abs_us_root . $us_url_root . 'usersc/includes/server_globals.php';

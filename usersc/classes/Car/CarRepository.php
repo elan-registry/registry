@@ -250,7 +250,8 @@ class CarRepository
      */
     public function transferHistory(int $fromCarId, int $toCarId): bool
     {
-        return (bool) $this->db->query("UPDATE cars_hist SET car_id = ? WHERE car_id = ?", [$toCarId, $fromCarId]);
+        $this->db->query("UPDATE cars_hist SET car_id = ? WHERE car_id = ?", [$toCarId, $fromCarId]);
+        return !$this->db->error();
     }
 
     /**
