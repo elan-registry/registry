@@ -105,4 +105,16 @@ final class CarRepositoryTest extends TestCase
         $result = $this->repo->updateImage(1, '["test.jpg"]');
         $this->assertTrue($result);
     }
+
+    public function testGetFilterOptionsReturnsCorrectShape(): void
+    {
+        $result = $this->repo->getFilterOptions();
+        $this->assertIsArray($result);
+        $this->assertArrayHasKey('series', $result);
+        $this->assertArrayHasKey('types', $result);
+        $this->assertArrayHasKey('variants', $result);
+        $this->assertIsArray($result['series']);
+        $this->assertIsArray($result['types']);
+        $this->assertIsArray($result['variants']);
+    }
 }

@@ -305,12 +305,16 @@ class CarRepository
      */
     private function distinctCarModelValues(string $column, string $alias = ''): array
     {
-        $alias = $alias ?: $column;
-        return $this->db->query(
+        $alias  = $alias ?: $column;
+        $result = $this->db->query(
             "SELECT DISTINCT {$column} AS {$alias} FROM car_models"
             . " WHERE {$column} IS NOT NULL AND {$column} != ''"
             . " ORDER BY {$column}"
-        )->results();
+        );
+        if ($this->db->error()) {
+            return [];
+        }
+        return $result->results();
     }
 
     /**
