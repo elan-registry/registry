@@ -18,6 +18,10 @@ abstract class RegressionTestCase extends TestCase
     /** @var array<string, mixed> */
     private array $originalGet = [];
 
+    /**
+     * Subclasses that override setUp() MUST call parent::setUp() first;
+     * otherwise tearDown() restores [] instead of the real pre-test state.
+     */
     protected function setUp(): void
     {
         parent::setUp();
