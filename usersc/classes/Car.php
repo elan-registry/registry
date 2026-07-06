@@ -37,7 +37,7 @@ class Car
     private DB $_db;
     /** @var mixed */
     private $_data;
-    private ?array $_history = null;
+    private array $_history = [];
     private ?array $_images = null;
     private ?object $_factory = null;
     /** @var array<string, mixed>|object|null */
@@ -363,9 +363,9 @@ class Car
     /**
      * Get car history
      *
-     * @return array|null Car history array or null
+     * @return array<object> Car history records (empty if not yet loaded or no records exist)
      */
-    public function history(): ?array
+    public function history(): array
     {
         return $this->_history;
     }
@@ -548,7 +548,7 @@ class Car
         );
 
         // Clear cached history
-        $this->_history = null;
+        $this->_history = [];
 
         return $result;
     }

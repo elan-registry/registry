@@ -221,15 +221,12 @@ class CarRepository
      * Get car history records
      *
      * @param int $carId Car ID
-     * @return array<object>|null History records or null if none
+     * @return array<object> History records (empty if none)
      */
-    public function getHistory(int $carId): ?array
+    public function getHistory(int $carId): array
     {
-        $data = $this->db->query("SELECT * from cars_hist WHERE car_id = ? ORDER BY timestamp DESC", [$carId]);
-        if ($data->count()) {
-            return $data->results();
-        }
-        return null;
+        return $this->db->query("SELECT * FROM cars_hist WHERE car_id = ? ORDER BY timestamp DESC", [$carId])
+            ->results();
     }
 
     /**
