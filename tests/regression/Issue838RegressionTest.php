@@ -3,7 +3,6 @@
 declare(strict_types=1);
 
 use ElanRegistry\Input;
-use PHPUnit\Framework\TestCase;
 
 /**
  * Regression test for Issue #838: owner comments double-encoded on save
@@ -26,26 +25,8 @@ use PHPUnit\Framework\TestCase;
  * unencoded scalar value. htmlspecialchars() is applied only at the output
  * (display) layer, where it belongs.
  */
-final class Issue838RegressionTest extends TestCase
+final class Issue838RegressionTest extends RegressionTestCase
 {
-    /** @var array<string, mixed> Original $_POST state saved before each test */
-    private array $originalPost = [];
-
-    /** @var array<string, mixed> Original $_GET state saved before each test */
-    private array $originalGet = [];
-
-    protected function setUp(): void
-    {
-        $this->originalPost = $_POST;
-        $this->originalGet  = $_GET;
-    }
-
-    protected function tearDown(): void
-    {
-        $_POST = $this->originalPost;
-        $_GET  = $this->originalGet;
-    }
-
     /**
      * Input::raw() must return the literal value without HTML-encoding any characters.
      *

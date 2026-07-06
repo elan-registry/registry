@@ -48,14 +48,15 @@ final class ChassisOverridePersistenceTest extends IntegrationTestCase
             );
         }
 
-        // Set up an authenticated user context (mirrors CarDatabaseOperationsTest pattern)
+        // Set up an authenticated user context (mirrors CarDatabaseOperationsTest pattern).
+        // Bypass login() to set the private $_isLoggedIn flag directly via reflection.
+        // setAccessible() is intentionally omitted — it is a no-op since PHP 8.1.
         global $user;
         $user = new User();
         $user->find($this->testUserId);
 
         $reflection        = new ReflectionClass($user);
         $isLoggedInProp    = $reflection->getProperty('_isLoggedIn');
-        $isLoggedInProp->setAccessible(true);
         $isLoggedInProp->setValue($user, true);
 
         $GLOBALS['user'] = $user;

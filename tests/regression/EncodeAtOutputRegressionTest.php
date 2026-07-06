@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 use ElanRegistry\Input;
 use PHPUnit\Framework\Attributes\DataProvider;
-use PHPUnit\Framework\TestCase;
 
 /**
  * Cross-field regression suite for the encode-at-output reform (v2.23.0)
@@ -33,28 +32,10 @@ use PHPUnit\Framework\TestCase;
  * returns the unencoded scalar value. htmlspecialchars() is applied only at the
  * output layer.
  */
-final class EncodeAtOutputRegressionTest extends TestCase
+final class EncodeAtOutputRegressionTest extends RegressionTestCase
 {
     /** @var list<string> All text fields covered by the encode-at-output reform */
     private const TESTED_FIELDS = ['comments', 'engine', 'color', 'chassis', 'website', 'fname', 'lname', 'city', 'state', 'country'];
-
-    /** @var array<string, mixed> Original $_POST state saved before each test */
-    private array $originalPost = [];
-
-    /** @var array<string, mixed> Original $_GET state saved before each test */
-    private array $originalGet = [];
-
-    protected function setUp(): void
-    {
-        $this->originalPost = $_POST;
-        $this->originalGet  = $_GET;
-    }
-
-    protected function tearDown(): void
-    {
-        $_POST = $this->originalPost;
-        $_GET  = $this->originalGet;
-    }
 
     /**
      * Input::raw() must return the value unchanged for every covered field — no

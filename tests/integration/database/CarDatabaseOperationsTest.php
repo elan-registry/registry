@@ -32,10 +32,10 @@ final class CarDatabaseOperationsTest extends IntegrationTestCase
         $user = new User();
         $user->find(1);  // Load user ID 1
 
-        // Manually set the private $_isLoggedIn property to true using reflection
+        // Bypass login() to set the private $_isLoggedIn flag directly via reflection.
+        // setAccessible() is intentionally omitted — it is a no-op since PHP 8.1.
         $reflection = new ReflectionClass($user);
         $isLoggedInProperty = $reflection->getProperty('_isLoggedIn');
-        $isLoggedInProperty->setAccessible(true);
         $isLoggedInProperty->setValue($user, true);
 
         $GLOBALS['user'] = $user;
