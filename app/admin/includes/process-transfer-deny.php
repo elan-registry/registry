@@ -87,7 +87,7 @@ try {
         ->send();
 
 } catch (CarTransferException $e) {
-    ApiResponse::error($e->getUserMessage(), 400)
+    ApiResponse::error($e->getUserMessage(), $e->getHttpStatusCode())
         ->withLogging(
             $user->data()->id,
             $e->getLogCategory(),

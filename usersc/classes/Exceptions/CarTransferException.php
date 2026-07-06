@@ -10,9 +10,10 @@ use Throwable;
 /**
  * CarTransferException
  *
- * Exception thrown when car ownership transfer operations fail.
- * Used during the car transfer workflow when database updates,
- * validation, or user permission checks fail.
+ * Exception thrown for car transfer conflicts — primarily concurrent-approval
+ * (TOCTOU) races where a second admin processes a request that another already
+ * claimed. Returns HTTP 409 Conflict. Validation failures use
+ * CarValidationException; database/infrastructure failures use CarDatabaseException.
  *
  * @package ElanRegistry
  * @subpackage Exceptions

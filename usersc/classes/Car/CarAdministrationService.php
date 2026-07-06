@@ -8,6 +8,7 @@ use AppConstants;
 use CarErrorMessages;
 use ElanRegistry\Exceptions\CarDatabaseException;
 use ElanRegistry\Exceptions\CarDeletionException;
+use ElanRegistry\Exceptions\CarException;
 use ElanRegistry\Exceptions\CarMergeException;
 use ElanRegistry\Exceptions\CarNotFoundException;
 use ElanRegistry\Exceptions\CarTransferException;
@@ -69,9 +70,9 @@ class CarAdministrationService
             logger($adminUserId, LogCategories::LOG_CATEGORY_CAR_DELETION, "Car ID $carId ($chassis) permanently deleted. Reason: $reason");
             return true;
 
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
             $repo->rollback();
-            if ($e instanceof CarDatabaseException || $e instanceof CarDeletionException) {
+            if ($e instanceof CarException) {
                 throw $e;
             }
             $technicalMsg = CarErrorMessages::getTechnicalMessage('operation_failed', ['operation' => 'Car deletion', 'error' => $e->getMessage()]);
@@ -91,10 +92,9 @@ class CarAdministrationService
      * @param CarRepository $repo Repository for database operations
      * @param callable $updateCallback Callback to perform car update (receives array of fields)
      * @param callable $refreshCallback Callback to refresh car data after update (receives car ID)
-     * @return bool True if transfer was successful
+     * @return true Always returns true; throws on any failure.
      * @throws CarValidationException If target user is invalid
      * @throws CarDatabaseException If database operation fails
-     * @throws CarTransferException If transfer operation fails
      */
     public function transfer(
         object $carData,
@@ -105,7 +105,7 @@ class CarAdministrationService
         CarRepository $repo,
         callable $updateCallback,
         callable $refreshCallback
-    ): bool {
+    ): true {
         $targetUser = getUserWithProfile($newUserId);
         if (!$targetUser) {
             $technicalMsg = CarErrorMessages::getTechnicalMessage('user_not_found', ['user_id' => $newUserId]);
@@ -147,15 +147,13 @@ class CarAdministrationService
                 throw new CarDatabaseException(CarErrorMessages::getAdminMessage('car_relationship_failed'));
             }
 
-            $repo->commit();
-
-            // Refresh car data — in standalone mode this follows the commit above;
-            // when an outer transaction is active, $repo->commit() was a no-op and
-            // this reads uncommitted state within that outer transaction.
+            // Refresh car data within the transaction — InnoDB reads own uncommitted
+            // writes, so the refreshed fields reflect the update above in both
+            // standalone and outer-transaction mode.
             $refreshedData = $refreshCallback($carId);
 
-            // Create history record — committed atomically with the transfer when
-            // an outer transaction is active; otherwise runs in autocommit.
+            // Insert history before commit so a failure rolls back the entire
+            // ownership change atomically (standalone and outer-transaction alike).
             $historyFields = [
                 'operation' => $operationType,
                 'car_id' => $carId,
@@ -186,23 +184,24 @@ class CarAdministrationService
                 'website' => $targetUser->website ?? ''
             ];
 
-            $historyInserted = $repo->insertHistory($historyFields);
-            if (!$historyInserted) {
+            if (!$repo->insertHistory($historyFields)) {
                 $technicalMsg = CarErrorMessages::getTechnicalMessage('audit_trail_failed', ['operation' => $operationType]);
-                logger($adminUserId, LogCategories::LOG_CATEGORY_CAR_TRANSFER, $technicalMsg);
-                logger($adminUserId, LogCategories::LOG_CATEGORY_CAR_TRANSFER, 'Warning: Transfer completed but history record creation failed');
+                logger($adminUserId, LogCategories::LOG_CATEGORY_CAR_TRANSFER_ERROR, $technicalMsg);
+                throw new CarDatabaseException(CarErrorMessages::getAdminMessage('audit_trail_failed', ['operation' => $operationType]));
             }
+
+            $repo->commit();
 
             return true;
 
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
             $repo->rollback();
-            if ($e instanceof CarDatabaseException || $e instanceof CarValidationException || $e instanceof CarTransferException) {
+            if ($e instanceof CarException) {
                 throw $e;
             }
             $technicalMsg = CarErrorMessages::getTechnicalMessage('operation_failed', ['operation' => 'Car ownership transfer', 'error' => $e->getMessage()]);
             logger($adminUserId, LogCategories::LOG_CATEGORY_CAR_TRANSFER, $technicalMsg);
-            throw new CarTransferException(CarErrorMessages::getMessage('operation_failed', 'admin'));
+            throw new CarDatabaseException(CarErrorMessages::getMessage('operation_failed', 'admin'));
         }
     }
 
@@ -293,9 +292,9 @@ class CarAdministrationService
             $repo->commit();
             return true;
 
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
             $repo->rollback();
-            if ($e instanceof CarDatabaseException || $e instanceof CarNotFoundException || $e instanceof CarValidationException || $e instanceof CarMergeException) {
+            if ($e instanceof CarException) {
                 throw $e;
             }
             $technicalMsg = CarErrorMessages::getTechnicalMessage('operation_failed', ['operation' => 'Car merge', 'error' => $e->getMessage()]);

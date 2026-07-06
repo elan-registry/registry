@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace ElanRegistry\Car;
 
 use DB;
+use LogCategories;
 
 /**
  * CarRepository - Database access layer for car operations
@@ -312,6 +313,7 @@ class CarRepository
             . " ORDER BY {$column}"
         );
         if ($this->db->error()) {
+            logger(0, LogCategories::LOG_CATEGORY_DATABASE_ERROR, "CarRepository::distinctCarModelValues failed for column={$column}: " . $this->db->errorString());
             return [];
         }
         return $result->results();
