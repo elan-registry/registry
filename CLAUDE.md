@@ -97,12 +97,17 @@ edge caching and CDN for global users (US, EU, AU).
 
 **Template Customization Rules:**
 
-- `usersc/templates/customizer/` is **gitignored upstream** — do NOT modify any
-  files in this directory. The sole exception is `file_nav_custom.php`, which is
-  project-owned and tracked.
-- `/users/` is the **UserSpice 6 upstream framework** — do NOT modify files
-  here. Extend behavior via custom classes in `usersc/classes/` under the
-  `ElanRegistry\` namespace instead.
+The following directories are **upstream UserSpice — do NOT modify** any files
+except those explicitly listed as project-owned:
+
+| Directory | Status | Project-owned exceptions (tracked by git) |
+| --- | --- | --- |
+| `/users/` | Upstream framework | none — extend via `usersc/classes/` instead |
+| `usersc/templates/` | Upstream templates | `customizer/file_nav_custom.php` (project nav additions), `customizer/assets/child_themes/elanregistry*` (project child theme), `customizer.css` (project styles); `customizer/navigation.php` is tracked because UserSpice's template loader requires it — do not edit it, add nav content via `file_nav_custom.php` instead |
+| `usersc/plugins/` | Upstream plugins | `hooker/hooks/` (project hooks), `ai_prompts/custom_prompts/` (Claude AI context prompts) |
+
+- To add new behavior, extend via custom classes in `usersc/classes/` under the
+  `ElanRegistry\` namespace instead of modifying `/users/`.
 - To add content to the footer without touching upstream files, inject via JS
   in `usersc/includes/footer.php` (included by UserSpice after the footer renders).
 - To add content to the header/nav, use `usersc/templates/customizer/file_nav_custom.php`.

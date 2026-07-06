@@ -15,7 +15,7 @@ declare(strict_types=1);
  * // Success with data
  * ApiResponse::success('Profile updated!')
  *     ->withData('quality_score', 85)
- *     ->withLogging($userId, 'OwnerActions', 'Profile updated')
+ *     ->withLogging($userId, LogCategories::LOG_CATEGORY_OWNER_ACTIONS, 'Profile updated')
  *     ->send();
  *
  * // Validation error with field-keyed errors
@@ -26,12 +26,11 @@ declare(strict_types=1);
  *
  * // Permission denied with logging
  * ApiResponse::forbidden('Admin access required')
- *     ->withLogging(0, 'SecurityError', 'Unauthorized access attempt')
+ *     ->withLogging(0, LogCategories::LOG_CATEGORY_SECURITY, 'Unauthorized access attempt')
  *     ->send();
  * ```
  *
  * @author Jim Boone
- * @version 1.0.0
  * @since Issue #437
  */
 class ApiResponse
@@ -207,7 +206,7 @@ class ApiResponse
      * Set a pending log entry to be executed when send() is called
      *
      * @param int|string $userId User ID for logging (auto-cast to int)
-     * @param string $category Log category (e.g., 'OwnerActions', 'SecurityError')
+     * @param string $category Must be a LogCategories::LOG_CATEGORY_* constant (e.g., LogCategories::LOG_CATEGORY_OWNER_ACTIONS)
      * @param string $message  Log message
      *
      * @return self New ApiResponse instance with pending log
