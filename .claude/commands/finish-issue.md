@@ -12,7 +12,6 @@ TaskCreate. Set to `in_progress` when starting each, `completed` on success.
 This is a CI-polling workflow that can take 10+ minutes — visible progress
 matters.
 
-
 Monitor a PR's CI checks, then squash-merge into the milestone branch, close
 the issue, delete the branch, and return to the milestone branch.
 
@@ -204,11 +203,15 @@ Output a summary:
 - Release notes updated at `docs/releases/RELEASE_NOTES_v<version>.md`
 - Now on `<milestone-branch>`
 
-List remaining open issues in the milestone:
+List remaining open issues in the milestone. Use the direct API (`gh issue list --milestone` can silently return empty results):
 
 ```bash
-gh issue list --milestone "<milestone title>" --state open \
-  --json number,title
+# Get milestone number from the milestone branch name, then query API directly
+MILESTONE_TITLE=$(git branch --show-current | sed 's|.*milestone/||' || echo "<milestone title>")
+MILESTONE_NUM=$(gh api "repos/unibrain1/elanregistry/milestones" \
+  --jq ".[] | select(.title | startswith(\"${MILESTONE_TITLE}\")) | .number")
+gh api "repos/unibrain1/elanregistry/issues?milestone=${MILESTONE_NUM}&state=open&per_page=20" \
+  --jq '.[] | {number, title}'
 ```
 
 Suggest next steps:
