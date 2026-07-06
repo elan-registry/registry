@@ -1329,3 +1329,7 @@ function mockUserDeletionCleanup($id): void {
         logger($id, LogCategories::LOG_CATEGORY_USER_DELETION, 'Fallback cleanup: noowner user not found, set cars to NULL');
     }
 }
+
+// RegressionTestCase is not in the PSR-4 autoloaded path, so it must be
+// explicitly required before PHPUnit loads test classes that extend it.
+require_once __DIR__ . '/regression/RegressionTestCase.php';

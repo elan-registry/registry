@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 use ElanRegistry\Input;
 use PHPUnit\Framework\Attributes\DataProvider;
-use PHPUnit\Framework\TestCase;
 
 /**
  * Regression test for Issue #842: user and profile text fields double-encoded on save
@@ -32,26 +31,8 @@ use PHPUnit\Framework\TestCase;
  * the unencoded scalar value. htmlspecialchars() is applied only at the output
  * (display) layer, where it belongs.
  */
-final class Issue842RegressionTest extends TestCase
+final class Issue842RegressionTest extends RegressionTestCase
 {
-    /** @var array<string, mixed> Original $_POST state saved before each test */
-    private array $originalPost = [];
-
-    /** @var array<string, mixed> Original $_GET state saved before each test */
-    private array $originalGet = [];
-
-    protected function setUp(): void
-    {
-        $this->originalPost = $_POST;
-        $this->originalGet  = $_GET;
-    }
-
-    protected function tearDown(): void
-    {
-        $_POST = $this->originalPost;
-        $_GET  = $this->originalGet;
-    }
-
     /**
      * Input::raw() must return literal values for all six fields without HTML-encoding.
      */

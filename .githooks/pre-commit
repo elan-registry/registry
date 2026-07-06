@@ -106,23 +106,42 @@ if [ -n "$STAGED_REGRESSION_TESTS" ]; then
             STAGED_CONTENT=$(git show ":$TEST_FILE")
             FILENAME=$(basename "$TEST_FILE" .php)
 
-            # Check filename pattern: Issue{Number}RegressionTest
-            if [[ ! "$FILENAME" =~ ^Issue[0-9]+RegressionTest$ ]]; then
-                echo "  ❌ $TEST_FILE: Invalid filename. Must be: Issue{Number}RegressionTest.php"
+            # Skip infrastructure files that live alongside tests but are not test classes
+            if [[ "$FILENAME" == "RegressionTestCase" || "$FILENAME" == "RegressionTestTemplate" ]]; then
+                continue
+            fi
+
+            # Check filename pattern: must end in RegressionTest (Issue-prefixed preferred)
+            if [[ ! "$FILENAME" =~ RegressionTest$ ]]; then
+                echo "  ❌ $TEST_FILE: Invalid filename. Must end in RegressionTest.php"
                 REGRESSION_ERRORS=$((REGRESSION_ERRORS + 1))
                 continue
             fi
 
-            ISSUE_NUMBER=$(echo "$FILENAME" | sed 's/Issue\([0-9]*\)RegressionTest/\1/')
+            # For Issue-prefixed files, validate the issue number matches annotations
+            if [[ "$FILENAME" =~ ^Issue([0-9]+)RegressionTest$ ]]; then
+                ISSUE_NUMBER="${BASH_REMATCH[1]}"
 
-            if ! echo "$STAGED_CONTENT" | grep -q "@issue $ISSUE_NUMBER"; then
-                echo "  ❌ $TEST_FILE: Missing @issue $ISSUE_NUMBER annotation"
-                REGRESSION_ERRORS=$((REGRESSION_ERRORS + 1))
-            fi
+                if ! echo "$STAGED_CONTENT" | grep -q "@issue $ISSUE_NUMBER"; then
+                    echo "  ❌ $TEST_FILE: Missing @issue $ISSUE_NUMBER annotation"
+                    REGRESSION_ERRORS=$((REGRESSION_ERRORS + 1))
+                fi
 
-            if ! echo "$STAGED_CONTENT" | grep -q "@link.*github.com.*issues/$ISSUE_NUMBER"; then
-                echo "  ❌ $TEST_FILE: Missing @link annotation"
-                REGRESSION_ERRORS=$((REGRESSION_ERRORS + 1))
+                if ! echo "$STAGED_CONTENT" | grep -q "@link.*github.com.*issues/$ISSUE_NUMBER"; then
+                    echo "  ❌ $TEST_FILE: Missing @link annotation"
+                    REGRESSION_ERRORS=$((REGRESSION_ERRORS + 1))
+                fi
+            else
+                # Non-Issue-prefixed: require @issue and @link but don't validate the number
+                if ! echo "$STAGED_CONTENT" | grep -q "@issue"; then
+                    echo "  ❌ $TEST_FILE: Missing @issue annotation"
+                    REGRESSION_ERRORS=$((REGRESSION_ERRORS + 1))
+                fi
+
+                if ! echo "$STAGED_CONTENT" | grep -q "@link.*github.com.*issues/"; then
+                    echo "  ❌ $TEST_FILE: Missing @link annotation"
+                    REGRESSION_ERRORS=$((REGRESSION_ERRORS + 1))
+                fi
             fi
         fi
     done
