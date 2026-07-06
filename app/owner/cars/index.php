@@ -134,7 +134,7 @@ window.ELAN_CONFIG = {
     RESPONSIVE_SIZE: <?php echo $responsiveSize; ?>
 };
 </script>
-<script src='<?= $us_url_root ?>app/assets/js/imagedisplay.min.js'></script>
+<script src='<?= $us_url_root ?>app/assets/js/imagedisplay.min.js?v=<?= ASSET_VERSION ?>'></script>
 
 <script>
   const table = $('#cartable').DataTable({
