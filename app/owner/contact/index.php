@@ -56,7 +56,6 @@ if (!securePage($php_self)) {
 				</div>
 
 				<!-- Feedback Form -->
-				<div id="feedback-alerts"></div>
 				<form name="contactform" method="post" action="<?= $us_url_root ?>app/api/contact/send-feedback.php" class="needs-validation" novalidate>
 					<div class="mb-4">
 						<label for="comments" class="form-label h5">
@@ -109,28 +108,16 @@ $(document).ready(function () {
         var originalHtml = $btn.html();
 
         $btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i> Sending...');
-        $('#feedback-alerts').empty();
 
         new ElanRegistryAPI().post(
             '<?= $us_url_root ?>app/api/contact/send-feedback.php',
             { comments: $('#comments').val() }
         ).then(function (response) {
-            $('#feedback-alerts').html(
-                '<div class="alert alert-success alert-dismissible fade show" role="alert">' +
-                '<i class="fas fa-check-circle me-2"></i>' +
-                NotificationHelper.escapeHtml(response.message) +
-                '<button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>' +
-                '</div>'
-            );
+            window.usSuccess(response.message);
             $form[0].reset();
         }).catch(function (error) {
-            $('#feedback-alerts').html(
-                '<div class="alert alert-danger alert-dismissible fade show" role="alert">' +
-                '<i class="fas fa-exclamation-circle me-2"></i>' +
-                NotificationHelper.escapeHtml(error.message || 'Failed to send feedback.') +
-                '<button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>' +
-                '</div>'
-            );
+            console.error('Feedback form submission failed:', error);
+            window.usError(error.message || 'Failed to send feedback.');
         }).finally(function () {
             $btn.prop('disabled', false).html(originalHtml);
         });

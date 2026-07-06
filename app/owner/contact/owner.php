@@ -76,7 +76,6 @@ $to = [
                 </div>
 
                 <!-- Message Form -->
-                <div id="owner-alerts"></div>
                 <form name="contactform" method="post" action="<?= $us_url_root ?>app/api/contact/send-owner-email.php" class="needs-validation" novalidate>
                     <div class="mb-4">
                         <label for="message" class="form-label h5">
@@ -133,7 +132,6 @@ $(document).ready(function () {
         var originalHtml = $btn.html();
 
         $btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i> Sending...');
-        $('#owner-alerts').empty();
 
         new ElanRegistryAPI().post(
             '<?= $us_url_root ?>app/api/contact/send-owner-email.php',
@@ -144,22 +142,11 @@ $(document).ready(function () {
                 message:     $('#message').val()
             }
         ).then(function (response) {
-            $('#owner-alerts').html(
-                '<div class="alert alert-success alert-dismissible fade show" role="alert">' +
-                '<i class="fas fa-check-circle me-2"></i>' +
-                NotificationHelper.escapeHtml(response.message) +
-                '<button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>' +
-                '</div>'
-            );
+            window.usSuccess(response.message);
             $form[0].reset();
         }).catch(function (error) {
-            $('#owner-alerts').html(
-                '<div class="alert alert-danger alert-dismissible fade show" role="alert">' +
-                '<i class="fas fa-exclamation-circle me-2"></i>' +
-                NotificationHelper.escapeHtml(error.message || 'Failed to send message.') +
-                '<button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>' +
-                '</div>'
-            );
+            console.error('Contact owner form submission failed:', error);
+            window.usError(error.message || 'Failed to send message.');
         }).finally(function () {
             $btn.prop('disabled', false).html(originalHtml);
         });
