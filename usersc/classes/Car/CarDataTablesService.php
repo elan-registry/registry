@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace ElanRegistry\Car;
 
+use ElanRegistry\Exceptions\CarDatabaseException;
 use ElanRegistry\Exceptions\CarValidationException;
 use DB;
 
@@ -124,7 +125,7 @@ class CarDataTablesService
         $combinedParams = array_merge($searchParams, $columnSearchParams);
 
         // All SQL below is safe: $tableName from VALID_TABLES const map,
-        // column names validated via validateColumnName() whitelist,
+        // WHERE/ORDER BY column names validated via validateColumnName() whitelist,
         // search values use prepared statement parameters ($combinedParams)
         $countSql = sprintf('SELECT COUNT(*) as count FROM `%s`', $tableName);
         $totalRecords = $db->query($countSql)->first()->count;
@@ -135,8 +136,17 @@ class CarDataTablesService
             $totalFiltered = $db->query($filterSql, $combinedParams)->first()->count;
         }
 
-        $dataSql = sprintf('SELECT * FROM `%s` WHERE 1 %s %s LIMIT %d, %d', $tableName, $combinedWhere, $orderBy, $start, $length);
+        // elan_factory_info only: embed car_id server-side to avoid one chassis-lookup AJAX call per row
+        // (eliminates 25 requests per page turn at the default page size). The subquery column names
+        // are PHP literals — they do not go through validateColumnName(). Other tables use SELECT *.
+        $selectClause = ($tableName === 'elan_factory_info')
+            ? '*, (SELECT id FROM cars WHERE chassis = elan_factory_info.serial LIMIT 1) AS car_id'
+            : '*';
+        $dataSql = sprintf('SELECT %s FROM `%s` WHERE 1 %s %s LIMIT %d, %d', $selectClause, $tableName, $combinedWhere, $orderBy, $start, $length);
         $data = $db->query($dataSql, $combinedParams)->results();
+        if ($db->error()) {
+            throw new CarDatabaseException('DataTables data query failed: ' . $db->errorString());
+        }
 
         return [
             'draw' => $draw,
@@ -159,10 +169,6 @@ class CarDataTablesService
             return false;
         }
 
-        if (in_array($columnName, self::ALLOWED_COLUMNS[$tableName], true)) {
-            return $columnName;
-        }
-
-        return false;
+        return in_array($columnName, self::ALLOWED_COLUMNS[$tableName], true) ? $columnName : false;
     }
 }

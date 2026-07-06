@@ -37,6 +37,8 @@
 
 - **Car merge atomicity** ([#1170](https://github.com/unibrain1/elanregistry/issues/1170)): The four-step car merge sequence in the admin panel is now wrapped in a database transaction. A failure at any structural step (transfer history, unassign owner, delete car) rolls back the entire operation, leaving the database unchanged. Previously, a failure midway would leave orphaned history rows pointing at the surviving car. Also added positive-integer and same-car guards on submitted car IDs.
 
+- **Factory registry link server-side join** ([#901](https://github.com/unibrain1/elanregistry/issues/901)): The Factory Records page previously fired one AJAX request per visible row after each DataTable draw to resolve registry links (25 requests per page turn at default page size). `car_id` is now embedded in the DataTables response via a correlated subquery in `CarDataTablesService`, so links render synchronously with the row data. Eliminated `chassis-lookup.php` endpoint; removed `checkRegistryLinks()` and all `draw.dt`/`init.dt` event listeners from `factory.php`.
+
 - **car_models filter query extraction** ([#1064](https://github.com/unibrain1/elanregistry/issues/1064)): Three inline `SELECT DISTINCT` queries for car listing filter pills extracted from `cars/index.php` into `CarRepository::getFilterOptions()`. Page now calls one repository method instead of three raw queries.
 
 ### Housekeeping
@@ -63,4 +65,5 @@
 - [#1066](https://github.com/unibrain1/elanregistry/issues/1066) — chore: remove abandoned spam/inactive user cleanup system
 - [#1141](https://github.com/unibrain1/elanregistry/issues/1141) — security: add per-user rate limiting to admin AJAX endpoints via requireAdminAjax()
 - [#1142](https://github.com/unibrain1/elanregistry/issues/1142) — security: require CSRF + add IP rate limiting to public statistics endpoint
+- [#901](https://github.com/unibrain1/elanregistry/issues/901) — perf: factory records — batch registry link lookups into a single request
 - [#1170](https://github.com/unibrain1/elanregistry/issues/1170) — fix: wrap car merge steps in a DB transaction to prevent partial-failure inconsistency
