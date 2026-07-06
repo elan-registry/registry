@@ -319,6 +319,7 @@ jobs:
 
             ## Blocking
             <critical issues that must be fixed before merge to main>
+            Omit this section entirely if there are no blocking issues — do NOT include an empty section or write "None".
 
             ## Important
             <architecture, security, or integration concerns>

@@ -9,6 +9,12 @@
 
 - **Run fix script 10** (`app/admin/scripts/fix/10-Remove-Spam-Cleanup-Columns.php`) on each server after deployment to drop the 7 `elan_spam_*` columns from the `settings` table and remove the `spam_inactive_cleanup.php` cron row.
 
+- **Verify no cron jobs reference `backup_functions.php`**: The `backup_functions.php` shim is deleted in this release. Any external cron job or monitoring script with a hardcoded `require_once` path to this file will throw a fatal error on first run after deploy. Audit and remove any such references before deploying.
+
+- **Update monitoring hitting `statistics.php` via GET**: `app/api/shared/statistics.php` now requires a POST request with a valid CSRF token. Any health-check or monitoring tool issuing a GET request to this endpoint will receive a 405 response after deploy.
+
+- **Update any callers of `chassis-lookup.php`**: `app/api/cars/chassis-lookup.php` has been deleted. Any external script or monitoring tool hitting this endpoint will receive a 404 after deploy.
+
 ## User-Facing Changes
 
 ### Bug Fixes
@@ -49,7 +55,9 @@
 
 - **Remove spam/inactive user cleanup system** ([#1066](https://github.com/unibrain1/elanregistry/issues/1066)): Deleted `users/cron/spam_inactive_cleanup.php` (481 lines) and removed all 7 `elan_spam_*` schema columns. Fix script 10 drops the columns on existing databases.
 
-- **Dead code sweep** ([#623](https://github.com/unibrain1/elanregistry/issues/623)): Deleted 4 unused exception classes (`ForbiddenException`, `UnauthorizedException`, `GeocodingException`, `FIXScriptException`), removed `dbIntOrNull()` and `withStatusCode()`/`toJson()` from `ApiResponse`, and pruned 18 unused `LogCategories` constants.
+- **Dead code sweep** ([#623](https://github.com/unibrain1/elanregistry/issues/623)): Deleted 4 unused exception classes (`ForbiddenException`, `UnauthorizedException`, `GeocodingException`, `FIXScriptException`), removed `dbIntOrNull()`, `withStatusCode()`, and `toJson()` from `ApiResponse`, and pruned 18 unused `LogCategories` constants.
+
+- **`cars_update` trigger audit fix** ([#959](https://github.com/unibrain1/elanregistry/issues/959) / fix script 09): The `cars_update` trigger previously recorded `OLD.chassis_override` in audit history rows, meaning that setting `chassis_override = 1` was logged as `0` (the pre-update value). Fix script 09 recreates the trigger using `NEW.chassis_override` so history rows now capture the value at time of write. Existing history rows are not modified; only future UPDATE operations are affected.
 
 ## Issues Resolved
 
