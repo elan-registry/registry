@@ -309,13 +309,23 @@ class ExceptionHierarchyTest extends TestCase
         $this->assertEquals(500, (new CarCreationException())->getHttpStatusCode());
         $this->assertEquals(500, (new CarDeletionException())->getHttpStatusCode());
         $this->assertEquals(500, (new CarMergeException())->getHttpStatusCode());
-        $this->assertEquals(500, (new CarTransferException())->getHttpStatusCode());
         $this->assertEquals(500, (new CarDatabaseException())->getHttpStatusCode());
         $this->assertEquals(500, (new OwnerCreationException())->getHttpStatusCode());
         $this->assertEquals(500, (new OwnerUpdateException())->getHttpStatusCode());
         $this->assertEquals(500, (new ImageProcessingException())->getHttpStatusCode());
         $this->assertEquals(500, (new BackupException('msg'))->getHttpStatusCode());
         $this->assertEquals(500, (new LocationServiceException())->getHttpStatusCode());
+    }
+
+    /**
+     * Test that CarTransferException returns 409 Conflict
+     *
+     * Transfer failures are conflict-class errors (concurrent admin actions,
+     * state conflicts) rather than server faults.
+     */
+    public function testCarTransferExceptionReturns409(): void
+    {
+        $this->assertEquals(409, (new CarTransferException())->getHttpStatusCode());
     }
 
     /**
@@ -401,7 +411,7 @@ class ExceptionHierarchyTest extends TestCase
             'CarValidationException' => [CarValidationException::class, 422],
             'CarDeletionException' => [CarDeletionException::class, 500],
             'CarMergeException' => [CarMergeException::class, 500],
-            'CarTransferException' => [CarTransferException::class, 500],
+            'CarTransferException' => [CarTransferException::class, 409],
             'CarDatabaseException' => [CarDatabaseException::class, 500],
             'CarPermissionException' => [CarPermissionException::class, 403],
             'OwnerNotFoundException' => [OwnerNotFoundException::class, 404],

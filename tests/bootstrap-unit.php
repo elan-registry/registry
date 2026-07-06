@@ -511,8 +511,12 @@ if (!function_exists('logger')) {
 }
 
 // Mock getUserWithProfile function
+// Returns null for user ID <= 0 (simulates "user not found"), truthy object otherwise.
 if (!function_exists('getUserWithProfile')) {
-    function getUserWithProfile($userId): object {
+    function getUserWithProfile(int $userId): ?object {
+        if ($userId <= 0) {
+            return null;
+        }
         return (object) [
             'id' => (string) $userId,
             'fname' => 'Test',

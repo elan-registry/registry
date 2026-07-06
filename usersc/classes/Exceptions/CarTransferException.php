@@ -58,6 +58,6 @@ class CarTransferException extends CarException
      */
     protected static function getDefaultHttpStatusCode(): int
     {
-        return 500;
+        return 409;
     }
 }
