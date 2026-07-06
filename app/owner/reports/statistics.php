@@ -26,14 +26,7 @@ if (!securePage($php_self)) {
 $dataService = new StatisticsDataService($db);
 
 // Build inlined map marker data — targeted query, deterministic jitter
-$db->query(
-    "SELECT id, year, series, chassis, variant, image, type, city, state, country, fname AS owner, lat, lon
-     FROM cars WHERE lat != 0 AND lon != 0"
-);
-if ($db->error()) {
-    logger(0, LogCategories::LOG_CATEGORY_DATABASE_ERROR, 'Map marker query failed: ' . $db->errorString());
-}
-$markerRows = $db->results();
+$markerRows = $dataService->getMapPins();
 
 $mapMarkers = [];
 foreach ($markerRows as $car) {
@@ -329,7 +322,7 @@ foreach ($markerRows as $car) {
 <script>
 window.statisticsRawData = {
     // Overview data - loaded immediately
-    timeline: <?= json_encode($dataService->getTimelineData()) ?>,
+    timeline: <?= $timelineJson ?>,
 
     // Basic counts for overview cards
     countriesCount: <?= count($dataService->getCountryData()) ?>,
@@ -347,6 +340,15 @@ window.statisticsConfig = {
 </script>
 
 <?php
+try {
+    $timelineJson = json_encode(
+        $dataService->getTimelineData(),
+        JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP | JSON_THROW_ON_ERROR
+    );
+} catch (\JsonException $e) {
+    logger(0, LogCategories::LOG_CATEGORY_SYSTEM_ERROR, 'Failed to encode timeline data: ' . $e->getMessage());
+    $timelineJson = '[]';
+}
 try {
     $mapMarkersJson = json_encode($mapMarkers, JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP | JSON_THROW_ON_ERROR);
 } catch (\JsonException $e) {
