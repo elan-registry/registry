@@ -38,7 +38,7 @@ if (!empty($_GET)) {
     $carData = $car->data();
     $factoryData = $car->factory();
     $carHistory = $car->history();
-    $historyCount = $carHistory ? count($carHistory) : 0;
+    $historyCount = count($carHistory);
     
     // Pre-process common dates to avoid redundant DateTime creation
     $purchaseDate = null;
