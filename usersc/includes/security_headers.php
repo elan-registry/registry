@@ -91,7 +91,7 @@ header("X-Content-Type-Options: nosniff");
 header("Referrer-Policy: no-referrer-when-downgrade");
 
 
-// 7. There is no direct security risk, but exposing an outdated (and possibly vulnerable) version of PHP may be an invitation for people to try and attack it.
+// 6. There is no direct security risk, but exposing an outdated (and possibly vulnerable) version of PHP may be an invitation for people to try and attack it.
 
 header_remove("X-Powered-By");
 
