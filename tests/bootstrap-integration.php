@@ -108,7 +108,7 @@ try {
         // The DB class caches the PDO connection, so we need to clear it to force a new one
         $reflectionClass = new ReflectionClass('DB');
         $instanceProperty = $reflectionClass->getProperty('_instance');
-        $instanceProperty->setValue(null);
+        $instanceProperty->setValue(null, null); // static property: first arg is object (null), second is new value
         fwrite(STDERR, "NOTE: Reset DB singleton cache for reinitialization\n");
 
         // Now create a fresh DB instance with the corrected configuration

@@ -37,5 +37,6 @@
 - [#1126](https://github.com/unibrain1/elanregistry/issues/1126) — enhancement: add cache-busting version parameter to static asset URLs
 - [#1127](https://github.com/unibrain1/elanregistry/issues/1127) — feat: maintenance script — report and delete unverified accounts with no car associations
 - [#1151](https://github.com/unibrain1/elanregistry/issues/1151) ✓ — chore: fix PHP 8.5 ReflectionProperty deprecations in test infrastructure and remove unreliable CarShowcaseService tests
+- [#1182](https://github.com/unibrain1/elanregistry/issues/1182) — test: migrate getNewCarIds() floor/tie-breaking tests to CarShowcaseServiceTest
 - [#1167](https://github.com/unibrain1/elanregistry/issues/1167) — fix: CarRepository::getHistory() returns null for empty history — should return []
 - [#1175](https://github.com/unibrain1/elanregistry/issues/1175) — fix: process-transfer-approve.php — wrap transfer + updateStatus in a shared transaction
