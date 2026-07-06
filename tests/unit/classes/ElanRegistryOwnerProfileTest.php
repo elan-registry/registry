@@ -84,6 +84,16 @@ final class ElanRegistryOwnerProfileTest extends TestCase
     }
 
     // -----------------------------------------------------------------------
+    // getProfileQualityScore() — instance method, delegates to qualityScoreFromRow()
+    // -----------------------------------------------------------------------
+
+    public function testNullDataQualityScoreReturnsZero(): void
+    {
+        $this->injectData(null);
+        $this->assertSame(0.0, $this->owner->getProfileQualityScore());
+    }
+
+    // -----------------------------------------------------------------------
     // qualityScoreFromRow() — public static, accepts plain stdClass
     // -----------------------------------------------------------------------
 

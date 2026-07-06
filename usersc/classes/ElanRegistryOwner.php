@@ -341,8 +341,10 @@ class ElanRegistryOwner
      * Accepts a raw DB row object so batch loops can score many owners without
      * constructing a full ElanRegistryOwner for each one.
      *
-     * @param object $row DB row with owner fields: fname, lname, email, city, state, country
-     *                    (1 point each) and lat+lon (1 point combined, 7 points total)
+     * @param object $row DB row — must include all PROFILE_SIMPLE_FIELD_LABELS columns
+     *                    (fname, lname, email, city, state, country) plus lat and lon.
+     *                    Missing properties are treated as empty (score 0 for that field).
+     *                    (1 point each for simple fields; lat+lon together count as 1 combined point, 7 points total)
      * @return float Score 0–100
      */
     public static function qualityScoreFromRow(object $row): float
