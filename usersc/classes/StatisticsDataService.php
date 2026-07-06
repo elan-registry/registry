@@ -207,7 +207,9 @@ class StatisticsDataService {
     /**
      * Get map pin data for the world map
      *
-     * @return array Cars with lat/lon coordinates
+     * @return array<int, object{id: int, year: string, series: string, chassis: string,
+     *                           variant: string, image: string, city: string, state: string,
+     *                           country: string, owner: string, lat: float, lon: float}> Cars with coordinates
      */
     public function getMapPins(): array {
         return $this->executeQuery(

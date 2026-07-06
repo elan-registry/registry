@@ -273,9 +273,16 @@ class StatisticsApiTest extends IntegrationTestCase
         $pins    = $service->getMapPins();
 
         $this->assertIsArray($pins);
+
         if (empty($pins)) {
-            $this->markTestSkipped('No cars with map coordinates in test DB — getMapPins() contract untestable');
+            if ($this->testUserId === null) {
+                $this->markTestSkipped('No users in test DB — cannot create fixture car for getMapPins() test');
+            }
+            $this->createTestCar($this->testUserId, ['lat' => '51.5074', 'lon' => '-0.1278']);
+            $pins = $service->getMapPins();
         }
+
+        $this->assertNotEmpty($pins, 'getMapPins() must return at least one car with coordinates');
         $pin = $pins[0];
         foreach (['id', 'year', 'series', 'lat', 'lon', 'owner'] as $field) {
             $this->assertObjectHasProperty($field, $pin, "getMapPins() row must have '$field'");
