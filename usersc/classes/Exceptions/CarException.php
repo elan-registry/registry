@@ -35,12 +35,4 @@ abstract class CarException extends ElanRegistryException
     {
         return LogCategories::LOG_CATEGORY_CAR_ERRORS;
     }
-
-    /**
-     * @inheritDoc
-     */
-    protected static function getDefaultHttpStatusCode(): int
-    {
-        return 500;
-    }
 }

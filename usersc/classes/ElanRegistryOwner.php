@@ -20,6 +20,16 @@ use ElanRegistry\Exceptions\OwnerValidationException;
 
 class ElanRegistryOwner
 {
+    /** Maps DB column → display label for simple profile completeness fields (lat/lon handled separately). */
+    private const PROFILE_SIMPLE_FIELD_LABELS = [
+        'fname'   => 'First Name',
+        'lname'   => 'Last Name',
+        'email'   => 'Email',
+        'city'    => 'City',
+        'state'   => 'State',
+        'country' => 'Country',
+    ];
+
     private $_db;
     private $_data;
     private $userTableName = 'users';
@@ -331,19 +341,23 @@ class ElanRegistryOwner
      * Accepts a raw DB row object so batch loops can score many owners without
      * constructing a full ElanRegistryOwner for each one.
      *
-     * @param object $row DB row with owner fields (fname, lname, email, city, state, country, lat, lon)
+     * @param object $row DB row — must include all PROFILE_SIMPLE_FIELD_LABELS columns
+     *                    (fname, lname, email, city, state, country) plus lat and lon.
+     *                    Missing properties are treated as empty (score 0 for that field).
+     *                    (1 point each for simple fields; lat+lon together count as 1 combined point, 7 points total)
      * @return float Score 0–100
      */
     public static function qualityScoreFromRow(object $row): float
     {
         $completed = 0;
-        if (!empty($row->fname)) $completed++;
-        if (!empty($row->lname)) $completed++;
-        if (!empty($row->email)) $completed++;
-        if (!empty($row->city)) $completed++;
-        if (!empty($row->state)) $completed++;
-        if (!empty($row->country)) $completed++;
-        if (!empty($row->lat) && !empty($row->lon)) $completed++;
+        foreach (array_keys(self::PROFILE_SIMPLE_FIELD_LABELS) as $field) {
+            if (!empty($row->$field)) {
+                $completed++;
+            }
+        }
+        if (!empty($row->lat) && !empty($row->lon)) {
+            $completed++;
+        }
         return round(($completed / 7) * 100, 1);
     }
 
@@ -367,7 +381,7 @@ class ElanRegistryOwner
     /**
      * Validate profile completeness and return missing fields
      *
-     * @return array Array of missing or incomplete field names
+     * @return array<string> Human-readable labels for missing profile fields (e.g. 'First Name', 'Location Coordinates')
      */
     public function validateProfileCompleteness(): array
     {
@@ -377,13 +391,14 @@ class ElanRegistryOwner
             return ['Owner data not loaded'];
         }
 
-        if (empty($this->_data->fname)) $missingFields[] = 'First Name';
-        if (empty($this->_data->lname)) $missingFields[] = 'Last Name';
-        if (empty($this->_data->email)) $missingFields[] = 'Email';
-        if (empty($this->_data->city)) $missingFields[] = 'City';
-        if (empty($this->_data->state)) $missingFields[] = 'State';
-        if (empty($this->_data->country)) $missingFields[] = 'Country';
-        if (empty($this->_data->lat) || empty($this->_data->lon)) $missingFields[] = 'Location Coordinates';
+        foreach (self::PROFILE_SIMPLE_FIELD_LABELS as $field => $label) {
+            if (empty($this->_data->$field)) {
+                $missingFields[] = $label;
+            }
+        }
+        if (empty($this->_data->lat) || empty($this->_data->lon)) {
+            $missingFields[] = 'Location Coordinates';
+        }
 
         return $missingFields;
     }
