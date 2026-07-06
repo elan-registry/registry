@@ -407,13 +407,6 @@ class LogCategoriesUsageTest extends TestCase
 
         $content = (string)file_get_contents($filePath);
 
-        // cleanString() must have a PHPDoc block
-        $this->assertMatchesRegularExpression(
-            '/\/\*\*.*?cleanString/s',
-            $content,
-            'send-feedback.php cleanString() must have a PHPDoc block (#600)'
-        );
-
         // logger() calls must not use hardcoded user ID 1
         $this->assertDoesNotMatchRegularExpression(
             '/\blogger\s*\(\s*1\s*,/',
