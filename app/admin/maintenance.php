@@ -188,12 +188,12 @@ try {
 
 <?php require_once $abs_us_root . $us_url_root . 'users/includes/html_footer.php'; ?>
 
-<link rel="stylesheet" href="assets/manage-consolidated.min.css">
+<link rel="stylesheet" href="assets/manage-consolidated.min.css?v=<?= ASSET_VERSION ?>">
 <script>
     window.elanUrlRoot = '<?= $us_url_root ?>';
     // Make CSRF token available to ElanRegistryAPI client
     document.documentElement.setAttribute('data-csrf-token', '<?= $csrfToken ?>');
 </script>
-<script src="assets/manage-consolidated.min.js"></script>
-<script src="assets/backup-operations.min.js"></script>
+<script src="assets/manage-consolidated.min.js?v=<?= ASSET_VERSION ?>"></script>
+<script src="assets/backup-operations.min.js?v=<?= ASSET_VERSION ?>"></script>
 

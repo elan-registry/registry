@@ -54,7 +54,7 @@ $er_footer_version_tag = ApplicationVersion::tagOnly();
 </script>
 
 <!-- ElanRegistry API Client - Pattern A standardized AJAX -->
-<script nonce="<?=htmlspecialchars($usespice_nonce ?? '')?>" src="<?=$us_url_root?>app/assets/js/api-client.min.js"></script>
+<script nonce="<?=htmlspecialchars($usespice_nonce ?? '')?>" src="<?=$us_url_root?>app/assets/js/api-client.min.js?v=<?= ASSET_VERSION ?>"></script>
 
 <!-- Patch: users/js/menu.js offClick handler (line 100) calls open.firstChild.click() where
      firstChild is a whitespace text node in indented HTML. Text nodes have no .click() method,
