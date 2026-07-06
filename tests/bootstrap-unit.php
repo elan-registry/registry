@@ -143,8 +143,8 @@ if (!class_exists('Car')) {
         /**
          * Get car history
          */
-        public function history(): ?array {
-            return !empty($this->history) ? $this->history : null;
+        public function history(): array {
+            return $this->history;
         }
 
         /**

@@ -107,16 +107,16 @@ final class CarCoreTest extends TestCase
     // BASIC GETTER TESTS (history, factory, owner)
     // ============================================================
 
-    public function testHistoryReturnsArrayWhenPresent(): void
+    public function testHistoryReturnsArray(): void
     {
         $car = new Car($this->testCarId);
-        $history = $car->history();
+        $this->assertIsArray($car->history());
+    }
 
-        if ($history !== null) {
-            $this->assertIsArray($history);
-        } else {
-            $this->assertNull($history);
-        }
+    public function testHistoryDefaultsToEmptyArray(): void
+    {
+        $car = new Car();
+        $this->assertSame([], $car->history());
     }
 
     public function testFactoryReturnsObjectWhenPresent(): void
