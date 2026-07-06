@@ -343,6 +343,28 @@ class AssetVersionTest extends TestCase
     }
 
     /**
+     * config.php must log a warning via error_log() when file_get_contents()
+     * fails for an existing VERSION file. Silently falling back to 'dev' in
+     * that case would make deploy-hook failures invisible in server logs.
+     */
+    public function test_configPhp_logsErrorWhenFileGetContentsFails(): void
+    {
+        $configFile = dirname(__DIR__, 3) . '/usersc/includes/config.php';
+        $content = (string) file_get_contents($configFile);
+
+        $this->assertStringContainsString(
+            'error_log(',
+            $content,
+            "config.php must call error_log() to make VERSION read failures visible in server logs"
+        );
+        $this->assertStringContainsString(
+            'ASSET_VERSION: file_get_contents',
+            $content,
+            "config.php error_log() message must identify the ASSET_VERSION context for diagnosability"
+        );
+    }
+
+    /**
      * config.php must be syntactically valid PHP so that it can be included
      * by the application without parse errors.
      */
