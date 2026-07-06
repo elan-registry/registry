@@ -53,31 +53,6 @@ test.describe('Factory Page - Registry Link Feature', () => {
     console.log('✓ Registry Link column header visible');
   });
 
-  test('should show spinner while Registry Link is loading', async ({ page }) => {
-    await page.goto('/app/owner/cars/factory.php');
-
-    // Wait for DataTable to initialize
-    await page.waitForSelector('.dataTables_wrapper', { timeout: 10000 });
-    console.log('✓ DataTable initialized');
-
-    // Look for registry link containers
-    const registryLinks = page.locator('.registry-link-container');
-    const count = await registryLinks.count();
-
-    if (count > 0) {
-      console.log(`✓ Found ${count} registry link containers`);
-
-      // Check at least one has content (might be loading or loaded)
-      for (let i = 0; i < Math.min(count, 3); i++) {
-        const container = registryLinks.nth(i);
-        await expect(container).toBeDefined();
-      }
-      console.log('✓ Registry link containers have content');
-    } else {
-      console.log('⚠ No registry link containers found (might be paginated off-screen)');
-    }
-  });
-
   test('should display matched chassis with "View Car" button', async ({ page, context }) => {
     // Note: This test assumes test data exists. In production, skip if not available.
 
@@ -87,12 +62,12 @@ test.describe('Factory Page - Registry Link Feature', () => {
     await page.waitForSelector('.dataTables_wrapper', { timeout: 10000 });
     console.log('✓ DataTable loaded');
 
-    // Wait for AJAX calls to complete (registry links to populate)
-    await page.waitForLoadState('networkidle');
-    console.log('✓ Network idle - AJAX calls completed');
+    // Registry Link renders synchronously with DataTable draw — no AJAX wait needed
+    await page.waitForSelector('.registry-link-container', { timeout: 10000 });
+    console.log('✓ Registry link containers rendered');
 
-    // Look for "View Car" buttons (green buttons in registry links)
-    const viewButtons = page.locator('.registry-link-container .btn-success');
+    // Look for "View Car" buttons
+    const viewButtons = page.locator('.registry-link-container .btn-primary');
     const viewButtonCount = await viewButtons.count();
 
     if (viewButtonCount > 0) {
@@ -115,9 +90,8 @@ test.describe('Factory Page - Registry Link Feature', () => {
     await page.waitForSelector('.dataTables_wrapper', { timeout: 10000 });
     console.log('✓ DataTable loaded');
 
-    // Wait for AJAX calls
-    await page.waitForLoadState('networkidle');
-    console.log('✓ AJAX calls completed');
+    // Registry Link renders synchronously — wait for containers to appear
+    await page.waitForSelector('.registry-link-container', { timeout: 10000 });
 
     // Look for informational messages (unmatched chassis)
     const messages = page.locator('.registry-link-container .text-muted, .registry-link-container .text-secondary');
@@ -141,8 +115,7 @@ test.describe('Factory Page - Registry Link Feature', () => {
     await page.waitForSelector('.dataTables_wrapper', { timeout: 10000 });
     console.log('✓ DataTable loaded');
 
-    await page.waitForLoadState('networkidle');
-    console.log('✓ AJAX calls completed');
+    await page.waitForSelector('.registry-link-container', { timeout: 10000 });
 
     // Verify no "Check failed" errors visible
     const checkFailedElements = page.locator(':text("Check failed")');
@@ -155,98 +128,12 @@ test.describe('Factory Page - Registry Link Feature', () => {
     }
   });
 
-  test('should perform Registry Link lookup via correct AJAX endpoint', async ({ page }) => {
-    let ajaxRequest = null;
-
-    // Intercept network requests
-    page.on('request', (request) => {
-      const url = request.url();
-      if (url.includes('chassis-lookup.php') && request.postDataJSON()) {
-        const postData = request.postDataJSON();
-        if (postData.chassis !== undefined) {
-          ajaxRequest = {
-            url: url,
-            method: request.method(),
-            data: postData
-          };
-        }
-      }
-    });
-
-    await page.goto('/app/owner/cars/factory.php');
-
-    // Wait for table and AJAX calls
-    await page.waitForSelector('.dataTables_wrapper', { timeout: 10000 });
-    await page.waitForLoadState('networkidle');
-
-    if (ajaxRequest) {
-      console.log('✓ Registry Link AJAX request captured');
-      expect(ajaxRequest.method).toBe('POST');
-      console.log('✓ Request method is POST');
-
-      expect(ajaxRequest.data).toHaveProperty('chassis');
-      console.log('✓ Request includes chassis parameter');
-
-      expect(ajaxRequest.data).toHaveProperty('csrf');
-      console.log('✓ Request includes CSRF token');
-    } else {
-      console.log('⚠ No Registry Link AJAX requests detected (might be page 1 of paginated results)');
-    }
-  });
-
-  test('should include CSRF token in Registry Link request (catches issue #581 regression)', async ({ page }) => {
-    // This test specifically catches the issue where CSRF token was missing
-    // Regression: https://github.com/jimboone/elan-registry/issues/581
-
-    const requestsWithoutCsrf = [];
-    const requestsWithCsrf = [];
-
-    page.on('request', (request) => {
-      const url = request.url();
-      if (url.includes('chassis-lookup.php')) {
-        try {
-          const postData = request.postDataJSON();
-          if (postData.chassis !== undefined) {
-            if (!postData.csrf) {
-              requestsWithoutCsrf.push({
-                url: url,
-                data: postData
-              });
-            } else {
-              requestsWithCsrf.push(postData);
-            }
-          }
-        } catch (e) {
-          // Ignore parse errors
-        }
-      }
-    });
-
-    await page.goto('/app/owner/cars/factory.php');
-
-    // Wait for factory table and AJAX calls to complete
-    await page.waitForSelector('.dataTables_wrapper', { timeout: 10000 });
-    await page.waitForLoadState('networkidle');
-
-    // Verify no requests were made without CSRF token
-    if (requestsWithoutCsrf.length > 0) {
-      console.error('✗ CSRF token missing! Requests without token:');
-      requestsWithoutCsrf.forEach(r => {
-        console.error(`  - ${r.url}`);
-        console.error(`    Data: ${JSON.stringify(r.data)}`);
-      });
-    }
-
-    expect(requestsWithoutCsrf).toHaveLength(0);
-    console.log('✓ All Registry Link requests include CSRF token');
-  });
-
   test('should maintain Registry Link functionality across pagination', async ({ page }) => {
     await page.goto('/app/owner/cars/factory.php');
 
     // Wait for initial table
     await page.waitForSelector('.dataTables_wrapper', { timeout: 10000 });
-    await page.waitForLoadState('networkidle');
+    await page.waitForSelector('.registry-link-container', { timeout: 10000 });
     console.log('✓ Page 1 loaded');
 
     // Check if pagination exists
@@ -258,7 +145,7 @@ test.describe('Factory Page - Registry Link Feature', () => {
       await nextButton.click();
 
       // Wait for page 2 to load
-      await page.waitForLoadState('networkidle');
+      await page.waitForSelector('.registry-link-container', { timeout: 10000 });
       console.log('✓ Page 2 loaded');
 
       // Verify Registry Link containers exist on page 2
@@ -288,8 +175,8 @@ test.describe('Factory Page - Registry Link Feature', () => {
     // Wait for table
     await page.waitForSelector('.dataTables_wrapper', { timeout: 10000 });
 
-    // Wait for AJAX calls to complete
-    await page.waitForLoadState('networkidle');
+    // Registry Link renders synchronously — wait for containers to appear
+    await page.waitForSelector('.registry-link-container', { timeout: 10000 });
 
     const endTime = Date.now();
     const loadTime = endTime - startTime;
@@ -312,10 +199,10 @@ test.describe('Factory Page - Registry Link Feature', () => {
 
     // Wait for table and AJAX
     await page.waitForSelector('.dataTables_wrapper', { timeout: 10000 });
-    await page.waitForLoadState('networkidle');
+    await page.waitForSelector('.registry-link-container', { timeout: 10000 });
 
     // Find a View Car button
-    const viewButton = page.locator('.registry-link-container .btn-success').first();
+    const viewButton = page.locator('.registry-link-container .btn-primary').first();
     const isVisible = await viewButton.isVisible();
 
     if (isVisible) {
@@ -334,39 +221,21 @@ test.describe('Factory Page - Registry Link Feature', () => {
     }
   });
 
-  test('should handle AJAX errors gracefully', async ({ page }) => {
-    // Track AJAX responses
-    const responses = [];
+  test('should not make any request to chassis-lookup.php', async ({ page }) => {
+    const chassisLookupRequests = [];
 
-    page.on('response', async (response) => {
-      if (response.url().includes('chassis-lookup.php')) {
-        responses.push({
-          url: response.url(),
-          status: response.status()
-        });
+    page.on('request', (request) => {
+      if (request.url().includes('chassis-lookup.php')) {
+        chassisLookupRequests.push(request.url());
       }
     });
 
     await page.goto('/app/owner/cars/factory.php');
-
     await page.waitForSelector('.dataTables_wrapper', { timeout: 10000 });
-    await page.waitForLoadState('networkidle');
+    await page.waitForSelector('.registry-link-container', { timeout: 10000 });
 
-    // Check for HTTP errors in AJAX
-    const errorResponses = responses.filter(r => r.status >= 400);
-
-    if (errorResponses.length > 0) {
-      console.log(`⚠ Found ${errorResponses.length} HTTP error response(s)`);
-      errorResponses.forEach(r => {
-        console.log(`  - ${r.url}: HTTP ${r.status}`);
-      });
-    } else {
-      console.log('✓ All AJAX responses successful (HTTP 200)');
-    }
-
-    // Verify no broken UI despite any errors
-    const table = page.locator('#cartable');
-    await expect(table).toBeVisible();
-    console.log('✓ Table still visible after AJAX calls');
+    expect(chassisLookupRequests).toHaveLength(0);
+    console.log('✓ No requests to chassis-lookup.php — car_id embedded in DataTables response');
   });
 });
+

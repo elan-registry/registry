@@ -407,40 +407,6 @@ final class CarDataTablesTest extends IntegrationTestCase
         $this->assertEquals($result['recordsTotal'], $result['recordsFiltered']);
     }
 
-    /**
-     * Test chassis lookup SQL query finds a car with a matching chassis number
-     *
-     * The app/api/cars/chassis-lookup.php endpoint executes this query inline.
-     * We verify the query behavior directly against the real database.
-     */
-    #[Group('fast')]
-    public function testChassisLookupQueryFindsCar(): void
-    {
-        $userId = $this->createTestUser();
-        $chassis = 'TC-' . substr(uniqid(), -10); // varchar(15) limit
-        $carId = $this->createTestCar($userId, ['chassis' => $chassis]);
-
-        // Execute the same SQL that the app/api/cars/chassis-lookup.php endpoint runs
-        $result = $this->db->query("SELECT id FROM cars WHERE chassis = ? LIMIT 1", [$chassis]);
-
-        $this->assertGreaterThan(0, $result->count());
-        $this->assertEquals($carId, $result->first()->id);
-    }
-
-    /**
-     * Test chassis lookup SQL query returns no results for an unknown chassis number
-     */
-    #[Group('fast')]
-    public function testChassisLookupQueryReturnsNoResultsForUnknownChassis(): void
-    {
-        $result = $this->db->query(
-            "SELECT id FROM cars WHERE chassis = ? LIMIT 1",
-            ['CHASSIS-DOES-NOT-EXIST-' . uniqid()]
-        );
-
-        $this->assertEquals(0, $result->count());
-    }
-
     // =========================================================================
     // Per-column search tests (#907 — added in v2.24.0 #763)
     // =========================================================================

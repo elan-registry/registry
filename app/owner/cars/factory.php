@@ -98,6 +98,12 @@ require_once $abs_us_root . $us_url_root . 'users/includes/html_footer.php'; //c
       "dataSrc": "data",
       data: function(d) {
         d.csrf = csrf;
+      },
+      error: function(xhr, error, thrown) {
+        console.error('Factory table load failed', xhr.status, thrown);
+        $('#cartable').closest('.dataTables_wrapper').prepend(
+          '<div class="alert alert-danger mt-2">Could not load factory data. Please refresh the page.</div>'
+        );
       }
     },
     'columns': [{
@@ -141,82 +147,21 @@ require_once $abs_us_root . $us_url_root . 'users/includes/html_footer.php'; //c
       }, {
         data: "note",
       }, {
-        data: "serial",
-        render: function(data, type, row, meta) {
-          if (type === 'display' && data) {
-            var div = document.createElement('div');
-            div.className = 'registry-link-container';
-            div.dataset.chassis = data;
-            div.innerHTML = '<span class="text-muted small"><i class="fas fa-spinner fa-spin"></i> Checking...</span>';
-            return div.outerHTML;
-          }
-          if (type === 'sort' || type === 'type') {
+        // car_id is not a table column — injected as a correlated subquery alias by CarDataTablesService
+        data: "car_id",
+        render: function(data, type, row) {
+          if (type !== 'display') {
             return data || '';
           }
-          return '';
+          const carId = parseInt(data, 10);
+          const inner = (Number.isFinite(carId) && carId > 0)
+            ? '<a href="' + us_url_root + 'app/owner/cars/details.php?car_id=' + carId + '" class="btn btn-sm btn-primary" target="_blank"><i class="fas fa-car"></i> View Car #' + carId + '</a>'
+            : '<span class="text-muted small"><i class="fas fa-times-circle"></i> Not in registry</span>';
+          return '<div class="registry-link-container">' + inner + '</div>';
         },
-        orderable: true,
+        orderable: false,
         searchable: false
       }
     ]
-  });
-
-  // Function to check for registry matches and populate links
-  function checkRegistryLinks() {
-    $('.registry-link-container').each(function() {
-      const container = $(this);
-      const chassis = container.data('chassis');
-      
-      if (!chassis) {
-        container.html('<span class="text-muted small">No chassis data</span>');
-        return;
-      }
-
-      // Make AJAX request to find car by chassis
-      new ElanRegistryAPI()
-        .post(us_url_root + 'app/api/cars/chassis-lookup.php', {
-          chassis: chassis,
-          csrf: csrf
-        })
-        .then(function(response) {
-          const carId = parseInt(response.car_id, 10);
-          if (Number.isFinite(carId) && carId > 0) {
-            // Car exists - create link to car details
-            const detailsUrl = us_url_root + 'app/owner/cars/details.php?car_id=' + carId;
-            container.html(
-              '<a href="' + detailsUrl + '" class="btn btn-sm btn-primary" target="_blank">' +
-              '<i class="fas fa-car"></i> View Car #' + carId +
-              '</a>'
-            );
-          } else {
-            // Car not found - show not registered message
-            container.html(
-              '<span class="text-muted small">' +
-              '<i class="fas fa-times-circle"></i> Not in registry' +
-              '</span>'
-            );
-          }
-        })
-        .catch(function(error) {
-          if (error && error.name !== 'ApiCancelledError') {
-            console.error('Registry link check failed for chassis', chassis, error);
-          }
-          container.html(
-            '<span class="text-danger small">' +
-            '<i class="fas fa-exclamation-triangle"></i> Check failed' +
-            '</span>'
-          );
-        });
-    });
-  }
-
-  // Check registry links after table is drawn
-  table.on('draw.dt', function() {
-    checkRegistryLinks();
-  });
-
-  // Initial check after table loads
-  table.on('init.dt', function() {
-    checkRegistryLinks();
   });
 </script>
