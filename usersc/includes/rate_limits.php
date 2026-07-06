@@ -154,7 +154,34 @@ $rateLimits = [
         'user_window' => 300,
         'total_max' => 500,
         'total_window' => 300
-    ]
+    ],
+
+    'statistics_request' => [
+        'ip_max'       => 20,
+        'ip_window'    => 60,
+        'user_max'     => 30,
+        'user_window'  => 60,
+        'total_max'    => 100,
+        'total_window' => 60,
+    ],
+
+    // Admin AJAX — ip_max/ip_window are present because the validator requires them, but set
+    // to PHP_INT_MAX so they never trigger; admin volume is controlled per-user via total_max:
+    //   • per-IP failure counting doesn't apply — authenticated admin sessions are tracked reliably
+    //   • user_max (failed-only) doesn't apply — volume, not failure count, is the concern
+    //   • total_max is still enforced per-identifier (IP and user) by the RateLimit engine
+    'admin_ajax_search' => [
+        'ip_max'       => PHP_INT_MAX,
+        'ip_window'    => 60,
+        'total_max'    => 30,
+        'total_window' => 60,
+    ],
+    'admin_ajax_write' => [
+        'ip_max'       => PHP_INT_MAX,
+        'ip_window'    => 60,
+        'total_max'    => 10,
+        'total_window' => 60,
+    ],
 ];
 
 //You can also override individual limits with custom values.

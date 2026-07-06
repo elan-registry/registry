@@ -13,7 +13,7 @@ use ElanRegistry\Exceptions\OwnerSearchException;
 // Include required files
 require_once '../../../users/init.php';
 
-requireAdminAjax('owner search');
+requireAdminAjax('owner search', false);
 
 // Validate input
 $query = trim($_POST['query'] ?? '');

@@ -245,8 +245,10 @@ function currentUserId(): int
  *                        "Unauthorized car details attempt" and
  *                        "Invalid CSRF token in car details". Pass '' to use
  *                        generic fallback messages.
+ * @param bool   $isWrite True for mutating endpoints (uses admin_ajax_write rate limit),
+ *                        false for read/search endpoints (uses admin_ajax_search rate limit).
  */
-function requireAdminAjax(string $context = ''): void
+function requireAdminAjax(string $context = '', bool $isWrite = true): void
 {
     global $user;
 
@@ -263,6 +265,16 @@ function requireAdminAjax(string $context = ''): void
             ->withLogging((int) $user->data()->id, LogCategories::LOG_CATEGORY_SECURITY, $logMsg)
             ->send();
     }
+
+    $userId = (int) $user->data()->id;
+    $action = $isWrite ? 'admin_ajax_write' : 'admin_ajax_search';
+    if (!checkRateLimit($action, $userId)) {
+        recordRateLimit($action, false, $userId);
+        ApiResponse::error('Too many requests. Please slow down.', 429)
+            ->withLogging($userId, LogCategories::LOG_CATEGORY_SECURITY, "Rate limit exceeded for action '{$action}'")
+            ->send();
+    }
+    recordRateLimit($action, true, $userId);
 }
 
 /**

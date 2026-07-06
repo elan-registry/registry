@@ -230,8 +230,8 @@ function loadTabContent(tabName) {
 
   spinner.show();
 
-  new ElanRegistryAPI()
-    .get(window.statisticsConfig.statisticsDataUrl, {
+  new ElanRegistryAPI({ csrfToken: window.statisticsConfig.csrfToken })
+    .post(window.statisticsConfig.statisticsDataUrl, {
       tab: tabName
     })
     .then(function (response) {

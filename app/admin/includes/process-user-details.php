@@ -13,7 +13,7 @@ declare(strict_types=1);
 
 require_once '../../../users/init.php';
 
-requireAdminAjax('user details');
+requireAdminAjax('user details', false);
 
 // Validate user ID
 $userId = (int)($_POST['user_id'] ?? 0);
