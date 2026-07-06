@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use ElanRegistry\Exceptions\CarException;
 use ElanRegistry\Exceptions\CarTransferException;
 use ElanRegistry\Transfer\CarTransferRepository;
 use ElanRegistry\Transfer\TransferEmailService;
@@ -71,10 +72,8 @@ try {
     }
 
     // 2. Transfer car ownership — CarRepository defers to this outer transaction
-    $transferSuccess = $car->transfer((int)$transfer->requested_by_user_id, $reason);
-    if (!$transferSuccess) {
-        throw new CarTransferException('Failed to transfer car ownership');
-    }
+    // Car::transfer() always returns true or throws; no false return path exists.
+    $car->transfer((int)$transfer->requested_by_user_id, $reason);
 
     $db->commit();
 
@@ -123,7 +122,7 @@ try {
         )
         ->send();
 
-} catch (CarTransferException $e) {
+} catch (CarException $e) {
     try {
         if ($db->inTransaction()) {
             $db->rollBack();
@@ -131,7 +130,7 @@ try {
     } catch (\Throwable $rollbackEx) {
         logger($user->data()->id, LogCategories::LOG_CATEGORY_SYSTEM_ERROR, "rollBack() failed during transfer error handling for request #{$transferId}: " . $rollbackEx->getMessage());
     }
-    ApiResponse::error($e->getUserMessage(), 400)
+    ApiResponse::error($e->getUserMessage(), $e->getHttpStatusCode())
         ->withLogging(
             $user->data()->id,
             $e->getLogCategory(),

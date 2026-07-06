@@ -25,6 +25,7 @@
 ### Improvements
 
 - **Transfer approval is now atomic** ([#1175](https://github.com/unibrain1/elanregistry/issues/1175)): Car ownership transfer and request-status update are wrapped in a single transaction; if the status update fails (including TOCTOU "already processed"), the ownership change rolls back cleanly. As a side effect, the deny flow now also correctly returns an error when attempting to deny an already-processed request.
+- **Transfer approval shows correct error messages** ([#1178](https://github.com/unibrain1/elanregistry/issues/1178)): The transfer approval endpoint now catches all car-domain exceptions (`CarValidationException`, `CarDatabaseException`) correctly, ensuring user-friendly messages (e.g. "user not found") reach the admin rather than falling through to the generic "unexpected error" response. The HTTP status code is also now derived from the exception type (422 for validation, 500 for database errors) rather than hardcoded to 400.
 - **Correct 404 for missing cars** ([#976](https://github.com/unibrain1/elanregistry/issues/976)): Admin car-details endpoint now returns HTTP 404 for missing cars instead of HTTP 200 with an error payload, improving error visibility.
 
 ## Technical Changes
@@ -45,3 +46,4 @@
 - [#1182](https://github.com/unibrain1/elanregistry/issues/1182) ✓ — test: migrate getNewCarIds() floor/tie-breaking tests to CarShowcaseServiceTest
 - [#1167](https://github.com/unibrain1/elanregistry/issues/1167) — fix: CarRepository::getHistory() returns null for empty history — should return []
 - [#1175](https://github.com/unibrain1/elanregistry/issues/1175) — fix: process-transfer-approve.php — wrap transfer + updateStatus in a shared transaction
+- [#1178](https://github.com/unibrain1/elanregistry/issues/1178) — fix: process-transfer-approve.php — widen catch to CarException base to preserve user-friendly messages
