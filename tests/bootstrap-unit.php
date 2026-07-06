@@ -664,6 +664,7 @@ if (!class_exists('DB')) {
         public function beginTransaction(): void {}
         public function commit(): void {}
         public function rollBack(): void {}
+        public function inTransaction(): bool { return false; }
     }
 }
 
@@ -967,6 +968,7 @@ if (!class_exists('DB')) {
             public function beginTransaction(): void {}
             public function commit(): void {}
             public function rollBack(): void {}
+            public function inTransaction(): bool { return false; }
         }
 
         /**

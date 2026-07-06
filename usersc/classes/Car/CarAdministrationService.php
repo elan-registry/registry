@@ -149,10 +149,13 @@ class CarAdministrationService
 
             $repo->commit();
 
-            // Refresh car data after commit
+            // Refresh car data — in standalone mode this follows the commit above;
+            // when an outer transaction is active, $repo->commit() was a no-op and
+            // this reads uncommitted state within that outer transaction.
             $refreshedData = $refreshCallback($carId);
 
-            // Create history record after commit
+            // Create history record — committed atomically with the transfer when
+            // an outer transaction is active; otherwise runs in autocommit.
             $historyFields = [
                 'operation' => $operationType,
                 'car_id' => $carId,
