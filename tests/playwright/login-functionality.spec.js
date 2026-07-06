@@ -332,6 +332,9 @@ test.describe('Forgot Password Page', () => {
 
     await expect(page.locator('input[name="email"]')).toBeVisible();
 
+    // usError([]) must not render a spurious error alert on initial GET
+    await expect(page.locator('.alert-danger')).toHaveCount(0);
+
     // CSRF token must survive any template restructuring
     const csrfInput = page.locator('input[name="csrf"]');
     await expect(csrfInput).toHaveCount(1);

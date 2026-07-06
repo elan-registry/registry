@@ -15,7 +15,7 @@ matching the join flow in _join.php.
           <h2 class="mb-0 card-header-er-primary-text"><i class="fas fa-key"></i> <strong><?= lang("PW_RESET"); ?></strong></h2>
         </div>
         <div class="card-body">
-          <?php if (!empty($errors)) { display_errors($errors); } ?>
+          <?php usError($errors); ?>
           <form action="" method="post" id="pwReset">
             <div class="mb-3">
               <label for="email" class="form-label"><?= lang("GEN_EMAIL"); ?></label>

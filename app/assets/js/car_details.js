@@ -147,9 +147,17 @@ function initializeHistoryTable() {
         });
 
     } catch (error) {
-        console.error('Failed to initialize DataTable:', error);
-        historyTableInitialized = false;
-        throw error;
+        console.error('Failed to initialize history table (car ID: ' + carId + '):', error);
+        historyTableInitialized = true; // prevent retry on failure
+        const tableContainer = document.getElementById('carHistoryTable');
+        if (tableContainer) {
+            const warning = document.createElement('div');
+            warning.className = 'alert alert-warning';
+            warning.textContent = 'Car history could not be loaded.';
+            tableContainer.insertAdjacentElement('beforebegin', warning);
+        } else {
+            console.warn('initializeHistoryTable: #carHistoryTable not found — warning could not be shown');
+        }
     }
 }
 
