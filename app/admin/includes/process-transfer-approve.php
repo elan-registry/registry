@@ -72,10 +72,8 @@ try {
     }
 
     // 2. Transfer car ownership — CarRepository defers to this outer transaction
-    $transferSuccess = $car->transfer((int)$transfer->requested_by_user_id, $reason);
-    if (!$transferSuccess) {
-        throw new CarTransferException('Failed to transfer car ownership');
-    }
+    // Car::transfer() always returns true or throws; no false return path exists.
+    $car->transfer((int)$transfer->requested_by_user_id, $reason);
 
     $db->commit();
 
