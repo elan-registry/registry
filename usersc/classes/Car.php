@@ -479,10 +479,12 @@ class Car
      * @param int $newUserId The user ID to transfer ownership to
      * @param string $reason Reason for transfer (for audit trail)
      * @param string $operationType Operation type for history
-     * @return bool True if transfer was successful
-     * @throws Exception If validation fails or database operation fails
+     * @return true Always returns true; throws on any failure.
+     * @throws CarNotFoundException If the car does not exist
+     * @throws CarPermissionException If the user is not authenticated
+     * @throws CarDatabaseException If a database operation fails
      */
-    public function transfer(int $newUserId, string $reason = 'Administrative transfer', string $operationType = 'NEWOWNER'): bool
+    public function transfer(int $newUserId, string $reason = 'Administrative transfer', string $operationType = 'NEWOWNER'): true
     {
         global $user;
 

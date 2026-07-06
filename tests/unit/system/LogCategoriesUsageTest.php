@@ -474,6 +474,31 @@ class LogCategoriesUsageTest extends TestCase
     }
 
     /**
+     * Regression test for Issue #976: process-car-details.php must return HTTP 404
+     * for missing cars, not HTTP 200 with an error payload.
+     */
+    public function testProcessCarDetailsUsesNotFoundForMissingCar(): void
+    {
+        $filePath = $this->rootDir . '/app/admin/includes/process-car-details.php';
+        if (!file_exists($filePath)) {
+            $this->markTestSkipped('process-car-details.php not found');
+        }
+
+        $content = (string)file_get_contents($filePath);
+
+        $this->assertStringContainsString(
+            'ApiResponse::notFound(',
+            $content,
+            'process-car-details.php must use ApiResponse::notFound() for missing cars (#976)'
+        );
+        $this->assertStringNotContainsString(
+            "ApiResponse::error('Car not found', 200)",
+            $content,
+            'process-car-details.php must not return HTTP 200 for a missing car (#976)'
+        );
+    }
+
+    /**
      * Data provider for contact endpoint files
      */
     public static function contactEndpointFilesProvider(): array

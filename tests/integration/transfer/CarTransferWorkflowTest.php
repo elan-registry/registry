@@ -509,7 +509,7 @@ class CarTransferWorkflowTest extends IntegrationTestCase
 
         // Step 2: simulate a failed car transfer by rolling back the outer transaction
         // (mirrors what the catch block in process-transfer-approve.php does when
-        // $car->transfer() throws or returns false).
+        // $car->transfer() throws).
         $this->db->rollBack();
 
         // The rollback must have reverted the status claim: the row is still 'pending'.

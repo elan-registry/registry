@@ -60,7 +60,7 @@ try {
         ->withData('car', $carData)
         ->send();
 
-} catch (Exception $e) {
+} catch (\Throwable $e) {
     ApiResponse::serverError('Database error occurred')
         ->withLogging(
             $user->data()->id,

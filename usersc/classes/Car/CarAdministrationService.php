@@ -8,6 +8,7 @@ use AppConstants;
 use CarErrorMessages;
 use ElanRegistry\Exceptions\CarDatabaseException;
 use ElanRegistry\Exceptions\CarDeletionException;
+use ElanRegistry\Exceptions\CarException;
 use ElanRegistry\Exceptions\CarMergeException;
 use ElanRegistry\Exceptions\CarNotFoundException;
 use ElanRegistry\Exceptions\CarTransferException;
@@ -69,9 +70,9 @@ class CarAdministrationService
             logger($adminUserId, LogCategories::LOG_CATEGORY_CAR_DELETION, "Car ID $carId ($chassis) permanently deleted. Reason: $reason");
             return true;
 
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
             $repo->rollback();
-            if ($e instanceof CarDatabaseException || $e instanceof CarDeletionException) {
+            if ($e instanceof CarException) {
                 throw $e;
             }
             $technicalMsg = CarErrorMessages::getTechnicalMessage('operation_failed', ['operation' => 'Car deletion', 'error' => $e->getMessage()]);
@@ -91,7 +92,7 @@ class CarAdministrationService
      * @param CarRepository $repo Repository for database operations
      * @param callable $updateCallback Callback to perform car update (receives array of fields)
      * @param callable $refreshCallback Callback to refresh car data after update (receives car ID)
-     * @return bool True if transfer was successful
+     * @return true Always returns true; throws on any failure.
      * @throws CarValidationException If target user is invalid
      * @throws CarDatabaseException If database operation fails
      * @throws CarTransferException If transfer operation fails
@@ -105,7 +106,7 @@ class CarAdministrationService
         CarRepository $repo,
         callable $updateCallback,
         callable $refreshCallback
-    ): bool {
+    ): true {
         $targetUser = getUserWithProfile($newUserId);
         if (!$targetUser) {
             $technicalMsg = CarErrorMessages::getTechnicalMessage('user_not_found', ['user_id' => $newUserId]);
@@ -189,20 +190,20 @@ class CarAdministrationService
             $historyInserted = $repo->insertHistory($historyFields);
             if (!$historyInserted) {
                 $technicalMsg = CarErrorMessages::getTechnicalMessage('audit_trail_failed', ['operation' => $operationType]);
-                logger($adminUserId, LogCategories::LOG_CATEGORY_CAR_TRANSFER, $technicalMsg);
-                logger($adminUserId, LogCategories::LOG_CATEGORY_CAR_TRANSFER, 'Warning: Transfer completed but history record creation failed');
+                logger($adminUserId, LogCategories::LOG_CATEGORY_CAR_TRANSFER_ERROR, $technicalMsg);
+                throw new CarDatabaseException(CarErrorMessages::getAdminMessage('audit_trail_failed', ['operation' => $operationType]));
             }
 
             return true;
 
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
             $repo->rollback();
-            if ($e instanceof CarDatabaseException || $e instanceof CarValidationException || $e instanceof CarTransferException) {
+            if ($e instanceof CarException) {
                 throw $e;
             }
             $technicalMsg = CarErrorMessages::getTechnicalMessage('operation_failed', ['operation' => 'Car ownership transfer', 'error' => $e->getMessage()]);
             logger($adminUserId, LogCategories::LOG_CATEGORY_CAR_TRANSFER, $technicalMsg);
-            throw new CarTransferException(CarErrorMessages::getMessage('operation_failed', 'admin'));
+            throw new CarDatabaseException(CarErrorMessages::getMessage('operation_failed', 'admin'));
         }
     }
 
@@ -293,9 +294,9 @@ class CarAdministrationService
             $repo->commit();
             return true;
 
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
             $repo->rollback();
-            if ($e instanceof CarDatabaseException || $e instanceof CarNotFoundException || $e instanceof CarValidationException || $e instanceof CarMergeException) {
+            if ($e instanceof CarException) {
                 throw $e;
             }
             $technicalMsg = CarErrorMessages::getTechnicalMessage('operation_failed', ['operation' => 'Car merge', 'error' => $e->getMessage()]);
