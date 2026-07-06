@@ -1,7 +1,7 @@
 ---
 name: senior-architect
 description: "Use this agent when you need architectural guidance, code reviews, refactoring recommendations, security audits, GDPR compliance checks, or design decisions for the Elan Registry PHP/UserSpice application. This includes evaluating code maintainability, identifying dead code, simplifying overly complex constructs, and ensuring best practices.\\n\\nExamples:\\n\\n- User: \"I need to add a new feature for exporting owner data\"\\n  Assistant: \"Let me use the senior-architect agent to design this feature with GDPR compliance and maintainability in mind.\"\\n\\n- User: \"Review the changes I made to the car transfer system\"\\n  Assistant: \"I'll use the senior-architect agent to review these changes for security, maintainability, and adherence to project standards.\"\\n\\n- User: \"This code feels overly complex, can we simplify it?\"\\n  Assistant: \"Let me use the senior-architect agent to analyze and recommend simplifications.\"\\n\\n- User: \"Is this approach secure enough for handling user data?\"\\n  Assistant: \"I'll use the senior-architect agent to evaluate the security implications and GDPR compliance.\""
-model: Opus
+model: sonnet
 color: blue
 ---
 

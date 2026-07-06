@@ -241,7 +241,7 @@ for the triage workflow, API commands, and known false positive patterns.
 
 ### Milestone Lifecycle (typical)
 
-Most work follows a structured milestone lifecycle with five commands:
+Most work follows a structured milestone lifecycle with these commands:
 
 ```text
 /start-milestone v2.17.0     — Create milestone branch, prompt fix-script cleanup, draft release notes
@@ -249,6 +249,7 @@ Most work follows a structured milestone lifecycle with five commands:
   /simplify                   — Clean up the code (optional, recommended)
   /commit                     — Commit changes locally
   /commit-push-pr             — Push + PR targeting milestone branch
+  /address-pr-comments        — Review CI/reviewer comments, fix blocking items
   /finish-issue 423           — Monitor CI, squash-merge, close issue
   (repeat for each issue)
 /finish-milestone v2.17.0    — PR to main, finalize release notes, update wiki
@@ -260,6 +261,9 @@ Most work follows a structured milestone lifecycle with five commands:
 
 - `/start-issue` handles the full development cycle (branch, plan, implement,
   test, security review) but **does not commit or push**
+- `/address-pr-comments` fetches all CI check annotations and reviewer comments
+  after a PR is pushed, triages blocking vs. advisory findings, fixes blocking
+  items with a software-developer agent, and re-verifies CI before handoff
 - Each issue gets its own PR targeting the milestone branch (squash-merged by
   `/finish-issue` for clean history)
 - `/finish-milestone` creates the final PR to `main` with all closing keywords
@@ -293,12 +297,13 @@ and architecture agents.
 ### Other Commands
 
 ```text
-/new-issue          — Create a well-defined GitHub issue with PM refinement
-/security-review    — OWASP security audit of recent changes
-/release            — Standalone release (hotfixes not tied to a milestone)
+/new-issue           — Create a well-defined GitHub issue with PM refinement
+/address-pr-comments — Triage CI/reviewer comments, fix blocking items
+/security-review     — OWASP security audit of recent changes
+/release             — Standalone release (hotfixes not tied to a milestone)
 /architecture-update — Full wiki architecture documentation refresh
-/revise-claude-md   — Update CLAUDE.md with session learnings
-/clean_gone         — Delete local branches removed from remote
+/revise-claude-md    — Update CLAUDE.md with session learnings
+/clean_gone          — Delete local branches removed from remote
 ```
 
 ### Release Notes
