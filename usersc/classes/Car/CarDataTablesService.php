@@ -128,12 +128,20 @@ class CarDataTablesService
         // WHERE/ORDER BY column names validated via validateColumnName() whitelist,
         // search values use prepared statement parameters ($combinedParams)
         $countSql = sprintf('SELECT COUNT(*) as count FROM `%s`', $tableName);
-        $totalRecords = $db->query($countSql)->first()->count;
+        $countResult = $db->query($countSql);
+        if ($db->error()) {
+            throw new CarDatabaseException('DataTables total count query failed: ' . $db->errorString());
+        }
+        $totalRecords = $countResult->first()->count;
 
         $totalFiltered = $totalRecords;
         if (trim($combinedWhere) !== '') {
             $filterSql = sprintf('SELECT COUNT(*) as count FROM `%s` WHERE 1 %s', $tableName, $combinedWhere);
-            $totalFiltered = $db->query($filterSql, $combinedParams)->first()->count;
+            $filterResult = $db->query($filterSql, $combinedParams);
+            if ($db->error()) {
+                throw new CarDatabaseException('DataTables filtered count query failed: ' . $db->errorString());
+            }
+            $totalFiltered = $filterResult->first()->count;
         }
 
         // elan_factory_info only: embed car_id server-side to avoid one chassis-lookup AJAX call per row

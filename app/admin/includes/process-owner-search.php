@@ -21,6 +21,10 @@ if (empty($query) || strlen($query) < 2) {
     ApiResponse::error('Search query must be at least 2 characters', 400)
         ->send();
 }
+if (strlen($query) > 100) {
+    ApiResponse::error('Search query must be 100 characters or less', 400)
+        ->send();
+}
 
 try {
     // Use ElanRegistryOwner search functionality

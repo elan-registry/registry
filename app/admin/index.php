@@ -330,6 +330,16 @@ if (Input::exists('post')) {
                         $errors[] = 'Car merge failed due to a database error and was rolled back. Check the admin log for details.';
                         logger($currentUserId, LogCategories::LOG_CATEGORY_CAR_MERGE,
                             "FAILED: Car merge rolled back due to database error. " . $e->getMessage());
+                    } catch (\Throwable $e) {
+                        try {
+                            $carRepo->rollback();
+                        } catch (\PDOException $rollbackEx) {
+                            logger($currentUserId, LogCategories::LOG_CATEGORY_DATABASE_ERROR,
+                                "CRITICAL: Rollback failed after car merge unexpected error — DB may be inconsistent. " . $rollbackEx->getMessage());
+                        }
+                        $errors[] = 'Car merge failed due to an unexpected error and was rolled back. Check the admin log for details.';
+                        logger($currentUserId, LogCategories::LOG_CATEGORY_CAR_MERGE,
+                            "FAILED: Car merge rolled back due to unexpected error. " . get_class($e) . ': ' . $e->getMessage());
                     }
                     break;
 

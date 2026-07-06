@@ -132,6 +132,9 @@ $db = DB::getInstance();
                         logProgress09(SECTION_SEPARATOR_09, 'step');
 
                         $db->query("DROP TRIGGER IF EXISTS cars_update");
+                        if ($db->error()) {
+                            throw new \RuntimeException('DROP TRIGGER failed: ' . $db->errorString());
+                        }
                         logProgress09('Dropped cars_update', 'success');
 
                         logProgress09('', 'info');
@@ -156,6 +159,9 @@ $db = DB::getInstance();
         );
     END IF;
 END");
+                        if ($db->error()) {
+                            throw new \RuntimeException('CREATE TRIGGER failed: ' . $db->errorString());
+                        }
                         logProgress09('Recreated cars_update trigger (NEW.chassis_override)', 'success');
 
                         logProgress09('', 'info');
