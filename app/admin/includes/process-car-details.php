@@ -13,7 +13,7 @@ declare(strict_types=1);
 
 require_once '../../../users/init.php';
 
-requireAdminAjax('car details');
+requireAdminAjax('car details', false);
 
 // Validate car ID
 $carId = (int)($_POST['car_id'] ?? 0);

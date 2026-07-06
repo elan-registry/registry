@@ -21,9 +21,9 @@
 
 ### Improvements
 
-- **Admin AJAX rate limiting** ([#1141](https://github.com/unibrain1/elanregistry/issues/1141)): Rate limiting added to admin AJAX endpoints via the `requireAdminAjax()` helper. WIP: pending #959.
+- **Admin AJAX rate limiting** ([#1141](https://github.com/unibrain1/elanregistry/issues/1141)): Rate limiting added inside `requireAdminAjax()`, covering all 9 admin AJAX endpoints automatically. Read/search endpoints (owner search, load profile/info, user/car details) are limited to 30 requests/minute per user; write endpoints (owner update, location sync, transfer approve/deny) to 10 requests/minute per user.
 
-- **Statistics endpoint rate limiting** ([#1142](https://github.com/unibrain1/elanregistry/issues/1142)): Rate limiting or auth added to the public statistics API endpoint. WIP.
+- **Statistics endpoint hardened** ([#1142](https://github.com/unibrain1/elanregistry/issues/1142)): `app/api/shared/statistics.php` now requires a POST request with a valid CSRF token (Option A), blocking cross-origin scraping. IP-based rate limiting (20 requests/minute) added to prevent automated scraping and reduce DoS potential (Option B).
 
 ### Developer-Facing Changes
 
@@ -36,8 +36,6 @@
 - **Admin dashboard cleanup** ([#969](https://github.com/unibrain1/elanregistry/issues/969)): Extracted duplicate `SELECT COUNT(*)` header queries from `admin/index.php` and `admin/maintenance.php` into a shared `getAdminSystemStatus()` helper in `custom_functions.php`. Routed the `action=merge` car-merge path in `admin/index.php` through the existing `CarRepository::transferHistory()`, `deleteCarUser()`, `deleteCar()`, and `insertHistory()` methods instead of four raw `$db` calls. Removed the defensive `$systemStatus` fallback from `tab-owner_mgmt.php` — the tab is only included from pages that populate `$systemStatus` upstream.
 
 - **car_models filter query extraction** ([#1064](https://github.com/unibrain1/elanregistry/issues/1064)): Three inline `SELECT DISTINCT` queries for car listing filter pills extracted from `cars/index.php` into `CarRepository::getFilterOptions()`. Page now calls one repository method instead of three raw queries.
-
-- **Admin AJAX rate limiting** ([#1141](https://github.com/unibrain1/elanregistry/issues/1141)): Rate limiting added to admin AJAX endpoints. WIP.
 
 ### Housekeeping
 
@@ -61,5 +59,5 @@
 - [#1062](https://github.com/unibrain1/elanregistry/issues/1062) — refactor: create CarTransferRepository to consolidate car_transfer_requests data access
 - [#1064](https://github.com/unibrain1/elanregistry/issues/1064) — refactor: extract car_models filter queries from cars/index.php into CarRepository
 - [#1066](https://github.com/unibrain1/elanregistry/issues/1066) — chore: remove abandoned spam/inactive user cleanup system
-- [#1141](https://github.com/unibrain1/elanregistry/issues/1141) — Add rate limiting to admin AJAX endpoints
-- [#1142](https://github.com/unibrain1/elanregistry/issues/1142) — Add rate limiting or auth to public statistics endpoint
+- [#1141](https://github.com/unibrain1/elanregistry/issues/1141) — security: add per-user rate limiting to admin AJAX endpoints via requireAdminAjax()
+- [#1142](https://github.com/unibrain1/elanregistry/issues/1142) — security: require CSRF + add IP rate limiting to public statistics endpoint

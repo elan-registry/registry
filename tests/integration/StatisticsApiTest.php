@@ -360,7 +360,8 @@ class StatisticsApiTest extends IntegrationTestCase
     // =========================================================================
 
     /**
-     * Test that validation errors are logged (public endpoint — no security log category)
+     * Test that the statistics endpoint logs security, validation, and database events.
+     * The endpoint is hardened with CSRF and rate limiting, so security log calls are expected.
      */
     public function testValidationAndDatabaseErrorsLogged(): void
     {
@@ -371,7 +372,7 @@ class StatisticsApiTest extends IntegrationTestCase
 
         $content = file_get_contents($filePath);
         $this->assertIsString($content, "File should be readable");
-        $this->assertStringNotContainsString('LOG_CATEGORY_SECURITY', $content, "Public statistics endpoint must not log security violations");
+        $this->assertStringContainsString('LOG_CATEGORY_SECURITY', $content, "Hardened statistics endpoint should log CSRF failures and rate-limit events");
         $this->assertStringContainsString('LOG_CATEGORY_VALIDATION_ERROR', $content, "Should log validation errors via LogCategories");
         $this->assertStringContainsString('LOG_CATEGORY_DATABASE_ERROR', $content, "Should log database errors via LogCategories");
     }

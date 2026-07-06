@@ -9,7 +9,7 @@ require_once '../../../users/init.php';
 
 header('Content-Type: application/json');
 
-requireAdminAjax('owner profile');
+requireAdminAjax('owner profile', false);
 
 $ownerId = (int)($_POST['owner_id'] ?? 0);
 if ($ownerId <= 0) {

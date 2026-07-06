@@ -340,6 +340,7 @@ window.statisticsRawData = {
 window.statisticsConfig = {
     baseUrl: '<?= $us_url_root ?>app/owner/reports/',
     statisticsDataUrl: '<?= $us_url_root ?>app/api/shared/statistics.php',
+    csrfToken: '<?= Token::generate() ?>',
     imageUrl: '<?= $us_url_root . $settings->elan_image_dir ?>',
     versatileStyleUrl: '<?= $us_url_root ?>usersc/js/versatiles-colorful.json'
 };
