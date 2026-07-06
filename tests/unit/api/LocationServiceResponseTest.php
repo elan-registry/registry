@@ -116,7 +116,7 @@ final class LocationServiceResponseTest extends TestCase
     {
         $errorMessage = 'Rate limit exceeded. Please try again in a moment.';
         $response = ApiResponse::error($errorMessage, 400)
-            ->withLogging(0, 'LocationService', 'Location search failed: ' . $errorMessage);
+            ->withLogging(0, LogCategories::LOG_CATEGORY_LOCATION_SERVICE, 'Location search failed: ' . $errorMessage);
 
         $array = $response->toArray();
         $this->assertFalse($array['success']);
@@ -126,7 +126,7 @@ final class LocationServiceResponseTest extends TestCase
         $log = $response->getPendingLog();
         $this->assertNotNull($log);
         $this->assertEquals(0, $log['userId']);
-        $this->assertEquals('LocationService', $log['category']);
+        $this->assertEquals(LogCategories::LOG_CATEGORY_LOCATION_SERVICE, $log['category']);
     }
 
     /**
@@ -157,7 +157,7 @@ final class LocationServiceResponseTest extends TestCase
         $response = ApiResponse::success('Search completed')
             ->withData('results', $mockResults)
             ->withData('count', count($mockResults))
-            ->withLogging(0, 'LocationService', 'Location search: Portland');
+            ->withLogging(0, LogCategories::LOG_CATEGORY_LOCATION_SERVICE, 'Location search: Portland');
 
         $array = $response->toArray();
         $this->assertTrue($array['success']);
@@ -181,7 +181,7 @@ final class LocationServiceResponseTest extends TestCase
     public function testLocationSearchReturnsServerErrorForUnexpectedException(): void
     {
         $response = ApiResponse::serverError('An error occurred while searching locations')
-            ->withLogging(0, 'SystemError', 'Location search error: Database connection failed');
+            ->withLogging(0, LogCategories::LOG_CATEGORY_SYSTEM_ERROR, 'Location search error: Database connection failed');
 
         $array = $response->toArray();
         $this->assertFalse($array['success']);
@@ -226,7 +226,7 @@ final class LocationServiceResponseTest extends TestCase
     {
         $errorMessage = 'Invalid coordinates provided';
         $response = ApiResponse::error($errorMessage, 400)
-            ->withLogging(0, 'LocationService', 'Reverse geocoding failed: ' . $errorMessage);
+            ->withLogging(0, LogCategories::LOG_CATEGORY_LOCATION_SERVICE, 'Reverse geocoding failed: ' . $errorMessage);
 
         $array = $response->toArray();
         $this->assertFalse($array['success']);
@@ -263,7 +263,7 @@ final class LocationServiceResponseTest extends TestCase
 
         $response = ApiResponse::success('Reverse geocoding completed')
             ->withData('location', $mockLocation)
-            ->withLogging(0, 'LocationService', 'Reverse geocoding: lat=45.5152, lon=-122.6784');
+            ->withLogging(0, LogCategories::LOG_CATEGORY_LOCATION_SERVICE, 'Reverse geocoding: lat=45.5152, lon=-122.6784');
 
         $array = $response->toArray();
         $this->assertTrue($array['success']);
@@ -286,7 +286,7 @@ final class LocationServiceResponseTest extends TestCase
     public function testLocationReverseReturnsServerErrorForUnexpectedException(): void
     {
         $response = ApiResponse::serverError('An error occurred while reverse geocoding coordinates')
-            ->withLogging(0, 'SystemError', 'Reverse geocoding error: Database connection failed');
+            ->withLogging(0, LogCategories::LOG_CATEGORY_SYSTEM_ERROR, 'Reverse geocoding error: Database connection failed');
 
         $array = $response->toArray();
         $this->assertFalse($array['success']);
@@ -336,12 +336,12 @@ final class LocationServiceResponseTest extends TestCase
     public function testLocationResponsesWithAnonymousUserLogging(): void
     {
         $response = ApiResponse::error('Search failed', 400)
-            ->withLogging(0, 'LocationService', 'Anonymous user search failed');
+            ->withLogging(0, LogCategories::LOG_CATEGORY_LOCATION_SERVICE, 'Anonymous user search failed');
 
         $log = $response->getPendingLog();
         $this->assertNotNull($log);
         $this->assertEquals(0, $log['userId']);
-        $this->assertEquals('LocationService', $log['category']);
+        $this->assertEquals(LogCategories::LOG_CATEGORY_LOCATION_SERVICE, $log['category']);
         $this->assertEquals('Anonymous user search failed', $log['message']);
     }
 
@@ -356,7 +356,7 @@ final class LocationServiceResponseTest extends TestCase
         $userId = 42;
         $response = ApiResponse::success('Search completed')
             ->withData('results', [])
-            ->withLogging($userId, 'LocationService', 'User 42 searched for Portland');
+            ->withLogging($userId, LogCategories::LOG_CATEGORY_LOCATION_SERVICE, 'User 42 searched for Portland');
 
         $log = $response->getPendingLog();
         $this->assertNotNull($log);

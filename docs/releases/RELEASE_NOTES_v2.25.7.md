@@ -30,6 +30,7 @@
 
 ## Technical Changes
 
+- **Logging consistency** ([#518](https://github.com/unibrain1/elanregistry/issues/518)): All `withLogging()` and `logger()` calls in non-car endpoints, test files, and PHPDoc examples now use `LogCategories::` constants instead of hardcoded string literals, completing the migration started in issue #464.
 - **Removed deprecated `X-XSS-Protection` header** ([#976](https://github.com/unibrain1/elanregistry/issues/976)): The header is ignored by all modern browsers (Chrome dropped it in v78, Firefox never implemented it) and implied XSS protection was being provided when it wasn't. The Content Security Policy header remains the correct mechanism and is unchanged.
 - **Removed ineffective `cleanString()` defense** ([#976](https://github.com/unibrain1/elanregistry/issues/976)): The feedback-form input filter (`str_replace` on `"content-type"`, `"bcc:"`, `"to:"`, `"cc:"`, `"href"`) was trivially bypassable (e.g. `"ccontent-typeontent-type"` passes through) and silently mutated legitimate user text. Email is sent via the Brevo API rather than raw SMTP header concatenation, so the header-injection vector it purported to block was never real.
 
