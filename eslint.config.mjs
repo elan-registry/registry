@@ -25,7 +25,6 @@ export default [
             "**/*.min.js",           // Minified files
             "**/test-results/**",
             "**/playwright-report/**",
-            "**/logging-standard.js", // Documentation file with placeholder syntax
         ],
     },
     {

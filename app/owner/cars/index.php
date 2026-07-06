@@ -10,17 +10,17 @@ declare(strict_types=1);
 require_once '../../../users/init.php';
 require_once $abs_us_root . $us_url_root . 'usersc/includes/elanregistry_prep.php';
 
-use ElanRegistry\Documentation\DocumentPortalTemplate;
+use ElanRegistry\Car\CarRepository;
 use ElanRegistry\Car\CarShowcaseService;
+use ElanRegistry\Documentation\DocumentPortalTemplate;
 
 // Security: Only allow access to authorized users
 if (!securePage($php_self)) {
   die();
 }
 
-$filterSeries   = $db->query("SELECT DISTINCT series_normalized AS series  FROM car_models WHERE series_normalized  IS NOT NULL AND series_normalized  != '' ORDER BY series_normalized")->results();
-$filterTypes    = $db->query("SELECT DISTINCT type_code         AS type   FROM car_models WHERE type_code          IS NOT NULL AND type_code          != '' ORDER BY type_code")->results();
-$filterVariants = $db->query("SELECT DISTINCT variant                      FROM car_models WHERE variant            IS NOT NULL AND variant            != '' ORDER BY variant")->results();
+['series' => $filterSeries, 'types' => $filterTypes, 'variants' => $filterVariants]
+    = (new CarRepository($db))->getFilterOptions();
 
 /**
  * Render a row of filter pills for a single DataTables column.

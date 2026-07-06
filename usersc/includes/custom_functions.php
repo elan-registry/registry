@@ -214,36 +214,6 @@ function dbInt(mixed $value, string $property = 'id'): int
 }
 
 /**
- * Extract a nullable integer value from a database result object or scalar
- *
- * Same as dbInt() but returns null for null/empty values instead of throwing.
- *
- * @param mixed $value Database result object or scalar value
- * @param string $property Property name to extract from objects (default: 'id')
- * @return int|null The integer value, or null if empty/null
- * @throws InvalidArgumentException If the value is non-null and non-numeric
- */
-function dbIntOrNull(mixed $value, string $property = 'id'): ?int
-{
-    if (is_object($value)) {
-        if (!isset($value->$property)) {
-            return null;
-        }
-        $value = $value->$property;
-    }
-
-    if ($value === null || $value === '') {
-        return null;
-    }
-
-    if (!is_numeric($value)) {
-        throw new InvalidArgumentException("Cannot convert non-numeric value to int (property: $property): $value");
-    }
-
-    return (int) $value;
-}
-
-/**
  * Get the current logged-in user's ID as an integer
  *
  * Provides a type-safe shorthand for (int) $user->data()->id with
@@ -263,6 +233,72 @@ function currentUserId(): int
     return (int) $user->data()->id;
 }
 
+/**
+ * Guard an admin-only AJAX endpoint: verify the current user is a registry
+ * admin and that the POST payload carries a valid CSRF token. Sends a 403
+ * JSON response and halts execution on any failure.
+ *
+ * Requires users/init.php to have been loaded so that $user is initialized.
+ *
+ * @param string $context Noun phrase identifying the endpoint, used in security
+ *                        log messages. E.g. 'car details' produces
+ *                        "Unauthorized car details attempt" and
+ *                        "Invalid CSRF token in car details". Pass '' to use
+ *                        generic fallback messages.
+ * @param bool   $isWrite True for mutating endpoints (uses admin_ajax_write rate limit),
+ *                        false for read/search endpoints (uses admin_ajax_search rate limit).
+ */
+function requireAdminAjax(string $context = '', bool $isWrite = true): void
+{
+    global $user;
+
+    if (!isset($user) || !$user->isLoggedIn() || !isRegistryAdmin($user->data()->id)) {
+        $logMsg = $context !== '' ? "Unauthorized {$context} attempt" : 'Unauthorized admin AJAX access';
+        ApiResponse::forbidden('Unauthorized access')
+            ->withLogging(0, LogCategories::LOG_CATEGORY_ACCESS_DENIED, $logMsg)
+            ->send();
+    }
+
+    if (!isset($_POST['csrf']) || !Token::check($_POST['csrf'])) {
+        $logMsg = $context !== '' ? "Invalid CSRF token in {$context}" : 'Invalid CSRF token in admin AJAX request';
+        ApiResponse::forbidden('Invalid CSRF token')
+            ->withLogging((int) $user->data()->id, LogCategories::LOG_CATEGORY_SECURITY, $logMsg)
+            ->send();
+    }
+
+    $userId = (int) $user->data()->id;
+    $action = $isWrite ? 'admin_ajax_write' : 'admin_ajax_search';
+    if (!checkRateLimit($action, $userId)) {
+        recordRateLimit($action, false, $userId);
+        ApiResponse::error('Too many requests. Please slow down.', 429)
+            ->withLogging($userId, LogCategories::LOG_CATEGORY_SECURITY, "Rate limit exceeded for action '{$action}'")
+            ->send();
+    }
+    recordRateLimit($action, true, $userId);
+}
+
+/**
+ * Return the shared admin header counts: total cars, active users, and a timestamp.
+ *
+ * A null result from ->first() (empty result set) returns 0 for that count.
+ * DB::query() swallows most query errors internally — only a PDOException from
+ * a failed prepare (e.g. connection loss) propagates to the caller.
+ *
+ * @param DB $db Database instance
+ * @return array{total_cars: int, total_users: int, last_updated: string}
+ * @throws \PDOException If the database connection or statement preparation fails
+ */
+function getAdminSystemStatus(DB $db): array
+{
+    $carCount  = $db->query("SELECT COUNT(*) as count FROM cars")->first();
+    $userCount = $db->query("SELECT COUNT(*) as count FROM users WHERE active = ?", [1])->first();
+
+    return [
+        'total_cars'   => $carCount  ? (int) $carCount->count  : 0,
+        'total_users'  => $userCount ? (int) $userCount->count : 0,
+        'last_updated' => date('Y-m-d H:i:s'),
+    ];
+}
 
 // We need server globals in custom functions as it's used early in the load process.
 require_once $abs_us_root . $us_url_root . 'usersc/includes/server_globals.php';

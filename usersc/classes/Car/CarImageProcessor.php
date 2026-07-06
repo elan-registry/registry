@@ -59,7 +59,7 @@ class CarImageProcessor
     ): array {
         $carImages = null;
 
-        if (!is_null($imageData) && !empty($imageData)) {
+        if (!empty($imageData)) {
             $carImages = json_decode($imageData);
 
             if (is_null($carImages)) {
@@ -126,7 +126,7 @@ class CarImageProcessor
         }
 
         $currentImages = [];
-        if (!is_null($carData->image) && !empty($carData->image)) {
+        if (!empty($carData->image)) {
             $decoded = json_decode($carData->image);
             if ($decoded !== null) {
                 $currentImages = is_array($decoded) ? $decoded : [$decoded];
@@ -149,20 +149,20 @@ class CarImageProcessor
         }
 
         try {
-            $updateSuccess = $db->update('cars', $carData->id, ['image' => $imageJson]);
-
-            if ($updateSuccess) {
-                $carData->image = $imageJson;
-                return true;
-            } else {
-                throw new CarDatabaseException(CarErrorMessages::getAdminMessage('database_update_failed'));
-            }
-        } catch (CarDatabaseException $e) {
-            throw $e;
+            $updateSuccess = (new CarRepository($db))->updateImage((int) $carData->id, $imageJson);
         } catch (\Exception $e) {
             $technicalMsg = CarErrorMessages::getTechnicalMessage('image_remove_failed', ['error' => $e->getMessage()]);
             logger(0, LogCategories::LOG_CATEGORY_CAR_ACTIONS, $technicalMsg);
             throw new CarDatabaseException(CarErrorMessages::getMessage('image_remove_failed'));
         }
+
+        if ($updateSuccess) {
+            $carData->image = $imageJson;
+            return true;
+        }
+
+        $technicalMsg = CarErrorMessages::getTechnicalMessage('database_update_failed', ['error' => 'Database update returned false: ' . $db->errorString()]);
+        logger(0, LogCategories::LOG_CATEGORY_CAR_ACTIONS, $technicalMsg);
+        throw new CarDatabaseException(CarErrorMessages::getMessage('database_update_failed'));
     }
 }

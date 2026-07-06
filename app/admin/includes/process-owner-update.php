@@ -15,19 +15,7 @@ use ElanRegistry\Exceptions\OwnerValidationException;
 // Include required files
 require_once '../../../users/init.php';
 
-// Security check - admin permission required
-if (!$user->isLoggedIn() || !isRegistryAdmin($user->data()->id)) {
-    ApiResponse::forbidden('Unauthorized access')
-        ->withLogging(0, LogCategories::LOG_CATEGORY_SECURITY, 'Unauthorized owner update attempt')
-        ->send();
-}
-
-// CSRF protection
-if (!isset($_POST['csrf']) || !Token::check($_POST['csrf'])) {
-    ApiResponse::forbidden('Invalid CSRF token')
-        ->withLogging($user->data()->id, LogCategories::LOG_CATEGORY_SECURITY, 'Invalid CSRF token in owner update')
-        ->send();
-}
+requireAdminAjax('owner update');
 
 // Validate owner ID
 $ownerId = (int)($_POST['owner_id'] ?? 0);
@@ -50,17 +38,8 @@ try {
         'csrf' => $_POST['csrf']
     ];
 
-    // Basic information fields
-    $basicFields = ['fname', 'lname', 'email', 'website'];
-    foreach ($basicFields as $field) {
-        if (isset($_POST[$field])) {
-            $updateFields[$field] = trim($_POST[$field]);
-        }
-    }
-
-    // Location fields (city, state, country, lat, lon)
-    $locationFields = ['city', 'state', 'country'];
-    foreach ($locationFields as $field) {
+    // Text fields: basic info and location (coordinates handled separately below)
+    foreach (['fname', 'lname', 'email', 'website', 'city', 'state', 'country'] as $field) {
         if (isset($_POST[$field])) {
             $updateFields[$field] = trim($_POST[$field]);
         }

@@ -77,6 +77,7 @@ abstract class IntegrationTestCase extends TestCase
             // Delete cars first (depend on users via car_user)
             foreach ($this->createdCarIds as $carId) {
                 try {
+                    $this->db->query("DELETE FROM car_transfer_requests WHERE existing_car_id = ?", [$carId]);
                     $this->db->query("DELETE FROM car_user WHERE car_id = ?", [$carId]);
                     $this->db->query("DELETE FROM cars_hist WHERE car_id = ?", [$carId]);
                     $this->db->query("DELETE FROM car_user_hist WHERE car_id = ?", [$carId]);

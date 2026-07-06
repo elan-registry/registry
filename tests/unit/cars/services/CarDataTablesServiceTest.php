@@ -66,4 +66,5 @@ final class CarDataTablesServiceTest extends TestCase
         $request = ['draw' => 1, 'start' => 0, 'length' => 10];
         $this->service->getDataTablesData($request, 'invalid_table', DB::getInstance());
     }
+
 }

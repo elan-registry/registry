@@ -9,17 +9,8 @@ use PHPUnit\Framework\Attributes\Group;
 /**
  * Integration tests for Registry Link workflow in factory page
  *
- * Tests the complete findCarByChassis endpoint with real database interactions.
- * Validates that the Registry Link feature on the factory page can successfully
- * look up registered cars by their chassis numbers.
- *
- * Test Coverage:
- * - Chassis lookup with matching car in registry
- * - Chassis lookup with no matching car
- * - Database query correctness
- * - CSRF token validation
- * - HTTP method validation
- * - Response format and data types
+ * Tests that CarDataTablesService embeds car_id in elan_factory_info rows
+ * via a correlated subquery, removing the need for separate AJAX lookups.
  *
  * @author Elan Registry Development Team
  * @copyright 2025
@@ -28,281 +19,188 @@ use PHPUnit\Framework\Attributes\Group;
 #[Group('factories')]
 final class FactoryRegistryLinkIntegrationTest extends IntegrationTestCase
 {
-    protected $db;
-    private $testUserId;
-    private $testCarId;
-    private $testChassis;
+    private int $testUserId;
+    private int $testCarId;
+    private string $testChassis;
+    private int $testFactoryRowId = 0;
 
     protected function setUp(): void
     {
         parent::setUp();
         $this->requireDatabase();
 
-        $this->db = DB::getInstance();
+        // elan_factory_info.serial is varchar(5); use a 5-char value that
+        // cannot collide with real factory serials (all numeric like '26060').
+        $this->testChassis = 'X' . substr(uniqid(), -4);
 
-        // Create test user and car for registry lookup
         $this->testUserId = $this->createTestUser();
-        $this->testChassis = 'T' . substr(uniqid(), -10); // varchar(15) limit
         $this->testCarId = $this->createTestCar($this->testUserId, [
-            'chassis' => $this->testChassis
-        ]);
-    }
-
-    /**
-     * Test findCarByChassis finds registered car by chassis number
-     *
-     * @return void
-     */
-    #[Group('integration')]
-    #[Group('slow')]
-    public function testFindCarByChassisWithMatchingCar(): void
-    {
-        // Verify test car exists in database
-        $query = $this->db->query(
-            "SELECT id FROM cars WHERE chassis = ? AND id = ?",
-            [$this->testChassis, $this->testCarId]
-        );
-
-        $this->assertTrue(
-            $query->count() > 0,
-            'Test car should exist in database with correct chassis'
-        );
-
-        $car = $query->first();
-        $this->assertEquals($this->testCarId, $car->id, 'Car ID should match');
-    }
-
-    /**
-     * Test findCarByChassis returns null for non-existent chassis
-     *
-     * @return void
-     */
-    #[Group('integration')]
-    #[Group('slow')]
-    public function testFindCarByChassisWithNonExistentChassis(): void
-    {
-        $nonExistentChassis = 'NONEXISTENT' . uniqid();
-
-        // Query should return no results
-        $query = $this->db->query(
-            "SELECT id FROM cars WHERE chassis = ? LIMIT 1",
-            [$nonExistentChassis]
-        );
-
-        $this->assertEquals(0, $query->count(), 'Should find no cars with non-existent chassis');
-    }
-
-    /**
-     * Test query uses LIMIT 1 and returns only first match
-     *
-     * @return void
-     */
-    #[Group('integration')]
-    #[Group('slow')]
-    public function testFindCarByChassisLimitsBehavior(): void
-    {
-        // Create second car with same chassis (shouldn't happen in real scenario)
-        $userId2 = $this->createTestUser();
-        $carId2 = $this->createTestCar($userId2, [
-            'chassis' => $this->testChassis
+            'chassis' => $this->testChassis,
         ]);
 
-        // Query with LIMIT 1 should return exactly one result
-        $query = $this->db->query(
-            "SELECT id FROM cars WHERE chassis = ? LIMIT 1",
-            [$this->testChassis]
-        );
-
-        $this->assertEquals(1, $query->count(), 'LIMIT 1 should return exactly 1 result even if multiple exist');
-
-        // Cleanup second car
-        $this->deleteTestCar($carId2);
-    }
-
-    /**
-     * Test prepared statement prevents SQL injection
-     *
-     * @return void
-     */
-    #[Group('integration')]
-    #[Group('slow')]
-    public function testPreparedStatementPreventsInjection(): void
-    {
-        // Attempt SQL injection in chassis parameter
-        $injectionAttempt = "'; DROP TABLE cars; --";
-
-        // This should safely query for the literal string, not execute the injection
-        $query = $this->db->query(
-            "SELECT id FROM cars WHERE chassis = ? LIMIT 1",
-            [$injectionAttempt]
-        );
-
-        // Should return safely without error or executing injection
-        $this->assertTrue(is_object($query), 'Query should succeed despite injection attempt');
-        $this->assertEquals(0, $query->count(), 'Should not match injection payload as chassis');
-
-        // Verify cars table still exists and has data
-        $tableCheck = $this->db->query("SELECT COUNT(*) as count FROM cars");
-        $this->assertTrue($tableCheck->count() > 0, 'Cars table should still exist');
-    }
-
-    /**
-     * Test chassis lookup returns integer car ID, not string
-     *
-     * @return void
-     */
-    #[Group('integration')]
-    #[Group('slow')]
-    public function testCarIdReturnedAsCorrectType(): void
-    {
-        $query = $this->db->query(
-            "SELECT id FROM cars WHERE chassis = ? LIMIT 1",
-            [$this->testChassis]
-        );
-
-        $this->assertTrue($query->count() > 0, 'Should find test car');
-
-        $car = $query->first();
-        $this->assertIsNumeric($car->id, 'Car ID should be numeric');
-        $this->assertEquals($this->testCarId, (int) $car->id, 'Car ID should match expected value');
-    }
-
-    /**
-     * Test query respects case sensitivity of chassis lookup
-     *
-     * @return void
-     */
-    #[Group('integration')]
-    #[Group('slow')]
-    public function testChassisCaseSensitivity(): void
-    {
-        // MySQL is typically case-insensitive for string comparisons by default
-        // This test documents the actual behavior
-        $lowerChassis = strtolower($this->testChassis);
-        $upperChassis = strtoupper($this->testChassis);
-
-        $queryOriginal = $this->db->query(
-            "SELECT id FROM cars WHERE chassis = ? LIMIT 1",
-            [$this->testChassis]
-        );
-
-        $queryLower = $this->db->query(
-            "SELECT id FROM cars WHERE chassis = ? LIMIT 1",
-            [$lowerChassis]
-        );
-
-        // MySQL comparison is typically case-insensitive, but we document the result
-        // This test ensures consistent behavior
-        $this->assertTrue(
-            $queryOriginal->count() > 0,
-            'Original chassis should be found'
-        );
-    }
-
-    /**
-     * Test empty chassis parameter returns error
-     *
-     * @return void
-     */
-    #[Group('integration')]
-    #[Group('slow')]
-    public function testEmptyChassisParameter(): void
-    {
-        // Empty string should not match any cars
-        $query = $this->db->query(
-            "SELECT id FROM cars WHERE chassis = ? LIMIT 1",
-            ['']
-        );
-
-        // Empty chassis must not return our test car (DB may have legacy empty-chassis rows, so we check identity not count)
-        $foundId = $query->count() > 0 ? (int) $query->first()->id : null;
-        $this->assertNotEquals($this->testCarId, $foundId, 'Empty chassis should not match test car');
-    }
-
-    /**
-     * Test special characters in chassis number are handled correctly
-     *
-     * @return void
-     */
-    #[Group('integration')]
-    #[Group('slow')]
-    public function testSpecialCharactersInChassis(): void
-    {
-        $specialChassis = 'T-70/' . substr(uniqid(), -8); // varchar(15) limit
-        $carId = $this->createTestCar($this->testUserId, [
-            'chassis' => $specialChassis
+        $inserted = $this->db->insert('elan_factory_info', [
+            'year'         => '1973',
+            'month'        => '01',
+            'batch'        => '001',
+            'type'         => '',
+            'serial'       => $this->testChassis,
+            'suffix'       => '',
+            'engineletter' => '',
+            'enginenumber' => '',
+            'gearbox'      => '',
+            'color'        => '',
+            'builddate'    => '1973-01-01',
+            'note'         => '',
         ]);
 
-        // Query should find car with special characters in chassis
-        $query = $this->db->query(
-            "SELECT id FROM cars WHERE chassis = ? LIMIT 1",
-            [$specialChassis]
-        );
+        if (!$inserted) {
+            $this->markTestSkipped('Could not insert test factory row');
+        }
 
-        $this->assertTrue($query->count() > 0, 'Should find car with special characters in chassis');
-        $car = $query->first();
-        $this->assertEquals($carId, $car->id, 'Should return correct car ID');
-
-        // Cleanup
-        $this->deleteTestCar($carId);
+        $this->testFactoryRowId = (int) $this->db->lastId();
     }
 
-    /**
-     * Test performance: single chassis lookup completes quickly
-     *
-     * @return void
-     */
-    #[Group('integration')]
-    #[Group('slow')]
-    public function testChassisLookupPerformance(): void
+    protected function tearDown(): void
     {
-        $startTime = microtime(true);
+        if ($this->databaseConnected && $this->testFactoryRowId > 0) {
+            $this->db->delete('elan_factory_info', ['id', '=', $this->testFactoryRowId]);
+        }
 
-        // Execute query
-        $query = $this->db->query(
-            "SELECT id FROM cars WHERE chassis = ? LIMIT 1",
-            [$this->testChassis]
-        );
+        parent::tearDown();
+    }
 
-        $endTime = microtime(true);
-        $executionTime = ($endTime - $startTime) * 1000; // Convert to milliseconds
+    public function testFactoryRowContainsCarIdWhenChassisMatches(): void
+    {
+        $car = new Car();
 
-        // Verify query completes (reasonable performance check)
-        // This documents expected performance, not a hard requirement
-        $this->assertTrue($query->count() > 0, 'Query should succeed');
+        $request = [
+            'draw'    => 1,
+            'start'   => 0,
+            'length'  => 5,
+            'search'  => ['value' => ''],
+            'order'   => [['column' => 0, 'dir' => 'asc']],
+            'columns' => [
+                [
+                    'data'        => 'id',
+                    'searchable'  => 'true',
+                    'orderable'   => 'true',
+                    'search'      => ['value' => (string) $this->testFactoryRowId],
+                ],
+                ['data' => 'serial', 'searchable' => 'false', 'orderable' => 'true'],
+            ],
+        ];
 
-        // Log performance for observation
-        // Note: Performance expectations vary by system load, so this is informational
-        if ($executionTime > 100) {
-            // Only log if slow - typical chassis lookups should be sub-10ms with index
-            fwrite(STDERR, "\nWarning: Chassis lookup took {$executionTime}ms\n");
+        $result = $car->getDataTablesData($request, 'factory');
+
+        $this->assertIsArray($result);
+        $this->assertArrayHasKey('data', $result);
+
+        $matchingRow = null;
+        foreach ($result['data'] as $row) {
+            if ((int) $row->id === $this->testFactoryRowId) {
+                $matchingRow = $row;
+                break;
+            }
+        }
+
+        $this->assertNotNull($matchingRow, 'Factory row with matching id must appear in results');
+        $this->assertEquals($this->testCarId, (int) $matchingRow->car_id);
+    }
+
+    public function testFactoryRowCarIdIsNullWhenNoChassisMatch(): void
+    {
+        // Y-prefix serial cannot match any car chassis (all real chassis are
+        // 11+ chars; Y-prefix serials never appear in real factory data).
+        $unmatchedSerial = 'Y' . substr(uniqid(), -4);
+
+        $inserted = $this->db->insert('elan_factory_info', [
+            'year'         => '1965',
+            'month'        => '01',
+            'batch'        => '001',
+            'type'         => '',
+            'serial'       => $unmatchedSerial,
+            'suffix'       => '',
+            'engineletter' => '',
+            'enginenumber' => '',
+            'gearbox'      => '',
+            'color'        => '',
+            'builddate'    => '1965-01-01',
+            'note'         => '',
+        ]);
+
+        if (!$inserted) {
+            $this->markTestSkipped('Could not insert unmatched test factory row');
+        }
+
+        $unmatchedRowId = (int) $this->db->lastId();
+
+        try {
+            $car = new Car();
+
+            $request = [
+                'draw'    => 1,
+                'start'   => 0,
+                'length'  => 5,
+                'search'  => ['value' => ''],
+                'order'   => [['column' => 0, 'dir' => 'asc']],
+                'columns' => [
+                    [
+                        'data'        => 'id',
+                        'searchable'  => 'true',
+                        'orderable'   => 'true',
+                        'search'      => ['value' => (string) $unmatchedRowId],
+                    ],
+                    ['data' => 'serial', 'searchable' => 'false', 'orderable' => 'true'],
+                ],
+            ];
+
+            $result = $car->getDataTablesData($request, 'factory');
+
+            $this->assertIsArray($result);
+            $this->assertArrayHasKey('data', $result);
+
+            $matchingRow = null;
+            foreach ($result['data'] as $row) {
+                if ((int) $row->id === $unmatchedRowId) {
+                    $matchingRow = $row;
+                    break;
+                }
+            }
+
+            $this->assertNotNull($matchingRow, 'Factory row with unmatched serial must appear in results');
+            $this->assertNull($matchingRow->car_id);
+        } finally {
+            $this->db->delete('elan_factory_info', ['id', '=', $unmatchedRowId]);
         }
     }
 
-    /**
-     * Test database can handle concurrent lookups (without actual concurrency)
-     *
-     * @return void
-     */
-    #[Group('integration')]
-    #[Group('slow')]
-    public function testSequentialChassisLookups(): void
+    public function testFactoryDataTablesResponseIncludesCarIdField(): void
     {
-        // Simulate sequential lookups that might happen from pagination
-        $results = [];
+        $car = new Car();
 
-        for ($i = 0; $i < 3; $i++) {
-            $query = $this->db->query(
-                "SELECT id FROM cars WHERE chassis = ? LIMIT 1",
-                [$this->testChassis]
+        $request = [
+            'draw'    => 1,
+            'start'   => 0,
+            'length'  => 25,
+            'search'  => ['value' => ''],
+            'order'   => [['column' => 0, 'dir' => 'asc']],
+            'columns' => [
+                ['data' => 'id',   'searchable' => 'true', 'orderable' => 'true'],
+                ['data' => 'year', 'searchable' => 'true', 'orderable' => 'true'],
+            ],
+        ];
+
+        $result = $car->getDataTablesData($request, 'factory');
+
+        $this->assertIsArray($result);
+        $this->assertArrayHasKey('data', $result);
+        $this->assertNotEmpty($result['data'], 'Factory data must be non-empty — setUp inserted at least one row');
+
+        foreach ($result['data'] as $row) {
+            $this->assertTrue(
+                property_exists($row, 'car_id'),
+                'Every factory row must have a car_id property'
             );
-
-            $results[] = $query->count() > 0 ? $query->first()->id : null;
         }
-
-        // All lookups should return same car ID
-        $this->assertEquals($this->testCarId, $results[0], 'First lookup should find car');
-        $this->assertEquals($this->testCarId, $results[1], 'Second lookup should find same car');
-        $this->assertEquals($this->testCarId, $results[2], 'Third lookup should find same car');
     }
 }

@@ -141,9 +141,8 @@ as strings depending on PHP/MySQL configuration. Cast explicitly:
 ```php
 $carId = (int)$row->id;                // simple scalars
 $userId = dbInt($row, 'user_id');      // object properties (throws on invalid)
-$optId  = dbIntOrNull($row, 'opt_id'); // nullable variant
 ```
 
-`dbInt()` and `dbIntOrNull()` are defined in `usersc/includes/custom_functions.php`.
+`dbInt()` is defined in `usersc/includes/custom_functions.php`.
 
 See `docs/development/CODING_STANDARDS.md` and `docs/development/STRICT_TYPE_HANDLING.md`.

@@ -308,6 +308,9 @@ class BackupManager {
 
             if (is_dir($typeDir)) {
                 $files = glob($typeDir . '*.sql');
+                if ($files === false) {
+                    throw new BackupException("Could not enumerate backup files in: {$typeDir}");
+                }
                 $stats[$type]['count'] = count($files);
 
                 foreach ($files as $file) {

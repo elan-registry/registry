@@ -142,6 +142,54 @@ class CarRepository
     }
 
     /**
+     * Update the verification code for a car
+     *
+     * @param int $carId Car ID
+     * @param string $verificationCode Verification code to set
+     * @return bool True on success
+     */
+    public function updateVerificationCode(int $carId, string $verificationCode): bool
+    {
+        return $this->update('cars', $carId, ['vericode' => $verificationCode]);
+    }
+
+    /**
+     * Update the last-verified timestamp for a car
+     *
+     * @param int $carId Car ID
+     * @param string $dateTime Datetime string in AppConstants::DATETIME_FORMAT
+     * @return bool True on success
+     */
+    public function updateLastVerified(int $carId, string $dateTime): bool
+    {
+        return $this->update('cars', $carId, ['last_verified' => $dateTime]);
+    }
+
+    /**
+     * Update the sold date for a car
+     *
+     * @param int $carId Car ID
+     * @param string $soldDate Date string in Y-m-d format
+     * @return bool True on success
+     */
+    public function updateSoldDate(int $carId, string $soldDate): bool
+    {
+        return $this->update('cars', $carId, ['solddate' => $soldDate]);
+    }
+
+    /**
+     * Update the image JSON for a car
+     *
+     * @param int $carId Car ID
+     * @param string $imageJson JSON-encoded image list (empty string clears all images)
+     * @return bool True on success
+     */
+    public function updateImage(int $carId, string $imageJson): bool
+    {
+        return $this->update('cars', $carId, ['image' => $imageJson]);
+    }
+
+    /**
      * Find a car by verification code
      *
      * @param string $code Verification code
@@ -202,7 +250,8 @@ class CarRepository
      */
     public function transferHistory(int $fromCarId, int $toCarId): bool
     {
-        return (bool) $this->db->query("UPDATE cars_hist SET car_id = ? WHERE car_id = ?", [$toCarId, $fromCarId]);
+        $this->db->query("UPDATE cars_hist SET car_id = ? WHERE car_id = ?", [$toCarId, $fromCarId]);
+        return !$this->db->error();
     }
 
     /**
@@ -224,6 +273,49 @@ class CarRepository
         }
 
         return null;
+    }
+
+    /**
+     * Get distinct filter options from car_models for the car listing filter pills.
+     *
+     * Each sub-array contains objects whose property matches the SQL alias:
+     * 'series' elements expose ->series, 'types' elements expose ->type,
+     * and 'variants' elements expose ->variant.
+     *
+     * @return array{series: array<object>, types: array<object>, variants: array<object>}
+     */
+    public function getFilterOptions(): array
+    {
+        return [
+            'series'   => $this->distinctCarModelValues('series_normalized', 'series'),
+            'types'    => $this->distinctCarModelValues('type_code', 'type'),
+            'variants' => $this->distinctCarModelValues('variant'),
+        ];
+    }
+
+    /**
+     * Return distinct non-empty values for a single car_models column, ordered alphabetically.
+     *
+     * IMPORTANT: $column and $alias are interpolated directly into SQL without parameterisation.
+     * This is safe only because the method is private and every call site uses a string literal.
+     * Never pass values derived from request input or runtime configuration.
+     *
+     * @param string $column Database column name
+     * @param string $alias  Result property name; defaults to $column when omitted
+     * @return array<object>
+     */
+    private function distinctCarModelValues(string $column, string $alias = ''): array
+    {
+        $alias  = $alias ?: $column;
+        $result = $this->db->query(
+            "SELECT DISTINCT {$column} AS {$alias} FROM car_models"
+            . " WHERE {$column} IS NOT NULL AND {$column} != ''"
+            . " ORDER BY {$column}"
+        );
+        if ($this->db->error()) {
+            return [];
+        }
+        return $result->results();
     }
 
     /**

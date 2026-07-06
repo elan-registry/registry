@@ -1026,7 +1026,7 @@ if (!class_exists('DB')) {
         }
     }
 
-// Load type helper functions (dbInt, dbIntOrNull, currentUserId)
+// Load type helper functions (dbInt, currentUserId)
 // Defined here directly since custom_functions.php requires server_globals.php
 // which depends on the Server class and full framework initialization
 if (!function_exists('dbInt')) {
@@ -1040,25 +1040,6 @@ if (!function_exists('dbInt')) {
         }
         if ($value === null || $value === '') {
             throw new InvalidArgumentException("Cannot convert empty value to int (property: $property)");
-        }
-        if (!is_numeric($value)) {
-            throw new InvalidArgumentException("Cannot convert non-numeric value to int (property: $property): $value");
-        }
-        return (int) $value;
-    }
-}
-
-if (!function_exists('dbIntOrNull')) {
-    function dbIntOrNull(mixed $value, string $property = 'id'): ?int
-    {
-        if (is_object($value)) {
-            if (!isset($value->$property)) {
-                return null;
-            }
-            $value = $value->$property;
-        }
-        if ($value === null || $value === '') {
-            return null;
         }
         if (!is_numeric($value)) {
             throw new InvalidArgumentException("Cannot convert non-numeric value to int (property: $property): $value");

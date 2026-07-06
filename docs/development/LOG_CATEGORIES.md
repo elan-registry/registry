@@ -101,12 +101,6 @@ grep "ADMIN_" usersc/classes/LogCategories.php
 - `LOG_CATEGORY_USER_DELETION` → `UserDeletion` (Account deleted)
 - `LOG_CATEGORY_USER` → `User` (General user operations)
 - `LOG_CATEGORY_USER_CREATION` → `UserCreation` (New user account)
-- `LOG_CATEGORY_INACTIVE_CLEANUP` → `InactiveCleanup` (Account processing)
-- `LOG_CATEGORY_INACTIVE_DELETION` → `InactiveDeletion` (Account deleted)
-- `LOG_CATEGORY_INACTIVE_USER_NOTIFICATION` → `InactiveUserNotification`
-  (Notification sent)
-- `LOG_CATEGORY_INACTIVE_USER_NOTIFICATION_ERROR` →
-  `InactiveUserNotificationError` (Notification failed)
 
 ### Email & Communications Categories
 
@@ -171,9 +165,6 @@ grep "ADMIN_" usersc/classes/LogCategories.php
 - `LOG_CATEGORY_DATABASE_ERROR` → `DatabaseError` (Operation failures)
 - `LOG_CATEGORY_DATABASE_MAINTENANCE` → `DatabaseMaintenance` (Maintenance)
 - `LOG_CATEGORY_DATABASE_MIGRATION` → `DatabaseMigration` (Migrations)
-- `LOG_CATEGORY_DATABASE_OPTIMIZATION` → `DatabaseOptimization`
-  (Performance optimization)
-- `LOG_CATEGORY_TABLE_CONVERSION` → `TableConversion` (Table conversion)
 - `LOG_CATEGORY_BACKUP_MANAGER` → `BackupManager` (Backup management)
 - `LOG_CATEGORY_BACKUP_ERROR` → `BackupError` (Backup failures)
 
@@ -182,9 +173,6 @@ grep "ADMIN_" usersc/classes/LogCategories.php
 - `LOG_CATEGORY_SYSTEM_ERROR` → `SystemError` (General failures)
 - `LOG_CATEGORY_FILE_ERROR` → `FileError` (File operation failures)
 - `LOG_CATEGORY_VALIDATION_ERROR` → `ValidationError` (Validation failures)
-- `LOG_CATEGORY_IMAGE_REMOVAL` → `ImageRemoval` (Image deletion)
-- `LOG_CATEGORY_THUMBNAIL_OPTIMIZATION` → `ThumbnailOptimization`
-  (Thumbnail optimization)
 - `LOG_CATEGORY_FIX_SCRIPT` → `FIXScript` (Script operations)
 - `LOG_CATEGORY_FIX_SCRIPT_DEBUG` → `FIXScriptDebug` (Script debugging)
 - `LOG_CATEGORY_FIX_SCRIPT_ERROR` → `FIXScriptError` (Script failures)
@@ -193,8 +181,6 @@ grep "ADMIN_" usersc/classes/LogCategories.php
 
 - `LOG_CATEGORY_ADMIN_VERIFICATION` → `AdminVerification` (Access
   verification)
-- `LOG_CATEGORY_ADMIN_ANNOUNCEMENTS` → `AdminAnnouncements` (Announcements)
-- `LOG_CATEGORY_ADMIN_TEMPLATES` → `AdminTemplates` (Template management)
 - `LOG_CATEGORY_PAGES_MANAGER` → `PagesManager` (Page management)
 - `LOG_CATEGORY_MENU_MANAGER` → `MenuManager` (Menu management)
 - `LOG_CATEGORY_PERMISSIONS_MANAGER` → `PermissionsManager` (Permission
@@ -207,8 +193,6 @@ grep "ADMIN_" usersc/classes/LogCategories.php
 - `LOG_CATEGORY_CRON_REQUEST` → `CronRequest` (Scheduled tasks)
 - `LOG_CATEGORY_MIGRATIONS` → `Migrations` (System migrations)
 - `LOG_CATEGORY_USER_MANAGER` → `UserManager` (User management)
-- `LOG_CATEGORY_SPAM_CLEANUP` → `SpamCleanup` (Spam removal)
-- `LOG_CATEGORY_SPAM_CLEANUP_ERROR` → `SpamCleanupError` (Cleanup failures)
 
 ### OAuth & External Auth Categories
 
@@ -250,10 +234,6 @@ grep "ADMIN_" usersc/classes/LogCategories.php
 ### Application-Specific Categories
 
 - `LOG_CATEGORY_ELAN_REGISTRY` → `ElanRegistry` (Registry operations)
-- `LOG_CATEGORY_CLOAKING` → `Cloaking` (Cloaking detection)
-- `LOG_CATEGORY_CROSS_DEVICE_VALIDATION` → `CrossDeviceValidation`
-  (Cross-device validation)
-- `LOG_CATEGORY_RATE_LIMIT` → `RateLimit` (Rate limit enforcement)
 
 ### Backup Operations Categories
 
@@ -262,12 +242,9 @@ grep "ADMIN_" usersc/classes/LogCategories.php
 
 ### Utility Categories
 
-- `LOG_CATEGORY_FORM_DATA` → `FormData` (Form submission tracking)
-- `LOG_CATEGORY_REDIRECT_DIAG` → `RedirectDiag` (Redirect debugging)
 - `LOG_CATEGORY_PERMISSION_FIX` → `PermissionFix` (Permission correction)
 - `LOG_CATEGORY_PERMISSION_FIX_ERROR` → `PermissionFixError` (Correction
   failures)
-- `LOG_CATEGORY_OFFLINE` → `Offline` (Offline mode operations)
 
 ## Usage Examples
 

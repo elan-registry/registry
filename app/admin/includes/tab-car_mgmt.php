@@ -1,5 +1,9 @@
 <?php
+
 declare(strict_types=1);
+
+use ElanRegistry\Transfer\CarTransferRepository;
+
 /**
  * tab-car_mgmt.php
  * Car Management Tab Content
@@ -27,37 +31,16 @@ if ($preloadCarId) {
     }
 }
 
-// Get pending transfer requests with enhanced details
-$transferQuery = $db->query(
-    'SELECT ctr.*,
-            c.chassis, c.year, c.type, c.color, c.series,
-            current_owner.fname as current_fname, current_owner.lname as current_lname, current_owner.email as current_email,
-            requester.fname as requester_fname, requester.lname as requester_lname, requester.email as requester_email
-     FROM car_transfer_requests ctr
-     JOIN cars c ON ctr.existing_car_id = c.id
-     JOIN users current_owner ON c.user_id = current_owner.id
-     JOIN users requester ON ctr.requested_by_user_id = requester.id
-     WHERE ctr.status = "pending" AND ctr.expires_at > NOW()
-     ORDER BY ctr.request_date DESC'
-);
-$transfers = $transferQuery->results();
+$repo = new CarTransferRepository($db);
+$pendingTransfers = [];
+$transferStats    = ['pending' => 0, 'completed_today' => 0, 'denied_today' => 0];
+$transferLoadError = false;
 
-// Get transfer statistics
-$transferStats = [
-    'pending' => count($transfers),
-    'completed_today' => 0,
-    'denied_today' => 0
-];
-
-// Get today's completed/denied transfers
 try {
-    $todayStatsQuery = $db->query(
-        'SELECT status, COUNT(*) as count
-         FROM car_transfer_requests
-         WHERE DATE(completed_date) = CURDATE() AND status IN ("completed", "denied")
-         GROUP BY status'
-    );
-    foreach ($todayStatsQuery->results() as $stat) {
+    $pendingTransfers           = $repo->getPendingWithCarAndUsers();
+    $transferStats['pending']   = count($pendingTransfers);
+
+    foreach ($repo->getTodayStatusCounts() as $stat) {
         if ($stat->status === 'completed') {
             $transferStats['completed_today'] = (int)$stat->count;
         } elseif ($stat->status === 'denied') {
@@ -65,7 +48,8 @@ try {
         }
     }
 } catch (Exception $e) {
-    // Fail silently for stats
+    $transferLoadError = true;
+    logger(0, LogCategories::LOG_CATEGORY_CAR_TRANSFER_ERROR, 'tab-car_mgmt: failed to load transfer data: ' . $e->getMessage());
 }
 ?>
 
@@ -87,7 +71,11 @@ try {
                 <h5 class="mb-0 card-header-er-primary-text"><i class="fas fa-exchange-alt"></i> Pending Transfer Requests</h5>
             </div>
             <div class="card-body">
-                <?php if (empty($transfers)): ?>
+                <?php if ($transferLoadError): ?>
+                    <div class="alert alert-danger">
+                        <i class="fas fa-exclamation-triangle"></i> Transfer data could not be loaded due to a database error. Check the application log for details.
+                    </div>
+                <?php elseif (empty($pendingTransfers)): ?>
                     <div class="alert alert-primary">
                         <i class="fas fa-info-circle"></i> No pending transfer requests at this time.
                     </div>
@@ -105,7 +93,7 @@ try {
                                 </tr>
                             </thead>
                             <tbody>
-                                <?php foreach ($transfers as $transfer): ?>
+                                <?php foreach ($pendingTransfers as $transfer): ?>
                                     <tr>
                                         <td><?= date('M j, Y', strtotime($transfer->request_date)) ?></td>
                                         <td>
@@ -128,8 +116,8 @@ try {
                                         </td>
                                         <td>
                                             <button type="button" class="btn btn-primary btn-sm mb-1 view-transfer-details"
-                                                    data-transfer-id="<?= $transfer->id ?>"
-                                                    data-car-id="<?= $transfer->existing_car_id ?>"
+                                                    data-transfer-id="<?= (int)$transfer->id ?>"
+                                                    data-car-id="<?= (int)$transfer->existing_car_id ?>"
                                                     data-chassis="<?= htmlspecialchars($transfer->chassis) ?>"
                                                     data-year="<?= htmlspecialchars($transfer->year) ?>"
                                                     data-type="<?= htmlspecialchars($transfer->type) ?>"
@@ -151,7 +139,7 @@ try {
                                             </button>
                                             <br>
                                             <button type="button" class="btn btn-success btn-sm transfer-approve-btn"
-                                                    data-transfer-id="<?= $transfer->id ?>"
+                                                    data-transfer-id="<?= (int)$transfer->id ?>"
                                                     data-car-year="<?= htmlspecialchars($transfer->year) ?>"
                                                     data-car-type="<?= htmlspecialchars($transfer->type) ?>"
                                                     data-car-series="<?= htmlspecialchars($transfer->series ?? '') ?>"
@@ -167,7 +155,7 @@ try {
                                                 <i class="fas fa-check"></i> Approve
                                             </button>
                                             <button type="button" class="btn btn-danger btn-sm transfer-deny-btn"
-                                                    data-transfer-id="<?= $transfer->id ?>"
+                                                    data-transfer-id="<?= (int)$transfer->id ?>"
                                                     data-car-year="<?= htmlspecialchars($transfer->year) ?>"
                                                     data-car-type="<?= htmlspecialchars($transfer->type) ?>"
                                                     data-car-series="<?= htmlspecialchars($transfer->series ?? '') ?>"

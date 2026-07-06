@@ -71,7 +71,6 @@ All API responses follow this structure:
 - `->withDataArray(array $data)` - Add multiple data items at once
 - `->withLogging(int $userId, string $category, string $message)` - Queue log
   entry to execute when send() is called
-- `->withStatusCode(int $code)` - Override HTTP status code
 - `->send()` - Output JSON response and exit (executes pending log)
 
 **Complete Usage Example**:
@@ -128,7 +127,7 @@ handling and logging.
   - HTTP status code (for API responses)
 - **Autoloading**: PSR-4 autoload via composer.json
 
-**Exception Types** (26 total):
+**Exception Types** (22 total):
 
 | Exception | HTTP | Category | Purpose |
 | --- | --- | --- | --- |
@@ -148,11 +147,8 @@ handling and logging.
 | OwnerSearchException | 500 | OwnerSearch | Owner search |
 | ValidationException | 422 | ValidationError | Generic validation |
 | LocationServiceException | 400 | LocationService | Location API |
-| GeocodingException | 500 | Geocode | Reserved for future geocoding errors |
 | ImageProcessingException | 500 | ImageRemoval | Image resize/upload |
 | BackupException | 500 | BackupManager | Backup operations |
-| ForbiddenException | 403 | AccessDenied | Permission denied |
-| UnauthorizedException | 401 | AccessDenied | Auth required |
 | AdminOperationException | 500 | AdminActions | Admin operations |
 | AdminContactException | 500 | AdminContact | Admin contact form |
 | AdminVerificationException | 500 | AdminVerification | Admin verification |

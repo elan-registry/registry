@@ -43,23 +43,21 @@ class CarVerificationManager
         }
 
         try {
-            $updateSuccess = $db->update('cars', $carData->id, ['vericode' => $verificationCode]);
-
-            if ($updateSuccess) {
-                $carData->vericode = $verificationCode;
-                return true;
-            } else {
-                $technicalMsg = CarErrorMessages::getTechnicalMessage('database_update_failed', ['error' => 'Database update returned false']);
-                logger(0, LogCategories::LOG_CATEGORY_CAR_VERIFICATION, $technicalMsg);
-                throw new CarDatabaseException(CarErrorMessages::getMessage('database_update_failed'));
-            }
-        } catch (CarDatabaseException $e) {
-            throw $e;
+            $updateSuccess = (new CarRepository($db))->updateVerificationCode((int) $carData->id, $verificationCode);
         } catch (\Exception $e) {
             $technicalMsg = CarErrorMessages::getTechnicalMessage('verification_code_failed', ['error' => $e->getMessage()]);
             logger(0, LogCategories::LOG_CATEGORY_CAR_VERIFICATION, $technicalMsg);
             throw new CarDatabaseException(CarErrorMessages::getMessage('verification_code_failed'));
         }
+
+        if ($updateSuccess) {
+            $carData->vericode = $verificationCode;
+            return true;
+        }
+
+        $technicalMsg = CarErrorMessages::getTechnicalMessage('database_update_failed', ['error' => 'Database update returned false: ' . $db->errorString()]);
+        logger(0, LogCategories::LOG_CATEGORY_CAR_VERIFICATION, $technicalMsg);
+        throw new CarDatabaseException(CarErrorMessages::getMessage('database_update_failed'));
     }
 
     /**
@@ -72,25 +70,24 @@ class CarVerificationManager
      */
     public function markVerified(object $carData, DB $db): bool
     {
-        try {
-            $currentDateTime = date(AppConstants::DATETIME_FORMAT);
-            $updateSuccess = $db->update('cars', $carData->id, ['last_verified' => $currentDateTime]);
+        $currentDateTime = date(AppConstants::DATETIME_FORMAT);
 
-            if ($updateSuccess) {
-                $carData->last_verified = $currentDateTime;
-                return true;
-            } else {
-                $technicalMsg = CarErrorMessages::getTechnicalMessage('database_update_failed', ['error' => 'Database update returned false']);
-                logger(0, LogCategories::LOG_CATEGORY_CAR_VERIFICATION, $technicalMsg);
-                throw new CarDatabaseException(CarErrorMessages::getMessage('database_update_failed'));
-            }
-        } catch (CarDatabaseException $e) {
-            throw $e;
+        try {
+            $updateSuccess = (new CarRepository($db))->updateLastVerified((int) $carData->id, $currentDateTime);
         } catch (\Exception $e) {
             $technicalMsg = CarErrorMessages::getTechnicalMessage('verification_mark_failed', ['error' => $e->getMessage()]);
             logger(0, LogCategories::LOG_CATEGORY_CAR_VERIFICATION, $technicalMsg);
             throw new CarDatabaseException(CarErrorMessages::getMessage('verification_mark_failed'));
         }
+
+        if ($updateSuccess) {
+            $carData->last_verified = $currentDateTime;
+            return true;
+        }
+
+        $technicalMsg = CarErrorMessages::getTechnicalMessage('database_update_failed', ['error' => 'Database update returned false: ' . $db->errorString()]);
+        logger(0, LogCategories::LOG_CATEGORY_CAR_VERIFICATION, $technicalMsg);
+        throw new CarDatabaseException(CarErrorMessages::getMessage('database_update_failed'));
     }
 
     /**
@@ -105,9 +102,7 @@ class CarVerificationManager
      */
     public function markSold(object $carData, ?string $soldDate, DB $db): bool
     {
-        if ($soldDate === null) {
-            $soldDate = date('Y-m-d');
-        }
+        $soldDate ??= date('Y-m-d');
 
         $parsedDate = DateTime::createFromFormat('Y-m-d', $soldDate);
         if (!$parsedDate || $parsedDate->format('Y-m-d') !== $soldDate) {
@@ -115,22 +110,20 @@ class CarVerificationManager
         }
 
         try {
-            $updateSuccess = $db->update('cars', $carData->id, ['solddate' => $soldDate]);
-
-            if ($updateSuccess) {
-                $carData->solddate = $soldDate;
-                return true;
-            } else {
-                $technicalMsg = CarErrorMessages::getTechnicalMessage('database_update_failed', ['error' => 'Database update returned false']);
-                logger(0, LogCategories::LOG_CATEGORY_CAR_SOLD, $technicalMsg);
-                throw new CarDatabaseException(CarErrorMessages::getMessage('database_update_failed'));
-            }
-        } catch (CarDatabaseException $e) {
-            throw $e;
+            $updateSuccess = (new CarRepository($db))->updateSoldDate((int) $carData->id, $soldDate);
         } catch (\Exception $e) {
             $technicalMsg = CarErrorMessages::getTechnicalMessage('sold_mark_failed', ['error' => $e->getMessage()]);
             logger(0, LogCategories::LOG_CATEGORY_CAR_SOLD, $technicalMsg);
             throw new CarDatabaseException(CarErrorMessages::getMessage('sold_mark_failed'));
         }
+
+        if ($updateSuccess) {
+            $carData->solddate = $soldDate;
+            return true;
+        }
+
+        $technicalMsg = CarErrorMessages::getTechnicalMessage('database_update_failed', ['error' => 'Database update returned false: ' . $db->errorString()]);
+        logger(0, LogCategories::LOG_CATEGORY_CAR_SOLD, $technicalMsg);
+        throw new CarDatabaseException(CarErrorMessages::getMessage('database_update_failed'));
     }
 }

@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use ElanRegistry\Exceptions\CarTransferException;
+use ElanRegistry\Transfer\CarTransferRepository;
 use ElanRegistry\Transfer\TransferEmailService;
 
 /**
@@ -16,22 +17,9 @@ use ElanRegistry\Transfer\TransferEmailService;
  * @copyright 2025
  */
 
-// Include required files
 require_once '../../../users/init.php';
 
-// Security check - admin permission required
-if (!$user->isLoggedIn() || !isRegistryAdmin($user->data()->id)) {
-    ApiResponse::forbidden('Unauthorized access')
-        ->withLogging(0, LogCategories::LOG_CATEGORY_ACCESS_DENIED, 'Unauthorized transfer approval attempt')
-        ->send();
-}
-
-// CSRF protection
-if (!isset($_POST['csrf']) || !Token::check($_POST['csrf'])) {
-    ApiResponse::forbidden('Invalid CSRF token')
-        ->withLogging($user->data()->id, LogCategories::LOG_CATEGORY_SECURITY, 'Invalid CSRF token in transfer approval')
-        ->send();
-}
+requireAdminAjax('transfer approval');
 
 // Validate transfer ID
 $transferId = (int)($_POST['transfer_id'] ?? 0);
@@ -41,24 +29,17 @@ if ($transferId <= 0) {
 }
 
 $db = DB::getInstance();
+$repo = new CarTransferRepository($db);
 
 try {
     // Fetch transfer request with car details
-    $transferQuery = $db->query(
-        'SELECT ctr.*, c.id as car_id, c.user_id as current_owner_id
-         FROM car_transfer_requests ctr
-         JOIN cars c ON ctr.existing_car_id = c.id
-         WHERE ctr.id = ? AND ctr.status = "pending"',
-        [$transferId]
-    );
+    $transfer = $repo->findPendingWithCarById((int)$transferId);
 
-    if ($transferQuery->count() === 0) {
+    if (!$transfer) {
         ApiResponse::notFound('Transfer request not found or already processed')
             ->withLogging($user->data()->id, LogCategories::LOG_CATEGORY_CAR_TRANSFER_ERROR, "Transfer approval failed: request #{$transferId} not found or not pending")
             ->send();
     }
-
-    $transfer = $transferQuery->first();
 
     // Load car and validate
     $car = new Car((int)$transfer->car_id);
@@ -83,13 +64,8 @@ try {
     }
 
     // Update transfer request status to completed
-    $updateResult = $db->query(
-        'UPDATE car_transfer_requests SET status = "completed", completed_date = NOW(), admin_notes = ? WHERE id = ?',
-        ["Approved by admin user {$user->data()->id}", $transferId]
-    );
-
-    if (!$updateResult) {
-        throw new CarTransferException('Failed to update transfer request status');
+    if (!$repo->updateStatus((int)$transferId, 'completed', "Approved by admin user {$user->data()->id}")) {
+        throw new CarTransferException('Failed to update transfer request status to completed');
     }
 
     // Log successful approval

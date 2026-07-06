@@ -22,11 +22,6 @@ declare(strict_types=1);
 define('BACKUP_BASE_DIR', 'backups/');
 
 /**
- * Full backup directory path constructor
- * Usage: $backupDir = $abs_us_root . $us_url_root . BACKUP_BASE_DIR;
- */
-
-/**
  * Backup retention policies (in days)
  * Controls how long each type of backup is kept before automatic cleanup
  */
@@ -48,14 +43,3 @@ define('BACKUP_DIR_AUTOMATED', BACKUP_BASE_DIR . 'automated/');
 define('BACKUP_DIR_MANUAL', BACKUP_BASE_DIR . 'manual/');
 define('BACKUP_DIR_ROLLBACK', BACKUP_BASE_DIR . 'rollback/');
 
-// ============================================================================
-// Legacy Backup Functions Compatibility
-// ============================================================================
-
-/**
- * Legacy constant for backward compatibility
- * @deprecated Use BACKUP_BASE_DIR instead
- */
-if (!defined('BACKUP_DIR_PATH')) {
-    define('BACKUP_DIR_PATH', BACKUP_BASE_DIR);
-}

@@ -30,11 +30,7 @@ if (!function_exists('processSettingsAutoCreation')) {
         ];
 
         // System Maintenance settings
-        // DEPRECATED: elan_backup_age is no longer used
-        // Backup retention is now configured in usersc/includes/config.php
-        // This setting is kept for backward compatibility only
         $maintenanceSettingsFields = [
-            // 'elan_backup_age' => ['type' => 'INT(11)', 'default' => '30', 'description' => 'Backup retention period in days']
         ];
 
         // Additional Media settings

@@ -8,12 +8,6 @@ use ElanRegistry\OwnerView;
  * Manage OwnersTab Content
  */
 
-if (!isset($systemStatus) || !is_array($systemStatus) || !isset($systemStatus['total_users'])) {
-    $userCountQuery = $db->query("SELECT COUNT(*) as count FROM users");
-    $systemStatus = $systemStatus ?? [];
-    $systemStatus['total_users'] = $userCountQuery->count() > 0 ? $userCountQuery->first()->count : 0;
-}
-
 $selectedOwnerId = null;
 if (isset($_GET['owner_id']) && is_numeric($_GET['owner_id'])) {
     $selectedOwnerId = (int)$_GET['owner_id'];

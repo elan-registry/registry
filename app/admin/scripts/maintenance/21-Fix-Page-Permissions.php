@@ -403,9 +403,6 @@ if ($method === 'POST' && isset($_POST['action'])) {
     }
 }
 
-// Include standardized backup functions
-require_once $abs_us_root . $us_url_root . 'usersc/includes/backup_functions.php';
-
 // Now load the template (this outputs HTML headers)
 require_once $abs_us_root . $us_url_root . 'users/includes/template/prep.php';
 
@@ -1100,16 +1097,15 @@ function abortProcess() {
                 }
 
                 // SAFETY: Create automatic backup
+                $backupManager = new BackupManager($db, $abs_us_root . $us_url_root . BACKUP_BASE_DIR);
                 outputMessage("⚠️  SAFETY NOTICE: Creating automatic backup...");
                 try {
-                    $cleanupSummary = cleanupOldBackups();
+                    $cleanupSummary = $backupManager->performEnhancedCleanup();
                     outputMessage("🧹 Cleaned up old backups: {$cleanupSummary['automated']['deleted']} automated, {$cleanupSummary['manual']['deleted']} manual, {$cleanupSummary['rollback']['deleted']} rollback");
 
-                    $backupPath = createStandardizedBackup(
+                    $backupPath = $backupManager->createSchemaBackup(
                         'fix-page-permissions',
-                        ['pages', 'permission_page_matches'],
-                        'automated',
-                        'development'
+                        ['pages', 'permission_page_matches']
                     );
                     outputMessage("✅ Backup created: " . basename($backupPath));
                 } catch (Exception $e) {

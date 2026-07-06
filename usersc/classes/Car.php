@@ -61,8 +61,6 @@ class Car
      */
     public function __construct(?int $id = null)
     {
-        global $user;
-
         $this->_db = DB::getInstance();
 
         if (function_exists('getSettings')) {
@@ -70,17 +68,6 @@ class Car
         } else {
             $settingsQuery = $this->_db->query('SELECT * FROM settings WHERE id = ?', [1]);
             $settings = $settingsQuery->count() > 0 ? $settingsQuery->first() : null;
-        }
-
-        if (isset($user) && $user->isLoggedIn()) {
-            static $cachedOwner = null;
-            static $cachedOwnerId = null;
-            $currentUserId = (int) $user->data()->id;
-            if ($cachedOwnerId !== $currentUserId) {
-                $cachedOwner = getUserWithProfile($currentUserId);
-                $cachedOwnerId = $currentUserId;
-            }
-            $this->_owner = $cachedOwner;
         }
 
         if ($id && $settings) {
@@ -360,7 +347,7 @@ class Car
      */
     public function exists(): bool
     {
-        return (!empty($this->_data)) ? true : false;
+        return !empty($this->_data);
     }
 
     /**
@@ -644,9 +631,8 @@ class Car
             if ($carData !== null) {
                 $car = new Car((int) $carData->id);
                 return $car->exists() ? $car : null;
-            } else {
-                return null;
             }
+            return null;
         } catch (Exception $e) {
             $technicalMsg = CarErrorMessages::getTechnicalMessage('unexpected_error', ['error' => $e->getMessage()]);
             logger(0, LogCategories::LOG_CATEGORY_CAR_VERIFICATION, $technicalMsg);

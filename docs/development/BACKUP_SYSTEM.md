@@ -276,29 +276,6 @@ $backupManager = new BackupManager($db, $backupDir);
 $backupPath = $backupManager->createSchemaBackup('my-fix-script', ['users', 'permissions']);
 ```
 
-### Compatibility Layer (For Legacy Scripts)
-
-Legacy FIX scripts can continue using the old function signatures via the
-compatibility wrapper:
-
-```php
-// Uses compatibility wrapper
-require_once $abs_us_root . $us_url_root . 'usersc/includes/backup_functions.php';
-
-// These global functions still work
-$backupPath = createStandardizedBackup(
-    'my-script',
-    ['users'],
-    'automated',
-    'development'
-);
-$stats = getBackupStatistics();
-$cleanup = cleanupOldBackups();
-```
-
-The compatibility wrapper delegates to BackupManager internally, ensuring
-backward compatibility.
-
 ## Usage Examples
 
 ### Example 1: Pre-Migration Backup
@@ -422,24 +399,17 @@ chmod 755 app/admin/scripts/fix/backups/rollback/
 
 **Problem**: `Call to undefined function createStandardizedBackup()`
 
-**Solution**: Include the compatibility wrapper:
-
-```php
-require_once $abs_us_root . $us_url_root . 'usersc/includes/backup_functions.php';
-```
-
-Or use BackupManager directly:
+**Solution**: Use BackupManager directly:
 
 ```php
 require_once $abs_us_root . $us_url_root . 'app/admin/includes/classes/BackupManager.php';
 $backupManager = new BackupManager($db, $backupDir);
+$backupPath = $backupManager->createSchemaBackup('my-script', ['users']);
 ```
 
 ## Related Files
 
 - **Core Class**: `app/admin/includes/classes/BackupManager.php`
-- **Compatibility Wrapper**: `usersc/includes/backup_functions.php`
-- **Deprecated**: `FIX/backup-functions.php` (redirects to compatibility wrapper)
 - **Admin Integration**: `app/admin/includes/tab-system.php`
 
 ## Changelog
