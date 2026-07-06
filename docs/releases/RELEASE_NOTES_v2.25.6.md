@@ -35,6 +35,8 @@
 
 - **Admin dashboard cleanup** ([#969](https://github.com/unibrain1/elanregistry/issues/969)): Extracted duplicate `SELECT COUNT(*)` header queries from `admin/index.php` and `admin/maintenance.php` into a shared `getAdminSystemStatus()` helper in `custom_functions.php`. Routed the `action=merge` car-merge path in `admin/index.php` through the existing `CarRepository::transferHistory()`, `deleteCarUser()`, `deleteCar()`, and `insertHistory()` methods instead of four raw `$db` calls. Removed the defensive `$systemStatus` fallback from `tab-owner_mgmt.php` — the tab is only included from pages that populate `$systemStatus` upstream.
 
+- **Car merge atomicity** ([#1170](https://github.com/unibrain1/elanregistry/issues/1170)): The four-step car merge sequence in the admin panel is now wrapped in a database transaction. A failure at any structural step (transfer history, unassign owner, delete car) rolls back the entire operation, leaving the database unchanged. Previously, a failure midway would leave orphaned history rows pointing at the surviving car. Also added positive-integer and same-car guards on submitted car IDs.
+
 - **car_models filter query extraction** ([#1064](https://github.com/unibrain1/elanregistry/issues/1064)): Three inline `SELECT DISTINCT` queries for car listing filter pills extracted from `cars/index.php` into `CarRepository::getFilterOptions()`. Page now calls one repository method instead of three raw queries.
 
 ### Housekeeping
@@ -61,3 +63,4 @@
 - [#1066](https://github.com/unibrain1/elanregistry/issues/1066) — chore: remove abandoned spam/inactive user cleanup system
 - [#1141](https://github.com/unibrain1/elanregistry/issues/1141) — security: add per-user rate limiting to admin AJAX endpoints via requireAdminAjax()
 - [#1142](https://github.com/unibrain1/elanregistry/issues/1142) — security: require CSRF + add IP rate limiting to public statistics endpoint
+- [#1170](https://github.com/unibrain1/elanregistry/issues/1170) — fix: wrap car merge steps in a DB transaction to prevent partial-failure inconsistency
