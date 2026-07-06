@@ -95,7 +95,6 @@ class CarAdministrationService
      * @return true Always returns true; throws on any failure.
      * @throws CarValidationException If target user is invalid
      * @throws CarDatabaseException If database operation fails
-     * @throws CarTransferException If transfer operation fails
      */
     public function transfer(
         object $carData,
@@ -148,15 +147,13 @@ class CarAdministrationService
                 throw new CarDatabaseException(CarErrorMessages::getAdminMessage('car_relationship_failed'));
             }
 
-            $repo->commit();
-
-            // Refresh car data — in standalone mode this follows the commit above;
-            // when an outer transaction is active, $repo->commit() was a no-op and
-            // this reads uncommitted state within that outer transaction.
+            // Refresh car data within the transaction — InnoDB reads own uncommitted
+            // writes, so the refreshed fields reflect the update above in both
+            // standalone and outer-transaction mode.
             $refreshedData = $refreshCallback($carId);
 
-            // Create history record — committed atomically with the transfer when
-            // an outer transaction is active; otherwise runs in autocommit.
+            // Insert history before commit so a failure rolls back the entire
+            // ownership change atomically (standalone and outer-transaction alike).
             $historyFields = [
                 'operation' => $operationType,
                 'car_id' => $carId,
@@ -187,12 +184,13 @@ class CarAdministrationService
                 'website' => $targetUser->website ?? ''
             ];
 
-            $historyInserted = $repo->insertHistory($historyFields);
-            if (!$historyInserted) {
+            if (!$repo->insertHistory($historyFields)) {
                 $technicalMsg = CarErrorMessages::getTechnicalMessage('audit_trail_failed', ['operation' => $operationType]);
                 logger($adminUserId, LogCategories::LOG_CATEGORY_CAR_TRANSFER_ERROR, $technicalMsg);
                 throw new CarDatabaseException(CarErrorMessages::getAdminMessage('audit_trail_failed', ['operation' => $operationType]));
             }
+
+            $repo->commit();
 
             return true;
 
