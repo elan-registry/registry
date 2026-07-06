@@ -5,7 +5,7 @@
 
 ## Required Actions After Deployment
 
-[To be completed as issues are resolved. Check for: npm dependency updates (#1096), new maintenance script availability (#1127).]
+[To be completed as issues are resolved. Check for: new maintenance script availability (#1127).]
 
 ## User-Facing Changes
 
@@ -41,7 +41,7 @@
 - [#946](https://github.com/unibrain1/elanregistry/issues/946) — refactor: consolidate getSeriesCounts() into single conditional-aggregate query
 - [#960](https://github.com/unibrain1/elanregistry/issues/960) ✓ — refactor: eliminate boilerplate and duplicated field lists in exception classes and ElanRegistryOwner
 - [#976](https://github.com/unibrain1/elanregistry/issues/976) ✓ — chore: remove deprecated X-XSS-Protection header and ineffective cleanString() defense
-- [#1096](https://github.com/unibrain1/elanregistry/issues/1096) — fix: correct DataTable catch behavior in car_details.js and resolve npm vulnerability
+- [#1096](https://github.com/unibrain1/elanregistry/issues/1096) ✓ — fix: correct DataTable catch behavior in car_details.js and resolve npm vulnerability
 - [#1126](https://github.com/unibrain1/elanregistry/issues/1126) ✓ — enhancement: add cache-busting version parameter to static asset URLs
 - [#1127](https://github.com/unibrain1/elanregistry/issues/1127) — feat: maintenance script — report and delete unverified accounts with no car associations
 - [#1151](https://github.com/unibrain1/elanregistry/issues/1151) ✓ — chore: fix PHP 8.5 ReflectionProperty deprecations in test infrastructure and remove unreliable CarShowcaseService tests
