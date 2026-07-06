@@ -160,7 +160,7 @@ final class CarRepositoryTest extends TestCase
         $repo->rollback();         // no-op: $transactionOwner = false
     }
 
-    public function testGetHistoryReturnsArray(): void
+    public function testGetHistoryReturnsEmptyArrayWhenNoneFound(): void
     {
         $result = $this->repo->getHistory(1);
         $this->assertIsArray($result);

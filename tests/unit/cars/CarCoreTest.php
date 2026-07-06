@@ -113,7 +113,7 @@ final class CarCoreTest extends TestCase
         $this->assertIsArray($car->history());
     }
 
-    public function testHistoryReturnsEmptyArrayWhenNoRecords(): void
+    public function testHistoryDefaultsToEmptyArray(): void
     {
         $car = new Car();
         $this->assertSame([], $car->history());
