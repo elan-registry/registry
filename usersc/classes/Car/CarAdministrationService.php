@@ -149,10 +149,10 @@ class CarAdministrationService
 
             $repo->commit();
 
-            // Refresh car data after commit
+            // Refresh car data — runs within the transaction (commit may be deferred to outer caller)
             $refreshedData = $refreshCallback($carId);
 
-            // Create history record after commit
+            // Create history record — part of the same atomic transaction
             $historyFields = [
                 'operation' => $operationType,
                 'car_id' => $carId,

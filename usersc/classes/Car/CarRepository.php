@@ -20,6 +20,8 @@ class CarRepository
 {
     private DB $db;
 
+    private bool $transactionOwner = false;
+
     /**
      * @param DB $db Database instance
      */
@@ -321,31 +323,56 @@ class CarRepository
     /**
      * Begin a database transaction
      *
+     * When participating in an outer transaction (begun by the caller before
+     * this repository), this method is a no-op.
+     *
      * @return void
      */
     public function beginTransaction(): void
     {
+        if ($this->db->inTransaction()) {
+            return; // Participating in outer transaction — no-op
+        }
         $this->db->beginTransaction();
+        $this->transactionOwner = true;
     }
 
     /**
      * Commit the current transaction
      *
+     * When participating in an outer transaction (begun by the caller before
+     * this repository), this method is a no-op.
+     *
      * @return void
      */
     public function commit(): void
     {
-        $this->db->commit();
+        if (!$this->transactionOwner) {
+            return; // Outer transaction manages commit — no-op
+        }
+        $this->transactionOwner = false;
+        if ($this->db->inTransaction()) {
+            $this->db->commit();
+        }
     }
 
     /**
      * Rollback the current transaction
      *
+     * When participating in an outer transaction (begun by the caller before
+     * this repository), this method is a no-op.
+     *
      * @return void
      */
     public function rollback(): void
     {
-        $this->db->rollBack();
+        if (!$this->transactionOwner) {
+            return; // Outer transaction manages rollback — no-op
+        }
+        $this->transactionOwner = false;
+        if ($this->db->inTransaction()) {
+            $this->db->rollBack();
+        }
     }
 
     /**
