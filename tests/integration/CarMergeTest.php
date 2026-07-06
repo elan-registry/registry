@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/IntegrationTestCase.php';
 
+use ElanRegistry\Car\CarRepository;
 use ElanRegistry\Exceptions\CarPermissionException;
 
 use PHPUnit\Framework\Attributes\Group;
@@ -236,5 +237,125 @@ final class CarMergeTest extends IntegrationTestCase
                 $GLOBALS['user'] = $originalUser;
             }
         }
+    }
+
+    /**
+     * Test that CarRepository::rollback() reverts all three merge steps when the
+     * admin page aborts a car merge midway through.
+     *
+     * WHY THIS TEST EXISTS: The admin car-merge page performs three DB steps inside a
+     * transaction — (1) transferHistory, (2) deleteCarUser, (3) deleteCar.  If a
+     * failure occurs after steps 1 and 2 but before step 3, rollback() must undo all
+     * completed steps so the database is left in a consistent state.  This test
+     * simulates that scenario by executing steps 1 and 2, then calling rollback()
+     * instead of proceeding to step 3, and asserting full state recovery.
+     */
+    #[Group('fast')]
+    public function testCarRepositoryTransactionRollbackPreservesCarAndOwnerAssignment(): void
+    {
+        if ($this->testCarId === null) {
+            $this->markTestSkipped('No test cars available');
+        }
+
+        // Seed a cars_hist row so transferHistory() has a real UPDATE to roll back.
+        // createTestCar() purges any stale hist rows, so the table starts empty.
+        $carRow = $this->db->query(
+            'SELECT * FROM cars WHERE id = ?',
+            [$this->testCarId]
+        )->first();
+
+        $histSeeded = $this->db->insert('cars_hist', [
+            'car_id'    => $this->testCarId,
+            'operation' => 'TEST',
+            'model'     => $carRow->model,
+            'series'    => $carRow->series,
+            'variant'   => $carRow->variant,
+            'year'      => $carRow->year,
+            'type'      => $carRow->type,
+            'chassis'   => $carRow->chassis,
+        ]);
+        $this->assertTrue($histSeeded, 'Precondition: should be able to seed a cars_hist row');
+
+        // Snapshot counts before the transaction
+        $carExistsBefore = $this->db->query(
+            'SELECT id FROM cars WHERE id = ?',
+            [$this->testCarId]
+        )->count();
+
+        $carUserCountBefore = $this->db->query(
+            'SELECT * FROM car_user WHERE car_id = ?',
+            [$this->testCarId]
+        )->count();
+
+        $histCountBefore = $this->db->query(
+            'SELECT * FROM cars_hist WHERE car_id = ?',
+            [$this->testCarId]
+        )->count();
+
+        $this->assertGreaterThan(0, $carExistsBefore, 'Precondition: test car must exist');
+        $this->assertGreaterThan(0, $carUserCountBefore, 'Precondition: car_user row must exist');
+        $this->assertGreaterThan(0, $histCountBefore, 'Precondition: cars_hist row must exist');
+
+        // Simulate a mid-merge abort: steps 1 and 2 run, but step 3 (deleteCar) never fires
+        $repo = new CarRepository($this->db);
+        $repo->beginTransaction();
+        $this->assertTrue(
+            $repo->transferHistory($this->testCarId, $this->testMergeCarId),
+            'Precondition: transferHistory must succeed within transaction'
+        );
+        // Mid-transaction: hist rows must now point to the merge target (visible within same connection)
+        $histMid = $this->db->query(
+            'SELECT * FROM cars_hist WHERE car_id = ?',
+            [$this->testMergeCarId]
+        )->count();
+        $this->assertGreaterThan(0, $histMid, 'mid-transaction: transferHistory must have moved hist rows to merge target');
+
+        $this->assertTrue(
+            $repo->deleteCarUser($this->testCarId),
+            'Precondition: deleteCarUser must succeed within transaction'
+        );
+        // Mid-transaction: car_user rows must be gone (visible within same connection)
+        $carUserMid = $this->db->query(
+            'SELECT * FROM car_user WHERE car_id = ?',
+            [$this->testCarId]
+        )->count();
+        $this->assertEquals(0, $carUserMid, 'mid-transaction: deleteCarUser must have removed car_user rows');
+
+        $repo->rollback();
+
+        // Assertions: every in-transaction change must be fully reverted
+
+        // 1. The cars row must still exist (was never touched, but confirms no side-effects)
+        $carExistsAfter = $this->db->query(
+            'SELECT id FROM cars WHERE id = ?',
+            [$this->testCarId]
+        )->count();
+        $this->assertEquals(
+            $carExistsBefore,
+            $carExistsAfter,
+            'cars row must survive rollback'
+        );
+
+        // 2. The car_user assignment must be restored (deleteCarUser was rolled back)
+        $carUserCountAfter = $this->db->query(
+            'SELECT * FROM car_user WHERE car_id = ?',
+            [$this->testCarId]
+        )->count();
+        $this->assertEquals(
+            $carUserCountBefore,
+            $carUserCountAfter,
+            'car_user rows must be restored after rollback'
+        );
+
+        // 3. The cars_hist rows must still belong to testCarId (transferHistory UPDATE was rolled back)
+        $histCountAfter = $this->db->query(
+            'SELECT * FROM cars_hist WHERE car_id = ?',
+            [$this->testCarId]
+        )->count();
+        $this->assertEquals(
+            $histCountBefore,
+            $histCountAfter,
+            'cars_hist rows must remain on testCarId after rollback'
+        );
     }
 }
