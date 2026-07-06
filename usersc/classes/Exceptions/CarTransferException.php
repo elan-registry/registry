@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace ElanRegistry\Exceptions;
 
 use LogCategories;
-use Throwable;
 
 /**
  * CarTransferException
@@ -21,23 +20,6 @@ use Throwable;
  */
 class CarTransferException extends CarException
 {
-    /**
-     * Constructor
-     *
-     * @param string $message Exception message
-     * @param int $code Exception code (optional)
-     * @param Throwable|null $previous Previous exception for chaining (optional)
-     * @param string|null $userMessage User-friendly message (uses default if null)
-     */
-    public function __construct(
-        string $message = "",
-        int $code = 0,
-        ?Throwable $previous = null,
-        ?string $userMessage = null
-    ) {
-        parent::__construct($message, $code, $previous, $userMessage);
-    }
-
     /**
      * @inheritDoc
      */
