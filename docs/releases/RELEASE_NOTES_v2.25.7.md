@@ -27,16 +27,21 @@
 - **Transfer approval is now atomic** ([#1175](https://github.com/unibrain1/elanregistry/issues/1175)): Car ownership transfer and request-status update are wrapped in a single transaction; if the status update fails (including TOCTOU "already processed"), the ownership change rolls back cleanly. As a side effect, the deny flow now also correctly returns an error when attempting to deny an already-processed request.
 - **Correct 404 for missing cars** ([#976](https://github.com/unibrain1/elanregistry/issues/976)): Admin car-details endpoint now returns HTTP 404 for missing cars instead of HTTP 200 with an error payload, improving error visibility.
 
+## Technical Changes
+
+- **Removed deprecated `X-XSS-Protection` header** ([#976](https://github.com/unibrain1/elanregistry/issues/976)): The header is ignored by all modern browsers (Chrome dropped it in v78, Firefox never implemented it) and implied XSS protection was being provided when it wasn't. The Content Security Policy header remains the correct mechanism and is unchanged.
+- **Removed ineffective `cleanString()` defense** ([#976](https://github.com/unibrain1/elanregistry/issues/976)): The feedback-form input filter (`str_replace` on `"content-type"`, `"bcc:"`, `"to:"`, `"cc:"`, `"href"`) was trivially bypassable (e.g. `"ccontent-typeontent-type"` passes through) and silently mutated legitimate user text. Email is sent via the Brevo API rather than raw SMTP header concatenation, so the header-injection vector it purported to block was never real.
+
 ## Issues Resolved
 
 - [#518](https://github.com/unibrain1/elanregistry/issues/518) — Migrate non-car endpoint logging to LogCategories constants
 - [#946](https://github.com/unibrain1/elanregistry/issues/946) — refactor: consolidate getSeriesCounts() into single conditional-aggregate query
 - [#960](https://github.com/unibrain1/elanregistry/issues/960) — refactor: eliminate boilerplate and duplicated field lists in exception classes and ElanRegistryOwner
-- [#976](https://github.com/unibrain1/elanregistry/issues/976) — chore: remove deprecated X-XSS-Protection header and ineffective cleanString() defense
+- [#976](https://github.com/unibrain1/elanregistry/issues/976) ✓ — chore: remove deprecated X-XSS-Protection header and ineffective cleanString() defense
 - [#1096](https://github.com/unibrain1/elanregistry/issues/1096) — fix: correct DataTable catch behavior in car_details.js and resolve npm vulnerability
 - [#1126](https://github.com/unibrain1/elanregistry/issues/1126) — enhancement: add cache-busting version parameter to static asset URLs
 - [#1127](https://github.com/unibrain1/elanregistry/issues/1127) — feat: maintenance script — report and delete unverified accounts with no car associations
 - [#1151](https://github.com/unibrain1/elanregistry/issues/1151) ✓ — chore: fix PHP 8.5 ReflectionProperty deprecations in test infrastructure and remove unreliable CarShowcaseService tests
-- [#1182](https://github.com/unibrain1/elanregistry/issues/1182) — test: migrate getNewCarIds() floor/tie-breaking tests to CarShowcaseServiceTest
+- [#1182](https://github.com/unibrain1/elanregistry/issues/1182) ✓ — test: migrate getNewCarIds() floor/tie-breaking tests to CarShowcaseServiceTest
 - [#1167](https://github.com/unibrain1/elanregistry/issues/1167) — fix: CarRepository::getHistory() returns null for empty history — should return []
 - [#1175](https://github.com/unibrain1/elanregistry/issues/1175) — fix: process-transfer-approve.php — wrap transfer + updateStatus in a shared transaction

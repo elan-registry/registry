@@ -69,22 +69,7 @@ header("X-Frame-Options: SAMEORIGIN");
 
 
 /*
-4. X-XSS-Protection
-
-The x-xss-protection header is designed to enable the cross-site scripting (XSS) filter built into modern web browsers. This is usually enabled by default, but using it will enforce it.
-
-The reflected-xss directive configures the built in heuristics a user agent has to filter or block reflected XSS attacks.
-
-    Allow - Allows reflected XSS attacks.
-    Block - Block reflected XSS attacks.
-    Filter - Filter the reflected XSS attack.
-*/
-
-header("X-XSS-Protection: 1; mode=block");
-
-
-/*
-5. X-Content-Type-Options
+4. X-Content-Type-Options
 
 The X-content-type header prevents Internet Explorer and Google Chrome from sniffing a response away from the declared content-type. This helps reduce the danger of drive-by downloads and helps treat the content the right way.
 X-Content-Type-Options header instructs IE not to sniff mime types, preventing attacks related to mime-sniffing.
@@ -94,7 +79,7 @@ header("X-Content-Type-Options: nosniff");
 
 
 /*
-6. The referrer directive specifies information for the referrer header in links away from the page.
+5. The referrer directive specifies information for the referrer header in links away from the page.
 
     No Referrer - Prevents the UA sending a referrer header.
     No Referrer When Downgrade - Prevents the UA sending a referrer header when navigating from https to http.
@@ -106,7 +91,7 @@ header("X-Content-Type-Options: nosniff");
 header("Referrer-Policy: no-referrer-when-downgrade");
 
 
-// 7. There is no direct security risk, but exposing an outdated (and possibly vulnerable) version of PHP may be an invitation for people to try and attack it.
+// 6. There is no direct security risk, but exposing an outdated (and possibly vulnerable) version of PHP may be an invitation for people to try and attack it.
 
 header_remove("X-Powered-By");
 
