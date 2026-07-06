@@ -318,6 +318,24 @@ foreach ($markerRows as $car) {
     </div>
 </div>
 
+<?php
+try {
+    $timelineJson = json_encode(
+        $dataService->getTimelineData(),
+        JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP | JSON_THROW_ON_ERROR
+    );
+} catch (\JsonException $e) {
+    logger(0, LogCategories::LOG_CATEGORY_SYSTEM_ERROR, 'Failed to encode timeline data: ' . $e->getMessage());
+    $timelineJson = '[]';
+}
+try {
+    $mapMarkersJson = json_encode($mapMarkers, JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP | JSON_THROW_ON_ERROR);
+} catch (\JsonException $e) {
+    logger(0, LogCategories::LOG_CATEGORY_SYSTEM_ERROR, 'Failed to encode map markers: ' . $e->getMessage());
+    $mapMarkersJson = '[]';
+}
+?>
+
 <!-- Data for JavaScript -->
 <script>
 window.statisticsRawData = {
@@ -338,24 +356,6 @@ window.statisticsConfig = {
     versatileStyleUrl: '<?= $us_url_root ?>usersc/js/versatiles-colorful.json'
 };
 </script>
-
-<?php
-try {
-    $timelineJson = json_encode(
-        $dataService->getTimelineData(),
-        JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP | JSON_THROW_ON_ERROR
-    );
-} catch (\JsonException $e) {
-    logger(0, LogCategories::LOG_CATEGORY_SYSTEM_ERROR, 'Failed to encode timeline data: ' . $e->getMessage());
-    $timelineJson = '[]';
-}
-try {
-    $mapMarkersJson = json_encode($mapMarkers, JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP | JSON_THROW_ON_ERROR);
-} catch (\JsonException $e) {
-    logger(0, LogCategories::LOG_CATEGORY_SYSTEM_ERROR, 'Failed to encode map markers: ' . $e->getMessage());
-    $mapMarkersJson = '[]';
-}
-?>
 <script>
 window.elanMapMarkers = <?= $mapMarkersJson ?>;
 </script>
