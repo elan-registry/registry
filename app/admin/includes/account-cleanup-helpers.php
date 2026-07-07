@@ -6,7 +6,8 @@ declare(strict_types=1);
  * Return unverified (email_verified=0) accounts with no car associations older than $days.
  *
  * @param DB  $db   UserSpice DB instance
- * @param int $days Minimum age in days (must be ≥30)
+ * @param int $days Minimum age in days; caller must pass ≥30
+ * @return array<object> Matching user rows, ordered by join_date ASC
  */
 function findUnverifiedOwnerlessAccounts(DB $db, int $days): array
 {
@@ -35,7 +36,8 @@ function findUnverifiedOwnerlessAccounts(DB $db, int $days): array
  * is older than $days (or never logged in).
  *
  * @param DB  $db   UserSpice DB instance
- * @param int $days Inactivity threshold in days (must be ≥1)
+ * @param int $days Inactivity threshold in days; caller must pass ≥1
+ * @return array<object> Matching user rows, ordered by last_login ASC, join_date ASC
  */
 function findVerifiedOwnerlessAccounts(DB $db, int $days): array
 {
@@ -202,7 +204,7 @@ function restoreArchivedAccount(DB $db, int $archiveId, int $restoredBy): int
             );
         }
 
-        // Re-insert profile if location data was archived
+        // Re-insert profile if any profile data was archived
         if ($row->city || $row->state || $row->country || $row->bio || $row->website) {
             $ok = $db->insert('profiles', [
                 'user_id' => $newUserId,
@@ -243,6 +245,7 @@ function restoreArchivedAccount(DB $db, int $archiveId, int $restoredBy): int
  * Return all archive rows for the DataTables endpoint.
  *
  * @param DB $db UserSpice DB instance
+ * @return array<object> All deleted_accounts_archive rows, ordered by deleted_at DESC
  */
 function findArchivedAccounts(DB $db): array
 {
