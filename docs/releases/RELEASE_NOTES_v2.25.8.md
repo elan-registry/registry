@@ -11,8 +11,8 @@ None.
 
 ### Improvements
 
-- **Map display restored in Safari** ([#1216](https://github.com/unibrain1/elanregistry/issues/1216)): Fixed Cloudflare Rocket Loader deferring MapLibre GL and Chart.js initialization, which caused WebGL context errors and blank maps on the statistics, car details, and account pages in Safari.
+- **Map display restored in Safari** ([PR #1219](https://github.com/unibrain1/elanregistry/pull/1219)): Fixed Cloudflare Rocket Loader deferring MapLibre GL and Chart.js initialization, which caused WebGL context errors and blank maps on the statistics, car details, and account pages in Safari.
 
 ## Issues Resolved
 
-- [#1216](https://github.com/unibrain1/elanregistry/issues/1216) — bug: MapLibre WebGL context errors on statistics page
+No GitHub issues were opened for this hotfix — the regression was diagnosed and fixed directly on the milestone branch.
