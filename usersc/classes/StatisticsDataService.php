@@ -29,17 +29,26 @@ class StatisticsDataService {
      *
      * @param string $query SQL query to execute
      * @param bool $single Whether to return single result or array
-     * @return array|object|null Query results
+     * @return array|object|null Query results, or null/empty array on database error (error is logged)
      */
     private function executeQuery(string $query, bool $single = false): array|object|null {
         try {
             $result = $this->db->query($query);
+            // UserSpice DB class swallows errors internally and never throws — check explicitly.
+            if ($this->db->error()) {
+                logger(
+                    0,
+                    LogCategories::LOG_CATEGORY_DATABASE_ERROR,
+                    'StatisticsDataService query failed: ' . $this->db->errorString() . ' | Query: ' . substr($query, 0, 200)
+                );
+                return $single ? null : [];
+            }
             return $single ? $result->first() : $result->results();
         } catch (\Throwable $e) {
             logger(
                 0,
                 LogCategories::LOG_CATEGORY_DATABASE_ERROR,
-                'StatisticsDataService query failed: ' . $e->getMessage() . ' | Query: ' . substr($query, 0, 200)
+                'StatisticsDataService query threw: ' . $e->getMessage() . ' | Query: ' . substr($query, 0, 200)
             );
             return $single ? null : [];
         }
@@ -194,6 +203,9 @@ class StatisticsDataService {
              FROM cars",
             true
         );
+        if ($row === null) {
+            return ['s1' => 0, 's2' => 0, 's3' => 0, 's4' => 0, 'sprint' => 0, '+2' => 0];
+        }
         return [
             's1'     => (int)($row->s1     ?? 0),
             's2'     => (int)($row->s2     ?? 0),
