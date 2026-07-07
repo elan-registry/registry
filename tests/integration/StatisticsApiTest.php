@@ -265,6 +265,31 @@ class StatisticsApiTest extends IntegrationTestCase
     }
 
     /**
+     * StatisticsDataService::getMapPins() returns an array; each row has required fields.
+     */
+    public function testGetMapPinsReturnsRowsWithRequiredFields(): void
+    {
+        $service = new StatisticsDataService($this->db);
+        $pins    = $service->getMapPins();
+
+        $this->assertIsArray($pins);
+
+        if (empty($pins)) {
+            if ($this->testUserId === null) {
+                $this->markTestSkipped('No users in test DB — cannot create fixture car for getMapPins() test');
+            }
+            $this->createTestCar($this->testUserId, ['lat' => '51.5074', 'lon' => '-0.1278']);
+            $pins = $service->getMapPins();
+        }
+
+        $this->assertNotEmpty($pins, 'getMapPins() must return at least one car with coordinates');
+        $pin = $pins[0];
+        foreach (['id', 'year', 'series', 'lat', 'lon', 'owner'] as $field) {
+            $this->assertObjectHasProperty($field, $pin, "getMapPins() row must have '$field'");
+        }
+    }
+
+    /**
      * StatisticsDataService::getDataCompleteness() returns an object with required fields.
      *
      * Replaced a tautological test that asserted a locally-constructed error array.
