@@ -143,6 +143,7 @@ if ($method === 'POST' && isset($_POST['ac_action'])) {
                 header('Location: ?' . $qs);
                 exit;
             }
+            }
         }
     }
 }

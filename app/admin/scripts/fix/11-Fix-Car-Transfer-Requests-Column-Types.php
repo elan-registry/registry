@@ -5,9 +5,11 @@ declare(strict_types=1);
 /**
  * Fix Car Transfer Requests Column Types
  *
- * Administrative script to change requested_by_user_id and created_by columns
- * in the car_transfer_requests table from signed INT to INT UNSIGNED to match the
- * unsigned type used by the referenced users.id column.
+ * Administrative script to align requested_by_user_id and created_by columns
+ * in the car_transfer_requests table with the type used by the referenced users.id column.
+ * If users.id is INT UNSIGNED the columns are changed to INT UNSIGNED (dropping and
+ * re-adding the FK constraints so MySQL accepts the type change). If users.id is signed
+ * INT the columns are already compatible and the script completes as a no-op.
  * Issue #1164: Fix column type mismatch in car_transfer_requests
  *
  * This script is idempotent — each column is pre-checked in information_schema
@@ -63,8 +65,9 @@ $db = DB::getInstance();
                             <div class="alert alert-info">
                                 <h5><i class="fa fa-info-circle"></i> What this script does:</h5>
                                 <ul class="mb-0">
-                                    <li>Checks <code>requested_by_user_id</code> in <code>car_transfer_requests</code> — alters to <code>INT UNSIGNED NOT NULL</code> if not already correct</li>
-                                    <li>Checks <code>created_by</code> in <code>car_transfer_requests</code> — alters to <code>INT UNSIGNED NOT NULL</code> if not already correct</li>
+                                    <li>Checks <code>users.id</code> type to determine the required target type for FK columns</li>
+                                    <li>Checks <code>requested_by_user_id</code> in <code>car_transfer_requests</code> — drops FK, alters to match <code>users.id</code> type, and re-adds FK if a change is needed</li>
+                                    <li>Checks <code>created_by</code> in <code>car_transfer_requests</code> — same drop/alter/re-add approach</li>
                                     <li>Verifies each alteration by re-querying <code>information_schema</code> after the <code>ALTER TABLE</code></li>
                                     <li>Records script completion in <code>fix_script_runs</code> only when all operations succeed</li>
                                 </ul>
@@ -137,15 +140,32 @@ $db = DB::getInstance();
                     ];
 
                     /**
-                     * Check and alter a single column in car_transfer_requests to INT UNSIGNED NOT NULL.
-                     *
-                     * Column names are hardcoded literal strings from the call-sites below — not user input.
-                     * The information_schema lookup uses a prepared statement for the column name value.
-                     *
-                     * @param string $column Column name (must be a literal from the hardcoded list below)
-                     * @param string $sql    Pre-built ALTER TABLE SQL (no variable interpolation in the query string)
+                     * Foreign key definitions for the two columns being altered.
+                     * Used to drop constraints before ALTER and re-add them after.
                      */
-                    $alterColumn = function (string $column, string $sql) use ($db, &$results): void {
+                    $foreignKeys = [
+                        'requested_by_user_id' => 'fk_transfer_requested_by',
+                        'created_by'           => 'fk_transfer_created_by',
+                    ];
+
+                    /**
+                     * Drop a named FK constraint if it exists, alter a column in car_transfer_requests,
+                     * then re-add the FK constraint. MySQL requires the FK to be absent during the ALTER
+                     * when the column type changes signedness.
+                     *
+                     * Column names and FK names are hardcoded literals from the call-sites below — not user input.
+                     *
+                     * @param string $column        Column name
+                     * @param string $fkName        Foreign key constraint name
+                     * @param string $targetType    MySQL column type to set (e.g. 'INT UNSIGNED NOT NULL')
+                     * @param string $targetTypeLow Lowercase form used for the idempotency check
+                     */
+                    $alterColumn = function (
+                        string $column,
+                        string $fkName,
+                        string $targetType,
+                        string $targetTypeLow
+                    ) use ($db, &$results): void {
                         $row = $db->query(
                             "SELECT COLUMN_TYPE FROM information_schema.COLUMNS
                              WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'car_transfer_requests' AND COLUMN_NAME = ?",
@@ -158,18 +178,59 @@ $db = DB::getInstance();
                             return;
                         }
 
-                        if ($row && strtolower((string) $row->COLUMN_TYPE) === 'int unsigned') {
-                            logProgress("  {$column}: already INT UNSIGNED — skipped", 'warning');
+                        if ($row && strtolower((string) $row->COLUMN_TYPE) === $targetTypeLow) {
+                            logProgress("  {$column}: already {$targetType} — skipped", 'warning');
                             $results['skipped']++;
                             return;
                         }
 
-                        $db->query($sql);
+                        // Check whether the FK constraint currently exists before trying to drop it
+                        $fkExists = $db->query(
+                            "SELECT CONSTRAINT_NAME FROM information_schema.TABLE_CONSTRAINTS
+                             WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'car_transfer_requests'
+                               AND CONSTRAINT_NAME = ? AND CONSTRAINT_TYPE = 'FOREIGN KEY'",
+                            [$fkName]
+                        )->first();
+
+                        if ($db->error()) {
+                            logProgress("  {$column}: FK existence check failed — " . $db->errorString(), 'error');
+                            $results['errors']++;
+                            return;
+                        }
+
+                        if ($fkExists) {
+                            // DDL identifiers cannot be parameterized — $fkName is a hardcoded literal
+                            $dropFkSql = "ALTER TABLE car_transfer_requests DROP FOREIGN KEY `{$fkName}`";
+                            $db->query($dropFkSql);
+                            if ($db->error()) {
+                                logProgress("  {$column}: DROP FOREIGN KEY `{$fkName}` failed — " . $db->errorString(), 'error');
+                                $results['errors']++;
+                                return;
+                            }
+                            logProgress("  {$column}: dropped FK `{$fkName}`", 'info');
+                        }
+
+                        // DDL identifiers cannot be parameterized — $column and $targetType are hardcoded literals
+                        $modifyColSql = "ALTER TABLE car_transfer_requests MODIFY COLUMN `{$column}` {$targetType}";
+                        $db->query($modifyColSql);
                         if ($db->error()) {
                             logProgress("  {$column}: ALTER FAILED — " . $db->errorString(), 'error');
                             $results['errors']++;
                             return;
                         }
+
+                        // Re-add the FK constraint (uses ON DELETE CASCADE to match the original DDL)
+                        // DDL identifiers cannot be parameterized — $fkName and $column are hardcoded literals
+                        $addFkSql = "ALTER TABLE car_transfer_requests"
+                            . " ADD CONSTRAINT `{$fkName}` FOREIGN KEY (`{$column}`)"
+                            . " REFERENCES `users` (`id`) ON DELETE CASCADE";
+                        $db->query($addFkSql);
+                        if ($db->error()) {
+                            logProgress("  {$column}: ALTER succeeded but re-adding FK `{$fkName}` failed — " . $db->errorString(), 'error');
+                            $results['errors']++;
+                            return;
+                        }
+                        logProgress("  {$column}: re-added FK `{$fkName}`", 'info');
 
                         // Verify by re-querying information_schema
                         $verify = $db->query(
@@ -184,27 +245,60 @@ $db = DB::getInstance();
                             return;
                         }
 
-                        if ($verify && strtolower((string) $verify->COLUMN_TYPE) === 'int unsigned') {
-                            logProgress("  {$column}: altered to INT UNSIGNED", 'success');
+                        if ($verify && strtolower((string) $verify->COLUMN_TYPE) === $targetTypeLow) {
+                            logProgress("  {$column}: altered to {$targetType}", 'success');
                             $results['altered']++;
                         } else {
                             if (!$verify) {
                                 logProgress("  {$column}: verification failed — column not found in information_schema after ALTER", 'error');
                             } else {
-                                logProgress("  {$column}: ALTER ran but type is still '{$verify->COLUMN_TYPE}' — expected 'int unsigned'", 'error');
+                                logProgress("  {$column}: ALTER ran but type is still '{$verify->COLUMN_TYPE}' — expected '{$targetTypeLow}'", 'error');
                             }
                             $results['errors']++;
                         }
                     };
 
                     try {
+                        // Determine the type of users.id so we can set the correct target type.
+                        // MySQL requires FK column types to match the referenced column exactly (signedness included).
+                        $usersIdRow = $db->query(
+                            "SELECT COLUMN_TYPE FROM information_schema.COLUMNS
+                             WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'users' AND COLUMN_NAME = 'id'"
+                        )->first();
+
+                        if ($db->error() || !$usersIdRow) {
+                            logProgress('PREREQUISITE FAILED: Could not determine users.id type — ' . $db->errorString(), 'error');
+                            $results['errors']++;
+                            throw new \RuntimeException('Cannot proceed without users.id type');
+                        }
+
+                        $usersIdType = strtolower((string) $usersIdRow->COLUMN_TYPE);
+                        logProgress("users.id type: {$usersIdType}", 'info');
+
+                        // The FK columns must match users.id in signedness.
+                        // If users.id is signed int, the columns are already the correct type and will be
+                        // skipped by the idempotency check below. If users.id is int unsigned, we alter them.
+                        $targetType    = ($usersIdType === 'int unsigned') ? 'INT UNSIGNED NOT NULL' : 'INT NOT NULL';
+                        $targetTypeLow = ($usersIdType === 'int unsigned') ? 'int unsigned' : 'int';
+
+                        if ($usersIdType !== 'int unsigned') {
+                            logProgress(
+                                "users.id is '{$usersIdType}' — FK columns must stay signed INT to remain compatible. "
+                                . 'Columns already match; they will be reported as skipped.',
+                                'warning'
+                            );
+                        }
+
+                        logProgress('', 'info');
                         logProgress(SECTION_SEPARATOR, 'step');
                         logProgress('STEP 1: Fix requested_by_user_id column type', 'step');
                         logProgress(SECTION_SEPARATOR, 'step');
 
                         $alterColumn(
                             'requested_by_user_id',
-                            'ALTER TABLE car_transfer_requests MODIFY COLUMN requested_by_user_id INT UNSIGNED NOT NULL'
+                            $foreignKeys['requested_by_user_id'],
+                            $targetType,
+                            $targetTypeLow
                         );
 
                         logProgress('', 'info');
@@ -214,10 +308,12 @@ $db = DB::getInstance();
 
                         $alterColumn(
                             'created_by',
-                            'ALTER TABLE car_transfer_requests MODIFY COLUMN created_by INT UNSIGNED NOT NULL'
+                            $foreignKeys['created_by'],
+                            $targetType,
+                            $targetTypeLow
                         );
 
-                        // Log script completion only when all operations succeeded
+                        // Log script completion when all operations succeeded (altered or correctly skipped)
                         if ($results['errors'] === 0) {
                             $inserted = $db->insert('fix_script_runs', [
                                 'script_name' => '11-Fix-Car-Transfer-Requests-Column-Types.php',
