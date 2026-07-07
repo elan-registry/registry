@@ -130,7 +130,7 @@ function archiveAccounts(DB $db, array $userIds, int $deletedBy, string $deletio
             }
         }
         $db->commit();
-    } catch (RuntimeException $e) {
+    } catch (\Throwable $e) {
         $db->rollBack();
         throw $e;
     }
@@ -224,7 +224,7 @@ function restoreArchivedAccount(DB $db, int $archiveId, int $restoredBy): int
         }
 
         $db->commit();
-    } catch (RuntimeException $e) {
+    } catch (\Throwable $e) {
         $db->rollBack();
         throw $e;
     }

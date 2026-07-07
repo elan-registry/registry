@@ -41,7 +41,7 @@ if ($method === 'POST' && isset($_POST['ac_action'])) {
                 ]);
                 header('Location: ?' . $qs);
                 exit;
-            } catch (RuntimeException $e) {
+            } catch (\Throwable $e) {
                 $acFlashError = 'Restore failed: ' . $e->getMessage();
             }
         }
@@ -71,7 +71,7 @@ if ($method === 'POST' && isset($_POST['ac_action'])) {
             // Archive before permanent deletion — abort if archive fails
             try {
                 archiveAccounts($db, $toDelete, $currentUserId, $isVerified ? 'verified' : 'unverified');
-            } catch (RuntimeException $e) {
+            } catch (\Throwable $e) {
                 logger(
                     $currentUserId,
                     LogCategories::LOG_CATEGORY_USER_DELETION,
