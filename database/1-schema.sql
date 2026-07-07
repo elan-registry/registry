@@ -189,7 +189,7 @@ CREATE TABLE `car_user_hist` (
 CREATE TABLE `car_transfer_requests` (
   `id` int(10) UNSIGNED NOT NULL,
   `existing_car_id` int(10) UNSIGNED NOT NULL,
-  `requested_by_user_id` int unsigned NOT NULL,
+  `requested_by_user_id` int(10) UNSIGNED NOT NULL,
   `request_date` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
   `status` enum('pending','approved','denied','completed','expired') NOT NULL DEFAULT 'pending',
   `security_token` varchar(64) NOT NULL,
@@ -217,7 +217,7 @@ CREATE TABLE `car_transfer_requests` (
   `submitted_state` varchar(100) DEFAULT NULL,
   `submitted_country` varchar(100) DEFAULT NULL,
   `submitted_website` varchar(100) DEFAULT NULL,
-  `created_by` int unsigned NOT NULL,
+  `created_by` int(10) UNSIGNED NOT NULL,
   `modified_date` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='Self-service car ownership transfer requests - stores pending transfers when duplicate chassis detected during car entry';
 
