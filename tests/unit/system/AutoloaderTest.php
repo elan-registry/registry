@@ -102,7 +102,7 @@ class AutoloaderTest extends TestCase
      * CarValidator and models.php. See testPsr4RootPrefixResolution() for an
      * example of a full path assertion using a non-mocked class.
      */
-    public function testPsr4NonStandardPathResolution(): void
+    public function testReferenceClassIsAvailable(): void
     {
         $this->assertTrue(
             class_exists('ElanRegistry\\Reference\\CarModel'),
@@ -121,8 +121,8 @@ class AutoloaderTest extends TestCase
     public function testPsr4RootPrefixResolution(): void
     {
         $rc = new ReflectionClass('ElanRegistry\\Car\\CarRepository');
-        $this->assertStringContainsString(
-            '/Car/CarRepository.php',
+        $this->assertStringEndsWith(
+            '/usersc/classes/Car/CarRepository.php',
             (string) $rc->getFileName(),
             'ElanRegistry\\Car\\CarRepository must load from usersc/classes/Car/CarRepository.php via root PSR-4 prefix'
         );

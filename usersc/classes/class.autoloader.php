@@ -126,9 +126,10 @@ class ElanRegistryAutoloader
 
         foreach (static::$fileIterator as $file) {
             if (strtolower($file->getFilename()) === strtolower($filename)) {
-                if ($file->isReadable()) {
-                    require_once $file->getPathname();
+                if (!$file->isReadable()) {
+                    continue;
                 }
+                require_once $file->getPathname();
                 break;
             }
         }
