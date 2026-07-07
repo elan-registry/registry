@@ -25,24 +25,6 @@ if (!securePage($php_self)) {
     die();
 }
 
-/**
- * Remove suspicious email-header keywords and link-injection substrings.
- *
- * Legacy defense-in-depth: email is sent via Brevo API (not raw SMTP), so
- * header injection is not a real risk. str_replace is bypassable by wrapping
- * the target (e.g. "ccontent-typeontent-type"), and silently mutates user text
- * that contains filtered substrings (e.g. "to:" in a sentence). Retained for
- * consistency with the original handler; do not expand its use.
- *
- * @param string $string Raw input
- * @return string String with email-header keywords and link-injection substrings removed
- */
-function cleanString(string $string): string
-{
-    $bad = array("content-type", "bcc:", "to:", "cc:", "href");
-    return str_replace($bad, "", $string);
-}
-
 $logUserId = ($user->isLoggedIn() && $user->data()) ? (int)$user->data()->id : 0;
 
 if (!Token::check(Input::get('csrf'))) {
@@ -77,14 +59,6 @@ if (strlen($comments) > 1000) {
 
 $emailTo = getFeedbackEmail();
 $emailSubject = '[ELANREGISTRY] Feedback';
-
-// Strip link-injection keywords from all values going into the email template.
-// Name, email, and id come from the session but are passed through as a
-// defense-in-depth measure consistent with the original form handler.
-$name = cleanString($name);
-$emailFrom = cleanString($emailFrom);
-$idFrom = cleanString($idFrom);
-$comments = cleanString($comments);
 
 $template = array(
     'name' => $name,

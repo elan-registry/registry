@@ -118,7 +118,6 @@ class SecurityHeadersTest extends TestCase
         $expectedHeaders = [
             'Content-Security-Policy',
             'X-Frame-Options',
-            'X-XSS-Protection',
             'X-Content-Type-Options',
             'Referrer-Policy',
         ];
@@ -130,6 +129,14 @@ class SecurityHeadersTest extends TestCase
                 "security_headers.php should set {$header} header"
             );
         }
+
+        // X-XSS-Protection was removed (#976): deprecated by all modern browsers,
+        // implies protection that isn't actually provided. CSP is the correct mechanism.
+        $this->assertStringNotContainsString(
+            'X-XSS-Protection',
+            $this->fileContent,
+            'security_headers.php must not set X-XSS-Protection (deprecated, removed in #976)'
+        );
     }
 
     /**

@@ -237,8 +237,10 @@ class CarTransferRepository
         }
 
         if (in_array($status, self::TERMINAL_STATUSES, true)) {
+            // AND status = 'pending' is the atomic TOCTOU gate: a second admin's
+            // UPDATE will match 0 rows (already terminal) and return false.
             $result = $this->db->query(
-                "UPDATE car_transfer_requests SET status = ?, admin_notes = ?, completed_date = NOW() WHERE id = ?",
+                "UPDATE car_transfer_requests SET status = ?, admin_notes = ?, completed_date = NOW() WHERE id = ? AND status = 'pending'",
                 [$status, $adminNotes, $id]
             );
         } else {

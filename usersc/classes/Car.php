@@ -37,7 +37,7 @@ class Car
     private DB $_db;
     /** @var mixed */
     private $_data;
-    private ?array $_history = null;
+    private array $_history = [];
     private ?array $_images = null;
     private ?object $_factory = null;
     /** @var array<string, mixed>|object|null */
@@ -363,9 +363,9 @@ class Car
     /**
      * Get car history
      *
-     * @return array|null Car history array or null
+     * @return array<object> Car history records (empty if not yet loaded or no records exist)
      */
-    public function history(): ?array
+    public function history(): array
     {
         return $this->_history;
     }
@@ -479,10 +479,12 @@ class Car
      * @param int $newUserId The user ID to transfer ownership to
      * @param string $reason Reason for transfer (for audit trail)
      * @param string $operationType Operation type for history
-     * @return bool True if transfer was successful
-     * @throws Exception If validation fails or database operation fails
+     * @return true Always returns true; throws on any failure.
+     * @throws CarNotFoundException If the car does not exist
+     * @throws CarPermissionException If the user is not authenticated
+     * @throws CarDatabaseException If a database operation fails
      */
-    public function transfer(int $newUserId, string $reason = 'Administrative transfer', string $operationType = 'NEWOWNER'): bool
+    public function transfer(int $newUserId, string $reason = 'Administrative transfer', string $operationType = 'NEWOWNER'): true
     {
         global $user;
 
@@ -548,7 +550,7 @@ class Car
         );
 
         // Clear cached history
-        $this->_history = null;
+        $this->_history = [];
 
         return $result;
     }

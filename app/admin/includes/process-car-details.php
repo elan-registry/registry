@@ -27,7 +27,7 @@ try {
     $carQ = $db->query("SELECT * FROM cars WHERE id = ?", [$carId]);
 
     if ($carQ->count() === 0) {
-        ApiResponse::error('Car not found', 200)
+        ApiResponse::notFound('Car not found')
             ->withLogging(
                 $user->data()->id,
                 LogCategories::LOG_CATEGORY_CAR_ERRORS,
@@ -60,7 +60,7 @@ try {
         ->withData('car', $carData)
         ->send();
 
-} catch (Exception $e) {
+} catch (\Throwable $e) {
     ApiResponse::serverError('Database error occurred')
         ->withLogging(
             $user->data()->id,

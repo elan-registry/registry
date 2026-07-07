@@ -338,12 +338,12 @@ final class ApiResponseTest extends TestCase
     public function testWithLogging(): void
     {
         $response = ApiResponse::success('Done')
-            ->withLogging(42, 'OwnerActions', 'Profile updated');
+            ->withLogging(42, LogCategories::LOG_CATEGORY_OWNER_ACTIONS, 'Profile updated');
 
         $log = $response->getPendingLog();
         $this->assertNotNull($log);
         $this->assertEquals(42, $log['userId']);
-        $this->assertEquals('OwnerActions', $log['category']);
+        $this->assertEquals(LogCategories::LOG_CATEGORY_OWNER_ACTIONS, $log['category']);
         $this->assertEquals('Profile updated', $log['message']);
     }
 
@@ -356,7 +356,7 @@ final class ApiResponseTest extends TestCase
     public function testWithLoggingIsImmutable(): void
     {
         $original = ApiResponse::success('Done');
-        $modified = $original->withLogging(1, 'Test', 'Message');
+        $modified = $original->withLogging(1, LogCategories::LOG_CATEGORY_DIAGNOSTICS, 'Message');
 
         $this->assertNull($original->getPendingLog());
         $this->assertNotNull($modified->getPendingLog());
@@ -589,7 +589,7 @@ final class ApiResponseTest extends TestCase
         $response = ApiResponse::success('Profile updated!')
             ->withData('quality_score', 85)
             ->withData('missing_fields', ['city'])
-            ->withLogging(42, 'OwnerActions', 'Profile updated for user 42');
+            ->withLogging(42, LogCategories::LOG_CATEGORY_OWNER_ACTIONS, 'Profile updated for user 42');
 
         $this->assertTrue($response->isSuccess());
         $this->assertEquals('Profile updated!', $response->getMessage());
@@ -600,7 +600,7 @@ final class ApiResponseTest extends TestCase
 
         $log = $response->getPendingLog();
         $this->assertEquals(42, $log['userId']);
-        $this->assertEquals('OwnerActions', $log['category']);
+        $this->assertEquals(LogCategories::LOG_CATEGORY_OWNER_ACTIONS, $log['category']);
     }
 
     /**
@@ -627,7 +627,7 @@ final class ApiResponseTest extends TestCase
     public function testWithLoggingZeroUserId(): void
     {
         $response = ApiResponse::forbidden('Access denied')
-            ->withLogging(0, 'SecurityError', 'Anonymous access attempt');
+            ->withLogging(0, LogCategories::LOG_CATEGORY_SECURITY, 'Anonymous access attempt');
 
         $log = $response->getPendingLog();
         $this->assertEquals(0, $log['userId']);
@@ -642,7 +642,7 @@ final class ApiResponseTest extends TestCase
     public function testToArrayDoesNotIncludePendingLog(): void
     {
         $response = ApiResponse::success('Done')
-            ->withLogging(1, 'Test', 'Message');
+            ->withLogging(1, LogCategories::LOG_CATEGORY_DIAGNOSTICS, 'Message');
 
         $array = $response->toArray();
 

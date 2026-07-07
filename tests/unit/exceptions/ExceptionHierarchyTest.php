@@ -2,6 +2,8 @@
 
 declare(strict_types=1);
 
+use ElanRegistry\Exceptions\AdminContactException;
+use ElanRegistry\Exceptions\AdminOperationException;
 use ElanRegistry\Exceptions\BackupException;
 use ElanRegistry\Exceptions\CarCreationException;
 use ElanRegistry\Exceptions\CarDatabaseException;
@@ -38,6 +40,8 @@ class ExceptionHierarchyTest extends TestCase
      * All exception classes that should extend ElanRegistryException
      */
     private const EXCEPTION_CLASSES = [
+        AdminContactException::class,
+        AdminOperationException::class,
         CarNotFoundException::class,
         CarCreationException::class,
         CarValidationException::class,
@@ -309,13 +313,23 @@ class ExceptionHierarchyTest extends TestCase
         $this->assertEquals(500, (new CarCreationException())->getHttpStatusCode());
         $this->assertEquals(500, (new CarDeletionException())->getHttpStatusCode());
         $this->assertEquals(500, (new CarMergeException())->getHttpStatusCode());
-        $this->assertEquals(500, (new CarTransferException())->getHttpStatusCode());
         $this->assertEquals(500, (new CarDatabaseException())->getHttpStatusCode());
         $this->assertEquals(500, (new OwnerCreationException())->getHttpStatusCode());
         $this->assertEquals(500, (new OwnerUpdateException())->getHttpStatusCode());
         $this->assertEquals(500, (new ImageProcessingException())->getHttpStatusCode());
         $this->assertEquals(500, (new BackupException('msg'))->getHttpStatusCode());
         $this->assertEquals(500, (new LocationServiceException())->getHttpStatusCode());
+    }
+
+    /**
+     * Test that CarTransferException returns 409 Conflict
+     *
+     * Transfer failures are conflict-class errors (concurrent admin actions,
+     * state conflicts) rather than server faults.
+     */
+    public function testCarTransferExceptionReturns409(): void
+    {
+        $this->assertEquals(409, (new CarTransferException())->getHttpStatusCode());
     }
 
     /**
@@ -382,6 +396,8 @@ class ExceptionHierarchyTest extends TestCase
             'OwnerValidationException' => [OwnerValidationException::class, 'ValidationError'],
             'OwnerUpdateException' => [OwnerUpdateException::class, 'OwnerActions'],
             'ImageProcessingException' => [ImageProcessingException::class, 'FileError'],
+            'AdminContactException' => [AdminContactException::class, 'CarActions'],
+            'AdminOperationException' => [AdminOperationException::class, 'SystemError'],
             'BackupException' => [BackupException::class, 'BackupError'],
             'ValidationException' => [ValidationException::class, 'ValidationError'],
             'LocationServiceException' => [LocationServiceException::class, 'SystemError'],
@@ -401,7 +417,7 @@ class ExceptionHierarchyTest extends TestCase
             'CarValidationException' => [CarValidationException::class, 422],
             'CarDeletionException' => [CarDeletionException::class, 500],
             'CarMergeException' => [CarMergeException::class, 500],
-            'CarTransferException' => [CarTransferException::class, 500],
+            'CarTransferException' => [CarTransferException::class, 409],
             'CarDatabaseException' => [CarDatabaseException::class, 500],
             'CarPermissionException' => [CarPermissionException::class, 403],
             'OwnerNotFoundException' => [OwnerNotFoundException::class, 404],
@@ -409,6 +425,8 @@ class ExceptionHierarchyTest extends TestCase
             'OwnerValidationException' => [OwnerValidationException::class, 422],
             'OwnerUpdateException' => [OwnerUpdateException::class, 500],
             'ImageProcessingException' => [ImageProcessingException::class, 500],
+            'AdminContactException' => [AdminContactException::class, 500],
+            'AdminOperationException' => [AdminOperationException::class, 500],
             'BackupException' => [BackupException::class, 500],
             'ValidationException' => [ValidationException::class, 422],
             'LocationServiceException' => [LocationServiceException::class, 500],

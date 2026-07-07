@@ -2,8 +2,6 @@
 
 declare(strict_types=1);
 
-use PHPUnit\Framework\TestCase;
-
 /**
  * RegressionTestTemplate - Copy this file and replace {ISSUE_NUMBER} with actual issue number
  *
@@ -17,7 +15,7 @@ use PHPUnit\Framework\TestCase;
  * This test ensures that the issue fixed in #{ISSUE_NUMBER}
  * continues to work correctly in future code changes.
  */
-final class Issue{ISSUE_NUMBER}RegressionTest extends TestCase
+final class Issue{ISSUE_NUMBER}RegressionTest extends RegressionTestCase
 {
     /**
      * Test that the issue is fixed

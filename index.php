@@ -305,5 +305,5 @@ var homepageTimelineData = <?= $timelineJson ?>;
 }());
 </script>
 <style>[data-showcase-slide]{transition:opacity .3s ease-in-out}</style>
-<script src="<?= htmlspecialchars($us_url_root, ENT_QUOTES, 'UTF-8') ?>app/assets/js/car-showcase.min.js"></script>
+<script src="<?= htmlspecialchars($us_url_root, ENT_QUOTES, 'UTF-8') ?>app/assets/js/car-showcase.min.js?v=<?= ASSET_VERSION ?>"></script>
 <?php require_once $abs_us_root . $us_url_root . 'users/includes/html_footer.php'; ?>

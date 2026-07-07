@@ -194,8 +194,8 @@ primary issue carries the full combined scope into Step 5.
 
 ### Step 5: Recommend an issue order
 
-Launch the **senior-product-manager** and **senior-architect** agents in
-parallel to analyze all issues and determine the best sequence. Consider:
+Launch the **senior-product-manager** agent to analyze all issues and
+determine the best sequence. Consider:
 
 - **Dependencies** — issues that other issues depend on should come first
   (e.g., a schema change before a feature that uses it)

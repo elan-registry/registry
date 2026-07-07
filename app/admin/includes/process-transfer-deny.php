@@ -43,7 +43,12 @@ try {
 
     // Update transfer request status to denied
     if (!$repo->updateStatus((int)$transferId, 'denied', "Denied by admin user {$user->data()->id}")) {
-        throw new CarTransferException('Failed to update transfer request status to denied');
+        throw new CarTransferException(
+            "updateStatus returned false for transfer #{$transferId} — request already processed (TOCTOU)",
+            0,
+            null,
+            'This request was already processed by another admin.'
+        );
     }
 
     // Log successful denial
@@ -82,7 +87,7 @@ try {
         ->send();
 
 } catch (CarTransferException $e) {
-    ApiResponse::error($e->getUserMessage(), 400)
+    ApiResponse::error($e->getUserMessage(), $e->getHttpStatusCode())
         ->withLogging(
             $user->data()->id,
             $e->getLogCategory(),

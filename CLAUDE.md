@@ -97,12 +97,17 @@ edge caching and CDN for global users (US, EU, AU).
 
 **Template Customization Rules:**
 
-- `usersc/templates/customizer/` is **gitignored upstream** — do NOT modify any
-  files in this directory. The sole exception is `file_nav_custom.php`, which is
-  project-owned and tracked.
-- `/users/` is the **UserSpice 6 upstream framework** — do NOT modify files
-  here. Extend behavior via custom classes in `usersc/classes/` under the
-  `ElanRegistry\` namespace instead.
+The following directories are **upstream UserSpice — do NOT modify** any files
+except those explicitly listed as project-owned:
+
+| Directory | Status | Project-owned exceptions (tracked by git) |
+| --- | --- | --- |
+| `/users/` | Upstream framework | none — extend via `usersc/classes/` instead |
+| `usersc/templates/` | Upstream templates | `customizer/file_nav_custom.php` (project nav additions), `customizer/assets/child_themes/elanregistry*` (project child theme), `customizer.css` (project styles); `customizer/navigation.php` is tracked because UserSpice's template loader requires it — do not edit it, add nav content via `file_nav_custom.php` instead |
+| `usersc/plugins/` | Upstream plugins | `hooker/hooks/` (project hooks), `ai_prompts/custom_prompts/` (Claude AI context prompts) |
+
+- To add new behavior, extend via custom classes in `usersc/classes/` under the
+  `ElanRegistry\` namespace instead of modifying `/users/`.
 - To add content to the footer without touching upstream files, inject via JS
   in `usersc/includes/footer.php` (included by UserSpice after the footer renders).
 - To add content to the header/nav, use `usersc/templates/customizer/file_nav_custom.php`.
@@ -241,7 +246,7 @@ for the triage workflow, API commands, and known false positive patterns.
 
 ### Milestone Lifecycle (typical)
 
-Most work follows a structured milestone lifecycle with five commands:
+Most work follows a structured milestone lifecycle with these commands:
 
 ```text
 /start-milestone v2.17.0     — Create milestone branch, prompt fix-script cleanup, draft release notes
@@ -249,6 +254,7 @@ Most work follows a structured milestone lifecycle with five commands:
   /simplify                   — Clean up the code (optional, recommended)
   /commit                     — Commit changes locally
   /commit-push-pr             — Push + PR targeting milestone branch
+  /address-pr-comments        — Review CI/reviewer comments, fix blocking items
   /finish-issue 423           — Monitor CI, squash-merge, close issue
   (repeat for each issue)
 /finish-milestone v2.17.0    — PR to main, finalize release notes, update wiki
@@ -260,6 +266,9 @@ Most work follows a structured milestone lifecycle with five commands:
 
 - `/start-issue` handles the full development cycle (branch, plan, implement,
   test, security review) but **does not commit or push**
+- `/address-pr-comments` fetches all CI check annotations and reviewer comments
+  after a PR is pushed, triages blocking vs. advisory findings, fixes blocking
+  items with a software-developer agent, and re-verifies CI before handoff
 - Each issue gets its own PR targeting the milestone branch (squash-merged by
   `/finish-issue` for clean history)
 - `/finish-milestone` creates the final PR to `main` with all closing keywords
@@ -293,12 +302,13 @@ and architecture agents.
 ### Other Commands
 
 ```text
-/new-issue          — Create a well-defined GitHub issue with PM refinement
-/security-review    — OWASP security audit of recent changes
-/release            — Standalone release (hotfixes not tied to a milestone)
+/new-issue           — Create a well-defined GitHub issue with PM refinement
+/address-pr-comments — Triage CI/reviewer comments, fix blocking items
+/security-review     — OWASP security audit of recent changes
+/release             — Standalone release (hotfixes not tied to a milestone)
 /architecture-update — Full wiki architecture documentation refresh
-/revise-claude-md   — Update CLAUDE.md with session learnings
-/clean_gone         — Delete local branches removed from remote
+/revise-claude-md    — Update CLAUDE.md with session learnings
+/clean_gone          — Delete local branches removed from remote
 ```
 
 ### Release Notes

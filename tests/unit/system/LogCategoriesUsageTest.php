@@ -407,13 +407,6 @@ class LogCategoriesUsageTest extends TestCase
 
         $content = (string)file_get_contents($filePath);
 
-        // cleanString() must have a PHPDoc block
-        $this->assertMatchesRegularExpression(
-            '/\/\*\*.*?cleanString/s',
-            $content,
-            'send-feedback.php cleanString() must have a PHPDoc block (#600)'
-        );
-
         // logger() calls must not use hardcoded user ID 1
         $this->assertDoesNotMatchRegularExpression(
             '/\blogger\s*\(\s*1\s*,/',
@@ -478,6 +471,31 @@ class LogCategoriesUsageTest extends TestCase
             $data[$file] = [$file];
         }
         return $data;
+    }
+
+    /**
+     * Regression test for Issue #976: process-car-details.php must return HTTP 404
+     * for missing cars, not HTTP 200 with an error payload.
+     */
+    public function testProcessCarDetailsUsesNotFoundForMissingCar(): void
+    {
+        $filePath = $this->rootDir . '/app/admin/includes/process-car-details.php';
+        if (!file_exists($filePath)) {
+            $this->markTestSkipped('process-car-details.php not found');
+        }
+
+        $content = (string)file_get_contents($filePath);
+
+        $this->assertStringContainsString(
+            'ApiResponse::notFound(',
+            $content,
+            'process-car-details.php must use ApiResponse::notFound() for missing cars (#976)'
+        );
+        $this->assertStringNotContainsString(
+            "ApiResponse::error('Car not found', 200)",
+            $content,
+            'process-car-details.php must not return HTTP 200 for a missing car (#976)'
+        );
     }
 
     /**

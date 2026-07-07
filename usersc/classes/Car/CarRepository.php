@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace ElanRegistry\Car;
 
 use DB;
+use LogCategories;
 
 /**
  * CarRepository - Database access layer for car operations
@@ -19,6 +20,8 @@ use DB;
 class CarRepository
 {
     private DB $db;
+
+    private bool $transactionOwner = false;
 
     /**
      * @param DB $db Database instance
@@ -219,15 +222,12 @@ class CarRepository
      * Get car history records
      *
      * @param int $carId Car ID
-     * @return array<object>|null History records or null if none
+     * @return array<object> History records (empty if none)
      */
-    public function getHistory(int $carId): ?array
+    public function getHistory(int $carId): array
     {
-        $data = $this->db->query("SELECT * from cars_hist WHERE car_id = ? ORDER BY timestamp DESC", [$carId]);
-        if ($data->count()) {
-            return $data->results();
-        }
-        return null;
+        return $this->db->query("SELECT * FROM cars_hist WHERE car_id = ? ORDER BY timestamp DESC", [$carId])
+            ->results();
     }
 
     /**
@@ -313,6 +313,7 @@ class CarRepository
             . " ORDER BY {$column}"
         );
         if ($this->db->error()) {
+            logger(0, LogCategories::LOG_CATEGORY_DATABASE_ERROR, "CarRepository::distinctCarModelValues failed for column={$column}: " . $this->db->errorString());
             return [];
         }
         return $result->results();
@@ -321,31 +322,56 @@ class CarRepository
     /**
      * Begin a database transaction
      *
+     * When participating in an outer transaction (begun by the caller before
+     * this repository), this method is a no-op.
+     *
      * @return void
      */
     public function beginTransaction(): void
     {
+        if ($this->db->inTransaction()) {
+            return; // Participating in outer transaction — no-op
+        }
         $this->db->beginTransaction();
+        $this->transactionOwner = true;
     }
 
     /**
      * Commit the current transaction
      *
+     * When participating in an outer transaction (begun by the caller before
+     * this repository), this method is a no-op.
+     *
      * @return void
      */
     public function commit(): void
     {
-        $this->db->commit();
+        if (!$this->transactionOwner) {
+            return; // Outer transaction manages commit — no-op
+        }
+        $this->transactionOwner = false;
+        if ($this->db->inTransaction()) {
+            $this->db->commit();
+        }
     }
 
     /**
      * Rollback the current transaction
      *
+     * When participating in an outer transaction (begun by the caller before
+     * this repository), this method is a no-op.
+     *
      * @return void
      */
     public function rollback(): void
     {
-        $this->db->rollBack();
+        if (!$this->transactionOwner) {
+            return; // Outer transaction manages rollback — no-op
+        }
+        $this->transactionOwner = false;
+        if ($this->db->inTransaction()) {
+            $this->db->rollBack();
+        }
     }
 
     /**

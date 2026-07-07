@@ -143,8 +143,8 @@ if (!class_exists('Car')) {
         /**
          * Get car history
          */
-        public function history(): ?array {
-            return !empty($this->history) ? $this->history : null;
+        public function history(): array {
+            return $this->history;
         }
 
         /**
@@ -511,8 +511,12 @@ if (!function_exists('logger')) {
 }
 
 // Mock getUserWithProfile function
+// Returns null for user ID <= 0 (simulates "user not found"), truthy object otherwise.
 if (!function_exists('getUserWithProfile')) {
-    function getUserWithProfile($userId): object {
+    function getUserWithProfile(int $userId): ?object {
+        if ($userId <= 0) {
+            return null;
+        }
         return (object) [
             'id' => (string) $userId,
             'fname' => 'Test',
@@ -664,6 +668,7 @@ if (!class_exists('DB')) {
         public function beginTransaction(): void {}
         public function commit(): void {}
         public function rollBack(): void {}
+        public function inTransaction(): bool { return false; }
     }
 }
 
@@ -967,6 +972,7 @@ if (!class_exists('DB')) {
             public function beginTransaction(): void {}
             public function commit(): void {}
             public function rollBack(): void {}
+            public function inTransaction(): bool { return false; }
         }
 
         /**
@@ -1327,3 +1333,7 @@ function mockUserDeletionCleanup($id): void {
         logger($id, LogCategories::LOG_CATEGORY_USER_DELETION, 'Fallback cleanup: noowner user not found, set cars to NULL');
     }
 }
+
+// RegressionTestCase is not in the PSR-4 autoloaded path, so it must be
+// explicitly required before PHPUnit loads test classes that extend it.
+require_once __DIR__ . '/regression/RegressionTestCase.php';

@@ -1,6 +1,6 @@
 ---
 description: Create a new GitHub issue with PM-driven scope refinement and expert input
-model: claude-opus-4-7
+model: claude-sonnet-4-6
 ---
 
 # Create Issue Command
@@ -11,7 +11,6 @@ Before any other action, create one tracking task per major step below using
 TaskCreate (existing-issue search, PM scope refinement, expert input from
 architect/test/docs agents, issue body draft, user review, issue creation,
 next-step suggestion).
-
 
 This command helps create well-defined GitHub issues by engaging specialized
 agents to refine scope, architecture, testing, and documentation requirements.
@@ -82,30 +81,38 @@ Continue until scope is fully clarified.
 
 ### Step 5: Expert Refinement
 
-Once the user has answered the PM's questions, launch these agents **in
-parallel** to refine the issue from their perspectives:
+Based on the PM's complexity estimate from Step 3, launch only the agents
+that add value for this issue's scope:
 
-- **senior-architect**: Review the proposed scope for:
-  - Technical feasibility and complexity estimate (S/M/L/XL)
-  - Architecture risks or concerns
-  - Security implications (CSRF, SQL injection, XSS, data handling)
-  - Database schema or migration impacts
-  - Dependencies on other systems or issues
-  - Suggested implementation approach
+| Complexity | Agents to launch |
+| --- | --- |
+| **Trivial / Small (S)** | Skip — PM draft is sufficient; proceed to Step 6 |
+| **Medium (M)** | Launch the one agent most relevant to the PM's flagged risk |
+| **Large / XL (L/XL)** | Launch all three in parallel |
 
-- **senior-test-engineer**: Review the proposed scope for:
-  - Testability of the acceptance criteria
-  - Test types needed (unit, integration, browser, security)
-  - Existing test coverage in affected areas
-  - Potential regression risks
+**For Medium issues** — pick the most relevant:
 
-- **technical-documentation-writer**: Review the proposed scope for:
-  - Documentation that will need updating (use the Documentation Requirements
-    Matrix from CLAUDE.md)
-  - User-facing documentation needs
-  - Developer documentation needs
+- **senior-architect** (when there are technical feasibility concerns, security
+  implications, DB schema impacts, or dependency risks): Review for complexity
+  estimate (S/M/L/XL), architecture risks, security implications, database
+  impacts, and dependencies.
 
-Wait for all agents to complete.
+- **senior-test-engineer** (when acceptance criteria have testing complexity or
+  regression risk is flagged): Review testability, test types needed
+  (unit/integration/browser/security), existing coverage gaps.
+
+**For Large/XL issues** — launch all three in parallel:
+
+- **senior-architect**: Technical feasibility, complexity estimate, architecture
+  risks, security implications, DB impacts, dependencies, suggested approach.
+
+- **senior-test-engineer**: Testability of acceptance criteria, test types
+  needed, existing coverage, regression risks.
+
+- **technical-documentation-writer**: Documentation that will need updating,
+  user-facing and developer docs impact.
+
+Wait for all launched agents to complete.
 
 ### Step 6: Synthesize and Present Final Draft
 
@@ -197,71 +204,3 @@ Would you like to:
 - **User has final say** — present recommendations but let the user decide
 - **Include complexity estimate** — architect should always estimate S/M/L/XL
 - **Use project labels** — check existing labels before suggesting new ones
-
-## Example Flow
-
-```text
-User: /create-issue Users can't sort the car listing by year
-
-You: Let me research the codebase and check for related issues...
-
-[launches Explore agent: app/cars/ listing pages, DataTables config]
-[searches existing issues for sorting/year/listing keywords]
-
-No duplicate issues found. The car listing at app/cars/index.php uses
-DataTables with server-side processing.
-
-Now let me have the Product Manager draft this issue...
-
-[launches senior-product-manager with problem statement + codebase context]
-
-Here's the PM's draft:
-
-**Title:** Add year column sorting to car listing page
-**Labels:** enhancement
-**Acceptance Criteria:**
-- [ ] Year column is sortable ascending/descending
-- [ ] Default sort order preserved when year sort is cleared
-- [ ] Sort persists across pagination
-
-The PM has a question for you:
-
-Should sorting by year use the manufacturing year, the registration year,
-or both? The database has both fields.
-
-User: Manufacturing year
-
-You: Got it. Next question:
-
-The current listing shows 8 columns. Adding year sorting may affect
-performance with server-side processing. Should we also add year as a
-visible column if it's not already shown, or just enable sorting on an
-existing column?
-
-User: It should already be visible — add it if it's not
-
-You: [launches architect, test engineer, and docs writer in parallel]
-
-[synthesizes feedback]
-
-Here's the refined issue:
-
-Title: Add manufacturing year column with sorting to car listing
-Labels: enhancement
-Milestone: v2.17.0
-Complexity: S (Small)
-...
-
-Would you like to change anything before I create it?
-
-User: Looks good
-
-You: [creates issue via gh]
-
-Issue #547 created: https://github.com/unibrain1/elanregistry/issues/547
-
-Would you like to:
-1. Start working on it now? (`/issue 547`)
-2. Create another related issue?
-3. That's all for now.
-```

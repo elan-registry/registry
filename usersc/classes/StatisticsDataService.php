@@ -29,11 +29,30 @@ class StatisticsDataService {
      *
      * @param string $query SQL query to execute
      * @param bool $single Whether to return single result or array
-     * @return array|object|null Query results
+     * @return array|object|null Query results, or null/empty array on database error (error is logged)
      */
     private function executeQuery(string $query, bool $single = false): array|object|null {
-        $result = $this->db->query($query);
-        return $single ? $result->first() : $result->results();
+        try {
+            $result = $this->db->query($query);
+            // UserSpice DB class swallows errors internally and never throws — check explicitly.
+            // Also guard $result === null for fringe edge cases where query() returns null without setting the error flag.
+            if ($result === null || $this->db->error()) {
+                logger(
+                    0,
+                    LogCategories::LOG_CATEGORY_DATABASE_ERROR,
+                    'StatisticsDataService query failed: ' . $this->db->errorString() . ' | Query: ' . substr($query, 0, 200)
+                );
+                return $single ? null : [];
+            }
+            return $single ? $result->first() : $result->results();
+        } catch (\Throwable $e) {
+            logger(
+                0,
+                LogCategories::LOG_CATEGORY_DATABASE_ERROR,
+                'StatisticsDataService query threw: ' . $e->getMessage() . ' | Query: ' . substr($query, 0, 200)
+            );
+            return $single ? null : [];
+        }
     }
 
     // === GEOGRAPHIC DATA ===
@@ -174,14 +193,44 @@ class StatisticsDataService {
      * @return array Series counts by type
      */
     public function getSeriesCounts(): array {
+        $row = $this->executeQuery(
+            "SELECT
+                 SUM(series LIKE 's1%')     AS s1,
+                 SUM(series LIKE 's2%')     AS s2,
+                 SUM(series LIKE 's3%')     AS s3,
+                 SUM(series LIKE 's4%')     AS s4,
+                 SUM(series LIKE 'sprint%') AS sprint,
+                 SUM(series LIKE '+2%')     AS plus2
+             FROM cars",
+            true
+        );
+        if ($row === null) {
+            return ['s1' => 0, 's2' => 0, 's3' => 0, 's4' => 0, 'sprint' => 0, '+2' => 0];
+        }
         return [
-            's1' => $this->executeQuery("select count(*) as count from cars where series like 's1%'", true)->count,
-            's2' => $this->executeQuery("select count(*) as count from cars where series like 's2%'", true)->count,
-            's3' => $this->executeQuery("select count(*) as count from cars where series like 's3%'", true)->count,
-            's4' => $this->executeQuery("select count(*) as count from cars where series like 's4%'", true)->count,
-            'sprint' => $this->executeQuery("select count(*) as count from cars where series like 'sprint%'", true)->count,
-            '+2' => $this->executeQuery("select count(*) as count from cars where series like '+2%'", true)->count,
+            's1'     => (int)($row->s1     ?? 0),
+            's2'     => (int)($row->s2     ?? 0),
+            's3'     => (int)($row->s3     ?? 0),
+            's4'     => (int)($row->s4     ?? 0),
+            'sprint' => (int)($row->sprint ?? 0),
+            '+2'     => (int)($row->plus2  ?? 0),
         ];
+    }
+
+    /**
+     * Get map pin data for the world map
+     *
+     * @return array<int, object{id: int, year: string, series: string, chassis: string,
+     *                           variant: string, image: string, city: string, state: string,
+     *                           country: string, owner: string, lat: float, lon: float}> Cars with coordinates
+     */
+    public function getMapPins(): array {
+        return $this->executeQuery(
+            "SELECT id, year, series, chassis, variant, image,
+                    city, state, country, fname AS owner, lat, lon
+             FROM cars
+             WHERE lat != 0 AND lon != 0"
+        );
     }
 
     // === COLOR DATA ===

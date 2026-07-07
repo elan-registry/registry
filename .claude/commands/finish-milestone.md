@@ -1,6 +1,6 @@
 ---
 description: Create a PR to merge a completed milestone branch into main, finalize docs and release notes
-model: claude-opus-4-7
+model: claude-sonnet-4-6
 ---
 
 # Finish Milestone
@@ -41,8 +41,11 @@ Set each task to `in_progress` when you begin it and `completed` on success.
 
 ### Step 2: Check for open issues still in the milestone
 
+Use the direct API (`gh issue list --milestone` can silently return empty results — the milestone number is already recorded from Step 1):
+
 ```bash
-gh issue list --milestone "<full milestone title>" --state open --json number,title
+gh api "repos/unibrain1/elanregistry/issues?milestone=<MILESTONE_NUM>&state=open&per_page=20" \
+  --jq '.[] | {number, title}'
 ```
 
 - If open issues remain, warn user and list them. Ask if they want to proceed
@@ -129,21 +132,30 @@ git commit -m "docs: update CLAUDE.md for $ARGUMENTS milestone changes"
 
 If no updates needed, skip.
 
-### Step 9.5: Security Review
+### Step 9.5: Cross-PR Security Integration Check
 
-Before creating the PR, run a security audit of all changes in this milestone:
+By the time this step runs, every individual issue PR has already passed:
+security-reviewer in `/start-issue`, CodeQL CI, and Claude Code Review CI.
+Do **not** re-run a full OWASP pass over already-reviewed files.
+
+Instead, run a targeted cross-PR integration check. Get the full diff:
 
 ```bash
 git diff main...milestone/$ARGUMENTS -- '*.php' '*.js'
 ```
 
-Launch the `security-reviewer` agent via the Agent tool with
-`subagent_type: "security-reviewer"`. Provide the full diff of `.php` and
-`.js` files against `main`.
+Launch the `security-reviewer` agent with this scoped prompt:
+> "Review only for cross-PR security interactions introduced by combining
+> these changes. Focus on: (1) new code paths where output from one changed
+> file flows into input handling in another changed file; (2) changes to
+> shared auth, session, or CSRF middleware; (3) any file touched by 3+ PRs
+> that may have accumulated risk across changes. Skip file-level OWASP
+> checks — those were done per-issue. Report only findings that could not
+> have been caught by reviewing each PR in isolation."
 
-- If **Critical or High** severity issues are found, **stop** and tell the
-  user to fix them before proceeding.
-- If only Medium/Low or no issues, note findings in the summary and proceed.
+- If **Critical or High** cross-integration findings are found, **stop** and
+  tell the user to fix them before proceeding.
+- If only Medium/Low or no findings, note in summary and proceed.
 
 ### Step 9.7: Local multi-agent review (before opening the PR)
 

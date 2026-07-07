@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use ElanRegistry\Exceptions\CarException;
 use ElanRegistry\Exceptions\CarTransferException;
 use ElanRegistry\Transfer\CarTransferRepository;
 use ElanRegistry\Transfer\TransferEmailService;
@@ -57,16 +58,24 @@ try {
 
     // Execute transfer
     $reason = "Car was reassigned to $targetName (User ID: {$transfer->requested_by_user_id}) by admin " . $user->data()->id;
-    $transferSuccess = $car->transfer((int)$transfer->requested_by_user_id, $reason);
 
-    if (!$transferSuccess) {
-        throw new CarTransferException('Failed to transfer car ownership');
-    }
+    $db->beginTransaction();
 
-    // Update transfer request status to completed
+    // 1. Claim the request atomically — TOCTOU gate
     if (!$repo->updateStatus((int)$transferId, 'completed', "Approved by admin user {$user->data()->id}")) {
-        throw new CarTransferException('Failed to update transfer request status to completed');
+        throw new CarTransferException(
+            "updateStatus returned false for transfer #{$transferId} — request already processed (TOCTOU)",
+            0,
+            null,
+            'This request was already processed by another admin.'
+        );
     }
+
+    // 2. Transfer car ownership — CarRepository defers to this outer transaction
+    // Car::transfer() always returns true or throws; no false return path exists.
+    $car->transfer((int)$transfer->requested_by_user_id, $reason);
+
+    $db->commit();
 
     // Log successful approval
     logger(
@@ -113,8 +122,15 @@ try {
         )
         ->send();
 
-} catch (CarTransferException $e) {
-    ApiResponse::error($e->getUserMessage(), 400)
+} catch (CarException $e) {
+    try {
+        if ($db->inTransaction()) {
+            $db->rollBack();
+        }
+    } catch (\Throwable $rollbackEx) {
+        logger($user->data()->id, LogCategories::LOG_CATEGORY_SYSTEM_ERROR, "rollBack() failed during transfer error handling for request #{$transferId}: " . $rollbackEx->getMessage());
+    }
+    ApiResponse::error($e->getUserMessage(), $e->getHttpStatusCode())
         ->withLogging(
             $user->data()->id,
             $e->getLogCategory(),
@@ -123,6 +139,13 @@ try {
         ->send();
 
 } catch (\Throwable $e) {
+    try {
+        if ($db->inTransaction()) {
+            $db->rollBack();
+        }
+    } catch (\Throwable $rollbackEx) {
+        logger($user->data()->id, LogCategories::LOG_CATEGORY_SYSTEM_ERROR, "rollBack() failed during transfer error handling for request #{$transferId}: " . $rollbackEx->getMessage());
+    }
     ApiResponse::serverError('An unexpected error occurred while processing the transfer.')
         ->withLogging(
             $user->data()->id,
