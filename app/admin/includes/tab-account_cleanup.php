@@ -42,7 +42,12 @@ if ($method === 'POST' && isset($_POST['ac_action'])) {
                 header('Location: ?' . $qs);
                 exit;
             } catch (\Throwable $e) {
-                $acFlashError = 'Restore failed: ' . $e->getMessage();
+                logger(
+                    $currentUserId,
+                    LogCategories::LOG_CATEGORY_USER_DELETION,
+                    "Admin restore of archive_id={$archiveId} failed: " . $e->getMessage()
+                );
+                $acFlashError = 'Restore failed. See application log for details.';
             }
         }
     } else {
@@ -62,6 +67,16 @@ if ($method === 'POST' && isset($_POST['ac_action'])) {
             $eligible    = $isVerified
                 ? findVerifiedOwnerlessAccounts($db, $postVThreshold)
                 : findUnverifiedOwnerlessAccounts($db, $postThreshold);
+
+            // CRITICAL-2: Abort if the re-query itself failed silently (UserSpice swallows DB errors)
+            if ($db->error()) {
+                logger(
+                    $currentUserId,
+                    LogCategories::LOG_CATEGORY_USER_DELETION,
+                    'Account cleanup eligibility re-query failed — deletion aborted: ' . $db->errorString()
+                );
+                $acFlashError = 'Could not verify account eligibility. Deletion aborted. Please try again.';
+            } else {
             $eligibleMap = [];
             foreach ($eligible as $acct) {
                 $eligibleMap[(int) $acct->id] = $acct;
@@ -81,8 +96,19 @@ if ($method === 'POST' && isset($_POST['ac_action'])) {
             }
 
             if (!isset($acFlashError)) {
-                foreach ($toDelete as $deleteId) {
-                    $acct = $eligibleMap[$deleteId];
+                deleteUsers($toDelete);
+
+                // CRITICAL-1: Re-query AFTER deletion so we log only accounts actually removed.
+                // deleteUsers() returns an iteration count, not a success count — log from confirmed state.
+                $acPostAccounts = $isVerified
+                    ? findVerifiedOwnerlessAccounts($db, $postVThreshold)
+                    : findUnverifiedOwnerlessAccounts($db, $postThreshold);
+                $stillExistIds  = array_map(fn($a): int => (int) $a->id, $acPostAccounts);
+                $confirmedIds   = array_diff($toDelete, $stillExistIds);
+                $deleted        = count($confirmedIds);
+
+                foreach ($confirmedIds as $deletedId) {
+                    $acct = $eligibleMap[$deletedId];
                     logger(
                         $currentUserId,
                         LogCategories::LOG_CATEGORY_USER_DELETION,
@@ -94,13 +120,6 @@ if ($method === 'POST' && isset($_POST['ac_action'])) {
                         )
                     );
                 }
-                deleteUsers($toDelete);
-
-                $acPostAccounts = $isVerified
-                    ? findVerifiedOwnerlessAccounts($db, $postVThreshold)
-                    : findUnverifiedOwnerlessAccounts($db, $postThreshold);
-                $stillExistIds  = array_map(fn($a): int => (int) $a->id, $acPostAccounts);
-                $deleted        = count(array_diff($toDelete, $stillExistIds));
 
                 // PRG: redirect so a browser refresh doesn't re-POST
                 $qs = http_build_query([

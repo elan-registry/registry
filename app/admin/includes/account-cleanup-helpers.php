@@ -154,6 +154,13 @@ function restoreArchivedAccount(DB $db, int $archiveId, int $restoredBy): int
         [$archiveId]
     )->first();
 
+    // HIGH-1: Check DB error before interpreting null as "not found" — a query failure also returns null.
+    if ($db->error()) {
+        throw new RuntimeException(
+            "DB error reading archive row #{$archiveId}: " . $db->errorString()
+        );
+    }
+
     if (!$row) {
         throw new RuntimeException("Archive row #{$archiveId} not found or already restored.");
     }
