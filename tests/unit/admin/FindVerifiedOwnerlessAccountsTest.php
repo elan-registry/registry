@@ -8,7 +8,7 @@ use PHPUnit\Framework\TestCase;
 require_once __DIR__ . '/../../../app/admin/includes/account-cleanup-helpers.php';
 
 /**
- * Unit tests for findUnverifiedOwnerlessAccounts() in account-cleanup-helpers.php.
+ * Unit tests for findVerifiedOwnerlessAccounts() in account-cleanup-helpers.php.
  *
  * These tests use an inline anonymous DB mock that extends the bootstrap's DB class
  * so the strict `DB $db` type hint in the function under test is satisfied at runtime.
@@ -18,17 +18,17 @@ require_once __DIR__ . '/../../../app/admin/includes/account-cleanup-helpers.php
  * What is NOT tested here (delegated to integration tests):
  *   - Actual SQL filter correctness (email_verified, active, protected)
  *   - Database-level correctness of NOT EXISTS clauses for cars, car_user, and cars_hist
- *   - DATEDIFF boundary behaviour
+ *   - last_login threshold and boundary behaviour
  *
  * The car_transfer_requests NOT EXISTS guard is verified at the unit level via
  * testSqlExcludesUsersWithPendingTransferRequests().
  *
- * @see FindUnverifiedOwnerlessAccountsIntegrationTest
+ * Note: Integration test coverage for this function does not yet exist.
  */
 #[Group('fast')]
 #[Group('unit')]
 #[Group('admin')]
-final class FindUnverifiedOwnerlessAccountsTest extends TestCase
+final class FindVerifiedOwnerlessAccountsTest extends TestCase
 {
     // -------------------------------------------------------------------------
     // Factory helpers
@@ -36,10 +36,7 @@ final class FindUnverifiedOwnerlessAccountsTest extends TestCase
 
     /**
      * Build a DB mock that returns $rows from ->results() and records the last
-     * SQL query string and parameters for inspection via getLastSql() and getLastParams().
-     *
-     * The anonymous class extends the bootstrap mock DB so the `DB $db` type
-     * hint in findUnverifiedOwnerlessAccounts() is satisfied at runtime.
+     * SQL query string and parameters for inspection.
      */
     private function makeDb(array $rows): object
     {
@@ -75,7 +72,7 @@ final class FindUnverifiedOwnerlessAccountsTest extends TestCase
         $row2 = (object) ['id' => 99, 'email' => 'bob@example.com',   'fname' => 'Bob',   'lname' => 'Jones'];
 
         $db     = $this->makeDb([$row1, $row2]);
-        $result = findUnverifiedOwnerlessAccounts($db, 30);
+        $result = findVerifiedOwnerlessAccounts($db, 365);
 
         $this->assertCount(2, $result);
         $this->assertSame($row1, $result[0]);
@@ -89,39 +86,39 @@ final class FindUnverifiedOwnerlessAccountsTest extends TestCase
     public function testReturnsEmptyArrayWhenNoRows(): void
     {
         $db     = $this->makeDb([]);
-        $result = findUnverifiedOwnerlessAccounts($db, 30);
+        $result = findVerifiedOwnerlessAccounts($db, 365);
 
         $this->assertSame([], $result);
     }
 
     /**
      * The days threshold must be forwarded as the first (and only) positional
-     * parameter to DB::query() so the SQL placeholder is bound correctly.
+     * parameter to DB::query() so the DATEDIFF SQL placeholder is bound correctly.
      */
     public function testPassesDaysParameterToQuery(): void
     {
         $db = $this->makeDb([]);
-        findUnverifiedOwnerlessAccounts($db, 30);
+        findVerifiedOwnerlessAccounts($db, 365);
 
         $params = $db->getLastParams();
 
         $this->assertCount(1, $params, 'Exactly one bind parameter expected');
-        $this->assertSame(30, $params[0]);
+        $this->assertSame(365, $params[0]);
     }
 
     /**
-     * Verifies that a different threshold value (90) is forwarded unchanged —
+     * Verifies that a different threshold value (730) is forwarded unchanged —
      * ruling out any accidental hard-coding of the default value inside the
      * function.
      */
     public function testThresholdVariationPassedCorrectly(): void
     {
         $db = $this->makeDb([]);
-        findUnverifiedOwnerlessAccounts($db, 90);
+        findVerifiedOwnerlessAccounts($db, 730);
 
         $params = $db->getLastParams();
 
-        $this->assertSame(90, $params[0]);
+        $this->assertSame(730, $params[0]);
     }
 
     /**
@@ -137,7 +134,7 @@ final class FindUnverifiedOwnerlessAccountsTest extends TestCase
         ];
 
         $db     = $this->makeDb($expected);
-        $result = findUnverifiedOwnerlessAccounts($db, 30);
+        $result = findVerifiedOwnerlessAccounts($db, 365);
 
         $this->assertSame($expected, $result);
     }
@@ -149,7 +146,7 @@ final class FindUnverifiedOwnerlessAccountsTest extends TestCase
     public function testSqlExcludesUsersWithPendingTransferRequests(): void
     {
         $db = $this->makeDb([]);
-        findUnverifiedOwnerlessAccounts($db, 30);
+        findVerifiedOwnerlessAccounts($db, 365);
 
         $sql = $db->getLastSql();
         $this->assertStringContainsString('car_transfer_requests', $sql);
@@ -171,7 +168,6 @@ final class FindUnverifiedOwnerlessAccountsTest extends TestCase
                 $this->state->queryWasCalled = true;
                 $s = $this->state;
 
-                // Return a QueryResult subclass whose results() enforces ordering.
                 return new class($s) extends QueryResult {
                     public function __construct(private readonly object $s)
                     {
@@ -189,7 +185,7 @@ final class FindUnverifiedOwnerlessAccountsTest extends TestCase
             }
         };
 
-        $result = findUnverifiedOwnerlessAccounts($db, 30);
+        $result = findVerifiedOwnerlessAccounts($db, 365);
 
         $this->assertIsArray($result);
         $this->assertTrue($state->queryWasCalled, 'query() must be called before results()');

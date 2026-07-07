@@ -25,6 +25,7 @@
 
 ### Improvements
 
+- **Account cleanup excludes users with pending transfers** ([#1207](https://github.com/unibrain1/elanregistry/issues/1207)): Both eligibility queries now exclude users who have a pending car transfer request, preventing orphaned `car_transfer_requests` rows if such a user were deleted.
 - **Account cleanup deletion now always confirms** ([#1200](https://github.com/unibrain1/elanregistry/issues/1200)): The confirmation modal is shown for every account deletion (previously only for batches >10). Copy updated to clarify that deleted accounts are archived and can be restored.
 - **Account cleanup silent failures fixed** ([#1196](https://github.com/unibrain1/elanregistry/issues/1196)): Three silent failure modes in the account cleanup tab corrected: audit log now fires only after confirmed deletion (not before), DB error after eligibility re-query now aborts cleanly rather than silently deleting zero accounts, and restore failure now always logs and rolls back.
 - **Transfer approval is now atomic** ([#1175](https://github.com/unibrain1/elanregistry/issues/1175)): Car ownership transfer and request-status update are wrapped in a single transaction; if the status update fails (including TOCTOU "already processed"), the ownership change rolls back cleanly. As a side effect, the deny flow now also correctly returns an error when attempting to deny an already-processed request.
@@ -62,3 +63,4 @@
 - [#1198](https://github.com/unibrain1/elanregistry/issues/1198) ✓ — test: add unit and integration coverage for archive/restore account helpers
 - [#1199](https://github.com/unibrain1/elanregistry/issues/1199) ✓ — fix: PHPDoc accuracy, return types, and dead code cleanup (helpers, CarAdministrationService, StatisticsDataService)
 - [#1200](https://github.com/unibrain1/elanregistry/issues/1200) ✓ — fix: always confirm deletion and use ApiResponse for error responses in account cleanup
+- [#1207](https://github.com/unibrain1/elanregistry/issues/1207) ✓ — fix: account cleanup eligibility should exclude users with pending car transfer requests
