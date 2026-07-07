@@ -51,6 +51,7 @@ $validTabs = [
     'car-mgmt' => 'Car/Owner Relationships',
     'manage-cars' => 'Manage Cars',
     'owner-mgmt' => 'Manage Owners',
+    'account-cleanup' => 'Account Cleanup',
 ];
 
 $activeTab = isset($_GET['tab']) && array_key_exists($_GET['tab'], $validTabs) ? $_GET['tab'] : 'car-mgmt';
@@ -488,6 +489,14 @@ if (Input::exists('post')) {
                                         <?php if ($systemStatus['owner_issues'] > 0) { ?>
                                             <span class="badge text-bg-warning badge-sm ms-1"><?= $systemStatus['owner_issues'] ?></span>
                                         <?php } ?>
+                                    </a>
+                                </li>
+
+                                <!-- Account Cleanup Tab -->
+                                <li class="nav-item">
+                                    <a class="nav-link <?= $activeTab === 'account-cleanup' ? 'active' : '' ?>"
+                                       href="?tab=account-cleanup" role="tab">
+                                        <i class="fas fa-user-slash"></i> Account Cleanup
                                     </a>
                                 </li>
 

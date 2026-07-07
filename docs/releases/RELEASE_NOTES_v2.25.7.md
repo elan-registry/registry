@@ -20,7 +20,7 @@
 
 ### New Features
 
-- **Unverified account cleanup tool** ([#1127](https://github.com/unibrain1/elanregistry/issues/1127)): New maintenance script to review and delete unverified accounts with no car associations — an admin-initiated, GDPR-aligned replacement for the removed automated cleanup cron.
+- **Unverified account cleanup tool** ([#1127](https://github.com/unibrain1/elanregistry/issues/1127)): New tab on the admin dashboard to review and selectively delete unverified accounts with no car associations — an admin-initiated, GDPR-aligned replacement for the removed automated cleanup cron.
 
 ### Improvements
 
