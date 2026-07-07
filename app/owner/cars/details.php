@@ -482,7 +482,7 @@ window.carDetailsConfig = {
 
 <?php if (!empty($carData->lat) && $carData->lat != 0 && !empty($carData->lon) && $carData->lon != 0): ?>
 <link rel="stylesheet" href="<?= $us_url_root ?>usersc/css/maplibre-gl.css">
-<script src="<?= $us_url_root ?>usersc/js/maplibre-gl.min.js"></script>
+<script src="<?= $us_url_root ?>usersc/js/maplibre-gl.min.js" data-cfasync="false"></script>
 <script>
 (function () {
     if (typeof maplibregl === 'undefined') {

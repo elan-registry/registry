@@ -1,0 +1,18 @@
+# Elan Registry v2.25.8 Release Notes
+
+**Release Date:** July 7, 2026
+**Type:** Patch Release - Cloudflare Rocket Loader Map Fix
+
+## Required Actions After Deployment
+
+None.
+
+## User-Facing Changes
+
+### Improvements
+
+- **Map and chart display restored in Safari** ([PR #1219](https://github.com/unibrain1/elanregistry/pull/1219)): Fixed Cloudflare Rocket Loader deferring MapLibre GL and Chart.js initialization, which caused WebGL context errors and blank maps on the home page, statistics, car details, and account pages in Safari.
+
+## Issues Resolved
+
+No GitHub issues were opened for this hotfix — the regression was diagnosed and fixed directly on the milestone branch.

@@ -77,7 +77,7 @@ foreach ($markerRows as $car) {
 </style>
 
 <link rel="stylesheet" href="<?= $us_url_root ?>usersc/css/maplibre-gl.css">
-<script src="<?= $us_url_root ?>usersc/js/maplibre-gl.min.js"></script>
+<script src="<?= $us_url_root ?>usersc/js/maplibre-gl.min.js" data-cfasync="false"></script>
 
 <div class="page-wrapper">
     <div class="container-fluid">
@@ -361,10 +361,10 @@ window.elanMapMarkers = <?= $mapMarkersJson ?>;
 </script>
 
 <!-- Load Chart.js -->
-<script src="<?=$us_url_root?>usersc/js/chart.umd.min.js"></script>
+<script src="<?=$us_url_root?>usersc/js/chart.umd.min.js" data-cfasync="false"></script>
 
 <!-- Load Statistics JavaScript first -->
-<script src="<?= $us_url_root ?>app/assets/js/statistics.min.js?v=<?= ASSET_VERSION ?>"></script>
+<script src="<?= $us_url_root ?>app/assets/js/statistics.min.js?v=<?= ASSET_VERSION ?>" data-cfasync="false"></script>
 
 <!-- Initialize MapLibre and Statistics -->
 <script>

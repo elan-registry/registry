@@ -322,7 +322,7 @@ $_baseUrl = htmlspecialchars($us_url_root, ENT_QUOTES, 'UTF-8');
 
 <?php if ($hasOwnerMap): ?>
 <link rel="stylesheet" href="<?= $_baseUrl ?>usersc/css/maplibre-gl.css">
-<script src="<?= $_baseUrl ?>usersc/js/maplibre-gl.min.js"></script>
+<script src="<?= $_baseUrl ?>usersc/js/maplibre-gl.min.js" data-cfasync="false"></script>
 <script nonce="<?= htmlspecialchars($usespice_nonce ?? '', ENT_QUOTES, 'UTF-8') ?>">
 (function () {
     if (typeof maplibregl === 'undefined') {
