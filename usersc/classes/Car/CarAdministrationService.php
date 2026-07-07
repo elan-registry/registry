@@ -11,7 +11,6 @@ use ElanRegistry\Exceptions\CarDeletionException;
 use ElanRegistry\Exceptions\CarException;
 use ElanRegistry\Exceptions\CarMergeException;
 use ElanRegistry\Exceptions\CarNotFoundException;
-use ElanRegistry\Exceptions\CarTransferException;
 use ElanRegistry\Exceptions\CarValidationException;
 use LogCategories;
 use Token;
@@ -213,7 +212,7 @@ class CarAdministrationService
      * @param string $reason Reason for merge (for audit trail)
      * @param int $adminUserId ID of the admin performing the merge
      * @param CarRepository $repo Repository for database operations
-     * @return bool True if merge was successful
+     * @return true Always returns true; throws on any failure.
      * @throws CarNotFoundException If source car doesn't exist
      * @throws CarValidationException If merging car with itself
      * @throws CarDatabaseException If database operation fails
@@ -225,7 +224,7 @@ class CarAdministrationService
         string $reason,
         int $adminUserId,
         CarRepository $repo
-    ): bool {
+    ): true {
         if ($oldCarId === (int) $targetCarData->id) {
             $technicalMsg = CarErrorMessages::getTechnicalMessage('car_merge_self', ['id' => $oldCarId]);
             logger($adminUserId, LogCategories::LOG_CATEGORY_CAR_MERGE, $technicalMsg);

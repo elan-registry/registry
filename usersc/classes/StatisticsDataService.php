@@ -35,7 +35,8 @@ class StatisticsDataService {
         try {
             $result = $this->db->query($query);
             // UserSpice DB class swallows errors internally and never throws — check explicitly.
-            if ($this->db->error()) {
+            // Also guard $result === null for fringe edge cases where query() returns null without setting the error flag.
+            if ($result === null || $this->db->error()) {
                 logger(
                     0,
                     LogCategories::LOG_CATEGORY_DATABASE_ERROR,
