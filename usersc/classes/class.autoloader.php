@@ -1,31 +1,36 @@
 <?php
 /**
- * Hybrid Autoloader for Custom Application Classes
+ * PSR-4 Autoloader for Custom Application Classes
  *
- * Supports both namespaced (PSR-4) and non-namespaced (recursive scan) classes.
- * This provides a clean migration path when adding namespaces to existing classes.
+ * Supports namespaced (PSR-4) classes via a configurable prefix→directory map,
+ * with a recursive-scan fallback for classes not yet at their PSR-4 paths.
  *
- * - PSR-4 for namespaced classes (fast, direct path calculation)
- * - Recursive iterator for non-namespaced classes (backward compatibility)
+ * PSR-4 mappings mirror the composer.json autoload section exactly so
+ * both autoloaders resolve identical paths.
  *
  * @package ElanRegistry
  * @since v2.11.0
- * @see Issue #407 - Architecture: Introduce namespaces for custom classes
+ * @see Issue #608 - Rewrite class autoloader for PSR-4 namespace support
  */
 
 declare(strict_types=1);
 
-class UserspiceCustomAutoloader
+class ElanRegistryAutoloader
 {
     /**
-     * Project namespace prefix for PSR-4 autoloading
+     * PSR-4 prefix-to-base-directory mappings.
+     *
+     * Entries MUST be ordered longest-prefix-first so that more-specific
+     * prefixes take precedence over the root ElanRegistry\ prefix.
+     * Mirrors the "autoload.psr-4" section of composer.json exactly.
+     *
+     * @var array<string, string>
      */
-    protected static string $namespacePrefix = 'ElanRegistry\\';
-
-    /**
-     * Base directory for namespace (usersc/classes/)
-     */
-    protected static string $baseDir = __DIR__ . '/';
+    protected static array $namespaceMappings = [
+        'ElanRegistry\\Exceptions\\'  => __DIR__ . '/Exceptions/',
+        'ElanRegistry\\Reference\\'   => __DIR__ . '/ElanRegistry/Reference/',
+        'ElanRegistry\\'              => __DIR__ . '/',
+    ];
 
     /**
      * File extension for PHP class files
@@ -38,90 +43,77 @@ class UserspiceCustomAutoloader
     protected static ?RecursiveIteratorIterator $fileIterator = null;
 
     /**
-     * Hybrid autoloader - tries PSR-4 first, then recursive scan
+     * Hybrid autoloader — tries PSR-4 first, then recursive scan.
      *
-     * This dual approach provides:
-     * - Fast loading for namespaced classes (DocumentPortalTemplate)
-     * - Backward compatibility for non-namespaced classes (Car, ElanRegistryOwner)
-     * - Zero-change migration path when adding namespaces to existing classes
+     * This autoloader runs AFTER UserSpice's autoloader (registered with
+     * prepend=false, appending to the SPL queue) so UserSpice handles its own classes first.
      *
-     * @param string $className The name of the class to load
+     * @param string $className Fully qualified class name
      * @return void
      */
     public static function loader(string $className): void
     {
-        // This autoloader runs AFTER UserSpice autoloader (registered with append, not prepend)
-        // So UserSpice handles its own classes first, and we only handle custom classes
-
-        // Try PSR-4 for namespaced classes first (fast path)
         if (static::loadNamespaced($className)) {
             return;
         }
 
-        // Fall back to recursive scan for non-namespaced custom classes
         static::loadRecursive($className);
     }
 
     /**
-     * PSR-4 autoloader for namespaced classes
+     * PSR-4 autoloader for namespaced ElanRegistry classes.
      *
-     * Handles classes in ElanRegistry namespace:
-     * - ElanRegistry\Car
-     * - ElanRegistry\Exceptions\CarNotFoundException
-     * - ElanRegistry\Documentation\DocumentPortalTemplate
+     * Iterates prefix mappings in longest-first order, strips the matching
+     * prefix, and maps the remainder to a file path under the base directory.
      *
-     * Direct path calculation provides optimal performance.
+     * Example resolutions:
+     *   ElanRegistry\Reference\CarModel     → usersc/classes/ElanRegistry/Reference/CarModel.php
+     *   ElanRegistry\Car\CarRepository      → usersc/classes/Car/CarRepository.php
+     *   ElanRegistry\Exceptions\CarNotFound → usersc/classes/Exceptions/CarNotFound.php
      *
      * @param string $className Fully qualified class name with namespace
-     * @return bool True if class was loaded successfully
+     * @return bool True if the class file was found and loaded
      */
     protected static function loadNamespaced(string $className): bool
     {
-        $prefix = static::$namespacePrefix;
-        $len = strlen($prefix);
+        foreach (static::$namespaceMappings as $prefix => $baseDir) {
+            if (!str_starts_with($className, $prefix)) {
+                continue;
+            }
 
-        // Does the class use our namespace prefix?
-        if (strncmp($prefix, $className, $len) !== 0) {
-            return false;
-        }
+            $file = $baseDir .
+                    str_replace('\\', '/', substr($className, strlen($prefix))) .
+                    static::$fileExt;
 
-        // Get relative class name (strip namespace prefix)
-        $relativeClass = substr($className, $len);
-
-        // Convert namespace separators to directory separators
-        // Example: Exceptions\CarNotFoundException -> Exceptions/CarNotFoundException.php
-        $file = static::$baseDir .
-                str_replace('\\', '/', $relativeClass) .
-                static::$fileExt;
-
-        // If file exists, load it
-        if (file_exists($file) && is_readable($file)) {
-            require_once $file;
-            return true;
+            if (file_exists($file) && is_readable($file)) {
+                require_once $file;
+                return true;
+            }
         }
 
         return false;
     }
 
     /**
-     * Recursive directory scanner for non-namespaced classes
+     * Recursive directory scanner for classes not resolved by PSR-4 prefix matching.
      *
-     * Searches entire usersc/classes/ directory tree for matching filename.
-     * Used for backward compatibility with existing non-namespaced classes.
+     * Searches the entire usersc/classes/ directory tree for a file matching
+     * the simple class name. The iterator object is cached to avoid re-construction;
+     * foreach still re-walks the directory tree on each call.
      *
-     * Iterator is cached per request for performance (directory tree
-     * scanned only once).
+     * This path handles classes whose files are not yet at their expected PSR-4
+     * locations — both non-namespaced classes (e.g., AppConstants, LogCategories)
+     * and namespaced classes at non-standard paths (e.g., DocumentPortalTemplate).
      *
-     * @param string $className Simple class name without namespace
+     * @param string $className Simple or fully qualified class name
      * @return void
      */
     protected static function loadRecursive(string $className): void
     {
-        // Initialize iterator on first use (cached for subsequent loads)
-        if (is_null(static::$fileIterator)) {
+        if (static::$fileIterator === null) {
             static::$fileIterator = new RecursiveIteratorIterator(
                 new RecursiveDirectoryIterator(
-                    static::$baseDir,
+                    __DIR__ . '/',
                     RecursiveDirectoryIterator::SKIP_DOTS
                 ),
                 RecursiveIteratorIterator::SELF_FIRST,
@@ -129,13 +121,9 @@ class UserspiceCustomAutoloader
             );
         }
 
-        // Extract just the class name from fully qualified name
-        // e.g., "Car" -> "Car"
         $classNameParts = explode('\\', $className);
-        $simpleClassName = end($classNameParts);
-        $filename = $simpleClassName . static::$fileExt;
+        $filename       = end($classNameParts) . static::$fileExt;
 
-        // Search for class file (case-insensitive for compatibility)
         foreach (static::$fileIterator as $file) {
             if (strtolower($file->getFilename()) === strtolower($filename)) {
                 if ($file->isReadable()) {
@@ -147,11 +135,10 @@ class UserspiceCustomAutoloader
     }
 }
 
-// Register hybrid autoloader with SPL
-// - throw=true: Throw exceptions on registration error
-// - prepend=false: Add to end of autoloader queue (let UserSpice handle its classes first)
+// Register PSR-4 autoloader with SPL.
+// prepend=false: append to queue so UserSpice handles its own classes first.
 spl_autoload_register(
-    'UserspiceCustomAutoloader::loader',
-    true,   // throw exceptions on error
-    false   // append to autoloader queue (not prepend)
+    'ElanRegistryAutoloader::loader',
+    true,   // throw exceptions on registration error
+    false   // append — run after UserSpice autoloader
 );
