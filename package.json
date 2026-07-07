@@ -64,7 +64,7 @@
   "devDependencies": {
     "@playwright/test": "^1.61.1",
     "@versatiles/style": "^5.13.0",
-    "dotenv": "^16.6.1",
+    "dotenv": "^17.4.2",
     "esbuild": "^0.28.1",
     "eslint": "^9.0.0"
   }
