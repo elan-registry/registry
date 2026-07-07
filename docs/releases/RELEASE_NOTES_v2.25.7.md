@@ -49,5 +49,5 @@
 - [#1182](https://github.com/unibrain1/elanregistry/issues/1182) ✓ — test: migrate getNewCarIds() floor/tie-breaking tests to CarShowcaseServiceTest
 - [#1167](https://github.com/unibrain1/elanregistry/issues/1167) — fix: CarRepository::getHistory() returns null for empty history — should return []
 - [#1175](https://github.com/unibrain1/elanregistry/issues/1175) — fix: process-transfer-approve.php — wrap transfer + updateStatus in a shared transaction
-- [#1164](https://github.com/unibrain1/elanregistry/issues/1164) — fix: car_transfer_requests.requested_by_user_id and created_by should be INT UNSIGNED
+- [#1164](https://github.com/unibrain1/elanregistry/issues/1164) ✓ — fix: car_transfer_requests.requested_by_user_id and created_by should be INT UNSIGNED
 - [#1178](https://github.com/unibrain1/elanregistry/issues/1178) — fix: process-transfer-approve.php — widen catch to CarException base to preserve user-friendly messages
