@@ -133,10 +133,13 @@ final class ArchiveAccountsTest extends TestCase
         ];
         $db = $this->makeDb(false, [$row]);
 
-        $this->expectException(RuntimeException::class);
-        archiveAccounts($db, [5], 1, 'unverified');
-
-        $this->assertSame(1, $db->rollBackCalls, 'Transaction must roll back on insert failure');
+        try {
+            archiveAccounts($db, [5], 1, 'unverified');
+            $this->fail('Expected RuntimeException on insert failure');
+        } catch (RuntimeException) {
+            $this->assertSame(1, $db->rollBackCalls, 'Transaction must roll back on insert failure');
+            $this->assertSame(0, $db->commitCalls);
+        }
     }
 
     #[Group('fast')] #[Group('unit')] #[Group('admin')]

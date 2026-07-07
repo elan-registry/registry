@@ -130,11 +130,13 @@ final class RestoreArchivedAccountTest extends TestCase
     {
         $db = $this->makeDb($this->archiveRow(), insertOk: false);
 
-        $this->expectException(RuntimeException::class);
-        restoreArchivedAccount($db, 10, 1);
-
-        $this->assertSame(1, $db->rollBackCalls);
-        $this->assertSame(0, $db->commitCalls);
+        try {
+            restoreArchivedAccount($db, 10, 1);
+            $this->fail('Expected RuntimeException on insert failure');
+        } catch (RuntimeException) {
+            $this->assertSame(1, $db->rollBackCalls);
+            $this->assertSame(0, $db->commitCalls);
+        }
     }
 
     #[Group('fast')] #[Group('unit')] #[Group('admin')]
