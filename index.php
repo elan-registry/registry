@@ -256,7 +256,7 @@ try {
 <script>
 var homepageTimelineData = <?= $timelineJson ?>;
 </script>
-<script src="<?= htmlspecialchars($us_url_root, ENT_QUOTES, 'UTF-8') ?>usersc/js/chart.umd.min.js"></script>
+<script src="<?= htmlspecialchars($us_url_root, ENT_QUOTES, 'UTF-8') ?>usersc/js/chart.umd.min.js" data-cfasync="false"></script>
 <script>
 (function () {
     try {
