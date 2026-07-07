@@ -23,7 +23,7 @@ require_once __DIR__ . '/../../../app/admin/includes/account-cleanup-helpers.php
  * The car_transfer_requests NOT EXISTS guard is verified at the unit level via
  * testSqlExcludesUsersWithPendingTransferRequests().
  *
- * Note: Integration test coverage for this function does not yet exist.
+ * @see FindVerifiedOwnerlessAccountsIntegrationTest
  */
 #[Group('fast')]
 #[Group('unit')]
