@@ -38,7 +38,7 @@
 ## Issues Resolved
 
 - [#518](https://github.com/unibrain1/elanregistry/issues/518) ✓ — Migrate non-car endpoint logging to LogCategories constants
-- [#946](https://github.com/unibrain1/elanregistry/issues/946) — refactor: consolidate getSeriesCounts() into single conditional-aggregate query
+- [#946](https://github.com/unibrain1/elanregistry/issues/946) ✓ — refactor: consolidate getSeriesCounts() into single conditional-aggregate query
 - [#960](https://github.com/unibrain1/elanregistry/issues/960) ✓ — refactor: eliminate boilerplate and duplicated field lists in exception classes and ElanRegistryOwner
 - [#976](https://github.com/unibrain1/elanregistry/issues/976) ✓ — chore: remove deprecated X-XSS-Protection header and ineffective cleanString() defense
 - [#1096](https://github.com/unibrain1/elanregistry/issues/1096) ✓ — fix: correct DataTable catch behavior in car_details.js and resolve npm vulnerability
