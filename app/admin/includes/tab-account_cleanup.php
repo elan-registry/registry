@@ -482,9 +482,7 @@ $renderSection(
             syncCheckboxes();
         });
 
-        // Delete button — populate form then submit (modal for >10)
-        var confirmed = false;
-
+        // Delete button — always confirm before submitting
         deleteBtn.addEventListener('click', function () {
             var n = selected.size;
             if (n === 0) return;
@@ -503,15 +501,11 @@ $renderSection(
                 deleteForm.submit();
             }
 
-            if (n > 10 && !confirmed) {
-                showConfirmDialog(
-                    'Confirm Bulk Deletion',
-                    'Delete ' + n + ' selected accounts? This cannot be undone.',
-                    function () { confirmed = true; doSubmit(); }
-                );
-            } else {
-                doSubmit();
-            }
+            showConfirmDialog(
+                'Confirm Deletion',
+                'Delete ' + n + ' selected account' + (n === 1 ? '' : 's') + '? Accounts will be archived and can be restored if needed.',
+                doSubmit
+            );
         });
     }
 

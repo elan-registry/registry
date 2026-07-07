@@ -17,24 +17,19 @@ require_once '../../../users/init.php';
 require_once $abs_us_root . $us_url_root . 'app/admin/includes/account-cleanup-helpers.php';
 
 if (!isAdmin()) {
-    http_response_code(403);
-    header('Content-Type: application/json; charset=utf-8');
-    echo json_encode(['error' => 'Forbidden']);
+    ApiResponse::forbidden('Forbidden')->send();
     exit;
 }
 
 $type      = $_GET['type']      ?? '';
 $threshold = (int) ($_GET['threshold'] ?? 30);
 
-header('Content-Type: application/json; charset=utf-8');
-
 if ($type === 'unverified') {
     $threshold = max(30, $threshold);
     $accounts  = findUnverifiedOwnerlessAccounts($db, $threshold);
     if ($db->error()) {
         logger(0, LogCategories::LOG_CATEGORY_SYSTEM_ERROR, 'account-cleanup-data: unverified query failed — ' . $db->errorString());
-        http_response_code(500);
-        echo json_encode(['error' => 'Database error']);
+        ApiResponse::serverError('Database error')->send();
         exit;
     }
     $rows = array_map(static function (object $a): array {
@@ -54,8 +49,7 @@ if ($type === 'unverified') {
     $accounts  = findVerifiedOwnerlessAccounts($db, $threshold);
     if ($db->error()) {
         logger(0, LogCategories::LOG_CATEGORY_SYSTEM_ERROR, 'account-cleanup-data: verified query failed — ' . $db->errorString());
-        http_response_code(500);
-        echo json_encode(['error' => 'Database error']);
+        ApiResponse::serverError('Database error')->send();
         exit;
     }
     $rows = array_map(static function (object $a): array {
@@ -76,8 +70,7 @@ if ($type === 'unverified') {
     $accounts = findArchivedAccounts($db);
     if ($db->error()) {
         logger(0, LogCategories::LOG_CATEGORY_SYSTEM_ERROR, 'account-cleanup-data: archive query failed — ' . $db->errorString());
-        http_response_code(500);
-        echo json_encode(['error' => 'Database error']);
+        ApiResponse::serverError('Database error')->send();
         exit;
     }
     $rows = array_map(static function (object $a): array {
@@ -99,9 +92,9 @@ if ($type === 'unverified') {
         ];
     }, $accounts);
 } else {
-    http_response_code(400);
-    echo json_encode(['error' => 'Invalid type']);
+    ApiResponse::error('Invalid type', 400)->send();
     exit;
 }
 
+header('Content-Type: application/json; charset=utf-8');
 echo json_encode(['data' => $rows]);
