@@ -1,6 +1,6 @@
 # Elan Registry v2.25.7 Release Notes
 
-**Release Date:** [DATE]
+**Release Date:** 2026-07-06
 **Type:** Patch Release - Consistency Fixes
 
 ## Required Actions After Deployment
@@ -52,11 +52,11 @@
 - [#1127](https://github.com/unibrain1/elanregistry/issues/1127) ✓ — feat: add Account Cleanup admin tab with archive/restore safety net
 - [#1151](https://github.com/unibrain1/elanregistry/issues/1151) ✓ — chore: fix PHP 8.5 ReflectionProperty deprecations in test infrastructure and remove unreliable CarShowcaseService tests
 - [#1182](https://github.com/unibrain1/elanregistry/issues/1182) ✓ — test: migrate getNewCarIds() floor/tie-breaking tests to CarShowcaseServiceTest
-- [#1167](https://github.com/unibrain1/elanregistry/issues/1167) — fix: CarRepository::getHistory() returns null for empty history — should return []
-- [#1175](https://github.com/unibrain1/elanregistry/issues/1175) — fix: process-transfer-approve.php — wrap transfer + updateStatus in a shared transaction
 - [#1164](https://github.com/unibrain1/elanregistry/issues/1164) ✓ — fix: car_transfer_requests.requested_by_user_id and created_by should be INT UNSIGNED
-- [#1178](https://github.com/unibrain1/elanregistry/issues/1178) — fix: process-transfer-approve.php — widen catch to CarException base to preserve user-friendly messages
+- [#1167](https://github.com/unibrain1/elanregistry/issues/1167) ✓ — fix: CarRepository::getHistory() returns null for empty history — should return []
+- [#1175](https://github.com/unibrain1/elanregistry/issues/1175) ✓ — fix: process-transfer-approve.php — wrap transfer + updateStatus in a shared transaction
+- [#1178](https://github.com/unibrain1/elanregistry/issues/1178) ✓ — fix: process-transfer-approve.php — widen catch to CarException base to preserve user-friendly messages
 - [#1196](https://github.com/unibrain1/elanregistry/issues/1196) ✓ — fix: address critical silent failures in account cleanup tab (logger timing, DB error checks, null-safe property access)
-- [#1198](https://github.com/unibrain1/elanregistry/issues/1198) — test: add unit and integration coverage for archive/restore account helpers
-- [#1199](https://github.com/unibrain1/elanregistry/issues/1199) — fix: PHPDoc accuracy, return types, and dead code cleanup (helpers, CarAdministrationService, StatisticsDataService)
+- [#1198](https://github.com/unibrain1/elanregistry/issues/1198) ✓ — test: add unit and integration coverage for archive/restore account helpers
+- [#1199](https://github.com/unibrain1/elanregistry/issues/1199) ✓ — fix: PHPDoc accuracy, return types, and dead code cleanup (helpers, CarAdministrationService, StatisticsDataService)
 - [#1200](https://github.com/unibrain1/elanregistry/issues/1200) ✓ — fix: always confirm deletion and use ApiResponse for error responses in account cleanup
