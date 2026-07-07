@@ -6,6 +6,7 @@
 ## Required Actions After Deployment
 
 - Run fix script **`25-Create-Deleted-Accounts-Archive.php`** from the Maintenance tab before using the Account Cleanup tab (#1127). The script is idempotent and safe to re-run.
+- Run fix script **`11-Fix-Car-Transfer-Requests-Column-Types.php`** from the Maintenance tab to correct `car_transfer_requests` FK column types from `int(11)` to `INT UNSIGNED` (#1164). The script is idempotent and safe to re-run on already-migrated databases.
 
 ## User-Facing Changes
 
