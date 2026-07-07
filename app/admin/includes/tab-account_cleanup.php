@@ -103,9 +103,20 @@ if ($method === 'POST' && isset($_POST['ac_action'])) {
                 $acPostAccounts = $isVerified
                     ? findVerifiedOwnerlessAccounts($db, $postVThreshold)
                     : findUnverifiedOwnerlessAccounts($db, $postThreshold);
-                $stillExistIds  = array_map(fn($a): int => (int) $a->id, $acPostAccounts);
-                $confirmedIds   = array_diff($toDelete, $stillExistIds);
-                $deleted        = count($confirmedIds);
+                if ($db->error()) {
+                    // Post-deletion re-query failed — deletions ran but confirmation is uncertain.
+                    // Log a warning; report all submitted IDs so the admin knows to verify manually.
+                    logger(
+                        $currentUserId,
+                        LogCategories::LOG_CATEGORY_USER_DELETION,
+                        'Post-deletion re-query failed — audit log may be incomplete: ' . $db->errorString()
+                    );
+                    $confirmedIds = $toDelete;
+                } else {
+                    $stillExistIds = array_map(fn($a): int => (int) $a->id, $acPostAccounts);
+                    $confirmedIds  = array_diff($toDelete, $stillExistIds);
+                }
+                $deleted = count($confirmedIds);
 
                 foreach ($confirmedIds as $deletedId) {
                     $acct = $eligibleMap[$deletedId];
