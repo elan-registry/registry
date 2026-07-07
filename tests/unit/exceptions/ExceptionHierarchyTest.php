@@ -2,6 +2,8 @@
 
 declare(strict_types=1);
 
+use ElanRegistry\Exceptions\AdminContactException;
+use ElanRegistry\Exceptions\AdminOperationException;
 use ElanRegistry\Exceptions\BackupException;
 use ElanRegistry\Exceptions\CarCreationException;
 use ElanRegistry\Exceptions\CarDatabaseException;
@@ -38,6 +40,8 @@ class ExceptionHierarchyTest extends TestCase
      * All exception classes that should extend ElanRegistryException
      */
     private const EXCEPTION_CLASSES = [
+        AdminContactException::class,
+        AdminOperationException::class,
         CarNotFoundException::class,
         CarCreationException::class,
         CarValidationException::class,
@@ -392,6 +396,8 @@ class ExceptionHierarchyTest extends TestCase
             'OwnerValidationException' => [OwnerValidationException::class, 'ValidationError'],
             'OwnerUpdateException' => [OwnerUpdateException::class, 'OwnerActions'],
             'ImageProcessingException' => [ImageProcessingException::class, 'FileError'],
+            'AdminContactException' => [AdminContactException::class, 'CarActions'],
+            'AdminOperationException' => [AdminOperationException::class, 'SystemError'],
             'BackupException' => [BackupException::class, 'BackupError'],
             'ValidationException' => [ValidationException::class, 'ValidationError'],
             'LocationServiceException' => [LocationServiceException::class, 'SystemError'],
@@ -419,6 +425,8 @@ class ExceptionHierarchyTest extends TestCase
             'OwnerValidationException' => [OwnerValidationException::class, 422],
             'OwnerUpdateException' => [OwnerUpdateException::class, 500],
             'ImageProcessingException' => [ImageProcessingException::class, 500],
+            'AdminContactException' => [AdminContactException::class, 500],
+            'AdminOperationException' => [AdminOperationException::class, 500],
             'BackupException' => [BackupException::class, 500],
             'ValidationException' => [ValidationException::class, 422],
             'LocationServiceException' => [LocationServiceException::class, 500],
