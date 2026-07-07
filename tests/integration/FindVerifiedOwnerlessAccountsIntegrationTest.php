@@ -8,7 +8,7 @@ require_once __DIR__ . '/../../app/admin/includes/account-cleanup-helpers.php';
 use PHPUnit\Framework\Attributes\Group;
 
 /**
- * Integration tests for findUnverifiedOwnerlessAccounts().
+ * Integration tests for findVerifiedOwnerlessAccounts().
  *
  * Each test creates real database fixtures (users, cars, car_user rows) and
  * asserts that the function's SQL filters include or exclude those fixtures
@@ -17,11 +17,11 @@ use PHPUnit\Framework\Attributes\Group;
  * Tests assert presence/absence of a specific user ID in results; they never
  * assert row counts because the live database contains other accounts.
  *
- * @see FindUnverifiedOwnerlessAccountsTest  (unit tests — SQL-agnostic)
+ * @see FindVerifiedOwnerlessAccountsTest  (unit tests — SQL-agnostic)
  */
 #[Group('integration')]
 #[Group('admin')]
-final class FindUnverifiedOwnerlessAccountsIntegrationTest extends IntegrationTestCase
+final class FindVerifiedOwnerlessAccountsIntegrationTest extends IntegrationTestCase
 {
     /** @var int[] car_user row IDs inserted directly by tests — cleaned in tearDown */
     private array $createdCarUserIds = [];
@@ -37,13 +37,11 @@ final class FindUnverifiedOwnerlessAccountsIntegrationTest extends IntegrationTe
 
     protected function tearDown(): void
     {
-        // Remove any car_user rows we inserted manually (before parent deletes the cars).
         foreach ($this->createdCarUserIds as $carUserId) {
             try {
                 $this->db->query("DELETE FROM car_user WHERE id = ?", [$carUserId]);
             } catch (\Throwable $e) {
-                // Ignore cleanup errors — parent tearDown may have already removed them
-                // via the car_id cascade.
+                // Safety net — parent tearDown also cleans these up via car_id cascade.
             }
         }
         $this->createdCarUserIds = [];
@@ -95,17 +93,34 @@ final class FindUnverifiedOwnerlessAccountsIntegrationTest extends IntegrationTe
     // -------------------------------------------------------------------------
 
     /**
-     * A user who is active, unverified, unprotected, not named 'noowner',
-     * has no cars, and joined more than 30 days ago must be included.
+     * A verified user who has never logged in (last_login IS NULL) and has no
+     * car associations must be included — null last_login satisfies the OR branch.
      */
-    public function testFindsUnverifiedOwnerlessAccount(): void
+    public function testFindsVerifiedOwnerlessAccountWithNullLastLogin(): void
     {
-        $userId = $this->createTestUser(['join_date' => $this->daysAgo(31)]);
+        $userId = $this->createTestUser(['email_verified' => 1]);
 
-        $results = findUnverifiedOwnerlessAccounts($this->db, 30);
+        $results = findVerifiedOwnerlessAccounts($this->db, 365);
         $ids     = $this->idsFrom($results);
 
-        $this->assertContains((string) $userId, $ids, 'User with no cars and old enough join date should appear in results');
+        $this->assertContains((string) $userId, $ids, 'Verified user with NULL last_login should appear in results');
+    }
+
+    /**
+     * A verified user whose last_login is the zero-date sentinel must be
+     * included — '0000-00-00 00:00:00' satisfies the second OR branch.
+     */
+    public function testFindsVerifiedOwnerlessAccountWithZeroLastLogin(): void
+    {
+        $userId = $this->createTestUser([
+            'email_verified' => 1,
+            'last_login'     => '0000-00-00 00:00:00',
+        ]);
+
+        $results = findVerifiedOwnerlessAccounts($this->db, 365);
+        $ids     = $this->idsFrom($results);
+
+        $this->assertContains((string) $userId, $ids, "Verified user with '0000-00-00' last_login should appear in results");
     }
 
     // -------------------------------------------------------------------------
@@ -113,47 +128,56 @@ final class FindUnverifiedOwnerlessAccountsIntegrationTest extends IntegrationTe
     // -------------------------------------------------------------------------
 
     /**
-     * A user whose email is already verified must be excluded even if they
-     * have no cars and joined long ago.
+     * An unverified user (email_verified = 0) must be excluded — this function
+     * is specifically for the verified-but-inactive cohort.
      */
-    public function testExcludesEmailVerifiedAccount(): void
+    public function testExcludesUnverifiedAccount(): void
+    {
+        $userId = $this->createTestUser(['email_verified' => 0]);
+
+        $results = findVerifiedOwnerlessAccounts($this->db, 365);
+        $ids     = $this->idsFrom($results);
+
+        $this->assertNotContains((string) $userId, $ids, 'Unverified user must be excluded from the verified-account query');
+    }
+
+    /**
+     * A verified user who logged in recently must be excluded.
+     */
+    public function testExcludesUserWithRecentLogin(): void
     {
         $userId = $this->createTestUser([
             'email_verified' => 1,
-            'join_date'      => $this->daysAgo(31),
+            'last_login'     => $this->daysAgo(1),
         ]);
 
-        $results = findUnverifiedOwnerlessAccounts($this->db, 30);
+        $results = findVerifiedOwnerlessAccounts($this->db, 365);
         $ids     = $this->idsFrom($results);
 
-        $this->assertNotContains((string) $userId, $ids, 'Email-verified user must be excluded');
+        $this->assertNotContains((string) $userId, $ids, 'Verified user with a recent last_login must be excluded');
     }
 
     /**
-     * A user who owns a car (row in the `cars` table via user_id) must be
-     * excluded even though their email is unverified.
-     *
-     * createTestCar() inserts into both `cars` (user_id) and `car_user` (userid),
-     * exercising both NOT EXISTS clauses simultaneously. The first clause
-     * (NOT EXISTS cars WHERE user_id) alone is sufficient for exclusion here.
+     * A verified user who owns a car (row in the `cars` table via user_id) must
+     * be excluded even though they have not logged in recently.
      */
     public function testExcludesAccountWithCarsRow(): void
     {
-        $userId = $this->createTestUser(['join_date' => $this->daysAgo(31)]);
+        $userId = $this->createTestUser(['email_verified' => 1]);
         $this->createTestCar($userId);
 
-        $results = findUnverifiedOwnerlessAccounts($this->db, 30);
+        $results = findVerifiedOwnerlessAccounts($this->db, 365);
         $ids     = $this->idsFrom($results);
 
-        $this->assertNotContains((string) $userId, $ids, 'User with a cars row must be excluded');
+        $this->assertNotContains((string) $userId, $ids, 'Verified user with a cars row must be excluded');
     }
 
     /**
-     * A user who appears in the car_user junction table (but has no row in
-     * the cars table as owner) must be excluded via the second NOT EXISTS clause.
+     * A verified user who appears in the car_user junction table (but has no row
+     * in the cars table as owner) must be excluded via the second NOT EXISTS clause.
      *
      * Setup:
-     *   1. Create the user under test (no cars of their own).
+     *   1. Create the verified user under test (no cars of their own).
      *   2. Create a separate dummy user and a car for them — this gives us a
      *      real car_id to satisfy any FK constraints on car_user.car_id.
      *   3. Insert a car_user row linking the test user to that car.
@@ -161,11 +185,10 @@ final class FindUnverifiedOwnerlessAccountsIntegrationTest extends IntegrationTe
      */
     public function testExcludesAccountWithCarUserRow(): void
     {
-        $testUserId  = $this->createTestUser(['join_date' => $this->daysAgo(31)]);
+        $testUserId  = $this->createTestUser(['email_verified' => 1]);
         $dummyUserId = $this->createTestUser();
         $carId       = $this->createTestCar($dummyUserId);
 
-        // Manually link testUser → existing car via car_user.
         $this->db->insert('car_user', ['userid' => $testUserId, 'car_id' => $carId]);
         $row = $this->db->query(
             "SELECT id FROM car_user WHERE userid = ? AND car_id = ? ORDER BY id DESC LIMIT 1",
@@ -175,27 +198,27 @@ final class FindUnverifiedOwnerlessAccountsIntegrationTest extends IntegrationTe
             $this->createdCarUserIds[] = (int) $row->id;
         }
 
-        $results = findUnverifiedOwnerlessAccounts($this->db, 30);
+        $results = findVerifiedOwnerlessAccounts($this->db, 365);
         $ids     = $this->idsFrom($results);
 
-        $this->assertNotContains((string) $testUserId, $ids, 'User with a car_user row must be excluded');
+        $this->assertNotContains((string) $testUserId, $ids, 'Verified user with a car_user row must be excluded');
     }
 
     /**
      * A protected account (protected = 1) must be excluded regardless of
-     * verification status or car ownership.
+     * verification status or login history.
      */
     public function testExcludesProtectedAccount(): void
     {
         $userId = $this->createTestUser([
-            'protected' => 1,
-            'join_date' => $this->daysAgo(31),
+            'email_verified' => 1,
+            'protected'      => 1,
         ]);
 
-        $results = findUnverifiedOwnerlessAccounts($this->db, 30);
+        $results = findVerifiedOwnerlessAccounts($this->db, 365);
         $ids     = $this->idsFrom($results);
 
-        $this->assertNotContains((string) $userId, $ids, 'Protected user must be excluded');
+        $this->assertNotContains((string) $userId, $ids, 'Protected verified user must be excluded');
     }
 
     /**
@@ -205,33 +228,33 @@ final class FindUnverifiedOwnerlessAccountsIntegrationTest extends IntegrationTe
     public function testExcludesNoownerUsername(): void
     {
         $userId = $this->createTestUser([
-            'username'  => 'noowner',
-            'join_date' => $this->daysAgo(31),
+            'username'       => 'noowner',
+            'email_verified' => 1,
         ]);
 
-        $results = findUnverifiedOwnerlessAccounts($this->db, 30);
+        $results = findVerifiedOwnerlessAccounts($this->db, 365);
         $ids     = $this->idsFrom($results);
 
-        $this->assertNotContains((string) $userId, $ids, "User with username 'noowner' must be excluded");
+        $this->assertNotContains((string) $userId, $ids, "Verified user with username 'noowner' must be excluded");
     }
 
     /**
-     * A user who has a pending car transfer request must be excluded from the
-     * eligibility query even if they have no car ownership records.
+     * A verified user who has a pending car transfer request must be excluded
+     * even if they have no car ownership records.
      *
      * Setup:
-     *   1. Create the test user (unverified, old enough join_date, no cars).
+     *   1. Create the test user (verified, never logged in, no cars).
      *   2. Create a dummy user and a car for them to satisfy the FK on existing_car_id.
      *   3. Insert a car_transfer_requests row with the test user as requested_by_user_id
      *      and status = 'pending'.
      *   4. Assert the test user is absent from results.
      *
-     * Cleanup: the child tearDown() deletes the request row by ID; parent tearDown() also
-     * removes any remaining transfer requests via DELETE WHERE existing_car_id before deleting the car.
+     * Cleanup: the child tearDown() deletes the request row by ID; parent tearDown()
+     * also removes any remaining transfer requests via DELETE WHERE existing_car_id.
      */
     public function testExcludesUserWithPendingTransferRequest(): void
     {
-        $testUserId  = $this->createTestUser(['join_date' => $this->daysAgo(31)]);
+        $testUserId  = $this->createTestUser(['email_verified' => 1]);
         $dummyUserId = $this->createTestUser();
         $carId       = $this->createTestCar($dummyUserId);
 
@@ -252,15 +275,15 @@ final class FindUnverifiedOwnerlessAccountsIntegrationTest extends IntegrationTe
             $this->createdTransferRequestIds[] = (int) $row->id;
         }
 
-        $results = findUnverifiedOwnerlessAccounts($this->db, 30);
+        $results = findVerifiedOwnerlessAccounts($this->db, 365);
         $ids     = $this->idsFrom($results);
 
-        $this->assertNotContains((string) $testUserId, $ids, 'User with a pending transfer request must be excluded from cleanup eligibility');
+        $this->assertNotContains((string) $testUserId, $ids, 'Verified user with a pending transfer request must be excluded from cleanup eligibility');
     }
 
     /**
-     * A user whose only transfer request is in a terminal state (denied) must
-     * still be included in results — the NOT EXISTS guard applies only to
+     * A verified user whose only transfer request is in a terminal state (denied)
+     * must still be included in results — the NOT EXISTS guard applies only to
      * 'pending' requests.
      *
      * This prevents a regression where dropping the status condition from the
@@ -269,7 +292,7 @@ final class FindUnverifiedOwnerlessAccountsIntegrationTest extends IntegrationTe
      */
     public function testIncludesUserWithDeniedTransferRequest(): void
     {
-        $testUserId  = $this->createTestUser(['join_date' => $this->daysAgo(31)]);
+        $testUserId  = $this->createTestUser(['email_verified' => 1]);
         $dummyUserId = $this->createTestUser();
         $carId       = $this->createTestCar($dummyUserId);
 
@@ -290,10 +313,10 @@ final class FindUnverifiedOwnerlessAccountsIntegrationTest extends IntegrationTe
             $this->createdTransferRequestIds[] = (int) $row->id;
         }
 
-        $results = findUnverifiedOwnerlessAccounts($this->db, 30);
+        $results = findVerifiedOwnerlessAccounts($this->db, 365);
         $ids     = $this->idsFrom($results);
 
-        $this->assertContains((string) $testUserId, $ids, 'Unverified user with only a denied transfer request must still be eligible for cleanup');
+        $this->assertContains((string) $testUserId, $ids, 'Verified user with only a denied transfer request must still be eligible for cleanup');
     }
 
     // -------------------------------------------------------------------------
@@ -301,36 +324,42 @@ final class FindUnverifiedOwnerlessAccountsIntegrationTest extends IntegrationTe
     // -------------------------------------------------------------------------
 
     /**
-     * A user whose account age equals the threshold exactly (DATEDIFF = 30 >= 30)
-     * must be included — the boundary is inclusive.
+     * A verified user whose last_login equals the threshold exactly
+     * (DATEDIFF = 365 >= 365) must be included — the boundary is inclusive.
      *
-     * join_date set to midnight exactly 30 days ago so DATEDIFF(NOW(), join_date)
-     * is stable at 30 regardless of test run time.
+     * last_login set to midnight exactly 365 days ago so DATEDIFF is stable
+     * regardless of test run time.
      */
     public function testThresholdBoundaryExactMatch(): void
     {
-        $userId = $this->createTestUser(['join_date' => $this->daysAgo(30)]);
+        $userId = $this->createTestUser([
+            'email_verified' => 1,
+            'last_login'     => $this->daysAgo(365),
+        ]);
 
-        $results = findUnverifiedOwnerlessAccounts($this->db, 30);
+        $results = findVerifiedOwnerlessAccounts($this->db, 365);
         $ids     = $this->idsFrom($results);
 
-        $this->assertContains((string) $userId, $ids, 'User whose account age equals the threshold (30 == 30) must be included');
+        $this->assertContains((string) $userId, $ids, 'Verified user whose inactivity equals the threshold (365 == 365) must be included');
     }
 
     /**
-     * A user whose account age is one day short of the threshold (DATEDIFF = 29 < 30)
-     * must NOT be included — the boundary is exclusive for younger accounts.
+     * A verified user whose last_login is one day short of the threshold
+     * (DATEDIFF = 364 < 365) must NOT be included.
      *
-     * join_date set to midnight exactly 29 days ago so DATEDIFF(NOW(), join_date)
-     * is stable at 29 regardless of test run time.
+     * last_login set to midnight exactly 364 days ago so DATEDIFF is stable
+     * regardless of test run time.
      */
     public function testThresholdBoundaryOneDayShort(): void
     {
-        $userId = $this->createTestUser(['join_date' => $this->daysAgo(29)]);
+        $userId = $this->createTestUser([
+            'email_verified' => 1,
+            'last_login'     => $this->daysAgo(364),
+        ]);
 
-        $results = findUnverifiedOwnerlessAccounts($this->db, 30);
+        $results = findVerifiedOwnerlessAccounts($this->db, 365);
         $ids     = $this->idsFrom($results);
 
-        $this->assertNotContains((string) $userId, $ids, 'User whose account age is one day below the threshold (29 < 30) must be excluded');
+        $this->assertNotContains((string) $userId, $ids, 'Verified user whose inactivity is one day below the threshold (364 < 365) must be excluded');
     }
 }
