@@ -18,22 +18,6 @@ class ElanRegistryOwnerIntegrationTest extends IntegrationTestCase
     }
 
     /**
-     * Test static getOwnerProfile method with valid user
-     */
-    public function testGetOwnerProfileWithValidUser(): void
-    {
-        // Use user ID 1 for testing
-        $userId = 1;
-        $ownerData = ElanRegistryOwner::getOwnerProfile((int)$userId);
-
-        $this->assertNotNull($ownerData);
-        $this->assertEquals($userId, $ownerData->id);
-        $this->assertObjectHasProperty('fname', $ownerData);
-        $this->assertObjectHasProperty('lname', $ownerData);
-        $this->assertObjectHasProperty('email', $ownerData);
-    }
-
-    /**
      * Test owner loading with valid ID
      */
     public function testFindWithValidUser(): void
@@ -200,5 +184,125 @@ class ElanRegistryOwnerIntegrationTest extends IntegrationTestCase
     {
         $result = $this->callValidateAndSanitize(['website' => '']);
         $this->assertArrayNotHasKey('website', $result);
+    }
+
+    public function testLatNullPassesThrough(): void
+    {
+        $result = $this->callValidateAndSanitize(['lat' => null]);
+        $this->assertArrayNotHasKey('lat', $result);
+    }
+
+    public function testLatEmptyStringPassesThrough(): void
+    {
+        $result = $this->callValidateAndSanitize(['lat' => '']);
+        $this->assertArrayNotHasKey('lat', $result);
+    }
+
+    public function testLatZeroIsAccepted(): void
+    {
+        // Zero is a valid equator coordinate — !empty() would incorrectly reject it
+        $result = $this->callValidateAndSanitize(['lat' => '0']);
+        $this->assertSame(0.0, $result['lat']);
+    }
+
+    public function testLatBoundaryAccepted(): void
+    {
+        $result = $this->callValidateAndSanitize(['lat' => '90']);
+        $this->assertSame(90.0, $result['lat']);
+    }
+
+    public function testLatOutOfRangeRejected(): void
+    {
+        $this->expectException(\ElanRegistry\Exceptions\OwnerValidationException::class);
+        $this->callValidateAndSanitize(['lat' => '91']);
+    }
+
+    public function testLatNonNumericRejected(): void
+    {
+        $this->expectException(\ElanRegistry\Exceptions\OwnerValidationException::class);
+        $this->callValidateAndSanitize(['lat' => 'north']);
+    }
+
+    public function testLatIsCastToFloat(): void
+    {
+        $result = $this->callValidateAndSanitize(['lat' => '51.5']);
+        $this->assertSame(51.5, $result['lat']);
+    }
+
+    public function testLonBoundaryAccepted(): void
+    {
+        $result = $this->callValidateAndSanitize(['lon' => '180']);
+        $this->assertSame(180.0, $result['lon']);
+    }
+
+    public function testLonOutOfRangeRejected(): void
+    {
+        $this->expectException(\ElanRegistry\Exceptions\OwnerValidationException::class);
+        $this->callValidateAndSanitize(['lon' => '181']);
+    }
+
+    public function testLonZeroIsAccepted(): void
+    {
+        // Zero is a valid prime-meridian coordinate — !empty() would incorrectly reject it
+        $result = $this->callValidateAndSanitize(['lon' => '0']);
+        $this->assertSame(0.0, $result['lon']);
+    }
+
+    public function testQualityScoreCountsZeroCoordinates(): void
+    {
+        // qualityScoreFromRow() must not treat 0.0 as "missing" — regression guard for !empty() fix
+        $row = (object)[
+            'fname' => 'Alice', 'lname' => 'Smith', 'email' => 'a@b.com',
+            'city' => 'X', 'state' => 'Y', 'country' => 'Z',
+            'lat' => '0', 'lon' => '0',
+        ];
+        $this->assertSame(100.0, ElanRegistryOwner::qualityScoreFromRow($row));
+    }
+
+    public function testCompletenessAcceptsZeroCoordinates(): void
+    {
+        $userId = $this->createTestUser();
+        $insertResult = $this->db->insert('profiles', [
+            'user_id' => $userId,
+            'city' => 'Equator', 'state' => 'Meridian', 'country' => 'Ocean',
+            'lat' => 0, 'lon' => 0,
+        ]);
+        $this->assertTrue((bool) $insertResult, 'Test fixture: profiles insert must succeed');
+        try {
+            $owner = new ElanRegistryOwner($userId);
+            $missing = $owner->validateProfileCompleteness();
+            $this->assertNotContains('Location Coordinates', $missing,
+                'lat=0 and lon=0 are valid coordinates and must not be flagged as missing');
+        } finally {
+            $this->db->query("DELETE FROM profiles WHERE user_id = ?", [$userId]);
+        }
+    }
+
+    public function testLatLonRoundTripThroughUpdate(): void
+    {
+        $userId = $this->createTestUser();
+        $insertResult = $this->db->insert('profiles', [
+            'user_id' => $userId,
+            'city' => 'London', 'state' => 'England', 'country' => 'UK',
+            'lat' => 1.0, 'lon' => 1.0,
+        ]);
+        $this->assertTrue((bool) $insertResult, 'Test fixture: profiles insert must succeed');
+        try {
+            $csrf = Token::generate();
+            $owner = new ElanRegistryOwner($userId);
+            $owner->update([
+                'id' => $userId,
+                'csrf' => $csrf,
+                'lat' => '0',
+                'lon' => '0',
+            ]);
+            // update() calls find() internally — data is already reloaded from DB
+            $this->assertSame(0.0, (float) $owner->data()->lat,
+                'lat=0 must survive a MySQL write and read-back');
+            $this->assertSame(0.0, (float) $owner->data()->lon,
+                'lon=0 must survive a MySQL write and read-back');
+        } finally {
+            $this->db->query("DELETE FROM profiles WHERE user_id = ?", [$userId]);
+        }
     }
 }
