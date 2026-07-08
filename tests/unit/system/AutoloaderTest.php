@@ -17,10 +17,14 @@ use PHPUnit\Framework\Attributes\Group;
 class AutoloaderTest extends TestCase
 {
     /**
-     * Test that core classes are auto-loaded correctly
+     * Test that non-PSR4-located core classes are available via recursive fallback.
      *
-     * These classes should load via the recursive iterator fallback
-     * since they don't have namespaces yet.
+     * Several classes use the fallback for different reasons:
+     * - ElanRegistryOwner, CarView, etc. have no namespace (genuinely non-namespaced).
+     * - Car.php declares namespace ElanRegistry\Car but lives at usersc/classes/Car.php
+     *   (PSR-4 would expect usersc/classes/Car/Car.php). File relocates in #779.
+     * - The class_exists('Car') assertion passes from a bootstrap-unit.php mock Car
+     *   in the global namespace, not from the autoloader.
      */
     public function testCoreClassesAutoload(): void
     {
@@ -45,12 +49,12 @@ class AutoloaderTest extends TestCase
     }
 
     /**
-     * Test that namespaced documentation classes auto-load
+     * Test that classes with non-standard file locations load via recursive fallback.
      *
-     * These classes use the ElanRegistry\Documentation namespace but are not
-     * in PSR-4 compliant directory structure yet. They load via recursive
-     * fallback. When namespace migration (Issue #407) is complete, they will
-     * be moved to proper PSR-4 structure.
+     * DocumentPortalTemplate declares ElanRegistry\Documentation but lives at
+     * usersc/classes/DocumentPortalTemplate.php (non-PSR-4 location). PSR-4
+     * would expect usersc/classes/Documentation/DocumentPortalTemplate.php.
+     * The recursive fallback resolves this until the file is relocated in #779.
      */
     public function testNamespacedClassesAutoload(): void
     {
@@ -61,10 +65,10 @@ class AutoloaderTest extends TestCase
     }
 
     /**
-     * Test that exception classes are auto-loaded correctly
+     * Test that exception classes are auto-loaded correctly via PSR-4.
      *
-     * All custom exceptions should auto-load from usersc/classes/exceptions/
-     * directory via recursive iterator.
+     * All custom exceptions load via the ElanRegistry\Exceptions\ prefix
+     * mapping to usersc/classes/Exceptions/.
      */
     public function testExceptionClassesAutoload(): void
     {
@@ -88,6 +92,43 @@ class AutoloaderTest extends TestCase
     }
 
     /**
+     * Test that ElanRegistry\Reference\CarModel is available to the application.
+     *
+     * Note: bootstrap-unit.php pre-loads CarModel via an eval mock before the
+     * autoloader registers, so class_exists() here confirms availability, not
+     * PSR-4 path resolution. The structural fix (ElanRegistry\Reference\ prefix
+     * mapping to usersc/classes/ElanRegistry/Reference/) is validated by the
+     * $namespaceMappings configuration and exercised in integration tests via
+     * CarValidator and models.php. See testPsr4RootPrefixResolution() for an
+     * example of a full path assertion using a non-mocked class.
+     */
+    public function testReferenceClassIsAvailable(): void
+    {
+        $this->assertTrue(
+            class_exists('ElanRegistry\\Reference\\CarModel'),
+            'ElanRegistry\\Reference\\CarModel must be available'
+        );
+    }
+
+    /**
+     * Test that the root ElanRegistry\ prefix resolves to the correct file path.
+     *
+     * ElanRegistry\Car\CarRepository lives at usersc/classes/Car/CarRepository.php —
+     * a PSR-4-compliant path under the root ElanRegistry\ → usersc/classes/ mapping.
+     * This class is NOT mocked in the bootstrap, so ReflectionClass::getFileName()
+     * verifies the autoloader actually resolved and loaded the real file.
+     */
+    public function testPsr4RootPrefixResolution(): void
+    {
+        $rc = new ReflectionClass('ElanRegistry\\Car\\CarRepository');
+        $this->assertStringEndsWith(
+            '/usersc/classes/Car/CarRepository.php',
+            (string) $rc->getFileName(),
+            'ElanRegistry\\Car\\CarRepository must load from usersc/classes/Car/CarRepository.php via root PSR-4 prefix'
+        );
+    }
+
+    /**
      * Test that autoloader doesn't fail on nonexistent classes
      *
      * The autoloader should gracefully handle requests for classes that
@@ -95,7 +136,6 @@ class AutoloaderTest extends TestCase
      */
     public function testAutoloaderDoesNotFailOnNonexistentClass(): void
     {
-        // Should return false, not throw exception
         $this->assertFalse(
             class_exists('NonexistentClassName'),
             'Autoloader should return false for nonexistent class without throwing exception'
