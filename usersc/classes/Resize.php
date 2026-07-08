@@ -2,6 +2,10 @@
 
 declare(strict_types=1);
 
+namespace ElanRegistry;
+
+use GdImage;
+
 /**
  * Image Resize Class with EXIF Orientation Support
  * 

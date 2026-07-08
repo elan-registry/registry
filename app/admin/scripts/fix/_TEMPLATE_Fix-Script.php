@@ -2,6 +2,8 @@
 
 declare(strict_types=1);
 
+use ElanRegistry\LogCategories;
+
 /**
  * [SCRIPT_NAME] Script
  *

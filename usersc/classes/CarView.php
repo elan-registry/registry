@@ -2,6 +2,9 @@
 
 declare(strict_types=1);
 
+namespace ElanRegistry;
+
+use ElanRegistry\Car\Car;
 use ElanRegistry\Exceptions\ImageProcessingException;
 
 /**

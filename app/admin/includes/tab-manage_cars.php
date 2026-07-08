@@ -9,10 +9,10 @@ declare(strict_types=1);
  * Includes duplicate detection and correction capabilities
  */
 
+use ElanRegistry\ChassisValidator;
+use ElanRegistry\LogCategories;
+use ElanRegistry\Owner;
 use ElanRegistry\OwnerView;
-
-// Import ChassisValidator for validation functionality
-require_once '../../usersc/classes/ChassisValidator.php';
 
 // Data Quality Reports Functions
 function getDataQualityReports(object $db): array {

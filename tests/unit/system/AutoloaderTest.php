@@ -10,58 +10,81 @@ use PHPUnit\Framework\Attributes\Group;
  * Test custom autoloader functionality
  *
  * Verifies that the hybrid namespace-aware autoloader correctly loads
- * both namespaced (PSR-4) and non-namespaced (recursive scan) classes.
+ * all custom classes via PSR-4 prefix mappings.
  */
 #[Group('system')]
 #[Group('autoloader')]
 class AutoloaderTest extends TestCase
 {
     /**
-     * Test that non-PSR4-located core classes are available via recursive fallback.
+     * Test that core application classes are available via PSR-4 autoloading.
      *
-     * Several classes use the fallback for different reasons:
-     * - Owner, CarView, etc. have no namespace (genuinely non-namespaced).
-     * - Car.php declares namespace ElanRegistry\Car but lives at usersc/classes/Car.php
-     *   (PSR-4 would expect usersc/classes/Car/Car.php). File relocates in #779.
-     * - The class_exists('Car') assertion passes from a bootstrap-unit.php mock Car
-     *   in the global namespace, not from the autoloader.
+     * - Owner, CarView, Resize, ChassisValidator, EmailTemplate, and
+     *   CarErrorMessages are namespaced under ElanRegistry\ and load via the
+     *   PSR-4 root prefix mapping to usersc/classes/.
+     * - The class_exists('Car') assertion is a regression guard confirming the global
+     *   Car alias remains available. In the unit test environment it resolves to the
+     *   bootstrap mock rather than the real ElanRegistry\Car\Car; in production it
+     *   resolves via class_alias() at the bottom of Car/Car.php.
      */
     public function testCoreClassesAutoload(): void
     {
         $this->assertTrue(class_exists('Car'), 'Car class should auto-load');
-        $this->assertTrue(class_exists('Owner'), 'Owner class should auto-load');
-        $this->assertInstanceOf(\Owner::class, new \Owner(), 'Owner must instantiate as the Owner class (not an alias or wrong class declaration)');
-        $this->assertTrue(class_exists('CarView'), 'CarView class should auto-load');
-        $this->assertTrue(class_exists('Resize'), 'Resize class should auto-load');
-        $this->assertTrue(class_exists('ChassisValidator'), 'ChassisValidator class should auto-load');
-        $this->assertTrue(class_exists('EmailTemplate'), 'EmailTemplate class should auto-load');
-        $this->assertTrue(class_exists('CarErrorMessages'), 'CarErrorMessages class should auto-load');
+        $this->assertTrue(class_exists('ElanRegistry\\Owner'), 'ElanRegistry\\Owner class should auto-load');
+        $this->assertInstanceOf(\ElanRegistry\Owner::class, new \ElanRegistry\Owner(), 'Owner must instantiate as the ElanRegistry\\Owner class (not an alias or wrong class declaration)');
+        $this->assertTrue(class_exists('ElanRegistry\\CarView'), 'ElanRegistry\\CarView class should auto-load');
+        $this->assertTrue(class_exists('ElanRegistry\\Resize'), 'ElanRegistry\\Resize class should auto-load');
+        $this->assertTrue(class_exists('ElanRegistry\\ChassisValidator'), 'ElanRegistry\\ChassisValidator class should auto-load');
+        $this->assertTrue(class_exists('ElanRegistry\\EmailTemplate'), 'ElanRegistry\\EmailTemplate class should auto-load');
+        $this->assertTrue(class_exists('ElanRegistry\\CarErrorMessages'), 'ElanRegistry\\CarErrorMessages class should auto-load');
     }
 
     /**
-     * Test that admin classes are auto-loaded correctly
+     * Test that admin classes are auto-loaded correctly via PSR-4.
      *
-     * These classes are in the admin/ subdirectory and should load via
-     * the recursive iterator.
+     * These classes are namespaced under ElanRegistry\Admin and live in
+     * usersc/classes/admin/ (lowercase). They load via the explicit ElanRegistry\Admin\
+     * prefix mapping, NOT the catch-all ElanRegistry\ prefix — the explicit entry is
+     * required to ensure the lowercase path is used on case-sensitive Linux filesystems.
      */
     public function testAdminClassesAutoload(): void
     {
-        $this->assertTrue(class_exists('BackupManager'), 'BackupManager class should auto-load from admin/');
+        $this->assertTrue(
+            class_exists('ElanRegistry\\Admin\\BackupManager'),
+            'ElanRegistry\\Admin\\BackupManager class should auto-load from admin/'
+        );
+        $this->assertTrue(
+            class_exists('ElanRegistry\\Admin\\PagePermissionClassifier'),
+            'ElanRegistry\\Admin\\PagePermissionClassifier class should auto-load from admin/'
+        );
+
+        $rc = new ReflectionClass('ElanRegistry\\Admin\\BackupManager');
+        $this->assertStringEndsWith(
+            '/usersc/classes/admin/BackupManager.php',
+            (string) $rc->getFileName(),
+            'BackupManager must load from usersc/classes/admin/ (lowercase) via the ElanRegistry\\Admin\\ prefix mapping'
+        );
     }
 
     /**
-     * Test that classes with non-standard file locations load via recursive fallback.
+     * Test that DocumentPortalTemplate auto-loads from its PSR-4 location.
      *
-     * DocumentPortalTemplate declares ElanRegistry\Documentation but lives at
-     * usersc/classes/DocumentPortalTemplate.php (non-PSR-4 location). PSR-4
-     * would expect usersc/classes/Documentation/DocumentPortalTemplate.php.
-     * The recursive fallback resolves this until the file is relocated in #779.
+     * DocumentPortalTemplate declares namespace ElanRegistry\Documentation and
+     * lives at usersc/classes/Documentation/DocumentPortalTemplate.php — a
+     * PSR-4-compliant path under the root ElanRegistry\ → usersc/classes/ mapping.
      */
     public function testNamespacedClassesAutoload(): void
     {
         $this->assertTrue(
             class_exists('ElanRegistry\\Documentation\\DocumentPortalTemplate'),
             'Namespaced DocumentPortalTemplate class should auto-load'
+        );
+
+        $rc = new ReflectionClass('ElanRegistry\\Documentation\\DocumentPortalTemplate');
+        $this->assertStringEndsWith(
+            '/usersc/classes/Documentation/DocumentPortalTemplate.php',
+            (string) $rc->getFileName(),
+            'DocumentPortalTemplate must load from usersc/classes/Documentation/DocumentPortalTemplate.php via PSR-4'
         );
     }
 
@@ -97,11 +120,11 @@ class AutoloaderTest extends TestCase
      *
      * Note: bootstrap-unit.php pre-loads CarModel via an eval mock before the
      * autoloader registers, so class_exists() here confirms availability, not
-     * PSR-4 path resolution. The structural fix (ElanRegistry\Reference\ prefix
-     * mapping to usersc/classes/ElanRegistry/Reference/) is validated by the
-     * $namespaceMappings configuration and exercised in integration tests via
-     * CarValidator and models.php. See testPsr4RootPrefixResolution() for an
-     * example of a full path assertion using a non-mocked class.
+     * PSR-4 path resolution. A ReflectionClass path assertion is not possible
+     * here because the mock pre-empts the real autoloader load.
+     * TODO: add a second (non-mocked) class under ElanRegistry\Reference\ so
+     * the prefix mapping to usersc/classes/Reference/ can be path-verified.
+     * See testPsr4RootPrefixResolution() for the pattern to follow.
      */
     public function testReferenceClassIsAvailable(): void
     {
@@ -114,10 +137,14 @@ class AutoloaderTest extends TestCase
     /**
      * Test that the root ElanRegistry\ prefix resolves to the correct file path.
      *
-     * ElanRegistry\Car\CarRepository lives at usersc/classes/Car/CarRepository.php —
-     * a PSR-4-compliant path under the root ElanRegistry\ → usersc/classes/ mapping.
-     * This class is NOT mocked in the bootstrap, so ReflectionClass::getFileName()
-     * verifies the autoloader actually resolved and loaded the real file.
+     * ElanRegistry\Car\CarRepository and ElanRegistry\Car\Car both live under
+     * usersc/classes/Car/ — PSR-4-compliant paths under the root ElanRegistry\ →
+     * usersc/classes/ mapping. Neither is mocked in the bootstrap, so
+     * ReflectionClass::getFileName() verifies the autoloader resolved the real files.
+     *
+     * Car\Car specifically uses the double-directory pattern (Car/Car.php). A
+     * regression where the file is recreated at the old usersc/classes/Car.php path
+     * would be caught by this assertion.
      */
     public function testPsr4RootPrefixResolution(): void
     {
@@ -126,6 +153,13 @@ class AutoloaderTest extends TestCase
             '/usersc/classes/Car/CarRepository.php',
             (string) $rc->getFileName(),
             'ElanRegistry\\Car\\CarRepository must load from usersc/classes/Car/CarRepository.php via root PSR-4 prefix'
+        );
+
+        $rc2 = new ReflectionClass('ElanRegistry\\Car\\Car');
+        $this->assertStringEndsWith(
+            '/usersc/classes/Car/Car.php',
+            (string) $rc2->getFileName(),
+            'ElanRegistry\\Car\\Car must load from usersc/classes/Car/Car.php (double-directory PSR-4 pattern)'
         );
     }
 
@@ -183,14 +217,18 @@ class AutoloaderTest extends TestCase
     /**
      * Test case-insensitive class loading
      *
-     * The recursive iterator uses case-insensitive matching for compatibility.
-     * This test verifies that classes load regardless of case in the class_exists check.
+     * This test verifies that the global Car alias allows case-insensitive class_exists checks.
+     *
+     * In production, these resolve via class_alias(\ElanRegistry\Car\Car::class, 'Car')
+     * at the bottom of Car/Car.php — PHP registers the alias case-insensitively, so
+     * 'car' and 'CAR' resolve to the same entry. In the unit test environment, 'Car'
+     * resolves via the bootstrap mock, which PHP also registers case-insensitively.
      */
     public function testCaseInsensitiveLoading(): void
     {
-        // These should all resolve to the same class
-        $this->assertTrue(class_exists('Car'), 'Standard case should work');
-        $this->assertTrue(class_exists('car'), 'Lowercase should work');
-        $this->assertTrue(class_exists('CAR'), 'Uppercase should work');
+        // All three resolve to the \Car alias, which points to ElanRegistry\Car\Car
+        $this->assertTrue(class_exists('Car'), 'Standard case should work via global Car alias');
+        $this->assertTrue(class_exists('car'), 'Lowercase should work (PHP class table is case-insensitive)');
+        $this->assertTrue(class_exists('CAR'), 'Uppercase should work (PHP class table is case-insensitive)');
     }
 }

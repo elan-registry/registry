@@ -2,6 +2,10 @@
 
 declare(strict_types=1);
 
+use ElanRegistry\ApiResponse;
+use ElanRegistry\LogCategories;
+use ElanRegistry\StatisticsDataService;
+
 /**
  * statistics.php (formerly statistics-data.php)
  * Public API endpoint for lazy-loading statistics tab data
@@ -16,7 +20,6 @@ declare(strict_types=1);
  */
 
 require_once '../../../users/init.php';
-require_once $abs_us_root . $us_url_root . 'usersc/classes/StatisticsDataService.php';
 
 $userId = 0;
 $tab    = '';

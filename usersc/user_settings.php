@@ -25,7 +25,9 @@ require_once $abs_us_root . $us_url_root . 'usersc/includes/elanregistry_prep.ph
 
 
 <?php
+use ElanRegistry\AppConstants;
 use ElanRegistry\Input;
+use ElanRegistry\LogCategories;
 
 if (!securePage($php_self)) {
     die();

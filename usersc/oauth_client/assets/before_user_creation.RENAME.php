@@ -1,4 +1,6 @@
 <?php
+use ElanRegistry\LogCategories;
+
 // Before User Creation Script - EXAMPLE
 // This script runs before a new user is created through OAuth
 // 

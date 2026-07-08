@@ -1,13 +1,16 @@
 <?php
 declare(strict_types=1);
 
+use ElanRegistry\AppConstants;
+use ElanRegistry\Car\Car;
+use ElanRegistry\Car\CarRepository;
 use ElanRegistry\Exceptions\CarDatabaseException;
 use ElanRegistry\Exceptions\CarDeletionException;
 use ElanRegistry\Exceptions\CarMergeException;
 use ElanRegistry\Exceptions\CarNotFoundException;
 use ElanRegistry\Exceptions\CarPermissionException;
 use ElanRegistry\Input as ElanInput;
-use ElanRegistry\Car\CarRepository;
+use ElanRegistry\LogCategories;
 use ElanRegistry\Transfer\CarTransferRepository;
 
 /**

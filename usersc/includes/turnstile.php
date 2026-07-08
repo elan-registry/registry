@@ -1,6 +1,8 @@
 <?php
 declare(strict_types=1);
 
+use ElanRegistry\LogCategories;
+
 /**
  * Cloudflare Turnstile CAPTCHA integration.
  *

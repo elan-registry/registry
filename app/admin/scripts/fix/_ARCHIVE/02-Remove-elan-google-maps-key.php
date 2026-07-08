@@ -2,6 +2,8 @@
 
 declare(strict_types=1);
 
+use ElanRegistry\LogCategories;
+
 /**
  * Remove Google Maps API Key Script
  *

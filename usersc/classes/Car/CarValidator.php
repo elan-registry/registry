@@ -4,10 +4,10 @@ declare(strict_types=1);
 
 namespace ElanRegistry\Car;
 
-use ElanRegistry\Exceptions\CarValidationException;
-use ElanRegistry\Reference\CarModel;
 use DateTime;
-use InputSanitizer;
+use ElanRegistry\Exceptions\CarValidationException;
+use ElanRegistry\InputSanitizer;
+use ElanRegistry\Reference\CarModel;
 
 /**
  * CarValidator - Validation and sanitization for car data

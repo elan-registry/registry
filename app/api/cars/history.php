@@ -2,7 +2,10 @@
 
 declare(strict_types=1);
 
+use ElanRegistry\ApiResponse;
+use ElanRegistry\Car\Car;
 use ElanRegistry\Exceptions\ElanRegistryException;
+use ElanRegistry\LogCategories;
 
 /**
  * history.php

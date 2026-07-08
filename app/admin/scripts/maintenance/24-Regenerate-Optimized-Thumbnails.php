@@ -2,6 +2,9 @@
 
 declare(strict_types=1);
 
+use ElanRegistry\LogCategories;
+use ElanRegistry\Resize;
+
 /**
  * Thumbnail Optimization Script (v2.13.0)
  *
@@ -350,9 +353,6 @@ $line = 1; // Where messages go
                     ob_flush();
                     flush();
                 }
-
-                // Include Resize class for thumbnail generation
-                require_once $abs_us_root . $us_url_root . 'usersc/classes/Resize.php';
 
                 outputMessage("=== THUMBNAIL OPTIMIZATION STARTED ===");
                 outputMessage("Timestamp: " . date('Y-m-d H:i:s'));

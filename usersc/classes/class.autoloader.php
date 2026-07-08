@@ -2,15 +2,17 @@
 /**
  * PSR-4 Autoloader for Custom Application Classes
  *
- * Supports namespaced (PSR-4) classes via a configurable prefix→directory map,
- * with a recursive-scan fallback for classes not yet at their PSR-4 paths.
+ * Loads namespaced (PSR-4) classes via a configurable prefix→directory map.
  *
- * PSR-4 mappings mirror the composer.json autoload section exactly so
- * both autoloaders resolve identical paths.
+ * PSR-4 mappings match the composer.json autoload.psr-4 section.
+ * Entries must be ordered longest-prefix-first — this constraint is not
+ * expressible in composer.json but is enforced here to ensure more-specific
+ * prefixes (e.g., ElanRegistry\Admin\) are checked before the catch-all.
  *
  * @package ElanRegistry
  * @since v2.11.0
  * @see Issue #608 - Rewrite class autoloader for PSR-4 namespace support
+ * @see Issue #779 - Remove recursive fallback; all classes now at PSR-4 paths
  */
 
 declare(strict_types=1);
@@ -22,13 +24,15 @@ class ElanRegistryAutoloader
      *
      * Entries MUST be ordered longest-prefix-first so that more-specific
      * prefixes take precedence over the root ElanRegistry\ prefix.
-     * Mirrors the "autoload.psr-4" section of composer.json exactly.
+     * Entries match the autoload.psr-4 paths in composer.json, but must
+     * maintain longest-prefix-first order — a constraint composer.json cannot enforce.
      *
      * @var array<string, string>
      */
     protected static array $namespaceMappings = [
         'ElanRegistry\\Exceptions\\'  => __DIR__ . '/Exceptions/',
-        'ElanRegistry\\Reference\\'   => __DIR__ . '/ElanRegistry/Reference/',
+        'ElanRegistry\\Reference\\'   => __DIR__ . '/Reference/',
+        'ElanRegistry\\Admin\\'       => __DIR__ . '/admin/',
         'ElanRegistry\\'              => __DIR__ . '/',
     ];
 
@@ -38,26 +42,17 @@ class ElanRegistryAutoloader
     protected static string $fileExt = '.php';
 
     /**
-     * Cached file iterator for recursive scanning (initialized once per request)
-     */
-    protected static ?RecursiveIteratorIterator $fileIterator = null;
-
-    /**
-     * Hybrid autoloader — tries PSR-4 first, then recursive scan.
+     * PSR-4 autoloader entry point.
      *
-     * This autoloader runs AFTER UserSpice's autoloader (registered with
-     * prepend=false, appending to the SPL queue) so UserSpice handles its own classes first.
+     * Runs AFTER UserSpice's autoloader (registered with prepend=false) so
+     * UserSpice handles its own classes first.
      *
      * @param string $className Fully qualified class name
      * @return void
      */
     public static function loader(string $className): void
     {
-        if (static::loadNamespaced($className)) {
-            return;
-        }
-
-        static::loadRecursive($className);
+        static::loadNamespaced($className);
     }
 
     /**
@@ -67,9 +62,9 @@ class ElanRegistryAutoloader
      * prefix, and maps the remainder to a file path under the base directory.
      *
      * Example resolutions:
-     *   ElanRegistry\Reference\CarModel     → usersc/classes/ElanRegistry/Reference/CarModel.php
-     *   ElanRegistry\Car\CarRepository      → usersc/classes/Car/CarRepository.php
-     *   ElanRegistry\Exceptions\CarNotFound → usersc/classes/Exceptions/CarNotFound.php
+     *   ElanRegistry\Reference\CarModel        → usersc/classes/Reference/CarModel.php
+     *   ElanRegistry\Car\CarRepository         → usersc/classes/Car/CarRepository.php
+     *   ElanRegistry\Exceptions\CarNotFoundException → usersc/classes/Exceptions/CarNotFoundException.php
      *
      * @param string $className Fully qualified class name with namespace
      * @return bool True if the class file was found and loaded
@@ -94,46 +89,6 @@ class ElanRegistryAutoloader
         return false;
     }
 
-    /**
-     * Recursive directory scanner for classes not resolved by PSR-4 prefix matching.
-     *
-     * Searches the entire usersc/classes/ directory tree for a file matching
-     * the simple class name. The iterator object is cached to avoid re-construction;
-     * foreach still re-walks the directory tree on each call.
-     *
-     * This path handles classes whose files are not yet at their expected PSR-4
-     * locations — both non-namespaced classes (e.g., AppConstants, LogCategories)
-     * and namespaced classes at non-standard paths (e.g., DocumentPortalTemplate).
-     *
-     * @param string $className Simple or fully qualified class name
-     * @return void
-     */
-    protected static function loadRecursive(string $className): void
-    {
-        if (static::$fileIterator === null) {
-            static::$fileIterator = new RecursiveIteratorIterator(
-                new RecursiveDirectoryIterator(
-                    __DIR__ . '/',
-                    RecursiveDirectoryIterator::SKIP_DOTS
-                ),
-                RecursiveIteratorIterator::SELF_FIRST,
-                RecursiveIteratorIterator::CATCH_GET_CHILD
-            );
-        }
-
-        $classNameParts = explode('\\', $className);
-        $filename       = end($classNameParts) . static::$fileExt;
-
-        foreach (static::$fileIterator as $file) {
-            if (strtolower($file->getFilename()) === strtolower($filename)) {
-                if (!$file->isReadable()) {
-                    continue;
-                }
-                require_once $file->getPathname();
-                break;
-            }
-        }
-    }
 }
 
 // Register PSR-4 autoloader with SPL.

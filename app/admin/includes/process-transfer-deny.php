@@ -2,7 +2,9 @@
 
 declare(strict_types=1);
 
+use ElanRegistry\ApiResponse;
 use ElanRegistry\Exceptions\CarTransferException;
+use ElanRegistry\LogCategories;
 use ElanRegistry\Transfer\CarTransferRepository;
 use ElanRegistry\Transfer\TransferEmailService;
 

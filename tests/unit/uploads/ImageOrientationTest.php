@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use ElanRegistry\Resize;
 use PHPUnit\Framework\TestCase;
 
 use PHPUnit\Framework\Attributes\Group;
@@ -50,7 +51,7 @@ class ImageOrientationTest extends TestCase
     #[Group('fast')]
     public function testResizeClassExists(): void
     {
-        $this->assertTrue(class_exists('Resize'), 'Resize class should exist');
+        $this->assertTrue(class_exists('ElanRegistry\\Resize'), 'Resize class should exist');
     }
 
     /**
@@ -59,7 +60,7 @@ class ImageOrientationTest extends TestCase
     #[Group('fast')]
     public function testCorrectOrientationMethodExists(): void
     {
-        $reflection = new ReflectionClass('Resize');
+        $reflection = new ReflectionClass('ElanRegistry\\Resize');
         $this->assertTrue(
             $reflection->hasMethod('correctOrientation'),
             'Resize class should have correctOrientation method'
@@ -157,7 +158,7 @@ class ImageOrientationTest extends TestCase
         // Should not throw exception when processing image without EXIF
         try {
             $resize = new Resize($testFile);
-            $this->assertInstanceOf('Resize', $resize);
+            $this->assertInstanceOf(\ElanRegistry\Resize::class, $resize);
         } catch (Exception $e) {
             $this->fail('Should handle images without EXIF data gracefully: ' . $e->getMessage());
         }
@@ -180,7 +181,7 @@ class ImageOrientationTest extends TestCase
         // Should process PNG files normally (no EXIF orientation correction)
         try {
             $resize = new Resize($testFile);
-            $this->assertInstanceOf('Resize', $resize);
+            $this->assertInstanceOf(\ElanRegistry\Resize::class, $resize);
         } catch (Exception $e) {
             $this->fail('Should handle PNG files without EXIF processing: ' . $e->getMessage());
         }

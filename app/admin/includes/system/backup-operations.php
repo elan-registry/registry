@@ -1,6 +1,10 @@
 <?php
 declare(strict_types=1);
 
+use ElanRegistry\Admin\BackupManager;
+use ElanRegistry\ApiResponse;
+use ElanRegistry\LogCategories;
+
 /**
  * Backup Operations Handler
  *

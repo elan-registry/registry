@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use ElanRegistry\InputSanitizer;
 use PHPUnit\Framework\TestCase;
 use PHPUnit\Framework\Attributes\Group;
 

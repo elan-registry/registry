@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use ElanRegistry\LocationService;
 use PHPUnit\Framework\TestCase;
 use PHPUnit\Framework\Attributes\Group;
 

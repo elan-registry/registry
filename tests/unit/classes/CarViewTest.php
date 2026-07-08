@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use ElanRegistry\CarView;
 use ElanRegistry\Exceptions\ImageProcessingException;
 use PHPUnit\Framework\TestCase;
 
@@ -114,8 +115,8 @@ final class CarViewTest extends TestCase
 
     public function testDisplayCarouselShowsPlaceholderForNoImages(): void
     {
-        $car = new Car();
-        // Car with no images - mock returns empty array
+        $car = $this->createStub(\ElanRegistry\Car\Car::class);
+        $car->method('images')->willReturn([]);
 
         $html = CarView::displayCarousel($car);
 
@@ -126,8 +127,10 @@ final class CarViewTest extends TestCase
 
     public function testDisplayCarouselShowsSingleImageWithoutControls(): void
     {
-        // Create car with single image via mock
-        $car = new Car(1);
+        $car = $this->createStub(\ElanRegistry\Car\Car::class);
+        $car->method('images')->willReturn([
+            ['path' => '/userimages/cars/test.jpg'],
+        ]);
 
         $html = CarView::displayCarousel($car);
 
@@ -140,7 +143,10 @@ final class CarViewTest extends TestCase
 
     public function testDisplayCarouselContainsCarouselStructure(): void
     {
-        $car = new Car(1);
+        $car = $this->createStub(\ElanRegistry\Car\Car::class);
+        $car->method('images')->willReturn([
+            ['path' => '/userimages/cars/test.jpg'],
+        ]);
 
         $html = CarView::displayCarousel($car);
 
@@ -149,7 +155,8 @@ final class CarViewTest extends TestCase
 
     public function testDisplayCarouselWithInstanceIdShowsPlaceholderForNoImages(): void
     {
-        $car = new Car();
+        $car = $this->createStub(\ElanRegistry\Car\Car::class);
+        $car->method('images')->willReturn([]);
 
         $html = CarView::displayCarousel($car, 42);
 
@@ -158,7 +165,8 @@ final class CarViewTest extends TestCase
 
     public function testDisplayCarouselWithSameInstanceIdProducesDeterministicOutput(): void
     {
-        $car = new Car();
+        $car = $this->createStub(\ElanRegistry\Car\Car::class);
+        $car->method('images')->willReturn([]);
 
         $html1 = CarView::displayCarousel($car, 99);
         $html2 = CarView::displayCarousel($car, 99);
@@ -168,7 +176,7 @@ final class CarViewTest extends TestCase
 
     public function testDisplayCarouselInstanceIdAppearsInMultiImageCarouselDomIds(): void
     {
-        $car = $this->createStub(Car::class);
+        $car = $this->createStub(\ElanRegistry\Car\Car::class);
         $car->method('images')->willReturn([
             ['path' => '/userimages/cars/img1.jpg'],
             ['path' => '/userimages/cars/img2.jpg'],

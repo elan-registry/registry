@@ -12,8 +12,11 @@
 
 require_once 'users/init.php';
 require_once $abs_us_root . $us_url_root . 'users/includes/template/prep.php';
-require_once $abs_us_root . $us_url_root . 'usersc/classes/CarView.php';
+use ElanRegistry\Car\Car;
 use ElanRegistry\Car\CarShowcaseService;
+use ElanRegistry\CarView;
+use ElanRegistry\LogCategories;
+use ElanRegistry\StatisticsDataService;
 
 if (!securePage($php_self)) {
 	die();

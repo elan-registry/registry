@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace ElanRegistry\Car;
 
-use LogCategories;
+use ElanRegistry\LogCategories;
 
 /**
  * Builds the car pool for the home page cycling showcase.

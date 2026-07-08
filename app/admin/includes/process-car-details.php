@@ -1,7 +1,11 @@
 <?php
 declare(strict_types=1);
 
+use ElanRegistry\ApiResponse;
+use ElanRegistry\Car\Car;
 use ElanRegistry\Input;
+use ElanRegistry\LogCategories;
+
 /**
  * process-car-details.php
  * AJAX endpoint for retrieving car details (reassign/delete confirmation)

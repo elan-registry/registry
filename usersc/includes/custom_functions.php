@@ -1,6 +1,9 @@
 <?php
 declare(strict_types=1);
 
+use ElanRegistry\ApiResponse;
+use ElanRegistry\LogCategories;
+
 /*
 UserSpice 4
 An Open Source PHP User Management System

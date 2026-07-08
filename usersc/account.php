@@ -3,6 +3,9 @@ declare(strict_types=1);
 require_once '../users/init.php';
 require_once $abs_us_root . $us_url_root . 'usersc/includes/elanregistry_prep.php';
 
+use ElanRegistry\Car\Car;
+use ElanRegistry\CarView;
+use ElanRegistry\Owner;
 use ElanRegistry\OwnerView;
 
 if (!securePage($php_self)) {

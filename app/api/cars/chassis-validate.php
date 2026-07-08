@@ -2,6 +2,10 @@
 
 declare(strict_types=1);
 
+use ElanRegistry\ApiResponse;
+use ElanRegistry\ChassisValidator;
+use ElanRegistry\LogCategories;
+
 /**
  * chassis-validate.php
  * AJAX endpoint for real-time chassis validation
@@ -18,16 +22,6 @@ declare(strict_types=1);
  */
 
 require_once '../../../users/init.php';
-
-// Check if ChassisValidator class file exists
-$validatorPath = '../../../usersc/classes/ChassisValidator.php';
-if (!file_exists($validatorPath)) {
-    ApiResponse::serverError('ChassisValidator class file not found')
-        ->withLogging($user->data()->id ?? 0, LogCategories::LOG_CATEGORY_SYSTEM_ERROR, "ChassisValidator file not found at: " . realpath($validatorPath))
-        ->send();
-}
-
-require_once $validatorPath;
 
 // Ensure this is an AJAX request
 if (strtolower(Server::get('HTTP_X_REQUESTED_WITH', '')) !== 'xmlhttprequest') {

@@ -27,6 +27,7 @@ require_once '../users/init.php';
 require_once $abs_us_root.$us_url_root.'usersc/includes/elanregistry_prep.php';
 
 use ElanRegistry\Input;
+use ElanRegistry\LogCategories;
 
 $pw_settings = $db->query("SELECT * FROM us_password_strength WHERE id = 1")->first();
 if (!isset($pw_settings->meter_active)) {

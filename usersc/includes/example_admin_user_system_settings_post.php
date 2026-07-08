@@ -1,4 +1,6 @@
-<?php require_once '../users/init.php'; ?>
+<?php
+use ElanRegistry\LogCategories;
+require_once '../users/init.php'; ?>
 <?php if (!securePage($_SERVER['PHP_SELF'])){die();} ?>
 <?php  //You can use this file to add a "System Settings" button to the user administration page and add any settings you want in there. Run our PHP (post) in here. ?>
 <?php //If you edit directly from this file don't forget  to rename it to remove the "example_" so it will be detected. ?>

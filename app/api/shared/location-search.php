@@ -1,7 +1,10 @@
 <?php
 declare(strict_types=1);
 
+use ElanRegistry\ApiResponse;
 use ElanRegistry\Exceptions\LocationServiceException;
+use ElanRegistry\LocationService;
+use ElanRegistry\LogCategories;
 
 /**
  * AJAX Endpoint: Location Search

@@ -2,14 +2,14 @@
 
 declare(strict_types=1);
 
+use ElanRegistry\EmailTemplate;
+
 /**
  * Admin Contact Owner Email Template
  *
  * Notifies a car owner about a message from a Registry Administrator.
  * Variables available: $to, $from, $message, $carContext (array), $qualityIssue
  */
-
-require_once $abs_us_root . $us_url_root . 'usersc/classes/EmailTemplate.php';
 
 $emailTemplate = new EmailTemplate();
 

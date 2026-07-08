@@ -2,6 +2,8 @@
 
 declare(strict_types=1);
 
+use ElanRegistry\LogCategories;
+
 /**
  * 08-Rename-Admin-Pages.php Script
  *

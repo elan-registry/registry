@@ -1,6 +1,11 @@
 <?php
 declare(strict_types=1);
 
+namespace ElanRegistry;
+
+use DB;
+use Exception;
+use Token;
 use ElanRegistry\Car\CarRepository;
 use ElanRegistry\Exceptions\OwnerCreationException;
 use ElanRegistry\Exceptions\OwnerSearchException;

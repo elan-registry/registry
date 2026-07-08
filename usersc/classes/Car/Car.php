@@ -4,9 +4,11 @@ declare(strict_types=1);
 
 namespace ElanRegistry\Car;
 
-use AppConstants;
-use CarErrorMessages;
 use DB;
+use Exception;
+use Token;
+use ElanRegistry\AppConstants;
+use ElanRegistry\CarErrorMessages;
 use ElanRegistry\Exceptions\CarCreationException;
 use ElanRegistry\Exceptions\CarDatabaseException;
 use ElanRegistry\Exceptions\CarDeletionException;
@@ -14,9 +16,7 @@ use ElanRegistry\Exceptions\CarNotFoundException;
 use ElanRegistry\Exceptions\CarPermissionException;
 use ElanRegistry\Exceptions\CarValidationException;
 use ElanRegistry\Exceptions\ImageProcessingException;
-use Exception;
-use LogCategories;
-use Token;
+use ElanRegistry\LogCategories;
 
 /**
  * Car is a facade class for managing Car data
@@ -685,6 +685,6 @@ class Car
 }
 
 // Backward compatibility: allow existing code to use bare 'Car' class name
-if (!\class_exists(\Car::class, false)) {
-    \class_alias(Car::class, \Car::class);
+if (!\class_exists('Car', false)) {
+    \class_alias(\ElanRegistry\Car\Car::class, 'Car');
 }
