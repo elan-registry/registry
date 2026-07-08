@@ -53,9 +53,6 @@ parameters:
         - '#invalid (return )?type (DB|Token|Input|User|Redirect)#'
         - '#Function \w+ not found#'
 
-        # Car class uses class_alias for backward compatibility (issue #407)
-        - '#on an unknown class Car\b#'
-
         # Database query results return mixed object types
         - '#Cannot access property .+ on array\|object#'
 

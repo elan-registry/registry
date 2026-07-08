@@ -129,7 +129,7 @@ class AutoloaderTest extends TestCase
      * autoloader registers, so class_exists() here confirms availability, not
      * PSR-4 path resolution. A ReflectionClass path assertion is not possible
      * here because the mock pre-empts the real autoloader load.
-     * TODO: add a second (non-mocked) class under ElanRegistry\Reference\ so
+     * TODO #1255: add a second (non-mocked) class under ElanRegistry\Reference\ so
      * the prefix mapping to usersc/classes/Reference/ can be path-verified.
      * See testPsr4RootPrefixResolution() for the pattern to follow.
      */
