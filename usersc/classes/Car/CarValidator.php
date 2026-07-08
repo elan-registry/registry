@@ -7,6 +7,7 @@ namespace ElanRegistry\Car;
 use ElanRegistry\Exceptions\CarValidationException;
 use ElanRegistry\Reference\CarModel;
 use DateTime;
+use InputSanitizer;
 
 /**
  * CarValidator - Validation and sanitization for car data
@@ -55,7 +56,7 @@ class CarValidator
             switch ($key) {
                 case 'chassis':
                     if (!empty($value)) {
-                        $validatedFields[$key] = $this->normalizeString($value, 50);
+                        $validatedFields[$key] = InputSanitizer::normalize($value, 50);
                         if (strlen($validatedFields[$key]) < 3) {
                             throw new CarValidationException('Chassis number must be at least 3 characters long');
                         }
@@ -67,7 +68,7 @@ class CarValidator
                 case 'model':
                     if (!empty($value)) {
                         // Sanitize input
-                        $validatedFields[$key] = $this->normalizeString($value, 100);
+                        $validatedFields[$key] = InputSanitizer::normalize($value, 100);
 
                         // Validate format: "series|variant|type"
                         $parts = explode('|', $validatedFields[$key]);
@@ -117,13 +118,13 @@ class CarValidator
                 case 'color':
                 case 'engine':
                     if (!empty($value)) {
-                        $validatedFields[$key] = $this->normalizeString($value, 100);
+                        $validatedFields[$key] = InputSanitizer::normalize($value, 100);
                     }
                     break;
 
                 case 'comments':
                     if (!empty($value)) {
-                        $validatedFields[$key] = $this->normalizeString($value, 5000);
+                        $validatedFields[$key] = InputSanitizer::normalize($value, 5000);
                     }
                     break;
 
@@ -164,8 +165,8 @@ class CarValidator
                                 'Website URL must start with http:// or https:// (e.g. https://example.com)'
                             );
                         }
-                        $scheme = strtolower((string) parse_url($value, PHP_URL_SCHEME));
-                        if (!in_array($scheme, ['http', 'https'], true)) {
+                        $urlScheme = strtolower((string) parse_url($value, PHP_URL_SCHEME));
+                        if (!in_array($urlScheme, ['http', 'https'], true)) {
                             throw new CarValidationException(
                                 'Website URL must use http:// or https:// — other protocols are not allowed'
                             );
@@ -187,7 +188,7 @@ class CarValidator
                 case 'state':
                 case 'country':
                     if (!empty($value)) {
-                        $validatedFields[$key] = $this->normalizeString($value, 100);
+                        $validatedFields[$key] = InputSanitizer::normalize($value, 100);
                     }
                     break;
 
@@ -220,29 +221,5 @@ class CarValidator
         }
 
         return $validatedFields;
-    }
-
-    /**
-     * Normalize string input by trimming whitespace and enforcing a maximum length.
-     *
-     * IMPORTANT: HTML tags and special characters are preserved as part of the
-     * encode-at-output pattern. The caller MUST apply htmlspecialchars() at the
-     * output context (HTML templates, emails) to prevent XSS vulnerabilities.
-     *
-     * @param string $input Input string to normalize
-     * @param int $maxLength Maximum allowed length
-     * @return string Normalized string with preserved HTML entities
-     * @since v2.23.0 Renamed from sanitizeString() - no longer strips HTML tags
-     * @see https://github.com/unibrain1/elanregistry/issues/841
-     */
-    public function normalizeString(string $input, int $maxLength): string
-    {
-        $sanitized = trim($input);
-
-        if (strlen($sanitized) > $maxLength) {
-            $sanitized = substr($sanitized, 0, $maxLength);
-        }
-
-        return $sanitized;
     }
 }

@@ -3,6 +3,7 @@ declare(strict_types=1);
 
 use ElanRegistry\Car\CarRepository;
 use ElanRegistry\Exceptions\OwnerCreationException;
+use ElanRegistry\Exceptions\OwnerSearchException;
 use ElanRegistry\Exceptions\OwnerUpdateException;
 use ElanRegistry\Exceptions\OwnerValidationException;
 
@@ -30,10 +31,10 @@ class ElanRegistryOwner
         'country' => 'Country',
     ];
 
-    private $_db;
-    private $_data;
-    private $userTableName = 'users';
-    private $profileTableName = 'profiles';
+    private ?object $_db = null;
+    private ?object $_data = null;
+    private string $userTableName = 'users';
+    private string $profileTableName = 'profiles';
 
     /**
      * Instantiates the ElanRegistryOwner object.
@@ -82,17 +83,6 @@ class ElanRegistryOwner
     public function data(): ?object
     {
         return $this->_data;
-    }
-
-    /**
-     * Static method to get owner profile using existing custom function
-     *
-     * @param int $userId The user ID to fetch
-     * @return object|null Owner object with profile data, or null if not found
-     */
-    public static function getOwnerProfile(int $userId): ?object
-    {
-        return getUserWithProfile($userId);
     }
 
     /**
@@ -410,7 +400,7 @@ class ElanRegistryOwner
      * @param int $limit Maximum number of results (default 50)
      * @return array Array of owner search results
      */
-    public function searchOwners(string $searchTerm, int $limit = 50): array
+    public static function searchOwners(string $searchTerm, int $limit = 50): array
     {
         $searchTerm = trim($searchTerm);
         if (empty($searchTerm)) {
@@ -418,7 +408,7 @@ class ElanRegistryOwner
         }
 
         // Handle multi-word searches (e.g., "Greg Surcouf", "Portland Oregon")
-        $searchWords = array_filter(explode(' ', strtolower($searchTerm)));
+        $searchWords = array_values(array_filter(explode(' ', strtolower($searchTerm))));
 
         if (count($searchWords) === 1) {
             // Single word search - use original OR logic
@@ -435,9 +425,13 @@ class ElanRegistryOwner
 
         } else {
             // Multi-word search - use UNION to prioritize exact matches over partial matches
-            $searchWords = array_filter(array_map(function($word) {
+            $searchWords = array_values(array_filter(array_map(function($word) {
                 return trim($word, ', ');
-            }, $searchWords));
+            }, $searchWords)));
+
+            if (count($searchWords) === 0) {
+                return [];
+            }
 
             if (count($searchWords) < 2) {
                 // Fallback to single word search
@@ -485,59 +479,15 @@ class ElanRegistryOwner
             }
         }
 
-        $searchQuery = $this->_db->query($sql, $params);
-        return $searchQuery->count() > 0 ? $searchQuery->results() : [];
-    }
-
-    /**
-     * Update owner location fields
-     *
-     * @param array $locationData Array with city, state, country (and optionally lat, lon)
-     * @return bool True if location updated successfully
-     */
-    public function updateLocation(array $locationData): bool
-    {
-        if (!$this->_data) {
-            throw OwnerValidationException::withUserMessage(
-                'Owner data not loaded',
-                'Unable to retrieve owner data. Please try again.'
+        $db = DB::getInstance();
+        $searchQuery = $db->query($sql, $params);
+        if ($db->error()) {
+            throw OwnerSearchException::withUserMessage(
+                'Owner search DB query failed: ' . $db->errorString(),
+                'Search failed. Please try again.'
             );
         }
-
-        $requiredFields = ['city', 'state', 'country'];
-        foreach ($requiredFields as $field) {
-            if (empty($locationData[$field])) {
-                throw OwnerValidationException::withUserMessage(
-                    "Required location field '{$field}' is missing",
-                    "Required location field '{$field}' is missing."
-                );
-            }
-        }
-
-        $updateFields = $locationData;
-        // Note: profiles table doesn't have mtime field (UserSpice standard)
-
-        try {
-            $this->_db->query("BEGIN");
-
-            if (!$this->_db->update($this->profileTableName, ['user_id' => $this->_data->id], $updateFields)) {
-                $this->_db->query("ROLLBACK");
-                logger($this->_data->id, LogCategories::LOG_CATEGORY_OWNER_ACTIONS, "updateLocation() DB update failed: " . $this->_db->errorString());
-                return false;
-            }
-
-            $this->_db->query("COMMIT");
-        } catch (Exception $e) {
-            $this->_db->query("ROLLBACK");
-            logger($this->_data->id, LogCategories::LOG_CATEGORY_OWNER_ACTIONS, "Location update failed: " . $e->getMessage());
-            throw $e;
-        }
-
-        // Reload owner data
-        $this->find((int) $this->_data->id);
-
-        logger($this->_data->id, LogCategories::LOG_CATEGORY_OWNER_ACTIONS, "Location updated: {$locationData['city']}, {$locationData['state']}, {$locationData['country']}");
-        return true;
+        return $searchQuery->count() > 0 ? $searchQuery->results() : [];
     }
 
     /**
@@ -631,8 +581,8 @@ class ElanRegistryOwner
                 case 'fname':
                 case 'lname':
                     if (!empty($value)) {
-                        $validatedFields[$key] = $this->normalizeString($value, 25);
-                        if (strlen($validatedFields[$key]) < 1) {
+                        $validatedFields[$key] = InputSanitizer::normalize($value, 25);
+                        if ($validatedFields[$key] === '') {
                             throw OwnerValidationException::withUserMessage(
                                 "{$key} must be at least 1 character long",
                                 'Name field must be at least 1 character long.'
@@ -665,7 +615,7 @@ class ElanRegistryOwner
                 case 'state':
                 case 'country':
                     if (!empty($value)) {
-                        $validatedFields[$key] = $this->normalizeString($value, 50);
+                        $validatedFields[$key] = InputSanitizer::normalize($value, 50);
                     }
                     break;
 
@@ -678,8 +628,8 @@ class ElanRegistryOwner
                                 'Website URL must start with http:// or https:// (e.g. https://example.com)'
                             );
                         }
-                        $scheme = strtolower((string) parse_url($trimmed, PHP_URL_SCHEME));
-                        if (!in_array($scheme, ['http', 'https'], true)) {
+                        $urlScheme = strtolower((string) parse_url($trimmed, PHP_URL_SCHEME));
+                        if (!in_array($urlScheme, ['http', 'https'], true)) {
                             throw OwnerValidationException::withUserMessage(
                                 'Website URL must use http:// or https:// — other protocols are not allowed',
                                 'Website URL must use http:// or https:// — other protocols are not allowed'
@@ -702,6 +652,32 @@ class ElanRegistryOwner
                     }
                     break;
 
+                case 'lat':
+                    // Explicit check — !empty() treats 0.0 as empty, silently dropping equator coordinates
+                    if ($value !== null && $value !== '') {
+                        if (!is_numeric($value) || abs((float) $value) > 90) {
+                            throw OwnerValidationException::withUserMessage(
+                                "Invalid lat coordinate value",
+                                "Invalid coordinate value."
+                            );
+                        }
+                        $validatedFields[$key] = (float) $value;
+                    }
+                    break;
+
+                case 'lon':
+                    // Explicit check — !empty() treats 0.0 as empty, silently dropping prime-meridian coordinates
+                    if ($value !== null && $value !== '') {
+                        if (!is_numeric($value) || abs((float) $value) > 180) {
+                            throw OwnerValidationException::withUserMessage(
+                                "Invalid lon coordinate value",
+                                "Invalid coordinate value."
+                            );
+                        }
+                        $validatedFields[$key] = (float) $value;
+                    }
+                    break;
+
                 default:
                     // Pass through other fields without validation (for flexibility)
                     if (!empty($value)) {
@@ -712,25 +688,6 @@ class ElanRegistryOwner
         }
 
         return $validatedFields;
-    }
-
-    /**
-     * Normalize string input by trimming whitespace and enforcing a maximum length.
-     *
-     * IMPORTANT: HTML tags and special characters are preserved as part of the
-     * encode-at-output pattern. The caller MUST apply htmlspecialchars() at the
-     * output context (HTML templates, emails) to prevent XSS vulnerabilities.
-     *
-     * @param string $input Input string to normalize
-     * @param int $maxLength Maximum allowed length
-     * @return string Normalized string (raw — caller must apply htmlspecialchars() at the render layer)
-     * @since v2.25.4 Renamed from sanitizeString() - no longer strips HTML tags
-     * @see https://github.com/unibrain1/elanregistry/issues/941
-     */
-    private function normalizeString(string $input, int $maxLength = 255): string
-    {
-        $normalized = trim($input);
-        return strlen($normalized) > $maxLength ? substr($normalized, 0, $maxLength) : $normalized;
     }
 
     /**

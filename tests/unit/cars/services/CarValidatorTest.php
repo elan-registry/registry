@@ -520,34 +520,6 @@ final class CarValidatorTest extends TestCase
     }
 
     // ============================================================
-    // normalizeString tests
-    // ============================================================
-
-    public function testNormalizeStringPreservesHtml(): void
-    {
-        $result = $this->validator->normalizeString('<b>Bold</b> text', 100);
-        $this->assertEquals('<b>Bold</b> text', $result);
-    }
-
-    public function testNormalizeStringPreservesSpecialCharacters(): void
-    {
-        $result = $this->validator->normalizeString('clearance <2cm & engine "Twin Cam"', 100);
-        $this->assertEquals('clearance <2cm & engine "Twin Cam"', $result);
-    }
-
-    public function testNormalizeStringTrimsWhitespace(): void
-    {
-        $result = $this->validator->normalizeString('  hello  ', 100);
-        $this->assertEquals('hello', $result);
-    }
-
-    public function testNormalizeStringTruncates(): void
-    {
-        $result = $this->validator->normalizeString('Long string here', 4);
-        $this->assertEquals('Long', $result);
-    }
-
-    // ============================================================
     // Model validation tests with Mock CarModel
     // Unit tests using mock CarModel class (see bootstrap-unit.php)
     // Integration tests that require real database are in
