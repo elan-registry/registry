@@ -249,8 +249,7 @@ final class AdminOwnerManagementTest extends IntegrationTestCase
     {
         $userId = $this->createTestUser(['fname' => 'SearchHappy', 'lname' => 'PathTest']);
 
-        $ownerManager = new Owner();
-        $results = $ownerManager->searchOwners('SearchHappy', 25);
+        $results = Owner::searchOwners('SearchHappy', 25);
 
         $this->assertIsArray($results);
         $this->assertNotEmpty($results, 'searchOwners() must return the newly created test user');

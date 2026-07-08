@@ -124,7 +124,7 @@ with domain-specific operation types that capture business context:
 | --- | --- | --- |
 | `'NEWOWNER'` | Ownership transfer completed | `CarAdministrationService::transfer()` |
 | `'MERGE'` | Car record merge (duplicate resolution) | `CarAdministrationService::merge()` |
-| `'LOCATION_SYNC'` | Owner location data synchronized | `ElanRegistryOwner::syncLocationToCars()` |
+| `'LOCATION_SYNC'` | Owner location data synchronized | `Owner::syncLocationToCars()` |
 | `'VERIFIED'` | Admin verified car details | `verify_car.php` |
 | `'VERIFIED SOLD'` | Admin marked car as sold | `verify_car.php` |
 | `'DELETE'` | Application-level pre-delete snapshot | `CarAdministrationService::delete()` |
