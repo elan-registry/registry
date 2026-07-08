@@ -8,18 +8,15 @@ use ElanRegistry\Exceptions\OwnerUpdateException;
 use ElanRegistry\Exceptions\OwnerValidationException;
 
 /**
- * ElanRegistryOwner is a class for managing Owner data
- *
- * ElanRegistryOwner is a class that isolates read/write operations for user/owner
- * information in the ElanRegistry context, providing a clean separation between
- * UserSpice user management and ElanRegistry owner business logic.
+ * Manages owner profile data across the `users` and `profiles` tables,
+ * isolating ElanRegistry business logic from UserSpice user management.
+ * Provides CRUD operations, profile quality scoring, location synchronization,
+ * ownership history, and owner search.
  *
  * @author Jim Boone
- * @version $Revision: 1.0 $
- * @access public
  */
 
-class ElanRegistryOwner
+class Owner
 {
     /** Maps DB column → display label for simple profile completeness fields (lat/lon handled separately). */
     private const PROFILE_SIMPLE_FIELD_LABELS = [
@@ -37,11 +34,10 @@ class ElanRegistryOwner
     private string $profileTableName = 'profiles';
 
     /**
-     * Instantiates the ElanRegistryOwner object.
+     * Instantiates the Owner object.
      *
      * @param int|null $id Optional User ID. If given, the owner information will be populated.
      * @param object|null $db Optional DB instance for testing. If not provided, uses DB::getInstance().
-     * @return void
      */
     public function __construct(?int $id = null, ?object $db = null)
     {
@@ -329,7 +325,7 @@ class ElanRegistryOwner
      * Calculate quality score from a plain query result row.
      *
      * Accepts a raw DB row object so batch loops can score many owners without
-     * constructing a full ElanRegistryOwner for each one.
+     * constructing a full Owner for each one.
      *
      * @param object $row DB row — must include all PROFILE_SIMPLE_FIELD_LABELS columns
      *                    (fname, lname, email, city, state, country) plus lat and lon.

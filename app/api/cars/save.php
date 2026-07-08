@@ -352,7 +352,7 @@ function buildCarDetails(array &$cardetails, ?int $carId = null): void
         }
     } else {
         $ownerId = (int)$user->data()->id;
-        $owner = new ElanRegistryOwner($ownerId);
+        $owner = new Owner($ownerId);
         $ownerData = $owner->data();
 
         /*  Add the User/profile information to the record */

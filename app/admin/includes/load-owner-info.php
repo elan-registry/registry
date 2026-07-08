@@ -21,7 +21,7 @@ if ($ownerId <= 0) {
 $obLevelBefore = ob_get_level();
 try {
     ob_start();
-    $owner = new ElanRegistryOwner($ownerId);
+    $owner = new Owner($ownerId);
     $ownerData = $owner->data();
 
     if (!$ownerData) {

@@ -6,8 +6,8 @@ use PHPUnit\Framework\TestCase;
 use PHPUnit\Framework\Attributes\Group;
 
 /**
- * Unit tests for ElanRegistryOwner::qualityScoreFromRow() and
- * ElanRegistryOwner::validateProfileCompleteness()
+ * Unit tests for Owner::qualityScoreFromRow() and
+ * Owner::validateProfileCompleteness()
  *
  * Regression guard for issue #960: both methods iterate the shared private
  * constant PROFILE_SIMPLE_FIELD_LABELS. A typo in any key (e.g. 'fname' →
@@ -23,15 +23,15 @@ use PHPUnit\Framework\Attributes\Group;
  */
 #[Group('fast')]
 #[Group('unit')]
-final class ElanRegistryOwnerProfileTest extends TestCase
+final class OwnerProfileTest extends TestCase
 {
-    private \ElanRegistryOwner $owner;
+    private \Owner $owner;
     private \ReflectionProperty $dataProp;
 
     protected function setUp(): void
     {
-        $this->owner    = new \ElanRegistryOwner();
-        $ref            = new \ReflectionClass(\ElanRegistryOwner::class);
+        $this->owner    = new \Owner();
+        $ref            = new \ReflectionClass(\Owner::class);
         $this->dataProp = $ref->getProperty('_data');
         // PHP 8.1+: setAccessible() is a no-op; ReflectionProperty accesses
         // private members directly via setValue()/getValue().
@@ -99,12 +99,12 @@ final class ElanRegistryOwnerProfileTest extends TestCase
 
     public function testAllFieldsPopulatedScores100(): void
     {
-        $this->assertSame(100.0, \ElanRegistryOwner::qualityScoreFromRow($this->fullRow()));
+        $this->assertSame(100.0, \Owner::qualityScoreFromRow($this->fullRow()));
     }
 
     public function testNoFieldsPopulatedScores0(): void
     {
-        $this->assertSame(0.0, \ElanRegistryOwner::qualityScoreFromRow($this->emptyRow()));
+        $this->assertSame(0.0, \Owner::qualityScoreFromRow($this->emptyRow()));
     }
 
     /**
@@ -116,7 +116,7 @@ final class ElanRegistryOwnerProfileTest extends TestCase
         $row->lat = '45.5231';
         $row->lon = '-122.6765';
 
-        $this->assertSame(14.3, \ElanRegistryOwner::qualityScoreFromRow($row));
+        $this->assertSame(14.3, \Owner::qualityScoreFromRow($row));
     }
 
     /**
@@ -128,7 +128,7 @@ final class ElanRegistryOwnerProfileTest extends TestCase
         $row->lat = '';
         $row->lon = '';
 
-        $this->assertSame(85.7, \ElanRegistryOwner::qualityScoreFromRow($row));
+        $this->assertSame(85.7, \Owner::qualityScoreFromRow($row));
     }
 
     // Per-field regression tests — catch PROFILE_SIMPLE_FIELD_LABELS key typos.
@@ -140,7 +140,7 @@ final class ElanRegistryOwnerProfileTest extends TestCase
         $row        = $this->emptyRow();
         $row->fname = 'Jim';
 
-        $this->assertSame(14.3, \ElanRegistryOwner::qualityScoreFromRow($row));
+        $this->assertSame(14.3, \Owner::qualityScoreFromRow($row));
     }
 
     public function testOnlyLnameScores14point3(): void
@@ -148,7 +148,7 @@ final class ElanRegistryOwnerProfileTest extends TestCase
         $row        = $this->emptyRow();
         $row->lname = 'Boone';
 
-        $this->assertSame(14.3, \ElanRegistryOwner::qualityScoreFromRow($row));
+        $this->assertSame(14.3, \Owner::qualityScoreFromRow($row));
     }
 
     public function testOnlyEmailScores14point3(): void
@@ -156,7 +156,7 @@ final class ElanRegistryOwnerProfileTest extends TestCase
         $row        = $this->emptyRow();
         $row->email = 'jim@example.com';
 
-        $this->assertSame(14.3, \ElanRegistryOwner::qualityScoreFromRow($row));
+        $this->assertSame(14.3, \Owner::qualityScoreFromRow($row));
     }
 
     public function testOnlyCityScores14point3(): void
@@ -164,7 +164,7 @@ final class ElanRegistryOwnerProfileTest extends TestCase
         $row       = $this->emptyRow();
         $row->city = 'Portland';
 
-        $this->assertSame(14.3, \ElanRegistryOwner::qualityScoreFromRow($row));
+        $this->assertSame(14.3, \Owner::qualityScoreFromRow($row));
     }
 
     public function testOnlyStateScores14point3(): void
@@ -172,7 +172,7 @@ final class ElanRegistryOwnerProfileTest extends TestCase
         $row        = $this->emptyRow();
         $row->state = 'OR';
 
-        $this->assertSame(14.3, \ElanRegistryOwner::qualityScoreFromRow($row));
+        $this->assertSame(14.3, \Owner::qualityScoreFromRow($row));
     }
 
     public function testOnlyCountryScores14point3(): void
@@ -180,7 +180,7 @@ final class ElanRegistryOwnerProfileTest extends TestCase
         $row          = $this->emptyRow();
         $row->country = 'USA';
 
-        $this->assertSame(14.3, \ElanRegistryOwner::qualityScoreFromRow($row));
+        $this->assertSame(14.3, \Owner::qualityScoreFromRow($row));
     }
 
     /**
@@ -192,7 +192,7 @@ final class ElanRegistryOwnerProfileTest extends TestCase
         $row      = $this->emptyRow();
         $row->lat = '45.5231';
 
-        $this->assertSame(0.0, \ElanRegistryOwner::qualityScoreFromRow($row));
+        $this->assertSame(0.0, \Owner::qualityScoreFromRow($row));
     }
 
     /**
@@ -203,7 +203,7 @@ final class ElanRegistryOwnerProfileTest extends TestCase
         $row      = $this->emptyRow();
         $row->lon = '-122.6765';
 
-        $this->assertSame(0.0, \ElanRegistryOwner::qualityScoreFromRow($row));
+        $this->assertSame(0.0, \Owner::qualityScoreFromRow($row));
     }
 
     // -----------------------------------------------------------------------

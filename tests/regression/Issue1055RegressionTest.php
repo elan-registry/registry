@@ -12,10 +12,10 @@ use PHPUnit\Framework\TestCase;
  * scheme, allowing malformed URLs such as "https://" (valid scheme, empty host)
  * to be stored verbatim. A FILTER_VALIDATE_URL guard was added before the
  * scheme check to match the validation level already present in
- * ElanRegistryOwner::validateAndSanitizeFields().
+ * Owner::validateAndSanitizeFields().
  *
  * These tests verify the validation contract: the same URLs that
- * ElanRegistryOwner already rejected must now also be rejected by
+ * Owner already rejected must now also be rejected by
  * updateWebsite(). Since updateWebsite() is a procedural function inside a
  * script that requires the full framework, we test the shared PHP validation
  * primitive (filter_var FILTER_VALIDATE_URL) and the scheme-whitelist rule

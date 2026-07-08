@@ -36,7 +36,7 @@ Complete development documentation for the Elan Registry application.
 
 ### Classes & APIs
 
-- **[CLASSES.md](CLASSES.md)** - Application classes (Car, ElanRegistryOwner, ChassisValidator, etc.)
+- **[CLASSES.md](CLASSES.md)** - Application classes (Car, Owner, ChassisValidator, etc.)
 - **[USERSPICE_QUICK_LOOKUP.md](USERSPICE_QUICK_LOOKUP.md)** - UserSpice class method reference (quick lookup)
 - **[USERSPICE_FUNCTIONS.md](USERSPICE_FUNCTIONS.md)** - UserSpice framework functions (detailed reference)
 

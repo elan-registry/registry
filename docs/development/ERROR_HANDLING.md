@@ -161,7 +161,7 @@ use ElanRegistry\Exceptions\ElanRegistryException;
 
 try {
     // Operation that might fail
-    $owner = new ElanRegistryOwner($ownerId);
+    $owner = new Owner($ownerId);
     $owner->validateLocation();
 
 } catch (OwnerValidationException $e) {

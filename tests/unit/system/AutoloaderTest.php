@@ -20,7 +20,7 @@ class AutoloaderTest extends TestCase
      * Test that non-PSR4-located core classes are available via recursive fallback.
      *
      * Several classes use the fallback for different reasons:
-     * - ElanRegistryOwner, CarView, etc. have no namespace (genuinely non-namespaced).
+     * - Owner, CarView, etc. have no namespace (genuinely non-namespaced).
      * - Car.php declares namespace ElanRegistry\Car but lives at usersc/classes/Car.php
      *   (PSR-4 would expect usersc/classes/Car/Car.php). File relocates in #779.
      * - The class_exists('Car') assertion passes from a bootstrap-unit.php mock Car
@@ -29,7 +29,8 @@ class AutoloaderTest extends TestCase
     public function testCoreClassesAutoload(): void
     {
         $this->assertTrue(class_exists('Car'), 'Car class should auto-load');
-        $this->assertTrue(class_exists('ElanRegistryOwner'), 'ElanRegistryOwner class should auto-load');
+        $this->assertTrue(class_exists('Owner'), 'Owner class should auto-load');
+        $this->assertInstanceOf(\Owner::class, new \Owner(), 'Owner must instantiate as the Owner class (not an alias or wrong class declaration)');
         $this->assertTrue(class_exists('CarView'), 'CarView class should auto-load');
         $this->assertTrue(class_exists('Resize'), 'Resize class should auto-load');
         $this->assertTrue(class_exists('ChassisValidator'), 'ChassisValidator class should auto-load');

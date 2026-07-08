@@ -382,7 +382,7 @@ if (displaying_email($context)) {
 - **Car Class**: [usersc/classes/Car.php](../../usersc/classes/Car.php)
 - **Car Administration**: [usersc/classes/Car/CarAdministrationService.php](../../usersc/classes/Car/CarAdministrationService.php)
   (transfer method lines 125-230)
-- **ElanRegistryOwner Class**: [usersc/classes/ElanRegistryOwner.php](../../usersc/classes/ElanRegistryOwner.php)
+- **Owner Class**: [usersc/classes/Owner.php](../../usersc/classes/Owner.php)
   (syncLocationToCars method lines 531-572)
 - **User Settings Page**: [usersc/user_settings.php](../../usersc/user_settings.php)
   (location update and conditional car sync, lines 162-293)

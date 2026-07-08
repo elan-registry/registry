@@ -16,7 +16,7 @@ use PHPUnit\Framework\Attributes\Group;
  * - Source-inspection for auth-guard and CSRF-guard contracts (pins that
  *   the guard code is present in each file).
  * - Behavioral integration tests for the happy-path logic via the underlying
- *   ElanRegistryOwner class and real database fixtures.
+ *   Owner class and real database fixtures.
  */
 #[Group('integration')]
 #[Group('admin')]
@@ -235,12 +235,12 @@ final class AdminOwnerManagementTest extends IntegrationTestCase
     }
 
     // =========================================================================
-    // Happy-path behavioral tests via ElanRegistryOwner
+    // Happy-path behavioral tests via Owner
     // =========================================================================
 
     /**
      * Happy path for owner-search: a test user created in the DB is returned
-     * by ElanRegistryOwner::searchOwners() when searched by first name.
+     * by Owner::searchOwners() when searched by first name.
      *
      * Validates that the search logic used by process-owner-search.php finds
      * real owners from the database.
@@ -249,7 +249,7 @@ final class AdminOwnerManagementTest extends IntegrationTestCase
     {
         $userId = $this->createTestUser(['fname' => 'SearchHappy', 'lname' => 'PathTest']);
 
-        $ownerManager = new ElanRegistryOwner();
+        $ownerManager = new Owner();
         $results = $ownerManager->searchOwners('SearchHappy', 25);
 
         $this->assertIsArray($results);
@@ -262,7 +262,7 @@ final class AdminOwnerManagementTest extends IntegrationTestCase
     }
 
     /**
-     * Happy path for owner-update: ElanRegistryOwner::update() persists a
+     * Happy path for owner-update: Owner::update() persists a
      * changed city to the profiles table when called with a valid CSRF token.
      *
      * Validates the DB write path used by process-owner-update.php.
@@ -274,14 +274,14 @@ final class AdminOwnerManagementTest extends IntegrationTestCase
 
         $token = $this->seedCsrfToken();
 
-        $owner = new ElanRegistryOwner($userId);
+        $owner = new Owner($userId);
         $result = $owner->update([
             'id'   => $userId,
             'csrf' => $token,
             'city' => 'Eugene',
         ]);
 
-        $this->assertTrue($result, 'ElanRegistryOwner::update() must return true on success');
+        $this->assertTrue($result, 'Owner::update() must return true on success');
 
         $row = $this->db->query(
             "SELECT city FROM profiles WHERE user_id = ?",
@@ -293,7 +293,7 @@ final class AdminOwnerManagementTest extends IntegrationTestCase
     }
 
     /**
-     * Happy path for owner-sync-location: ElanRegistryOwner::syncLocationToCars()
+     * Happy path for owner-sync-location: Owner::syncLocationToCars()
      * copies the owner's lat/lon to all owned cars and returns the count of
      * cars updated.
      *
@@ -312,7 +312,7 @@ final class AdminOwnerManagementTest extends IntegrationTestCase
         $carId = $this->createTestCar($userId);
 
         // Load owner with full profile data (lat/lon present)
-        $owner = new ElanRegistryOwner($userId);
+        $owner = new Owner($userId);
         $this->assertNotNull($owner->data(), 'Owner must load successfully after profile creation');
 
         $carsUpdated = $owner->syncLocationToCars();

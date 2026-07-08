@@ -9,7 +9,7 @@ use ElanRegistry\Exceptions\OwnerValidationException;
  * process-owner-update.php
  * AJAX endpoint for updating owner profiles
  *
- * Processes owner profile updates using ElanRegistryOwner class
+ * Processes owner profile updates using Owner class
  */
 
 // Include required files
@@ -26,7 +26,7 @@ if ($ownerId <= 0) {
 
 try {
     // Load existing owner
-    $owner = new ElanRegistryOwner($ownerId);
+    $owner = new Owner($ownerId);
     if (!$owner->data()) {
         ApiResponse::notFound('Owner not found')
             ->send();
@@ -56,7 +56,7 @@ try {
 
     if ($success) {
         // Get updated data
-        $updatedOwner = new ElanRegistryOwner($ownerId);
+        $updatedOwner = new Owner($ownerId);
 
         // Get updated quality score
         $newQualityScore = $updatedOwner->getProfileQualityScore();

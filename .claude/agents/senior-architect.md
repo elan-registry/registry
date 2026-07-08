@@ -50,7 +50,7 @@ This is the Lotus Elan Registry (elanregistry.org), a PHP application built on U
   handling, session management, CSRF protection, email, validation, and more.
   Never duplicate what the framework already offers.
 - Start with the simplest design that meets requirements
-- Follow existing patterns (Car class, ElanRegistryOwner class conventions)
+- Follow existing patterns (Car class, Owner class conventions)
 - Consider audit trail requirements
 - Design APIs with Pattern A response format
 - Plan for error states and edge cases

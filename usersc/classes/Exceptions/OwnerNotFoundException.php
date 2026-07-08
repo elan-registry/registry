@@ -10,7 +10,7 @@ use LogCategories;
  * OwnerNotFoundException
  *
  * Exception thrown when a requested owner cannot be found in the database.
- * Used throughout the ElanRegistryOwner class when operations are attempted
+ * Used throughout the Owner class when operations are attempted
  * on non-existent owner records.
  *
  * @package ElanRegistry

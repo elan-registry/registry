@@ -7,7 +7,7 @@ use ElanRegistry\Exceptions\OwnerSearchException;
  * process-owner-search.php
  * AJAX endpoint for owner search functionality
  *
- * Implements ElanRegistryOwner search with data quality scoring
+ * Implements Owner search with data quality scoring
  */
 
 require_once '../../../users/init.php';
@@ -26,12 +26,12 @@ if (strlen($query) > 100) {
 }
 
 try {
-    $searchResults = ElanRegistryOwner::searchOwners($query, 25);
+    $searchResults = Owner::searchOwners($query, 25);
 
     // Enhance results with data quality scoring
     $enhancedResults = [];
     foreach ($searchResults as $owner) {
-        $ownerProfile = new ElanRegistryOwner((int)$owner->id);
+        $ownerProfile = new Owner((int)$owner->id);
         $qualityScore = $ownerProfile->getProfileQualityScore();
 
         $enhancedResults[] = [

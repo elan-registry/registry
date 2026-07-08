@@ -27,7 +27,7 @@ shipped prompts starting at:
 Then load ElanRegistry-specific augmentation from `custom_prompts/`:
 
 - `elanregistry_overrides` — four places ElanRegistry diverges from standard UserSpice
-- `elanregistry_classes` — Car, ElanRegistryOwner, ApiResponse, LogCategories, and others
+- `elanregistry_classes` — Car, Owner, ApiResponse, LogCategories, and others
 - `elanregistry_directories` — `app/` subtree, `$path` in `z_us_root.php`, parsers location
 - `elanregistry_database` — DB Explainer workflow and ElanRegistry-specific tables
 
@@ -71,6 +71,14 @@ edge caching and CDN for global users (US, EU, AU).
 
 - **Page Security**: All protected pages require `securePage($php_self)` check.
   See [GitHub Wiki: UserSpice Integration Guide](https://github.com/unibrain1/elanregistry/wiki/Customization-and-Integration-Patterns).
+- **Role Hierarchy**: Two privileged roles — `admin` and `editor`. Most admin
+  pages are admin-only; some tools (e.g. data repair, image management) grant
+  access to both. Always check the issue scope before defaulting to admin-only.
+- **Car Image Storage**: `cars.image` column is a JSON array of bare filenames
+  (e.g. `["abc123.jpg"]`). Files live at `userimages/{carid}/{filename}` with
+  resized variants as `{basename}-resized-{size}.{ext}` (sizes: 100, 300, 600,
+  1024, 2048). Unassigned images accumulate in `userimages/orphan/`.
+  Use `CarImageProcessor` to decode; `CarRepository::updateImage()` to write.
 - **New PHP Directories**: Only add a directory to the `$path` array in
   `/z_us_root.php` when it contains files that call `securePage()`. Pure API
   endpoints, action handlers, and partials that do not call `securePage()` are
@@ -82,7 +90,7 @@ edge caching and CDN for global users (US, EU, AU).
 - **Database**: MySQL 8.0+ with audit trails via triggers.
   See [DATABASE.md](docs/development/DATABASE.md).
 - **Classes**: See [CLASSES.md](docs/development/CLASSES.md) for Car,
-  ElanRegistryOwner, ApiResponse, and all application classes.
+  Owner, ApiResponse, and all application classes.
 
 **Template Architecture:**
 
@@ -321,7 +329,7 @@ at `docs/development/RELEASE_NOTES_TEMPLATE.md`.
 - **Users**: Authentication/session context (UserSpice framework, `users` table)
 - **Owners**: Car registry business domain (UI elements, business logic)
 - Use `getUserWithProfile($userId)` for combined user+profile data access
-- See [CLASSES.md](docs/development/CLASSES.md) for ElanRegistryOwner patterns
+- See [CLASSES.md](docs/development/CLASSES.md) for Owner patterns
 
 ## Quick Deployment Reference
 
@@ -342,6 +350,12 @@ See [DEPLOYMENT.md](docs/development/DEPLOYMENT.md) for complete procedures.
   owner/repo pair above
 - Milestone descriptions should state the goal, not list issue numbers
 - Remove closed issues from milestones to keep progress tracking accurate
+
+**gh CLI gotchas:**
+
+- `gh milestone list` does not exist — use `gh api repos/unibrain1/elanregistry/milestones` instead
+- `gh issue list --milestone` can silently return empty even with open issues — always use
+  `gh api repos/unibrain1/elanregistry/issues?milestone=<number>&state=open` for reliable results
 
 ## GitHub Wiki
 

@@ -30,7 +30,7 @@ $hasOwnerMap = is_numeric($ownerData->lat ?? null)
     && (float)($ownerData->lat ?? 0) !== 0.0
     && (float)($ownerData->lon ?? 0) !== 0.0;
 
-$qualityScore = (new ElanRegistryOwner($ownerId))->getProfileQualityScore();
+$qualityScore = (new Owner($ownerId))->getProfileQualityScore();
 
 // Owner website (only display for http/https)
 $ownerWebsite       = $ownerData->website ?? '';

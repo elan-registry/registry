@@ -361,8 +361,8 @@ point-in-time history.
 - **LogCategories**:
   [LogCategories.php](../../usersc/classes/LogCategories.php)
   (structured logging categories)
-- **ElanRegistryOwner**:
-  [ElanRegistryOwner.php](../../usersc/classes/ElanRegistryOwner.php)
+- **Owner**:
+  [Owner.php](../../usersc/classes/Owner.php)
   (location sync operations)
 - **FIX Script 03**:
   [03-Remove-Duplicate-History.php](../../FIX/_ARCHIVE/03-Remove-Duplicate-History.php)

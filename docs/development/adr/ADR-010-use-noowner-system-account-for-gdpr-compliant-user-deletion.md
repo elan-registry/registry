@@ -218,7 +218,7 @@ Create a unique placeholder user per deletion (e.g., `username = 'deleted_12345'
 | Orphaned car recovery | [/FIX/_ARCHIVE/02-Cleanup-Orphaned-Profiles.php](../../FIX/_ARCHIVE/02-Cleanup-Orphaned-Profiles.php) |
 | Privacy policy | [/docs/faq/PRIVACY.md](../faq/PRIVACY.md) |
 | LogCategories constant | [/usersc/classes/LogCategories.php](../../usersc/classes/LogCategories.php) |
-| ElanRegistryOwner class | [/usersc/classes/ElanRegistryOwner.php](../../usersc/classes/ElanRegistryOwner.php) |
+| Owner class | [/usersc/classes/Owner.php](../../usersc/classes/Owner.php) |
 | Database documentation | [/docs/development/DATABASE.md](../development/DATABASE.md) |
 | Unit tests | [/tests/unit/users/UserDeletionCleanupTest.php](../../tests/unit/users/UserDeletionCleanupTest.php) |
 | Denormalization rationale | [ADR-002](ADR-002-denormalized-cars-table-cached-owner-data.md) |

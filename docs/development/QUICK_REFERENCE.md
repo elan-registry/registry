@@ -409,7 +409,7 @@ See `.semgrepignore` in the repo root. Key exclusions:
 | Semgrep rule | Why it fires | Why it's safe |
 | --- | --- | --- |
 | `taint-unsafe-echo-tag` | Follows `$_REQUEST` source | Output is int-cast or wrapped in `htmlspecialchars()` |
-| `tainted-sql-string` | Follows input through exception handlers | Actual DB calls use prepared statements via `ElanRegistryOwner` |
+| `tainted-sql-string` | Follows input through exception handlers | Actual DB calls use prepared statements via `Owner` |
 | `tainted-filename` | Flags `basename()` as insufficient | `basename()` + extension check + directory validation is sufficient |
 | `tainted-path-traversal` | Flags `include` with derived path | `$activeTab` validated against `$validTabs` whitelist before use |
 

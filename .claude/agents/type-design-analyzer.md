@@ -14,7 +14,7 @@ types are the foundation of maintainable, bug-resistant software.
 
 Use this agent for **new or refactored classes** in:
 
-- `/usersc/classes/` — custom application classes (Car, ElanRegistryOwner,
+- `/usersc/classes/` — custom application classes (Car, Owner,
   ApiResponse, exception classes, etc.)
 - Any domain model, value object, DTO, or Result-like type introduced in
   the change set
