@@ -345,9 +345,8 @@ class ElanRegistryOwner
                 $completed++;
             }
         }
-        // Explicit check — !empty() treats 0.0 as empty, silently dropping equator/prime-meridian coordinates
-        if (($row->lat ?? null) !== null && ($row->lat ?? '') !== '' &&
-            ($row->lon ?? null) !== null && ($row->lon ?? '') !== '') {
+        // Explicit check — !empty() treats 0.0 as absent from the score; ?? '' handles unset/null properties
+        if (($row->lat ?? '') !== '' && ($row->lon ?? '') !== '') {
             $completed++;
         }
         return round(($completed / 7) * 100, 1);
@@ -388,7 +387,7 @@ class ElanRegistryOwner
                 $missingFields[] = $label;
             }
         }
-        // Explicit check — !empty() treats 0.0 as empty, silently dropping equator/prime-meridian coordinates
+        // Explicit check — !empty() treats 0.0 as empty, falsely reporting equator/prime-meridian coordinates as missing
         if ($this->_data->lat === null || $this->_data->lat === '' ||
             $this->_data->lon === null || $this->_data->lon === '') {
             $missingFields[] = 'Location Coordinates';
@@ -400,7 +399,7 @@ class ElanRegistryOwner
     /**
      * Search owners by various criteria
      *
-     * @param string $searchTerm Search term to match against name, email, or location
+     * @param string $searchTerm Search term. Single-word: matches name, email, and location. Multi-word: matches name and city/state only (email excluded from UNION path).
      * @param int $limit Maximum number of results (default 50)
      * @return array Array of owner search results
      */

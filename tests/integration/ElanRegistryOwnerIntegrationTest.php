@@ -262,11 +262,12 @@ class ElanRegistryOwnerIntegrationTest extends IntegrationTestCase
     public function testCompletenessAcceptsZeroCoordinates(): void
     {
         $userId = $this->createTestUser();
-        $this->db->insert('profiles', [
+        $insertResult = $this->db->insert('profiles', [
             'user_id' => $userId,
             'city' => 'Equator', 'state' => 'Meridian', 'country' => 'Ocean',
             'lat' => 0, 'lon' => 0,
         ]);
+        $this->assertTrue((bool) $insertResult, 'Test fixture: profiles insert must succeed');
         try {
             $owner = new ElanRegistryOwner($userId);
             $missing = $owner->validateProfileCompleteness();
@@ -280,11 +281,12 @@ class ElanRegistryOwnerIntegrationTest extends IntegrationTestCase
     public function testLatLonRoundTripThroughUpdate(): void
     {
         $userId = $this->createTestUser();
-        $this->db->insert('profiles', [
+        $insertResult = $this->db->insert('profiles', [
             'user_id' => $userId,
             'city' => 'London', 'state' => 'England', 'country' => 'UK',
             'lat' => 1.0, 'lon' => 1.0,
         ]);
+        $this->assertTrue((bool) $insertResult, 'Test fixture: profiles insert must succeed');
         try {
             $csrf = Token::generate();
             $owner = new ElanRegistryOwner($userId);
