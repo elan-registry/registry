@@ -98,9 +98,14 @@ class SerializedDataRemovalTest extends TestCase
         
         $content = file_get_contents($contactEmailFile);
         
-        // Should use secure database lookup pattern
-        $this->assertStringContainsString('SELECT id, email, fname, lname FROM users WHERE id = ?', $content,
-            'send-owner-email.php should use secure database lookups');
+        // User lookups must go through the Owner domain class (which internally uses
+        // parameterized queries via getUserWithProfile()). Guards against a regression
+        // to raw SQL — the original unserialize()-removal fix required parameterized
+        // lookups; routing through Owner preserves that guarantee. (Issue #962)
+        $this->assertStringContainsString('new Owner(', $content,
+            'send-owner-email.php should look up users via the Owner domain class');
+        $this->assertStringNotContainsString('SELECT id, email, fname, lname FROM users', $content,
+            'send-owner-email.php should not query the users table directly (#962)');
 
         // Sender must be derived from session, not from POST (#971)
         $this->assertStringNotContainsString("Input::get('from_user_id')", $content,

@@ -2,6 +2,7 @@
 declare(strict_types=1);
 
 use ElanRegistry\Exceptions\AdminContactException;
+use ElanRegistry\Input;
 
 /**
  * process-admin-contact.php
@@ -26,11 +27,10 @@ if (!isRegistryAdmin()) { // Administrator (2) or Editor (3)
     Redirect::to($us_url_root . 'users/login.php');
 }
 
-// Initialize message arrays
+$adminUserId = (int) $user->data()->id;
 $errors = [];
 $successes = [];
 
-// Process form submission
 if (Input::exists('post')) {
     $token = Input::get('csrf');
     if (!Token::check($token)) {
@@ -40,8 +40,7 @@ if (Input::exists('post')) {
 
     $action = Input::get('action');
     if ($action === 'admin_contact_owner') {
-        // Validate required fields
-        $message = trim(Input::get('message'));
+        $message = trim(Input::raw('message'));
         $carId = Input::get('car_id');
         $ownerId = Input::get('owner_id');
         $qualityIssue = Input::get('quality_issue');
@@ -61,10 +60,8 @@ if (Input::exists('post')) {
 
         if (empty($errors)) {
             try {
-                $db = DB::getInstance();
-
-                // Get admin user data
-                $adminData = $db->query('SELECT id, email, fname, lname FROM users WHERE id = ?', [$user->data()->id])->first();
+                $admin = new Owner($adminUserId);
+                $adminData = $admin->data();
                 if (!$adminData) {
                     throw new AdminContactException('Admin user not found');
                 }
@@ -85,35 +82,36 @@ if (Input::exists('post')) {
                         'lname' => 'Users'
                     ];
                 } else {
-                    $ownerData = $db->query('SELECT id, email, fname, lname FROM users WHERE id = ?', [$ownerId])->first();
+                    $owner = new Owner((int)$ownerId);
+                    $ownerData = $owner->data();
                     if (!$ownerData) {
                         throw new AdminContactException('Owner user not found');
                     }
                 }
 
-                // Get car data for context
                 $carData = null;
                 if ($carId !== 'Multiple') {
-                    $carQuery = $db->query('SELECT id, year, model, series, variant, type, chassis FROM cars WHERE id = ?', [$carId]);
-                    if ($carQuery->count() > 0) {
-                        $carData = $carQuery->first();
+                    $car = new Car((int)$carId);
+                    if ($car->exists()) {
+                        $carData = $car->data();
+                    } else {
+                        logger($adminUserId, LogCategories::LOG_CATEGORY_DATABASE_ERROR,
+                            "process-admin-contact.php: car ID {$carId} not found; email sent without car context");
                     }
                 }
 
-                // Prepare email data — strip CR/LF from all header-bound values (#660)
+                // Prepare email data — strip CR, LF, and tab from all header-bound values (#660)
                 $toEmail = preg_replace('/[\r\n\t]/', '', $ownerData->email);
                 $toName = trim($ownerData->fname . ' ' . $ownerData->lname);
                 $fromEmail = preg_replace('/[\r\n\t]/', '', $adminData->email);
                 $fromName = trim($adminData->fname . ' ' . $adminData->lname);
                 $qualityIssue = preg_replace('/[\r\n\t]/', '', (string)($qualityIssue ?? ''));
 
-                // Email subject
                 $subject = '[ELANREGISTRY] Administrator Message';
                 if ($qualityIssue) {
                     $subject .= ' - ' . $qualityIssue;
                 }
 
-                // Prepare template variables
                 $template = [
                     'message' => $message,
                     'from' => $fromName,
@@ -121,7 +119,6 @@ if (Input::exists('post')) {
                     'to' => $toName
                 ];
 
-                // Add car context if available
                 if ($carData) {
                     $template['carContext'] = [
                         'id' => $carData->id,
@@ -132,12 +129,10 @@ if (Input::exists('post')) {
                     ];
                 }
 
-                // Add quality issue context
                 if ($qualityIssue) {
                     $template['qualityIssue'] = $qualityIssue;
                 }
 
-                // Generate email body using template
                 try {
                     extract($template, EXTR_SKIP);
                     ob_start();
@@ -147,38 +142,38 @@ if (Input::exists('post')) {
                     if (ob_get_level() > 0) {
                         ob_end_clean();
                     }
-                    logger($user->data()->id, LogCategories::LOG_CATEGORY_EMAIL_ERROR,
+                    logger($adminUserId, LogCategories::LOG_CATEGORY_EMAIL_ERROR,
                         'process-admin-contact.php: exception during email template render: ' . $e->getMessage());
                     $body = '';
                 }
 
                 if ($body === '') {
-                    logger($user->data()->id, LogCategories::LOG_CATEGORY_EMAIL_ERROR,
+                    logger($adminUserId, LogCategories::LOG_CATEGORY_EMAIL_ERROR,
                         'process-admin-contact.php: email body render failed — template missing or failed',
                         ['template' => 'app/views/email/_admin_to_owner.php']);
                     $errors[] = 'Email could not be sent. Please try again or contact the administrator.';
-                    return;
-                }
-
-                // Send email
-                $result = email($toEmail, $subject, $body);
-
-                if ($result !== true) {
-                    $resultStr = is_string($result) ? preg_replace('/[\r\n\t]/', '', $result) : 'unknown delivery error';
-                    $errors[] = 'Failed to send email. Please try again.';
-                    logger($user->data()->id, LogCategories::LOG_CATEGORY_EMAIL_ERROR, "Admin contact SEND FAILED to {$toEmail}: {$resultStr}");
                 } else {
-                    if ($ownerId === 'Multiple') {
-                        $successes[] = 'Administrator message sent successfully to duplicate accounts at ' . $toEmail;
+                    $result = email($toEmail, $subject, $body);
+
+                    if ($result !== true) {
+                        $resultStr = is_string($result) ? preg_replace('/[\r\n\t]/', '', $result) : 'unknown delivery error';
+                        $errors[] = 'Failed to send email. Please try again.';
+                        logger($adminUserId, LogCategories::LOG_CATEGORY_EMAIL_ERROR, "Admin contact SEND FAILED to {$toEmail}: {$resultStr}");
                     } else {
-                        $successes[] = 'Administrator message sent successfully to ' . $toName;
+                        $successes[] = $ownerId === 'Multiple'
+                            ? 'Administrator message sent successfully to duplicate accounts at ' . $toEmail
+                            : 'Administrator message sent successfully to ' . $toName;
+                        logger($adminUserId, LogCategories::LOG_CATEGORY_CAR_ACTIONS, "Admin contact sent - Admin: {$fromEmail}, Owner: {$toEmail}, Car: {$carId}, Issue: {$qualityIssue}");
                     }
-                    logger($user->data()->id, LogCategories::LOG_CATEGORY_CAR_ACTIONS, "Admin contact sent - Admin: {$fromEmail}, Owner: {$toEmail}, Car: {$carId}, Issue: {$qualityIssue}");
                 }
 
             } catch (AdminContactException $e) {
                 $errors[] = $e->getUserMessage();
-                logger($user->data()->id, $e->getLogCategory(), "Admin contact error: " . $e->getMessage());
+                logger($adminUserId, $e->getLogCategory(), "Admin contact error: " . $e->getMessage());
+            } catch (\Throwable $e) {
+                $errors[] = 'An unexpected error occurred. Please try again.';
+                logger($adminUserId, LogCategories::LOG_CATEGORY_SYSTEM_ERROR,
+                    'process-admin-contact.php: unexpected exception (' . get_class($e) . '): ' . $e->getMessage());
             }
         }
     } else {
@@ -186,15 +181,11 @@ if (Input::exists('post')) {
     }
 
     // Convert error/success arrays to UserSpice session messages (Issue #237)
-    if (!empty($errors)) {
-        foreach ($errors as $error) {
-            usError($error);
-        }
+    foreach ($errors as $error) {
+        usError($error);
     }
-    if (!empty($successes)) {
-        foreach ($successes as $success) {
-            usSuccess($success);
-        }
+    foreach ($successes as $success) {
+        usSuccess($success);
     }
 
     Redirect::to($us_url_root . 'app/admin/index.php?tab=manage-cars');

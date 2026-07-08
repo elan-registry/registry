@@ -15,18 +15,16 @@ require_once '../../../users/init.php';
 
 requireAdminAjax('car details', false);
 
-// Validate car ID
-$carId = (int)($_POST['car_id'] ?? 0);
+$carId = (int) Input::get('car_id');
 if ($carId <= 0) {
     ApiResponse::error('Invalid car ID', 400)
         ->send();
 }
 
 try {
-    // Query car details
-    $carQ = $db->query("SELECT * FROM cars WHERE id = ?", [$carId]);
+    $car = new Car($carId);
 
-    if ($carQ->count() === 0) {
+    if (!$car->exists()) {
         ApiResponse::notFound('Car not found')
             ->withLogging(
                 $user->data()->id,
@@ -36,24 +34,23 @@ try {
             ->send();
     }
 
-    $car = $carQ->first();
+    $data = $car->data();
 
-    // Build car data response
     $carData = [
-        'id' => $car->id,
-        'year' => $car->year,
-        'type' => $car->type,
-        'chassis' => $car->chassis,
-        'color' => $car->color,
-        'series' => $car->series,
-        'fname' => $car->fname,
-        'lname' => $car->lname,
-        'email' => $car->email,
-        'city' => $car->city,
-        'state' => $car->state,
-        'country' => $car->country,
-        'ctime' => $car->ctime,
-        'mtime' => $car->mtime
+        'id' => $data->id,
+        'year' => $data->year,
+        'type' => $data->type,
+        'chassis' => $data->chassis,
+        'color' => $data->color,
+        'series' => $data->series,
+        'fname' => $data->fname,
+        'lname' => $data->lname,
+        'email' => $data->email,
+        'city' => $data->city,
+        'state' => $data->state,
+        'country' => $data->country,
+        'ctime' => $data->ctime,
+        'mtime' => $data->mtime
     ];
 
     ApiResponse::success('Car details retrieved successfully')
@@ -61,11 +58,11 @@ try {
         ->send();
 
 } catch (\Throwable $e) {
-    ApiResponse::serverError('Database error occurred')
+    ApiResponse::serverError('An unexpected error occurred. Please try again.')
         ->withLogging(
             $user->data()->id,
-            LogCategories::LOG_CATEGORY_DATABASE_ERROR,
-            "Car details query failed: " . $e->getMessage()
+            LogCategories::LOG_CATEGORY_SYSTEM_ERROR,
+            "Car details lookup failed (" . get_class($e) . "): " . $e->getMessage()
         )
         ->send();
 }
