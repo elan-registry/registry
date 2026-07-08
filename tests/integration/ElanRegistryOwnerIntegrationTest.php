@@ -247,4 +247,60 @@ class ElanRegistryOwnerIntegrationTest extends IntegrationTestCase
         $result = $this->callValidateAndSanitize(['lon' => '0']);
         $this->assertSame(0.0, $result['lon']);
     }
+
+    public function testQualityScoreCountsZeroCoordinates(): void
+    {
+        // qualityScoreFromRow() must not treat 0.0 as "missing" — regression guard for !empty() fix
+        $row = (object)[
+            'fname' => 'Alice', 'lname' => 'Smith', 'email' => 'a@b.com',
+            'city' => 'X', 'state' => 'Y', 'country' => 'Z',
+            'lat' => '0', 'lon' => '0',
+        ];
+        $this->assertSame(100.0, ElanRegistryOwner::qualityScoreFromRow($row));
+    }
+
+    public function testCompletenessAcceptsZeroCoordinates(): void
+    {
+        $userId = $this->createTestUser();
+        $this->db->insert('profiles', [
+            'user_id' => $userId,
+            'city' => 'Equator', 'state' => 'Meridian', 'country' => 'Ocean',
+            'lat' => 0, 'lon' => 0,
+        ]);
+        try {
+            $owner = new ElanRegistryOwner($userId);
+            $missing = $owner->validateProfileCompleteness();
+            $this->assertNotContains('Location Coordinates', $missing,
+                'lat=0 and lon=0 are valid coordinates and must not be flagged as missing');
+        } finally {
+            $this->db->query("DELETE FROM profiles WHERE user_id = ?", [$userId]);
+        }
+    }
+
+    public function testLatLonRoundTripThroughUpdate(): void
+    {
+        $userId = $this->createTestUser();
+        $this->db->insert('profiles', [
+            'user_id' => $userId,
+            'city' => 'London', 'state' => 'England', 'country' => 'UK',
+            'lat' => 1.0, 'lon' => 1.0,
+        ]);
+        try {
+            $csrf = Token::generate();
+            $owner = new ElanRegistryOwner($userId);
+            $owner->update([
+                'id' => $userId,
+                'csrf' => $csrf,
+                'lat' => '0',
+                'lon' => '0',
+            ]);
+            // update() calls find() internally — data is already reloaded from DB
+            $this->assertSame(0.0, (float) $owner->data()->lat,
+                'lat=0 must survive a MySQL write and read-back');
+            $this->assertSame(0.0, (float) $owner->data()->lon,
+                'lon=0 must survive a MySQL write and read-back');
+        } finally {
+            $this->db->query("DELETE FROM profiles WHERE user_id = ?", [$userId]);
+        }
+    }
 }
