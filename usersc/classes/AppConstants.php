@@ -17,7 +17,7 @@ class AppConstants
     /**
      * Standard datetime format used for database timestamps
      *
-     * Used consistently across Car, ElanRegistryOwner, and admin pages
+     * Used consistently across Car, Owner, and admin pages
      * for ctime/mtime fields and other datetime columns.
      */
     public const DATETIME_FORMAT = 'Y-m-d H:i:s';

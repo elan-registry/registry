@@ -38,7 +38,7 @@ on the UserSpice framework.
 - **Database**: MySQL 8.0+ with prepared statements only. Audit trails via
   `*_hist` trigger tables.
 - **Classes**: Custom classes in `/usersc/classes/` (Car, CarView,
-  ElanRegistryOwner, ChassisValidator, etc.)
+  Owner, ChassisValidator, etc.)
 - **Owner data**: Use `getUserWithProfile($userId)` for combined user+profile
   access. "Owner" in UI/domain, "User" in auth/framework code.
 - **AJAX endpoints**: Use Pattern A response format (`{success, message, ...}`)

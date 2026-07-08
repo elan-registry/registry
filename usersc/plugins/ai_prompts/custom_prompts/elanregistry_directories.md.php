@@ -14,7 +14,7 @@ aren't generic UserSpice.
 projectroot/
 ├── users/            # UserSpice core — never edit
 ├── usersc/           # UserSpice customizations — ElanRegistry classes, plugins, templates
-│   ├── classes/      # Custom PHP classes (Car, ElanRegistryOwner, ApiResponse, ...)
+│   ├── classes/      # Custom PHP classes (Car, Owner, ApiResponse, ...)
 │   ├── plugins/      # ai_prompts, db_explainer, and others
 │   ├── includes/     # server_globals.php, custom_functions.php, footer.php, ...
 │   └── templates/    # customizer/ child theme (bootstrap 5.3.3)

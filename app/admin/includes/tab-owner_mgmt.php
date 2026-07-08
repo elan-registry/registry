@@ -244,7 +244,7 @@ function getDuplicateEmailDetails(DB $db, string $email): array {
             }
         }
 
-        $owner->quality_score = ElanRegistryOwner::qualityScoreFromRow($owner);
+        $owner->quality_score = Owner::qualityScoreFromRow($owner);
     }
 
     return $owners;

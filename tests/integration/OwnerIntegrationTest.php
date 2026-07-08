@@ -4,12 +4,12 @@ declare(strict_types=1);
 require_once __DIR__ . '/IntegrationTestCase.php';
 
 /**
- * Integration tests for ElanRegistryOwner class
+ * Integration tests for Owner class
  *
  * These tests require the full application bootstrap and real database connection.
- * They test ElanRegistryOwner functionality with actual database data and global functions.
+ * They test Owner functionality with actual database data and global functions.
  */
-class ElanRegistryOwnerIntegrationTest extends IntegrationTestCase
+class OwnerIntegrationTest extends IntegrationTestCase
 {
     protected function setUp(): void
     {
@@ -24,7 +24,7 @@ class ElanRegistryOwnerIntegrationTest extends IntegrationTestCase
     {
         // Use user ID 1 for testing
         $userId = 1;
-        $owner = new ElanRegistryOwner();
+        $owner = new Owner();
         $result = $owner->find((int)$userId);
 
         $this->assertTrue($result);
@@ -39,7 +39,7 @@ class ElanRegistryOwnerIntegrationTest extends IntegrationTestCase
     {
         // Use user ID 1 for testing
         $userId = 1;
-        $owner = new ElanRegistryOwner((int)$userId);
+        $owner = new Owner((int)$userId);
 
         $ownedCars = $owner->getCarsOwned();
         $this->assertIsArray($ownedCars);
@@ -57,7 +57,7 @@ class ElanRegistryOwnerIntegrationTest extends IntegrationTestCase
      */
     private function callValidateAndSanitize(array $fields, bool $requireAll = false): array
     {
-        $owner = new ElanRegistryOwner();
+        $owner = new Owner();
         $method = new \ReflectionMethod($owner, 'validateAndSanitizeFields');
         /** @var array<string, mixed> */
         return $method->invoke($owner, $fields, $requireAll);
@@ -256,7 +256,7 @@ class ElanRegistryOwnerIntegrationTest extends IntegrationTestCase
             'city' => 'X', 'state' => 'Y', 'country' => 'Z',
             'lat' => '0', 'lon' => '0',
         ];
-        $this->assertSame(100.0, ElanRegistryOwner::qualityScoreFromRow($row));
+        $this->assertSame(100.0, Owner::qualityScoreFromRow($row));
     }
 
     public function testCompletenessAcceptsZeroCoordinates(): void
@@ -269,7 +269,7 @@ class ElanRegistryOwnerIntegrationTest extends IntegrationTestCase
         ]);
         $this->assertTrue((bool) $insertResult, 'Test fixture: profiles insert must succeed');
         try {
-            $owner = new ElanRegistryOwner($userId);
+            $owner = new Owner($userId);
             $missing = $owner->validateProfileCompleteness();
             $this->assertNotContains('Location Coordinates', $missing,
                 'lat=0 and lon=0 are valid coordinates and must not be flagged as missing');
@@ -289,7 +289,7 @@ class ElanRegistryOwnerIntegrationTest extends IntegrationTestCase
         $this->assertTrue((bool) $insertResult, 'Test fixture: profiles insert must succeed');
         try {
             $csrf = Token::generate();
-            $owner = new ElanRegistryOwner($userId);
+            $owner = new Owner($userId);
             $owner->update([
                 'id' => $userId,
                 'csrf' => $csrf,

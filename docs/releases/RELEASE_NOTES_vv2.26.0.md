@@ -17,6 +17,10 @@ None — this release contains internal refactoring only. No user-visible behavi
 
 - **Admin car management auto-refresh** ([#1144](https://github.com/unibrain1/elanregistry/issues/1144)): The manage-cars tab now uses non-destructive AJAX polling instead of a hard page reload, preserving in-progress form state during data refresh.
 
+## Technical Changes
+
+- **Rename `ElanRegistryOwner` → `Owner`** ([#778](https://github.com/unibrain1/elanregistry/issues/778)): The domain class for owner data management has been renamed from `ElanRegistryOwner` to `Owner`, and the file renamed from `ElanRegistryOwner.php` to `Owner.php`. All production PHP, test files, and documentation updated. Behavior-preserving rename only; no logic changes.
+
 ## Issues Resolved
 
 - [#608](https://github.com/unibrain1/elanregistry/issues/608) — refactor: rewrite class autoloader for PSR-4 namespace support

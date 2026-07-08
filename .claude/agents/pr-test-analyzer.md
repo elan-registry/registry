@@ -28,7 +28,7 @@ test coverage for critical functionality, without demanding 100% line coverage.
   auth, permissions)
 - Absent negative cases for validation / auth / CSRF
 - Missing tests for new public methods on classes like `Car`,
-  `ElanRegistryOwner`, `ApiResponse`
+  `Owner`, `ApiResponse`
 
 **Test Quality**:
 - Tests cover behavior, not implementation details — resilient to refactor

@@ -70,7 +70,7 @@ users/init.php
 │   └─ Unified hybrid autoloader for all custom application classes:
 │       ├─ Loaded directly in init.php after path variables are set
 │       ├─ PSR-4 for namespaced classes (ElanRegistry\* namespace)
-│       ├─ Recursive iterator for non-namespaced classes (Car, ElanRegistryOwner, etc.)
+│       ├─ Recursive iterator for non-namespaced classes (Car, Owner, etc.)
 │       ├─ Loads 10+ core classes on demand
 │       ├─ Loads 13+ custom exception classes on demand
 │       └─ Appended to SPL autoloader queue (runs after UserSpice autoloader)
@@ -263,7 +263,7 @@ users/init.php
 **Core Classes:**
 
 - `Car` - Car data model with CRUD operations (will become `ElanRegistry\Car`)
-- `ElanRegistryOwner` - Owner data model (will become `ElanRegistry\Owner`)
+- `Owner` - Owner data model (will become `ElanRegistry\Owner`)
 - `CarView` - Car display utilities
 - `Resize` - Image resizing and optimization
 - `BackupManager` - Database backup management
@@ -408,7 +408,7 @@ index.php (or other page-specific file)
 ├─ 3.2. Page Logic
 │   ├─ Process form submissions
 │   ├─ Execute database queries
-│   ├─ Instantiate model classes (Car, ElanRegistryOwner, etc.)
+│   ├─ Instantiate model classes (Car, Owner, etc.)
 │   │   └─ All classes auto-loaded on first use (no requires needed)
 │   ├─ Business logic execution
 │   └─ Prepare data for display
