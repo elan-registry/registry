@@ -193,10 +193,20 @@ class CarValidator
                     break;
 
                 case 'lat':
+                    // Explicit check — !empty() treats 0.0 as empty, silently dropping equator coordinates
+                    if ($value !== null && $value !== '') {
+                        if (!is_numeric($value) || abs((float) $value) > 90) {
+                            throw new CarValidationException("Invalid lat coordinate");
+                        }
+                        $validatedFields[$key] = (float) $value;
+                    }
+                    break;
+
                 case 'lon':
-                    if (!empty($value)) {
+                    // Explicit check — !empty() treats 0.0 as empty, silently dropping prime-meridian coordinates
+                    if ($value !== null && $value !== '') {
                         if (!is_numeric($value) || abs((float) $value) > 180) {
-                            throw new CarValidationException("Invalid {$key} coordinate");
+                            throw new CarValidationException("Invalid lon coordinate");
                         }
                         $validatedFields[$key] = (float) $value;
                     }
