@@ -243,6 +243,16 @@ details and usage examples.
 - Fix any linting or type errors before considering the task complete (pre-commit hooks run PHPStan and phpcs automatically on staged files)
 - Run appropriate test suites for modified functionality
 
+### Playwright Test Maintenance
+
+When adding, moving, removing, or renaming any page, update tests **in the same PR**:
+
+- **Public pages** → add or update an e2e smoke test in `tests/playwright/e2e/not-logged-in.spec.js`
+- **Owner/authenticated pages** → add or update a local Playwright test in `tests/playwright/`
+- **Removed or moved pages** → update any test referencing the old path — stale paths silently test 404s without failing
+
+Run `npm run test:e2e` to verify public pages against production. See `playwright.config.prod.js` for config.
+
 ### Security Scanning (Semgrep)
 
 Semgrep runs automatically on every PR (GitHub App Managed Scan). New findings
