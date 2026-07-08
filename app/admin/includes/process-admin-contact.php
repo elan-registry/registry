@@ -46,7 +46,7 @@ if (Input::exists('post')) {
         $message = trim(Input::raw('message'));
         $carId = Input::get('car_id');
         $ownerId = Input::get('owner_id');
-        $qualityIssue = Input::get('quality_issue');
+        $qualityIssue = Input::raw('quality_issue');
 
         if (empty($message)) {
             $errors[] = 'Message cannot be empty';
@@ -165,7 +165,7 @@ if (Input::exists('post')) {
                     } else {
                         $successes[] = $ownerId === 'Multiple'
                             ? 'Administrator message sent successfully to duplicate accounts at ' . $toEmail
-                            : 'Administrator message sent successfully to ' . $toName;
+                            : 'Administrator message sent successfully to ' . htmlspecialchars($toName, ENT_QUOTES, 'UTF-8');
                         logger($adminUserId, LogCategories::LOG_CATEGORY_CAR_ACTIONS, "Admin contact sent - Admin: {$fromEmail}, Owner: {$toEmail}, Car: {$carId}, Issue: {$qualityIssue}");
                     }
                 }
