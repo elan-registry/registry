@@ -64,6 +64,13 @@ class AutoloaderTest extends TestCase
             (string) $rc->getFileName(),
             'BackupManager must load from usersc/classes/admin/ (lowercase) via the ElanRegistry\\Admin\\ prefix mapping'
         );
+
+        $rc2 = new ReflectionClass('ElanRegistry\\Admin\\PagePermissionClassifier');
+        $this->assertStringEndsWith(
+            '/usersc/classes/admin/PagePermissionClassifier.php',
+            (string) $rc2->getFileName(),
+            'PagePermissionClassifier must load from usersc/classes/admin/ (lowercase) via the ElanRegistry\\Admin\\ prefix mapping'
+        );
     }
 
     /**
@@ -226,7 +233,7 @@ class AutoloaderTest extends TestCase
      */
     public function testCaseInsensitiveLoading(): void
     {
-        // All three resolve to the \Car alias, which points to ElanRegistry\Car\Car
+        // All three resolve to the same class — in production via class_alias() in Car/Car.php, in unit tests via the bootstrap mock
         $this->assertTrue(class_exists('Car'), 'Standard case should work via global Car alias');
         $this->assertTrue(class_exists('car'), 'Lowercase should work (PHP class table is case-insensitive)');
         $this->assertTrue(class_exists('CAR'), 'Uppercase should work (PHP class table is case-insensitive)');
