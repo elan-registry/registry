@@ -64,6 +64,10 @@ final class Issue1014RegressionTest extends TestCase
      * Guards against a structural regression where the ownership check is moved after
      * the user lookup — an attacker with a valid to_user_id that does not own the car
      * would still receive the email if the check runs too late.
+     *
+     * The user lookups were routed through the Owner class in #962; this assertion
+     * checks the position of `new Owner(` (the new implementation) rather than the
+     * previous raw `SELECT id, email, fname, lname FROM users` string.
      */
     public function testOwnershipCheckPrecedesUserLookup(): void
     {
@@ -71,10 +75,10 @@ final class Issue1014RegressionTest extends TestCase
         $content = file_get_contents($this->targetFile);
 
         $ownershipPos  = strpos($content, 'SELECT user_id FROM cars WHERE id = ?');
-        $userLookupPos = strpos($content, 'SELECT id, email, fname, lname FROM users WHERE id = ?');
+        $userLookupPos = strpos($content, 'new Owner(');
 
         $this->assertNotFalse($ownershipPos,  'Ownership query string not found in send-owner-email.php');
-        $this->assertNotFalse($userLookupPos, 'User lookup query string not found in send-owner-email.php');
+        $this->assertNotFalse($userLookupPos, 'Owner instantiation not found in send-owner-email.php');
         $this->assertLessThan(
             $userLookupPos,
             $ownershipPos,
@@ -125,6 +129,12 @@ final class Issue1014RegressionTest extends TestCase
      * Guards against DB failures being silently misclassified as IDOR access violations:
      * if the query errors, the file must log LOG_CATEGORY_DATABASE_ERROR (not ACCESS_DENIED)
      * and exit before reaching the ownership comparison.
+     *
+     * Implementation note: strpos() finds the first DATABASE_ERROR occurrence (the IDOR
+     * DB-error guard) and strrpos() finds the LAST ACCESS_DENIED occurrence (the ownership
+     * mismatch log at the end of the IDOR block). If a new ACCESS_DENIED log is added
+     * after the ownership check for a different purpose, strrpos() will shift to that new
+     * location and the ordering assertion may lose meaning — revisit the anchor if that happens.
      */
     public function testDbErrorCheckPrecedesOwnershipComparison(): void
     {

@@ -20,6 +20,7 @@ None — this release contains internal refactoring only. No user-visible behavi
 ## Technical Changes
 
 - **Rename `ElanRegistryOwner` → `Owner`** ([#778](https://github.com/unibrain1/elanregistry/issues/778)): The domain class for owner data management has been renamed from `ElanRegistryOwner` to `Owner`, and the file renamed from `ElanRegistryOwner.php` to `Owner.php`. All production PHP, test files, and documentation updated. Behavior-preserving rename only; no logic changes.
+- **Route raw SQL car/user lookups through domain classes** ([#962](https://github.com/unibrain1/elanregistry/issues/962)): Three action files (`process-car-details.php`, `send-owner-email.php`, `process-admin-contact.php`) previously issued raw `SELECT` statements against the `cars` and `users` tables. All such lookups now route through the `Car` and `Owner` domain classes. The IDOR ownership check in `send-owner-email.php` retains its raw SQL to preserve the DB-error-vs-access-denied log distinction required by the #1014 security fix. Behavior-preserving; no user-facing changes.
 
 ## Issues Resolved
 
@@ -28,7 +29,7 @@ None — this release contains internal refactoring only. No user-visible behavi
 - [#778](https://github.com/unibrain1/elanregistry/issues/778) — refactor: rename ElanRegistryOwner to Owner
 - [#779](https://github.com/unibrain1/elanregistry/issues/779) — refactor: introduce PSR-4 namespaces for all custom classes
 - [#867](https://github.com/unibrain1/elanregistry/issues/867) — refactor: Input class improvements — type-safe exists() and clarify raw() signature in docs
-- [#962](https://github.com/unibrain1/elanregistry/issues/962) — refactor: route raw SQL car/user lookups through Car and ElanRegistryOwner classes
+- [#962](https://github.com/unibrain1/elanregistry/issues/962) — refactor: route raw SQL car/user lookups through Car and Owner classes
 - [#1143](https://github.com/unibrain1/elanregistry/issues/1143) — Refactor save.php: extract CarSaveService and CarImageService from procedural globals
 - [#1144](https://github.com/unibrain1/elanregistry/issues/1144) — Split tab-manage_cars.php monolith into service, partial, and JS
 - [#1169](https://github.com/unibrain1/elanregistry/issues/1169) — refactor: introduce TransferStatus backed enum for car_transfer_requests status values
