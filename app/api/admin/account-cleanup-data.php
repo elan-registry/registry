@@ -2,6 +2,9 @@
 
 declare(strict_types=1);
 
+use ElanRegistry\ApiResponse;
+use ElanRegistry\LogCategories;
+
 /**
  * Account cleanup DataTables AJAX endpoint
  *

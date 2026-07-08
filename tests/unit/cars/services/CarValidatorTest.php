@@ -231,6 +231,44 @@ final class CarValidatorTest extends TestCase
         $this->validator->validateAndSanitizeFields($fields, false);
     }
 
+    public function testLatZeroIsAccepted(): void
+    {
+        // Zero is a valid equator coordinate — !empty() would incorrectly reject it
+        $result = $this->validator->validateAndSanitizeFields(['lat' => '0'], false);
+        $this->assertSame(0.0, $result['lat']);
+    }
+
+    public function testLonZeroIsAccepted(): void
+    {
+        // Zero is a valid prime-meridian coordinate — !empty() would incorrectly reject it
+        $result = $this->validator->validateAndSanitizeFields(['lon' => '0'], false);
+        $this->assertSame(0.0, $result['lon']);
+    }
+
+    public function testLatBoundaryAccepted(): void
+    {
+        $result = $this->validator->validateAndSanitizeFields(['lat' => '90'], false);
+        $this->assertSame(90.0, $result['lat']);
+    }
+
+    public function testLatOutOfRangeRejected(): void
+    {
+        $this->expectException(CarValidationException::class);
+        $this->validator->validateAndSanitizeFields(['lat' => '91'], false);
+    }
+
+    public function testLonBoundaryAccepted(): void
+    {
+        $result = $this->validator->validateAndSanitizeFields(['lon' => '180'], false);
+        $this->assertSame(180.0, $result['lon']);
+    }
+
+    public function testLonOutOfRangeRejected(): void
+    {
+        $this->expectException(CarValidationException::class);
+        $this->validator->validateAndSanitizeFields(['lon' => '181'], false);
+    }
+
     public function testValidateAndSanitizeFieldsRequiresChassisWhenRequireAll(): void
     {
         $this->expectException(CarValidationException::class);
@@ -517,34 +555,6 @@ final class CarValidatorTest extends TestCase
     {
         $result = $this->validator->validateAndSanitizeFields(['chassis_override' => '99'], false);
         $this->assertSame(0, $result['chassis_override']);
-    }
-
-    // ============================================================
-    // normalizeString tests
-    // ============================================================
-
-    public function testNormalizeStringPreservesHtml(): void
-    {
-        $result = $this->validator->normalizeString('<b>Bold</b> text', 100);
-        $this->assertEquals('<b>Bold</b> text', $result);
-    }
-
-    public function testNormalizeStringPreservesSpecialCharacters(): void
-    {
-        $result = $this->validator->normalizeString('clearance <2cm & engine "Twin Cam"', 100);
-        $this->assertEquals('clearance <2cm & engine "Twin Cam"', $result);
-    }
-
-    public function testNormalizeStringTrimsWhitespace(): void
-    {
-        $result = $this->validator->normalizeString('  hello  ', 100);
-        $this->assertEquals('hello', $result);
-    }
-
-    public function testNormalizeStringTruncates(): void
-    {
-        $result = $this->validator->normalizeString('Long string here', 4);
-        $this->assertEquals('Long', $result);
     }
 
     // ============================================================

@@ -23,7 +23,9 @@ define('HTML_ENTITY_REGEXP', '&(amp|lt|gt|quot|#039|apos);');
 require_once '../../../../users/init.php';
 require_once $abs_us_root . $us_url_root . 'users/includes/template/prep.php';
 
+use ElanRegistry\Admin\BackupManager;
 use ElanRegistry\Exceptions\BackupException;
+use ElanRegistry\LogCategories;
 
 if (!securePage($php_self)) {
     die();

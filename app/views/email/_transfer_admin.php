@@ -2,14 +2,14 @@
 
 declare(strict_types=1);
 
+use ElanRegistry\EmailTemplate;
+
 /**
  * Transfer Request Admin Alert Email Template
  *
  * Notifies administrators about a new transfer request requiring review
  * Variables available: $currentOwner, $requester, $carInfo, $transferRequest, $reviewUrl
  */
-
-require_once $abs_us_root . $us_url_root . 'usersc/classes/EmailTemplate.php';
 
 $emailTemplate = new EmailTemplate();
 

@@ -1,7 +1,9 @@
 <?php
 declare(strict_types=1);
 
+use ElanRegistry\ApiResponse;
 use ElanRegistry\Input;
+use ElanRegistry\LogCategories;
 
 /**
  * send-feedback.php

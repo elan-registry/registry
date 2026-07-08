@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace ElanRegistry\Transfer;
 
 use DB;
-use LogCategories;
+use ElanRegistry\LogCategories;
 
 /**
  * CarTransferRepository - Database access layer for car transfer requests

@@ -4,14 +4,14 @@ declare(strict_types=1);
 
 namespace ElanRegistry\Car;
 
-use CarErrorMessages;
+use DateTime;
+use DB;
+use ElanRegistry\AppConstants;
+use ElanRegistry\CarErrorMessages;
 use ElanRegistry\Exceptions\CarDatabaseException;
 use ElanRegistry\Exceptions\CarNotFoundException;
 use ElanRegistry\Exceptions\CarValidationException;
-use LogCategories;
-use AppConstants;
-use DateTime;
-use DB;
+use ElanRegistry\LogCategories;
 
 /**
  * CarVerificationManager - Verification code and status management for cars

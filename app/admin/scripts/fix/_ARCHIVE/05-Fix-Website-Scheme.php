@@ -2,6 +2,8 @@
 
 declare(strict_types=1);
 
+use ElanRegistry\LogCategories;
+
 /**
  * 05-Fix-Website-Scheme.php
  * Migrate scheme-less website URLs in the cars table.

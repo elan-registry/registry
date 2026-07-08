@@ -1,8 +1,10 @@
 <?php
 declare(strict_types=1);
 
+use ElanRegistry\Admin\BackupManager;
 use ElanRegistry\Exceptions\AdminOperationException;
 use ElanRegistry\Exceptions\BackupException;
+use ElanRegistry\LogCategories;
 
 require_once $abs_us_root . $us_url_root . 'app/admin/includes/system/script-enumeration.php';
 

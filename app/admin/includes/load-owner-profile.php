@@ -3,6 +3,8 @@ declare(strict_types=1);
 
 use ElanRegistry\Exceptions\ElanRegistryException;
 use ElanRegistry\Exceptions\OwnerNotFoundException;
+use ElanRegistry\LogCategories;
+use ElanRegistry\Owner;
 use ElanRegistry\OwnerView;
 
 require_once '../../../users/init.php';
@@ -21,7 +23,7 @@ if ($ownerId <= 0) {
 $obLevelBefore = ob_get_level();
 try {
     ob_start();
-    $owner = new ElanRegistryOwner($ownerId);
+    $owner = new Owner($ownerId);
     $ownerData = $owner->data();
 
     if (!$ownerData) {

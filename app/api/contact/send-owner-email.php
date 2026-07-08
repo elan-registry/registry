@@ -1,7 +1,11 @@
 <?php
 declare(strict_types=1);
 
+use ElanRegistry\ApiResponse;
+use ElanRegistry\Car\Car;
 use ElanRegistry\Input;
+use ElanRegistry\LogCategories;
+use ElanRegistry\Owner;
 
 /**
  * send-owner-email.php
@@ -44,7 +48,7 @@ if (!checkRateLimit('owner_contact_email', $logUserId)) {
 recordRateLimit('owner_contact_email', true, $logUserId);
 
 $action = Input::get('action');
-$message = Input::raw('message'); // raw — _member_to_owner.php escapes via EmailTemplate
+$message = Input::raw('message'); // raw — output-escaped in _member_to_owner.php at the render layer
 
 if ($action !== 'send_message' || !Input::get('to_user_id')) {
     $safeAction = preg_replace('/[\r\n\t]/', '', (string)$action);
@@ -72,7 +76,9 @@ if ($toUserId <= 0 || $carId <= 0) {
 
 $db = DB::getInstance();
 
-// Verify the recipient owns the car — prevents sending to arbitrary users (IDOR)
+// Verify the recipient owns the car — prevents sending to arbitrary users (IDOR).
+// Raw SQL preserved so DB errors are logged as DATABASE_ERROR and not
+// misclassified as IDOR access denials (#1014).
 $carOwnerResult = $db->query('SELECT user_id FROM cars WHERE id = ?', [$carId]);
 if ($carOwnerResult->error()) {
     ApiResponse::serverError()
@@ -86,48 +92,42 @@ if (!$carOwner || (int)$carOwner->user_id !== $toUserId) {
         ->send();
 }
 
-// DB is a singleton — _error, _results, and _count are overwritten on every
-// query() call. Call error() and first() immediately after each query before
-// issuing the next one.
-$db->query('SELECT id, email, fname, lname FROM users WHERE id = ?', [$fromUserId]);
-if ($db->error()) {
+try {
+    $fromOwner = new Owner($fromUserId);
+    $toOwner   = new Owner($toUserId);
+} catch (\Throwable $e) {
     ApiResponse::serverError()
-        ->withLogging($logUserId ?? 0, LogCategories::LOG_CATEGORY_DATABASE_ERROR, 'send-owner-email.php: DB error fetching from-user from_id=' . $fromUserId)
+        ->withLogging($logUserId ?? 0, LogCategories::LOG_CATEGORY_DATABASE_ERROR, 'send-owner-email.php: exception loading owner data: ' . $e->getMessage())
         ->send();
 }
-$fromUser = $db->first();
 
-$db->query('SELECT id, email, fname, lname FROM users WHERE id = ?', [$toUserId]);
-if ($db->error()) {
-    ApiResponse::serverError()
-        ->withLogging($logUserId ?? 0, LogCategories::LOG_CATEGORY_DATABASE_ERROR, 'send-owner-email.php: DB error fetching to-user to_id=' . $toUserId)
-        ->send();
-}
-$toUser = $db->first();
-
-if (!$fromUser || !$toUser) {
+if (!$fromOwner->data() || !$toOwner->data()) {
     ApiResponse::serverError('Invalid user data')
         ->withLogging($logUserId ?? 0, LogCategories::LOG_CATEGORY_DATABASE_ERROR, 'send-owner-email.php: fromUser or toUser not found')
         ->send();
 }
 
-$toEmail   = preg_replace('/[\r\n\t]/', '', $toUser->email);
-$toName    = $toUser->fname . ' ' . $toUser->lname;
-$fromEmail = $fromUser->email;
-$fromName  = $fromUser->fname . ' ' . $fromUser->lname;
+$toData   = $toOwner->data();
+$fromData = $fromOwner->data();
 
-$db->query('SELECT chassis, year, series, variant, type FROM cars WHERE id = ?', [$carId]);
-if ($db->error()) {
+$toEmail   = preg_replace('/[\r\n\t]/', '', $toData->email);
+$toName    = $toData->fname . ' ' . $toData->lname;
+$fromEmail = $fromData->email;
+$fromName  = $fromData->fname . ' ' . $fromData->lname;
+
+try {
+    $car = new Car($carId);
+} catch (\Throwable $e) {
     ApiResponse::serverError()
-        ->withLogging($logUserId ?? 0, LogCategories::LOG_CATEGORY_DATABASE_ERROR, 'send-owner-email.php: DB error fetching car details for car_id=' . $carId)
+        ->withLogging($logUserId ?? 0, LogCategories::LOG_CATEGORY_DATABASE_ERROR, 'send-owner-email.php: exception loading car for car_id=' . $carId . ': ' . $e->getMessage())
         ->send();
 }
-$carRow = $db->first();
-if (!$carRow) {
+if (!$car->exists()) {
     ApiResponse::serverError()
         ->withLogging($logUserId ?? 0, LogCategories::LOG_CATEGORY_DATABASE_ERROR, 'send-owner-email.php: car not found for car_id=' . $carId . ' (concurrent delete?)')
         ->send();
 }
+$carRow = $car->data();
 $carUrl = $current_origin . $us_url_root . 'app/owner/cars/details.php?car_id=' . $carId;
 
 $template = array(

@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace ElanRegistry\Car;
 
 use DB;
-use LogCategories;
+use ElanRegistry\LogCategories;
 
 /**
  * CarRepository - Database access layer for car operations

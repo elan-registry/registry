@@ -2,6 +2,9 @@
 
 declare(strict_types=1);
 
+use ElanRegistry\ChassisValidator;
+use ElanRegistry\LogCategories;
+
 /**
  * 07-Chassis-Override-Schema-Backfill.php
  * Add the chassis_override column to cars and cars_hist, refresh the cars
@@ -253,7 +256,6 @@ END");
                         logProgress('STEP 6: BACKFILL chassis_override ON QUALIFYING CARS', 'step');
                         logProgress(SECTION_SEPARATOR, 'step');
 
-                        require_once $abs_us_root . $us_url_root . 'usersc/classes/ChassisValidator.php';
                         $chassisValidator = new ChassisValidator();
 
                         // Suppress trigger during backfill (avoid duplicate history rows)

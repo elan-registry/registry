@@ -7,6 +7,7 @@ use ElanRegistry\Exceptions\CarMergeException;
 use ElanRegistry\Exceptions\CarNotFoundException;
 use ElanRegistry\Exceptions\CarValidationException;
 use ElanRegistry\Exceptions\ImageProcessingException;
+use ElanRegistry\LogCategories;
 
 /**
  * PHPUnit Bootstrap File for Unit Tests
@@ -53,6 +54,7 @@ if (!isset($_SESSION)) {
 // CRITICAL: Define mock Car class FIRST, before any autoloading
 // This must happen before any code that might trigger the autoloader
 // ============================================================================
+// Test-only mock — real class is ElanRegistry\Car\Car at usersc/classes/Car/Car.php.
 if (!class_exists('Car')) {
     class Car {
         private $data;

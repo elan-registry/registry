@@ -2,6 +2,8 @@
 
 declare(strict_types=1);
 
+namespace ElanRegistry;
+
 /**
  * StatisticsDataService.php
  * Centralized data service for statistics

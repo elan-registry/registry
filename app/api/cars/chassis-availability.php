@@ -14,7 +14,9 @@ declare(strict_types=1);
 
 require_once '../../../users/init.php';
 
+use ElanRegistry\ApiResponse;
 use ElanRegistry\Input;
+use ElanRegistry\LogCategories;
 
 if (!Input::exists('post')) {
     ApiResponse::error('No data received', 400)->send();

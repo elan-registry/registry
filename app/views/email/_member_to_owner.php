@@ -2,6 +2,8 @@
 
 declare(strict_types=1);
 
+use ElanRegistry\EmailTemplate;
+
 /**
  * Owner to Owner Contact Email Template
  *
@@ -9,8 +11,6 @@ declare(strict_types=1);
  * Variables available: $to, $from, $message, $car_year, $car_series,
  * $car_variant, $car_type, $car_chassis, $carUrl
  */
-
-require_once $abs_us_root . $us_url_root . 'usersc/classes/EmailTemplate.php';
 
 $emailTemplate = new EmailTemplate();
 

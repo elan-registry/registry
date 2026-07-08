@@ -1,6 +1,10 @@
 <?php
 declare(strict_types=1);
 
+use ElanRegistry\Car\Car;
+use ElanRegistry\CarView;
+use ElanRegistry\LogCategories;
+
 /**
  * details.php
  * Displays detailed information about a specific car in the registry.

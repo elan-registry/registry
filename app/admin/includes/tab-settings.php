@@ -1,5 +1,8 @@
 <?php
 declare(strict_types=1);
+
+use ElanRegistry\LogCategories;
+
 /**
  * tab-settings.php
  * Registry Settings Tab Content

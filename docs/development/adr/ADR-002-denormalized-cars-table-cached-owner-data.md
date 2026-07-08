@@ -120,7 +120,7 @@ Administrators can trigger location synchronization via the admin panel AJAX
 endpoint (`app/admin/includes/process-owner-sync-location.php`):
 
 ```php
-// Triggered via admin UI -- calls ElanRegistryOwner::syncLocationToCars()
+// Triggered via admin UI -- calls Owner::syncLocationToCars()
 // which updates all cars owned by the user via the car_user junction table
 $owner->syncLocationToCars();
 // Syncs: city, state, country, lat, lon, mtime
@@ -382,7 +382,7 @@ if (displaying_email($context)) {
 - **Car Class**: [usersc/classes/Car.php](../../usersc/classes/Car.php)
 - **Car Administration**: [usersc/classes/Car/CarAdministrationService.php](../../usersc/classes/Car/CarAdministrationService.php)
   (transfer method lines 125-230)
-- **ElanRegistryOwner Class**: [usersc/classes/ElanRegistryOwner.php](../../usersc/classes/ElanRegistryOwner.php)
+- **Owner Class**: [usersc/classes/Owner.php](../../usersc/classes/Owner.php)
   (syncLocationToCars method lines 531-572)
 - **User Settings Page**: [usersc/user_settings.php](../../usersc/user_settings.php)
   (location update and conditional car sync, lines 162-293)

@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use ElanRegistry\AppConstants;
 use PHPUnit\Framework\TestCase;
 
 /**

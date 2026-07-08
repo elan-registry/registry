@@ -2,6 +2,8 @@
 
 declare(strict_types=1);
 
+use ElanRegistry\EmailTemplate;
+
 /**
  * Feedback Submission Email Template
  *
@@ -9,7 +11,6 @@ declare(strict_types=1);
  * Variables available: $name, $email, $accountId, $comments
  */
 
-require_once $abs_us_root . $us_url_root . 'usersc/classes/EmailTemplate.php';
 $emailTemplate = new EmailTemplate();
 
 $ownerDetails =

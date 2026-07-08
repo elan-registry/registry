@@ -20,7 +20,7 @@ Use this table to choose the right class for your task:
 | Display cars in a list view | CarView | Read-only, optimized for rendering, no mutations | `$view = new CarView()` → `$view->getAllCars()` |
 | Display owner name, quality badge, location | OwnerView | Static HTML generation, no DB, consolidated display logic | `ElanRegistry\OwnerView::displayName($owner)` |
 | Update car data and create history | Car + update() | Automatic history via triggers, audit logging | `$car->update(['color' => 'Blue', ...])` |
-| Access owner profile and user data | ElanRegistryOwner | User profile integration, custom user methods | `$owner = new ElanRegistryOwner($uid)` |
+| Access owner profile and user data | Owner | User profile integration, custom user methods | `$owner = new Owner($uid)` |
 | Validate VIN/chassis format | ChassisValidator | Specialized validation for vehicle identifiers | `$validator->validate('26/0001')` |
 | Create database backups | BackupManager | Backup/restore operations, database dumping | `$backup = new BackupManager(...)` |
 | Get car images | CarImage | Image metadata and associations | `$images = CarImage::getByCarId($carId)` |
@@ -36,7 +36,7 @@ The Elan Registry uses namespaces to organize classes by their architectural rol
 
 | Namespace | Purpose | Location | Examples |
 | --- | --- | --- | --- |
-| **(root)** | Entity classes (domain objects) | `/usersc/classes/` | Car, ElanRegistryOwner |
+| **(root)** | Entity classes (domain objects) | `/usersc/classes/` | Car, Owner |
 | `ElanRegistry\Exceptions` | Custom exception types | `/usersc/classes/Exceptions/` | CarNotFoundException, CarValidationException |
 | `ElanRegistry\Reference` | **External reference data** | `/usersc/classes/ElanRegistry/Reference/` | CarModel, FactoryColor |
 
@@ -54,7 +54,7 @@ The Elan Registry uses namespaces to organize classes by their architectural rol
 - Represent **registry records** (individual car registrations, owner profiles)
 - **Full CRUD operations** - create, read, update, delete
 - Instance methods and properties
-- Examples: Car (individual registered car), ElanRegistryOwner (owner profile)
+- Examples: Car (individual registered car), Owner (owner profile)
 
 **Quick Decision Guide**:
 
@@ -260,9 +260,9 @@ echo OwnerView::displayMissingFields($missing);
 
 ---
 
-### ElanRegistryOwner
+### Owner
 
-**Location**: `/usersc/classes/ElanRegistryOwner.php`
+**Location**: `/usersc/classes/Owner.php`
 
 **Purpose**: Manages owner/user data with clean separation between UserSpice
 authentication and ElanRegistry business logic.
@@ -280,7 +280,7 @@ authentication and ElanRegistry business logic.
 
 ```php
 // Load owner
-$owner = new ElanRegistryOwner($userId);
+$owner = new Owner($userId);
 $ownerData = $owner->data();
 
 // Update owner profile
@@ -297,7 +297,7 @@ $owner->update([
 $score = $owner->getProfileQualityScore(); // Returns 0-100
 
 // Search owners (admin function)
-$results = ElanRegistryOwner::searchOwners('Portland');
+$results = Owner::searchOwners('Portland');
 ```
 
 **Database Tables**:
@@ -817,7 +817,7 @@ logger(
 ### Naming Conventions
 
 - **Classes**: PascalCase with descriptive business domain names
-  - Examples: `Car`, `ElanRegistryOwner`, `ChassisValidator`
+  - Examples: `Car`, `Owner`, `ChassisValidator`
 - **Methods**: camelCase with verb-first naming
   - Examples: `getData()`, `updateRecord()`, `validateInput()`
 - **Private properties**: Underscore prefix
@@ -923,10 +923,10 @@ Car
 ├── Uses: DB (singleton)
 ├── Uses: CarView (for display)
 ├── Uses: Resize (for images)
-├── Related: ElanRegistryOwner (via user_id)
+├── Related: Owner (via user_id)
 └── Uses: ChassisValidator (for validation)
 
-ElanRegistryOwner
+Owner
 ├── Uses: DB (singleton)
 ├── Related: Car (via user_id)
 └── Integrates: getUserWithProfile()

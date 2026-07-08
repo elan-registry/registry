@@ -2,6 +2,10 @@
 
 declare(strict_types=1);
 
+use ElanRegistry\Admin\BackupManager;
+use ElanRegistry\Admin\PagePermissionClassifier;
+use ElanRegistry\LogCategories;
+
 /**
  * Fix Page Permissions Script
  *

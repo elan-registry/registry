@@ -1,4 +1,6 @@
 <?php
+use ElanRegistry\LogCategories;
+
 /**
  * User Deletion Cleanup Script
  *

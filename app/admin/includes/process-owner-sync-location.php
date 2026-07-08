@@ -1,14 +1,17 @@
 <?php
 declare(strict_types=1);
 
+use ElanRegistry\ApiResponse;
 use ElanRegistry\Exceptions\AdminOperationException;
 use ElanRegistry\Exceptions\LocationServiceException;
+use ElanRegistry\LogCategories;
+use ElanRegistry\Owner;
 
 /**
  * process-owner-sync-location.php
  * AJAX endpoint for syncing owner location to owned cars
  *
- * Uses ElanRegistryOwner class to sync location data to all cars owned by the owner
+ * Uses Owner class to sync location data to all cars owned by the owner
  */
 
 // Include required files
@@ -25,7 +28,7 @@ if ($ownerId <= 0) {
 
 try {
     // Load owner
-    $owner = new ElanRegistryOwner($ownerId);
+    $owner = new Owner($ownerId);
     $ownerData = $owner->data();
     if (!$ownerData) {
         ApiResponse::notFound('Owner not found')

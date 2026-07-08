@@ -1,6 +1,8 @@
 <?php
 declare(strict_types=1);
 
+use ElanRegistry\LogCategories;
+use ElanRegistry\Owner;
 use ElanRegistry\OwnerView;
 
 /**
@@ -244,7 +246,7 @@ function getDuplicateEmailDetails(DB $db, string $email): array {
             }
         }
 
-        $owner->quality_score = ElanRegistryOwner::qualityScoreFromRow($owner);
+        $owner->quality_score = Owner::qualityScoreFromRow($owner);
     }
 
     return $owners;

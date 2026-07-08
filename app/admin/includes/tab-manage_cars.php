@@ -9,10 +9,10 @@ declare(strict_types=1);
  * Includes duplicate detection and correction capabilities
  */
 
+use ElanRegistry\ChassisValidator;
+use ElanRegistry\LogCategories;
+use ElanRegistry\Owner;
 use ElanRegistry\OwnerView;
-
-// Import ChassisValidator for validation functionality
-require_once '../../usersc/classes/ChassisValidator.php';
 
 // Data Quality Reports Functions
 function getDataQualityReports(object $db): array {
@@ -329,13 +329,13 @@ $qualityScore = $totalCars > 0 ? max(0, 100 - (($carIssues / $totalCars) * 100))
 <div class="row mb-4">
     <!-- Data Health Card -->
     <div class="col-lg-3 col-md-6 mb-3">
-        <div class="card border-<?= ElanRegistryOwner::getQualityBadgeClass($qualityScore) ?> h-100">
+        <div class="card border-<?= Owner::getQualityBadgeClass($qualityScore) ?> h-100">
             <div class="card-body text-center">
-                <div class="text-<?= ElanRegistryOwner::getQualityBadgeClass($qualityScore) ?> mb-3">
+                <div class="text-<?= Owner::getQualityBadgeClass($qualityScore) ?> mb-3">
                     <i class="fas fa-<?= $qualityScore >= 80 ? 'check-circle' : ($qualityScore >= 60 ? 'exclamation-triangle' : 'times-circle') ?>" style="font-size: 2.5rem;"></i>
                 </div>
                 <h5 class="card-title">Data Health</h5>
-                <h3 class="text-<?= ElanRegistryOwner::getQualityBadgeClass($qualityScore) ?> mb-2"><?= number_format($qualityScore, 1) ?>%</h3>
+                <h3 class="text-<?= Owner::getQualityBadgeClass($qualityScore) ?> mb-2"><?= number_format($qualityScore, 1) ?>%</h3>
                 <p class="card-text small text-muted">Overall car data quality score</p>
             </div>
         </div>

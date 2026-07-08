@@ -2,6 +2,8 @@
 
 declare(strict_types=1);
 
+use ElanRegistry\LogCategories;
+
 /**
  * 09-Fix-Cars-Update-Trigger-Chassis-Override.php
  * Recreate the cars_update trigger so it captures NEW.chassis_override

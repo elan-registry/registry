@@ -2,6 +2,8 @@
 
 declare(strict_types=1);
 
+use ElanRegistry\EmailTemplate;
+
 /**
  * Registration Verification Email Template (Branded Override)
  *
@@ -16,8 +18,6 @@ declare(strict_types=1);
  *   $user_id             — user ID integer
  *   $join_vericode_expiry — verification link expiry in hours
  */
-
-require_once $abs_us_root . $us_url_root . 'usersc/classes/EmailTemplate.php';
 
 $emailTemplate = new EmailTemplate();
 

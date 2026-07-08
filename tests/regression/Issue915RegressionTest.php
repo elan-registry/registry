@@ -42,7 +42,7 @@ final class Issue915RegressionTest extends TestCase
      */
     public function testChassisOverrideIsInCarValidCarFields(): void
     {
-        $carSource = file_get_contents($this->projectRoot . '/usersc/classes/Car.php');
+        $carSource = file_get_contents($this->projectRoot . '/usersc/classes/Car/Car.php');
 
         $this->assertNotFalse($carSource, 'Car.php must be readable');
         $this->assertStringContainsString(

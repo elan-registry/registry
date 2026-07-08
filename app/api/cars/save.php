@@ -1,10 +1,16 @@
 <?php
 declare(strict_types=1);
 
+use ElanRegistry\ApiResponse;
+use ElanRegistry\Car\Car;
+use ElanRegistry\ChassisValidator;
 use ElanRegistry\Exceptions\CarValidationException;
 use ElanRegistry\Exceptions\ElanRegistryException;
 use ElanRegistry\Exceptions\ImageProcessingException;
 use ElanRegistry\Input;
+use ElanRegistry\LogCategories;
+use ElanRegistry\Owner;
+use ElanRegistry\Resize;
 
 /**
  * save.php - Car management endpoint
@@ -352,7 +358,7 @@ function buildCarDetails(array &$cardetails, ?int $carId = null): void
         }
     } else {
         $ownerId = (int)$user->data()->id;
-        $owner = new ElanRegistryOwner($ownerId);
+        $owner = new Owner($ownerId);
         $ownerData = $owner->data();
 
         /*  Add the User/profile information to the record */
@@ -461,15 +467,6 @@ function updateChassis(array &$cardetails): void
         $model = $cardetails['model']; // Contains series|variant|type format
         
         // Use centralized chassis validator
-        $validatorPath = '../../../usersc/classes/ChassisValidator.php';
-        if (!file_exists($validatorPath)) {
-            logger($user->data()->id, LogCategories::LOG_CATEGORY_SYSTEM_ERROR, 'ChassisValidator class file not found at: ' . realpath($validatorPath));
-            $errors[] = 'ChassisValidator class file not found at: ' . realpath($validatorPath);
-            return;
-        }
-        
-        require_once $validatorPath;
-        
         try {
             $validator = new ChassisValidator();
             $result = $validator->validate($chassis, $year, $model, $chassisOverride);

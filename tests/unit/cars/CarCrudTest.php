@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use ElanRegistry\Exceptions\CarValidationException;
+use ElanRegistry\LogCategories;
 use PHPUnit\Framework\TestCase;
 
 use PHPUnit\Framework\Attributes\Group;

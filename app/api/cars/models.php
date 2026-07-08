@@ -19,6 +19,8 @@ declare(strict_types=1);
 
 require_once '../../../users/init.php';
 
+use ElanRegistry\ApiResponse;
+use ElanRegistry\LogCategories;
 use ElanRegistry\Reference\CarModel;
 
 // Validate AJAX request

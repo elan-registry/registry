@@ -2,6 +2,9 @@
 
 declare(strict_types=1);
 
+use ElanRegistry\LogCategories;
+use ElanRegistry\StatisticsDataService;
+
 /**
  * statistics.php
  * Comprehensive analytics dashboard for the Elan Registry
@@ -16,7 +19,6 @@ declare(strict_types=1);
  */
 require_once '../../../users/init.php';
 require_once $abs_us_root . $us_url_root . 'usersc/includes/elanregistry_prep.php';
-require_once $abs_us_root . $us_url_root . 'usersc/classes/StatisticsDataService.php';
 
 if (!securePage($php_self)) {
     die();

@@ -1,16 +1,18 @@
 <?php
 declare(strict_types=1);
 
+use ElanRegistry\ApiResponse;
 use ElanRegistry\Exceptions\OwnerSearchException;
+use ElanRegistry\LogCategories;
+use ElanRegistry\Owner;
 
 /**
  * process-owner-search.php
  * AJAX endpoint for owner search functionality
  *
- * Implements ElanRegistryOwner search with data quality scoring
+ * Implements Owner search with data quality scoring
  */
 
-// Include required files
 require_once '../../../users/init.php';
 
 requireAdminAjax('owner search', false);
@@ -27,39 +29,37 @@ if (strlen($query) > 100) {
 }
 
 try {
-    // Use ElanRegistryOwner search functionality
-    $ownerManager = new ElanRegistryOwner();
-    $searchResults = $ownerManager->searchOwners($query, 25); // Limit to 25 results
+    $searchResults = Owner::searchOwners($query, 25);
 
     // Enhance results with data quality scoring
     $enhancedResults = [];
     foreach ($searchResults as $owner) {
-        $ownerProfile = new ElanRegistryOwner((int)$owner->id);
+        $ownerProfile = new Owner((int)$owner->id);
         $qualityScore = $ownerProfile->getProfileQualityScore();
 
         $enhancedResults[] = [
             'id' => (int)$owner->id,
-            'fname' => htmlspecialchars($owner->fname ?? ''),
-            'lname' => htmlspecialchars($owner->lname ?? ''),
-            'email' => htmlspecialchars($owner->email ?? ''),
-            'city' => htmlspecialchars($owner->city ?? ''),
-            'state' => htmlspecialchars($owner->state ?? ''),
-            'country' => htmlspecialchars($owner->country ?? ''),
+            'fname' => htmlspecialchars($owner->fname ?? '', ENT_QUOTES, 'UTF-8'),
+            'lname' => htmlspecialchars($owner->lname ?? '', ENT_QUOTES, 'UTF-8'),
+            'email' => htmlspecialchars($owner->email ?? '', ENT_QUOTES, 'UTF-8'),
+            'city' => htmlspecialchars($owner->city ?? '', ENT_QUOTES, 'UTF-8'),
+            'state' => htmlspecialchars($owner->state ?? '', ENT_QUOTES, 'UTF-8'),
+            'country' => htmlspecialchars($owner->country ?? '', ENT_QUOTES, 'UTF-8'),
             'quality_score' => $qualityScore
         ];
     }
 
-    // Return success response with search results
-    ApiResponse::success("Found " . count($enhancedResults) . " owner(s)")
+    $resultCount = count($enhancedResults);
+    ApiResponse::success("Found {$resultCount} owner(s)")
         ->withDataArray([
             'owners' => $enhancedResults,
-            'total' => count($enhancedResults),
+            'total' => $resultCount,
             'query' => $query
         ])
         ->withLogging(
             $user->data()->id,
             'OwnerActions',
-            "Owner search performed: '{$query}' - " . count($enhancedResults) . " results"
+            "Owner search performed: '{$query}' - {$resultCount} results"
         )
         ->send();
 

@@ -2,14 +2,14 @@
 
 declare(strict_types=1);
 
+use ElanRegistry\EmailTemplate;
+
 /**
  * Transfer Decision Notification Email Template for Previous Owner
  *
  * Notifies the previous car owner about the final decision on a transfer request
  * Variables available: $previousOwner, $requester, $carInfo, $transferRequest, $isApproved, $adminNotes
  */
-
-require_once $abs_us_root . $us_url_root . 'usersc/classes/EmailTemplate.php';
 
 $emailTemplate = new EmailTemplate();
 

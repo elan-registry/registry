@@ -1,7 +1,10 @@
 <?php
 declare(strict_types=1);
 
+namespace ElanRegistry\Admin;
+
 use ElanRegistry\Exceptions\BackupException;
+use ElanRegistry\LogCategories;
 
 /**
  * BackupManager.php

@@ -1,4 +1,6 @@
 <?php
+use ElanRegistry\LogCategories;
+
 // This script runs after a successful OAuth login (both new and existing users)
 // 
 

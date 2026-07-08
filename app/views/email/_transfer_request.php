@@ -2,14 +2,14 @@
 
 declare(strict_types=1);
 
+use ElanRegistry\EmailTemplate;
+
 /**
  * Transfer Request Notification Email Template
  *
  * Notifies current car owner about a transfer request
  * Variables available: $currentOwner, $requester, $carInfo, $transferRequest, $approveUrl, $denyUrl
  */
-
-require_once $abs_us_root . $us_url_root . 'usersc/classes/EmailTemplate.php';
 
 $emailTemplate = new EmailTemplate();
 

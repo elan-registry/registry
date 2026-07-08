@@ -15,7 +15,7 @@ remain unchanged — these classes extend and wrap them.
 |---|---|---|
 | Load/create/update/delete a registered car | `Car` | `usersc/classes/Car.php` |
 | Display car images, specs, carousels (no DB writes) | `CarView` | `usersc/classes/CarView.php` |
-| Load/update an owner's registry profile | `ElanRegistryOwner` | `usersc/classes/ElanRegistryOwner.php` |
+| Load/update an owner's registry profile | `Owner` | `usersc/classes/Owner.php` |
 | Return a JSON response from an AJAX endpoint | `ApiResponse` | `usersc/classes/ApiResponse.php` |
 | Log an action or error to the audit trail | `logger()` + `LogCategories` | `usersc/classes/LogCategories.php` |
 | Validate a chassis/VIN format | `ChassisValidator` | `usersc/classes/ChassisValidator.php` |
@@ -32,7 +32,7 @@ ElanRegistry\Exceptions\  → usersc/classes/Exceptions/ (typed exceptions)
 ElanRegistry\Reference\   → usersc/classes/ElanRegistry/Reference/ (read-only reference data)
 ```
 
-Entity classes (`Car`, `ElanRegistryOwner`) represent registry records with full CRUD.
+Entity classes (`Car`, `Owner`) represent registry records with full CRUD.
 Reference classes (`CarModel`, `FactoryColor`, `FactoryInfo`) represent external authoritative
 data from Lotus — read-only, static methods only, no insert/update/delete.
 
@@ -88,13 +88,13 @@ $car->delete('Reason for deletion', Token::generate());
 
 ---
 
-## ElanRegistryOwner
+## Owner
 
 Combines `users` and `profiles` table data. Separates UserSpice authentication from
 ElanRegistry business logic.
 
 ```php
-$owner = new ElanRegistryOwner($userId);
+$owner = new Owner($userId);
 $data  = $owner->data();   // merged user + profile data
 
 $owner->update([
@@ -110,7 +110,7 @@ $owner->update([
 context. Never mix these labels.
 
 Use `getUserWithProfile($userId)` (UserSpice helper) when you only need combined data
-without mutation — it's lighter than instantiating `ElanRegistryOwner`.
+without mutation — it's lighter than instantiating `Owner`.
 
 ---
 
