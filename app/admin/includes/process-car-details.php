@@ -1,5 +1,7 @@
 <?php
 declare(strict_types=1);
+
+use ElanRegistry\Input;
 /**
  * process-car-details.php
  * AJAX endpoint for retrieving car details (reassign/delete confirmation)
@@ -15,7 +17,7 @@ require_once '../../../users/init.php';
 
 requireAdminAjax('car details', false);
 
-$carId = (int) Input::get('car_id');
+$carId = (int) Input::raw('car_id');
 if ($carId <= 0) {
     ApiResponse::error('Invalid car ID', 400)
         ->send();
