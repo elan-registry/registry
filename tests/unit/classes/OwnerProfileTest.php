@@ -357,6 +357,7 @@ final class OwnerProfileTest extends TestCase
             'lon'     => '-122.6765',
         ];
 
+        // 7/7 = 100.0
         $this->assertSame(100.0, Owner::qualityScoreFromRow($row));
     }
 
@@ -376,5 +377,26 @@ final class OwnerProfileTest extends TestCase
 
         // 3 simple fields → round(3/7 * 100, 1) = 42.9
         $this->assertSame(42.9, Owner::qualityScoreFromRow($row));
+    }
+
+    public function testUnionBranchShapedRowScoresCorrectly(): void
+    {
+        // searchOwners() UNION branch returns an extra `priority` column.
+        // Confirms qualityScoreFromRow() ignores unknown columns.
+        $row = (object) [
+            'id'       => 7,
+            'fname'    => 'Greg',
+            'lname'    => 'Surcouf',
+            'email'    => 'greg@example.com',
+            'city'     => 'London',
+            'state'    => '',
+            'country'  => 'GB',
+            'lat'      => '51.5074',
+            'lon'      => '-0.1278',
+            'priority' => 1,
+        ];
+
+        // 5 simple fields + lat/lon → round(6/7 * 100, 1) = 85.7
+        $this->assertSame(85.7, Owner::qualityScoreFromRow($row));
     }
 }
