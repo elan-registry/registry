@@ -345,7 +345,9 @@ class ElanRegistryOwner
                 $completed++;
             }
         }
-        if (!empty($row->lat) && !empty($row->lon)) {
+        // Explicit check — !empty() treats 0.0 as empty, silently dropping equator/prime-meridian coordinates
+        if (($row->lat ?? null) !== null && ($row->lat ?? '') !== '' &&
+            ($row->lon ?? null) !== null && ($row->lon ?? '') !== '') {
             $completed++;
         }
         return round(($completed / 7) * 100, 1);
@@ -386,7 +388,9 @@ class ElanRegistryOwner
                 $missingFields[] = $label;
             }
         }
-        if (empty($this->_data->lat) || empty($this->_data->lon)) {
+        // Explicit check — !empty() treats 0.0 as empty, silently dropping equator/prime-meridian coordinates
+        if ($this->_data->lat === null || $this->_data->lat === '' ||
+            $this->_data->lon === null || $this->_data->lon === '') {
             $missingFields[] = 'Location Coordinates';
         }
 
