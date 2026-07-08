@@ -201,7 +201,7 @@ Pre-commit hooks validate PHP coding standards, markdown formatting, and run fas
 git commit --no-verify           # Bypass (emergency only)
 ```
 
-**See the [Development Workflow](https://github.com/jimboone/elan-registry/wiki/Development-Workflow) wiki page** for hook details and `scripts/README.md` for troubleshooting.
+**See the [Development Workflow](https://github.com/unibrain1/elanregistry/wiki/Development-Workflow) wiki page** for hook details and `scripts/README.md` for troubleshooting.
 
 ## 📋 Complete Production Deployment Process
 
@@ -290,52 +290,14 @@ After each deployment, verify:
 
 ### Database Access
 
-- **Configuration**: Use credentials from `.env.local` file (see
-  DEV*DB*\* variables)
-- **Connection**: MAMP MySQL server on port 8889
-- **MAMP MySQL Path**: `/Applications/MAMP/Library/bin/mysql`
-- **Direct Command**:
-
-  ```bash
-  /Applications/MAMP/Library/bin/mysql -h localhost -P 8889 \
-    -u claude -p"claude" elanregi_spice
-  ```
+See [ENVIRONMENT.md](ENVIRONMENT.md) for database credentials, MySQL binary path, and connection commands.
 
 ## 🛠️ Environment Variables
 
-See [ENVIRONMENT.md](ENVIRONMENT.md) for complete environment configuration (database credentials, API keys, CAPTCHA keys, phpdotenv plaintext `.env` with `chmod 600`).
+See [ENVIRONMENT.md](ENVIRONMENT.md) for complete environment configuration (database
+credentials, API keys, CAPTCHA keys, phpdotenv plaintext `.env` with `chmod 600`).
 
-### Pre-Deployment: Prepare .env File
-
-Before deploying the phpdotenv version (v2.18.0+), ensure the production `.env` file is in place on the server:
-
-1. **Create `.env` from current credentials** (if migrating from SecureEnvPHP):
-
-   ```bash
-   # Securely transfer credentials to server and create .env
-   cat > /path/to/elan-registry/.env << 'EOF'
-   DB_HOST=your_production_host
-   DB_USER=your_production_user
-   DB_PASS=your_production_password
-   DB_NAME=your_production_database
-   EOF
-   chmod 600 .env
-   chown www-data:www-data .env
-   ```
-
-2. **Verify application boots** (after code deployment):
-
-   ```bash
-   # Test database connection via browser or curl
-   curl -s https://elanregistry.org/ | head -20
-   ```
-
-3. **Remove old encrypted files** (after successful verification):
-
-   ```bash
-   # Securely delete old encryption files (if migrating)
-   shred -vfz -n 3 .env.enc .env.key
-   ```
+See [ENVIRONMENT.md](ENVIRONMENT.md) for `.env` setup steps.
 
 ### UserSpice Plugins
 
@@ -355,7 +317,9 @@ Before deploying the phpdotenv version (v2.18.0+), ensure the production `.env` 
 
 1. **Version mismatch**: Ensure VERSION file content matches git tag exactly
 2. **Permission errors**: Check UserSpice admin panel for new page permissions
-3. **Map not rendering**: Check browser console for CSP violations; verify `usersc/js/maplibre-gl.min.js`, `usersc/css/maplibre-gl.css`, and `usersc/js/versatiles-colorful.json` are deployed
+3. **Map not rendering**: Check browser console for CSP violations; verify
+   `usersc/js/maplibre-gl.min.js`, `usersc/css/maplibre-gl.css`, and
+   `usersc/js/versatiles-colorful.json` are deployed
 4. **Email not working**: Check Brevo/Sendinblue API configuration
 5. **Database connection**: Verify production database credentials
 
@@ -379,5 +343,5 @@ If deployment fails:
 **📖 Related Documentation:**
 
 - [CLAUDE.md](../../CLAUDE.md) - Essential development guidance
-- [Development Workflow](https://github.com/jimboone/elan-registry/wiki/Development-Workflow) - Development processes (wiki)
+- [Development Workflow](https://github.com/unibrain1/elanregistry/wiki/Development-Workflow) - Development processes (wiki)
 - [ENVIRONMENT.md](ENVIRONMENT.md) - Environment setup and configuration

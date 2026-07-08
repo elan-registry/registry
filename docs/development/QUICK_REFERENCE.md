@@ -7,43 +7,19 @@ information, see the linked documentation.
 
 ### Testing
 
-```bash
-composer test:quick        # Unit tests only (<30s)
-composer test:medium       # Unit + Integration (<2min)
-composer test:full         # All PHP tests
-composer test:coverage     # Coverage report
-
-npm run playwright:test    # UI tests (requires setup)
-```
+See [CLAUDE.md](../../CLAUDE.md) → Quick Start Commands for the full testing and build command reference.
 
 ### Pre-commit Quality Checks
 
 ```bash
-./scripts/setup-git-hooks.sh   # Setup once (RECOMMENDED)
 composer phpcs                  # Manual coding standards check
 ```
 
 ### Milestone Lifecycle
 
-```bash
-/start-milestone v2.17.0     # Create milestone branch, draft release notes
-/start-issue 423              # Branch, plan, implement, test, security review
-/simplify                     # Clean up the code (optional)
-/commit                       # Commit locally
-/commit-push-pr               # Push + PR targeting milestone branch
-/finish-issue 423             # CI check, squash-merge, close issue
-/finish-milestone v2.17.0    # PR to main, finalize release notes, update wiki
-/review-pr                    # Multi-agent PR review
-/release-milestone v2.17.0   # Merge, tag, GitHub release, close milestone
-```
+See [CLAUDE.md](../../CLAUDE.md) → Developer Workflow for the full milestone lifecycle and slash command reference.
 
 ### Git & Deployment
-
-```bash
-git push origin main && git push origin --tags   # GitHub
-git push test main                                # Staging
-git push prod main && git push prod --tags        # Production
-```
 
 See [DEPLOYMENT.md](DEPLOYMENT.md) for complete release procedures.
 
@@ -98,14 +74,12 @@ See [CODING_STANDARDS.md](CODING_STANDARDS.md)
 See [LOG_CATEGORIES.md](LOG_CATEGORIES.md)
 
 **Server Globals (v2.13.0+):**
-Use `$is_https`, `$host`, `$method`, `$current_url`, `$current_origin`,
-`$php_self`, `$remote_addr` instead of `$_SERVER`. For values not covered,
-use `Server::get('KEY', 'default')`.
-See [PAGE_LOADING_FLOW.md](PAGE_LOADING_FLOW.md)
+Never use `$_SERVER` directly — use validated globals instead.
+See [CLAUDE.md](../../CLAUDE.md) for the full list and [PAGE_LOADING_FLOW.md](PAGE_LOADING_FLOW.md) for details.
 
 **New PHP Directories:**
 Add path to `$path` array in `/z_us_root.php`, register pages in UserSpice admin
-See [GitHub Wiki: UserSpice Integration Guide](https://github.com/jimboone/elan-registry/wiki/Integration)
+See [GitHub Wiki: UserSpice Integration Guide](https://github.com/unibrain1/elanregistry/wiki/Customization-and-Integration-Patterns)
 
 ## Custom Functions Available on All Pages
 
@@ -421,26 +395,9 @@ See `.semgrepignore` in the repo root. Key exclusions:
 | CSRF validation failed | Ensure `<input name="csrf" value="<?php echo Token::generate(); ?>">` in form |
 | API returns 500 error | Check PHP error log; verify exception types are correct |
 | Database query returns no results | Verify table name, column names, and WHERE clause |
-| Tests failing | Check PHP 8.1+; run `composer install` && `npm install` |
+| Tests failing | Check PHP 8.2+; run `composer install` && `npm install` |
 | NotificationHelper not showing | Verify footer.php is included; check browser console for JS errors |
 
 ## Documentation Index
 
-```text
-CLAUDE.md                  # Start here - AI assistant guide
-docs/development/
-  INSTALLATION.md          # Setup and installation
-  DATABASE.md              # Database schema
-  CODING_STANDARDS.md      # Coding standards
-  ERROR_HANDLING.md        # Error handling patterns
-  LOG_CATEGORIES.md        # Logging categories (140+)
-  CLASSES.md               # Application classes
-  DEPLOYMENT.md            # Release and deployment
-Wiki (GitHub):
-  Architecture             # System architecture (github.com/jimboone/elan-registry/wiki/Architecture)
-  UserSpice Integration    # UserSpice integration (github.com/jimboone/elan-registry/wiki/Integration)
-docs/guides/               # User documentation
-docs/reference/            # Technical reference pages
-docs/admin/                # Admin documentation
-docs/README.md             # Complete documentation index
-```
+For the complete documentation index, see [docs/README.md](../../docs/README.md).

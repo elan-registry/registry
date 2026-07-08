@@ -104,7 +104,6 @@ in the relevant PHP file. No build step required.
 ### Access Control
 
 - Public guides in `docs/guides/` — no authentication required
-- Admin portal in `docs/admin/` — requires Administrator permissions
 - Development docs in `docs/development/` and `docs/testing/` — public, version-controlled
 
 ## External Documentation

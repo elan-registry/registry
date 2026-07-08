@@ -2,7 +2,7 @@
 
 **Version:** 1.0  
 **Updated:** September 7, 2025  
-**Target:** PHP 8.1+, Modern Web Standards
+**Target:** PHP 8.2+, Modern Web Standards
 
 ---
 
@@ -598,35 +598,7 @@ Use structured TODO/FIXME comments:
 
 ### **Directory Structure**
 
-```text
-/app/                          # Application pages and logic
-  /cars/                       # Car-related functionality
-    /actions/                  # Form processing endpoints
-    /views/                    # Display templates (future)
-  /contact/                    # Contact and email functionality
-  /reports/                    # Statistics and reporting
-
-/usersc/                       # UserSpice customizations
-  /classes/                    # PHP classes and business logic
-  /templates/                  # UI templates and layouts
-  /scripts/                    # UserSpice hooks and customizations
-  /plugins/                    # Plugin configurations
-
-/docs/                         # Documentation
-  /development/                # Developer documentation
-  /faq/                        # User/owner documentation
-  /faq/admin/                  # Admin documentation
-  /testing/                    # Testing strategy and execution
-  /releases/                   # Release notes
-
-/tests/                        # Testing infrastructure
-  /unit/                       # PHPUnit tests
-  /playwright/                 # Browser tests
-
-/app/admin/scripts/fix/        # One-time admin migration / fix scripts
-/app/admin/scripts/maintenance/  # Repeatable system maintenance scripts
-
-```text
+For the authoritative directory structure, see [CLAUDE.md](../../CLAUDE.md) → Architecture Overview.
 
 ### **File Naming Conventions**
 
@@ -754,12 +726,3 @@ For detailed patterns and examples, see [QUICK_REFERENCE.md](QUICK_REFERENCE.md)
 - [UserSpice Framework Documentation](https://userspice.com/documentation/)
 - [OWASP Secure Coding Practices](https://owasp.org/www-project-secure-coding-practices-quick-reference-guide/)
 
----
-
-**Last Updated:** September 7, 2025  
-**Next Review:** December 2025  
-**Maintainer:** Elan Registry Development Team
-
-This document is a living standard that evolves with the codebase and PHP 
-ecosystem. All developers must follow these standards for new code and 
-gradually apply them to legacy code during maintenance.

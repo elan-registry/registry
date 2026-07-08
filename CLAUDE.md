@@ -156,12 +156,8 @@ npm run test:e2e:test           # All E2E on test.elanregistry.org
 
 ### Pre-commit Quality Checks
 
-```bash
-./scripts/setup-git-hooks.sh    # Setup once per developer
-```
-
-Validates PHP coding standards, runs markdown linting, and executes unit tests
-on critical file changes. Bypass with `git commit --no-verify` (emergency only).
+Run `./scripts/setup-git-hooks.sh` once per developer. Bypass with `git commit --no-verify`
+(emergency only). See [DEPLOYMENT.md](docs/development/DEPLOYMENT.md) for hook details.
 
 ## Essential Development Guidelines
 
@@ -196,14 +192,9 @@ See [ERROR_HANDLING.md](docs/development/ERROR_HANDLING.md) for patterns.
 
 ### Input/Output Encoding (v2.23.0+)
 
-- **Storage**: Use `ElanRegistry\Input::raw()` for all text fields destined for
-  the database — returns the POST value unencoded. Never use UserSpice's
-  `\Input::get()` for stored values (it applies `htmlspecialchars()` before
-  returning, causing double-encoding on display).
-- **Output**: Apply `htmlspecialchars($value, ENT_QUOTES, 'UTF-8')` at the
-  render layer only — never before storage.
-- See [CODING_STANDARDS.md](docs/development/CODING_STANDARDS.md) for the full
-  encode-at-output pattern and field coverage.
+Use `ElanRegistry\Input::raw()` for DB storage (never `\Input::get()` — it pre-encodes and
+causes double-encoding). Apply `htmlspecialchars($value, ENT_QUOTES, 'UTF-8')` at the render
+layer only. See [CODING_STANDARDS.md](docs/development/CODING_STANDARDS.md) for full details.
 
 ### Frontend API Client (Pattern A - v2.12.0+)
 
@@ -325,15 +316,8 @@ at `docs/development/RELEASE_NOTES_TEMPLATE.md`.
 
 ## Quick Deployment Reference
 
-**Use the correct remote for each environment:**
-
-```bash
-git push origin main && git push origin --tags   # GitHub
-git push test main                                # Staging
-git push prod main && git push prod --tags        # PRODUCTION
-```
-
-See [DEPLOYMENT.md](docs/development/DEPLOYMENT.md) for complete procedures.
+See [DEPLOYMENT.md](docs/development/DEPLOYMENT.md) for complete procedures. **Critical:**
+`git push prod main` pushes to the **live site** — never confuse `prod` with `origin`.
 
 ## GitHub Repository
 
@@ -348,7 +332,7 @@ See [DEPLOYMENT.md](docs/development/DEPLOYMENT.md) for complete procedures.
 The wiki is a **separate git repository** at the permanent path:
 
 ```text
-/Users/jimboone/Documents/Developer/Web/elan-registry-wiki
+/Users/jimboone/Developer/Web/elan-registry-wiki
 ```
 
 **CRITICAL:** ALWAYS use this exact path. NEVER clone to `/tmp/`, a worktree,
@@ -358,8 +342,8 @@ only place to use.
 To update the live wiki after editing files in `wiki/` on a branch:
 
 ```bash
-cp wiki/<file>.md /Users/jimboone/Documents/Developer/Web/elan-registry-wiki/
-cd /Users/jimboone/Documents/Developer/Web/elan-registry-wiki
+cp wiki/<file>.md /Users/jimboone/Developer/Web/elan-registry-wiki/
+cd /Users/jimboone/Developer/Web/elan-registry-wiki
 git add <file>.md
 git commit -m "docs: <description>"
 git push
