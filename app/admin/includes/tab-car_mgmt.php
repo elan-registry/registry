@@ -2,6 +2,8 @@
 
 declare(strict_types=1);
 
+use ElanRegistry\Car\Car;
+use ElanRegistry\LogCategories;
 use ElanRegistry\Transfer\CarTransferRepository;
 
 /**

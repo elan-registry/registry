@@ -1,7 +1,10 @@
 <?php
 declare(strict_types=1);
 
+use ElanRegistry\ApiResponse;
 use ElanRegistry\Exceptions\OwnerSearchException;
+use ElanRegistry\LogCategories;
+use ElanRegistry\Owner;
 
 /**
  * process-owner-search.php

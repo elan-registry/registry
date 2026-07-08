@@ -1,9 +1,12 @@
 <?php
 declare(strict_types=1);
 
+use ElanRegistry\ApiResponse;
 use ElanRegistry\Exceptions\AdminOperationException;
 use ElanRegistry\Exceptions\OwnerUpdateException;
 use ElanRegistry\Exceptions\OwnerValidationException;
+use ElanRegistry\LogCategories;
+use ElanRegistry\Owner;
 
 /**
  * process-owner-update.php

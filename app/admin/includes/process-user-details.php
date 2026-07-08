@@ -1,5 +1,8 @@
 <?php
 declare(strict_types=1);
+
+use ElanRegistry\ApiResponse;
+
 /**
  * process-user-details.php
  * AJAX endpoint for retrieving user/owner details (reassignment confirmation)

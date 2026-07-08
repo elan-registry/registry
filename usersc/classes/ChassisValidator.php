@@ -2,6 +2,10 @@
 
 declare(strict_types=1);
 
+namespace ElanRegistry;
+
+use Exception;
+
 /**
  * ChassisValidator.php
  * Centralized Lotus Elan chassis number validation system

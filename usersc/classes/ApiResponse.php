@@ -2,6 +2,8 @@
 
 declare(strict_types=1);
 
+namespace ElanRegistry;
+
 /**
  * ApiResponse - Standardized JSON response class for AJAX endpoints
  *

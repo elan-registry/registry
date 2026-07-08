@@ -14,7 +14,8 @@
     "autoload": {
         "psr-4": {
             "ElanRegistry\\Exceptions\\": "usersc/classes/Exceptions/",
-            "ElanRegistry\\Reference\\": "usersc/classes/ElanRegistry/Reference/",
+            "ElanRegistry\\Reference\\": "usersc/classes/Reference/",
+            "ElanRegistry\\Admin\\": "usersc/classes/admin/",
             "ElanRegistry\\": "usersc/classes/"
         }
     },

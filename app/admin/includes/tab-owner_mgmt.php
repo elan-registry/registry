@@ -1,6 +1,8 @@
 <?php
 declare(strict_types=1);
 
+use ElanRegistry\LogCategories;
+use ElanRegistry\Owner;
 use ElanRegistry\OwnerView;
 
 /**

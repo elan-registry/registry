@@ -5,6 +5,7 @@ declare(strict_types=1);
 require_once __DIR__ . '/IntegrationTestCase.php';
 
 use ElanRegistry\Exceptions\LocationServiceException;
+use ElanRegistry\LocationService;
 
 use PHPUnit\Framework\Attributes\Group;
 

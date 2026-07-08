@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use ElanRegistry\Admin\PagePermissionClassifier;
 use PHPUnit\Framework\TestCase;
 use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\Attributes\DataProvider;

@@ -2,6 +2,9 @@
 
 declare(strict_types=1);
 
+use ElanRegistry\ApiResponse;
+use ElanRegistry\LogCategories;
+
 /**
  * process-settings.php
  * Pattern A endpoint for updating registry settings from the admin settings tab.

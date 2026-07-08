@@ -1,6 +1,8 @@
 <?php
 declare(strict_types=1);
 
+namespace ElanRegistry;
+
 /**
  * String input normalization utility shared across validation logic.
  *

@@ -2,6 +2,8 @@
 
 declare(strict_types=1);
 
+use ElanRegistry\EmailTemplate;
+
 /**
  * Email Change Verification Email Template (Branded Override)
  *
@@ -12,8 +14,6 @@ declare(strict_types=1);
  * Variables available (from $email_field_whitelist):
  *   $fname, $email, $vericode, $user_id, $join_vericode_expiry, $url
  */
-
-require_once $abs_us_root . $us_url_root . 'usersc/classes/EmailTemplate.php';
 
 $emailTemplate = new EmailTemplate();
 

@@ -1,8 +1,11 @@
 <?php
 declare(strict_types=1);
 
+use ElanRegistry\Car\Car;
 use ElanRegistry\Exceptions\AdminContactException;
 use ElanRegistry\Input;
+use ElanRegistry\LogCategories;
+use ElanRegistry\Owner;
 
 /**
  * process-admin-contact.php

@@ -4,11 +4,11 @@ declare(strict_types=1);
 
 namespace ElanRegistry\Car;
 
-use CarErrorMessages;
+use DB;
+use ElanRegistry\CarErrorMessages;
 use ElanRegistry\Exceptions\CarDatabaseException;
 use ElanRegistry\Exceptions\ImageProcessingException;
-use LogCategories;
-use DB;
+use ElanRegistry\LogCategories;
 
 /**
  * CarImageProcessor - Image encoding, decoding, and management for cars

@@ -2,14 +2,14 @@
 
 declare(strict_types=1);
 
+use ElanRegistry\EmailTemplate;
+
 /**
  * Transfer Request Response Email Template
  *
  * Notifies requester about approved or denied transfer request
  * Variables available: $requester, $carInfo, $transferRequest, $isApproved, $adminNotes, $carUrl
  */
-
-require_once $abs_us_root . $us_url_root . 'usersc/classes/EmailTemplate.php';
 
 $emailTemplate = new EmailTemplate();
 

@@ -3,6 +3,8 @@ declare(strict_types=1);
 
 use ElanRegistry\Exceptions\ElanRegistryException;
 use ElanRegistry\Exceptions\OwnerNotFoundException;
+use ElanRegistry\LogCategories;
+use ElanRegistry\Owner;
 use ElanRegistry\OwnerView;
 
 require_once '../../../users/init.php';

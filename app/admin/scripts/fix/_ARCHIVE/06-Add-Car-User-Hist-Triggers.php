@@ -2,6 +2,8 @@
 
 declare(strict_types=1);
 
+use ElanRegistry\LogCategories;
+
 /**
  * 06-Add-Car-User-Hist-Triggers.php
  * Add database triggers and performance indexes for the car_user_hist table.

@@ -2,6 +2,8 @@
 
 declare(strict_types=1);
 
+use ElanRegistry\LogCategories;
+
 /**
  * Create Deleted Accounts Archive Table
  *
