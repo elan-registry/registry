@@ -14,7 +14,7 @@ v2.12.0.
   `Exception` for proper error classification
 - **User-Friendly Messages**: Separate technical messages (for logs) from
   user-safe messages (for UI display)
-- **Pattern A Response Format**: All AJAX endpoints return standardized
+- **Response Format**: All AJAX endpoints return standardized
   `{success, message, ...data}` JSON responses
 - **Integrated Frontend API**: ElanRegistryAPI client handles errors
   consistently across the entire application
@@ -41,7 +41,7 @@ reference, see [LOG_CATEGORIES.md](LOG_CATEGORIES.md).
 The ApiResponse class provides a standardized JSON response format for all AJAX
 endpoints with integrated logging and proper HTTP status codes.
 
-**Pattern A Response Format**:
+**Response Format**:
 
 All API responses follow this structure:
 
@@ -253,7 +253,7 @@ automatic CSRF token injection, error handling, and request cancellation.
 **Overview**:
 
 - Automatically loaded on every page via footer.php
-- Follows Pattern A response format
+- Handles `{success, message, ...data}` response format
 - Handles CSRF tokens automatically
 - Supports request cancellation
 - Type-specific error handling (ApiError, ApiValidationError, ApiCancelledError)
@@ -576,7 +576,7 @@ const result = await api.post('endpoint', data);
 ### Changelog
 
 - **v2.12.0**: Complete error handling system introduced
-  - ApiResponse class for Pattern A responses
+  - ApiResponse class
   - ElanRegistryException hierarchy (23 types)
   - LogCategories constants (140+ categories)
   - ElanRegistryAPI frontend client

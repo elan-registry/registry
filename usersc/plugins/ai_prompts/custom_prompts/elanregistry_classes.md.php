@@ -116,7 +116,7 @@ without mutation — it's lighter than instantiating `Owner`.
 
 ## ApiResponse
 
-Standardized JSON responses for all AJAX endpoints (Pattern A). Always use this instead
+Standardized JSON responses for all AJAX endpoints. Always use this instead
 of `json_encode()` directly — it sets correct HTTP status codes and integrates logging.
 
 ```php

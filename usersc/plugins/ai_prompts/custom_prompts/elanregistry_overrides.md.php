@@ -100,11 +100,11 @@ See `docs/development/PAGE_LOADING_FLOW.md` for the full global list and initial
 ## 3. AJAX responses: use `ApiResponse`, not raw `json_encode`
 
 The shipped `secure_page_pattern` shows bare `json_encode(['success' => false, ...])` in parsers.
-ElanRegistry uses the `ApiResponse` class for all AJAX endpoints. It enforces Pattern A
-(`{success, message, ...data}`), sets the correct HTTP status code, and handles logging atomically.
+ElanRegistry uses the `ApiResponse` class for all AJAX endpoints. It enforces the standard
+response format (`{success, message, ...data}`), sets the correct HTTP status code, and handles logging atomically.
 
 ```php
-// ✅ CORRECT — Pattern A via ApiResponse
+// ✅ CORRECT — use ApiResponse
 use ElanRegistry\Exceptions\CarNotFoundException;
 
 require_once $abs_us_root . $us_url_root . 'users/init.php';

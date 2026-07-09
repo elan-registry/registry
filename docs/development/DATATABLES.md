@@ -303,7 +303,7 @@ public function testSqlQueryUsesPreparedStatement(): void
 
 - Input validation (missing/empty parameters)
 - SQL injection prevention (prepared statements)
-- Response format (ApiResponse Pattern A)
+- Response format (ApiResponse: `{success, message, ...data}`)
 - Error handling
 
 **Run unit tests**:

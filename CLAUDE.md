@@ -54,7 +54,7 @@ edge caching and CDN for global users (US, EU, AU).
   - `/app/api/` - AJAX JSON endpoints, organized by resource: `cars/` (car CRUD and
     validation), `contact/` (contact forms, auth-required), `shared/` (public endpoints:
     statistics, location search), `admin/` (admin-only settings updates). All endpoints
-    follow Pattern A / `ApiResponse`.
+    follow the `ApiResponse` JSON format.
   - `/app/views/` - Reusable view partials: `cars/` (car page components), `email/`
     (transactional email templates)
 - `/docs/` - User-facing documentation: `guides/` (how-to), `reference/` (technical), `stories/` (car histories)
@@ -177,11 +177,11 @@ for all AJAX endpoints. See [ERROR_HANDLING.md](docs/development/ERROR_HANDLING.
 Use `ElanRegistry\Input::raw()` for DB storage (never `\Input::get()` — it pre-encodes and causes double-encoding).
 Apply `htmlspecialchars()` at the render layer only.
 
-### Frontend API Client (Pattern A)
+### Frontend API Client
 
-All AJAX endpoints use `ApiResponse` (PHP) + `ElanRegistryAPI` (JS) in Pattern A format (`{success, message, ...}`). See [ERROR_HANDLING.md](docs/development/ERROR_HANDLING.md).
+All AJAX endpoints use `ApiResponse` (PHP) + `ElanRegistryAPI` (JS) — response format: `{success, message, ...}`. See [ERROR_HANDLING.md](docs/development/ERROR_HANDLING.md).
 
-### Server Environment Globals
+### Server Environment Globals (v2.13.0+)
 
 Never use `$_SERVER` directly. Validated globals (`$php_self`, `$is_https`, `$host`, `$method`, `$request_uri`,
 `$current_url`, `$current_origin`, `$remote_addr`, `$referer`, `$user_agent`) are initialized in

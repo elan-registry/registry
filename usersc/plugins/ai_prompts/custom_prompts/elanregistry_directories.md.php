@@ -90,7 +90,7 @@ The `parsers/` naming is not required in ElanRegistry. Directories under `app/ap
 The exception is `app/api/contact/`, which is registered because both contact endpoints call
 `securePage()`. Endpoints in `app/api/cars/`, `app/api/shared/`, and `app/api/admin/` must
 **not** call `securePage()` — they enforce authentication inline.
-All endpoints in `app/api/` must follow the Pattern A / ApiResponse convention.
+All endpoints in `app/api/` must use `ApiResponse` for JSON responses.
 
 ---
 
