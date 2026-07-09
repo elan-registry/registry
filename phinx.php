@@ -4,22 +4,17 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/vendor/autoload.php';
 
-// Parse .env directly — phpdotenv lives in usersc/vendor, not available here
+// createImmutable: won't overwrite keys already in $_ENV (shell env takes precedence — CI-friendly).
+// safeLoad() is used so a missing .env is not fatal; CI supplies vars via the process environment.
+// The getenv() fallback on each config line handles that case (no .env → $_ENV empty → fall through).
 if (file_exists(__DIR__ . '/.env')) {
-    $lines = file(__DIR__ . '/.env', FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
-    foreach ($lines as $line) {
-        $line = trim($line);
-        if ($line === '' || str_starts_with($line, '#')) {
-            continue;
-        }
-        if (str_contains($line, '=')) {
-            [$key, $val] = explode('=', $line, 2);
-            $key = trim($key);
-            $val = trim($val, " \t\n\r\0\x0B\"'");
-            if (!isset($_ENV[$key])) { // shell env takes precedence over .env (CI-friendly)
-                $_ENV[$key] = $val;
-            }
-        }
+    \Dotenv\Dotenv::createImmutable(__DIR__)->safeLoad();
+}
+
+foreach (['DB_NAME', 'DB_USER', 'DB_PASS'] as $var) {
+    if (($_ENV[$var] ?? getenv($var) ?: '') === '') {
+        fwrite(STDERR, "ERROR: Required environment variable '$var' is not set. Check .env file.\n");
+        exit(1);
     }
 }
 

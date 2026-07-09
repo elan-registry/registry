@@ -25,11 +25,8 @@ $_SERVER['PHP_SELF'] = '/tests/';
 // Set up testing environment
 define('TESTING_ROOT', $projectRoot);
 
-// Load autoloader for custom classes FIRST (before UserSpice)
-$autoloaderPath = $projectRoot . '/usersc/classes/class.autoloader.php';
-if (file_exists($autoloaderPath)) {
-    require_once $autoloaderPath;
-}
+// Load Composer autoloader for project classes FIRST (before UserSpice)
+require_once $projectRoot . '/vendor/autoload.php';
 
 // Load UserSpice framework for real database testing and authentication
 $initPath = $projectRoot . '/users/init.php';
@@ -40,17 +37,9 @@ if (!file_exists($initPath)) {
     exit(1);
 }
 
-// Load usersc/vendor autoload so Dotenv and other composer deps are available
-// before users/init.php runs (init.php loads it via helpers.php, but we need
-// Dotenv earlier to set env vars that init.php's own Dotenv call will read)
-$userscAutoload = $projectRoot . '/usersc/vendor/autoload.php';
-if (file_exists($userscAutoload)) {
-    require_once $userscAutoload;
-}
-
-// Load test environment (.env.local overrides .env for local development)
-// .env.local uses DB_* names directly (e.g. DB_HOST=127.0.0.1:8889 for MAMP)
-// createMutable() allows init.php's createImmutable() to read our test values from $_ENV
+// Load test environment (.env.local overrides .env for local development).
+// The Dotenv class is available because vendor/autoload.php was loaded above.
+// createMutable() allows init.php's createImmutable() to read our test values from $_ENV.
 $envLocal = $projectRoot . '/.env.local';
 $envName  = file_exists($envLocal) ? '.env.local' : '.env';
 

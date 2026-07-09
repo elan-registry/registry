@@ -36,17 +36,21 @@ for ($i = 1; $i < $self_path_length; $i++) {
     }
 }
 
-// Load custom application autoloader for usersc/classes/
-// Must be loaded after path variables are set and after UserSpice autoloader
-$customAutoloaderPath = $abs_us_root . $us_url_root . 'usersc/classes/class.autoloader.php';
-if (file_exists($customAutoloaderPath)) {
-    require_once $customAutoloaderPath;
+// Load Composer autoloader — registers project classes (ElanRegistry\, PSR-4)
+// and all vendor dependencies including phpdotenv (used below).
+$autoloadPath = $abs_us_root . $us_url_root . 'vendor/autoload.php';
+if (!file_exists($autoloadPath)) {
+    error_log('[elan-registry] Boot failed: vendor/autoload.php not found. Run: composer install');
+    http_response_code(500);
+    exit(1);
 }
+require_once $autoloadPath;
 
 require_once $abs_us_root . $us_url_root . 'users/helpers/helpers.php';
 
-// Load .env via phpdotenv (autoloaded via helpers.php → usersc/vendor/autoload.php)
-// createImmutable(): populates $_ENV/$_SERVER only (no putenv); won't overwrite test bootstrap values
+// Load .env via phpdotenv (Dotenv class available because vendor/autoload.php was loaded above).
+// createImmutable(): reads $_ENV/$_SERVER but does not call putenv(), so the test bootstrap's
+// createMutable() pre-population of $_ENV is not overwritten.
 $dotenv = \Dotenv\Dotenv::createImmutable($abs_us_root . $us_url_root);
 $dotenv->safeLoad();
 try {
