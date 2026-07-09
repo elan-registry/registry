@@ -447,6 +447,21 @@ final class ElanRegistryInputTest extends TestCase
         $this->assertFalse(Input::existsPost('missing'));
     }
 
+    /**
+     * existsPost('key') returns false when the key is present but its value is null.
+     *
+     * isset() returns false for null values. This differs from the no-key form:
+     * existsPost() (no key) would return true because $_POST is non-empty,
+     * while existsPost('x') returns false because isset($_POST['x']) is false.
+     * PHP HTTP superglobals never hold null in practice, but this documents the invariant.
+     */
+    #[Group('fast')]
+    public function test_existsPost_with_key_returns_false_when_key_is_null(): void
+    {
+        $_POST = ['x' => null];
+        $this->assertFalse(Input::existsPost('x'));
+    }
+
     // -------------------------------------------------------------------------
     // existsGet() presence checks (issue #867)
     // -------------------------------------------------------------------------
@@ -489,6 +504,21 @@ final class ElanRegistryInputTest extends TestCase
     {
         $_GET = [];
         $this->assertFalse(Input::existsGet('missing'));
+    }
+
+    /**
+     * existsGet('key') returns false when the key is present but its value is null.
+     *
+     * isset() returns false for null values. This differs from the no-key form:
+     * existsGet() (no key) would return true because $_GET is non-empty,
+     * while existsGet('x') returns false because isset($_GET['x']) is false.
+     * PHP HTTP superglobals never hold null in practice, but this documents the invariant.
+     */
+    #[Group('fast')]
+    public function test_existsGet_with_key_returns_false_when_key_is_null(): void
+    {
+        $_GET = ['x' => null];
+        $this->assertFalse(Input::existsGet('x'));
     }
 
     // -------------------------------------------------------------------------
