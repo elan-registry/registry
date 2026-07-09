@@ -560,7 +560,7 @@ final class CarValidatorTest extends TestCase
     public function testValidateAndSanitizeFieldsReturnsFullSanitizedArray(): void
     {
         $fields = [
-            'chassis' => '1234A',
+            'chassis' => '1234A', // 1970 legacy 5-char format: 4 numeric digits + Elan suffix 'A' (valid letter code)
             'model' => 'S4|FHC|36', // Valid in mock CarModel
             'year' => '1970',
             'email' => 'owner@example.com',
