@@ -307,4 +307,76 @@ class OwnerIntegrationTest extends IntegrationTestCase
             $this->db->query("DELETE FROM profiles WHERE user_id = ?", [$userId]);
         }
     }
+
+    // -------------------------------------------------------------------------
+    // city/state/country length cap raised from 50 → 100 (issue #1233 fix 1)
+    // -------------------------------------------------------------------------
+
+    public function testCityAccepts75CharValue(): void
+    {
+        // 75-char value is well within the 100-char cap — must pass through unchanged
+        $city = str_repeat('x', 75);
+        $result = $this->callValidateAndSanitize(['city' => $city]);
+        $this->assertSame($city, $result['city']);
+    }
+
+    public function testCityAccepts100CharValue(): void
+    {
+        // Exactly at the new cap of 100 chars — must pass through unchanged
+        $city = str_repeat('x', 100);
+        $result = $this->callValidateAndSanitize(['city' => $city]);
+        $this->assertSame(100, strlen($result['city']));
+    }
+
+    public function testCityTruncatesAt100Chars(): void
+    {
+        // 101-char value exceeds the cap and must be truncated to exactly 100 chars
+        $city = str_repeat('x', 101);
+        $result = $this->callValidateAndSanitize(['city' => $city]);
+        $this->assertSame(100, strlen($result['city']));
+    }
+
+    // -------------------------------------------------------------------------
+    // validateRequiredFields() '0' acceptance (issue #1233 fix 3)
+    // -------------------------------------------------------------------------
+
+    /**
+     * @param array<string, string> $fields
+     * @param list<string>          $required
+     */
+    private function callValidateRequiredFields(array $fields, array $required): void
+    {
+        $owner = new Owner();
+        $method = new \ReflectionMethod($owner, 'validateRequiredFields');
+        $method->invoke($owner, $fields, $required);
+    }
+
+    public function testRequiredFieldAcceptsZeroString(): void
+    {
+        // '0' is a legitimate value — trim((string)'0') === '' is false, so no exception
+        $this->callValidateRequiredFields(
+            ['fname' => '0', 'lname' => '0', 'email' => 'test@example.com'],
+            ['fname', 'lname', 'email']
+        );
+        // If we reach here, no exception was thrown — that is the assertion
+        $this->assertTrue(true);
+    }
+
+    public function testRequiredFieldRejectsEmptyString(): void
+    {
+        $this->expectException(\ElanRegistry\Exceptions\OwnerValidationException::class);
+        $this->callValidateRequiredFields(
+            ['fname' => '', 'lname' => 'Smith', 'email' => 'test@example.com'],
+            ['fname', 'lname', 'email']
+        );
+    }
+
+    public function testRequiredFieldRejectsWhitespaceOnly(): void
+    {
+        $this->expectException(\ElanRegistry\Exceptions\OwnerValidationException::class);
+        $this->callValidateRequiredFields(
+            ['fname' => '   ', 'lname' => 'Smith', 'email' => 'test@example.com'],
+            ['fname', 'lname', 'email']
+        );
+    }
 }

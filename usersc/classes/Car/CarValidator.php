@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace ElanRegistry\Car;
 
 use DateTime;
+use ElanRegistry\ChassisValidator;
 use ElanRegistry\Exceptions\CarValidationException;
 use ElanRegistry\InputSanitizer;
 use ElanRegistry\Reference\CarModel;
@@ -29,12 +30,12 @@ class CarValidator
      * @param array<string, mixed> $fields Fields to validate
      * @param array<string> $requiredFields List of required field names
      * @return void
-     * @throws CarValidationException If any required field is missing or empty
+     * @throws CarValidationException If any required field is absent, empty, or whitespace-only
      */
     public function validateRequiredFields(array $fields, array $requiredFields): void
     {
         foreach ($requiredFields as $field) {
-            if (!isset($fields[$field]) || empty(trim((string) $fields[$field]))) {
+            if (!isset($fields[$field]) || trim((string)$fields[$field]) === '') {
                 throw new CarValidationException("Required field '{$field}' is missing or empty");
             }
         }
@@ -57,7 +58,15 @@ class CarValidator
                 case 'chassis':
                     if (!empty($value)) {
                         $validatedFields[$key] = InputSanitizer::normalize($value, 50);
-                        if (strlen($validatedFields[$key]) < 3) {
+                        $year  = (int)($fields['year'] ?? 0);
+                        $model = (string)($fields['model'] ?? '');
+                        if ($year > 0 && $model !== '') {
+                            $allowOverride = (isset($fields['chassis_override']) && (int)$fields['chassis_override'] === 1);
+                            $result = (new ChassisValidator())->validate($validatedFields[$key], $year, $model, $allowOverride);
+                            if (!$result['valid']) {
+                                throw new CarValidationException('Chassis validation failed: ' . ($result['error_reason'] ?: 'format check failed'));
+                            }
+                        } elseif (strlen($validatedFields[$key]) < 3) {
                             throw new CarValidationException('Chassis number must be at least 3 characters long');
                         }
                     } elseif ($requireAll) {
@@ -217,7 +226,10 @@ class CarValidator
                     break;
 
                 default:
-                    $validatedFields[$key] = $value;
+                    // Explicit check — !empty() would drop legitimate falsy values like '0' or 0
+                    if ($value !== null && $value !== '') {
+                        $validatedFields[$key] = $value;
+                    }
                     break;
             }
         }
