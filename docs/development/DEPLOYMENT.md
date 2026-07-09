@@ -213,9 +213,38 @@ git commit --no-verify           # Bypass (emergency only)
    - GitHub: `git push origin main && git push origin --tags`
    - Test: `git push test main && git push test --tags` (hook updates VERSION)
    - Production: `git push prod main && git push prod --tags` (hook updates VERSION)
-4. **Verify deployment** by checking version display matches git tag on
+4. **Run database migrations** (see below)
+5. **Verify deployment** by checking version display matches git tag on
    production site
-5. **Complete post-deployment verification** (see checklist below)
+6. **Complete post-deployment verification** (see checklist below)
+
+### Database Migrations
+
+After every deployment, run pending migrations:
+
+```bash
+# 1. Verify no orphaned rows that would block the FK migration
+#    (must return 0 before applying for the first time)
+# SELECT COUNT(*) FROM car_transfer_requests WHERE existing_car_id NOT IN (SELECT id FROM cars);
+
+composer install --no-dev --optimize-autoloader   # ensure vendor/ is up to date
+composer migrate:status                            # preview what will run
+composer migrate:dry-run                           # confirm SQL before applying
+composer migrate                                   # apply pending migrations
+```
+
+**If a migration fails:** The runner stops at the failed migration and exits non-zero. Fix the migration file
+and redeploy — Phinx retries only the failed migration (already-applied ones are skipped).
+
+**Check migration status at any time:**
+
+```bash
+composer migrate:status   # list pending and applied migrations
+```
+
+**Automated deployment:** Once issue #1254 (hook self-update + composer install in prod hook) is merged,
+migrations run automatically on every `git push prod main`. Until then, run the steps above manually after
+each push.
 
 ### Git & Version Control
 

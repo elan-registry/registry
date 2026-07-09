@@ -3,7 +3,8 @@
     "description": "Lotus Elan Registry",
     "type": "project",
     "require": {
-        "php": ">=8.2.29"
+        "php": ">=8.2.29",
+        "robmorgan/phinx": "^0.16.12"
     },
     "authors": [
         {
@@ -23,6 +24,11 @@
         "phpunit/phpunit": "^12.0",
         "phpstan/phpstan": "^2.1"
     },
+    "config": {
+        "platform": {
+            "php": "8.3.0"
+        }
+    },
     "scripts": {
         "_comment": "Unit tests (mocks, no database) vs Integration tests (real database)",
         "test:quick": "@php vendor/phpunit/phpunit/phpunit -c phpunit-unit.xml --testsuite=Unit",
@@ -41,6 +47,10 @@
         "test:fast": "@php vendor/phpunit/phpunit/phpunit -c phpunit-unit.xml --group=fast",
         "test:slow": "@php vendor/phpunit/phpunit/phpunit -c phpunit-unit.xml --group=slow",
         "check": "php scripts/check-coding-standards.php . && vendor/bin/phpstan analyse --no-progress --memory-limit=512M && npx eslint app/assets/js/",
-        "check:php": "php scripts/check-coding-standards.php . && vendor/bin/phpstan analyse --no-progress --memory-limit=512M"
+        "check:php": "php scripts/check-coding-standards.php . && vendor/bin/phpstan analyse --no-progress --memory-limit=512M",
+        "migrate": "vendor/bin/phinx migrate",
+        "migrate:status": "vendor/bin/phinx status",
+        "migrate:dry-run": "vendor/bin/phinx migrate --dry-run",
+        "migrate:rollback": "vendor/bin/phinx rollback"
     }
 }

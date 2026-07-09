@@ -38,6 +38,10 @@ Header always set Referrer-Policy "strict-origin-when-cross-origin"
     Require all denied
 </Files>
 
+<Files "phinx.php">
+    Require all denied
+</Files>
+
 # Block access to sensitive directories using RewriteRule
 RewriteEngine On
 

@@ -3,6 +3,12 @@
 This document provides comprehensive guidelines for creating database
 maintenance and one-time fix scripts for the Lotus Elan Registry.
 
+> **Schema migrations now use Phinx.** One-time schema changes (DDL, FK
+> constraints, column changes) belong in `database/migrations/` — not as FIX
+> scripts. See [`database/migrations/README.md`](../../database/migrations/README.md)
+> for how to create a Phinx migration. FIX scripts remain appropriate for admin
+> utility tasks that require human judgment to run.
+
 ## Overview
 
 Admin scripts are standardized PHP utilities used for database maintenance and

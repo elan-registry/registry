@@ -233,6 +233,22 @@ id=5, years=1971-1974, series="S4", variant="FHC", type_code="36", model_value="
 | `script_name` | `varchar(255)` | Name of FIX script executed |
 | `run_date` | `timestamp` | Execution timestamp |
 
+#### `phinxlog` - Phinx migration tracking
+
+Phinx's own tracking table. It stores one row per applied migration, recording
+the migration version, name, and start/end timestamps. Phinx creates and
+maintains this table automatically; **do not modify it manually.** Schema
+migrations live in `database/migrations/` — see
+[`database/migrations/README.md`](../../database/migrations/README.md).
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `version` | `bigint` | Migration version (the `YYYYMMDDHHMMSS` timestamp prefix) |
+| `migration_name` | `varchar(100)` | Migration class name |
+| `start_time` | `timestamp` | When the migration started |
+| `end_time` | `timestamp` | When the migration completed |
+| `breakpoint` | `tinyint(1)` | Rollback breakpoint flag |
+
 ## Database Relationships
 
 ### Primary Relationships
@@ -243,6 +259,19 @@ id=5, years=1971-1974, series="S4", variant="FHC", type_code="36", model_value="
   (`users.id` → `cars.user_id`)
 - **Users ↔ Cars**: Many-to-many sharing via `car_user` junction table
 - **Cars → History**: One-to-many audit trail (`cars.id` → `cars_hist.car_id`)
+
+### Enforced Foreign Key Constraints
+
+The following foreign keys are enforced at the database level. They were added
+by the Phinx migration
+`database/migrations/20260709202522_add_foreign_key_constraints.php`.
+
+- `cars.user_id → users.id` **ON DELETE SET NULL** (constraint
+  `fk_cars_user_id`) — deleting a user leaves the car record intact with a
+  null owner rather than deleting the car.
+- `car_transfer_requests.existing_car_id → cars.id` **ON DELETE CASCADE**
+  (constraint `fk_transfer_existing_car`) — deleting a car removes its
+  associated transfer requests.
 
 ### Data Access Patterns
 

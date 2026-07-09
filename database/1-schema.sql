@@ -193,7 +193,7 @@ CREATE TABLE `car_transfer_requests` (
   `request_date` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
   `status` enum('pending','approved','denied','completed','expired') NOT NULL DEFAULT 'pending',
   `security_token` varchar(64) NOT NULL,
-  `expires_at` timestamp NOT NULL DEFAULT '0000-00-00 00:00:00',
+  `expires_at` timestamp NULL DEFAULT NULL,
   `admin_notes` text,
   `current_owner_response_date` timestamp NULL DEFAULT NULL,
   `completed_date` timestamp NULL DEFAULT NULL,
@@ -450,6 +450,14 @@ DELIMITER ;
 ALTER TABLE `car_transfer_requests`
   ADD CONSTRAINT `fk_transfer_created_by` FOREIGN KEY (`created_by`) REFERENCES `users` (`id`) ON DELETE CASCADE,
   ADD CONSTRAINT `fk_transfer_requested_by` FOREIGN KEY (`requested_by_user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE;
+
+ALTER TABLE `cars`
+  ADD CONSTRAINT `fk_cars_user_id`
+  FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE SET NULL;
+
+ALTER TABLE `car_transfer_requests`
+  ADD CONSTRAINT `fk_transfer_existing_car`
+  FOREIGN KEY (`existing_car_id`) REFERENCES `cars` (`id`) ON DELETE CASCADE;
 
 -- =============================================================================
 -- FINALIZE
