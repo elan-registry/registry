@@ -95,12 +95,7 @@ edge caching and CDN for global users (US, EU, AU).
 **Template Architecture:**
 
 - Active template: `/usersc/templates/customizer/` with `elanregistry` child theme (Bootstrap 5.3.3)
-- US6 reference templates: `journal/` (BS5.2) and `customizer/` (BS5.3) — use
-  as patterns for migration
-- UserSpice 6 admin uses its own template — independent of ElanRegistry template
 - jQuery is a UserSpice 6 dependency (`users/js/jquery.php`) — cannot be removed
-- Frontend libraries vendored to `usersc/js/` and `usersc/css/` (ADR-015);
-  Bootstrap 5.3.3 loaded via Customizer `header.php` (self-hosted); jQuery via `users/js/jquery.php` (CDN, UserSpice-managed)
 - ADRs: `docs/development/adr/` — update ADR-015 when changing frontend dependencies, ADR-016 for nav changes, ADR-007 for CSP changes
 
 **Template Customization Rules:**
@@ -169,61 +164,28 @@ Run `./scripts/setup-git-hooks.sh` once per developer. Bypass with `git commit -
 
 ## Essential Development Guidelines
 
-### PHP 8+ Requirements
-
-- All functions must have complete parameter and return type hints
-- New files must include `declare(strict_types=1)`
-- Use typed exception classes for error handling
-- Complete PHPDoc blocks required for all public methods
-- See [CODING_STANDARDS.md](docs/development/CODING_STANDARDS.md) for full details
-
-### UserSpice Framework
-
-Before implementing custom functionality, check
-`docs/development/USERSPICE_FUNCTIONS.md` for existing UserSpice functions that
-may already provide the needed capability. Avoid duplicating framework
-functionality. Key areas: authentication, permissions, database operations,
-input handling, session management, CSRF protection, and email.
-
-### Security Requirements
-
-- All forms must use CSRF tokens
-- Use prepared statements for all SQL queries
-- Input validation and sanitization for all user inputs
-- Use environment variables for sensitive configuration
+See [CODING_STANDARDS.md](docs/development/CODING_STANDARDS.md) for PHP 8+ type requirements, security standards, and PHPDoc.
+Check [USERSPICE_FUNCTIONS.md](docs/development/USERSPICE_FUNCTIONS.md) before building custom solutions — UserSpice likely has it already.
 
 ### Error Handling
 
-Use centralized error handling with typed exceptions, LogCategories constants,
-and ApiResponse for AJAX endpoints.
-See [ERROR_HANDLING.md](docs/development/ERROR_HANDLING.md) for patterns.
+Typed exceptions (extend `ElanRegistryException`), `LogCategories` constants for all `logger()` calls, `ApiResponse`
+for all AJAX endpoints. See [ERROR_HANDLING.md](docs/development/ERROR_HANDLING.md).
 
-### Input/Output Encoding (v2.23.0+)
+### Input/Output Encoding
 
-Use `ElanRegistry\Input::raw()` for DB storage (never `\Input::get()` — it pre-encodes and
-causes double-encoding). Apply `htmlspecialchars($value, ENT_QUOTES, 'UTF-8')` at the render
-layer only. See [CODING_STANDARDS.md](docs/development/CODING_STANDARDS.md) for full details.
+Use `ElanRegistry\Input::raw()` for DB storage (never `\Input::get()` — it pre-encodes and causes double-encoding).
+Apply `htmlspecialchars()` at the render layer only.
 
-### Frontend API Client (Pattern A - v2.12.0+)
+### Frontend API Client (Pattern A)
 
-All new AJAX endpoints must use `ElanRegistryAPI` client with Pattern A
-response format (`{success, message, ...}`). Available globally via `footer.php`.
-See [ERROR_HANDLING.md](docs/development/ERROR_HANDLING.md) for usage patterns
-and migration guide from jQuery.ajax().
+All AJAX endpoints use `ApiResponse` (PHP) + `ElanRegistryAPI` (JS) in Pattern A format (`{success, message, ...}`). See [ERROR_HANDLING.md](docs/development/ERROR_HANDLING.md).
 
-### Server Environment Globals (v2.13.0+)
+### Server Environment Globals
 
-Use validated server globals instead of direct `$_SERVER` access. Initialized
-in `usersc/includes/server_globals.php` and available on every page after
-`init.php`.
-
-**Available globals:** `$scheme`, `$is_https`, `$host`, `$method`,
-`$request_uri`, `$current_url`, `$current_origin`, `$php_self`,
-`$remote_addr`, `$referer`, `$user_agent`
-
-**Never use raw `$_SERVER`** — use the globals above instead.
-See [PAGE_LOADING_FLOW.md](docs/development/PAGE_LOADING_FLOW.md) for full
-details and usage examples.
+Never use `$_SERVER` directly. Validated globals (`$php_self`, `$is_https`, `$host`, `$method`, `$request_uri`,
+`$current_url`, `$current_origin`, `$remote_addr`, `$referer`, `$user_agent`) are initialized in
+`usersc/includes/server_globals.php`. See [PAGE_LOADING_FLOW.md](docs/development/PAGE_LOADING_FLOW.md).
 
 ### Code Quality
 
@@ -246,10 +208,9 @@ Run `npm run test:e2e` to verify public pages against production. See `playwrigh
 
 ### Security Scanning (Semgrep)
 
-Semgrep runs automatically on every PR (GitHub App Managed Scan). New findings
-fail the `semgrep-cloud-platform/scan` check. Periodic triage keeps the
-dashboard clean — see [QUICK_REFERENCE.md](docs/development/QUICK_REFERENCE.md#security-scanning-semgrep)
-for the triage workflow, API commands, and known false positive patterns.
+Semgrep runs automatically on every PR (GitHub App Managed Scan). New findings fail the `semgrep-cloud-platform/scan`
+check. See [QUICK_REFERENCE.md](docs/development/QUICK_REFERENCE.md#security-scanning-semgrep) for triage workflow
+and known false positive patterns.
 
 ## Developer Workflow
 

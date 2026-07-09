@@ -1,118 +1,16 @@
 # Coding Standards for Elan Registry
 
-**Version:** 1.0  
-**Updated:** September 7, 2025  
-**Target:** PHP 8.2+, Modern Web Standards
+**Updated:** September 7, 2025 | **Target:** PHP 8.2+
 
 ---
 
-## 📋 **Table of Contents**
+## PHP 8+ Requirements
 
-- [🎯 Overview](#overview)
-- [🔧 PHP 8+ Requirements](#php-8-requirements)
-- [🏗️ Code Architecture](#code-architecture)
-- [🛡️ Security Standards](#security-standards)
-- [📝 Documentation Standards](#documentation-standards)
-- [📂 File Organization](#file-organization)
-- [🚀 Performance Guidelines](#performance-guidelines)
-- [✅ Code Review Checklist](#code-review-checklist)
+All new files require `declare(strict_types=1)`, full type hints on all parameters/returns/properties, typed exceptions, and PHPDoc on all public methods.
 
----
+### Strict Type Safety with Database Values
 
-## 🎯 **Overview**
-
-This document establishes coding standards for the Elan Registry PHP web
-application to ensure consistency, maintainability, and security across
-the codebase.
-
-### **Core Principles**
-
-- **Security First**: All code must follow secure coding practices
-
-- **Type Safety**: Leverage PHP 8+ type system for better error prevention
-- **Consistency**: Uniform code style across all files  
-
-- **Documentation**: Comprehensive inline and external documentation
-- **Performance**: Optimize for both development and runtime efficiency
-
----
-
-## 🔧 **PHP 8+ Requirements**
-
-### **Strict Typing Declaration**
-
-All new PHP files **MUST** include strict typing:
-
-```php
-<?php
-
-declare(strict_types=1);
-
-/**
- * Class or file description
- */
-
-```text
-
-### **Type Declarations**
-
-#### **Function Parameters and Return Types**
-All functions **MUST** have complete type declarations:
-
-```php
-// ✅ REQUIRED - Complete type declarations
-public function updateCar(array $data, int $userId): bool
-{
-    // Implementation
-}
-
-private function validateInput(string $value, int $maxLength = 100): string
-{
-    // Implementation
-}
-
-// ❌ PROHIBITED - Missing type declarations
-public function updateCar($data, $userId)
-{
-    // Legacy style - not allowed in new code
-}
-
-```text
-
-#### **Property Type Declarations**
-Class properties **MUST** be typed:
-
-```php
-class Car
-{
-    private string $tableName = 'cars';
-    private int $id;
-    private ?string $chassis = null;
-    private array $allowedColumns = [];
-    private readonly string $imageDir;
-}
-
-```text
-
-#### **Union Types and Nullable Types**
-Use modern PHP 8+ type features:
-
-```php
-// Union types
-private function processValue(string|int $value): bool
-
-// Nullable types  
-private function findUser(int $id): ?User
-
-// Mixed type (use sparingly)
-private function handleLegacyData(mixed $data): array
-
-```text
-
-#### **Strict Type Safety with Database Values**
-
-⚠️ **CRITICAL**: When using `declare(strict_types=1)`, database INTEGER colum
-ns may be returned as strings depending on PHP/MySQL configuration.
+⚠️ **CRITICAL**: When using `declare(strict_types=1)`, database INTEGER columns may be returned as strings depending on PHP/MySQL configuration.
 
 **Always cast database values explicitly when passing to strict-typed parameters:**
 
@@ -125,183 +23,55 @@ $count = (int)$result->first()->total;
 // ❌ WRONG - Missing cast in strict mode
 $backupManager = new BackupManager($db, $backupDir, $user->data()->id);
 // TypeError: Argument #3 ($userId) must be of type ?int, string given
-
-```text
-
-**Common database value casts:**
-
-```php
-// Integer columns
-$userId = (int)$user->data()->id;
-$carId = (int)$row->car_id;
-$count = (int)$result->count;
-
-// Boolean columns (TINYINT)
-$isActive = (bool)$row->active;
-$isAdmin = (bool)$row->is_admin;
-
-// Float/Decimal columns
-$price = (float)$row->price;
-$latitude = (float)$row->lat;
-
-// Nullable integers
-$optionalId = $row->optional_id ? (int)$row->optional_id : null;
-
-```text
-
-**Type helper functions (preferred for object properties):**
-
-```php
-// Extract int from database result object — throws on invalid input
-$userId = dbInt($carData, 'user_id');
-$carId = dbInt($row, 'id');
-
-// Current user ID shorthand — throws RuntimeException if not logged in
-$adminId = currentUserId();
 ```
 
-These helpers are defined in `usersc/includes/custom_functions.php`.
-Use `dbInt()` when extracting integer properties from PDO result objects.
-Use direct `(int)` casts for simple scalar conversions.
-
-```text
-
-**Why this is necessary:**
+**Common casts:**
 
 ```php
-// PDO/mysqli behavior varies by configuration:
-// - PHP 8.3.14 (dev): Returns int from INT columns
-// - PHP 8.2.29 (test): Returns string from INT columns
-//
-// With declare(strict_types=1), string ≠ int
-// Solution: Always cast explicitly for cross-environment compatibility
+$userId = (int)$user->data()->id;   // integer columns
+$isActive = (bool)$row->active;     // TINYINT boolean
+$optionalId = $row->optional_id ? (int)$row->optional_id : null;
+```
 
-```text
+**Type helper functions** (preferred for object properties):
+
+```php
+$userId = dbInt($carData, 'user_id');  // throws on invalid input
+$adminId = currentUserId();            // throws RuntimeException if not logged in
+```
+
+Defined in `usersc/includes/custom_functions.php`. Use `dbInt()` for PDO result objects; use `(int)` for simple scalars.
+
+**Why**: PDO returns INT columns as strings on PHP 8.2/test but as int on PHP 8.3/dev. With strict types, `string ≠ int` — always cast explicitly.
 
 **See also:** `/docs/development/STRICT_TYPE_HANDLING.md` for comprehensive strategy.
 
-### **Modern PHP Features**
-
-#### **Constructor Property Promotion**
-Use constructor property promotion where appropriate:
-
-```php
-// ✅ PREFERRED - Constructor promotion
-class CarValidator
-{
-    public function __construct(
-        private readonly DatabaseInterface $db,
-        private readonly LoggerInterface $logger,
-        private array $rules = []
-    ) {}
-}
-
-// ❌ LEGACY - Verbose constructor
-class CarValidator
-{
-    private $db;
-    private $logger;
-  
-    public function __construct(DatabaseInterface $db, LoggerInterface $logger)
-    {
-        $this->db = $db;
-        $this->logger = $logger;
-    }
-}
-
-```text
-
-#### **Named Arguments**
-Design methods to support named arguments:
-
-```php
-// ✅ GOOD - Named argument friendly
-public function resizeImage(
-    string $filepath,
-    int $width,
-    int $height,
-    string $mode = 'auto',
-    int $quality = 85
-): bool
-
-// Usage with named arguments
-$resize->resizeImage(
-    filepath: $image,
-    width: 800,
-    height: 600,
-    quality: 90
-);
-
-```text
-
 ---
 
-## 🏗️ **Code Architecture**
+## Code Architecture
 
-### **Exception Handling**
+### Exception Handling
 
-All exceptions **MUST** extend `ElanRegistryException` base class (26 domain-specific types). Each exception carries an HTTP status code, log category, and separate technical/user-friendly messages.
+All exceptions extend `ElanRegistryException` (26 domain types). Never throw generic `Exception`. Each carries
+an HTTP status code, log category, and separate technical/user-facing messages.
+See [ERROR_HANDLING.md](ERROR_HANDLING.md#exception-hierarchy).
 
-**Key rules:**
+- All AJAX endpoints **MUST** use `ApiResponse` — factory methods: `success()`, `error()`, `validationError()`,
+  `unauthorized()`, `forbidden()`, `notFound()`, `serverError()`. See [ERROR_HANDLING.md](ERROR_HANDLING.md#backend-error-handling).
+- All `logger()` calls **MUST** use `LogCategories` constants (never hardcoded strings).
+  Discover: `grep "const LOG_CATEGORY" usersc/classes/LogCategories.php`
 
-- Never throw generic `Exception` - use typed exceptions (e.g., `CarValidationException`, `CarCreationException`)
-- Domain base classes group related exceptions (e.g., `CarException` for all car operations)
-- Separate technical messages (for logs) from user-safe messages (for UI)
-- Catch with domain base class (e.g., `CarException`) or `ElanRegistryException` as fallback after specific types
+### Method Naming
 
-**See [ERROR_HANDLING.md](ERROR_HANDLING.md#exception-hierarchy)** for the complete exception hierarchy table, usage patterns, and migration guide.
-
-### **Error Handling Patterns**
-
-#### **API Response Requirements** (MANDATORY for AJAX endpoints)
-
-All AJAX endpoints **MUST** return Pattern A format via `ApiResponse` class with logging.
-
-**Factory Methods**: `success()`, `error()`, `validationError()`, `unauthorized()`, `forbidden()`, `notFound()`, `serverError()`.
-
-See [ERROR_HANDLING.md](ERROR_HANDLING.md#backend-error-handling) for complete examples and usage patterns.
-
-#### **Log Category Requirements** (MANDATORY)
-
-All `logger()` calls **MUST** use LogCategories constants (never hardcoded strings).
-
-**Discovery**: `grep "const LOG_CATEGORY" usersc/classes/LogCategories.php`
-
-See [LOG_CATEGORIES.md](LOG_CATEGORIES.md) and [ERROR_HANDLING.md](ERROR_HANDLING.md#logcategories) for complete reference.
-
-### **Method Naming and Structure**
-
-**Conventions**:
 - **Verbs**: `create()`, `update()`, `delete()`, `validate()`
 - **Boolean methods**: `exists()`, `isValid()`, `hasPermission()`
 - **Getters**: `data()`, `images()`, `history()` (not `getData()`)
 
 ---
 
-## 🛡️ **Security Standards**
+## Security Standards
 
-### **Input Validation**
-All user input **MUST** be validated and sanitized:
-
-```php
-use ElanRegistry\Input;
-
-public function updateColor(array &$cardetails): void
-{
-    $color = Input::raw('color');
-
-    // ✅ REQUIRED - Validate input
-    if (empty($color) || strlen($color) > 50) {
-        throw new ValidationException('Invalid color value');
-    }
-
-    // Store plain text; escape at output with htmlspecialchars()
-    $cardetails['color'] = $color;
-}
-
-```
-
-### **Input Handling and Output Encoding**
+### Input Handling and Output Encoding
 
 Store plain text via `Input::raw()`; escape at the **output** context (templates, email).
 
@@ -324,408 +94,82 @@ $cardetails['color'] = htmlspecialchars($color, ENT_QUOTES, 'UTF-8');
 - Parameterised queries handle SQL safety; encoding at storage is never a SQL defence
 - `Input::raw()` second parameter is a **trim flag** (`bool $trim`), not a default value — use `Input::raw('field') ?? 'fallback'` to supply a default
 
-### **Database Operations**
+### Database Operations
 
-Always use parameterized queries:
-
-```php
-// ✅ REQUIRED - Parameterized queries
-public function findByChassis(string $chassis): ?array
-{
-    $query = $this->db->query(
-        'SELECT * FROM cars WHERE chassis = ? LIMIT 1',
-        [$chassis]
-    );
-  
-    return $query->first() ?: null;
-}
-
-// ❌ PROHIBITED - String concatenation
-public function findByChassis(string $chassis): ?array
-{
-    // NEVER DO THIS - SQL injection vulnerability
-    $query = "SELECT * FROM cars WHERE chassis = '{$chassis}'";
-    return $this->db->query($query);
-}
-
-```text
-
-### **CSRF Protection**
-All forms **MUST** include CSRF tokens:
+Always use parameterized queries — never string concatenation:
 
 ```php
-// ✅ REQUIRED - CSRF validation
-if (!empty($_POST)) {
-    $token = Input::get('csrf');
-    if (!Token::check($token)) {
-        throw new SecurityException('Invalid CSRF token');
-    }
-  
-    // Process form data
-}
+// ✅ Parameterized
+$query = $this->db->query('SELECT * FROM cars WHERE chassis = ? LIMIT 1', [$chassis]);
 
-```text
-
-### **File Upload Security**
-Implement comprehensive file validation:
-
-```php
-public function validateFileUpload(array $file): void
-{
-    // Required validations
-    if ($file['error'] !== UPLOAD_ERR_OK) {
-        throw new FileUploadException("Upload error: {$file['error']}");
-    }
-
-    // Size validation
-    if ($file['size'] > self::MAX_FILE_SIZE) {
-        throw new FileUploadException('File too large');
-    }
-
-    // MIME type validation
-    $mimeType = $this->getMimeType($file['tmp_name']);
-    if (!in_array($mimeType, self::ALLOWED_MIME_TYPES)) {
-        throw new FileUploadException("Invalid file type: {$mimeType}");
-    }
-
-    // Verify upload integrity
-    if (!is_uploaded_file($file['tmp_name'])) {
-        throw new FileUploadException('Invalid file upload');
-    }
-}
-
-```text
-
-### **Error Logging Standards**
-
-**CRITICAL:** All error conditions MUST use UserSpice `logger()` function for centralized visibility and audit trails in the admin panel. Never use PHP `error_log()` in application code.
-
-#### **When to Use logger()**
-
-Use the `logger()` function for **all** error conditions in the application (web context):
-
-```php
-// ✅ REQUIRED - Use logger() for error conditions
-try {
-    $result = riskyOperation();
-} catch (Exception $e) {
-    logger(
-        $user->data()->id ?? 0,
-        LogCategories::LOG_CATEGORY_SYSTEM_ERROR,
-        'Operation failed: ' . $e->getMessage()
-    );
-    throw new OperationException('User-friendly message');
-}
-
-// ✅ REQUIRED - Use logger() for validation errors
-if (empty($requiredField)) {
-    logger(
-        $user->data()->id ?? 0,
-        LogCategories::LOG_CATEGORY_VALIDATION_ERROR,
-        'Required field missing: fieldName'
-    );
-    throw new ValidationException('Field is required');
-}
-
-// ❌ PROHIBITED - Never use error_log() in web context
-error_log("Error: " . $e->getMessage());  // Don't do this!
-
-```text
-
-#### **LogCategories Constants**
-
-All `logger()` calls **MUST** use standardized constants from the `LogCategories` class. Never use hardcoded strings.
-
-**Location:** `usersc/classes/LogCategories.php`
-
-**140+ categories organized by functional domain:**
-- Car Management (CarActions, CarCreation, CarUpdate, CarDeletion, CarTransfer, etc.)
-- User/Owner Management (OwnerActions, UserDeletion, UserCreation, etc.)
-- Authentication (Login, LoginFail, PasswordReset, etc.)
-- Database Operations (DatabaseError, DatabaseMaintenance, BackupManager, etc.)
-- Email/Communications (EmailSuccess, EmailError, etc.)
-- System & File Operations (SystemError, FileError, ValidationError, etc.)
-- Admin & Management (AdminVerification, SettingsUpdate, etc.)
-- And more functional domains
-
-```php
-// ✅ CORRECT - Use LogCategories constants
-logger($user->data()->id, LogCategories::LOG_CATEGORY_DATABASE_ERROR, 'Query failed');
-logger($user->data()->id, LogCategories::LOG_CATEGORY_CAR_CREATION, 'Car created successfully');
-logger($user->data()->id, LogCategories::LOG_CATEGORY_SYSTEM_ERROR, 'Backup failed');
-
-// ❌ INCORRECT - Never use hardcoded strings
-logger($user->data()->id, 'SystemError', 'message');  // Don't do this!
-
-```text
-
-**Discovery:** Find available constants:
-```bash
-grep "const LOG_CATEGORY" usersc/classes/LogCategories.php
+// ❌ Never do this
+$query = "SELECT * FROM cars WHERE chassis = '{$chassis}'";
 ```
 
-#### **Exception: CLI Scripts**
+### CSRF Protection
 
-The `error_log()` function is **allowed** in CLI scripts (scripts/ directory) that
-run outside the web context:
+All forms require a CSRF token. Validate with `Token::check(Input::get('csrf'))` before processing POST data.
 
-```php
-// ✅ ACCEPTABLE - CLI scripts may use error_log()
-// scripts/menu-sync.php
-if (!function_exists('logger')) {
-    error_log("Running outside web context");
-}
+### Error Logging Standards
 
-```text
-
-#### **User ID Handling**
-
-Use safe user ID handling in exception contexts:
+All error conditions in web context **MUST** use `logger()` — never `error_log()`.
+Use `$user->data()->id ?? 0` for the user ID. `error_log()` is allowed in CLI scripts only.
 
 ```php
-// ✅ CORRECT - Safe user ID extraction with fallback
-logger(
-    $user->data()->id ?? 0,
-    LogCategories::LOG_CATEGORY_SYSTEM_ERROR,
-    'Error message'
-);
+logger($user->data()->id ?? 0, LogCategories::LOG_CATEGORY_SYSTEM_ERROR, 'Operation failed: ' . $e->getMessage());
+```
 
-// Also acceptable when user availability varies
-logger(
-    $currentUserId ?? $user->data()->id ?? 0,
-    LogCategories::LOG_CATEGORY_DATABASE_ERROR,
-    'Database error'
-);
-
-```text
-
-#### **Complete Error Details**
-
-Provide comprehensive error information for debugging:
-
-```php
-// ✅ GOOD - Complete error context
-catch (Exception $e) {
-    $errorDetails = "Operation failed\n";
-    $errorDetails .= "Error: " . $e->getMessage() . "\n";
-    $errorDetails .= "File: " . $e->getFile() . " (Line " . $e->getLine() . ")\n";
-    $errorDetails .= "Stack trace:\n" . $e->getTraceAsString();
-
-    logger(
-        $user->data()->id ?? 0,
-        LogCategories::LOG_CATEGORY_SYSTEM_ERROR,
-        $errorDetails
-    );
-}
-
-```text
+All `logger()` calls **MUST** use `LogCategories` constants — never hardcoded strings. Discover available constants: `grep "const LOG_CATEGORY" usersc/classes/LogCategories.php`
 
 ---
 
-## 📝 **Documentation Standards**
+## Documentation Standards
 
-### **PHPDoc Requirements**
-All classes, methods, and properties **MUST** have PHPDoc blocks:
-
-```php
-/**
- * Car management class for the Lotus Elan Registry
- *
- * Handles car data operations including creation, updates, validation,
- * and relationship management with users and factory data.
- *
- * @author Elan Registry Development Team
- * @version 2.7.1
- * @since 1.0.0
- */
-class Car
-{
-    /**
-     * Maximum allowed chassis suffix length for validation
-     */
-    private const CHASSIS_SUFFIX_LENGTH = 5;
-  
-    /**
-     * Update car color with validation and audit trail
-     *
-     * Validates color input, sanitizes for safe storage, and creates
-     * an audit trail entry for the change.
-     *
-     * @param array $cardetails Car data array (passed by reference)
-     * @param string $newColor The new color value to set
-     * @return void
-     *
-     * @throws ValidationException If color value is invalid
-     * @throws DatabaseException If database update fails
-     *
-     * @example
-     * $car = new Car(123);
-     * $car->updateColor($data, 'British Racing Green');
-     */
-    public function updateColor(array &$cardetails, string $newColor): void
-    {
-        // Implementation
-    }
-}
-
-```text
-
-### **Inline Comments**
-Use inline comments for complex logic only:
-
-```php
-// ✅ GOOD - Complex business logic explanation
-// Apply EXIF orientation correction before resizing to ensure
-// mobile uploads display correctly while preserving privacy
-$correctedImage = $this->correctOrientation($filename, $image);
-
-// ❌ POOR - Obvious code explanation
-// Set the color variable
-$color = Input::get('color');
-
-```text
-
-### **TODO and FIXME Comments**
-Use structured TODO/FIXME comments:
-
-```php
-// TODO: Issue #278 - Add type declarations to legacy functions
-// FIXME: Issue #240 - Optimize database query performance
-// NOTE: This workaround addresses PHP 8.1 compatibility issue
-
-```text
+PHPDoc required on all classes and public methods: class summary, `@param`, `@return`, `@throws`.
+Comments on complex logic only — never explain what the code obviously does.
 
 ---
 
-## 📂 **File Organization**
+## File Organization
 
-### **Directory Structure**
+### File Naming
 
-For the authoritative directory structure, see [CLAUDE.md](../../CLAUDE.md) → Architecture Overview.
+- **Classes**: `PascalCase` — `Car.php`, `CarValidationException.php`, one class per file
+- **Scripts/pages**: `snake_case` — `edit_car.php`, `send_email.php`
+- **Partials**: `_partial-name.php`
 
-### **File Naming Conventions**
-
-#### **PHP Classes**
-- **PascalCase**: `Car.php`, `ImageProcessor.php`, `UserManager.php`
-
-- **One class per file**
-- **Descriptive names**: `CarValidationException.php` not `Exception.php`
-
-#### **Script Files**  
-- **snake_case**: `edit_car.php`, `send_email.php`
-
-- **Descriptive action names**: `validate-chassis.php` not `check.php`
-
-#### **Template Files**
-- **Purpose-based naming**: `car-details.php`, `user-profile.php`
-
-- **Consistent prefixes**: `_partial-name.php` for partials
-
-### **Class Organization**
-
-```php
-<?php
-
-declare(strict_types=1);
-
-/**
- * Class documentation
- */
-class ExampleClass
-{
-    // 1. Constants (public first, then private)
-    public const PUBLIC_CONSTANT = 'value';
-    private const PRIVATE_CONSTANT = 'value';
-  
-    // 2. Properties (public first, then protected, then private)
-    public string $publicProperty;
-    protected int $protectedProperty;
-    private array $privateProperty = [];
-  
-    // 3. Constructor
-    public function __construct() {}
-  
-    // 4. Public methods (alphabetical order preferred)
-    public function create(): bool {}
-    public function delete(): bool {}
-    public function update(): bool {}
-  
-    // 5. Protected methods
-    protected function validateInput(): void {}
-  
-    // 6. Private methods (alphabetical order preferred)
-    private function saveToDatabase(): bool {}
-    private function sendNotification(): void {}
-}
-
-```text
+See [CLAUDE.md](../../CLAUDE.md) for directory structure.
 
 ---
 
-## 🚀 **Performance Guidelines**
+## Code Review Checklist
 
-**Key principles**: Minimize database queries, cache results, process large datasets in chunks.
+### Security
 
-For detailed patterns and examples, see [QUICK_REFERENCE.md](QUICK_REFERENCE.md).
+- [ ] Input validated and sanitized at system boundaries
+- [ ] All DB queries parameterized
+- [ ] CSRF token validated on all POST handlers
+- [ ] No sensitive info in error messages or logs
+- [ ] `securePage($php_self)` present on protected pages
 
----
+### Code Quality
 
-## ✅ **Code Review Checklist**
+- [ ] `declare(strict_types=1)` present, full type hints on all signatures
+- [ ] DB integer values cast with `(int)` or `dbInt()` before passing to typed params
+- [ ] Typed exceptions extend `ElanRegistryException` (never generic `Exception`)
+- [ ] AJAX endpoints use `ApiResponse`
+- [ ] All `logger()` calls use `LogCategories` constants
+- [ ] User-facing and technical messages separated in exceptions
 
-### **Security Checklist**
-- [ ] All user input is validated and sanitized
+### Documentation
 
-- [ ] Database queries use parameterized statements  
-- [ ] CSRF tokens are validated on form submissions
-
-- [ ] File uploads include comprehensive validation
-- [ ] No sensitive information in error messages or logs
-
-- [ ] Authentication and authorization checks are present
-
-### **Code Quality Checklist**
-- [ ] All functions have complete type declarations
-
-- [ ] Strict typing is enabled (`declare(strict_types=1)`)
-- [ ] Typed exceptions extend ElanRegistryException (never generic Exception)
-
-- [ ] AJAX endpoints use ApiResponse (success/error/validationError/etc.)
-- [ ] All logger() calls use LogCategories constants (NO hardcoded strings)
-- [ ] User-friendly and technical messages separated in exceptions
-- [ ] Error handling follows established patterns
-- [ ] Code follows naming conventions
-
-- [ ] No code duplication (DRY principle)
-
-### **Documentation Checklist**
-- [ ] All classes have PHPDoc headers
-
-- [ ] All public methods have complete PHPDoc blocks
-- [ ] Complex logic has inline comments
-
-- [ ] TODO/FIXME comments reference specific issues
-- [ ] README or documentation updated if needed
-
-### **Performance Checklist**  
-- [ ] Database queries are optimized (no N+1 problems)
-
-- [ ] Expensive operations are cached when appropriate
-- [ ] Memory usage is considered for large datasets
-
-- [ ] File operations are optimized
-- [ ] No unnecessary object creation in loops
+- [ ] PHPDoc on all classes and public methods
+- [ ] Complex logic commented; obvious code is not
 
 ---
 
-## 📚 **References**
+## References
 
-- [ERROR_HANDLING.md](ERROR_HANDLING.md) - Comprehensive error handling guide
-  with patterns and migration strategies
-- [LOG_CATEGORIES.md](LOG_CATEGORIES.md) - Complete reference of 140+
-  standardized log categories
-- [PHP 8+ Type System Documentation](https://www.php.net/manual/en/language.types.declarations.php)
-- [PSR Standards](https://www.php-fig.org/psr/)
-
-- [UserSpice Framework Documentation](https://userspice.com/documentation/)
-- [OWASP Secure Coding Practices](https://owasp.org/www-project-secure-coding-practices-quick-reference-guide/)
-
+- [ERROR_HANDLING.md](ERROR_HANDLING.md) — ApiResponse, exception hierarchy, ElanRegistryAPI
+- [LOG_CATEGORIES.md](LOG_CATEGORIES.md) — 140+ standardized log category constants
+- [STRICT_TYPE_HANDLING.md](STRICT_TYPE_HANDLING.md) — DB value casting strategy

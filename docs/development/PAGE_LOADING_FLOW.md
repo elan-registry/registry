@@ -230,20 +230,6 @@ users/init.php
 
 **Key Classes Available After Phase 1:**
 
-**Server Environment Globals** (available after Phase 1.11.12):
-
-- `$scheme` - HTTP scheme detection ('http' or 'https')
-- `$is_https` - Boolean for quick HTTPS checks
-- `$host` - Validated hostname (from HTTP_HOST)
-- `$method` - HTTP request method (GET, POST, etc.)
-- `$request_uri` - Sanitized request URI (path + query)
-- `$current_url` - Full constructed URL (scheme://host/path?query)
-- `$current_origin` - Scheme + host for CORS and redirects
-- `$php_self` - Current script path (for securePage)
-- `$remote_addr` - Client IP address (for logging)
-- `$referer` - HTTP referer (sanitized, user-controlled)
-- `$user_agent` - User agent string (sanitized, max 512 chars)
-
 **UserSpice Core Classes** (auto-loaded via SPL autoloader from `users/classes/`):
 
 - `DB` - Database singleton with query builder
