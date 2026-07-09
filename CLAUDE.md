@@ -76,7 +76,7 @@ edge caching and CDN for global users (US, EU, AU).
   access to both. Always check the issue scope before defaulting to admin-only.
 - **Car Image Storage**: `cars.image` column is a JSON array of bare filenames
   (e.g. `["abc123.jpg"]`). Files live at `userimages/{carid}/{filename}` with
-  resized variants as `{basename}-resized-{size}.{ext}` (sizes: 100, 300, 600,
+  resized variants as `{basename}-resized-{size}.{ext}` (sizes: 100, 300, 768,
   1024, 2048). Unassigned images accumulate in `userimages/orphan/`.
   Use `CarImageProcessor` to decode; `CarRepository::updateImage()` to write.
 - **New PHP Directories**: Only add a directory to the `$path` array in
