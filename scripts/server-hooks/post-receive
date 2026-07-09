@@ -50,7 +50,7 @@ do
     cd "$WORK_TREE" || { echo "ERROR: cannot cd to WORK_TREE=$WORK_TREE — deployment halted."; exit 1; }
 
     # Generate VERSION file from latest matching tag
-    if ! git --git-dir=$GIT_DIR describe --tags $VERSION_EXCLUDE > VERSION 2>/dev/null; then
+    if ! git --git-dir="$GIT_DIR" describe --tags $VERSION_EXCLUDE > VERSION 2>/dev/null; then
         echo "WARNING: git describe failed (no matching tags?) — VERSION set to unknown."
         echo "unknown" > VERSION
     fi
@@ -66,7 +66,8 @@ do
     # Run pending database migrations BEFORE cleanup — .deployignore removes database/
     echo "Running database migrations..."
     php vendor/bin/phinx migrate -e default || {
-        echo "ERROR: Migration failed — deployment halted. Fix the migration and redeploy."
+        echo "ERROR: Migration failed — deployment halted. New code is deployed; schema is NOT migrated."
+        echo "       Check for site errors immediately. Fix the migration and redeploy."
         exit 1
     }
 

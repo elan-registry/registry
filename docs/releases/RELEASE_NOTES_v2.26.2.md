@@ -24,10 +24,8 @@
 
 ### After pushing
 
-3. Migrations and `composer install` run automatically via the hook. Verify in push output:
-   - `Installing Composer dependencies... ✓`
-   - `Running database migrations... AddForeignKeyConstraints: migrated ✓`
-   - `All Done.`
+3. Migrations and `composer install` run automatically via the hook. Verify push output shows no errors and ends with:
+   - `Production deployment complete for branch: main`
 
 4. Remove the now-redundant `usersc/vendor/` directory on each server (phpdotenv moved to `vendor/`):
    ```bash
