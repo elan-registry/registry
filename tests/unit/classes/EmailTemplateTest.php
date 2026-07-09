@@ -598,7 +598,7 @@ final class EmailTemplateTest extends TestCase
             'to'           => 'Jane Smith',
             'from'         => 'Admin User',
             'message'      => 'Update required.',
-            'carContext'   => ['id' => '99', 'year' => '1971', 'model' => 'Elan Sprint', 'chassis' => 'ABCDEF'],
+            'carContext'   => ['id' => '99', 'year' => '1971', 'series' => 'Sprint', 'variant' => '', 'type' => '', 'chassis' => 'ABCDEF'],
             'qualityIssue' => 'Missing engine number',
         ]);
 
