@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace ElanRegistry\Car;
 
 use DateTime;
-use ElanRegistry\ChassisValidator;
 use ElanRegistry\Exceptions\CarValidationException;
 use ElanRegistry\InputSanitizer;
 use ElanRegistry\Reference\CarModel;
@@ -58,17 +57,7 @@ class CarValidator
                 case 'chassis':
                     if (!empty($value)) {
                         $validatedFields[$key] = InputSanitizer::normalize($value, 50);
-                        // Read from raw $fields, not $validatedFields — switch processes in input
-                        // order, so year/model may not yet be in $validatedFields when chassis runs.
-                        $year  = (int)($fields['year'] ?? 0);
-                        $model = (string)($fields['model'] ?? '');
-                        if ($year > 0 && $model !== '') {
-                            $allowOverride = (isset($fields['chassis_override']) && (int)$fields['chassis_override'] === 1);
-                            $result = (new ChassisValidator())->validate($validatedFields[$key], $year, $model, $allowOverride);
-                            if (!$result['valid']) {
-                                throw new CarValidationException('Chassis validation failed: ' . ($result['error_reason'] ?: 'format check failed'));
-                            }
-                        } elseif (strlen($validatedFields[$key]) < 3) {
+                        if (strlen($validatedFields[$key]) < 3) {
                             throw new CarValidationException('Chassis number must be at least 3 characters long');
                         }
                     } elseif ($requireAll) {

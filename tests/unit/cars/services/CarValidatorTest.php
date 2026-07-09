@@ -481,72 +481,30 @@ final class CarValidatorTest extends TestCase
     }
 
     // ============================================================
-    // chassis — ChassisValidator integration (issue #1233, fix 4)
+    // chassis — sanitization and minimum-length guard
     // ============================================================
 
     /**
-     * When year and model are present and year < 1970, ChassisValidator enforces the
-     * pre-1970 format (exactly 4 numeric digits).  A valid 4-digit numeric chassis must
-     * pass without exception and be stored in the result.
-     *
-     * Uses 'S3|FHC|36' — a combination present in the unit-test mock CarModel — so that
-     * the 'model' key also passes validation within the same call.
+     * A chassis value at the 3-character minimum must be accepted and stored unchanged.
+     * Format validation (ChassisValidator) is the responsibility of save.php::updateChassis().
      */
     #[Group('unit')]
-    public function testChassisValidationUsesChassisValidatorForValidPre1970Chassis(): void
-    {
-        $result = $this->validator->validateAndSanitizeFields(
-            ['chassis' => '1234', 'year' => 1965, 'model' => 'S3|FHC|36'],
-            false
-        );
-        $this->assertSame('1234', $result['chassis']);
-    }
-
-    /**
-     * When year and model are present and year < 1970, a non-numeric chassis (e.g. 'ABCD')
-     * fails ChassisValidator's pre-1970 numeric rule (must be exactly 4 digits — letters are
-     * rejected) and must throw CarValidationException with a message beginning
-     * 'Chassis validation failed'.
-     *
-     * Uses 'S3|FHC|36' — a combination present in the unit-test mock CarModel — so that
-     * the 'model' key does not itself trigger a validation error before chassis is checked.
-     */
-    #[Group('unit')]
-    public function testChassisValidationRejectsInvalidPre1970FormatWhenYearModelPresent(): void
-    {
-        $this->expectException(CarValidationException::class);
-        $this->expectExceptionMessage('Chassis validation failed');
-
-        $this->validator->validateAndSanitizeFields(
-            ['chassis' => 'ABCD', 'year' => 1965, 'model' => 'S3|FHC|36'],
-            false
-        );
-    }
-
-    /**
-     * When chassis_override=1 is set and the chassis fails format validation, ChassisValidator
-     * grants the override and CarValidator must not throw.  '12345' is invalid for pre-1970
-     * (must be exactly 4 numeric digits), but the override allows it.
-     */
-    #[Group('unit')]
-    public function testChassisValidationPermitsInvalidChassisWhenOverrideSet(): void
-    {
-        $result = $this->validator->validateAndSanitizeFields(
-            ['chassis' => '12345', 'year' => 1965, 'model' => 'S3|FHC|36', 'chassis_override' => '1'],
-            false
-        );
-        $this->assertSame('12345', $result['chassis']);
-    }
-
-    /**
-     * When year and model are absent, ChassisValidator is not invoked.  The fallback
-     * 3-character minimum applies: a 3-character chassis must be accepted and stored.
-     */
-    #[Group('unit')]
-    public function testChassisValidationSkipsChassisValidatorWhenYearAbsent(): void
+    public function testChassisMinimumLengthAccepted(): void
     {
         $result = $this->validator->validateAndSanitizeFields(['chassis' => 'ABC'], false);
         $this->assertSame('ABC', $result['chassis']);
+    }
+
+    /**
+     * A chassis value shorter than 3 characters must throw CarValidationException.
+     */
+    #[Group('unit')]
+    public function testChassisTooShortThrows(): void
+    {
+        $this->expectException(CarValidationException::class);
+        $this->expectExceptionMessage('Chassis number must be at least 3 characters long');
+
+        $this->validator->validateAndSanitizeFields(['chassis' => 'AB'], false);
     }
 
     // ============================================================
