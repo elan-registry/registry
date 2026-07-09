@@ -73,7 +73,7 @@ and deletion rights. See [`app/owner/privacy.php`](app/owner/privacy.php).
 
 ## License
 
-Open source. See the LICENSE file for details.
+Licensed under the [GNU Affero General Public License v3.0](LICENSE) — use it freely, but share any modifications.
 
 ---
 
