@@ -276,6 +276,11 @@ abstract class IntegrationTestCase extends TestCase
         $this->createdCarIds[] = $carId;
     }
 
+    protected function untrackCarId(int $carId): void
+    {
+        $this->createdCarIds = array_values(array_diff($this->createdCarIds, [$carId]));
+    }
+
     /**
      * Check if database is currently connected
      *

@@ -181,19 +181,13 @@ final class ForeignKeyConstraintTest extends IntegrationTestCase
         );
         $this->assertSame(1, $before->count(), 'Pre-condition: transfer request must exist');
 
-        // Delete the car — the FK CASCADE must remove the transfer request.
-        // deleteTestCar() does NOT pre-delete transfer requests (the base class
-        // tearDown does, but deleteTestCar() itself does not).  We delete it
-        // directly so this test is isolated from tearDown ordering.
+        // Delete the car via raw SQL so the CASCADE actually fires.
+        // deleteTestCar() pre-deletes related rows first, which would prevent
+        // the cascade from being exercised.
         $this->db->query("DELETE FROM car_user WHERE car_id = ?", [$carId]);
         $this->db->query("DELETE FROM cars_hist WHERE car_id = ?", [$carId]);
         $this->db->query("DELETE FROM cars WHERE id = ?", [$carId]);
-
-        // Remove from base-class tracking so tearDown does not double-delete.
-        // (Accessing the private array is not possible, but deleteTestCar()
-        //  achieves the same by removing the ID from the tracked list.)
-        // We use a raw query here because the car is already gone; the base-class
-        // tearDown will simply find nothing to delete, which is fine.
+        $this->untrackCarId($carId); // car is gone; suppress tearDown's redundant DELETE
 
         $after = $this->db->query(
             "SELECT id FROM car_transfer_requests WHERE id = ?",

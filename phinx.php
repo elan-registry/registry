@@ -16,7 +16,7 @@ if (file_exists(__DIR__ . '/.env')) {
             [$key, $val] = explode('=', $line, 2);
             $key = trim($key);
             $val = trim($val, " \t\n\r\0\x0B\"'");
-            if (!isset($_ENV[$key])) {
+            if (!isset($_ENV[$key])) { // shell env takes precedence over .env (CI-friendly)
                 $_ENV[$key] = $val;
             }
         }

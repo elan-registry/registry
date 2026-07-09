@@ -223,7 +223,13 @@ git commit --no-verify           # Bypass (emergency only)
 After every deployment, run pending migrations:
 
 ```bash
+# 1. Verify no orphaned rows that would block the FK migration
+#    (must return 0 before applying for the first time)
+# SELECT COUNT(*) FROM car_transfer_requests WHERE existing_car_id NOT IN (SELECT id FROM cars);
+
 composer install --no-dev --optimize-autoloader   # ensure vendor/ is up to date
+composer migrate:status                            # preview what will run
+composer migrate:dry-run                           # confirm SQL before applying
 composer migrate                                   # apply pending migrations
 ```
 
