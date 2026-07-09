@@ -6,41 +6,13 @@
 
 **Last Updated:** 2026-01-17
 
-## Overview
-
-All logger() calls in the application MUST use standardized log category
-constants from the LogCategories class. This centralized approach ensures:
-
-- **Consistency** - All similar operations use the same category
-- **Discoverability** - IDE autocomplete and grep searches find all categories
-- **Maintainability** - Single source of truth for category values
-- **Type Safety** - Constants prevent typos and catch misspellings
-
-## Categories at a Glance
-
-| Category Group | Count | Purpose |
-| --- | --- | --- |
-| Car Management | 10 | All car-related operations |
-| Owner/User Management | 8 | User accounts and profiles |
-| Authentication | 3 | Login and session management |
-| Passkey Authentication | 8 | WebAuthn/passkey operations |
-| Email & Communications | 5 | Email and notifications |
-| Admin & Management | 11 | Admin-level operations |
-| Database Operations | 6 | Schema, backups, maintenance |
-| Access Control | 4 | Permission checks and denials |
-| Security | 6 | Security events |
-| Validation & Errors | 8 | Input validation and errors |
-| Location Service | 3 | Geolocation operations |
-| File Operations | 4 | File uploads and processing |
-| Reports & Statistics | 3 | Data analysis |
-| **Total** | **80+** | **All application events** |
-
 ## Quick Start
 
 ```php
-// Import LogCategories (autoloaded automatically)
 logger($userId, LogCategories::LOG_CATEGORY_CAR_ACTIONS, 'Car created');
 ```
+
+Discover all constants: `grep "const LOG_CATEGORY" usersc/classes/LogCategories.php`
 
 ## Finding the Right Category
 
@@ -55,30 +27,6 @@ logger($userId, LogCategories::LOG_CATEGORY_CAR_ACTIONS, 'Car created');
 | Permission denied | `ACCESS_DENIED` |
 | Validation error | `VALIDATION_ERROR` |
 | System/database error | `SYSTEM_ERROR` or `DATABASE_ERROR` |
-
-### By Feature Area
-
-- **Car operations** - See Car Management section
-- **User accounts** - See Owner/User Management section
-- **Login/auth** - See Authentication section
-- **Email/notifications** - See Email & Communications section
-- **Admin tasks** - See Admin & Management section
-- **Database maintenance** - See Database Operations section
-- **File handling** - See File Operations section
-- **API/external services** - See Location Service section
-
-### Quick Search
-
-```bash
-# Find all car-related categories
-grep "CAR_" usersc/classes/LogCategories.php
-
-# Find all error categories
-grep "ERROR" usersc/classes/LogCategories.php
-
-# Find all admin categories
-grep "ADMIN_" usersc/classes/LogCategories.php
-```
 
 ## Complete Category Reference
 

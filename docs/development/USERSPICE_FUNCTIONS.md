@@ -1,7 +1,5 @@
 # UserSpice Functions & Methods Reference
 
-**⚡ Quick Lookup:** For fast method reference, see [USERSPICE_QUICK_LOOKUP.md](USERSPICE_QUICK_LOOKUP.md) with organized tables.
-
 > **This is a reference copy** from <https://userspice.com/kb/> and is **NOT the
 > source of truth**. The authoritative documentation lives on the UserSpice
 > website. This file exists so AI coding assistants understand UserSpice

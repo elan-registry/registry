@@ -751,66 +751,6 @@ echo DocumentPortalTemplate::renderDocumentCardGrid($cards);
 > heredocs in the individual guide pages under `docs/guides/`. To update guide
 > content, edit the heredoc directly in the relevant PHP file.
 
-## Design Patterns
-
-### Database Integration Pattern
-
-All domain classes use the UserSpice database singleton:
-
-```php
-class MyClass {
-    private $_db;
-
-    public function __construct() {
-        $this->_db = DB::getInstance();
-    }
-
-    public function query() {
-        return $this->_db->query(
-            "SELECT * FROM table WHERE id = ?",
-            [$id]
-        )->results();
-    }
-}
-```
-
-### Exception Handling Pattern
-
-Custom exceptions in `/usersc/classes/Exceptions/` with `ElanRegistry\Exceptions` namespace:
-
-```php
-// Import exception at top of file
-use ElanRegistry\Exceptions\MyCustomException;
-
-// Use in class
-try {
-    if (!$valid) {
-        throw new MyCustomException('Invalid data');
-    }
-} catch (MyCustomException $e) {
-    logger($userId, 'ErrorCategory', $e->getMessage());
-    throw $e;
-}
-```
-
-### Audit Logging Pattern
-
-All significant operations use the UserSpice logger:
-
-```php
-logger(
-    $user->data()->id ?? 0,
-    'Category',
-    'Descriptive message: ' . $details
-);
-```
-
-**Common Categories**:
-
-- `SystemError` - System-level failures
-- `ValidationError` - Input validation failures
-- `DatabaseError` - Database operation failures
-- `CarErrors` - Car-related errors
 - `CarActions` - Car-related user operations
 - `DatabaseMaintenance` - Maintenance operations
 
@@ -946,22 +886,6 @@ DocumentPortalTemplate
 └── Used by: docs/guides/index.php, docs/reference/*, app/owner/cars/index.php, app/owner/reports/statistics.php
 ```
 
-## Testing
-
-All classes should have corresponding PHPUnit tests in `/tests/`:
-
-- `/tests/Unit/` - Unit tests for individual methods
-- `/tests/Integration/` - Integration tests with database
-- `/tests/Regression/` - Issue-specific regression tests
-
-**Run tests**:
-
-```bash
-composer test:unit         # Unit tests only
-composer test:integration  # Integration tests
-composer test:quick        # Fast subset (<30s)
-```
-
 ## Reference Data Classes
 
 Classes in the `ElanRegistry\Reference` namespace provide access to external/canonical data about Lotus Elan models, factory colors, and production specifications.
@@ -1033,19 +957,6 @@ if ($carModel->exists('S4', 'FHC', '36')) {
 
 - [Issue #577](https://github.com/jimboone/elan-registry/issues/577) - car_models table creation
 - `/usersc/classes/ElanRegistry/README.md` - Namespace pattern documentation
-
-## Best Practices
-
-1. **Always use type declarations** - PHP 8+ strict typing required
-2. **Include `declare(strict_types=1);`** - New files must use strict mode
-3. **CSRF protection** - All state-changing operations require CSRF validation
-4. **Audit logging** - Log all significant operations with appropriate category
-5. **Exception handling** - Use custom exceptions for domain errors
-6. **Input validation** - Validate and sanitize all user inputs
-7. **Prepared statements** - Always use parameterized queries
-8. **Consistent naming** - Follow established naming conventions
-9. **PHPDoc blocks** - Complete documentation for all public methods
-10. **Test coverage** - Write tests for all new classes and methods
 
 ## See Also
 

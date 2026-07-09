@@ -63,9 +63,9 @@ project, structured for different audiences and use cases.
 - **[FIX_SCRIPTS.md](development/FIX_SCRIPTS.md)** - Fix script creation guidelines
 - **[BACKUP_SYSTEM.md](development/BACKUP_SYSTEM.md)** - BackupManager class API and usage
 - **[EMAIL_SYSTEM.md](development/EMAIL_SYSTEM.md)** - Brevo email plugin setup and configuration
-- **[ERROR_HANDLING.md](development/ERROR_HANDLING.md)** - Error handling patterns and API responses
+- **[ERROR_HANDLING.md](development/ERROR_HANDLING.md)** - Error handling patterns, ApiResponse, ElanRegistryAPI
 - **[CLASSES.md](development/CLASSES.md)** - Custom application class documentation
-- **[CSS_AND_ASSETS.md](development/CSS_AND_ASSETS.md)** - Stylesheets, CDN resources, and CSS minification
+- **[CSS_AND_ASSETS.md](development/CSS_AND_ASSETS.md)** - CSS file structure and build process
 - **[DATATABLES.md](development/DATATABLES.md)** - DataTables configuration and server-side processing
 - **[ENVIRONMENT.md](development/ENVIRONMENT.md)** - Environment setup and configuration
 - **[STATIC_ANALYSIS.md](development/STATIC_ANALYSIS.md)** - Code quality and static analysis tools
