@@ -29,9 +29,9 @@ final class CarValidatorTest extends TestCase
 
     public function testValidateRequiredFieldsPassesWithAllPresent(): void
     {
+        $this->expectNotToPerformAssertions();
         $fields = ['chassis' => 'ABC123', 'model' => 'Elan', 'year' => '1970'];
         $this->validator->validateRequiredFields($fields, ['chassis', 'model', 'year']);
-        $this->assertTrue(true); // No exception thrown
     }
 
     public function testValidateRequiredFieldsThrowsOnMissingField(): void
@@ -54,9 +54,9 @@ final class CarValidatorTest extends TestCase
     public function testValidateRequiredFieldsAcceptsZeroString(): void
     {
         // '0' is a legitimate value — trim((string)'0') !== '', so no exception should be thrown
+        $this->expectNotToPerformAssertions();
         $fields = ['chassis' => '0', 'model' => 'S4|FHC|36', 'year' => '1970'];
         $this->validator->validateRequiredFields($fields, ['chassis', 'model', 'year']);
-        $this->assertTrue(true); // no exception = pass
     }
 
     // ============================================================
@@ -468,6 +468,9 @@ final class CarValidatorTest extends TestCase
     /**
      * Unknown keys with a falsy string value ('0') must pass through — '0' is a legitimate
      * value that !empty() would silently drop, motivating the !== null && !== '' guard.
+     *
+     * Note: named-field cases (color, engine, model, etc.) intentionally still use !empty()
+     * because '0' is not a meaningful value for any of those domain fields. Tracked in #1262.
      */
     #[Group('unit')]
     public function testDefaultCasePassesThroughZeroString(): void

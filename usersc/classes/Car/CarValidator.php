@@ -58,6 +58,8 @@ class CarValidator
                 case 'chassis':
                     if (!empty($value)) {
                         $validatedFields[$key] = InputSanitizer::normalize($value, 50);
+                        // Read from raw $fields, not $validatedFields — switch processes in input
+                        // order, so year/model may not yet be in $validatedFields when chassis runs.
                         $year  = (int)($fields['year'] ?? 0);
                         $model = (string)($fields['model'] ?? '');
                         if ($year > 0 && $model !== '') {

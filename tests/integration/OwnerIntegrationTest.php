@@ -354,12 +354,11 @@ class OwnerIntegrationTest extends IntegrationTestCase
     public function testRequiredFieldAcceptsZeroString(): void
     {
         // '0' is a legitimate value — trim((string)'0') === '' is false, so no exception
+        $this->expectNotToPerformAssertions();
         $this->callValidateRequiredFields(
             ['fname' => '0', 'lname' => '0', 'email' => 'test@example.com'],
             ['fname', 'lname', 'email']
         );
-        // If we reach here, no exception was thrown — that is the assertion
-        $this->assertTrue(true);
     }
 
     public function testRequiredFieldRejectsEmptyString(): void
