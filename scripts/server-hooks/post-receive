@@ -33,11 +33,16 @@ echo " - WORK_TREE=$WORK_TREE"
 
 while read oldrev newrev ref
 do
-    branch=$(echo "$ref" | sed 's/.*\///')
+    # Only deploy branch pushes — tags and other refs are skipped
+    if [[ "$ref" != refs/heads/* ]]; then
+        echo "Skipping non-branch ref: $ref"
+        continue
+    fi
+    branch=${ref#refs/heads/}
     echo "Branch $branch received. Deploying to $ENV_NAME environment..."
 
     # Deploy exactly what was pushed
-    git --work-tree=$WORK_TREE --git-dir=$GIT_DIR checkout $newrev --force --progress || {
+    git --work-tree="$WORK_TREE" --git-dir="$GIT_DIR" checkout "$newrev" --force || {
         echo "ERROR: git checkout of $newrev failed — deployment halted."
         exit 1
     }
@@ -85,7 +90,7 @@ do
             # Trim whitespace
             pattern=$(echo "$pattern" | xargs)
             [[ -z "$pattern" ]] && continue
-            resolved="$WORK_TREE/$pattern"
+            resolved=$(realpath -m "$WORK_TREE/$pattern")
             case "$resolved" in
                 "$WORK_TREE/"*) ;;
                 *) echo "  WARNING: Skipping unsafe pattern: $pattern"; continue ;;
