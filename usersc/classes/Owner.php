@@ -559,7 +559,7 @@ class Owner
     private function validateRequiredFields(array $fields, array $requiredFields): void
     {
         foreach ($requiredFields as $field) {
-            if (!isset($fields[$field]) || empty(trim($fields[$field]))) {
+            if (!isset($fields[$field]) || trim((string)$fields[$field]) === '') {
                 throw OwnerValidationException::withUserMessage(
                     "Required field '{$field}' is missing or empty",
                     "Required field '{$field}' is missing or empty."
@@ -619,7 +619,7 @@ class Owner
                 case 'state':
                 case 'country':
                     if (!empty($value)) {
-                        $validatedFields[$key] = InputSanitizer::normalize($value, 50);
+                        $validatedFields[$key] = InputSanitizer::normalize($value, 100);
                     }
                     break;
 

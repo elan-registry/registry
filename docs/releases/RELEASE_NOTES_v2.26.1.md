@@ -12,6 +12,7 @@ None.
 ### Bug Fixes
 
 - **Ownership transfer integrity** ([#1163](https://github.com/unibrain1/elanregistry/issues/1163)): Fixed a code path where car transfers inserted a new owner row without removing the previous one, preventing stale ownership records.
+- **Validator alignment** ([#1233](https://github.com/unibrain1/elanregistry/issues/1233)): Owner profile city/state/country fields now accept up to 100 characters (matching the database schema), preventing silent truncation when a long location is saved via the car form and then edited in the profile. Required-field validation no longer incorrectly rejects the value `"0"`. Unknown form fields with null or empty values are dropped rather than written to the database.
 
 ## Admin-Facing Changes
 
