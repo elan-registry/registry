@@ -34,7 +34,7 @@ $adminUserId = (int) $user->data()->id;
 $errors = [];
 $successes = [];
 
-if (Input::exists('post')) {
+if (Input::existsPost()) {
     $token = Input::get('csrf');
     if (!Token::check($token)) {
         include($abs_us_root . $us_url_root . 'usersc/scripts/token_error.php');

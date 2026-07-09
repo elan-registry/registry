@@ -18,7 +18,7 @@ use ElanRegistry\ApiResponse;
 use ElanRegistry\Input;
 use ElanRegistry\LogCategories;
 
-if (!Input::exists('post')) {
+if (!Input::existsPost()) {
     ApiResponse::error('No data received', 400)->send();
 }
 

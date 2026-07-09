@@ -153,19 +153,19 @@ try {
 $errors = [];
 $successes = [];
 
-if (Input::exists('post')) {
-    $token = Input::get('csrf');
+if (ElanInput::existsPost()) {
+    $token = ElanInput::get('csrf');
     if (!Token::check($token)) {
         include $abs_us_root . $us_url_root . 'usersc/scripts/token_error.php';
     } else {
-        $command = Input::get('command');
+        $command = ElanInput::get('command');
 
         if ($command) {
             switch ($command) {
                 // Car reassignment
                 case "reassign":
-                    $user_id = (int) Input::get('user_id');
-                    $car_id  = (int) Input::get('car_id');
+                    $user_id = (int) ElanInput::get('user_id');
+                    $car_id  = (int) ElanInput::get('car_id');
 
                     if (!$user_id || !$car_id) {
                         $errors[] = 'Please provide valid car ID and user ID';
@@ -200,8 +200,8 @@ if (Input::exists('post')) {
                 // Car merge
                 case "merge":
                     // Validate input
-                    $cars = Input::get('cars');
-                    $reason = Input::get('reason');
+                    $cars = ElanInput::get('cars');
+                    $reason = ElanInput::get('reason');
                     if (!$cars || !$reason) {
                         $errors[] = 'Select 2 cars to merge and a reason';
                         break;
@@ -349,8 +349,8 @@ if (Input::exists('post')) {
 
                 // Car deletion
                 case "delete":
-                    $car_id = (int) Input::get('car_id');
-                    $confirmation = Input::get('confirmation');
+                    $car_id = (int) ElanInput::get('car_id');
+                    $confirmation = ElanInput::get('confirmation');
                     $reason = mb_substr(ElanInput::raw('reason') ?: 'Administrative deletion', 0, 500);
 
                     if (!$car_id) {

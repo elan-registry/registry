@@ -5,6 +5,7 @@ declare(strict_types=1);
 use ElanRegistry\ApiResponse;
 use ElanRegistry\Car\Car;
 use ElanRegistry\Exceptions\ElanRegistryException;
+use ElanRegistry\Input;
 use ElanRegistry\LogCategories;
 
 /**
@@ -24,7 +25,7 @@ if ($method !== 'POST') {
     ApiResponse::error('Method not allowed', 405)->send();
 }
 
-if (!Input::exists('post')) {
+if (!Input::existsPost()) {
     ApiResponse::error('No data received')->send();
 }
 

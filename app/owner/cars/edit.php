@@ -18,6 +18,7 @@ require_once $abs_us_root . $us_url_root . 'usersc/includes/elanregistry_prep.ph
 
 use ElanRegistry\Car\Car;
 use ElanRegistry\Documentation\DocumentPortalTemplate;
+use ElanRegistry\Input;
 use ElanRegistry\LogCategories;
 
 if (!securePage($php_self)) {
@@ -62,7 +63,7 @@ $action = 'addCar';
 $errors = [];
 $successes = [];
 
-if (Input::exists('post')) {
+if (Input::existsPost()) {
     $token = Input::get('csrf');
     if (!Token::check($token)) {
         include_once $abs_us_root . $us_url_root . 'usersc/scripts/token_error.php';

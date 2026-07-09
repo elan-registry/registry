@@ -14,6 +14,12 @@ None.
 - **Ownership transfer integrity** ([#1163](https://github.com/unibrain1/elanregistry/issues/1163)): Fixed a code path where car transfers inserted a new owner row without removing the previous one, preventing stale ownership records.
 - **Validator alignment** ([#1233](https://github.com/unibrain1/elanregistry/issues/1233)): Owner profile city/state/country fields now accept up to 100 characters (matching the database schema), preventing silent truncation when a long location is saved via the car form and then edited in the profile. Required-field validation no longer incorrectly rejects the value `"0"`. Unknown form fields with null or empty values are dropped rather than written to the database.
 
+## Developer-Facing Changes
+
+### Improvements
+
+- **Input class: type-safe POST/GET checks** ([#867](https://github.com/unibrain1/elanregistry/issues/867)): `ElanRegistry\Input::exists(string $type)` replaced by `Input::existsPost()` and `Input::existsGet()`, eliminating the runtime string dispatch in favour of method-name type safety. The key-based forms (`existsPost('field')` / `existsGet('field')`) enable per-key existence checks. All call sites updated. Documented in `CODING_STANDARDS.md` and `elanregistry_overrides`.
+
 ## Admin-Facing Changes
 
 ### Bug Fixes

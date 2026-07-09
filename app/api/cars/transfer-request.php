@@ -22,7 +22,7 @@ use ElanRegistry\Transfer\TransferEmailService;
 require_once '../../../users/init.php';
 
 try {
-    if (!Input::exists('post') || !Token::check(Input::get('csrf'))) {
+    if (!Input::existsPost() || !Token::check(Input::get('csrf'))) {
         throw new CarTransferException('Invalid request token');
     }
 

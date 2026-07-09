@@ -400,4 +400,162 @@ final class ElanRegistryInputTest extends TestCase
         $this->assertIsString($result);
         $this->assertSame('1969', $result);
     }
+
+    // -------------------------------------------------------------------------
+    // existsPost() presence checks (issue #867)
+    // -------------------------------------------------------------------------
+
+    /**
+     * existsPost() with no key returns true when $_POST holds any data.
+     *
+     * Mirrors the "did a POST request arrive?" check at the top of form handlers.
+     */
+    #[Group('fast')]
+    public function test_existsPost_returns_true_when_post_is_non_empty(): void
+    {
+        $_POST['x'] = 'value';
+        $this->assertTrue(Input::existsPost());
+    }
+
+    /**
+     * existsPost() with no key returns false when $_POST is empty.
+     */
+    #[Group('fast')]
+    public function test_existsPost_returns_false_when_post_is_empty(): void
+    {
+        $_POST = [];
+        $this->assertFalse(Input::existsPost());
+    }
+
+    /**
+     * existsPost('key') returns true when that key is present in $_POST.
+     */
+    #[Group('fast')]
+    public function test_existsPost_with_key_returns_true_when_key_present(): void
+    {
+        $_POST['x'] = 'value';
+        $this->assertTrue(Input::existsPost('x'));
+    }
+
+    /**
+     * existsPost('key') returns false when that key is absent from $_POST.
+     */
+    #[Group('fast')]
+    public function test_existsPost_with_key_returns_false_when_key_absent(): void
+    {
+        $_POST = [];
+        $this->assertFalse(Input::existsPost('missing'));
+    }
+
+    /**
+     * existsPost('key') returns false when the key is present but its value is null.
+     *
+     * isset() returns false for null values. This differs from the no-key form:
+     * existsPost() (no key) would return true because $_POST is non-empty,
+     * while existsPost('x') returns false because isset($_POST['x']) is false.
+     * PHP HTTP superglobals never hold null in practice, but this documents the invariant.
+     */
+    #[Group('fast')]
+    public function test_existsPost_with_key_returns_false_when_key_is_null(): void
+    {
+        $_POST = ['x' => null];
+        $this->assertFalse(Input::existsPost('x'));
+    }
+
+    // -------------------------------------------------------------------------
+    // existsGet() presence checks (issue #867)
+    // -------------------------------------------------------------------------
+
+    /**
+     * existsGet() with no key returns true when $_GET holds any query params.
+     */
+    #[Group('fast')]
+    public function test_existsGet_returns_true_when_get_is_non_empty(): void
+    {
+        $_GET['x'] = 'value';
+        $this->assertTrue(Input::existsGet());
+    }
+
+    /**
+     * existsGet() with no key returns false when $_GET is empty.
+     */
+    #[Group('fast')]
+    public function test_existsGet_returns_false_when_get_is_empty(): void
+    {
+        $_GET = [];
+        $this->assertFalse(Input::existsGet());
+    }
+
+    /**
+     * existsGet('key') returns true when that key is present in $_GET.
+     */
+    #[Group('fast')]
+    public function test_existsGet_with_key_returns_true_when_key_present(): void
+    {
+        $_GET['x'] = 'value';
+        $this->assertTrue(Input::existsGet('x'));
+    }
+
+    /**
+     * existsGet('key') returns false when that key is absent from $_GET.
+     */
+    #[Group('fast')]
+    public function test_existsGet_with_key_returns_false_when_key_absent(): void
+    {
+        $_GET = [];
+        $this->assertFalse(Input::existsGet('missing'));
+    }
+
+    /**
+     * existsGet('key') returns false when the key is present but its value is null.
+     *
+     * isset() returns false for null values. This differs from the no-key form:
+     * existsGet() (no key) would return true because $_GET is non-empty,
+     * while existsGet('x') returns false because isset($_GET['x']) is false.
+     * PHP HTTP superglobals never hold null in practice, but this documents the invariant.
+     */
+    #[Group('fast')]
+    public function test_existsGet_with_key_returns_false_when_key_is_null(): void
+    {
+        $_GET = ['x' => null];
+        $this->assertFalse(Input::existsGet('x'));
+    }
+
+    // -------------------------------------------------------------------------
+    // get() delegation contract (issue #867)
+    // -------------------------------------------------------------------------
+
+    /**
+     * get() delegates to the upstream \Input::get().
+     *
+     * The unit bootstrap stubs \Input::get() to return the raw superglobal value
+     * (without HTML-encoding — unlike the real upstream, which applies htmlspecialchars()).
+     * This test verifies that ElanRegistry\Input::get() forwards the call through;
+     * it does not assert encoding behaviour, which is a property of the real upstream.
+     */
+    #[Group('fast')]
+    public function test_get_delegates_to_upstream_input_get(): void
+    {
+        $_POST['x'] = "Tom & Jerry's";
+        $result = Input::get('x');
+        $this->assertSame("Tom & Jerry's", (string)$result);
+    }
+
+    // -------------------------------------------------------------------------
+    // raw() trim flag is not a default value (issue #867)
+    // -------------------------------------------------------------------------
+
+    /**
+     * raw()'s second parameter is a trim flag, not a default value.
+     *
+     * Under strict_types=1, passing a non-bool second argument throws a
+     * TypeError. To supply a default, use `Input::raw('field') ?? 'fallback'`.
+     */
+    #[Group('fast')]
+    public function test_raw_second_param_is_trim_flag_not_default(): void
+    {
+        $_POST['x'] = '  hello  ';
+        $this->expectException(\TypeError::class);
+        Input::raw('x', 'fallback');
+    }
 }

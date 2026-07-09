@@ -10,7 +10,7 @@ namespace ElanRegistry;
  * Files that import this class with `use ElanRegistry\Input` can call:
  *   - Input::raw()  — unencoded value for database storage
  *   - Input::get()  — HTML-encoded value (delegates to \Input::get())
- *   - Input::exists() — POST/GET presence check (delegates to \Input::exists())
+ *   - Input::existsPost() / Input::existsGet() — POST/GET presence checks
  *
  * @since v2.23.0
  * @see https://github.com/unibrain1/elanregistry/issues/843
@@ -26,6 +26,9 @@ class Input
      *
      * Use for values that will be stored in the database. Always apply
      * htmlspecialchars() at the HTML output context to prevent XSS.
+     *
+     * The second parameter is a trim flag, NOT a default value. To supply a
+     * default, use `Input::raw('field') ?? 'fallback'`.
      *
      * @param string $item The POST/GET key to retrieve.
      * @param bool   $trim Whether to trim leading/trailing whitespace (default true).
@@ -66,21 +69,34 @@ class Input
     }
 
     /**
-     * Delegates to \Input::exists() — checks whether the named superglobal is non-empty.
+     * Checks whether $_POST is non-empty, or whether a specific key is present in $_POST.
      *
-     * Checks $_POST when $type is 'post', $_GET when $type is 'get'.
+     * With no argument: delegates to \Input::exists('post') — true when $_POST is non-empty.
+     * With a key: uses isset($_POST[$key]) directly, because \Input::exists() has no
+     * key-level API — it only tests superglobal emptiness.
      *
-     * @param string $type 'post' or 'get' (default 'post').
-     * @return bool True when the superglobal is non-empty.
-     * @throws \InvalidArgumentException When $type is not 'post' or 'get'.
+     * @param string $key Optional key to check for. When empty, checks the superglobal itself.
+     * @return bool True when $_POST is non-empty (no key) or contains $key (with key).
+     * @since v2.26.1
      */
-    public static function exists(string $type = 'post'): bool
+    public static function existsPost(string $key = ''): bool
     {
-        if ($type !== 'post' && $type !== 'get') {
-            throw new \InvalidArgumentException(
-                "ElanRegistry\\Input::exists() expects 'post' or 'get', got '{$type}'."
-            );
-        }
-        return \Input::exists($type);
+        return $key !== '' ? isset($_POST[$key]) : \Input::exists('post');
+    }
+
+    /**
+     * Checks whether $_GET is non-empty, or whether a specific key is present in $_GET.
+     *
+     * With no argument: delegates to \Input::exists('get') — true when $_GET is non-empty.
+     * With a key: uses isset($_GET[$key]) directly, because \Input::exists() has no
+     * key-level API — it only tests superglobal emptiness.
+     *
+     * @param string $key Optional key to check for. When empty, checks the superglobal itself.
+     * @return bool True when $_GET is non-empty (no key) or contains $key (with key).
+     * @since v2.26.1
+     */
+    public static function existsGet(string $key = ''): bool
+    {
+        return $key !== '' ? isset($_GET[$key]) : \Input::exists('get');
     }
 }
