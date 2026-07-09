@@ -22,7 +22,7 @@ $adminDetails =
 
 $carContextBox = '';
 if ($hasCarContext) {
-    $carDetails = $emailTemplate->createDetailRow('Car ID', $carContext['id']);
+    $carDetails = $emailTemplate->createDetailRow('Car ID', (string)$carContext['id']);
     $vehicleLabel = '';
     if (!empty($carContext['year'])) {
         $vehicleLabel .= (int)$carContext['year'];
