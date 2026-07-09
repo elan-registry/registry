@@ -29,13 +29,13 @@ if ($hasCarContext) {
     }
     if (!empty($carContext['series'])) {
         $prefix = $vehicleLabel !== '' ? ' ' : '';
-        $vehicleLabel .= $prefix . 'Elan ' . htmlspecialchars((string)$carContext['series'], ENT_QUOTES, 'UTF-8');
+        $vehicleLabel .= $prefix . 'Elan ' . $carContext['series'];
     }
     if (!empty($carContext['variant'])) {
-        $vehicleLabel .= ' ' . htmlspecialchars((string)$carContext['variant'], ENT_QUOTES, 'UTF-8');
+        $vehicleLabel .= ' ' . $carContext['variant'];
     }
     if (!empty($carContext['type'])) {
-        $vehicleLabel .= ' (Type ' . htmlspecialchars((string)$carContext['type'], ENT_QUOTES, 'UTF-8') . ')';
+        $vehicleLabel .= ' (Type ' . $carContext['type'] . ')';
     }
     if ($vehicleLabel !== '') {
         $carDetails .= $emailTemplate->createDetailRow('Vehicle', $vehicleLabel);
