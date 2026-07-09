@@ -153,7 +153,7 @@ try {
 $errors = [];
 $successes = [];
 
-if (Input::exists('post')) {
+if (ElanInput::existsPost()) {
     $token = Input::get('csrf');
     if (!Token::check($token)) {
         include $abs_us_root . $us_url_root . 'usersc/scripts/token_error.php';

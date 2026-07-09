@@ -39,6 +39,29 @@ escaping (the UserSpice convention). For anything going to the database, always 
 
 See `docs/development/CODING_STANDARDS.md` — Input Handling and Output Encoding.
 
+### POST/GET presence checks: `existsPost()` / `existsGet()`
+
+The shipped prompts show `Input::exists('post')` / `Input::exists('get')`. In files that
+import `ElanRegistry\Input`, use the typed replacements instead:
+
+```php
+// ✅ CORRECT in ElanRegistry files
+use ElanRegistry\Input;
+
+if (Input::existsPost()) { ... }          // "did a POST request arrive?"
+if (Input::existsGet()) { ... }           // "are there any query params?"
+
+// Key-specific form (isset check on the specific key):
+if (Input::existsPost('csrf')) { ... }    // "is 'csrf' present in $_POST?"
+
+// ❌ WRONG in files with `use ElanRegistry\Input` — calls removed ElanRegistry method
+if (Input::exists('post')) { ... }
+```
+
+`\Input::exists('post')` (the UserSpice upstream) still works in files that do **not**
+import `ElanRegistry\Input`, but any file using the ElanRegistry wrapper must call
+`existsPost()` / `existsGet()` — the `exists()` method was removed from the wrapper in v2.26.1.
+
 ---
 
 ## 2. Server variables: use validated globals, not `$_SERVER` directly

@@ -317,9 +317,12 @@ $cardetails['color'] = htmlspecialchars($color, ENT_QUOTES, 'UTF-8');
 **Rules:**
 
 - `Input::raw()` (via `use ElanRegistry\Input`) → values going to the database
+- `Input::existsPost()` / `Input::existsGet()` → POST/GET presence checks in files that import
+  `ElanRegistry\Input` — `ElanRegistry\Input::exists()` was removed in v2.26.1
 - `\Input::get()` → legacy pattern only (value used directly in HTML, no further escaping)
 - `htmlspecialchars()` → always at output (HTML templates, email templates)
 - Parameterised queries handle SQL safety; encoding at storage is never a SQL defence
+- `Input::raw()` second parameter is a **trim flag** (`bool $trim`), not a default value — use `Input::raw('field') ?? 'fallback'` to supply a default
 
 ### **Database Operations**
 

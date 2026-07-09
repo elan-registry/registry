@@ -20,6 +20,7 @@ declare(strict_types=1);
 require_once '../../../users/init.php';
 
 use ElanRegistry\ApiResponse;
+use ElanRegistry\Input;
 use ElanRegistry\LogCategories;
 use ElanRegistry\Reference\CarModel;
 
@@ -28,7 +29,7 @@ if (strtolower(Server::get('HTTP_X_REQUESTED_WITH', '')) !== 'xmlhttprequest') {
     ApiResponse::error('Bad Request: AJAX only', 400)->send();
 }
 
-if (!Input::exists('post')) {
+if (!Input::existsPost()) {
     ApiResponse::error('No data received', 400)->send();
 }
 

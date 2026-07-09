@@ -498,8 +498,10 @@ final class ElanRegistryInputTest extends TestCase
     /**
      * get() delegates to the upstream \Input::get().
      *
-     * The unit bootstrap stubs \Input::get() to return the raw superglobal
-     * value, so this confirms ElanRegistry\Input::get() forwards to it.
+     * The unit bootstrap stubs \Input::get() to return the raw superglobal value
+     * (without HTML-encoding — unlike the real upstream, which applies htmlspecialchars()).
+     * This test verifies that ElanRegistry\Input::get() forwards the call through;
+     * it does not assert encoding behaviour, which is a property of the real upstream.
      */
     #[Group('fast')]
     public function test_get_delegates_to_upstream_input_get(): void

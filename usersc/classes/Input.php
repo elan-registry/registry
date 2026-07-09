@@ -72,10 +72,12 @@ class Input
      * Checks whether $_POST is non-empty, or whether a specific key is present in $_POST.
      *
      * With no argument: delegates to \Input::exists('post') — true when $_POST is non-empty.
-     * With a key: returns isset($_POST[$key]).
+     * With a key: uses isset($_POST[$key]) directly, because \Input::exists() has no
+     * key-level API — it only tests superglobal emptiness.
      *
      * @param string $key Optional key to check for. When empty, checks the superglobal itself.
-     * @return bool True when $_POST is non-empty (no key) or contains $key.
+     * @return bool True when $_POST is non-empty (no key) or contains $key (with key).
+     * @since v2.26.1
      */
     public static function existsPost(string $key = ''): bool
     {
@@ -86,10 +88,12 @@ class Input
      * Checks whether $_GET is non-empty, or whether a specific key is present in $_GET.
      *
      * With no argument: delegates to \Input::exists('get') — true when $_GET is non-empty.
-     * With a key: returns isset($_GET[$key]).
+     * With a key: uses isset($_GET[$key]) directly, because \Input::exists() has no
+     * key-level API — it only tests superglobal emptiness.
      *
      * @param string $key Optional key to check for. When empty, checks the superglobal itself.
-     * @return bool True when $_GET is non-empty (no key) or contains $key.
+     * @return bool True when $_GET is non-empty (no key) or contains $key (with key).
+     * @since v2.26.1
      */
     public static function existsGet(string $key = ''): bool
     {

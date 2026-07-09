@@ -21,7 +21,7 @@ use ElanRegistry\Owner;
 require_once '../../../users/init.php';
 require_once $abs_us_root . $us_url_root . 'usersc/includes/elanregistry_prep.php';
 
-if ($method !== 'POST' || !Input::exists('post')) {
+if ($method !== 'POST' || !Input::existsPost()) {
     ApiResponse::error('Method not allowed', 405)->send();
 }
 
