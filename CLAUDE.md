@@ -138,6 +138,12 @@ composer test:coverage          # Coverage report
 composer check:php              # PHP coding standards + PHPStan analysis
 composer check                  # Full check (PHP standards + PHPStan + ESLint)
 
+# Database migrations
+composer migrate                # Apply pending migrations
+composer migrate:status         # Show pending and applied migrations
+composer migrate:dry-run        # Preview pending migrations without applying
+composer migrate:rollback       # Roll back the most recent migration
+
 # Build (minify first-party JS/CSS — run after editing source files)
 npm run build                   # Minify app/assets/js/, app/assets/css/, app/admin/assets/
 

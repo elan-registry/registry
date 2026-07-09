@@ -38,6 +38,19 @@ if (!securePage($php_self)) {
 // Initialize database connection
 $db = DB::getInstance();
 
+// Check for pending Phinx migrations. When phinxlog does not exist (fresh
+// install), DB::query() throws a PDOException that is caught below.
+$pendingMigrationCount = 0;
+try {
+    $migrationFiles = glob($abs_us_root . $us_url_root . 'database/migrations/*.php') ?: [];
+    $row = $db->query("SELECT COUNT(*) as cnt FROM phinxlog")->first();
+    $appliedCount = is_object($row) ? (int)($row->cnt ?? 0) : 0;
+    $pendingMigrationCount = max(0, count($migrationFiles) - $appliedCount);
+} catch (\Throwable $e) {
+    // Non-critical banner — degrade silently but log so infrastructure problems are discoverable.
+    logger(0, LogCategories::LOG_CATEGORY_SYSTEM_ERROR, 'Migration banner check failed: ' . $e->getMessage());
+}
+
 // Abort immediately if no authenticated session exists.
 // securePage() above handles access control; this guard ensures the audit trail
 // always has a real, authenticated user ID — never a fabricated fallback.
@@ -452,6 +465,16 @@ if (ElanInput::existsPost()) {
                     </div>
                 </div>
             </div>
+
+            <?php if ($pendingMigrationCount > 0): ?>
+            <div class="alert alert-warning d-flex align-items-center mb-3" role="alert">
+                <i class="fas fa-database me-2"></i>
+                <span>
+                    <strong><?= $pendingMigrationCount ?> pending migration<?= $pendingMigrationCount !== 1 ? 's' : '' ?>.</strong>
+                    Run <code>composer migrate</code> to apply.
+                </span>
+            </div>
+            <?php endif; ?>
 
             <!-- Main Interface Card -->
             <div class="row">
