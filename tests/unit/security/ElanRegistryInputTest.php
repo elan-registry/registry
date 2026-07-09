@@ -462,6 +462,19 @@ final class ElanRegistryInputTest extends TestCase
         $this->assertFalse(Input::existsPost('x'));
     }
 
+    /**
+     * Parity invariant: when $_POST holds a present, non-null key, existsPost() (no key)
+     * and existsPost('key') both return true — confirming the two code paths agree on the
+     * common case even though they use different implementations internally.
+     */
+    #[Group('fast')]
+    public function test_existsPost_no_key_and_key_form_agree_when_key_present(): void
+    {
+        $_POST = ['x' => 'value'];
+        $this->assertTrue(Input::existsPost());
+        $this->assertTrue(Input::existsPost('x'));
+    }
+
     // -------------------------------------------------------------------------
     // existsGet() presence checks (issue #867)
     // -------------------------------------------------------------------------
