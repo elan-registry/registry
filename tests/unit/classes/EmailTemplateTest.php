@@ -609,6 +609,23 @@ final class EmailTemplateTest extends TestCase
         $this->assertStringContainsString('Missing engine number', $html);
     }
 
+    public function testAdminContactOwnerViewRendersFullVehicleLabelWithVariantAndType(): void
+    {
+        $html = $this->renderView('_admin_to_owner.php', [
+            'to'           => 'Jane Smith',
+            'from'         => 'Admin User',
+            'message'      => 'Update required.',
+            'carContext'   => ['id' => '77', 'year' => '1968', 'series' => '+2', 'variant' => 'FHC', 'type' => '50', 'chassis' => 'GHIJKL'],
+            'qualityIssue' => 'Verify engine specs',
+        ]);
+
+        $this->assertStringContainsString('77', $html);
+        $this->assertStringContainsString('1968', $html);
+        $this->assertStringContainsString('Elan +2 FHC (Type 50)', $html);
+        $this->assertStringContainsString('GHIJKL', $html);
+        $this->assertStringContainsString('Verify engine specs', $html);
+    }
+
     public function testAdminContactOwnerViewOmitsCarBoxWhenCarContextEmpty(): void
     {
         $html = $this->renderView('_admin_to_owner.php', [
