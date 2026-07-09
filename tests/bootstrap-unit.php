@@ -1129,9 +1129,9 @@ class CarModel {
 }
 ');
 
-// Load unified autoloader for all custom classes and exceptions
+// Load Composer autoloader for all custom classes and exceptions
 // This must come AFTER mock classes are defined so the mocks take precedence
-require_once $projectRoot . '/usersc/classes/class.autoloader.php';
+require_once $projectRoot . '/vendor/autoload.php';
 
 /**
  * Mock user object and authentication system

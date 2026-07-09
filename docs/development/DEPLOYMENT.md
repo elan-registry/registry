@@ -242,9 +242,9 @@ and redeploy — Phinx retries only the failed migration (already-applied ones a
 composer migrate:status   # list pending and applied migrations
 ```
 
-**Automated deployment:** Once issue #1254 (hook self-update + composer install in prod hook) is merged,
-migrations run automatically on every `git push prod main`. Until then, run the steps above manually after
-each push.
+**Automated deployment:** `git push prod main` runs `composer install` and `composer migrate`
+automatically via the post-receive hook. The manual steps above serve as a fallback if the hook needs to
+be bootstrapped on a fresh server.
 
 ### Git & Version Control
 
@@ -274,11 +274,14 @@ each push.
 
 **Deployment Hooks:**
 
-Test and production servers have post-receive hooks that automatically:
+Test and production servers have a single shared post-receive hook
+(`scripts/server-hooks/post-receive`) that automatically:
 
 1. Checkout latest code
-2. Run `git describe --tags`
-3. Write output to VERSION file
+2. Run `git describe --tags` and write VERSION file
+3. Run `composer install --no-dev --optimize-autoloader`
+4. Run `php vendor/bin/phinx migrate` (halts deployment on failure)
+5. Self-update the installed hook from the newly deployed working tree
 
 **Development:**
 

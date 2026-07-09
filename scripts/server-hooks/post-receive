@@ -1,0 +1,111 @@
+#!/bin/bash
+#
+# Post-receive hook for Elan Registry deployment.
+# Source: scripts/server-hooks/post-receive in the repository.
+# Self-updating: copies itself from the deployed work tree on each push.
+#
+# All per-environment configuration is derived from GIT_DIR, which git
+# sets automatically before invoking this hook.
+
+# git sets GIT_DIR='.' when invoked inside a bare repo — resolve to absolute path
+GIT_DIR="$(cd "${GIT_DIR:-.}" && pwd)"
+
+case "$GIT_DIR" in
+    *test.elanregistry.git)
+        WORK_TREE=/home/unibrain/test.elanregistry.org
+        ENV_NAME="Test"
+        VERSION_EXCLUDE=''
+        ;;
+    *elanregistry.git)
+        WORK_TREE=/home/unibrain/elanregistry.org
+        ENV_NAME="Production"
+        VERSION_EXCLUDE='--exclude=*-rc*'
+        ;;
+    *)
+        echo "ERROR: Unknown git repo at GIT_DIR='$GIT_DIR' — cannot determine environment."
+        exit 1
+        ;;
+esac
+
+echo "Enter: post-receive."
+echo " - GIT_DIR=$GIT_DIR"
+echo " - WORK_TREE=$WORK_TREE"
+
+while read oldrev newrev ref
+do
+    # Only deploy branch pushes — tags and other refs are skipped
+    if [[ "$ref" != refs/heads/* ]]; then
+        echo "Skipping non-branch ref: $ref"
+        continue
+    fi
+    branch=${ref#refs/heads/}
+    echo "Branch $branch received. Deploying to $ENV_NAME environment..."
+
+    # Deploy exactly what was pushed
+    git --work-tree="$WORK_TREE" --git-dir="$GIT_DIR" checkout "$newrev" --force || {
+        echo "ERROR: git checkout of $newrev failed — deployment halted."
+        exit 1
+    }
+
+    cd "$WORK_TREE" || { echo "ERROR: cannot cd to WORK_TREE=$WORK_TREE — deployment halted."; exit 1; }
+
+    # Generate VERSION file from latest matching tag
+    if ! git --git-dir="$GIT_DIR" describe --tags $VERSION_EXCLUDE > VERSION 2>/dev/null; then
+        echo "WARNING: git describe failed (no matching tags?) — VERSION set to unknown."
+        echo "unknown" > VERSION
+    fi
+    echo "VERSION file updated: $(cat VERSION)"
+
+    # Install/refresh Composer dependencies BEFORE cleanup — .deployignore removes composer.json
+    echo "Installing Composer dependencies..."
+    composer install --no-dev --optimize-autoloader || {
+        echo "ERROR: composer install failed — deployment halted."
+        exit 1
+    }
+
+    # Run pending database migrations BEFORE cleanup — .deployignore removes database/
+    echo "Running database migrations..."
+    php vendor/bin/phinx migrate -e default || {
+        echo "ERROR: Migration failed — deployment halted. New code is deployed; schema is NOT migrated."
+        echo "       Check for site errors immediately. Fix the migration and redeploy."
+        exit 1
+    }
+
+    # Self-update this hook BEFORE cleanup — .deployignore removes scripts/
+    HOOK_SOURCE="$WORK_TREE/scripts/server-hooks/post-receive"
+    if [ -f "$HOOK_SOURCE" ]; then
+        cp "$HOOK_SOURCE" "$GIT_DIR/hooks/post-receive"
+        chmod +x "$GIT_DIR/hooks/post-receive"
+        echo "Hook self-updated."
+    else
+        echo "WARNING: Hook source not found at '$HOOK_SOURCE' — hook not self-updated."
+    fi
+
+    # Remove dev-only files listed in .deployignore
+    if [ -f "$WORK_TREE/.deployignore" ]; then
+        echo "Cleaning up dev-only files..."
+        removed=0
+        while IFS= read -r pattern; do
+            # Skip empty lines and comments
+            [[ -z "$pattern" || "$pattern" == \#* ]] && continue
+            # Trim whitespace
+            pattern=$(echo "$pattern" | xargs)
+            [[ -z "$pattern" ]] && continue
+            resolved=$(realpath -m "$WORK_TREE/$pattern")
+            case "$resolved" in
+                "$WORK_TREE/"*) ;;
+                *) echo "  WARNING: Skipping unsafe pattern: $pattern"; continue ;;
+            esac
+            if [ -e "$resolved" ]; then
+                rm -rf "$resolved"
+                echo "  Removed: $pattern"
+                removed=$((removed + 1))
+            fi
+        done < "$WORK_TREE/.deployignore"
+        # Remove .deployignore itself
+        rm -f "$WORK_TREE/.deployignore"
+        echo "Cleanup complete: $removed items removed."
+    fi
+
+    echo "$ENV_NAME deployment complete for branch: $branch"
+done

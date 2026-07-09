@@ -25,10 +25,6 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 //Put your custom functions in this file and they will be automatically included.
 
-// Note: Custom class autoloader is loaded in users/init.php (after UserSpice autoloader)
-// Note: phpdotenv is autoloaded via helpers.php (usersc/vendor/autoload.php)
-// and parsed in users/init.php where environment variables are actually needed
-
 // Override UserSpice email_body() variable whitelist to include custom template variables.
 // UserSpice v6.05 restricts which $options keys are extracted into template scope.
 // Without this, custom email templates receive null for non-whitelisted variables.
