@@ -18,7 +18,7 @@ test.describe('Elan Registry - All Pages (Not Logged In)', () => {
       path: '/app/owner/cars/index.php',
       name: 'List Cars',
       selector: 'h2',
-      expectedText: 'List Cars',
+      expectedText: 'Registry Cars',
     },
     {
       path: '/users/join.php',
@@ -45,22 +45,82 @@ test.describe('Elan Registry - All Pages (Not Logged In)', () => {
       expectedText: 'Elan Factory Information',
     },
     {
-      path: '/docs/reference-library.php',
-      name: 'Reference Library',
-      selector: 'h2',
-      expectedText: 'Reference Library',
+      path: '/docs/',
+      name: 'Docs Index',
+      selector: 'h1',
+      expectedText: 'Documentation',
+    },
+    {
+      path: '/docs/reference/index.php',
+      name: 'Reference Index',
+      selector: 'h1',
+      expectedText: 'Technical Reference',
+    },
+    {
+      path: '/docs/reference/chassis-validation.php',
+      name: 'Chassis Validation',
+      selector: 'h1',
+      expectedText: 'Chassis Validation Rules',
+    },
+    {
+      path: '/docs/reference/paint-colors.php',
+      name: 'Paint Colors',
+      selector: 'h1',
+      expectedText: 'Lotus Elan',
+    },
+    {
+      path: '/docs/reference/technical-articles.php',
+      name: 'Technical Articles',
+      selector: 'h1',
+      expectedText: 'Technical Articles',
+    },
+    {
+      path: '/docs/reference/workshop.php',
+      name: 'Workshop & Parts',
+      selector: 'h1',
+      expectedText: 'Workshop',
     },
     {
       path: '/docs/car-stories.php',
       name: 'Car Stories',
-      selector: 'h2',
+      selector: 'h1',
       expectedText: 'Car Stories',
     },
     {
-      path: '/docs/faq/index.php',
-      name: 'FAQ',
+      path: '/docs/stories/brian_walton/index.php',
+      name: 'Brian Walton Story',
       selector: 'h1',
-      expectedText: 'FAQ & User Guides',
+      expectedText: 'Elan Experimental Rally Car',
+    },
+    {
+      path: '/docs/stories/SGO_2F/index.php',
+      name: 'SGO 2F Story',
+      selector: 'h1',
+      expectedText: 'SGO 2F',
+    },
+    {
+      path: '/docs/stories/type26register.php',
+      name: 'Type 26 Register',
+      selector: 'h2',
+      expectedText: 'type26register.com',
+    },
+    {
+      path: '/docs/guides/index.php',
+      name: 'Owner Guides',
+      selector: 'h1',
+      expectedText: 'Owner Guides',
+    },
+    {
+      path: '/docs/guides/car-transfer-faq.php',
+      name: 'Car Transfer FAQ',
+      selector: 'h1',
+      expectedText: 'Car Transfer FAQ',
+    },
+    {
+      path: '/docs/pdf-viewer.php',
+      name: 'PDF Viewer',
+      selector: 'h1',
+      expectedText: 'Document Viewer',
     },
     {
       path: 'usersc/login.php',
@@ -77,31 +137,23 @@ test.describe('Elan Registry - All Pages (Not Logged In)', () => {
     },
   ];
 
-  pages.forEach(({ path, name, selector, expectedText, isRedirect, expectedRedirectPattern, isLoginPage }) => {
+  pages.forEach(({ path, name, selector, expectedText, isLoginPage }) => {
     test(`should be able to reach ${name} page`, async ({ page }) => {
-      // Navigate to the page
       const response = await page.goto(path);
 
-      // Layer 1: Check that we got a successful response
+      // Layer 1: HTTP response must be successful
       expect(response.status()).toBeLessThan(400);
 
-      // Wait for the page DOM to load (don't wait for all images/resources)
       await page.waitForLoadState('domcontentloaded');
 
-      // Layer 2: CRITICAL - Verify we're NOT on the login page (not redirected to login)
-      // Skip this check for the login page itself, since it should contain login.php in URL
+      // Layer 2: Must not have been redirected to the login page
+      // (skip this check for the login page itself)
       if (!isLoginPage) {
         expect(page.url()).not.toContain('login.php');
       }
 
-      // Layer 3: CRITICAL - Verify actual page content (not just body length)
-      if (isRedirect && expectedRedirectPattern) {
-        // For pages that redirect, verify the redirect URL matches expected pattern
-        expect(page.url()).toMatch(expectedRedirectPattern);
-      }
-
+      // Layer 3: Verify expected page content is present
       if (selector && expectedText) {
-        // Verify the specific content is visible on the page
         await expect(page.locator(selector)).toContainText(expectedText);
       }
 
@@ -118,9 +170,9 @@ test.describe('Internal Links Discovery and Testing (Not Logged In)', () => {
     { path: '/app/owner/reports/statistics.php', name: 'Statistics' },
     { path: '/docs/reference/identification-guide.php', name: 'Identification Guide' },
     { path: '/app/owner/cars/factory.php', name: 'Factory Data' },
-    { path: '/docs/reference-library.php', name: 'Reference Library' },
+    { path: '/docs/reference/index.php', name: 'Reference Index' },
     { path: '/docs/car-stories.php', name: 'Car Stories' },
-    { path: '/docs/faq/index.php', name: 'FAQ' },
+    { path: '/docs/guides/index.php', name: 'Owner Guides' },
     { path: 'usersc/login.php', name: 'Log In' },
     { path: '/users/forgot_password.php', name: 'Forgot Password' },
   ];
@@ -196,8 +248,9 @@ test.describe('Internal Links Discovery and Testing (Not Logged In)', () => {
 
   test('test all unique internal links found across all pages', async ({ page }) => {
     test.setTimeout(120000); // 2 minutes for testing 50+ links on production
-    const allInternalLinks = new Map(); // Changed to Map to track which page each link was found on
-    const publicPageNames = ['Home', 'List Cars', 'Register', 'Statistics', 'Identification Guide', 'Factory Data', 'Reference Library', 'Car Stories', 'FAQ', 'Log In'];
+    const allInternalLinks = new Map();
+    // All discovery pages except Forgot Password count as public pages for warning purposes
+    const publicPageNames = pages.filter(p => p.name !== 'Forgot Password').map(p => p.name);
 
     console.log('\n=== Discovering Internal Links ===');
     for (const { path, name } of pages) {

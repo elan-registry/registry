@@ -19,6 +19,7 @@ None.
 ### Improvements
 
 - **Input class: type-safe POST/GET checks** ([#867](https://github.com/unibrain1/elanregistry/issues/867)): `ElanRegistry\Input::exists(string $type)` replaced by `Input::existsPost()` and `Input::existsGet()`, eliminating the runtime string dispatch in favour of method-name type safety. The key-based forms (`existsPost('field')` / `existsGet('field')`) enable per-key existence checks. All call sites updated. Documented in `CODING_STANDARDS.md` and `elanregistry_overrides`.
+- **E2E smoke coverage for docs portal** ([#1252](https://github.com/unibrain1/elanregistry/issues/1252)): Fixed two stale paths in the not-logged-in e2e suite (`/docs/reference-library.php` → `/docs/reference/index.php`, `/docs/faq/index.php` → `/docs/guides/index.php`) and added smoke tests for 12 additional docs portal pages (docs index, all reference sub-pages, car stories, guides, and pdf-viewer). Also corrected two pre-existing stale selectors for List Cars and Car Stories.
 
 ## Admin-Facing Changes
 
