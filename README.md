@@ -42,7 +42,7 @@ composer test:quick             # verify environment
 ```
 
 For full installation steps, see the [Registry Installation Guide](https://github.com/unibrain1/elanregistry/wiki/Registry-Installation).
-See `docs/development/ENVIRONMENT.md` for full `.env` configuration.
+See [`docs/development/ENVIRONMENT.md`](docs/development/ENVIRONMENT.md) for full `.env` configuration.
 
 ## Documentation
 
