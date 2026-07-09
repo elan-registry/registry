@@ -29,9 +29,9 @@ final class CarValidatorTest extends TestCase
 
     public function testValidateRequiredFieldsPassesWithAllPresent(): void
     {
+        $this->expectNotToPerformAssertions();
         $fields = ['chassis' => 'ABC123', 'model' => 'Elan', 'year' => '1970'];
         $this->validator->validateRequiredFields($fields, ['chassis', 'model', 'year']);
-        $this->assertTrue(true); // No exception thrown
     }
 
     public function testValidateRequiredFieldsThrowsOnMissingField(): void
@@ -48,6 +48,14 @@ final class CarValidatorTest extends TestCase
         $this->expectException(CarValidationException::class);
 
         $fields = ['chassis' => '   ', 'model' => 'Elan', 'year' => '1970'];
+        $this->validator->validateRequiredFields($fields, ['chassis', 'model', 'year']);
+    }
+
+    public function testValidateRequiredFieldsAcceptsZeroString(): void
+    {
+        // '0' is a legitimate value — trim((string)'0') !== '', so no exception should be thrown
+        $this->expectNotToPerformAssertions();
+        $fields = ['chassis' => '0', 'model' => 'S4|FHC|36', 'year' => '1970'];
         $this->validator->validateRequiredFields($fields, ['chassis', 'model', 'year']);
     }
 
@@ -434,6 +442,72 @@ final class CarValidatorTest extends TestCase
     }
 
     // ============================================================
+    // default case — empty guard (issue #1233, fix 2)
+    // ============================================================
+
+    /**
+     * Unknown keys with a null value must be dropped from the result (not passed through).
+     */
+    #[Group('unit')]
+    public function testDefaultCaseDropsNullValue(): void
+    {
+        $result = $this->validator->validateAndSanitizeFields(['unknownKey' => null], false);
+        $this->assertArrayNotHasKey('unknownKey', $result);
+    }
+
+    /**
+     * Unknown keys with an empty-string value must be dropped from the result (not passed through).
+     */
+    #[Group('unit')]
+    public function testDefaultCaseDropsEmptyStringValue(): void
+    {
+        $result = $this->validator->validateAndSanitizeFields(['unknownKey' => ''], false);
+        $this->assertArrayNotHasKey('unknownKey', $result);
+    }
+
+    /**
+     * Unknown keys with a falsy string value ('0') must pass through — '0' is a legitimate
+     * value that !empty() would silently drop, motivating the !== null && !== '' guard.
+     *
+     * Note: named-field cases (color, engine, model, etc.) intentionally still use !empty()
+     * because '0' is not a meaningful value for any of those domain fields. Tracked in #1262.
+     */
+    #[Group('unit')]
+    public function testDefaultCasePassesThroughZeroString(): void
+    {
+        $result = $this->validator->validateAndSanitizeFields(['unknownKey' => '0'], false);
+        $this->assertArrayHasKey('unknownKey', $result);
+        $this->assertSame('0', $result['unknownKey']);
+    }
+
+    // ============================================================
+    // chassis — sanitization and minimum-length guard
+    // ============================================================
+
+    /**
+     * A chassis value at the 3-character minimum must be accepted and stored unchanged.
+     * Format validation (ChassisValidator) is the responsibility of save.php::updateChassis().
+     */
+    #[Group('unit')]
+    public function testChassisMinimumLengthAccepted(): void
+    {
+        $result = $this->validator->validateAndSanitizeFields(['chassis' => 'ABC'], false);
+        $this->assertSame('ABC', $result['chassis']);
+    }
+
+    /**
+     * A chassis value shorter than 3 characters must throw CarValidationException.
+     */
+    #[Group('unit')]
+    public function testChassisTooShortThrows(): void
+    {
+        $this->expectException(CarValidationException::class);
+        $this->expectExceptionMessage('Chassis number must be at least 3 characters long');
+
+        $this->validator->validateAndSanitizeFields(['chassis' => 'AB'], false);
+    }
+
+    // ============================================================
     // Full positive case: valid inputs return sanitized array
     // ============================================================
 
@@ -444,7 +518,7 @@ final class CarValidatorTest extends TestCase
     public function testValidateAndSanitizeFieldsReturnsFullSanitizedArray(): void
     {
         $fields = [
-            'chassis' => 'ABC123',
+            'chassis' => '1234A', // 1970 legacy 5-char format: 4 numeric digits + Elan suffix 'A' (valid letter code)
             'model' => 'S4|FHC|36', // Valid in mock CarModel
             'year' => '1970',
             'email' => 'owner@example.com',
@@ -460,7 +534,7 @@ final class CarValidatorTest extends TestCase
 
         $result = $this->validator->validateAndSanitizeFields($fields, true);
 
-        $this->assertEquals('ABC123', $result['chassis']);
+        $this->assertEquals('1234A', $result['chassis']);
         $this->assertEquals('S4|FHC|36', $result['model']);
         $this->assertSame(1970, $result['year']);
         $this->assertEquals('owner@example.com', $result['email']);

@@ -34,7 +34,7 @@ $adminUserId = (int) $user->data()->id;
 $errors = [];
 $successes = [];
 
-if (Input::exists('post')) {
+if (Input::existsPost()) {
     $token = Input::get('csrf');
     if (!Token::check($token)) {
         include($abs_us_root . $us_url_root . 'usersc/scripts/token_error.php');
@@ -43,7 +43,7 @@ if (Input::exists('post')) {
 
     $action = Input::get('action');
     if ($action === 'admin_contact_owner') {
-        $message = trim(Input::raw('message'));
+        $message = trim(Input::raw('message') ?? '');
         $carId = Input::get('car_id');
         $ownerId = Input::get('owner_id');
         $qualityIssue = Input::raw('quality_issue');
@@ -124,11 +124,12 @@ if (Input::exists('post')) {
 
                 if ($carData) {
                     $template['carContext'] = [
-                        'id' => $carData->id,
-                        'year' => $carData->year,
-                        'model' => $carData->model,
-                        'series' => $carData->series,
-                        'chassis' => $carData->chassis
+                        'id'      => $carData->id,
+                        'year'    => $carData->year,
+                        'series'  => $carData->series  ?? '',
+                        'variant' => $carData->variant ?? '',
+                        'type'    => $carData->type    ?? '',
+                        'chassis' => $carData->chassis,
                     ];
                 }
 

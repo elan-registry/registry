@@ -59,9 +59,12 @@ parameters:
     # Don't report unmatched ignored errors
     reportUnmatchedIgnoredErrors: false
 
-    # Bootstrap files — load constants defined outside the analysed classes
+    # Bootstrap files — load constants defined outside the analysed classes.
+    # phpstan-bootstrap.php stubs the UserSpice globals ($abs_us_root, $us_url_root)
+    # that config.php needs; those are set by z_us_root.php at runtime but are
+    # undefined when PHPStan bootstraps in isolation.
     bootstrapFiles:
-        - usersc/includes/config.php
+        - phpstan-bootstrap.php
 
 # Custom rules (can be added via extensions)
 # extensions:

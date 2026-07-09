@@ -26,7 +26,7 @@ if ($method !== 'POST') {
     ApiResponse::error('Method not allowed', 405)->send();
 }
 
-if (!Input::exists('post')) {
+if (!Input::existsPost()) {
     ApiResponse::error('No data received')
         ->withDataArray([
             'draw' => 0,

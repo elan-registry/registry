@@ -80,8 +80,8 @@ if ($act == 1 || $settings->no_passwords == 1) {
     $pre = 1;
 }
 
-if (Input::exists()) {
-    $token = $_POST['csrf'];
+if (Input::existsPost()) {
+    $token = Input::get('csrf');
     if (!Token::check($token)) {
         include $abs_us_root.$us_url_root.'usersc/scripts/token_error.php';
     }

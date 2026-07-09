@@ -29,12 +29,12 @@ class CarValidator
      * @param array<string, mixed> $fields Fields to validate
      * @param array<string> $requiredFields List of required field names
      * @return void
-     * @throws CarValidationException If any required field is missing or empty
+     * @throws CarValidationException If any required field is absent, empty, or whitespace-only
      */
     public function validateRequiredFields(array $fields, array $requiredFields): void
     {
         foreach ($requiredFields as $field) {
-            if (!isset($fields[$field]) || empty(trim((string) $fields[$field]))) {
+            if (!isset($fields[$field]) || trim((string)$fields[$field]) === '') {
                 throw new CarValidationException("Required field '{$field}' is missing or empty");
             }
         }
@@ -217,7 +217,10 @@ class CarValidator
                     break;
 
                 default:
-                    $validatedFields[$key] = $value;
+                    // Explicit check — !empty() would drop legitimate falsy values like '0' or 0
+                    if ($value !== null && $value !== '') {
+                        $validatedFields[$key] = $value;
+                    }
                     break;
             }
         }

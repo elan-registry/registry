@@ -34,8 +34,7 @@ try {
     // Enhance results with data quality scoring
     $enhancedResults = [];
     foreach ($searchResults as $owner) {
-        $ownerProfile = new Owner((int)$owner->id);
-        $qualityScore = $ownerProfile->getProfileQualityScore();
+        $qualityScore = Owner::qualityScoreFromRow($owner);
 
         $enhancedResults[] = [
             'id' => (int)$owner->id,

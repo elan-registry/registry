@@ -1,6 +1,7 @@
 <?php
 
 use ElanRegistry\Car\Car;
+use ElanRegistry\Input;
 use ElanRegistry\LogCategories;
 
 require_once '../../users/init.php';
@@ -16,7 +17,7 @@ $base_url = $query->first()->verify_url;
 $message = '';
 $redirect = $base_url . $us_url_root;
 
-if (Input::exists('get') && Input::get('code') && Input::get('action')) {
+if (Input::existsGet() && Input::get('code') && Input::get('action')) {
     $code = Input::get('code');
     $action = Input::get('action');
     $token = Input::get('token');

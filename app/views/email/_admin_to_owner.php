@@ -22,9 +22,23 @@ $adminDetails =
 
 $carContextBox = '';
 if ($hasCarContext) {
-    $carDetails = $emailTemplate->createDetailRow('Car ID', $carContext['id']);
-    if (isset($carContext['year']) && isset($carContext['model'])) {
-        $carDetails .= $emailTemplate->createDetailRow('Vehicle', $carContext['year'] . ' ' . $carContext['model']);
+    $carDetails = $emailTemplate->createDetailRow('Car ID', (string)$carContext['id']);
+    $vehicleLabel = '';
+    if (!empty($carContext['year'])) {
+        $vehicleLabel .= (int)$carContext['year'];
+    }
+    if (!empty($carContext['series'])) {
+        $prefix = $vehicleLabel !== '' ? ' ' : '';
+        $vehicleLabel .= $prefix . 'Elan ' . $carContext['series'];
+    }
+    if (!empty($carContext['variant'])) {
+        $vehicleLabel .= ' ' . $carContext['variant'];
+    }
+    if (!empty($carContext['type'])) {
+        $vehicleLabel .= ' (Type ' . $carContext['type'] . ')';
+    }
+    if ($vehicleLabel !== '') {
+        $carDetails .= $emailTemplate->createDetailRow('Vehicle', $vehicleLabel);
     }
     if (isset($carContext['chassis'])) {
         $carDetails .= $emailTemplate->createDetailRow('Chassis', $carContext['chassis']);

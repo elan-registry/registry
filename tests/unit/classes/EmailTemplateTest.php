@@ -557,7 +557,7 @@ final class EmailTemplateTest extends TestCase
             'to'           => 'Jane Smith',
             'from'         => 'Admin User',
             'message'      => 'Please update your car details.',
-            'carContext'   => ['id' => '123', 'year' => '1972', 'model' => 'Elan S4', 'chassis' => 'CH123456'],
+            'carContext'   => ['id' => '123', 'year' => '1972', 'series' => 'S4', 'variant' => '', 'type' => '', 'chassis' => 'CH123456'],
             'qualityIssue' => 'Missing chassis number',
         ]);
 
@@ -598,7 +598,7 @@ final class EmailTemplateTest extends TestCase
             'to'           => 'Jane Smith',
             'from'         => 'Admin User',
             'message'      => 'Update required.',
-            'carContext'   => ['id' => '99', 'year' => '1971', 'model' => 'Elan Sprint', 'chassis' => 'ABCDEF'],
+            'carContext'   => ['id' => '99', 'year' => '1971', 'series' => 'Sprint', 'variant' => '', 'type' => '', 'chassis' => 'ABCDEF'],
             'qualityIssue' => 'Missing engine number',
         ]);
 
@@ -607,6 +607,23 @@ final class EmailTemplateTest extends TestCase
         $this->assertStringContainsString('Elan Sprint', $html);
         $this->assertStringContainsString('ABCDEF', $html);
         $this->assertStringContainsString('Missing engine number', $html);
+    }
+
+    public function testAdminContactOwnerViewRendersFullVehicleLabelWithVariantAndType(): void
+    {
+        $html = $this->renderView('_admin_to_owner.php', [
+            'to'           => 'Jane Smith',
+            'from'         => 'Admin User',
+            'message'      => 'Update required.',
+            'carContext'   => ['id' => '77', 'year' => '1968', 'series' => '+2', 'variant' => 'FHC', 'type' => '50', 'chassis' => 'GHIJKL'],
+            'qualityIssue' => 'Verify engine specs',
+        ]);
+
+        $this->assertStringContainsString('77', $html);
+        $this->assertStringContainsString('1968', $html);
+        $this->assertStringContainsString('Elan +2 FHC (Type 50)', $html);
+        $this->assertStringContainsString('GHIJKL', $html);
+        $this->assertStringContainsString('Verify engine specs', $html);
     }
 
     public function testAdminContactOwnerViewOmitsCarBoxWhenCarContextEmpty(): void
@@ -661,11 +678,12 @@ final class EmailTemplateTest extends TestCase
             'to'          => 'Alice',
             'from'        => 'Admin Name',
             'message'     => 'Please correct the data.',
-            'carContext'  => ['id' => '99', 'year' => '1971', 'model' => 'Elan S4', 'chassis' => 'ELAN/6/1234'],
+            'carContext'  => ['id' => '99', 'year' => '1971', 'series' => 'S4', 'variant' => '', 'type' => '', 'chassis' => 'ELAN/6/1234'],
             'qualityIssue' => 'Year is incorrect',
         ]);
 
         $this->assertStringContainsString('Update Your Car Record', $html);
+        $this->assertStringContainsString('Elan S4', $html);
     }
 
     public function testAdminContactOwnerViewShowsRegistryLinkWhenNoQualityIssue(): void
@@ -688,7 +706,7 @@ final class EmailTemplateTest extends TestCase
             'to'          => 'Alice',
             'from'        => 'Admin Name',
             'message'     => 'Please fix the data.',
-            'carContext'  => ['id' => '99', 'year' => '1971', 'model' => 'Elan S4', 'chassis' => 'ELAN/6/1234'],
+            'carContext'  => ['id' => '99', 'year' => '1971', 'series' => 'S4', 'variant' => '', 'type' => '', 'chassis' => 'ELAN/6/1234'],
             'qualityIssue' => '<script>alert("xss")</script>',
         ]);
 

@@ -335,4 +335,68 @@ final class OwnerProfileTest extends TestCase
             $this->owner->validateProfileCompleteness()
         );
     }
+
+    // -----------------------------------------------------------------------
+    // qualityScoreFromRow() on search-result-shaped rows
+    // Regression guard for issue #1230: process-owner-search.php now calls
+    // qualityScoreFromRow() directly on rows from searchOwners(), which include
+    // extra columns (e.g. id). These tests confirm the scoring is unaffected.
+    // -----------------------------------------------------------------------
+
+    public function testSearchResultShapedRowScoresCorrectly(): void
+    {
+        $row = (object) [
+            'id'      => 42,
+            'fname'   => 'Jim',
+            'lname'   => 'Boone',
+            'email'   => 'jim@example.com',
+            'city'    => 'Portland',
+            'state'   => 'OR',
+            'country' => 'USA',
+            'lat'     => '45.5231',
+            'lon'     => '-122.6765',
+        ];
+
+        // 7/7 = 100.0
+        $this->assertSame(100.0, Owner::qualityScoreFromRow($row));
+    }
+
+    public function testSearchResultShapedRowWithPartialDataScoresCorrectly(): void
+    {
+        $row = (object) [
+            'id'      => 99,
+            'fname'   => 'Jane',
+            'lname'   => 'Smith',
+            'email'   => 'jane@example.com',
+            'city'    => '',
+            'state'   => '',
+            'country' => '',
+            'lat'     => '',
+            'lon'     => '',
+        ];
+
+        // 3 simple fields → round(3/7 * 100, 1) = 42.9
+        $this->assertSame(42.9, Owner::qualityScoreFromRow($row));
+    }
+
+    public function testUnionBranchShapedRowScoresCorrectly(): void
+    {
+        // searchOwners() UNION branch returns an extra `priority` column.
+        // Confirms qualityScoreFromRow() ignores unknown columns.
+        $row = (object) [
+            'id'       => 7,
+            'fname'    => 'Greg',
+            'lname'    => 'Surcouf',
+            'email'    => 'greg@example.com',
+            'city'     => 'London',
+            'state'    => '',
+            'country'  => 'GB',
+            'lat'      => '51.5074',
+            'lon'      => '-0.1278',
+            'priority' => 1,
+        ];
+
+        // 5 simple fields + lat/lon → round(6/7 * 100, 1) = 85.7
+        $this->assertSame(85.7, Owner::qualityScoreFromRow($row));
+    }
 }
