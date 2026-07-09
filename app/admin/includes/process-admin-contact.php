@@ -126,9 +126,9 @@ if (Input::exists('post')) {
                     $template['carContext'] = [
                         'id'      => $carData->id,
                         'year'    => $carData->year,
-                        'series'  => $carData->series,
-                        'variant' => $carData->variant,
-                        'type'    => $carData->type,
+                        'series'  => $carData->series  ?? '',
+                        'variant' => $carData->variant ?? '',
+                        'type'    => $carData->type    ?? '',
                         'chassis' => $carData->chassis,
                     ];
                 }

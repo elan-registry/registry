@@ -557,7 +557,7 @@ final class EmailTemplateTest extends TestCase
             'to'           => 'Jane Smith',
             'from'         => 'Admin User',
             'message'      => 'Please update your car details.',
-            'carContext'   => ['id' => '123', 'year' => '1972', 'model' => 'Elan S4', 'chassis' => 'CH123456'],
+            'carContext'   => ['id' => '123', 'year' => '1972', 'series' => 'S4', 'variant' => '', 'type' => '', 'chassis' => 'CH123456'],
             'qualityIssue' => 'Missing chassis number',
         ]);
 
@@ -678,11 +678,12 @@ final class EmailTemplateTest extends TestCase
             'to'          => 'Alice',
             'from'        => 'Admin Name',
             'message'     => 'Please correct the data.',
-            'carContext'  => ['id' => '99', 'year' => '1971', 'model' => 'Elan S4', 'chassis' => 'ELAN/6/1234'],
+            'carContext'  => ['id' => '99', 'year' => '1971', 'series' => 'S4', 'variant' => '', 'type' => '', 'chassis' => 'ELAN/6/1234'],
             'qualityIssue' => 'Year is incorrect',
         ]);
 
         $this->assertStringContainsString('Update Your Car Record', $html);
+        $this->assertStringContainsString('Elan S4', $html);
     }
 
     public function testAdminContactOwnerViewShowsRegistryLinkWhenNoQualityIssue(): void
@@ -705,7 +706,7 @@ final class EmailTemplateTest extends TestCase
             'to'          => 'Alice',
             'from'        => 'Admin Name',
             'message'     => 'Please fix the data.',
-            'carContext'  => ['id' => '99', 'year' => '1971', 'model' => 'Elan S4', 'chassis' => 'ELAN/6/1234'],
+            'carContext'  => ['id' => '99', 'year' => '1971', 'series' => 'S4', 'variant' => '', 'type' => '', 'chassis' => 'ELAN/6/1234'],
             'qualityIssue' => '<script>alert("xss")</script>',
         ]);
 
