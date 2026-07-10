@@ -55,14 +55,6 @@ if (Input::existsGet() && Input::get('code') && Input::get('action')) {
         exit;
     }
     $car = $carObj->data();
-    
-    // Defensive: confirms findByVerificationCode returned data consistent with the query parameter.
-    if (empty($car->vericode) || $car->vericode !== $code) {
-        echo "<h2>Verification failed - security check</h2><br>";
-        logger($car->user_id, LogCategories::LOG_CATEGORY_SECURITY, "Verification code security check failed for car ID: " . $car->id);
-        header('refresh:5;url=' . $base_url . $us_url_root);
-        exit;
-    }
 
     // Shared helper: call a Car state-change method, then relabel the most-recent
     // audit history row so the verification report can distinguish it from ordinary

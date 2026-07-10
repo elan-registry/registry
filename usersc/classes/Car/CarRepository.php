@@ -155,7 +155,7 @@ class CarRepository
      *
      * @param int      $fromUserId Source user whose cars are being reassigned
      * @param int|null $toUserId   Target user, or null to clear ownership (user_id = NULL)
-     * @return int                 Rows matched by the WHERE clause (MySQL rowCount: includes rows where user_id was already the target value)
+     * @return int                 Rows affected by the UPDATE (rows where user_id actually changed; 0 if no match or value already equal to target)
      * @throws \RuntimeException   If the UPDATE fails
      */
     public function reassignCarsByUser(int $fromUserId, ?int $toUserId): int
