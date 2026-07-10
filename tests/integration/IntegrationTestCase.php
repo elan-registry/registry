@@ -178,7 +178,7 @@ abstract class IntegrationTestCase extends TestCase
 
         $defaults = [
             'user_id' => $userId,
-            'year' => '1973',
+            'year' => 1973,
             'model' => 'Elan S4',
             'series' => 'S4',
             'variant' => 'SE',
