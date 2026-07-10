@@ -34,23 +34,27 @@ final class ChangeCarsYearAndDropModifiedby extends AbstractMigration
 
         $trustFunctionCreatorsSet = $this->enableTrustFunctionCreators();
 
-        // Make cars_hist.year nullable and normalize empty-string sentinel values before
-        // changing the type to SMALLINT UNSIGNED — only needed if the column is still
-        // VARCHAR (i.e., a previous run did not complete this step).
-        $histYearInfo = $this->fetchRow(
-            "SELECT COLUMN_TYPE, IS_NULLABLE
-             FROM information_schema.COLUMNS
-             WHERE TABLE_SCHEMA = DATABASE()
-               AND TABLE_NAME = 'cars_hist'
-               AND COLUMN_NAME = 'year'"
-        );
-        if ($histYearInfo && stripos((string) $histYearInfo['COLUMN_TYPE'], 'varchar') !== false) {
-            if ($histYearInfo['IS_NULLABLE'] === 'NO') {
-                // Make nullable first so we can UPDATE rows to NULL.
-                $this->execute("ALTER TABLE cars_hist MODIFY COLUMN year varchar(4) NULL");
+        // Normalize each table's year column before the type change.
+        // Under NO_ENGINE_SUBSTITUTION, ALTER TABLE MODIFY COLUMN silently coerces
+        // empty strings to 0 rather than NULL — so we must clear sentinels first.
+        // Both tables need the same treatment even though only cars_hist had known
+        // empty-string rows in production; cars.year was NOT NULL so it needs to be
+        // made nullable before the UPDATE can set rows to NULL.
+        foreach (['cars', 'cars_hist'] as $tbl) {
+            $info = $this->fetchRow(
+                "SELECT COLUMN_TYPE, IS_NULLABLE
+                 FROM information_schema.COLUMNS
+                 WHERE TABLE_SCHEMA = DATABASE()
+                   AND TABLE_NAME = '{$tbl}'
+                   AND COLUMN_NAME = 'year'"
+            );
+            if ($info && stripos((string) $info['COLUMN_TYPE'], 'varchar') !== false) {
+                if ($info['IS_NULLABLE'] === 'NO') {
+                    // Make nullable first so the UPDATE can SET year = NULL.
+                    $this->execute("ALTER TABLE `{$tbl}` MODIFY COLUMN year varchar(4) NULL");
+                }
+                $this->execute("UPDATE `{$tbl}` SET year = NULL WHERE year = '' OR year = '0'");
             }
-            // Normalize legacy sentinel values — empty strings can't cast to SMALLINT UNSIGNED.
-            $this->execute("UPDATE cars_hist SET year = NULL WHERE year = '' OR year = '0'");
         }
 
         // Change year to SMALLINT UNSIGNED NULL on cars and cars_hist — skip whichever

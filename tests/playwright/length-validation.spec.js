@@ -176,7 +176,7 @@ test.describe('transfer-request.php — length validation', () => {
     // end with "No car found" — but length checks fire before the DB lookup.
     const baseValid = {
         chassis: '123456789012345',             // 15 chars (at limit)
-        year: '1973',                           // 4 chars (at limit)
+        year: '1973',                           // valid in-range year (1963–1974)
         color: '0123456789012345678901234',      // 25 chars (at limit)
         engine: '123456789012345',              // 15 chars (at limit)
         comments: 'A'.repeat(1000),             // 1000 chars (at limit)
@@ -295,11 +295,11 @@ test.describe('transfer-request.php — length validation', () => {
         expect(body.message).toMatch(/chassis.*15/i);
     });
 
-    test('year 5 chars rejected with 400 (over-limit)', async ({ page }) => {
+    test('year out of range rejected with 400 (1975 > max)', async ({ page }) => {
         const resp = await page.request.post('app/api/cars/transfer-request.php', {
             data: {
                 ...baseValid,
-                year: '19733', // 5 chars
+                year: '1975', // above the 1963–1974 domain
                 csrf: csrfToken,
             },
         });
@@ -310,7 +310,7 @@ test.describe('transfer-request.php — length validation', () => {
         }
         expect(resp.status()).toBe(400);
         expect(body).toHaveProperty('success', false);
-        expect(body.message).toMatch(/year.*4/i);
+        expect(body.message).toMatch(/year.*between/i);
     });
 
     test('color 26 chars rejected with 400 (over-limit)', async ({ page }) => {
