@@ -20,6 +20,28 @@ final class AddForeignKeyConstraints extends AbstractMigration
     // point. Phinx runs up() on any environment where the migration is pending.
     public function up(): void
     {
+        // Guard: check for orphaned rows before any DDL. DDL triggers an implicit
+        // commit in MySQL — if a guard placed after DDL throws, those schema changes
+        // are permanent and a re-run will fail on duplicate indexes/FKs. This SELECT
+        // is read-only, so failure here leaves the schema untouched.
+        //
+        // Covers all three FKs being added to car_transfer_requests:
+        //   fk_transfer_existing_car  → cars.id
+        //   fk_transfer_created_by    → users.id
+        //   fk_transfer_requested_by  → users.id
+        $orphans = $this->fetchRow(
+            "SELECT COUNT(*) AS n FROM car_transfer_requests
+              WHERE existing_car_id NOT IN (SELECT id FROM cars)
+                 OR created_by NOT IN (SELECT id FROM users)
+                 OR requested_by_user_id NOT IN (SELECT id FROM users)"
+        );
+        if ((int) $orphans['n'] > 0) {
+            throw new \RuntimeException(
+                "Cannot add FK constraints: {$orphans['n']} orphaned row(s) in car_transfer_requests. " .
+                "Run pre-deployment orphan check from the v2.26.2 release notes before migrating."
+            );
+        }
+
         // Fix column types on car_transfer_requests before adding FK constraints.
         //
         // On prod: id and existing_car_id are signed INT; MySQL 8.0.16+ enforces
@@ -67,23 +89,6 @@ final class AddForeignKeyConstraints extends AbstractMigration
                  'constraint' => 'fk_cars_user_id',
              ])
              ->update();
-
-        // Guard: fk_transfer_created_by and fk_transfer_requested_by CASCADE on
-        // DELETE. If any row references a non-existent user MySQL will reject the
-        // FK addition with an opaque error. Fail early with a clear message so
-        // the operator knows to run the pre-deployment orphan check from the
-        // v2.26.2 release notes before migrating.
-        $orphans = $this->fetchRow(
-            "SELECT COUNT(*) AS n FROM car_transfer_requests
-              WHERE created_by NOT IN (SELECT id FROM users)
-                 OR requested_by_user_id NOT IN (SELECT id FROM users)"
-        );
-        if ((int) $orphans['n'] > 0) {
-            throw new \RuntimeException(
-                "Cannot add FK constraints: {$orphans['n']} orphaned row(s) in car_transfer_requests. " .
-                "Run pre-deployment orphan check from the v2.26.2 release notes before migrating."
-            );
-        }
 
         // Three FKs on car_transfer_requests — fk_transfer_created_by and
         // fk_transfer_requested_by were in 1-schema.sql but missing from the
