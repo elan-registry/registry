@@ -218,6 +218,10 @@ class CarTransferRepository
      * TOCTOU case where another admin processed the request first. Throws on DB error
      * so callers can distinguish "already processed" from "infrastructure failure".
      *
+     * Note: terminal transitions include `AND status = 'pending'` in the WHERE clause
+     * as a TOCTOU guard. Non-terminal transitions (Pending, Approved) do not — callers
+     * are responsible for ensuring the row is in an expected state before calling.
+     *
      * @param int $id Transfer request ID
      * @param TransferStatus $status New status
      * @param string $adminNotes Admin notes to record

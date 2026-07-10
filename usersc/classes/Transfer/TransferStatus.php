@@ -7,7 +7,7 @@ namespace ElanRegistry\Transfer;
 enum TransferStatus: string
 {
     case Pending   = 'pending';
-    case Approved  = 'approved'; // Reserved — DB enum includes this; no code transitions to it, but isTerminal() classifies it as non-terminal so future transitions are safe to add
+    case Approved  = 'approved'; // Included to match DB enum; non-terminal so DB rows with this value are safe to read without ValueError
     case Completed = 'completed';
     case Denied    = 'denied';
     case Expired   = 'expired';

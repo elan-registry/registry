@@ -46,7 +46,6 @@ try {
 
     // Update transfer request status to denied.
     // No transaction needed — this is the only write in the denial flow.
-    // If a second write is added here in future, wrap both in beginTransaction()/rollBack().
     if (!$repo->updateStatus((int)$transferId, TransferStatus::Denied, "Denied by admin user {$user->data()->id}")) {
         throw new CarTransferException(
             "updateStatus returned false for transfer #{$transferId} — request already processed (TOCTOU)",
