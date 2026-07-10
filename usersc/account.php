@@ -21,21 +21,28 @@ if (!empty($_POST['uncloak']) && Token::check(\Input::get('token'))) {
 }
 
 $ownerId    = (int)$user->data()->id;
-$ownerData  = getUserWithProfile($ownerId);
+$owner      = new Owner($ownerId);
+$ownerData  = $owner->data();
 $cars       = Car::findByOwner($ownerId);
 $carCount   = count($cars);
-try {
-    $signupDate = !empty($ownerData->join_date) ? new DateTime($ownerData->join_date) : null;
-} catch (\Exception) {
-    $signupDate = null;
+if ($ownerData !== null) {
+    try {
+        $signupDate = !empty($ownerData->join_date) ? new DateTime($ownerData->join_date) : null;
+    } catch (\Exception) {
+        $signupDate = null;
+    }
+    $lastLogin   = !empty($ownerData->last_login) ? new DateTime($ownerData->last_login) : null;
+    $hasOwnerMap = is_numeric($ownerData->lat ?? null)
+        && is_numeric($ownerData->lon ?? null)
+        && (float)($ownerData->lat ?? 0) !== 0.0
+        && (float)($ownerData->lon ?? 0) !== 0.0;
+} else {
+    $signupDate  = null;
+    $lastLogin   = null;
+    $hasOwnerMap = false;
 }
-$lastLogin  = !empty($ownerData->last_login) ? new DateTime($ownerData->last_login) : null;
-$hasOwnerMap = is_numeric($ownerData->lat ?? null)
-    && is_numeric($ownerData->lon ?? null)
-    && (float)($ownerData->lat ?? 0) !== 0.0
-    && (float)($ownerData->lon ?? 0) !== 0.0;
 
-$qualityScore = (new Owner($ownerId))->getProfileQualityScore();
+$qualityScore = $owner->getProfileQualityScore();
 
 // Owner website (only display for http/https)
 $ownerWebsite       = $ownerData->website ?? '';

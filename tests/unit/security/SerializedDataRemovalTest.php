@@ -98,10 +98,10 @@ class SerializedDataRemovalTest extends TestCase
         
         $content = file_get_contents($contactEmailFile);
         
-        // User lookups must go through the Owner domain class (which internally uses
-        // parameterized queries via getUserWithProfile()). Guards against a regression
-        // to raw SQL — the original unserialize()-removal fix required parameterized
-        // lookups; routing through Owner preserves that guarantee. (Issue #962)
+        // User lookups must go through the Owner domain class, whose find() method
+        // runs its own LEFT JOIN users/profiles query with parameterized binding.
+        // Guards against a regression to raw SQL — the original unserialize()-removal
+        // fix required parameterized lookups; routing through Owner preserves that. (Issue #962)
         $this->assertStringContainsString('new Owner(', $content,
             'send-owner-email.php should look up users via the Owner domain class');
         $this->assertStringNotContainsString('SELECT id, email, fname, lname FROM users', $content,

@@ -26,8 +26,10 @@ require_once $abs_us_root . $us_url_root . 'usersc/includes/elanregistry_prep.ph
 
 <?php
 use ElanRegistry\AppConstants;
+use ElanRegistry\Car\Car;
 use ElanRegistry\Input;
 use ElanRegistry\LogCategories;
+use ElanRegistry\Owner;
 
 if (!securePage($php_self)) {
     die();
@@ -265,40 +267,14 @@ if (!empty($_POST)) {
         if (!empty($geoResult) && isset($geoResult['lat']) && isset($geoResult['lon'])) {
             $successes[] = 'Lat/Lon updated.';
             logger((int)$user->data()->id, LogCategories::LOG_CATEGORY_USER, 'Successfully updated lat/lon: ' . json_encode($geoResult));
-            
-            // BUGFIX #193: Sync location to all cars owned by this user
-            $userCarsQuery = $db->query("SELECT car_id AS id FROM car_user WHERE userid = ?", [$userId]);
-            if ($userCarsQuery->count() > 0) {
-                $userCars = $userCarsQuery->results();
-                $carFields = [
-                    'city' => $city,
-                    'state' => $state,
-                    'country' => $country,
-                    'lat' => $geoResult['lat'],
-                    'lon' => $geoResult['lon'],
-                    'mtime' => date(AppConstants::DATETIME_FORMAT)
-                ];
-                
-                $carsUpdated = 0;
-                foreach ($userCars as $car) {
-                    // Update each car with new location
-                    if ($db->update('cars', (int)$car->id, $carFields)) {
-                        $carsUpdated++;
-                        
-                        // Add history record for location sync
-                        $historyFields = $carFields;
-                        $historyFields['car_id'] = (int)$car->id;
-                        $historyFields['operation'] = 'LOCATION_SYNC';
-                        $historyFields['comments'] = "Car location synchronized with owner profile update. City: $city, State: $state, Country: $country";
-                        $historyFields['ctime'] = $carFields['mtime'];
-                        $db->insert('cars_hist', $historyFields);
-                    }
-                }
-                
-                if ($carsUpdated > 0) {
-                    $successes[] = "Location synchronized to $carsUpdated car(s).";
-                    logger((int)$user->data()->id, LogCategories::LOG_CATEGORY_USER, "Location sync: Updated $carsUpdated cars with new coordinates");
-                }
+
+            $owner = new Owner($userId);
+            $carsUpdated = $owner->syncLocationToCars();
+            if ($carsUpdated > 0) {
+                $successes[] = "Location synchronized to $carsUpdated car(s).";
+            } elseif (!empty(Car::findByOwner($userId))) {
+                // User has cars but 0 were updated — sync failed (individual errors logged in syncLocationToCars)
+                $errors[] = 'Location saved, but car location sync encountered an error. Please contact support if this persists.';
             }
         }
 

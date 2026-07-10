@@ -512,28 +512,6 @@ if (!function_exists('logger')) {
     }
 }
 
-// Mock getUserWithProfile function
-// Returns null for user ID <= 0 (simulates "user not found"), truthy object otherwise.
-if (!function_exists('getUserWithProfile')) {
-    function getUserWithProfile(int $userId): ?object {
-        if ($userId <= 0) {
-            return null;
-        }
-        return (object) [
-            'id' => (string) $userId,
-            'fname' => 'Test',
-            'lname' => 'User',
-            'email' => 'test@example.com',
-            'city' => 'Test City',
-            'state' => 'Test State',
-            'country' => 'Test Country',
-            'lat' => '0.0000',
-            'lon' => '0.0000',
-            'website' => ''
-        ];
-    }
-}
-
 // Mock DB class
 if (!class_exists('DB')) {
     /**
@@ -563,6 +541,29 @@ if (!class_exists('DB')) {
          * @return QueryResult
          */
         public function query(string $sql, array $params = []): QueryResult {
+            // Owner::find() runs a users LEFT JOIN profiles WHERE u.id = ? query.
+            // Return a standard mock user row so tests that need a valid owner work.
+            // The WHERE-clause guard prevents matching Owner::searchOwners() and other
+            // queries that join users+profiles but use different WHERE conditions.
+            if (stripos($sql, 'profiles') !== false
+                && stripos($sql, 'users') !== false
+                && stripos($sql, 'WHERE u.id') !== false) {
+                $userId = $params[0] ?? 1;
+                return new QueryResult([(object) [
+                    'id'         => (string) $userId,
+                    'email'      => 'test@example.com',
+                    'fname'      => 'Test',
+                    'lname'      => 'User',
+                    'join_date'  => '2024-01-01 00:00:00',
+                    'last_login' => '2024-01-01 00:00:00',
+                    'city'       => 'Test City',
+                    'state'      => 'TS',
+                    'country'    => 'US',
+                    'lat'        => null,
+                    'lon'        => null,
+                    'website'    => '',
+                ]]);
+            }
             return new QueryResult([]);
         }
 
@@ -665,6 +666,14 @@ if (!class_exists('DB')) {
          */
         public function lastId(): int {
             return 1;
+        }
+
+        public function count(): int {
+            return 0;
+        }
+
+        public function deleteById(string $table, int $id): bool {
+            return true;
         }
 
         public function beginTransaction(): void {}
@@ -848,8 +857,8 @@ if (!class_exists('DB')) {
                     return new MockQueryResult(array_values($noOwnerUsers));
                 }
 
-                // Handle car_user queries
-                if (strpos($sql, 'SELECT carid FROM car_user WHERE userid = ?') !== false) {
+                // Handle car_user queries (CarRepository::findByOwner uses "car_id AS id" alias)
+                if (strpos($sql, 'SELECT car_id AS id FROM car_user WHERE userid = ?') !== false) {
                     $userId = $params[0] ?? null;
                     $userCars = array_filter($mockCarUser ?: [], function($carUser) use ($userId) {
                         return $carUser->userid == $userId;
@@ -1325,7 +1334,7 @@ function mockUserDeletionCleanup($id): void {
 
         // Reassign cars to noowner in car_user table
         foreach ($userCars as $car) {
-            logger($id, LogCategories::LOG_CATEGORY_CAR_ACTIONS, "User deletion: car ID {$car->carid} reassigned from user $id to noowner (ID: $noOwnerUserId)");
+            logger($id, LogCategories::LOG_CATEGORY_CAR_ACTIONS, "User deletion: car ID {$car->id} reassigned from user $id to noowner (ID: $noOwnerUserId)");
         }
 
         // Log the cleanup for audit purposes

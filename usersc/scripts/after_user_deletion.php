@@ -44,17 +44,21 @@ if ($noOwnerQuery->count() > 0) {
     $noOwnerUserId = (int) $noOwnerQuery->first()->id;
 
     // Capture car list before cleanup so we can log per-car after commit
-    $userCars = $db->query('SELECT car_id FROM car_user WHERE userid = ?', [$id])->results();
+    $userCars = $repo->findByOwner($id);
     $carCount = count($userCars);
 
     $committed = $inTransaction(function () use ($db, $repo, $id, $noOwnerUserId, $userCars): void {
         $db->query('DELETE FROM profiles WHERE user_id = ?', [$id]);
-        $repo->deleteCarUserByUserId($id);
+        if (!$repo->deleteCarUserByUserId($id)) {
+            throw new \RuntimeException("deleteCarUserByUserId failed for user $id: " . $repo->errorString());
+        }
         foreach ($userCars as $car) {
-            $repo->insertCarUser($noOwnerUserId, (int) $car->car_id);
+            if (!$repo->insertCarUser($noOwnerUserId, (int) $car->id)) {
+                throw new \RuntimeException("insertCarUser failed for car {$car->id}: " . $repo->errorString());
+            }
         }
         // Update primary car ownership (this triggers cars_hist via database trigger)
-        $db->query('UPDATE cars SET user_id = ? WHERE user_id = ?', [$noOwnerUserId, $id]);
+        $repo->reassignCarsByUser($id, $noOwnerUserId);
     });
 
     if (!$committed) {
@@ -63,15 +67,17 @@ if ($noOwnerQuery->count() > 0) {
 
     // Log after commit — only record what was actually persisted
     foreach ($userCars as $car) {
-        logger($id, LogCategories::LOG_CATEGORY_CAR_ACTIONS, "User deletion: car ID {$car->car_id} reassigned from user $id to noowner (ID: $noOwnerUserId)");
+        logger($id, LogCategories::LOG_CATEGORY_CAR_ACTIONS, "User deletion: car ID {$car->id} reassigned from user $id to noowner (ID: $noOwnerUserId)");
     }
     logger($id, LogCategories::LOG_CATEGORY_USER_DELETION, "Complete cleanup: reassigned $carCount cars to noowner user (ID: $noOwnerUserId)");
 } else {
     // Fallback if noowner doesn't exist - preserve cars but mark as ownerless
     $committed = $inTransaction(function () use ($db, $repo, $id): void {
         $db->query('DELETE FROM profiles WHERE user_id = ?', [$id]);
-        $repo->deleteCarUserByUserId($id);
-        $db->query('UPDATE cars SET user_id = NULL WHERE user_id = ?', [$id]);
+        if (!$repo->deleteCarUserByUserId($id)) {
+            throw new \RuntimeException("deleteCarUserByUserId failed for user $id: " . $repo->errorString());
+        }
+        $repo->reassignCarsByUser($id, null);
     });
 
     if (!$committed) {

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/../IntegrationTestCase.php';
 
+use ElanRegistry\Car\Car;
 use PHPUnit\Framework\Attributes\Group;
 
 /**

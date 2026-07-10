@@ -222,4 +222,52 @@ class VerificationSecurityTest extends TestCase
         $this->assertEquals($action, $params['action']);
         $this->assertEquals($token, $params['token']);
     }
+
+    // =========================================================================
+    // MD5 allowlist regex tests (issue #1148)
+    //
+    // verify_car.php validates $code with: preg_match('/^[0-9a-f]{32}$/i', $code)
+    // These tests document and protect the allowlist contract.
+    // =========================================================================
+
+    #[\PHPUnit\Framework\Attributes\DataProvider('validVerificationCodeProvider')]
+    public function testMd5AllowlistAcceptsValidCodes(string $code): void
+    {
+        $this->assertSame(1, preg_match('/^[0-9a-f]{32}$/i', $code),
+            "Expected allowlist to accept: {$code}");
+    }
+
+    /** @return array<string, array{string}> */
+    public static function validVerificationCodeProvider(): array
+    {
+        return [
+            'lowercase MD5'  => [md5('test')],
+            'uppercase MD5'  => [strtoupper(md5('test'))],
+            'mixed case MD5' => ['Abc123def456abc123def456abc12345'],
+            'all zeros'      => [str_repeat('0', 32)],
+            'all f'          => [str_repeat('f', 32)],
+        ];
+    }
+
+    #[\PHPUnit\Framework\Attributes\DataProvider('invalidVerificationCodeProvider')]
+    public function testMd5AllowlistRejectsInvalidCodes(string $code): void
+    {
+        $this->assertSame(0, preg_match('/^[0-9a-f]{32}$/i', $code),
+            "Expected allowlist to reject: " . addcslashes($code, "\n\r\0"));
+    }
+
+    /** @return array<string, array{string}> */
+    public static function invalidVerificationCodeProvider(): array
+    {
+        return [
+            'empty string'        => [''],
+            '31 hex chars'        => [str_repeat('a', 31)],
+            '33 hex chars'        => [str_repeat('a', 33)],
+            'non-hex chars'       => ['gggggggggggggggggggggggggggggggg'],
+            'with newline'        => [str_repeat('a', 31) . "\n"],
+            'with null byte'      => [str_repeat('a', 31) . "\0"],
+            'path traversal'      => ['../../../etc/passwd00000000000000'],
+            'XSS payload'         => ['<script>alert(1)</script>0000000'],
+        ];
+    }
 }

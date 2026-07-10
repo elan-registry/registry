@@ -56,8 +56,16 @@ class Owner
     /**
      * Find and load owner data by user ID
      *
+     * Executes a users LEFT JOIN profiles query. Profile fields absent from the
+     * profiles row are normalised: city/state/country/website default to '' and
+     * lat/lon default to null.
+     *
+     * Returns false both when the user ID does not exist and when a DB error
+     * occurs. DB errors are logged to LOG_CATEGORY_DATABASE_ERROR so callers can
+     * distinguish the two cases via the log rather than the return value.
+     *
      * @param int $userId The user ID to load
-     * @return bool True if owner found and loaded
+     * @return bool True if owner found and loaded; false if $userId <= 0, not found, or DB error
      */
     public function find(int $userId): bool
     {
@@ -65,10 +73,28 @@ class Owner
             return false;
         }
 
-        // Use existing custom function for combined user+profile data
-        $ownerData = getUserWithProfile($userId);
+        $q = $this->_db->query(
+            "SELECT u.*, p.city, p.state, p.country, p.lat, p.lon, p.website
+             FROM users u
+             LEFT JOIN profiles p ON u.id = p.user_id
+             WHERE u.id = ?",
+            [$userId]
+        );
 
-        if ($ownerData) {
+        if ($this->_db->error()) {
+            logger(0, \ElanRegistry\LogCategories::LOG_CATEGORY_DATABASE_ERROR,
+                "Owner::find DB error for userId={$userId}: " . $this->_db->errorString());
+            return false;
+        }
+
+        if ($q->count() > 0) {
+            $ownerData = $q->first();
+            $ownerData->city    = $ownerData->city    ?? '';
+            $ownerData->state   = $ownerData->state   ?? '';
+            $ownerData->country = $ownerData->country ?? '';
+            $ownerData->website = $ownerData->website ?? '';
+            $ownerData->lat     = $ownerData->lat     ?? null;
+            $ownerData->lon     = $ownerData->lon     ?? null;
             $this->_data = $ownerData;
             return true;
         }

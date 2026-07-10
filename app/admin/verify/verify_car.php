@@ -11,8 +11,7 @@ if (!securePage($php_self)) {
     die();
 }
 
-$query = $db->query("SELECT * FROM email");
-$base_url = $query->first()->verify_url;
+$base_url = getBaseUrl();
 
 $message = '';
 $redirect = $base_url . $us_url_root;
@@ -21,9 +20,14 @@ if (Input::existsGet() && Input::get('code') && Input::get('action')) {
     $code = Input::get('code');
     $action = Input::get('action');
     $token = Input::get('token');
-    
-    // Validate and sanitize inputs
-    $code = htmlspecialchars(strip_tags($code), ENT_QUOTES, 'UTF-8');
+
+    // Allowlist validation: verification codes are MD5 hex strings (32 hex chars).
+    // This is stricter than htmlspecialchars and prevents log injection via newlines.
+    if (!preg_match('/^[0-9a-f]{32}$/i', (string) $code)) {
+        echo "<h2>Invalid verification code format</h2><br>";
+        header('refresh:5;url=' . $base_url . $us_url_root);
+        exit;
+    }
     $action = htmlspecialchars(strip_tags($action), ENT_QUOTES, 'UTF-8');
     
     // Validate action parameter - only allow specific actions
@@ -42,17 +46,17 @@ if (Input::existsGet() && Input::get('code') && Input::get('action')) {
         exit;
     }
 
-    // Validate verification code exists and is unique
-    $carQ = $db->query('SELECT * FROM cars WHERE vericode = ?', [$code]);
-    if ($db->count() != 1) {
+    // Look up the car by verification code (returns null if no match)
+    $carObj = Car::findByVerificationCode($code);
+    if ($carObj === null) {
         echo "<h2>Verification code not found or invalid</h2><br>";
         logger(0, LogCategories::LOG_CATEGORY_SECURITY, "Invalid verification code attempted: " . $code . " from IP: " . $remote_addr);
         header('refresh:5;url=' . $base_url . $us_url_root);
         exit;
     }
-    $car = $carQ->first();
+    $car = $carObj->data();
     
-    // Additional security: Check if verification code is not empty/null
+    // Defensive: confirms findByVerificationCode returned data consistent with the query parameter.
     if (empty($car->vericode) || $car->vericode !== $code) {
         echo "<h2>Verification failed - security check</h2><br>";
         logger($car->user_id, LogCategories::LOG_CATEGORY_SECURITY, "Verification code security check failed for car ID: " . $car->id);

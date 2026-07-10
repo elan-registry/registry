@@ -81,4 +81,61 @@ final class RouteLookupsThroughClassesTest extends TestCase
         $this->assertStringNotContainsString('FROM cars', $content,
             'process-admin-contact.php must not query the cars table directly (#962)');
     }
+
+    // -----------------------------------------------------------------------
+    // Issue #1148 regression guards — four additional callsites migrated
+    // from getUserWithProfile() to new Owner(...)->data()
+    // -----------------------------------------------------------------------
+
+    /**
+     * process-transfer-approve.php: target user lookup goes through Owner.
+     */
+    public function testProcessTransferApproveUsesOwnerClass(): void
+    {
+        $content = (string) file_get_contents($this->rootDir . '/app/admin/includes/process-transfer-approve.php');
+
+        $this->assertStringContainsString('new Owner(', $content,
+            'process-transfer-approve.php must instantiate Owner for user lookups (#1148)');
+        $this->assertStringNotContainsString('getUserWithProfile', $content,
+            'process-transfer-approve.php must not call deleted getUserWithProfile() (#1148)');
+    }
+
+    /**
+     * process-user-details.php: user lookup goes through Owner.
+     */
+    public function testProcessUserDetailsUsesOwnerClass(): void
+    {
+        $content = (string) file_get_contents($this->rootDir . '/app/admin/includes/process-user-details.php');
+
+        $this->assertStringContainsString('new Owner(', $content,
+            'process-user-details.php must instantiate Owner for user lookups (#1148)');
+        $this->assertStringNotContainsString('getUserWithProfile', $content,
+            'process-user-details.php must not call deleted getUserWithProfile() (#1148)');
+    }
+
+    /**
+     * app/admin/index.php: transfer target user lookup goes through Owner.
+     */
+    public function testAdminIndexUsesOwnerClass(): void
+    {
+        $content = (string) file_get_contents($this->rootDir . '/app/admin/index.php');
+
+        $this->assertStringContainsString('new Owner(', $content,
+            'app/admin/index.php must instantiate Owner for user lookups (#1148)');
+        $this->assertStringNotContainsString('getUserWithProfile', $content,
+            'app/admin/index.php must not call deleted getUserWithProfile() (#1148)');
+    }
+
+    /**
+     * CarAdministrationService: new-owner lookup goes through Owner.
+     */
+    public function testCarAdministrationServiceUsesOwnerClass(): void
+    {
+        $content = (string) file_get_contents($this->rootDir . '/usersc/classes/Car/CarAdministrationService.php');
+
+        $this->assertStringContainsString('new Owner(', $content,
+            'CarAdministrationService must instantiate Owner for user lookups (#1148)');
+        $this->assertStringNotContainsString('getUserWithProfile', $content,
+            'CarAdministrationService must not call deleted getUserWithProfile() (#1148)');
+    }
 }

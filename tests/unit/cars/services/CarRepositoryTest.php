@@ -218,4 +218,63 @@ final class CarRepositoryTest extends TestCase
         $this->assertIsArray($result['types']);
         $this->assertIsArray($result['variants']);
     }
+
+    // =========================================================================
+    // reassignCarsByUser tests (issue #1148)
+    // =========================================================================
+
+    /** @return \PHPUnit\Framework\MockObject\MockObject&DB */
+    private function makeDbMock(): object
+    {
+        return $this->getMockBuilder(DB::class)
+            ->onlyMethods(['query', 'error', 'errorString', 'count'])
+            ->getMock();
+    }
+
+    public function testReassignCarsByUserReturnsRowCount(): void
+    {
+        $db = $this->makeDbMock();
+        $db->expects($this->once())->method('query')->willReturn(new QueryResult([]));
+        $db->method('error')->willReturn(false);
+        $db->method('count')->willReturn(3);
+
+        $repo = new CarRepository($db);
+        $result = $repo->reassignCarsByUser(42, 7);
+
+        $this->assertSame(3, $result);
+    }
+
+    public function testReassignCarsByUserWithNullTargetPassesNullToQuery(): void
+    {
+        $db = $this->makeDbMock();
+        $db->expects($this->once())
+            ->method('query')
+            ->with(
+                'UPDATE cars SET user_id = ? WHERE user_id = ?',
+                [null, 42]
+            )
+            ->willReturn(new QueryResult([]));
+        $db->method('error')->willReturn(false);
+        $db->method('count')->willReturn(0);
+
+        $repo = new CarRepository($db);
+        $result = $repo->reassignCarsByUser(42, null);
+
+        $this->assertIsInt($result);
+    }
+
+    public function testReassignCarsByUserThrowsOnDatabaseError(): void
+    {
+        $db = $this->makeDbMock();
+        $db->expects($this->once())->method('query')->willReturn(new QueryResult([]));
+        $db->method('error')->willReturn(true);
+        $db->method('errorString')->willReturn('Deadlock found');
+
+        $repo = new CarRepository($db);
+
+        $this->expectException(\RuntimeException::class);
+        $this->expectExceptionMessageMatches('/reassignCarsByUser failed/');
+
+        $repo->reassignCarsByUser(42, 7);
+    }
 }

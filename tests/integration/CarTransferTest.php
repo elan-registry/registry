@@ -5,6 +5,7 @@ declare(strict_types=1);
 require_once __DIR__ . '/IntegrationTestCase.php';
 
 use ElanRegistry\Exceptions\CarPermissionException;
+use ElanRegistry\Owner;
 
 use PHPUnit\Framework\Attributes\Group;
 
@@ -164,7 +165,7 @@ final class CarTransferTest extends IntegrationTestCase
         $car = new Car($this->testCarId);
 
         // Get target user's profile data
-        $targetUser = getUserWithProfile($this->targetUserId);
+        $targetUser = (new Owner($this->targetUserId))->data();
         $this->assertNotNull($targetUser);
 
         $result = $car->transfer($this->targetUserId, 'Test transfer profile', 'NEWOWNER');
@@ -259,7 +260,7 @@ final class CarTransferTest extends IntegrationTestCase
         $this->assertTrue($result);
 
         // Verify that car now has target user's location data
-        $targetUser = getUserWithProfile($this->targetUserId);
+        $targetUser = (new Owner($this->targetUserId))->data();
         $updatedCar = new Car((int) $car->data()->id);
 
         $this->assertEquals($targetUser->city ?? '', $updatedCar->data()->city);
