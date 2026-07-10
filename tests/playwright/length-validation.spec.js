@@ -120,6 +120,20 @@ test.describe('chassis-availability.php — length validation', () => {
         expect(body.message).toMatch(/year.*between/i);
     });
 
+    test('year out of range rejected with 400 (1962 < min)', async ({ page }) => {
+        const resp = await page.request.post('app/api/cars/chassis-availability.php', {
+            data: {
+                ...baseValid,
+                year: '1962', // below the 1963–1974 domain
+                csrf: csrfToken,
+            },
+        });
+        expect(resp.status()).toBe(400);
+        const body = await resp.json();
+        expect(body).toHaveProperty('success', false);
+        expect(body.message).toMatch(/year.*between/i);
+    });
+
     test('model exactly 30 chars is accepted (at-limit)', async ({ page }) => {
         // 26 A's + |B|C = exactly 30 chars, valid 3-part format
         const model30 = 'A'.repeat(26) + '|B|C';
@@ -300,6 +314,24 @@ test.describe('transfer-request.php — length validation', () => {
             data: {
                 ...baseValid,
                 year: '1975', // above the 1963–1974 domain
+                csrf: csrfToken,
+            },
+        });
+        const body = await resp.json();
+        if (body.message && /too many/i.test(body.message)) {
+            test.skip(true, 'Rate limited — skipping; run in a fresh session or wait for the rate-limit window to reset');
+            return;
+        }
+        expect(resp.status()).toBe(400);
+        expect(body).toHaveProperty('success', false);
+        expect(body.message).toMatch(/year.*between/i);
+    });
+
+    test('year out of range rejected with 400 (1962 < min)', async ({ page }) => {
+        const resp = await page.request.post('app/api/cars/transfer-request.php', {
+            data: {
+                ...baseValid,
+                year: '1962', // below the 1963–1974 domain
                 csrf: csrfToken,
             },
         });
