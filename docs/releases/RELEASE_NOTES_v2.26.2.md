@@ -50,6 +50,7 @@ None — all changes in this release are internal infrastructure and refactoring
 ### Improvements
 
 - **Year sorting** ([#1161](https://github.com/unibrain1/elanregistry/issues/1161)): `cars.year` stored as `SMALLINT` instead of `VARCHAR` — corrects sort order in any admin views that order by year.
+- **Transfer token uniqueness enforced on prod** ([#1272](https://github.com/unibrain1/elanregistry/issues/1272)): Fixes the FK migration so it no longer fails on prod due to column signedness mismatches. Adds `UNIQUE KEY security_token` and 12 other missing indexes, plus two FK constraints (`fk_transfer_created_by`, `fk_transfer_requested_by`) that were in the schema but not the migration.
 
 ## Issues Resolved
 
@@ -62,3 +63,4 @@ None — all changes in this release are internal infrastructure and refactoring
 - [#1247](https://github.com/unibrain1/elanregistry/issues/1247) — refactor: narrow CarRepository::insert() and ::update() to car-specific method signatures *(consolidated into #1168)*
 - [#1169](https://github.com/unibrain1/elanregistry/issues/1169) — refactor: introduce TransferStatus backed enum for car_transfer_requests status values
 - [#1254](https://github.com/unibrain1/elanregistry/issues/1254) — chore: add composer install and phinx migrate to deployment hooks; single self-configuring hook replaces prod/test variants; swap ElanRegistryAutoloader for vendor/autoload.php
+- [#1272](https://github.com/unibrain1/elanregistry/issues/1272) — fix: update AddForeignKeyConstraints migration to handle prod column type mismatches and add 13 missing indexes
