@@ -36,10 +36,14 @@ if ($ownerData !== null) {
         && is_numeric($ownerData->lon ?? null)
         && (float)($ownerData->lat ?? 0) !== 0.0
         && (float)($ownerData->lon ?? 0) !== 0.0;
+    $displayName = OwnerView::displayName($ownerData);
+    $location    = OwnerView::displayLocation($ownerData);
 } else {
     $signupDate  = null;
     $lastLogin   = null;
     $hasOwnerMap = false;
+    $displayName = '';
+    $location    = '';
 }
 
 $qualityScore = $owner->getProfileQualityScore();
@@ -88,7 +92,6 @@ $_baseUrl = htmlspecialchars($us_url_root, ENT_QUOTES, 'UTF-8');
 
                         <!-- Left: identity + stats + actions -->
                         <div class="<?= $hasOwnerMap ? 'col-md-6' : 'col-12' ?> mb-3 mb-md-0">
-                            <?php $displayName = OwnerView::displayName($ownerData); ?>
                             <?php if ($displayName !== ''): ?>
                             <h2 class="h5 mb-1 text-primary fw-bold"><?= $displayName ?></h2>
                             <?php endif; ?>
@@ -96,7 +99,6 @@ $_baseUrl = htmlspecialchars($us_url_root, ENT_QUOTES, 'UTF-8');
 
                             <div class="small mb-1">
                                 <i class="fas fa-map-marker-alt text-primary me-1" aria-hidden="true"></i>
-                                <?php $location = OwnerView::displayLocation($ownerData); ?>
                                 <?= $location !== '' ? $location : '<span class="text-muted fst-italic">Not specified</span>' ?>
                             </div>
                             <?php if (!empty($ownerData->email)): ?>
