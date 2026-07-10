@@ -179,12 +179,12 @@ class StatisticsDataService {
         return $this->executeQuery(
             "SELECT
                 CASE
-                    WHEN year BETWEEN '1963' AND '1967' THEN 'Early Production (1963-1967)'
-                    WHEN year BETWEEN '1968' AND '1974' THEN 'Late Production (1968-1974)'
+                    WHEN year BETWEEN 1963 AND 1967 THEN 'Early Production (1963-1967)'
+                    WHEN year BETWEEN 1968 AND 1974 THEN 'Late Production (1968-1974)'
                 END as period,
                 COUNT(*) as count
              FROM cars
-             WHERE year BETWEEN '1963' AND '1974'
+             WHERE year BETWEEN 1963 AND 1974
              GROUP BY period"
         );
     }
@@ -222,7 +222,7 @@ class StatisticsDataService {
     /**
      * Get map pin data for the world map
      *
-     * @return array<int, object{id: int, year: string, series: string, chassis: string,
+     * @return array<int, object{id: int, year: int|null, series: string, chassis: string,
      *                           variant: string, image: string, city: string, state: string,
      *                           country: string, owner: string, lat: float, lon: float}> Cars with coordinates
      */

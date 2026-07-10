@@ -55,6 +55,12 @@ final class CarDataTablesServiceTest extends TestCase
         $this->assertFalse($result);
     }
 
+    public function testValidateColumnNameRejectsRemovedModifiedByColumn(): void
+    {
+        $result = $this->service->validateColumnName('ModifiedBy', 'cars');
+        $this->assertFalse($result);
+    }
+
     // ============================================================
     // getDataTablesData tests
     // ============================================================

@@ -30,7 +30,7 @@ class CarDataTablesService
     /** @var array<string, array<string>> Allowed columns per table */
     private const ALLOWED_COLUMNS = [
         'cars' => [
-            'id', 'ctime', 'mtime', 'vericode', 'last_verified', 'ModifiedBy',
+            'id', 'ctime', 'mtime', 'vericode', 'last_verified',
             'model', 'series', 'variant', 'year', 'type', 'chassis', 'color', 'engine',
             'purchasedate', 'solddate', 'comments', 'image', 'user_id', 'email', 'fname',
             'lname', 'join_date', 'city', 'state', 'country', 'lat', 'lon', 'website'

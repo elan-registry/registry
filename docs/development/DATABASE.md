@@ -62,11 +62,10 @@
 | `ctime`, `mtime` | `timestamp` | Creation and modification times |
 | `vericode` | `varchar(32)` | Verification code |
 | `last_verified` | `timestamp` | Last verification date |
-| `ModifiedBy` | `varchar(30)` | User who last modified the record |
 | `model` | `varchar(30)` | Car model (Elan) |
 | `series` | `varchar(12)` | Car series (S1, S2, S3, S4, +2, Sprint) |
 | `variant` | `varchar(15)` | Car variant |
-| `year` | `varchar(4)` | Manufacturing year |
+| `year` | `SMALLINT UNSIGNED NULL` | Manufacturing year (1963–1974) |
 | `type` | `char(3)` | Vehicle type code |
 | `chassis` | `varchar(15)` | Chassis number (INDEXED) |
 | `chassis_override` | `TINYINT(1) NOT NULL DEFAULT 0` | Flag indicating whether chassis validation was overridden by the user. Set to `1` when validation was overridden; `0` for normal/valid chassis. |
@@ -93,7 +92,7 @@ automatically synchronized from user profiles when user data changes.
 | `operation` | `varchar(32)` | Operation type (INSERT/UPDATE/DELETE) |
 | `car_id` | `int UNSIGNED` | Original car ID |
 | `timestamp` | `timestamp` | Change timestamp |
-| *(All car columns)* | | Mirror of `cars` table structure including `chassis_override` |
+| *(All car columns)* | | Mirror of `cars` table structure including `chassis_override`. `year` is `SMALLINT UNSIGNED NULL` to match cars. |
 
 #### `car_user` - Car sharing relationships
 
@@ -275,7 +274,7 @@ by the Phinx migration
 
 ### Data Access Patterns
 
-**Note**: This database no longer uses views. All data access is performed through direct queries or the application layer using the `getUserWithProfile()` function for combined user and profile data.
+**Note**: This database no longer uses views. All data access is performed through direct queries or the application layer. For combined user and profile data, use `(new Owner($userId))->data()` — `getUserWithProfile()` was removed in v2.26.2 (#1148).
 
 ## System Features
 

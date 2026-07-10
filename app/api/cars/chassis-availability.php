@@ -46,8 +46,8 @@ try {
     if (strlen($chassis) > 15) {
         ApiResponse::error('Chassis number must be 15 characters or less', 400)->send();
     }
-    if (strlen($year) > 4) {
-        ApiResponse::error('Year must be 4 characters or less', 400)->send();
+    if (!ctype_digit((string) $year) || (int) $year < 1963 || (int) $year > 1974) {
+        ApiResponse::error('Year must be between 1963 and 1974', 400)->send();
     }
     if (strlen($model) > 30) {
         ApiResponse::error('Model must be 30 characters or less', 400)->send();

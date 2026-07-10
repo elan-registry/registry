@@ -98,11 +98,10 @@ CREATE TABLE `cars` (
   `mtime` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   `vericode` varchar(32) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
   `last_verified` timestamp NULL DEFAULT NULL,
-  `ModifiedBy` varchar(30) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
   `model` varchar(30) COLLATE utf8mb4_unicode_ci NOT NULL,
   `series` varchar(12) COLLATE utf8mb4_unicode_ci NOT NULL,
   `variant` varchar(15) COLLATE utf8mb4_unicode_ci NOT NULL,
-  `year` varchar(4) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `year` smallint UNSIGNED DEFAULT NULL,
   `type` char(3) COLLATE utf8mb4_unicode_ci NOT NULL,
   `chassis` varchar(15) COLLATE utf8mb4_unicode_ci NOT NULL,
   `chassis_override` TINYINT(1) NOT NULL DEFAULT 0,
@@ -134,11 +133,10 @@ CREATE TABLE `cars_hist` (
   `car_id` int(11) UNSIGNED NOT NULL,
   `ctime` timestamp NULL DEFAULT NULL,
   `mtime` timestamp NULL DEFAULT NULL,
-  `ModifiedBy` varchar(30) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
   `model` varchar(100) COLLATE utf8mb4_unicode_ci NOT NULL,
   `series` varchar(12) COLLATE utf8mb4_unicode_ci NOT NULL,
   `variant` varchar(15) COLLATE utf8mb4_unicode_ci NOT NULL,
-  `year` varchar(4) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `year` smallint UNSIGNED DEFAULT NULL,
   `type` char(3) COLLATE utf8mb4_unicode_ci NOT NULL,
   `chassis` varchar(15) COLLATE utf8mb4_unicode_ci NOT NULL,
   `chassis_override` TINYINT(1) NOT NULL DEFAULT 0,
@@ -352,13 +350,13 @@ ALTER TABLE `car_transfer_requests`
 DELIMITER $$
 CREATE TRIGGER `cars_delete` AFTER DELETE ON `cars` FOR EACH ROW BEGIN
     INSERT INTO cars_hist(
-        operation, car_id, ctime, mtime, ModifiedBy, model, series, variant,
+        operation, car_id, ctime, mtime, model, series, variant,
         year, type, chassis, chassis_override, color, engine, purchasedate, solddate, comments,
         image, user_id, email, fname, lname, join_date, city, state, country,
         lat, lon, website
     )
     VALUES (
-        'DELETE', OLD.id, OLD.ctime, OLD.mtime, OLD.ModifiedBy, OLD.model,
+        'DELETE', OLD.id, OLD.ctime, OLD.mtime, OLD.model,
         OLD.series, OLD.variant, OLD.year, OLD.type, OLD.chassis, OLD.chassis_override,
         OLD.color, OLD.engine, OLD.purchasedate, OLD.solddate, OLD.comments, OLD.image,
         OLD.user_id, OLD.email, OLD.fname, OLD.lname, OLD.join_date, OLD.city,
@@ -373,13 +371,13 @@ DELIMITER ;
 DELIMITER $$
 CREATE TRIGGER `cars_insert` AFTER INSERT ON `cars` FOR EACH ROW BEGIN
     INSERT INTO cars_hist(
-        operation, car_id, ctime, mtime, ModifiedBy, model, series, variant,
+        operation, car_id, ctime, mtime, model, series, variant,
         year, type, chassis, chassis_override, color, engine, purchasedate, solddate, comments,
         image, user_id, email, fname, lname, join_date, city, state, country,
         lat, lon, website
     )
     VALUES (
-        'INSERT', NEW.id, NEW.ctime, NEW.mtime, NEW.ModifiedBy, NEW.model,
+        'INSERT', NEW.id, NEW.ctime, NEW.mtime, NEW.model,
         NEW.series, NEW.variant, NEW.year, NEW.type, NEW.chassis, NEW.chassis_override,
         NEW.color, NEW.engine, NEW.purchasedate, NEW.solddate, NEW.comments, NEW.image,
         NEW.user_id, NEW.email, NEW.fname, NEW.lname, NEW.join_date, NEW.city,
@@ -395,13 +393,13 @@ DELIMITER $$
 CREATE TRIGGER `cars_update` AFTER UPDATE ON `cars` FOR EACH ROW BEGIN
     IF @disable_triggers IS NULL THEN
         INSERT INTO cars_hist(
-            operation, car_id, ctime, mtime, ModifiedBy, model, series, variant,
+            operation, car_id, ctime, mtime, model, series, variant,
             year, type, chassis, chassis_override, color, engine, purchasedate, solddate, comments,
             image, user_id, email, fname, lname, join_date, city, state, country,
             lat, lon, website
         )
         VALUES (
-            'UPDATE', OLD.id, OLD.ctime, OLD.mtime, OLD.ModifiedBy, OLD.model,
+            'UPDATE', OLD.id, OLD.ctime, OLD.mtime, OLD.model,
             OLD.series, OLD.variant, OLD.year, OLD.type, OLD.chassis, NEW.chassis_override, -- NEW: records when flag is SET, not the pre-update value
             OLD.color, OLD.engine, OLD.purchasedate, OLD.solddate, OLD.comments, OLD.image,
             OLD.user_id, OLD.email, OLD.fname, OLD.lname, OLD.join_date, OLD.city,
