@@ -85,9 +85,9 @@ CREATE TABLE `car_models` (
 -- -----------------------------------------------------------------------------
 CREATE TABLE `fix_script_runs` (
   `id` int(11) NOT NULL,
-  `script_name` varchar(255) COLLATE utf8_unicode_ci NOT NULL,
+  `script_name` varchar(255) COLLATE utf8mb4_unicode_ci NOT NULL,
   `completed_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP
-) ENGINE=InnoDB DEFAULT CHARSET=utf8 COLLATE=utf8_unicode_ci;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- -----------------------------------------------------------------------------
 -- Table: cars (Primary vehicle registry)

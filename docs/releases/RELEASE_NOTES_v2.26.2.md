@@ -53,6 +53,7 @@ None — all changes in this release are internal infrastructure and refactoring
 - **Transfer token uniqueness enforced on prod** ([#1272](https://github.com/unibrain1/elanregistry/issues/1272)): Fixes the FK migration so it no longer fails on prod due to column signedness mismatches. Adds `UNIQUE KEY security_token` and 12 other missing indexes, plus two FK constraints (`fk_transfer_created_by`, `fk_transfer_requested_by`) that were in the schema but not the migration.
 - **`logs` table crash safety** ([#1273](https://github.com/unibrain1/elanregistry/issues/1273)): Converted the `logs` table from MyISAM to InnoDB on dev and prod (test was already InnoDB). Restores crash recovery, row-level locking, and transaction support for audit log writes.
 - **User deletion car reassignment** ([#1279](https://github.com/unibrain1/elanregistry/issues/1279)): Fixed regression introduced by the v2.26.2 FK migration — `ON DELETE SET NULL` was firing before the hook could reassign cars to noowner, leaving `cars.user_id = NULL`. Also tightened error handling in the deletion hook (catch `\Throwable`, error-check the noowner lookup and profiles DELETE).
+- **`fix_script_runs` charset alignment** ([#1274](https://github.com/unibrain1/elanregistry/issues/1274)): Migrated `fix_script_runs` from deprecated `utf8mb3`/`utf8mb3_unicode_ci` to `utf8mb4`/`utf8mb4_unicode_ci` on dev and test (prod already correct). Ensures all environments share a consistent, future-proof charset and `completed_at NOT NULL` nullability.
 
 ## Issues Resolved
 
@@ -68,3 +69,4 @@ None — all changes in this release are internal infrastructure and refactoring
 - [#1272](https://github.com/unibrain1/elanregistry/issues/1272) — fix: update AddForeignKeyConstraints migration to handle prod column type mismatches and add 13 missing indexes
 - [#1273](https://github.com/unibrain1/elanregistry/issues/1273) — chore: migrate logs table from MyISAM to InnoDB on dev and prod
 - [#1279](https://github.com/unibrain1/elanregistry/issues/1279) — bug: fix FK ON DELETE SET NULL regression in after_user_deletion.php; add error checks for noowner query and profiles DELETE; catch \Throwable in transaction
+- [#1274](https://github.com/unibrain1/elanregistry/issues/1274) — chore: migrate fix_script_runs to utf8mb4 charset and enforce completed_at NOT NULL on all environments
