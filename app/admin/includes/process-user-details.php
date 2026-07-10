@@ -2,6 +2,7 @@
 declare(strict_types=1);
 
 use ElanRegistry\ApiResponse;
+use ElanRegistry\Owner;
 
 /**
  * process-user-details.php
@@ -27,7 +28,7 @@ if ($userId <= 0) {
 
 try {
     // Get user with profile data
-    $userWithProfile = getUserWithProfile($userId);
+    $userWithProfile = (new Owner($userId))->data();
 
     if (!$userWithProfile) {
         ApiResponse::error('User not found', 200)

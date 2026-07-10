@@ -13,6 +13,7 @@ use ElanRegistry\Exceptions\CarMergeException;
 use ElanRegistry\Exceptions\CarNotFoundException;
 use ElanRegistry\Exceptions\CarValidationException;
 use ElanRegistry\LogCategories;
+use ElanRegistry\Owner;
 use Token;
 
 /**
@@ -105,7 +106,7 @@ class CarAdministrationService
         callable $updateCallback,
         callable $refreshCallback
     ): true {
-        $targetUser = getUserWithProfile($newUserId);
+        $targetUser = (new Owner($newUserId))->data();
         if (!$targetUser) {
             $technicalMsg = CarErrorMessages::getTechnicalMessage('user_not_found', ['user_id' => $newUserId]);
             logger($adminUserId, LogCategories::LOG_CATEGORY_CAR_TRANSFER, $technicalMsg);

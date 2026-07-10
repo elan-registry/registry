@@ -11,6 +11,7 @@ use ElanRegistry\Exceptions\CarNotFoundException;
 use ElanRegistry\Exceptions\CarPermissionException;
 use ElanRegistry\Input as ElanInput;
 use ElanRegistry\LogCategories;
+use ElanRegistry\Owner;
 use ElanRegistry\Transfer\CarTransferRepository;
 
 /**
@@ -187,7 +188,7 @@ if (ElanInput::existsPost()) {
 
                     try {
                         $car = new Car((int)$car_id);
-                        $targetUser = getUserWithProfile($user_id);
+                        $targetUser = (new Owner($user_id))->data();
                         $targetName = $targetUser && $targetUser->fname && $targetUser->lname
                             ? "{$targetUser->fname} {$targetUser->lname}"
                             : "User ID $user_id";

@@ -21,21 +21,32 @@ if (!empty($_POST['uncloak']) && Token::check(\Input::get('token'))) {
 }
 
 $ownerId    = (int)$user->data()->id;
-$ownerData  = getUserWithProfile($ownerId);
+$owner      = new Owner($ownerId);
+$ownerData  = $owner->data();
 $cars       = Car::findByOwner($ownerId);
 $carCount   = count($cars);
-try {
-    $signupDate = !empty($ownerData->join_date) ? new DateTime($ownerData->join_date) : null;
-} catch (\Exception) {
-    $signupDate = null;
+if ($ownerData !== null) {
+    try {
+        $signupDate = !empty($ownerData->join_date) ? new DateTime($ownerData->join_date) : null;
+    } catch (\Exception) {
+        $signupDate = null;
+    }
+    $lastLogin   = !empty($ownerData->last_login) ? new DateTime($ownerData->last_login) : null;
+    $hasOwnerMap = is_numeric($ownerData->lat ?? null)
+        && is_numeric($ownerData->lon ?? null)
+        && (float)($ownerData->lat ?? 0) !== 0.0
+        && (float)($ownerData->lon ?? 0) !== 0.0;
+    $displayName = OwnerView::displayName($ownerData);
+    $location    = OwnerView::displayLocation($ownerData);
+} else {
+    $signupDate  = null;
+    $lastLogin   = null;
+    $hasOwnerMap = false;
+    $displayName = '';
+    $location    = '';
 }
-$lastLogin  = !empty($ownerData->last_login) ? new DateTime($ownerData->last_login) : null;
-$hasOwnerMap = is_numeric($ownerData->lat ?? null)
-    && is_numeric($ownerData->lon ?? null)
-    && (float)($ownerData->lat ?? 0) !== 0.0
-    && (float)($ownerData->lon ?? 0) !== 0.0;
 
-$qualityScore = (new Owner($ownerId))->getProfileQualityScore();
+$qualityScore = $owner->getProfileQualityScore();
 
 // Owner website (only display for http/https)
 $ownerWebsite       = $ownerData->website ?? '';
@@ -81,7 +92,6 @@ $_baseUrl = htmlspecialchars($us_url_root, ENT_QUOTES, 'UTF-8');
 
                         <!-- Left: identity + stats + actions -->
                         <div class="<?= $hasOwnerMap ? 'col-md-6' : 'col-12' ?> mb-3 mb-md-0">
-                            <?php $displayName = OwnerView::displayName($ownerData); ?>
                             <?php if ($displayName !== ''): ?>
                             <h2 class="h5 mb-1 text-primary fw-bold"><?= $displayName ?></h2>
                             <?php endif; ?>
@@ -89,7 +99,6 @@ $_baseUrl = htmlspecialchars($us_url_root, ENT_QUOTES, 'UTF-8');
 
                             <div class="small mb-1">
                                 <i class="fas fa-map-marker-alt text-primary me-1" aria-hidden="true"></i>
-                                <?php $location = OwnerView::displayLocation($ownerData); ?>
                                 <?= $location !== '' ? $location : '<span class="text-muted fst-italic">Not specified</span>' ?>
                             </div>
                             <?php if (!empty($ownerData->email)): ?>

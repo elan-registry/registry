@@ -51,44 +51,6 @@ $email_field_whitelist = [
 ];
 
 /**
- * Get user details with profile information (city, state, country, location, website)
- *
- * This is a common operation across the application - getting complete user information
- * including location data from the profiles table for car ownership transfers,
- * reassignments, and display purposes.
- *
- * @param int $user_id The user ID to fetch
- * @return object|null User object with profile data, or null if not found
- */
-function getUserWithProfile(int $user_id): ?object {
-    $db = DB::getInstance();
-
-    $userQ = $db->query(
-        "SELECT u.*, p.city, p.state, p.country, p.lat, p.lon, p.website
-         FROM users u
-         LEFT JOIN profiles p ON u.id = p.user_id
-         WHERE u.id = ?",
-        [$user_id]
-    );
-
-    if ($userQ->count() > 0) {
-        $user = $userQ->first();
-
-        // Ensure all expected fields exist with defaults
-        $user->city = $user->city ?? '';
-        $user->state = $user->state ?? '';
-        $user->country = $user->country ?? '';
-        $user->website = $user->website ?? '';
-        $user->lat = $user->lat ?? null;
-        $user->lon = $user->lon ?? null;
-
-        return $user;
-    }
-
-    return null;
-}
-
-/**
  * Check if user has Registry admin or editor permissions
  *
  * @param int|string|null $userId User ID to check (defaults to current user)

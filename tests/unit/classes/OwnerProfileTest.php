@@ -399,4 +399,82 @@ final class OwnerProfileTest extends TestCase
         // 5 simple fields + lat/lon → round(6/7 * 100, 1) = 85.7
         $this->assertSame(85.7, Owner::qualityScoreFromRow($row));
     }
+
+    // -----------------------------------------------------------------------
+    // find() behaviour (issue #1148)
+    //
+    // Owner accepts an injectable $db so we can mock the three paths:
+    // $userId <= 0 (early-return), DB error, user not found, and success.
+    // -----------------------------------------------------------------------
+
+    /** @return \PHPUnit\Framework\MockObject\MockObject&\DB */
+    private function makeOwnerDbMock(): object
+    {
+        return $this->getMockBuilder(DB::class)
+            ->disableOriginalConstructor()
+            ->onlyMethods(['query', 'error', 'errorString'])
+            ->getMock();
+    }
+
+    public function testFindReturnsFalseForNonPositiveUserId(): void
+    {
+        $db = $this->makeOwnerDbMock();
+        $db->expects($this->never())->method('query');
+
+        $owner = new Owner(null, $db);
+        $this->assertFalse($owner->find(0));
+        $this->assertFalse($owner->find(-1));
+    }
+
+    public function testFindReturnsFalseOnDatabaseError(): void
+    {
+        $db = $this->makeOwnerDbMock();
+        $db->expects($this->once())->method('query')->willReturn(new QueryResult([]));
+        $db->method('error')->willReturn(true);
+        $db->method('errorString')->willReturn('connection lost');
+
+        $owner = new Owner(null, $db);
+        $this->assertFalse($owner->find(42));
+        $this->assertNull($owner->data());
+    }
+
+    public function testFindReturnsFalseWhenUserNotFound(): void
+    {
+        $db = $this->makeOwnerDbMock();
+        $db->expects($this->once())->method('query')->willReturn(new QueryResult([]));
+        $db->method('error')->willReturn(false);
+
+        $owner = new Owner(null, $db);
+        $this->assertFalse($owner->find(99));
+        $this->assertNull($owner->data());
+    }
+
+    public function testFindReturnsTrueAndPopulatesData(): void
+    {
+        $db = $this->makeOwnerDbMock();
+        $db->expects($this->once())->method('query')->willReturn(new QueryResult([(object) [
+            'id'        => '7',
+            'email'     => 'test@example.com',
+            'fname'     => 'Test',
+            'lname'     => 'User',
+            'city'      => null,
+            'state'     => null,
+            'country'   => null,
+            'lat'       => null,
+            'lon'       => null,
+            'website'   => null,
+        ]]));
+        $db->method('error')->willReturn(false);
+
+        $owner = new Owner(null, $db);
+        $this->assertTrue($owner->find(7));
+
+        $data = $owner->data();
+        $this->assertNotNull($data);
+        $this->assertSame('', $data->city);    // null-coalesced to ''
+        $this->assertSame('', $data->state);
+        $this->assertSame('', $data->country);
+        $this->assertNull($data->lat);         // null stays null
+        $this->assertNull($data->lon);
+    }
 }

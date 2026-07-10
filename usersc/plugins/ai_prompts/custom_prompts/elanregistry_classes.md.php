@@ -109,8 +109,9 @@ $owner->update([
 **Terminology:** "owners" in the UI and business logic; "users" only in authentication/session
 context. Never mix these labels.
 
-Use `getUserWithProfile($userId)` (UserSpice helper) when you only need combined data
-without mutation — it's lighter than instantiating `Owner`.
+Use `(new Owner($userId))->data()` when you only need combined user+profile data
+without mutation. `getUserWithProfile()` was removed in v2.26.2 (#1148) — `Owner` is now
+the only supported path for combined user+profile lookups.
 
 ---
 

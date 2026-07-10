@@ -296,7 +296,7 @@ at `docs/development/RELEASE_NOTES_TEMPLATE.md`.
 
 - **Users**: Authentication/session context (UserSpice framework, `users` table)
 - **Owners**: Car registry business domain (UI elements, business logic)
-- Use `getUserWithProfile($userId)` for combined user+profile data access
+- Use `(new Owner($userId))->data()` for combined user+profile data access (`getUserWithProfile()` was removed in v2.26.2)
 - See [CLASSES.md](docs/development/CLASSES.md) for Owner patterns
 
 ## Quick Deployment Reference

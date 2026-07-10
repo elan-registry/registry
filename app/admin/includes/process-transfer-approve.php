@@ -7,6 +7,7 @@ use ElanRegistry\Car\Car;
 use ElanRegistry\Exceptions\CarException;
 use ElanRegistry\Exceptions\CarTransferException;
 use ElanRegistry\LogCategories;
+use ElanRegistry\Owner;
 use ElanRegistry\Transfer\CarTransferRepository;
 use ElanRegistry\Transfer\TransferEmailService;
 
@@ -54,7 +55,7 @@ try {
     }
 
     // Get target user details
-    $targetUser = getUserWithProfile(dbInt($transfer, 'requested_by_user_id'));
+    $targetUser = (new Owner(dbInt($transfer, 'requested_by_user_id')))->data();
     $targetName = $targetUser && $targetUser->fname && $targetUser->lname
         ? "{$targetUser->fname} {$targetUser->lname}"
         : "User ID {$transfer->requested_by_user_id}";

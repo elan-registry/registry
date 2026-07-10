@@ -145,6 +145,38 @@ class CarRepository
     }
 
     /**
+     * Bulk-reassign cars.user_id for all cars owned by a user.
+     *
+     * Used by the deletion hook to transfer a deleted user's cars to another user
+     * (or set them ownerless) in a single UPDATE. Returns the number of rows changed.
+     *
+     * On database error, logs via LOG_CATEGORY_DATABASE_ERROR and throws so that
+     * any enclosing transaction can roll back rather than commit over a partial state.
+     *
+     * @param int      $fromUserId Source user whose cars are being reassigned
+     * @param int|null $toUserId   Target user, or null to clear ownership (user_id = NULL)
+     * @return int                 Rows affected by the UPDATE (rows where user_id actually changed; 0 if no match or value already equal to target)
+     * @throws \RuntimeException   If the UPDATE fails
+     */
+    public function reassignCarsByUser(int $fromUserId, ?int $toUserId): int
+    {
+        // A null $toUserId binds as SQL NULL, clearing ownership.
+        $this->db->query(
+            'UPDATE cars SET user_id = ? WHERE user_id = ?',
+            [$toUserId, $fromUserId]
+        );
+
+        if ($this->db->error()) {
+            $target = $toUserId ?? 'NULL';
+            $msg = "CarRepository::reassignCarsByUser failed (from={$fromUserId} to={$target}): " . $this->db->errorString();
+            logger(0, LogCategories::LOG_CATEGORY_DATABASE_ERROR, $msg);
+            throw new \RuntimeException($msg);
+        }
+
+        return $this->db->count();
+    }
+
+    /**
      * Update the verification code for a car
      *
      * @param int $carId Car ID
