@@ -54,6 +54,7 @@ None — all changes in this release are internal infrastructure and refactoring
 - **`logs` table crash safety** ([#1273](https://github.com/unibrain1/elanregistry/issues/1273)): Converted the `logs` table from MyISAM to InnoDB on dev and prod (test was already InnoDB). Restores crash recovery, row-level locking, and transaction support for audit log writes.
 - **User deletion car reassignment** ([#1279](https://github.com/unibrain1/elanregistry/issues/1279)): Fixed regression introduced by the v2.26.2 FK migration — `ON DELETE SET NULL` was firing before the hook could reassign cars to noowner, leaving `cars.user_id = NULL`. Also tightened error handling in the deletion hook (catch `\Throwable`, error-check the noowner lookup and profiles DELETE).
 - **`fix_script_runs` charset alignment** ([#1274](https://github.com/unibrain1/elanregistry/issues/1274)): Migrated `fix_script_runs` from deprecated `utf8mb3`/`utf8mb3_unicode_ci` to `utf8mb4`/`utf8mb4_unicode_ci` on dev and test (prod already correct). Ensures all environments share a consistent, future-proof charset and `completed_at NOT NULL` nullability.
+- **`TransferStatus` backed enum** ([#1169](https://github.com/unibrain1/elanregistry/issues/1169)): Replaced bare-string status constants in `CarTransferRepository` with a PHP 8.1 `TransferStatus` enum. `updateStatus()` now requires a typed `TransferStatus` value — invalid statuses are caught at compile time rather than at runtime. The `isTerminal()` method replaces the `TERMINAL_STATUSES` constant array.
 
 ## Issues Resolved
 

@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/../IntegrationTestCase.php';
 
+use ElanRegistry\Transfer\TransferStatus;
+
 /**
  * Integration tests for car transfer workflow
  *
@@ -457,7 +459,7 @@ class CarTransferWorkflowTest extends IntegrationTestCase
         // Because the WHERE clause includes AND status = 'pending', no row matches,
         // and the method returns false — the correct TOCTOU signal.
         $repo   = new \ElanRegistry\Transfer\CarTransferRepository($this->db);
-        $result = $repo->updateStatus($requestId, 'completed', 'Second admin');
+        $result = $repo->updateStatus($requestId, TransferStatus::Completed, 'Second admin');
 
         $this->assertFalse($result, 'updateStatus() must return false when the row is already in a terminal status (TOCTOU gate)');
     }
@@ -504,7 +506,7 @@ class CarTransferWorkflowTest extends IntegrationTestCase
         $this->db->beginTransaction();
 
         // Step 1: claim the request (TOCTOU gate succeeds).
-        $claimed = $repo->updateStatus($requestId, 'completed', 'Admin claim');
+        $claimed = $repo->updateStatus($requestId, TransferStatus::Completed, 'Admin claim');
         $this->assertTrue($claimed, 'Precondition: initial claim must succeed');
 
         // Step 2: simulate a failed car transfer by rolling back the outer transaction

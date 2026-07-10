@@ -6,6 +6,7 @@ use ElanRegistry\ApiResponse;
 use ElanRegistry\Exceptions\CarTransferException;
 use ElanRegistry\LogCategories;
 use ElanRegistry\Transfer\CarTransferRepository;
+use ElanRegistry\Transfer\TransferStatus;
 use ElanRegistry\Transfer\TransferEmailService;
 
 /**
@@ -43,8 +44,9 @@ try {
             ->send();
     }
 
-    // Update transfer request status to denied
-    if (!$repo->updateStatus((int)$transferId, 'denied', "Denied by admin user {$user->data()->id}")) {
+    // Update transfer request status to denied.
+    // No transaction needed — this is the only write in the denial flow.
+    if (!$repo->updateStatus((int)$transferId, TransferStatus::Denied, "Denied by admin user {$user->data()->id}")) {
         throw new CarTransferException(
             "updateStatus returned false for transfer #{$transferId} — request already processed (TOCTOU)",
             0,
