@@ -45,6 +45,10 @@ final class DropCarsUserIdFkAndTrigger extends AbstractMigration
 
     public function down(): void
     {
+        // WARNING: restoring this FK re-introduces the race condition fixed by up().
+        // The ON DELETE SET NULL will NULL cars.user_id on the next user deletion,
+        // racing with after_user_deletion.php before it can reassign to noowner.
+        // Only roll back during development/testing — never on a running system.
         // Restore the FK on rollback only if it is absent.
         $result = $this->fetchAll(
             "SELECT COUNT(*) AS cnt
