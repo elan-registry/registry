@@ -26,7 +26,6 @@ require_once $abs_us_root . $us_url_root . 'usersc/includes/elanregistry_prep.ph
 
 <?php
 use ElanRegistry\AppConstants;
-use ElanRegistry\Car\Car;
 use ElanRegistry\Input;
 use ElanRegistry\LogCategories;
 use ElanRegistry\Owner;
@@ -272,7 +271,7 @@ if (!empty($_POST)) {
             $carsUpdated = $owner->syncLocationToCars();
             if ($carsUpdated > 0) {
                 $successes[] = "Location synchronized to $carsUpdated car(s).";
-            } elseif (!empty(Car::findByOwner($userId))) {
+            } elseif (!empty($owner->getCarsOwned())) {
                 // User has cars but 0 were updated — sync failed (individual errors logged in syncLocationToCars)
                 $errors[] = 'Location saved, but car location sync encountered an error. Please contact support if this persists.';
             }

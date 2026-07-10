@@ -35,6 +35,7 @@ class Owner
 
     private ?object $_db = null;
     private ?object $_data = null;
+    private ?array $_carsOwned = null;
     private string $userTableName = 'users';
     private string $profileTableName = 'profiles';
 
@@ -304,6 +305,10 @@ class Owner
             return [];
         }
 
+        if ($this->_carsOwned !== null) {
+            return $this->_carsOwned;
+        }
+
         $carsQuery = $this->_db->query(
             "SELECT c.* FROM cars c
              INNER JOIN car_user cu ON c.id = cu.car_id
@@ -312,7 +317,8 @@ class Owner
             [$this->_data->id]
         );
 
-        return $carsQuery->count() > 0 ? $carsQuery->results() : [];
+        $this->_carsOwned = $carsQuery->count() > 0 ? $carsQuery->results() : [];
+        return $this->_carsOwned;
     }
 
     /**
