@@ -449,10 +449,6 @@ ALTER TABLE `car_transfer_requests`
   ADD CONSTRAINT `fk_transfer_created_by` FOREIGN KEY (`created_by`) REFERENCES `users` (`id`) ON DELETE CASCADE,
   ADD CONSTRAINT `fk_transfer_requested_by` FOREIGN KEY (`requested_by_user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE;
 
-ALTER TABLE `cars`
-  ADD CONSTRAINT `fk_cars_user_id`
-  FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE SET NULL;
-
 ALTER TABLE `car_transfer_requests`
   ADD CONSTRAINT `fk_transfer_existing_car`
   FOREIGN KEY (`existing_car_id`) REFERENCES `cars` (`id`) ON DELETE CASCADE;

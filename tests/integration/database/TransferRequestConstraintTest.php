@@ -7,17 +7,13 @@ require_once __DIR__ . '/../IntegrationTestCase.php';
 use PHPUnit\Framework\Attributes\Group;
 
 /**
- * Integration tests for FK constraints added in issue #693.
+ * Schema constraint tests for car_transfer_requests.
  *
- * Migration: 20260709202522_add_foreign_key_constraints.php
- *
- * Three constraints under test:
- *   1. cars.user_id → users.id ON DELETE SET NULL
- *   2. car_transfer_requests.existing_car_id → cars.id ON DELETE CASCADE
- *   3. car_transfer_requests.expires_at allows NULL (column re-typed to NULL DEFAULT NULL)
+ *   1. existing_car_id → cars.id ON DELETE CASCADE
+ *   2. expires_at allows NULL (column re-typed to NULL DEFAULT NULL in #693)
  */
 #[Group('integration')]
-final class ForeignKeyConstraintTest extends IntegrationTestCase
+final class TransferRequestConstraintTest extends IntegrationTestCase
 {
     /** @var int[] Transfer request IDs to clean up in tearDown (before base class deletes cars) */
     private array $createdTransferIds = [];
@@ -134,34 +130,7 @@ final class ForeignKeyConstraintTest extends IntegrationTestCase
     // =========================================================================
 
     /**
-     * FK #1: deleting a user NULLs cars.user_id (ON DELETE SET NULL).
-     *
-     * Arrange: create a test user and a car owned by that user.
-     * Act:     delete the user row directly (bypassing application logic so we
-     *          are testing the DB constraint, not the deletion service).
-     * Assert:  cars.user_id for that car is now NULL.
-     */
-    public function test_deleteUser_setsCarUserIdNull(): void
-    {
-        $userId = $this->createTestUser();
-        $carId  = $this->createTestCar($userId);
-
-        // Confirm the car is owned by this user before the delete.
-        $before = $this->db->query("SELECT user_id FROM cars WHERE id = ?", [$carId])->first();
-        $this->assertSame($userId, (int) $before->user_id, 'Pre-condition: car must be owned by the test user');
-
-        // Delete the user — the FK constraint should SET NULL on cars.user_id.
-        // deleteTestUser() removes the user from the tracking list so tearDown
-        // does not attempt a redundant second delete.
-        $deleted = $this->deleteTestUser($userId);
-        $this->assertTrue($deleted, 'deleteTestUser() must succeed');
-
-        $after = $this->db->query("SELECT user_id FROM cars WHERE id = ?", [$carId])->first();
-        $this->assertNull($after->user_id, 'cars.user_id must be NULL after the owning user is deleted');
-    }
-
-    /**
-     * FK #2: deleting a car cascades to car_transfer_requests (ON DELETE CASCADE).
+     * FK #1: deleting a car cascades to car_transfer_requests (ON DELETE CASCADE).
      *
      * Arrange: create a test car and a transfer request referencing it.
      * Act:     delete the car row directly.
@@ -202,7 +171,7 @@ final class ForeignKeyConstraintTest extends IntegrationTestCase
     }
 
     /**
-     * FK #3: car_transfer_requests.expires_at accepts NULL.
+     * FK #2: car_transfer_requests.expires_at accepts NULL.
      *
      * Before the migration the column was NOT NULL DEFAULT '0000-00-00 00:00:00'.
      * After: NULL DEFAULT NULL.

@@ -31,7 +31,7 @@ $inTransaction = function (callable $work) use ($repo, $id): bool {
         $work();
         $repo->commit();
         return true;
-    } catch (\Exception $e) {
+    } catch (\Throwable $e) {
         $repo->rollback();
         logger($id, LogCategories::LOG_CATEGORY_USER_DELETION, 'Cleanup failed, rolled back: ' . $e->getMessage());
         return false;
