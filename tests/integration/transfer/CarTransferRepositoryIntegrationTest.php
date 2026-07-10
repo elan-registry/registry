@@ -5,6 +5,7 @@ declare(strict_types=1);
 require_once __DIR__ . '/../IntegrationTestCase.php';
 
 use ElanRegistry\Transfer\CarTransferRepository;
+use ElanRegistry\Transfer\TransferStatus;
 use PHPUnit\Framework\Attributes\Group;
 
 /**
@@ -146,7 +147,7 @@ final class CarTransferRepositoryIntegrationTest extends IntegrationTestCase
         $this->assertNotNull($pending, 'findPendingById() must find a pending row');
         $this->assertSame((string) $id, (string) $pending->id);
 
-        $this->assertTrue($this->repo->updateStatus($id, 'denied', 'Test denial'));
+        $this->assertTrue($this->repo->updateStatus($id, TransferStatus::Denied, 'Test denial'));
 
         $this->assertNull(
             $this->repo->findPendingById($id),
@@ -164,7 +165,7 @@ final class CarTransferRepositoryIntegrationTest extends IntegrationTestCase
         $carId       = $this->createTestCar($ownerId);
 
         $id = $this->createTransferRequest($carId, $requesterId);
-        $this->assertTrue($this->repo->updateStatus($id, 'denied', 'Audit note'));
+        $this->assertTrue($this->repo->updateStatus($id, TransferStatus::Denied, 'Audit note'));
 
         $row = $this->db->query(
             "SELECT status, admin_notes FROM car_transfer_requests WHERE id = ?",
@@ -221,7 +222,7 @@ final class CarTransferRepositoryIntegrationTest extends IntegrationTestCase
         $id = $this->createTransferRequest($carId, $requesterId);
         $this->assertTrue($this->repo->hasPendingForCar($carId, $requesterId), 'Precondition: must be pending before status change');
 
-        $this->repo->updateStatus($id, 'denied', 'Test');
+        $this->repo->updateStatus($id, TransferStatus::Denied, 'Test');
 
         $this->assertFalse(
             $this->repo->hasPendingForCar($carId, $requesterId),
@@ -239,7 +240,7 @@ final class CarTransferRepositoryIntegrationTest extends IntegrationTestCase
         $carId       = $this->createTestCar($ownerId);
 
         $id = $this->createTransferRequest($carId, $requesterId);
-        $this->repo->updateStatus($id, 'denied', 'Test denial');
+        $this->repo->updateStatus($id, TransferStatus::Denied, 'Test denial');
 
         $counts = $this->repo->getTodayStatusCounts();
 

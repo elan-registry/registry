@@ -9,6 +9,7 @@ use ElanRegistry\Exceptions\CarTransferException;
 use ElanRegistry\LogCategories;
 use ElanRegistry\Owner;
 use ElanRegistry\Transfer\CarTransferRepository;
+use ElanRegistry\Transfer\TransferStatus;
 use ElanRegistry\Transfer\TransferEmailService;
 
 /**
@@ -66,7 +67,7 @@ try {
     $db->beginTransaction();
 
     // 1. Claim the request atomically — TOCTOU gate
-    if (!$repo->updateStatus((int)$transferId, 'completed', "Approved by admin user {$user->data()->id}")) {
+    if (!$repo->updateStatus((int)$transferId, TransferStatus::Completed, "Approved by admin user {$user->data()->id}")) {
         throw new CarTransferException(
             "updateStatus returned false for transfer #{$transferId} — request already processed (TOCTOU)",
             0,

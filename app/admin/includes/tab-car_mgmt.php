@@ -5,6 +5,7 @@ declare(strict_types=1);
 use ElanRegistry\Car\Car;
 use ElanRegistry\LogCategories;
 use ElanRegistry\Transfer\CarTransferRepository;
+use ElanRegistry\Transfer\TransferStatus;
 
 /**
  * tab-car_mgmt.php
@@ -43,9 +44,9 @@ try {
     $transferStats['pending']   = count($pendingTransfers);
 
     foreach ($repo->getTodayStatusCounts() as $stat) {
-        if ($stat->status === 'completed') {
+        if ($stat->status === TransferStatus::Completed->value) {
             $transferStats['completed_today'] = (int)$stat->count;
-        } elseif ($stat->status === 'denied') {
+        } elseif ($stat->status === TransferStatus::Denied->value) {
             $transferStats['denied_today'] = (int)$stat->count;
         }
     }

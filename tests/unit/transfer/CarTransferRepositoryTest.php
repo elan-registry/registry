@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use ElanRegistry\Transfer\CarTransferRepository;
+use ElanRegistry\Transfer\TransferStatus;
 use PHPUnit\Framework\TestCase;
 use PHPUnit\Framework\Attributes\Group;
 
@@ -82,7 +83,7 @@ final class CarTransferRepositoryTest extends TestCase
         // Mock query() always returns empty results, so rows-affected = 0.
         // That rows-affected=0 → false path is the correct behavior (no row matched).
         // True/False with real rows is verified by the integration tests.
-        $result = $this->repo->updateStatus($id, 'denied', 'Test denial');
+        $result = $this->repo->updateStatus($id, TransferStatus::Denied, 'Test denial');
         $this->assertIsBool($result);
     }
 
@@ -96,11 +97,5 @@ final class CarTransferRepositoryTest extends TestCase
     {
         $result = $this->repo->getPendingWithCarAndUsers();
         $this->assertIsArray($result);
-    }
-
-    public function testUpdateStatusThrowsOnInvalidStatus(): void
-    {
-        $this->expectException(\InvalidArgumentException::class);
-        $this->repo->updateStatus(1, 'bogus_status', 'Test');
     }
 }
