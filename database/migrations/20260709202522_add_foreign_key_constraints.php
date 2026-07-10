@@ -16,7 +16,8 @@ final class AddForeignKeyConstraints extends AbstractMigration
     //
     // This migration was already applied to dev and test before #1272 was filed.
     // The column type fixes, 13 indexes, and 2 additional FK additions below
-    // only execute on prod, which has never had this migration applied.
+    // were absent on prod, which had never had this migration applied at that
+    // point. Phinx runs up() on any environment where the migration is pending.
     public function up(): void
     {
         // Fix column types on car_transfer_requests before adding FK constraints.
@@ -66,6 +67,23 @@ final class AddForeignKeyConstraints extends AbstractMigration
                  'constraint' => 'fk_cars_user_id',
              ])
              ->update();
+
+        // Guard: fk_transfer_created_by and fk_transfer_requested_by CASCADE on
+        // DELETE. If any row references a non-existent user MySQL will reject the
+        // FK addition with an opaque error. Fail early with a clear message so
+        // the operator knows to run the pre-deployment orphan check from the
+        // v2.26.2 release notes before migrating.
+        $orphans = $this->fetchRow(
+            "SELECT COUNT(*) AS n FROM car_transfer_requests
+              WHERE created_by NOT IN (SELECT id FROM users)
+                 OR requested_by_user_id NOT IN (SELECT id FROM users)"
+        );
+        if ((int) $orphans['n'] > 0) {
+            throw new \RuntimeException(
+                "Cannot add FK constraints: {$orphans['n']} orphaned row(s) in car_transfer_requests. " .
+                "Run pre-deployment orphan check from the v2.26.2 release notes before migrating."
+            );
+        }
 
         // Three FKs on car_transfer_requests — fk_transfer_created_by and
         // fk_transfer_requested_by were in 1-schema.sql but missing from the
