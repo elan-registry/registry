@@ -155,7 +155,8 @@ function updateCarDetails(array &$car): void
             // Show admin override warning if applicable
             if (isset($cardetails['id']) && isset($user) && $user->isLoggedIn()) {
                 $editCarObj = new Car((int)$cardetails['id']);
-                $isEditOwner = ($user->data()->id == $editCarObj->data()->user_id);
+                $editCarData = $editCarObj->data();
+                $isEditOwner = $editCarData !== null && ($user->data()->id == $editCarData->user_id);
                 $hasEditAdminAccess = hasPerm([2, 3]); // Permission 2 = Administrator, 3 = Editor
 
                 if (!$isEditOwner && $hasEditAdminAccess) { ?>
