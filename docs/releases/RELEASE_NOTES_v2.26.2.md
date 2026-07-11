@@ -10,7 +10,9 @@
 1. Verify no orphaned rows that would block the FK migration:
    ```sql
    SELECT COUNT(*) FROM car_transfer_requests
-   WHERE existing_car_id NOT IN (SELECT id FROM cars);
+   WHERE existing_car_id NOT IN (SELECT id FROM cars)
+      OR created_by NOT IN (SELECT id FROM users)
+      OR requested_by_user_id NOT IN (SELECT id FROM users);
    ```
    Must return `0`. Resolve any orphans before deploying.
 
