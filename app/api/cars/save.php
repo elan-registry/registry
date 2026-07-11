@@ -353,8 +353,15 @@ function buildCarDetails(array &$cardetails, ?int $carId = null): void
     // Get the combined user+profile
     if ($carId) {
         $car = new Car($carId);
-        foreach ($car->data() as $key => $value) {
-            $cardetails[$key] = $value;
+        $carData = $car->data();
+        if ($carData !== null) {
+            foreach ($carData as $key => $value) {
+                $cardetails[$key] = $value;
+            }
+        } else {
+            logger($user->data()->id, LogCategories::LOG_CATEGORY_CAR_ACTIONS,
+                'buildCarDetails: Car ID ' . $carId . ' not found or failed to load for user_id=' . $user->data()->id);
+            return;
         }
     } else {
         $ownerId = (int)$user->data()->id;

@@ -35,14 +35,11 @@ class Car
     private const CHASSIS_SUFFIX_LENGTH = 5;
 
     private DB $_db;
-    /** @var mixed */
-    private $_data;
+    private ?object $_data = null;
     private array $_history = [];
     private ?array $_images = null;
     private ?object $_factory = null;
-    /** @var array<string, mixed>|object|null */
-    private $_owner;
-    private string $tableName = 'cars';
+    private ?array $_owner = null;
     private string $imageDir = '';
 
     // Lazy-initialized service instances
@@ -168,13 +165,15 @@ class Car
         }
 
         $repo = $this->getRepository();
-        if (!$repo->insert($this->tableName, $fields)) {
+        if (!$repo->insertCar($fields)) {
             logger($fields['user_id'] ?? 0, LogCategories::LOG_CATEGORY_DATABASE_ERROR, 'Car creation failed: ' . $repo->errorString());
             throw new CarCreationException('Database error during car creation: ' . $repo->errorString());
         }
 
         $id = $repo->lastId();
-        $this->find($id);
+        if (!$this->find($id)) {
+            throw new CarCreationException("Car ID {$id} not found after insert");
+        }
         $this->imageDir = $settings->elan_image_dir . $id . '/';
         $ownerId = (int) $this->data()->user_id;
 
@@ -243,32 +242,31 @@ class Car
         });
 
         $repo = $this->getRepository();
-        $updateResult = $repo->update($this->tableName, $carId, $filteredFields);
+        $updateResult = $repo->updateCar($carId, $filteredFields);
 
         if (!$updateResult) {
             logger($fields['user_id'] ?? 0, LogCategories::LOG_CATEGORY_DATABASE_ERROR, 'Car update failed: query returned false');
             throw new CarDatabaseException('Database update failed - check logs for details');
         }
 
-        $this->find($carId);
+        if (!$this->find($carId)) {
+            logger($fields['user_id'] ?? 0, LogCategories::LOG_CATEGORY_DATABASE_ERROR,
+                "Car ID {$carId} updated successfully but reload via find() failed — in-memory state may be stale");
+        }
 
         return true;
     }
 
     /**
-     * Find car by ID or return all cars
+     * Find car by ID
      *
-     * @param int|null $carID Car ID to find
+     * @param int $carID Car ID to find
      * @return bool True if found, false otherwise
      */
-    public function find(?int $carID = null): bool
+    public function find(int $carID): bool
     {
         global $us_url_root;
         global $abs_us_root;
-
-        if (is_null($carID)) {
-            return $this->findAll();
-        }
 
         $repo = $this->getRepository();
         $data = $repo->findById($carID);
@@ -320,17 +318,6 @@ class Car
         return true;
     }
 
-    /**
-     * Find all cars
-     *
-     * @return bool Always returns true
-     */
-    public function findAll(): bool
-    {
-        $this->_data = $this->getRepository()->findAll();
-        return true;
-    }
-
     // ============================================================
     // DATA ACCESSORS
     // ============================================================
@@ -348,9 +335,9 @@ class Car
     /**
      * Get car data
      *
-     * @return mixed Car data object or array
+     * @return ?object Car data object, or null if not loaded
      */
-    public function data(): mixed
+    public function data(): ?object
     {
         return $this->_data;
     }
@@ -388,9 +375,9 @@ class Car
     /**
      * Get car owner information
      *
-     * @return array|object Owner information
+     * @return ?array Owner info array, or null if not loaded
      */
-    public function owner(): array|object
+    public function owner(): ?array
     {
         return $this->_owner;
     }
@@ -506,7 +493,9 @@ class Car
                 return $self->update($fields);
             },
             function (int $id) use ($self): object {
-                $self->find($id);
+                if (!$self->find($id)) {
+                    throw new CarNotFoundException("Car ID {$id} not found after transfer");
+                }
                 return $self->data();
             }
         );

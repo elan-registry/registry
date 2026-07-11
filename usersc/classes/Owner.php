@@ -553,7 +553,7 @@ class Owner
         $repo = new CarRepository($this->_db);
 
         foreach ($ownedCars as $car) {
-            if ($repo->update('cars', (int) $car->id, $locationFields)) {
+            if ($repo->updateCar((int) $car->id, $locationFields)) {
                 $carsUpdated++;
 
                 // Add history record for location sync
