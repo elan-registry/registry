@@ -361,6 +361,7 @@ function buildCarDetails(array &$cardetails, ?int $carId = null): void
         } else {
             logger($user->data()->id, LogCategories::LOG_CATEGORY_CAR_ACTIONS,
                 'buildCarDetails: Car ID ' . $carId . ' not found or failed to load for user_id=' . $user->data()->id);
+            return;
         }
     } else {
         $ownerId = (int)$user->data()->id;

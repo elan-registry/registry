@@ -134,12 +134,8 @@ function updateCarDetails(array &$car): void
         logger($user->data()->id, LogCategories::LOG_CATEGORY_CAR_ACTIONS, 'Admin/Editor accessing car edit - USER ' . $user->data()->id . ' CAR ' . $car['id']);
     }
 
-    $carData = $carQ->data();
-    if ($carData !== null) {
-        foreach ($carData as $key => $value) {
-            // Copy data into the $car
-            $car[$key] = $value;
-        }
+    foreach ($carQ->data() as $key => $value) {
+        $car[$key] = $value;
     }
 }
 ?>
