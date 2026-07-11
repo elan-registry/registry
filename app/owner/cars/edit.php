@@ -112,6 +112,12 @@ function updateCarDetails(array &$car): void
 
     $carQ = new Car((int) $car['id']);
 
+    if (!$carQ->exists()) {
+        logger($user->data()->id, LogCategories::LOG_CATEGORY_CAR_ACTIONS,
+            'Car not found for edit: car_id=' . $car['id'] . ' user_id=' . $user->data()->id);
+        return;
+    }
+
     // Security: Verify user ownership or admin/editor permissions
     $isOwner = ($user->data()->id == $carQ->data()->user_id);
     $hasAdminAccess = hasPerm([2, 3]); // Permission 2 = Administrator, 3 = Editor
@@ -128,9 +134,12 @@ function updateCarDetails(array &$car): void
         logger($user->data()->id, LogCategories::LOG_CATEGORY_CAR_ACTIONS, 'Admin/Editor accessing car edit - USER ' . $user->data()->id . ' CAR ' . $car['id']);
     }
 
-    foreach ($carQ->data() as $key => $value) {
-        // Copy data into the $car
-        $car[$key] = $value;
+    $carData = $carQ->data();
+    if ($carData !== null) {
+        foreach ($carData as $key => $value) {
+            // Copy data into the $car
+            $car[$key] = $value;
+        }
     }
 }
 ?>

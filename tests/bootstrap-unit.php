@@ -102,28 +102,13 @@ if (!class_exists('Car')) {
         /**
          * Find car by ID (instance method)
          */
-        public function find(?int $id = null): bool {
-            if ($id === null) {
-                return $this->findAll();
-            }
-
+        public function find(int $id): bool {
             if (!isset(self::$cars[$id])) {
                 $this->data = null;
                 return false;
             }
 
             $this->data = self::$cars[$id];
-            return true;
-        }
-
-        /**
-         * Find all cars
-         */
-        public function findAll(): bool {
-            if (empty(self::$cars)) {
-                return false;
-            }
-            $this->data = reset(self::$cars);
             return true;
         }
 
@@ -159,9 +144,9 @@ if (!class_exists('Car')) {
         /**
          * Get owner data
          *
-         * @return array<mixed>
+         * @return array<mixed>|null
          */
-        public function owner(): array {
+        public function owner(): ?array {
             return [];
         }
 

@@ -27,21 +27,21 @@ final class CarRepositoryTest extends TestCase
         $this->assertEquals(1, $result->id);
     }
 
-    public function testInsertReturnsTrue(): void
+    public function testInsertCarReturnsTrue(): void
     {
-        $result = $this->repo->insert('cars', ['chassis' => 'TEST99999', 'model' => 'Elan']);
+        $result = $this->repo->insertCar(['chassis' => 'TEST99999', 'model' => 'Elan']);
         $this->assertTrue($result);
     }
 
-    public function testUpdateReturnsTrue(): void
+    public function testUpdateCarReturnsTrue(): void
     {
-        $result = $this->repo->update('cars', 1, ['color' => 'Blue']);
+        $result = $this->repo->updateCar(1, ['color' => 'Blue']);
         $this->assertTrue($result);
     }
 
     public function testLastIdReturnsInt(): void
     {
-        $this->repo->insert('cars', ['chassis' => 'TEST']);
+        $this->repo->insertCar(['chassis' => 'TEST']);
         $lastId = $this->repo->lastId();
         $this->assertIsInt($lastId);
     }

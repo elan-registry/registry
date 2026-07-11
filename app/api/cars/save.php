@@ -353,8 +353,11 @@ function buildCarDetails(array &$cardetails, ?int $carId = null): void
     // Get the combined user+profile
     if ($carId) {
         $car = new Car($carId);
-        foreach ($car->data() as $key => $value) {
-            $cardetails[$key] = $value;
+        $carData = $car->data();
+        if ($carData !== null) {
+            foreach ($carData as $key => $value) {
+                $cardetails[$key] = $value;
+            }
         }
     } else {
         $ownerId = (int)$user->data()->id;

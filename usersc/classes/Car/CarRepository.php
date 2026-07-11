@@ -57,28 +57,26 @@ class CarRepository
     }
 
     /**
-     * Insert a record into a table
+     * Insert a new car record
      *
-     * @param string $table Table name
      * @param array<string, mixed> $fields Field values
      * @return bool True on success
      */
-    public function insert(string $table, array $fields): bool
+    public function insertCar(array $fields): bool
     {
-        return $this->db->insert($table, $fields);
+        return $this->db->insert('cars', $fields);
     }
 
     /**
-     * Update a record in a table
+     * Update an existing car record
      *
-     * @param string $table Table name
-     * @param int $id Record ID
+     * @param int $carId Car ID
      * @param array<string, mixed> $fields Field values
      * @return bool True on success
      */
-    public function update(string $table, int $id, array $fields): bool
+    public function updateCar(int $carId, array $fields): bool
     {
-        return $this->db->update($table, $id, $fields);
+        return $this->db->update('cars', $carId, $fields);
     }
 
     /**
@@ -133,7 +131,7 @@ class CarRepository
      */
     public function updateVerificationCode(int $carId, string $verificationCode): bool
     {
-        return $this->update('cars', $carId, ['vericode' => $verificationCode]);
+        return $this->updateCar($carId, ['vericode' => $verificationCode]);
     }
 
     /**
@@ -145,7 +143,7 @@ class CarRepository
      */
     public function updateLastVerified(int $carId, string $dateTime): bool
     {
-        return $this->update('cars', $carId, ['last_verified' => $dateTime]);
+        return $this->updateCar($carId, ['last_verified' => $dateTime]);
     }
 
     /**
@@ -157,7 +155,7 @@ class CarRepository
      */
     public function updateSoldDate(int $carId, string $soldDate): bool
     {
-        return $this->update('cars', $carId, ['solddate' => $soldDate]);
+        return $this->updateCar($carId, ['solddate' => $soldDate]);
     }
 
     /**
@@ -169,7 +167,7 @@ class CarRepository
      */
     public function updateImage(int $carId, string $imageJson): bool
     {
-        return $this->update('cars', $carId, ['image' => $imageJson]);
+        return $this->updateCar($carId, ['image' => $imageJson]);
     }
 
     /**
