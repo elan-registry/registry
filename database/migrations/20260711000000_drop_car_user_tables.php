@@ -25,11 +25,52 @@ final class DropCarUserTables extends AbstractMigration
     // TRIGGER is not auto-reversible.
     public function up(): void
     {
-        // Guard: verify ownership data integrity before dropping car_user.
-        // These checks run before any DDL so a failure leaves the schema untouched
-        // (DDL triggers an implicit commit in MySQL; guards must precede it).
+        // All reads (fetchRow / fetchAll) run before any DDL. DDL triggers an
+        // implicit commit in MySQL, so any exception thrown after DDL starts
+        // would leave the schema partially changed. By doing all data work first,
+        // a failure leaves both the data and the schema untouched.
 
-        // 1. No car has a user_id referencing a non-existent user.
+        // ── Step 1: Reconcile drift ───────────────────────────────────────────
+        //
+        // car_user had no FK constraint, so cars.user_id and car_user.userid
+        // could diverge whenever an ownership transfer updated one but not the
+        // other. Prod analysis (2026-07-11) found two drifted rows:
+        //
+        //   car 213  (4399)        — car_user pointed at a duplicate account
+        //                            (sbarnes/3994); cars.user_id correctly
+        //                            points at the primary account (stevebarnes/473)
+        //   car 1432 (7312190046L) — user was deleted and car was reassigned to
+        //                            noowner in cars.user_id, but car_user still
+        //                            pointed at the deleted user (pwelsh/2918)
+        //
+        // cars.user_id is authoritative; car_user is the stale mirror. Fix drift
+        // here so the migration is self-contained — no manual pre-flight script.
+
+        // Update car_user rows where userid disagrees with cars.user_id.
+        $this->execute(
+            "UPDATE car_user cu
+             JOIN cars c ON cu.car_id = c.id
+             SET cu.userid = c.user_id
+             WHERE c.user_id IS NOT NULL
+               AND c.user_id != cu.userid"
+        );
+
+        // Remove car_user rows for cars that have no owner (cars.user_id IS NULL).
+        // A NULL owner has no valid userid to store in the junction table.
+        $this->execute(
+            "DELETE cu FROM car_user cu
+             JOIN cars c ON cu.car_id = c.id
+             WHERE c.user_id IS NULL"
+        );
+
+        // ── Step 2: Guard — hard blocks that cannot be auto-fixed ────────────
+        //
+        // These checks catch data integrity problems that require human review.
+        // Unlike drift (which cars.user_id can authoritatively resolve), an
+        // orphaned user_id means the owning user no longer exists — dropping
+        // car_user with orphaned rows would lose the last known ownership record.
+
+        // Block if any car references a user that no longer exists.
         $orphaned = $this->fetchRow(
             "SELECT COUNT(*) AS n FROM cars
              WHERE user_id IS NOT NULL
@@ -37,13 +78,13 @@ final class DropCarUserTables extends AbstractMigration
         );
         if ((int) ($orphaned['n'] ?? 0) > 0) {
             throw new \RuntimeException(
-                "Cannot drop car_user: {$orphaned['n']} car(s) have user_id referencing a non-existent user. " .
-                "Fix orphaned car ownership before running this migration."
+                "Cannot drop car_user: {$orphaned['n']} car(s) have user_id referencing " .
+                "a non-existent user. Reassign those cars before running this migration."
             );
         }
 
-        // 2. cars.user_id and car_user.userid agree for every car tracked in car_user.
-        //    Detects any remaining drift between the two representations.
+        // Verify the reconciliation above eliminated all drift. This should never
+        // fire in practice, but catches any edge case the UPDATE missed.
         $drifted = $this->fetchRow(
             "SELECT COUNT(*) AS n
              FROM car_user cu
@@ -52,11 +93,12 @@ final class DropCarUserTables extends AbstractMigration
         );
         if ((int) ($drifted['n'] ?? 0) > 0) {
             throw new \RuntimeException(
-                "Cannot drop car_user: {$drifted['n']} car(s) have drifted ownership " .
-                "(cars.user_id ≠ car_user.userid). " .
-                "Run the ownership reconciliation script before this migration."
+                "Cannot drop car_user: {$drifted['n']} drifted row(s) remain after " .
+                "reconciliation. Investigate before proceeding."
             );
         }
+
+        // ── Step 3: Drop ─────────────────────────────────────────────────────
 
         // Triggers must be dropped before their table.
         $this->execute("DROP TRIGGER IF EXISTS `car_user_delete`");
