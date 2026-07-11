@@ -358,6 +358,9 @@ function buildCarDetails(array &$cardetails, ?int $carId = null): void
             foreach ($carData as $key => $value) {
                 $cardetails[$key] = $value;
             }
+        } else {
+            logger($user->data()->id, LogCategories::LOG_CATEGORY_CAR_ACTIONS,
+                'buildCarDetails: Car ID ' . $carId . ' not found or failed to load for user_id=' . $user->data()->id);
         }
     } else {
         $ownerId = (int)$user->data()->id;

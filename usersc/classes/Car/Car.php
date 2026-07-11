@@ -249,7 +249,10 @@ class Car
             throw new CarDatabaseException('Database update failed - check logs for details');
         }
 
-        $this->find($carId);
+        if (!$this->find($carId)) {
+            logger($fields['user_id'] ?? 0, LogCategories::LOG_CATEGORY_DATABASE_ERROR,
+                "Car ID {$carId} updated successfully but reload via find() failed — in-memory state may be stale");
+        }
 
         return true;
     }
@@ -493,11 +496,7 @@ class Car
                 if (!$self->find($id)) {
                     throw new CarNotFoundException("Car ID {$id} not found after transfer");
                 }
-                $data = $self->data();
-                if ($data === null) {
-                    throw new CarNotFoundException("Car data missing after transfer for ID {$id}");
-                }
-                return $data;
+                return $self->data();
             }
         );
 
