@@ -74,13 +74,11 @@ abstract class IntegrationTestCase extends TestCase
     protected function tearDown(): void
     {
         if ($this->databaseConnected) {
-            // Delete cars first (depend on users via car_user)
+            // Delete cars first (may depend on foreign key constraints)
             foreach ($this->createdCarIds as $carId) {
                 try {
                     $this->db->query("DELETE FROM car_transfer_requests WHERE existing_car_id = ?", [$carId]);
-                    $this->db->query("DELETE FROM car_user WHERE car_id = ?", [$carId]);
                     $this->db->query("DELETE FROM cars_hist WHERE car_id = ?", [$carId]);
-                    $this->db->query("DELETE FROM car_user_hist WHERE car_id = ?", [$carId]);
                     $this->db->delete('cars', ['id', '=', $carId]);
                 } catch (RuntimeException $e) {
                     // Ignore cleanup errors
@@ -201,12 +199,6 @@ abstract class IntegrationTestCase extends TestCase
             throw new RuntimeException("Failed to get inserted car ID");
         }
 
-        // Insert into car_user junction table
-        $junctionResult = $this->db->insert('car_user', ['userid' => $userId, 'car_id' => $carId]);
-        if (!$junctionResult) {
-            throw new RuntimeException("Failed to create car_user record: {$this->db->errorString()}");
-        }
-
         $this->createdCarIds[] = $carId;
 
         // Purge any stale cars_hist rows left from a previous test run that
@@ -252,7 +244,6 @@ abstract class IntegrationTestCase extends TestCase
         }
 
         try {
-            $this->db->query("DELETE FROM car_user WHERE car_id = ?", [$carId]);
             $this->db->query("DELETE FROM cars_hist WHERE car_id = ?", [$carId]);
             $this->db->delete('cars', ['id', '=', $carId]);
             // Remove from tracking so tearDown doesn't double-delete

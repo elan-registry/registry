@@ -51,12 +51,6 @@ final class CarDatabaseOperationsTest extends IntegrationTestCase
         } catch (RuntimeException $e) {
             $this->markTestSkipped('Could not create test car: ' . $e->getMessage());
         }
-
-        // Ensure car_user relationship exists
-        $this->db->insert('car_user', [
-            'car_id' => $this->testCarId,
-            'userid' => $this->testUserId
-        ]);
     }
 
     protected function tearDown(): void
@@ -171,24 +165,24 @@ final class CarDatabaseOperationsTest extends IntegrationTestCase
         $car = new Car($this->testCarId);
         $targetUserId = 10;  // Use existing user ID (FredHansen)
 
-        // Verify original relationship
+        // Verify original owner
         $origRelation = $this->db->query(
-            'SELECT * FROM car_user WHERE car_id = ? AND userid = ?',
-            [$this->testCarId, $this->testUserId]
-        );
-        $this->assertGreaterThan(0, $origRelation->count());
+            'SELECT user_id FROM cars WHERE id = ?',
+            [$this->testCarId]
+        )->first();
+        $this->assertSame($this->testUserId, (int) $origRelation->user_id);
 
         // Transfer car
         $result = $car->transfer($targetUserId, 'Integration test transfer', 'NEWOWNER');
 
         $this->assertTrue($result);
 
-        // Verify relationship was updated
+        // Verify owner was updated
         $newRelation = $this->db->query(
-            'SELECT * FROM car_user WHERE car_id = ? AND userid = ?',
-            [$this->testCarId, $targetUserId]
-        );
-        $this->assertGreaterThan(0, $newRelation->count());
+            'SELECT user_id FROM cars WHERE id = ?',
+            [$this->testCarId]
+        )->first();
+        $this->assertSame($targetUserId, (int) $newRelation->user_id);
     }
 
     /**
@@ -221,10 +215,6 @@ final class CarDatabaseOperationsTest extends IntegrationTestCase
         // Create a second test car to merge from
         $mergeCarId = $this->createTestCar($this->testUserId, [
             'chassis' => 'DB' . uniqid()
-        ]);
-        $this->db->insert('car_user', [
-            'car_id' => $mergeCarId,
-            'userid' => $this->testUserId
         ]);
 
         $car = new Car($this->testCarId);
@@ -279,23 +269,19 @@ final class CarDatabaseOperationsTest extends IntegrationTestCase
     }
 
     /**
-     * Test car-user relationship integrity
+     * Test car ownership integrity
      */
     #[Group('integration')]
-    public function testCarUserRelationshipIntegrity(): void
+    public function testCarOwnershipIntegrity(): void
     {
-        // Verify car has valid user relationship
-        $relationQuery = $this->db->query(
-            'SELECT cu.*, u.id FROM car_user cu JOIN users u ON cu.userid = u.id WHERE cu.car_id = ?',
+        // Verify car has a valid owner assigned
+        $row = $this->db->query(
+            'SELECT id, user_id FROM cars WHERE id = ?',
             [$this->testCarId]
-        );
+        )->first();
 
-        $this->assertGreaterThan(0, $relationQuery->count());
-
-        $relation = $relationQuery->first();
-        $this->assertNotNull($relation->userid);
-        $this->assertNotNull($relation->car_id);
-        $this->assertEquals($this->testCarId, $relation->car_id);
+        $this->assertNotNull($row);
+        $this->assertEquals($this->testUserId, $row->user_id);
     }
 
     /**

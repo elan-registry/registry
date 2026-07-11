@@ -62,13 +62,5 @@ final class UserDeletionReassignmentTest extends IntegrationTestCase
         $after = $this->db->query("SELECT user_id FROM cars WHERE id = ?", [$carId])->first();
         $this->assertNotNull($after->user_id, 'cars.user_id must not be NULL after hook runs');
         $this->assertSame($noOwnerId, (int) $after->user_id, 'cars.user_id must equal noowner ID after hook');
-
-        // Assert: car_user junction was also updated to noowner.
-        $junction = $this->db->query(
-            "SELECT userid FROM car_user WHERE car_id = ?",
-            [$carId]
-        )->first();
-        $this->assertNotNull($junction, 'car_user junction must exist for noowner after hook');
-        $this->assertSame($noOwnerId, (int) $junction->userid, 'car_user must point to noowner after hook');
     }
 }

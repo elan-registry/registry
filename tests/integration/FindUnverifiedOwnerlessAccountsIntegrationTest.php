@@ -10,7 +10,7 @@ use PHPUnit\Framework\Attributes\Group;
 /**
  * Integration tests for findUnverifiedOwnerlessAccounts().
  *
- * Each test creates real database fixtures (users, cars, car_user rows) and
+ * Each test creates real database fixtures (users, cars) and
  * asserts that the function's SQL filters include or exclude those fixtures
  * correctly. All fixtures are cleaned up automatically in tearDown().
  *
@@ -23,9 +23,6 @@ use PHPUnit\Framework\Attributes\Group;
 #[Group('admin')]
 final class FindUnverifiedOwnerlessAccountsIntegrationTest extends IntegrationTestCase
 {
-    /** @var int[] car_user row IDs inserted directly by tests — cleaned in tearDown */
-    private array $createdCarUserIds = [];
-
     /** @var int[] car_transfer_requests row IDs inserted directly by tests — cleaned in tearDown */
     private array $createdTransferRequestIds = [];
 
@@ -37,17 +34,6 @@ final class FindUnverifiedOwnerlessAccountsIntegrationTest extends IntegrationTe
 
     protected function tearDown(): void
     {
-        // Remove any car_user rows we inserted manually (before parent deletes the cars).
-        foreach ($this->createdCarUserIds as $carUserId) {
-            try {
-                $this->db->query("DELETE FROM car_user WHERE id = ?", [$carUserId]);
-            } catch (\Throwable $e) {
-                // Ignore cleanup errors — parent tearDown may have already removed them
-                // via the car_id cascade.
-            }
-        }
-        $this->createdCarUserIds = [];
-
         foreach ($this->createdTransferRequestIds as $requestId) {
             try {
                 $this->db->query("DELETE FROM car_transfer_requests WHERE id = ?", [$requestId]);
@@ -132,10 +118,6 @@ final class FindUnverifiedOwnerlessAccountsIntegrationTest extends IntegrationTe
     /**
      * A user who owns a car (row in the `cars` table via user_id) must be
      * excluded even though their email is unverified.
-     *
-     * createTestCar() inserts into both `cars` (user_id) and `car_user` (userid),
-     * exercising both NOT EXISTS clauses simultaneously. The first clause
-     * (NOT EXISTS cars WHERE user_id) alone is sufficient for exclusion here.
      */
     public function testExcludesAccountWithCarsRow(): void
     {
@@ -146,39 +128,6 @@ final class FindUnverifiedOwnerlessAccountsIntegrationTest extends IntegrationTe
         $ids     = $this->idsFrom($results);
 
         $this->assertNotContains((string) $userId, $ids, 'User with a cars row must be excluded');
-    }
-
-    /**
-     * A user who appears in the car_user junction table (but has no row in
-     * the cars table as owner) must be excluded via the second NOT EXISTS clause.
-     *
-     * Setup:
-     *   1. Create the user under test (no cars of their own).
-     *   2. Create a separate dummy user and a car for them — this gives us a
-     *      real car_id to satisfy any FK constraints on car_user.car_id.
-     *   3. Insert a car_user row linking the test user to that car.
-     *   4. Track the inserted row ID for cleanup in tearDown().
-     */
-    public function testExcludesAccountWithCarUserRow(): void
-    {
-        $testUserId  = $this->createTestUser(['join_date' => $this->daysAgo(31)]);
-        $dummyUserId = $this->createTestUser();
-        $carId       = $this->createTestCar($dummyUserId);
-
-        // Manually link testUser → existing car via car_user.
-        $this->db->insert('car_user', ['userid' => $testUserId, 'car_id' => $carId]);
-        $row = $this->db->query(
-            "SELECT id FROM car_user WHERE userid = ? AND car_id = ? ORDER BY id DESC LIMIT 1",
-            [$testUserId, $carId]
-        )->first();
-        if ($row) {
-            $this->createdCarUserIds[] = (int) $row->id;
-        }
-
-        $results = findUnverifiedOwnerlessAccounts($this->db, 30);
-        $ids     = $this->idsFrom($results);
-
-        $this->assertNotContains((string) $testUserId, $ids, 'User with a car_user row must be excluded');
     }
 
     /**

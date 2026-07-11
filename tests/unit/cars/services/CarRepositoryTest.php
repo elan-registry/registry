@@ -177,12 +177,6 @@ final class CarRepositoryTest extends TestCase
         $this->assertTrue($result);
     }
 
-    public function testInsertCarUserReturnsTrue(): void
-    {
-        $result = $this->repo->insertCarUser(1, 100);
-        $this->assertTrue($result);
-    }
-
     public function testUpdateVerificationCodeReturnsTrue(): void
     {
         $result = $this->repo->updateVerificationCode(1, 'TESTCODE12345678');

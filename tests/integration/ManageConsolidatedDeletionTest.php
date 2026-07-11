@@ -11,9 +11,9 @@ use PHPUnit\Framework\Attributes\Group;
  * app/admin/index.php after migration to Car::delete().
  *
  * Prior to #956 that page issued raw DELETE statements directly against
- * car_user and cars. Issue #956 routes deletion through Car::delete() /
+ * cars. Issue #956 routes deletion through Car::delete() /
  * CarAdministrationService::delete(), which handles the transaction,
- * car_user removal, and audit trail. This test guards against regressions
+ * cars cleanup, and audit trail. This test guards against regressions
  * to that path — specifically verifying that exactly one DELETE row appears
  * in cars_hist (written by the DB trigger). A second row would indicate an
  * accidental application-layer re-introduction of a pre-delete INSERT.

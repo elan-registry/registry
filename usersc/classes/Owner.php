@@ -310,10 +310,7 @@ class Owner
         }
 
         $carsQuery = $this->_db->query(
-            "SELECT c.* FROM cars c
-             INNER JOIN car_user cu ON c.id = cu.car_id
-             WHERE cu.userid = ?
-             ORDER BY c.model, c.year",
+            "SELECT c.* FROM cars c WHERE c.user_id = ? ORDER BY c.model, c.year",
             [$this->_data->id]
         );
 

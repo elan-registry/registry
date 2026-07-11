@@ -11,7 +11,7 @@ use ElanRegistry\LogCategories;
  * CarRepository - Database access layer for car operations
  *
  * Extracted from Car.php to provide a focused, testable data access layer.
- * Wraps DB operations for cars, car_user, cars_hist, and elan_factory_info tables.
+ * Wraps DB operations for cars, cars_hist, elan_factory_info, and car_models tables.
  *
  * @package ElanRegistry\Car
  * @since v2.15.0
@@ -94,57 +94,6 @@ class CarRepository
     }
 
     /**
-     * Delete car-user relationship by car ID
-     *
-     * @param int $carId Car ID
-     * @return bool True on success
-     */
-    public function deleteCarUser(int $carId): bool
-    {
-        $this->db->query("DELETE FROM car_user WHERE car_id = ?", [$carId]);
-        return !$this->db->error();
-    }
-
-    /**
-     * Delete all car-user relationships for a user ID
-     *
-     * Used during user deletion cleanup to remove all of a user's car assignments.
-     *
-     * @param int $userId User ID
-     * @return bool True on success
-     */
-    public function deleteCarUserByUserId(int $userId): bool
-    {
-        $this->db->query("DELETE FROM car_user WHERE userid = ?", [$userId]);
-        return !$this->db->error();
-    }
-
-    /**
-     * Insert a car-user relationship
-     *
-     * @param int $userId User ID
-     * @param int $carId Car ID
-     * @return bool True on success
-     */
-    public function insertCarUser(int $userId, int $carId): bool
-    {
-        return $this->db->insert('car_user', ['userid' => $userId, 'car_id' => $carId]);
-    }
-
-    /**
-     * Update car-user relationship to new owner
-     *
-     * @param int $newUserId New user ID
-     * @param int $carId Car ID
-     * @return bool True on success
-     */
-    public function updateCarUser(int $newUserId, int $carId): bool
-    {
-        $this->db->query("UPDATE car_user SET userid = ? WHERE car_id = ?", [$newUserId, $carId]);
-        return !$this->db->error();
-    }
-
-    /**
      * Bulk-reassign cars.user_id for all cars owned by a user.
      *
      * Used by the deletion hook to transfer a deleted user's cars to another user
@@ -160,7 +109,6 @@ class CarRepository
      */
     public function reassignCarsByUser(int $fromUserId, ?int $toUserId): int
     {
-        // A null $toUserId binds as SQL NULL, clearing ownership.
         $this->db->query(
             'UPDATE cars SET user_id = ? WHERE user_id = ?',
             [$toUserId, $fromUserId]
@@ -247,7 +195,7 @@ class CarRepository
      */
     public function findByOwner(int $ownerId): array
     {
-        return $this->db->query("SELECT car_id AS id FROM car_user WHERE userid = ?", [$ownerId])->results();
+        return $this->db->query("SELECT id FROM cars WHERE user_id = ?", [$ownerId])->results();
     }
 
     /**

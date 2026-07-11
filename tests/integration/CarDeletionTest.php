@@ -51,12 +51,6 @@ final class CarDeletionTest extends IntegrationTestCase
         } catch (RuntimeException $e) {
             $this->markTestSkipped('Could not create test car: ' . $e->getMessage());
         }
-
-        // Ensure car_user relationship exists
-        $this->db->insert('car_user', [
-            'car_id' => $this->testCarId,
-            'userid' => $this->testUserId
-        ]);
     }
 
     protected function tearDown(): void
@@ -137,29 +131,6 @@ final class CarDeletionTest extends IntegrationTestCase
             [$carId]
         );
         $this->assertSame(1, $historyQuery->count(), 'Expected exactly one DELETE row in cars_hist');
-    }
-
-    /**
-     * Test car deletion removes car-user relationships
-     */
-    #[Group('fast')]
-    public function testDeleteCarRemovesCarUserRelationships(): void
-    {
-        $car = new Car($this->testCarId);
-        $carId = $car->data()->id;
-
-        // Verify relationship exists before deletion
-        $relationQuery = $this->db->query("SELECT * FROM car_user WHERE car_id = ?", [$carId]);
-        $this->assertTrue($relationQuery->count() > 0);
-
-        $token = Token::generate();
-        $result = $car->delete('Test deletion', $token);
-
-        $this->assertTrue($result);
-
-        // Verify relationship was removed
-        $relationQuery = $this->db->query("SELECT * FROM car_user WHERE car_id = ?", [$carId]);
-        $this->assertEquals(0, $relationQuery->count());
     }
 
     /**

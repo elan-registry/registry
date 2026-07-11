@@ -40,7 +40,7 @@ final class UserDeletionCleanupTest extends TestCase
 
     private function setupMockData(): void
     {
-        global $mockUsers, $mockProfiles, $mockCarUser, $mockCars;
+        global $mockUsers, $mockProfiles, $mockCars;
 
         $mockUsers = [
             (object) ['id' => 1, 'username' => 'admin', 'email' => 'admin@test.com'],
@@ -50,11 +50,6 @@ final class UserDeletionCleanupTest extends TestCase
 
         $mockProfiles = [
             (object) ['id' => 1, 'user_id' => 999, 'city' => 'Test City', 'state' => 'TS']
-        ];
-
-        $mockCarUser = [
-            (object) ['id' => 1, 'userid' => 999, 'carid' => 1001],
-            (object) ['id' => 2, 'userid' => 999, 'carid' => 1002]
         ];
 
         $mockCars = [

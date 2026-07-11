@@ -161,27 +161,6 @@ CREATE TABLE `cars_hist` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- -----------------------------------------------------------------------------
--- Table: car_user (Junction table for car sharing)
--- -----------------------------------------------------------------------------
-CREATE TABLE `car_user` (
-  `id` int(11) NOT NULL,
-  `userid` int(11) NOT NULL,
-  `car_id` int(11) NOT NULL,
-  `mtime` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-
--- -----------------------------------------------------------------------------
--- Table: car_user_hist (Audit trail for car sharing)
--- -----------------------------------------------------------------------------
-CREATE TABLE `car_user_hist` (
-  `id` int(11) NOT NULL,
-  `operation` varchar(32) COLLATE utf8mb4_unicode_ci NOT NULL,
-  `car_id` int(11) UNSIGNED NOT NULL,
-  `userid` int(11) DEFAULT NULL,
-  `timestamp` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-
--- -----------------------------------------------------------------------------
 -- Table: car_transfer_requests (Ownership transfer system)
 -- -----------------------------------------------------------------------------
 CREATE TABLE `car_transfer_requests` (
@@ -283,18 +262,6 @@ ALTER TABLE `cars_hist`
   ADD KEY `idx_cars_hist_timestamp` (`timestamp`),
   ADD KEY `idx_cars_hist_user_id` (`user_id`);
 
--- car_user table
-ALTER TABLE `car_user`
-  ADD PRIMARY KEY (`id`),
-  ADD KEY `idx_car_user_car_id` (`car_id`),
-  ADD KEY `idx_car_user_userid` (`userid`);
-
--- car_user_hist table
-ALTER TABLE `car_user_hist`
-  ADD PRIMARY KEY (`id`),
-  ADD KEY `idx_car_user_hist_car_id` (`car_id`),
-  ADD KEY `idx_car_user_hist_userid` (`userid`);
-
 -- car_transfer_requests table
 ALTER TABLE `car_transfer_requests`
   ADD PRIMARY KEY (`id`),
@@ -329,12 +296,6 @@ ALTER TABLE `cars`
   MODIFY `id` int(10) UNSIGNED NOT NULL AUTO_INCREMENT;
 
 ALTER TABLE `cars_hist`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT;
-
-ALTER TABLE `car_user`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT;
-
-ALTER TABLE `car_user_hist`
   MODIFY `id` int(11) NOT NULL AUTO_INCREMENT;
 
 ALTER TABLE `car_transfer_requests`
@@ -405,38 +366,6 @@ CREATE TRIGGER `cars_update` AFTER UPDATE ON `cars` FOR EACH ROW BEGIN
             OLD.user_id, OLD.email, OLD.fname, OLD.lname, OLD.join_date, OLD.city,
             OLD.state, OLD.country, OLD.lat, OLD.lon, OLD.website
         );
-    END IF;
-END$$
-DELIMITER ;
-
--- -----------------------------------------------------------------------------
--- Trigger: car_user_delete (Audit trail for car-user relationship removals)
--- -----------------------------------------------------------------------------
-DELIMITER $$
-CREATE TRIGGER `car_user_delete` AFTER DELETE ON `car_user` FOR EACH ROW BEGIN
-    INSERT INTO car_user_hist (operation, car_id, userid)
-    VALUES ('DELETE', OLD.car_id, OLD.userid);
-END$$
-DELIMITER ;
-
--- -----------------------------------------------------------------------------
--- Trigger: car_user_insert (Audit trail for car-user relationship additions)
--- -----------------------------------------------------------------------------
-DELIMITER $$
-CREATE TRIGGER `car_user_insert` AFTER INSERT ON `car_user` FOR EACH ROW BEGIN
-    INSERT INTO car_user_hist (operation, car_id, userid)
-    VALUES ('INSERT', NEW.car_id, NEW.userid);
-END$$
-DELIMITER ;
-
--- -----------------------------------------------------------------------------
--- Trigger: car_user_update (Audit trail for car-user relationship updates)
--- -----------------------------------------------------------------------------
-DELIMITER $$
-CREATE TRIGGER `car_user_update` AFTER UPDATE ON `car_user` FOR EACH ROW BEGIN
-    IF @disable_triggers IS NULL THEN
-        INSERT INTO car_user_hist (operation, car_id, userid)
-        VALUES ('UPDATE', OLD.car_id, OLD.userid);
     END IF;
 END$$
 DELIMITER ;

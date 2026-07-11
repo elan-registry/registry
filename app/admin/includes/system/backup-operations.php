@@ -57,7 +57,7 @@ try {
             logger($user->data()->id, LogCategories::LOG_CATEGORY_BACKUP_DEBUG, "Backup reason: '{$reason}'");
 
             // Critical tables for backup
-            $criticalTables = ['users', 'cars', 'car_user', 'profiles', 'settings', 'car_history', 'fix_script_runs'];
+            $criticalTables = ['users', 'cars', 'profiles', 'settings', 'car_history', 'fix_script_runs'];
 
             // Log tables being backed up
             logger($user->data()->id, LogCategories::LOG_CATEGORY_BACKUP_DEBUG, "Tables to backup: " . implode(', ', $criticalTables));

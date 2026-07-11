@@ -153,7 +153,6 @@ final class TransferRequestConstraintTest extends IntegrationTestCase
         // Delete the car via raw SQL so the CASCADE actually fires.
         // deleteTestCar() pre-deletes related rows first, which would prevent
         // the cascade from being exercised.
-        $this->db->query("DELETE FROM car_user WHERE car_id = ?", [$carId]);
         $this->db->query("DELETE FROM cars_hist WHERE car_id = ?", [$carId]);
         $this->db->query("DELETE FROM cars WHERE id = ?", [$carId]);
         $this->untrackCarId($carId); // car is gone; suppress tearDown's redundant DELETE

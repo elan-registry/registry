@@ -17,7 +17,7 @@ require_once __DIR__ . '/../../../app/admin/includes/account-cleanup-helpers.php
  *
  * What is NOT tested here (delegated to integration tests):
  *   - Actual SQL filter correctness (email_verified, active, protected)
- *   - Database-level correctness of NOT EXISTS clauses for cars, car_user, and cars_hist
+ *   - Database-level correctness of NOT EXISTS clauses for cars and cars_hist
  *   - last_login threshold and boundary behaviour
  *
  * The car_transfer_requests NOT EXISTS guard is verified at the unit level via
