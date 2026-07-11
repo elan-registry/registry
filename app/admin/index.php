@@ -39,14 +39,21 @@ if (!securePage($php_self)) {
 // Initialize database connection
 $db = DB::getInstance();
 
-// Check for pending Phinx migrations. When phinxlog does not exist (fresh
-// install), DB::query() throws a PDOException that is caught below.
+// Check for pending Phinx migrations by querying phinxlog directly.
+// database/ is removed by .deployignore after deployment, so glob() always
+// returns empty on prod. Instead, count applied migrations up to the latest
+// known version and compare against the total. Update both constants when
+// adding a new migration.
 $pendingMigrationCount = 0;
 try {
-    $migrationFiles = glob($abs_us_root . $us_url_root . 'database/migrations/*.php') ?: [];
-    $row = $db->query("SELECT COUNT(*) as cnt FROM phinxlog")->first();
+    $latestMigration = 20260711100000;
+    $totalMigrations = 7;
+    $row = $db->query(
+        "SELECT COUNT(*) AS cnt FROM phinxlog WHERE version <= ?",
+        [$latestMigration]
+    )->first();
     $appliedCount = is_object($row) ? (int)($row->cnt ?? 0) : 0;
-    $pendingMigrationCount = max(0, count($migrationFiles) - $appliedCount);
+    $pendingMigrationCount = $totalMigrations - $appliedCount;
 } catch (\Throwable $e) {
     // Non-critical banner — degrade silently but log so infrastructure problems are discoverable.
     logger(0, LogCategories::LOG_CATEGORY_SYSTEM_ERROR, 'Migration banner check failed: ' . $e->getMessage());
