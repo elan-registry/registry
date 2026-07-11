@@ -25,6 +25,39 @@ final class DropCarUserTables extends AbstractMigration
     // TRIGGER is not auto-reversible.
     public function up(): void
     {
+        // Guard: verify ownership data integrity before dropping car_user.
+        // These checks run before any DDL so a failure leaves the schema untouched
+        // (DDL triggers an implicit commit in MySQL; guards must precede it).
+
+        // 1. No car has a user_id referencing a non-existent user.
+        $orphaned = $this->fetchRow(
+            "SELECT COUNT(*) AS n FROM cars
+             WHERE user_id IS NOT NULL
+               AND user_id NOT IN (SELECT id FROM users)"
+        );
+        if ((int) ($orphaned['n'] ?? 0) > 0) {
+            throw new \RuntimeException(
+                "Cannot drop car_user: {$orphaned['n']} car(s) have user_id referencing a non-existent user. " .
+                "Fix orphaned car ownership before running this migration."
+            );
+        }
+
+        // 2. cars.user_id and car_user.userid agree for every car tracked in car_user.
+        //    Detects any remaining drift between the two representations.
+        $drifted = $this->fetchRow(
+            "SELECT COUNT(*) AS n
+             FROM car_user cu
+             JOIN cars c ON cu.car_id = c.id
+             WHERE c.user_id IS NULL OR c.user_id != cu.userid"
+        );
+        if ((int) ($drifted['n'] ?? 0) > 0) {
+            throw new \RuntimeException(
+                "Cannot drop car_user: {$drifted['n']} car(s) have drifted ownership " .
+                "(cars.user_id ≠ car_user.userid). " .
+                "Run the ownership reconciliation script before this migration."
+            );
+        }
+
         // Triggers must be dropped before their table.
         $this->execute("DROP TRIGGER IF EXISTS `car_user_delete`");
         $this->execute("DROP TRIGGER IF EXISTS `car_user_update`");
@@ -37,6 +70,17 @@ final class DropCarUserTables extends AbstractMigration
 
     public function down(): void
     {
+        // NOTE: down() recreates car_user and car_user_hist as empty tables — it is a
+        // structural-only rollback. Any application code that reads from car_user will
+        // see no cars for any owner until the data is restored. After reverting the
+        // application code, run this backfill to restore data parity:
+        //
+        //   INSERT INTO car_user (userid, car_id)
+        //     SELECT user_id, id FROM cars WHERE user_id IS NOT NULL;
+        //
+        // Never run this rollback on a live system without also reverting the
+        // application code — car ownership queries will silently return empty sets.
+
         // Recreate car_user if absent.
         $result = $this->fetchAll(
             "SELECT COUNT(*) AS cnt
