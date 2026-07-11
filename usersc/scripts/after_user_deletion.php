@@ -1,4 +1,7 @@
 <?php
+
+declare(strict_types=1);
+
 use ElanRegistry\LogCategories;
 
 /**
@@ -13,7 +16,7 @@ use ElanRegistry\LogCategories;
  *
  * Note: deleteUsers() (users/helpers/users.php) has already removed the `users`
  * and `user_permission_matches` rows before this script runs. This transaction
- * covers profiles/car_user/cars cleanup only — not the user row deletion itself.
+ * covers profiles/cars cleanup only — not the user row deletion itself.
  */
 
 $repo = new \ElanRegistry\Car\CarRepository($db);
@@ -40,6 +43,10 @@ $inTransaction = function (callable $work) use ($repo, $id): bool {
 
 // Find the "no owner" user dynamically
 $noOwnerQuery = $db->query('SELECT id FROM users WHERE username = ?', ['noowner']);
+if ($db->error()) {
+    logger($id, LogCategories::LOG_CATEGORY_USER_DELETION, 'CRITICAL: noowner lookup query failed during cleanup: ' . $db->errorString());
+    return;
+}
 if ($noOwnerQuery->count() > 0) {
     $noOwnerUserId = (int) $noOwnerQuery->first()->id;
 
@@ -47,16 +54,8 @@ if ($noOwnerQuery->count() > 0) {
     $userCars = $repo->findByOwner($id);
     $carCount = count($userCars);
 
-    $committed = $inTransaction(function () use ($db, $repo, $id, $noOwnerUserId, $userCars): void {
+    $committed = $inTransaction(function () use ($db, $repo, $id, $noOwnerUserId): void {
         $db->query('DELETE FROM profiles WHERE user_id = ?', [$id]);
-        if (!$repo->deleteCarUserByUserId($id)) {
-            throw new \RuntimeException("deleteCarUserByUserId failed for user $id: " . $repo->errorString());
-        }
-        foreach ($userCars as $car) {
-            if (!$repo->insertCarUser($noOwnerUserId, (int) $car->id)) {
-                throw new \RuntimeException("insertCarUser failed for car {$car->id}: " . $repo->errorString());
-            }
-        }
         // Update primary car ownership (this triggers cars_hist via database trigger)
         $repo->reassignCarsByUser($id, $noOwnerUserId);
     });
@@ -74,9 +73,6 @@ if ($noOwnerQuery->count() > 0) {
     // Fallback if noowner doesn't exist - preserve cars but mark as ownerless
     $committed = $inTransaction(function () use ($db, $repo, $id): void {
         $db->query('DELETE FROM profiles WHERE user_id = ?', [$id]);
-        if (!$repo->deleteCarUserByUserId($id)) {
-            throw new \RuntimeException("deleteCarUserByUserId failed for user $id: " . $repo->errorString());
-        }
         $repo->reassignCarsByUser($id, null);
     });
 

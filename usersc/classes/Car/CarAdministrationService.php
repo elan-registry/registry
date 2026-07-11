@@ -54,12 +54,6 @@ class CarAdministrationService
         try {
             $repo->beginTransaction();
 
-            if (!$repo->deleteCarUser($carId)) {
-                $technicalMsg = CarErrorMessages::getTechnicalMessage('car_relationship_failed', ['error' => 'query returned false']);
-                logger($adminUserId, LogCategories::LOG_CATEGORY_CAR_DELETION, $technicalMsg);
-                throw new CarDatabaseException(CarErrorMessages::getAdminMessage('car_relationship_failed'));
-            }
-
             if (!$repo->deleteCar($carId)) {
                 $technicalMsg = CarErrorMessages::getTechnicalMessage('database_update_failed', ['error' => 'query returned false']);
                 logger($adminUserId, LogCategories::LOG_CATEGORY_CAR_DELETION, $technicalMsg);
@@ -139,12 +133,6 @@ class CarAdministrationService
                 $technicalMsg = CarErrorMessages::getTechnicalMessage('database_update_failed', ['error' => 'Car update method returned false']);
                 logger($adminUserId, LogCategories::LOG_CATEGORY_CAR_TRANSFER, $technicalMsg);
                 throw new CarDatabaseException(CarErrorMessages::getAdminMessage('database_update_failed'));
-            }
-
-            if (!$repo->updateCarUser($newUserId, $carId)) {
-                $technicalMsg = CarErrorMessages::getTechnicalMessage('car_relationship_failed', ['error' => 'query returned false']);
-                logger($adminUserId, LogCategories::LOG_CATEGORY_CAR_TRANSFER, $technicalMsg);
-                throw new CarDatabaseException(CarErrorMessages::getAdminMessage('car_relationship_failed'));
             }
 
             // Refresh car data within the transaction — InnoDB reads own uncommitted
@@ -250,12 +238,6 @@ class CarAdministrationService
                 $technicalMsg = CarErrorMessages::getTechnicalMessage('car_history_transfer_failed', ['error' => 'query returned false']);
                 logger($adminUserId, LogCategories::LOG_CATEGORY_CAR_MERGE, $technicalMsg);
                 throw new CarDatabaseException(CarErrorMessages::getAdminMessage('car_history_transfer_failed'));
-            }
-
-            if (!$repo->deleteCarUser($oldCarId)) {
-                $technicalMsg = CarErrorMessages::getTechnicalMessage('car_relationship_failed', ['error' => 'query returned false']);
-                logger($adminUserId, LogCategories::LOG_CATEGORY_CAR_MERGE, $technicalMsg);
-                throw new CarDatabaseException(CarErrorMessages::getAdminMessage('car_relationship_failed'));
             }
 
             if (!$repo->deleteCar($oldCarId)) {

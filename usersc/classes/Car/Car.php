@@ -178,11 +178,6 @@ class Car
         $this->imageDir = $settings->elan_image_dir . $id . '/';
         $ownerId = (int) $this->data()->user_id;
 
-        if (!$repo->insertCarUser($ownerId, $id)) {
-            logger($ownerId, LogCategories::LOG_CATEGORY_DATABASE_ERROR, "Car ID $id created but owner assignment (car_user) failed for user ID $ownerId. DB error: " . $repo->errorString());
-            throw new CarCreationException('Car record was created but owner assignment failed. Please try again or contact the administrator.');
-        }
-
         logger($ownerId, LogCategories::LOG_CATEGORY_CAR_ACTIONS, "Car ID $id created and assigned to owner (user ID: $ownerId)");
         return true;
     }

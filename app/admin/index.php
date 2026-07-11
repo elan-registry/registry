@@ -126,7 +126,7 @@ try {
     $ownersStmt = $db->query("
         SELECT COUNT(DISTINCT u.id) as count
         FROM users u
-        JOIN car_user cu ON u.id = cu.userid
+        JOIN cars c ON u.id = c.user_id
         LEFT JOIN profiles p ON u.id = p.user_id
         WHERE u.active = 1 AND (
             (u.fname IS NULL OR u.fname = '') OR
@@ -292,15 +292,12 @@ if (ElanInput::existsPost()) {
                         break;
                     }
 
-                    // Execute the merge transaction: transfer history, unlink owner, delete old car, write audit record
+                    // Execute the merge transaction: transfer history, delete old car, write audit record
                     $carRepo = new CarRepository($db);
                     try {
                         $carRepo->beginTransaction();
                         if (!$carRepo->transferHistory((int) $old_car_id, (int) $new_car_id)) {
                             throw new CarMergeException('transferHistory failed: ' . $carRepo->errorString());
-                        }
-                        if (!$carRepo->deleteCarUser((int) $old_car_id)) {
-                            throw new CarMergeException('deleteCarUser failed: ' . $carRepo->errorString());
                         }
                         if (!$carRepo->deleteCar((int) $old_car_id)) {
                             throw new CarMergeException('deleteCar failed: ' . $carRepo->errorString());

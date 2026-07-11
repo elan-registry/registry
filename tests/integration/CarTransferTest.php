@@ -53,12 +53,6 @@ final class CarTransferTest extends IntegrationTestCase
         } catch (RuntimeException $e) {
             $this->markTestSkipped('Could not create test car: ' . $e->getMessage());
         }
-
-        // Ensure car_user relationship exists for test car
-        $this->db->insert('car_user', [
-            'car_id' => $this->testCarId,
-            'userid' => $this->testUserId
-        ]);
     }
 
     protected function tearDown(): void
@@ -108,31 +102,31 @@ final class CarTransferTest extends IntegrationTestCase
     }
 
     /**
-     * Test car transfer updates car_user relationship table
+     * Test car transfer updates cars.user_id
      */
     #[Group('fast')]
-    public function testTransferUpdatesCarUserRelationship(): void
+    public function testTransferUpdatesCarsUserId(): void
     {
         $car = new Car($this->testCarId);
         $carId = $car->data()->id;
 
-        // Verify original relationship
-        $relationQuery = $this->db->query(
-            "SELECT * FROM car_user WHERE car_id = ? AND userid = ?",
-            [$carId, $this->testUserId]
-        );
-        $this->assertTrue($relationQuery->count() > 0);
+        // Verify original owner
+        $before = $this->db->query(
+            "SELECT user_id FROM cars WHERE id = ?",
+            [$carId]
+        )->first();
+        $this->assertSame($this->testUserId, (int) $before->user_id);
 
         $result = $car->transfer($this->targetUserId, 'Test transfer', 'NEWOWNER');
 
         $this->assertTrue($result);
 
-        // Verify relationship was updated
-        $relationQuery = $this->db->query(
-            "SELECT * FROM car_user WHERE car_id = ? AND userid = ?",
-            [$carId, $this->targetUserId]
-        );
-        $this->assertTrue($relationQuery->count() > 0);
+        // Verify owner was updated
+        $after = $this->db->query(
+            "SELECT user_id FROM cars WHERE id = ?",
+            [$carId]
+        )->first();
+        $this->assertSame($this->targetUserId, (int) $after->user_id);
     }
 
     /**

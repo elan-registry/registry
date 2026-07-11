@@ -23,7 +23,6 @@ function findUnverifiedOwnerlessAccounts(DB $db, int $days): array
            AND u.id != 1
            AND u.username != 'noowner'
            AND NOT EXISTS (SELECT 1 FROM cars c WHERE c.user_id = u.id)
-           AND NOT EXISTS (SELECT 1 FROM car_user cu WHERE cu.userid = u.id)
            AND NOT EXISTS (SELECT 1 FROM cars_hist ch WHERE ch.user_id = u.id)
            AND NOT EXISTS (SELECT 1 FROM car_transfer_requests ctr WHERE ctr.requested_by_user_id = u.id AND ctr.status = 'pending')
            AND DATEDIFF(NOW(), u.join_date) >= ?
@@ -54,7 +53,6 @@ function findVerifiedOwnerlessAccounts(DB $db, int $days): array
            AND u.id != 1
            AND u.username != 'noowner'
            AND NOT EXISTS (SELECT 1 FROM cars c WHERE c.user_id = u.id)
-           AND NOT EXISTS (SELECT 1 FROM car_user cu WHERE cu.userid = u.id)
            AND NOT EXISTS (SELECT 1 FROM cars_hist ch WHERE ch.user_id = u.id)
            AND NOT EXISTS (SELECT 1 FROM car_transfer_requests ctr WHERE ctr.requested_by_user_id = u.id AND ctr.status = 'pending')
            AND (

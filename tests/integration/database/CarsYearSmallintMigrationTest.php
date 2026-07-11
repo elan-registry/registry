@@ -284,7 +284,6 @@ final class CarsYearSmallintMigrationTest extends IntegrationTestCase
 
         // Register with IntegrationTestCase so tearDown cleans up.
         $this->trackCarId($carId);
-        $this->db->insert('car_user', ['userid' => $this->testUserId, 'car_id' => $carId]);
 
         // The cars_insert trigger must have fired and written to cars_hist.
         $histQuery = $this->db->query(
@@ -462,8 +461,8 @@ final class CarsYearSmallintMigrationTest extends IntegrationTestCase
      * Deleting a car must produce a cars_hist row with operation='DELETE' containing
      * the car's year at the time of deletion.
      *
-     * The test deletes via Car::delete() (which also purges car_user and calls the
-     * application layer) and then inspects cars_hist directly.
+     * The test deletes via Car::delete() (which calls the application layer)
+     * and then inspects cars_hist directly.
      */
     #[Group('integration')]
     #[Group('migration')]
