@@ -55,6 +55,19 @@ if ($noOwnerQuery->count() > 0) {
     $carCount = count($userCars);
 
     $committed = $inTransaction(function () use ($db, $repo, $id, $noOwnerUserId): void {
+        // Expire any non-terminal transfer requests the user initiated — prevents orphaned
+        // requester FK references and ensures the current car owner sees a clean audit trail.
+        $db->query(
+            "UPDATE car_transfer_requests
+                SET status = 'expired',
+                    completed_date = NOW(),
+                    admin_notes = IF(admin_notes IS NULL, 'Account deleted', CONCAT(admin_notes, ' | Account deleted'))
+             WHERE requested_by_user_id = ? AND status IN ('pending', 'approved')",
+            [$id]
+        );
+        if ($db->error()) {
+            throw new \RuntimeException("Failed to expire pending transfer requests for user $id: " . $db->errorString());
+        }
         $db->query('DELETE FROM profiles WHERE user_id = ?', [$id]);
         if ($db->error()) {
             throw new \RuntimeException("Failed to delete profile for user $id: " . $db->errorString());
@@ -75,6 +88,17 @@ if ($noOwnerQuery->count() > 0) {
 } else {
     // Fallback if noowner doesn't exist - preserve cars but mark as ownerless
     $committed = $inTransaction(function () use ($db, $repo, $id): void {
+        $db->query(
+            "UPDATE car_transfer_requests
+                SET status = 'expired',
+                    completed_date = NOW(),
+                    admin_notes = IF(admin_notes IS NULL, 'Account deleted', CONCAT(admin_notes, ' | Account deleted'))
+             WHERE requested_by_user_id = ? AND status IN ('pending', 'approved')",
+            [$id]
+        );
+        if ($db->error()) {
+            throw new \RuntimeException("Failed to expire pending transfer requests for user $id: " . $db->errorString());
+        }
         $db->query('DELETE FROM profiles WHERE user_id = ?', [$id]);
         if ($db->error()) {
             throw new \RuntimeException("Failed to delete profile for user $id: " . $db->errorString());

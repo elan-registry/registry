@@ -1,6 +1,6 @@
 # Elan Registry v2.26.2 Release Notes
 
-**Release Date:** [DATE]
+**Release Date:** 2026-07-11
 **Type:** Patch Release - DB Infrastructure & Raw SQL Migration
 
 ## Required Actions After Deployment
