@@ -295,7 +295,14 @@ SQL);
         try {
             $this->execute("SET GLOBAL log_bin_trust_function_creators = 0");
         } catch (\Exception $e) {
-            // Non-fatal — DBA can reset manually; triggers are already created/recreated.
+            // Non-fatal — triggers are already created; DBA can reset manually.
+            if (isset($this->output)) {
+                $this->output->writeln(
+                    '<comment>Warning: Could not reset log_bin_trust_function_creators=0: '
+                    . $e->getMessage()
+                    . ' — set it manually in MySQL or my.cnf.</comment>'
+                );
+            }
         }
     }
 

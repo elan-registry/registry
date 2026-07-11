@@ -49,7 +49,7 @@ if ($ownerData !== null) {
 $qualityScore = $owner->getProfileQualityScore();
 
 // Owner website (only display for http/https)
-$ownerWebsite       = $ownerData->website ?? '';
+$ownerWebsite       = $ownerData?->website ?? '';
 $ownerWebsiteScheme = !empty($ownerWebsite) ? strtolower((string)parse_url((string)$ownerWebsite, PHP_URL_SCHEME)) : '';
 $hasOwnerWebsite    = in_array($ownerWebsiteScheme, ['http', 'https'], true);
 

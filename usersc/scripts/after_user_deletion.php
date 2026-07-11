@@ -56,6 +56,9 @@ if ($noOwnerQuery->count() > 0) {
 
     $committed = $inTransaction(function () use ($db, $repo, $id, $noOwnerUserId): void {
         $db->query('DELETE FROM profiles WHERE user_id = ?', [$id]);
+        if ($db->error()) {
+            throw new \RuntimeException("Failed to delete profile for user $id: " . $db->errorString());
+        }
         // Update primary car ownership (this triggers cars_hist via database trigger)
         $repo->reassignCarsByUser($id, $noOwnerUserId);
     });
@@ -73,6 +76,9 @@ if ($noOwnerQuery->count() > 0) {
     // Fallback if noowner doesn't exist - preserve cars but mark as ownerless
     $committed = $inTransaction(function () use ($db, $repo, $id): void {
         $db->query('DELETE FROM profiles WHERE user_id = ?', [$id]);
+        if ($db->error()) {
+            throw new \RuntimeException("Failed to delete profile for user $id: " . $db->errorString());
+        }
         $repo->reassignCarsByUser($id, null);
     });
 
