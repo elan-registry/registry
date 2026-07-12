@@ -66,6 +66,6 @@
     "@versatiles/style": "^5.13.0",
     "dotenv": "^17.4.2",
     "esbuild": "^0.28.1",
-    "eslint": "^10.6.0"
+    "eslint": "^10.7.0"
   }
 }
