@@ -1,4 +1,6 @@
 <?php
+use ElanRegistry\Car\Car;
+
 require_once '../../users/init.php';
 
 if (!securePage($php_self)) {
@@ -8,8 +10,7 @@ if (!securePage($php_self)) {
 
 $db = DB::getInstance();
 
-$query = $db->query("SELECT * FROM email");
-$base_url = $query->first()->verify_url;
+$base_url = getBaseUrl();
 
 $verify_url = $base_url . $us_url_root . "app/verify/verify_car.php";
 
@@ -23,7 +24,14 @@ foreach ($carData as $car) {
     echo "<hr>Send email for car:" . $car->id . "<br>";
     // Update the verification code
     $verificationCode = md5(uniqid(rand(), true));
-    $db->query("UPDATE cars SET vericode = ? WHERE id = ?", [$verificationCode, $car->id]);
+    try {
+        (new Car((int) $car->id))->setVerificationCode($verificationCode);
+    } catch (\Exception $e) {
+        echo "<strong>Error setting verification code for car {$car->id}: " . htmlspecialchars($e->getMessage(), ENT_QUOTES, 'UTF-8') . "</strong><br>";
+        logger(0, \ElanRegistry\LogCategories::LOG_CATEGORY_CAR_VERIFICATION,
+            "send_email.php: setVerificationCode failed for car ID {$car->id}: " . $e->getMessage());
+        continue;
+    }
 
     // Delete the cars_hist entry for adding the vericode
     $id = $db->query('SELECT car_id, id, MAX(timestamp) AS max FROM cars_hist where car_id = ? GROUP BY id, car_id ORDER BY `max` DESC LIMIT 1', [$car->id])->first()->id;

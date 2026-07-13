@@ -11,6 +11,7 @@ use ElanRegistry\Exceptions\CarNotFoundException;
 use ElanRegistry\Exceptions\CarPermissionException;
 use ElanRegistry\Input as ElanInput;
 use ElanRegistry\LogCategories;
+use ElanRegistry\Owner;
 use ElanRegistry\Transfer\CarTransferRepository;
 
 /**
@@ -37,6 +38,26 @@ if (!securePage($php_self)) {
 
 // Initialize database connection
 $db = DB::getInstance();
+
+// Check for pending Phinx migrations by querying phinxlog directly.
+// database/ is removed by .deployignore after deployment, so glob() always
+// returns empty on prod. Instead, count applied migrations up to the latest
+// known version and compare against the total. Update both constants when
+// adding a new migration.
+$pendingMigrationCount = 0;
+try {
+    $latestMigration = 20260711000000;
+    $totalMigrations = 4;
+    $row = $db->query(
+        "SELECT COUNT(*) AS cnt FROM phinxlog WHERE version <= ?",
+        [$latestMigration]
+    )->first();
+    $appliedCount = is_object($row) ? (int)($row->cnt ?? 0) : 0;
+    $pendingMigrationCount = $totalMigrations - $appliedCount;
+} catch (\Throwable $e) {
+    // Non-critical banner — degrade silently but log so infrastructure problems are discoverable.
+    logger(0, LogCategories::LOG_CATEGORY_SYSTEM_ERROR, 'Migration banner check failed: ' . $e->getMessage());
+}
 
 // Abort immediately if no authenticated session exists.
 // securePage() above handles access control; this guard ensures the audit trail
@@ -112,7 +133,7 @@ try {
     $ownersStmt = $db->query("
         SELECT COUNT(DISTINCT u.id) as count
         FROM users u
-        JOIN car_user cu ON u.id = cu.userid
+        JOIN cars c ON u.id = c.user_id
         LEFT JOIN profiles p ON u.id = p.user_id
         WHERE u.active = 1 AND (
             (u.fname IS NULL OR u.fname = '') OR
@@ -174,7 +195,7 @@ if (ElanInput::existsPost()) {
 
                     try {
                         $car = new Car((int)$car_id);
-                        $targetUser = getUserWithProfile($user_id);
+                        $targetUser = (new Owner($user_id))->data();
                         $targetName = $targetUser && $targetUser->fname && $targetUser->lname
                             ? "{$targetUser->fname} {$targetUser->lname}"
                             : "User ID $user_id";
@@ -278,15 +299,12 @@ if (ElanInput::existsPost()) {
                         break;
                     }
 
-                    // Execute the merge transaction: transfer history, unlink owner, delete old car, write audit record
+                    // Execute the merge transaction: transfer history, delete old car, write audit record
                     $carRepo = new CarRepository($db);
                     try {
                         $carRepo->beginTransaction();
                         if (!$carRepo->transferHistory((int) $old_car_id, (int) $new_car_id)) {
                             throw new CarMergeException('transferHistory failed: ' . $carRepo->errorString());
-                        }
-                        if (!$carRepo->deleteCarUser((int) $old_car_id)) {
-                            throw new CarMergeException('deleteCarUser failed: ' . $carRepo->errorString());
                         }
                         if (!$carRepo->deleteCar((int) $old_car_id)) {
                             throw new CarMergeException('deleteCar failed: ' . $carRepo->errorString());
@@ -452,6 +470,16 @@ if (ElanInput::existsPost()) {
                     </div>
                 </div>
             </div>
+
+            <?php if ($pendingMigrationCount > 0): ?>
+            <div class="alert alert-warning d-flex align-items-center mb-3" role="alert">
+                <i class="fas fa-database me-2"></i>
+                <span>
+                    <strong><?= $pendingMigrationCount ?> pending migration<?= $pendingMigrationCount !== 1 ? 's' : '' ?>.</strong>
+                    Run <code>composer migrate</code> to apply.
+                </span>
+            </div>
+            <?php endif; ?>
 
             <!-- Main Interface Card -->
             <div class="row">

@@ -19,11 +19,6 @@ use ElanRegistry\LogCategories;
  */
 class CarTransferRepository
 {
-    private const VALID_STATUSES = ['pending', 'completed', 'denied', 'expired'];
-
-    /** Terminal statuses that record a completion timestamp. */
-    private const TERMINAL_STATUSES = ['completed', 'denied', 'expired'];
-
     /**
      * Production always receives DB::getInstance(); declared as object so test
      * doubles (which implement query() only) can be injected without a type error.
@@ -216,42 +211,41 @@ class CarTransferRepository
     /**
      * Update the status, admin notes, and completion date of a transfer request.
      *
-     * Terminal statuses (completed, denied, expired) also record completed_date = NOW().
-     * Non-terminal statuses (pending) leave completed_date unchanged.
+     * Terminal statuses (Completed, Denied, Expired) also record completed_date = NOW().
+     * Non-terminal statuses (Pending, Approved) leave completed_date unchanged.
      *
      * Returns false only when the query succeeds but no row was matched — the expected
      * TOCTOU case where another admin processed the request first. Throws on DB error
      * so callers can distinguish "already processed" from "infrastructure failure".
      *
+     * Note: terminal transitions include `AND status = 'pending'` in the WHERE clause
+     * as a TOCTOU guard. Non-terminal transitions (Pending, Approved) do not — callers
+     * are responsible for ensuring the row is in an expected state before calling.
+     *
      * @param int $id Transfer request ID
-     * @param string $status New status value
+     * @param TransferStatus $status New status
      * @param string $adminNotes Admin notes to record
-     * @return bool True if exactly one row was updated; false if no row matched (already processed)
-     * @throws \InvalidArgumentException if $status is not one of: pending, completed, denied, expired
+     * @return bool True if one or more rows were updated; false if no row matched (already processed)
      * @throws \RuntimeException on database error
      */
-    public function updateStatus(int $id, string $status, string $adminNotes): bool
+    public function updateStatus(int $id, TransferStatus $status, string $adminNotes): bool
     {
-        if (!in_array($status, self::VALID_STATUSES, true)) {
-            throw new \InvalidArgumentException("Invalid transfer status: '$status'");
-        }
-
-        if (in_array($status, self::TERMINAL_STATUSES, true)) {
+        if ($status->isTerminal()) {
             // AND status = 'pending' is the atomic TOCTOU gate: a second admin's
             // UPDATE will match 0 rows (already terminal) and return false.
             $result = $this->db->query(
                 "UPDATE car_transfer_requests SET status = ?, admin_notes = ?, completed_date = NOW() WHERE id = ? AND status = 'pending'",
-                [$status, $adminNotes, $id]
+                [$status->value, $adminNotes, $id]
             );
         } else {
             $result = $this->db->query(
                 "UPDATE car_transfer_requests SET status = ?, admin_notes = ? WHERE id = ?",
-                [$status, $adminNotes, $id]
+                [$status->value, $adminNotes, $id]
             );
         }
 
         if ($this->db->error()) {
-            logger(0, LogCategories::LOG_CATEGORY_DATABASE_ERROR, "CarTransferRepository::updateStatus failed for id=$id status=$status: " . $this->db->errorString());
+            logger(0, LogCategories::LOG_CATEGORY_DATABASE_ERROR, "CarTransferRepository::updateStatus failed for id=$id status={$status->value}: " . $this->db->errorString());
             throw new \RuntimeException('Database error updating transfer request status');
         }
         return $result->count() > 0;

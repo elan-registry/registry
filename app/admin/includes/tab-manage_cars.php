@@ -24,7 +24,7 @@ function getDataQualityReports(object $db): array {
     $ownersWithMissingInfoQ = $db->query("
         SELECT u.id, u.fname, u.lname, u.email, u.join_date, u.last_login,
                p.city, p.state, p.country, p.lat, p.lon,
-               COUNT(cu.car_id) as car_count,
+               COUNT(c.id) as car_count,
                CASE WHEN u.fname IS NULL OR u.fname = '' THEN 1 ELSE 0 END +
                CASE WHEN u.lname IS NULL OR u.lname = '' THEN 1 ELSE 0 END +
                CASE WHEN p.city IS NULL OR p.city = '' THEN 1 ELSE 0 END +
@@ -36,7 +36,7 @@ function getDataQualityReports(object $db): array {
                    CASE WHEN p.lat IS NULL OR p.lon IS NULL THEN 'Coordinates' ELSE NULL END
                ) as missing_fields_list
         FROM users u
-        JOIN car_user cu ON u.id = cu.userid
+        JOIN cars c ON u.id = c.user_id
         LEFT JOIN profiles p ON u.id = p.user_id
         WHERE u.active = 1 AND (
             (u.fname IS NULL OR u.fname = '') OR
@@ -61,10 +61,10 @@ function getDataQualityReports(object $db): array {
     $inactiveOwnersQ = $db->query("
         SELECT u.id, u.fname, u.lname, u.email, u.join_date, u.last_login,
                p.city, p.state, p.country,
-               COUNT(cu.car_id) as car_count,
+               COUNT(c.id) as car_count,
                DATEDIFF(NOW(), u.last_login) as days_since_login
         FROM users u
-        JOIN car_user cu ON u.id = cu.userid
+        JOIN cars c ON u.id = c.user_id
         LEFT JOIN profiles p ON u.id = p.user_id
         WHERE u.active = 1 AND (
             u.last_login IS NULL OR
@@ -92,9 +92,9 @@ function getDataQualityReports(object $db): array {
                CASE WHEN u.last_login IS NULL OR u.last_login = '0000-00-00 00:00:00' THEN 'Never'
                     ELSE DATE_FORMAT(u.last_login, '%M %d, %Y') END as last_login_formatted
         FROM users u
-        LEFT JOIN car_user cu ON u.id = cu.userid
+        LEFT JOIN cars c ON u.id = c.user_id
         LEFT JOIN profiles p ON u.id = p.user_id
-        WHERE u.active = 1 AND cu.userid IS NULL
+        WHERE u.active = 1 AND c.user_id IS NULL
         ORDER BY u.join_date DESC
         LIMIT 50
     ");
@@ -135,8 +135,7 @@ function getDataQualityReports(object $db): array {
         SELECT c.id, c.model, c.series, c.year, c.chassis, c.mtime,
                u.id as user_id, u.fname, u.lname, u.email
         FROM cars c
-        LEFT JOIN car_user cu ON c.id = cu.car_id
-        LEFT JOIN users u ON cu.userid = u.id
+        LEFT JOIN users u ON c.user_id = u.id
         WHERE c.chassis IS NULL OR c.chassis = ''
         ORDER BY c.mtime DESC, c.id
     ");
@@ -156,8 +155,7 @@ function getDataQualityReports(object $db): array {
         SELECT c.id, c.model, c.series, c.year, c.chassis, c.chassis_override, c.mtime,
                u.id as user_id, u.fname, u.lname, u.email
         FROM cars c
-        LEFT JOIN car_user cu ON c.id = cu.car_id
-        LEFT JOIN users u ON cu.userid = u.id
+        LEFT JOIN users u ON c.user_id = u.id
         WHERE c.chassis IS NOT NULL AND c.chassis != ''
           AND c.year IS NOT NULL AND c.year != 0
           AND c.model IS NOT NULL AND c.model != ''
@@ -188,8 +186,7 @@ function getDataQualityReports(object $db): array {
         SELECT c.id, c.model, c.series, c.year, c.chassis, c.mtime,
                u.id as user_id, u.fname, u.lname, u.email
         FROM cars c
-        LEFT JOIN car_user cu ON c.id = cu.car_id
-        LEFT JOIN users u ON cu.userid = u.id
+        LEFT JOIN users u ON c.user_id = u.id
         WHERE c.model = '||' OR c.model LIKE '%test%' OR c.model LIKE '%placeholder%'
         ORDER BY c.mtime DESC, c.id
     ");
@@ -208,8 +205,7 @@ function getDataQualityReports(object $db): array {
         SELECT c.id, c.model, c.series, c.year, c.chassis, c.mtime,
                u.id as user_id, u.fname, u.lname, u.email
         FROM cars c
-        LEFT JOIN car_user cu ON c.id = cu.car_id
-        LEFT JOIN users u ON cu.userid = u.id
+        LEFT JOIN users u ON c.user_id = u.id
         WHERE c.series IS NULL OR c.series = ''
         ORDER BY c.mtime DESC, c.id
     ");
@@ -231,8 +227,7 @@ function getDataQualityReports(object $db): array {
                CASE WHEN c.chassis IS NULL OR c.chassis = '' THEN 1 ELSE 0 END +
                CASE WHEN c.model = '||' THEN 1 ELSE 0 END as missing_count
         FROM cars c
-        LEFT JOIN car_user cu ON c.id = cu.car_id
-        LEFT JOIN users u ON cu.userid = u.id
+        LEFT JOIN users u ON c.user_id = u.id
         HAVING missing_count >= 2
         ORDER BY missing_count DESC, c.mtime DESC, c.id
     ");

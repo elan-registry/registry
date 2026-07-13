@@ -212,18 +212,8 @@ INSERT INTO `cars` (
 -- 5. SAMPLE CAR OWNERSHIP RELATIONSHIP
 -- ==================================================================
 
--- Add car ownership record (sample_user owns car ID 1)
--- NOTE: car_user table structure is simplified: id, userid, car_id, mtime
-INSERT INTO `car_user` (
-    `userid`,
-    `car_id`,
-    `mtime`
-) VALUES (
-    2,  -- User ID 2 (sample_user)
-    1,  -- Car ID 1
-    NOW()
-) ON DUPLICATE KEY UPDATE
-    mtime = VALUES(mtime);
+-- Ownership is recorded via cars.user_id (set during car INSERT above).
+-- The car_user junction table was removed in migration 20260711000000.
 
 -- ==================================================================
 -- 6. SAMPLE CAR HISTORY RECORD
@@ -351,13 +341,12 @@ FROM cars WHERE id = 1;
 -- Display car ownership
 SELECT 'Sample car ownership:' as status;
 SELECT
-    cu.car_id,
-    cu.userid,
-    u.username,
-    cu.mtime
-FROM car_user cu
-JOIN users u ON cu.userid = u.id
-WHERE cu.car_id = 1;
+    c.id AS car_id,
+    c.user_id AS userid,
+    u.username
+FROM cars c
+JOIN users u ON c.user_id = u.id
+WHERE c.id = 1;
 
 -- Display car history
 SELECT 'Sample car history:' as status;

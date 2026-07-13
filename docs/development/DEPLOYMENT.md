@@ -213,9 +213,38 @@ git commit --no-verify           # Bypass (emergency only)
    - GitHub: `git push origin main && git push origin --tags`
    - Test: `git push test main && git push test --tags` (hook updates VERSION)
    - Production: `git push prod main && git push prod --tags` (hook updates VERSION)
-4. **Verify deployment** by checking version display matches git tag on
+4. **Run database migrations** (see below)
+5. **Verify deployment** by checking version display matches git tag on
    production site
-5. **Complete post-deployment verification** (see checklist below)
+6. **Complete post-deployment verification** (see checklist below)
+
+### Database Migrations
+
+After every deployment, run pending migrations:
+
+```bash
+# 1. Verify no orphaned rows that would block the FK migration
+#    (must return 0 before applying for the first time)
+# SELECT COUNT(*) FROM car_transfer_requests WHERE existing_car_id NOT IN (SELECT id FROM cars);
+
+composer install --no-dev --optimize-autoloader   # ensure vendor/ is up to date
+composer migrate:status                            # preview what will run
+composer migrate:dry-run                           # confirm SQL before applying
+composer migrate                                   # apply pending migrations
+```
+
+**If a migration fails:** The runner stops at the failed migration and exits non-zero. Fix the migration file
+and redeploy — Phinx retries only the failed migration (already-applied ones are skipped).
+
+**Check migration status at any time:**
+
+```bash
+composer migrate:status   # list pending and applied migrations
+```
+
+**Automated deployment:** `git push prod main` runs `composer install` and `composer migrate`
+automatically via the post-receive hook. The manual steps above serve as a fallback if the hook needs to
+be bootstrapped on a fresh server.
 
 ### Git & Version Control
 
@@ -245,11 +274,14 @@ git commit --no-verify           # Bypass (emergency only)
 
 **Deployment Hooks:**
 
-Test and production servers have post-receive hooks that automatically:
+Test and production servers have a single shared post-receive hook
+(`scripts/server-hooks/post-receive`) that automatically:
 
 1. Checkout latest code
-2. Run `git describe --tags`
-3. Write output to VERSION file
+2. Run `git describe --tags` and write VERSION file
+3. Run `composer install --no-dev --optimize-autoloader`
+4. Run `php vendor/bin/phinx migrate` (halts deployment on failure)
+5. Self-update the installed hook from the newly deployed working tree
 
 **Development:**
 

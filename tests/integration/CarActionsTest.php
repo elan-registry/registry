@@ -40,7 +40,7 @@ final class CarActionsTest extends IntegrationTestCase
             'message' => 'Car added successfully',
             'cardetails' => [
                 'id' => 1,
-                'year' => '1968',
+                'year' => 1968,
                 'model' => 'S4|SE|DHC',
                 'chassis' => '36/7001',
             ]
@@ -81,7 +81,7 @@ final class CarActionsTest extends IntegrationTestCase
             'message' => 'Car updated successfully',
             'cardetails' => [
                 'id' => 1,
-                'year' => '1968',
+                'year' => 1968,
                 'model' => 'S4|SE|DHC',
                 'chassis' => '36/7001',
             ]

@@ -11,7 +11,7 @@ use ElanRegistry\LogCategories;
  * CarRepository - Database access layer for car operations
  *
  * Extracted from Car.php to provide a focused, testable data access layer.
- * Wraps DB operations for cars, car_user, cars_hist, and elan_factory_info tables.
+ * Wraps DB operations for cars, cars_hist, elan_factory_info, and car_models tables.
  *
  * @package ElanRegistry\Car
  * @since v2.15.0
@@ -57,28 +57,26 @@ class CarRepository
     }
 
     /**
-     * Insert a record into a table
+     * Insert a new car record
      *
-     * @param string $table Table name
      * @param array<string, mixed> $fields Field values
      * @return bool True on success
      */
-    public function insert(string $table, array $fields): bool
+    public function insertCar(array $fields): bool
     {
-        return $this->db->insert($table, $fields);
+        return $this->db->insert('cars', $fields);
     }
 
     /**
-     * Update a record in a table
+     * Update an existing car record
      *
-     * @param string $table Table name
-     * @param int $id Record ID
+     * @param int $carId Car ID
      * @param array<string, mixed> $fields Field values
      * @return bool True on success
      */
-    public function update(string $table, int $id, array $fields): bool
+    public function updateCar(int $carId, array $fields): bool
     {
-        return $this->db->update($table, $id, $fields);
+        return $this->db->update('cars', $carId, $fields);
     }
 
     /**
@@ -94,54 +92,34 @@ class CarRepository
     }
 
     /**
-     * Delete car-user relationship by car ID
+     * Bulk-reassign cars.user_id for all cars owned by a user.
      *
-     * @param int $carId Car ID
-     * @return bool True on success
+     * Used by the deletion hook to transfer a deleted user's cars to another user
+     * (or set them ownerless) in a single UPDATE. Returns the number of rows changed.
+     *
+     * On database error, logs via LOG_CATEGORY_DATABASE_ERROR and throws so that
+     * any enclosing transaction can roll back rather than commit over a partial state.
+     *
+     * @param int      $fromUserId Source user whose cars are being reassigned
+     * @param int|null $toUserId   Target user, or null to clear ownership (user_id = NULL)
+     * @return int                 Rows affected by the UPDATE (rows where user_id actually changed; 0 if no match or value already equal to target)
+     * @throws \RuntimeException   If the UPDATE fails
      */
-    public function deleteCarUser(int $carId): bool
+    public function reassignCarsByUser(int $fromUserId, ?int $toUserId): int
     {
-        $this->db->query("DELETE FROM car_user WHERE car_id = ?", [$carId]);
-        return !$this->db->error();
-    }
+        $this->db->query(
+            'UPDATE cars SET user_id = ? WHERE user_id = ?',
+            [$toUserId, $fromUserId]
+        );
 
-    /**
-     * Delete all car-user relationships for a user ID
-     *
-     * Used during user deletion cleanup to remove all of a user's car assignments.
-     *
-     * @param int $userId User ID
-     * @return bool True on success
-     */
-    public function deleteCarUserByUserId(int $userId): bool
-    {
-        $this->db->query("DELETE FROM car_user WHERE userid = ?", [$userId]);
-        return !$this->db->error();
-    }
+        if ($this->db->error()) {
+            $target = $toUserId ?? 'NULL';
+            $msg = "CarRepository::reassignCarsByUser failed (from={$fromUserId} to={$target}): " . $this->db->errorString();
+            logger(0, LogCategories::LOG_CATEGORY_DATABASE_ERROR, $msg);
+            throw new \RuntimeException($msg);
+        }
 
-    /**
-     * Insert a car-user relationship
-     *
-     * @param int $userId User ID
-     * @param int $carId Car ID
-     * @return bool True on success
-     */
-    public function insertCarUser(int $userId, int $carId): bool
-    {
-        return $this->db->insert('car_user', ['userid' => $userId, 'car_id' => $carId]);
-    }
-
-    /**
-     * Update car-user relationship to new owner
-     *
-     * @param int $newUserId New user ID
-     * @param int $carId Car ID
-     * @return bool True on success
-     */
-    public function updateCarUser(int $newUserId, int $carId): bool
-    {
-        $this->db->query("UPDATE car_user SET userid = ? WHERE car_id = ?", [$newUserId, $carId]);
-        return !$this->db->error();
+        return $this->db->count();
     }
 
     /**
@@ -153,7 +131,7 @@ class CarRepository
      */
     public function updateVerificationCode(int $carId, string $verificationCode): bool
     {
-        return $this->update('cars', $carId, ['vericode' => $verificationCode]);
+        return $this->updateCar($carId, ['vericode' => $verificationCode]);
     }
 
     /**
@@ -165,7 +143,7 @@ class CarRepository
      */
     public function updateLastVerified(int $carId, string $dateTime): bool
     {
-        return $this->update('cars', $carId, ['last_verified' => $dateTime]);
+        return $this->updateCar($carId, ['last_verified' => $dateTime]);
     }
 
     /**
@@ -177,7 +155,7 @@ class CarRepository
      */
     public function updateSoldDate(int $carId, string $soldDate): bool
     {
-        return $this->update('cars', $carId, ['solddate' => $soldDate]);
+        return $this->updateCar($carId, ['solddate' => $soldDate]);
     }
 
     /**
@@ -189,7 +167,7 @@ class CarRepository
      */
     public function updateImage(int $carId, string $imageJson): bool
     {
-        return $this->update('cars', $carId, ['image' => $imageJson]);
+        return $this->updateCar($carId, ['image' => $imageJson]);
     }
 
     /**
@@ -215,7 +193,7 @@ class CarRepository
      */
     public function findByOwner(int $ownerId): array
     {
-        return $this->db->query("SELECT car_id AS id FROM car_user WHERE userid = ?", [$ownerId])->results();
+        return $this->db->query("SELECT id FROM cars WHERE user_id = ?", [$ownerId])->results();
     }
 
     /**

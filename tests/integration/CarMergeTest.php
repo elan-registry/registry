@@ -53,17 +53,6 @@ final class CarMergeTest extends IntegrationTestCase
         } catch (RuntimeException $e) {
             $this->markTestSkipped('Could not create test cars: ' . $e->getMessage());
         }
-
-        // Ensure car_user relationships exist
-        $this->db->insert('car_user', [
-            'car_id' => $this->testCarId,
-            'userid' => 1
-        ]);
-
-        $this->db->insert('car_user', [
-            'car_id' => $this->testMergeCarId,
-            'userid' => 1
-        ]);
     }
 
     protected function tearDown(): void
@@ -197,24 +186,6 @@ final class CarMergeTest extends IntegrationTestCase
     }
 
     /**
-     * Test car merge removes old car relationships
-     */
-    #[Group('fast')]
-    public function testMergeRemovesOldCarRelationships(): void
-    {
-        $oldCarId = $this->testMergeCarId;
-
-        $car = new Car($this->testCarId);
-        $result = $car->merge($oldCarId, 'Test merge removes relationships');
-
-        $this->assertTrue($result);
-
-        // Verify old car's relationships were removed
-        $query = $this->db->query('SELECT * FROM car_user WHERE car_id = ?', [$oldCarId]);
-        $this->assertEquals(0, $query->count());
-    }
-
-    /**
      * Test car merge requires authenticated user
      */
     #[Group('fast')]
@@ -240,15 +211,15 @@ final class CarMergeTest extends IntegrationTestCase
     }
 
     /**
-     * Test that CarRepository::rollback() reverts all three merge steps when the
+     * Test that CarRepository::rollback() reverts all merge steps when the
      * admin page aborts a car merge midway through.
      *
-     * WHY THIS TEST EXISTS: The admin car-merge page performs three DB steps inside a
-     * transaction — (1) transferHistory, (2) deleteCarUser, (3) deleteCar.  If a
-     * failure occurs after steps 1 and 2 but before step 3, rollback() must undo all
-     * completed steps so the database is left in a consistent state.  This test
-     * simulates that scenario by executing steps 1 and 2, then calling rollback()
-     * instead of proceeding to step 3, and asserting full state recovery.
+     * WHY THIS TEST EXISTS: The admin car-merge page performs two DB steps inside a
+     * transaction — (1) transferHistory, (2) deleteCar.  If a failure occurs after
+     * step 1 but before step 2, rollback() must undo all completed steps so the
+     * database is left in a consistent state.  This test simulates that scenario by
+     * executing step 1, then calling rollback() instead of proceeding to step 2,
+     * and asserting full state recovery.
      */
     #[Group('fast')]
     public function testCarRepositoryTransactionRollbackPreservesCarAndOwnerAssignment(): void
@@ -282,18 +253,12 @@ final class CarMergeTest extends IntegrationTestCase
             [$this->testCarId]
         )->count();
 
-        $carUserCountBefore = $this->db->query(
-            'SELECT * FROM car_user WHERE car_id = ?',
-            [$this->testCarId]
-        )->count();
-
         $histCountBefore = $this->db->query(
             'SELECT * FROM cars_hist WHERE car_id = ?',
             [$this->testCarId]
         )->count();
 
         $this->assertGreaterThan(0, $carExistsBefore, 'Precondition: test car must exist');
-        $this->assertGreaterThan(0, $carUserCountBefore, 'Precondition: car_user row must exist');
         $this->assertGreaterThan(0, $histCountBefore, 'Precondition: cars_hist row must exist');
 
         // Simulate a mid-merge abort: steps 1 and 2 run, but step 3 (deleteCar) never fires
@@ -310,17 +275,6 @@ final class CarMergeTest extends IntegrationTestCase
         )->count();
         $this->assertGreaterThan(0, $histMid, 'mid-transaction: transferHistory must have moved hist rows to merge target');
 
-        $this->assertTrue(
-            $repo->deleteCarUser($this->testCarId),
-            'Precondition: deleteCarUser must succeed within transaction'
-        );
-        // Mid-transaction: car_user rows must be gone (visible within same connection)
-        $carUserMid = $this->db->query(
-            'SELECT * FROM car_user WHERE car_id = ?',
-            [$this->testCarId]
-        )->count();
-        $this->assertEquals(0, $carUserMid, 'mid-transaction: deleteCarUser must have removed car_user rows');
-
         $repo->rollback();
 
         // Assertions: every in-transaction change must be fully reverted
@@ -336,18 +290,7 @@ final class CarMergeTest extends IntegrationTestCase
             'cars row must survive rollback'
         );
 
-        // 2. The car_user assignment must be restored (deleteCarUser was rolled back)
-        $carUserCountAfter = $this->db->query(
-            'SELECT * FROM car_user WHERE car_id = ?',
-            [$this->testCarId]
-        )->count();
-        $this->assertEquals(
-            $carUserCountBefore,
-            $carUserCountAfter,
-            'car_user rows must be restored after rollback'
-        );
-
-        // 3. The cars_hist rows must still belong to testCarId (transferHistory UPDATE was rolled back)
+        // 2. The cars_hist rows must still belong to testCarId (transferHistory UPDATE was rolled back)
         $histCountAfter = $this->db->query(
             'SELECT * FROM cars_hist WHERE car_id = ?',
             [$this->testCarId]

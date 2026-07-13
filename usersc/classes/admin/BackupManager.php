@@ -54,7 +54,7 @@ class BackupManager {
         try {
             // Default tables for schema operations
             if (empty($tables)) {
-                $tables = ['settings', 'users', 'cars', 'car_user', 'profiles'];
+                $tables = ['settings', 'users', 'cars', 'profiles'];
             }
 
             $scriptName = 'schema-' . strtolower(str_replace([' ', '_'], '-', $operation));
@@ -288,7 +288,6 @@ class BackupManager {
         return [
             'users',
             'cars',
-            'car_user',
             'profiles',
             'settings',
             'car_history',

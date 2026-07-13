@@ -192,7 +192,7 @@ final class TransferEmailServiceTest extends TestCase
         $result  = $service->sendRequest(1);
 
         $this->assertTrue($result);
-        // getUserWithProfile() mock always returns 'test@example.com'
+        // Owner::find() is intercepted by the mock DB in bootstrap-unit.php, which returns 'test@example.com'
         $this->assertSame('test@example.com', $capturedTo);
     }
 

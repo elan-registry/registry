@@ -66,7 +66,7 @@ LICENSE
 .env.local.sample
 instructions.txt
 
-# Database migrations (run manually, not served)
+# Database migrations (run automatically by post-receive hook, not served)
 database/
 
 # Local backups (server maintains its own; don't overwrite with git checkout)

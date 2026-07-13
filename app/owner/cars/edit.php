@@ -112,6 +112,12 @@ function updateCarDetails(array &$car): void
 
     $carQ = new Car((int) $car['id']);
 
+    if (!$carQ->exists()) {
+        logger($user->data()->id, LogCategories::LOG_CATEGORY_CAR_ACTIONS,
+            'Car not found for edit: car_id=' . $car['id'] . ' user_id=' . $user->data()->id);
+        return;
+    }
+
     // Security: Verify user ownership or admin/editor permissions
     $isOwner = ($user->data()->id == $carQ->data()->user_id);
     $hasAdminAccess = hasPerm([2, 3]); // Permission 2 = Administrator, 3 = Editor
@@ -129,7 +135,6 @@ function updateCarDetails(array &$car): void
     }
 
     foreach ($carQ->data() as $key => $value) {
-        // Copy data into the $car
         $car[$key] = $value;
     }
 }
@@ -146,7 +151,8 @@ function updateCarDetails(array &$car): void
             // Show admin override warning if applicable
             if (isset($cardetails['id']) && isset($user) && $user->isLoggedIn()) {
                 $editCarObj = new Car((int)$cardetails['id']);
-                $isEditOwner = ($user->data()->id == $editCarObj->data()->user_id);
+                $editCarData = $editCarObj->data();
+                $isEditOwner = $editCarData !== null && ($user->data()->id == $editCarData->user_id);
                 $hasEditAdminAccess = hasPerm([2, 3]); // Permission 2 = Administrator, 3 = Editor
 
                 if (!$isEditOwner && $hasEditAdminAccess) { ?>

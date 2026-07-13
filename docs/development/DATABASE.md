@@ -62,11 +62,10 @@
 | `ctime`, `mtime` | `timestamp` | Creation and modification times |
 | `vericode` | `varchar(32)` | Verification code |
 | `last_verified` | `timestamp` | Last verification date |
-| `ModifiedBy` | `varchar(30)` | User who last modified the record |
 | `model` | `varchar(30)` | Car model (Elan) |
 | `series` | `varchar(12)` | Car series (S1, S2, S3, S4, +2, Sprint) |
 | `variant` | `varchar(15)` | Car variant |
-| `year` | `varchar(4)` | Manufacturing year |
+| `year` | `SMALLINT UNSIGNED NULL` | Manufacturing year (1963–1974) |
 | `type` | `char(3)` | Vehicle type code |
 | `chassis` | `varchar(15)` | Chassis number (INDEXED) |
 | `chassis_override` | `TINYINT(1) NOT NULL DEFAULT 0` | Flag indicating whether chassis validation was overridden by the user. Set to `1` when validation was overridden; `0` for normal/valid chassis. |
@@ -93,7 +92,7 @@ automatically synchronized from user profiles when user data changes.
 | `operation` | `varchar(32)` | Operation type (INSERT/UPDATE/DELETE) |
 | `car_id` | `int UNSIGNED` | Original car ID |
 | `timestamp` | `timestamp` | Change timestamp |
-| *(All car columns)* | | Mirror of `cars` table structure including `chassis_override` |
+| *(All car columns)* | | Mirror of `cars` table structure including `chassis_override`. `year` is `SMALLINT UNSIGNED NULL` to match cars. |
 
 #### `car_user` - Car sharing relationships
 
@@ -233,6 +232,22 @@ id=5, years=1971-1974, series="S4", variant="FHC", type_code="36", model_value="
 | `script_name` | `varchar(255)` | Name of FIX script executed |
 | `run_date` | `timestamp` | Execution timestamp |
 
+#### `phinxlog` - Phinx migration tracking
+
+Phinx's own tracking table. It stores one row per applied migration, recording
+the migration version, name, and start/end timestamps. Phinx creates and
+maintains this table automatically; **do not modify it manually.** Schema
+migrations live in `database/migrations/` — see
+[`database/migrations/README.md`](../../database/migrations/README.md).
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `version` | `bigint` | Migration version (the `YYYYMMDDHHMMSS` timestamp prefix) |
+| `migration_name` | `varchar(100)` | Migration class name |
+| `start_time` | `timestamp` | When the migration started |
+| `end_time` | `timestamp` | When the migration completed |
+| `breakpoint` | `tinyint(1)` | Rollback breakpoint flag |
+
 ## Database Relationships
 
 ### Primary Relationships
@@ -244,9 +259,22 @@ id=5, years=1971-1974, series="S4", variant="FHC", type_code="36", model_value="
 - **Users ↔ Cars**: Many-to-many sharing via `car_user` junction table
 - **Cars → History**: One-to-many audit trail (`cars.id` → `cars_hist.car_id`)
 
+### Enforced Foreign Key Constraints
+
+The following foreign keys are enforced at the database level. They were added
+by the Phinx migration
+`database/migrations/20260709202522_add_foreign_key_constraints.php`.
+
+- `cars.user_id → users.id` **ON DELETE SET NULL** (constraint
+  `fk_cars_user_id`) — deleting a user leaves the car record intact with a
+  null owner rather than deleting the car.
+- `car_transfer_requests.existing_car_id → cars.id` **ON DELETE CASCADE**
+  (constraint `fk_transfer_existing_car`) — deleting a car removes its
+  associated transfer requests.
+
 ### Data Access Patterns
 
-**Note**: This database no longer uses views. All data access is performed through direct queries or the application layer using the `getUserWithProfile()` function for combined user and profile data.
+**Note**: This database no longer uses views. All data access is performed through direct queries or the application layer. For combined user and profile data, use `(new Owner($userId))->data()` — `getUserWithProfile()` was removed in v2.26.2 (#1148).
 
 ## System Features
 

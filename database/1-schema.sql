@@ -85,9 +85,9 @@ CREATE TABLE `car_models` (
 -- -----------------------------------------------------------------------------
 CREATE TABLE `fix_script_runs` (
   `id` int(11) NOT NULL,
-  `script_name` varchar(255) COLLATE utf8_unicode_ci NOT NULL,
+  `script_name` varchar(255) COLLATE utf8mb4_unicode_ci NOT NULL,
   `completed_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP
-) ENGINE=InnoDB DEFAULT CHARSET=utf8 COLLATE=utf8_unicode_ci;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- -----------------------------------------------------------------------------
 -- Table: cars (Primary vehicle registry)
@@ -98,11 +98,10 @@ CREATE TABLE `cars` (
   `mtime` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   `vericode` varchar(32) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
   `last_verified` timestamp NULL DEFAULT NULL,
-  `ModifiedBy` varchar(30) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
   `model` varchar(30) COLLATE utf8mb4_unicode_ci NOT NULL,
   `series` varchar(12) COLLATE utf8mb4_unicode_ci NOT NULL,
   `variant` varchar(15) COLLATE utf8mb4_unicode_ci NOT NULL,
-  `year` varchar(4) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `year` smallint UNSIGNED DEFAULT NULL,
   `type` char(3) COLLATE utf8mb4_unicode_ci NOT NULL,
   `chassis` varchar(15) COLLATE utf8mb4_unicode_ci NOT NULL,
   `chassis_override` TINYINT(1) NOT NULL DEFAULT 0,
@@ -134,11 +133,10 @@ CREATE TABLE `cars_hist` (
   `car_id` int(11) UNSIGNED NOT NULL,
   `ctime` timestamp NULL DEFAULT NULL,
   `mtime` timestamp NULL DEFAULT NULL,
-  `ModifiedBy` varchar(30) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
   `model` varchar(100) COLLATE utf8mb4_unicode_ci NOT NULL,
   `series` varchar(12) COLLATE utf8mb4_unicode_ci NOT NULL,
   `variant` varchar(15) COLLATE utf8mb4_unicode_ci NOT NULL,
-  `year` varchar(4) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `year` smallint UNSIGNED DEFAULT NULL,
   `type` char(3) COLLATE utf8mb4_unicode_ci NOT NULL,
   `chassis` varchar(15) COLLATE utf8mb4_unicode_ci NOT NULL,
   `chassis_override` TINYINT(1) NOT NULL DEFAULT 0,
@@ -163,27 +161,6 @@ CREATE TABLE `cars_hist` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- -----------------------------------------------------------------------------
--- Table: car_user (Junction table for car sharing)
--- -----------------------------------------------------------------------------
-CREATE TABLE `car_user` (
-  `id` int(11) NOT NULL,
-  `userid` int(11) NOT NULL,
-  `car_id` int(11) NOT NULL,
-  `mtime` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-
--- -----------------------------------------------------------------------------
--- Table: car_user_hist (Audit trail for car sharing)
--- -----------------------------------------------------------------------------
-CREATE TABLE `car_user_hist` (
-  `id` int(11) NOT NULL,
-  `operation` varchar(32) COLLATE utf8mb4_unicode_ci NOT NULL,
-  `car_id` int(11) UNSIGNED NOT NULL,
-  `userid` int(11) DEFAULT NULL,
-  `timestamp` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-
--- -----------------------------------------------------------------------------
 -- Table: car_transfer_requests (Ownership transfer system)
 -- -----------------------------------------------------------------------------
 CREATE TABLE `car_transfer_requests` (
@@ -193,7 +170,7 @@ CREATE TABLE `car_transfer_requests` (
   `request_date` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
   `status` enum('pending','approved','denied','completed','expired') NOT NULL DEFAULT 'pending',
   `security_token` varchar(64) NOT NULL,
-  `expires_at` timestamp NOT NULL DEFAULT '0000-00-00 00:00:00',
+  `expires_at` timestamp NULL DEFAULT NULL,
   `admin_notes` text,
   `current_owner_response_date` timestamp NULL DEFAULT NULL,
   `completed_date` timestamp NULL DEFAULT NULL,
@@ -285,18 +262,6 @@ ALTER TABLE `cars_hist`
   ADD KEY `idx_cars_hist_timestamp` (`timestamp`),
   ADD KEY `idx_cars_hist_user_id` (`user_id`);
 
--- car_user table
-ALTER TABLE `car_user`
-  ADD PRIMARY KEY (`id`),
-  ADD KEY `idx_car_user_car_id` (`car_id`),
-  ADD KEY `idx_car_user_userid` (`userid`);
-
--- car_user_hist table
-ALTER TABLE `car_user_hist`
-  ADD PRIMARY KEY (`id`),
-  ADD KEY `idx_car_user_hist_car_id` (`car_id`),
-  ADD KEY `idx_car_user_hist_userid` (`userid`);
-
 -- car_transfer_requests table
 ALTER TABLE `car_transfer_requests`
   ADD PRIMARY KEY (`id`),
@@ -333,12 +298,6 @@ ALTER TABLE `cars`
 ALTER TABLE `cars_hist`
   MODIFY `id` int(11) NOT NULL AUTO_INCREMENT;
 
-ALTER TABLE `car_user`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT;
-
-ALTER TABLE `car_user_hist`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT;
-
 ALTER TABLE `car_transfer_requests`
   MODIFY `id` int(10) UNSIGNED NOT NULL AUTO_INCREMENT;
 
@@ -352,13 +311,13 @@ ALTER TABLE `car_transfer_requests`
 DELIMITER $$
 CREATE TRIGGER `cars_delete` AFTER DELETE ON `cars` FOR EACH ROW BEGIN
     INSERT INTO cars_hist(
-        operation, car_id, ctime, mtime, ModifiedBy, model, series, variant,
+        operation, car_id, ctime, mtime, model, series, variant,
         year, type, chassis, chassis_override, color, engine, purchasedate, solddate, comments,
         image, user_id, email, fname, lname, join_date, city, state, country,
         lat, lon, website
     )
     VALUES (
-        'DELETE', OLD.id, OLD.ctime, OLD.mtime, OLD.ModifiedBy, OLD.model,
+        'DELETE', OLD.id, OLD.ctime, OLD.mtime, OLD.model,
         OLD.series, OLD.variant, OLD.year, OLD.type, OLD.chassis, OLD.chassis_override,
         OLD.color, OLD.engine, OLD.purchasedate, OLD.solddate, OLD.comments, OLD.image,
         OLD.user_id, OLD.email, OLD.fname, OLD.lname, OLD.join_date, OLD.city,
@@ -373,13 +332,13 @@ DELIMITER ;
 DELIMITER $$
 CREATE TRIGGER `cars_insert` AFTER INSERT ON `cars` FOR EACH ROW BEGIN
     INSERT INTO cars_hist(
-        operation, car_id, ctime, mtime, ModifiedBy, model, series, variant,
+        operation, car_id, ctime, mtime, model, series, variant,
         year, type, chassis, chassis_override, color, engine, purchasedate, solddate, comments,
         image, user_id, email, fname, lname, join_date, city, state, country,
         lat, lon, website
     )
     VALUES (
-        'INSERT', NEW.id, NEW.ctime, NEW.mtime, NEW.ModifiedBy, NEW.model,
+        'INSERT', NEW.id, NEW.ctime, NEW.mtime, NEW.model,
         NEW.series, NEW.variant, NEW.year, NEW.type, NEW.chassis, NEW.chassis_override,
         NEW.color, NEW.engine, NEW.purchasedate, NEW.solddate, NEW.comments, NEW.image,
         NEW.user_id, NEW.email, NEW.fname, NEW.lname, NEW.join_date, NEW.city,
@@ -395,13 +354,13 @@ DELIMITER $$
 CREATE TRIGGER `cars_update` AFTER UPDATE ON `cars` FOR EACH ROW BEGIN
     IF @disable_triggers IS NULL THEN
         INSERT INTO cars_hist(
-            operation, car_id, ctime, mtime, ModifiedBy, model, series, variant,
+            operation, car_id, ctime, mtime, model, series, variant,
             year, type, chassis, chassis_override, color, engine, purchasedate, solddate, comments,
             image, user_id, email, fname, lname, join_date, city, state, country,
             lat, lon, website
         )
         VALUES (
-            'UPDATE', OLD.id, OLD.ctime, OLD.mtime, OLD.ModifiedBy, OLD.model,
+            'UPDATE', OLD.id, OLD.ctime, OLD.mtime, OLD.model,
             OLD.series, OLD.variant, OLD.year, OLD.type, OLD.chassis, NEW.chassis_override, -- NEW: records when flag is SET, not the pre-update value
             OLD.color, OLD.engine, OLD.purchasedate, OLD.solddate, OLD.comments, OLD.image,
             OLD.user_id, OLD.email, OLD.fname, OLD.lname, OLD.join_date, OLD.city,
@@ -411,45 +370,13 @@ CREATE TRIGGER `cars_update` AFTER UPDATE ON `cars` FOR EACH ROW BEGIN
 END$$
 DELIMITER ;
 
--- -----------------------------------------------------------------------------
--- Trigger: car_user_delete (Audit trail for car-user relationship removals)
--- -----------------------------------------------------------------------------
-DELIMITER $$
-CREATE TRIGGER `car_user_delete` AFTER DELETE ON `car_user` FOR EACH ROW BEGIN
-    INSERT INTO car_user_hist (operation, car_id, userid)
-    VALUES ('DELETE', OLD.car_id, OLD.userid);
-END$$
-DELIMITER ;
-
--- -----------------------------------------------------------------------------
--- Trigger: car_user_insert (Audit trail for car-user relationship additions)
--- -----------------------------------------------------------------------------
-DELIMITER $$
-CREATE TRIGGER `car_user_insert` AFTER INSERT ON `car_user` FOR EACH ROW BEGIN
-    INSERT INTO car_user_hist (operation, car_id, userid)
-    VALUES ('INSERT', NEW.car_id, NEW.userid);
-END$$
-DELIMITER ;
-
--- -----------------------------------------------------------------------------
--- Trigger: car_user_update (Audit trail for car-user relationship updates)
--- -----------------------------------------------------------------------------
-DELIMITER $$
-CREATE TRIGGER `car_user_update` AFTER UPDATE ON `car_user` FOR EACH ROW BEGIN
-    IF @disable_triggers IS NULL THEN
-        INSERT INTO car_user_hist (operation, car_id, userid)
-        VALUES ('UPDATE', OLD.car_id, OLD.userid);
-    END IF;
-END$$
-DELIMITER ;
-
 -- =============================================================================
 -- SECTION 6: ADD FOREIGN KEY CONSTRAINTS
 -- =============================================================================
 
 ALTER TABLE `car_transfer_requests`
-  ADD CONSTRAINT `fk_transfer_created_by` FOREIGN KEY (`created_by`) REFERENCES `users` (`id`) ON DELETE CASCADE,
-  ADD CONSTRAINT `fk_transfer_requested_by` FOREIGN KEY (`requested_by_user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE;
+  ADD CONSTRAINT `fk_transfer_existing_car`
+  FOREIGN KEY (`existing_car_id`) REFERENCES `cars` (`id`) ON DELETE CASCADE;
 
 -- =============================================================================
 -- FINALIZE

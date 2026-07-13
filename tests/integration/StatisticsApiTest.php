@@ -117,7 +117,7 @@ class StatisticsApiTest extends IntegrationTestCase
         // Verify production by year data
         $results = $this->db->query(
             "SELECT year, COUNT(*) as count FROM cars
-             WHERE year IS NOT NULL AND year != ''
+             WHERE year IS NOT NULL
              GROUP BY year ORDER BY year"
         )->results();
         $this->assertNotEmpty($results, "Should have production year data");
@@ -162,7 +162,7 @@ class StatisticsApiTest extends IntegrationTestCase
         // Verify color by year data
         $results = $this->db->query(
             "SELECT color, year, COUNT(*) as count FROM cars
-             WHERE color IS NOT NULL AND color != '' AND year IS NOT NULL AND year != ''
+             WHERE color IS NOT NULL AND color != '' AND year IS NOT NULL
              GROUP BY color, year"
         )->results();
         // May be empty but query should work
@@ -199,7 +199,7 @@ class StatisticsApiTest extends IntegrationTestCase
         $result = $this->db->query(
             "SELECT
                 COUNT(*) as total_cars,
-                COUNT(CASE WHEN year IS NOT NULL AND year != '' THEN 1 END) as cars_with_year,
+                COUNT(CASE WHEN year IS NOT NULL THEN 1 END) as cars_with_year,
                 COUNT(CASE WHEN type IS NOT NULL AND type != '' THEN 1 END) as cars_with_type,
                 COUNT(CASE WHEN series IS NOT NULL AND series != '' THEN 1 END) as cars_with_series,
                 COUNT(CASE WHEN color IS NOT NULL AND color != '' THEN 1 END) as cars_with_color

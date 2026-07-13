@@ -65,7 +65,7 @@ test.describe('chassis-availability.php — length validation', () => {
     const baseValid = {
         command: 'chassis_check',
         chassis: '123456789012345', // exactly 15 chars (at limit)
-        year: '1973',               // exactly 4 chars (at limit)
+        year: '1973',               // valid in-range year (1963–1974)
         model: 'S4|SE|FHC',         // 9 chars (under 30-char limit, valid format)
     };
 
@@ -95,29 +95,43 @@ test.describe('chassis-availability.php — length validation', () => {
         expect(body.message).toMatch(/chassis.*15/i);
     });
 
-    test('year exactly 4 chars is accepted (at-limit)', async ({ page }) => {
+    test('year in valid range is accepted (1963–1974)', async ({ page }) => {
         const resp = await page.request.post('app/api/cars/chassis-availability.php', {
             data: { ...baseValid, year: '1973', csrf: csrfToken },
         });
         const body = await resp.json();
         expect(body).toHaveProperty('success');
         if (!body.success) {
-            expect(body.message).not.toMatch(/year.*4/i);
+            expect(body.message).not.toMatch(/year/i);
         }
     });
 
-    test('year 5 chars rejected with 400 (over-limit)', async ({ page }) => {
+    test('year out of range rejected with 400 (1975 > max)', async ({ page }) => {
         const resp = await page.request.post('app/api/cars/chassis-availability.php', {
             data: {
                 ...baseValid,
-                year: '19733', // 5 chars — over limit
+                year: '1975', // above the 1963–1974 domain
                 csrf: csrfToken,
             },
         });
         expect(resp.status()).toBe(400);
         const body = await resp.json();
         expect(body).toHaveProperty('success', false);
-        expect(body.message).toMatch(/year.*4/i);
+        expect(body.message).toMatch(/year.*between/i);
+    });
+
+    test('year out of range rejected with 400 (1962 < min)', async ({ page }) => {
+        const resp = await page.request.post('app/api/cars/chassis-availability.php', {
+            data: {
+                ...baseValid,
+                year: '1962', // below the 1963–1974 domain
+                csrf: csrfToken,
+            },
+        });
+        expect(resp.status()).toBe(400);
+        const body = await resp.json();
+        expect(body).toHaveProperty('success', false);
+        expect(body.message).toMatch(/year.*between/i);
     });
 
     test('model exactly 30 chars is accepted (at-limit)', async ({ page }) => {
@@ -176,7 +190,7 @@ test.describe('transfer-request.php — length validation', () => {
     // end with "No car found" — but length checks fire before the DB lookup.
     const baseValid = {
         chassis: '123456789012345',             // 15 chars (at limit)
-        year: '1973',                           // 4 chars (at limit)
+        year: '1973',                           // valid in-range year (1963–1974)
         color: '0123456789012345678901234',      // 25 chars (at limit)
         engine: '123456789012345',              // 15 chars (at limit)
         comments: 'A'.repeat(1000),             // 1000 chars (at limit)
@@ -295,11 +309,11 @@ test.describe('transfer-request.php — length validation', () => {
         expect(body.message).toMatch(/chassis.*15/i);
     });
 
-    test('year 5 chars rejected with 400 (over-limit)', async ({ page }) => {
+    test('year out of range rejected with 400 (1975 > max)', async ({ page }) => {
         const resp = await page.request.post('app/api/cars/transfer-request.php', {
             data: {
                 ...baseValid,
-                year: '19733', // 5 chars
+                year: '1975', // above the 1963–1974 domain
                 csrf: csrfToken,
             },
         });
@@ -310,7 +324,25 @@ test.describe('transfer-request.php — length validation', () => {
         }
         expect(resp.status()).toBe(400);
         expect(body).toHaveProperty('success', false);
-        expect(body.message).toMatch(/year.*4/i);
+        expect(body.message).toMatch(/year.*between/i);
+    });
+
+    test('year out of range rejected with 400 (1962 < min)', async ({ page }) => {
+        const resp = await page.request.post('app/api/cars/transfer-request.php', {
+            data: {
+                ...baseValid,
+                year: '1962', // below the 1963–1974 domain
+                csrf: csrfToken,
+            },
+        });
+        const body = await resp.json();
+        if (body.message && /too many/i.test(body.message)) {
+            test.skip(true, 'Rate limited — skipping; run in a fresh session or wait for the rate-limit window to reset');
+            return;
+        }
+        expect(resp.status()).toBe(400);
+        expect(body).toHaveProperty('success', false);
+        expect(body.message).toMatch(/year.*between/i);
     });
 
     test('color 26 chars rejected with 400 (over-limit)', async ({ page }) => {

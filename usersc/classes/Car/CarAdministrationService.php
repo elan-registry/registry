@@ -13,6 +13,7 @@ use ElanRegistry\Exceptions\CarMergeException;
 use ElanRegistry\Exceptions\CarNotFoundException;
 use ElanRegistry\Exceptions\CarValidationException;
 use ElanRegistry\LogCategories;
+use ElanRegistry\Owner;
 use Token;
 
 /**
@@ -52,12 +53,6 @@ class CarAdministrationService
 
         try {
             $repo->beginTransaction();
-
-            if (!$repo->deleteCarUser($carId)) {
-                $technicalMsg = CarErrorMessages::getTechnicalMessage('car_relationship_failed', ['error' => 'query returned false']);
-                logger($adminUserId, LogCategories::LOG_CATEGORY_CAR_DELETION, $technicalMsg);
-                throw new CarDatabaseException(CarErrorMessages::getAdminMessage('car_relationship_failed'));
-            }
 
             if (!$repo->deleteCar($carId)) {
                 $technicalMsg = CarErrorMessages::getTechnicalMessage('database_update_failed', ['error' => 'query returned false']);
@@ -105,7 +100,7 @@ class CarAdministrationService
         callable $updateCallback,
         callable $refreshCallback
     ): true {
-        $targetUser = getUserWithProfile($newUserId);
+        $targetUser = (new Owner($newUserId))->data();
         if (!$targetUser) {
             $technicalMsg = CarErrorMessages::getTechnicalMessage('user_not_found', ['user_id' => $newUserId]);
             logger($adminUserId, LogCategories::LOG_CATEGORY_CAR_TRANSFER, $technicalMsg);
@@ -138,12 +133,6 @@ class CarAdministrationService
                 $technicalMsg = CarErrorMessages::getTechnicalMessage('database_update_failed', ['error' => 'Car update method returned false']);
                 logger($adminUserId, LogCategories::LOG_CATEGORY_CAR_TRANSFER, $technicalMsg);
                 throw new CarDatabaseException(CarErrorMessages::getAdminMessage('database_update_failed'));
-            }
-
-            if (!$repo->updateCarUser($newUserId, $carId)) {
-                $technicalMsg = CarErrorMessages::getTechnicalMessage('car_relationship_failed', ['error' => 'query returned false']);
-                logger($adminUserId, LogCategories::LOG_CATEGORY_CAR_TRANSFER, $technicalMsg);
-                throw new CarDatabaseException(CarErrorMessages::getAdminMessage('car_relationship_failed'));
             }
 
             // Refresh car data within the transaction — InnoDB reads own uncommitted
@@ -249,12 +238,6 @@ class CarAdministrationService
                 $technicalMsg = CarErrorMessages::getTechnicalMessage('car_history_transfer_failed', ['error' => 'query returned false']);
                 logger($adminUserId, LogCategories::LOG_CATEGORY_CAR_MERGE, $technicalMsg);
                 throw new CarDatabaseException(CarErrorMessages::getAdminMessage('car_history_transfer_failed'));
-            }
-
-            if (!$repo->deleteCarUser($oldCarId)) {
-                $technicalMsg = CarErrorMessages::getTechnicalMessage('car_relationship_failed', ['error' => 'query returned false']);
-                logger($adminUserId, LogCategories::LOG_CATEGORY_CAR_MERGE, $technicalMsg);
-                throw new CarDatabaseException(CarErrorMessages::getAdminMessage('car_relationship_failed'));
             }
 
             if (!$repo->deleteCar($oldCarId)) {

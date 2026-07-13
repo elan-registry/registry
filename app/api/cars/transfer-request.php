@@ -45,12 +45,16 @@ try {
     $engine = trim(Input::raw('engine') ?? '');
     $comments = trim(Input::raw('comments') ?? '');
 
-    // Validate input lengths against DB column widths
+    if (empty($chassis) || empty($year) || empty($model)) {
+        throw new CarTransferException('Chassis, year, and model are required');
+    }
+
+    // Validate input lengths/ranges against DB column widths and domain constraints
     if (strlen($chassis) > 15) {
         throw new CarTransferException('Chassis number must be 15 characters or less');
     }
-    if (strlen($year) > 4) {
-        throw new CarTransferException('Year must be 4 characters or less');
+    if (!ctype_digit((string) $year) || (int) $year < 1963 || (int) $year > 1974) {
+        throw new CarTransferException('Year must be between 1963 and 1974');
     }
     if (strlen($color) > 25) {
         throw new CarTransferException('Color must be 25 characters or less');
@@ -60,10 +64,6 @@ try {
     }
     if (strlen($comments) > 1000) {
         throw new CarTransferException('Transfer explanation must be 1000 characters or less');
-    }
-
-    if (empty($chassis) || empty($year) || empty($model)) {
-        throw new CarTransferException('Chassis, year, and model are required');
     }
 
     // Parse model to get series, variant, type

@@ -7,7 +7,9 @@ use ElanRegistry\Car\Car;
 use ElanRegistry\Exceptions\CarException;
 use ElanRegistry\Exceptions\CarTransferException;
 use ElanRegistry\LogCategories;
+use ElanRegistry\Owner;
 use ElanRegistry\Transfer\CarTransferRepository;
+use ElanRegistry\Transfer\TransferStatus;
 use ElanRegistry\Transfer\TransferEmailService;
 
 /**
@@ -54,7 +56,7 @@ try {
     }
 
     // Get target user details
-    $targetUser = getUserWithProfile(dbInt($transfer, 'requested_by_user_id'));
+    $targetUser = (new Owner(dbInt($transfer, 'requested_by_user_id')))->data();
     $targetName = $targetUser && $targetUser->fname && $targetUser->lname
         ? "{$targetUser->fname} {$targetUser->lname}"
         : "User ID {$transfer->requested_by_user_id}";
@@ -65,7 +67,7 @@ try {
     $db->beginTransaction();
 
     // 1. Claim the request atomically — TOCTOU gate
-    if (!$repo->updateStatus((int)$transferId, 'completed', "Approved by admin user {$user->data()->id}")) {
+    if (!$repo->updateStatus((int)$transferId, TransferStatus::Completed, "Approved by admin user {$user->data()->id}")) {
         throw new CarTransferException(
             "updateStatus returned false for transfer #{$transferId} — request already processed (TOCTOU)",
             0,

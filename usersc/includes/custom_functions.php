@@ -25,10 +25,6 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 //Put your custom functions in this file and they will be automatically included.
 
-// Note: Custom class autoloader is loaded in users/init.php (after UserSpice autoloader)
-// Note: phpdotenv is autoloaded via helpers.php (usersc/vendor/autoload.php)
-// and parsed in users/init.php where environment variables are actually needed
-
 // Override UserSpice email_body() variable whitelist to include custom template variables.
 // UserSpice v6.05 restricts which $options keys are extracted into template scope.
 // Without this, custom email templates receive null for non-whitelisted variables.
@@ -53,44 +49,6 @@ $email_field_whitelist = [
     // Admin contact
     'fromEmail', 'emailTemplate',
 ];
-
-/**
- * Get user details with profile information (city, state, country, location, website)
- *
- * This is a common operation across the application - getting complete user information
- * including location data from the profiles table for car ownership transfers,
- * reassignments, and display purposes.
- *
- * @param int $user_id The user ID to fetch
- * @return object|null User object with profile data, or null if not found
- */
-function getUserWithProfile(int $user_id): ?object {
-    $db = DB::getInstance();
-
-    $userQ = $db->query(
-        "SELECT u.*, p.city, p.state, p.country, p.lat, p.lon, p.website
-         FROM users u
-         LEFT JOIN profiles p ON u.id = p.user_id
-         WHERE u.id = ?",
-        [$user_id]
-    );
-
-    if ($userQ->count() > 0) {
-        $user = $userQ->first();
-
-        // Ensure all expected fields exist with defaults
-        $user->city = $user->city ?? '';
-        $user->state = $user->state ?? '';
-        $user->country = $user->country ?? '';
-        $user->website = $user->website ?? '';
-        $user->lat = $user->lat ?? null;
-        $user->lon = $user->lon ?? null;
-
-        return $user;
-    }
-
-    return null;
-}
 
 /**
  * Check if user has Registry admin or editor permissions

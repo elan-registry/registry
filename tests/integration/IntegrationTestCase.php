@@ -74,13 +74,11 @@ abstract class IntegrationTestCase extends TestCase
     protected function tearDown(): void
     {
         if ($this->databaseConnected) {
-            // Delete cars first (depend on users via car_user)
+            // Delete cars first (may depend on foreign key constraints)
             foreach ($this->createdCarIds as $carId) {
                 try {
                     $this->db->query("DELETE FROM car_transfer_requests WHERE existing_car_id = ?", [$carId]);
-                    $this->db->query("DELETE FROM car_user WHERE car_id = ?", [$carId]);
                     $this->db->query("DELETE FROM cars_hist WHERE car_id = ?", [$carId]);
-                    $this->db->query("DELETE FROM car_user_hist WHERE car_id = ?", [$carId]);
                     $this->db->delete('cars', ['id', '=', $carId]);
                 } catch (RuntimeException $e) {
                     // Ignore cleanup errors
@@ -178,7 +176,7 @@ abstract class IntegrationTestCase extends TestCase
 
         $defaults = [
             'user_id' => $userId,
-            'year' => '1973',
+            'year' => 1973,
             'model' => 'Elan S4',
             'series' => 'S4',
             'variant' => 'SE',
@@ -199,12 +197,6 @@ abstract class IntegrationTestCase extends TestCase
         $carId = (int) $this->db->lastId();
         if (!$carId) {
             throw new RuntimeException("Failed to get inserted car ID");
-        }
-
-        // Insert into car_user junction table
-        $junctionResult = $this->db->insert('car_user', ['userid' => $userId, 'car_id' => $carId]);
-        if (!$junctionResult) {
-            throw new RuntimeException("Failed to create car_user record: {$this->db->errorString()}");
         }
 
         $this->createdCarIds[] = $carId;
@@ -252,7 +244,6 @@ abstract class IntegrationTestCase extends TestCase
         }
 
         try {
-            $this->db->query("DELETE FROM car_user WHERE car_id = ?", [$carId]);
             $this->db->query("DELETE FROM cars_hist WHERE car_id = ?", [$carId]);
             $this->db->delete('cars', ['id', '=', $carId]);
             // Remove from tracking so tearDown doesn't double-delete
@@ -274,6 +265,11 @@ abstract class IntegrationTestCase extends TestCase
     protected function trackCarId(int $carId): void
     {
         $this->createdCarIds[] = $carId;
+    }
+
+    protected function untrackCarId(int $carId): void
+    {
+        $this->createdCarIds = array_values(array_diff($this->createdCarIds, [$carId]));
     }
 
     /**

@@ -61,7 +61,7 @@ final class CarCrudTest extends TestCase
         $carData = [
             'token' => Token::generate(),
             'user_id' => $this->testUserId,
-            'year' => '1973',
+            'year' => 1973,
             'model' => 'Elan S4',
             'series' => 'S4',
             'variant' => 'SE',
@@ -77,7 +77,7 @@ final class CarCrudTest extends TestCase
         $result = $car->create($carData);
 
         $this->assertTrue($result);
-        $this->assertEquals('1973', $car->data()->year);
+        $this->assertEquals(1973, (int) $car->data()->year);
         $this->assertEquals('S4', $car->data()->series);
         $this->assertEquals('SE', $car->data()->variant);
         $this->assertEquals('FHC', $car->data()->type);
@@ -101,7 +101,7 @@ final class CarCrudTest extends TestCase
         $carData = [
             'token' => Token::generate(),
             'user_id' => $this->testUserId,
-            'year' => '1973',
+            'year' => 1973,
             'model' => 'Elan',
             'series' => 'S4',
             'variant' => 'SE',
@@ -128,7 +128,7 @@ final class CarCrudTest extends TestCase
         $updateData = [
             'id' => $this->testCarId,
             'token' => Token::generate(),
-            'year' => '1974',
+            'year' => 1974,
             'series' => 'S4',
             'variant' => 'SE',
             'type' => 'DHC',
@@ -145,7 +145,7 @@ final class CarCrudTest extends TestCase
         
         $this->assertTrue($result);
         $this->assertEquals($this->testCarId, $car->data()->id);
-        $this->assertEquals('1974', $car->data()->year);
+        $this->assertEquals(1974, (int) $car->data()->year);
         $this->assertEquals('Blue', $car->data()->color);
         $this->assertEquals('DEF456', $car->data()->engine);
         $this->assertEquals('2021-01-01', $car->data()->purchasedate);
@@ -161,7 +161,7 @@ final class CarCrudTest extends TestCase
         $carData = [
             'token' => Token::generate(),
             'user_id' => $this->testUserId,
-            'year' => '1969',
+            'year' => 1969,
             'model' => 'Elan S2',
             'series' => 'S2',
             'variant' => 'Standard',
@@ -173,7 +173,7 @@ final class CarCrudTest extends TestCase
         $result = $car->create($carData);
         
         $this->assertTrue($result);
-        $this->assertEquals('1969', $car->data()->year);
+        $this->assertEquals(1969, (int) $car->data()->year);
         $this->assertEquals('1234', $car->data()->chassis);
         $this->assertEquals('S2', $car->data()->series);
     }
@@ -187,7 +187,7 @@ final class CarCrudTest extends TestCase
         $carData = [
             'token' => Token::generate(),
             'user_id' => $this->testUserId,
-            'year' => '1969',
+            'year' => 1969,
             'model' => 'Elan S2',
             'series' => 'S2',
             'variant' => 'Race',
@@ -359,7 +359,7 @@ final class CarCrudTest extends TestCase
         $updateData = [
             'id' => $this->testCarId,
             'token' => 'invalid-csrf-token-12345',
-            'year' => '1974',
+            'year' => 1974,
             'color' => 'Blue'
         ];
 
@@ -377,7 +377,7 @@ final class CarCrudTest extends TestCase
         $updateData = [
             'id' => -1,
             'token' => Token::generate(),
-            'year' => '1974',
+            'year' => 1974,
             'color' => 'Blue'
         ];
 
@@ -478,7 +478,7 @@ final class CarCrudTest extends TestCase
         $carData = [
             'token'            => Token::generate(),
             'user_id'          => $this->testUserId,
-            'year'             => '1973',
+            'year'             => 1973,
             'model'            => 'Elan S4',
             'series'           => 'S4',
             'variant'          => 'SE',

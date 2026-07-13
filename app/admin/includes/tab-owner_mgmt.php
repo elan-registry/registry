@@ -121,7 +121,7 @@ function getOwnerQualityReports(DB $db): array {
         $ownersWithMissingInfoQ = $db->query("
             SELECT u.id, u.fname, u.lname, u.email, u.join_date, u.last_login,
                    p.city, p.state, p.country, p.lat, p.lon,
-                   COUNT(cu.car_id) as car_count,
+                   COUNT(c.id) as car_count,
                    CASE WHEN u.fname IS NULL OR u.fname = '' THEN 1 ELSE 0 END +
                    CASE WHEN u.lname IS NULL OR u.lname = '' THEN 1 ELSE 0 END +
                    CASE WHEN p.city IS NULL OR p.city = '' THEN 1 ELSE 0 END +
@@ -133,7 +133,7 @@ function getOwnerQualityReports(DB $db): array {
                        CASE WHEN p.lat IS NULL OR p.lon IS NULL THEN 'Coordinates' ELSE NULL END
                    ) as missing_fields_list
             FROM users u
-            JOIN car_user cu ON u.id = cu.userid
+            JOIN cars c ON u.id = c.user_id
             LEFT JOIN profiles p ON u.id = p.user_id
             WHERE u.active = 1 AND (
                 (u.fname IS NULL OR u.fname = '') OR
@@ -192,12 +192,11 @@ function getDuplicateEmailDetails(DB $db, string $email): array {
         SELECT
             u.id, u.fname, u.lname, u.email, u.join_date, u.last_login,
             p.city, p.state, p.country, p.lat, p.lon,
-            COUNT(DISTINCT cu.car_id) as car_count,
+            COUNT(DISTINCT c.id) as car_count,
             GROUP_CONCAT(DISTINCT c.id ORDER BY c.id SEPARATOR ',') as car_ids
         FROM users u
         LEFT JOIN profiles p ON u.id = p.user_id
-        LEFT JOIN car_user cu ON u.id = cu.userid
-        LEFT JOIN cars c ON cu.car_id = c.id
+        LEFT JOIN cars c ON u.id = c.user_id
         WHERE u.email = ? AND u.active = 1
         GROUP BY u.id, u.fname, u.lname, u.email, u.join_date, u.last_login,
                  p.city, p.state, p.country, p.lat, p.lon

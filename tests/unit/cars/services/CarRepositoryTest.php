@@ -27,21 +27,21 @@ final class CarRepositoryTest extends TestCase
         $this->assertEquals(1, $result->id);
     }
 
-    public function testInsertReturnsTrue(): void
+    public function testInsertCarReturnsTrue(): void
     {
-        $result = $this->repo->insert('cars', ['chassis' => 'TEST99999', 'model' => 'Elan']);
+        $result = $this->repo->insertCar(['chassis' => 'TEST99999', 'model' => 'Elan']);
         $this->assertTrue($result);
     }
 
-    public function testUpdateReturnsTrue(): void
+    public function testUpdateCarReturnsTrue(): void
     {
-        $result = $this->repo->update('cars', 1, ['color' => 'Blue']);
+        $result = $this->repo->updateCar(1, ['color' => 'Blue']);
         $this->assertTrue($result);
     }
 
     public function testLastIdReturnsInt(): void
     {
-        $this->repo->insert('cars', ['chassis' => 'TEST']);
+        $this->repo->insertCar(['chassis' => 'TEST']);
         $lastId = $this->repo->lastId();
         $this->assertIsInt($lastId);
     }
@@ -177,12 +177,6 @@ final class CarRepositoryTest extends TestCase
         $this->assertTrue($result);
     }
 
-    public function testInsertCarUserReturnsTrue(): void
-    {
-        $result = $this->repo->insertCarUser(1, 100);
-        $this->assertTrue($result);
-    }
-
     public function testUpdateVerificationCodeReturnsTrue(): void
     {
         $result = $this->repo->updateVerificationCode(1, 'TESTCODE12345678');
@@ -217,5 +211,64 @@ final class CarRepositoryTest extends TestCase
         $this->assertIsArray($result['series']);
         $this->assertIsArray($result['types']);
         $this->assertIsArray($result['variants']);
+    }
+
+    // =========================================================================
+    // reassignCarsByUser tests (issue #1148)
+    // =========================================================================
+
+    /** @return \PHPUnit\Framework\MockObject\MockObject&DB */
+    private function makeDbMock(): object
+    {
+        return $this->getMockBuilder(DB::class)
+            ->onlyMethods(['query', 'error', 'errorString', 'count'])
+            ->getMock();
+    }
+
+    public function testReassignCarsByUserReturnsRowCount(): void
+    {
+        $db = $this->makeDbMock();
+        $db->expects($this->once())->method('query')->willReturn(new QueryResult([]));
+        $db->method('error')->willReturn(false);
+        $db->method('count')->willReturn(3);
+
+        $repo = new CarRepository($db);
+        $result = $repo->reassignCarsByUser(42, 7);
+
+        $this->assertSame(3, $result);
+    }
+
+    public function testReassignCarsByUserWithNullTargetPassesNullToQuery(): void
+    {
+        $db = $this->makeDbMock();
+        $db->expects($this->once())
+            ->method('query')
+            ->with(
+                'UPDATE cars SET user_id = ? WHERE user_id = ?',
+                [null, 42]
+            )
+            ->willReturn(new QueryResult([]));
+        $db->method('error')->willReturn(false);
+        $db->method('count')->willReturn(0);
+
+        $repo = new CarRepository($db);
+        $result = $repo->reassignCarsByUser(42, null);
+
+        $this->assertIsInt($result);
+    }
+
+    public function testReassignCarsByUserThrowsOnDatabaseError(): void
+    {
+        $db = $this->makeDbMock();
+        $db->expects($this->once())->method('query')->willReturn(new QueryResult([]));
+        $db->method('error')->willReturn(true);
+        $db->method('errorString')->willReturn('Deadlock found');
+
+        $repo = new CarRepository($db);
+
+        $this->expectException(\RuntimeException::class);
+        $this->expectExceptionMessageMatches('/reassignCarsByUser failed/');
+
+        $repo->reassignCarsByUser(42, 7);
     }
 }

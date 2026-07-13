@@ -418,14 +418,11 @@ class LocationService
             if ($response === false) {
                 logger(0, LogCategories::LOG_CATEGORY_LOCATION_SERVICE,
                     'LocationService: cURL error (' . curl_errno($ch) . '): ' . curl_error($ch));
-                /** @phpstan-ignore-next-line Deprecated but required for PHP 7.x compatibility */
                 curl_close($ch);
                 return false;
             }
 
             $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-            // Close curl handle (suppressed deprecation warning - still needed for compatibility)
-            /** @phpstan-ignore-next-line Deprecated but required for PHP 7.x compatibility */
             curl_close($ch);
 
             if ($httpCode !== 200) {
@@ -511,7 +508,6 @@ class LocationService
         // Try APCu first
         if (function_exists('apcu_fetch')) {
             $success = false;
-            /** @phpstan-ignore-next-line APCu extension may not be installed */
             $value = apcu_fetch($key, $success);
             if ($success) {
                 return $value;
@@ -574,7 +570,6 @@ class LocationService
 
         // Try APCu first
         if (function_exists('apcu_store')) {
-            /** @phpstan-ignore-next-line APCu extension may not be installed */
             apcu_store($key, $value, $ttl);
             return;
         }

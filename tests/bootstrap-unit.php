@@ -102,28 +102,13 @@ if (!class_exists('Car')) {
         /**
          * Find car by ID (instance method)
          */
-        public function find(?int $id = null): bool {
-            if ($id === null) {
-                return $this->findAll();
-            }
-
+        public function find(int $id): bool {
             if (!isset(self::$cars[$id])) {
                 $this->data = null;
                 return false;
             }
 
             $this->data = self::$cars[$id];
-            return true;
-        }
-
-        /**
-         * Find all cars
-         */
-        public function findAll(): bool {
-            if (empty(self::$cars)) {
-                return false;
-            }
-            $this->data = reset(self::$cars);
             return true;
         }
 
@@ -159,9 +144,9 @@ if (!class_exists('Car')) {
         /**
          * Get owner data
          *
-         * @return array<mixed>
+         * @return array<mixed>|null
          */
-        public function owner(): array {
+        public function owner(): ?array {
             return [];
         }
 
@@ -512,28 +497,6 @@ if (!function_exists('logger')) {
     }
 }
 
-// Mock getUserWithProfile function
-// Returns null for user ID <= 0 (simulates "user not found"), truthy object otherwise.
-if (!function_exists('getUserWithProfile')) {
-    function getUserWithProfile(int $userId): ?object {
-        if ($userId <= 0) {
-            return null;
-        }
-        return (object) [
-            'id' => (string) $userId,
-            'fname' => 'Test',
-            'lname' => 'User',
-            'email' => 'test@example.com',
-            'city' => 'Test City',
-            'state' => 'Test State',
-            'country' => 'Test Country',
-            'lat' => '0.0000',
-            'lon' => '0.0000',
-            'website' => ''
-        ];
-    }
-}
-
 // Mock DB class
 if (!class_exists('DB')) {
     /**
@@ -563,6 +526,29 @@ if (!class_exists('DB')) {
          * @return QueryResult
          */
         public function query(string $sql, array $params = []): QueryResult {
+            // Owner::find() runs a users LEFT JOIN profiles WHERE u.id = ? query.
+            // Return a standard mock user row so tests that need a valid owner work.
+            // The WHERE-clause guard prevents matching Owner::searchOwners() and other
+            // queries that join users+profiles but use different WHERE conditions.
+            if (stripos($sql, 'profiles') !== false
+                && stripos($sql, 'users') !== false
+                && stripos($sql, 'WHERE u.id') !== false) {
+                $userId = $params[0] ?? 1;
+                return new QueryResult([(object) [
+                    'id'         => (string) $userId,
+                    'email'      => 'test@example.com',
+                    'fname'      => 'Test',
+                    'lname'      => 'User',
+                    'join_date'  => '2024-01-01 00:00:00',
+                    'last_login' => '2024-01-01 00:00:00',
+                    'city'       => 'Test City',
+                    'state'      => 'TS',
+                    'country'    => 'US',
+                    'lat'        => null,
+                    'lon'        => null,
+                    'website'    => '',
+                ]]);
+            }
             return new QueryResult([]);
         }
 
@@ -665,6 +651,14 @@ if (!class_exists('DB')) {
          */
         public function lastId(): int {
             return 1;
+        }
+
+        public function count(): int {
+            return 0;
+        }
+
+        public function deleteById(string $table, int $id): bool {
+            return true;
         }
 
         public function beginTransaction(): void {}
@@ -837,7 +831,7 @@ if (!class_exists('DB')) {
              * @return object Query result
              */
             public function query(string $sql, array $params = []): object {
-                global $mockUsers, $mockProfiles, $mockCarUser, $mockCars;
+                global $mockUsers, $mockProfiles, $mockCars;
 
                 // Handle noowner user lookup
                 if (strpos($sql, 'SELECT id FROM users WHERE username = ?') !== false &&
@@ -848,11 +842,11 @@ if (!class_exists('DB')) {
                     return new MockQueryResult(array_values($noOwnerUsers));
                 }
 
-                // Handle car_user queries
-                if (strpos($sql, 'SELECT carid FROM car_user WHERE userid = ?') !== false) {
+                // Handle findByOwner queries (CarRepository::findByOwner)
+                if (strpos($sql, 'SELECT id FROM cars WHERE user_id = ?') !== false) {
                     $userId = $params[0] ?? null;
-                    $userCars = array_filter($mockCarUser ?: [], function($carUser) use ($userId) {
-                        return $carUser->userid == $userId;
+                    $userCars = array_filter($mockCars ?: [], function($car) use ($userId) {
+                        return $car->user_id == $userId;
                     });
                     return new MockQueryResult(array_values($userCars));
                 }
@@ -1002,7 +996,7 @@ if (!class_exists('DB')) {
                 }
 
                 // Use global mock data if available
-                global $mockUsers, $mockProfiles, $mockCarUser, $mockCars;
+                global $mockUsers, $mockProfiles, $mockCars;
 
                 // Default to user data if no specific mock is set
                 return [(object) [
@@ -1129,9 +1123,9 @@ class CarModel {
 }
 ');
 
-// Load unified autoloader for all custom classes and exceptions
+// Load Composer autoloader for all custom classes and exceptions
 // This must come AFTER mock classes are defined so the mocks take precedence
-require_once $projectRoot . '/usersc/classes/class.autoloader.php';
+require_once $projectRoot . '/vendor/autoload.php';
 
 /**
  * Mock user object and authentication system
@@ -1311,27 +1305,21 @@ if (!function_exists('isRegistryAdmin')) {
  * Mock user deletion cleanup process
  */
 function mockUserDeletionCleanup($id): void {
-    global $mockUsers, $mockCarUser;
+    global $mockUsers, $mockCars;
 
-    // Find the "no owner" user from mock data (the DB mock's query() always
-    // returns empty, so we look directly in $mockUsers)
     $noOwnerUsers = array_values(array_filter($mockUsers ?? [], fn($u) => $u->username === 'noowner'));
     if (count($noOwnerUsers) > 0) {
         $noOwnerUserId = $noOwnerUsers[0]->id;
 
-        // Get list of cars owned by deleted user from mock data
-        $userCars = array_values(array_filter($mockCarUser ?? [], fn($c) => $c->userid === $id));
+        $userCars = array_values(array_filter($mockCars ?? [], fn($c) => $c->user_id === $id));
         $carCount = count($userCars);
 
-        // Reassign cars to noowner in car_user table
         foreach ($userCars as $car) {
-            logger($id, LogCategories::LOG_CATEGORY_CAR_ACTIONS, "User deletion: car ID {$car->carid} reassigned from user $id to noowner (ID: $noOwnerUserId)");
+            logger($id, LogCategories::LOG_CATEGORY_CAR_ACTIONS, "User deletion: car ID {$car->id} reassigned from user $id to noowner (ID: $noOwnerUserId)");
         }
 
-        // Log the cleanup for audit purposes
         logger($id, LogCategories::LOG_CATEGORY_USER_DELETION, "Complete cleanup: reassigned $carCount cars to noowner user (ID: $noOwnerUserId)");
     } else {
-        // Fallback if noowner doesn't exist
         logger($id, LogCategories::LOG_CATEGORY_USER_DELETION, 'Fallback cleanup: noowner user not found, set cars to NULL');
     }
 }

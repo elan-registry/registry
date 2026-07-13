@@ -101,7 +101,7 @@ final class BackupManagerTest extends TestCase
         $this->assertFileExists($backupPath);
 
         $content = file_get_contents($backupPath);
-        $this->assertStringContainsString('-- Tables: settings, users, cars, car_user, profiles', $content);
+        $this->assertStringContainsString('-- Tables: settings, users, cars, profiles', $content);
     }
 
     /**

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace ElanRegistry\Transfer;
 
 use ElanRegistry\LogCategories;
+use ElanRegistry\Owner;
 use Throwable;
 
 /**
@@ -89,13 +90,13 @@ class TransferEmailService
             }
             ['transferData' => $transferData, 'carData' => $carData, 'carInfo' => $carInfo] = $ctx;
 
-            $currentOwner = getUserWithProfile(dbInt($carData, 'user_id'));
+            $currentOwner = (new Owner(dbInt($carData, 'user_id')))->data();
             if (!$currentOwner) {
                 logger(0, LogCategories::LOG_CATEGORY_EMAIL_ERROR, "Transfer request notification failed: Current owner ID {$carData->user_id} not found");
                 return false;
             }
 
-            $requester = getUserWithProfile(dbInt($transferData, 'requested_by_user_id'));
+            $requester = (new Owner(dbInt($transferData, 'requested_by_user_id')))->data();
             if (!$requester) {
                 logger(0, LogCategories::LOG_CATEGORY_EMAIL_ERROR, "Transfer request notification failed: Requester ID {$transferData->requested_by_user_id} not found");
                 return false;
@@ -156,13 +157,13 @@ class TransferEmailService
             }
             ['transferData' => $transferData, 'carData' => $carData, 'carInfo' => $carInfo] = $ctx;
 
-            $currentOwner = getUserWithProfile(dbInt($carData, 'user_id'));
+            $currentOwner = (new Owner(dbInt($carData, 'user_id')))->data();
             if (!$currentOwner) {
                 logger(0, LogCategories::LOG_CATEGORY_EMAIL_ERROR, "Transfer admin alert failed: Current owner ID {$carData->user_id} not found");
                 return false;
             }
 
-            $requester = getUserWithProfile(dbInt($transferData, 'requested_by_user_id'));
+            $requester = (new Owner(dbInt($transferData, 'requested_by_user_id')))->data();
             if (!$requester) {
                 logger(0, LogCategories::LOG_CATEGORY_EMAIL_ERROR, "Transfer admin alert failed: Requester ID {$transferData->requested_by_user_id} not found");
                 return false;
@@ -236,7 +237,7 @@ class TransferEmailService
             }
             ['transferData' => $transferData, 'carData' => $carData, 'carInfo' => $carInfo] = $ctx;
 
-            $requester = getUserWithProfile(dbInt($transferData, 'requested_by_user_id'));
+            $requester = (new Owner(dbInt($transferData, 'requested_by_user_id')))->data();
             if (!$requester) {
                 logger(0, LogCategories::LOG_CATEGORY_EMAIL_ERROR, "Transfer response notification failed: Requester ID {$transferData->requested_by_user_id} not found");
                 return false;
@@ -302,14 +303,14 @@ class TransferEmailService
             ['transferData' => $transferData, 'carData' => $carData, 'carInfo' => $carInfo] = $ctx;
 
             $lookupId = ($isApproved && $previousOwnerId) ? $previousOwnerId : dbInt($carData, 'user_id');
-            $previousOwner = getUserWithProfile($lookupId);
+            $previousOwner = (new Owner($lookupId))->data();
 
             if (!$previousOwner) {
                 logger(0, LogCategories::LOG_CATEGORY_EMAIL_ERROR, "Transfer previous owner notification failed: User ID $lookupId not found");
                 return false;
             }
 
-            $requester = getUserWithProfile(dbInt($transferData, 'requested_by_user_id'));
+            $requester = (new Owner(dbInt($transferData, 'requested_by_user_id')))->data();
             if (!$requester) {
                 logger(0, LogCategories::LOG_CATEGORY_EMAIL_ERROR, "Transfer previous owner notification failed: Requester ID {$transferData->requested_by_user_id} not found");
                 return false;

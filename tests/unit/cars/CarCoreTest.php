@@ -68,14 +68,6 @@ final class CarCoreTest extends TestCase
         $this->assertFalse($result);
     }
 
-    public function testFindWithNullParameter(): void
-    {
-        $car = new Car();
-        $result = $car->find(null);
-        $this->assertTrue($result);
-        $this->assertIsObject($car->data());
-    }
-
     // ============================================================
     // EXISTS & DATA ACCESS TESTS
     // ============================================================
@@ -138,17 +130,8 @@ final class CarCoreTest extends TestCase
 
         $this->assertNotNull($owner);
         if (!empty($owner)) {
-            $this->assertTrue(is_array($owner) || is_object($owner));
+            $this->assertTrue(is_array($owner));
         }
-    }
-
-    public function testFindAllReturnsAllCars(): void
-    {
-        $car = new Car();
-        $result = $car->findAll();
-
-        $this->assertTrue($result);
-        $this->assertTrue($car->exists());
     }
 
     // ============================================================
