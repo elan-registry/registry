@@ -46,8 +46,8 @@ $db = DB::getInstance();
 // adding a new migration.
 $pendingMigrationCount = 0;
 try {
-    $latestMigration = 20260711100000;
-    $totalMigrations = 7;
+    $latestMigration = 20260711000000;
+    $totalMigrations = 4;
     $row = $db->query(
         "SELECT COUNT(*) AS cnt FROM phinxlog WHERE version <= ?",
         [$latestMigration]
