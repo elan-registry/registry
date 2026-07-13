@@ -16,6 +16,7 @@ ErrorDocument 504 /error/500.php
 Header always set X-Frame-Options "SAMEORIGIN"
 Header always set X-Content-Type-Options "nosniff"
 Header always set Referrer-Policy "strict-origin-when-cross-origin"
+Header always set Permissions-Policy "geolocation=(), camera=(), microphone=(), payment=()"
 
 # Deny access to sensitive files
 <Files "*.env*">
@@ -42,11 +43,37 @@ Header always set Referrer-Policy "strict-origin-when-cross-origin"
     Require all denied
 </Files>
 
+<FilesMatch "^phpunit.*\.xml$">
+    Require all denied
+</FilesMatch>
+
+<Files "phpstan.neon">
+    Require all denied
+</Files>
+
+<Files "phpstan-baseline.neon">
+    Require all denied
+</Files>
+
+<Files "phpstan-bootstrap.php">
+    Require all denied
+</Files>
+
+<FilesMatch "^package(-lock)?\.json$">
+    Require all denied
+</FilesMatch>
+
+# Disable HTTP TRACE (XST prevention)
+<LimitExcept GET POST HEAD OPTIONS>
+    Require all denied
+</LimitExcept>
+
 # Block access to sensitive directories using RewriteRule
 RewriteEngine On
 
 # Block access to backup directories
 RewriteRule ^@backup/ - [F,L]
+RewriteRule ^db-backups/ - [F,L]
 
 # Block access to node_modules
 RewriteRule ^node_modules/ - [F,L]
