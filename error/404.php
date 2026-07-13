@@ -14,7 +14,10 @@ declare(strict_types=1);
 // Set proper HTTP response code
 http_response_code(404);
 
-// Anti-clickjacking headers (set explicitly in case init.php fails to load)
+// Anti-clickjacking headers (set explicitly in case init.php fails to load).
+// Intentionally minimal: frame-ancestors only. If a <form> is ever added to
+// this page, add form-action 'self' here and mirror the change in
+// error/403.php and error/500.php before shipping.
 header("X-Frame-Options: SAMEORIGIN");
 header("Content-Security-Policy: frame-ancestors 'self'");
 

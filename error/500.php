@@ -20,7 +20,10 @@ $statusCode = (int)($_SERVER['REDIRECT_STATUS'] ?? http_response_code() ?? 500);
 // Set proper HTTP response code
 http_response_code($statusCode);
 
-// Anti-clickjacking headers (set explicitly in case init.php fails to load)
+// Anti-clickjacking headers (set explicitly in case init.php fails to load).
+// Intentionally minimal: frame-ancestors only. If a <form> is ever added to
+// this page, add form-action 'self' here and mirror the change in
+// error/403.php and error/404.php before shipping.
 header("X-Frame-Options: SAMEORIGIN");
 header("Content-Security-Policy: frame-ancestors 'self'");
 

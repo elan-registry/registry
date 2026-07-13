@@ -19,7 +19,7 @@ The content-security-policy HTTP header provides an additional layer of security
 // worker-src blob: required because MapLibre GL JS spawns tile-processing Web Workers from blob URLs
 header("Content-Security-Policy: " .
     "default-src 'self'; " .
-    "script-src 'self' 'unsafe-inline' 'unsafe-eval' " .
+    "script-src 'self' 'unsafe-inline' " .
         "https://challenges.cloudflare.com " .
         "https://code.jquery.com " .
         "https://static.cloudflareinsights.com " .
@@ -37,6 +37,7 @@ header("Content-Security-Policy: " .
         "https://static.cloudflareinsights.com; " .
     "frame-src 'self' https://challenges.cloudflare.com; " .
     "frame-ancestors 'self'; " .
+    "form-action 'self'; " . // does not fall back to default-src; must be listed explicitly
     "worker-src 'self' blob:; " .
     "object-src 'none'; " .
     "base-uri 'self'"
