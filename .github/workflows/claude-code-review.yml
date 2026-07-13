@@ -21,9 +21,6 @@ name: Claude Code Review
 #                             accuracy, and deployment readiness.
 #
 # Drafts and [skip-review] / [WIP] titles are skipped in both modes.
-# No paths filter — runs on every file type so config, SQL, and template
-# changes are reviewed alongside PHP/JS. Gating is handled by the job-level
-# if: conditions, not by path filtering.
 #
 # Posting mechanism (v1 action):
 #   Claude must explicitly post via `gh pr comment` — the action does not
@@ -34,6 +31,10 @@ name: Claude Code Review
 on:
   pull_request:
     types: [opened, synchronize, ready_for_review, labeled]
+    # No paths filter: workflow-only PRs (e.g. CI config changes) must also
+    # trigger Claude review so the claude-code-action@v1 OIDC token validation
+    # runs against the default-branch workflow file. A paths filter that
+    # excludes .github/workflows/** causes validation to fail on those PRs.
   # issue_comment events are not filtered by paths — the job's `if:`
   # condition and author_association check handle gating.
   issue_comment:
