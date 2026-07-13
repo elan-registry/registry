@@ -40,4 +40,12 @@ $user = null;
 /** @var mixed $db */
 $db   = null;
 
+// UserSpice helper functions (defined in users/helpers/us_helpers.php, excluded from scan)
+if (!function_exists('randomstring')) {
+    function randomstring(int $len): string
+    {
+        return '';
+    }
+}
+
 require_once __DIR__ . '/usersc/includes/config.php';
