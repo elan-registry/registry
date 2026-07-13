@@ -577,12 +577,6 @@ parameters:
 			path: index.php
 
 		-
-			message: '#^Variable \$argv might not be defined\.$#'
-			identifier: variable.undefined
-			count: 1
-			path: scripts/check-coding-standards.php
-
-		-
 			message: '#^Function endCloak not found\.$#'
 			identifier: function.notFound
 			count: 1
