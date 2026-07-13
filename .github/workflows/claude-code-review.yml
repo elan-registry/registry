@@ -31,16 +31,10 @@ name: Claude Code Review
 on:
   pull_request:
     types: [opened, synchronize, ready_for_review, labeled]
-    paths:
-      - "**.php"
-      - "**.js"
-      - "**.css"
-      - "tests/**"
-      - "usersc/**"
-      - "scripts/**"
-      - "docs/development/**"
-      - ".github/workflows/**"
-  # Note: `paths` filter above applies only to pull_request events.
+    # No paths filter: workflow-only PRs (e.g. CI config changes) must also
+    # trigger Claude review so the claude-code-action@v1 OIDC token validation
+    # runs against the default-branch workflow file. A paths filter that
+    # excludes .github/workflows/** causes validation to fail on those PRs.
   # issue_comment events are not filtered by paths — the job's `if:`
   # condition and author_association check handle gating.
   issue_comment:
