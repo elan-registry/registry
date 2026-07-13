@@ -141,7 +141,7 @@ frontend client that pairs with these responses.
 
 ---
 
-## 5. PHPStan: fix all errors in files you touch
+## 4. PHPStan: fix all errors in files you touch
 
 `phpstan.neon` runs level 5 static analysis over all project-owned PHP files.
 Pre-existing errors are captured in `phpstan-baseline.neon`, but `reportUnmatchedIgnoredErrors: true`
@@ -161,7 +161,7 @@ See `docs/development/CODING_STANDARDS.md` — PHPStan Baseline Hygiene.
 
 ---
 
-## 4. PHP type requirements: strict types and typed signatures everywhere
+## 5. PHP type requirements: strict types and typed signatures everywhere
 
 The shipped prompts show untyped function signatures throughout. ElanRegistry requires
 PHP 8.2+ strict typing on all new files.

@@ -121,24 +121,6 @@ parameters:
 			path: app/admin/maintenance.php
 
 		-
-			message: '#^Comparison operation "\>" between 0 and 0 is always false\.$#'
-			identifier: greater.alwaysFalse
-			count: 2
-			path: app/admin/scripts/fix/_TEMPLATE_Fix-Script.php
-
-		-
-			message: '#^Undefined variable\: \$user$#'
-			identifier: variable.undefined
-			count: 1
-			path: app/admin/scripts/fix/_TEMPLATE_Fix-Script.php
-
-		-
-			message: '#^Variable \$user in isset\(\) is never defined\.$#'
-			identifier: isset.variable
-			count: 1
-			path: app/admin/scripts/fix/_TEMPLATE_Fix-Script.php
-
-		-
 			message: '#^Undefined variable\: \$user$#'
 			identifier: variable.undefined
 			count: 1

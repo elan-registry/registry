@@ -51,6 +51,8 @@ parameters:
         - */node_modules/*
         - */_ARCHIVE/*
         - users/
+        # Template intentionally has placeholder code — no baseline entries should ever clear
+        - app/admin/scripts/fix/_TEMPLATE_Fix-Script.php
 
     treatPhpDocTypesAsCertain: false
     checkMissingTypehints: true
