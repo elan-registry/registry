@@ -378,4 +378,123 @@ class OwnerIntegrationTest extends IntegrationTestCase
             ['fname', 'lname', 'email']
         );
     }
+
+    // -------------------------------------------------------------------------
+    // Privilege-escalation guard (#1232)
+    // active/permissions must never pass through validateAndSanitizeFields or
+    // extractUserFields — they are not profile fields and must not be writable
+    // via the general Owner::update() path.
+    // -------------------------------------------------------------------------
+
+    public function testActiveFieldIsDroppedByValidation(): void
+    {
+        $result = $this->callValidateAndSanitize(['active' => '0']);
+        $this->assertArrayNotHasKey('active', $result,
+            'active must be silently dropped by validateAndSanitizeFields');
+    }
+
+    public function testPermissionsFieldIsDroppedByValidation(): void
+    {
+        $result = $this->callValidateAndSanitize(['permissions' => '3']);
+        $this->assertArrayNotHasKey('permissions', $result,
+            'permissions must be silently dropped by validateAndSanitizeFields');
+    }
+
+    public function testUnknownFieldIsDroppedByValidation(): void
+    {
+        $result = $this->callValidateAndSanitize(['totally_unknown_field' => 'injected']);
+        $this->assertArrayNotHasKey('totally_unknown_field', $result,
+            'Unknown fields must be silently dropped by the default case');
+    }
+
+    public function testActiveAndPermissionsDoNotReachDbViaUpdate(): void
+    {
+        $userId = $this->createTestUser();
+        $this->db->insert('profiles', [
+            'user_id' => $userId,
+            'city' => 'BeforeCity', 'state' => '', 'country' => '',
+            'lat' => 0.0, 'lon' => 0.0,
+        ]);
+        try {
+            $before = $this->db->query("SELECT active, permissions FROM users WHERE id = ?", [$userId])
+                ->first();
+            $csrf = \Token::generate();
+            $owner = new Owner($userId);
+            $owner->update([
+                'id'          => $userId,
+                'csrf'        => $csrf,
+                'active'      => '0',
+                'permissions' => '3',
+                'city'        => 'AfterCity',
+            ]);
+            $after = $this->db->query("SELECT active, permissions FROM users WHERE id = ?", [$userId])
+                ->first();
+            // Confirm the update ran (city changed) so the privilege assertions aren't vacuously true
+            $this->assertSame('AfterCity', $owner->data()->city,
+                'Owner::update() must persist legitimate fields');
+            $this->assertSame((string) $before->active, (string) $after->active,
+                'Owner::update() must not modify the active column');
+            $this->assertSame((string) $before->permissions, (string) $after->permissions,
+                'Owner::update() must not modify the permissions column');
+        } finally {
+            $this->db->query("DELETE FROM profiles WHERE user_id = ?", [$userId]);
+        }
+    }
+
+    public function testActiveEscalationDoesNotReachDbViaUpdate(): void
+    {
+        // Deactivated-user escalation: attacker passes active=1 to re-activate their account
+        $userId = $this->createTestUser();
+        $this->db->query("UPDATE users SET active = 0 WHERE id = ?", [$userId]);
+        $this->db->insert('profiles', [
+            'user_id' => $userId,
+            'city' => 'BeforeCity', 'state' => '', 'country' => '',
+            'lat' => 0.0, 'lon' => 0.0,
+        ]);
+        try {
+            $csrf = \Token::generate();
+            $owner = new Owner($userId);
+            $owner->update([
+                'id'     => $userId,
+                'csrf'   => $csrf,
+                'active' => '1',
+                'city'   => 'AfterCity',
+            ]);
+            $after = $this->db->query("SELECT active FROM users WHERE id = ?", [$userId])->first();
+            $this->assertSame('AfterCity', $owner->data()->city,
+                'Owner::update() must persist legitimate fields');
+            $this->assertSame('0', (string) $after->active,
+                'Owner::update() must not allow escalation of active from 0 to 1');
+        } finally {
+            $this->db->query("DELETE FROM profiles WHERE user_id = ?", [$userId]);
+        }
+    }
+
+    public function testUsernameFieldIsDroppedByValidation(): void
+    {
+        $result = $this->callValidateAndSanitize(['username' => 'hacker']);
+        $this->assertArrayNotHasKey('username', $result,
+            'username must be silently dropped by validateAndSanitizeFields');
+    }
+
+    public function testExtractUserFieldsExcludesDangerousColumns(): void
+    {
+        $owner = new Owner();
+        $method = new \ReflectionMethod($owner, 'extractUserFields');
+        /** @var array<string, mixed> */
+        $result = $method->invoke($owner, [
+            'fname'       => 'Alice',
+            'active'      => '1',
+            'permissions' => '3',
+            'username'    => 'hacker',
+            'password'    => 'hash',
+        ]);
+        $this->assertArrayHasKey('fname', $result, 'fname must be allowed through extractUserFields');
+        $this->assertArrayNotHasKey('active', $result,
+            'active must be excluded from the extractUserFields allowlist');
+        $this->assertArrayNotHasKey('permissions', $result,
+            'permissions must be excluded from the extractUserFields allowlist');
+        $this->assertArrayNotHasKey('username', $result,
+            'username must be excluded from the extractUserFields allowlist');
+    }
 }

@@ -577,12 +577,6 @@ parameters:
 			path: usersc/account.php
 
 		-
-			message: '#^Function randomstring not found\.$#'
-			identifier: function.notFound
-			count: 1
-			path: usersc/classes/Owner.php
-
-		-
 			message: '#^File ends with a trailing whitespace\. This may cause problems when running the code in the web browser\. Remove the closing \?\> mark or remove the whitespace\.$#'
 			identifier: whitespace.fileEnd
 			count: 1
@@ -712,12 +706,6 @@ parameters:
 			message: '#^Function pluginActive not found\.$#'
 			identifier: function.notFound
 			count: 1
-			path: usersc/join.php
-
-		-
-			message: '#^Function randomstring not found\.$#'
-			identifier: function.notFound
-			count: 2
 			path: usersc/join.php
 
 		-
@@ -1078,12 +1066,6 @@ parameters:
 			message: '#^Function passwordResetKillSessions not found\.$#'
 			identifier: function.notFound
 			count: 1
-			path: usersc/user_settings.php
-
-		-
-			message: '#^Function randomstring not found\.$#'
-			identifier: function.notFound
-			count: 2
 			path: usersc/user_settings.php
 
 		-
