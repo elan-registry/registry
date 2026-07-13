@@ -3,7 +3,7 @@
 # ElanRegistry — Where We Diverge from Standard UserSpice
 
 Read the shipped UserSpice prompts first (`00_start_here`, `secure_page_pattern`, etc.).
-This file documents the **four places where ElanRegistry does things differently**.
+This file documents the **five places where ElanRegistry does things differently**.
 When the shipped prompts and this file conflict, **this file wins**.
 
 ---
@@ -141,7 +141,29 @@ frontend client that pairs with these responses.
 
 ---
 
-## 4. PHP type requirements: strict types and typed signatures everywhere
+## 4. PHPStan: fix all errors in files you touch
+
+`phpstan.neon` runs level 5 static analysis over all project-owned PHP files.
+Pre-existing errors are captured in `phpstan-baseline.neon`, but `reportUnmatchedIgnoredErrors: true`
+means CI **rejects stale baseline entries** — once you fix an error, its entry must be removed.
+
+**Rule:** whenever you modify a PHP file in `app/`, `usersc/`, or any other path covered by
+`phpstan.neon`, run PHPStan on it and fix **all** errors it reports before committing. The
+baseline silently suppresses pre-existing errors — anything PHPStan reports is new. Then
+regenerate the baseline to drop the entries you resolved.
+
+```bash
+vendor/bin/phpstan analyse app/api/cars/save.php   # check the file you modified
+composer phpstan:baseline                            # drop entries you just fixed
+```
+
+This is the "fix-when-you-touch-it" workflow: never leave a file with more errors than it had, and treat each touch as a chance to clear its existing debt.
+
+See `docs/development/CODING_STANDARDS.md` — PHPStan Baseline Hygiene.
+
+---
+
+## 5. PHP type requirements: strict types and typed signatures everywhere
 
 The shipped prompts show untyped function signatures throughout. ElanRegistry requires
 PHP 8.2+ strict typing on all new files.

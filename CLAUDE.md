@@ -26,7 +26,7 @@ shipped prompts starting at:
 `usersc/plugins/ai_prompts/prompts/00_start_here.md.php`
 Then load ElanRegistry-specific augmentation from `custom_prompts/`:
 
-- `elanregistry_overrides` — four places ElanRegistry diverges from standard UserSpice
+- `elanregistry_overrides` — five places ElanRegistry diverges from standard UserSpice
 - `elanregistry_classes` — Car, Owner, ApiResponse, LogCategories, and others
 - `elanregistry_directories` — `app/` subtree, `$path` in `z_us_root.php`, parsers location
 - `elanregistry_database` — DB Explainer workflow and ElanRegistry-specific tables
@@ -201,6 +201,20 @@ Never use `$_SERVER` directly. Validated globals (`$php_self`, `$is_https`, `$ho
 - Run `/security-review` when changes touch forms, SQL queries, auth, or user input
 - Fix any linting or type errors before considering the task complete (pre-commit hooks run PHPStan and phpcs automatically on staged files)
 - Run appropriate test suites for modified functionality
+
+**PHPStan hygiene (fix-when-you-touch-it):** When modifying any PHP file in
+`app/`, `usersc/`, or any other path listed in `phpstan.neon`, run PHPStan on
+it and fix **all** errors it reports (the baseline silently suppresses
+pre-existing ones, so anything reported is new):
+
+```bash
+vendor/bin/phpstan analyse <file>   # check the file you touched
+composer phpstan:baseline           # regenerate baseline after fixing
+```
+
+Pre-existing baseline errors are tracked debt — clear them for files you touch.
+`reportUnmatchedIgnoredErrors: true` ensures CI rejects stale entries once fixed.
+See `docs/development/CODING_STANDARDS.md` — PHPStan Baseline Hygiene.
 
 ### Playwright Test Maintenance
 

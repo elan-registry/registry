@@ -1,2 +1,1291 @@
 parameters:
-	ignoreErrors: []
+	ignoreErrors:
+		-
+			message: '#^Match arm comparison between ''rollback'' and ''rollback'' is always true\.$#'
+			identifier: match.alwaysTrue
+			count: 1
+			path: app/admin/includes/system/backup-operations.php
+
+		-
+			message: '#^Unreachable statement \- code above always terminates\.$#'
+			identifier: deadCode.unreachable
+			count: 6
+			path: app/admin/includes/system/backup-operations.php
+
+		-
+			message: '#^Variable \$csrfToken might not be defined\.$#'
+			identifier: variable.undefined
+			count: 2
+			path: app/admin/includes/tab-account_cleanup.php
+
+		-
+			message: '#^Variable \$currentUserId might not be defined\.$#'
+			identifier: variable.undefined
+			count: 10
+			path: app/admin/includes/tab-account_cleanup.php
+
+		-
+			message: '#^Variable \$systemStatus might not be defined\.$#'
+			identifier: variable.undefined
+			count: 1
+			path: app/admin/includes/tab-manage_cars.php
+
+		-
+			message: '#^Call to function is_object\(\) with DB will always evaluate to true\.$#'
+			identifier: function.alreadyNarrowedType
+			count: 1
+			path: app/admin/includes/tab-owner_mgmt.php
+
+		-
+			message: '#^Negated boolean expression is always false\.$#'
+			identifier: booleanNot.alwaysFalse
+			count: 1
+			path: app/admin/includes/tab-owner_mgmt.php
+
+		-
+			message: '#^Variable \$activeTab might not be defined\.$#'
+			identifier: variable.undefined
+			count: 5
+			path: app/admin/includes/tab-placeholder.php
+
+		-
+			message: '#^Variable \$validTabs might not be defined\.$#'
+			identifier: variable.undefined
+			count: 1
+			path: app/admin/includes/tab-placeholder.php
+
+		-
+			message: '#^Offset ''default'' on array\{type\: ''DECIMAL\(4,2\)'', default\: ''2\.00'', description\: ''Maximum upload file…''\}\|array\{type\: ''INT\(11\)'', default\: ''10'', description\: ''Maximum photos per…''\}\|array\{type\: ''INT\(11\)'', default\: ''2048'', description\: ''Maximum display…''\}\|array\{type\: ''TEXT'', default\: ''100,300,768,1024…'', description\: ''Comma\-separated…''\}\|array\{type\: ''TEXT'', default\: ''registrar…'', description\: ''Comma\-separated…''\}\|array\{type\: ''VARCHAR\(255\)'', default\: ''registrar…'', description\: ''Email address for…''\}\|array\{type\: ''VARCHAR\(255\)'', default\: ''userimages/'', description\: ''Directory path…''\} in isset\(\) always exists and is not nullable\.$#'
+			identifier: isset.offset
+			count: 1
+			path: app/admin/includes/tab-settings.php
+
+		-
+			message: '#^Offset ''description'' on array\{type\: ''DECIMAL\(4,2\)'', default\: ''2\.00'', description\: ''Maximum upload file…''\}\|array\{type\: ''INT\(11\)'', default\: ''10'', description\: ''Maximum photos per…''\}\|array\{type\: ''INT\(11\)'', default\: ''2048'', description\: ''Maximum display…''\}\|array\{type\: ''TEXT'', default\: ''100,300,768,1024…'', description\: ''Comma\-separated…''\}\|array\{type\: ''TEXT'', default\: ''registrar…'', description\: ''Comma\-separated…''\}\|array\{type\: ''VARCHAR\(255\)'', default\: ''registrar…'', description\: ''Email address for…''\}\|array\{type\: ''VARCHAR\(255\)'', default\: ''userimages/'', description\: ''Directory path…''\} in isset\(\) always exists and is not nullable\.$#'
+			identifier: isset.offset
+			count: 1
+			path: app/admin/includes/tab-settings.php
+
+		-
+			message: '#^Offset ''type'' on array\{type\: ''DECIMAL\(4,2\)'', default\: ''2\.00'', description\: ''Maximum upload file…''\}\|array\{type\: ''INT\(11\)'', default\: ''10'', description\: ''Maximum photos per…''\}\|array\{type\: ''INT\(11\)'', default\: ''2048'', description\: ''Maximum display…''\}\|array\{type\: ''TEXT'', default\: ''100,300,768,1024…'', description\: ''Comma\-separated…''\}\|array\{type\: ''TEXT'', default\: ''registrar…'', description\: ''Comma\-separated…''\}\|array\{type\: ''VARCHAR\(255\)'', default\: ''registrar…'', description\: ''Email address for…''\}\|array\{type\: ''VARCHAR\(255\)'', default\: ''userimages/'', description\: ''Directory path…''\} in isset\(\) always exists and is not nullable\.$#'
+			identifier: isset.offset
+			count: 1
+			path: app/admin/includes/tab-settings.php
+
+		-
+			message: '#^Result of \|\| is always false\.$#'
+			identifier: booleanOr.alwaysFalse
+			count: 2
+			path: app/admin/includes/tab-settings.php
+
+		-
+			message: '#^Variable \$fieldsToAdd in empty\(\) always exists and is not falsy\.$#'
+			identifier: empty.variable
+			count: 1
+			path: app/admin/includes/tab-settings.php
+
+		-
+			message: '#^If condition is always true\.$#'
+			identifier: if.alwaysTrue
+			count: 1
+			path: app/admin/index.php
+
+		-
+			message: '#^Variable \$currentUserId might not be defined\.$#'
+			identifier: variable.undefined
+			count: 15
+			path: app/admin/index.php
+
+		-
+			message: '#^Variable \$new_car_id might not be defined\.$#'
+			identifier: variable.undefined
+			count: 4
+			path: app/admin/index.php
+
+		-
+			message: '#^Variable \$old_car_id might not be defined\.$#'
+			identifier: variable.undefined
+			count: 4
+			path: app/admin/index.php
+
+		-
+			message: '#^Dead catch \- RuntimeException is never thrown in the try block\.$#'
+			identifier: catch.neverThrown
+			count: 1
+			path: app/admin/maintenance.php
+
+		-
+			message: '#^Variable \$currentUserId on left side of \?\? always exists and is not nullable\.$#'
+			identifier: nullCoalesce.variable
+			count: 1
+			path: app/admin/maintenance.php
+
+		-
+			message: '#^Undefined variable\: \$user$#'
+			identifier: variable.undefined
+			count: 1
+			path: app/admin/scripts/maintenance/21-Fix-Page-Permissions.php
+
+		-
+			message: '#^Variable \$settings might not be defined\.$#'
+			identifier: variable.undefined
+			count: 1
+			path: app/admin/scripts/maintenance/21-Fix-Page-Permissions.php
+
+		-
+			message: '#^Parameter \#2 \$percentage of function outputMessage expects int\|null, float given\.$#'
+			identifier: argument.type
+			count: 1
+			path: app/admin/scripts/maintenance/24-Regenerate-Optimized-Thumbnails.php
+
+		-
+			message: '#^Variable \$car might not be defined\.$#'
+			identifier: variable.undefined
+			count: 1
+			path: app/admin/verify/_email_template.php
+
+		-
+			message: '#^Variable \$edit_btn might not be defined\.$#'
+			identifier: variable.undefined
+			count: 1
+			path: app/admin/verify/_email_template.php
+
+		-
+			message: '#^Variable \$image might not be defined\.$#'
+			identifier: variable.undefined
+			count: 1
+			path: app/admin/verify/_email_template.php
+
+		-
+			message: '#^Variable \$sold_btn might not be defined\.$#'
+			identifier: variable.undefined
+			count: 1
+			path: app/admin/verify/_email_template.php
+
+		-
+			message: '#^Variable \$verify_btn might not be defined\.$#'
+			identifier: variable.undefined
+			count: 1
+			path: app/admin/verify/_email_template.php
+
+		-
+			message: '#^Variable \$settings might not be defined\.$#'
+			identifier: variable.undefined
+			count: 1
+			path: app/admin/verify/index.php
+
+		-
+			message: '#^Parameter \#1 \$prefix of function uniqid expects string, int\<0, max\> given\.$#'
+			identifier: argument.type
+			count: 1
+			path: app/admin/verify/send_email.php
+
+		-
+			message: '#^Variable \$settings might not be defined\.$#'
+			identifier: variable.undefined
+			count: 2
+			path: app/admin/verify/send_email.php
+
+		-
+			message: '#^Variable \$settings might not be defined\.$#'
+			identifier: variable.undefined
+			count: 1
+			path: app/admin/verify/verify_car.php
+
+		-
+			message: '#^Unreachable statement \- code above always terminates\.$#'
+			identifier: deadCode.unreachable
+			count: 5
+			path: app/api/admin/account-cleanup-data.php
+
+		-
+			message: '#^Match arm comparison between ''num''\|''txt'' and ''toggle'' is always false\.$#'
+			identifier: match.alwaysFalse
+			count: 1
+			path: app/api/admin/process-settings.php
+
+		-
+			message: '#^Using nullsafe property access "\?\-\>id" on left side of \?\? is unnecessary\. Use \-\> instead\.$#'
+			identifier: nullsafe.neverNull
+			count: 2
+			path: app/api/cars/chassis-availability.php
+
+		-
+			message: '#^Unreachable statement \- code above always terminates\.$#'
+			identifier: deadCode.unreachable
+			count: 2
+			path: app/api/cars/models.php
+
+		-
+			message: '#^Unreachable statement \- code above always terminates\.$#'
+			identifier: deadCode.unreachable
+			count: 2
+			path: app/api/cars/save.php
+
+		-
+			message: '#^Variable \$_POST in empty\(\) always exists and is not falsy\.$#'
+			identifier: empty.variable
+			count: 1
+			path: app/api/cars/save.php
+
+		-
+			message: '#^Variable \$errors in empty\(\) always exists and is always falsy\.$#'
+			identifier: empty.variable
+			count: 6
+			path: app/api/cars/save.php
+
+		-
+			message: '#^Using nullsafe property access "\?\-\>id" on left side of \?\? is unnecessary\. Use \-\> instead\.$#'
+			identifier: nullsafe.neverNull
+			count: 2
+			path: app/api/cars/transfer-request.php
+
+		-
+			message: '#^Strict comparison using \!\=\= between mixed and null will always evaluate to true\.$#'
+			identifier: notIdentical.alwaysTrue
+			count: 2
+			path: app/owner/cars/details.php
+
+		-
+			message: '#^Variable \$car might not be defined\.$#'
+			identifier: variable.undefined
+			count: 4
+			path: app/owner/cars/details.php
+
+		-
+			message: '#^Variable \$carData might not be defined\.$#'
+			identifier: variable.undefined
+			count: 7
+			path: app/owner/cars/details.php
+
+		-
+			message: '#^Variable \$carHistory might not be defined\.$#'
+			identifier: variable.undefined
+			count: 1
+			path: app/owner/cars/details.php
+
+		-
+			message: '#^Variable \$factoryData might not be defined\.$#'
+			identifier: variable.undefined
+			count: 1
+			path: app/owner/cars/details.php
+
+		-
+			message: '#^Variable \$historyCount might not be defined\.$#'
+			identifier: variable.undefined
+			count: 1
+			path: app/owner/cars/details.php
+
+		-
+			message: '#^Variable \$settings might not be defined\.$#'
+			identifier: variable.undefined
+			count: 8
+			path: app/owner/cars/edit.php
+
+		-
+			message: '#^Variable \$successes in empty\(\) always exists and is always falsy\.$#'
+			identifier: empty.variable
+			count: 1
+			path: app/owner/cars/edit.php
+
+		-
+			message: '#^Variable \$settings might not be defined\.$#'
+			identifier: variable.undefined
+			count: 1
+			path: app/owner/cars/factory.php
+
+		-
+			message: '#^Variable \$settings might not be defined\.$#'
+			identifier: variable.undefined
+			count: 1
+			path: app/owner/cars/index.php
+
+		-
+			message: '#^Parameter \#1 \$string of function htmlspecialchars expects string, int given\.$#'
+			identifier: argument.type
+			count: 1
+			path: app/owner/contact/owner.php
+
+		-
+			message: '#^Variable \$settings might not be defined\.$#'
+			identifier: variable.undefined
+			count: 1
+			path: app/owner/reports/statistics.php
+
+		-
+			message: '#^Variable \$context might not be defined\.$#'
+			identifier: variable.undefined
+			count: 1
+			path: app/views/cars/_car_hero_actions.php
+
+		-
+			message: '#^Variable \$buildDate might not be defined\.$#'
+			identifier: variable.undefined
+			count: 1
+			path: app/views/cars/_factory_data_card.php
+
+		-
+			message: '#^Variable \$factoryData might not be defined\.$#'
+			identifier: variable.undefined
+			count: 16
+			path: app/views/cars/_factory_data_card.php
+
+		-
+			message: '#^Variable \$headingTag might not be defined\.$#'
+			identifier: variable.undefined
+			count: 1
+			path: app/views/cars/_factory_data_card.php
+
+		-
+			message: '#^Variable \$carData might not be defined\.$#'
+			identifier: variable.undefined
+			count: 8
+			path: app/views/cars/_vehicle_info_card.php
+
+		-
+			message: '#^Variable \$headingTag might not be defined\.$#'
+			identifier: variable.undefined
+			count: 1
+			path: app/views/cars/_vehicle_info_card.php
+
+		-
+			message: '#^Variable \$purchaseDate might not be defined\.$#'
+			identifier: variable.undefined
+			count: 1
+			path: app/views/cars/_vehicle_info_card.php
+
+		-
+			message: '#^Variable \$soldDate might not be defined\.$#'
+			identifier: variable.undefined
+			count: 1
+			path: app/views/cars/_vehicle_info_card.php
+
+		-
+			message: '#^Variable \$from might not be defined\.$#'
+			identifier: variable.undefined
+			count: 1
+			path: app/views/email/_admin_to_owner.php
+
+		-
+			message: '#^Variable \$message might not be defined\.$#'
+			identifier: variable.undefined
+			count: 1
+			path: app/views/email/_admin_to_owner.php
+
+		-
+			message: '#^Variable \$to might not be defined\.$#'
+			identifier: variable.undefined
+			count: 1
+			path: app/views/email/_admin_to_owner.php
+
+		-
+			message: '#^Variable \$accountId might not be defined\.$#'
+			identifier: variable.undefined
+			count: 1
+			path: app/views/email/_feedback.php
+
+		-
+			message: '#^Variable \$comments might not be defined\.$#'
+			identifier: variable.undefined
+			count: 1
+			path: app/views/email/_feedback.php
+
+		-
+			message: '#^Variable \$email might not be defined\.$#'
+			identifier: variable.undefined
+			count: 1
+			path: app/views/email/_feedback.php
+
+		-
+			message: '#^Variable \$name might not be defined\.$#'
+			identifier: variable.undefined
+			count: 2
+			path: app/views/email/_feedback.php
+
+		-
+			message: '#^Variable \$from might not be defined\.$#'
+			identifier: variable.undefined
+			count: 2
+			path: app/views/email/_member_to_owner.php
+
+		-
+			message: '#^Variable \$message might not be defined\.$#'
+			identifier: variable.undefined
+			count: 1
+			path: app/views/email/_member_to_owner.php
+
+		-
+			message: '#^Variable \$to might not be defined\.$#'
+			identifier: variable.undefined
+			count: 1
+			path: app/views/email/_member_to_owner.php
+
+		-
+			message: '#^Variable \$carInfo might not be defined\.$#'
+			identifier: variable.undefined
+			count: 6
+			path: app/views/email/_transfer_admin.php
+
+		-
+			message: '#^Variable \$currentOwner might not be defined\.$#'
+			identifier: variable.undefined
+			count: 7
+			path: app/views/email/_transfer_admin.php
+
+		-
+			message: '#^Variable \$requester might not be defined\.$#'
+			identifier: variable.undefined
+			count: 7
+			path: app/views/email/_transfer_admin.php
+
+		-
+			message: '#^Variable \$reviewUrl might not be defined\.$#'
+			identifier: variable.undefined
+			count: 1
+			path: app/views/email/_transfer_admin.php
+
+		-
+			message: '#^Variable \$transferRequest might not be defined\.$#'
+			identifier: variable.undefined
+			count: 3
+			path: app/views/email/_transfer_admin.php
+
+		-
+			message: '#^Variable \$carInfo might not be defined\.$#'
+			identifier: variable.undefined
+			count: 7
+			path: app/views/email/_transfer_previous_owner.php
+
+		-
+			message: '#^Variable \$isApproved might not be defined\.$#'
+			identifier: variable.undefined
+			count: 1
+			path: app/views/email/_transfer_previous_owner.php
+
+		-
+			message: '#^Variable \$previousOwner might not be defined\.$#'
+			identifier: variable.undefined
+			count: 1
+			path: app/views/email/_transfer_previous_owner.php
+
+		-
+			message: '#^Variable \$requester might not be defined\.$#'
+			identifier: variable.undefined
+			count: 4
+			path: app/views/email/_transfer_previous_owner.php
+
+		-
+			message: '#^Variable \$transferRequest might not be defined\.$#'
+			identifier: variable.undefined
+			count: 2
+			path: app/views/email/_transfer_previous_owner.php
+
+		-
+			message: '#^Variable \$carInfo might not be defined\.$#'
+			identifier: variable.undefined
+			count: 7
+			path: app/views/email/_transfer_request.php
+
+		-
+			message: '#^Variable \$currentOwner might not be defined\.$#'
+			identifier: variable.undefined
+			count: 1
+			path: app/views/email/_transfer_request.php
+
+		-
+			message: '#^Variable \$requester might not be defined\.$#'
+			identifier: variable.undefined
+			count: 5
+			path: app/views/email/_transfer_request.php
+
+		-
+			message: '#^Variable \$carInfo might not be defined\.$#'
+			identifier: variable.undefined
+			count: 5
+			path: app/views/email/_transfer_response.php
+
+		-
+			message: '#^Variable \$carUrl might not be defined\.$#'
+			identifier: variable.undefined
+			count: 1
+			path: app/views/email/_transfer_response.php
+
+		-
+			message: '#^Variable \$isApproved might not be defined\.$#'
+			identifier: variable.undefined
+			count: 1
+			path: app/views/email/_transfer_response.php
+
+		-
+			message: '#^Variable \$requester might not be defined\.$#'
+			identifier: variable.undefined
+			count: 1
+			path: app/views/email/_transfer_response.php
+
+		-
+			message: '#^Variable \$transferRequest might not be defined\.$#'
+			identifier: variable.undefined
+			count: 3
+			path: app/views/email/_transfer_response.php
+
+		-
+			message: '#^Access to constant LOG_CATEGORY_SECURITY on an unknown class LogCategories\.$#'
+			identifier: class.notFound
+			count: 4
+			path: docs/pdf-viewer.php
+
+		-
+			message: '#^Variable \$settings might not be defined\.$#'
+			identifier: variable.undefined
+			count: 1
+			path: docs/stories/type26register.php
+
+		-
+			message: '#^Expression on left side of \?\? is not nullable\.$#'
+			identifier: nullCoalesce.expr
+			count: 1
+			path: error/500.php
+
+		-
+			message: '#^Comparison operation "\>" between 900\|1250\|2650\|2976\|4526 and 0 is always true\.$#'
+			identifier: greater.alwaysTrue
+			count: 1
+			path: index.php
+
+		-
+			message: '#^Comparison operation "\>" between 900\|1250\|int\<1800, max\> and 0 is always true\.$#'
+			identifier: greater.alwaysTrue
+			count: 1
+			path: index.php
+
+		-
+			message: '#^Function endCloak not found\.$#'
+			identifier: function.notFound
+			count: 1
+			path: usersc/account.php
+
+		-
+			message: '#^Function isCloaked not found\.$#'
+			identifier: function.notFound
+			count: 1
+			path: usersc/account.php
+
+		-
+			message: '#^Function tokenHere not found\.$#'
+			identifier: function.notFound
+			count: 1
+			path: usersc/account.php
+
+		-
+			message: '#^Using nullsafe property access "\?\-\>website" on left side of \?\? is unnecessary\. Use \-\> instead\.$#'
+			identifier: nullsafe.neverNull
+			count: 1
+			path: usersc/account.php
+
+		-
+			message: '#^Function randomstring not found\.$#'
+			identifier: function.notFound
+			count: 1
+			path: usersc/classes/Owner.php
+
+		-
+			message: '#^File ends with a trailing whitespace\. This may cause problems when running the code in the web browser\. Remove the closing \?\> mark or remove the whitespace\.$#'
+			identifier: whitespace.fileEnd
+			count: 1
+			path: usersc/includes/admin_panel_buttons.php
+
+		-
+			message: '#^Variable \$dropdownString might not be defined\.$#'
+			identifier: variable.undefined
+			count: 1
+			path: usersc/includes/database_navigation_hooks_dropdown.php
+
+		-
+			message: '#^Variable \$userdetails might not be defined\.$#'
+			identifier: variable.undefined
+			count: 1
+			path: usersc/includes/example_admin_user_system_settings.php
+
+		-
+			message: '#^Variable \$userId might not be defined\.$#'
+			identifier: variable.undefined
+			count: 1
+			path: usersc/includes/example_admin_user_system_settings_post.php
+
+		-
+			message: '#^Variable \$userdetails might not be defined\.$#'
+			identifier: variable.undefined
+			count: 3
+			path: usersc/includes/example_admin_user_system_settings_post.php
+
+		-
+			message: '#^Variable \$validation might not be defined\.$#'
+			identifier: variable.undefined
+			count: 4
+			path: usersc/includes/example_admin_user_system_settings_post.php
+
+		-
+			message: '#^Variable \$act might not be defined\.$#'
+			identifier: variable.undefined
+			count: 1
+			path: usersc/includes/user_manager_columns.php
+
+		-
+			message: '#^Variable \$maxUsers might not be defined\.$#'
+			identifier: variable.undefined
+			count: 1
+			path: usersc/includes/user_manager_columns.php
+
+		-
+			message: '#^Variable \$uCount might not be defined\.$#'
+			identifier: variable.undefined
+			count: 1
+			path: usersc/includes/user_manager_columns.php
+
+		-
+			message: '#^Access to property \$_errors on an unknown class Validate\.$#'
+			identifier: class.notFound
+			count: 2
+			path: usersc/join.php
+
+		-
+			message: '#^Call to method addError\(\) on an unknown class Validate\.$#'
+			identifier: class.notFound
+			count: 1
+			path: usersc/join.php
+
+		-
+			message: '#^Call to method check\(\) on an unknown class Validate\.$#'
+			identifier: class.notFound
+			count: 1
+			path: usersc/join.php
+
+		-
+			message: '#^Call to method passed\(\) on an unknown class Validate\.$#'
+			identifier: class.notFound
+			count: 1
+			path: usersc/join.php
+
+		-
+			message: '#^Function currentPage not found\.$#'
+			identifier: function.notFound
+			count: 4
+			path: usersc/join.php
+
+		-
+			message: '#^Function email_body not found\.$#'
+			identifier: function.notFound
+			count: 1
+			path: usersc/join.php
+
+		-
+			message: '#^Function getMyHooks not found\.$#'
+			identifier: function.notFound
+			count: 3
+			path: usersc/join.php
+
+		-
+			message: '#^Function getRateLimitErrorMessage not found\.$#'
+			identifier: function.notFound
+			count: 2
+			path: usersc/join.php
+
+		-
+			message: '#^Function handleAuthFailure not found\.$#'
+			identifier: function.notFound
+			count: 2
+			path: usersc/join.php
+
+		-
+			message: '#^Function handleAuthSuccess not found\.$#'
+			identifier: function.notFound
+			count: 1
+			path: usersc/join.php
+
+		-
+			message: '#^Function hashVericode not found\.$#'
+			identifier: function.notFound
+			count: 1
+			path: usersc/join.php
+
+		-
+			message: '#^Function includeHook not found\.$#'
+			identifier: function.notFound
+			count: 5
+			path: usersc/join.php
+
+		-
+			message: '#^Function pluginActive not found\.$#'
+			identifier: function.notFound
+			count: 1
+			path: usersc/join.php
+
+		-
+			message: '#^Function randomstring not found\.$#'
+			identifier: function.notFound
+			count: 2
+			path: usersc/join.php
+
+		-
+			message: '#^Function userSpicePasswordStrength not found\.$#'
+			identifier: function.notFound
+			count: 1
+			path: usersc/join.php
+
+		-
+			message: '#^Instantiated class User not found\.$#'
+			identifier: class.notFound
+			count: 1
+			path: usersc/join.php
+
+		-
+			message: '#^Instantiated class Validate not found\.$#'
+			identifier: class.notFound
+			count: 1
+			path: usersc/join.php
+
+		-
+			message: '#^Loose comparison using \=\= between true and true will always evaluate to true\.$#'
+			identifier: equal.alwaysTrue
+			count: 1
+			path: usersc/join.php
+
+		-
+			message: '#^Variable \$email on left side of \?\? always exists and is not nullable\.$#'
+			identifier: nullCoalesce.variable
+			count: 1
+			path: usersc/join.php
+
+		-
+			message: '#^Variable \$errors might not be defined\.$#'
+			identifier: variable.undefined
+			count: 1
+			path: usersc/join.php
+
+		-
+			message: '#^Variable \$settings might not be defined\.$#'
+			identifier: variable.undefined
+			count: 14
+			path: usersc/join.php
+
+		-
+			message: '#^Variable \$username on left side of \?\? always exists and is not nullable\.$#'
+			identifier: nullCoalesce.variable
+			count: 1
+			path: usersc/join.php
+
+		-
+			message: '#^Variable \$lang might not be defined\.$#'
+			identifier: variable.undefined
+			count: 1
+			path: usersc/lang/en-US.php
+
+		-
+			message: '#^Call to method check\(\) on an unknown class Validate\.$#'
+			identifier: class.notFound
+			count: 1
+			path: usersc/login.php
+
+		-
+			message: '#^Call to method getUserSecret\(\) on an unknown class TOTPHandler\.$#'
+			identifier: class.notFound
+			count: 2
+			path: usersc/login.php
+
+		-
+			message: '#^Call to method invalidateBackupCode\(\) on an unknown class TOTPHandler\.$#'
+			identifier: class.notFound
+			count: 1
+			path: usersc/login.php
+
+		-
+			message: '#^Call to method isTOTPEnabled\(\) on an unknown class TOTPHandler\.$#'
+			identifier: class.notFound
+			count: 1
+			path: usersc/login.php
+
+		-
+			message: '#^Call to method verifyBackupCode\(\) on an unknown class TOTPHandler\.$#'
+			identifier: class.notFound
+			count: 1
+			path: usersc/login.php
+
+		-
+			message: '#^Call to method verifyCode\(\) on an unknown class TOTPHandler\.$#'
+			identifier: class.notFound
+			count: 2
+			path: usersc/login.php
+
+		-
+			message: '#^Call to static method get\(\) on an unknown class Config\.$#'
+			identifier: class.notFound
+			count: 3
+			path: usersc/login.php
+
+		-
+			message: '#^Function getMyHooks not found\.$#'
+			identifier: function.notFound
+			count: 5
+			path: usersc/login.php
+
+		-
+			message: '#^Function getRateLimitErrorMessage not found\.$#'
+			identifier: function.notFound
+			count: 2
+			path: usersc/login.php
+
+		-
+			message: '#^Function handleAuthFailure not found\.$#'
+			identifier: function.notFound
+			count: 3
+			path: usersc/login.php
+
+		-
+			message: '#^Function handleAuthSuccess not found\.$#'
+			identifier: function.notFound
+			count: 3
+			path: usersc/login.php
+
+		-
+			message: '#^Function includeHook not found\.$#'
+			identifier: function.notFound
+			count: 9
+			path: usersc/login.php
+
+		-
+			message: '#^Function passwordsAllowed not found\.$#'
+			identifier: function.notFound
+			count: 1
+			path: usersc/login.php
+
+		-
+			message: '#^Function safeJsonEncodeForJs not found\.$#'
+			identifier: function.notFound
+			count: 1
+			path: usersc/login.php
+
+		-
+			message: '#^Function safeReturn not found\.$#'
+			identifier: function.notFound
+			count: 1
+			path: usersc/login.php
+
+		-
+			message: '#^Function tokenHere not found\.$#'
+			identifier: function.notFound
+			count: 3
+			path: usersc/login.php
+
+		-
+			message: '#^Instantiated class TOTPHandler not found\.$#'
+			identifier: class.notFound
+			count: 1
+			path: usersc/login.php
+
+		-
+			message: '#^Instantiated class User not found\.$#'
+			identifier: class.notFound
+			count: 1
+			path: usersc/login.php
+
+		-
+			message: '#^Instantiated class Validate not found\.$#'
+			identifier: class.notFound
+			count: 1
+			path: usersc/login.php
+
+		-
+			message: '#^Variable \$bottomClass might not be defined\.$#'
+			identifier: variable.undefined
+			count: 2
+			path: usersc/login.php
+
+		-
+			message: '#^Variable \$config might not be defined\.$#'
+			identifier: variable.undefined
+			count: 1
+			path: usersc/login.php
+
+		-
+			message: '#^Variable \$currentSessionName might not be defined\.$#'
+			identifier: variable.undefined
+			count: 29
+			path: usersc/login.php
+
+		-
+			message: '#^Variable \$forgotClass might not be defined\.$#'
+			identifier: variable.undefined
+			count: 1
+			path: usersc/login.php
+
+		-
+			message: '#^Variable \$regClass might not be defined\.$#'
+			identifier: variable.undefined
+			count: 1
+			path: usersc/login.php
+
+		-
+			message: '#^Variable \$settings might not be defined\.$#'
+			identifier: variable.undefined
+			count: 12
+			path: usersc/login.php
+
+		-
+			message: '#^Variable \$oSettings might not be defined\.$#'
+			identifier: variable.undefined
+			count: 2
+			path: usersc/oauth_client/login_scripts/default_login_script.php
+
+		-
+			message: '#^Variable \$theNewId might not be defined\.$#'
+			identifier: variable.undefined
+			count: 3
+			path: usersc/oauth_client/login_scripts/default_login_script.php
+
+		-
+			message: '#^Function passwordsAllowed not found\.$#'
+			identifier: function.notFound
+			count: 1
+			path: usersc/oauth_server/login_forms/default_login.php
+
+		-
+			message: '#^Variable \$authData might not be defined\.$#'
+			identifier: variable.undefined
+			count: 1
+			path: usersc/oauth_server/login_forms/default_login.php
+
+		-
+			message: '#^Variable \$settings might not be defined\.$#'
+			identifier: variable.undefined
+			count: 4
+			path: usersc/oauth_server/login_forms/default_login.php
+
+		-
+			message: '#^Variable \$oauthSettings might not be defined\.$#'
+			identifier: variable.undefined
+			count: 1
+			path: usersc/oauth_server/login_scripts/default_script.php
+
+		-
+			message: '#^Function fetchUserPermissions not found\.$#'
+			identifier: function.notFound
+			count: 1
+			path: usersc/plugins/hooker/hooks/sample_hook.php
+
+		-
+			message: '#^Variable \$thatUser might not be defined\.$#'
+			identifier: variable.undefined
+			count: 5
+			path: usersc/plugins/hooker/hooks/user_form_hook.php
+
+		-
+			message: '#^If condition is always false\.$#'
+			identifier: if.alwaysFalse
+			count: 2
+			path: usersc/scripts/after_user_deletion.php
+
+		-
+			message: '#^Variable \$id might not be defined\.$#'
+			identifier: variable.undefined
+			count: 1
+			path: usersc/scripts/after_user_deletion.php
+
+		-
+			message: '#^Variable \$o might not be defined\.$#'
+			identifier: variable.undefined
+			count: 1
+			path: usersc/scripts/datepicker.php
+
+		-
+			message: '#^Variable \$o might not be defined\.$#'
+			identifier: variable.undefined
+			count: 1
+			path: usersc/scripts/datetimepicker.php
+
+		-
+			message: '#^Instantiated class User not found\.$#'
+			identifier: class.notFound
+			count: 1
+			path: usersc/scripts/during_user_creation.php
+
+		-
+			message: '#^Variable \$theNewId might not be defined\.$#'
+			identifier: variable.undefined
+			count: 5
+			path: usersc/scripts/during_user_creation.php
+
+		-
+			message: '#^Function currentPage not found\.$#'
+			identifier: function.notFound
+			count: 2
+			path: usersc/scripts/passwordless_login_overrides.php
+
+		-
+			message: '#^Function echousername not found\.$#'
+			identifier: function.notFound
+			count: 1
+			path: usersc/templates/customizer/file_nav_custom.php
+
+		-
+			message: '#^Variable \$settings might not be defined\.$#'
+			identifier: variable.undefined
+			count: 2
+			path: usersc/templates/customizer/file_nav_custom.php
+
+		-
+			message: '#^Call to method display\(\) on an unknown class Menu\.$#'
+			identifier: class.notFound
+			count: 1
+			path: usersc/templates/customizer/navigation.php
+
+		-
+			message: '#^Function err not found\.$#'
+			identifier: function.notFound
+			count: 1
+			path: usersc/templates/customizer/navigation.php
+
+		-
+			message: '#^Instantiated class Menu not found\.$#'
+			identifier: class.notFound
+			count: 2
+			path: usersc/templates/customizer/navigation.php
+
+		-
+			message: '#^Variable \$settings might not be defined\.$#'
+			identifier: variable.undefined
+			count: 2
+			path: usersc/templates/customizer/navigation.php
+
+		-
+			message: '#^Call to method check\(\) on an unknown class Validate\.$#'
+			identifier: class.notFound
+			count: 6
+			path: usersc/user_settings.php
+
+		-
+			message: '#^Call to method errors\(\) on an unknown class Validate\.$#'
+			identifier: class.notFound
+			count: 6
+			path: usersc/user_settings.php
+
+		-
+			message: '#^Call to method passed\(\) on an unknown class Validate\.$#'
+			identifier: class.notFound
+			count: 5
+			path: usersc/user_settings.php
+
+		-
+			message: '#^Function email_body not found\.$#'
+			identifier: function.notFound
+			count: 1
+			path: usersc/user_settings.php
+
+		-
+			message: '#^Function passwordResetKillSessions not found\.$#'
+			identifier: function.notFound
+			count: 1
+			path: usersc/user_settings.php
+
+		-
+			message: '#^Function randomstring not found\.$#'
+			identifier: function.notFound
+			count: 2
+			path: usersc/user_settings.php
+
+		-
+			message: '#^Instantiated class User not found\.$#'
+			identifier: class.notFound
+			count: 1
+			path: usersc/user_settings.php
+
+		-
+			message: '#^Instantiated class Validate not found\.$#'
+			identifier: class.notFound
+			count: 1
+			path: usersc/user_settings.php
+
+		-
+			message: '#^Variable \$currentPage might not be defined\.$#'
+			identifier: variable.undefined
+			count: 2
+			path: usersc/user_settings.php
+
+		-
+			message: '#^Variable \$master_account might not be defined\.$#'
+			identifier: variable.undefined
+			count: 1
+			path: usersc/user_settings.php
+
+		-
+			message: '#^Variable \$profiledetails might not be defined\.$#'
+			identifier: variable.undefined
+			count: 12
+			path: usersc/user_settings.php
+
+		-
+			message: '#^Variable \$settings might not be defined\.$#'
+			identifier: variable.undefined
+			count: 18
+			path: usersc/user_settings.php
+
+		-
+			message: '#^Variable \$email might not be defined\.$#'
+			identifier: variable.undefined
+			count: 1
+			path: usersc/views/_email_template_forgot_password.php
+
+		-
+			message: '#^Variable \$fname might not be defined\.$#'
+			identifier: variable.undefined
+			count: 1
+			path: usersc/views/_email_template_forgot_password.php
+
+		-
+			message: '#^Variable \$reset_vericode_expiry might not be defined\.$#'
+			identifier: variable.undefined
+			count: 1
+			path: usersc/views/_email_template_forgot_password.php
+
+		-
+			message: '#^Variable \$user_id might not be defined\.$#'
+			identifier: variable.undefined
+			count: 1
+			path: usersc/views/_email_template_forgot_password.php
+
+		-
+			message: '#^Variable \$vericode might not be defined\.$#'
+			identifier: variable.undefined
+			count: 1
+			path: usersc/views/_email_template_forgot_password.php
+
+		-
+			message: '#^Variable \$email might not be defined\.$#'
+			identifier: variable.undefined
+			count: 1
+			path: usersc/views/_email_template_verify.php
+
+		-
+			message: '#^Variable \$fname might not be defined\.$#'
+			identifier: variable.undefined
+			count: 1
+			path: usersc/views/_email_template_verify.php
+
+		-
+			message: '#^Variable \$join_vericode_expiry might not be defined\.$#'
+			identifier: variable.undefined
+			count: 1
+			path: usersc/views/_email_template_verify.php
+
+		-
+			message: '#^Variable \$user_id might not be defined\.$#'
+			identifier: variable.undefined
+			count: 1
+			path: usersc/views/_email_template_verify.php
+
+		-
+			message: '#^Variable \$vericode might not be defined\.$#'
+			identifier: variable.undefined
+			count: 1
+			path: usersc/views/_email_template_verify.php
+
+		-
+			message: '#^Variable \$fname might not be defined\.$#'
+			identifier: variable.undefined
+			count: 1
+			path: usersc/views/_email_template_verify_new.php
+
+		-
+			message: '#^Variable \$join_vericode_expiry might not be defined\.$#'
+			identifier: variable.undefined
+			count: 1
+			path: usersc/views/_email_template_verify_new.php
+
+		-
+			message: '#^Variable \$errors might not be defined\.$#'
+			identifier: variable.undefined
+			count: 1
+			path: usersc/views/_forgot_password.php
+
+		-
+			message: '#^Variable \$settings might not be defined\.$#'
+			identifier: variable.undefined
+			count: 1
+			path: usersc/views/_forgot_password_sent.php
+
+		-
+			message: '#^Function includeHook not found\.$#'
+			identifier: function.notFound
+			count: 2
+			path: usersc/views/_join.php
+
+		-
+			message: '#^Variable \$email might not be defined\.$#'
+			identifier: variable.undefined
+			count: 1
+			path: usersc/views/_join.php
+
+		-
+			message: '#^Variable \$fname might not be defined\.$#'
+			identifier: variable.undefined
+			count: 1
+			path: usersc/views/_join.php
+
+		-
+			message: '#^Variable \$form_valid might not be defined\.$#'
+			identifier: variable.undefined
+			count: 3
+			path: usersc/views/_join.php
+
+		-
+			message: '#^Variable \$hooks might not be defined\.$#'
+			identifier: variable.undefined
+			count: 2
+			path: usersc/views/_join.php
+
+		-
+			message: '#^Variable \$lname might not be defined\.$#'
+			identifier: variable.undefined
+			count: 1
+			path: usersc/views/_join.php
+
+		-
+			message: '#^Variable \$settings might not be defined\.$#'
+			identifier: variable.undefined
+			count: 1
+			path: usersc/views/_join.php
+
+		-
+			message: '#^Function checkAccess not found\.$#'
+			identifier: function.notFound
+			count: 1
+			path: usersc/widgets/settings/widget.php
+
+		-
+			message: '#^Variable \$widgetName might not be defined\.$#'
+			identifier: variable.undefined
+			count: 9
+			path: usersc/widgets/settings/widget.php
+
+		-
+			message: '#^Function checkAccess not found\.$#'
+			identifier: function.notFound
+			count: 1
+			path: usersc/widgets/tools/widget.php
+
+		-
+			message: '#^Offset 3 on array\{''Bug Report'', ''bug\.png'', ''bugs'', '''', ''Find a bug in…''\}\|array\{''Classic Menu'', ''navigation\.png'', ''nav'', '''', ''If you still use…''\}\|array\{''Cron Manager'', ''cron\.png'', ''cron'', '''', ''This is a place to…''\}\|array\{''Dashboard Style'', ''customize_dash\.png'', '''', non\-falsy\-string, ''Customize the look…''\}\|array\{''IP Manager'', ''ip\.png'', ''ip'', '''', ''Manage IP…''\}\|array\{''OAuth Client'', ''oauth_client\.png'', ''oauth_client'', '''', ''Connect to other…''\}\|array\{''OAuth Server'', ''oauth\.png'', ''oauth'', '''', ''Manage OAuth…''\}\|array\{''Page Manager'', ''pages\.png'', ''pages'', '''', ''Decide which…''\}\|array\{''Permissions & Tags'', ''permissions\.png'', ''permissions'', '''', ''Manage the…''\}\|array\{''Plugin Manager'', ''plugin\.png'', ''plugins'', '''', ''Activate,…''\}\|array\{''Security Logs'', ''security\.png'', ''security_logs'', '''', ''View logs of…''\}\|array\{''Spice Shaker'', ''spice\.png'', ''spice'', '''', ''Download official…''\}\|array\{''System Logs'', ''logs\.png'', ''logs'', '''', ''View logs of system…''\}\|array\{''Template Style'', ''customize_front\.png'', '''', non\-falsy\-string, ''Customize the look…''\}\|array\{''Templates'', ''templates\.png'', ''templates'', '''', ''Activate and…''\}\|array\{''Updates'', ''update\.png'', ''updates'', '''', ''Download updates…''\}\|array\{''User Manager'', ''user\.png'', ''users'', '''', ''Manage the info and…''\} in isset\(\) always exists and is not nullable\.$#'
+			identifier: isset.offset
+			count: 1
+			path: usersc/widgets/tools/widget.php
+
+		-
+			message: '#^Variable \$settings might not be defined\.$#'
+			identifier: variable.undefined
+			count: 1
+			path: usersc/widgets/tools/widget.php
+
+		-
+			message: '#^Variable \$widgetName might not be defined\.$#'
+			identifier: variable.undefined
+			count: 9
+			path: usersc/widgets/tools/widget.php
