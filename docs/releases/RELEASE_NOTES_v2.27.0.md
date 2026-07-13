@@ -17,6 +17,7 @@ None.
 
 ### Improvements
 
+- **Owner Privilege Escalation Guard** ([#1232](https://github.com/unibrain1/elanregistry/issues/1232)): Removed `active` and `permissions` from `Owner::extractUserFields()` allowlist; changed the `validateAndSanitizeFields()` default case to drop unknown fields instead of passing them through. Prevents any future endpoint from accidentally writing these privilege-controlling columns via the general profile-update path.
 - **Server Hardening** ([#1242](https://github.com/unibrain1/elanregistry/issues/1242)): Blocked web access to PHPUnit config, PHPStan config, and npm manifests; disabled HTTP TRACE; added Permissions-Policy header opting out of geolocation, camera, microphone, and payment APIs.
 - **CSP Tightening** ([#1326](https://github.com/unibrain1/elanregistry/issues/1326)): Added `form-action 'self'` to the Content Security Policy (closing a form-hijacking gap that `default-src` doesn't cover); removed `unsafe-eval` from `script-src` after verifying no custom JS uses `eval()` or `new Function()`.
 - **Backup Authorization** ([#1308](https://github.com/unibrain1/elanregistry/issues/1308)): Backup and restore operations now require Administrator role; editor accounts are explicitly rejected.

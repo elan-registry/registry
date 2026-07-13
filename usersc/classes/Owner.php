@@ -712,10 +712,9 @@ class Owner
                     break;
 
                 default:
-                    // Pass through other fields without validation (for flexibility)
-                    if (!empty($value)) {
-                        $validatedFields[$key] = $value;
-                    }
+                    // Unknown fields are silently dropped — security control to prevent
+                    // privilege-escalating columns (active, permissions) from reaching the DB.
+                    // To support a new field, add an explicit validated case above.
                     break;
             }
         }
@@ -724,14 +723,17 @@ class Owner
     }
 
     /**
-     * Extract user table fields from input array
+     * Extract user table fields from input array.
+     *
+     * Privilege-controlling columns (active, permissions) are intentionally
+     * absent — they must never be writable via the general Owner::update() path.
      *
      * @param array $fields Input fields array
      * @return array Fields that belong to users table
      */
     private function extractUserFields(array $fields): array
     {
-        $userFieldNames = ['fname', 'lname', 'email', 'username', 'password', 'active', 'permissions'];
+        $userFieldNames = ['fname', 'lname', 'email', 'password'];
         return array_intersect_key($fields, array_flip($userFieldNames));
     }
 
