@@ -156,7 +156,7 @@ class Owner
 
             // Create user record
             $userFields['join_date'] = date(AppConstants::DATETIME_FORMAT);
-            $userFields['vericode'] = randomstring(15);
+            $userFields['vericode'] = randomString(15);
 
             if (!$this->_db->insert($this->userTableName, $userFields)) {
                 throw OwnerCreationException::withUserMessage(
