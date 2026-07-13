@@ -30,7 +30,9 @@ $referer        = '';
 $user_agent     = '';
 
 // UserSpice auth/DB context set by users/init.php
+/** @var mixed $user */
 $user = null;
+/** @var mixed $db */
 $db   = null;
 
 require_once __DIR__ . '/usersc/includes/config.php';

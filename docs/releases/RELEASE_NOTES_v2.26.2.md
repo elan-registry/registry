@@ -63,4 +63,4 @@ None — all changes in this release are internal infrastructure and refactoring
 - [#1254](https://github.com/unibrain1/elanregistry/issues/1254) — chore: add composer install and phinx migrate to deployment hooks; single self-configuring hook replaces prod/test variants; swap ElanRegistryAutoloader for vendor/autoload.php
 - [#1273](https://github.com/unibrain1/elanregistry/issues/1273) — chore: migrate logs table from MyISAM to InnoDB on dev and prod
 - [#1274](https://github.com/unibrain1/elanregistry/issues/1274) — chore: migrate fix_script_runs to utf8mb4 charset and enforce completed_at NOT NULL on all environments
-- [#1317](https://github.com/unibrain1/elanregistry/issues/1317) — tech-debt: extend PHPStan analysis to app/ and consolidate the split composer.json
+- [#1317](https://github.com/unibrain1/elanregistry/issues/1317) — tech-debt: extend PHPStan analysis to full repo with fix-when-you-touch-it enforcement
