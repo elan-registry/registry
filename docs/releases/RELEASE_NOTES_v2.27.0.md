@@ -17,6 +17,7 @@ None.
 
 ### Improvements
 
+- **Server Hardening** ([#1242](https://github.com/unibrain1/elanregistry/issues/1242)): Blocked web access to PHPUnit config, PHPStan config, and npm manifests; disabled HTTP TRACE; added Permissions-Policy header opting out of geolocation, camera, microphone, and payment APIs.
 - **Backup Authorization** ([#1308](https://github.com/unibrain1/elanregistry/issues/1308)): Backup and restore operations now require Administrator role; editor accounts are explicitly rejected.
 - **Admin Script CSRF Hardening** ([#1308](https://github.com/unibrain1/elanregistry/issues/1308)): Destructive admin maintenance scripts now require POST + CSRF token; the fix-script template has been updated so future scripts inherit this pattern.
 
