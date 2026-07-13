@@ -3,7 +3,7 @@
 # ElanRegistry — Where We Diverge from Standard UserSpice
 
 Read the shipped UserSpice prompts first (`00_start_here`, `secure_page_pattern`, etc.).
-This file documents the **four places where ElanRegistry does things differently**.
+This file documents the **five places where ElanRegistry does things differently**.
 When the shipped prompts and this file conflict, **this file wins**.
 
 ---
@@ -157,7 +157,7 @@ vendor/bin/phpstan analyse app/api/cars/save.php   # check the file you modified
 composer phpstan:baseline                            # drop entries you just fixed
 ```
 
-This is the "fix-when-you-touch-it" workflow — don't leave a file with more errors than it had before you touched it, and use each touch as an opportunity to clear its existing debt.
+This is the "fix-when-you-touch-it" workflow: never leave a file with more errors than it had, and treat each touch as a chance to clear its existing debt.
 
 See `docs/development/CODING_STANDARDS.md` — PHPStan Baseline Hygiene.
 

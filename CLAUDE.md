@@ -26,7 +26,7 @@ shipped prompts starting at:
 `usersc/plugins/ai_prompts/prompts/00_start_here.md.php`
 Then load ElanRegistry-specific augmentation from `custom_prompts/`:
 
-- `elanregistry_overrides` — four places ElanRegistry diverges from standard UserSpice
+- `elanregistry_overrides` — five places ElanRegistry diverges from standard UserSpice
 - `elanregistry_classes` — Car, Owner, ApiResponse, LogCategories, and others
 - `elanregistry_directories` — `app/` subtree, `$path` in `z_us_root.php`, parsers location
 - `elanregistry_database` — DB Explainer workflow and ElanRegistry-specific tables
