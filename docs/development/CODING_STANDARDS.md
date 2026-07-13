@@ -175,9 +175,10 @@ explicit list of project-owned paths (see the `paths` block in the config);
 `users/` upstream and `tests/` are out of scope. Pre-existing errors are
 captured in `phpstan-baseline.neon`.
 
-**When you touch a file in `app/` or `usersc/`:** run PHPStan on it and fix
-**all** errors it reports that are not already in the baseline. Then regenerate
-the baseline to drop the entries you resolved.
+**When you touch any project-owned PHP file:** run PHPStan on it and fix
+**all** errors it reports. The baseline silently suppresses pre-existing errors,
+so anything PHPStan reports is new. Then regenerate the baseline to drop the
+entries you resolved.
 
 ```bash
 # Check the file you modified

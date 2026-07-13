@@ -9,7 +9,7 @@ includes:
 #
 # Usage:
 #   vendor/bin/phpstan analyse
-#   vendor/bin/phpstan analyse --generate-baseline
+#   composer phpstan:baseline   # regenerate baseline (adds required flags)
 #
 # Documentation: https://phpstan.org/
 
@@ -51,7 +51,8 @@ parameters:
         - */node_modules/*
         - */_ARCHIVE/*
         - users/
-        # Template intentionally has placeholder code — no baseline entries should ever clear
+        # Excluded because its placeholder code generates errors that can never be fixed;
+        # keeping it out of scope prevents those errors from entering the baseline.
         - app/admin/scripts/fix/_TEMPLATE_Fix-Script.php
 
     treatPhpDocTypesAsCertain: false

@@ -147,8 +147,10 @@ frontend client that pairs with these responses.
 Pre-existing errors are captured in `phpstan-baseline.neon`, but `reportUnmatchedIgnoredErrors: true`
 means CI **rejects stale baseline entries** — once you fix an error, its entry must be removed.
 
-**Rule:** whenever you modify a PHP file in `app/` or `usersc/`, run PHPStan on it and fix
-**all** non-baseline errors before committing. Then regenerate the baseline to drop resolved entries.
+**Rule:** whenever you modify a PHP file in `app/`, `usersc/`, or any other path covered by
+`phpstan.neon`, run PHPStan on it and fix **all** errors it reports before committing. The
+baseline silently suppresses pre-existing errors — anything PHPStan reports is new. Then
+regenerate the baseline to drop the entries you resolved.
 
 ```bash
 vendor/bin/phpstan analyse app/api/cars/save.php   # check the file you modified

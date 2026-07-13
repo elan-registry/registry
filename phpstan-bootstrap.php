@@ -1,13 +1,18 @@
 <?php
 
 /**
- * PHPStan bootstrap — stubs UserSpice framework globals so page-level files
- * don't generate false-positive variable.undefined errors for
- * framework-provided context.
+ * PHPStan bootstrap — pre-declares UserSpice framework globals so the
+ * `require_once config.php` at the bottom of this file can resolve
+ * `$abs_us_root` and `$us_url_root` during analysis startup.
  *
- * These are set by z_us_root.php + users/init.php + usersc/includes/server_globals.php
- * in the normal page-load flow, but PHPStan bootstraps in isolation so they
- * must be pre-declared here.
+ * These globals are set by z_us_root.php + users/init.php +
+ * usersc/includes/server_globals.php at runtime, but PHPStan bootstraps in
+ * isolation. The remaining stubs (server_globals globals, $user, $db) are
+ * declared for consistency and IDE completeness.
+ *
+ * Note: these stubs do NOT suppress variable.undefined errors in page files —
+ * bootstrap scope is isolated from the analysed files. That suppression is
+ * handled by the ignoreErrors pattern in phpstan.neon.
  *
  * Page-level variables ($car, $transfer, $settings, etc.) are script-scope
  * locals set via includes and are handled by the generated baseline instead.

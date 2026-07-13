@@ -203,8 +203,9 @@ Never use `$_SERVER` directly. Validated globals (`$php_self`, `$is_https`, `$ho
 - Run appropriate test suites for modified functionality
 
 **PHPStan hygiene (fix-when-you-touch-it):** When modifying any PHP file in
-`app/` or `usersc/`, run PHPStan on it and fix **all** errors not already in
-the baseline:
+`app/`, `usersc/`, or any other path listed in `phpstan.neon`, run PHPStan on
+it and fix **all** errors it reports (the baseline silently suppresses
+pre-existing ones, so anything reported is new):
 
 ```bash
 vendor/bin/phpstan analyse <file>   # check the file you touched
