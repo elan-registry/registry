@@ -16,8 +16,8 @@ use PHPUnit\Framework\Attributes\Group;
 #[Group('server-globals')]
 class SecurityHeadersTest extends TestCase
 {
-    private string $securityHeadersFile;
-    private string $fileContent;
+    private string $securityHeadersFile = '';
+    private string $fileContent = '';
 
     protected function setUp(): void
     {
@@ -199,6 +199,36 @@ class SecurityHeadersTest extends TestCase
             '/Content-Security-Policy:.*frame-ancestors\s+\'self\'/s',
             $this->fileContent,
             'CSP header should contain frame-ancestors directive'
+        );
+    }
+
+    /**
+     * Test that CSP includes form-action 'self' directive
+     *
+     * form-action does not fall back to default-src, so it must be listed
+     * explicitly to prevent form hijacking to attacker-controlled origins.
+     */
+    public function testCspContainsFormAction(): void
+    {
+        $this->assertMatchesRegularExpression(
+            '/Content-Security-Policy:.*form-action\s+\'self\'/s',
+            $this->fileContent,
+            'CSP header should contain form-action \'self\' (form-action does not fall back to default-src)'
+        );
+    }
+
+    /**
+     * Test that CSP script-src does not include unsafe-eval
+     *
+     * No custom JavaScript uses eval() or new Function(), so unsafe-eval
+     * can and must be omitted from script-src.
+     */
+    public function testCspDoesNotContainUnsafeEval(): void
+    {
+        $this->assertDoesNotMatchRegularExpression(
+            '/script-src\s[^;]*\'unsafe-eval\'/',
+            $this->fileContent,
+            'CSP script-src must not contain \'unsafe-eval\' (no eval() or new Function() usage in custom JS)'
         );
     }
 
