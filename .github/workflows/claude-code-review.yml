@@ -21,9 +21,6 @@ name: Claude Code Review
 #                             accuracy, and deployment readiness.
 #
 # Drafts and [skip-review] / [WIP] titles are skipped in both modes.
-# No paths filter — runs on every file type so config, SQL, and template
-# changes are reviewed alongside PHP/JS. Gating is handled by the job-level
-# if: conditions, not by path filtering.
 #
 # Posting mechanism (v1 action):
 #   Claude must explicitly post via `gh pr comment` — the action does not
