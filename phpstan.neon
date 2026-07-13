@@ -2,70 +2,113 @@ includes:
     - phpstan-baseline.neon
 
 # PHPStan Configuration for Elan Registry
-# Static analysis tool to catch type errors and bugs before runtime
+#
+# Scans all project-owned PHP files. Paths are enumerated explicitly so
+# that untracked upstream files in usersc/plugins/, usersc/templates/, and
+# usersc/widgets/ are not picked up on developer machines.
 #
 # Usage:
 #   vendor/bin/phpstan analyse
-#   vendor/bin/phpstan analyse app/
-#   vendor/bin/phpstan analyse --level=6 app/admin/
+#   vendor/bin/phpstan analyse --generate-baseline
 #
 # Documentation: https://phpstan.org/
 
 parameters:
-    # Analysis level (0-9, higher = stricter)
-    # Level 5 is a good balance between strictness and practicality
     level: 5
 
-    # Paths to analyze - limited to class files to avoid UserSpice globals in page files
     paths:
+        # Application
+        - app
+        - docs
+        - error
+        - index.php
+        - phinx.php
+        - scripts
+        - z_us_root.php
+        # UserSpice customizations (project-owned)
+        - usersc/account.php
         - usersc/classes
+        - usersc/includes
+        - usersc/join.php
+        - usersc/lang
+        - usersc/login.php
+        - usersc/oauth_client
+        - usersc/oauth_server
+        - usersc/plugins/ai_prompts/custom_prompts
+        - usersc/plugins/hooker/hooks
+        - usersc/scripts
+        - usersc/templates/customizer/assets/child_themes
+        - usersc/templates/customizer/file_nav_custom.php
+        - usersc/templates/customizer/navigation.php
+        - usersc/user_settings.php
+        - usersc/userspice_core
+        - usersc/views
+        - usersc/widgets/settings
+        - usersc/widgets/tools
 
-    # Paths to exclude
     excludePaths:
         - */vendor/*
         - */node_modules/*
-        - */FIX/_ARCHIVE/*
-        - */tests/*
+        - */_ARCHIVE/*
+        - users/
 
-    # Type checking strictness
+    treatPhpDocTypesAsCertain: false
     checkMissingTypehints: true
     checkExplicitMixedMissingReturn: true
     checkTooWideReturnTypesInProtectedAndPublicMethods: true
-
-    # Specific rules for database type handling
-    # This helps catch the int/string type mismatch issues
-    treatPhpDocTypesAsCertain: false
-
-    # Check for uninitialized properties
     checkUninitializedProperties: true
 
-    # Ignore specific errors (use sparingly)
+    # Baseline entries are strictly enforced: if an entry matches nothing, CI fails,
+    # forcing removal of stale entries as errors are fixed (fix-when-you-touch-it).
+    # Config-level suppressors below are exempt (reportUnmatched: false) because
+    # they are broad framework noise patterns, not file-specific entries.
+    reportUnmatchedIgnoredErrors: true
+
     ignoreErrors:
+        # UserSpice framework classes loaded at runtime via init.php — not autoloadable
+        -
+            message: '#unknown class (DB|Token|Input|User|Redirect|Session|Cookie|Server)#'
+            reportUnmatched: false
+        -
+            message: '#invalid (return )?type (DB|Token|Input|User|Redirect|Session|Cookie)#'
+            reportUnmatched: false
+
+        # UserSpice framework functions loaded at runtime via init.php
+        -
+            message: '#Function (securePage|hasPerm|logger|currentUserId|checkMenu|lang|redirect|passwordStrength|isAdmin|email|usError|usSuccess|deleteUsers|logError|getSettings|checkRateLimit|recordRateLimit|fetchAllUsers|fetchUserDetails|checkPermission|sessionValMessages) not found#'
+            reportUnmatched: false
+
         # UserSpice framework uses mixed types extensively
-        - '#Function \\w+\\(\\) has no return type specified#'
-        - '#Method \\w+::\\w+\\(\\) has parameter \$\\w+ with no type specified#'
+        -
+            message: '#Function \w+\(\) has no return type specified#'
+            reportUnmatched: false
+        -
+            message: '#Method \w+::\w+\(\) has parameter \$\w+ with no type specified#'
+            reportUnmatched: false
 
-        # Allow UserSpice legacy code patterns
-        - '#Unsafe usage of new static\\(\\)#'
-
-        # UserSpice classes/functions loaded at runtime via init.php
-        - '#unknown class (DB|Token|Input|User|Redirect)#'
-        - '#invalid (return )?type (DB|Token|Input|User|Redirect)#'
-        - '#Function \w+ not found#'
+        # UserSpice legacy code patterns
+        -
+            message: '#Unsafe usage of new static\(\)#'
+            reportUnmatched: false
 
         # Database query results return mixed object types
-        - '#Cannot access property .+ on array\|object#'
+        -
+            message: '#Cannot access property .+ on array\|object#'
+            reportUnmatched: false
 
-    # Don't report unmatched ignored errors
-    reportUnmatchedIgnoredErrors: false
+        # Framework globals set by z_us_root.php, users/init.php, server_globals.php.
+        # phpstan-bootstrap.php declares these but bootstrap scope is isolated —
+        # page files still see them as undefined without this pattern.
+        -
+            message: '#Variable \$(abs_us_root|us_url_root|user|db|php_self|is_https|host|method|request_uri|current_url|current_origin|remote_addr|referer|user_agent) might not be defined#'
+            identifier: variable.undefined
+            reportUnmatched: false
 
-    # Bootstrap files — load constants defined outside the analysed classes.
-    # phpstan-bootstrap.php stubs the UserSpice globals ($abs_us_root, $us_url_root)
-    # that config.php needs; those are set by z_us_root.php at runtime but are
-    # undefined when PHPStan bootstraps in isolation.
+        # Relative require_once paths (e.g. ../../users/init.php) can't be
+        # resolved at analysis time — these are valid runtime paths
+        -
+            message: '#Path in require_once\(\) .+ is not a file or it does not exist\.$#'
+            reportUnmatched: false
+
     bootstrapFiles:
         - phpstan-bootstrap.php
-
-# Custom rules (can be added via extensions)
-# extensions:
-#     # Add custom PHPStan extensions here

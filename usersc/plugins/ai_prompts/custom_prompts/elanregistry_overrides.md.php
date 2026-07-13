@@ -141,6 +141,26 @@ frontend client that pairs with these responses.
 
 ---
 
+## 5. PHPStan: fix all errors in files you touch
+
+`phpstan.neon` runs level 5 static analysis over all project-owned PHP files.
+Pre-existing errors are captured in `phpstan-baseline.neon`, but `reportUnmatchedIgnoredErrors: true`
+means CI **rejects stale baseline entries** — once you fix an error, its entry must be removed.
+
+**Rule:** whenever you modify a PHP file in `app/` or `usersc/`, run PHPStan on it and fix
+**all** non-baseline errors before committing. Then regenerate the baseline to drop resolved entries.
+
+```bash
+vendor/bin/phpstan analyse app/api/cars/save.php   # check the file you modified
+composer phpstan:baseline                            # drop entries you just fixed
+```
+
+This is the "fix-when-you-touch-it" workflow — don't leave a file with more errors than it had before you touched it, and use each touch as an opportunity to clear its existing debt.
+
+See `docs/development/CODING_STANDARDS.md` — PHPStan Baseline Hygiene.
+
+---
+
 ## 4. PHP type requirements: strict types and typed signatures everywhere
 
 The shipped prompts show untyped function signatures throughout. ElanRegistry requires

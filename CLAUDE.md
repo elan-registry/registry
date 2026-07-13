@@ -202,6 +202,19 @@ Never use `$_SERVER` directly. Validated globals (`$php_self`, `$is_https`, `$ho
 - Fix any linting or type errors before considering the task complete (pre-commit hooks run PHPStan and phpcs automatically on staged files)
 - Run appropriate test suites for modified functionality
 
+**PHPStan hygiene (fix-when-you-touch-it):** When modifying any PHP file in
+`app/` or `usersc/`, run PHPStan on it and fix **all** errors not already in
+the baseline:
+
+```bash
+vendor/bin/phpstan analyse <file>   # check the file you touched
+composer phpstan:baseline           # regenerate baseline after fixing
+```
+
+Pre-existing baseline errors are tracked debt — clear them for files you touch.
+`reportUnmatchedIgnoredErrors: true` ensures CI rejects stale entries once fixed.
+See `docs/development/CODING_STANDARDS.md` — PHPStan Baseline Hygiene.
+
 ### Playwright Test Maintenance
 
 When adding, moving, removing, or renaming any page, update tests **in the same PR**:

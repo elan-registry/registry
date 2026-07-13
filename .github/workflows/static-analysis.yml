@@ -6,6 +6,7 @@ on:
     paths:
       - "**.php"
       - "phpstan.neon"
+      - "phpstan-baseline.neon"
       - "composer.json"
       - "composer.lock"
       - "**.js"
@@ -16,6 +17,7 @@ on:
     paths:
       - "**.php"
       - "phpstan.neon"
+      - "phpstan-baseline.neon"
       - "**.js"
       - "eslint.config.mjs"
   workflow_dispatch:
@@ -51,7 +53,7 @@ jobs:
       - name: Install dependencies
         run: composer install --no-progress --prefer-dist --optimize-autoloader
 
-      - name: Run PHPStan
+      - name: Run PHPStan (full repo — level 5, baselined)
         run: vendor/bin/phpstan analyse --error-format=github --no-progress
 
   coding-standards:

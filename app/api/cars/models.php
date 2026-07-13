@@ -67,7 +67,6 @@ try {
             ApiResponse::success('Models retrieved')
                 ->withData('models', $options)
                 ->send();
-            /* @phpstan-ignore-next-line */
             break;
 
         case 'getAllYearModels':
@@ -88,7 +87,6 @@ try {
             ApiResponse::success('All models retrieved')
                 ->withData('yearModels', $formatted)
                 ->send();
-            /* @phpstan-ignore-next-line */
             break;
 
         default:

@@ -168,6 +168,34 @@ See [CLAUDE.md](../../CLAUDE.md) for directory structure.
 
 ---
 
+## PHPStan Baseline Hygiene
+
+The project runs a single `phpstan.neon` config at level 5. It analyses an
+explicit list of project-owned paths (see the `paths` block in the config);
+`users/` upstream and `tests/` are out of scope. Pre-existing errors are
+captured in `phpstan-baseline.neon`.
+
+**When you touch a file in `app/` or `usersc/`:** run PHPStan on it and fix
+**all** errors it reports that are not already in the baseline. Then regenerate
+the baseline to drop the entries you resolved.
+
+```bash
+# Check the file you modified
+vendor/bin/phpstan analyse app/api/cars/save.php
+
+# After fixing, remove the resolved baseline entries
+composer phpstan:baseline
+```
+
+`reportUnmatchedIgnoredErrors: true` enforces this mechanically: if you fix an
+error but leave its baseline entry, CI fails. The only safe path is to fix the
+error and regenerate.
+
+The goal is to reduce the baseline over time. Target: below 100 entries → upgrade
+to level 8 (nullable property/method access checks).
+
+---
+
 ## References
 
 - [ERROR_HANDLING.md](ERROR_HANDLING.md) — ApiResponse, exception hierarchy, ElanRegistryAPI
