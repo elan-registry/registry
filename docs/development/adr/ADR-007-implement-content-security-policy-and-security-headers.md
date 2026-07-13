@@ -134,13 +134,14 @@ third-party domains required by the application:
 | Directive | Value | Purpose |
 | --- | --- | --- |
 | `default-src` | `'self'` | Catch-all fallback for unlisted resource types |
-| `script-src` | `'self' 'unsafe-inline' 'unsafe-eval'` + CDN domains | Allow UserSpice inline JS and all CDN script sources |
+| `script-src` | `'self' 'unsafe-inline'` + CDN domains | Allow UserSpice inline JS and all CDN script sources |
 | `style-src` | `'self' 'unsafe-inline'` + CDN domains | Allow Bootstrap/Bootswatch/FontAwesome inline and CDN styles |
 | `img-src` | `'self' data: blob:` + image domains | Allow embedded SVGs (`data:`), canvas exports (`blob:`), MapLibre GL JS / VersaTiles map tiles (`https://tiles.versatiles.org`), Gravatar avatars |
 | `font-src` | `'self'` + font CDN domains | FontAwesome kit and Google Fonts |
 | `connect-src` | `'self'` + API domains | AJAX calls to application endpoints, MapLibre GL JS tile fetches (`https://tiles.versatiles.org`), Cloudflare Analytics beacon |
 | `frame-src` | `'self' https://challenges.cloudflare.com` | Cloudflare Turnstile CAPTCHA iframe on registration page |
 | `frame-ancestors` | `'self'` | Anti-clickjacking: prevents cross-origin iframes (CSP3, preferred method) |
+| `form-action` | `'self'` | Restricts form POST targets to same-origin (does not fall back to `default-src`, must be set explicitly) |
 | `object-src` | `'none'` | Blocks Flash/plugin embeds entirely |
 | `base-uri` | `'self'` | Prevents`<base>` tag injection attacks that redirect relative URLs |
 
@@ -309,10 +310,10 @@ header("Content-Security-Policy: frame-ancestors 'self'");
 ```
 
 This minimal CSP covers only `frame-ancestors` (the anti-clickjacking directive)
-rather than the full application CSP. The error pages do not load CDN resources
-that would require a full whitelist; they only load Bootstrap from
-`cdn.jsdelivr.net` directly in the HTML. The full application CSP (from
-`security_headers.php`) is emitted if `init.php` succeeds; if it fails, the
+rather than the full application CSP. The error pages load Bootstrap CSS and JS
+from self-hosted assets (`usersc/css/` and `usersc/js/`), which `'self'` covers,
+so no CDN domains need to be whitelisted in the fallback. The full application CSP
+(from `security_headers.php`) is emitted if `init.php` succeeds; if it fails, the
 fallback CSP at minimum prevents clickjacking.
 
 Additionally, if `init.php` fails to load on an error page, the error page
@@ -366,6 +367,7 @@ via HTTP response inspection.
 | 2026-04-22 | Replace reCAPTCHA CSP entries with Cloudflare Turnstile | #630 |
 | 2026-04-27 | Remove 11 stale/library CDN domains from CSP allowlist (libraries self-hosted per ADR-015) | #405 |
 | 2026-05-06 | Remove Google Maps domains (`maps.googleapis.com`, `maps.gstatic.com`, `gstatic.com`, `ssl.gstatic.com`, `www.gstatic.com`) from CSP allowlist; add `https://tiles.versatiles.org` to `img-src` and `connect-src` for MapLibre GL JS tile fetches | v2.22.0 |
+| 2026-07-13 | Add `form-action 'self'` directive; remove `'unsafe-eval'` from `script-src` (grep-verified: no `eval()` or `new Function()` in first-party JS under `app/assets/js/`, `app/admin/assets/`, `usersc/js/`, or inline `<script>` blocks in customizer templates) | #1326 |
 
 > **2026-04-27 (#405):** Removed the following domains from the CSP allowlist:
 >
@@ -380,7 +382,7 @@ via HTTP response inspection.
 > Font Awesome is served from `users/fonts/css/`. Remaining CDN domains
 > (`cdn.jsdelivr.net`, `cdnjs.cloudflare.com`) will be removed in #618 when
 > Bootstrap migrates to self-hosted.
-
+>
 > **2026-05-06 (v2.22.0):** Removed all Google Maps related domains from the
 > CSP allowlist: `https://maps.googleapis.com`, `https://maps.gstatic.com`,
 > `https://gstatic.com`, `https://ssl.gstatic.com`, and
@@ -415,20 +417,96 @@ leaking to CDN analytics and tracking endpoints. The PHP value should be updated
 to match the Apache value, or the Apache value should be removed to eliminate
 the duplicate header entirely.
 
-### `'unsafe-inline'`and`'unsafe-eval'` Limitations
+### `'unsafe-inline'` Limitation
 
 The CSP does not eliminate XSS risk from inline scripts because `'unsafe-inline'`
-and `'unsafe-eval'`are present in`script-src`. These are required by the
-UserSpice framework (ADR-001 constraint) and cannot be removed without forking
-the framework. The CSP still provides value via:
+is still present in `script-src`. It is required to keep three upstream UserSpice
+customizer template files working (see the CSP Migration Plan below). The CSP
+still provides value via:
 
 - `object-src 'none'` — blocks plugin-based execution
 - `base-uri 'self'` — prevents base tag injection
 - `frame-ancestors 'self'` — prevents clickjacking
+- `form-action 'self'` — prevents form hijacking to attacker-controlled origins (added #1326)
 - CDN domain allowlists — prevents loading scripts from arbitrary external domains
 
-A strict CSP (without `'unsafe-inline'`) requires a full Bootstrap 5 migration
-and UserSpice framework refactoring, tracked separately.
+`'unsafe-eval'` was removed in #1326 after grep-verifying that no `eval()` or
+`new Function()` calls exist in custom application JavaScript.
+
+### CSP Migration Plan
+
+Full removal of `'unsafe-inline'` from `script-src` is being executed in three
+tracked issues within milestone v2.27.0:
+
+**Phase A — CSP quick wins (#1326, this ADR revision):**
+
+- Add `form-action 'self'` (closes a form-hijacking gap left by the fact that
+  `form-action` does not fall back to `default-src`).
+- Remove `'unsafe-eval'` from `script-src` (no custom JS uses `eval()` or
+  `new Function()`).
+- No template changes required. Independent of A/B/C.
+
+**Phase B — Admin inline JS extraction (#1327):**
+
+- Extract inline `<script>` blocks from admin-only templates (`app/admin/*.php`
+  and the admin dashboard partials) into external files under
+  `app/admin/assets/js/`.
+- Admin surface is smaller and lower-risk to iterate on, so it is sequenced
+  before the user-facing phase.
+- No CSP directive change in this phase — `unsafe-inline` remains in place
+  because user-facing pages still emit inline scripts.
+
+**Phase C — User-facing inline JS extraction + flip `unsafe-inline` (#1328):**
+
+- Extract inline `<script>` blocks from user-facing pages (`app/owner/*.php`,
+  `usersc/includes/footer.php`, `usersc/join.php`, and any hook files that
+  emit inline JS) into external files under `app/assets/js/`.
+- Once the extraction is complete and validated by the Playwright CSP suite,
+  remove `'unsafe-inline'` from `script-src`.
+- Depends on Phase B being merged so any shared admin/user JS has already
+  been externalised.
+
+**Upstream-template exception (documented, deliberate):**
+
+Three files in `usersc/templates/customizer/` contain UserSpice framework
+markup that CLAUDE.md forbids modifying:
+
+- `usersc/templates/customizer/header.php`
+- `usersc/templates/customizer/footer.php`
+- `usersc/templates/customizer/customize.php`
+
+These files emit small inline `<script>` blocks that are part of the
+customizer template's own initialization. Because we cannot edit them without
+diverging from upstream UserSpice, phase C will leave them under one of:
+
+1. **Nonce-wiring (verify before committing)** — `$userspice_nonce` is a
+   UserSpice framework variable, currently unpopulated in production (see Nonce
+   Variable Inconsistency below), with `nonce="…"` attributes already present
+   on some `<script>` tags in `header.php` and `customize.php`. However,
+   `customize.php` also contains at least two bare inline `<script>` blocks
+   (around lines 1668 and 1908) with no `nonce` attribute — these would be
+   blocked by a nonce-based CSP without upstream edits. Audit every inline
+   `<script>` in all three customizer template files before choosing this option.
+   If all carry nonce attributes: populate the variable and add
+   `'nonce-{$userspice_nonce}'` to `script-src` — no upstream edits required.
+   If any bare blocks remain, this option is not viable without modifying
+   upstream files.
+2. **Hash-allowlisting** — pre-compute SHA-256 hashes of the exact inline
+   script bodies and add `'sha256-…'` entries to `script-src`. Viable only if
+   the inline blocks are fully static (no per-request PHP-generated values).
+   If any block is dynamic, hashing fails on every request.
+3. **Documented exception** — if neither option above is viable, keep the
+   templates as-is and record the residual `unsafe-inline` exposure here. The
+   exception is bounded because the affected files are limited to the
+   customizer template surface.
+
+Phase C will pick between these three once the inline blocks are audited.
+Start with nonce-wiring (Option 1) — the plumbing already exists.
+
+**Nonce-based CSP** is still rejected for the same reasons as the retroactive
+decision (see Alternatives Considered) — UserSpice framework code emits
+inline JS that we cannot annotate with `nonce="…"` attributes without forking
+the framework.
 
 ### Nonce Variable Inconsistency
 
