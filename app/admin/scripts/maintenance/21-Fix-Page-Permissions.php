@@ -1479,7 +1479,7 @@ function abortProcess() {
 
 <!-- Return buttons -->
 <div style="margin-top: 20px; text-align: center;">
-    <?= admin_script_close_button() ?>
+    <?= admin_script_close_button('', '../../maintenance.php?tab=maintenance') ?>
     <button onclick="window.location.href='../../maintenance.php?tab=maintenance';" class="btn btn-outline-secondary ml-2">
         <i class="fa fa-list" aria-hidden="true"></i> FIX Menu
     </button>

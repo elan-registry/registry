@@ -48,13 +48,21 @@ function admin_script_start_form(
 /**
  * Returns the HTML for a "Close Window" button.
  * Closes the script window; if an opener window exists, reloads it first.
+ * If the window has no opener (e.g. direct URL access), navigates to $fallbackUrl instead.
  *
- * @param string $extraClass Additional Bootstrap/custom classes to append
+ * @param string $extraClass  Additional Bootstrap/custom classes to append
+ * @param string $fallbackUrl URL to navigate to when window.opener is absent (e.g. '../../maintenance.php?tab=maintenance')
  */
-function admin_script_close_button(string $extraClass = ''): string
+function admin_script_close_button(string $extraClass = '', string $fallbackUrl = ''): string
 {
     $cls = trim('btn btn-primary btn-lg ' . $extraClass);
-    return '<button type="button" onclick="if(window.opener){window.opener.location.reload();} window.close();" class="'
+    if ($fallbackUrl !== '') {
+        $safeUrl = htmlspecialchars($fallbackUrl, ENT_QUOTES, 'UTF-8');
+        $onclick  = "if(window.opener){window.opener.location.reload();window.close();}else{window.location.href='{$safeUrl}';}";
+    } else {
+        $onclick = 'if(window.opener){window.opener.location.reload();} window.close();';
+    }
+    return '<button type="button" onclick="' . $onclick . '" class="'
         . htmlspecialchars($cls, ENT_QUOTES, 'UTF-8')
         . '"><i class="fa fa-times"></i> Close Window</button>';
 }

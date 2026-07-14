@@ -136,6 +136,12 @@ $line = 1; // Where messages go
 
                             <div class="text-center">
                                 <?= admin_script_start_form('Start Thumbnail Optimization') ?>
+                                <script>
+                                document.currentScript.previousElementSibling.addEventListener('submit', function() {
+                                    document.getElementById('descriptionSection').style.display = 'none';
+                                    document.getElementById('startTimeText').textContent = new Date().toLocaleString();
+                                });
+                                </script>
                             </div>
                         </div>
                     </div>
@@ -718,7 +724,7 @@ $line = 1; // Where messages go
 
 <!-- Return to Admin Console button -->
 <div style="margin-top: 20px; text-align: center;">
-    <?= admin_script_close_button() ?>
+    <?= admin_script_close_button('', '../../maintenance.php?tab=maintenance') ?>
 </div>
 
 <!-- footers -->
