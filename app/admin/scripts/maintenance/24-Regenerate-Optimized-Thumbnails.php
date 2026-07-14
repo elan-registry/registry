@@ -89,8 +89,16 @@ $line = 1; // Where messages go
                 }
             </style>
 
+            <?php $is_initial = admin_script_exec_requested(); ?>
+            <?php if ($is_initial): ?>
+            <script>document.addEventListener('DOMContentLoaded', function() {
+                var el = document.getElementById('startTimeText');
+                if (el) el.textContent = new Date().toLocaleString();
+            });</script>
+            <?php endif; ?>
+
             <!-- Initial Description Card -->
-            <div class="row" id="descriptionSection">
+            <div class="row" id="descriptionSection"<?= $is_initial ? ' style="display:none;"' : '' ?>>
                 <div class="col-lg-12 mb-4">
                     <div class="card registry-card">
                         <div class="card-header">
@@ -137,9 +145,13 @@ $line = 1; // Where messages go
                             <div class="text-center">
                                 <?= admin_script_start_form('Start Thumbnail Optimization') ?>
                                 <script>
-                                document.currentScript.previousElementSibling.addEventListener('submit', function() {
-                                    document.getElementById('descriptionSection').style.display = 'none';
-                                    document.getElementById('startTimeText').textContent = new Date().toLocaleString();
+                                document.currentScript.previousElementSibling.addEventListener('submit', function(e) {
+                                    var sel = document.getElementById('batchSize');
+                                    if (sel) {
+                                        var input = document.createElement('input');
+                                        input.type = 'hidden'; input.name = 'batch_size'; input.value = sel.value;
+                                        e.target.appendChild(input);
+                                    }
                                 });
                                 </script>
                             </div>
@@ -348,7 +360,7 @@ $line = 1; // Where messages go
 
                 // Batch processing parameters
                 $allowed_batch_sizes = [5, 10, 15, 25];
-                $raw_batch           = $is_continuation ? (int) ($_GET['batch_size'] ?? 10) : 10;
+                $raw_batch           = $is_continuation ? (int) ($_GET['batch_size'] ?? 10) : (int) ($_POST['batch_size'] ?? 10);
                 $batch_size          = in_array($raw_batch, $allowed_batch_sizes, true) ? $raw_batch : 10;
                 $offset               = $is_continuation ? (int) ($_GET['offset'] ?? 0) : 0;
                 $total_processed_prev = $is_continuation ? (int) ($_GET['total_processed'] ?? 0) : 0;
