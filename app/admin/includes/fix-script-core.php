@@ -15,11 +15,21 @@ use ElanRegistry\LogCategories;
 
 define('SECTION_SEPARATOR', '═══════════════════════════════════════════════════════');
 
-/** Returns true only when the current request is a POST with a valid CSRF token. */
+/**
+ * Returns true only when the current request is a POST with a valid CSRF token.
+ * Result is cached statically — Token::generate() (called by admin_script_start_form())
+ * overwrites the session token, so calling Token::check() more than once per request
+ * would return false on subsequent calls even for a valid initial POST.
+ */
 function admin_script_exec_requested(): bool
 {
+    static $result = null;
+    if ($result !== null) {
+        return $result;
+    }
     global $method;
-    return $method === 'POST' && Token::check($_POST['csrf'] ?? '');
+    $result = $method === 'POST' && Token::check($_POST['csrf'] ?? '');
+    return $result;
 }
 
 /**
