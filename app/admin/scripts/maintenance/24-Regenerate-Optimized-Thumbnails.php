@@ -23,6 +23,7 @@ ini_set('display_startup_errors', 1);
 error_reporting(E_ALL);
 
 require_once '../../../../users/init.php';
+require_once $abs_us_root . $us_url_root . 'app/admin/includes/fix-script-core.php';
 require_once $abs_us_root . $us_url_root . 'users/includes/template/prep.php';
 
 if (!securePage($php_self)) {
@@ -88,8 +89,16 @@ $line = 1; // Where messages go
                 }
             </style>
 
+            <?php $is_initial = admin_script_exec_requested(); ?>
+            <?php if ($is_initial): ?>
+            <script>document.addEventListener('DOMContentLoaded', function() {
+                var el = document.getElementById('startTimeText');
+                if (el) el.textContent = new Date().toLocaleString();
+            });</script>
+            <?php endif; ?>
+
             <!-- Initial Description Card -->
-            <div class="row" id="descriptionSection">
+            <div class="row" id="descriptionSection"<?= $is_initial ? ' style="display:none;"' : '' ?>>
                 <div class="col-lg-12 mb-4">
                     <div class="card registry-card">
                         <div class="card-header">
@@ -134,9 +143,17 @@ $line = 1; // Where messages go
                             </div>
 
                             <div class="text-center">
-                                <button onclick="startProcessing()" class="btn btn-success">
-                                    <i class="fa fa-play"></i> Start Thumbnail Optimization
-                                </button>
+                                <?= admin_script_start_form('Start Thumbnail Optimization') ?>
+                                <script>
+                                document.currentScript.previousElementSibling.addEventListener('submit', function(e) {
+                                    var sel = document.getElementById('batchSize');
+                                    if (sel) {
+                                        var input = document.createElement('input');
+                                        input.type = 'hidden'; input.name = 'batch_size'; input.value = sel.value;
+                                        e.target.appendChild(input);
+                                    }
+                                });
+                                </script>
                             </div>
                         </div>
                     </div>
@@ -245,8 +262,8 @@ $line = 1; // Where messages go
             ${stats}
         </div>
         <div class="text-center">
-            <button onclick="if(window.opener){window.opener.location.reload(); window.close();} else {window.location.href='../../maintenance.php?tab=maintenance';}" class="btn btn-outline-primary">
-                <i class="fa fa-arrow-left"></i> Return to Admin Console
+            <button onclick="if(window.opener){window.opener.location.reload();window.close();}else{window.location.href='../../maintenance.php?tab=maintenance';}" class="btn btn-primary">
+                <i class="fa fa-times"></i> Close Window
             </button>
         </div>
     `;
@@ -275,28 +292,6 @@ $line = 1; // Where messages go
                     container.scrollTop = container.scrollHeight;
                 }
 
-                function startProcessing() {
-                    if (processStarted) return;
-                    processStarted = true;
-
-                    // Get selected batch size
-                    const batchSize = document.getElementById('batchSize').value;
-
-                    // Hide description section
-                    document.getElementById('descriptionSection').style.display = 'none';
-
-                    // Set start time
-                    const now = new Date();
-                    document.getElementById('startTimeText').textContent = now.toLocaleString();
-
-                    // Start the actual processing with batch size
-                    const params = new URLSearchParams(window.location.search);
-                    params.set('start', '1');
-                    params.set('batch_size', batchSize);
-
-                    window.location.href = window.location.pathname + '?' + params.toString();
-                }
-
                 // Check if we should start automatically
                 if (new URLSearchParams(window.location.search).get('start') === '1') {
                     processStarted = true;
@@ -308,8 +303,13 @@ $line = 1; // Where messages go
             </script>
 
             <?php
-            // Only run the actual processing if start parameter is set
-            if (isset($_GET['start']) && $_GET['start'] == '1') {
+            $is_initial      = admin_script_exec_requested();
+            $is_continuation = $method === 'GET' && (int) ($_GET['start'] ?? 0) === 1
+                               && (int) ($_GET['offset'] ?? 0) > 0
+                               && isset($_SESSION['thumb_batch_token'])
+                               && hash_equals($_SESSION['thumb_batch_token'], $_GET['batch_token'] ?? '');
+
+            if ($is_initial || $is_continuation) {
 
                 // Update thumbnail sizes setting: replace 600 with 768
                 $newSizes = $currentSizes;
@@ -323,10 +323,25 @@ $line = 1; // Where messages go
                     }
                 }
 
+                // Generate or retrieve the per-session batch nonce (guards continuation GETs against CSRF)
+                if ($is_initial) {
+                    try {
+                        $_SESSION['thumb_batch_token'] = bin2hex(random_bytes(16));
+                    } catch (\Random\RandomException $e) {
+                        logger($user->data()->id, LogCategories::LOG_CATEGORY_FIX_SCRIPT, 'Failed to generate batch token: ' . $e->getMessage());
+                        outputMessage('❌ Failed to generate a secure batch token. Cannot start batch processing safely.');
+                        outputMessage('Please try again. If this persists, check server entropy availability.');
+                        exit;
+                    }
+                }
+                $batch_token = $_SESSION['thumb_batch_token'];
+
                 // Batch processing parameters
-                $batch_size = (int)($_GET['batch_size'] ?? 10); // Default 10 cars per batch
-                $offset = (int)($_GET['offset'] ?? 0);
-                $total_processed_prev = (int)($_GET['total_processed'] ?? 0); // From previous batches
+                $allowed_batch_sizes = [5, 10, 15, 25];
+                $raw_batch           = $is_continuation ? (int) ($_GET['batch_size'] ?? 10) : (int) ($_POST['batch_size'] ?? 10);
+                $batch_size          = in_array($raw_batch, $allowed_batch_sizes, true) ? $raw_batch : 10;
+                $offset               = $is_continuation ? (int) ($_GET['offset'] ?? 0) : 0;
+                $total_processed_prev = $is_continuation ? (int) ($_GET['total_processed'] ?? 0) : 0;
 
                 // Initialize global counters (for this batch)
                 $global_processed = 0;
@@ -336,9 +351,9 @@ $line = 1; // Where messages go
 
                 // Cumulative counters (including previous batches)
                 $cumulative_processed = $total_processed_prev;
-                $cumulative_generated = (int)($_GET['total_generated'] ?? 0);
-                $cumulative_removed = (int)($_GET['total_removed'] ?? 0);
-                $cumulative_errors = (int)($_GET['total_errors'] ?? 0);
+                $cumulative_generated = $is_continuation ? (int) ($_GET['total_generated'] ?? 0) : 0;
+                $cumulative_removed   = $is_continuation ? (int) ($_GET['total_removed'] ?? 0) : 0;
+                $cumulative_errors    = $is_continuation ? (int) ($_GET['total_errors'] ?? 0) : 0;
 
                 // Track batch start time for timeout management
                 $batch_start_time = time();
@@ -443,7 +458,7 @@ $line = 1; // Where messages go
 
                         // Calculate progress within current batch and overall progress
                         $current_car_overall = $offset + $index + 1;
-                        $percentage = round(($current_car_overall / $total_cars) * 100);
+                        $percentage = (int) round(($current_car_overall / $total_cars) * 100);
                         outputMessage("Processing Car ID {$car_id} (Overall: {$current_car_overall}/{$total_cars}, Batch: " . ($index + 1) . "/{$batch_car_count})...", $percentage);
                         
                         if (empty($car_images)) {
@@ -570,6 +585,7 @@ $line = 1; // Where messages go
                         // Build URL for next batch
                         $next_url = $php_self . '?' . http_build_query([
                             'start' => '1',
+                            'batch_token' => $batch_token,
                             'batch_size' => $batch_size,
                             'offset' => $next_offset,
                             'total_processed' => $cumulative_processed,
@@ -582,10 +598,11 @@ $line = 1; // Where messages go
                         logger($user->data()->id, LogCategories::LOG_CATEGORY_FIX_SCRIPT, "Batch completed - Batch: " . (floor($offset / $batch_size) + 1) . ", Cars: {$global_processed}, Generated: {$global_generated}, Removed: {$global_removed}, Errors: {$global_errors} (Issue #176)");
 
                         // Auto-redirect to next batch after 2 seconds
+                        $next_url_js = json_encode($next_url, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT);
                         echo "<script>
                             setTimeout(function() {
                                 addLogMessage('🔄 Automatically continuing to next batch...');
-                                window.location.href = '{$next_url}';
+                                window.location.href = {$next_url_js};
                             }, 2000);
                         </script>";
 
@@ -628,6 +645,7 @@ $line = 1; // Where messages go
                         // Calculate resume point (current batch with current progress)
                         $resume_url = $php_self . '?' . http_build_query([
                             'start' => '1',
+                            'batch_token' => $batch_token,
                             'batch_size' => $batch_size,
                             'offset' => $offset, // Resume from same batch
                             'total_processed' => $cumulative_processed,
@@ -636,9 +654,10 @@ $line = 1; // Where messages go
                             'total_errors' => $cumulative_errors
                         ]);
 
+                        $resume_url_attr = htmlspecialchars($resume_url, ENT_QUOTES, 'UTF-8');
                         outputMessage("🔄 You can resume processing by refreshing the page or clicking the button below:");
                         echo "<div style='text-align: center; margin: 20px;'>
-                            <button onclick='window.location.href=\"{$resume_url}\"' class='btn btn-warning'>
+                            <button onclick='window.location.href=\"{$resume_url_attr}\"' class='btn btn-warning'>
                                 <i class='fa fa-refresh'></i> Resume Batch Processing
                             </button>
                         </div>";
@@ -680,6 +699,12 @@ $line = 1; // Where messages go
                     </div>";
 
                 echo "<script>showCompletionSummary(`$statsHtml`);</script>";
+                unset($_SESSION['thumb_batch_token']);
+            } elseif ($method === 'GET' && (int) ($_GET['start'] ?? 0) === 1) {
+                logger($user->data()->id, LogCategories::LOG_CATEGORY_SECURITY, 'Batch continuation rejected (session expired or token mismatch)');
+                echo '<div class="alert alert-warning mt-3"><strong>Session Expired</strong> Your processing session expired. <a href="'
+                    . htmlspecialchars($php_self, ENT_QUOTES, 'UTF-8')
+                    . '">Start over</a> to process all thumbnails.</div>';
             }
             ?>
 
@@ -689,9 +714,7 @@ $line = 1; // Where messages go
 
 <!-- Return to Admin Console button -->
 <div style="margin-top: 20px; text-align: center;">
-    <button onclick="if(window.opener){window.opener.location.reload(); window.close();} else {window.location.href='../../maintenance.php?tab=maintenance';}" class="btn btn-outline-primary">
-        <i class="fa fa-arrow-left" aria-hidden="true"></i> Return to Admin Console
-    </button>
+    <?= admin_script_close_button('', '../../maintenance.php?tab=maintenance') ?>
 </div>
 
 <!-- footers -->
