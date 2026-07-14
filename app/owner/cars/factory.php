@@ -104,7 +104,7 @@ require_once $abs_us_root . $us_url_root . 'users/includes/html_footer.php'; //c
         d.csrf = csrf;
       },
       error: function(xhr, error, thrown) {
-        console.error('Factory table load failed', xhr.status, thrown);
+        console.error('Factory table load failed:', error, xhr.status, thrown);
         $('#cartable').closest('.dataTables_wrapper').prepend(
           '<div class="alert alert-danger mt-2">Could not load factory data. Please refresh the page.</div>'
         );

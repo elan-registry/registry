@@ -189,7 +189,8 @@ export default [
     {
         // Node.js scripts and Playwright config files.
         // These also include browser globals because Playwright auth-setup
-        // scripts use page.evaluate(), which runs in browser scope.
+        // scripts use page.waitForFunction(), whose predicate runs in browser
+        // scope and accesses window.location.
         files: ["scripts/*.js", "playwright.config*.js"],
         languageOptions: {
             ecmaVersion: 2021,

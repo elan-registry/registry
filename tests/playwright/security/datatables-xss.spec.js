@@ -164,6 +164,42 @@ test.describe('DataTables XSS render guard — car listing', () => {
             'DataTables may have rendered a stored XSS payload as raw HTML'
         ).toBe(0);
     });
+
+    test('parseInt guard prevents HTML injection via id column in car listing', async ({ page }) => {
+        skipIfNoCreds();
+        await ensureLoggedIn(page);
+        await page.goto(CAR_LIST_PAGE, { waitUntil: 'domcontentloaded' });
+        await waitForDataTables(page, 15000);
+
+        const result = await page.evaluate(() => {
+            window.__idXssFlag = undefined;
+            const table = $('#cartable').DataTable();
+            const xssPayload = '<img src=x onerror="window.__idXssFlag=1">';
+
+            // The id column uses parseInt() before injecting into the href,
+            // so a non-numeric id must produce no link and no XSS.
+            const newRow = table.row.add({
+                id: xssPayload, year: '1966', type: 'S1', chassis: '1234',
+                series: 'S1', variant: 'Standard', color: 'Red',
+                image: null, fname: 'Test', city: '', state: '', country: '',
+                ctime: ''
+            });
+            newRow.draw(false);
+
+            const xssFired = typeof window.__idXssFlag !== 'undefined';
+            const rowNode   = newRow.node();
+            const hasLink   = rowNode ? rowNode.querySelector('a[href*="car_id="]') !== null : null;
+            const hasImg    = rowNode ? rowNode.querySelector('img[src="x"]') !== null : null;
+
+            newRow.remove().draw(false);
+            return { xssFired, hasLink, hasImg };
+        });
+
+        expect(result.xssFired, 'XSS onerror fired via non-numeric id value in car listing table').toBe(false);
+        expect(result.hasLink,  'Synthetic row was not rendered on current page — link check is vacuous').not.toBeNull();
+        expect(result.hasLink,  'Non-numeric id produced a car details link in car listing table').toBe(false);
+        expect(result.hasImg,   '<img src="x"> appeared in id column of car listing table').toBe(false);
+    });
 });
 
 // ---------------------------------------------------------------------------
@@ -268,6 +304,9 @@ test.describe('DataTables XSS render guard — car history table', () => {
             return m ? parseInt(m[1], 10) : null;
         });
         await context.close();
+        if (!carId) {
+            throw new Error('History XSS tests require at least one car in the test database — none found in #cartable');
+        }
     });
 
     test('car history DataTable initialises on details page', async ({ page }) => {
@@ -297,7 +336,7 @@ test.describe('DataTables XSS render guard — car history table', () => {
             // If render: textRender is absent from the color column in car_details.js,
             // the payload renders as raw HTML and the onerror fires.
             const newRow = table.row.add({
-                operation: 'UPDATE', mtime: '2024-01-01 00:00:00',
+                operation: 'UPDATE', mtime: '2099-12-31 23:59:59',
                 year: '1966', type: 'S1', chassis: '1234', series: 'S1',
                 variant: 'Standard', color: xssPayload, engine: '',
                 purchasedate: '', solddate: '', comments: '',
@@ -339,5 +378,41 @@ test.describe('DataTables XSS render guard — car history table', () => {
             probeCount,
             `Found ${probeCount} <img src="x"> probe element(s) inside #carHistoryTable`
         ).toBe(0);
+    });
+
+    test('render guard prevents XSS in chassis column of history table', async ({ page }) => {
+        skipIfNoCreds();
+        if (!carId) test.skip(true, 'No cars found in registry — cannot load car details page');
+
+        await ensureLoggedIn(page);
+        await page.goto(`app/owner/cars/details.php?car_id=${carId}`, { waitUntil: 'domcontentloaded' });
+        await page.waitForSelector('#carHistoryTable_wrapper', { timeout: 15000 });
+
+        const result = await page.evaluate(() => {
+            window.__chassisXssFlag = undefined;
+            const table = $('#carHistoryTable').DataTable();
+            const xssPayload = '<img src=x onerror="window.__chassisXssFlag=1">';
+
+            const newRow = table.row.add({
+                operation: 'UPDATE', mtime: '2099-12-31 23:59:59',
+                year: '1966', type: 'S1', chassis: xssPayload, series: 'S1',
+                variant: 'Standard', color: 'Red', engine: '',
+                purchasedate: '', solddate: '', comments: '',
+                image: null, fname: 'Test', city: '', state: '', country: '',
+                car_id: 0
+            });
+            newRow.draw(false);
+
+            const xssFired = typeof window.__chassisXssFlag !== 'undefined';
+            const rowNode   = newRow.node();
+            const hasImg    = rowNode ? rowNode.querySelector('img[src="x"]') !== null : null;
+
+            newRow.remove().draw(false);
+            return { xssFired, hasImg };
+        });
+
+        expect(result.xssFired, 'XSS onerror fired in car history table chassis column').toBe(false);
+        expect(result.hasImg, 'Synthetic row was not rendered on the current page — img check is vacuous').not.toBeNull();
+        expect(result.hasImg, '<img src="x"> appeared in car history table chassis column').toBe(false);
     });
 });

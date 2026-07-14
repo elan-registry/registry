@@ -41,7 +41,7 @@ function initializeHistoryTable() {
         return;
     }
 
-    historyTableInitialized = true;
+    historyTableInitialized = true; // Set before try so any init error shows the alert once without re-entering.
 
     try {
         const textRender = $.fn.dataTable.render.text();
@@ -64,7 +64,7 @@ function initializeHistoryTable() {
                 error: function(xhr, error, thrown) {
                     console.error('History table load failed (car ID: ' + carId + '):', error, thrown, xhr.status);
                     const tableContainer = document.getElementById('carHistoryTable');
-                    if (tableContainer) {
+                    if (tableContainer && !tableContainer.previousElementSibling?.classList.contains('alert')) {
                         const warning = document.createElement('div');
                         warning.className = 'alert alert-warning';
                         warning.textContent = 'Car history could not be loaded. Please refresh the page to try again.';

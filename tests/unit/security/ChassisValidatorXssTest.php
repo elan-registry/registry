@@ -114,11 +114,12 @@ final class ChassisValidatorXssTest extends TestCase
      * allowlist. They can cause truncation bugs in C-string APIs and are a
      * recognised injection vector.
      *
-     * Note: a leading null byte is silently stripped by PHP's trim() before
-     * the allowlist runs, so this test uses a mid-string null ("CHAS\x00SIS")
-     * which trim() does not remove. That is the realistic attack scenario
-     * because an attacker targeting string-length confusion would not place
-     * the null at the start of the value.
+     * Note: PHP's trim() strips leading and trailing null bytes (they are in
+     * its default character set), so a leading or trailing \x00 is removed
+     * before the allowlist sees it. This test uses a mid-string null
+     * ("CHAS\x00SIS") because trim() does not remove interior characters.
+     * A mid-string null is the realistic vector for string-length confusion
+     * exploits.
      */
     public function testNulByteRejectedWithOverride(): void
     {

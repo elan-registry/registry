@@ -21,8 +21,10 @@ test.describe('UI Consistency After Style Refactoring', () => {
         try {
           await validateCardStructure(page);
         } catch (_error) {
-          // Some pages might not have cards, continue
-          continue;
+          if (_error.message && _error.message.includes('No cards found on page')) {
+            continue;
+          }
+          throw _error;
         }
       }
     }

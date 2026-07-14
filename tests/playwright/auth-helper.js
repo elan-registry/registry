@@ -48,7 +48,9 @@ async function isLoggedIn(page) {
   try {
     const logoutLink = await page.locator('a[href*="logout"], .user-menu, .account-menu').count();
     return logoutLink > 0;
-  } catch {
+  } catch (_error) {
+    // locator().count() should not throw in normal operation;
+    // returning false allows ensureLoggedIn() to attempt login.
     return false;
   }
 }
