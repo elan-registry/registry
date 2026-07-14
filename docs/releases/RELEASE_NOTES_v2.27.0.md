@@ -23,6 +23,7 @@ None.
 - **Backup Authorization** ([#1308](https://github.com/unibrain1/elanregistry/issues/1308)): Backup and restore operations now require Administrator role; editor accounts are explicitly rejected.
 - **Admin Script CSRF Hardening** ([#1308](https://github.com/unibrain1/elanregistry/issues/1308)): Destructive admin maintenance scripts now require POST + CSRF token; the fix-script template has been updated so future scripts inherit this pattern.
 - **Login Audit Logging** ([#1243](https://github.com/unibrain1/elanregistry/issues/1243)): Confirmed that UserSpice rate-limiting is active and enforcing lockout (5 failures per account / 5 min; 20 per IP / 15 min). Added `loginFail` and `loginSuccess` security-category log entries via hooks, mirroring the logging the upstream framework ships with commented out.
+- **Admin User Detail XSS Fix** ([#1306](https://github.com/unibrain1/elanregistry/issues/1306)): HTML-escaped every profile and car field rendered in the admin "manage user" hook. Closes a stored-XSS path where an owner's own `city`/`state`/`country` (or car chassis metadata) could execute in an admin session. Also guards the profile block against missing rows with a "No profile data" placeholder instead of PHP warnings.
 
 ## Issues Resolved
 
