@@ -154,7 +154,7 @@ test.describe('CSP Validation Tests', () => {
       try {
         const url = new URL(req.url);
         return criticalDomains.includes(url.hostname);
-      } catch (e) {
+      } catch (_e) {
         // If URL parsing fails, fall back to includes check
         return criticalDomains.some(domain => req.url.includes(domain));
       }

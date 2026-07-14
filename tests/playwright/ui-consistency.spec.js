@@ -20,7 +20,7 @@ test.describe('UI Consistency After Style Refactoring', () => {
         // Only validate cards if not redirected to login
         try {
           await validateCardStructure(page);
-        } catch (error) {
+        } catch (_error) {
           // Some pages might not have cards, continue
           continue;
         }

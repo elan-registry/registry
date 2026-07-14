@@ -74,7 +74,7 @@ async function setupAuth() {
 
       const currentUrl = page.url();
       console.log(`Login successful! Redirected to: ${currentUrl}`);
-    } catch (timeoutError) {
+    } catch (_timeoutError) {
       const currentUrl = page.url();
       console.log(`Timeout waiting for login redirect. Current URL: ${currentUrl}`);
 

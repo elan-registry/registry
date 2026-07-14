@@ -62,7 +62,7 @@ async function isLoggedIn(page) {
 async function logout(page) {
   try {
     await page.goto('users/logout.php', { waitUntil: 'domcontentloaded' });
-  } catch (error) {
+  } catch (_error) {
     // Ignore errors (e.g. if already logged out and page redirects unexpectedly)
   }
 }

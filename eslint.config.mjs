@@ -11,8 +11,8 @@
  * - Don't nitpick style - that's what code review is for
  *
  * Usage:
- *   npx eslint app/js/            # Check JS files
- *   npx eslint --fix app/js/      # Auto-fix where possible
+ *   npm run lint          # Check all project JS
+ *   npm run lint:fix      # Auto-fix where possible
  */
 
 export default [
@@ -21,7 +21,7 @@ export default [
         ignores: [
             "**/vendor/**",
             "**/node_modules/**",
-            "**/users/**",           // UserSpice core - don't lint
+            "**/users/**",           // UserSpice upstream framework - don't lint
             "**/*.min.js",           // Minified files
             "**/test-results/**",
             "**/playwright-report/**",
@@ -187,11 +187,72 @@ export default [
         },
     },
     {
-        // Test files - more lenient
+        // Node.js scripts and Playwright config files.
+        // These also include browser globals because Playwright auth-setup
+        // scripts use page.evaluate(), which runs in browser scope.
+        files: ["scripts/*.js", "playwright.config*.js"],
+        languageOptions: {
+            ecmaVersion: 2021,
+            sourceType: "commonjs",
+            globals: {
+                // Node.js
+                require: "readonly",
+                module: "writable",
+                exports: "writable",
+                __dirname: "readonly",
+                __filename: "readonly",
+                process: "readonly",
+                console: "readonly",
+                Buffer: "readonly",
+                setTimeout: "readonly",
+                clearTimeout: "readonly",
+                Promise: "readonly",
+                URL: "readonly",
+                // Browser globals (accessed inside page.evaluate() callbacks)
+                window: "readonly",
+                document: "readonly",
+            },
+        },
+        rules: {
+            "no-undef": "error",
+            "no-unused-vars": ["warn", {
+                vars: "all",
+                args: "none",
+                caughtErrors: "all",
+                caughtErrorsIgnorePattern: "^_",
+                varsIgnorePattern: "^_",
+            }],
+            "no-console": "off",
+            "no-unreachable": "error",
+        },
+    },
+    {
+        // Playwright test files — specs and helpers.
+        //
+        // These files are Node.js modules but frequently call page.evaluate()
+        // whose callbacks run inside the browser. Browser globals ($, window,
+        // document, etc.) therefore appear as bare identifiers even though the
+        // surrounding file is Node.js. We declare them here so ESLint can still
+        // catch real undefined-variable bugs without flagging page.evaluate()
+        // browser references as false positives.
         files: ["tests/**/*.js", "**/*.test.js", "**/*.spec.js"],
         languageOptions: {
+            ecmaVersion: 2021,
+            sourceType: "commonjs",
             globals: {
-                // Playwright globals
+                // Node.js
+                require: "readonly",
+                module: "writable",
+                exports: "writable",
+                __dirname: "readonly",
+                process: "readonly",
+                console: "readonly",
+                URL: "readonly",
+                setTimeout: "readonly",
+                clearTimeout: "readonly",
+                Promise: "readonly",
+                Buffer: "readonly",
+                // Playwright test runner
                 test: "readonly",
                 expect: "readonly",
                 describe: "readonly",
@@ -200,11 +261,66 @@ export default [
                 beforeAll: "readonly",
                 afterAll: "readonly",
                 page: "readonly",
+                browser: "readonly",
+                context: "readonly",
+                // Browser globals used inside page.evaluate() callbacks
+                window: "readonly",
+                document: "readonly",
+                alert: "readonly",
+                confirm: "readonly",
+                fetch: "readonly",
+                FormData: "readonly",
+                URLSearchParams: "readonly",
+                localStorage: "readonly",
+                sessionStorage: "readonly",
+                navigator: "readonly",
+                location: "readonly",
+                history: "readonly",
+                Event: "readonly",
+                CustomEvent: "readonly",
+                HTMLElement: "readonly",
+                NodeList: "readonly",
+                Blob: "readonly",
+                File: "readonly",
+                Image: "readonly",
+                DOMParser: "readonly",
+                atob: "readonly",
+                btoa: "readonly",
+                getComputedStyle: "readonly",
+                requestAnimationFrame: "readonly",
+                performance: "readonly",
+                MutationObserver: "readonly",
+                IntersectionObserver: "readonly",
+                // jQuery (used in page.evaluate() on pages that load jQuery)
+                $: "readonly",
+                jQuery: "readonly",
+                // Bootstrap JS (used in page.evaluate() on pages that load Bootstrap)
+                bootstrap: "readonly",
+                // DataTables (used in page.evaluate() for XSS renderer tests)
+                DataTable: "readonly",
+                // Page-level globals injected by PHP into the browser page
+                NEW_CAR_IDS: "readonly",
+                escapeHtml: "readonly",
+                ELAN_CONFIG: "readonly",
+                img_root: "readonly",
+                carDetailsConfig: "readonly",
+                pageConfig: "readonly",
+                ElanRegistryAPI: "readonly",
+                us_url_root: "readonly",
+                csrf: "readonly",
             },
         },
         rules: {
-            // Allow console in tests
+            "no-undef": "error",
+            "no-unused-vars": ["warn", {
+                vars: "all",
+                args: "none",
+                caughtErrors: "all",
+                caughtErrorsIgnorePattern: "^_",
+                varsIgnorePattern: "^_",
+            }],
             "no-console": "off",
+            "no-unreachable": "error",
         },
     },
 ];
