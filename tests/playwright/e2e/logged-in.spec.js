@@ -202,7 +202,7 @@ test.describe('Internal Links Discovery and Testing (Logged In)', () => {
           try {
             const url = new URL(href);
             isInternalLink = url.hostname === 'elanregistry.org' || url.hostname === 'www.elanregistry.org';
-          } catch (e) {
+          } catch (_e) {
             isInternalLink = false;
           }
         }
@@ -250,7 +250,7 @@ test.describe('Internal Links Discovery and Testing (Logged In)', () => {
     const allInternalLinks = new Set();
 
     console.log('\n=== Discovering Internal Links (Logged In) ===');
-    for (const { path, name } of pages) {
+    for (const { path } of pages) {
       await page.goto(path);
       await page.waitForLoadState('domcontentloaded');
 
@@ -265,7 +265,7 @@ test.describe('Internal Links Discovery and Testing (Logged In)', () => {
           try {
             const url = new URL(href);
             isInternalLink = url.hostname === 'elanregistry.org' || url.hostname === 'www.elanregistry.org';
-          } catch (e) {
+          } catch (_e) {
             isInternalLink = false;
           }
         }

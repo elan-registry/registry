@@ -103,7 +103,7 @@ parameters:
         # phpstan-bootstrap.php declares these but bootstrap scope is isolated —
         # page files still see them as undefined without this pattern.
         -
-            message: '#Variable \$(abs_us_root|us_url_root|user|db|php_self|is_https|host|method|request_uri|current_url|current_origin|remote_addr|referer|user_agent|argv|argc) might not be defined#'
+            message: '#Variable \$(abs_us_root|us_url_root|user|db|settings|php_self|is_https|host|method|request_uri|current_url|current_origin|remote_addr|referer|user_agent|argv|argc) might not be defined#'
             identifier: variable.undefined
             reportUnmatched: false
 

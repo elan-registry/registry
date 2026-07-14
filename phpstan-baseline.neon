@@ -283,18 +283,6 @@ parameters:
 			path: app/owner/cars/edit.php
 
 		-
-			message: '#^Variable \$settings might not be defined\.$#'
-			identifier: variable.undefined
-			count: 1
-			path: app/owner/cars/factory.php
-
-		-
-			message: '#^Variable \$settings might not be defined\.$#'
-			identifier: variable.undefined
-			count: 1
-			path: app/owner/cars/index.php
-
-		-
 			message: '#^Parameter \#1 \$string of function htmlspecialchars expects string, int given\.$#'
 			identifier: argument.type
 			count: 1

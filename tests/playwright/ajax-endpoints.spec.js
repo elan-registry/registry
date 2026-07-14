@@ -28,8 +28,8 @@ test.describe('Registry-Specific AJAX Endpoints', () => {
     try {
       const jsonResponse = await missingCommandResponse.json();
       expect(jsonResponse).toHaveProperty('success', false);
-    } catch (error) {
-      // If not JSON, test fails
+    } catch (parseError) {
+      throw new Error(`chassis-availability.php (missing command) returned non-JSON (status ${missingCommandResponse.status()}): ${parseError.message}`);
     }
 
     // Test CSRF validation failure (should return 403)
@@ -46,8 +46,8 @@ test.describe('Registry-Specific AJAX Endpoints', () => {
     try {
       const jsonResponse = await csrfFailResponse.json();
       expect(jsonResponse).toHaveProperty('success', false);
-    } catch (error) {
-      // If not JSON, test fails
+    } catch (parseError) {
+      throw new Error(`chassis-availability.php (CSRF fail) returned non-JSON (status ${csrfFailResponse.status()}): ${parseError.message}`);
     }
 
     // Test valid chassis check format (will fail CSRF but should have correct structure)
@@ -70,8 +70,8 @@ test.describe('Registry-Specific AJAX Endpoints', () => {
         expect(jsonResponse).toHaveProperty('taken');
         expect(jsonResponse).toHaveProperty('available');
       }
-    } catch (error) {
-      // If not JSON, test fails
+    } catch (parseError) {
+      throw new Error(`chassis-availability.php (valid format) returned non-JSON (status ${validFormatResponse.status()}): ${parseError.message}`);
     }
   });
 
@@ -103,10 +103,8 @@ test.describe('Registry-Specific AJAX Endpoints', () => {
 
         // Data should be an array
         expect(Array.isArray(jsonResponse.data)).toBe(true);
-      } catch (error) {
-        // If not JSON, should at least be a valid response
-        const responseText = await response.text();
-        expect(responseText.length).toBeGreaterThan(0);
+      } catch (parseError) {
+        throw new Error(`list.php returned non-JSON (status ${response.status()}): ${parseError.message}`);
       }
     }
   });
@@ -196,10 +194,8 @@ test.describe('Registry-Specific AJAX Endpoints', () => {
         expect(jsonResponse).toHaveProperty('history');
         expect(Array.isArray(jsonResponse.history)).toBe(true);
       }
-    } catch (error) {
-      // If not JSON, test fails
-      const responseText = await response.text();
-      expect(responseText.length).toBeGreaterThan(0);
+    } catch (parseError) {
+      throw new Error(`car history endpoint returned non-JSON (status ${response.status()}): ${parseError.message}`);
     }
   });
 
@@ -246,8 +242,8 @@ test.describe('Registry-Specific AJAX Endpoints', () => {
         // Failed CSRF or other error
         expect(typeof jsonResponse.message).toBe('string');
       }
-    } catch (error) {
-      // If not JSON, test fails
+    } catch (parseError) {
+      throw new Error(`chassis-validate.php returned non-JSON (status ${response.status()}): ${parseError.message}`);
     }
   });
 
@@ -267,7 +263,7 @@ test.describe('Registry-Specific AJAX Endpoints', () => {
       const jsonResponse = await response.json();
       expect(jsonResponse).toHaveProperty('success', false);
       expect(jsonResponse).toHaveProperty('message');
-    } catch (error) {
+    } catch (_error) {
       // If not JSON, should still be 403
       expect(response.status()).toBe(403);
     }
@@ -289,7 +285,7 @@ test.describe('Registry-Specific AJAX Endpoints', () => {
       const jsonResponse = await response.json();
       expect(jsonResponse).toHaveProperty('success', false);
       expect(jsonResponse).toHaveProperty('message');
-    } catch (error) {
+    } catch (_error) {
       // If not JSON, should still be 403
       expect(response.status()).toBe(403);
     }
@@ -311,7 +307,7 @@ test.describe('Registry-Specific AJAX Endpoints', () => {
       const jsonResponse = await response.json();
       expect(jsonResponse).toHaveProperty('success', false);
       expect(jsonResponse).toHaveProperty('message');
-    } catch (error) {
+    } catch (_error) {
       // If not JSON, should still be 403
       expect(response.status()).toBe(403);
     }
@@ -334,7 +330,7 @@ test.describe('Registry-Specific AJAX Endpoints', () => {
       const jsonResponse = await response.json();
       expect(jsonResponse).toHaveProperty('success', false);
       expect(jsonResponse).toHaveProperty('message');
-    } catch (error) {
+    } catch (_error) {
       // If not JSON, should still be 403
       expect(response.status()).toBe(403);
     }

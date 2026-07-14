@@ -48,7 +48,9 @@ async function isLoggedIn(page) {
   try {
     const logoutLink = await page.locator('a[href*="logout"], .user-menu, .account-menu').count();
     return logoutLink > 0;
-  } catch {
+  } catch (_error) {
+    // locator().count() should not throw in normal operation;
+    // returning false allows ensureLoggedIn() to attempt login.
     return false;
   }
 }
@@ -62,8 +64,10 @@ async function isLoggedIn(page) {
 async function logout(page) {
   try {
     await page.goto('users/logout.php', { waitUntil: 'domcontentloaded' });
-  } catch (error) {
-    // Ignore errors (e.g. if already logged out and page redirects unexpectedly)
+  } catch (_error) {
+    // page.goto throws on timeout or navigation crash, not on redirects;
+    // log rather than swallow so dirty test state is diagnosable.
+    console.warn('logout() navigation failed — subsequent test state may be dirty:', _error.message);
   }
 }
 
@@ -155,6 +159,8 @@ async function waitForDataTables(page, timeout = 10000) {
   return searchBox;
 }
 
+const NO_CARDS_ERROR = 'No cards found on page';
+
 /**
  * Get the first visible card element on a page
  * @param {import('@playwright/test').Page} page - Playwright page object
@@ -163,9 +169,9 @@ async function waitForDataTables(page, timeout = 10000) {
 async function getFirstCard(page) {
   const cards = page.locator('.card, .registry-card');
   const cardCount = await cards.count();
-  
+
   if (cardCount === 0) {
-    throw new Error('No cards found on page');
+    throw new Error(NO_CARDS_ERROR);
   }
   
   return cards.first();
@@ -186,6 +192,7 @@ async function validateCardStructure(page) {
 }
 
 module.exports = {
+  NO_CARDS_ERROR,
   login,
   isLoggedIn,
   logout,
