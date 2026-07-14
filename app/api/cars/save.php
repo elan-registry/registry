@@ -147,6 +147,7 @@ switch ($action) {
                     'Car add unexpected error: ' . $e->getMessage()
                 )->send();
         }
+        // Every code path above calls ->send() (return type: never) — no break needed.
 
     case "updateCar":
         $car_id = (int)Input::get('car_id');
@@ -235,6 +236,7 @@ switch ($action) {
                     'Car update unexpected error: ' . $e->getMessage()
                 )->send();
         }
+        // Every code path above calls ->send() (return type: never) — no break needed.
 
     case "fetchImages":
         $car_id = (int)Input::get('carID');
@@ -993,7 +995,7 @@ function arrayReplaceValue(array &$array, mixed $value, mixed $replacement): voi
  */
 function getExtension(string $mimeType): string
 {
-    // Comprehensive secure image type validation
+    // MIME-to-extension map — extensions must match CarImageProcessor::ALLOWED_EXTENSIONS.
     $allowedExtensions = [
         'image/jpeg' => 'jpg',
         'image/jpg' => 'jpg',

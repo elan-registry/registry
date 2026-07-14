@@ -24,10 +24,10 @@ use ElanRegistry\LogCategories;
 class CarImageProcessor
 {
     /**
-     * Allowed image file extensions — the single source of truth shared by
-     * generateSecureFilename() (what it may produce) and isValidFilename()
-     * (what it will accept). Adding an extension here automatically updates
-     * both sides.
+     * Allowed image file extensions. Shared by generateSecureFilename() (what
+     * it may produce) and isValidFilename() (what it will accept). Note:
+     * getExtension() in save.php maintains its own MIME-to-extension map that
+     * must be kept in sync with this list manually.
      *
      * @var list<string>
      */
@@ -36,9 +36,9 @@ class CarImageProcessor
     /**
      * Derive the allowlist regex from ALLOWED_EXTENSIONS.
      *
-     * Uses \z (unambiguous end-of-string) + D modifier so that PHP's $
-     * anchor behaviour of matching before a trailing newline cannot be
-     * exploited.
+     * \z is the primary end-of-string anchor (unlike $, it never matches
+     * before a trailing newline). The D modifier is redundant when \z is
+     * used but makes the intent explicit.
      */
     private static function buildPattern(): string
     {

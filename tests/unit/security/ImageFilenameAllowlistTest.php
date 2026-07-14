@@ -13,10 +13,11 @@ use PHPUnit\Framework\Attributes\Group;
  * which extensions are permitted. generateSecureFilename() produces names
  * that match the allowlist; isValidFilename() rejects everything else.
  *
- * The guard is applied in three layers:
+ * The guard is applied in four layers:
  *   1. buildImageDetails() in save.php  — filters invalid entries before DB write
- *   2. mvTmpImages() in save.php        — skips invalid entries before glob
- *   3. decodeAndProcessImages()         — skips invalid entries before stat
+ *   2. uploadImages() in save.php       — filters $requestedOrder before writing cars.image
+ *   3. mvTmpImages() in save.php        — skips invalid entries before glob
+ *   4. decodeAndProcessImages()         — skips invalid entries before stat
  *
  * This file tests all three entry points via CarImageProcessor public API.
  *
@@ -205,16 +206,20 @@ final class ImageFilenameAllowlistTest extends TestCase
 
     public function testDecodeAndProcessImagesSkipsMixedValidAndInvalid(): void
     {
-        // A mix of one valid (file won't exist in test env so still empty) and
-        // one invalid filename. The invalid one must be filtered by the allowlist;
-        // the valid one is filtered by is_file() returning false. Total: empty.
-        $validName = 'img_' . $this->hex32() . '.jpg';
-        $result    = (new CarImageProcessor())->decodeAndProcessImages(
-            json_encode([$validName, '../../../etc/passwd']), '/images/1/', '/', '/var/www/'
+        $validName   = 'img_' . $this->hex32() . '.jpg';
+        $invalidName = '../../../etc/passwd';
+
+        // Pre-flight: confirm the allowlist classifies inputs as expected.
+        $this->assertTrue(CarImageProcessor::isValidFilename($validName));
+        $this->assertFalse(CarImageProcessor::isValidFilename($invalidName));
+
+        $result = (new CarImageProcessor())->decodeAndProcessImages(
+            json_encode([$validName, $invalidName]), '/images/1/', '/', '/var/www/'
         );
 
-        // Confirm the traversal entry is not present anywhere in the output
-        $this->assertNotContains('passwd', array_column($result, 'basename'));
+        // The invalid entry is rejected by the allowlist; the valid entry passes
+        // the allowlist but is_file() returns false in the test environment.
+        $this->assertEmpty($result);
     }
 
     // -------------------------------------------------------------------------
