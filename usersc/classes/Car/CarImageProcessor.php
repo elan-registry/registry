@@ -24,6 +24,59 @@ use ElanRegistry\LogCategories;
 class CarImageProcessor
 {
     /**
+     * Allowed image file extensions — the single source of truth shared by
+     * generateSecureFilename() (what it may produce) and isValidFilename()
+     * (what it will accept). Adding an extension here automatically updates
+     * both sides.
+     *
+     * @var list<string>
+     */
+    public const ALLOWED_EXTENSIONS = ['jpg', 'png', 'gif', 'webp'];
+
+    /**
+     * Derive the allowlist regex from ALLOWED_EXTENSIONS.
+     *
+     * Uses \z (unambiguous end-of-string) + D modifier so that PHP's $
+     * anchor behaviour of matching before a trailing newline cannot be
+     * exploited.
+     */
+    private static function buildPattern(): string
+    {
+        return '/^img_[0-9a-f]{32}\.(' . implode('|', self::ALLOWED_EXTENSIONS) . ')\z/D';
+    }
+
+    /**
+     * Generate a cryptographically secure filename for a car image.
+     *
+     * @param string $extension File extension — must be in ALLOWED_EXTENSIONS
+     * @return string Secure filename in the format img_[32 hex chars].[ext]
+     * @throws ImageProcessingException If the extension is not allowed
+     */
+    public static function generateSecureFilename(string $extension): string
+    {
+        $ext = strtolower($extension);
+        if (!in_array($ext, self::ALLOWED_EXTENSIONS, true)) {
+            throw new ImageProcessingException("Unsupported image extension: {$ext}");
+        }
+        return 'img_' . bin2hex(random_bytes(16)) . '.' . $ext;
+    }
+
+    /**
+     * Check whether a filename matches the secure-name format.
+     *
+     * The pattern is anchored to the full string (^img_…\z), so path traversal
+     * sequences (../, /, glob chars) cause an immediate mismatch without needing
+     * basename() normalisation. The raw value must match exactly.
+     *
+     * @param string $filename Filename to validate
+     * @return bool True if the filename matches the allowlist
+     */
+    public static function isValidFilename(string $filename): bool
+    {
+        return (bool) preg_match(self::buildPattern(), $filename);
+    }
+
+    /**
      * Encode an array of images to JSON for database storage
      *
      * @param array<mixed> $images Array of image data
@@ -71,7 +124,14 @@ class CarImageProcessor
 
         $images = [];
         foreach ($carImages as $key => $carimage) {
-            $temp = pathinfo($absRoot . $urlRoot . $imageDir . $carImages[$key]);
+            if (!self::isValidFilename((string) $carimage)) {
+                logger(0, LogCategories::LOG_CATEGORY_FILE_ERROR,
+                    'decodeAndProcessImages: skipping invalid filename: '
+                    . htmlspecialchars((string) $carimage, ENT_QUOTES, 'UTF-8'));
+                continue;
+            }
+            $safeFilename = basename((string) $carimage);
+            $temp = pathinfo($absRoot . $urlRoot . $imageDir . $safeFilename);
             $file = $temp['dirname'] . "/" . $temp['basename'];
             if (is_file($file)) {
                 $images[$key] = $temp;
