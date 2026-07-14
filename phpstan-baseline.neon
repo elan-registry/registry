@@ -133,12 +133,6 @@ parameters:
 			path: app/admin/scripts/maintenance/21-Fix-Page-Permissions.php
 
 		-
-			message: '#^Parameter \#2 \$percentage of function outputMessage expects int\|null, float given\.$#'
-			identifier: argument.type
-			count: 1
-			path: app/admin/scripts/maintenance/24-Regenerate-Optimized-Thumbnails.php
-
-		-
 			message: '#^Variable \$car might not be defined\.$#'
 			identifier: variable.undefined
 			count: 1

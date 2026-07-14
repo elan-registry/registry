@@ -29,6 +29,12 @@ if (!securePage($php_self)) {
         ->send();
 }
 
+if (!isAdmin()) {
+    ApiResponse::forbidden('Administrator access required')
+        ->withLogging($user->data()->id, LogCategories::LOG_CATEGORY_SECURITY, 'Editor attempted backup operation without admin role')
+        ->send();
+}
+
 // CSRF protection for all POST operations
 if (!isset($_POST['csrf']) || !Token::check($_POST['csrf'])) {
     ApiResponse::forbidden('Invalid CSRF token')
