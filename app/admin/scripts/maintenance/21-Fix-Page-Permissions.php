@@ -67,6 +67,7 @@ ini_set('display_startup_errors', 1);
 error_reporting(E_ALL);
 
 require_once '../../../../users/init.php';
+require_once $abs_us_root . $us_url_root . 'app/admin/includes/fix-script-core.php';
 
 if (!securePage($php_self)) {
     die();
@@ -382,7 +383,7 @@ if ($method === 'POST' && isset($_POST['action'])) {
             logger($user->data()->id, LogCategories::LOG_CATEGORY_PERMISSION_FIX_ERROR, "Analysis failed: " . $e->getMessage());
             echo json_encode([
                 'success' => false,
-                'error' => 'Analysis failed: ' . $e->getMessage()
+                'error' => 'Analysis failed. Check server logs for details.'
             ]);
         }
         exit;
@@ -400,7 +401,7 @@ if ($method === 'POST' && isset($_POST['action'])) {
             logger($user->data()->id, LogCategories::LOG_CATEGORY_PERMISSION_FIX_ERROR, "Failed to get details: " . $e->getMessage());
             echo json_encode([
                 'success' => false,
-                'error' => 'Failed to get details: ' . $e->getMessage()
+                'error' => 'Failed to get details. Check server logs for details.'
             ]);
         }
         exit;
@@ -1057,11 +1058,7 @@ require_once $abs_us_root . $us_url_root . 'users/includes/template/prep.php';
                     // Clear the log container
                     document.getElementById('resultsContainer').innerHTML = '';
 
-                    // Start execution via iframe to handle streaming output
-                    const iframe = document.createElement('iframe');
-                    iframe.style.display = 'none';
-                    iframe.src = window.location.href + (window.location.href.includes('?') ? '&' : '?') + 'execute=1';
-                    document.body.appendChild(iframe);
+                    document.getElementById('execute-form').submit();
                 }
 
 function abortProcess() {
@@ -1071,9 +1068,15 @@ function abortProcess() {
                 }
             </script>
 
+            <iframe id="execute-frame" name="execute-frame" style="display:none;"></iframe>
+            <form id="execute-form" method="POST" action="" target="execute-frame">
+                <input type="hidden" name="csrf" value="<?= Token::generate() ?>">
+                <input type="hidden" name="execute" value="1">
+            </form>
+
             <?php
             // STEP 3: Execute Changes
-            if (isset($_GET['execute']) && $_GET['execute'] == '1') {
+            if ($method === 'POST' && isset($_POST['execute']) && Token::check($_POST['csrf'] ?? '')) {
 
                 $global_attempts = 0;
                 $global_successes = 0;
@@ -1476,9 +1479,7 @@ function abortProcess() {
 
 <!-- Return buttons -->
 <div style="margin-top: 20px; text-align: center;">
-    <button onclick="if(window.opener){window.opener.location.reload(); window.close();} else {window.location.href='../../maintenance.php?tab=maintenance';}" class="btn btn-outline-primary">
-        <i class="fa fa-arrow-left" aria-hidden="true"></i> Return to Admin Console
-    </button>
+    <?= admin_script_close_button() ?>
     <button onclick="window.location.href='../../maintenance.php?tab=maintenance';" class="btn btn-outline-secondary ml-2">
         <i class="fa fa-list" aria-hidden="true"></i> FIX Menu
     </button>
