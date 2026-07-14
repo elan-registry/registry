@@ -211,14 +211,19 @@ test.describe('DataTables XSS render guard — factory table', () => {
 
             const xssFired = typeof window.__factoryXssFlag !== 'undefined';
             const rowNode   = newRow.node();
-            const hasImg    = rowNode ? rowNode.querySelector('img[src="x"]') !== null : false;
+            // null means the row sorted onto a page not currently displayed —
+            // the img check would be vacuous, so we return null to fail the
+            // assertion explicitly rather than silently passing.
+            const hasImg    = rowNode ? rowNode.querySelector('img[src="x"]') !== null : null;
 
             newRow.remove().draw(false);
             return { xssFired, hasImg };
         });
 
         expect(result.xssFired, 'XSS onerror fired in factory table color column').toBe(false);
-        expect(result.hasImg,   '<img src="x"> appeared in factory table color column').toBe(false);
+        // null means the row was off the current page — the DOM check would have been vacuous.
+        expect(result.hasImg, 'Synthetic row was not rendered on the current page — img check is vacuous').not.toBeNull();
+        expect(result.hasImg, '<img src="x"> appeared in factory table color column').toBe(false);
     });
 
     test('no raw XSS probe <img src="x"> injected inside factory #cartable', async ({ page }) => {
@@ -303,13 +308,18 @@ test.describe('DataTables XSS render guard — car history table', () => {
 
             const xssFired = typeof window.__historyXssFlag !== 'undefined';
             const rowNode   = newRow.node();
-            const hasImg    = rowNode ? rowNode.querySelector('img[src="x"]') !== null : false;
+            // null means the row sorted onto a page not currently displayed —
+            // the img check would be vacuous, so we return null to fail the
+            // assertion explicitly rather than silently passing.
+            const hasImg    = rowNode ? rowNode.querySelector('img[src="x"]') !== null : null;
 
             newRow.remove().draw(false);
             return { xssFired, hasImg };
         });
 
         expect(result.xssFired, 'XSS onerror fired in car history table color column').toBe(false);
+        // null means the row was off the current page — the DOM check would have been vacuous.
+        expect(result.hasImg, 'Synthetic row was not rendered on the current page — img check is vacuous').not.toBeNull();
         expect(result.hasImg,   '<img src="x"> appeared in car history table color column').toBe(false);
     });
 
