@@ -292,28 +292,6 @@ $line = 1; // Where messages go
                     container.scrollTop = container.scrollHeight;
                 }
 
-                function startProcessing() {
-                    if (processStarted) return;
-                    processStarted = true;
-
-                    // Get selected batch size
-                    const batchSize = document.getElementById('batchSize').value;
-
-                    // Hide description section
-                    document.getElementById('descriptionSection').style.display = 'none';
-
-                    // Set start time
-                    const now = new Date();
-                    document.getElementById('startTimeText').textContent = now.toLocaleString();
-
-                    // Start the actual processing with batch size
-                    const params = new URLSearchParams(window.location.search);
-                    params.set('start', '1');
-                    params.set('batch_size', batchSize);
-
-                    window.location.href = window.location.pathname + '?' + params.toString();
-                }
-
                 // Check if we should start automatically
                 if (new URLSearchParams(window.location.search).get('start') === '1') {
                     processStarted = true;
