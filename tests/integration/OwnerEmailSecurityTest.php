@@ -128,7 +128,9 @@ final class OwnerEmailSecurityTest extends IntegrationTestCase
             'email' => 'alice_fromname@example.com',
         ]);
 
-        // Replicate the Owner data load from send-owner-email.php:91-101
+        // Raw SQL intentionally bypasses Owner::data() to isolate the string-derivation
+        // logic under test. Owner::data() is tested separately; we're pinning what
+        // send-owner-email.php does with the data it receives, not how it loads it.
         $fromOwnerResult = $this->db->query('SELECT fname, lname, email FROM users WHERE id = ?', [$fromUserId]);
         $fromData        = $fromOwnerResult->first();
 
@@ -167,7 +169,9 @@ final class OwnerEmailSecurityTest extends IntegrationTestCase
             'email' => 'bob_toname@example.com',
         ]);
 
-        // Replicate the Owner data load from send-owner-email.php:91-101
+        // Raw SQL intentionally bypasses Owner::data() to isolate the string-derivation
+        // logic under test. Owner::data() is tested separately; we're pinning what
+        // send-owner-email.php does with the data it receives, not how it loads it.
         $toOwnerResult = $this->db->query('SELECT fname, lname, email FROM users WHERE id = ?', [$toUserId]);
         $toData        = $toOwnerResult->first();
 

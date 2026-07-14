@@ -178,15 +178,13 @@ if (!$fromEmailValid) {
 $replyOpts = $fromEmailValid ? ['replyTo' => $fromEmail, 'reply_name' => $fromName] : [];
 
 $result = email($toEmail, $subject, $body, $replyOpts);
-$safeFromLog = preg_replace('/[\r\n\t]/', '', $fromEmail);
-$safeToLog   = preg_replace('/[\r\n\t]/', '', $toEmail);
 
 if ($result !== true) {
     ApiResponse::serverError()
-        ->withLogging($logUserId ?? 0, LogCategories::LOG_CATEGORY_EMAIL_ERROR, "send-owner-email.php SEND FAILED from $safeFromLog to $safeToLog")
+        ->withLogging($logUserId ?? 0, LogCategories::LOG_CATEGORY_EMAIL_ERROR, "send-owner-email.php SEND FAILED from $fromEmail to $toEmail")
         ->send();
 }
 
 ApiResponse::success('Your message has been sent.')
-    ->withLogging($logUserId ?? 0, LogCategories::LOG_CATEGORY_ELAN_REGISTRY, "send-owner-email.php sent from $safeFromLog to $safeToLog")
+    ->withLogging($logUserId ?? 0, LogCategories::LOG_CATEGORY_ELAN_REGISTRY, "send-owner-email.php sent from $fromEmail to $toEmail")
     ->send();
