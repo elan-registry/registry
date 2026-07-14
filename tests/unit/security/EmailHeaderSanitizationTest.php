@@ -172,20 +172,37 @@ final class EmailHeaderSanitizationTest extends TestCase
      * Unlike $fromName (which flows into reply_name — a MIME display-name header),
      * $toName is used only in the HTML template greeting where htmlspecialchars()
      * handles XSS. SMTP header injection is not a risk for body-only values, so
-     * stripping is unnecessary. This test documents the intentional asymmetry so
-     * future refactors don't add preg_replace here by mistake.
+     * stripping is unnecessary. The (string)(... ?? '') null guard matches $fromName
+     * for defensive consistency, but no preg_replace is applied. This test documents
+     * the intentional asymmetry so future refactors don't add preg_replace here.
      */
     public function testToName_IsAssignedDirectly_WithoutPregreplace(): void
     {
         $toData = (object)['fname' => "Bob\r\nInjection", 'lname' => 'Jones'];
 
-        // The contract: $toName is $toData->fname verbatim (no stripping)
-        $toName = $toData->fname;
+        // The contract: (string)($toData->fname ?? '') — null guard only, no stripping
+        $toName = (string)($toData->fname ?? '');
 
         // The value is the raw fname — control chars are present (intentional)
         $this->assertSame("Bob\r\nInjection", $toName);
         // Template safety comes from htmlspecialchars() at render time, not pre-stripping
         $this->assertStringNotContainsString('Jones', $toName);
+    }
+
+    /**
+     * Null fname (DEFAULT NULL column) produces an empty string without TypeError.
+     *
+     * Without the (string)(... ?? '') guard, $toName would be null, and
+     * htmlspecialchars($to, ENT_QUOTES, 'UTF-8') in the email template would throw
+     * a TypeError in PHP 8.1+, causing the ob_start() catch to suppress the error
+     * and return a 500 to the sender.
+     */
+    public function testToName_NullFname_YieldsEmptyString(): void
+    {
+        $toData = (object)['fname' => null, 'lname' => 'Jones'];
+        $toName = (string)($toData->fname ?? '');
+
+        $this->assertSame('', $toName);
     }
 
     // ------------------------------------------------------------------
@@ -275,9 +292,9 @@ final class EmailHeaderSanitizationTest extends TestCase
 
         // Replicate send-owner-email.php:113-116 verbatim
         $toEmail   = preg_replace('/[\r\n\t]/', '', $toData->email);
-        $toName    = $toData->fname;
+        $toName    = (string)($toData->fname ?? '');
         $fromEmail = preg_replace('/[\r\n\t]/', '', $fromData->email);
-        $fromName  = preg_replace('/[\r\n\t]/', '', $fromData->fname);
+        $fromName  = preg_replace('/[\r\n\t]/', '', (string)($fromData->fname ?? ''));
 
         $this->assertSame('bob@example.com',   $toEmail);
         $this->assertSame('Bob',               $toName);

@@ -172,7 +172,7 @@ final class OwnerEmailSecurityTest extends IntegrationTestCase
         $toData        = $toOwnerResult->first();
 
         // Replicate send-owner-email.php:114
-        $toName = $toData->fname;
+        $toName = (string)($toData->fname ?? '');
 
         $this->assertSame('Bob', $toName, '$toName must equal fname only');
         $this->assertStringNotContainsString('Jones', $toName, '$toName must not include lname');

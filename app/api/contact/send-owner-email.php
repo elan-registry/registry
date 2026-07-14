@@ -111,7 +111,7 @@ $toData   = $toOwner->data();
 $fromData = $fromOwner->data();
 
 $toEmail   = preg_replace('/[\r\n\t]/', '', $toData->email);
-$toName    = $toData->fname;                                                       // first name only — flows to HTML template, not headers
+$toName    = (string)($toData->fname ?? '');                                        // first name only — flows to HTML template, not headers
 $fromEmail = preg_replace('/[\r\n\t]/', '', $fromData->email);
 $fromName  = preg_replace('/[\r\n\t]/', '', (string)($fromData->fname ?? ''));     // strip header-injection chars — reply_name is a display-name header value
 
