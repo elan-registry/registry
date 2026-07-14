@@ -1,4 +1,7 @@
 <?php
+
+declare(strict_types=1);
+
 /**
  * list_factory.php
  * Displays factory information for Lotus Elan cars.
@@ -74,6 +77,7 @@ require_once $abs_us_root . $us_url_root . 'users/includes/html_footer.php'; //c
   const csrf = '<?= Token::generate(); ?>';
   const us_url_root = '<?= $us_url_root ?>';
 
+  const textRender = $.fn.dataTable.render.text();
   const table = $('#cartable').DataTable({
     fixedHeader: true,
     responsive: true,
@@ -111,41 +115,54 @@ require_once $abs_us_root . $us_url_root . 'users/includes/html_footer.php'; //c
         'searchable': false,
         'orderable': false,
         visible: false,
+        render: textRender
       },
       {
         data: "year",
+        render: textRender
       },
       {
-        data: "month"
+        data: "month",
+        render: textRender
       },
       {
-        data: "batch"
+        data: "batch",
+        render: textRender
       },
       {
-        data: "type"
+        data: "type",
+        render: textRender
       },
       {
-        data: "serial"
+        data: "serial",
+        render: textRender
       },
       {
-        data: "suffix"
+        data: "suffix",
+        render: textRender
       },
       {
-        data: "engineletter"
+        data: "engineletter",
+        render: textRender
       },
       {
-        data: "enginenumber"
+        data: "enginenumber",
+        render: textRender
       },
       {
-        data: "gearbox"
+        data: "gearbox",
+        render: textRender
       },
       {
-        data: "color"
+        data: "color",
+        render: textRender
       },
       {
         data: "builddate",
+        render: textRender
       }, {
         data: "note",
+        render: textRender
       }, {
         // car_id is not a table column — injected as a correlated subquery alias by CarDataTablesService
         data: "car_id",

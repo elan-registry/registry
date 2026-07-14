@@ -137,6 +137,7 @@ window.ELAN_CONFIG = {
 <script src='<?= $us_url_root ?>app/assets/js/imagedisplay.min.js?v=<?= ASSET_VERSION ?>'></script>
 
 <script>
+  const textRender = $.fn.dataTable.render.text();
   const table = $('#cartable').DataTable({
     fixedHeader: true,
     responsive: true,
@@ -172,29 +173,37 @@ window.ELAN_CONFIG = {
       orderable: false,
       responsivePriority: 1,
       render: function(data, type, row) {
+        const carId = parseInt(data, 10);
+        if (!Number.isFinite(carId) || carId <= 0) { return ''; }
         const isNew = typeof NEW_CAR_IDS !== 'undefined'
-          && NEW_CAR_IDS.includes(parseInt(data, 10));
+          && NEW_CAR_IDS.includes(carId);
         const badge = isNew ? ' <span class="badge er-badge-yellow badge-sm">NEW</span>' : '';
-        return '<a class="btn btn-primary btn-sm" href="' + us_url_root + 'app/owner/cars/details.php?car_id=' + data + '"><i class="fas fa-eye"></i> Details' + badge + '</a>';
+        return '<a class="btn btn-primary btn-sm" href="' + us_url_root + 'app/owner/cars/details.php?car_id=' + carId + '"><i class="fas fa-eye"></i> Details' + badge + '</a>';
       }
     }, {
       data: 'year',
-      responsivePriority: 1
+      responsivePriority: 1,
+      render: textRender
     }, {
       data: 'type',
-      responsivePriority: 1
+      responsivePriority: 1,
+      render: textRender
     }, {
       data: 'chassis',
-      responsivePriority: 1
+      responsivePriority: 1,
+      render: textRender
     }, {
       data: 'series',
-      responsivePriority: 2
+      responsivePriority: 2,
+      render: textRender
     }, {
       data: 'variant',
-      responsivePriority: 2
+      responsivePriority: 2,
+      render: textRender
     }, {
       data: 'color',
-      responsivePriority: 2
+      responsivePriority: 2,
+      render: textRender
     }, {
       data: 'image',
       searchable: false,
@@ -209,20 +218,25 @@ window.ELAN_CONFIG = {
       }
     }, {
       data: 'fname',
-      responsivePriority: 3
+      responsivePriority: 3,
+      render: textRender
     }, {
       data: 'city',
-      responsivePriority: 3
+      responsivePriority: 3,
+      render: textRender
     }, {
       data: 'state',
-      responsivePriority: 3
+      responsivePriority: 3,
+      render: textRender
     }, {
       data: 'country',
-      responsivePriority: 3
+      responsivePriority: 3,
+      render: textRender
     }, {
       data: 'ctime',
       searchable: true,
-      responsivePriority: 3
+      responsivePriority: 3,
+      render: textRender
     }]
   });
 
