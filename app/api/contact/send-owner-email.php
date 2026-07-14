@@ -111,9 +111,16 @@ $toData   = $toOwner->data();
 $fromData = $fromOwner->data();
 
 $toEmail   = preg_replace('/[\r\n\t]/', '', $toData->email);
-$toName    = $toData->fname . ' ' . $toData->lname;
-$fromEmail = $fromData->email;
-$fromName  = $fromData->fname . ' ' . $fromData->lname;
+$toName    = $toData->fname;                                                       // first name only — flows to HTML template, not headers
+$fromEmail = preg_replace('/[\r\n\t]/', '', $fromData->email);
+$fromName  = preg_replace('/[\r\n\t]/', '', (string)($fromData->fname ?? ''));     // strip header-injection chars — reply_name is a display-name header value
+
+if (!filter_var($toEmail, FILTER_VALIDATE_EMAIL)) {
+    ApiResponse::serverError()
+        ->withLogging($logUserId ?? 0, LogCategories::LOG_CATEGORY_EMAIL_ERROR,
+            'send-owner-email.php: invalid recipient email for to_user_id=' . $toUserId)
+        ->send();
+}
 
 try {
     $car = new Car($carId);

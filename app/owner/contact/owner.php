@@ -41,7 +41,6 @@ $from = [
 $to = [
     'id'    => $ownerData->id,
     'fname' => $ownerData->fname,
-    'lname' => $ownerData->lname,
 ];
 ?>
 
@@ -69,7 +68,7 @@ $to = [
                         <h5 class="text-primary"><i class="fas fa-user"></i> To</h5>
                         <div class="bg-light p-3 rounded">
                             <div class="mb-2">
-                                <strong><?= OwnerView::displayName((object)$to) ?></strong>
+                                <strong><?= htmlspecialchars($to['fname'] ?? '', ENT_QUOTES, 'UTF-8') ?></strong>
                             </div>
                         </div>
                     </div>
