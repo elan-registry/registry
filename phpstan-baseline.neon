@@ -955,12 +955,6 @@ parameters:
 			path: usersc/plugins/hooker/hooks/sample_hook.php
 
 		-
-			message: '#^Variable \$thatUser might not be defined\.$#'
-			identifier: variable.undefined
-			count: 5
-			path: usersc/plugins/hooker/hooks/user_form_hook.php
-
-		-
 			message: '#^If condition is always false\.$#'
 			identifier: if.alwaysFalse
 			count: 2
