@@ -8,7 +8,7 @@
 This will display the users Profile information
 
 */
-global $userId;
+global $userId, $us_url_root;
 
 $user_id = $userId;
 
@@ -56,20 +56,15 @@ $esc = fn($value) => htmlspecialchars((string)($value ?? ''), ENT_QUOTES, 'UTF-8
 	<?php } ?>
 	<?php if (isset($thatCar)) { ?>
 		<tr>
-			<td><strong>CAR ID : </strong></td>
-			<td><?= $esc($thatCar[0]->id) ?></td>
-		</tr>
-		<tr>
-			<td><strong>YEAR : </strong></td>
-			<td><?= $esc($thatCar[0]->year) ?></td>
-		</tr>
-		<tr>
-			<td><strong>TYPE : </strong></td>
-			<td><?= $esc($thatCar[0]->type) ?></td>
-		</tr>
-		<tr>
-			<td><strong>CHASSIS : </strong></td>
-			<td><?= $esc($thatCar[0]->chassis) ?></td>
+			<td colspan="2">
+				<?php foreach ($thatCar as $car) { ?>
+					<a href="<?= $esc($us_url_root) ?>app/owner/cars/details.php?car_id=<?= (int) $car->id ?>"
+					   class="btn btn-sm btn-primary me-1 mb-1"
+					   target="_blank">
+						Car #<?= (int) $car->id ?>
+					</a>
+				<?php } ?>
+			</td>
 		</tr>
 	<?php } else { ?>
 		<tr>
