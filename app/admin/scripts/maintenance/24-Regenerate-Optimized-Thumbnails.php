@@ -262,7 +262,7 @@ $line = 1; // Where messages go
             ${stats}
         </div>
         <div class="text-center">
-            <button onclick="if(window.opener){window.opener.location.reload();} window.close();" class="btn btn-primary">
+            <button onclick="if(window.opener){window.opener.location.reload();window.close();}else{window.location.href='../../maintenance.php?tab=maintenance';}" class="btn btn-primary">
                 <i class="fa fa-times"></i> Close Window
             </button>
         </div>
@@ -356,7 +356,7 @@ $line = 1; // Where messages go
                         exit;
                     }
                 }
-                $batch_token = $_SESSION['thumb_batch_token'] ?? '';
+                $batch_token = $_SESSION['thumb_batch_token'];
 
                 // Batch processing parameters
                 $allowed_batch_sizes = [5, 10, 15, 25];
