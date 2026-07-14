@@ -1,6 +1,6 @@
 // tests/playwright/ui-consistency.test.js
 const { test, expect } = require('@playwright/test');
-const { navigateAndWait, validateCardStructure } = require('./auth-helper.js');
+const { navigateAndWait, validateCardStructure, NO_CARDS_ERROR } = require('./auth-helper.js');
 
 test.describe('UI Consistency After Style Refactoring', () => {
   test('consistent card layouts across pages', async ({ page }) => {
@@ -21,7 +21,7 @@ test.describe('UI Consistency After Style Refactoring', () => {
         try {
           await validateCardStructure(page);
         } catch (_error) {
-          if (_error.message && _error.message.includes('No cards found on page')) {
+          if (_error.message && _error.message.includes(NO_CARDS_ERROR)) {
             continue;
           }
           throw _error;

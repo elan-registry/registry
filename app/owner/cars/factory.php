@@ -105,9 +105,10 @@ require_once $abs_us_root . $us_url_root . 'users/includes/html_footer.php'; //c
       },
       error: function(xhr, error, thrown) {
         console.error('Factory table load failed:', error, xhr.status, thrown);
-        $('#cartable').closest('.dataTables_wrapper').prepend(
-          '<div class="alert alert-danger mt-2">Could not load factory data. Please refresh the page.</div>'
-        );
+        const wrapper = $('#cartable').closest('.dataTables_wrapper');
+        if (!wrapper.find('.alert-danger').length) {
+          wrapper.prepend('<div class="alert alert-danger mt-2">Could not load factory data. Please refresh the page.</div>');
+        }
       }
     },
     'columns': [{

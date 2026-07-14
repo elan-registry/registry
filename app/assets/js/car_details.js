@@ -41,7 +41,7 @@ function initializeHistoryTable() {
         return;
     }
 
-    historyTableInitialized = true; // Set before try so any init error shows the alert once without re-entering.
+    historyTableInitialized = true; // Set before try so that if DataTables.init() throws, a subsequent call still sees the flag and returns early — preventing a re-init on a partially-initialized table.
 
     try {
         const textRender = $.fn.dataTable.render.text();
@@ -64,7 +64,7 @@ function initializeHistoryTable() {
                 error: function(xhr, error, thrown) {
                     console.error('History table load failed (car ID: ' + carId + '):', error, thrown, xhr.status);
                     const tableContainer = document.getElementById('carHistoryTable');
-                    if (tableContainer && !tableContainer.previousElementSibling?.classList.contains('alert')) {
+                    if (tableContainer && !tableContainer.parentElement.querySelector('.alert')) {
                         const warning = document.createElement('div');
                         warning.className = 'alert alert-warning';
                         warning.textContent = 'Car history could not be loaded. Please refresh the page to try again.';
@@ -169,7 +169,11 @@ function initializeHistoryTable() {
         // Run highlight on every draw (initial load, sort, page, search)
         table.on('draw.dt', function() {
             if (typeof highlightDifferences === 'function') {
-                highlightDifferences();
+                try {
+                    highlightDifferences();
+                } catch (drawError) {
+                    console.error('highlightDifferences() threw on draw event:', drawError);
+                }
             }
         });
 
@@ -177,10 +181,12 @@ function initializeHistoryTable() {
         console.error('Failed to initialize history table (car ID: ' + carId + '):', error);
         const tableContainer = document.getElementById('carHistoryTable');
         if (tableContainer) {
-            const warning = document.createElement('div');
-            warning.className = 'alert alert-warning';
-            warning.textContent = 'Car history could not be loaded.';
-            tableContainer.insertAdjacentElement('beforebegin', warning);
+            if (!tableContainer.parentElement.querySelector('.alert')) {
+                const warning = document.createElement('div');
+                warning.className = 'alert alert-warning';
+                warning.textContent = 'Car history could not be loaded.';
+                tableContainer.insertAdjacentElement('beforebegin', warning);
+            }
         } else {
             console.warn('initializeHistoryTable: #carHistoryTable not found — warning could not be shown');
         }

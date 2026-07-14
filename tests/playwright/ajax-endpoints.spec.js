@@ -103,10 +103,8 @@ test.describe('Registry-Specific AJAX Endpoints', () => {
 
         // Data should be an array
         expect(Array.isArray(jsonResponse.data)).toBe(true);
-      } catch (_error) {
-        // If not JSON, should at least be a valid response
-        const responseText = await response.text();
-        expect(responseText.length).toBeGreaterThan(0);
+      } catch (parseError) {
+        throw new Error(`list.php returned non-JSON (status ${response.status()}): ${parseError.message}`);
       }
     }
   });
