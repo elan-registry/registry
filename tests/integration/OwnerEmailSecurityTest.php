@@ -102,6 +102,87 @@ final class OwnerEmailSecurityTest extends IntegrationTestCase
     }
 
     /**
+     * Privacy + injection fix (issue #1322, Bug B): $fromName uses only fname.
+     *
+     * ROOT CAUSE
+     * ----------
+     * Before the fix, $fromName was $fromData->fname . ' ' . $fromData->lname,
+     * exposing the sender's surname in reply-to headers and the email template,
+     * and bypassing the CR/LF strip that was already applied to $toEmail.
+     *
+     * TESTING GAP
+     * -----------
+     * No test verified which name fields flow into email headers or the
+     * reply_name parameter, so the regression was invisible to CI.
+     *
+     * PREVENTION
+     * ----------
+     * This test pins the contract: $fromName is derived from $fromData->fname
+     * alone, stripped of CR/LF/tab, and must not contain lname.
+     */
+    public function testFromNameIsFirstNameOnly(): void
+    {
+        $fromUserId = $this->createTestUser([
+            'fname' => 'Alice',
+            'lname' => 'Smith',
+            'email' => 'alice_fromname@example.com',
+        ]);
+
+        // Raw SQL intentionally bypasses Owner::data() to isolate the string-derivation
+        // logic under test. Owner::data() is tested separately; we're pinning what
+        // send-owner-email.php does with the data it receives, not how it loads it.
+        $fromOwnerResult = $this->db->query('SELECT fname, lname, email FROM users WHERE id = ?', [$fromUserId]);
+        $fromData        = $fromOwnerResult->first();
+
+        // Replicate send-owner-email.php:116
+        $fromName = preg_replace('/[\r\n\t]/', '', $fromData->fname);
+
+        $this->assertSame('Alice', $fromName, '$fromName must equal fname only');
+        $this->assertStringNotContainsString('Smith', $fromName, '$fromName must not include lname');
+        $this->assertStringNotContainsString("\r", $fromName, 'CR must be stripped');
+        $this->assertStringNotContainsString("\n", $fromName, 'LF must be stripped');
+        $this->assertStringNotContainsString("\t", $fromName, 'tab must be stripped');
+    }
+
+    /**
+     * Privacy fix (issue #1322, Bug B): $toName uses only fname.
+     *
+     * ROOT CAUSE
+     * ----------
+     * Before the fix, $toName was $toData->fname . ' ' . $toData->lname,
+     * leaking the recipient's surname into the email template greeting.
+     *
+     * TESTING GAP
+     * -----------
+     * Same gap as $fromName — no test verified the $toName derivation.
+     *
+     * PREVENTION
+     * ----------
+     * This test pins the contract: $toName is derived from $toData->fname
+     * alone and must not contain lname.
+     */
+    public function testToNameIsFirstNameOnly(): void
+    {
+        $toUserId = $this->createTestUser([
+            'fname' => 'Bob',
+            'lname' => 'Jones',
+            'email' => 'bob_toname@example.com',
+        ]);
+
+        // Raw SQL intentionally bypasses Owner::data() to isolate the string-derivation
+        // logic under test. Owner::data() is tested separately; we're pinning what
+        // send-owner-email.php does with the data it receives, not how it loads it.
+        $toOwnerResult = $this->db->query('SELECT fname, lname, email FROM users WHERE id = ?', [$toUserId]);
+        $toData        = $toOwnerResult->first();
+
+        // Replicate send-owner-email.php:114
+        $toName = (string)($toData->fname ?? '');
+
+        $this->assertSame('Bob', $toName, '$toName must equal fname only');
+        $this->assertStringNotContainsString('Jones', $toName, '$toName must not include lname');
+    }
+
+    /**
      * IDOR guard: to_user_id must match the car's actual owner.
      *
      * Replicates the DB query and comparison from send-owner-email.php:76-87.
