@@ -1,4 +1,3 @@
-const { expect } = require('@playwright/test');
 const path = require('path');
 const fs = require('fs');
 
