@@ -41,7 +41,7 @@ function initializeHistoryTable() {
         return;
     }
 
-    historyTableInitialized = true; // Set before try so that if DataTables.init() throws, a subsequent call still sees the flag and returns early — preventing a re-init on a partially-initialized table.
+    historyTableInitialized = true; 
 
     try {
         const textRender = $.fn.dataTable.render.text();

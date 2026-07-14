@@ -162,6 +162,13 @@ window.ELAN_CONFIG = {
       dataSrc: 'data',
       data: function(d) {
         d.csrf = csrf;
+      },
+      error: function(xhr, error, thrown) {
+        console.error('Car list table load failed:', error, xhr.status, thrown);
+        const wrapper = $('#cartable').closest('.dataTables_wrapper');
+        if (!wrapper.find('.alert-danger').length) {
+          wrapper.prepend('<div class="alert alert-danger mt-2">Could not load car list. Please refresh the page.</div>');
+        }
       }
     },
     columnDefs: [
