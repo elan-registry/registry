@@ -712,6 +712,13 @@ function uploadImages(array &$cardetails, array &$errors): void
     // Do I have any new files?
     if ($_FILES['file']['name'][0] == 'blob') {
         $successes[] = 'No image';
+        if (empty($cardetails['id'])) {
+            // New car with no uploaded files: clear any phantom filenames that
+            // buildImageDetails() may have written from the filenames POST param.
+            // For updateCar, the filenames represent the existing image order and
+            // must be preserved, so this branch only runs for addCar.
+            $cardetails['image'] = json_encode([]);
+        }
         return;
     }
     // Secure path construction with validation
@@ -909,7 +916,7 @@ function mvTmpImages(array &$cardetails, array &$errors): void
             // uploaded (blob sentinel causes uploadImages() to return before overwriting
             // $cardetails['image']). No temp file exists for a legacy name, so the
             // continue is a safe no-op skip.
-            logger($userId, LogCategories::LOG_CATEGORY_FILE_ERROR,
+            logger($userId, LogCategories::LOG_CATEGORY_CAR_ACTIONS,
                 'mvTmpImages: skipping legacy-format filename (no temp file to move): '
                 . htmlspecialchars((string) $carimage, ENT_QUOTES, 'UTF-8'));
             continue;
