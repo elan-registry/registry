@@ -696,7 +696,7 @@ $currentSizes = $settings->elan_image_thumbnail_sizes ?? '100,300,600,1024,2048'
                         </div>
                     </div>";
 
-                $hasErrors = $batchFailed ? 'true' : 'false';
+                $hasErrors = ($batchFailed || $cumulative_errors > 0) ? 'true' : 'false';
                 echo "<script>showCompletionSummary(`$statsHtml`, {$hasErrors});</script>";
                 unset($_SESSION['thumb_batch_token']);
             } elseif ($method === 'GET' && (int) ($_GET['start'] ?? 0) === 1) {
