@@ -27,9 +27,11 @@ class CarImageProcessor
      * Allowed image file extensions. Shared by generateSecureFilename() (what
      * it may produce) and isValidFilename() (what it will accept).
      *
-     * Two other extension lists diverge from this one and must be kept in sync manually:
-     *   - isSafeFilename() below — hardcoded inline, also includes 'jpeg' for legacy DB rows
+     * One other extension list diverges from this one and must be kept in sync manually:
      *   - getExtension() in save.php — MIME-to-extension map
+     *
+     * isSafeFilename() derives its list from this constant (plus 'jpeg' for legacy DB rows)
+     * so it stays in sync automatically.
      *
      * @var list<string>
      */
@@ -93,8 +95,8 @@ class CarImageProcessor
      * The /u (UTF-8) flag is deliberately omitted so \w matches only ASCII
      * [a-zA-Z0-9_] and not Unicode word characters.
      *
-     * Has its own extension list (jpg, jpeg, png, gif, webp) including 'jpeg'
-     * for historical DB rows — diverges from ALLOWED_EXTENSIONS.
+     * Extension list is derived from ALLOWED_EXTENSIONS plus 'jpeg' for legacy DB rows,
+     * so adding a new extension to ALLOWED_EXTENSIONS automatically permits it here too.
      *
      * Used by decodeAndProcessImages() and buildImageDetails() (reorder path).
      *
@@ -104,7 +106,8 @@ class CarImageProcessor
      */
     public static function isSafeFilename(string $filename): bool
     {
-        return (bool) preg_match('/^[\w\-. ]+\.(jpg|jpeg|png|gif|webp)\z/iD', $filename);
+        $exts = implode('|', array_merge(self::ALLOWED_EXTENSIONS, ['jpeg']));
+        return (bool) preg_match('/^[\w\-. ]+\.(' . $exts . ')\z/iD', $filename);
     }
 
     /**

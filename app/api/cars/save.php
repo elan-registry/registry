@@ -261,7 +261,7 @@ switch ($action) {
         // removeImage() only removes the entry from the DB JSON list — it
         // performs no filesystem deletion — so normalising a traversal prefix
         // here is safe.
-        $file = basename((string)Input::get('file'));
+        $file = basename((string)Input::raw('file'));
         if (!CarImageProcessor::isValidFilename($file)) {
             ApiResponse::error('Invalid image filename')
                 ->withLogging($user->data()->id, LogCategories::LOG_CATEGORY_FILE_ERROR, 'removeImages: invalid filename: ' . htmlspecialchars($file, ENT_QUOTES, 'UTF-8'))
