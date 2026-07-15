@@ -3,6 +3,8 @@
 declare(strict_types=1);
 
 use ElanRegistry\Car\CarRepository;
+use ElanRegistry\Exceptions\CarDatabaseException;
+use ElanRegistry\Exceptions\CarNotFoundException;
 use PHPUnit\Framework\TestCase;
 
 use PHPUnit\Framework\Attributes\Group;
@@ -197,7 +199,14 @@ final class CarRepositoryTest extends TestCase
 
     public function testUpdateImageReturnsTrue(): void
     {
-        $result = $this->repo->updateImage(1, '["test.jpg"]');
+        $db = $this->makeDbMock();
+        $db->expects($this->once())->method('query')->willReturn(new QueryResult([]));
+        $db->method('error')->willReturn(false);
+        $db->method('count')->willReturn(1);
+
+        $repo = new CarRepository($db);
+        $result = $repo->updateImage(1, '["new.jpg"]', '["old.jpg"]');
+
         $this->assertTrue($result);
     }
 
@@ -221,7 +230,7 @@ final class CarRepositoryTest extends TestCase
     private function makeDbMock(): object
     {
         return $this->getMockBuilder(DB::class)
-            ->onlyMethods(['query', 'error', 'errorString', 'count'])
+            ->onlyMethods(['query', 'error', 'errorString', 'count', 'first'])
             ->getMock();
     }
 
@@ -270,5 +279,119 @@ final class CarRepositoryTest extends TestCase
         $this->expectExceptionMessageMatches('/reassignCarsByUser failed/');
 
         $repo->reassignCarsByUser(42, 7);
+    }
+
+    // =========================================================================
+    // updateImage() CAS semantics tests (issue #1311)
+    // =========================================================================
+
+    /**
+     * updateImage() returns false when the UPDATE matches 0 rows, indicating that
+     * the image column was modified concurrently after the caller read it.
+     */
+    public function testUpdateImageReturnsFalseOnConcurrentModification(): void
+    {
+        $db = $this->makeDbMock();
+        $db->expects($this->once())->method('query')->willReturn(new QueryResult([]));
+        $db->method('error')->willReturn(false);
+        $db->method('count')->willReturn(0);
+
+        $repo = new CarRepository($db);
+        $result = $repo->updateImage(1, '["new.jpg"]', '["old.jpg"]');
+
+        $this->assertFalse($result);
+    }
+
+    /**
+     * updateImage() throws CarDatabaseException when the DB query itself fails
+     * (e.g. connection lost, constraint violation).
+     */
+    public function testUpdateImageThrowsCarDatabaseExceptionOnQueryError(): void
+    {
+        $db = $this->makeDbMock();
+        $db->expects($this->once())->method('query')->willReturn(new QueryResult([]));
+        $db->method('error')->willReturn(true);
+
+        $repo = new CarRepository($db);
+
+        $this->expectException(CarDatabaseException::class);
+        $repo->updateImage(1, '["new.jpg"]', '["old.jpg"]');
+    }
+
+    // =========================================================================
+    // deleteCar() rows-affected guard tests (issue #1311)
+    // =========================================================================
+
+    /**
+     * deleteCar() throws CarNotFoundException when the DELETE affects 0 rows,
+     * meaning the car was already deleted by a concurrent request.
+     */
+    public function testDeleteCarThrowsCarNotFoundExceptionWhenNoRowsAffected(): void
+    {
+        $db = $this->makeDbMock();
+        $db->expects($this->once())->method('query')->willReturn(new QueryResult([]));
+        $db->method('error')->willReturn(false);
+        $db->method('count')->willReturn(0);
+
+        $repo = new CarRepository($db);
+
+        $this->expectException(CarNotFoundException::class);
+        $repo->deleteCar(999);
+    }
+
+    // =========================================================================
+    // findByIdForUpdate() tests (issue #1311)
+    // =========================================================================
+
+    /**
+     * findByIdForUpdate() returns null when the SELECT FOR UPDATE finds no row.
+     */
+    public function testFindByIdForUpdateReturnsNullWhenNotFound(): void
+    {
+        $db = $this->makeDbMock();
+        $db->expects($this->once())->method('query')->willReturn(new QueryResult([]));
+        $db->method('error')->willReturn(false);
+        $db->method('count')->willReturn(0);
+
+        $repo = new CarRepository($db);
+
+        $this->assertNull($repo->findByIdForUpdate(1));
+    }
+
+    /**
+     * findByIdForUpdate() returns the car stdClass object when a row is found.
+     */
+    public function testFindByIdForUpdateReturnsCarObjectWhenFound(): void
+    {
+        $car = (object) ['id' => 1, 'chassis' => 'TEST001'];
+
+        $db = $this->makeDbMock();
+        $db->expects($this->once())->method('query')->willReturn(new QueryResult([]));
+        $db->method('error')->willReturn(false);
+        $db->method('count')->willReturn(1);
+        $db->method('first')->willReturn($car);
+
+        $repo = new CarRepository($db);
+        $result = $repo->findByIdForUpdate(1);
+
+        $this->assertIsObject($result);
+        $this->assertSame(1, $result->id);
+        $this->assertSame('TEST001', $result->chassis);
+    }
+
+    /**
+     * findByIdForUpdate() throws CarDatabaseException when the query fails
+     * (e.g. no active transaction, connection error).
+     */
+    public function testFindByIdForUpdateThrowsCarDatabaseExceptionOnQueryError(): void
+    {
+        $db = $this->makeDbMock();
+        $db->expects($this->once())->method('query')->willReturn(new QueryResult([]));
+        $db->method('error')->willReturn(true);
+
+        $repo = new CarRepository($db);
+
+        $this->expectException(CarDatabaseException::class);
+        $repo->findByIdForUpdate(1);
     }
 }

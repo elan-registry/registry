@@ -3,7 +3,6 @@ declare(strict_types=1);
 
 use ElanRegistry\AppConstants;
 use ElanRegistry\Car\Car;
-use ElanRegistry\Car\CarRepository;
 use ElanRegistry\Exceptions\CarDatabaseException;
 use ElanRegistry\Exceptions\CarDeletionException;
 use ElanRegistry\Exceptions\CarMergeException;
@@ -249,6 +248,7 @@ if (ElanInput::existsPost()) {
                         break;
                     } else {
                         // Assign old_car_id / new_car_id and build the audit comment based on reason code
+                        $mergeComment = '';
                         switch ($reason[0]) {
                             case "duplicate":
                                 // Determine the newest car
@@ -259,8 +259,7 @@ if (ElanInput::existsPost()) {
                                     $new_car_id = $car2;
                                     $old_car_id = $car1;
                                 }
-                                $fields['comments'] = "Car $old_car_id is a duplicate of $new_car_id.  The history of $old_car_id has been merged with $new_car_id and $old_car_id deleted.";
-                                $fields['operation'] = "DUPLICATE";
+                                $mergeComment = "Car $old_car_id is a duplicate of $new_car_id.  The history of $old_car_id has been merged with $new_car_id and $old_car_id deleted.";
                                 break;
 
                             case "newownerNewToOld":
@@ -272,8 +271,7 @@ if (ElanInput::existsPost()) {
                                     $new_car_id = $car2;
                                     $old_car_id = $car1;
                                 }
-                                $fields['comments'] = "Car $old_car_id was sold to a new owner and the new owner created a record for the same car as $new_car_id. The history of $old_car_id has been merged with $new_car_id and $old_car_id deleted.";
-                                $fields['operation'] = "NEWOWNER";
+                                $mergeComment = "Car $old_car_id was sold to a new owner and the new owner created a record for the same car as $new_car_id. The history of $old_car_id has been merged with $new_car_id and $old_car_id deleted.";
                                 break;
 
                             case "newownerOldToNew":
@@ -285,8 +283,7 @@ if (ElanInput::existsPost()) {
                                     $new_car_id = $car1;
                                     $old_car_id = $car2;
                                 }
-                                $fields['comments'] = "Car $old_car_id was sold to a new owner and the new owner created a record for the same car as $new_car_id. The history of $old_car_id has been merged with $new_car_id and $old_car_id deleted.";
-                                $fields['operation'] = "NEWOWNER";
+                                $mergeComment = "Car $old_car_id was sold to a new owner and the new owner created a record for the same car as $new_car_id. The history of $old_car_id has been merged with $new_car_id and $old_car_id deleted.";
                                 break;
 
                             default:
@@ -299,69 +296,22 @@ if (ElanInput::existsPost()) {
                         break;
                     }
 
-                    // Execute the merge transaction: transfer history, delete old car, write audit record
-                    $carRepo = new CarRepository($db);
                     try {
-                        $carRepo->beginTransaction();
-                        if (!$carRepo->transferHistory((int) $old_car_id, (int) $new_car_id)) {
-                            throw new CarMergeException('transferHistory failed: ' . $carRepo->errorString());
-                        }
-                        if (!$carRepo->deleteCar((int) $old_car_id)) {
-                            throw new CarMergeException('deleteCar failed: ' . $carRepo->errorString());
-                        }
-
-                        // Set up the audit record fields now that all structural steps succeeded
-                        $fields['car_id'] = $new_car_id;
-                        $fields['ctime']  = date(AppConstants::DATETIME_FORMAT);
-                        $fields['mtime']  = $fields['ctime'];
-
-                        // insertHistory is best-effort: an audit failure must not roll back the structural merge.
-                        // The inner try/catch prevents both false-returns and thrown Throwables from reaching
-                        // the outer catch, so commit() proceeds regardless. A successful insert is committed
-                        // atomically with the structural changes; a failed insert is logged and merge still succeeds.
-                        try {
-                            if (!$carRepo->insertHistory($fields)) {
-                                logger($currentUserId, LogCategories::LOG_CATEGORY_DATABASE_ERROR,
-                                    "WARNING: History insert failed after merging CAR $old_car_id to CAR $new_car_id — merge completed but audit record missing.");
-                            }
-                        } catch (\Throwable $insertEx) {
-                            logger($currentUserId, LogCategories::LOG_CATEGORY_DATABASE_ERROR,
-                                "WARNING: History insert threw after merging CAR $old_car_id to CAR $new_car_id — merge completed but audit record missing: " . $insertEx->getMessage());
-                        }
-
-                        $carRepo->commit();
-                        $successes[] = $fields['comments'];
-                        logger($currentUserId, LogCategories::LOG_CATEGORY_CAR_MERGE, $fields['comments']);
-                    } catch (CarMergeException $e) {
-                        try {
-                            $carRepo->rollback();
-                        } catch (\PDOException $rollbackEx) {
-                            logger($currentUserId, LogCategories::LOG_CATEGORY_DATABASE_ERROR,
-                                "CRITICAL: Rollback failed after car merge failure — DB may be inconsistent. " . $rollbackEx->getMessage());
-                        }
+                        (new Car($new_car_id))->merge($old_car_id, $reason[0]);
+                        $successes[] = $mergeComment;
+                        logger($currentUserId, LogCategories::LOG_CATEGORY_CAR_MERGE, $mergeComment);
+                    } catch (CarNotFoundException $e) {
+                        $errors[] = 'Car merge failed: one or both cars could not be found. Check the admin log for details.';
+                        logger($currentUserId, LogCategories::LOG_CATEGORY_CAR_MERGE,
+                            "FAILED: Car merge aborted — car not found. " . $e->getMessage());
+                    } catch (CarMergeException | CarDatabaseException $e) {
                         $errors[] = 'Car merge failed and was rolled back. Check the admin log for details.';
                         logger($currentUserId, LogCategories::LOG_CATEGORY_CAR_MERGE,
                             "FAILED: Car merge rolled back. " . $e->getMessage());
-                    } catch (\PDOException $e) {
-                        try {
-                            $carRepo->rollback();
-                        } catch (\PDOException $rollbackEx) {
-                            logger($currentUserId, LogCategories::LOG_CATEGORY_DATABASE_ERROR,
-                                "CRITICAL: Rollback failed after car merge database error — DB may be inconsistent. " . $rollbackEx->getMessage());
-                        }
-                        $errors[] = 'Car merge failed due to a database error and was rolled back. Check the admin log for details.';
-                        logger($currentUserId, LogCategories::LOG_CATEGORY_CAR_MERGE,
-                            "FAILED: Car merge rolled back due to database error. " . $e->getMessage());
                     } catch (\Throwable $e) {
-                        try {
-                            $carRepo->rollback();
-                        } catch (\PDOException $rollbackEx) {
-                            logger($currentUserId, LogCategories::LOG_CATEGORY_DATABASE_ERROR,
-                                "CRITICAL: Rollback failed after car merge unexpected error — DB may be inconsistent. " . $rollbackEx->getMessage());
-                        }
-                        $errors[] = 'Car merge failed due to an unexpected error and was rolled back. Check the admin log for details.';
+                        $errors[] = 'Car merge failed due to an unexpected error. Check the admin log for details.';
                         logger($currentUserId, LogCategories::LOG_CATEGORY_CAR_MERGE,
-                            "FAILED: Car merge rolled back due to unexpected error. " . get_class($e) . ': ' . $e->getMessage());
+                            "FAILED: Car merge unexpected error. " . get_class($e) . ': ' . $e->getMessage());
                     }
                     break;
 

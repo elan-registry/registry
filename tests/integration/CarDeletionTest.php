@@ -188,4 +188,27 @@ final class CarDeletionTest extends IntegrationTestCase
         }
     }
 
+    /**
+     * Test that deleting an already-deleted car throws CarNotFoundException.
+     *
+     * This exercises the path added in issue #1311: when the first deletion
+     * succeeds, the car row is gone.  A second delete attempt on the same ID
+     * must throw CarNotFoundException rather than silently returning true.
+     */
+    #[Group('fast')]
+    public function testDeleteAlreadyDeletedCarThrowsCarNotFoundException(): void
+    {
+        // First deletion — must succeed
+        $car = new Car($this->testCarId);
+        $car->delete('First deletion', Token::generate());
+
+        // tearDown will attempt to clean up $this->testCarId; if the car is
+        // already gone the cleanup silently ignores the missing row.
+
+        // Second deletion on the same ID — car no longer exists
+        $this->expectException(CarNotFoundException::class);
+        $car2 = new Car($this->testCarId);
+        $car2->delete('Second deletion', Token::generate());
+    }
+
 }

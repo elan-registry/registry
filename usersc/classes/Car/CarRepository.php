@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace ElanRegistry\Car;
 
 use DB;
+use ElanRegistry\Exceptions\CarDatabaseException;
+use ElanRegistry\Exceptions\CarNotFoundException;
 use ElanRegistry\LogCategories;
 
 /**
@@ -19,17 +21,9 @@ use ElanRegistry\LogCategories;
  */
 class CarRepository
 {
-    private DB $db;
-
     private bool $transactionOwner = false;
 
-    /**
-     * @param DB $db Database instance
-     */
-    public function __construct(DB $db)
-    {
-        $this->db = $db;
-    }
+    public function __construct(private DB $db) {}
 
     /**
      * Find a car by ID
@@ -44,6 +38,25 @@ class CarRepository
             return null;
         }
         return $data->first();
+    }
+
+    /**
+     * Find a car by ID and lock the row for the duration of the current transaction.
+     * Must be called inside an active transaction (InnoDB SELECT...FOR UPDATE).
+     *
+     * @throws CarDatabaseException If query fails
+     */
+    public function findByIdForUpdate(int $carId): ?object
+    {
+        $this->db->query('SELECT * FROM cars WHERE id = ? FOR UPDATE', [$carId]);
+        if ($this->db->error()) {
+            throw new CarDatabaseException("Failed to lock car $carId for update");
+        }
+        if ($this->db->count() === 0) {
+            return null;
+        }
+        $result = $this->db->first();
+        return is_object($result) ? $result : null;
     }
 
     /**
@@ -84,11 +97,18 @@ class CarRepository
      *
      * @param int $carId Car ID
      * @return bool True on success
+     * @throws CarNotFoundException If no car with $carId exists (0 rows affected)
      */
     public function deleteCar(int $carId): bool
     {
         $this->db->query("DELETE FROM cars WHERE id = ?", [$carId]);
-        return !$this->db->error();
+        if ($this->db->error()) {
+            return false;
+        }
+        if ($this->db->count() === 0) {
+            throw new CarNotFoundException("Car $carId not found for deletion");
+        }
+        return true;
     }
 
     /**
@@ -159,15 +179,27 @@ class CarRepository
     }
 
     /**
-     * Update the image JSON for a car
+     * Update the image JSON for a car using compare-and-swap to prevent lost updates.
      *
-     * @param int $carId Car ID
-     * @param string $imageJson JSON-encoded image list (empty string clears all images)
-     * @return bool True on success
+     * Returns true when exactly 1 row was updated, false when 0 rows matched
+     * (indicating a concurrent modification — the caller may retry or raise a conflict error).
+     *
+     * @param int    $carId        Car ID
+     * @param string $newJson      New JSON-encoded image list
+     * @param string $expectedJson The image value that must currently be stored (CAS guard)
+     * @return bool True if the row was updated, false on concurrent modification
+     * @throws CarDatabaseException If the query itself fails
      */
-    public function updateImage(int $carId, string $imageJson): bool
+    public function updateImage(int $carId, string $newJson, string $expectedJson): bool
     {
-        return $this->updateCar($carId, ['image' => $imageJson]);
+        $this->db->query(
+            'UPDATE cars SET image = ? WHERE id = ? AND image = ?',
+            [$newJson, $carId, $expectedJson]
+        );
+        if ($this->db->error()) {
+            throw new CarDatabaseException('Image update query failed');
+        }
+        return $this->db->count() === 1;
     }
 
     /**

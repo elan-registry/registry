@@ -93,19 +93,19 @@ parameters:
 		-
 			message: '#^Variable \$currentUserId might not be defined\.$#'
 			identifier: variable.undefined
-			count: 15
+			count: 10
 			path: app/admin/index.php
 
 		-
 			message: '#^Variable \$new_car_id might not be defined\.$#'
 			identifier: variable.undefined
-			count: 4
+			count: 1
 			path: app/admin/index.php
 
 		-
 			message: '#^Variable \$old_car_id might not be defined\.$#'
 			identifier: variable.undefined
-			count: 4
+			count: 1
 			path: app/admin/index.php
 
 		-

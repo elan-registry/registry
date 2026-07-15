@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use ElanRegistry\Car\CarImageProcessor;
+use ElanRegistry\Exceptions\CarDatabaseException;
 use ElanRegistry\Exceptions\ImageProcessingException;
 use PHPUnit\Framework\TestCase;
 
@@ -61,6 +62,27 @@ final class CarImageProcessorTest extends TestCase
     // removeImage tests (requires mock DB)
     // ============================================================
 
+    /**
+     * Build a DB mock whose updateImage path returns the given outcome.
+     *
+     * removeImage() creates a CarRepository internally and calls updateImage(),
+     * which uses only query(), error(), and count().  Tests that exercise the
+     * update path must supply this mock instead of a real DB connection so the
+     * outcome is deterministic and independent of real DB state.
+     *
+     * @param bool $error      Whether the DB query should simulate a failure
+     * @param int  $rowsAffected  Rows reported by count() (1 = success, 0 = CAS conflict)
+     * @return \PHPUnit\Framework\MockObject\MockObject&DB
+     */
+    private function makeDbMockForUpdate(bool $error = false, int $rowsAffected = 1): object
+    {
+        $db = $this->createMock(DB::class);
+        $db->expects($this->once())->method('query')->willReturn(new QueryResult([]));
+        $db->method('error')->willReturn($error);
+        $db->method('count')->willReturn($rowsAffected);
+        return $db;
+    }
+
     public function testRemoveImageThrowsOnEmptyFilename(): void
     {
         $this->expectException(ImageProcessingException::class);
@@ -72,6 +94,7 @@ final class CarImageProcessorTest extends TestCase
 
     public function testRemoveImageReturnsFalseWhenImageNotFound(): void
     {
+        // Returns false before reaching the DB — no mock needed.
         $carData = (object) ['id' => 1, 'image' => '["other.jpg"]'];
         $db = DB::getInstance();
         $result = $this->processor->removeImage($carData, 'nonexistent.jpg', $db);
@@ -81,7 +104,7 @@ final class CarImageProcessorTest extends TestCase
     public function testRemoveImageReturnsTrueWhenFound(): void
     {
         $carData = (object) ['id' => 1, 'image' => '["test.jpg","other.jpg"]'];
-        $db = DB::getInstance();
+        $db = $this->makeDbMockForUpdate();
         $result = $this->processor->removeImage($carData, 'test.jpg', $db);
         $this->assertTrue($result);
     }
@@ -89,7 +112,7 @@ final class CarImageProcessorTest extends TestCase
     public function testRemoveImageUpdatesCarData(): void
     {
         $carData = (object) ['id' => 1, 'image' => '["test.jpg","other.jpg"]'];
-        $db = DB::getInstance();
+        $db = $this->makeDbMockForUpdate();
         $this->processor->removeImage($carData, 'test.jpg', $db);
         $this->assertEquals('["other.jpg"]', $carData->image);
     }
@@ -97,8 +120,23 @@ final class CarImageProcessorTest extends TestCase
     public function testRemoveImageHandlesCsvFormat(): void
     {
         $carData = (object) ['id' => 1, 'image' => 'test.jpg,other.jpg'];
-        $db = DB::getInstance();
+        $db = $this->makeDbMockForUpdate();
         $result = $this->processor->removeImage($carData, 'test.jpg', $db);
         $this->assertTrue($result);
+    }
+
+    /**
+     * When updateImage() returns false (CAS conflict — another request modified
+     * the image column between the read and the write), removeImage() must throw
+     * CarDatabaseException so the caller can detect the lost-update scenario.
+     */
+    public function testRemoveImageThrowsCarDatabaseExceptionOnCasConflict(): void
+    {
+        $carData = (object) ['id' => 1, 'image' => '["test.jpg"]'];
+        // count=0: UPDATE matched 0 rows → CAS guard failed → updateImage() returns false
+        $db = $this->makeDbMockForUpdate(false, 0);
+
+        $this->expectException(CarDatabaseException::class);
+        $this->processor->removeImage($carData, 'test.jpg', $db);
     }
 }

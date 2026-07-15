@@ -5,6 +5,7 @@ declare(strict_types=1);
 require_once __DIR__ . '/IntegrationTestCase.php';
 
 use ElanRegistry\Car\CarRepository;
+use ElanRegistry\Exceptions\CarNotFoundException;
 use ElanRegistry\Exceptions\CarPermissionException;
 
 use PHPUnit\Framework\Attributes\Group;
@@ -208,6 +209,26 @@ final class CarMergeTest extends IntegrationTestCase
                 $GLOBALS['user'] = $originalUser;
             }
         }
+    }
+
+    /**
+     * Test that merging an already-deleted source car throws CarNotFoundException.
+     *
+     * This exercises the findByIdForUpdate() path added in issue #1311: after the
+     * source car is deleted, the SELECT ... FOR UPDATE inside the merge transaction
+     * returns no row, which the service translates into CarNotFoundException.
+     */
+    #[Group('fast')]
+    public function testMergeAlreadyDeletedSourceCarThrowsCarNotFoundException(): void
+    {
+        // Permanently remove the source car; deleteTestCar() also removes it from
+        // the tearDown tracking list so cleanup does not double-attempt the delete.
+        $this->deleteTestCar($this->testMergeCarId);
+
+        // The target car still exists; the source is gone — merge must throw
+        $this->expectException(CarNotFoundException::class);
+        $car = new Car($this->testCarId);
+        $car->merge($this->testMergeCarId, 'Test merge after source deletion');
     }
 
     /**
