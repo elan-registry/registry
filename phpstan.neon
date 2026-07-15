@@ -70,7 +70,7 @@ parameters:
     ignoreErrors:
         # UserSpice framework classes loaded at runtime via init.php — not autoloadable
         -
-            message: '#unknown class (DB|Token|Input|User|Redirect|Session|Cookie|Server)#'
+            message: '#(unknown|Instantiated) class (DB|Token|Input|User|Redirect|Session|Cookie|Server|Validate|TOTPHandler|Config|Menu)#'
             reportUnmatched: false
         -
             message: '#invalid (return )?type (DB|Token|Input|User|Redirect|Session|Cookie)#'
@@ -78,7 +78,7 @@ parameters:
 
         # UserSpice framework functions loaded at runtime via init.php
         -
-            message: '#Function (securePage|hasPerm|logger|currentUserId|checkMenu|lang|redirect|passwordStrength|isAdmin|email|usError|usSuccess|deleteUsers|logError|getSettings|checkRateLimit|recordRateLimit|fetchAllUsers|fetchUserDetails|checkPermission|sessionValMessages) not found#'
+            message: '#Function (securePage|hasPerm|logger|currentUserId|checkMenu|lang|redirect|passwordStrength|isAdmin|email|usError|usSuccess|deleteUsers|logError|getSettings|checkRateLimit|recordRateLimit|fetchAllUsers|fetchUserDetails|checkPermission|sessionValMessages|currentPage|email_body|getMyHooks|getRateLimitErrorMessage|handleAuthFailure|handleAuthSuccess|hashVericode|includeHook|pluginActive|userSpicePasswordStrength|passwordsAllowed|safeJsonEncodeForJs|safeReturn|tokenHere|fetchUserPermissions|echousername|err|endCloak|isCloaked|passwordResetKillSessions) not found#'
             reportUnmatched: false
 
         # UserSpice framework uses mixed types extensively
