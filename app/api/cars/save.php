@@ -686,7 +686,7 @@ function buildImageDetails(array &$cardetails): void
 
     if (!empty($invalid)) {
         $userId = isset($user) ? (int) $user->data()->id : 0;
-        logger($userId, LogCategories::LOG_CATEGORY_FILE_ERROR,
+        logger($userId, LogCategories::LOG_CATEGORY_SECURITY,
             'buildImageDetails: filtering unsafe filename(s): '
             . htmlspecialchars(implode(', ', $invalid), ENT_QUOTES, 'UTF-8'));
     }

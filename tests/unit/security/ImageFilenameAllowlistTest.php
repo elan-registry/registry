@@ -220,6 +220,14 @@ final class ImageFilenameAllowlistTest extends TestCase
         }
     }
 
+    public function testIsSafeFilenameAcceptsFilenameWithSpace(): void
+    {
+        // Production DB rows with spaced filenames exist (e.g. cars #1300, #1559).
+        // Space is deliberately included in [\w\-. ] to handle this legacy data.
+        $this->assertTrue(CarImageProcessor::isSafeFilename('On return from CAR SOS.JPG'));
+        $this->assertTrue(CarImageProcessor::isSafeFilename('Lotus Elan S4 drophead chassis 45-8057.jpg'));
+    }
+
     public function testIsSafeFilenameRejectsTraversal(): void
     {
         $this->assertFalse(CarImageProcessor::isSafeFilename('../../../etc/passwd'));

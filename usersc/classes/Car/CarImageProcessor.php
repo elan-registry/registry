@@ -95,6 +95,10 @@ class CarImageProcessor
      * The /u (UTF-8) flag is deliberately omitted so \w matches only ASCII
      * [a-zA-Z0-9_] and not Unicode word characters.
      *
+     * Space is included in [\w\-. ] because production DB rows exist with spaced
+     * filenames (e.g. "On return from CAR SOS.JPG", "Lotus Elan S4 drophead...jpg").
+     * These were uploaded before the current naming convention was introduced.
+     *
      * Extension list is derived from ALLOWED_EXTENSIONS plus 'jpeg' for legacy DB rows,
      * so adding a new extension to ALLOWED_EXTENSIONS automatically permits it here too.
      *
