@@ -21,6 +21,9 @@ use ElanRegistry\Transfer\TransferEmailService;
 
 require_once '../../../users/init.php';
 
+// $user->data() is null for guests; pre-resolve before any exception can reach the catch blocks.
+$logUserId = $user->isLoggedIn() ? (int) $user->data()->id : 0;
+
 try {
     if (!Input::existsPost() || !Token::check(Input::get('csrf'))) {
         throw new CarTransferException('Invalid request token');
@@ -100,12 +103,10 @@ try {
     );
 
     if ($existingCarQuery->error()) {
-        logger(
-            (int) $user->data()->id,
-            LogCategories::LOG_CATEGORY_DATABASE_ERROR,
-            'transfer-request: DB error on chassis lookup for chassis=' . $chassis . ': ' . $db->errorString()
+        throw CarTransferException::withUserMessage(
+            'transfer-request: DB error on chassis lookup for chassis=' . $chassis . ': ' . $db->errorString(),
+            'Unable to verify chassis at this time. Please try again.'
         );
-        throw new CarTransferException('Unable to verify chassis at this time. Please try again.');
     }
 
     if ($existingCarQuery->count() === 0) {
@@ -192,15 +193,11 @@ try {
         ->send();
 
 } catch (CarTransferException $e) {
-    // CSRF and missing-POST failures throw before the isLoggedIn() check, so guests can reach here.
-    $logUserId = $user->isLoggedIn() ? (int) $user->data()->id : 0;
     ApiResponse::error($e->getUserMessage(), 400)
         ->withLogging($logUserId, $e->getLogCategory(), 'Transfer request failed: ' . $e->getMessage())
         ->send();
 
 } catch (\Throwable $e) {
-    // CSRF and missing-POST failures throw before the isLoggedIn() check, so guests can reach here.
-    $logUserId = $user->isLoggedIn() ? (int) $user->data()->id : 0;
     ApiResponse::serverError('An unexpected error occurred while processing your transfer request.')
         ->withLogging($logUserId, LogCategories::LOG_CATEGORY_SYSTEM_ERROR, 'Transfer request system error [' . get_class($e) . ']: ' . $e->getMessage())
         ->send();
