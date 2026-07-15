@@ -139,7 +139,7 @@ switch ($action) {
                     LogCategories::LOG_CATEGORY_CAR_ERRORS,
                     'Car add error: ' . $e->getMessage()
                 )->send();
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
             ApiResponse::serverError('Failed to add car: An unexpected error occurred.')
                 ->withLogging(
                     $user->data()->id,
@@ -228,7 +228,7 @@ switch ($action) {
                     LogCategories::LOG_CATEGORY_CAR_ERRORS,
                     'Car update error: ' . $e->getMessage()
                 )->send();
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
             ApiResponse::serverError('Failed to update car: An unexpected error occurred.')
                 ->withLogging(
                     $user->data()->id,
@@ -294,13 +294,9 @@ function updateCar(array &$cardetails, array &$errors): void
     try {
         $car = new Car();
 
-        // Update
-        if ($car->update($cardetails)) {
-            $successes[] = 'Update Car ID: ' . $car->data()->id;
-            $successes[] = 'Update BY ID: ' . $car->data()->user_id;
-        } else {
-            $errors[] = 'Update Car ERROR';
-        }
+        $car->update($cardetails);
+        $successes[] = 'Update Car ID: ' . $car->data()->id;
+        $successes[] = 'Update BY ID: ' . $car->data()->user_id;
     } catch (CarValidationException $e) {
         logger($user->data()->id, LogCategories::LOG_CATEGORY_VALIDATION_ERROR, 'Car Update Validation Error: ' . $e->getMessage());
         $errors[] = $e->getUserMessage();
@@ -327,13 +323,10 @@ function addCar(array &$cardetails, array &$errors): void
     try {
         $car = new Car();
 
-        if ($car->create($cardetails)) {
-            $successes[] = 'Add Car ID: ' . $car->data()->id;
-            $successes[] = 'Added by User ID: ' . $car->data()->user_id;
-            $cardetails['id'] = $car->data()->id;
-        } else {
-            $errors[] = 'Car Create ERROR';
-        }
+        $car->create($cardetails);
+        $successes[] = 'Add Car ID: ' . $car->data()->id;
+        $successes[] = 'Added by User ID: ' . $car->data()->user_id;
+        $cardetails['id'] = $car->data()->id;
     } catch (CarValidationException $e) {
         logger($user->data()->id, LogCategories::LOG_CATEGORY_VALIDATION_ERROR, 'Car Creation Validation Error: ' . $e->getMessage());
         $errors[] = $e->getUserMessage();
@@ -1059,8 +1052,15 @@ function getMimeType(string $file): string
             throw new ImageProcessingException("Unable to initialize file info extension");
         }
         $mimeType = finfo_file($finfo, $file);
+        finfo_close($finfo);
+        if ($mimeType === false) {
+            throw new ImageProcessingException("Unable to read file for MIME type detection (file may be unreadable or missing)");
+        }
     } elseif (function_exists('mime_content_type')) {
         $mimeType = mime_content_type($file);
+        if ($mimeType === false) {
+            throw new ImageProcessingException("Unable to read file for MIME type detection (file may be unreadable or missing)");
+        }
     } else {
         throw new ImageProcessingException("Unable to determine file MIME type");
     }
