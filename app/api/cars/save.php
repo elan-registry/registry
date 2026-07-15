@@ -139,7 +139,7 @@ switch ($action) {
                     LogCategories::LOG_CATEGORY_CAR_ERRORS,
                     'Car add error: ' . $e->getMessage()
                 )->send();
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
             ApiResponse::serverError('Failed to add car: An unexpected error occurred.')
                 ->withLogging(
                     $user->data()->id,
@@ -228,7 +228,7 @@ switch ($action) {
                     LogCategories::LOG_CATEGORY_CAR_ERRORS,
                     'Car update error: ' . $e->getMessage()
                 )->send();
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
             ApiResponse::serverError('Failed to update car: An unexpected error occurred.')
                 ->withLogging(
                     $user->data()->id,
@@ -294,13 +294,9 @@ function updateCar(array &$cardetails, array &$errors): void
     try {
         $car = new Car();
 
-        // Update
-        if ($car->update($cardetails)) {
-            $successes[] = 'Update Car ID: ' . $car->data()->id;
-            $successes[] = 'Update BY ID: ' . $car->data()->user_id;
-        } else {
-            $errors[] = 'Update Car ERROR';
-        }
+        $car->update($cardetails);
+        $successes[] = 'Update Car ID: ' . $car->data()->id;
+        $successes[] = 'Update BY ID: ' . $car->data()->user_id;
     } catch (CarValidationException $e) {
         logger($user->data()->id, LogCategories::LOG_CATEGORY_VALIDATION_ERROR, 'Car Update Validation Error: ' . $e->getMessage());
         $errors[] = $e->getUserMessage();
@@ -327,13 +323,10 @@ function addCar(array &$cardetails, array &$errors): void
     try {
         $car = new Car();
 
-        if ($car->create($cardetails)) {
-            $successes[] = 'Add Car ID: ' . $car->data()->id;
-            $successes[] = 'Added by User ID: ' . $car->data()->user_id;
-            $cardetails['id'] = $car->data()->id;
-        } else {
-            $errors[] = 'Car Create ERROR';
-        }
+        $car->create($cardetails);
+        $successes[] = 'Add Car ID: ' . $car->data()->id;
+        $successes[] = 'Added by User ID: ' . $car->data()->user_id;
+        $cardetails['id'] = $car->data()->id;
     } catch (CarValidationException $e) {
         logger($user->data()->id, LogCategories::LOG_CATEGORY_VALIDATION_ERROR, 'Car Creation Validation Error: ' . $e->getMessage());
         $errors[] = $e->getUserMessage();
@@ -452,11 +445,12 @@ function updateModel(array &$cardetails, array &$errors): void
     $model = Input::raw('model');
     if ($model !== null && $model !== '') {
         $cardetails['model'] = $model;
-        // model is a composite "series|variant|type" from a fixed dropdown — explode into columns
-        list($series, $variant, $type) = explode('|', $cardetails['model']);
-        $cardetails['series'] = $series;
-        $cardetails['variant'] = $variant;
-        $cardetails['type'] = $type;
+        $modelParts = explode('|', $cardetails['model']);
+        if (count($modelParts) !== 3) {
+            $errors[] = 'Invalid model format — please select a model from the dropdown';
+            return;
+        }
+        [$cardetails['series'], $cardetails['variant'], $cardetails['type']] = $modelParts;
 
         $successes[] = 'Model: ' . htmlspecialchars($model, ENT_QUOTES, 'UTF-8');
     } else {
@@ -712,7 +706,7 @@ function uploadImages(array &$cardetails, array &$errors): void
 
 
     // Do I have any new files?
-    if ($_FILES['file']['name'][0] == 'blob') {
+    if (!isset($_FILES['file']['name'][0]) || $_FILES['file']['name'][0] == 'blob') {
         $successes[] = 'No image';
         if (empty($cardetails['id'])) {
             // New car with no uploaded files: clear any phantom filenames that
@@ -735,11 +729,22 @@ function uploadImages(array &$cardetails, array &$errors): void
         $filePath = $targetFilePath . $carId . '/';
     }
 
-    // Ensure the path is within expected directory structure
+    // Ensure the path is within expected directory structure. Both realpath()
+    // calls must succeed. dirname() strips the trailing slash from $filePath
+    // and walks up, so for a direct child like /userimages/123/ it resolves to
+    // /userimages — equal to $realTargetPath. Equality is therefore valid; only
+    // sibling prefixes (e.g. /userimages-other) must be rejected.
     $realTargetPath = realpath($targetFilePath);
     $realFilePath = realpath(dirname($filePath));
+    $canonicalTarget = $realTargetPath !== false ? rtrim($realTargetPath, DIRECTORY_SEPARATOR) : false;
 
-    if ($realFilePath === false || strpos($realFilePath, $realTargetPath) !== 0) {
+    if ($realTargetPath === false || $realFilePath === false
+        || ($realFilePath !== $canonicalTarget
+            && !str_starts_with($realFilePath, $canonicalTarget . DIRECTORY_SEPARATOR))) {
+        logger($user->data()->id, LogCategories::LOG_CATEGORY_FILE_ERROR,
+            'uploadImages: path guard failed — realpath() returned false or traversal detected'
+            . ' (targetFilePath=' . htmlspecialchars($targetFilePath, ENT_QUOTES, 'UTF-8')
+            . ', filePath=' . htmlspecialchars($filePath, ENT_QUOTES, 'UTF-8') . ')');
         throw new ImageProcessingException("Invalid upload path detected");
     }
 
@@ -878,6 +883,11 @@ function fetchImages(int $car_id): void
         ApiResponse::serverError('Failed to fetch images')
             ->withLogging($user->data()->id, LogCategories::LOG_CATEGORY_CAR_ERRORS, 'fetchImages error: ' . $e->getMessage())
             ->send();
+    } catch (\Throwable $e) {
+        ApiResponse::serverError('Failed to fetch images')
+            ->withLogging($user->data()->id, LogCategories::LOG_CATEGORY_CAR_ERRORS,
+                'fetchImages unexpected error [' . get_class($e) . ']: ' . $e->getMessage())
+            ->send();
     }
 }
 
@@ -982,12 +992,18 @@ function removeImage(int $carID, string $file): void
                 )->send();
         }
     } catch (ElanRegistryException $e) {
-        // Log error and return error response
         ApiResponse::serverError('Failed to remove image')
             ->withLogging(
                 $user->data()->id,
                 LogCategories::LOG_CATEGORY_CAR_ERRORS,
                 "removeImage error: carId: {$carID}, error: " . $e->getMessage()
+            )->send();
+    } catch (\Throwable $e) {
+        ApiResponse::serverError('Failed to remove image')
+            ->withLogging(
+                $user->data()->id,
+                LogCategories::LOG_CATEGORY_CAR_ERRORS,
+                'removeImage unexpected error [' . get_class($e) . "]: carId: {$carID}, error: " . $e->getMessage()
             )->send();
     }
 }
@@ -1048,9 +1064,19 @@ function getMimeType(string $file): string
     // Primary method: Use finfo (most reliable)
     if (function_exists('finfo_open')) {
         $finfo = finfo_open(FILEINFO_MIME_TYPE);
+        if ($finfo === false) {
+            throw new ImageProcessingException("Unable to initialize file info extension");
+        }
         $mimeType = finfo_file($finfo, $file);
+        finfo_close($finfo);
+        if ($mimeType === false) {
+            throw new ImageProcessingException("Unable to read file for MIME type detection (file may be unreadable or missing)");
+        }
     } elseif (function_exists('mime_content_type')) {
         $mimeType = mime_content_type($file);
+        if ($mimeType === false) {
+            throw new ImageProcessingException("Unable to read file for MIME type detection (file may be unreadable or missing)");
+        }
     } else {
         throw new ImageProcessingException("Unable to determine file MIME type");
     }
