@@ -32,8 +32,6 @@ $settings = getSettings();
 
 $currentSizes = $settings->elan_image_thumbnail_sizes ?? '100,300,600,1024,2048';
 
-$line = 1; // Where messages go
-
 ?>
 
 <div id="page-wrapper">
@@ -299,7 +297,6 @@ $line = 1; // Where messages go
             </script>
 
             <?php
-            $is_initial      = admin_script_exec_requested();
             $is_continuation = $method === 'GET' && (int) ($_GET['start'] ?? 0) === 1
                                && (int) ($_GET['offset'] ?? 0) > 0
                                && isset($_SESSION['thumb_batch_token'])
@@ -316,13 +313,16 @@ $line = 1; // Where messages go
 
                 // Update thumbnail sizes setting: replace 600 with 768
                 $newSizes = $currentSizes;
-                if (strpos($currentSizes, '600') !== false) {
+                $settingsUpdated = false;
+                if (str_contains($currentSizes, '600')) {
                     $newSizes = str_replace('600', '768', $currentSizes);
                     try {
                         $db->query("UPDATE settings SET elan_image_thumbnail_sizes = ? WHERE id = 1", [$newSizes]);
                         $settings->elan_image_thumbnail_sizes = $newSizes;
+                        $settingsUpdated = true;
                     } catch (Exception $e) {
                         logger($user->data()->id, LogCategories::LOG_CATEGORY_FIX_SCRIPT, "Failed to update elan_image_thumbnail_sizes setting: " . $e->getMessage() . " (Issue #176)");
+                        outputMessage("❌ Failed to update elan_image_thumbnail_sizes in database: " . $e->getMessage());
                     }
                 }
 
@@ -377,9 +377,9 @@ $line = 1; // Where messages go
                 outputMessage("");
 
                 // Report settings update
-                if (strpos($currentSizes, '600') !== false) {
+                if ($settingsUpdated) {
                     outputMessage("⚙️ Updated elan_image_thumbnail_sizes: {$currentSizes} → {$newSizes}");
-                } else {
+                } elseif (!str_contains($currentSizes, '600')) {
                     outputMessage("✅ elan_image_thumbnail_sizes already correct: {$currentSizes}");
                 }
                 outputMessage("");
@@ -389,15 +389,23 @@ $line = 1; // Where messages go
                 outputMessage("🔍 Image base path: " . $imageBasePath);
 
                 // Get total count of cars with images (for overall progress tracking)
-                $total_cars_result = $db->query("SELECT COUNT(*) as count FROM cars WHERE image IS NOT NULL AND image != ''")->results();
-                $total_cars = $total_cars_result[0]->count;
+                try {
+                    $total_cars_result = $db->query("SELECT COUNT(*) as count FROM cars WHERE image IS NOT NULL AND image != ''")->results();
+                    $total_cars = $total_cars_result[0]->count;
 
-                // Get batched cars with images for processing
-                $cars_with_images = $db->query(
-                    "SELECT id, image FROM cars WHERE image IS NOT NULL AND image != '' LIMIT ? OFFSET ?",
-                    [$batch_size, $offset]
-                )->results();
-                $batch_car_count = count($cars_with_images);
+                    // Get batched cars with images for processing
+                    $cars_with_images = $db->query(
+                        "SELECT id, image FROM cars WHERE image IS NOT NULL AND image != '' LIMIT ? OFFSET ?",
+                        [$batch_size, $offset]
+                    )->results();
+                    $batch_car_count = count($cars_with_images);
+                } catch (Exception $e) {
+                    logger($user->data()->id, LogCategories::LOG_CATEGORY_FIX_SCRIPT,
+                        "Failed to query cars for thumbnail processing: " . $e->getMessage() . " (Issue #176)");
+                    outputMessage("❌ Database error while loading car list: " . $e->getMessage());
+                    outputMessage("Cannot continue. Check database connectivity.");
+                    exit;
+                }
                 
                 outputMessage("📊 Found {$total_cars} total cars with image data");
                 outputMessage("📦 Processing batch: " . ($offset + 1) . " to " . min($offset + $batch_size, $total_cars) . " (batch size: {$batch_size})");
@@ -446,6 +454,7 @@ $line = 1; // Where messages go
                 outputMessage("🚀 Starting batch thumbnail optimization...");
                 outputMessage("");
 
+                $batchFailed = false;
                 try {
                     foreach ($cars_with_images as $index => $car) {
                         $car_id = $car->id;
@@ -493,7 +502,7 @@ $line = 1; // Where messages go
                             $extension = pathinfo($image_name, PATHINFO_EXTENSION);
                             
                             // Skip files that are already thumbnails
-                            if (strpos($base_name, '-resized-') !== false) {
+                            if (str_contains($base_name, '-resized-')) {
                                 continue;
                             }
 
@@ -549,6 +558,8 @@ $line = 1; // Where messages go
                                     $car_removed++;
                                 } else {
                                     outputMessage("    ❌ Failed to remove 600px: {$base_name}.{$extension}");
+                                    logger($user->data()->id, LogCategories::LOG_CATEGORY_FIX_SCRIPT,
+                                        "unlink() failed for 600px thumbnail: {$old_600} (Issue #176)");
                                     $global_errors++;
                                 }
                             }
@@ -633,6 +644,7 @@ $line = 1; // Where messages go
                     logger($user->data()->id, LogCategories::LOG_CATEGORY_FIX_SCRIPT, "Thumbnail optimization completed (batched) - Total Processed: {$cumulative_processed}, Generated: {$cumulative_generated}, Removed: {$cumulative_removed}, Errors: {$cumulative_errors} (Issue #176)");
 
                 } catch (Exception $e) {
+                    $batchFailed = true;
                     // Update cumulative counters even if there's an error
                     $cumulative_processed += $global_processed;
                     $cumulative_generated += $global_generated;
@@ -640,43 +652,19 @@ $line = 1; // Where messages go
                     $cumulative_errors += $global_errors + 1; // +1 for the current exception
 
                     outputMessage("❌ ERROR during batch processing: " . $e->getMessage());
-
-                    // Check if this might be a timeout error
-                    if (strpos($e->getMessage(), 'Maximum execution time') !== false ||
-                        strpos($e->getMessage(), 'timeout') !== false) {
-
-                        outputMessage("⚠️ Timeout detected - this batch will be retried");
-                        outputMessage("📈 Progress so far: Processed {$cumulative_processed}/{$total_cars} cars");
-
-                        // Calculate resume point (current batch with current progress)
-                        $resume_url = $php_self . '?' . http_build_query([
-                            'start' => '1',
-                            'batch_token' => $batch_token,
-                            'batch_size' => $batch_size,
-                            'offset' => $offset, // Resume from same batch
-                            'total_processed' => $cumulative_processed,
-                            'total_generated' => $cumulative_generated,
-                            'total_removed' => $cumulative_removed,
-                            'total_errors' => $cumulative_errors
-                        ]);
-
-                        $resume_url_attr = htmlspecialchars($resume_url, ENT_QUOTES, 'UTF-8');
-                        outputMessage("🔄 You can resume processing by refreshing the page or clicking the button below:");
-                        echo "<div style='text-align: center; margin: 20px;'>
-                            <button onclick='window.location.href=\"{$resume_url_attr}\"' class='btn btn-warning'>
-                                <i class='fa fa-refresh'></i> Resume Batch Processing
-                            </button>
-                        </div>";
-
-                        logger($user->data()->id, LogCategories::LOG_CATEGORY_FIX_SCRIPT, "Batch timeout - Batch: " . (floor($offset / $batch_size) + 1) . ", Partial progress saved. Resume URL available. (Issue #176)");
-                    } else {
-                        outputMessage("Processing aborted - partial changes may have been made");
-                        logger($user->data()->id, LogCategories::LOG_CATEGORY_FIX_SCRIPT, "Thumbnail optimization failed: " . $e->getMessage() . " (Issue #176)");
-                    }
+                    outputMessage("Processing aborted — partial changes may have been made");
+                    logger($user->data()->id, LogCategories::LOG_CATEGORY_FIX_SCRIPT,
+                        "Thumbnail optimization failed: " . $e->getMessage() . " (Issue #176)");
+                    // Note: PHP max_execution_time is a fatal error, not catchable here.
+                    // Timeout management is handled by the $batch_start_time check in the foreach loop above.
                 }
 
                 outputMessage("");
-                outputMessage("Script completed at " . date("h:i:sa"));
+                if ($batchFailed) {
+                    outputMessage("Script terminated with errors at " . date("h:i:sa"));
+                } else {
+                    outputMessage("Script completed at " . date("h:i:sa"));
+                }
 
                 // Calculate final stats and show completion summary
                 $completionPercentage = $cumulative_processed > 0 ? 100 : 0;

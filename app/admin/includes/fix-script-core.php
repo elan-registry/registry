@@ -20,9 +20,8 @@ define('SECTION_SEPARATOR', '═════════════════
  * from an admin-role user. Blocks editor accounts from triggering destructive
  * execute paths independent of whatever roles securePage() allows at the page level.
  *
- * Result is cached statically — Token::generate() (called by admin_script_start_form())
- * overwrites the session token, so calling Token::check() more than once per request
- * would return false on subsequent calls even for a valid initial POST.
+ * Result is cached statically to avoid repeated hasPerm() database queries from
+ * isAdmin() across multiple call sites on the same page.
  */
 function admin_script_exec_requested(): bool
 {
@@ -30,8 +29,18 @@ function admin_script_exec_requested(): bool
     if ($result !== null) {
         return $result;
     }
-    global $method;
-    $result = $method === 'POST' && Token::check($_POST['csrf'] ?? '') && isAdmin();
+    global $method, $user;
+    if ($method === 'POST' && Token::check($_POST['csrf'] ?? '')) {
+        if (isAdmin()) {
+            $result = true;
+        } else {
+            logger($user->data()->id, LogCategories::LOG_CATEGORY_SECURITY,
+                'Non-admin submitted admin script execute form — access denied');
+            $result = false;
+        }
+    } else {
+        $result = false;
+    }
     return $result;
 }
 
