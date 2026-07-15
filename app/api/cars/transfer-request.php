@@ -174,7 +174,10 @@ try {
 
         // Send alert to administrators with error handling
         try {
-            $emailService->sendAdminAlert($transferRequestId);
+            $adminNotified = $emailService->sendAdminAlert($transferRequestId);
+            if (!$adminNotified) {
+                logger($user->data()->id, LogCategories::LOG_CATEGORY_EMAIL_ERROR, "Admin alert failed for transfer request #$transferRequestId");
+            }
         } catch (\Throwable $emailEx) {
             logger($user->data()->id, LogCategories::LOG_CATEGORY_EMAIL_ERROR, "Unexpected exception sending admin alert for request #$transferRequestId: " . $emailEx->getMessage());
         }

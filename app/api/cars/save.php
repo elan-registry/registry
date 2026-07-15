@@ -712,7 +712,7 @@ function uploadImages(array &$cardetails, array &$errors): void
 
 
     // Do I have any new files?
-    if ($_FILES['file']['name'][0] == 'blob') {
+    if (!isset($_FILES['file']['name'][0]) || $_FILES['file']['name'][0] == 'blob') {
         $successes[] = 'No image';
         if (empty($cardetails['id'])) {
             // New car with no uploaded files: clear any phantom filenames that
@@ -1055,6 +1055,9 @@ function getMimeType(string $file): string
     // Primary method: Use finfo (most reliable)
     if (function_exists('finfo_open')) {
         $finfo = finfo_open(FILEINFO_MIME_TYPE);
+        if ($finfo === false) {
+            throw new ImageProcessingException("Unable to initialize file info extension");
+        }
         $mimeType = finfo_file($finfo, $file);
     } elseif (function_exists('mime_content_type')) {
         $mimeType = mime_content_type($file);
