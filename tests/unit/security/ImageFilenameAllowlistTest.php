@@ -174,6 +174,13 @@ final class ImageFilenameAllowlistTest extends TestCase
         $this->assertFalse(CarImageProcessor::isValidFilename('/some/path/../../../img_' . $this->hex32() . '.jpg'));
     }
 
+    public function testIsValidFilenameRejectsDoubleExtension(): void
+    {
+        // The regex is fully anchored — img_[hex].jpg.php ends with '.php', not
+        // a valid extension, so it cannot match even though it contains '.jpg'.
+        $this->assertFalse(CarImageProcessor::isValidFilename('img_' . $this->hex32() . '.jpg.php'));
+    }
+
     // -------------------------------------------------------------------------
     // isSafeFilename — read-path guard (accepts legacy filenames, rejects attacks)
     //
@@ -304,20 +311,32 @@ final class ImageFilenameAllowlistTest extends TestCase
 
     public function testDecodeAndProcessImagesSkipsMixedValidAndInvalid(): void
     {
-        $safeName    = '20151231132429_legacy.jpg'; // legacy format — passes isSafeFilename()
-        $unsafeName  = '../../../etc/passwd';       // traversal — rejected by isSafeFilename()
+        $safeName   = '20151231132429_legacy.jpg'; // legacy format — passes isSafeFilename()
+        $unsafeName = '../../../etc/passwd';        // traversal — rejected by isSafeFilename()
 
-        // Pre-flight: confirm the read-path guard classifies inputs as expected.
-        $this->assertTrue(CarImageProcessor::isSafeFilename($safeName));
-        $this->assertFalse(CarImageProcessor::isSafeFilename($unsafeName));
+        // Create a real temp file so the safe entry passes is_file() — this makes
+        // the assertion meaningful: if the isSafeFilename() guard were removed the
+        // unsafe entry would also reach is_file() and the count assertion would fail
+        // (both would produce 0 entries from is_file, making the test a no-op again).
+        $tmpDir = sys_get_temp_dir() . '/elan_allowlist_' . bin2hex(random_bytes(4)) . '/';
+        mkdir($tmpDir, 0755, true);
+        file_put_contents($tmpDir . $safeName, str_repeat('x', 100));
 
-        $result = (new CarImageProcessor())->decodeAndProcessImages(
-            json_encode([$safeName, $unsafeName]), '/images/1/', '/', '/var/www/'
-        );
+        try {
+            $result = (new CarImageProcessor())->decodeAndProcessImages(
+                json_encode([$safeName, $unsafeName]),
+                '',
+                '',
+                $tmpDir
+            );
 
-        // The unsafe entry is rejected by isSafeFilename(); the safe entry passes
-        // the guard but is_file() returns false in the test environment (no real files).
-        $this->assertEmpty($result);
+            // The safe legacy filename passes isSafeFilename() and is_file() → in result.
+            $this->assertCount(1, $result, 'Only the safe entry should appear; traversal must be filtered');
+            $this->assertSame($safeName, $result[0]['basename'], 'Safe legacy filename must pass the read-path guard');
+        } finally {
+            @unlink($tmpDir . $safeName);
+            @rmdir($tmpDir);
+        }
     }
 
     // -------------------------------------------------------------------------

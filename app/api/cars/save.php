@@ -673,7 +673,7 @@ function buildImageDetails(array &$cardetails): void
     // Double-write pattern: this value is the FINAL write when no new files are
     // uploaded (uploadImages() returns early on the 'blob' sentinel). When files
     // ARE uploaded, uploadImages() unconditionally overwrites $cardetails['image']
-    // with its own isValidFilename()-filtered list at line 818.
+    // with its own isValidFilename()-filtered list before returning.
     $safeOrder = [];
     $invalid   = [];
     foreach ($requestedOrder as $filename) {
@@ -904,11 +904,13 @@ function mvTmpImages(array &$cardetails, array &$errors): void
 
     foreach ($carImages as $carimage) {
         if (!CarImageProcessor::isValidFilename((string) $carimage)) {
-            // Logically unreachable: uploadImages() already filtered the list
-            // with isValidFilename() before writing $cardetails['image'].
-            // Log as an anomaly but do not surface as a user-facing error.
+            // Reachable on addCar when the filenames POST param contains a legacy-format
+            // name (passes isSafeFilename but not isValidFilename) and no files are
+            // uploaded (blob sentinel causes uploadImages() to return before overwriting
+            // $cardetails['image']). No temp file exists for a legacy name, so the
+            // continue is a safe no-op skip.
             logger($userId, LogCategories::LOG_CATEGORY_FILE_ERROR,
-                'mvTmpImages: unexpected invalid filename in sanitized list: '
+                'mvTmpImages: skipping legacy-format filename (no temp file to move): '
                 . htmlspecialchars((string) $carimage, ENT_QUOTES, 'UTF-8'));
             continue;
         }
