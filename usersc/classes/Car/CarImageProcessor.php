@@ -24,6 +24,93 @@ use ElanRegistry\LogCategories;
 class CarImageProcessor
 {
     /**
+     * Allowed image file extensions. Shared by generateSecureFilename() (what
+     * it may produce) and isValidFilename() (what it will accept).
+     *
+     * One other extension list diverges from this one and must be kept in sync manually:
+     *   - getExtension() in save.php — MIME-to-extension map
+     *
+     * isSafeFilename() derives its list from this constant (plus 'jpeg' for legacy DB rows)
+     * so it stays in sync automatically.
+     *
+     * @var list<string>
+     */
+    public const ALLOWED_EXTENSIONS = ['jpg', 'png', 'gif', 'webp'];
+
+    /**
+     * Derive the allowlist regex from ALLOWED_EXTENSIONS.
+     *
+     * \z is the primary end-of-string anchor (unlike $, it never matches
+     * before a trailing newline). The D modifier is redundant when \z is
+     * used but makes the intent explicit.
+     */
+    private static function buildPattern(): string
+    {
+        return '/^img_[0-9a-f]{32}\.(' . implode('|', self::ALLOWED_EXTENSIONS) . ')\z/D';
+    }
+
+    /**
+     * Generate a cryptographically secure filename for a car image.
+     *
+     * @param string $extension File extension — must be in ALLOWED_EXTENSIONS
+     * @return string Secure filename in the format img_[32 hex chars].[ext]
+     * @throws ImageProcessingException If the extension is not allowed
+     */
+    public static function generateSecureFilename(string $extension): string
+    {
+        $ext = strtolower($extension);
+        if (!in_array($ext, self::ALLOWED_EXTENSIONS, true)) {
+            throw new ImageProcessingException("Unsupported image extension: {$ext}");
+        }
+        return 'img_' . bin2hex(random_bytes(16)) . '.' . $ext;
+    }
+
+    /**
+     * Check whether a filename matches the secure-name format.
+     *
+     * The pattern is anchored to the full string (^img_…\z), so path traversal
+     * sequences (../, /, glob chars) cause an immediate mismatch without needing
+     * basename() normalisation. The raw value must match exactly.
+     *
+     * @param string $filename Filename to validate
+     * @return bool True if the filename matches the allowlist
+     */
+    public static function isValidFilename(string $filename): bool
+    {
+        return (bool) preg_match(self::buildPattern(), $filename);
+    }
+
+    /**
+     * Check whether a filename is safe for filesystem operations on the read path.
+     *
+     * Unlike isValidFilename(), accepts legacy filenames that predate the
+     * img_[hex32] naming scheme (timestamps, bare hashes, old uniqid format).
+     *
+     * Works by allowlisting the character set [\w\-.] (ASCII word chars, hyphen,
+     * dot) then requiring a known image extension. Any character outside
+     * that set — including '/', '\', '*', space, null bytes, HTML-special chars,
+     * or any non-ASCII byte — causes the match to fail. Path traversal is rejected
+     * because '/' is not in the allowed set, not via explicit detection.
+     *
+     * The /u (UTF-8) flag is deliberately omitted so \w matches only ASCII
+     * [a-zA-Z0-9_] and not Unicode word characters.
+     *
+     * Extension list is derived from ALLOWED_EXTENSIONS plus 'jpeg' for legacy DB rows,
+     * so adding a new extension to ALLOWED_EXTENSIONS automatically permits it here too.
+     *
+     * Used by decodeAndProcessImages() and buildImageDetails() (reorder path).
+     *
+     * @param string $filename Filename to validate (directory components are
+     *                         rejected because '/' is not in [\w\-.])
+     * @return bool True if the filename is safe for filesystem use
+     */
+    public static function isSafeFilename(string $filename): bool
+    {
+        $exts = implode('|', array_merge(self::ALLOWED_EXTENSIONS, ['jpeg']));
+        return (bool) preg_match('/^[\w\-.]+\.(' . $exts . ')\z/iD', $filename);
+    }
+
+    /**
      * Encode an array of images to JSON for database storage
      *
      * @param array<mixed> $images Array of image data
@@ -71,7 +158,14 @@ class CarImageProcessor
 
         $images = [];
         foreach ($carImages as $key => $carimage) {
-            $temp = pathinfo($absRoot . $urlRoot . $imageDir . $carImages[$key]);
+            if (!self::isSafeFilename((string) $carimage)) {
+                logger(0, LogCategories::LOG_CATEGORY_FILE_ERROR,
+                    'decodeAndProcessImages: skipping unsafe filename: '
+                    . htmlspecialchars((string) $carimage, ENT_QUOTES, 'UTF-8'));
+                continue;
+            }
+            $safeFilename = basename((string) $carimage);
+            $temp = pathinfo($absRoot . $urlRoot . $imageDir . $safeFilename);
             $file = $temp['dirname'] . "/" . $temp['basename'];
             if (is_file($file)) {
                 $images[$key] = $temp;
