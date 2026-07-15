@@ -95,23 +95,19 @@ class CarImageProcessor
      * The /u (UTF-8) flag is deliberately omitted so \w matches only ASCII
      * [a-zA-Z0-9_] and not Unicode word characters.
      *
-     * Space is included in [\w\-. ] because production DB rows exist with spaced
-     * filenames (e.g. "On return from CAR SOS.JPG", "Lotus Elan S4 drophead...jpg").
-     * These were uploaded before the current naming convention was introduced.
-     *
      * Extension list is derived from ALLOWED_EXTENSIONS plus 'jpeg' for legacy DB rows,
      * so adding a new extension to ALLOWED_EXTENSIONS automatically permits it here too.
      *
      * Used by decodeAndProcessImages() and buildImageDetails() (reorder path).
      *
      * @param string $filename Filename to validate (directory components are
-     *                         rejected because '/' is not in [\w\-. ])
+     *                         rejected because '/' is not in [\w\-.])
      * @return bool True if the filename is safe for filesystem use
      */
     public static function isSafeFilename(string $filename): bool
     {
         $exts = implode('|', array_merge(self::ALLOWED_EXTENSIONS, ['jpeg']));
-        return (bool) preg_match('/^[\w\-. ]+\.(' . $exts . ')\z/iD', $filename);
+        return (bool) preg_match('/^[\w\-.]+\.(' . $exts . ')\z/iD', $filename);
     }
 
     /**
