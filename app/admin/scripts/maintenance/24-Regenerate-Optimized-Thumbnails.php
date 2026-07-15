@@ -241,15 +241,19 @@ $currentSizes = $settings->elan_image_thumbnail_sizes ?? '100,300,600,1024,2048'
                     }
                 }
 
-                function showCompletionSummary(stats) {
-                    // Update progress bar to 100% and remove animation
-                    updateProgress(100, 100, 'Thumbnail Optimization completed successfully!');
+                function showCompletionSummary(stats, isError) {
+                    const statusText = isError
+                        ? 'Thumbnail optimization completed with errors.'
+                        : 'Thumbnail Optimization completed successfully!';
+                    updateProgress(100, 100, statusText);
 
-                    // Populate summary content
+                    const icon  = isError ? '<i class="fa fa-exclamation-triangle text-warning"></i>' : '<i class="fa fa-check-circle text-success"></i>';
+                    const title = isError ? 'Completed with Errors' : 'Complete!';
+
                     const summaryContent = document.getElementById('summaryContent');
                     summaryContent.innerHTML = `
         <div class="mb-3">
-            <h5><i class="fa fa-check-circle text-success"></i> Complete!</h5>
+            <h5>${icon} ${title}</h5>
             <small class="text-muted">Completed at: ${new Date().toLocaleString()}</small>
         </div>
         <div class="mb-3">
@@ -311,6 +315,16 @@ $currentSizes = $settings->elan_image_thumbnail_sizes ?? '100,300,600,1024,2048'
                     exit;
                 }
 
+                function outputMessage(string $message, ?int $percentage = null): void {
+                    $jsMessage = json_encode($message, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT);
+                    echo '<script>addLogMessage(' . $jsMessage . ');</script>';
+                    if ($percentage !== null) {
+                        echo '<script>updateProgress(' . $percentage . ', 100, ' . $jsMessage . ');</script>';
+                    }
+                    ob_flush();
+                    flush();
+                }
+
                 // Update thumbnail sizes setting: replace 600 with 768
                 $newSizes = $currentSizes;
                 $settingsUpdated = false;
@@ -361,16 +375,6 @@ $currentSizes = $settings->elan_image_thumbnail_sizes ?? '100,300,600,1024,2048'
                 // Track batch start time for timeout management
                 $batch_start_time = time();
                 $max_batch_time = 25; // Allow 25 seconds per batch (5s buffer)
-                
-                function outputMessage(string $message, ?int $percentage = null): void {
-                    $jsMessage = json_encode($message, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT);
-                    echo '<script>addLogMessage(' . $jsMessage . ');</script>';
-                    if ($percentage !== null) {
-                        echo '<script>updateProgress(' . $percentage . ', 100, ' . $jsMessage . ');</script>';
-                    }
-                    ob_flush();
-                    flush();
-                }
 
                 outputMessage("=== THUMBNAIL OPTIMIZATION STARTED ===");
                 outputMessage("Timestamp: " . date('Y-m-d H:i:s'));
@@ -692,7 +696,8 @@ $currentSizes = $settings->elan_image_thumbnail_sizes ?? '100,300,600,1024,2048'
                         </div>
                     </div>";
 
-                echo "<script>showCompletionSummary(`$statsHtml`);</script>";
+                $hasErrors = $batchFailed ? 'true' : 'false';
+                echo "<script>showCompletionSummary(`$statsHtml`, {$hasErrors});</script>";
                 unset($_SESSION['thumb_batch_token']);
             } elseif ($method === 'GET' && (int) ($_GET['start'] ?? 0) === 1) {
                 logger($user->data()->id, LogCategories::LOG_CATEGORY_SECURITY, 'Batch continuation rejected (session expired or token mismatch)');
