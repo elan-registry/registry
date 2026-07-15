@@ -6,6 +6,7 @@ namespace ElanRegistry\Car;
 
 use DB;
 use ElanRegistry\CarErrorMessages;
+use ElanRegistry\Exceptions\CarConcurrentModificationException;
 use ElanRegistry\Exceptions\CarDatabaseException;
 use ElanRegistry\Exceptions\ImageProcessingException;
 use ElanRegistry\LogCategories;
@@ -206,6 +207,7 @@ class CarImageProcessor
      * @return bool True if image was removed successfully, false if not found
      * @throws ImageProcessingException If filename is empty or encoding fails
      * @throws CarDatabaseException If database update fails
+     * @throws CarConcurrentModificationException If a concurrent request modified the image list
      */
     public function removeImage(object $carData, string $filename, DB $db): bool
     {
@@ -239,8 +241,8 @@ class CarImageProcessor
         $repo = new CarRepository($db);
         $cas = $repo->updateImage((int) $carData->id, $imageJson, $carData->image);
         if (!$cas) {
-            throw new CarDatabaseException(
-                "Concurrent modification: image data changed for car {$carData->id}"
+            throw new CarConcurrentModificationException(
+                "Image list changed concurrently for car {$carData->id}"
             );
         }
         $carData->image = $imageJson;

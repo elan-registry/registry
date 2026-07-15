@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use ElanRegistry\Car\CarImageProcessor;
+use ElanRegistry\Exceptions\CarConcurrentModificationException;
 use ElanRegistry\Exceptions\CarDatabaseException;
 use ElanRegistry\Exceptions\ImageProcessingException;
 use PHPUnit\Framework\TestCase;
@@ -128,15 +129,16 @@ final class CarImageProcessorTest extends TestCase
     /**
      * When updateImage() returns false (CAS conflict — another request modified
      * the image column between the read and the write), removeImage() must throw
-     * CarDatabaseException so the caller can detect the lost-update scenario.
+     * CarConcurrentModificationException so save.php can route it to a retriable
+     * response rather than a generic server error.
      */
-    public function testRemoveImageThrowsCarDatabaseExceptionOnCasConflict(): void
+    public function testRemoveImageThrowsCarConcurrentModificationExceptionOnCasConflict(): void
     {
         $carData = (object) ['id' => 1, 'image' => '["test.jpg"]'];
         // count=0: UPDATE matched 0 rows → CAS guard failed → updateImage() returns false
         $db = $this->makeDbMockForUpdate(false, 0);
 
-        $this->expectException(CarDatabaseException::class);
+        $this->expectException(CarConcurrentModificationException::class);
         $this->processor->removeImage($carData, 'test.jpg', $db);
     }
 }

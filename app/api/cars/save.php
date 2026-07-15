@@ -5,6 +5,7 @@ use ElanRegistry\ApiResponse;
 use ElanRegistry\Car\Car;
 use ElanRegistry\Car\CarImageProcessor;
 use ElanRegistry\ChassisValidator;
+use ElanRegistry\Exceptions\CarConcurrentModificationException;
 use ElanRegistry\Exceptions\CarDatabaseException;
 use ElanRegistry\Exceptions\CarValidationException;
 use ElanRegistry\Exceptions\ElanRegistryException;
@@ -992,13 +993,12 @@ function removeImage(int $carID, string $file): void
                     "removeImage: Image not found - carId: {$carID}, file: {$file}"
                 )->send();
         }
+    } catch (CarConcurrentModificationException $e) {
+        ApiResponse::error('Image list changed — please refresh and try again.')
+            ->withLogging($user->data()->id, LogCategories::LOG_CATEGORY_CAR_ERRORS,
+                "removeImage CAS conflict: carId={$carID}")
+            ->send();
     } catch (CarDatabaseException $e) {
-        if (str_contains($e->getMessage(), 'Concurrent modification')) {
-            ApiResponse::error('Image list changed — please refresh and try again.')
-                ->withLogging($user->data()->id, LogCategories::LOG_CATEGORY_CAR_ERRORS,
-                    "removeImage CAS conflict: carId={$carID}")
-                ->send();
-        }
         ApiResponse::serverError('Failed to remove image')
             ->withLogging($user->data()->id, LogCategories::LOG_CATEGORY_CAR_ERRORS,
                 "removeImage DB error: carId={$carID}, error: " . $e->getMessage())

@@ -96,11 +96,15 @@ class CarRepository
      * Delete a car by ID
      *
      * @param int $carId Car ID
-     * @return bool True on success
+     * @return bool True on success; false if the query itself fails (caller should treat as DB error)
      * @throws CarNotFoundException If no car with $carId exists (0 rows affected)
      */
     public function deleteCar(int $carId): bool
     {
+        // Intentionally asymmetric: a query-level error returns false (caller decides how to
+        // surface it) while a zero-rows result throws CarNotFoundException (semantically "the car
+        // is gone"). CarAdministrationService wraps false in CarDatabaseException and lets
+        // CarNotFoundException propagate so callers can distinguish the two failure modes.
         $this->db->query("DELETE FROM cars WHERE id = ?", [$carId]);
         if ($this->db->error()) {
             return false;
