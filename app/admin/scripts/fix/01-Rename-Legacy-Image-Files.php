@@ -45,6 +45,9 @@ $db = DB::getInstance();
 function buildAffectedList(\DB $db): array
 {
     $db->query("SELECT id, image FROM cars WHERE image IS NOT NULL AND image != '' AND image != '[]'");
+    if ($db->error()) {
+        throw new \RuntimeException('Failed to load car image data: ' . $db->errorString());
+    }
     $rows = $db->results();
 
     $affected = [];
