@@ -18,10 +18,6 @@ use ElanRegistry\Resize;
  * 4. Preserves existing 100px, 300px, 1024px, and 2048px thumbnails
  * 5. Uses existing high-quality source images (1024px or 2048px) for regeneration
  */
-ini_set('display_errors', 1);
-ini_set('display_startup_errors', 1);
-error_reporting(E_ALL);
-
 require_once '../../../../users/init.php';
 require_once $abs_us_root . $us_url_root . 'app/admin/includes/fix-script-core.php';
 require_once $abs_us_root . $us_url_root . 'users/includes/template/prep.php';
@@ -311,6 +307,13 @@ $line = 1; // Where messages go
 
             if ($is_initial || $is_continuation) {
 
+                if (!isAdmin()) {
+                    logger($user->data()->id, LogCategories::LOG_CATEGORY_SECURITY,
+                        'Non-admin attempted thumbnail batch operation');
+                    echo '<div class="alert alert-danger mt-3">Administrator access required.</div>';
+                    exit;
+                }
+
                 // Update thumbnail sizes setting: replace 600 with 768
                 $newSizes = $currentSizes;
                 if (strpos($currentSizes, '600') !== false) {
@@ -390,7 +393,10 @@ $line = 1; // Where messages go
                 $total_cars = $total_cars_result[0]->count;
 
                 // Get batched cars with images for processing
-                $cars_with_images = $db->query("SELECT id, image FROM cars WHERE image IS NOT NULL AND image != '' LIMIT {$batch_size} OFFSET {$offset}")->results();
+                $cars_with_images = $db->query(
+                    "SELECT id, image FROM cars WHERE image IS NOT NULL AND image != '' LIMIT ? OFFSET ?",
+                    [$batch_size, $offset]
+                )->results();
                 $batch_car_count = count($cars_with_images);
                 
                 outputMessage("📊 Found {$total_cars} total cars with image data");
