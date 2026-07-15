@@ -339,6 +339,20 @@ final class CarRepositoryTest extends TestCase
         $repo->deleteCar(999);
     }
 
+    /**
+     * deleteCar() returns false when the DB query itself errors out
+     * (distinct from the 0-rows-affected CarNotFoundException path).
+     */
+    public function testDeleteCarReturnsFalseOnQueryError(): void
+    {
+        $db = $this->makeDbMock();
+        $db->expects($this->once())->method('query');
+        $db->method('error')->willReturn(true);
+
+        $repo = new CarRepository($db);
+        $this->assertFalse($repo->deleteCar(42));
+    }
+
     // =========================================================================
     // findByIdForUpdate() tests (issue #1311)
     // =========================================================================

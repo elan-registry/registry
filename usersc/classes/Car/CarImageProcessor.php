@@ -144,14 +144,8 @@ class CarImageProcessor
         string $urlRoot,
         string $absRoot
     ): array {
-        $carImages = null;
-
         if (!empty($imageData)) {
-            $carImages = json_decode($imageData);
-
-            if (is_null($carImages)) {
-                $carImages = explode(',', $imageData);
-            }
+            $carImages = json_decode($imageData) ?? explode(',', $imageData);
         } else {
             $carImages = [];
         }

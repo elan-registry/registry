@@ -28,26 +28,10 @@ final class CarAdministrationServiceTest extends TestCase
 
     public function testDeleteSucceedsWithValidData(): void
     {
-        $carData = (object) [
-            'id' => 999,
-            'chassis' => 'TEST99999',
-            'ctime' => '2024-01-01 00:00:00',
-            'model' => 'Elan',
-            'series' => 'S4',
-            'variant' => 'SE',
-            'year' => '1970',
-            'type' => 'FHC',
-            'color' => 'Red',
-            'engine' => 'ENG001',
-            'purchasedate' => null,
-            'solddate' => null,
-            'image' => ''
-        ];
-
-        // Use a mocked repo so this unit test is independent of DB state.
-        // The production deleteCar() now throws CarNotFoundException on 0-row
-        // deletes, so car 999 (which doesn't exist in the test DB) would fail
-        // with a real CarRepository.
+        // delete() only reads ->id and ->chassis from carData; minimal fixture is sufficient.
+        // A mocked repo is required because the real deleteCar() throws CarNotFoundException
+        // on 0-row deletes, and car 999 does not exist in the test DB.
+        $carData = (object) ['id' => 999, 'chassis' => 'TEST99999'];
         $repo = $this->createMock(CarRepository::class);
         $repo->expects($this->once())->method('beginTransaction');
         $repo->expects($this->once())->method('deleteCar')->willReturn(true);
@@ -129,6 +113,24 @@ final class CarAdministrationServiceTest extends TestCase
     }
 
     /**
+     * delete() must wrap a false return from deleteCar() in CarDatabaseException.
+     * This is the DB-level error path, distinct from the CarNotFoundException
+     * thrown when 0 rows are affected.
+     */
+    public function testDeleteThrowsCarDatabaseExceptionWhenDeleteCarReturnsFalse(): void
+    {
+        $carData = (object) ['id' => 999, 'chassis' => 'GHOST02'];
+
+        $repo = $this->createMock(CarRepository::class);
+        $repo->expects($this->once())->method('beginTransaction');
+        $repo->expects($this->once())->method('deleteCar')->willReturn(false);
+        $repo->expects($this->once())->method('rollback');
+
+        $this->expectException(CarDatabaseException::class);
+        $this->service->delete($carData, 'Test deletion', 1, $repo);
+    }
+
+    /**
      * merge() must throw CarNotFoundException when findByIdForUpdate() returns
      * null, indicating the source car was deleted between the caller's initial
      * check and the locked re-read inside the transaction.
@@ -143,6 +145,25 @@ final class CarAdministrationServiceTest extends TestCase
         $repo->expects($this->once())->method('rollback');
 
         $this->expectException(CarNotFoundException::class);
+        $this->service->merge($targetCarData, 999, 'Test merge', 1, $repo);
+    }
+
+    /**
+     * merge() must wrap a false return from transferHistory() in CarDatabaseException.
+     * This covers the DB-level failure path during the history-transfer step.
+     */
+    public function testMergeThrowsCarDatabaseExceptionWhenTransferHistoryFails(): void
+    {
+        $targetCarData = (object) ['id' => 1, 'chassis' => 'TARGET01'];
+        $sourceData = (object) ['id' => 999, 'chassis' => 'SOURCE01'];
+
+        $repo = $this->createMock(CarRepository::class);
+        $repo->expects($this->once())->method('beginTransaction');
+        $repo->expects($this->once())->method('findByIdForUpdate')->willReturn($sourceData);
+        $repo->expects($this->once())->method('transferHistory')->willReturn(false);
+        $repo->expects($this->once())->method('rollback');
+
+        $this->expectException(CarDatabaseException::class);
         $this->service->merge($targetCarData, 999, 'Test merge', 1, $repo);
     }
 }

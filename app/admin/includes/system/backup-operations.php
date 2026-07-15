@@ -75,7 +75,7 @@ try {
                     $criticalTables,
                     ['user_id' => $user->data()->id, 'username' => $user->data()->username]
                 );
-            } catch (Exception $e) {
+            } catch (\Throwable $e) {
                 // Log specific error from BackupManager
                 logger($user->data()->id, LogCategories::LOG_CATEGORY_BACKUP_ERROR, "BackupManager threw exception: " . $e->getMessage() . " in " . $e->getFile() . " at line " . $e->getLine());
                 throw $e; // Re-throw to be caught by outer try-catch
@@ -314,7 +314,7 @@ try {
             break;
     }
 
-} catch (Exception $e) {
+} catch (\Throwable $e) {
     // Log detailed error with stack trace
     $errorDetails = "Backup operation '{$action}' failed for user {$user->data()->username}\n";
     $errorDetails .= "Error: " . $e->getMessage() . "\n";

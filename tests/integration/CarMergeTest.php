@@ -21,7 +21,6 @@ final class CarMergeTest extends IntegrationTestCase
 {
     private $testCarId;
     private $testMergeCarId;
-    protected $db;
 
     protected function setUp(): void
     {
@@ -41,8 +40,6 @@ final class CarMergeTest extends IntegrationTestCase
 
         $GLOBALS['user'] = $user;
 
-        $this->db = DB::getInstance();
-
         // Create unique test cars for this test
         try {
             $this->testCarId = $this->createTestCar(1, [
@@ -54,11 +51,6 @@ final class CarMergeTest extends IntegrationTestCase
         } catch (RuntimeException $e) {
             $this->markTestSkipped('Could not create test cars: ' . $e->getMessage());
         }
-    }
-
-    protected function tearDown(): void
-    {
-        parent::tearDown();
     }
 
     /**

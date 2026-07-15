@@ -282,12 +282,17 @@ $affected = buildAffectedList($db);
                             if ($carChanged) {
                                 $imageJson = empty($newImages) ? '' : json_encode($newImages);
                                 $db->query("UPDATE cars SET image = ? WHERE id = ?", [$imageJson, $carid]);
-                                logProgress("DB updated for car #{$carid}", 'success');
-                                logger(
-                                    (int) $user->data()->id,
-                                    LogCategories::LOG_CATEGORY_FIX_SCRIPT,
-                                    "01-Rename-Legacy-Image-Files: updated car #{$carid} image JSON"
-                                );
+                                if ($db->error() || $db->count() === 0) {
+                                    logProgress("FAILED to update DB for car #{$carid}: " . $db->errorString(), 'error');
+                                    $results['errors']++;
+                                } else {
+                                    logProgress("DB updated for car #{$carid}", 'success');
+                                    logger(
+                                        (int) $user->data()->id,
+                                        LogCategories::LOG_CATEGORY_FIX_SCRIPT,
+                                        "01-Rename-Legacy-Image-Files: updated car #{$carid} image JSON"
+                                    );
+                                }
                             }
 
                             logProgress('', 'info');
@@ -325,7 +330,7 @@ $affected = buildAffectedList($db);
                         logProgress('  • Run Cloudflare cache purge if images appear stale in production', 'info');
                         logProgress('  • Run this script again to confirm "No action needed" (idempotency check)', 'info');
 
-                    } catch (Exception $e) {
+                    } catch (\Throwable $e) {
                         logProgress('FATAL ERROR: ' . $e->getMessage(), 'error');
                         logger((int) $user->data()->id, LogCategories::LOG_CATEGORY_FIX_SCRIPT, 'Fatal error: ' . $e->getMessage());
                     }

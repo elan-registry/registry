@@ -159,14 +159,10 @@ try {
     $systemStatus['owner_issues'] = $ownerIssues;
     $systemStatus['quality_issues'] = $carIssues + $ownerIssues;
 
-} catch (PDOException $e) {
+} catch (\Throwable $e) {
     // Fail silently for header stats - main functionality should still work
-    logger($currentUserId ?? 0, LogCategories::LOG_CATEGORY_DATABASE_ERROR,
-           "Database error getting system status: " . $e->getMessage());
-} catch (RuntimeException $e) {
-    // Handle database connection or other runtime errors
     logger($currentUserId ?? 0, LogCategories::LOG_CATEGORY_SYSTEM_ERROR,
-           "Runtime error getting system status: " . $e->getMessage());
+           "Database or runtime error getting system status: " . $e->getMessage());
 }
 
 // Process form submissions for car management tab
@@ -227,7 +223,7 @@ if (ElanInput::existsPost()) {
                         break;
                     }
 
-                    if (count($cars) <> 2) {
+                    if (count($cars) !== 2) {
                         $errors[] = 'Select 2 cars to merge';
                         break;
                     }
@@ -243,53 +239,35 @@ if (ElanInput::existsPost()) {
                         break;
                     }
 
-                    if (count($reason) <> 1) {
+                    if (count($reason) !== 1) {
                         $errors[] = 'Select 1 reason code';
                         break;
-                    } else {
-                        // Assign old_car_id / new_car_id and build the audit comment based on reason code
-                        $mergeComment = '';
-                        switch ($reason[0]) {
-                            case "duplicate":
-                                // Determine the newest car
-                                if ($car1 > $car2) {
-                                    $new_car_id = $car1;
-                                    $old_car_id = $car2;
-                                } else {
-                                    $new_car_id = $car2;
-                                    $old_car_id = $car1;
-                                }
-                                $mergeComment = "Car $old_car_id is a duplicate of $new_car_id.  The history of $old_car_id has been merged with $new_car_id and $old_car_id deleted.";
-                                break;
+                    }
 
-                            case "newownerNewToOld":
-                                // Determine the newest car
-                                if ($car1 > $car2) {
-                                    $new_car_id = $car1;
-                                    $old_car_id = $car2;
-                                } else {
-                                    $new_car_id = $car2;
-                                    $old_car_id = $car1;
-                                }
-                                $mergeComment = "Car $old_car_id was sold to a new owner and the new owner created a record for the same car as $new_car_id. The history of $old_car_id has been merged with $new_car_id and $old_car_id deleted.";
-                                break;
+                    // Assign old_car_id / new_car_id and build the audit comment based on reason code
+                    $mergeComment = '';
+                    switch ($reason[0]) {
+                        case "duplicate":
+                            // Newer (higher-ID) car is kept as canonical
+                            [$old_car_id, $new_car_id] = $car1 > $car2 ? [$car2, $car1] : [$car1, $car2];
+                            $mergeComment = "Car $old_car_id is a duplicate of $new_car_id.  The history of $old_car_id has been merged with $new_car_id and $old_car_id deleted.";
+                            break;
 
-                            case "newownerOldToNew":
-                                // newownerOldToNew: the older (lower-ID) car record is kept as canonical
-                                if ($car1 > $car2) {
-                                    $new_car_id = $car2;
-                                    $old_car_id = $car1;
-                                } else {
-                                    $new_car_id = $car1;
-                                    $old_car_id = $car2;
-                                }
-                                $mergeComment = "Car $old_car_id was sold to a new owner and the new owner created a record for the same car as $new_car_id. The history of $old_car_id has been merged with $new_car_id and $old_car_id deleted.";
-                                break;
+                        case "newownerNewToOld":
+                            // Newer (higher-ID) car is kept as canonical
+                            [$old_car_id, $new_car_id] = $car1 > $car2 ? [$car2, $car1] : [$car1, $car2];
+                            $mergeComment = "Car $old_car_id was sold to a new owner and the new owner created a record for the same car as $new_car_id. The history of $old_car_id has been merged with $new_car_id and $old_car_id deleted.";
+                            break;
 
-                            default:
-                                $errors[] = 'Invalid merge reason code.';
-                                break;
-                        }
+                        case "newownerOldToNew":
+                            // Older (lower-ID) car is kept as canonical
+                            [$old_car_id, $new_car_id] = $car1 > $car2 ? [$car1, $car2] : [$car2, $car1];
+                            $mergeComment = "Car $old_car_id was sold to a new owner and the new owner created a record for the same car as $new_car_id. The history of $old_car_id has been merged with $new_car_id and $old_car_id deleted.";
+                            break;
+
+                        default:
+                            $errors[] = 'Invalid merge reason code.';
+                            break;
                     }
 
                     if (!empty($errors)) {
@@ -309,7 +287,7 @@ if (ElanInput::existsPost()) {
                         logger($currentUserId, LogCategories::LOG_CATEGORY_CAR_MERGE,
                             "FAILED: Car merge rolled back. " . $e->getMessage());
                     } catch (\Throwable $e) {
-                        $errors[] = 'Car merge failed due to an unexpected error. Check the admin log for details.';
+                        $errors[] = 'Car merge failed due to an unexpected error and was rolled back. Check the admin log for details.';
                         logger($currentUserId, LogCategories::LOG_CATEGORY_CAR_MERGE,
                             "FAILED: Car merge unexpected error. " . get_class($e) . ': ' . $e->getMessage());
                     }
@@ -348,7 +326,7 @@ if (ElanInput::existsPost()) {
                     } catch (CarDeletionException | CarDatabaseException $e) {
                         // CarAdministrationService::delete() logs technical detail before throwing.
                         $errors[] = "Failed to delete car. Check the system log for details.";
-                    } catch (\Exception $e) {
+                    } catch (\Throwable $e) {
                         logger($currentUserId, LogCategories::LOG_CATEGORY_CAR_DELETION,
                             "Unexpected error deleting car ID $car_id: " . get_class($e) . ': ' . $e->getMessage());
                         $errors[] = "An unexpected error occurred. Check the system log for details.";
