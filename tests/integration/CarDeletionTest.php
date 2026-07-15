@@ -19,8 +19,6 @@ use PHPUnit\Framework\Attributes\Group;
 final class CarDeletionTest extends IntegrationTestCase
 {
     private $testCarId;
-    private $testUserId;
-    protected $db;
 
     protected function setUp(): void
     {
@@ -40,22 +38,14 @@ final class CarDeletionTest extends IntegrationTestCase
 
         $GLOBALS['user'] = $user;
 
-        $this->testUserId = 1;
-        $this->db = DB::getInstance();
-
         // Create unique test car for this test
         try {
-            $this->testCarId = $this->createTestCar($this->testUserId, [
+            $this->testCarId = $this->createTestCar(1, [
                 'chassis' => 'DEL' . uniqid()
             ]);
         } catch (RuntimeException $e) {
             $this->markTestSkipped('Could not create test car: ' . $e->getMessage());
         }
-    }
-
-    protected function tearDown(): void
-    {
-        parent::tearDown();
     }
 
     /**
@@ -186,6 +176,29 @@ final class CarDeletionTest extends IntegrationTestCase
                 $GLOBALS['user'] = $originalUser;
             }
         }
+    }
+
+    /**
+     * Test that deleting an already-deleted car throws CarNotFoundException.
+     *
+     * This exercises the path added in issue #1311: when the first deletion
+     * succeeds, the car row is gone.  A second delete attempt on the same ID
+     * must throw CarNotFoundException rather than silently returning true.
+     */
+    #[Group('fast')]
+    public function testDeleteAlreadyDeletedCarThrowsCarNotFoundException(): void
+    {
+        // First deletion — must succeed
+        $car = new Car($this->testCarId);
+        $car->delete('First deletion', Token::generate());
+
+        // tearDown will attempt to clean up $this->testCarId; if the car is
+        // already gone the cleanup silently ignores the missing row.
+
+        // Second deletion on the same ID — car no longer exists
+        $this->expectException(CarNotFoundException::class);
+        $car2 = new Car($this->testCarId);
+        $car2->delete('Second deletion', Token::generate());
     }
 
 }
