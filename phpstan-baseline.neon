@@ -469,24 +469,6 @@ parameters:
 			path: index.php
 
 		-
-			message: '#^Function endCloak not found\.$#'
-			identifier: function.notFound
-			count: 1
-			path: usersc/account.php
-
-		-
-			message: '#^Function isCloaked not found\.$#'
-			identifier: function.notFound
-			count: 1
-			path: usersc/account.php
-
-		-
-			message: '#^Function tokenHere not found\.$#'
-			identifier: function.notFound
-			count: 1
-			path: usersc/account.php
-
-		-
 			message: '#^Using nullsafe property access "\?\-\>website" on left side of \?\? is unnecessary\. Use \-\> instead\.$#'
 			identifier: nullsafe.neverNull
 			count: 1
@@ -547,102 +529,6 @@ parameters:
 			path: usersc/includes/user_manager_columns.php
 
 		-
-			message: '#^Access to property \$_errors on an unknown class Validate\.$#'
-			identifier: class.notFound
-			count: 2
-			path: usersc/join.php
-
-		-
-			message: '#^Call to method addError\(\) on an unknown class Validate\.$#'
-			identifier: class.notFound
-			count: 1
-			path: usersc/join.php
-
-		-
-			message: '#^Call to method check\(\) on an unknown class Validate\.$#'
-			identifier: class.notFound
-			count: 1
-			path: usersc/join.php
-
-		-
-			message: '#^Call to method passed\(\) on an unknown class Validate\.$#'
-			identifier: class.notFound
-			count: 1
-			path: usersc/join.php
-
-		-
-			message: '#^Function currentPage not found\.$#'
-			identifier: function.notFound
-			count: 4
-			path: usersc/join.php
-
-		-
-			message: '#^Function email_body not found\.$#'
-			identifier: function.notFound
-			count: 1
-			path: usersc/join.php
-
-		-
-			message: '#^Function getMyHooks not found\.$#'
-			identifier: function.notFound
-			count: 3
-			path: usersc/join.php
-
-		-
-			message: '#^Function getRateLimitErrorMessage not found\.$#'
-			identifier: function.notFound
-			count: 2
-			path: usersc/join.php
-
-		-
-			message: '#^Function handleAuthFailure not found\.$#'
-			identifier: function.notFound
-			count: 2
-			path: usersc/join.php
-
-		-
-			message: '#^Function handleAuthSuccess not found\.$#'
-			identifier: function.notFound
-			count: 1
-			path: usersc/join.php
-
-		-
-			message: '#^Function hashVericode not found\.$#'
-			identifier: function.notFound
-			count: 1
-			path: usersc/join.php
-
-		-
-			message: '#^Function includeHook not found\.$#'
-			identifier: function.notFound
-			count: 5
-			path: usersc/join.php
-
-		-
-			message: '#^Function pluginActive not found\.$#'
-			identifier: function.notFound
-			count: 1
-			path: usersc/join.php
-
-		-
-			message: '#^Function userSpicePasswordStrength not found\.$#'
-			identifier: function.notFound
-			count: 1
-			path: usersc/join.php
-
-		-
-			message: '#^Instantiated class User not found\.$#'
-			identifier: class.notFound
-			count: 1
-			path: usersc/join.php
-
-		-
-			message: '#^Instantiated class Validate not found\.$#'
-			identifier: class.notFound
-			count: 1
-			path: usersc/join.php
-
-		-
 			message: '#^Loose comparison using \=\= between true and true will always evaluate to true\.$#'
 			identifier: equal.alwaysTrue
 			count: 1
@@ -671,120 +557,6 @@ parameters:
 			identifier: variable.undefined
 			count: 1
 			path: usersc/lang/en-US.php
-
-		-
-			message: '#^Call to method check\(\) on an unknown class Validate\.$#'
-			identifier: class.notFound
-			count: 1
-			path: usersc/login.php
-
-		-
-			message: '#^Call to method getUserSecret\(\) on an unknown class TOTPHandler\.$#'
-			identifier: class.notFound
-			count: 2
-			path: usersc/login.php
-
-		-
-			message: '#^Call to method invalidateBackupCode\(\) on an unknown class TOTPHandler\.$#'
-			identifier: class.notFound
-			count: 1
-			path: usersc/login.php
-
-		-
-			message: '#^Call to method isTOTPEnabled\(\) on an unknown class TOTPHandler\.$#'
-			identifier: class.notFound
-			count: 1
-			path: usersc/login.php
-
-		-
-			message: '#^Call to method verifyBackupCode\(\) on an unknown class TOTPHandler\.$#'
-			identifier: class.notFound
-			count: 1
-			path: usersc/login.php
-
-		-
-			message: '#^Call to method verifyCode\(\) on an unknown class TOTPHandler\.$#'
-			identifier: class.notFound
-			count: 2
-			path: usersc/login.php
-
-		-
-			message: '#^Call to static method get\(\) on an unknown class Config\.$#'
-			identifier: class.notFound
-			count: 3
-			path: usersc/login.php
-
-		-
-			message: '#^Function getMyHooks not found\.$#'
-			identifier: function.notFound
-			count: 5
-			path: usersc/login.php
-
-		-
-			message: '#^Function getRateLimitErrorMessage not found\.$#'
-			identifier: function.notFound
-			count: 2
-			path: usersc/login.php
-
-		-
-			message: '#^Function handleAuthFailure not found\.$#'
-			identifier: function.notFound
-			count: 3
-			path: usersc/login.php
-
-		-
-			message: '#^Function handleAuthSuccess not found\.$#'
-			identifier: function.notFound
-			count: 3
-			path: usersc/login.php
-
-		-
-			message: '#^Function includeHook not found\.$#'
-			identifier: function.notFound
-			count: 9
-			path: usersc/login.php
-
-		-
-			message: '#^Function passwordsAllowed not found\.$#'
-			identifier: function.notFound
-			count: 1
-			path: usersc/login.php
-
-		-
-			message: '#^Function safeJsonEncodeForJs not found\.$#'
-			identifier: function.notFound
-			count: 1
-			path: usersc/login.php
-
-		-
-			message: '#^Function safeReturn not found\.$#'
-			identifier: function.notFound
-			count: 1
-			path: usersc/login.php
-
-		-
-			message: '#^Function tokenHere not found\.$#'
-			identifier: function.notFound
-			count: 3
-			path: usersc/login.php
-
-		-
-			message: '#^Instantiated class TOTPHandler not found\.$#'
-			identifier: class.notFound
-			count: 1
-			path: usersc/login.php
-
-		-
-			message: '#^Instantiated class User not found\.$#'
-			identifier: class.notFound
-			count: 1
-			path: usersc/login.php
-
-		-
-			message: '#^Instantiated class Validate not found\.$#'
-			identifier: class.notFound
-			count: 1
-			path: usersc/login.php
 
 		-
 			message: '#^Variable \$bottomClass might not be defined\.$#'
@@ -829,12 +601,6 @@ parameters:
 			path: usersc/oauth_client/login_scripts/default_login_script.php
 
 		-
-			message: '#^Function passwordsAllowed not found\.$#'
-			identifier: function.notFound
-			count: 1
-			path: usersc/oauth_server/login_forms/default_login.php
-
-		-
 			message: '#^Variable \$authData might not be defined\.$#'
 			identifier: variable.undefined
 			count: 1
@@ -845,12 +611,6 @@ parameters:
 			identifier: variable.undefined
 			count: 1
 			path: usersc/oauth_server/login_scripts/default_script.php
-
-		-
-			message: '#^Function fetchUserPermissions not found\.$#'
-			identifier: function.notFound
-			count: 1
-			path: usersc/plugins/hooker/hooks/sample_hook.php
 
 		-
 			message: '#^If condition is always false\.$#'
@@ -877,88 +637,10 @@ parameters:
 			path: usersc/scripts/datetimepicker.php
 
 		-
-			message: '#^Instantiated class User not found\.$#'
-			identifier: class.notFound
-			count: 1
-			path: usersc/scripts/during_user_creation.php
-
-		-
 			message: '#^Variable \$theNewId might not be defined\.$#'
 			identifier: variable.undefined
 			count: 5
 			path: usersc/scripts/during_user_creation.php
-
-		-
-			message: '#^Function currentPage not found\.$#'
-			identifier: function.notFound
-			count: 2
-			path: usersc/scripts/passwordless_login_overrides.php
-
-		-
-			message: '#^Function echousername not found\.$#'
-			identifier: function.notFound
-			count: 1
-			path: usersc/templates/customizer/file_nav_custom.php
-
-		-
-			message: '#^Call to method display\(\) on an unknown class Menu\.$#'
-			identifier: class.notFound
-			count: 1
-			path: usersc/templates/customizer/navigation.php
-
-		-
-			message: '#^Function err not found\.$#'
-			identifier: function.notFound
-			count: 1
-			path: usersc/templates/customizer/navigation.php
-
-		-
-			message: '#^Instantiated class Menu not found\.$#'
-			identifier: class.notFound
-			count: 2
-			path: usersc/templates/customizer/navigation.php
-
-		-
-			message: '#^Call to method check\(\) on an unknown class Validate\.$#'
-			identifier: class.notFound
-			count: 6
-			path: usersc/user_settings.php
-
-		-
-			message: '#^Call to method errors\(\) on an unknown class Validate\.$#'
-			identifier: class.notFound
-			count: 6
-			path: usersc/user_settings.php
-
-		-
-			message: '#^Call to method passed\(\) on an unknown class Validate\.$#'
-			identifier: class.notFound
-			count: 5
-			path: usersc/user_settings.php
-
-		-
-			message: '#^Function email_body not found\.$#'
-			identifier: function.notFound
-			count: 1
-			path: usersc/user_settings.php
-
-		-
-			message: '#^Function passwordResetKillSessions not found\.$#'
-			identifier: function.notFound
-			count: 1
-			path: usersc/user_settings.php
-
-		-
-			message: '#^Instantiated class User not found\.$#'
-			identifier: class.notFound
-			count: 1
-			path: usersc/user_settings.php
-
-		-
-			message: '#^Instantiated class Validate not found\.$#'
-			identifier: class.notFound
-			count: 1
-			path: usersc/user_settings.php
 
 		-
 			message: '#^Variable \$currentPage might not be defined\.$#'
@@ -1055,12 +737,6 @@ parameters:
 			identifier: variable.undefined
 			count: 1
 			path: usersc/views/_forgot_password.php
-
-		-
-			message: '#^Function includeHook not found\.$#'
-			identifier: function.notFound
-			count: 2
-			path: usersc/views/_join.php
 
 		-
 			message: '#^Variable \$email might not be defined\.$#'
