@@ -86,11 +86,11 @@ class CarImageProcessor
      * Unlike isValidFilename(), accepts legacy filenames that predate the
      * img_[hex32] naming scheme (timestamps, bare hashes, old uniqid format).
      *
-     * Works by allowlisting the character set [\w\-. ] (ASCII word chars, hyphen,
-     * dot, space) then requiring a known image extension. Any character outside
-     * that set — including '/', '\', '*', null bytes, HTML-special chars, or any
-     * non-ASCII byte — causes the match to fail. Path traversal is rejected because
-     * '/' is not in the allowed set, not via explicit detection.
+     * Works by allowlisting the character set [\w\-.] (ASCII word chars, hyphen,
+     * dot) then requiring a known image extension. Any character outside
+     * that set — including '/', '\', '*', space, null bytes, HTML-special chars,
+     * or any non-ASCII byte — causes the match to fail. Path traversal is rejected
+     * because '/' is not in the allowed set, not via explicit detection.
      *
      * The /u (UTF-8) flag is deliberately omitted so \w matches only ASCII
      * [a-zA-Z0-9_] and not Unicode word characters.

@@ -192,6 +192,20 @@ $affected = buildAffectedList($db);
                                     continue;
                                 }
 
+                                // Reject any filename that contains path separators or traversal
+                                // sequences before passing it to filesystem functions. These names
+                                // failed isSafeFilename() (which already excludes '/'), but an
+                                // explicit check here keeps is_file() / rename() calls safe against
+                                // any future isSafeFilename() loosening and makes the guard
+                                // auditable without needing to reason about the regex.
+                                if (str_contains($filename, '/') || str_contains($filename, '\\') || str_contains($filename, '..')) {
+                                    logProgress("'{$filename}' — traversal in filename; removing from DB", 'warning');
+                                    $results['warnings']++;
+                                    $carChanged = true;
+                                    $results['db_only_fixed']++;
+                                    continue;
+                                }
+
                                 $mainFile = $imgDir . $filename;
 
                                 if (!is_file($mainFile)) {
@@ -207,11 +221,14 @@ $affected = buildAffectedList($db);
                                 if ($ext === 'jpeg') {
                                     $ext = 'jpg';
                                 }
-                                // Validate extension is supported; fall back to jpg if not
+                                // Validate extension is supported. Remove unrecognised extensions
+                                // from the DB JSON rather than keeping them — they would otherwise
+                                // appear as "affected" on every subsequent run.
                                 if (!in_array($ext, CarImageProcessor::ALLOWED_EXTENSIONS, true)) {
-                                    logProgress("'{$filename}' — unrecognised extension '{$ext}'; skipping", 'error');
-                                    $results['errors']++;
-                                    $newImages[] = $filename;
+                                    logProgress("'{$filename}' — unrecognised extension '{$ext}'; removing from DB", 'warning');
+                                    $results['warnings']++;
+                                    $carChanged = true;
+                                    $results['db_only_fixed']++;
                                     continue;
                                 }
 

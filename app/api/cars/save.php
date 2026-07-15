@@ -257,14 +257,16 @@ switch ($action) {
                 ->withLogging($user->data()->id, LogCategories::LOG_CATEGORY_ACCESS_DENIED, 'removeImages: unauthorized for car ' . $car_id)
                 ->send();
         }
-        // basename() strips any path prefix before the allowlist check.
-        // removeImage() only removes the entry from the DB JSON list — it
-        // performs no filesystem deletion — so normalising a traversal prefix
-        // here is safe.
+        // Use the read-path guard (isSafeFilename) here — consistent with
+        // buildImageDetails() and decodeAndProcessImages(), which also use it
+        // to handle legacy filenames stored in the DB. removeImage() performs
+        // no filesystem deletion (DB JSON only), so the permissive guard is
+        // correct and safe. basename() is defence-in-depth; isSafeFilename()
+        // independently rejects traversal because '/' is not in [\w\-.].
         $file = basename((string)Input::raw('file'));
-        if (!CarImageProcessor::isValidFilename($file)) {
+        if (!CarImageProcessor::isSafeFilename($file)) {
             ApiResponse::error('Invalid image filename')
-                ->withLogging($user->data()->id, LogCategories::LOG_CATEGORY_FILE_ERROR, 'removeImages: invalid filename: ' . htmlspecialchars($file, ENT_QUOTES, 'UTF-8'))
+                ->withLogging($user->data()->id, LogCategories::LOG_CATEGORY_SECURITY, 'removeImages: invalid filename: ' . htmlspecialchars($file, ENT_QUOTES, 'UTF-8'))
                 ->send();
         }
         removeImage($car_id, $file);
