@@ -5,7 +5,7 @@
 
 ## Required Actions After Deployment
 
-None.
+- **Run `01-Rename-Legacy-Image-Files.php`** (Admin → Maintenance): Renames 9 image files whose filenames contain characters now blocked by the #1307 allowlist (parentheses, `+`, brackets, Unicode), and removes 2 stale DB entries that have no file on disk. Safe to re-run — already-renamed files are detected and skipped. Run on `test.elanregistry.org` first, verify car pages load, then run on `elanregistry.org`. After production run, purge the Cloudflare cache for affected image URLs.
 
 ## User-Facing Changes
 
@@ -25,7 +25,7 @@ None.
 - **Login Audit Logging** ([#1243](https://github.com/unibrain1/elanregistry/issues/1243)): Confirmed that UserSpice rate-limiting is active and enforcing lockout (5 failures per account / 5 min; 20 per IP / 15 min). Added `loginFail` and `loginSuccess` security-category log entries via hooks, mirroring the logging the upstream framework ships with commented out.
 - **Admin User Detail XSS Fix** ([#1306](https://github.com/unibrain1/elanregistry/issues/1306)): HTML-escaped every profile and car field rendered in the admin "manage user" hook. Closes a stored-XSS path where an owner's own `city`/`state`/`country` (or car chassis metadata) could execute in an admin session. Also guards the profile block against missing rows with a "No profile data" placeholder instead of PHP warnings.
 - **DataTables Stored XSS Fix** ([#1304](https://github.com/unibrain1/elanregistry/issues/1304)): Applied `DataTables.render.text()` to every text column in the car list, factory data, and car history tables. Previously, raw database values were inserted via `innerHTML`, allowing a malicious `color` or `chassis` value to execute as XSS in any logged-in viewer's session. Also added a character-set allowlist to `ChassisValidator` (digits, letters, `/`, `-` only) that runs before the admin override branch, so override cannot be used to store HTML-injection payloads.
-- **Image Filename Allowlist** ([#1307](https://github.com/unibrain1/elanregistry/issues/1307)): Validated uploaded image filenames against the `img_[32hex].(jpg|png|gif|webp)` format produced by `generateSecureFilename()` before any `glob()` or filesystem operation. Closes two paths: (1) glob hijack — a client-supplied `filenames=*` value that matched every in-flight upload in the shared temp directory; (2) traversal metadata oracle — filenames like `../../../etc/passwd` that triggered `is_file()`/`filesize()`/`exif_imagetype()` on arbitrary paths. `generateSecureFilename()` is now a method on `CarImageProcessor` and shares `ALLOWED_EXTENSIONS` with the validation logic so the two cannot drift apart.
+- **Image Filename Allowlist** ([#1307](https://github.com/unibrain1/elanregistry/issues/1307)): Validated uploaded image filenames against the `img_[32hex].(jpg|png|gif|webp)` format produced by `generateSecureFilename()` before any `glob()` or filesystem operation. Closes two paths: (1) glob hijack — a client-supplied `filenames=*` value that matched every in-flight upload in the shared temp directory; (2) traversal metadata oracle — filenames like `../../../etc/passwd` that triggered `is_file()`/`filesize()`/`exif_imagetype()` on arbitrary paths. `generateSecureFilename()` is now a method on `CarImageProcessor` and shares `ALLOWED_EXTENSIONS` with the validation logic so the two cannot drift apart. The fix script `01-Rename-Legacy-Image-Files.php` migrates the 11 pre-existing DB rows that contain legacy filenames now rejected by the allowlist (see Required Actions).
 
 ## Issues Resolved
 
