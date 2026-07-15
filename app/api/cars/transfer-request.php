@@ -21,6 +21,9 @@ use ElanRegistry\Transfer\TransferEmailService;
 
 require_once '../../../users/init.php';
 
+// $user->data() is null for guests; pre-resolve before any exception can reach the catch blocks.
+$logUserId = $user->isLoggedIn() ? (int) $user->data()->id : 0;
+
 try {
     if (!Input::existsPost() || !Token::check(Input::get('csrf'))) {
         throw new CarTransferException('Invalid request token');
@@ -99,6 +102,13 @@ try {
         [$year, $type, $chassis]
     );
 
+    if ($existingCarQuery->error()) {
+        throw CarTransferException::withUserMessage(
+            'transfer-request: DB error on chassis lookup for chassis=' . $chassis . ': ' . $db->errorString(),
+            'Unable to verify chassis at this time. Please try again.'
+        );
+    }
+
     if ($existingCarQuery->count() === 0) {
         throw new CarTransferException('No car found with this chassis number');
     }
@@ -165,7 +175,10 @@ try {
 
         // Send alert to administrators with error handling
         try {
-            $emailService->sendAdminAlert($transferRequestId);
+            $adminNotified = $emailService->sendAdminAlert($transferRequestId);
+            if (!$adminNotified) {
+                logger($user->data()->id, LogCategories::LOG_CATEGORY_EMAIL_ERROR, "Admin alert failed for transfer request #$transferRequestId");
+            }
         } catch (\Throwable $emailEx) {
             logger($user->data()->id, LogCategories::LOG_CATEGORY_EMAIL_ERROR, "Unexpected exception sending admin alert for request #$transferRequestId: " . $emailEx->getMessage());
         }
@@ -181,12 +194,12 @@ try {
 
 } catch (CarTransferException $e) {
     ApiResponse::error($e->getUserMessage(), 400)
-        ->withLogging($user->data()?->id ?? 0, $e->getLogCategory(), 'Transfer request failed: ' . $e->getMessage())
+        ->withLogging($logUserId, $e->getLogCategory(), 'Transfer request failed: ' . $e->getMessage())
         ->send();
 
 } catch (\Throwable $e) {
     ApiResponse::serverError('An unexpected error occurred while processing your transfer request.')
-        ->withLogging($user->data()?->id ?? 0, LogCategories::LOG_CATEGORY_SYSTEM_ERROR, 'Transfer request system error [' . get_class($e) . ']: ' . $e->getMessage())
+        ->withLogging($logUserId, LogCategories::LOG_CATEGORY_SYSTEM_ERROR, 'Transfer request system error [' . get_class($e) . ']: ' . $e->getMessage())
         ->send();
 }
 ?>
