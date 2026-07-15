@@ -730,13 +730,17 @@ function uploadImages(array &$cardetails, array &$errors): void
     }
 
     // Ensure the path is within expected directory structure. Both realpath()
-    // calls must succeed, and the trailing separator on the target prevents
-    // sibling directories (e.g. /userimages-other/) from passing the check.
+    // calls must succeed. dirname() strips the trailing slash from $filePath
+    // and walks up, so for a direct child like /userimages/123/ it resolves to
+    // /userimages — equal to $realTargetPath. Equality is therefore valid; only
+    // sibling prefixes (e.g. /userimages-other) must be rejected.
     $realTargetPath = realpath($targetFilePath);
     $realFilePath = realpath(dirname($filePath));
+    $canonicalTarget = $realTargetPath !== false ? rtrim($realTargetPath, DIRECTORY_SEPARATOR) : false;
 
     if ($realTargetPath === false || $realFilePath === false
-        || !str_starts_with($realFilePath, rtrim($realTargetPath, DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR)) {
+        || ($realFilePath !== $canonicalTarget
+            && !str_starts_with($realFilePath, $canonicalTarget . DIRECTORY_SEPARATOR))) {
         logger($user->data()->id, LogCategories::LOG_CATEGORY_FILE_ERROR,
             'uploadImages: path guard failed — realpath() returned false or traversal detected'
             . ' (targetFilePath=' . htmlspecialchars($targetFilePath, ENT_QUOTES, 'UTF-8')
