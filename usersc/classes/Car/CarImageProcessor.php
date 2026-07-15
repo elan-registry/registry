@@ -6,6 +6,7 @@ namespace ElanRegistry\Car;
 
 use DB;
 use ElanRegistry\CarErrorMessages;
+use ElanRegistry\Exceptions\CarConcurrentModificationException;
 use ElanRegistry\Exceptions\CarDatabaseException;
 use ElanRegistry\Exceptions\ImageProcessingException;
 use ElanRegistry\LogCategories;
@@ -144,14 +145,8 @@ class CarImageProcessor
         string $urlRoot,
         string $absRoot
     ): array {
-        $carImages = null;
-
         if (!empty($imageData)) {
-            $carImages = json_decode($imageData);
-
-            if (is_null($carImages)) {
-                $carImages = explode(',', $imageData);
-            }
+            $carImages = json_decode($imageData) ?? explode(',', $imageData);
         } else {
             $carImages = [];
         }
@@ -212,6 +207,7 @@ class CarImageProcessor
      * @return bool True if image was removed successfully, false if not found
      * @throws ImageProcessingException If filename is empty or encoding fails
      * @throws CarDatabaseException If database update fails
+     * @throws CarConcurrentModificationException If a concurrent request modified the image list
      */
     public function removeImage(object $carData, string $filename, DB $db): bool
     {
@@ -238,25 +234,18 @@ class CarImageProcessor
         $currentImages = array_values($currentImages);
 
         $imageJson = empty($currentImages) ? '' : json_encode($currentImages);
-        if ($imageJson === false && !empty($currentImages)) {
+        if ($imageJson === false) {
             throw new ImageProcessingException(CarErrorMessages::getMessage('image_encoding_failed'));
         }
 
-        try {
-            $updateSuccess = (new CarRepository($db))->updateImage((int) $carData->id, $imageJson);
-        } catch (\Exception $e) {
-            $technicalMsg = CarErrorMessages::getTechnicalMessage('image_remove_failed', ['error' => $e->getMessage()]);
-            logger(0, LogCategories::LOG_CATEGORY_CAR_ACTIONS, $technicalMsg);
-            throw new CarDatabaseException(CarErrorMessages::getMessage('image_remove_failed'));
+        $repo = new CarRepository($db);
+        $cas = $repo->updateImage((int) $carData->id, $imageJson, $carData->image);
+        if (!$cas) {
+            throw new CarConcurrentModificationException(
+                "Image list changed concurrently for car {$carData->id}"
+            );
         }
-
-        if ($updateSuccess) {
-            $carData->image = $imageJson;
-            return true;
-        }
-
-        $technicalMsg = CarErrorMessages::getTechnicalMessage('database_update_failed', ['error' => 'Database update returned false: ' . $db->errorString()]);
-        logger(0, LogCategories::LOG_CATEGORY_CAR_ACTIONS, $technicalMsg);
-        throw new CarDatabaseException(CarErrorMessages::getMessage('database_update_failed'));
+        $carData->image = $imageJson;
+        return true;
     }
 }
