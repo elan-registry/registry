@@ -257,6 +257,10 @@ switch ($action) {
                 ->withLogging($user->data()->id, LogCategories::LOG_CATEGORY_ACCESS_DENIED, 'removeImages: unauthorized for car ' . $car_id)
                 ->send();
         }
+        // basename() strips any path prefix before the allowlist check.
+        // removeImage() only removes the entry from the DB JSON list — it
+        // performs no filesystem deletion — so normalising a traversal prefix
+        // here is safe.
         $file = basename((string)Input::get('file'));
         if (!CarImageProcessor::isValidFilename($file)) {
             ApiResponse::error('Invalid image filename')
@@ -661,14 +665,19 @@ function buildImageDetails(array &$cardetails): void
         explode(',', Input::raw('filenames') ?? '')
     ));
 
-    // Filter (not reject) entries that fail the allowlist. During a new-image
-    // upload the filenames field also contains original browser filenames (e.g.
-    // "my-photo.jpg") that uploadImages() will replace with secure server-side
-    // names before the DB write — rejecting here would abort those submissions.
+    // Use the read-path guard (isSafeFilename) so legacy filenames already in the
+    // DB survive a reorder-only submission intact. New browser-supplied filenames
+    // (e.g. "my-photo.jpg") also pass this guard; uploadImages() replaces them
+    // with secure server-side names before the final DB write.
+    //
+    // Double-write pattern: this value is the FINAL write when no new files are
+    // uploaded (uploadImages() returns early on the 'blob' sentinel). When files
+    // ARE uploaded, uploadImages() unconditionally overwrites $cardetails['image']
+    // with its own isValidFilename()-filtered list at line 818.
     $safeOrder = [];
     $invalid   = [];
     foreach ($requestedOrder as $filename) {
-        if (CarImageProcessor::isValidFilename($filename)) {
+        if (CarImageProcessor::isSafeFilename($filename)) {
             $safeOrder[] = $filename;
         } else {
             $invalid[] = $filename;
@@ -678,7 +687,7 @@ function buildImageDetails(array &$cardetails): void
     if (!empty($invalid)) {
         $userId = isset($user) ? (int) $user->data()->id : 0;
         logger($userId, LogCategories::LOG_CATEGORY_FILE_ERROR,
-            'buildImageDetails: filtering invalid filename(s): '
+            'buildImageDetails: filtering unsafe filename(s): '
             . htmlspecialchars(implode(', ', $invalid), ENT_QUOTES, 'UTF-8'));
     }
 
@@ -895,10 +904,12 @@ function mvTmpImages(array &$cardetails, array &$errors): void
 
     foreach ($carImages as $carimage) {
         if (!CarImageProcessor::isValidFilename((string) $carimage)) {
+            // Logically unreachable: uploadImages() already filtered the list
+            // with isValidFilename() before writing $cardetails['image'].
+            // Log as an anomaly but do not surface as a user-facing error.
             logger($userId, LogCategories::LOG_CATEGORY_FILE_ERROR,
-                'mvTmpImages: skipping invalid filename: '
+                'mvTmpImages: unexpected invalid filename in sanitized list: '
                 . htmlspecialchars((string) $carimage, ENT_QUOTES, 'UTF-8'));
-            $errors[] = 'Skipped invalid image filename during move.';
             continue;
         }
         $tmpfile = pathinfo($carimage);

@@ -154,6 +154,14 @@ final class ImageFilenameAllowlistTest extends TestCase
         $this->assertFalse(CarImageProcessor::isValidFilename('shell.php'));
     }
 
+    public function testIsValidFilenameRejectsJpegExtension(): void
+    {
+        // 'jpeg' is absent from ALLOWED_EXTENSIONS; generateSecureFilename() always
+        // produces .jpg via the MIME map, never .jpeg. isSafeFilename() accepts
+        // .jpeg for legacy DB rows — this test documents that divergence.
+        $this->assertFalse(CarImageProcessor::isValidFilename('img_' . $this->hex32() . '.jpeg'));
+    }
+
     // -------------------------------------------------------------------------
     // Full-string anchor — the regex ^img_…$ rejects any path prefix without
     // needing basename() normalisation.
@@ -243,6 +251,14 @@ final class ImageFilenameAllowlistTest extends TestCase
     public function testIsSafeFilenameRejectsEmptyString(): void
     {
         $this->assertFalse(CarImageProcessor::isSafeFilename(''));
+    }
+
+    public function testIsSafeFilenameAcceptsMixedCaseExtension(): void
+    {
+        // The /i flag makes extension matching case-insensitive; legacy DB rows
+        // may have uppercase extensions.
+        $this->assertTrue(CarImageProcessor::isSafeFilename('photo.JPG'));
+        $this->assertTrue(CarImageProcessor::isSafeFilename('photo.JPEG'));
     }
 
     // -------------------------------------------------------------------------

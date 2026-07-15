@@ -25,9 +25,11 @@ class CarImageProcessor
 {
     /**
      * Allowed image file extensions. Shared by generateSecureFilename() (what
-     * it may produce) and isValidFilename() (what it will accept). Note:
-     * getExtension() in save.php maintains its own MIME-to-extension map that
-     * must be kept in sync with this list manually.
+     * it may produce) and isValidFilename() (what it will accept).
+     *
+     * Two other extension lists diverge from this one and must be kept in sync manually:
+     *   - isSafeFilename() below — hardcoded inline, also includes 'jpeg' for legacy DB rows
+     *   - getExtension() in save.php — MIME-to-extension map
      *
      * @var list<string>
      */
@@ -79,15 +81,25 @@ class CarImageProcessor
     /**
      * Check whether a filename is safe for filesystem operations on the read path.
      *
-     * Unlike isValidFilename(), this accepts legacy filenames that predate the
+     * Unlike isValidFilename(), accepts legacy filenames that predate the
      * img_[hex32] naming scheme (timestamps, bare hashes, old uniqid format).
-     * It only rejects path separators, glob metacharacters, null bytes, HTML-special
-     * characters, and non-image extensions — the minimum needed to prevent traversal
-     * and glob expansion without breaking existing car photo data.
      *
-     * Used by decodeAndProcessImages() to handle historical filenames stored in DB.
+     * Works by allowlisting the character set [\w\-. ] (ASCII word chars, hyphen,
+     * dot, space) then requiring a known image extension. Any character outside
+     * that set — including '/', '\', '*', null bytes, HTML-special chars, or any
+     * non-ASCII byte — causes the match to fail. Path traversal is rejected because
+     * '/' is not in the allowed set, not via explicit detection.
      *
-     * @param string $filename Bare filename (no directory component)
+     * The /u (UTF-8) flag is deliberately omitted so \w matches only ASCII
+     * [a-zA-Z0-9_] and not Unicode word characters.
+     *
+     * Has its own extension list (jpg, jpeg, png, gif, webp) including 'jpeg'
+     * for historical DB rows — diverges from ALLOWED_EXTENSIONS.
+     *
+     * Used by decodeAndProcessImages() and buildImageDetails() (reorder path).
+     *
+     * @param string $filename Filename to validate (directory components are
+     *                         rejected because '/' is not in [\w\-. ])
      * @return bool True if the filename is safe for filesystem use
      */
     public static function isSafeFilename(string $filename): bool
