@@ -99,6 +99,15 @@ try {
         [$year, $type, $chassis]
     );
 
+    if ($existingCarQuery->error()) {
+        logger(
+            (int) $user->data()->id,
+            LogCategories::LOG_CATEGORY_DATABASE_ERROR,
+            'transfer-request: DB error on chassis lookup for chassis=' . $chassis . ': ' . $db->errorString()
+        );
+        throw new CarTransferException('Unable to verify chassis at this time. Please try again.');
+    }
+
     if ($existingCarQuery->count() === 0) {
         throw new CarTransferException('No car found with this chassis number');
     }
@@ -180,13 +189,16 @@ try {
         ->send();
 
 } catch (CarTransferException $e) {
+    // data() is null for guests; CSRF failures above reach here before isLoggedIn().
+    $logUserId = $user->isLoggedIn() ? (int) $user->data()->id : 0;
     ApiResponse::error($e->getUserMessage(), 400)
-        ->withLogging($user->data()?->id ?? 0, $e->getLogCategory(), 'Transfer request failed: ' . $e->getMessage())
+        ->withLogging($logUserId, $e->getLogCategory(), 'Transfer request failed: ' . $e->getMessage())
         ->send();
 
 } catch (\Throwable $e) {
+    $logUserId = $user->isLoggedIn() ? (int) $user->data()->id : 0;
     ApiResponse::serverError('An unexpected error occurred while processing your transfer request.')
-        ->withLogging($user->data()?->id ?? 0, LogCategories::LOG_CATEGORY_SYSTEM_ERROR, 'Transfer request system error [' . get_class($e) . ']: ' . $e->getMessage())
+        ->withLogging($logUserId, LogCategories::LOG_CATEGORY_SYSTEM_ERROR, 'Transfer request system error [' . get_class($e) . ']: ' . $e->getMessage())
         ->send();
 }
 ?>

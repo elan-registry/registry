@@ -22,10 +22,13 @@ if (!Input::existsPost()) {
     ApiResponse::error('No data received', 400)->send();
 }
 
+// data() returns null for anonymous users; resolve before the CSRF handler.
+$logUserId = $user->isLoggedIn() ? (int) $user->data()->id : 0;
+
 $token = Input::get('csrf');
 if (!Token::check($token)) {
     ApiResponse::forbidden('Invalid CSRF token')
-        ->withLogging($user->data()?->id ?? 0, LogCategories::LOG_CATEGORY_SECURITY, 'Invalid CSRF token in chassis check')
+        ->withLogging($logUserId, LogCategories::LOG_CATEGORY_SECURITY, 'Invalid CSRF token in chassis check')
         ->send();
 }
 
@@ -66,6 +69,16 @@ try {
         [$year, $type, $chassis]
     );
 
+    if ($carQ->error()) {
+        ApiResponse::serverError('Unable to verify chassis availability')
+            ->withLogging(
+                $logUserId,
+                LogCategories::LOG_CATEGORY_DATABASE_ERROR,
+                'chassis-availability: DB error on chassis lookup: ' . $db->errorString()
+            )
+            ->send();
+    }
+
     $isTaken = $carQ->count() > 0;
 
     ApiResponse::success($isTaken ? 'Chassis number is already registered' : 'Chassis number is available')
@@ -75,7 +88,7 @@ try {
 } catch (\Throwable $e) {
     ApiResponse::serverError('Failed to check chassis availability')
         ->withLogging(
-            $user->data()?->id ?? 0,
+            $logUserId,
             LogCategories::LOG_CATEGORY_DATABASE_ERROR,
             'Chassis check error: ' . $e->getMessage()
         )

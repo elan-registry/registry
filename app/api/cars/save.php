@@ -735,11 +735,18 @@ function uploadImages(array &$cardetails, array &$errors): void
         $filePath = $targetFilePath . $carId . '/';
     }
 
-    // Ensure the path is within expected directory structure
+    // Ensure the path is within expected directory structure. Both realpath()
+    // calls must succeed, and the trailing separator on the target prevents
+    // sibling directories (e.g. /userimages-other/) from passing the check.
     $realTargetPath = realpath($targetFilePath);
     $realFilePath = realpath(dirname($filePath));
 
-    if ($realFilePath === false || strpos($realFilePath, $realTargetPath) !== 0) {
+    if ($realTargetPath === false || $realFilePath === false
+        || !str_starts_with($realFilePath, rtrim($realTargetPath, DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR)) {
+        logger($user->data()->id, LogCategories::LOG_CATEGORY_FILE_ERROR,
+            'uploadImages: path guard failed — realpath() returned false or traversal detected'
+            . ' (targetFilePath=' . htmlspecialchars($targetFilePath, ENT_QUOTES, 'UTF-8')
+            . ', filePath=' . htmlspecialchars($filePath, ENT_QUOTES, 'UTF-8') . ')');
         throw new ImageProcessingException("Invalid upload path detected");
     }
 
