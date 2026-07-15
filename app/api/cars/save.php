@@ -658,7 +658,7 @@ function buildImageDetails(array &$cardetails): void
     global $user;
 
     $requestedOrder = array_values(array_filter(
-        explode(',', Input::raw('filenames'))
+        explode(',', Input::raw('filenames') ?? '')
     ));
 
     // Filter (not reject) entries that fail the allowlist. During a new-image
@@ -733,7 +733,7 @@ function uploadImages(array &$cardetails, array &$errors): void
         }
     }
 
-    $requestedOrder = array_values(array_filter(explode(',', Input::raw('filenames'))));
+    $requestedOrder = array_values(array_filter(explode(',', Input::raw('filenames') ?? '')));
 
     //  $_FILES['file']['tmp_name'] is an array so have to use loop
     foreach ($_FILES['file']['tmp_name'] as $key => $value) {

@@ -19,7 +19,9 @@ use PHPUnit\Framework\Attributes\Group;
  *   3. mvTmpImages() in save.php        — skips invalid entries before glob
  *   4. decodeAndProcessImages()         — skips invalid entries before stat
  *
- * This file tests all three entry points via CarImageProcessor public API.
+ * This file tests two of the four layers directly via CarImageProcessor public API
+ * (isValidFilename() and isSafeFilename()) and verifies observable rejection behavior
+ * in decodeAndProcessImages().
  *
  * @see usersc/classes/Car/CarImageProcessor.php
  * @see app/api/cars/save.php
@@ -165,10 +167,89 @@ final class ImageFilenameAllowlistTest extends TestCase
     }
 
     // -------------------------------------------------------------------------
-    // decodeAndProcessImages — invalid filenames produce empty result
+    // isSafeFilename — read-path guard (accepts legacy filenames, rejects attacks)
+    //
+    // isSafeFilename() is used by decodeAndProcessImages() and must accept the
+    // full range of historical naming conventions stored in the database while
+    // still blocking traversal, glob expansion, and HTML injection.
+    // -------------------------------------------------------------------------
+
+    public function testIsSafeFilenameAcceptsTimestampFormat(): void
+    {
+        $this->assertTrue(CarImageProcessor::isSafeFilename('20151231132429_dscn1711.jpg'));
+    }
+
+    public function testIsSafeFilenameAcceptsBareHashWithJpegExtension(): void
+    {
+        $this->assertTrue(CarImageProcessor::isSafeFilename('7d88e3abba0d104c1a3d1f3b3646701b.jpeg'));
+    }
+
+    public function testIsSafeFilenameAcceptsOldUniqidFormat(): void
+    {
+        $this->assertTrue(CarImageProcessor::isSafeFilename('img_6216b69958ad87.41015942.jpg'));
+    }
+
+    public function testIsSafeFilenameAcceptsCurrentSecureFormat(): void
+    {
+        $name = 'img_' . $this->hex32() . '.jpg';
+        $this->assertTrue(CarImageProcessor::isSafeFilename($name));
+    }
+
+    public function testIsSafeFilenameAcceptsAllAllowedExtensions(): void
+    {
+        foreach (['jpg', 'jpeg', 'png', 'gif', 'webp'] as $ext) {
+            $this->assertTrue(
+                CarImageProcessor::isSafeFilename('photo.' . $ext),
+                "isSafeFilename() must accept .{$ext} extension"
+            );
+        }
+    }
+
+    public function testIsSafeFilenameRejectsTraversal(): void
+    {
+        $this->assertFalse(CarImageProcessor::isSafeFilename('../../../etc/passwd'));
+    }
+
+    public function testIsSafeFilenameRejectsWildcard(): void
+    {
+        $this->assertFalse(CarImageProcessor::isSafeFilename('*'));
+    }
+
+    public function testIsSafeFilenameRejectsGlobPattern(): void
+    {
+        $this->assertFalse(CarImageProcessor::isSafeFilename('*.jpg'));
+    }
+
+    public function testIsSafeFilenameRejectsScriptTagXss(): void
+    {
+        $this->assertFalse(CarImageProcessor::isSafeFilename('<script>alert(1)</script>'));
+    }
+
+    public function testIsSafeFilenameRejectsNullByte(): void
+    {
+        $this->assertFalse(CarImageProcessor::isSafeFilename("photo.jpg\x00extra"));
+    }
+
+    public function testIsSafeFilenameRejectsUnsupportedExtension(): void
+    {
+        $this->assertFalse(CarImageProcessor::isSafeFilename('photo.bmp'));
+    }
+
+    public function testIsSafeFilenameRejectsPhpExtension(): void
+    {
+        $this->assertFalse(CarImageProcessor::isSafeFilename('shell.php'));
+    }
+
+    public function testIsSafeFilenameRejectsEmptyString(): void
+    {
+        $this->assertFalse(CarImageProcessor::isSafeFilename(''));
+    }
+
+    // -------------------------------------------------------------------------
+    // decodeAndProcessImages — unsafe filenames produce empty result
     //
     // These tests verify the observable security contract: filenames that
-    // fail the allowlist are never included in the output array (they are
+    // fail isSafeFilename() are never included in the output array (they are
     // skipped before any filesystem call).
     // -------------------------------------------------------------------------
 
@@ -188,12 +269,13 @@ final class ImageFilenameAllowlistTest extends TestCase
         $this->assertEmpty($result, 'Wildcard filename must not appear in decoded image list');
     }
 
-    public function testDecodeAndProcessImagesSkipsNonSecureFilename(): void
+    public function testDecodeAndProcessImagesSkipsUnsupportedExtension(): void
     {
+        // 'photo.bmp' is rejected by isSafeFilename() — unsupported extension.
         $result = (new CarImageProcessor())->decodeAndProcessImages(
-            json_encode(['photo.jpg']), '/images/1/', '/', '/var/www/'
+            json_encode(['photo.bmp']), '/images/1/', '/', '/var/www/'
         );
-        $this->assertEmpty($result, 'Non-secure filename must not appear in decoded image list');
+        $this->assertEmpty($result, 'Unsupported-extension filename must not appear in decoded image list');
     }
 
     public function testDecodeAndProcessImagesSkipsScriptTagFilename(): void
@@ -206,19 +288,19 @@ final class ImageFilenameAllowlistTest extends TestCase
 
     public function testDecodeAndProcessImagesSkipsMixedValidAndInvalid(): void
     {
-        $validName   = 'img_' . $this->hex32() . '.jpg';
-        $invalidName = '../../../etc/passwd';
+        $safeName    = '20151231132429_legacy.jpg'; // legacy format — passes isSafeFilename()
+        $unsafeName  = '../../../etc/passwd';       // traversal — rejected by isSafeFilename()
 
-        // Pre-flight: confirm the allowlist classifies inputs as expected.
-        $this->assertTrue(CarImageProcessor::isValidFilename($validName));
-        $this->assertFalse(CarImageProcessor::isValidFilename($invalidName));
+        // Pre-flight: confirm the read-path guard classifies inputs as expected.
+        $this->assertTrue(CarImageProcessor::isSafeFilename($safeName));
+        $this->assertFalse(CarImageProcessor::isSafeFilename($unsafeName));
 
         $result = (new CarImageProcessor())->decodeAndProcessImages(
-            json_encode([$validName, $invalidName]), '/images/1/', '/', '/var/www/'
+            json_encode([$safeName, $unsafeName]), '/images/1/', '/', '/var/www/'
         );
 
-        // The invalid entry is rejected by the allowlist; the valid entry passes
-        // the allowlist but is_file() returns false in the test environment.
+        // The unsafe entry is rejected by isSafeFilename(); the safe entry passes
+        // the guard but is_file() returns false in the test environment (no real files).
         $this->assertEmpty($result);
     }
 

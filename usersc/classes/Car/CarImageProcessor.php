@@ -77,6 +77,25 @@ class CarImageProcessor
     }
 
     /**
+     * Check whether a filename is safe for filesystem operations on the read path.
+     *
+     * Unlike isValidFilename(), this accepts legacy filenames that predate the
+     * img_[hex32] naming scheme (timestamps, bare hashes, old uniqid format).
+     * It only rejects path separators, glob metacharacters, null bytes, HTML-special
+     * characters, and non-image extensions — the minimum needed to prevent traversal
+     * and glob expansion without breaking existing car photo data.
+     *
+     * Used by decodeAndProcessImages() to handle historical filenames stored in DB.
+     *
+     * @param string $filename Bare filename (no directory component)
+     * @return bool True if the filename is safe for filesystem use
+     */
+    public static function isSafeFilename(string $filename): bool
+    {
+        return (bool) preg_match('/^[\w\-. ]+\.(jpg|jpeg|png|gif|webp)\z/iD', $filename);
+    }
+
+    /**
      * Encode an array of images to JSON for database storage
      *
      * @param array<mixed> $images Array of image data
@@ -124,9 +143,9 @@ class CarImageProcessor
 
         $images = [];
         foreach ($carImages as $key => $carimage) {
-            if (!self::isValidFilename((string) $carimage)) {
+            if (!self::isSafeFilename((string) $carimage)) {
                 logger(0, LogCategories::LOG_CATEGORY_FILE_ERROR,
-                    'decodeAndProcessImages: skipping invalid filename: '
+                    'decodeAndProcessImages: skipping unsafe filename: '
                     . htmlspecialchars((string) $carimage, ENT_QUOTES, 'UTF-8'));
                 continue;
             }
