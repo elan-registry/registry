@@ -22,7 +22,7 @@ if (!Input::existsPost()) {
     ApiResponse::error('No data received', 400)->send();
 }
 
-// data() returns null for anonymous users; resolve before the CSRF handler.
+// $user->data() is null for guests; pre-resolve before passing to withLogging().
 $logUserId = $user->isLoggedIn() ? (int) $user->data()->id : 0;
 
 $token = Input::get('csrf');
@@ -89,7 +89,7 @@ try {
     ApiResponse::serverError('Failed to check chassis availability')
         ->withLogging(
             $logUserId,
-            LogCategories::LOG_CATEGORY_DATABASE_ERROR,
+            LogCategories::LOG_CATEGORY_SYSTEM_ERROR,
             'Chassis check error: ' . $e->getMessage()
         )
         ->send();

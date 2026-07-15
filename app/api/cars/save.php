@@ -445,11 +445,12 @@ function updateModel(array &$cardetails, array &$errors): void
     $model = Input::raw('model');
     if ($model !== null && $model !== '') {
         $cardetails['model'] = $model;
-        // model is a composite "series|variant|type" from a fixed dropdown — explode into columns
-        list($series, $variant, $type) = explode('|', $cardetails['model']);
-        $cardetails['series'] = $series;
-        $cardetails['variant'] = $variant;
-        $cardetails['type'] = $type;
+        $modelParts = explode('|', $cardetails['model']);
+        if (count($modelParts) !== 3) {
+            $errors[] = 'Invalid model format — please select a model from the dropdown';
+            return;
+        }
+        [$cardetails['series'], $cardetails['variant'], $cardetails['type']] = $modelParts;
 
         $successes[] = 'Model: ' . htmlspecialchars($model, ENT_QUOTES, 'UTF-8');
     } else {
@@ -878,6 +879,11 @@ function fetchImages(int $car_id): void
         ApiResponse::serverError('Failed to fetch images')
             ->withLogging($user->data()->id, LogCategories::LOG_CATEGORY_CAR_ERRORS, 'fetchImages error: ' . $e->getMessage())
             ->send();
+    } catch (\Throwable $e) {
+        ApiResponse::serverError('Failed to fetch images')
+            ->withLogging($user->data()->id, LogCategories::LOG_CATEGORY_CAR_ERRORS,
+                'fetchImages unexpected error [' . get_class($e) . ']: ' . $e->getMessage())
+            ->send();
     }
 }
 
@@ -982,12 +988,18 @@ function removeImage(int $carID, string $file): void
                 )->send();
         }
     } catch (ElanRegistryException $e) {
-        // Log error and return error response
         ApiResponse::serverError('Failed to remove image')
             ->withLogging(
                 $user->data()->id,
                 LogCategories::LOG_CATEGORY_CAR_ERRORS,
                 "removeImage error: carId: {$carID}, error: " . $e->getMessage()
+            )->send();
+    } catch (\Throwable $e) {
+        ApiResponse::serverError('Failed to remove image')
+            ->withLogging(
+                $user->data()->id,
+                LogCategories::LOG_CATEGORY_CAR_ERRORS,
+                'removeImage unexpected error [' . get_class($e) . "]: carId: {$carID}, error: " . $e->getMessage()
             )->send();
     }
 }

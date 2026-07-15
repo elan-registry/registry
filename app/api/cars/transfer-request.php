@@ -192,13 +192,14 @@ try {
         ->send();
 
 } catch (CarTransferException $e) {
-    // data() is null for guests; CSRF failures above reach here before isLoggedIn().
+    // CSRF and missing-POST failures throw before the isLoggedIn() check, so guests can reach here.
     $logUserId = $user->isLoggedIn() ? (int) $user->data()->id : 0;
     ApiResponse::error($e->getUserMessage(), 400)
         ->withLogging($logUserId, $e->getLogCategory(), 'Transfer request failed: ' . $e->getMessage())
         ->send();
 
 } catch (\Throwable $e) {
+    // CSRF and missing-POST failures throw before the isLoggedIn() check, so guests can reach here.
     $logUserId = $user->isLoggedIn() ? (int) $user->data()->id : 0;
     ApiResponse::serverError('An unexpected error occurred while processing your transfer request.')
         ->withLogging($logUserId, LogCategories::LOG_CATEGORY_SYSTEM_ERROR, 'Transfer request system error [' . get_class($e) . ']: ' . $e->getMessage())
