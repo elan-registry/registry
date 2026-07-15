@@ -127,12 +127,6 @@ parameters:
 			path: app/admin/scripts/maintenance/21-Fix-Page-Permissions.php
 
 		-
-			message: '#^Variable \$settings might not be defined\.$#'
-			identifier: variable.undefined
-			count: 1
-			path: app/admin/scripts/maintenance/21-Fix-Page-Permissions.php
-
-		-
 			message: '#^Variable \$car might not be defined\.$#'
 			identifier: variable.undefined
 			count: 1
@@ -163,28 +157,10 @@ parameters:
 			path: app/admin/verify/_email_template.php
 
 		-
-			message: '#^Variable \$settings might not be defined\.$#'
-			identifier: variable.undefined
-			count: 1
-			path: app/admin/verify/index.php
-
-		-
 			message: '#^Parameter \#1 \$prefix of function uniqid expects string, int\<0, max\> given\.$#'
 			identifier: argument.type
 			count: 1
 			path: app/admin/verify/send_email.php
-
-		-
-			message: '#^Variable \$settings might not be defined\.$#'
-			identifier: variable.undefined
-			count: 2
-			path: app/admin/verify/send_email.php
-
-		-
-			message: '#^Variable \$settings might not be defined\.$#'
-			identifier: variable.undefined
-			count: 1
-			path: app/admin/verify/verify_car.php
 
 		-
 			message: '#^Unreachable statement \- code above always terminates\.$#'
@@ -209,24 +185,6 @@ parameters:
 			identifier: deadCode.unreachable
 			count: 2
 			path: app/api/cars/models.php
-
-		-
-			message: '#^Unreachable statement \- code above always terminates\.$#'
-			identifier: deadCode.unreachable
-			count: 2
-			path: app/api/cars/save.php
-
-		-
-			message: '#^Variable \$_POST in empty\(\) always exists and is not falsy\.$#'
-			identifier: empty.variable
-			count: 1
-			path: app/api/cars/save.php
-
-		-
-			message: '#^Variable \$errors in empty\(\) always exists and is always falsy\.$#'
-			identifier: empty.variable
-			count: 6
-			path: app/api/cars/save.php
 
 		-
 			message: '#^Using nullsafe property access "\?\-\>id" on left side of \?\? is unnecessary\. Use \-\> instead\.$#'
@@ -271,12 +229,6 @@ parameters:
 			path: app/owner/cars/details.php
 
 		-
-			message: '#^Variable \$settings might not be defined\.$#'
-			identifier: variable.undefined
-			count: 8
-			path: app/owner/cars/edit.php
-
-		-
 			message: '#^Variable \$successes in empty\(\) always exists and is always falsy\.$#'
 			identifier: empty.variable
 			count: 1
@@ -287,12 +239,6 @@ parameters:
 			identifier: argument.type
 			count: 1
 			path: app/owner/contact/owner.php
-
-		-
-			message: '#^Variable \$settings might not be defined\.$#'
-			identifier: variable.undefined
-			count: 1
-			path: app/owner/reports/statistics.php
 
 		-
 			message: '#^Variable \$context might not be defined\.$#'
@@ -727,12 +673,6 @@ parameters:
 			path: usersc/join.php
 
 		-
-			message: '#^Variable \$settings might not be defined\.$#'
-			identifier: variable.undefined
-			count: 14
-			path: usersc/join.php
-
-		-
 			message: '#^Variable \$username on left side of \?\? always exists and is not nullable\.$#'
 			identifier: nullCoalesce.variable
 			count: 1
@@ -889,12 +829,6 @@ parameters:
 			path: usersc/login.php
 
 		-
-			message: '#^Variable \$settings might not be defined\.$#'
-			identifier: variable.undefined
-			count: 12
-			path: usersc/login.php
-
-		-
 			message: '#^Variable \$oSettings might not be defined\.$#'
 			identifier: variable.undefined
 			count: 2
@@ -916,12 +850,6 @@ parameters:
 			message: '#^Variable \$authData might not be defined\.$#'
 			identifier: variable.undefined
 			count: 1
-			path: usersc/oauth_server/login_forms/default_login.php
-
-		-
-			message: '#^Variable \$settings might not be defined\.$#'
-			identifier: variable.undefined
-			count: 4
 			path: usersc/oauth_server/login_forms/default_login.php
 
 		-
@@ -985,12 +913,6 @@ parameters:
 			path: usersc/templates/customizer/file_nav_custom.php
 
 		-
-			message: '#^Variable \$settings might not be defined\.$#'
-			identifier: variable.undefined
-			count: 2
-			path: usersc/templates/customizer/file_nav_custom.php
-
-		-
 			message: '#^Call to method display\(\) on an unknown class Menu\.$#'
 			identifier: class.notFound
 			count: 1
@@ -1005,12 +927,6 @@ parameters:
 		-
 			message: '#^Instantiated class Menu not found\.$#'
 			identifier: class.notFound
-			count: 2
-			path: usersc/templates/customizer/navigation.php
-
-		-
-			message: '#^Variable \$settings might not be defined\.$#'
-			identifier: variable.undefined
 			count: 2
 			path: usersc/templates/customizer/navigation.php
 
@@ -1072,12 +988,6 @@ parameters:
 			message: '#^Variable \$profiledetails might not be defined\.$#'
 			identifier: variable.undefined
 			count: 12
-			path: usersc/user_settings.php
-
-		-
-			message: '#^Variable \$settings might not be defined\.$#'
-			identifier: variable.undefined
-			count: 18
 			path: usersc/user_settings.php
 
 		-
@@ -1159,12 +1069,6 @@ parameters:
 			path: usersc/views/_forgot_password.php
 
 		-
-			message: '#^Variable \$settings might not be defined\.$#'
-			identifier: variable.undefined
-			count: 1
-			path: usersc/views/_forgot_password_sent.php
-
-		-
 			message: '#^Function includeHook not found\.$#'
 			identifier: function.notFound
 			count: 2
@@ -1201,12 +1105,6 @@ parameters:
 			path: usersc/views/_join.php
 
 		-
-			message: '#^Variable \$settings might not be defined\.$#'
-			identifier: variable.undefined
-			count: 1
-			path: usersc/views/_join.php
-
-		-
 			message: '#^Function checkAccess not found\.$#'
 			identifier: function.notFound
 			count: 1
@@ -1227,12 +1125,6 @@ parameters:
 		-
 			message: '#^Offset 3 on array\{''Bug Report'', ''bug\.png'', ''bugs'', '''', ''Find a bug in…''\}\|array\{''Classic Menu'', ''navigation\.png'', ''nav'', '''', ''If you still use…''\}\|array\{''Cron Manager'', ''cron\.png'', ''cron'', '''', ''This is a place to…''\}\|array\{''Dashboard Style'', ''customize_dash\.png'', '''', non\-falsy\-string, ''Customize the look…''\}\|array\{''IP Manager'', ''ip\.png'', ''ip'', '''', ''Manage IP…''\}\|array\{''OAuth Client'', ''oauth_client\.png'', ''oauth_client'', '''', ''Connect to other…''\}\|array\{''OAuth Server'', ''oauth\.png'', ''oauth'', '''', ''Manage OAuth…''\}\|array\{''Page Manager'', ''pages\.png'', ''pages'', '''', ''Decide which…''\}\|array\{''Permissions & Tags'', ''permissions\.png'', ''permissions'', '''', ''Manage the…''\}\|array\{''Plugin Manager'', ''plugin\.png'', ''plugins'', '''', ''Activate,…''\}\|array\{''Security Logs'', ''security\.png'', ''security_logs'', '''', ''View logs of…''\}\|array\{''Spice Shaker'', ''spice\.png'', ''spice'', '''', ''Download official…''\}\|array\{''System Logs'', ''logs\.png'', ''logs'', '''', ''View logs of system…''\}\|array\{''Template Style'', ''customize_front\.png'', '''', non\-falsy\-string, ''Customize the look…''\}\|array\{''Templates'', ''templates\.png'', ''templates'', '''', ''Activate and…''\}\|array\{''Updates'', ''update\.png'', ''updates'', '''', ''Download updates…''\}\|array\{''User Manager'', ''user\.png'', ''users'', '''', ''Manage the info and…''\} in isset\(\) always exists and is not nullable\.$#'
 			identifier: isset.offset
-			count: 1
-			path: usersc/widgets/tools/widget.php
-
-		-
-			message: '#^Variable \$settings might not be defined\.$#'
-			identifier: variable.undefined
 			count: 1
 			path: usersc/widgets/tools/widget.php
 

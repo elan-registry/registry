@@ -3,6 +3,7 @@ declare(strict_types=1);
 
 use ElanRegistry\ApiResponse;
 use ElanRegistry\Car\Car;
+use ElanRegistry\Car\CarImageProcessor;
 use ElanRegistry\ChassisValidator;
 use ElanRegistry\Exceptions\CarValidationException;
 use ElanRegistry\Exceptions\ElanRegistryException;
@@ -55,229 +56,238 @@ if ($method !== 'POST' || empty($_POST)) {
     ApiResponse::error('No data received', 400)->send();
 }
 
-if (!empty($_POST)) {
-    if (!$user->isLoggedIn()) {
-        ApiResponse::unauthorized('Login required')
-            ->withLogging(0, LogCategories::LOG_CATEGORY_ACCESS_DENIED, 'Unauthenticated access attempt to edit.php')
-            ->send();
-    }
+if (!$user->isLoggedIn()) {
+    ApiResponse::unauthorized('Login required')
+        ->withLogging(0, LogCategories::LOG_CATEGORY_ACCESS_DENIED, 'Unauthenticated access attempt to edit.php')
+        ->send();
+}
 
-    $token = Input::get('csrf');
-    if (!Token::check($token)) {
-        ApiResponse::forbidden('Invalid CSRF token')
-            ->withLogging($user->data() !== null ? $user->data()->id : 0, LogCategories::LOG_CATEGORY_SECURITY, 'CSRF check failed in edit.php')
-            ->send();
-    }
+$token = Input::get('csrf');
+if (!Token::check($token)) {
+    ApiResponse::forbidden('Invalid CSRF token')
+        ->withLogging($user->data() !== null ? $user->data()->id : 0, LogCategories::LOG_CATEGORY_SECURITY, 'CSRF check failed in edit.php')
+        ->send();
+}
 
-    $db = DB::getInstance();
+$db = DB::getInstance();
 
-    $action = Input::get('action');
-    switch ($action) {
-        case "addCar":
-            try {
-                buildCarDetails($cardetails);
-                buildImageDetails($cardetails);
+$action = Input::get('action');
+switch ($action) {
+    case "addCar":
+        try {
+            buildCarDetails($cardetails, $errors);
+            buildImageDetails($cardetails);
 
-                if (!empty($errors)) {
-                    ApiResponse::validationError(
-                        ['general' => $errors],
-                        'Cannot add car: validation errors'
-                    )->withData('cardetails', $cardetails)
-                    ->withLogging(
-                        $user->data()->id,
-                        LogCategories::LOG_CATEGORY_VALIDATION_ERROR,
-                        'Car creation validation failed: ' . json_encode($errors)
-                    )->send();
-                }
+            if (!empty($errors)) {
+                ApiResponse::validationError(
+                    ['general' => implode('; ', $errors)],
+                    'Cannot add car: validation errors'
+                )->withData('cardetails', $cardetails)
+                ->withLogging(
+                    $user->data()->id,
+                    LogCategories::LOG_CATEGORY_VALIDATION_ERROR,
+                    'Car creation validation failed: ' . json_encode($errors)
+                )->send();
+            }
 
-                uploadImages($cardetails);
+            uploadImages($cardetails, $errors);
 
-                if (!empty($errors)) {
-                    ApiResponse::validationError(
-                        ['general' => $errors],
-                        'Cannot add car: image upload failed'
-                    )->withData('cardetails', $cardetails)
-                    ->withLogging(
-                        $user->data()->id,
-                        LogCategories::LOG_CATEGORY_FILE_ERROR,
-                        'Car add aborted: image upload errors: ' . json_encode($errors)
-                    )->send();
-                }
+            if (!empty($errors)) {
+                ApiResponse::validationError(
+                    ['general' => implode('; ', $errors)],
+                    'Cannot add car: image upload failed'
+                )->withData('cardetails', $cardetails)
+                ->withLogging(
+                    $user->data()->id,
+                    LogCategories::LOG_CATEGORY_FILE_ERROR,
+                    'Car add aborted: image upload errors: ' . json_encode($errors)
+                )->send();
+            }
 
-                addCar($cardetails);
-                mvTmpImages($cardetails);
+            addCar($cardetails, $errors);
+            mvTmpImages($cardetails, $errors);
 
-                if (!empty($errors)) {
-                    ApiResponse::serverError('Car saved but images could not be moved from temp storage')
-                        ->withData('cardetails', $cardetails)
-                        ->withLogging(
-                            $user->data()->id,
-                            LogCategories::LOG_CATEGORY_FILE_ERROR,
-                            'Car ID ' . ($cardetails['id'] ?? 'unknown') . ' saved but image move errors: ' . json_encode($errors)
-                        )->send();
-                }
-
-                // Blanks instead of NULL for display
-                foreach ($cardetails as $key => $value) {
-                    if (is_null($value)) {
-                        $cardetails[$key] = "";
-                    }
-                }
-
-                ApiResponse::success('Car added successfully')
+            if (!empty($errors)) {
+                ApiResponse::serverError('Car saved but images could not be moved from temp storage')
                     ->withData('cardetails', $cardetails)
                     ->withLogging(
                         $user->data()->id,
-                        LogCategories::LOG_CATEGORY_CAR_ACTIONS,
-                        'Car added: ID ' . $cardetails['id']
-                    )->send();
-
-            } catch (ElanRegistryException $e) {
-                ApiResponse::serverError('Failed to add car: ' . $e->getUserMessage())
-                    ->withLogging(
-                        $user->data()->id,
-                        LogCategories::LOG_CATEGORY_CAR_ERRORS,
-                        'Car add error: ' . $e->getMessage()
-                    )->send();
-            } catch (\Exception $e) {
-                ApiResponse::serverError('Failed to add car: An unexpected error occurred.')
-                    ->withLogging(
-                        $user->data()->id,
-                        LogCategories::LOG_CATEGORY_CAR_ERRORS,
-                        'Car add unexpected error: ' . $e->getMessage()
-                    )->send();
-            }
-            break;
-
-        case "updateCar":
-            $car_id = (int)Input::get('car_id');
-            if ($car_id <= 0) {
-                ApiResponse::error('Invalid car ID', 400)
-                    ->withLogging($user->data()->id, LogCategories::LOG_CATEGORY_VALIDATION_ERROR, 'updateCar: invalid car_id in request')
-                    ->send();
-            }
-            $carForAuth = new Car($car_id);
-            if (!$carForAuth->data() || ($user->data()->id != $carForAuth->data()->user_id && !hasPerm([2, 3]))) {
-                ApiResponse::error('Unauthorized', 403)
-                    ->withLogging($user->data()->id, LogCategories::LOG_CATEGORY_ACCESS_DENIED, 'updateCar: unauthorized for car ' . $car_id)
-                    ->send();
-            }
-            try {
-                buildCarDetails($cardetails, $car_id);
-                buildImageDetails($cardetails);
-
-                if (!empty($errors)) {
-                    ApiResponse::validationError(
-                        ['general' => $errors],
-                        'Cannot update car: validation errors'
-                    )->withData('cardetails', $cardetails)
-                    ->withLogging(
-                        $user->data()->id,
-                        LogCategories::LOG_CATEGORY_VALIDATION_ERROR,
-                        'Car update validation failed: ' . json_encode($errors)
-                    )->send();
-                }
-
-                uploadImages($cardetails);
-
-                if (!empty($errors)) {
-                    ApiResponse::validationError(
-                        ['general' => $errors],
-                        'Cannot update car: image upload failed'
-                    )->withData('cardetails', $cardetails)
-                    ->withLogging(
-                        $user->data()->id,
                         LogCategories::LOG_CATEGORY_FILE_ERROR,
-                        'Car update aborted: image upload errors: ' . json_encode($errors)
-                    )->send();
-                }
-
-                updateCar($cardetails);
-
-                if (!empty($errors)) {
-                    ApiResponse::validationError(
-                        ['general' => $errors],
-                        'Cannot save car: update operation failed'
-                    )->withData('cardetails', $cardetails)
-                    ->withLogging(
-                        $user->data()->id,
-                        LogCategories::LOG_CATEGORY_CAR_ERRORS,
-                        'Car update failed post-save validation: ' . json_encode($errors)
-                    )->send();
-                }
-
-                // Blanks instead of NULL for display
-                foreach ($cardetails as $key => $value) {
-                    if (is_null($value)) {
-                        $cardetails[$key] = "";
-                    }
-                }
-
-                ApiResponse::success('Car updated successfully')
-                    ->withData('cardetails', $cardetails)
-                    ->withLogging(
-                        $user->data()->id,
-                        LogCategories::LOG_CATEGORY_CAR_ACTIONS,
-                        'Car updated: ID ' . $cardetails['id']
-                    )->send();
-
-            } catch (ElanRegistryException $e) {
-                ApiResponse::serverError('Failed to update car: ' . $e->getUserMessage())
-                    ->withLogging(
-                        $user->data()->id,
-                        LogCategories::LOG_CATEGORY_CAR_ERRORS,
-                        'Car update error: ' . $e->getMessage()
-                    )->send();
-            } catch (\Exception $e) {
-                ApiResponse::serverError('Failed to update car: An unexpected error occurred.')
-                    ->withLogging(
-                        $user->data()->id,
-                        LogCategories::LOG_CATEGORY_CAR_ERRORS,
-                        'Car update unexpected error: ' . $e->getMessage()
+                        'Car ID ' . ($cardetails['id'] ?? 'unknown') . ' saved but image move errors: ' . json_encode($errors)
                     )->send();
             }
-            break;
 
-        case "fetchImages":
-            $car_id = (int)Input::get('carID');
-            $carForAuth = new Car($car_id);
-            if (!$carForAuth->data() || ($user->data()->id != $carForAuth->data()->user_id && !hasPerm([2, 3]))) {
-                ApiResponse::forbidden('Unauthorized')
-                    ->withLogging($user->data()->id, LogCategories::LOG_CATEGORY_ACCESS_DENIED, 'fetchImages: unauthorized for car ' . $car_id)
-                    ->send();
+            // Blanks instead of NULL for display
+            foreach ($cardetails as $key => $value) {
+                if (is_null($value)) {
+                    $cardetails[$key] = "";
+                }
             }
-            fetchImages($car_id);
-            break;
 
-        case "removeImages":
-            $car_id = (int)Input::get('carID');
-            $carForAuth = new Car($car_id);
-            if (!$carForAuth->data() || ($user->data()->id != $carForAuth->data()->user_id && !hasPerm([2, 3]))) {
-                ApiResponse::forbidden('Unauthorized')
-                    ->withLogging($user->data()->id, LogCategories::LOG_CATEGORY_ACCESS_DENIED, 'removeImages: unauthorized for car ' . $car_id)
-                    ->send();
-            }
-            $file = basename((string)Input::get('file'));
-            removeImage($car_id, $file);
-            break;
+            ApiResponse::success('Car added successfully')
+                ->withData('cardetails', $cardetails)
+                ->withLogging(
+                    $user->data()->id,
+                    LogCategories::LOG_CATEGORY_CAR_ACTIONS,
+                    'Car added: ID ' . $cardetails['id']
+                )->send();
 
-        default:
-            ApiResponse::error('No valid action', 400)
-                ->withLogging($user->data()->id, LogCategories::LOG_CATEGORY_VALIDATION_ERROR, 'Invalid action: ' . $action)
+        } catch (ElanRegistryException $e) {
+            ApiResponse::serverError('Failed to add car: ' . $e->getUserMessage())
+                ->withLogging(
+                    $user->data()->id,
+                    LogCategories::LOG_CATEGORY_CAR_ERRORS,
+                    'Car add error: ' . $e->getMessage()
+                )->send();
+        } catch (\Exception $e) {
+            ApiResponse::serverError('Failed to add car: An unexpected error occurred.')
+                ->withLogging(
+                    $user->data()->id,
+                    LogCategories::LOG_CATEGORY_CAR_ERRORS,
+                    'Car add unexpected error: ' . $e->getMessage()
+                )->send();
+        }
+        // Every code path above calls ->send() (return type: never) — no break needed.
+
+    case "updateCar":
+        $car_id = (int)Input::get('car_id');
+        if ($car_id <= 0) {
+            ApiResponse::error('Invalid car ID', 400)
+                ->withLogging($user->data()->id, LogCategories::LOG_CATEGORY_VALIDATION_ERROR, 'updateCar: invalid car_id in request')
                 ->send();
-    }
+        }
+        $carForAuth = new Car($car_id);
+        if (!$carForAuth->data() || ($user->data()->id != $carForAuth->data()->user_id && !hasPerm([2, 3]))) {
+            ApiResponse::error('Unauthorized', 403)
+                ->withLogging($user->data()->id, LogCategories::LOG_CATEGORY_ACCESS_DENIED, 'updateCar: unauthorized for car ' . $car_id)
+                ->send();
+        }
+        try {
+            buildCarDetails($cardetails, $errors, $car_id);
+            buildImageDetails($cardetails);
+
+            if (!empty($errors)) {
+                ApiResponse::validationError(
+                    ['general' => implode('; ', $errors)],
+                    'Cannot update car: validation errors'
+                )->withData('cardetails', $cardetails)
+                ->withLogging(
+                    $user->data()->id,
+                    LogCategories::LOG_CATEGORY_VALIDATION_ERROR,
+                    'Car update validation failed: ' . json_encode($errors)
+                )->send();
+            }
+
+            uploadImages($cardetails, $errors);
+
+            if (!empty($errors)) {
+                ApiResponse::validationError(
+                    ['general' => implode('; ', $errors)],
+                    'Cannot update car: image upload failed'
+                )->withData('cardetails', $cardetails)
+                ->withLogging(
+                    $user->data()->id,
+                    LogCategories::LOG_CATEGORY_FILE_ERROR,
+                    'Car update aborted: image upload errors: ' . json_encode($errors)
+                )->send();
+            }
+
+            updateCar($cardetails, $errors);
+
+            if (!empty($errors)) {
+                ApiResponse::validationError(
+                    ['general' => implode('; ', $errors)],
+                    'Cannot save car: update operation failed'
+                )->withData('cardetails', $cardetails)
+                ->withLogging(
+                    $user->data()->id,
+                    LogCategories::LOG_CATEGORY_CAR_ERRORS,
+                    'Car update failed post-save validation: ' . json_encode($errors)
+                )->send();
+            }
+
+            // Blanks instead of NULL for display
+            foreach ($cardetails as $key => $value) {
+                if (is_null($value)) {
+                    $cardetails[$key] = "";
+                }
+            }
+
+            ApiResponse::success('Car updated successfully')
+                ->withData('cardetails', $cardetails)
+                ->withLogging(
+                    $user->data()->id,
+                    LogCategories::LOG_CATEGORY_CAR_ACTIONS,
+                    'Car updated: ID ' . $cardetails['id']
+                )->send();
+
+        } catch (ElanRegistryException $e) {
+            ApiResponse::serverError('Failed to update car: ' . $e->getUserMessage())
+                ->withLogging(
+                    $user->data()->id,
+                    LogCategories::LOG_CATEGORY_CAR_ERRORS,
+                    'Car update error: ' . $e->getMessage()
+                )->send();
+        } catch (\Exception $e) {
+            ApiResponse::serverError('Failed to update car: An unexpected error occurred.')
+                ->withLogging(
+                    $user->data()->id,
+                    LogCategories::LOG_CATEGORY_CAR_ERRORS,
+                    'Car update unexpected error: ' . $e->getMessage()
+                )->send();
+        }
+        // Every code path above calls ->send() (return type: never) — no break needed.
+
+    case "fetchImages":
+        $car_id = (int)Input::get('carID');
+        $carForAuth = new Car($car_id);
+        if (!$carForAuth->data() || ($user->data()->id != $carForAuth->data()->user_id && !hasPerm([2, 3]))) {
+            ApiResponse::forbidden('Unauthorized')
+                ->withLogging($user->data()->id, LogCategories::LOG_CATEGORY_ACCESS_DENIED, 'fetchImages: unauthorized for car ' . $car_id)
+                ->send();
+        }
+        fetchImages($car_id);
+        break;
+
+    case "removeImages":
+        $car_id = (int)Input::get('carID');
+        $carForAuth = new Car($car_id);
+        if (!$carForAuth->data() || ($user->data()->id != $carForAuth->data()->user_id && !hasPerm([2, 3]))) {
+            ApiResponse::forbidden('Unauthorized')
+                ->withLogging($user->data()->id, LogCategories::LOG_CATEGORY_ACCESS_DENIED, 'removeImages: unauthorized for car ' . $car_id)
+                ->send();
+        }
+        // Use the read-path guard (isSafeFilename) here — consistent with
+        // buildImageDetails() and decodeAndProcessImages(), which also use it
+        // to handle legacy filenames stored in the DB. removeImage() performs
+        // no filesystem deletion (DB JSON only), so the permissive guard is
+        // correct and safe. basename() is defence-in-depth; isSafeFilename()
+        // independently rejects traversal because '/' is not in [\w\-.].
+        $file = basename((string)Input::raw('file'));
+        if (!CarImageProcessor::isSafeFilename($file)) {
+            ApiResponse::error('Invalid image filename')
+                ->withLogging($user->data()->id, LogCategories::LOG_CATEGORY_SECURITY, 'removeImages: invalid filename: ' . htmlspecialchars($file, ENT_QUOTES, 'UTF-8'))
+                ->send();
+        }
+        removeImage($car_id, $file);
+        break;
+
+    default:
+        ApiResponse::error('No valid action', 400)
+            ->withLogging($user->data()->id, LogCategories::LOG_CATEGORY_VALIDATION_ERROR, 'Invalid action: ' . $action)
+            ->send();
 }
 
 
 /**
  * Update an existing car record
- * 
+ *
  * @param array $cardetails Car data to update
- * @return void Updates global $errors and $successes arrays
+ * @param array $errors     Errors array passed by reference — appended to on failure
+ * @return void
  */
-function updateCar(array &$cardetails): void
+function updateCar(array &$cardetails, array &$errors): void
 {
-    global $errors;
     global $successes;
     global $user;
 
@@ -304,13 +314,13 @@ function updateCar(array &$cardetails): void
 }
 /**
  * Create a new car record
- * 
+ *
  * @param array $cardetails Car data to create
- * @return void Updates global $errors and $successes arrays
+ * @param array $errors     Errors array passed by reference — appended to on failure
+ * @return void
  */
-function addCar(array &$cardetails): void
+function addCar(array &$cardetails, array &$errors): void
 {
-    global $errors;
     global $successes;
     global $user;
     
@@ -338,15 +348,15 @@ function addCar(array &$cardetails): void
 
 /**
  * Build car details from form input and existing data
- * 
- * @param array $cardetails Car details array to populate
- * @param int|null $carId Optional car ID for updates
+ *
+ * @param array    $cardetails Car details array to populate
+ * @param array    $errors     Errors array passed by reference — appended to on failure
+ * @param int|null $carId      Optional car ID for updates
  * @return void
  */
-function buildCarDetails(array &$cardetails, ?int $carId = null): void
+function buildCarDetails(array &$cardetails, array &$errors, ?int $carId = null): void
 {
     global $user;
-    global $errors;
     global $successes;
     global $db;
 
@@ -397,26 +407,27 @@ function buildCarDetails(array &$cardetails, ?int $carId = null): void
     // Add CSRF token for Car class validation
     $cardetails['token'] = Input::get('csrf');
     
-    updateYear($cardetails);
-    updateModel($cardetails);
-    updateChassis($cardetails);
+    updateYear($cardetails, $errors);
+    updateModel($cardetails, $errors);
+    updateChassis($cardetails, $errors);
     updateColor($cardetails);
     updateEngine($cardetails);
-    updatePurchasedate($cardetails);
-    updateSolddate($cardetails);
-    updateWebsite($cardetails);
+    updatePurchasedate($cardetails, $errors);
+    updateSolddate($cardetails, $errors);
+    updateWebsite($cardetails, $errors);
     updateComments($cardetails);
 }
 
 /**
  * Update car year from form input
- * 
+ *
  * @param array $cardetails Car details array to update
+ * @param array $errors     Errors array passed by reference
  * @return void
  */
-function updateYear(array &$cardetails): void
+function updateYear(array &$cardetails, array &$errors): void
 {
-    global $errors, $successes;
+    global $successes;
 
     $year = Input::raw('year');
     if ($year !== null && $year !== '') {
@@ -429,13 +440,14 @@ function updateYear(array &$cardetails): void
 
 /**
  * Update car model information from form input
- * 
+ *
  * @param array $cardetails Car details array to update
+ * @param array $errors     Errors array passed by reference
  * @return void
  */
-function updateModel(array &$cardetails): void
+function updateModel(array &$cardetails, array &$errors): void
 {
-    global $errors, $successes;
+    global $successes;
 
     $model = Input::raw('model');
     if ($model !== null && $model !== '') {
@@ -454,13 +466,14 @@ function updateModel(array &$cardetails): void
 
 /**
  * Update car chassis number from form input with centralized validation
- * 
+ *
  * @param array $cardetails Car details array to update
+ * @param array $errors     Errors array passed by reference
  * @return void
  */
-function updateChassis(array &$cardetails): void
+function updateChassis(array &$cardetails, array &$errors): void
 {
-    global $errors, $successes, $chassis_override_used, $user;
+    global $successes, $chassis_override_used, $user;
     
     // Check if validation override is enabled
     // Checkbox only sends value when checked, so check if parameter exists and has value '1'
@@ -541,11 +554,11 @@ function updateEngine(array &$cardetails): void
  * Update car purchase date from form input
  *
  * @param array $cardetails Car details array to update
+ * @param array $errors     Errors array passed by reference
  * @return void
  */
-function updatePurchasedate(array &$cardetails): void
+function updatePurchasedate(array &$cardetails, array &$errors): void
 {
-    global $errors;
     $raw = Input::raw('purchasedate');
     if ($raw !== null && $raw !== '') {
         $parsed = DateTime::createFromFormat('Y-m-d', $raw);
@@ -564,11 +577,11 @@ function updatePurchasedate(array &$cardetails): void
  * Update car sold date from form input
  *
  * @param array $cardetails Car details array to update
+ * @param array $errors     Errors array passed by reference
  * @return void
  */
-function updateSolddate(array &$cardetails): void
+function updateSolddate(array &$cardetails, array &$errors): void
 {
-    global $errors;
     $raw = Input::raw('solddate');
     if ($raw !== null && $raw !== '') {
         $parsed = DateTime::createFromFormat('Y-m-d', $raw);
@@ -587,11 +600,11 @@ function updateSolddate(array &$cardetails): void
  * Update car website URL from form input
  *
  * @param array $cardetails Car details array to update
+ * @param array $errors     Errors array passed by reference
  * @return void
  */
-function updateWebsite(array &$cardetails): void
+function updateWebsite(array &$cardetails, array &$errors): void
 {
-    global $errors;
     $website = Input::raw('website');
     if ($website !== null && $website !== '') {
         if (!filter_var($website, FILTER_VALIDATE_URL)) {
@@ -648,23 +661,44 @@ function updateComments(array &$cardetails): void
  */
 function buildImageDetails(array &$cardetails): void
 {
-    // This needs to happen before processinging new files to the event the order changes
-    // without adding new files
+    global $user;
 
-    $requestedOrder = array_filter(explode(',', Input::get('filenames')));
-    $cardetails['image'] = json_encode($requestedOrder);
+    $requestedOrder = array_values(array_filter(
+        explode(',', Input::raw('filenames') ?? '')
+    ));
 
-    // Order of all images in the dropzone
-    // Do I have any new files?
-    if ($_FILES['file']['name'][0] == 'blob') {
-        $successes[] = 'No image';
+    // Use the read-path guard (isSafeFilename) so legacy filenames already in the
+    // DB survive a reorder-only submission intact. New browser-supplied filenames
+    // (e.g. "my-photo.jpg") also pass this guard; uploadImages() replaces them
+    // with secure server-side names before the final DB write.
+    //
+    // Double-write pattern: this value is the FINAL write when no new files are
+    // uploaded (uploadImages() returns early on the 'blob' sentinel). When files
+    // ARE uploaded, uploadImages() unconditionally overwrites $cardetails['image']
+    // with its own isValidFilename()-filtered list before returning.
+    $safeOrder = [];
+    $invalid   = [];
+    foreach ($requestedOrder as $filename) {
+        if (CarImageProcessor::isSafeFilename($filename)) {
+            $safeOrder[] = $filename;
+        } else {
+            $invalid[] = $filename;
+        }
     }
+
+    if (!empty($invalid)) {
+        $userId = isset($user) ? (int) $user->data()->id : 0;
+        logger($userId, LogCategories::LOG_CATEGORY_SECURITY,
+            'buildImageDetails: filtering unsafe filename(s): '
+            . htmlspecialchars(implode(', ', $invalid), ENT_QUOTES, 'UTF-8'));
+    }
+
+    $cardetails['image'] = json_encode($safeOrder);
 }
 
-function uploadImages(array &$cardetails): void
+function uploadImages(array &$cardetails, array &$errors): void
 {
     global $targetFilePath;
-    global $errors;
     global $successes;
     global $user;
     global $settings;
@@ -680,6 +714,13 @@ function uploadImages(array &$cardetails): void
     // Do I have any new files?
     if ($_FILES['file']['name'][0] == 'blob') {
         $successes[] = 'No image';
+        if (empty($cardetails['id'])) {
+            // New car with no uploaded files: clear any phantom filenames that
+            // buildImageDetails() may have written from the filenames POST param.
+            // For updateCar, the filenames represent the existing image order and
+            // must be preserved, so this branch only runs for addCar.
+            $cardetails['image'] = json_encode([]);
+        }
         return;
     }
     // Secure path construction with validation
@@ -710,7 +751,7 @@ function uploadImages(array &$cardetails): void
         }
     }
 
-    $requestedOrder = array_filter(explode(',', Input::get('filenames')));
+    $requestedOrder = array_values(array_filter(explode(',', Input::raw('filenames') ?? '')));
 
     //  $_FILES['file']['tmp_name'] is an array so have to use loop
     foreach ($_FILES['file']['tmp_name'] as $key => $value) {
@@ -735,7 +776,7 @@ function uploadImages(array &$cardetails): void
                 $extension = getExtension($mimeType);
                 
                 // Generate cryptographically secure filename
-                $newFileName = generateSecureFilename($extension);
+                $newFileName = CarImageProcessor::generateSecureFilename($extension);
 
                 if (move_uploaded_file($tempFile, $filePath . $newFileName)) {
                     $successes[] = "Photo uploaded: " . $name;
@@ -792,6 +833,10 @@ function uploadImages(array &$cardetails): void
             }
         }
     }
+    $requestedOrder = array_values(array_filter(
+        $requestedOrder,
+        static fn(string $f) => CarImageProcessor::isValidFilename($f)
+    ));
     $cardetails['image'] = json_encode($requestedOrder);
 }
 
@@ -838,14 +883,14 @@ function fetchImages(int $car_id): void
 
 /**
  * Move temporary images to permanent car directory
- * 
+ *
  * @param array $cardetails Car details containing ID and image info
+ * @param array $errors     Errors array passed by reference — appended to on failure
  * @return void
  */
-function mvTmpImages(array &$cardetails): void
+function mvTmpImages(array &$cardetails, array &$errors): void
 {
     global $targetFilePath;
-    global $errors;
     global $user;
 
     $tempPath = $targetFilePath . 'temp' . '/';
@@ -867,6 +912,17 @@ function mvTmpImages(array &$cardetails): void
     }
 
     foreach ($carImages as $carimage) {
+        if (!CarImageProcessor::isValidFilename((string) $carimage)) {
+            // Reachable on addCar when the filenames POST param contains a legacy-format
+            // name (passes isSafeFilename but not isValidFilename) and no files are
+            // uploaded (blob sentinel causes uploadImages() to return before overwriting
+            // $cardetails['image']). No temp file exists for a legacy name, so the
+            // continue is a safe no-op skip.
+            logger($userId, LogCategories::LOG_CATEGORY_CAR_ACTIONS,
+                'mvTmpImages: skipping legacy-format filename (no temp file to move): '
+                . htmlspecialchars((string) $carimage, ENT_QUOTES, 'UTF-8'));
+            continue;
+        }
         $tmpfile = pathinfo($carimage);
 
         foreach (glob($tempPath . $tmpfile['filename'] . '*' . $tmpfile['extension']) as $name) {
@@ -961,7 +1017,7 @@ function arrayReplaceValue(array &$array, mixed $value, mixed $replacement): voi
  */
 function getExtension(string $mimeType): string
 {
-    // Comprehensive secure image type validation
+    // MIME-to-extension map — extensions must match CarImageProcessor::ALLOWED_EXTENSIONS.
     $allowedExtensions = [
         'image/jpeg' => 'jpg',
         'image/jpg' => 'jpg',
@@ -1006,19 +1062,6 @@ function getMimeType(string $file): string
     }
 
     return $mimeType;
-}
-
-/**
- * Generate cryptographically secure filename
- * 
- * @param string $extension File extension
- * @return string Secure filename
- */
-function generateSecureFilename(string $extension): string
-{
-    // Use cryptographically secure random bytes instead of uniqid()
-    $randomBytes = random_bytes(16);
-    return 'img_' . bin2hex($randomBytes) . '.' . $extension;
 }
 
 /**
