@@ -421,7 +421,7 @@ $currentSizes = $settings->elan_image_thumbnail_sizes ?? '100,300,600,1024,2048'
 
                 if ($total_cars == 0) {
                     outputMessage("ℹ️  No cars with images found. Process complete.");
-                    echo '<script>showCompletionSummary("<p>No cars with images to process.</p>");</script>';
+                    echo '<script>showCompletionSummary("<p>No cars with images to process.</p>", false);</script>';
                     exit;
                 }
 
@@ -437,7 +437,7 @@ $currentSizes = $settings->elan_image_thumbnail_sizes ?? '100,300,600,1024,2048'
                             <div class='col-sm-3'><strong>Errors:</strong> {$cumulative_errors}</div>
                         </div>";
 
-                    echo "<script>showCompletionSummary(`$final_stats`);</script>";
+                    echo "<script>showCompletionSummary(`$final_stats`, " . ($cumulative_errors > 0 ? 'true' : 'false') . ");</script>";
 
                     // Log to fix_script_runs table
                     try {
