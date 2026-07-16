@@ -72,9 +72,15 @@ function buildAffectedList(\DB $db): array
 try {
     $affected = buildAffectedList($db);
 } catch (\RuntimeException $e) {
-    logger((int) $user->data()->id, LogCategories::LOG_CATEGORY_FIX_SCRIPT,
+    logger((int) $user->data()->id, LogCategories::LOG_CATEGORY_FIX_SCRIPT_ERROR,
         '01-Rename-Legacy-Image-Files: failed to query cars — ' . $e->getMessage());
+    // prep.php already emitted the page header; html_footer.php is intentionally skipped here.
     die('<div class="alert alert-danger">' . htmlspecialchars($e->getMessage(), ENT_QUOTES, 'UTF-8') . '</div>');
+} catch (\Throwable $e) {
+    logger((int) $user->data()->id, LogCategories::LOG_CATEGORY_FIX_SCRIPT_ERROR,
+        '01-Rename-Legacy-Image-Files: unexpected error in buildAffectedList — '
+        . get_class($e) . ': ' . $e->getMessage());
+    die('<div class="alert alert-danger">An unexpected error occurred loading car data. Check the application logs for details.</div>');
 }
 
 ?>
