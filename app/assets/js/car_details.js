@@ -196,4 +196,22 @@ function initializeHistoryTable() {
 // Initialize when DOM is ready
 $(document).ready(function() {
     initializeHistoryTable();
+
+    const historyDetails = document.getElementById('historyDetails');
+    const historyToggleText = document.getElementById('historyToggleText');
+    const historySummary = document.getElementById('historySummary');
+    const historyToggleBtn = document.getElementById('historyToggleBtn');
+    if (historyDetails && historyToggleText && historyToggleBtn) {
+        const historyToggleIcon = historyToggleBtn.querySelector('.fas');
+        historyDetails.addEventListener('shown.bs.collapse', function() {
+            historyToggleText.textContent = 'Hide Details';
+            if (historyToggleIcon) { historyToggleIcon.className = 'fas fa-eye-slash'; }
+            if (historySummary) { historySummary.style.display = 'none'; }
+        });
+        historyDetails.addEventListener('hidden.bs.collapse', function() {
+            historyToggleText.textContent = 'Show Details';
+            if (historyToggleIcon) { historyToggleIcon.className = 'fas fa-eye'; }
+            if (historySummary) { historySummary.style.display = 'block'; }
+        });
+    }
 });

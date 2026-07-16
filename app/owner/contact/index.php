@@ -56,7 +56,9 @@ if (!securePage($php_self)) {
 				</div>
 
 				<!-- Feedback Form -->
-				<form name="contactform" method="post" action="<?= $us_url_root ?>app/api/contact/send-feedback.php" class="needs-validation" novalidate>
+				<form name="contactform" method="post"
+					data-api-url="<?= htmlspecialchars($us_url_root . 'app/api/contact/send-feedback.php', ENT_QUOTES, 'UTF-8') ?>"
+					class="needs-validation" novalidate>
 					<div class="mb-4">
 						<label for="comments" class="form-label h5">
 							<i class="fas fa-comment text-primary"></i> Your Feedback
@@ -98,32 +100,7 @@ if (!securePage($php_self)) {
 	</div> <!-- container-fluid -->
 </div> <!-- page-wrapper -->
 
-
-<script>
-$(document).ready(function () {
-    $('form[name="contactform"]').on('submit', function (e) {
-        e.preventDefault();
-        var $form = $(this);
-        var $btn  = $form.find('button[type="submit"]');
-        var originalHtml = $btn.html();
-
-        $btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i> Sending...');
-
-        new ElanRegistryAPI().post(
-            '<?= $us_url_root ?>app/api/contact/send-feedback.php',
-            { comments: $('#comments').val() }
-        ).then(function (response) {
-            window.usSuccess(response.message);
-            $form[0].reset();
-        }).catch(function (error) {
-            console.error('Feedback form submission failed:', error);
-            window.usError(error.message || 'Failed to send feedback.');
-        }).finally(function () {
-            $btn.prop('disabled', false).html(originalHtml);
-        });
-    });
-});
-</script>
+<script src='<?= $us_url_root ?>app/assets/js/contact-form.min.js?v=<?= ASSET_VERSION ?>'></script>
 
 <!-- footers -->
 <?php

@@ -75,7 +75,9 @@ $to = [
                 </div>
 
                 <!-- Message Form -->
-                <form name="contactform" method="post" action="<?= $us_url_root ?>app/api/contact/send-owner-email.php" class="needs-validation" novalidate>
+                <form name="contactform" method="post"
+                    data-api-url="<?= htmlspecialchars($us_url_root . 'app/api/contact/send-owner-email.php', ENT_QUOTES, 'UTF-8') ?>"
+                    class="needs-validation" novalidate>
                     <div class="mb-4">
                         <label for="message" class="form-label h5">
                             <i class="fas fa-comment text-primary"></i> Your Message
@@ -101,8 +103,8 @@ $to = [
                     <!-- Hidden Fields -->
                     <input type='hidden' name='csrf' value='<?= htmlspecialchars(Token::generate(), ENT_QUOTES, 'UTF-8'); ?>' />
                     <input type='hidden' name='action' value='send_message' />
-                    <input type='hidden' name='to_user_id' value='<?= htmlspecialchars($to['id'], ENT_QUOTES, 'UTF-8'); ?>' />
-                    <input type='hidden' name='car_id' value='<?= htmlspecialchars($carID, ENT_QUOTES, 'UTF-8'); ?>' />
+                    <input type='hidden' name='to_user_id' value='<?= htmlspecialchars((string)$to['id'], ENT_QUOTES, 'UTF-8'); ?>' />
+                    <input type='hidden' name='car_id' value='<?= htmlspecialchars((string)$carID, ENT_QUOTES, 'UTF-8'); ?>' />
 
                     <!-- Submit Button -->
                     <div class="d-grid gap-2 d-md-flex justify-content-md-end">
@@ -121,37 +123,7 @@ $to = [
     </div> <!-- container-fluid -->
 </div> <!-- page-wrapper -->
 
-
-<script>
-$(document).ready(function () {
-    $('form[name="contactform"]').on('submit', function (e) {
-        e.preventDefault();
-        var $form = $(this);
-        var $btn  = $form.find('button[type="submit"]');
-        var originalHtml = $btn.html();
-
-        $btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i> Sending...');
-
-        new ElanRegistryAPI().post(
-            '<?= $us_url_root ?>app/api/contact/send-owner-email.php',
-            {
-                action:      $form.find('input[name="action"]').val(),
-                to_user_id:  $form.find('input[name="to_user_id"]').val(),
-                car_id:      $form.find('input[name="car_id"]').val(),
-                message:     $('#message').val()
-            }
-        ).then(function (response) {
-            window.usSuccess(response.message);
-            $form[0].reset();
-        }).catch(function (error) {
-            console.error('Contact owner form submission failed:', error);
-            window.usError(error.message || 'Failed to send message.');
-        }).finally(function () {
-            $btn.prop('disabled', false).html(originalHtml);
-        });
-    });
-});
-</script>
+<script src='<?= $us_url_root ?>app/assets/js/contact-form.min.js?v=<?= ASSET_VERSION ?>'></script>
 
 <!-- footers -->
 <?php

@@ -17,9 +17,22 @@ The content-security-policy HTTP header provides an additional layer of security
 //     Cloudflare Analytics, code.jquery.com (UserSpice loads jQuery from there via users/js/jquery.php),
 //     cdnjs.cloudflare.com (Customizer template loads Bootstrap CSS/JS; UserSpice dashboard loads Chart.js)
 // worker-src blob: required because MapLibre GL JS spawns tile-processing Web Workers from blob URLs
+//
+// Nonce strategy (per ADR-007): a fresh nonce is generated per request here and made available
+// as $userspice_nonce. All inline scripts in UserSpice templates and our data-island <script>
+// blocks carry a nonce attribute set from $userspice_nonce so they are allowed by
+// the nonce source. The four SHA-256 hashes are kept as belt-and-suspenders for the static
+// upstream scripts that also carry the nonce attribute.
+$userspice_nonce = base64_encode(random_bytes(16));
 header("Content-Security-Policy: " .
     "default-src 'self'; " .
-    "script-src 'self' 'unsafe-inline' " .
+    "script-src 'self' " .
+        "'nonce-" . $userspice_nonce . "' " .
+        // upstream UserSpice template static inline scripts — also hash-allowlisted per ADR-007
+        "'sha256-Gp7ipy0WBym3p5WvlmBvmssRnJFaat6PlQiZ9FC7k7A=' " . // header.php: dark-mode restore
+        "'sha256-p0PjOpqpTgBYc04Ujji9kTgR4nn7/Fmqy5WArI/yZSc=' " . // customize.php: accordion/form tracking
+        "'sha256-XypEqq0A9tnLE3DLjvBL9sCA2H6c7NOx43R843oAkmE=' " . // customize.php: modal/button highlight
+        "'sha256-38VPq9JsPUZTzEN/WNclAVm82+XGI17KgkbMO8mZIlE=' " . // customize.php: jQuery select2 init
         "https://challenges.cloudflare.com " .
         "https://code.jquery.com " .
         "https://static.cloudflareinsights.com " .

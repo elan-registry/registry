@@ -85,54 +85,6 @@ parameters:
 			path: app/api/cars/models.php
 
 		-
-			message: '#^Strict comparison using \!\=\= between mixed and null will always evaluate to true\.$#'
-			identifier: notIdentical.alwaysTrue
-			count: 2
-			path: app/owner/cars/details.php
-
-		-
-			message: '#^Variable \$car might not be defined\.$#'
-			identifier: variable.undefined
-			count: 4
-			path: app/owner/cars/details.php
-
-		-
-			message: '#^Variable \$carData might not be defined\.$#'
-			identifier: variable.undefined
-			count: 7
-			path: app/owner/cars/details.php
-
-		-
-			message: '#^Variable \$carHistory might not be defined\.$#'
-			identifier: variable.undefined
-			count: 1
-			path: app/owner/cars/details.php
-
-		-
-			message: '#^Variable \$factoryData might not be defined\.$#'
-			identifier: variable.undefined
-			count: 1
-			path: app/owner/cars/details.php
-
-		-
-			message: '#^Variable \$historyCount might not be defined\.$#'
-			identifier: variable.undefined
-			count: 1
-			path: app/owner/cars/details.php
-
-		-
-			message: '#^Variable \$successes in empty\(\) always exists and is always falsy\.$#'
-			identifier: empty.variable
-			count: 1
-			path: app/owner/cars/edit.php
-
-		-
-			message: '#^Parameter \#1 \$string of function htmlspecialchars expects string, int given\.$#'
-			identifier: argument.type
-			count: 1
-			path: app/owner/contact/owner.php
-
-		-
 			message: '#^Variable \$context might not be defined\.$#'
 			identifier: variable.undefined
 			count: 1
