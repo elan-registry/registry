@@ -90,9 +90,6 @@
                 if (selectedCars > 2) {
                     $mergeBtn.text('Select exactly 2 cars to merge');
                     $mergeBtn.removeClass('btn-danger').addClass('btn-warning');
-                } else if (selectedCars === 2 && selectedReason === 1) {
-                    $mergeBtn.html('<i class="fas fa-compress-arrows-alt"></i> Merge Selected');
-                    $mergeBtn.removeClass('btn-warning').addClass('btn-danger');
                 } else {
                     $mergeBtn.html('<i class="fas fa-compress-arrows-alt"></i> Merge Selected');
                     $mergeBtn.removeClass('btn-warning').addClass('btn-danger');
