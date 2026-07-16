@@ -146,7 +146,8 @@ class CarDataTablesService
 
         // Explicit column list prevents future schema additions from silently exposing
         // new fields; names come from PHP constants, never from user input.
-        // For elan_factory_info, also append the car_id lookup subquery.
+        // For elan_factory_info, also append the car_id lookup subquery
+        // (avoids one AJAX chassis-lookup per row, ~25 requests per page turn).
         $publicCols = implode(', ', array_map(fn($col) => "`{$col}`", self::ALLOWED_COLUMNS[$tableName]));
         $selectClause = ($tableName === 'elan_factory_info')
             ? $publicCols . ', (SELECT id FROM cars WHERE chassis = elan_factory_info.serial LIMIT 1) AS car_id'

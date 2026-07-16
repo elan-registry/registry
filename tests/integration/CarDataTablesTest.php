@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/IntegrationTestCase.php';
 
+use ElanRegistry\Car\CarRepository;
 use PHPUnit\Framework\Attributes\Group;
 
 /**
@@ -408,11 +409,12 @@ final class CarDataTablesTest extends IntegrationTestCase
     }
 
     /**
-     * DataTables response for the cars table must not expose email or lname,
-     * even when those fields are populated in the database.
+     * DataTables response for the cars table must not expose email, lname, vericode,
+     * or last_verified, even when those fields are populated in the database.
      *
      * Pins the explicit SELECT column list in CarDataTablesService::getDataTablesData()
-     * that replaces SELECT * to prevent PII leaking to unauthenticated callers.
+     * that replaces SELECT * to prevent owner PII (email, lname) and internal fields
+     * (vericode, last_verified) from leaking to callers who should not see them.
      */
     #[Group('fast')]
     public function testCarDataTablesResponseExcludesPII(): void
@@ -537,6 +539,51 @@ final class CarDataTablesTest extends IntegrationTestCase
         foreach ($result['data'] as $row) {
             $this->assertSame('S4', $row->series,
                 'Only the S4 car must survive the combined filter');
+        }
+    }
+
+    /**
+     * History rows returned by getHistory() must not expose email or lname,
+     * even when those fields are populated in cars_hist.
+     *
+     * Anchors the behavioral contract independently of the SQL-capture unit test in
+     * CarRepositoryTest — if getHistory() is refactored to use a query builder or
+     * SELECT *, this test catches the PII regression at the return-value level.
+     */
+    #[Group('fast')]
+    public function testGetHistoryExcludesPIIFromReturnedRows(): void
+    {
+        $uniqueSuffix = substr(uniqid(), -8);
+        $userId = $this->createTestUser([
+            'email' => "hist_pii_{$uniqueSuffix}@example.com",
+            'lname'  => "HistPII{$uniqueSuffix}",
+        ]);
+        $carId = $this->createTestCar($userId, ['chassis' => 'H' . substr($uniqueSuffix, -8)]);
+
+        // Seed a history row with PII values to confirm they are stripped on retrieval.
+        $this->db->insert('cars_hist', [
+            'operation' => 'TEST',
+            'car_id'    => $carId,
+            'model'     => 'Elan',
+            'series'    => 'S4',
+            'variant'   => 'SE',
+            'type'      => 'FHC',
+            'chassis'   => 'H' . substr($uniqueSuffix, -8),
+            'email'     => "hist_pii_{$uniqueSuffix}@example.com",
+            'lname'     => "HistPII{$uniqueSuffix}",
+        ]);
+
+        $repo    = new CarRepository($this->db);
+        $history = $repo->getHistory($carId);
+
+        $this->assertNotEmpty($history, 'History must contain the seeded row');
+
+        foreach ($history as $row) {
+            $rowArray = (array) $row;
+            $this->assertArrayNotHasKey('email', $rowArray,
+                'getHistory() rows must not expose email (PII)');
+            $this->assertArrayNotHasKey('lname', $rowArray,
+                'getHistory() rows must not expose lname (PII)');
         }
     }
 

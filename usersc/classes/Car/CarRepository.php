@@ -241,7 +241,7 @@ class CarRepository
     public function getHistory(int $carId): array
     {
         return $this->db->query(
-            'SELECT id, car_id, timestamp, operation,
+            'SELECT id, car_id, ctime, mtime, timestamp, operation,
                     model, series, variant, year, type, chassis, chassis_override, color, engine,
                     purchasedate, solddate, comments, image,
                     user_id, fname, join_date, city, state, country, lat, lon, website
