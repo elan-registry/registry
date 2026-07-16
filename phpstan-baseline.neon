@@ -13,36 +13,6 @@ parameters:
 			path: app/admin/includes/system/backup-operations.php
 
 		-
-			message: '#^Variable \$csrfToken might not be defined\.$#'
-			identifier: variable.undefined
-			count: 2
-			path: app/admin/includes/tab-account_cleanup.php
-
-		-
-			message: '#^Variable \$currentUserId might not be defined\.$#'
-			identifier: variable.undefined
-			count: 10
-			path: app/admin/includes/tab-account_cleanup.php
-
-		-
-			message: '#^Variable \$systemStatus might not be defined\.$#'
-			identifier: variable.undefined
-			count: 1
-			path: app/admin/includes/tab-manage_cars.php
-
-		-
-			message: '#^Call to function is_object\(\) with DB will always evaluate to true\.$#'
-			identifier: function.alreadyNarrowedType
-			count: 1
-			path: app/admin/includes/tab-owner_mgmt.php
-
-		-
-			message: '#^Negated boolean expression is always false\.$#'
-			identifier: booleanNot.alwaysFalse
-			count: 1
-			path: app/admin/includes/tab-owner_mgmt.php
-
-		-
 			message: '#^Variable \$activeTab might not be defined\.$#'
 			identifier: variable.undefined
 			count: 5
@@ -53,72 +23,6 @@ parameters:
 			identifier: variable.undefined
 			count: 1
 			path: app/admin/includes/tab-placeholder.php
-
-		-
-			message: '#^Offset ''default'' on array\{type\: ''DECIMAL\(4,2\)'', default\: ''2\.00'', description\: ''Maximum upload file…''\}\|array\{type\: ''INT\(11\)'', default\: ''10'', description\: ''Maximum photos per…''\}\|array\{type\: ''INT\(11\)'', default\: ''2048'', description\: ''Maximum display…''\}\|array\{type\: ''TEXT'', default\: ''100,300,768,1024…'', description\: ''Comma\-separated…''\}\|array\{type\: ''TEXT'', default\: ''registrar…'', description\: ''Comma\-separated…''\}\|array\{type\: ''VARCHAR\(255\)'', default\: ''registrar…'', description\: ''Email address for…''\}\|array\{type\: ''VARCHAR\(255\)'', default\: ''userimages/'', description\: ''Directory path…''\} in isset\(\) always exists and is not nullable\.$#'
-			identifier: isset.offset
-			count: 1
-			path: app/admin/includes/tab-settings.php
-
-		-
-			message: '#^Offset ''description'' on array\{type\: ''DECIMAL\(4,2\)'', default\: ''2\.00'', description\: ''Maximum upload file…''\}\|array\{type\: ''INT\(11\)'', default\: ''10'', description\: ''Maximum photos per…''\}\|array\{type\: ''INT\(11\)'', default\: ''2048'', description\: ''Maximum display…''\}\|array\{type\: ''TEXT'', default\: ''100,300,768,1024…'', description\: ''Comma\-separated…''\}\|array\{type\: ''TEXT'', default\: ''registrar…'', description\: ''Comma\-separated…''\}\|array\{type\: ''VARCHAR\(255\)'', default\: ''registrar…'', description\: ''Email address for…''\}\|array\{type\: ''VARCHAR\(255\)'', default\: ''userimages/'', description\: ''Directory path…''\} in isset\(\) always exists and is not nullable\.$#'
-			identifier: isset.offset
-			count: 1
-			path: app/admin/includes/tab-settings.php
-
-		-
-			message: '#^Offset ''type'' on array\{type\: ''DECIMAL\(4,2\)'', default\: ''2\.00'', description\: ''Maximum upload file…''\}\|array\{type\: ''INT\(11\)'', default\: ''10'', description\: ''Maximum photos per…''\}\|array\{type\: ''INT\(11\)'', default\: ''2048'', description\: ''Maximum display…''\}\|array\{type\: ''TEXT'', default\: ''100,300,768,1024…'', description\: ''Comma\-separated…''\}\|array\{type\: ''TEXT'', default\: ''registrar…'', description\: ''Comma\-separated…''\}\|array\{type\: ''VARCHAR\(255\)'', default\: ''registrar…'', description\: ''Email address for…''\}\|array\{type\: ''VARCHAR\(255\)'', default\: ''userimages/'', description\: ''Directory path…''\} in isset\(\) always exists and is not nullable\.$#'
-			identifier: isset.offset
-			count: 1
-			path: app/admin/includes/tab-settings.php
-
-		-
-			message: '#^Result of \|\| is always false\.$#'
-			identifier: booleanOr.alwaysFalse
-			count: 2
-			path: app/admin/includes/tab-settings.php
-
-		-
-			message: '#^Variable \$fieldsToAdd in empty\(\) always exists and is not falsy\.$#'
-			identifier: empty.variable
-			count: 1
-			path: app/admin/includes/tab-settings.php
-
-		-
-			message: '#^If condition is always true\.$#'
-			identifier: if.alwaysTrue
-			count: 1
-			path: app/admin/index.php
-
-		-
-			message: '#^Variable \$currentUserId might not be defined\.$#'
-			identifier: variable.undefined
-			count: 10
-			path: app/admin/index.php
-
-		-
-			message: '#^Variable \$new_car_id might not be defined\.$#'
-			identifier: variable.undefined
-			count: 1
-			path: app/admin/index.php
-
-		-
-			message: '#^Variable \$old_car_id might not be defined\.$#'
-			identifier: variable.undefined
-			count: 1
-			path: app/admin/index.php
-
-		-
-			message: '#^Dead catch \- RuntimeException is never thrown in the try block\.$#'
-			identifier: catch.neverThrown
-			count: 1
-			path: app/admin/maintenance.php
-
-		-
-			message: '#^Variable \$currentUserId on left side of \?\? always exists and is not nullable\.$#'
-			identifier: nullCoalesce.variable
-			count: 1
-			path: app/admin/maintenance.php
 
 		-
 			message: '#^Undefined variable\: \$user$#'

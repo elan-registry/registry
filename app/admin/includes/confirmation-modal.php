@@ -1,4 +1,4 @@
-<!-- General Purpose Confirmation Modal — controlled via showConfirmDialog() in manage-consolidated.js -->
+<!-- General Purpose Confirmation Modal — controlled via showConfirmDialog() in admin-core.js -->
 <div class="modal fade" id="confirmationModal" tabindex="-1" role="dialog">
     <div class="modal-dialog" role="document">
         <div class="modal-content">

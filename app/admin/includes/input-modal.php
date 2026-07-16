@@ -1,4 +1,4 @@
-<!-- General Purpose Input Modal — controlled via showInputDialog() in manage-consolidated.js -->
+<!-- General Purpose Input Modal — controlled via showInputDialog() in admin-core.js -->
 <div class="modal fade" id="inputModal" tabindex="-1" role="dialog">
     <div class="modal-dialog" role="document">
         <div class="modal-content">

@@ -116,8 +116,25 @@ export default [
                 img_path: "writable",
                 img_root: "readonly",
 
-                // Admin panel globals (defined in manage-consolidated.js)
+                // Admin panel globals (defined in admin-core.js)
+                escapeHtml: "readonly",
+                makeInfoRow: "readonly",
                 showNotification: "readonly",
+                showConfirmDialog: "readonly",
+                showInputDialog: "readonly",
+                openAdminContactModal: "readonly",
+                switchToOwnerManagementTab: "readonly",
+                loadOwnerById: "readonly",
+                searchOwners: "readonly",
+                initOwnerProfileForm: "readonly",
+                formatNumber: "readonly",
+                formatDate: "readonly",
+                prefersReducedMotion: "readonly",
+                initializeCarManagement: "readonly",
+                LocationPicker: "readonly",
+
+                // Browser globals not already listed
+                CSS: "readonly",
 
                 // Standard browser globals
                 event: "readonly",

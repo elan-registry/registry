@@ -12,14 +12,20 @@ const jsFiles = [
   'app/assets/js/highlightDifferences.js',
   'app/assets/js/model-loader.js',
   'app/assets/js/car-showcase.js',
-  'app/admin/assets/manage-consolidated.js',
+  'app/admin/assets/admin-core.js',
   'app/admin/assets/backup-operations.js',
+  'app/admin/assets/js/design-system.js',
+  'app/admin/assets/js/tab-manage-cars.js',
+  'app/admin/assets/js/tab-account-cleanup.js',
+  'app/admin/assets/js/tab-owner-mgmt.js',
+  'app/admin/assets/js/tab-settings.js',
+  'app/admin/assets/js/load-owner-profile.js',
 ];
 
 const cssFiles = [
   'app/assets/css/edit_car.css',
   'app/assets/css/location-picker.css',
-  'app/admin/assets/manage-consolidated.css',
+  'app/admin/assets/admin-core.css',
 ];
 
 const vendorFiles = [

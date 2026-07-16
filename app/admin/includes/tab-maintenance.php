@@ -345,6 +345,7 @@ function scriptDisplayName(string $filename): string {
                                     <a href="scripts/maintenance/<?= urlencode($script) ?>"
                                        class="btn btn-sm btn-outline-primary"
                                        target="_blank"
+                                       data-feedback-link
                                        title="Run <?= htmlspecialchars($script) ?>">
                                         <i class="fas fa-play"></i> Run Script
                                     </a>
@@ -357,38 +358,3 @@ function scriptDisplayName(string $filename): string {
         <?php endif; ?>
     </div>
 </div>
-
-<script>
-// Helper to build a Font Awesome <i> element with given classes.
-function buildIcon(iconClasses) {
-    const i = document.createElement('i');
-    i.className = iconClasses;
-    return i;
-}
-
-document.addEventListener('DOMContentLoaded', function() {
-    const scriptRows = document.querySelectorAll('tbody tr');
-    scriptRows.forEach(row => {
-        row.addEventListener('mouseenter', function() {
-            this.style.backgroundColor = '#f8f9fa';
-        });
-        row.addEventListener('mouseleave', function() {
-            this.style.backgroundColor = '';
-        });
-    });
-
-    const scriptLinks = document.querySelectorAll('a[href*="/scripts/fix/"], a[href*="/scripts/maintenance/"]');
-    scriptLinks.forEach(link => {
-        link.addEventListener('click', function(e) {
-            const btn = this;
-            btn.classList.add('btn-primary');
-            btn.classList.remove('btn-outline-primary');
-
-            setTimeout(() => {
-                btn.classList.remove('btn-primary');
-                btn.classList.add('btn-outline-primary');
-            }, 3000);
-        });
-    });
-});
-</script>

@@ -169,3 +169,186 @@
     /* Dark mode styles would go here for future enhancement */
     /* Currently maintaining light theme for consistency with UserSpice */
 }
+
+/* ==========================================================================
+   Car comparison cards (Manage Cars tab — duplicate detection)
+   Extracted from tab-manage_cars.php inline <style> for CSP compliance.
+   ========================================================================== */
+
+.car-comparison-card {
+    transition: all 0.3s ease;
+    display: flex;
+    flex-direction: column;
+}
+
+.car-comparison-card .card-body {
+    flex: 1;
+}
+
+/* Fix cascading height issue - ensure all car cards have same minimum height */
+.car-comparison-cards-row {
+    display: flex;
+    flex-wrap: wrap;
+    margin: 0 -15px;
+}
+
+.car-comparison-cards-row > .col-lg-6 {
+    display: flex;
+    padding: 0 15px;
+    margin-bottom: 1rem;
+}
+
+.car-comparison-cards-row .car-comparison-card {
+    width: 100%;
+    min-height: 420px; /* Set consistent minimum height */
+}
+
+.car-comparison-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+}
+
+.car-comparison-card.selected {
+    border: 2px solid var(--er-primary);
+    background-color: rgba(var(--er-primary-rgb), 0.03);
+}
+
+.car-comparison-card.newer-car {
+    border-left: 4px solid var(--er-primary);
+}
+
+.car-comparison-card.newer-car .card-header {
+    background-color: rgba(var(--er-primary-rgb), 0.04);
+}
+
+.duplicate-group {
+    transition: all 0.3s ease;
+}
+
+/* Prominent timestamp styles */
+.timestamp-info {
+    padding: 8px 4px;
+}
+
+.timestamp-label {
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--er-neutral);
+    text-transform: uppercase;
+    margin-bottom: 2px;
+}
+
+.timestamp-value {
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: var(--er-neutral-dark);
+    margin-bottom: 1px;
+}
+
+.timestamp-time {
+    font-size: 0.7rem;
+    color: var(--er-neutral);
+}
+
+/* Field comparison highlighting */
+.field-match {
+    background-color: rgba(var(--er-primary-rgb), 0.08);
+    border-left: 3px solid var(--er-primary);
+    padding: 4px 8px;
+    margin: 2px 0;
+    border-radius: 4px;
+}
+
+.field-differ {
+    background-color: rgba(var(--er-danger-rgb), 0.08);
+    border-left: 3px solid var(--er-danger);
+    padding: 4px 8px;
+    margin: 2px 0;
+    border-radius: 4px;
+}
+
+.field-match .field-value {
+    font-weight: 500;
+    color: var(--er-primary);
+}
+
+.field-differ .field-value {
+    font-weight: 500;
+    color: var(--er-danger);
+}
+
+.field-match i.fa-check {
+    font-size: 0.8rem;
+}
+
+.field-differ i.fa-exclamation-triangle {
+    font-size: 0.8rem;
+}
+
+.duplicate-group:hover {
+    box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+}
+
+.form-validation input.is-invalid {
+    border-color: var(--er-danger);
+}
+
+.form-validation input.is-valid {
+    border-color: var(--er-primary);
+}
+
+.badge-lg {
+    font-size: 0.9rem;
+    padding: 0.5rem 0.75rem;
+}
+
+.bg-opacity-10 {
+    background-color: rgba(255, 193, 7, 0.1) !important;
+}
+
+.merge-btn:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+@media (max-width: 768px) {
+    .car-comparison-card .col-sm-6 {
+        margin-bottom: 1rem;
+    }
+
+    .form-check-inline {
+        display: block !important;
+        margin-bottom: 0.5rem;
+    }
+
+    .timestamp-info {
+        padding: 6px 2px;
+    }
+
+    .timestamp-label {
+        font-size: 0.7rem;
+    }
+
+    .timestamp-value {
+        font-size: 0.8rem;
+    }
+
+    .timestamp-time {
+        font-size: 0.65rem;
+    }
+
+    .badge-sm {
+        font-size: 0.7rem;
+        padding: 0.2rem 0.4rem;
+    }
+
+    .field-match, .field-differ {
+        padding: 3px 6px;
+        margin: 1px 0;
+    }
+
+    .field-match i.fa-check,
+    .field-differ i.fa-exclamation-triangle {
+        font-size: 0.7rem;
+    }
+}
