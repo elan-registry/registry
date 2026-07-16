@@ -100,8 +100,9 @@ function initOwnerProfileForm(profileData) {
             });
     });
 
-    // Sync location button — use a scoped selector to the current form container
-    $('[data-sync-owner-id]').off('click.syncLocation').on('click.syncLocation', function() {
+    // Sync location button lives in the sidebar (loaded by a separate AJAX call);
+    // use document-level delegation so it fires regardless of load order.
+    $(document).off('click.syncLocation').on('click.syncLocation', '[data-sync-owner-id]', function() {
         syncLocationToCars(parseInt(this.dataset.syncOwnerId, 10));
     });
 }

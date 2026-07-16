@@ -185,7 +185,7 @@ try {
         <div class="card-body">
             <div class="d-grid gap-2">
                 <?php if ($carCount > 0): ?>
-                    <button class="btn btn-sm btn-outline-success" onclick="syncLocationToCars(<?= $ownerId // nosemgrep: php.lang.security.taint-unsafe-echo-tag.taint-unsafe-echo-tag ?>)">
+                    <button class="btn btn-sm btn-outline-success" data-sync-owner-id="<?= $ownerId // nosemgrep: php.lang.security.taint-unsafe-echo-tag.taint-unsafe-echo-tag ?>">
                         <i class="fas fa-sync"></i> Sync Location to Cars
                     </button>
                 <?php endif; ?>

@@ -461,7 +461,7 @@ hybrid nonce + hash approach:
 - **Nonce**: `$userspice_nonce` is now generated in `security_headers.php` and
   propagated as `'nonce-{value}'` in `script-src`. All inline scripts in these
   templates already carry `nonce="<?= htmlspecialchars($userspice_nonce ?? '') ?>"`.
-- **SHA-256 hashes (belt-and-suspenders)**: Four static script blocks in
+- **SHA-256 hashes (belt-and-suspenders)**: Five static script blocks in
   `header.php` and `customize.php` are also hash-allowlisted (`'sha256-Gp7...'`
   etc.) as defense in depth in case the nonce mechanism fails.
 - **Dynamic scripts**: Scripts in `users/login.php`, `usersc/login.php`,
