@@ -30,10 +30,10 @@ class CarDataTablesService
     /** @var array<string, array<string>> Allowed columns per table */
     private const ALLOWED_COLUMNS = [
         'cars' => [
-            'id', 'ctime', 'mtime', 'vericode', 'last_verified',
+            'id', 'ctime', 'mtime',
             'model', 'series', 'variant', 'year', 'type', 'chassis', 'color', 'engine',
-            'purchasedate', 'solddate', 'comments', 'image', 'user_id', 'email', 'fname',
-            'lname', 'join_date', 'city', 'state', 'country', 'lat', 'lon', 'website'
+            'purchasedate', 'solddate', 'comments', 'image', 'user_id', 'fname',
+            'join_date', 'city', 'state', 'country', 'lat', 'lon', 'website'
         ],
         'elan_factory_info' => [
             'id', 'year', 'month', 'batch', 'type', 'serial', 'suffix',
@@ -144,12 +144,13 @@ class CarDataTablesService
             $totalFiltered = $filterResult->first()->count;
         }
 
-        // elan_factory_info only: embed car_id server-side to avoid one chassis-lookup AJAX call per row
-        // (eliminates 25 requests per page turn at the default page size). The subquery column names
-        // are PHP literals — they do not go through validateColumnName(). Other tables use SELECT *.
+        // Explicit column list prevents future schema additions from silently exposing
+        // new fields; names come from PHP constants, never from user input.
+        // For elan_factory_info, also append the car_id lookup subquery.
+        $publicCols = implode(', ', array_map(fn($col) => "`{$col}`", self::ALLOWED_COLUMNS[$tableName]));
         $selectClause = ($tableName === 'elan_factory_info')
-            ? '*, (SELECT id FROM cars WHERE chassis = elan_factory_info.serial LIMIT 1) AS car_id'
-            : '*';
+            ? $publicCols . ', (SELECT id FROM cars WHERE chassis = elan_factory_info.serial LIMIT 1) AS car_id'
+            : $publicCols;
         $dataSql = sprintf('SELECT %s FROM `%s` WHERE 1 %s %s LIMIT %d, %d', $selectClause, $tableName, $combinedWhere, $orderBy, $start, $length);
         $data = $db->query($dataSql, $combinedParams)->results();
         if ($db->error()) {

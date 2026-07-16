@@ -407,6 +407,51 @@ final class CarDataTablesTest extends IntegrationTestCase
         $this->assertEquals($result['recordsTotal'], $result['recordsFiltered']);
     }
 
+    /**
+     * DataTables response for the cars table must not expose email or lname,
+     * even when those fields are populated in the database.
+     *
+     * Pins the explicit SELECT column list in CarDataTablesService::getDataTablesData()
+     * that replaces SELECT * to prevent PII leaking to unauthenticated callers.
+     */
+    #[Group('fast')]
+    public function testCarDataTablesResponseExcludesPII(): void
+    {
+        $uniqueSuffix = substr(uniqid(), -8);
+        $userId = $this->createTestUser([
+            'email' => "pii_test_{$uniqueSuffix}@example.com",
+            'lname' => "PIITestLname{$uniqueSuffix}",
+        ]);
+        $this->createTestCar($userId, [
+            'email' => "pii_test_{$uniqueSuffix}@example.com",
+            'lname' => "PIITestLname{$uniqueSuffix}",
+            'fname' => "PIIFirst",
+        ]);
+
+        $car     = new Car();
+        $request = $this->buildDataTablesRequest(
+            ['length' => 100],
+            [['data' => 'id', 'searchable' => 'true', 'orderable' => 'true']]
+        );
+
+        $result = $car->getDataTablesData($request, 'cars');
+
+        $this->assertArrayHasKey('data', $result);
+        $this->assertNotEmpty($result['data'], 'Data must contain the test car');
+
+        foreach ($result['data'] as $row) {
+            $rowArray = (array) $row;
+            $this->assertArrayNotHasKey('email', $rowArray,
+                'DataTables response must not expose email (PII)');
+            $this->assertArrayNotHasKey('lname', $rowArray,
+                'DataTables response must not expose lname (PII)');
+            $this->assertArrayNotHasKey('vericode', $rowArray,
+                'DataTables response must not expose vericode (internal field)');
+            $this->assertArrayNotHasKey('last_verified', $rowArray,
+                'DataTables response must not expose last_verified (internal field)');
+        }
+    }
+
     // =========================================================================
     // Per-column search tests (#907 — added in v2.24.0 #763)
     // =========================================================================
