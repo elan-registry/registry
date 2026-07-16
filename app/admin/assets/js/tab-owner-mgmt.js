@@ -1,4 +1,4 @@
-/* exported loadOwnerById, searchOwners, switchToDataQualityTab */
+/* exported loadOwnerById, searchOwners, switchToDataQualityTab, closeOwnerProfile */
 
 (function() {
 'use strict';
@@ -39,6 +39,13 @@ $(document).ready(function() {
             $('#ownerSearchBtn').click();
         }
     });
+
+    $('#ownerSearchResults').on('click', 'tr[data-owner-id]', function() {
+        const ownerId = parseInt($(this).data('owner-id'), 10);
+        if (!isNaN(ownerId) && ownerId > 0) {
+            loadOwnerById(ownerId);
+        }
+    });
 });
 
 function searchOwners(query) {
@@ -70,12 +77,12 @@ function displaySearchResults(owners) {
         const location = escapeHtml([owner.city, owner.state, owner.country].filter(Boolean).join(', ') || 'Not specified');
         const ownerId = parseInt(owner.id, 10);
 
-        html += `<tr onclick="loadOwnerById(${ownerId})" style="cursor: pointer;">`;
+        html += `<tr data-owner-id="${ownerId}" style="cursor: pointer;">`;
         html += `<td><strong>${escapeHtml(owner.fname)} ${escapeHtml(owner.lname)}</strong></td>`;
         html += `<td>${escapeHtml(owner.email)}</td>`;
         html += `<td>${location}</td>`;
         html += `<td><span class="badge badge-${qualityClass}">${parseInt(owner.quality_score, 10)}%</span></td>`;
-        html += `<td><button class="btn btn-sm btn-primary" onclick="event.stopPropagation(); loadOwnerById(${ownerId})"><i class="fas fa-edit"></i> Edit</button></td>`;
+        html += `<td><button class="btn btn-sm btn-primary"><i class="fas fa-edit"></i> Edit</button></td>`;
         html += '</tr>';
     });
 
@@ -133,10 +140,11 @@ function switchToDataQualityTab() {
     window.location.href = '?tab=manage-cars';
 }
 
-// Expose functions called from PHP-injected HTML (onclick handlers and the
-// load-owner-profile.js AJAX callback) that live in other files/response bodies.
+// Expose functions called from data-action handlers in admin-core.js and from
+// the load-owner-profile.php AJAX response body.
 window.loadOwnerById          = loadOwnerById;
 window.searchOwners           = searchOwners;
 window.switchToDataQualityTab = switchToDataQualityTab;
+window.closeOwnerProfile      = closeOwnerProfile;
 
 }());

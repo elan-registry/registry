@@ -609,7 +609,7 @@ require_once $abs_us_root . $us_url_root . 'users/includes/html_footer.php'; //c
 <script src="<?=$us_url_root?>app/assets/js/location-picker.min.js?v=<?= ASSET_VERSION ?>"></script>
 
 <!-- Place any per-page javascript here -->
-<script>
+<script nonce="<?= htmlspecialchars($userspice_nonce ?? '', ENT_QUOTES, 'UTF-8') ?>">
     $(document).ready(function() {
         // Initialize Location Picker for user settings
         if (document.getElementById('location-picker-settings')) {

@@ -36,6 +36,7 @@ if (!empty($_GET)) {
         logger($user->data()->id ?? 0, LogCategories::LOG_CATEGORY_VALIDATION_ERROR, "Car details requested for non-existent car ID: $carID");
         // Redirect to list if car not found
         Redirect::to($us_url_root . 'app/owner/cars/index.php');
+        exit;
     }
     
     // Cache car data objects to eliminate repeated method calls (Performance Optimization)
@@ -80,6 +81,7 @@ if (!empty($_GET)) {
     // Shouldn't be here unless someone is mangling the url
     logger($user->data()->id ?? 0, LogCategories::LOG_CATEGORY_VALIDATION_ERROR, 'Car details page accessed without car_id parameter');
     Redirect::to($us_url_root . 'app/owner/cars/index.php');
+    exit;
 }
 ?>
 <div class="page-wrapper">
@@ -225,7 +227,6 @@ if (!empty($_GET)) {
                         </div>
                         <div class="card-body">
                             <?php if (!empty($carData->lat) && !empty($carData->lon) &&
-                                        $carData->lat !== null && $carData->lon !== null &&
                                         is_numeric($carData->lat) && is_numeric($carData->lon)) { ?>
                                 <div class="map-container map-container-small" style="height: 100%;">
                                     <div id="map" style="height: 400px; width: 100%;"></div>
@@ -363,8 +364,7 @@ if (!empty($_GET)) {
                                 // Find first and last dates
                                 $firstDate = $lastDate = null;
                                 if ($historyCount > 0) {
-                                    $dates = array_map(function($h) { return $h->timestamp; }, $carHistory);
-                                    $dates = array_filter($dates);
+                                    $dates = array_filter(array_column($carHistory, 'timestamp'));
                                     if (!empty($dates)) {
                                         sort($dates);
                                         $firstDate = reset($dates);
@@ -448,168 +448,33 @@ require_once $abs_us_root . $us_url_root . 'users/includes/html_footer.php'; //c
 <script src="<?=$us_url_root?>usersc/js/datatables.min.js"></script>
 <link rel="stylesheet" href="<?=$us_url_root?>usersc/css/datatables.min.css">
 
-<!-- Configure thumbnail sizes from settings -->
-<script>
-window.ELAN_CONFIG = {
-    THUMBNAIL_SIZE: <?php 
-        $thumbnailSize = 100; // Default
-        $responsiveSize = 300; // Default
-        
-        // Try to get settings if the field exists
-        if (isset($settings->elan_image_thumbnail_sizes) && !empty($settings->elan_image_thumbnail_sizes)) {
-            $thumbnailSizes = explode(',', $settings->elan_image_thumbnail_sizes);
-            if (count($thumbnailSizes) >= 1) {
-                $thumbnailSize = intval(trim($thumbnailSizes[0]));
-            }
-            if (count($thumbnailSizes) >= 2) {
-                $responsiveSize = intval(trim($thumbnailSizes[1]));
-            }
-        }
-        echo $thumbnailSize;
-    ?>,
-    RESPONSIVE_SIZE: <?php echo $responsiveSize; ?>
+<?php include 'includes/elan-config-island.php'; ?>
+<script nonce="<?= htmlspecialchars($userspice_nonce ?? '', ENT_QUOTES, 'UTF-8') ?>">
+window.carDetailsConfig = {
+    carId: <?= (int)$carData->id ?>,
+    csrf: <?= json_encode(Token::generate()) ?>,
+    urlRoot: <?= json_encode((string)$us_url_root, JSON_HEX_TAG | JSON_HEX_AMP) ?>
 };
+window.img_root = <?= json_encode((string)($us_url_root . ($settings->elan_image_dir ?? '')), JSON_HEX_TAG | JSON_HEX_AMP) ?>;
 </script>
 <script src='<?= $us_url_root ?>app/assets/js/imagedisplay.min.js?v=<?= ASSET_VERSION ?>'></script>
 <script src='<?= $us_url_root ?>app/assets/js/highlightDifferences.min.js?v=<?= ASSET_VERSION ?>'></script>
-<script>
-const img_root = <?= json_encode($us_url_root . ($settings->elan_image_dir ?? '')) ?>;
-window.carDetailsConfig = {
-    carId: <?= (int)$carData->id ?>,
-    csrf: '<?= Token::generate() ?>',
-    urlRoot: '<?= $us_url_root ?>'
-};
-</script>
 <script src='<?= $us_url_root ?>app/assets/js/car_details.min.js?v=<?= ASSET_VERSION ?>'></script>
 
-
-
-<?php if (!empty($carData->lat) && $carData->lat != 0 && !empty($carData->lon) && $carData->lon != 0): ?>
+<?php if (!empty($carData->lat) && is_numeric($carData->lat) && $carData->lat != 0 &&
+          !empty($carData->lon) && is_numeric($carData->lon) && $carData->lon != 0): ?>
 <link rel="stylesheet" href="<?= $us_url_root ?>usersc/css/maplibre-gl.css">
 <script src="<?= $us_url_root ?>usersc/js/maplibre-gl.min.js" data-cfasync="false"></script>
-<script>
-(function () {
-    if (typeof maplibregl === 'undefined') {
-        var mapEl = document.getElementById('map');
-        if (mapEl) {
-            var wrap = document.createElement('div');
-            wrap.className = 'd-flex flex-column align-items-center justify-content-center h-100 text-muted';
-            var msg = document.createElement('p');
-            msg.className = 'mb-2';
-            msg.textContent = 'Map unavailable. Please try refreshing.';
-            var btn = document.createElement('button');
-            btn.className = 'btn btn-sm btn-outline-secondary';
-            btn.type = 'button';
-            btn.textContent = 'Retry';
-            btn.addEventListener('click', function () { location.reload(); });
-            wrap.appendChild(msg);
-            wrap.appendChild(btn);
-            mapEl.appendChild(wrap);
-        }
-        return;
-    }
-
-    const lat = <?= (float)$carData->lat ?>;
-    const lon = <?= (float)$carData->lon ?>;
-    const series = <?= json_encode((string)($carData->series ?? '')) ?>;
-
-    const seriesClass = (function(s) {
-        s = s.toLowerCase();
-        if (s.includes('sprint')) return 'sprint';
-        if (s.includes('+2'))     return 'plus2';
-        if (s.includes('s1'))     return 's1';
-        if (s.includes('s2'))     return 's2';
-        if (s.includes('s3'))     return 's3';
-        if (s.includes('s4'))     return 's4';
-        return 'unknown';
-    })(series);
-
-    const map = new maplibregl.Map({
-        container: 'map',
-        style: '<?= $us_url_root ?>usersc/js/versatiles-colorful.json',
-        center: [lon, lat],
-        zoom: 8,
-        scrollZoom: false,
-        attributionControl: false
-    });
-
-    map.addControl(new maplibregl.AttributionControl({ compact: true }), 'bottom-right');
-    map.once('idle', function () {
-        var attrEl = document.querySelector('#map .maplibregl-ctrl-attrib');
-        if (attrEl) attrEl.classList.remove('maplibregl-compact-show');
-    });
-    map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'top-right');
-    map.addControl(new maplibregl.ScaleControl({ unit: 'metric' }), 'bottom-left');
-
-    map.on('load', function () {
-        const el = document.createElement('div');
-        el.className = 'elan-marker-wrapper';
-        const dot = document.createElement('div');
-        dot.className = 'elan-marker ' + seriesClass;
-        el.appendChild(dot);
-
-        new maplibregl.Marker({ element: el, anchor: 'bottom' })
-            .setLngLat([lon, lat])
-            .addTo(map);
-    });
-
-    map.on('error', function (e) {
-        // Tile and source load errors are transient — let MapLibre retry
-        if (e.sourceId !== undefined || (e.error && typeof e.error.status === 'number')) {
-            console.warn('[ElanRegistry] Map tile/source error (non-fatal):', e.error);
-            return;
-        }
-        console.error('[ElanRegistry] Fatal map error on car details page:', e.error);
-        const mapEl = document.getElementById('map');
-        if (!mapEl) return;
-        while (mapEl.firstChild) {
-            mapEl.removeChild(mapEl.firstChild);
-        }
-        const wrap = document.createElement('div');
-        wrap.className = 'd-flex flex-column align-items-center justify-content-center h-100 text-muted';
-        const msg = document.createElement('p');
-        msg.className = 'mb-2';
-        msg.textContent = 'Map unavailable. Please try refreshing.';
-        const btn = document.createElement('button');
-        btn.className = 'btn btn-sm btn-outline-secondary';
-        btn.type = 'button';
-        btn.textContent = 'Retry';
-        btn.addEventListener('click', function () { location.reload(); });
-        wrap.appendChild(msg);
-        wrap.appendChild(btn);
-        mapEl.appendChild(wrap);
-    });
-}());
+<script nonce="<?= htmlspecialchars($userspice_nonce ?? '', ENT_QUOTES, 'UTF-8') ?>">
+window.carDetailsMapConfig = {
+    lat: <?= (float)$carData->lat ?>,
+    lon: <?= (float)$carData->lon ?>,
+    series: <?= json_encode((string)($carData->series ?? ''), JSON_HEX_TAG | JSON_HEX_AMP) ?>,
+    styleUrl: <?= json_encode($us_url_root . 'usersc/js/versatiles-colorful.json', JSON_HEX_TAG | JSON_HEX_AMP) ?>
+};
 </script>
+<script src='<?= $us_url_root ?>app/assets/js/car-details-map.min.js?v=<?= ASSET_VERSION ?>'></script>
 <?php endif; ?>
-
-<!-- Simple History Toggle JavaScript -->
-<script>
-document.addEventListener('DOMContentLoaded', function() {
-    // Handle history toggle
-    const historyDetails = document.getElementById('historyDetails');
-    const historyToggleText = document.getElementById('historyToggleText');
-    const historySummary = document.getElementById('historySummary');
-    const historyToggleBtn = document.getElementById('historyToggleBtn');
-    
-    if (historyDetails && historyToggleText && historyToggleBtn) {
-        const historyToggleIcon = historyToggleBtn.querySelector('.fas');
-        // The button has data-bs-toggle="collapse" so Bootstrap 5 handles show/hide
-        // automatically. Listen to collapse events to update label, icon, and summary.
-        historyDetails.addEventListener('shown.bs.collapse', function() {
-            historyToggleText.textContent = 'Hide Details';
-            if (historyToggleIcon) historyToggleIcon.className = 'fas fa-eye-slash';
-            if (historySummary) historySummary.style.display = 'none';
-        });
-
-        historyDetails.addEventListener('hidden.bs.collapse', function() {
-            historyToggleText.textContent = 'Show Details';
-            if (historyToggleIcon) historyToggleIcon.className = 'fas fa-eye';
-            if (historySummary) historySummary.style.display = 'block';
-        });
-    }
-});
-</script>
 
 <!-- Print Styles -->
 <style>

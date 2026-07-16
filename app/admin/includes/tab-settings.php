@@ -314,7 +314,7 @@ $autoCreationMessages = processSettingsAutoCreation();
                     </div>
 
                     <div class="mt-3">
-                        <button type="button" id="testEmailBtn" class="btn btn-outline-primary btn-sm" onclick="testEmailConfiguration()">
+                        <button type="button" id="testEmailBtn" class="btn btn-outline-primary btn-sm" data-action="testEmailConfiguration">
                             <i class="fas fa-paper-plane"></i> Test Email Config
                         </button>
                     </div>

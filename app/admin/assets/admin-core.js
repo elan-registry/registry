@@ -1494,6 +1494,7 @@ function openAdminContactModal(carData, ownerData, qualityIssue = '', targetEmai
             contactOwnerInfo: !!ownerInfoEl,
             adminContactModal: !!modalEl,
         });
+        showNotification('Could not open contact form — required page elements are missing. Refresh and try again.', 'danger');
         return;
     }
 
@@ -1653,3 +1654,52 @@ function showInputDialog(title, message, defaultValue, onConfirm) {
         showNotification('Input dialog could not open. Please reload the page.', 'danger');
     }
 }
+
+document.addEventListener('click', function(e) {
+    const btn = e.target.closest('[data-action]');
+    if (!btn) return;
+    const action = btn.dataset.action;
+    // Tab-specific functions (e.g. testEmailConfiguration, createManualBackup) are defined
+    // in per-tab JS files loaded separately; ESLint can't see them statically.
+    /* eslint-disable no-undef */
+    switch (action) {
+        case 'testEmailConfiguration':
+            if (typeof testEmailConfiguration === 'function') testEmailConfiguration();
+            break;
+        case 'createManualBackup':
+            if (typeof createManualBackup === 'function') createManualBackup(btn);
+            break;
+        case 'listBackupFiles':
+            if (typeof listBackupFiles === 'function') listBackupFiles();
+            break;
+        case 'performBackupCleanup':
+            if (typeof performBackupCleanup === 'function') performBackupCleanup();
+            break;
+        case 'closeOwnerProfile':
+            if (typeof closeOwnerProfile === 'function') closeOwnerProfile();
+            break;
+        case 'loadOwnerById':
+            if (typeof loadOwnerById === 'function') loadOwnerById(parseInt(btn.dataset.id, 10));
+            break;
+        case 'openCarDetails':
+            if (typeof openCarDetails === 'function') openCarDetails(parseInt(btn.dataset.id, 10));
+            break;
+        case 'switchToOwnerManagementTab':
+            switchToOwnerManagementTab(parseInt(btn.dataset.id, 10));
+            break;
+        case 'openAdminContactModal':
+            try {
+                openAdminContactModal(
+                    JSON.parse(btn.dataset.car),
+                    JSON.parse(btn.dataset.owner),
+                    btn.dataset.subject || '',
+                    btn.dataset.targetEmail || ''
+                );
+            } catch (err) {
+                console.error('[openAdminContactModal] Failed to parse data attributes:', err);
+                showNotification('Could not open contact form — data may be malformed. Refresh and try again.', 'danger');
+            }
+            break;
+    }
+    /* eslint-enable no-undef */
+});

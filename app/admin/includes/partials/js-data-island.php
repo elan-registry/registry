@@ -9,7 +9,7 @@ declare(strict_types=1);
  * and $csrfToken (the page's Token::generate() value).
  */
 ?>
-<script>
+<script nonce="<?= htmlspecialchars($userspice_nonce ?? '', ENT_QUOTES, 'UTF-8') ?>">
 window.elanUrlRoot = <?= json_encode((string)$us_url_root) ?>;
 document.documentElement.setAttribute('data-csrf-token', '<?= htmlspecialchars($csrfToken ?? '', ENT_QUOTES, 'UTF-8') ?>');
 </script>

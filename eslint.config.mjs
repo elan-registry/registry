@@ -111,10 +111,33 @@ export default [
 
                 // Page-specific config objects (injected by PHP)
                 carDetailsConfig: "readonly",
+                carListConfig: "readonly",
+                factoryListConfig: "readonly",
+                carDetailsMapConfig: "readonly",
+                editCarConfig: "readonly",
                 pageConfig: "readonly",
                 ELAN_CONFIG: "readonly",
                 img_path: "writable",
                 img_root: "readonly",
+
+                // UserSpice flash functions
+                usSuccess: "readonly",
+                usError: "readonly",
+
+                // FilePond and plugins (loaded via <script> tags)
+                FilePond: "readonly",
+                FilePondPluginImageExifOrientation: "readonly",
+                FilePondPluginFileValidateType: "readonly",
+                FilePondPluginFileValidateSize: "readonly",
+                FilePondPluginImagePreview: "readonly",
+                FilePondPluginImageResize: "readonly",
+                FilePondPluginImageTransform: "readonly",
+
+                // ModelLoader (car-edit)
+                ModelLoader: "readonly",
+
+                // imagedisplay.js globals
+                carousel: "readonly",
 
                 // Admin panel globals (defined in admin-core.js)
                 escapeHtml: "readonly",

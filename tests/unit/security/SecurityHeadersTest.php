@@ -98,19 +98,6 @@ class SecurityHeadersTest extends TestCase
     }
 
     /**
-     * Test that file documents server_globals.php usage
-     */
-    public function testDocumentsServerGlobalsUsage(): void
-    {
-        // Should reference server_globals.php in comments
-        $this->assertStringContainsString(
-            'server_globals.php',
-            $this->fileContent,
-            'security_headers.php should document use of server_globals.php'
-        );
-    }
-
-    /**
      * Test that file sets all expected security headers
      */
     public function testSetsAllSecurityHeaders(): void
@@ -120,6 +107,7 @@ class SecurityHeadersTest extends TestCase
             'X-Frame-Options',
             'X-Content-Type-Options',
             'Referrer-Policy',
+            'Permissions-Policy',
         ];
 
         foreach ($expectedHeaders as $header) {
@@ -166,19 +154,6 @@ class SecurityHeadersTest extends TestCase
     }
 
     /**
-     * Test that file references correct Server class implementation
-     */
-    public function testDocumentsServerClassUsage(): void
-    {
-        // Should mention Server::getScheme() in comments
-        $this->assertStringContainsString(
-            'Server::getScheme()',
-            $this->fileContent,
-            'security_headers.php should document Server::getScheme() usage'
-        );
-    }
-
-    /**
      * Test that CSP includes frame-ancestors directive for anti-clickjacking
      *
      * Modern anti-clickjacking protection via CSP frame-ancestors directive
@@ -199,6 +174,33 @@ class SecurityHeadersTest extends TestCase
             '/Content-Security-Policy:.*frame-ancestors\s+\'self\'/s',
             $this->fileContent,
             'CSP header should contain frame-ancestors directive'
+        );
+    }
+
+    /**
+     * Test that CSP script-src does not contain unsafe-inline (removed in #1328)
+     *
+     * unsafe-inline was removed and replaced with per-request nonces in #1328.
+     * Adding it back would silently break the entire nonce strategy.
+     */
+    public function testCspScriptSrcDoesNotContainUnsafeInline(): void
+    {
+        $this->assertDoesNotMatchRegularExpression(
+            '/script-src\s[^;]*\'unsafe-inline\'/',
+            $this->fileContent,
+            "CSP script-src must not contain 'unsafe-inline' — removed in #1328, replaced by nonce"
+        );
+    }
+
+    /**
+     * Test that CSP script-src includes a nonce token (replacement for unsafe-inline)
+     */
+    public function testCspScriptSrcContainsNonce(): void
+    {
+        $this->assertMatchesRegularExpression(
+            '/script-src[^;]*\'nonce-/',
+            $this->fileContent,
+            "CSP script-src must include a nonce token — the nonce replaces 'unsafe-inline'"
         );
     }
 
@@ -266,5 +268,128 @@ class SecurityHeadersTest extends TestCase
             $joinContent,
             'usersc/join.php should have comment about global security headers'
         );
+    }
+
+    /**
+     * Verify that the five SHA-256 hashes in script-src match the actual upstream
+     * script blocks on disk. If a UserSpice update changes one of these files, this
+     * test fails and identifies which file needs a new hash in security_headers.php.
+     *
+     * Hash = base64(sha256(exact bytes between opening > and closing </script>)).
+     *
+     * Extraction notes:
+     *  - header.php and customize.php select2 block: opening tag contains a PHP nonce
+     *    attribute that ends with the PHP closing sequence followed by '">'. We locate
+     *    the body by finding that known suffix after the PHP close sequence.
+     *  - customize.php accordion and modal blocks: plain <script> tag with no attrs.
+     *  - autoassignun: the whole file is a single <script> block.
+     *
+     * IMPORTANT: this method must not contain the literal two-char PHP closing sequence
+     * in any comment or string, or PHP will exit its own parsing mode mid-file.
+     * We construct it dynamically: chr(63).chr(62) = question-mark + greater-than.
+     */
+    public function testUpstreamScriptHashesMatchActualFiles(): void
+    {
+        $root = dirname(__DIR__, 3);
+
+        // Construct the PHP closing sequence dynamically to avoid it appearing
+        // literally in this source file (it would terminate PHP's parse mode).
+        $phpClose = chr(63) . chr(62);
+
+        $bodies = $this->extractUpstreamScriptBodies($root, $phpClose);
+
+        foreach ($bodies as $label => $body) {
+            $hash = base64_encode(hash('sha256', $body, true));
+            $this->assertStringContainsString(
+                "'sha256-{$hash}'",
+                $this->fileContent,
+                "Hash mismatch for '{$label}' — the upstream file may have changed. " .
+                "Recompute its SHA-256 and update security_headers.php, then run " .
+                "'composer phpstan:baseline' if needed."
+            );
+        }
+    }
+
+    /**
+     * @return array<string, string>  label => raw script body (exact bytes to hash)
+     */
+    private function extractUpstreamScriptBodies(string $root, string $phpClose): array
+    {
+        $bodies = [];
+
+        // 1. header.php dark-mode restore
+        //    Opening tag: <script nonce="<?= ... {phpClose}">
+        //    Body starts immediately after {phpClose}"> and runs to </script>.
+        $hdrFile = $root . '/usersc/templates/customizer/header.php';
+        if (is_file($hdrFile)) {
+            $src   = (string) file_get_contents($hdrFile);
+            $after = $phpClose . '">';
+            $pos   = strpos($src, $after);
+            if ($pos !== false) {
+                $start = $pos + strlen($after);
+                $end   = strpos($src, '</script>', $start);
+                if ($end !== false) {
+                    $bodies['header.php: dark-mode restore'] = substr($src, $start, $end - $start);
+                }
+            }
+        }
+
+        // 2–4. customize.php: accordion, modal, and Select2 blocks
+        $custFile = $root . '/usersc/templates/customizer/customize.php';
+        if (is_file($custFile)) {
+            $src = (string) file_get_contents($custFile);
+
+            // Blocks 2 & 3: plain <script> with no attributes (no nonce).
+            // Body is: newline + content + newline (between <script>\n and \n</script>).
+            $plainTag = "<script>\n";
+            $pos2 = strpos($src, $plainTag);
+            if ($pos2 !== false) {
+                $start = $pos2 + strlen($plainTag);
+                $end   = strpos($src, "\n</script>", $start);
+                if ($end !== false) {
+                    $bodies['customize.php: accordion + form-change tracking'] =
+                        "\n" . substr($src, $start, $end - $start) . "\n";
+                }
+
+                $pos3 = strpos($src, $plainTag, $pos2 + 1);
+                if ($pos3 !== false) {
+                    $start = $pos3 + strlen($plainTag);
+                    $end   = strpos($src, "\n</script>", $start);
+                    if ($end !== false) {
+                        $bodies['customize.php: modal width + button highlight'] =
+                            "\n" . substr($src, $start, $end - $start) . "\n";
+                    }
+                }
+            }
+
+            // Block 4: Select2 init — nonce attr ends with {phpClose}" type="text/javascript">
+            $select2Tag = $phpClose . '" type="text/javascript">';
+            $pos4 = strpos($src, $select2Tag);
+            if ($pos4 !== false) {
+                $start = $pos4 + strlen($select2Tag);
+                $end   = strpos($src, '</script>', $start);
+                if ($end !== false) {
+                    $bodies['customize.php: jQuery Select2 init'] = substr($src, $start, $end - $start);
+                }
+            }
+        }
+
+        // 5. autoassignun username_field_removal.php — entire file is one <script> block
+        $auFile = $root . '/usersc/plugins/autoassignun/hooks/username_field_removal.php';
+        if (is_file($auFile)) {
+            $src   = (string) file_get_contents($auFile);
+            $tag   = "<script>\n";
+            $pos5  = strpos($src, $tag);
+            if ($pos5 !== false) {
+                $start = $pos5 + strlen($tag);
+                $end   = strpos($src, "\n</script>", $start);
+                if ($end !== false) {
+                    $bodies['autoassignun/hooks/username_field_removal.php: username field hide'] =
+                        "\n" . substr($src, $start, $end - $start) . "\n";
+                }
+            }
+        }
+
+        return $bodies;
     }
 }

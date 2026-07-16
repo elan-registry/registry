@@ -144,7 +144,7 @@ try {
                         <button type="submit" class="btn btn-success">
                             <i class="fas fa-save"></i> Save Changes
                         </button>
-                        <button type="button" class="btn btn-secondary" onclick="closeOwnerProfile()">
+                        <button type="button" class="btn btn-secondary" data-action="closeOwnerProfile">
                             <i class="fas fa-times"></i> Cancel
                         </button>
                     </div>
@@ -164,7 +164,7 @@ try {
         </div>
     </form>
 
-    <script>
+    <script nonce="<?= htmlspecialchars($userspice_nonce ?? '', ENT_QUOTES, 'UTF-8') ?>">
     window.elanOwnerProfileData = {
         csrfToken: <?= json_encode(Token::generate()) ?>,
         ownerId: <?= (int)$ownerId ?>,

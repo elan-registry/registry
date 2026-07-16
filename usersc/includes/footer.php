@@ -24,7 +24,7 @@ $er_footer_version_tag = ApplicationVersion::tagOnly();
 ?>
 
 <!-- Privacy Policy and Contact Us links injected into footer without modifying upstream template -->
-<script nonce="<?=htmlspecialchars($usespice_nonce ?? '')?>">
+<script nonce="<?=htmlspecialchars($userspice_nonce ?? '')?>">
 (function () {
     var container = document.querySelector('#footer .container');
     if (container) {
@@ -54,7 +54,7 @@ $er_footer_version_tag = ApplicationVersion::tagOnly();
 </script>
 
 <!-- ElanRegistry API Client - Pattern A standardized AJAX -->
-<script nonce="<?=htmlspecialchars($usespice_nonce ?? '')?>" src="<?=$us_url_root?>app/assets/js/api-client.min.js?v=<?= ASSET_VERSION ?>"></script>
+<script nonce="<?=htmlspecialchars($userspice_nonce ?? '')?>" src="<?=$us_url_root?>app/assets/js/api-client.min.js?v=<?= ASSET_VERSION ?>"></script>
 
 <!-- Patch: users/js/menu.js offClick handler (line 100) calls open.firstChild.click() where
      firstChild is a whitespace text node in indented HTML. Text nodes have no .click() method,
@@ -62,7 +62,7 @@ $er_footer_version_tag = ApplicationVersion::tagOnly();
      so that e.target.closest(".dropdown.open") inside offClick returns null, bypassing the
      broken firstChild.click() path entirely.
      Tracked in: https://github.com/unibrain1/elanregistry/issues/729 -->
-<script nonce="<?=htmlspecialchars($usespice_nonce ?? '')?>">
+<script nonce="<?=htmlspecialchars($userspice_nonce ?? '')?>">
 (function () {
     document.addEventListener('click', function (evt) {
         var openDropdown = document.querySelector('.us_menu .dropdown.open');
