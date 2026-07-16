@@ -49,5 +49,5 @@
 - [#1322](https://github.com/unibrain1/elanregistry/issues/1322) — fix: contact-owner page exposes owner's last name, contradicting the privacy policy (GDPR)
 - [#1326](https://github.com/unibrain1/elanregistry/issues/1326) — security: CSP quick wins — add form-action 'self' and remove unsafe-eval
 - [#1327](https://github.com/unibrain1/elanregistry/issues/1327) ✓ — security: extract inline JS from admin templates to external files
-- [#1328](https://github.com/unibrain1/elanregistry/issues/1328) — security: extract inline JS from user-facing pages and remove unsafe-inline from CSP
+- [#1328](https://github.com/unibrain1/elanregistry/issues/1328) ✓ — security: extract inline JS from user-facing pages and remove unsafe-inline from CSP
 - [#1338](https://github.com/unibrain1/elanregistry/issues/1338) — security: add isAdmin() guard to admin maintenance scripts and fix-script-core.php template
