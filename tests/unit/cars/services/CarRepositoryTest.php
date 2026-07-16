@@ -169,6 +169,36 @@ final class CarRepositoryTest extends TestCase
         $this->assertSame([], $result);
     }
 
+    public function testGetHistoryExcludesPII(): void
+    {
+        // Security contract: email and lname must not appear in the SELECT clause.
+        // vericode and last_verified are not asserted here because cars_hist has no
+        // such columns — they exist only on the cars table and can never leak from
+        // this path even under SELECT *.
+        $capturedSql = null;
+        $db = $this->makeDbMock();
+        $db->expects($this->once())
+            ->method('query')
+            ->willReturnCallback(function (string $sql, array $params = []) use (&$capturedSql): QueryResult {
+                $capturedSql = $sql;
+                return new QueryResult([]);
+            });
+        $db->method('error')->willReturn(false);
+
+        $repo = new CarRepository($db);
+        $repo->getHistory(1);
+
+        $this->assertNotNull($capturedSql, 'getHistory() must call DB::query()');
+        $this->assertStringNotContainsStringIgnoringCase(
+            'email', $capturedSql,
+            'getHistory() SELECT must not include email column (PII)'
+        );
+        $this->assertStringNotContainsStringIgnoringCase(
+            'lname', $capturedSql,
+            'getHistory() SELECT must not include lname column (PII)'
+        );
+    }
+
     public function testInsertHistoryReturnsTrue(): void
     {
         $result = $this->repo->insertHistory([

@@ -61,6 +61,30 @@ final class CarDataTablesServiceTest extends TestCase
         $this->assertFalse($result);
     }
 
+    public function testValidateColumnNameRejectsEmail(): void
+    {
+        $result = $this->service->validateColumnName('email', 'cars');
+        $this->assertFalse($result);
+    }
+
+    public function testValidateColumnNameRejectsLname(): void
+    {
+        $result = $this->service->validateColumnName('lname', 'cars');
+        $this->assertFalse($result);
+    }
+
+    public function testValidateColumnNameRejectsVericode(): void
+    {
+        $result = $this->service->validateColumnName('vericode', 'cars');
+        $this->assertFalse($result);
+    }
+
+    public function testValidateColumnNameRejectsLastVerified(): void
+    {
+        $result = $this->service->validateColumnName('last_verified', 'cars');
+        $this->assertFalse($result);
+    }
+
     // ============================================================
     // getDataTablesData tests
     // ============================================================
