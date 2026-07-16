@@ -1494,6 +1494,7 @@ function openAdminContactModal(carData, ownerData, qualityIssue = '', targetEmai
             contactOwnerInfo: !!ownerInfoEl,
             adminContactModal: !!modalEl,
         });
+        showNotification('Could not open contact form — required page elements are missing. Refresh and try again.', 'danger');
         return;
     }
 

@@ -606,7 +606,8 @@
                 bootstrap.Modal.getOrCreateInstance(document.getElementById('transferErrorModal')).show();
                 $('#request_transfer_btn').prop('disabled', false).html('<i class="fas fa-exchange-alt"></i> Request Ownership Transfer');
             }
-        }).catch(function() {
+        }).catch(function(err) {
+            console.error('[car-edit] Transfer request failed:', err);
             $('#transferErrorMessage').text('There was an error processing your request. Please try again.');
             bootstrap.Modal.getOrCreateInstance(document.getElementById('transferErrorModal')).show();
             $('#request_transfer_btn').prop('disabled', false).html('<i class="fas fa-exchange-alt"></i> Request Ownership Transfer');
