@@ -1,4 +1,7 @@
-/* exported loadOwnerById, searchOwners, switchToDataQualityTab, clearSearchResults, closeOwnerProfile, displaySearchResults */
+/* exported loadOwnerById, searchOwners, switchToDataQualityTab */
+
+(function() {
+'use strict';
 
 let searchTimeout = null;
 
@@ -125,12 +128,15 @@ function closeOwnerProfile() {
     window.history.replaceState({}, '', currentUrl);
 }
 
-// Redirects to manage-cars tab; called from car quality report links
+// Redirects to manage-cars tab; called from car quality report links in PHP template
 function switchToDataQualityTab() {
     window.location.href = '?tab=manage-cars';
 }
 
 // Expose functions called from PHP-injected HTML (onclick handlers and the
 // load-owner-profile.js AJAX callback) that live in other files/response bodies.
-window.loadOwnerById = loadOwnerById;
-window.searchOwners  = searchOwners;
+window.loadOwnerById          = loadOwnerById;
+window.searchOwners           = searchOwners;
+window.switchToDataQualityTab = switchToDataQualityTab;
+
+}());
