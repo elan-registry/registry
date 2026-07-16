@@ -127,7 +127,7 @@ class SerializedDataRemovalTest extends TestCase
         $contactOwnerFile = $this->projectRoot . '/app/owner/contact/owner.php';
         $content = file_get_contents($contactOwnerFile);
 
-        $this->assertStringContainsString('htmlspecialchars($to[\'id\'], ENT_QUOTES, \'UTF-8\')', $content,
+        $this->assertStringContainsString('htmlspecialchars((string)$to[\'id\'], ENT_QUOTES, \'UTF-8\')', $content,
             'to_user_id field should be HTML encoded');
     }
     

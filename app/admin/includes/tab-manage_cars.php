@@ -429,7 +429,7 @@ $qualityScore = $totalCars > 0 ? max(0, 100 - (($carIssues / $totalCars) * 100))
                                             ?>
                                             <tr data-override="<?= $chassisOverride ?>">
                                                 <td>
-                                                    <button class="btn btn-sm btn-outline-primary" onclick="openCarDetails(<?= $car->id ?>)">
+                                                    <button class="btn btn-sm btn-outline-primary" data-action="openCarDetails" data-id="<?= (int)$car->id ?>">
                                                         <i class="fas fa-eye"></i> <?= $car->id ?>
                                                     </button>
                                                 </td>
@@ -455,15 +455,15 @@ $qualityScore = $totalCars > 0 ? max(0, 100 - (($carIssues / $totalCars) * 100))
                                                     <?php } ?>
                                                 </td>
                                                 <td>
-                                                    <button type="button" class="btn btn-sm btn-outline-primary" onclick="openCarDetails(<?= $car->id ?>)" title="Edit Car Details">
+                                                    <button type="button" class="btn btn-sm btn-outline-primary" data-action="openCarDetails" data-id="<?= (int)$car->id ?>" title="Edit Car Details">
                                                         <i class="fas fa-edit"></i> Edit
                                                     </button>
                                                     <button type="button" class="btn btn-sm btn-outline-warning ms-1"
-                                                            onclick="openAdminContactModal(
-                                                                {id: <?= (int)$car->id ?>, year: <?= $jsStr((string)($car->year ?? '')) ?>, model: <?= $jsStr($car->model ?? '') ?>, chassis: <?= $jsStr($car->chassis ?? '') ?>, series: <?= $jsStr($car->series ?? '') ?>},
-                                                                {id: <?= (int)($car->user_id ?? 0) ?>, name: <?= $jsStr($car->fname && $car->lname ? $car->fname . ' ' . $car->lname : 'Unknown') // nosemgrep: php.lang.security.taint-unsafe-echo-tag.taint-unsafe-echo-tag ?>, email: <?= $jsStr($car->email ?? '') // nosemgrep: php.lang.security.taint-unsafe-echo-tag.taint-unsafe-echo-tag ?>},
-                                                                'Invalid Chassis'
-                                                            )" title="Contact Owner via Registry">
+                                                            data-action="openAdminContactModal"
+                                                            data-car="<?= htmlspecialchars(json_encode(['id' => (int)$car->id, 'year' => (string)($car->year ?? ''), 'model' => $car->model ?? '', 'chassis' => $car->chassis ?? '', 'series' => $car->series ?? '']), ENT_QUOTES, 'UTF-8') ?>"
+                                                            data-owner="<?= htmlspecialchars(json_encode(['id' => (int)($car->user_id ?? 0), 'name' => $car->fname && $car->lname ? $car->fname . ' ' . $car->lname : 'Unknown', 'email' => $car->email ?? '']), ENT_QUOTES, 'UTF-8') ?>"
+                                                            data-subject="Invalid Chassis"
+                                                            title="Contact Owner via Registry">
                                                         <i class="fas fa-envelope"></i>
                                                     </button>
                                                     <button type="button" class="btn btn-sm btn-outline-primary ms-1" data-bs-toggle="modal" data-bs-target="#chassisValidationModal">
@@ -514,16 +514,17 @@ $qualityScore = $totalCars > 0 ? max(0, 100 - (($carIssues / $totalCars) * 100))
                                                     </td>
                                                     <td>
                                                         <button type="button" class="btn btn-sm btn-outline-primary me-1"
-                                                                onclick="switchToOwnerManagementTab(<?= $owner->id ?>)"
+                                                                data-action="switchToOwnerManagementTab"
+                                                                data-id="<?= (int)$owner->id ?>"
                                                                 title="Edit Owner Profile">
                                                             <i class="fas fa-edit"></i> Edit
                                                         </button>
                                                         <button type="button" class="btn btn-sm btn-outline-warning"
-                                                                onclick="openAdminContactModal(
-                                                                    {id: <?= $jsStr((string)($owner->car_count ?? 'Multiple')) ?>, year: '', model: '', chassis: '', series: ''},
-                                                                    {id: <?= (int)($owner->id ?? 0) ?>, name: <?= $jsStr(trim(($owner->fname ?? '') . ' ' . ($owner->lname ?? ''))) // nosemgrep: php.lang.security.taint-unsafe-echo-tag.taint-unsafe-echo-tag ?>, email: <?= $jsStr($owner->email ?? '') // nosemgrep: php.lang.security.taint-unsafe-echo-tag.taint-unsafe-echo-tag ?>},
-                                                                    'Missing Information'
-                                                                )" title="Contact Owner via Registry">
+                                                                data-action="openAdminContactModal"
+                                                                data-car="<?= htmlspecialchars(json_encode(['id' => (string)($owner->car_count ?? 'Multiple'), 'year' => '', 'model' => '', 'chassis' => '', 'series' => '']), ENT_QUOTES, 'UTF-8') ?>"
+                                                                data-owner="<?= htmlspecialchars(json_encode(['id' => (int)($owner->id ?? 0), 'name' => trim(($owner->fname ?? '') . ' ' . ($owner->lname ?? '')), 'email' => $owner->email ?? '']), ENT_QUOTES, 'UTF-8') ?>"
+                                                                data-subject="Missing Information"
+                                                                title="Contact Owner via Registry">
                                                             <i class="fas fa-envelope"></i>
                                                         </button>
                                                     </td>
@@ -561,7 +562,7 @@ $qualityScore = $totalCars > 0 ? max(0, 100 - (($carIssues / $totalCars) * 100))
                                                         </td>
                                                     <?php } ?>
                                                     <td>
-                                                        <button class="btn btn-sm btn-outline-primary" onclick="switchToOwnerManagementTab(<?= $owner->id ?>)" title="Edit Owner">
+                                                        <button class="btn btn-sm btn-outline-primary" data-action="switchToOwnerManagementTab" data-id="<?= (int)$owner->id ?>" title="Edit Owner">
                                                             <i class="fas fa-edit"></i> Edit
                                                         </button>
                                                     </td>
@@ -592,12 +593,12 @@ $qualityScore = $totalCars > 0 ? max(0, 100 - (($carIssues / $totalCars) * 100))
                                                     </td>
                                                     <td>
                                                         <button type="button" class="btn btn-sm btn-outline-warning"
-                                                                onclick="openAdminContactModal(
-                                                                    {id: 'Multiple', year: '', model: '', chassis: '', series: ''},
-                                                                    {id: 'Multiple', name: <?= $jsStr('Users with ' . ($duplicate->email ?? '')) ?>, email: <?= $jsStr($duplicate->email ?? '') ?>},
-                                                                    'Duplicate Email Addresses',
-                                                                    <?= $jsStr($duplicate->email ?? '') ?>
-                                                                )" title="Contact Users via Registry">
+                                                                data-action="openAdminContactModal"
+                                                                data-car="<?= htmlspecialchars(json_encode(['id' => 'Multiple', 'year' => '', 'model' => '', 'chassis' => '', 'series' => '']), ENT_QUOTES, 'UTF-8') ?>"
+                                                                data-owner="<?= htmlspecialchars(json_encode(['id' => 'Multiple', 'name' => 'Users with ' . ($duplicate->email ?? ''), 'email' => $duplicate->email ?? '']), ENT_QUOTES, 'UTF-8') ?>"
+                                                                data-subject="Duplicate Email Addresses"
+                                                                data-target-email="<?= htmlspecialchars($duplicate->email ?? '', ENT_QUOTES, 'UTF-8') ?>"
+                                                                title="Contact Users via Registry">
                                                             <i class="fas fa-envelope"></i> Contact
                                                         </button>
                                                     </td>
@@ -627,7 +628,7 @@ $qualityScore = $totalCars > 0 ? max(0, 100 - (($carIssues / $totalCars) * 100))
                                             <?php foreach ($report['data'] as $car) { ?>
                                             <tr>
                                                 <td>
-                                                    <button class="btn btn-sm btn-outline-primary" onclick="openCarDetails(<?= $car->id ?>)">
+                                                    <button class="btn btn-sm btn-outline-primary" data-action="openCarDetails" data-id="<?= (int)$car->id ?>">
                                                         <?= $car->id ?>
                                                     </button>
                                                 </td>
@@ -665,15 +666,15 @@ $qualityScore = $totalCars > 0 ? max(0, 100 - (($carIssues / $totalCars) * 100))
                                                     </td>
                                                 <?php } ?>
                                                 <td>
-                                                    <button type="button" class="btn btn-sm btn-outline-primary" onclick="openCarDetails(<?= $car->id ?>)" title="Edit Car Details">
+                                                    <button type="button" class="btn btn-sm btn-outline-primary" data-action="openCarDetails" data-id="<?= (int)$car->id ?>" title="Edit Car Details">
                                                         <i class="fas fa-edit"></i> Edit
                                                     </button>
                                                     <button type="button" class="btn btn-sm btn-outline-warning ms-1"
-                                                            onclick="openAdminContactModal(
-                                                                {id: <?= (int)$car->id ?>, year: <?= $jsStr((string)($car->year ?? '')) ?>, model: <?= $jsStr($car->model ?? '') ?>, chassis: <?= $jsStr($car->chassis ?? '') ?>, series: <?= $jsStr($car->series ?? '') ?>},
-                                                                {id: <?= (int)($car->user_id ?? 0) ?>, name: <?= $jsStr($car->fname && $car->lname ? $car->fname . ' ' . $car->lname : 'Unknown') // nosemgrep: php.lang.security.taint-unsafe-echo-tag.taint-unsafe-echo-tag ?>, email: <?= $jsStr($car->email ?? '') // nosemgrep: php.lang.security.taint-unsafe-echo-tag.taint-unsafe-echo-tag ?>},
-                                                                'Missing Information'
-                                                            )" title="Contact Owner via Registry">
+                                                            data-action="openAdminContactModal"
+                                                            data-car="<?= htmlspecialchars(json_encode(['id' => (int)$car->id, 'year' => (string)($car->year ?? ''), 'model' => $car->model ?? '', 'chassis' => $car->chassis ?? '', 'series' => $car->series ?? '']), ENT_QUOTES, 'UTF-8') ?>"
+                                                            data-owner="<?= htmlspecialchars(json_encode(['id' => (int)($car->user_id ?? 0), 'name' => $car->fname && $car->lname ? $car->fname . ' ' . $car->lname : 'Unknown', 'email' => $car->email ?? '']), ENT_QUOTES, 'UTF-8') ?>"
+                                                            data-subject="Missing Information"
+                                                            title="Contact Owner via Registry">
                                                         <i class="fas fa-envelope"></i>
                                                     </button>
                                                 </td>

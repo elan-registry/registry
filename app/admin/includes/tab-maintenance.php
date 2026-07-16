@@ -139,14 +139,14 @@ function scriptDisplayName(string $filename): string {
         </div>
 
         <div class="text-center mt-3">
-            <button type="button" class="btn btn-primary" onclick="createManualBackup(this)">
+            <button type="button" class="btn btn-primary" data-action="createManualBackup">
                 <i class="fas fa-save"></i> Create Manual Backup
             </button>
-            <button type="button" class="btn btn-outline-primary ms-2" onclick="listBackupFiles()">
+            <button type="button" class="btn btn-outline-primary ms-2" data-action="listBackupFiles">
                 <i class="fas fa-list"></i> List Backup Files
             </button>
             <?php if ($showCleanupPrompt): ?>
-                <button type="button" class="btn btn-outline-warning btn-sm ms-2" onclick="performBackupCleanup()">
+                <button type="button" class="btn btn-outline-warning btn-sm ms-2" data-action="performBackupCleanup">
                     <i class="fas fa-broom"></i> Cleanup Old Backups
                 </button>
             <?php else: ?>

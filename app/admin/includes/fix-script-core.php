@@ -68,28 +68,28 @@ function admin_script_start_form(
 }
 
 /**
- * Returns the HTML for a "Close Window" button.
- * Closes the script window; if an opener window exists, reloads it first.
- * If the window has no opener (e.g. direct URL access), navigates to $fallbackUrl instead.
+ * Returns the HTML for a "Close Window / Return to Menu" button.
+ * Scripts are opened via <a target="_blank"> links (implicit noopener), so window.close()
+ * is unreliable. The handler falls back to explicit navigation when window.opener is null.
  *
  * @param string $extraClass  Additional Bootstrap/custom classes to append
- * @param string $fallbackUrl URL to navigate to when window.opener is absent (e.g. '../../maintenance.php?tab=maintenance').
- *                            Must be a trusted static string — never pass user-supplied input. The URL is embedded
- *                            directly inside a JS string literal; user-controlled values would require JS-context
- *                            encoding, which this function does not perform.
  */
-function admin_script_close_button(string $extraClass = '', string $fallbackUrl = ''): string
+function admin_script_close_button(string $extraClass = ''): string
 {
+    global $userspice_nonce;
     $cls = trim('btn btn-primary btn-lg ' . $extraClass);
-    if ($fallbackUrl !== '') {
-        $safeUrl = htmlspecialchars($fallbackUrl, ENT_QUOTES, 'UTF-8');
-        $onclick  = "if(window.opener){window.opener.location.reload();window.close();}else{window.location.href='{$safeUrl}';}";
-    } else {
-        $onclick = 'if(window.opener){window.opener.location.reload();} window.close();';
-    }
-    return '<button type="button" onclick="' . $onclick . '" class="'
+    $safeNonce = htmlspecialchars($userspice_nonce ?? '', ENT_QUOTES, 'UTF-8');
+    return '<button type="button" data-action="adminScriptClose" class="'
         . htmlspecialchars($cls, ENT_QUOTES, 'UTF-8')
-        . '"><i class="fa fa-times"></i> Close Window</button>';
+        . '"><i class="fa fa-times"></i> Close Window</button>'
+        . '<script nonce="' . $safeNonce . '">'
+        . '(function(){if(!window.__adminCloseWired){window.__adminCloseWired=true;'
+        . 'document.addEventListener("click",function(e){'
+        . 'if(!e.target.closest("[data-action=\'adminScriptClose\']"))return;'
+        . 'if(window.opener){window.opener.location.reload();window.close();}'
+        . 'else{window.location.href="../../index.php?tab=maintenance";}'
+        . '});}})();'
+        . '</script>';
 }
 
 /**

@@ -85,7 +85,7 @@ $currentSizes = $settings->elan_image_thumbnail_sizes ?? '100,300,600,1024,2048'
 
             <?php $is_initial = admin_script_exec_requested(); ?>
             <?php if ($is_initial): ?>
-            <script>document.addEventListener('DOMContentLoaded', function() {
+            <script nonce="<?= htmlspecialchars($userspice_nonce ?? '', ENT_QUOTES, 'UTF-8') ?>">document.addEventListener('DOMContentLoaded', function() {
                 var el = document.getElementById('startTimeText');
                 if (el) el.textContent = new Date().toLocaleString();
             });</script>
@@ -138,7 +138,7 @@ $currentSizes = $settings->elan_image_thumbnail_sizes ?? '100,300,600,1024,2048'
 
                             <div class="text-center">
                                 <?= admin_script_start_form('Start Thumbnail Optimization') ?>
-                                <script>
+                                <script nonce="<?= htmlspecialchars($userspice_nonce ?? '', ENT_QUOTES, 'UTF-8') ?>">
                                 document.currentScript.previousElementSibling.addEventListener('submit', function(e) {
                                     var sel = document.getElementById('batchSize');
                                     if (sel) {
@@ -216,7 +216,7 @@ $currentSizes = $settings->elan_image_thumbnail_sizes ?? '100,300,600,1024,2048'
                 </div>
             </div>
 
-            <script>
+            <script nonce="<?= htmlspecialchars($userspice_nonce ?? '', ENT_QUOTES, 'UTF-8') ?>">
                 let totalSteps = 0;
                 let currentStep = 0;
                 let processStarted = false;
@@ -260,7 +260,7 @@ $currentSizes = $settings->elan_image_thumbnail_sizes ?? '100,300,600,1024,2048'
             ${stats}
         </div>
         <div class="text-center">
-            <button onclick="if(window.opener){window.opener.location.reload();window.close();}else{window.location.href='../../maintenance.php?tab=maintenance';}" class="btn btn-primary">
+            <button data-action="returnToMenu" class="btn btn-primary">
                 <i class="fa fa-times"></i> Close Window
             </button>
         </div>
@@ -298,6 +298,15 @@ $currentSizes = $settings->elan_image_thumbnail_sizes ?? '100,300,600,1024,2048'
                     const now = new Date();
                     document.getElementById('startTimeText').textContent = now.toLocaleString();
                 }
+
+                document.addEventListener('click', function(e) {
+                    const btn = e.target.closest('[data-action]');
+                    if (!btn) return;
+                    if (btn.dataset.action === 'returnToMenu') {
+                        if (window.opener) { window.opener.location.reload(); window.close(); }
+                        else { window.location.href = '../../index.php?tab=maintenance'; }
+                    }
+                });
             </script>
 
             <?php
@@ -316,10 +325,12 @@ $currentSizes = $settings->elan_image_thumbnail_sizes ?? '100,300,600,1024,2048'
                 }
 
                 function outputMessage(string $message, ?int $percentage = null): void {
+                    global $userspice_nonce;
                     $jsMessage = json_encode($message, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT);
-                    echo '<script>addLogMessage(' . $jsMessage . ');</script>';
+                    $nonce = htmlspecialchars($userspice_nonce ?? '', ENT_QUOTES, 'UTF-8');
+                    echo '<script nonce="' . $nonce . '">addLogMessage(' . $jsMessage . ');</script>';
                     if ($percentage !== null) {
-                        echo '<script>updateProgress(' . $percentage . ', 100, ' . $jsMessage . ');</script>';
+                        echo '<script nonce="' . $nonce . '">updateProgress(' . $percentage . ', 100, ' . $jsMessage . ');</script>';
                     }
                     ob_flush();
                     flush();
@@ -398,9 +409,11 @@ $currentSizes = $settings->elan_image_thumbnail_sizes ?? '100,300,600,1024,2048'
                     $total_cars = $total_cars_result[0]->count;
 
                     // Get batched cars with images for processing
+                    // $batch_size is allowlist-validated (cast + in_array against [5,10,15,25]).
+                    // $offset is cast to int, which is sufficient for SQL safety with LIMIT/OFFSET.
+                    // UserSpice's DB class does not support bound parameters for LIMIT/OFFSET.
                     $cars_with_images = $db->query(
-                        "SELECT id, image FROM cars WHERE image IS NOT NULL AND image != '' LIMIT ? OFFSET ?",
-                        [$batch_size, $offset]
+                        "SELECT id, image FROM cars WHERE image IS NOT NULL AND image != '' LIMIT {$batch_size} OFFSET {$offset}"
                     )->results();
                     $batch_car_count = count($cars_with_images);
                 } catch (Exception $e) {
@@ -421,7 +434,8 @@ $currentSizes = $settings->elan_image_thumbnail_sizes ?? '100,300,600,1024,2048'
 
                 if ($total_cars == 0) {
                     outputMessage("ℹ️  No cars with images found. Process complete.");
-                    echo '<script>showCompletionSummary("<p>No cars with images to process.</p>", false);</script>';
+                    echo '<script nonce="' . htmlspecialchars($userspice_nonce ?? '', ENT_QUOTES, 'UTF-8') . '">showCompletionSummary("<p>No cars with images to process.</p>", false);</script>';
+                    unset($_SESSION['thumb_batch_token']);
                     exit;
                 }
 
@@ -437,7 +451,7 @@ $currentSizes = $settings->elan_image_thumbnail_sizes ?? '100,300,600,1024,2048'
                             <div class='col-sm-3'><strong>Errors:</strong> {$cumulative_errors}</div>
                         </div>";
 
-                    echo "<script>showCompletionSummary(`$final_stats`, " . ($cumulative_errors > 0 ? 'true' : 'false') . ");</script>";
+                    echo "<script nonce=\"" . htmlspecialchars($userspice_nonce ?? '', ENT_QUOTES, 'UTF-8') . "\">showCompletionSummary(`$final_stats`, " . ($cumulative_errors > 0 ? 'true' : 'false') . ");</script>";
 
                     // Log to fix_script_runs table
                     try {
@@ -452,6 +466,7 @@ $currentSizes = $settings->elan_image_thumbnail_sizes ?? '100,300,600,1024,2048'
 
                     // Log final completion
                     logger($user->data()->id, LogCategories::LOG_CATEGORY_FIX_SCRIPT, "Thumbnail optimization completed (batched) - Total Processed: {$cumulative_processed}, Generated: {$cumulative_generated}, Removed: {$cumulative_removed}, Errors: {$cumulative_errors} (Issue #176)");
+                    unset($_SESSION['thumb_batch_token']);
                     exit;
                 }
 
@@ -620,7 +635,7 @@ $currentSizes = $settings->elan_image_thumbnail_sizes ?? '100,300,600,1024,2048'
 
                         // Auto-redirect to next batch after 2 seconds
                         $next_url_js = json_encode($next_url, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT);
-                        echo "<script>
+                        echo "<script nonce=\"" . htmlspecialchars($userspice_nonce ?? '', ENT_QUOTES, 'UTF-8') . "\">
                             setTimeout(function() {
                                 addLogMessage('🔄 Automatically continuing to next batch...');
                                 window.location.href = {$next_url_js};
@@ -697,7 +712,7 @@ $currentSizes = $settings->elan_image_thumbnail_sizes ?? '100,300,600,1024,2048'
                     </div>";
 
                 $hasErrors = ($batchFailed || $cumulative_errors > 0) ? 'true' : 'false';
-                echo "<script>showCompletionSummary(`$statsHtml`, {$hasErrors});</script>";
+                echo "<script nonce=\"" . htmlspecialchars($userspice_nonce ?? '', ENT_QUOTES, 'UTF-8') . "\">showCompletionSummary(`$statsHtml`, {$hasErrors});</script>";
                 unset($_SESSION['thumb_batch_token']);
             } elseif ($method === 'GET' && (int) ($_GET['start'] ?? 0) === 1) {
                 logger($user->data()->id, LogCategories::LOG_CATEGORY_SECURITY, 'Batch continuation rejected (session expired or token mismatch)');
@@ -713,7 +728,7 @@ $currentSizes = $settings->elan_image_thumbnail_sizes ?? '100,300,600,1024,2048'
 
 <!-- Return to Admin Console button -->
 <div style="margin-top: 20px; text-align: center;">
-    <?= admin_script_close_button('', '../../maintenance.php?tab=maintenance') ?>
+    <?= admin_script_close_button() ?>
 </div>
 
 <!-- footers -->

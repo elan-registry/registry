@@ -75,7 +75,7 @@ if (isset($_GET['owner_id']) && is_numeric($_GET['owner_id'])) {
             <span id="ownerProfileName" class="card-header-er-primary-text"></span>
         </h5>
         <div>
-            <button class="btn btn-sm btn-outline-light" onclick="closeOwnerProfile()">
+            <button class="btn btn-sm btn-outline-light" data-action="closeOwnerProfile">
                 <i class="fas fa-times"></i> Close
             </button>
         </div>
@@ -537,16 +537,16 @@ $ownerQualityIcon  = match (true) {
                                                                                     <div class="mt-3 pt-3 border-top">
                                                                                         <div class="d-flex justify-content-between">
                                                                                             <button type="button" class="btn btn-sm btn-outline-primary"
-                                                                                                    onclick="loadOwnerById(<?= (int)$owner->id ?>)"
+                                                                                                    data-action="loadOwnerById"
+                                                                                                    data-id="<?= (int)$owner->id ?>"
                                                                                                     title="Edit Owner Profile">
                                                                                                 <i class="fas fa-edit"></i> Edit Profile
                                                                                             </button>
                                                                                             <button type="button" class="btn btn-sm btn-outline-warning"
-                                                                                                    onclick="openAdminContactModal(
-                                                                                                        {id: '<?= (int)$owner->car_count ?>', year: '', model: '', chassis: '', series: ''},
-                                                                                                        {id: '<?= (int)$owner->id ?>', name: <?= htmlspecialchars(json_encode(trim(($owner->fname ?? '') . ' ' . ($owner->lname ?? ''))), ENT_COMPAT, 'UTF-8') // nosemgrep: php.lang.security.taint-unsafe-echo-tag.taint-unsafe-echo-tag ?>, email: <?= htmlspecialchars(json_encode($owner->email ?? ''), ENT_COMPAT, 'UTF-8') // nosemgrep: php.lang.security.taint-unsafe-echo-tag.taint-unsafe-echo-tag ?>},
-                                                                                                        'Duplicate Email Addresses'
-                                                                                                    )"
+                                                                                                    data-action="openAdminContactModal"
+                                                                                                    data-car="<?= htmlspecialchars(json_encode(['id' => (string)(int)$owner->car_count, 'year' => '', 'model' => '', 'chassis' => '', 'series' => '']), ENT_QUOTES, 'UTF-8') ?>"
+                                                                                                    data-owner="<?= htmlspecialchars(json_encode(['id' => (string)(int)$owner->id, 'name' => trim(($owner->fname ?? '') . ' ' . ($owner->lname ?? '')), 'email' => $owner->email ?? '']), ENT_QUOTES, 'UTF-8') ?>"
+                                                                                                    data-subject="Duplicate Email Addresses"
                                                                                                     title="Contact Owner via Registry">
                                                                                                 <i class="fas fa-envelope"></i> Contact
                                                                                             </button>
@@ -630,17 +630,19 @@ $ownerQualityIcon  = match (true) {
                                                                 <?php } ?>
                                                                 <td>
                                                                     <button type="button" class="btn btn-sm btn-outline-primary me-1"
-                                                                            onclick="loadOwnerById(<?= (int)$owner->id ?>)"
+                                                                            data-action="loadOwnerById"
+                                                                            data-id="<?= (int)$owner->id ?>"
                                                                             title="Edit Owner Profile">
                                                                         <i class="fas fa-edit"></i> Edit
                                                                     </button>
                                                                     <?php if ($key === 'owners_missing_info') { ?>
+                                                                    <?php $carCount2 = $owner->car_count !== null ? (string)(int)$owner->car_count : 'Multiple'; ?>
                                                                     <button type="button" class="btn btn-sm btn-outline-warning"
-                                                                            onclick="openAdminContactModal(
-                                                                                {id: '<?= $owner->car_count !== null ? (int)$owner->car_count : 'Multiple' ?>', year: '', model: '', chassis: '', series: ''},
-                                                                                {id: '<?= (int)$owner->id ?>', name: <?= htmlspecialchars(json_encode(trim(($owner->fname ?? '') . ' ' . ($owner->lname ?? ''))), ENT_COMPAT, 'UTF-8') // nosemgrep: php.lang.security.taint-unsafe-echo-tag.taint-unsafe-echo-tag ?>, email: <?= htmlspecialchars(json_encode($owner->email ?? ''), ENT_COMPAT, 'UTF-8') // nosemgrep: php.lang.security.taint-unsafe-echo-tag.taint-unsafe-echo-tag ?>},
-                                                                                'Missing Information'
-                                                                            )" title="Contact Owner via Registry">
+                                                                            data-action="openAdminContactModal"
+                                                                            data-car="<?= htmlspecialchars(json_encode(['id' => $carCount2, 'year' => '', 'model' => '', 'chassis' => '', 'series' => '']), ENT_QUOTES, 'UTF-8') ?>"
+                                                                            data-owner="<?= htmlspecialchars(json_encode(['id' => (string)(int)$owner->id, 'name' => trim(($owner->fname ?? '') . ' ' . ($owner->lname ?? '')), 'email' => $owner->email ?? '']), ENT_QUOTES, 'UTF-8') ?>"
+                                                                            data-subject="Missing Information"
+                                                                            title="Contact Owner via Registry">
                                                                         <i class="fas fa-envelope"></i>
                                                                     </button>
                                                                     <?php } ?>

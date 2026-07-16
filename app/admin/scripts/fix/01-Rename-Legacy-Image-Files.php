@@ -341,7 +341,7 @@ $affected = buildAffectedList($db);
                     ?></pre>
 
                     <div class="text-center mt-3">
-                        <?= admin_script_close_button('', '../../maintenance.php?tab=maintenance') ?>
+                        <?= admin_script_close_button() ?>
                     </div>
                 </div>
             </div>

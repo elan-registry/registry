@@ -1558,6 +1558,16 @@ const initMarkerFilter = (markerList) => {
 
 window.statisticsInitMap = statisticsInitMap;
 
+document.addEventListener('DOMContentLoaded', function() {
+    if (typeof Chart === 'undefined') {
+        console.error('Chart.js failed to load');
+        return;
+    }
+    if (window.statisticsInitMap) {
+        window.statisticsInitMap();
+    }
+});
+
 /**
  * Cleanup function to destroy charts when needed
  */
