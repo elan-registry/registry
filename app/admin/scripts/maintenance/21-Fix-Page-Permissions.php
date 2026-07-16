@@ -553,7 +553,7 @@ require_once $abs_us_root . $us_url_root . 'users/includes/template/prep.php';
                             </div>
 
                             <div class="text-center">
-                                <button onclick="startAnalysis()" class="btn btn-success">
+                                <button data-action="startAnalysis" class="btn btn-success">
                                     <i class="fa fa-search"></i> Step 1: Analyze Permissions
                                 </button>
                             </div>
@@ -703,7 +703,7 @@ require_once $abs_us_root . $us_url_root . 'users/includes/template/prep.php';
             ${stats}
         </div>
         <div class="text-center">
-            <button onclick="if(window.opener){window.opener.location.reload(); window.close();} else {window.location.href='../../maintenance.php?tab=maintenance';}" class="btn btn-outline-primary">
+            <button data-action="returnToMenu" class="btn btn-outline-primary">
                 <i class="fa fa-arrow-left"></i> Return to FIX Menu
             </button>
         </div>
@@ -756,7 +756,7 @@ require_once $abs_us_root . $us_url_root . 'users/includes/template/prep.php';
                                     <p>${escapeHtml(data.error)}</p>
                                 </div>
                                 <div class="text-center">
-                                    <button onclick="window.location.href='../../maintenance.php?tab=maintenance';" class="btn btn-primary">
+                                    <button data-action="returnToMenu" class="btn btn-primary">
                                         <i class="fa fa-arrow-left"></i> Return to FIX Menu
                                     </button>
                                 </div>
@@ -771,7 +771,7 @@ require_once $abs_us_root . $us_url_root . 'users/includes/template/prep.php';
                                     <p>All page permissions are correctly configured.</p>
                                 </div>
                                 <div class="text-center">
-                                    <button onclick="window.location.href='../../maintenance.php?tab=maintenance';" class="btn btn-outline-primary">
+                                    <button data-action="returnToMenu" class="btn btn-outline-primary">
                                         <i class="fa fa-arrow-left"></i> Return to FIX Menu
                                     </button>
                                 </div>
@@ -886,10 +886,10 @@ require_once $abs_us_root . $us_url_root . 'users/includes/template/prep.php';
 
                             listHTML += `
                                 <div class="text-center mt-4">
-                                    <button onclick="showDetailedChanges()" class="btn btn-success">
+                                    <button data-action="showDetailedChanges" class="btn btn-success">
                                         <i class="fa fa-arrow-right"></i> Step 2: Review Detailed Changes
                                     </button>
-                                    <button onclick="abortProcess()" class="btn btn-danger ml-2">
+                                    <button data-action="abortProcess" class="btn btn-danger ml-2">
                                         <i class="fa fa-times"></i> Abort
                                     </button>
                                 </div>
@@ -1023,10 +1023,10 @@ require_once $abs_us_root . $us_url_root . 'users/includes/template/prep.php';
                                 </ul>
                             </div>
                             <div class="text-center mt-4">
-                                <button onclick="startProcessing()" class="btn btn-success btn-lg">
+                                <button data-action="startProcessing" class="btn btn-success btn-lg">
                                     <i class="fa fa-play"></i> Proceed with Fix
                                 </button>
-                                <button onclick="abortProcess()" class="btn btn-danger btn-lg ml-2">
+                                <button data-action="abortProcess" class="btn btn-danger btn-lg ml-2">
                                     <i class="fa fa-times"></i> Abort
                                 </button>
                             </div>
@@ -1063,9 +1063,23 @@ require_once $abs_us_root . $us_url_root . 'users/includes/template/prep.php';
 
 function abortProcess() {
                     if (confirm('Are you sure you want to abort? No changes will be made.')) {
-                        window.location.href = '../../maintenance.php?tab=maintenance';
+                        window.close();
                     }
                 }
+
+                document.addEventListener('click', function(e) {
+                    const btn = e.target.closest('[data-action]');
+                    if (!btn) return;
+                    switch (btn.dataset.action) {
+                        case 'startAnalysis': startAnalysis(); break;
+                        case 'showDetailedChanges': showDetailedChanges(); break;
+                        case 'abortProcess': abortProcess(); break;
+                        case 'startProcessing': startProcessing(); break;
+                        case 'returnToMenu':
+                            window.close();
+                            break;
+                    }
+                });
             </script>
 
             <iframe id="execute-frame" name="execute-frame" style="display:none;"></iframe>
@@ -1481,7 +1495,7 @@ function abortProcess() {
 <!-- Return buttons -->
 <div style="margin-top: 20px; text-align: center;">
     <?= admin_script_close_button('', '../../maintenance.php?tab=maintenance') ?>
-    <button onclick="window.location.href='../../maintenance.php?tab=maintenance';" class="btn btn-outline-secondary ml-2">
+    <button data-action="returnToMenu" class="btn btn-outline-secondary ml-2">
         <i class="fa fa-list" aria-hidden="true"></i> FIX Menu
     </button>
 </div>

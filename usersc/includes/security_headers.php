@@ -20,11 +20,12 @@ header("Content-Security-Policy: " .
         "https://static.cloudflareinsights.com " .
         "https://cdnjs.cloudflare.com; " .
     "style-src 'self' 'unsafe-inline' " .
-        "https://cdnjs.cloudflare.com; " .
+        "https://cdnjs.cloudflare.com " .
+        "https://fonts.googleapis.com; " .
     "img-src 'self' data: blob: " .
         "https://tiles.versatiles.org " .
         "https://www.gravatar.com; " .
-    "font-src 'self'; " .
+    "font-src 'self' https://fonts.gstatic.com; " .
     "connect-src 'self' " .
         "https://tiles.versatiles.org " .
         "https://challenges.cloudflare.com " .

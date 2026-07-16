@@ -260,7 +260,7 @@ $currentSizes = $settings->elan_image_thumbnail_sizes ?? '100,300,600,1024,2048'
             ${stats}
         </div>
         <div class="text-center">
-            <button onclick="if(window.opener){window.opener.location.reload();window.close();}else{window.location.href='../../maintenance.php?tab=maintenance';}" class="btn btn-primary">
+            <button data-action="returnToMenu" class="btn btn-primary">
                 <i class="fa fa-times"></i> Close Window
             </button>
         </div>
@@ -298,6 +298,14 @@ $currentSizes = $settings->elan_image_thumbnail_sizes ?? '100,300,600,1024,2048'
                     const now = new Date();
                     document.getElementById('startTimeText').textContent = now.toLocaleString();
                 }
+
+                document.addEventListener('click', function(e) {
+                    const btn = e.target.closest('[data-action]');
+                    if (!btn) return;
+                    if (btn.dataset.action === 'returnToMenu') {
+                        window.close();
+                    }
+                });
             </script>
 
             <?php
@@ -400,9 +408,10 @@ $currentSizes = $settings->elan_image_thumbnail_sizes ?? '100,300,600,1024,2048'
                     $total_cars = $total_cars_result[0]->count;
 
                     // Get batched cars with images for processing
+                    // Both $batch_size and $offset are validated integers (cast + allowlist above) — safe to interpolate.
+                    // UserSpice's DB class does not support bound parameters for LIMIT/OFFSET.
                     $cars_with_images = $db->query(
-                        "SELECT id, image FROM cars WHERE image IS NOT NULL AND image != '' LIMIT ? OFFSET ?",
-                        [$batch_size, $offset]
+                        "SELECT id, image FROM cars WHERE image IS NOT NULL AND image != '' LIMIT {$batch_size} OFFSET {$offset}"
                     )->results();
                     $batch_car_count = count($cars_with_images);
                 } catch (Exception $e) {
@@ -439,7 +448,7 @@ $currentSizes = $settings->elan_image_thumbnail_sizes ?? '100,300,600,1024,2048'
                             <div class='col-sm-3'><strong>Errors:</strong> {$cumulative_errors}</div>
                         </div>";
 
-                    echo "<script>showCompletionSummary(`$final_stats`, " . ($cumulative_errors > 0 ? 'true' : 'false') . ");</script>";
+                    echo "<script nonce=\"" . htmlspecialchars($userspice_nonce ?? '', ENT_QUOTES, 'UTF-8') . "\">showCompletionSummary(`$final_stats`, " . ($cumulative_errors > 0 ? 'true' : 'false') . ");</script>";
 
                     // Log to fix_script_runs table
                     try {

@@ -80,16 +80,16 @@ function admin_script_start_form(
  */
 function admin_script_close_button(string $extraClass = '', string $fallbackUrl = ''): string
 {
+    global $userspice_nonce;
     $cls = trim('btn btn-primary btn-lg ' . $extraClass);
-    if ($fallbackUrl !== '') {
-        $safeUrl = htmlspecialchars($fallbackUrl, ENT_QUOTES, 'UTF-8');
-        $onclick  = "if(window.opener){window.opener.location.reload();window.close();}else{window.location.href='{$safeUrl}';}";
-    } else {
-        $onclick = 'if(window.opener){window.opener.location.reload();} window.close();';
-    }
-    return '<button type="button" onclick="' . $onclick . '" class="'
+    $safeNonce = htmlspecialchars($userspice_nonce ?? '', ENT_QUOTES, 'UTF-8');
+    return '<button type="button" data-action="adminScriptClose" class="'
         . htmlspecialchars($cls, ENT_QUOTES, 'UTF-8')
-        . '"><i class="fa fa-times"></i> Close Window</button>';
+        . '"><i class="fa fa-times"></i> Close Window</button>'
+        . '<script nonce="' . $safeNonce . '">'
+        . '(function(){if(!window.__adminCloseWired){window.__adminCloseWired=true;'
+        . 'document.addEventListener("click",function(e){if(e.target.closest("[data-action=\'adminScriptClose\']"))window.close();});}})();'
+        . '</script>';
 }
 
 /**

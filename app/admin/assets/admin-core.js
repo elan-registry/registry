@@ -1653,3 +1653,49 @@ function showInputDialog(title, message, defaultValue, onConfirm) {
         showNotification('Input dialog could not open. Please reload the page.', 'danger');
     }
 }
+
+document.addEventListener('click', function(e) {
+    const btn = e.target.closest('[data-action]');
+    if (!btn) return;
+    const action = btn.dataset.action;
+    /* eslint-disable no-undef */
+    switch (action) {
+        case 'testEmailConfiguration':
+            if (typeof testEmailConfiguration === 'function') testEmailConfiguration();
+            break;
+        case 'createManualBackup':
+            if (typeof createManualBackup === 'function') createManualBackup(btn);
+            break;
+        case 'listBackupFiles':
+            if (typeof listBackupFiles === 'function') listBackupFiles();
+            break;
+        case 'performBackupCleanup':
+            if (typeof performBackupCleanup === 'function') performBackupCleanup();
+            break;
+        case 'closeOwnerProfile':
+            if (typeof closeOwnerProfile === 'function') closeOwnerProfile();
+            break;
+        case 'loadOwnerById':
+            if (typeof loadOwnerById === 'function') loadOwnerById(parseInt(btn.dataset.id, 10));
+            break;
+        case 'openCarDetails':
+            if (typeof openCarDetails === 'function') openCarDetails(parseInt(btn.dataset.id, 10));
+            break;
+        case 'switchToOwnerManagementTab':
+            switchToOwnerManagementTab(parseInt(btn.dataset.id, 10));
+            break;
+        case 'openAdminContactModal':
+            try {
+                openAdminContactModal(
+                    JSON.parse(btn.dataset.car),
+                    JSON.parse(btn.dataset.owner),
+                    btn.dataset.subject || '',
+                    btn.dataset.targetEmail || ''
+                );
+            } catch (err) {
+                console.error('[openAdminContactModal] Failed to parse data attributes:', err);
+            }
+            break;
+    }
+    /* eslint-enable no-undef */
+});
