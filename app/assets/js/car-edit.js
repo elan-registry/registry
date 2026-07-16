@@ -12,9 +12,9 @@
     }
 
     var cfg = window.editCarConfig;
-    const car_id = $('#car_id').val();
 
     $(document).ready(function() {
+        const car_id = $('#car_id').val();
         $('#message').addClass('d-none');
 
         const solddateRow = document.getElementById('solddate-row');

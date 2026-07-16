@@ -171,6 +171,24 @@ test.describe('CSP Validation Tests', () => {
     expect(scriptSrc, "CSP script-src must contain a nonce").toMatch(/'nonce-/);
   });
 
+  test('nonce must rotate between requests', async ({ page }) => {
+    const extractNonce = (headers) => {
+      const csp = headers['content-security-policy'] ?? '';
+      const match = csp.match(/'nonce-([^']+)'/);
+      return match ? match[1] : null;
+    };
+
+    const r1 = await page.goto('');
+    const nonce1 = extractNonce(r1.headers());
+
+    const r2 = await page.goto('');
+    const nonce2 = extractNonce(r2.headers());
+
+    expect(nonce1, 'First response must contain a nonce').not.toBeNull();
+    expect(nonce2, 'Second response must contain a nonce').not.toBeNull();
+    expect(nonce1, 'Nonce must be different on each request — static nonce breaks the entire CSP strategy').not.toBe(nonce2);
+  });
+
   test('contact feedback page should not have CSP violations', async ({ page }) => {
     const cspViolations = setupCSPViolationMonitoring(page);
 
