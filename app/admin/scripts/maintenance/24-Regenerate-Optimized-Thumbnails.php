@@ -85,7 +85,7 @@ $currentSizes = $settings->elan_image_thumbnail_sizes ?? '100,300,600,1024,2048'
 
             <?php $is_initial = admin_script_exec_requested(); ?>
             <?php if ($is_initial): ?>
-            <script>document.addEventListener('DOMContentLoaded', function() {
+            <script nonce="<?= htmlspecialchars($userspice_nonce ?? '', ENT_QUOTES, 'UTF-8') ?>">document.addEventListener('DOMContentLoaded', function() {
                 var el = document.getElementById('startTimeText');
                 if (el) el.textContent = new Date().toLocaleString();
             });</script>
@@ -138,7 +138,7 @@ $currentSizes = $settings->elan_image_thumbnail_sizes ?? '100,300,600,1024,2048'
 
                             <div class="text-center">
                                 <?= admin_script_start_form('Start Thumbnail Optimization') ?>
-                                <script>
+                                <script nonce="<?= htmlspecialchars($userspice_nonce ?? '', ENT_QUOTES, 'UTF-8') ?>">
                                 document.currentScript.previousElementSibling.addEventListener('submit', function(e) {
                                     var sel = document.getElementById('batchSize');
                                     if (sel) {
@@ -216,7 +216,7 @@ $currentSizes = $settings->elan_image_thumbnail_sizes ?? '100,300,600,1024,2048'
                 </div>
             </div>
 
-            <script>
+            <script nonce="<?= htmlspecialchars($userspice_nonce ?? '', ENT_QUOTES, 'UTF-8') ?>">
                 let totalSteps = 0;
                 let currentStep = 0;
                 let processStarted = false;
@@ -316,10 +316,12 @@ $currentSizes = $settings->elan_image_thumbnail_sizes ?? '100,300,600,1024,2048'
                 }
 
                 function outputMessage(string $message, ?int $percentage = null): void {
+                    global $userspice_nonce;
                     $jsMessage = json_encode($message, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT);
-                    echo '<script>addLogMessage(' . $jsMessage . ');</script>';
+                    $nonce = htmlspecialchars($userspice_nonce ?? '', ENT_QUOTES, 'UTF-8');
+                    echo '<script nonce="' . $nonce . '">addLogMessage(' . $jsMessage . ');</script>';
                     if ($percentage !== null) {
-                        echo '<script>updateProgress(' . $percentage . ', 100, ' . $jsMessage . ');</script>';
+                        echo '<script nonce="' . $nonce . '">updateProgress(' . $percentage . ', 100, ' . $jsMessage . ');</script>';
                     }
                     ob_flush();
                     flush();
@@ -421,7 +423,7 @@ $currentSizes = $settings->elan_image_thumbnail_sizes ?? '100,300,600,1024,2048'
 
                 if ($total_cars == 0) {
                     outputMessage("ℹ️  No cars with images found. Process complete.");
-                    echo '<script>showCompletionSummary("<p>No cars with images to process.</p>", false);</script>';
+                    echo '<script nonce="' . htmlspecialchars($userspice_nonce ?? '', ENT_QUOTES, 'UTF-8') . '">showCompletionSummary("<p>No cars with images to process.</p>", false);</script>';
                     exit;
                 }
 
@@ -620,7 +622,7 @@ $currentSizes = $settings->elan_image_thumbnail_sizes ?? '100,300,600,1024,2048'
 
                         // Auto-redirect to next batch after 2 seconds
                         $next_url_js = json_encode($next_url, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT);
-                        echo "<script>
+                        echo "<script nonce=\"" . htmlspecialchars($userspice_nonce ?? '', ENT_QUOTES, 'UTF-8') . "\">
                             setTimeout(function() {
                                 addLogMessage('🔄 Automatically continuing to next batch...');
                                 window.location.href = {$next_url_js};
@@ -697,7 +699,7 @@ $currentSizes = $settings->elan_image_thumbnail_sizes ?? '100,300,600,1024,2048'
                     </div>";
 
                 $hasErrors = ($batchFailed || $cumulative_errors > 0) ? 'true' : 'false';
-                echo "<script>showCompletionSummary(`$statsHtml`, {$hasErrors});</script>";
+                echo "<script nonce=\"" . htmlspecialchars($userspice_nonce ?? '', ENT_QUOTES, 'UTF-8') . "\">showCompletionSummary(`$statsHtml`, {$hasErrors});</script>";
                 unset($_SESSION['thumb_batch_token']);
             } elseif ($method === 'GET' && (int) ($_GET['start'] ?? 0) === 1) {
                 logger($user->data()->id, LogCategories::LOG_CATEGORY_SECURITY, 'Batch continuation rejected (session expired or token mismatch)');

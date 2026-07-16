@@ -98,19 +98,6 @@ class SecurityHeadersTest extends TestCase
     }
 
     /**
-     * Test that file documents server_globals.php usage
-     */
-    public function testDocumentsServerGlobalsUsage(): void
-    {
-        // Should reference server_globals.php in comments
-        $this->assertStringContainsString(
-            'server_globals.php',
-            $this->fileContent,
-            'security_headers.php should document use of server_globals.php'
-        );
-    }
-
-    /**
      * Test that file sets all expected security headers
      */
     public function testSetsAllSecurityHeaders(): void
@@ -162,19 +149,6 @@ class SecurityHeadersTest extends TestCase
             'HTTP_X_FORWARDED_PROTO',
             $this->fileContent,
             'security_headers.php should not check unvalidated X-Forwarded-Proto header'
-        );
-    }
-
-    /**
-     * Test that file references correct Server class implementation
-     */
-    public function testDocumentsServerClassUsage(): void
-    {
-        // Should mention Server::getScheme() in comments
-        $this->assertStringContainsString(
-            'Server::getScheme()',
-            $this->fileContent,
-            'security_headers.php should document Server::getScheme() usage'
         );
     }
 

@@ -164,7 +164,7 @@ try {
         </div>
     </form>
 
-    <script>
+    <script nonce="<?= htmlspecialchars($userspice_nonce ?? '', ENT_QUOTES, 'UTF-8') ?>">
     window.elanOwnerProfileData = {
         csrfToken: <?= json_encode(Token::generate()) ?>,
         ownerId: <?= (int)$ownerId ?>,

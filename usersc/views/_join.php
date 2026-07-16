@@ -239,7 +239,7 @@ Based on UserSpice 5 registration system
 }
 </style>
 
-<script>
+<script nonce="<?= htmlspecialchars($userspice_nonce ?? '', ENT_QUOTES, 'UTF-8') ?>">
 document.addEventListener('DOMContentLoaded', function() {
   // Enhanced password visibility toggle
   document.querySelectorAll('.password-toggle').forEach(function(button) {

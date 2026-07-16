@@ -659,7 +659,7 @@ require_once $abs_us_root . $us_url_root . 'users/includes/template/prep.php';
                 </div>
             </div>
 
-            <script>
+            <script nonce="<?= htmlspecialchars($userspice_nonce ?? '', ENT_QUOTES, 'UTF-8') ?>">
                 let analysisData = null;
                 let processStarted = false;
                 const CSRF_TOKEN = '<?= htmlspecialchars($csrfToken, ENT_QUOTES, 'UTF-8') ?>';
@@ -1082,8 +1082,9 @@ function abortProcess() {
                 $global_successes = 0;
 
                 function outputMessage(string $message, ?int $percentage = null): void {
+                    global $userspice_nonce;
                     $safe = addslashes(htmlspecialchars($message, ENT_QUOTES, 'UTF-8'));
-                    echo '<script>
+                    echo '<script nonce="' . htmlspecialchars($userspice_nonce ?? '', ENT_QUOTES, 'UTF-8') . '">
                         if (window.parent && window.parent.addLogMessage) {
                             window.parent.addLogMessage("' . $safe . '");
                         } else if (window.addLogMessage) {
@@ -1091,7 +1092,7 @@ function abortProcess() {
                         }
                     </script>';
                     if ($percentage !== null) {
-                        echo '<script>
+                        echo '<script nonce="' . htmlspecialchars($userspice_nonce ?? '', ENT_QUOTES, 'UTF-8') . '">
                             if (window.parent && window.parent.updateProgress) {
                                 window.parent.updateProgress(' . $percentage . ', 100, "' . $safe . '");
                             } else if (window.updateProgress) {
@@ -1443,7 +1444,7 @@ function abortProcess() {
                     $rateIcon = 'exclamation-triangle';
                 }
 
-                echo "<script>
+                echo "<script nonce=\"" . htmlspecialchars($userspice_nonce ?? '', ENT_QUOTES, 'UTF-8') . "\">
     // Call completion summary in parent window if in iframe
     if (window.parent && window.parent.showCompletionSummary) {
         window.parent.showCompletionSummary(`
