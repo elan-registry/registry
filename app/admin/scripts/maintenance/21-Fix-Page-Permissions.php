@@ -379,7 +379,7 @@ if ($method === 'POST' && isset($_POST['action'])) {
                 ],
                 'issues' => $issues
             ]);
-        } catch (Exception $e) {
+        } catch (\Throwable $e) {
             logger($user->data()->id, LogCategories::LOG_CATEGORY_PERMISSION_FIX_ERROR, "Analysis failed: " . $e->getMessage());
             echo json_encode([
                 'success' => false,
@@ -397,7 +397,7 @@ if ($method === 'POST' && isset($_POST['action'])) {
                 'success' => true,
                 'issues' => $issues
             ]);
-        } catch (Exception $e) {
+        } catch (\Throwable $e) {
             logger($user->data()->id, LogCategories::LOG_CATEGORY_PERMISSION_FIX_ERROR, "Failed to get details: " . $e->getMessage());
             echo json_encode([
                 'success' => false,
@@ -1093,6 +1093,17 @@ function abortProcess() {
             <?php
             // STEP 3: Execute Changes
             if ($method === 'POST' && isset($_POST['execute']) && Token::check($_POST['csrf'] ?? '')) {
+                if (!isAdmin()) {
+                    logger($user->data()->id, LogCategories::LOG_CATEGORY_SECURITY,
+                        'Non-admin attempted execute form on fix-page-permissions script');
+                    $nonce = htmlspecialchars($userspice_nonce ?? '', ENT_QUOTES, 'UTF-8');
+                    $msg = json_encode('❌ Access denied: Administrator permission required.', JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT);
+                    echo '<script nonce="' . $nonce . '">
+                        if (window.parent && window.parent.addLogMessage) { window.parent.addLogMessage(' . $msg . '); }
+                        else if (window.addLogMessage) { addLogMessage(' . $msg . '); }
+                    </script>';
+                    exit;
+                }
 
                 $global_attempts = 0;
                 $global_successes = 0;
@@ -1133,27 +1144,30 @@ function abortProcess() {
                         ['pages', 'permission_page_matches']
                     );
                     outputMessage("✅ Backup created: " . basename($backupPath));
-                } catch (Exception $e) {
+                } catch (\Throwable $e) {
                     outputMessage("❌ Backup creation failed: " . $e->getMessage());
                     outputMessage("⚠️  Aborting - backup is required for this operation!");
+                    logger($user->data()->id, LogCategories::LOG_CATEGORY_FIX_SCRIPT_ERROR, "Backup creation failed, script aborted: " . $e->getMessage());
                     exit;
                 }
                 outputMessage("");
 
-                // Get issues to fix
-                outputMessage("🔍 Analyzing permissions...");
-                $issues = analyzePermissions($db);
-
-                $totalChanges = count($issues['set_public']) + count($issues['set_private_admin']) +
-                               count($issues['set_private_user']) + count($issues['set_private_no_perms']) +
-                               count($issues['remove_perms']) + count($issues['add_perms_admin']) +
-                               count($issues['add_perms_user']) + count($issues['fix_admin_only_perms']);
-
-                outputMessage("Found {$totalChanges} changes to make");
-                outputMessage("");
-                outputMessage("🚀 Starting permission fixes...");
+                $scriptFailed = false;
 
                 try {
+                    // Get issues to fix
+                    outputMessage("🔍 Analyzing permissions...");
+                    $issues = analyzePermissions($db);
+
+                    $totalChanges = count($issues['set_public']) + count($issues['set_private_admin']) +
+                                   count($issues['set_private_user']) + count($issues['set_private_no_perms']) +
+                                   count($issues['remove_perms']) + count($issues['add_perms_admin']) +
+                                   count($issues['add_perms_user']) + count($issues['fix_admin_only_perms']);
+
+                    outputMessage("Found {$totalChanges} changes to make");
+                    outputMessage("");
+                    outputMessage("🚀 Starting permission fixes...");
+
                     $currentChange = 0;
 
                     // Set pages to public and remove all permissions
@@ -1176,7 +1190,8 @@ function abortProcess() {
                                 $global_successes++;
                                 outputMessage("✅ Set to PUBLIC with no permissions: {$issue['page']}", $percentage);
                                 logger($user->data()->id, LogCategories::LOG_CATEGORY_PERMISSION_FIX, "Set page to PUBLIC with no permissions: {$issue['page']} (ID: {$issue['id']})");
-                            } catch (Exception $e) {
+                            } catch (\Throwable $e) {
+                                if (!($e instanceof \Exception)) { throw $e; }
                                 outputMessage("✗ Failed to update {$issue['page']}: " . $e->getMessage(), $percentage);
                                 logger($user->data()->id, LogCategories::LOG_CATEGORY_PERMISSION_FIX_ERROR, "Failed to set page to PUBLIC: {$issue['page']} (ID: {$issue['id']}) - " . $e->getMessage());
                             }
@@ -1219,7 +1234,8 @@ function abortProcess() {
                                 $global_successes++;
                                 outputMessage("✅ Set to PRIVATE with Administrator + Editor: {$issue['page']}", $percentage);
                                 logger($user->data()->id, LogCategories::LOG_CATEGORY_PERMISSION_FIX, "Set page to PRIVATE with Admin+Editor: {$issue['page']} (ID: {$issue['id']})");
-                            } catch (Exception $e) {
+                            } catch (\Throwable $e) {
+                                if (!($e instanceof \Exception)) { throw $e; }
                                 outputMessage("✗ Failed to update {$issue['page']}: " . $e->getMessage(), $percentage);
                                 logger($user->data()->id, LogCategories::LOG_CATEGORY_PERMISSION_FIX_ERROR, "Failed to set page to PRIVATE with Admin+Editor: {$issue['page']} (ID: {$issue['id']}) - " . $e->getMessage());
                             }
@@ -1252,7 +1268,8 @@ function abortProcess() {
                                 $global_successes++;
                                 outputMessage("✅ Set to PRIVATE with User permission: {$issue['page']}", $percentage);
                                 logger($user->data()->id, LogCategories::LOG_CATEGORY_PERMISSION_FIX, "Set page to PRIVATE with User: {$issue['page']} (ID: {$issue['id']})");
-                            } catch (Exception $e) {
+                            } catch (\Throwable $e) {
+                                if (!($e instanceof \Exception)) { throw $e; }
                                 outputMessage("✗ Failed to update {$issue['page']}: " . $e->getMessage(), $percentage);
                                 logger($user->data()->id, LogCategories::LOG_CATEGORY_PERMISSION_FIX_ERROR, "Failed to set page to PRIVATE with User: {$issue['page']} (ID: {$issue['id']}) - " . $e->getMessage());
                             }
@@ -1279,7 +1296,8 @@ function abortProcess() {
                                 $global_successes++;
                                 outputMessage("✅ Set to PRIVATE with no permissions: {$issue['page']}", $percentage);
                                 logger($user->data()->id, LogCategories::LOG_CATEGORY_PERMISSION_FIX, "Set page to PRIVATE with no permissions: {$issue['page']} (ID: {$issue['id']})");
-                            } catch (Exception $e) {
+                            } catch (\Throwable $e) {
+                                if (!($e instanceof \Exception)) { throw $e; }
                                 outputMessage("✗ Failed to update {$issue['page']}: " . $e->getMessage(), $percentage);
                                 logger($user->data()->id, LogCategories::LOG_CATEGORY_PERMISSION_FIX_ERROR, "Failed to set page to PRIVATE with no perms: {$issue['page']} (ID: {$issue['id']}) - " . $e->getMessage());
                             }
@@ -1303,7 +1321,8 @@ function abortProcess() {
                                 $global_successes++;
                                 outputMessage("✅ Removed permissions from: {$issue['page']}", $percentage);
                                 logger($user->data()->id, LogCategories::LOG_CATEGORY_PERMISSION_FIX, "Removed all permissions from PUBLIC page: {$issue['page']} (ID: {$issue['id']})");
-                            } catch (Exception $e) {
+                            } catch (\Throwable $e) {
+                                if (!($e instanceof \Exception)) { throw $e; }
                                 outputMessage("✗ Failed to update {$issue['page']}: " . $e->getMessage(), $percentage);
                                 logger($user->data()->id, LogCategories::LOG_CATEGORY_PERMISSION_FIX_ERROR, "Failed to remove perms from PUBLIC page: {$issue['page']} (ID: {$issue['id']}) - " . $e->getMessage());
                             }
@@ -1343,7 +1362,8 @@ function abortProcess() {
                                 $global_successes++;
                                 outputMessage("✅ Added admin permissions to: {$issue['page']}", $percentage);
                                 logger($user->data()->id, LogCategories::LOG_CATEGORY_PERMISSION_FIX, "Added admin permissions to page: {$issue['page']} (ID: {$issue['id']})");
-                            } catch (Exception $e) {
+                            } catch (\Throwable $e) {
+                                if (!($e instanceof \Exception)) { throw $e; }
                                 outputMessage("✗ Failed to update {$issue['page']}: " . $e->getMessage(), $percentage);
                                 logger($user->data()->id, LogCategories::LOG_CATEGORY_PERMISSION_FIX_ERROR, "Failed to add admin perms to page: {$issue['page']} (ID: {$issue['id']}) - " . $e->getMessage());
                             }
@@ -1380,7 +1400,8 @@ function abortProcess() {
                                 $global_successes++;
                                 outputMessage("✅ Set to PRIVATE with Administrator only: {$issue['page']}", $percentage);
                                 logger($user->data()->id, LogCategories::LOG_CATEGORY_PERMISSION_FIX, "Set page to PRIVATE with Admin only (no Editor): {$issue['page']} (ID: {$issue['id']})");
-                            } catch (Exception $e) {
+                            } catch (\Throwable $e) {
+                                if (!($e instanceof \Exception)) { throw $e; }
                                 outputMessage("✗ Failed to update {$issue['page']}: " . $e->getMessage(), $percentage);
                                 logger($user->data()->id, LogCategories::LOG_CATEGORY_PERMISSION_FIX_ERROR, "Failed to set page to PRIVATE with Admin only (no Editor): {$issue['page']} (ID: {$issue['id']}) - " . $e->getMessage());
                             }
@@ -1410,15 +1431,13 @@ function abortProcess() {
                                 $global_successes++;
                                 outputMessage("✅ Added owner permissions to: {$issue['page']}", $percentage);
                                 logger($user->data()->id, LogCategories::LOG_CATEGORY_PERMISSION_FIX, "Added owner permissions to page: {$issue['page']} (ID: {$issue['id']})");
-                            } catch (Exception $e) {
+                            } catch (\Throwable $e) {
+                                if (!($e instanceof \Exception)) { throw $e; }
                                 outputMessage("✗ Failed to update {$issue['page']}: " . $e->getMessage(), $percentage);
                                 logger($user->data()->id, LogCategories::LOG_CATEGORY_PERMISSION_FIX_ERROR, "Failed to add owner perms to page: {$issue['page']} (ID: {$issue['id']}) - " . $e->getMessage());
                             }
                         }
                     }
-
-                            outputMessage("");
-                            outputMessage("✅ Permission fixes completed successfully!");
 
                             // Verification
                             outputMessage("");
@@ -1430,6 +1449,7 @@ function abortProcess() {
                                               count($issuesAfter['add_perms_user']) + count($issuesAfter['fix_admin_only_perms']);
 
                             if ($remainingIssues == 0) {
+                                outputMessage("✅ Permission fixes completed successfully!");
                                 outputMessage("✅ SUCCESS: All permissions fixed correctly!");
                             } else {
                                 outputMessage("⚠️  WARNING: {$remainingIssues} issues still remain - may need manual review");
@@ -1439,21 +1459,28 @@ function abortProcess() {
                             logger($user->data()->id, LogCategories::LOG_CATEGORY_DATABASE_MAINTENANCE, "Permission fix completed - Fixed: {$global_successes}/{$global_attempts} pages");
 
                         } catch (\Throwable $e) {
+                            $scriptFailed = true;
                             outputMessage("❌ ERROR during processing: " . $e->getMessage());
                             outputMessage("You can restore from backup if needed");
-                            logger($user->data()->id, LogCategories::LOG_CATEGORY_DATABASE_ERROR, "Permission fix failed: " . $e->getMessage());
+                            try {
+                                logger($user->data()->id, LogCategories::LOG_CATEGORY_FIX_SCRIPT_ERROR, "Permission fix failed: " . $e->getMessage());
+                            } catch (\Throwable $_) {
+                                // Secondary failure — logger unavailable, ignore silently
+                            }
                         }
 
                     // Record script completion
                     try {
                         $db->query("INSERT INTO fix_script_runs (script_name) VALUES (?)", [basename(__FILE__)]);
-                        outputMessage("✅ Script completion recorded");
+                        outputMessage($scriptFailed ? "Script completion recorded" : "✅ Script completion recorded");
                     } catch (Exception $record_e) {
                         outputMessage("⚠️  Could not record script completion: " . $record_e->getMessage());
                     }
 
                 outputMessage("");
-                outputMessage("Script completed at " . date("h:i:sa"));
+                if (!$scriptFailed) {
+                    outputMessage("Script completed at " . date("h:i:sa"));
+                }
 
                 // Calculate final stats
                 $completionPercentage = $global_attempts > 0 ? round(($global_successes / $global_attempts) * 100) : 100;
@@ -1468,7 +1495,8 @@ function abortProcess() {
                     $rateIcon = 'exclamation-triangle';
                 }
 
-                echo "<script nonce=\"" . htmlspecialchars($userspice_nonce ?? '', ENT_QUOTES, 'UTF-8') . "\">
+                if (!$scriptFailed) {
+                    echo "<script nonce=\"" . htmlspecialchars($userspice_nonce ?? '', ENT_QUOTES, 'UTF-8') . "\">
     // Call completion summary in parent window if in iframe
     if (window.parent && window.parent.showCompletionSummary) {
         window.parent.showCompletionSummary(`
@@ -1494,6 +1522,7 @@ function abortProcess() {
         `);
     }
     </script>";
+                }
             }
 
             ?>
