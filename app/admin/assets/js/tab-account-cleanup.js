@@ -21,6 +21,8 @@
         var countBadge  = document.getElementById(opts.prefix + 'Count');
         var deleteForm  = document.getElementById(opts.prefix + 'DeleteForm');
 
+        if (!batchInput || !selCountDisp || !deleteBtn || !deleteForm) return;
+
         batchInput.addEventListener('input', function () {
             limitDisp.textContent = this.value;
         });

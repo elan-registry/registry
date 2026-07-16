@@ -45,7 +45,7 @@ function testEmailConfiguration() {
         }
     });
 
-    const btn = $('button[onclick="testEmailConfiguration()"]');
+    const btn = $('#testEmailBtn');
     const originalText = btn.html();
 
     if (invalidEmails.length > 0) {
