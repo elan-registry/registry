@@ -27,8 +27,8 @@
     const lon = window.carDetailsMapConfig.lon;
     const series = window.carDetailsMapConfig.series;
 
-    const seriesClass = (function(s) {
-        s = s.toLowerCase();
+    function getSeriesClass(name) {
+        const s = name.toLowerCase();
         if (s.includes('sprint')) return 'sprint';
         if (s.includes('+2'))     return 'plus2';
         if (s.includes('s1'))     return 's1';
@@ -36,7 +36,8 @@
         if (s.includes('s3'))     return 's3';
         if (s.includes('s4'))     return 's4';
         return 'unknown';
-    })(series);
+    }
+    const seriesClass = getSeriesClass(series);
 
     const map = new maplibregl.Map({
         container: 'map',

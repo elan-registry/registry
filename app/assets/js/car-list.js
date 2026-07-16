@@ -46,8 +46,7 @@
             render: function(data, type, row) {
                 const carId = parseInt(data, 10);
                 if (!Number.isFinite(carId) || carId <= 0) { return ''; }
-                const isNew = typeof window.carListConfig.newCarIds !== 'undefined'
-                    && window.carListConfig.newCarIds.includes(carId);
+                const isNew = window.carListConfig.newCarIds?.includes(carId);
                 const badge = isNew ? ' <span class="badge er-badge-yellow badge-sm">NEW</span>' : '';
                 // carId is a validated integer; urlRoot is a system-controlled path — concatenation is safe
                 return '<a class="btn btn-primary btn-sm" href="' + window.carListConfig.urlRoot + 'app/owner/cars/details.php?car_id=' + carId + '"><i class="fas fa-eye"></i> Details' + badge + '</a>';
@@ -114,8 +113,8 @@
 
     document.querySelectorAll('.filter-pill').forEach(function(btn) {
         btn.addEventListener('click', function() {
-            var col = this.dataset.col;
-            var val = this.dataset.value;
+            const col = this.dataset.col;
+            const val = this.dataset.value;
             document.querySelectorAll('.filter-pill[data-col="' + col + '"]').forEach(function(b) {
                 b.classList.remove('active', 'btn-primary');
                 b.classList.add('btn-outline-secondary');
@@ -127,7 +126,7 @@
     });
 
     document.getElementById('toggle-date-added').addEventListener('click', function() {
-        var col = table.column(12);
+        const col = table.column(12);
         col.visible(!col.visible());
         this.innerHTML = col.visible()
             ? '<i class="fas fa-calendar-alt"></i> Hide Date Added'

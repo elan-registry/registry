@@ -12,7 +12,6 @@
     }
 
     var cfg = window.editCarConfig;
-    const csrf = $('#csrf').val();
     const car_id = $('#car_id').val();
 
     $(document).ready(function() {
@@ -96,7 +95,7 @@
         });
 
         // Hydrate existing images in edit mode
-        if (car_id && car_id !== '') {
+        if (car_id) {
             new ElanRegistryAPI().post(cfg.urlRoot + 'app/api/cars/save.php', {
                 carID: car_id,
                 action: 'fetchImages'
@@ -165,7 +164,7 @@
                 );
                 return;
             }
-            if (car_id && car_id !== '' && fileItem.origin === FilePond.FileOrigin.LOCAL) {
+            if (car_id && fileItem.origin === FilePond.FileOrigin.LOCAL) {
                 const filename = fileItem.getMetadata('serverFilename');
                 new ElanRegistryAPI().post(cfg.urlRoot + 'app/api/cars/save.php', {
                     action: 'removeImages',
@@ -280,7 +279,7 @@
                     submitBtn.textContent = submitBtn.dataset.label;
                     displayValidationErrors(data);
                 }
-            } catch (err) {
+            } catch (_err) {
                 submitBtn.disabled = false;
                 submitBtn.textContent = submitBtn.dataset.label;
                 $('#message').removeClass('d-none').html('<div class="alert alert-danger">An error occurred. Please try again.</div>');
@@ -342,8 +341,8 @@
         }
         // Pre-populate dropdown menus if we are updating a car
         if (cfg.isUpdate) {
-            var year = cfg.year;
-            var modelValue = cfg.model;
+            const year = cfg.year;
+            const modelValue = cfg.model;
 
             // Set year and trigger change to load models
             $('#year').val(year).trigger('change');
@@ -355,12 +354,7 @@
             }, 500);
 
             // Show all fields
-            $('#color').prop('disabled', false);
-            $('#engine').prop('disabled', false);
-            $('#purchasedate').prop('disabled', false);
-            $('#solddate').prop('disabled', false);
-            $('#website').prop('disabled', false);
-            $('#comments').prop('disabled', false);
+            $('#color, #engine, #purchasedate, #solddate, #website, #comments').prop('disabled', false);
 
             // Set the form text for Update
             $('#submit').text('Update Car').attr('data-label', 'Update Car');
