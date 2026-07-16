@@ -75,7 +75,7 @@ try {
 </div>
 
 <?php if ($showCleanupPrompt): ?>
-<div class="alert alert-warning">
+<div class="alert alert-warning cleanup-prompt-alert">
     <h5><i class="fas fa-exclamation-triangle"></i> Backup Cleanup Recommended</h5>
     <p class="mb-2">Found <strong><?= $oldBackupsCount ?></strong> backup files older than 30 days that can be cleaned up.</p>
     <p class="mb-2"><strong>Current backup storage:</strong></p>
@@ -97,7 +97,7 @@ try {
     <a href="?tab=maintenance" class="btn btn-warning btn-sm">
         <i class="fas fa-tools"></i> Go to Maintenance
     </a>
-    <button type="button" class="btn btn-secondary btn-sm ms-2" onclick="dismissCleanupPrompt()">
+    <button type="button" class="btn btn-secondary btn-sm ms-2" data-dismiss-target=".cleanup-prompt-alert">
         <i class="fas fa-times"></i> Dismiss
     </button>
 </div>
@@ -197,12 +197,3 @@ try {
         </div>
     </div>
 </div>
-
-<script>
-function dismissCleanupPrompt() {
-    const alertEl = document.querySelector('.alert-warning');
-    if (alertEl) {
-        alertEl.style.display = 'none';
-    }
-}
-</script>

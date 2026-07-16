@@ -73,11 +73,8 @@ try {
 } catch (PDOException $e) {
     // Header stats are cosmetic — a PDOException here may indicate broader DB issues
     // affecting maintenance operations on this page.
-    logger($currentUserId ?? 0, LogCategories::LOG_CATEGORY_DATABASE_ERROR,
+    logger($currentUserId, LogCategories::LOG_CATEGORY_DATABASE_ERROR,
            "Database error getting system status: " . $e->getMessage());
-} catch (RuntimeException $e) {
-    logger($currentUserId ?? 0, LogCategories::LOG_CATEGORY_SYSTEM_ERROR,
-           "Runtime error getting system status: " . $e->getMessage());
 }
 
 ?>
@@ -190,12 +187,8 @@ try {
 
 <?php require_once $abs_us_root . $us_url_root . 'users/includes/html_footer.php'; ?>
 
-<link rel="stylesheet" href="assets/manage-consolidated.min.css?v=<?= ASSET_VERSION ?>">
-<script>
-    window.elanUrlRoot = '<?= $us_url_root ?>';
-    // Make CSRF token available to ElanRegistryAPI client
-    document.documentElement.setAttribute('data-csrf-token', '<?= $csrfToken ?>');
-</script>
-<script src="assets/manage-consolidated.min.js?v=<?= ASSET_VERSION ?>"></script>
+<link rel="stylesheet" href="assets/admin-core.min.css?v=<?= ASSET_VERSION ?>">
+<?php include 'includes/partials/js-data-island.php'; ?>
+<script src="assets/admin-core.min.js?v=<?= ASSET_VERSION ?>"></script>
 <script src="assets/backup-operations.min.js?v=<?= ASSET_VERSION ?>"></script>
 

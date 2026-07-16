@@ -67,6 +67,7 @@ try {
     logger(0, LogCategories::LOG_CATEGORY_SECURITY,
         "Admin page accessed with invalid user session on $php_self");
     Redirect::to($us_url_root . 'users/login.php');
+    die();
 }
 
 // Tab routing - determine which tab to show
@@ -161,7 +162,7 @@ try {
 
 } catch (\Throwable $e) {
     // Fail silently for header stats - main functionality should still work
-    logger($currentUserId ?? 0, LogCategories::LOG_CATEGORY_SYSTEM_ERROR,
+    logger($currentUserId, LogCategories::LOG_CATEGORY_SYSTEM_ERROR,
            "Database or runtime error getting system status: " . $e->getMessage());
 }
 
@@ -196,14 +197,10 @@ if (ElanInput::existsPost()) {
                             : "User ID $user_id";
 
                         $reason = "Car was reassigned to $targetName (User ID: $user_id) by admin " . $currentUserId;
-                        $transferSuccess = $car->transfer((int) $user_id, $reason);
+                        $car->transfer((int) $user_id, $reason);
 
-                        if ($transferSuccess) {
-                            $successes[] = "Car ID $car_id successfully reassigned to $targetName";
-                            logger($currentUserId, LogCategories::LOG_CATEGORY_CAR_ACTIONS, "Car ID $car_id reassigned to User ID $user_id");
-                        } else {
-                            $errors[] = "Failed to reassign car ID $car_id";
-                        }
+                        $successes[] = "Car ID $car_id successfully reassigned to $targetName";
+                        logger($currentUserId, LogCategories::LOG_CATEGORY_CAR_ACTIONS, "Car ID $car_id reassigned to User ID $user_id");
                     } catch (CarPermissionException $e) {
                         $errors[] = "Permission denied for car ID {$car_id}.";
                         logger($currentUserId, LogCategories::LOG_CATEGORY_ACCESS_DENIED, "Car reassignment permission denied for Car ID {$car_id}: " . $e->getMessage());
@@ -246,6 +243,8 @@ if (ElanInput::existsPost()) {
 
                     // Assign old_car_id / new_car_id and build the audit comment based on reason code
                     $mergeComment = '';
+                    $old_car_id = 0;
+                    $new_car_id = 0;
                     switch ($reason[0]) {
                         case "duplicate":
                             // Newer (higher-ID) car is kept as canonical
@@ -795,10 +794,7 @@ if (ElanInput::existsPost()) {
 <script src="<?=$us_url_root?>app/assets/js/location-picker.min.js?v=<?= ASSET_VERSION ?>"></script>
 
 <!-- Include custom CSS and JavaScript -->
-<link rel="stylesheet" href="assets/manage-consolidated.min.css?v=<?= ASSET_VERSION ?>">
-<script>
-    window.elanUrlRoot = '<?= $us_url_root ?>';
-    // Make CSRF token available to ElanRegistryAPI client
-    document.documentElement.setAttribute('data-csrf-token', '<?= $csrfToken ?>');
-</script>
-<script src="assets/manage-consolidated.min.js?v=<?= ASSET_VERSION ?>"></script>
+<link rel="stylesheet" href="assets/admin-core.min.css?v=<?= ASSET_VERSION ?>">
+<?php include 'includes/partials/js-data-island.php'; ?>
+<script src="assets/admin-core.min.js?v=<?= ASSET_VERSION ?>"></script>
+<script src="<?= $us_url_root ?>app/admin/assets/js/load-owner-profile.min.js?v=<?= ASSET_VERSION ?>"></script>
