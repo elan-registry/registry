@@ -86,9 +86,9 @@ if (!securePage($php_self)) {
 
 					<!-- Submit Button -->
 					<div class="d-grid gap-2 d-md-flex justify-content-md-end">
-						<a href="javascript:history.back()" class="btn btn-outline-secondary me-md-2">
+						<button type="button" data-action="goBack" class="btn btn-outline-secondary me-md-2">
 							<i class="fas fa-arrow-left"></i> Cancel
-						</a>
+						</button>
 						<button type="submit" class="btn btn-primary btn-lg">
 							<i class="fas fa-paper-plane"></i> Send Feedback
 						</button>

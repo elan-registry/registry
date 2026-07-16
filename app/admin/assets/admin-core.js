@@ -1658,6 +1658,8 @@ document.addEventListener('click', function(e) {
     const btn = e.target.closest('[data-action]');
     if (!btn) return;
     const action = btn.dataset.action;
+    // Tab-specific functions (e.g. testEmailConfiguration, createManualBackup) are defined
+    // in per-tab JS files loaded separately; ESLint can't see them statically.
     /* eslint-disable no-undef */
     switch (action) {
         case 'testEmailConfiguration':
@@ -1694,6 +1696,7 @@ document.addEventListener('click', function(e) {
                 );
             } catch (err) {
                 console.error('[openAdminContactModal] Failed to parse data attributes:', err);
+                showNotification('Could not open contact form — data may be malformed. Refresh and try again.', 'danger');
             }
             break;
     }

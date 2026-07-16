@@ -107,6 +107,7 @@ class SecurityHeadersTest extends TestCase
             'X-Frame-Options',
             'X-Content-Type-Options',
             'Referrer-Policy',
+            'Permissions-Policy',
         ];
 
         foreach ($expectedHeaders as $header) {
@@ -173,6 +174,33 @@ class SecurityHeadersTest extends TestCase
             '/Content-Security-Policy:.*frame-ancestors\s+\'self\'/s',
             $this->fileContent,
             'CSP header should contain frame-ancestors directive'
+        );
+    }
+
+    /**
+     * Test that CSP script-src does not contain unsafe-inline (removed in #1328)
+     *
+     * unsafe-inline was removed and replaced with per-request nonces in #1328.
+     * Adding it back would silently break the entire nonce strategy.
+     */
+    public function testCspScriptSrcDoesNotContainUnsafeInline(): void
+    {
+        $this->assertDoesNotMatchRegularExpression(
+            '/script-src\s[^;]*\'unsafe-inline\'/',
+            $this->fileContent,
+            "CSP script-src must not contain 'unsafe-inline' — removed in #1328, replaced by nonce"
+        );
+    }
+
+    /**
+     * Test that CSP script-src includes a nonce token (replacement for unsafe-inline)
+     */
+    public function testCspScriptSrcContainsNonce(): void
+    {
+        $this->assertMatchesRegularExpression(
+            '/script-src[^;]*\'nonce-/',
+            $this->fileContent,
+            "CSP script-src must include a nonce token — the nonce replaces 'unsafe-inline'"
         );
     }
 

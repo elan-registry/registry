@@ -1084,7 +1084,7 @@ function abortProcess() {
 
             <iframe id="execute-frame" name="execute-frame" style="display:none;"></iframe>
             <form id="execute-form" method="POST" action="" target="execute-frame">
-                <input type="hidden" name="csrf" value="<?= Token::generate() ?>">
+                <input type="hidden" name="csrf" value="<?= htmlspecialchars($csrfToken, ENT_QUOTES, 'UTF-8') ?>">
                 <input type="hidden" name="execute" value="1">
             </form>
 
@@ -1097,20 +1097,21 @@ function abortProcess() {
 
                 function outputMessage(string $message, ?int $percentage = null): void {
                     global $userspice_nonce;
-                    $safe = addslashes(htmlspecialchars($message, ENT_QUOTES, 'UTF-8'));
-                    echo '<script nonce="' . htmlspecialchars($userspice_nonce ?? '', ENT_QUOTES, 'UTF-8') . '">
+                    $jsMessage = json_encode($message, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT);
+                    $nonce = htmlspecialchars($userspice_nonce ?? '', ENT_QUOTES, 'UTF-8');
+                    echo '<script nonce="' . $nonce . '">
                         if (window.parent && window.parent.addLogMessage) {
-                            window.parent.addLogMessage("' . $safe . '");
+                            window.parent.addLogMessage(' . $jsMessage . ');
                         } else if (window.addLogMessage) {
-                            addLogMessage("' . $safe . '");
+                            addLogMessage(' . $jsMessage . ');
                         }
                     </script>';
                     if ($percentage !== null) {
-                        echo '<script nonce="' . htmlspecialchars($userspice_nonce ?? '', ENT_QUOTES, 'UTF-8') . '">
+                        echo '<script nonce="' . $nonce . '">
                             if (window.parent && window.parent.updateProgress) {
-                                window.parent.updateProgress(' . $percentage . ', 100, "' . $safe . '");
+                                window.parent.updateProgress(' . $percentage . ', 100, ' . $jsMessage . ');
                             } else if (window.updateProgress) {
-                                updateProgress(' . $percentage . ', 100, "' . $safe . '");
+                                updateProgress(' . $percentage . ', 100, ' . $jsMessage . ');
                             }
                         </script>';
                     }
@@ -1175,6 +1176,7 @@ function abortProcess() {
                                 logger($user->data()->id, LogCategories::LOG_CATEGORY_PERMISSION_FIX, "Set page to PUBLIC with no permissions: {$issue['page']} (ID: {$issue['id']})");
                             } catch (Exception $e) {
                                 outputMessage("✗ Failed to update {$issue['page']}: " . $e->getMessage(), $percentage);
+                                logger($user->data()->id, LogCategories::LOG_CATEGORY_PERMISSION_FIX_ERROR, "Failed to set page to PUBLIC: {$issue['page']} (ID: {$issue['id']}) - " . $e->getMessage());
                             }
                         }
                     }
@@ -1217,6 +1219,7 @@ function abortProcess() {
                                 logger($user->data()->id, LogCategories::LOG_CATEGORY_PERMISSION_FIX, "Set page to PRIVATE with Admin+Editor: {$issue['page']} (ID: {$issue['id']})");
                             } catch (Exception $e) {
                                 outputMessage("✗ Failed to update {$issue['page']}: " . $e->getMessage(), $percentage);
+                                logger($user->data()->id, LogCategories::LOG_CATEGORY_PERMISSION_FIX_ERROR, "Failed to set page to PRIVATE with Admin+Editor: {$issue['page']} (ID: {$issue['id']}) - " . $e->getMessage());
                             }
                         }
                     }
@@ -1249,6 +1252,7 @@ function abortProcess() {
                                 logger($user->data()->id, LogCategories::LOG_CATEGORY_PERMISSION_FIX, "Set page to PRIVATE with User: {$issue['page']} (ID: {$issue['id']})");
                             } catch (Exception $e) {
                                 outputMessage("✗ Failed to update {$issue['page']}: " . $e->getMessage(), $percentage);
+                                logger($user->data()->id, LogCategories::LOG_CATEGORY_PERMISSION_FIX_ERROR, "Failed to set page to PRIVATE with User: {$issue['page']} (ID: {$issue['id']}) - " . $e->getMessage());
                             }
                         }
                     }
@@ -1275,6 +1279,7 @@ function abortProcess() {
                                 logger($user->data()->id, LogCategories::LOG_CATEGORY_PERMISSION_FIX, "Set page to PRIVATE with no permissions: {$issue['page']} (ID: {$issue['id']})");
                             } catch (Exception $e) {
                                 outputMessage("✗ Failed to update {$issue['page']}: " . $e->getMessage(), $percentage);
+                                logger($user->data()->id, LogCategories::LOG_CATEGORY_PERMISSION_FIX_ERROR, "Failed to set page to PRIVATE with no perms: {$issue['page']} (ID: {$issue['id']}) - " . $e->getMessage());
                             }
                         }
                     }
@@ -1298,6 +1303,7 @@ function abortProcess() {
                                 logger($user->data()->id, LogCategories::LOG_CATEGORY_PERMISSION_FIX, "Removed all permissions from PUBLIC page: {$issue['page']} (ID: {$issue['id']})");
                             } catch (Exception $e) {
                                 outputMessage("✗ Failed to update {$issue['page']}: " . $e->getMessage(), $percentage);
+                                logger($user->data()->id, LogCategories::LOG_CATEGORY_PERMISSION_FIX_ERROR, "Failed to remove perms from PUBLIC page: {$issue['page']} (ID: {$issue['id']}) - " . $e->getMessage());
                             }
                         }
                     }
@@ -1337,6 +1343,7 @@ function abortProcess() {
                                 logger($user->data()->id, LogCategories::LOG_CATEGORY_PERMISSION_FIX, "Added admin permissions to page: {$issue['page']} (ID: {$issue['id']})");
                             } catch (Exception $e) {
                                 outputMessage("✗ Failed to update {$issue['page']}: " . $e->getMessage(), $percentage);
+                                logger($user->data()->id, LogCategories::LOG_CATEGORY_PERMISSION_FIX_ERROR, "Failed to add admin perms to page: {$issue['page']} (ID: {$issue['id']}) - " . $e->getMessage());
                             }
                         }
                     }
@@ -1403,6 +1410,7 @@ function abortProcess() {
                                 logger($user->data()->id, LogCategories::LOG_CATEGORY_PERMISSION_FIX, "Added owner permissions to page: {$issue['page']} (ID: {$issue['id']})");
                             } catch (Exception $e) {
                                 outputMessage("✗ Failed to update {$issue['page']}: " . $e->getMessage(), $percentage);
+                                logger($user->data()->id, LogCategories::LOG_CATEGORY_PERMISSION_FIX_ERROR, "Failed to add owner perms to page: {$issue['page']} (ID: {$issue['id']}) - " . $e->getMessage());
                             }
                         }
                     }
@@ -1494,7 +1502,7 @@ function abortProcess() {
 
 <!-- Return buttons -->
 <div style="margin-top: 20px; text-align: center;">
-    <?= admin_script_close_button('', '../../maintenance.php?tab=maintenance') ?>
+    <?= admin_script_close_button() ?>
     <button data-action="returnToMenu" class="btn btn-outline-secondary ml-2">
         <i class="fa fa-list" aria-hidden="true"></i> FIX Menu
     </button>

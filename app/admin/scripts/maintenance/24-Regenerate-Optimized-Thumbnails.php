@@ -408,7 +408,8 @@ $currentSizes = $settings->elan_image_thumbnail_sizes ?? '100,300,600,1024,2048'
                     $total_cars = $total_cars_result[0]->count;
 
                     // Get batched cars with images for processing
-                    // Both $batch_size and $offset are validated integers (cast + allowlist above) — safe to interpolate.
+                    // $batch_size is allowlist-validated (cast + in_array against [5,10,15,25]).
+                    // $offset is cast to int, which is sufficient for SQL safety with LIMIT/OFFSET.
                     // UserSpice's DB class does not support bound parameters for LIMIT/OFFSET.
                     $cars_with_images = $db->query(
                         "SELECT id, image FROM cars WHERE image IS NOT NULL AND image != '' LIMIT {$batch_size} OFFSET {$offset}"
@@ -433,6 +434,7 @@ $currentSizes = $settings->elan_image_thumbnail_sizes ?? '100,300,600,1024,2048'
                 if ($total_cars == 0) {
                     outputMessage("ℹ️  No cars with images found. Process complete.");
                     echo '<script nonce="' . htmlspecialchars($userspice_nonce ?? '', ENT_QUOTES, 'UTF-8') . '">showCompletionSummary("<p>No cars with images to process.</p>", false);</script>';
+                    unset($_SESSION['thumb_batch_token']);
                     exit;
                 }
 
@@ -463,6 +465,7 @@ $currentSizes = $settings->elan_image_thumbnail_sizes ?? '100,300,600,1024,2048'
 
                     // Log final completion
                     logger($user->data()->id, LogCategories::LOG_CATEGORY_FIX_SCRIPT, "Thumbnail optimization completed (batched) - Total Processed: {$cumulative_processed}, Generated: {$cumulative_generated}, Removed: {$cumulative_removed}, Errors: {$cumulative_errors} (Issue #176)");
+                    unset($_SESSION['thumb_batch_token']);
                     exit;
                 }
 
@@ -724,7 +727,7 @@ $currentSizes = $settings->elan_image_thumbnail_sizes ?? '100,300,600,1024,2048'
 
 <!-- Return to Admin Console button -->
 <div style="margin-top: 20px; text-align: center;">
-    <?= admin_script_close_button('', '../../maintenance.php?tab=maintenance') ?>
+    <?= admin_script_close_button() ?>
 </div>
 
 <!-- footers -->

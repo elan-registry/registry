@@ -25,6 +25,12 @@ parameters:
 			path: app/admin/includes/tab-placeholder.php
 
 		-
+			message: '#^Function admin_script_close_button invoked with 2 parameters, 0\-1 required\.$#'
+			identifier: arguments.count
+			count: 1
+			path: app/admin/scripts/fix/01-Rename-Legacy-Image-Files.php
+
+		-
 			message: '#^Undefined variable\: \$user$#'
 			identifier: variable.undefined
 			count: 1

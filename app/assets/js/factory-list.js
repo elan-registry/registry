@@ -2,7 +2,7 @@
   'use strict';
 
   const textRender = $.fn.dataTable.render.text();
-  const table = $('#cartable').DataTable({
+  $('#cartable').DataTable({
     fixedHeader: true,
     responsive: true,
     pageLength: 25,

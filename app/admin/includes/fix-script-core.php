@@ -69,16 +69,12 @@ function admin_script_start_form(
 
 /**
  * Returns the HTML for a "Close Window" button.
- * Closes the script window; if an opener window exists, reloads it first.
- * If the window has no opener (e.g. direct URL access), navigates to $fallbackUrl instead.
+ * Calls window.close() when clicked. These scripts open in a new tab from
+ * the admin panel, so closing the tab is the correct "return" behavior.
  *
  * @param string $extraClass  Additional Bootstrap/custom classes to append
- * @param string $fallbackUrl URL to navigate to when window.opener is absent (e.g. '../../maintenance.php?tab=maintenance').
- *                            Must be a trusted static string — never pass user-supplied input. The URL is embedded
- *                            directly inside a JS string literal; user-controlled values would require JS-context
- *                            encoding, which this function does not perform.
  */
-function admin_script_close_button(string $extraClass = '', string $fallbackUrl = ''): string
+function admin_script_close_button(string $extraClass = ''): string
 {
     global $userspice_nonce;
     $cls = trim('btn btn-primary btn-lg ' . $extraClass);

@@ -170,7 +170,8 @@
                     action: 'removeImages',
                     carID: car_id,
                     file: filename
-                }).catch(function() {
+                }).catch(function(err) {
+                    console.error('[car-edit] removeImages call failed:', err);
                     $('#message').removeClass('d-none').html(
                         '<div class="alert alert-warning">A photo could not be removed from the server. ' +
                         'Please refresh the page and try again before submitting.</div>'
@@ -279,7 +280,8 @@
                     submitBtn.textContent = submitBtn.dataset.label;
                     displayValidationErrors(data);
                 }
-            } catch (_err) {
+            } catch (err) {
+                console.error('[car-edit] submitCarForm failed:', err);
                 submitBtn.disabled = false;
                 submitBtn.textContent = submitBtn.dataset.label;
                 $('#message').removeClass('d-none').html('<div class="alert alert-danger">An error occurred. Please try again.</div>');
@@ -475,7 +477,8 @@
         }).then(function(result) {
             validChassis = result.valid ? _chassis : '';
             updateChassisUI(result.valid, result.error_reason || '');
-        }).catch(function() {
+        }).catch(function(err) {
+            console.error('[car-edit] chassis validation failed:', err);
             validChassis = overrideEnabled ? _chassis : '';
             updateChassisUI(validChassis !== '', 'Validation service temporarily unavailable');
         });

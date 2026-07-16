@@ -39,7 +39,8 @@ The application required a security header strategy that:
 
 6. Does not require a CSP nonce system given the UserSpice framework's use of
 
-   inline JavaScript and inline styles throughout its templates
+   inline JavaScript and inline styles throughout its templates *(this constraint
+   was reversed in v2.27.0 — see Nonce Feasibility Assessment below)*
 
 ### Threat Model
 
@@ -151,7 +152,7 @@ third-party domains required by the application:
 | Directive | Value | Purpose |
 | --- | --- | --- |
 | `default-src` | `'self'` | Catch-all fallback for unlisted resource types |
-| `script-src` | `'self' 'nonce-{per-request}'` + 4 SHA-256 hashes + CDN domains | Allow scripts via per-request nonce; belt-and-suspenders SHA-256 hashes for static upstream scripts |
+| `script-src` | `'self' 'nonce-{per-request}'` + 5 SHA-256 hashes + CDN domains | Allow scripts via per-request nonce; belt-and-suspenders SHA-256 hashes for static upstream scripts |
 | `style-src` | `'self' 'unsafe-inline'` + CDN domains | Allow Bootstrap/Bootswatch/FontAwesome inline and CDN styles |
 | `img-src` | `'self' data: blob:` + image domains | Allow embedded SVGs (`data:`), canvas exports (`blob:`), MapLibre GL JS / VersaTiles map tiles (`https://tiles.versatiles.org`), Gravatar avatars |
 | `font-src` | `'self'` + font CDN domains | FontAwesome kit and Google Fonts |
@@ -385,7 +386,7 @@ via HTTP response inspection.
 | 2026-04-27 | Remove 11 stale/library CDN domains from CSP allowlist (libraries self-hosted per ADR-015) | #405 |
 | 2026-05-06 | Remove Google Maps domains (`maps.googleapis.com`, `maps.gstatic.com`, `gstatic.com`, `ssl.gstatic.com`, `www.gstatic.com`) from CSP allowlist; add `https://tiles.versatiles.org` to `img-src` and `connect-src` for MapLibre GL JS tile fetches | v2.22.0 |
 | 2026-07-13 | Add `form-action 'self'` directive; remove `'unsafe-eval'` from `script-src` (grep-verified: no `eval()` or `new Function()` in first-party JS under `app/assets/js/`, `app/admin/assets/`, `usersc/js/`, or inline `<script>` blocks in customizer templates) | #1326 |
-| 2026-07-15 | Remove `'unsafe-inline'` from `script-src`; add per-request nonce (`'nonce-{$userspice_nonce}'`) generated in `security_headers.php`; add SHA-256 hashes for 4 static upstream scripts as belt-and-suspenders; wire nonce attributes to all data-island `<script>` blocks introduced in #1328 | #1328 |
+| 2026-07-15 | Remove `'unsafe-inline'` from `script-src`; add per-request nonce (`'nonce-{$userspice_nonce}'`) generated in `security_headers.php`; add SHA-256 hashes for 5 static upstream scripts as belt-and-suspenders; wire nonce attributes to all data-island `<script>` blocks introduced in #1328 | #1328 |
 
 > **2026-04-27 (#405):** Removed the following domains from the CSP allowlist:
 >
