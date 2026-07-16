@@ -68,9 +68,9 @@ function admin_script_start_form(
 }
 
 /**
- * Returns the HTML for a "Close Window" button.
- * Calls window.close() when clicked. These scripts open in a new tab from
- * the admin panel, so closing the tab is the correct "return" behavior.
+ * Returns the HTML for a "Close Window / Return to Menu" button.
+ * Scripts are opened via <a target="_blank"> links (implicit noopener), so window.close()
+ * is unreliable. The handler falls back to explicit navigation when window.opener is null.
  *
  * @param string $extraClass  Additional Bootstrap/custom classes to append
  */
@@ -84,7 +84,11 @@ function admin_script_close_button(string $extraClass = ''): string
         . '"><i class="fa fa-times"></i> Close Window</button>'
         . '<script nonce="' . $safeNonce . '">'
         . '(function(){if(!window.__adminCloseWired){window.__adminCloseWired=true;'
-        . 'document.addEventListener("click",function(e){if(e.target.closest("[data-action=\'adminScriptClose\']"))window.close();});}})();'
+        . 'document.addEventListener("click",function(e){'
+        . 'if(!e.target.closest("[data-action=\'adminScriptClose\']"))return;'
+        . 'if(window.opener){window.opener.location.reload();window.close();}'
+        . 'else{window.location.href="../../index.php?tab=maintenance";}'
+        . '});}})();'
         . '</script>';
 }
 

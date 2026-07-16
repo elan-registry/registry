@@ -303,7 +303,8 @@ $currentSizes = $settings->elan_image_thumbnail_sizes ?? '100,300,600,1024,2048'
                     const btn = e.target.closest('[data-action]');
                     if (!btn) return;
                     if (btn.dataset.action === 'returnToMenu') {
-                        window.close();
+                        if (window.opener) { window.opener.location.reload(); window.close(); }
+                        else { window.location.href = '../../index.php?tab=maintenance'; }
                     }
                 });
             </script>
