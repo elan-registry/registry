@@ -69,7 +69,13 @@ function buildAffectedList(\DB $db): array
     return $affected;
 }
 
-$affected = buildAffectedList($db);
+try {
+    $affected = buildAffectedList($db);
+} catch (\RuntimeException $e) {
+    logger((int) $user->data()->id, LogCategories::LOG_CATEGORY_FIX_SCRIPT,
+        '01-Rename-Legacy-Image-Files: failed to query cars — ' . $e->getMessage());
+    die('<div class="alert alert-danger">' . htmlspecialchars($e->getMessage(), ENT_QUOTES, 'UTF-8') . '</div>');
+}
 
 ?>
 
