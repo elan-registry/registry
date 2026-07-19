@@ -464,7 +464,7 @@ if (ElanInput::existsPost()) {
                         <!-- Tab Content -->
                         <div class="card-body">
                             <div class="tab-content" id="managementTabContent">
-
+                                <?php include 'includes/partials/js-data-island.php'; ?>
                                 <?php
                                 // Include the appropriate tab content
                                 $tabFile = 'includes/tab-' . str_replace('-', '_', $activeTab) . '.php';
@@ -795,6 +795,5 @@ if (ElanInput::existsPost()) {
 
 <!-- Include custom CSS and JavaScript -->
 <link rel="stylesheet" href="assets/admin-core.min.css?v=<?= ASSET_VERSION ?>">
-<?php include 'includes/partials/js-data-island.php'; ?>
 <script src="assets/admin-core.min.js?v=<?= ASSET_VERSION ?>"></script>
 <script src="<?= $us_url_root ?>app/admin/assets/js/load-owner-profile.min.js?v=<?= ASSET_VERSION ?>"></script>

@@ -129,7 +129,7 @@ try {
 
                 <!-- Location Actions -->
                 <div class="mt-3">
-                    <button type="button" class="btn btn-outline-primary btn-sm" data-sync-owner-id="<?= (int)$ownerId ?>">
+                    <button type="button" class="btn btn-outline-primary btn-sm" data-sync-owner-id="<?= (int)$ownerId // nosemgrep: php.lang.security.taint-unsafe-echo-tag.taint-unsafe-echo-tag ?>">
                         <i class="fas fa-sync"></i> Sync Location to Owned Cars
                     </button>
                 </div>
@@ -167,13 +167,13 @@ try {
     <script nonce="<?= htmlspecialchars($userspice_nonce ?? '', ENT_QUOTES, 'UTF-8') ?>">
     window.elanOwnerProfileData = {
         csrfToken: <?= json_encode(Token::generate()) ?>,
-        ownerId: <?= (int)$ownerId ?>,
+        ownerId: <?= (int)$ownerId // nosemgrep: php.lang.security.taint-unsafe-echo-tag.taint-unsafe-echo-tag ?>,
         location: {
-            city: <?= json_encode($ownerData->city ?? '', JSON_HEX_TAG | JSON_HEX_AMP) ?>,
-            state: <?= json_encode($ownerData->state ?? '', JSON_HEX_TAG | JSON_HEX_AMP) ?>,
-            country: <?= json_encode($ownerData->country ?? '', JSON_HEX_TAG | JSON_HEX_AMP) ?>,
-            lat: <?= (float)($ownerData->lat ?? 0) ?>,
-            lon: <?= (float)($ownerData->lon ?? 0) ?>
+            city: <?= json_encode($ownerData->city ?? '', JSON_HEX_TAG | JSON_HEX_AMP) // nosemgrep: php.lang.security.taint-unsafe-echo-tag.taint-unsafe-echo-tag ?>,
+            state: <?= json_encode($ownerData->state ?? '', JSON_HEX_TAG | JSON_HEX_AMP) // nosemgrep: php.lang.security.taint-unsafe-echo-tag.taint-unsafe-echo-tag ?>,
+            country: <?= json_encode($ownerData->country ?? '', JSON_HEX_TAG | JSON_HEX_AMP) // nosemgrep: php.lang.security.taint-unsafe-echo-tag.taint-unsafe-echo-tag ?>,
+            lat: <?= (float)($ownerData->lat ?? 0) // nosemgrep: php.lang.security.taint-unsafe-echo-tag.taint-unsafe-echo-tag ?>,
+            lon: <?= (float)($ownerData->lon ?? 0) // nosemgrep: php.lang.security.taint-unsafe-echo-tag.taint-unsafe-echo-tag ?>
         }
     };
     if (typeof initOwnerProfileForm === 'function') {

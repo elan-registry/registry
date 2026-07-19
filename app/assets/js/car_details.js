@@ -62,7 +62,7 @@ function initializeHistoryTable() {
                     d.car_id = carId;
                 },
                 error: function(xhr, error, thrown) {
-                    console.error('History table load failed (car ID: ' + carId + '):', error, thrown, xhr.status);
+                    console.error('History table load failed (car ID: ' + carId + '):', error, thrown, xhr.status); // nosemgrep: javascript.lang.security.audit.unsafe-formatstring.unsafe-formatstring
                     const tableContainer = document.getElementById('carHistoryTable');
                     if (tableContainer && !tableContainer.parentElement.querySelector('.alert')) {
                         const warning = document.createElement('div');

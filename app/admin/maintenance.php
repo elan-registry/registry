@@ -80,7 +80,7 @@ try {
 
 <div class="page-wrapper">
     <!-- Hidden CSRF token for AJAX requests -->
-    <input type="hidden" name="csrf" value="<?= $csrfToken ?>" />
+    <input type="hidden" name="csrf" value="<?= htmlspecialchars($csrfToken, ENT_QUOTES, 'UTF-8') ?>" />
 
     <div class="container-fluid">
         <div class="page-container">
@@ -159,7 +159,7 @@ try {
                         <!-- Tab Content -->
                         <div class="card-body">
                             <div class="tab-content" id="managementTabContent">
-
+                                <?php include 'includes/partials/js-data-island.php'; ?>
                                 <?php
                                 $tabFile = 'includes/tab-' . str_replace('-', '_', $activeTab) . '.php'; // $activeTab already whitelist-validated above
                                 $tabPath = __DIR__ . '/' . $tabFile;
@@ -187,7 +187,6 @@ try {
 <?php require_once $abs_us_root . $us_url_root . 'users/includes/html_footer.php'; ?>
 
 <link rel="stylesheet" href="assets/admin-core.min.css?v=<?= ASSET_VERSION ?>">
-<?php include 'includes/partials/js-data-island.php'; ?>
 <script src="assets/admin-core.min.js?v=<?= ASSET_VERSION ?>"></script>
 <script src="assets/backup-operations.min.js?v=<?= ASSET_VERSION ?>"></script>
 

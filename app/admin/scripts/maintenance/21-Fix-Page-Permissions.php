@@ -1140,7 +1140,7 @@ function abortProcess() {
                 }
 
                 // SAFETY: Create automatic backup
-                $backupManager = new BackupManager($db, $abs_us_root . $us_url_root . BACKUP_BASE_DIR);
+                $backupManager = new BackupManager($db, $abs_us_root . $us_url_root . BACKUP_BASE_DIR, (int)$user->data()->id);
                 outputMessage("⚠️  SAFETY NOTICE: Creating automatic backup...");
                 try {
                     $cleanupSummary = $backupManager->performEnhancedCleanup();
