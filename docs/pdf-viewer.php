@@ -17,6 +17,7 @@ $nav_section = (($_GET['subdir'] ?? '') === 'stories') ? 'stories' : 'reference'
 require_once $abs_us_root . $us_url_root . 'usersc/includes/elanregistry_prep.php';
 
 use ElanRegistry\Documentation\DocumentPortalTemplate;
+use ElanRegistry\LogCategories;
 
 if (!securePage($php_self)) {
     die();
