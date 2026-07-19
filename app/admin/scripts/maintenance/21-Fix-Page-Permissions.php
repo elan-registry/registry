@@ -1216,6 +1216,7 @@ function abortProcess() {
                             $currentChange++;
                             $percentage = (int) round(($currentChange / $totalChanges) * 100);
 
+                            $db->beginTransaction();
                             try {
                                 // Set page to private
                                 $db->update('pages', $issue['id'], ['private' => 1]);
@@ -1240,10 +1241,14 @@ function abortProcess() {
                                     ]);
                                 }
 
+                                $db->commit();
                                 $global_successes++;
                                 outputMessage("✅ Set to PRIVATE with Administrator + Editor: {$issue['page']}", $percentage);
                                 logger($user->data()->id, LogCategories::LOG_CATEGORY_PERMISSION_FIX, "Set page to PRIVATE with Admin+Editor: {$issue['page']} (ID: {$issue['id']})");
                             } catch (\Throwable $e) {
+                                if ($db->inTransaction()) {
+                                    $db->rollBack();
+                                }
                                 if (!($e instanceof \Exception)) { throw $e; }
                                 $hadPerPageFailures = true;
                                 outputMessage("✗ Failed to update {$issue['page']}: " . get_class($e) . ': ' . $e->getMessage(), $percentage);
@@ -1261,6 +1266,7 @@ function abortProcess() {
                             $currentChange++;
                             $percentage = (int) round(($currentChange / $totalChanges) * 100);
 
+                            $db->beginTransaction();
                             try {
                                 // Set page to private
                                 $db->update('pages', $issue['id'], ['private' => 1]);
@@ -1275,10 +1281,14 @@ function abortProcess() {
                                     ]);
                                 }
 
+                                $db->commit();
                                 $global_successes++;
                                 outputMessage("✅ Set to PRIVATE with User permission: {$issue['page']}", $percentage);
                                 logger($user->data()->id, LogCategories::LOG_CATEGORY_PERMISSION_FIX, "Set page to PRIVATE with User: {$issue['page']} (ID: {$issue['id']})");
                             } catch (\Throwable $e) {
+                                if ($db->inTransaction()) {
+                                    $db->rollBack();
+                                }
                                 if (!($e instanceof \Exception)) { throw $e; }
                                 $hadPerPageFailures = true;
                                 outputMessage("✗ Failed to update {$issue['page']}: " . get_class($e) . ': ' . $e->getMessage(), $percentage);
@@ -1296,6 +1306,7 @@ function abortProcess() {
                             $currentChange++;
                             $percentage = (int) round(($currentChange / $totalChanges) * 100);
 
+                            $db->beginTransaction();
                             try {
                                 // Set page to private
                                 $db->update('pages', $issue['id'], ['private' => 1]);
@@ -1304,10 +1315,14 @@ function abortProcess() {
                                 $db->query("DELETE FROM permission_page_matches WHERE page_id = ?",
                                     [$issue['id']]);
 
+                                $db->commit();
                                 $global_successes++;
                                 outputMessage("✅ Set to PRIVATE with no permissions: {$issue['page']}", $percentage);
                                 logger($user->data()->id, LogCategories::LOG_CATEGORY_PERMISSION_FIX, "Set page to PRIVATE with no permissions: {$issue['page']} (ID: {$issue['id']})");
                             } catch (\Throwable $e) {
+                                if ($db->inTransaction()) {
+                                    $db->rollBack();
+                                }
                                 if (!($e instanceof \Exception)) { throw $e; }
                                 $hadPerPageFailures = true;
                                 outputMessage("✗ Failed to update {$issue['page']}: " . get_class($e) . ': ' . $e->getMessage(), $percentage);
@@ -1393,6 +1408,7 @@ function abortProcess() {
                             $currentChange++;
                             $percentage = (int) round(($currentChange / $totalChanges) * 100);
 
+                            $db->beginTransaction();
                             try {
                                 // Set page to private
                                 $db->update('pages', $issue['id'], ['private' => 1]);
@@ -1411,10 +1427,14 @@ function abortProcess() {
                                 $db->query("DELETE FROM permission_page_matches WHERE page_id = ? AND permission_id IN (?, ?)",
                                     [$issue['id'], PERM_EDITOR, PERM_USER]);
 
+                                $db->commit();
                                 $global_successes++;
                                 outputMessage("✅ Set to PRIVATE with Administrator only: {$issue['page']}", $percentage);
                                 logger($user->data()->id, LogCategories::LOG_CATEGORY_PERMISSION_FIX, "Set page to PRIVATE with Admin only (no Editor): {$issue['page']} (ID: {$issue['id']})");
                             } catch (\Throwable $e) {
+                                if ($db->inTransaction()) {
+                                    $db->rollBack();
+                                }
                                 if (!($e instanceof \Exception)) { throw $e; }
                                 $hadPerPageFailures = true;
                                 outputMessage("✗ Failed to update {$issue['page']}: " . get_class($e) . ': ' . $e->getMessage(), $percentage);
@@ -1477,6 +1497,7 @@ function abortProcess() {
                         } catch (\Throwable $e) {
                             $scriptFailed = true;
                             outputMessage("❌ ERROR during processing: " . $e->getMessage());
+                            outputMessage("Progress before failure: {$global_successes}/{$global_attempts} fixes applied");
                             outputMessage("You can restore from backup if needed");
                             try {
                                 logger($user->data()->id, LogCategories::LOG_CATEGORY_FIX_SCRIPT_ERROR, "Permission fix failed: " . $e->getMessage());

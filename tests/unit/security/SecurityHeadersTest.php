@@ -220,6 +220,27 @@ class SecurityHeadersTest extends TestCase
     }
 
     /**
+     * Test that CSP does not include external font sources (removed in v2.27.0)
+     *
+     * Google Fonts CDN sources were not used by the active theme. Keeping them
+     * in the CSP unnecessarily widened the allowed origins.
+     */
+    public function testCspDoesNotIncludeExternalFontSources(): void
+    {
+        $this->assertStringNotContainsString(
+            'fonts.googleapis.com',
+            $this->fileContent,
+            'CSP must not include fonts.googleapis.com — fonts are self-hosted, removed in v2.27.0'
+        );
+
+        $this->assertStringNotContainsString(
+            'fonts.gstatic.com',
+            $this->fileContent,
+            'CSP must not include fonts.gstatic.com — fonts are self-hosted, removed in v2.27.0'
+        );
+    }
+
+    /**
      * Test that CSP script-src does not include unsafe-eval
      *
      * No custom JavaScript uses eval() or new Function(), so unsafe-eval

@@ -122,6 +122,8 @@ try {
                         $rawSize = filesize($file);
                         $mtime = filemtime($file);
                         if ($rawSize === false || $mtime === false) {
+                            logger($user->data()->id, LogCategories::LOG_CATEGORY_BACKUP_ERROR,
+                                "filesize()/filemtime() failed for backup file '{$file}' — skipped in listing");
                             continue;
                         }
                         $backups[$type][] = [
@@ -185,11 +187,18 @@ try {
 
                     foreach ($files as $file) {
                         $mtime = is_file($file) ? filemtime($file) : false;
-                        if ($mtime === false || $mtime >= $cutoffTime) {
+                        if ($mtime === false) {
+                            logger($user->data()->id, LogCategories::LOG_CATEGORY_BACKUP_ERROR,
+                                "filemtime() failed for backup file '{$file}' — skipped in cleanup preview");
+                            continue;
+                        }
+                        if ($mtime >= $cutoffTime) {
                             continue;
                         }
                         $rawSize = filesize($file);
                         if ($rawSize === false) {
+                            logger($user->data()->id, LogCategories::LOG_CATEGORY_BACKUP_ERROR,
+                                "filesize() failed for backup file '{$file}' — skipped in cleanup preview");
                             continue;
                         }
                         $filesToDelete[$type][] = [

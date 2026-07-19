@@ -18,21 +18,29 @@ const { test, expect } = require('@playwright/test');
 const ENDPOINT = 'app/admin/includes/system/backup-operations.php';
 
 test.describe('Backup Operations Endpoint — Unauthenticated Access', () => {
-  test('unauthenticated list_backups POST does not return backup data', async ({ page }) => {
+  // securePage() redirects unauthenticated users to the login page (302).
+  // maxRedirects: 0 ensures we assert on the redirect itself, not the login page.
+  const noFollow = { maxRedirects: 0 };
+
+  test('unauthenticated list_backups POST redirects to login', async ({ page }) => {
     const response = await page.request.post(ENDPOINT, {
       form: { action: 'list_backups' },
+      ...noFollow,
     });
 
+    expect(response.status()).toBe(302);
     const body = await response.text();
     expect(body).not.toContain('"backups"');
     expect(body).not.toContain('"success":true');
   });
 
-  test('unauthenticated create_manual_backup POST does not create a backup', async ({ page }) => {
+  test('unauthenticated create_manual_backup POST redirects to login', async ({ page }) => {
     const response = await page.request.post(ENDPOINT, {
       form: { action: 'create_manual_backup', reason: 'security-test' },
+      ...noFollow,
     });
 
+    expect(response.status()).toBe(302);
     const body = await response.text();
     expect(body).not.toContain('"success":true');
     expect(body).not.toContain('"filename"');
