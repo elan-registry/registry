@@ -111,5 +111,5 @@ in the relevant PHP file. No build step required.
 - `/usersc/plugins/*/README.md` — Individual plugin documentation
 - Third-party docs in `/vendor/` and `/node_modules/`
 
-[arch-wiki]: https://github.com/unibrain1/elanregistry/wiki/Elan-Registry-Architecture-and-Database-Design
-[us-wiki]: https://github.com/unibrain1/elanregistry/wiki/Customization-and-Integration-Patterns
+[arch-wiki]: https://github.com/elan-registry/registry/wiki/Elan-Registry-Architecture-and-Database-Design
+[us-wiki]: https://github.com/elan-registry/registry/wiki/Customization-and-Integration-Patterns

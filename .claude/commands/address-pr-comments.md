@@ -26,7 +26,7 @@ If no argument provided, find the open PR for the current branch:
 
 ```bash
 gh pr list --head "$(git branch --show-current)" --state open \
-  --json number,title,url --repo unibrain1/elanregistry
+  --json number,title,url --repo elan-registry/registry
 ```
 
 If no PR found, stop and tell the user to run `/commit-push-pr` first.
@@ -34,14 +34,14 @@ If no PR found, stop and tell the user to run `/commit-push-pr` first.
 ## Step 2: Fetch Review Comments
 
 ```bash
-gh pr view <pr-number> --repo unibrain1/elanregistry \
+gh pr view <pr-number> --repo elan-registry/registry \
   --json reviews,comments
 ```
 
 Also fetch inline code review comments:
 
 ```bash
-gh api "repos/unibrain1/elanregistry/pulls/<pr-number>/comments" \
+gh api "repos/elan-registry/registry/pulls/<pr-number>/comments" \
   --jq '.[] | {path, line, body, user: .user.login}'
 ```
 
@@ -50,16 +50,16 @@ gh api "repos/unibrain1/elanregistry/pulls/<pr-number>/comments" \
 Get the PR's head SHA and all check runs:
 
 ```bash
-HEAD_SHA=$(gh pr view <pr-number> --repo unibrain1/elanregistry \
+HEAD_SHA=$(gh pr view <pr-number> --repo elan-registry/registry \
   --json headRefOid --jq .headRefOid)
-gh api "repos/unibrain1/elanregistry/commits/${HEAD_SHA}/check-runs" \
+gh api "repos/elan-registry/registry/commits/${HEAD_SHA}/check-runs" \
   --jq '.check_runs[] | {name, conclusion, id, output: .output.summary}'
 ```
 
 For any failed check runs, fetch their annotations:
 
 ```bash
-gh api "repos/unibrain1/elanregistry/check-runs/<run-id>/annotations" \
+gh api "repos/elan-registry/registry/check-runs/<run-id>/annotations" \
   --jq '.[] | {path, start_line, message, annotation_level}'
 ```
 
@@ -121,7 +121,7 @@ git push origin "$(git branch --show-current)"
 Wait up to 5 minutes for checks to re-run. Poll every 60 seconds:
 
 ```bash
-gh pr checks <pr-number> --repo unibrain1/elanregistry
+gh pr checks <pr-number> --repo elan-registry/registry
 ```
 
 If any check still fails after the fix, report the failure and stop — do not

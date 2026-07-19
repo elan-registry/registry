@@ -266,6 +266,6 @@ document:
 - Note which task groups completed and if any required a re-run.
 - Note any lint errors that were found and how they were resolved.
 - Note the commit hash from the wiki repo push.
-- Confirm the changes are live at `https://github.com/unibrain1/elanregistry/wiki`.
+- Confirm the changes are live at `https://github.com/elan-registry/registry/wiki`.
 - If the document was split, provide the exact wiki page titles created so
   they are consistent with the filenames used.

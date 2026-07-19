@@ -23,14 +23,14 @@ release notes, and recommending an issue order.
 ### Step 1: Validate the milestone exists on GitHub
 
 ```bash
-gh api repos/unibrain1/elanregistry/milestones \
+gh api repos/elan-registry/registry/milestones \
   --jq '.[] | select(.title | startswith("'"$ARGUMENTS"'"))'
 ```
 
 If not found, stop and report the error. Show available open milestones:
 
 ```bash
-gh api repos/unibrain1/elanregistry/milestones --jq '.[].title'
+gh api repos/elan-registry/registry/milestones --jq '.[].title'
 ```
 
 Record the full milestone title and milestone number for later steps.
@@ -100,7 +100,7 @@ gh issue list --milestone "<full milestone title>" --state open \
 when issues exist. Always verify with the direct API call:
 
 ```bash
-gh api "repos/unibrain1/elanregistry/issues?milestone=<NUMBER>&state=open&per_page=50" \
+gh api "repos/elan-registry/registry/issues?milestone=<NUMBER>&state=open&per_page=50" \
   --jq '.[] | {number, title, labels: [.labels[].name], body}'
 ```
 
@@ -164,7 +164,7 @@ After displaying the review, ask two questions in sequence:
 If the user provides issue numbers to close, close each one on GitHub:
 
 ```bash
-gh issue close NNN --repo unibrain1/elanregistry \
+gh issue close NNN --repo elan-registry/registry \
   --comment "Closing as low-value / make-work during milestone planning. Can be reopened if prioritized."
 ```
 
@@ -185,7 +185,7 @@ For each accepted consolidation group:
 3. **Close the secondary issue(s)** with a linking comment:
 
 ```bash
-gh issue close NNN --repo unibrain1/elanregistry \
+gh issue close NNN --repo elan-registry/registry \
   --comment "Consolidated into #PRIMARY — scope merged there."
 ```
 
@@ -224,7 +224,7 @@ Create a draft release notes file at
 - Write a brief summary based on the milestone description
 - Populate the "Issues Resolved" section with all open issues from the
   milestone (linked to GitHub using
-  `https://github.com/unibrain1/elanregistry/issues/NNN`)
+  `https://github.com/elan-registry/registry/issues/NNN`)
 - Leave deployment instructions and verification sections as template
   placeholders — these will be filled in as issues are completed
 - Remove the "Template Instructions" section below the `---` divider

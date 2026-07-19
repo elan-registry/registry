@@ -33,7 +33,7 @@ PHP 8.2+ · MySQL 8.0+ · UserSpice 6 · Bootstrap 5.3 · Cloudflare
 ### Quick Start
 
 ```bash
-git clone https://github.com/unibrain1/elanregistry.git
+git clone https://github.com/elan-registry/registry.git
 composer install
 npm install
 ./scripts/setup-git-hooks.sh   # installs pre-commit quality checks
@@ -41,7 +41,7 @@ cp .env.example .env            # then fill in credentials
 composer test:quick             # verify environment
 ```
 
-For full installation steps, see the [Registry Installation Guide](https://github.com/unibrain1/elanregistry/wiki/Registry-Installation).
+For full installation steps, see the [Registry Installation Guide](https://github.com/elan-registry/registry/wiki/Registry-Installation).
 
 See [ENVIRONMENT.md](docs/development/ENVIRONMENT.md) for full `.env` configuration.
 
@@ -50,7 +50,7 @@ See [ENVIRONMENT.md](docs/development/ENVIRONMENT.md) for full `.env` configurat
 | Audience | Where |
 | --- | --- |
 | Development conventions, workflow, AI context | [`CLAUDE.md`](CLAUDE.md) |
-| Architecture, database design, class patterns | [GitHub Wiki](https://github.com/unibrain1/elanregistry/wiki) |
+| Architecture, database design, class patterns | [GitHub Wiki](https://github.com/elan-registry/registry/wiki) |
 | Technical reference docs | [`docs/development/`](docs/development/) |
 | End-user guides | [`docs/guides/`](docs/guides/) |
 | Reference pages (paint colors, chassis ID) | [`docs/reference/`](docs/reference/) |

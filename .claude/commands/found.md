@@ -68,7 +68,7 @@ No new issue needed. Add a "Found in passing" item to the plan and PR body.
 
 ```bash
 gh issue create \
-  --repo unibrain1/elanregistry \
+  --repo elan-registry/registry \
   --title "CONCISE_TITLE" \
   --body "Pre-existing issue found while working on #CURRENT_ISSUE.\n\nDESCRIPTION" \
   --label "bug,triage" \
@@ -81,7 +81,7 @@ gh issue create \
 
 ```bash
 gh issue create \
-  --repo unibrain1/elanregistry \
+  --repo elan-registry/registry \
   --title "CONCISE_TITLE" \
   --body "Pre-existing issue found while working on #CURRENT_ISSUE.\n\nDESCRIPTION" \
   --label "triage"
