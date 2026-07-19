@@ -283,12 +283,6 @@ parameters:
 			path: app/views/email/_transfer_response.php
 
 		-
-			message: '#^Variable \$settings might not be defined\.$#'
-			identifier: variable.undefined
-			count: 1
-			path: docs/stories/type26register.php
-
-		-
 			message: '#^Expression on left side of \?\? is not nullable\.$#'
 			identifier: nullCoalesce.expr
 			count: 1
