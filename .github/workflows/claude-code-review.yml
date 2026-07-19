@@ -244,9 +244,8 @@ jobs:
           # when the deep-review label triggers this job.
           track_progress: ${{ github.event.action != 'labeled' }}
           # Opus is worth it here: this runs once per milestone, not per push.
-          # Note: model is passed via claude_args (not a top-level action input).
+          model: "claude-opus-4-6"
           claude_args: >-
-            --model claude-opus-4-6
             --allowedTools
             "Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*),Bash(gh pr list:*),Bash(cat merged-prs.txt),Bash(git diff:*),Bash(git log:*),Bash(git show:*),Bash(git diff --name-only:*),Bash(php -l *),Bash(composer check:php),Bash(vendor/bin/phpstan analyse:*),Bash(npm run lint),Read,Grep,Glob"
           prompt: |
@@ -387,8 +386,8 @@ jobs:
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           track_progress: true
+          model: "claude-opus-4-6"
           claude_args: >-
-            --model claude-opus-4-6
             --allowedTools
             "Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*),Bash(git diff:*),Bash(git log:*),Bash(git show:*),Bash(git diff --name-only:*),Bash(php -l *),Bash(composer check:php),Bash(vendor/bin/phpstan analyse:*),Bash(npm run lint),Read,Grep,Glob"
           prompt: |
