@@ -25,7 +25,7 @@ Find the milestone base branch (or fall back to `main`):
 # If a PR exists, use its base branch
 BASE=$(gh pr list --head "$(git branch --show-current)" --state open \
   --json baseRefName --jq '.[0].baseRefName // empty' \
-  --repo unibrain1/elanregistry 2>/dev/null)
+  --repo elan-registry/registry 2>/dev/null)
 
 # Fall back to the single milestone/* branch if no PR yet
 if [ -z "$BASE" ]; then

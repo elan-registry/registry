@@ -117,7 +117,7 @@ branch diff** — the same view CI uses. This catches cross-commit issues
 Get the base branch from the PR's `baseRefName` (e.g. `milestone/v2.27.0`):
 
 ```bash
-BASE=$(gh pr view <pr-number> --repo unibrain1/elanregistry --json baseRefName --jq .baseRefName)
+BASE=$(gh pr view <pr-number> --repo elan-registry/registry --json baseRefName --jq .baseRefName)
 git diff $(git merge-base HEAD origin/$BASE)..HEAD
 ```
 
