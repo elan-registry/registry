@@ -360,7 +360,7 @@
 
             // Set the form text for Update
             $('#submit').text('Update Car').attr('data-label', 'Update Car');
-            $('#car_id').html($('#car_id').val());
+            $('#car_id').text($('#car_id').val());
             $('#carHeader').html('<h2><strong>Update car</strong><h2>');
         }
     });
