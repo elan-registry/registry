@@ -249,6 +249,9 @@ try {
             $filename = basename($_POST['filename'] ?? '');
             logger($user->data()->id, LogCategories::LOG_CATEGORY_BACKUP_MANAGER, "Delete backup requested: {$filename}");
 
+            // All validation branches below call ->send() which always calls exit.
+            // No break statements: PHPStan types send() as never-returning, so a
+            // break after send() would be flagged as unreachable dead code.
             if (empty($filename)) {
                 ApiResponse::error('Backup filename required', 400)
                     ->withLogging($user->data()->id, LogCategories::LOG_CATEGORY_BACKUP_ERROR, 'Delete backup: filename missing')

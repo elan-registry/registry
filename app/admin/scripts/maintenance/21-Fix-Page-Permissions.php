@@ -1201,7 +1201,7 @@ function abortProcess() {
                             } catch (\Throwable $e) {
                                 if (!($e instanceof \Exception)) { throw $e; }
                                 $hadPerPageFailures = true;
-                                outputMessage("✗ Failed to update {$issue['page']}: " . $e->getMessage(), $percentage);
+                                outputMessage("✗ Failed to update {$issue['page']}: " . get_class($e) . ': ' . $e->getMessage(), $percentage);
                                 logger($user->data()->id, LogCategories::LOG_CATEGORY_PERMISSION_FIX_ERROR, "Failed to set page to PUBLIC: {$issue['page']} (ID: {$issue['id']}) - " . $e->getMessage());
                             }
                         }
@@ -1246,7 +1246,7 @@ function abortProcess() {
                             } catch (\Throwable $e) {
                                 if (!($e instanceof \Exception)) { throw $e; }
                                 $hadPerPageFailures = true;
-                                outputMessage("✗ Failed to update {$issue['page']}: " . $e->getMessage(), $percentage);
+                                outputMessage("✗ Failed to update {$issue['page']}: " . get_class($e) . ': ' . $e->getMessage(), $percentage);
                                 logger($user->data()->id, LogCategories::LOG_CATEGORY_PERMISSION_FIX_ERROR, "Failed to set page to PRIVATE with Admin+Editor: {$issue['page']} (ID: {$issue['id']}) - " . $e->getMessage());
                             }
                         }
@@ -1281,7 +1281,7 @@ function abortProcess() {
                             } catch (\Throwable $e) {
                                 if (!($e instanceof \Exception)) { throw $e; }
                                 $hadPerPageFailures = true;
-                                outputMessage("✗ Failed to update {$issue['page']}: " . $e->getMessage(), $percentage);
+                                outputMessage("✗ Failed to update {$issue['page']}: " . get_class($e) . ': ' . $e->getMessage(), $percentage);
                                 logger($user->data()->id, LogCategories::LOG_CATEGORY_PERMISSION_FIX_ERROR, "Failed to set page to PRIVATE with User: {$issue['page']} (ID: {$issue['id']}) - " . $e->getMessage());
                             }
                         }
@@ -1310,7 +1310,7 @@ function abortProcess() {
                             } catch (\Throwable $e) {
                                 if (!($e instanceof \Exception)) { throw $e; }
                                 $hadPerPageFailures = true;
-                                outputMessage("✗ Failed to update {$issue['page']}: " . $e->getMessage(), $percentage);
+                                outputMessage("✗ Failed to update {$issue['page']}: " . get_class($e) . ': ' . $e->getMessage(), $percentage);
                                 logger($user->data()->id, LogCategories::LOG_CATEGORY_PERMISSION_FIX_ERROR, "Failed to set page to PRIVATE with no perms: {$issue['page']} (ID: {$issue['id']}) - " . $e->getMessage());
                             }
                         }
@@ -1336,7 +1336,7 @@ function abortProcess() {
                             } catch (\Throwable $e) {
                                 if (!($e instanceof \Exception)) { throw $e; }
                                 $hadPerPageFailures = true;
-                                outputMessage("✗ Failed to update {$issue['page']}: " . $e->getMessage(), $percentage);
+                                outputMessage("✗ Failed to update {$issue['page']}: " . get_class($e) . ': ' . $e->getMessage(), $percentage);
                                 logger($user->data()->id, LogCategories::LOG_CATEGORY_PERMISSION_FIX_ERROR, "Failed to remove perms from PUBLIC page: {$issue['page']} (ID: {$issue['id']}) - " . $e->getMessage());
                             }
                         }
@@ -1378,7 +1378,7 @@ function abortProcess() {
                             } catch (\Throwable $e) {
                                 if (!($e instanceof \Exception)) { throw $e; }
                                 $hadPerPageFailures = true;
-                                outputMessage("✗ Failed to update {$issue['page']}: " . $e->getMessage(), $percentage);
+                                outputMessage("✗ Failed to update {$issue['page']}: " . get_class($e) . ': ' . $e->getMessage(), $percentage);
                                 logger($user->data()->id, LogCategories::LOG_CATEGORY_PERMISSION_FIX_ERROR, "Failed to add admin perms to page: {$issue['page']} (ID: {$issue['id']}) - " . $e->getMessage());
                             }
                         }
@@ -1417,7 +1417,7 @@ function abortProcess() {
                             } catch (\Throwable $e) {
                                 if (!($e instanceof \Exception)) { throw $e; }
                                 $hadPerPageFailures = true;
-                                outputMessage("✗ Failed to update {$issue['page']}: " . $e->getMessage(), $percentage);
+                                outputMessage("✗ Failed to update {$issue['page']}: " . get_class($e) . ': ' . $e->getMessage(), $percentage);
                                 logger($user->data()->id, LogCategories::LOG_CATEGORY_PERMISSION_FIX_ERROR, "Failed to set page to PRIVATE with Admin only (no Editor): {$issue['page']} (ID: {$issue['id']}) - " . $e->getMessage());
                             }
                         }
@@ -1449,7 +1449,7 @@ function abortProcess() {
                             } catch (\Throwable $e) {
                                 if (!($e instanceof \Exception)) { throw $e; }
                                 $hadPerPageFailures = true;
-                                outputMessage("✗ Failed to update {$issue['page']}: " . $e->getMessage(), $percentage);
+                                outputMessage("✗ Failed to update {$issue['page']}: " . get_class($e) . ': ' . $e->getMessage(), $percentage);
                                 logger($user->data()->id, LogCategories::LOG_CATEGORY_PERMISSION_FIX_ERROR, "Failed to add owner perms to page: {$issue['page']} (ID: {$issue['id']}) - " . $e->getMessage());
                             }
                         }
