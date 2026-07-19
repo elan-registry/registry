@@ -17,9 +17,9 @@ working with code in this repository.
 
 **Core understanding:**
 
-- [GitHub Wiki: Architecture Guide](https://github.com/unibrain1/elanregistry/wiki/Elan-Registry-Architecture-and-Database-Design) - System architecture and patterns
+- [GitHub Wiki: Architecture Guide](https://github.com/elan-registry/registry/wiki/Elan-Registry-Architecture-and-Database-Design) - System architecture and patterns
 - `docs/development/DATABASE.md` - Database schema and relationships
-- [GitHub Wiki: UserSpice Integration Guide](https://github.com/unibrain1/elanregistry/wiki/Customization-and-Integration-Patterns) - UserSpice integration
+- [GitHub Wiki: UserSpice Integration Guide](https://github.com/elan-registry/registry/wiki/Customization-and-Integration-Patterns) - UserSpice integration
 
 **UserSpice context (AI Prompts plugin):** Before any UserSpice task, read the
 shipped prompts starting at:
@@ -44,7 +44,7 @@ authentication, with custom car registry functionality. Cloudflare provides
 edge caching and CDN for global users (US, EU, AU).
 
 > **For complete architecture, see the
-> [GitHub Wiki: Architecture Guide](https://github.com/unibrain1/elanregistry/wiki/Elan-Registry-Architecture-and-Database-Design)**
+> [GitHub Wiki: Architecture Guide](https://github.com/elan-registry/registry/wiki/Elan-Registry-Architecture-and-Database-Design)**
 
 **Directory Structure:**
 
@@ -70,7 +70,7 @@ edge caching and CDN for global users (US, EU, AU).
 **Key Integration Points:**
 
 - **Page Security**: All protected pages require `securePage($php_self)` check.
-  See [GitHub Wiki: UserSpice Integration Guide](https://github.com/unibrain1/elanregistry/wiki/Customization-and-Integration-Patterns).
+  See [GitHub Wiki: UserSpice Integration Guide](https://github.com/elan-registry/registry/wiki/Customization-and-Integration-Patterns).
 - **Role Hierarchy**: Two privileged roles — `admin` and `editor`. Most admin
   pages are admin-only; some tools (e.g. data repair, image management) grant
   access to both. Always check the issue scope before defaulting to admin-only.
@@ -320,7 +320,7 @@ See [DEPLOYMENT.md](docs/development/DEPLOYMENT.md) for complete procedures. **C
 
 ## GitHub Repository
 
-- **GitHub owner/repo:** `unibrain1/elanregistry` (not `jimboone/elan-registry`)
+- **GitHub owner/repo:** `elan-registry/registry` (not `jimboone/elan-registry`)
 - Use `gh` CLI for GitHub operations — the MCP GitHub tools require the correct
   owner/repo pair above
 - Milestone descriptions should state the goal, not list issue numbers
@@ -328,16 +328,16 @@ See [DEPLOYMENT.md](docs/development/DEPLOYMENT.md) for complete procedures. **C
 
 **gh CLI gotchas:**
 
-- `gh milestone list` does not exist — use `gh api repos/unibrain1/elanregistry/milestones` instead
+- `gh milestone list` does not exist — use `gh api repos/elan-registry/registry/milestones` instead
 - `gh issue list --milestone` can silently return empty even with open issues — always use
-  `gh api repos/unibrain1/elanregistry/issues?milestone=<number>&state=open` for reliable results
+  `gh api repos/elan-registry/registry/issues?milestone=<number>&state=open` for reliable results
 
 ## GitHub Wiki
 
 The wiki is a **separate git repository** at the permanent path:
 
 ```text
-/Users/jimboone/Developer/Web/elan-registry-wiki
+/Users/jimboone/Documents/Developer/Web/ElanRegistryWiki
 ```
 
 **CRITICAL:** ALWAYS use this exact path. NEVER clone to `/tmp/`, a worktree,
@@ -347,8 +347,8 @@ only place to use.
 To update the live wiki after editing files in `wiki/` on a branch:
 
 ```bash
-cp wiki/<file>.md /Users/jimboone/Developer/Web/elan-registry-wiki/
-cd /Users/jimboone/Developer/Web/elan-registry-wiki
+cp wiki/<file>.md /Users/jimboone/Documents/Developer/Web/ElanRegistryWiki/
+cd /Users/jimboone/Documents/Developer/Web/ElanRegistryWiki
 git add <file>.md
 git commit -m "docs: <description>"
 git push

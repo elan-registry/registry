@@ -176,7 +176,7 @@ git tag -a v<version> -m "Release v<version>: <milestone title>
 
 <Key highlights from release notes>
 
-Full release notes: https://github.com/unibrain1/elanregistry/releases/tag/v<version>"
+Full release notes: https://github.com/elan-registry/registry/releases/tag/v<version>"
 ```
 
 Verify:
@@ -216,7 +216,7 @@ rm /tmp/release-notes-v<version>.md
 ### Step 15: Close the GitHub milestone
 
 ```bash
-gh api repos/unibrain1/elanregistry/milestones/<milestone_number> \
+gh api repos/elan-registry/registry/milestones/<milestone_number> \
   -X PATCH -f state=closed
 ```
 

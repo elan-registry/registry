@@ -44,7 +44,7 @@ Set each task to `in_progress` when you begin it and `completed` on success.
 Use the direct API (`gh issue list --milestone` can silently return empty results — the milestone number is already recorded from Step 1):
 
 ```bash
-gh api "repos/unibrain1/elanregistry/issues?milestone=<MILESTONE_NUM>&state=open&per_page=20" \
+gh api "repos/elan-registry/registry/issues?milestone=<MILESTONE_NUM>&state=open&per_page=20" \
   --jq '.[] | {number, title}'
 ```
 

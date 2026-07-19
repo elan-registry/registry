@@ -59,7 +59,7 @@ if they want to proceed or retarget the PR.
 Check if the PR is a draft:
 
 ```bash
-gh pr view <pr-number> --json isDraft --repo unibrain1/elanregistry -q .isDraft
+gh pr view <pr-number> --json isDraft --repo elan-registry/registry -q .isDraft
 ```
 
 **If the PR is a draft:**
@@ -71,7 +71,7 @@ gh pr view <pr-number> --json isDraft --repo unibrain1/elanregistry -q .isDraft
    gh workflow run claude-code-review.yml \
      --ref main \
      --field pr_number=<pr-number> \
-     --repo unibrain1/elanregistry
+     --repo elan-registry/registry
    ```
 
 2. Wait for the workflow run to complete. Poll every 30 seconds:
@@ -79,8 +79,8 @@ gh pr view <pr-number> --json isDraft --repo unibrain1/elanregistry -q .isDraft
    ```bash
    # Get the most recent run of claude-code-review.yml
    gh run list --workflow=claude-code-review.yml --limit=1 \
-     --repo unibrain1/elanregistry --json databaseId,status,conclusion
-   gh run watch <run-id> --repo unibrain1/elanregistry
+     --repo elan-registry/registry --json databaseId,status,conclusion
+   gh run watch <run-id> --repo elan-registry/registry
    ```
 
 3. Report the review result. If the review posted **Blocking** findings, stop
@@ -90,7 +90,7 @@ gh pr view <pr-number> --json isDraft --repo unibrain1/elanregistry -q .isDraft
    is the moment watchers are notified — immediately followed by merge:
 
    ```bash
-   gh pr ready <pr-number> --repo unibrain1/elanregistry
+   gh pr ready <pr-number> --repo elan-registry/registry
    ```
 
 **If the PR is already ready (not a draft):** skip to Step 3 — the Claude
@@ -208,9 +208,9 @@ List remaining open issues in the milestone. Use the direct API (`gh issue list 
 ```bash
 # Get milestone number from the milestone branch name, then query API directly
 MILESTONE_TITLE=$(git branch --show-current | sed 's|.*milestone/||' || echo "<milestone title>")
-MILESTONE_NUM=$(gh api "repos/unibrain1/elanregistry/milestones" \
+MILESTONE_NUM=$(gh api "repos/elan-registry/registry/milestones" \
   --jq ".[] | select(.title | startswith(\"${MILESTONE_TITLE}\")) | .number")
-gh api "repos/unibrain1/elanregistry/issues?milestone=${MILESTONE_NUM}&state=open&per_page=20" \
+gh api "repos/elan-registry/registry/issues?milestone=${MILESTONE_NUM}&state=open&per_page=20" \
   --jq '.[] | {number, title}'
 ```
 

@@ -38,16 +38,16 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/unibrain1/elanregistry.git"
+    "url": "git+https://github.com/elan-registry/registry.git"
   },
   "keywords": [],
   "author": "",
   "license": "AGPL-3.0-only",
   "type": "commonjs",
   "bugs": {
-    "url": "https://github.com/unibrain1/elanregistry/issues"
+    "url": "https://github.com/elan-registry/registry/issues"
   },
-  "homepage": "https://github.com/unibrain1/elanregistry#readme",
+  "homepage": "https://github.com/elan-registry/registry#readme",
   "dependencies": {
     "chart.js": "4.5.1",
     "datatables.net-bs5": "2.3.8",

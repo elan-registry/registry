@@ -37,7 +37,7 @@ git push origin main && git push origin --tags
 ### Remote Configuration Reference
 
 ```bash
-origin git@github.com:unibrain1/elanregistry.git    # GitHub repository
+origin git@github.com:elan-registry/registry.git    # GitHub repository
 test   [test-server-path]                            # Test/staging server
 prod   a2hosting:/home/unibrain/git/elanregistry.git # LIVE PRODUCTION SERVER
 ```
@@ -201,7 +201,7 @@ Pre-commit hooks validate PHP coding standards, markdown formatting, and run fas
 git commit --no-verify           # Bypass (emergency only)
 ```
 
-**See the [Development Workflow](https://github.com/unibrain1/elanregistry/wiki/Development-Workflow) wiki page** for hook details and `scripts/README.md` for troubleshooting.
+**See the [Development Workflow](https://github.com/elan-registry/registry/wiki/Development-Workflow) wiki page** for hook details and `scripts/README.md` for troubleshooting.
 
 ## 📋 Complete Production Deployment Process
 
@@ -375,5 +375,5 @@ If deployment fails:
 **📖 Related Documentation:**
 
 - [CLAUDE.md](../../CLAUDE.md) - Essential development guidance
-- [Development Workflow](https://github.com/unibrain1/elanregistry/wiki/Development-Workflow) - Development processes (wiki)
+- [Development Workflow](https://github.com/elan-registry/registry/wiki/Development-Workflow) - Development processes (wiki)
 - [ENVIRONMENT.md](ENVIRONMENT.md) - Environment setup and configuration
