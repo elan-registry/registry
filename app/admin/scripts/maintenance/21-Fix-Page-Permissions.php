@@ -62,10 +62,6 @@ use ElanRegistry\LogCategories;
  * 3. Automatic backup created before any changes
  * 4. All changes logged to UserSpice audit system
  */
-ini_set('display_errors', 1);
-ini_set('display_startup_errors', 1);
-error_reporting(E_ALL);
-
 require_once '../../../../users/init.php';
 require_once $abs_us_root . $us_url_root . 'app/admin/includes/fix-script-core.php';
 
@@ -78,7 +74,9 @@ $db = DB::getInstance();
 
 // Debug: Check if database is connected
 if (!$db) {
-    die("Database connection failed");
+    logger(0, LogCategories::LOG_CATEGORY_DATABASE_ERROR,
+        '21-Fix-Page-Permissions: DB::getInstance() returned falsy — database connection unavailable');
+    die('<div class="alert alert-danger" style="margin:2rem">Database connection failed. The fix script cannot run. Check application logs for details.</div>');
 }
 
 $csrfToken = Token::generate();
@@ -112,6 +110,7 @@ function shouldBePrivate(string $pagePath): bool {
  * Analyze current permissions and determine what needs to change
  */
 function analyzePermissions(DB $db): array {
+    global $user;
     $issues = [
         'set_public' => [],                    // Pages that should be public but are private
         'set_private_admin' => [],             // Pages that should be private admin+editor but are public
@@ -690,13 +689,21 @@ require_once $abs_us_root . $us_url_root . 'users/includes/template/prep.php';
                     }
                 }
 
-                function showCompletionSummary(stats) {
-                    updateProgress(100, 100, 'Permission fix completed successfully!');
+                function showCompletionSummary(stats, isError) {
+                    const statusText = isError
+                        ? 'Permission fix completed with errors.'
+                        : 'Permission fix completed successfully!';
+                    updateProgress(100, 100, statusText);
+
+                    const icon  = isError
+                        ? '<i class="fa fa-exclamation-triangle text-warning"></i>'
+                        : '<i class="fa fa-check-circle text-success"></i>';
+                    const title = isError ? 'Completed with Errors' : 'Complete!';
 
                     const summaryContent = document.getElementById('summaryContent');
                     summaryContent.innerHTML = `
         <div class="mb-3">
-            <h5><i class="fa fa-check-circle text-success"></i> Complete!</h5>
+            <h5>${icon} ${title}</h5>
             <small class="text-muted">Completed at: ${new Date().toLocaleString()}</small>
         </div>
         <div class="mb-3">
@@ -1153,6 +1160,7 @@ function abortProcess() {
                 outputMessage("");
 
                 $scriptFailed = false;
+                $hadPerPageFailures = false;
 
                 try {
                     // Get issues to fix
@@ -1192,6 +1200,7 @@ function abortProcess() {
                                 logger($user->data()->id, LogCategories::LOG_CATEGORY_PERMISSION_FIX, "Set page to PUBLIC with no permissions: {$issue['page']} (ID: {$issue['id']})");
                             } catch (\Throwable $e) {
                                 if (!($e instanceof \Exception)) { throw $e; }
+                                $hadPerPageFailures = true;
                                 outputMessage("✗ Failed to update {$issue['page']}: " . $e->getMessage(), $percentage);
                                 logger($user->data()->id, LogCategories::LOG_CATEGORY_PERMISSION_FIX_ERROR, "Failed to set page to PUBLIC: {$issue['page']} (ID: {$issue['id']}) - " . $e->getMessage());
                             }
@@ -1236,6 +1245,7 @@ function abortProcess() {
                                 logger($user->data()->id, LogCategories::LOG_CATEGORY_PERMISSION_FIX, "Set page to PRIVATE with Admin+Editor: {$issue['page']} (ID: {$issue['id']})");
                             } catch (\Throwable $e) {
                                 if (!($e instanceof \Exception)) { throw $e; }
+                                $hadPerPageFailures = true;
                                 outputMessage("✗ Failed to update {$issue['page']}: " . $e->getMessage(), $percentage);
                                 logger($user->data()->id, LogCategories::LOG_CATEGORY_PERMISSION_FIX_ERROR, "Failed to set page to PRIVATE with Admin+Editor: {$issue['page']} (ID: {$issue['id']}) - " . $e->getMessage());
                             }
@@ -1270,6 +1280,7 @@ function abortProcess() {
                                 logger($user->data()->id, LogCategories::LOG_CATEGORY_PERMISSION_FIX, "Set page to PRIVATE with User: {$issue['page']} (ID: {$issue['id']})");
                             } catch (\Throwable $e) {
                                 if (!($e instanceof \Exception)) { throw $e; }
+                                $hadPerPageFailures = true;
                                 outputMessage("✗ Failed to update {$issue['page']}: " . $e->getMessage(), $percentage);
                                 logger($user->data()->id, LogCategories::LOG_CATEGORY_PERMISSION_FIX_ERROR, "Failed to set page to PRIVATE with User: {$issue['page']} (ID: {$issue['id']}) - " . $e->getMessage());
                             }
@@ -1298,6 +1309,7 @@ function abortProcess() {
                                 logger($user->data()->id, LogCategories::LOG_CATEGORY_PERMISSION_FIX, "Set page to PRIVATE with no permissions: {$issue['page']} (ID: {$issue['id']})");
                             } catch (\Throwable $e) {
                                 if (!($e instanceof \Exception)) { throw $e; }
+                                $hadPerPageFailures = true;
                                 outputMessage("✗ Failed to update {$issue['page']}: " . $e->getMessage(), $percentage);
                                 logger($user->data()->id, LogCategories::LOG_CATEGORY_PERMISSION_FIX_ERROR, "Failed to set page to PRIVATE with no perms: {$issue['page']} (ID: {$issue['id']}) - " . $e->getMessage());
                             }
@@ -1323,6 +1335,7 @@ function abortProcess() {
                                 logger($user->data()->id, LogCategories::LOG_CATEGORY_PERMISSION_FIX, "Removed all permissions from PUBLIC page: {$issue['page']} (ID: {$issue['id']})");
                             } catch (\Throwable $e) {
                                 if (!($e instanceof \Exception)) { throw $e; }
+                                $hadPerPageFailures = true;
                                 outputMessage("✗ Failed to update {$issue['page']}: " . $e->getMessage(), $percentage);
                                 logger($user->data()->id, LogCategories::LOG_CATEGORY_PERMISSION_FIX_ERROR, "Failed to remove perms from PUBLIC page: {$issue['page']} (ID: {$issue['id']}) - " . $e->getMessage());
                             }
@@ -1364,6 +1377,7 @@ function abortProcess() {
                                 logger($user->data()->id, LogCategories::LOG_CATEGORY_PERMISSION_FIX, "Added admin permissions to page: {$issue['page']} (ID: {$issue['id']})");
                             } catch (\Throwable $e) {
                                 if (!($e instanceof \Exception)) { throw $e; }
+                                $hadPerPageFailures = true;
                                 outputMessage("✗ Failed to update {$issue['page']}: " . $e->getMessage(), $percentage);
                                 logger($user->data()->id, LogCategories::LOG_CATEGORY_PERMISSION_FIX_ERROR, "Failed to add admin perms to page: {$issue['page']} (ID: {$issue['id']}) - " . $e->getMessage());
                             }
@@ -1402,6 +1416,7 @@ function abortProcess() {
                                 logger($user->data()->id, LogCategories::LOG_CATEGORY_PERMISSION_FIX, "Set page to PRIVATE with Admin only (no Editor): {$issue['page']} (ID: {$issue['id']})");
                             } catch (\Throwable $e) {
                                 if (!($e instanceof \Exception)) { throw $e; }
+                                $hadPerPageFailures = true;
                                 outputMessage("✗ Failed to update {$issue['page']}: " . $e->getMessage(), $percentage);
                                 logger($user->data()->id, LogCategories::LOG_CATEGORY_PERMISSION_FIX_ERROR, "Failed to set page to PRIVATE with Admin only (no Editor): {$issue['page']} (ID: {$issue['id']}) - " . $e->getMessage());
                             }
@@ -1433,6 +1448,7 @@ function abortProcess() {
                                 logger($user->data()->id, LogCategories::LOG_CATEGORY_PERMISSION_FIX, "Added owner permissions to page: {$issue['page']} (ID: {$issue['id']})");
                             } catch (\Throwable $e) {
                                 if (!($e instanceof \Exception)) { throw $e; }
+                                $hadPerPageFailures = true;
                                 outputMessage("✗ Failed to update {$issue['page']}: " . $e->getMessage(), $percentage);
                                 logger($user->data()->id, LogCategories::LOG_CATEGORY_PERMISSION_FIX_ERROR, "Failed to add owner perms to page: {$issue['page']} (ID: {$issue['id']}) - " . $e->getMessage());
                             }
@@ -1472,14 +1488,16 @@ function abortProcess() {
                     // Record script completion
                     try {
                         $db->query("INSERT INTO fix_script_runs (script_name) VALUES (?)", [basename(__FILE__)]);
-                        outputMessage($scriptFailed ? "Script completion recorded" : "✅ Script completion recorded");
-                    } catch (Exception $record_e) {
+                        outputMessage(($scriptFailed || $hadPerPageFailures) ? "⚠️  Script completion recorded (with errors)" : "✅ Script completion recorded");
+                    } catch (\Throwable $record_e) {
                         outputMessage("⚠️  Could not record script completion: " . $record_e->getMessage());
                     }
 
                 outputMessage("");
                 if (!$scriptFailed) {
-                    outputMessage("Script completed at " . date("h:i:sa"));
+                    outputMessage($hadPerPageFailures
+                        ? "Script completed with per-page errors at " . date("h:i:sa")
+                        : "Script completed at " . date("h:i:sa"));
                 }
 
                 // Calculate final stats
@@ -1495,6 +1513,7 @@ function abortProcess() {
                     $rateIcon = 'exclamation-triangle';
                 }
 
+                $isErrorJs = $hadPerPageFailures ? 'true' : 'false';
                 if (!$scriptFailed) {
                     echo "<script nonce=\"" . htmlspecialchars($userspice_nonce ?? '', ENT_QUOTES, 'UTF-8') . "\">
     // Call completion summary in parent window if in iframe
@@ -1508,7 +1527,7 @@ function abortProcess() {
                     </span>
                 </div>
             </div>
-        `);
+        `, $isErrorJs);
     } else if (window.showCompletionSummary) {
         showCompletionSummary(`
             <div class='row'>
@@ -1519,7 +1538,7 @@ function abortProcess() {
                     </span>
                 </div>
             </div>
-        `);
+        `, $isErrorJs);
     }
     </script>";
                 }

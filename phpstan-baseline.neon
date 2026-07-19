@@ -1,18 +1,6 @@
 parameters:
 	ignoreErrors:
 		-
-			message: '#^Match arm comparison between ''rollback'' and ''rollback'' is always true\.$#'
-			identifier: match.alwaysTrue
-			count: 1
-			path: app/admin/includes/system/backup-operations.php
-
-		-
-			message: '#^Unreachable statement \- code above always terminates\.$#'
-			identifier: deadCode.unreachable
-			count: 6
-			path: app/admin/includes/system/backup-operations.php
-
-		-
 			message: '#^Variable \$activeTab might not be defined\.$#'
 			identifier: variable.undefined
 			count: 5
@@ -23,12 +11,6 @@ parameters:
 			identifier: variable.undefined
 			count: 1
 			path: app/admin/includes/tab-placeholder.php
-
-		-
-			message: '#^Undefined variable\: \$user$#'
-			identifier: variable.undefined
-			count: 1
-			path: app/admin/scripts/maintenance/21-Fix-Page-Permissions.php
 
 		-
 			message: '#^Variable \$car might not be defined\.$#'

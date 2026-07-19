@@ -70,11 +70,10 @@ $systemStatus = [
 
 try {
     $systemStatus = getAdminSystemStatus($db);
-} catch (PDOException $e) {
-    // Header stats are cosmetic — a PDOException here may indicate broader DB issues
-    // affecting maintenance operations on this page.
+} catch (\Throwable $e) {
+    // Header stats are cosmetic — log and degrade gracefully.
     logger($currentUserId, LogCategories::LOG_CATEGORY_DATABASE_ERROR,
-           "Database error getting system status: " . $e->getMessage());
+           "Error getting system status for maintenance page: " . $e->getMessage());
 }
 
 ?>

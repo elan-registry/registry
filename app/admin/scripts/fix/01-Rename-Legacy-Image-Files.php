@@ -346,8 +346,8 @@ try {
                         logProgress('  • Run this script again to confirm "No action needed" (idempotency check)', 'info');
 
                     } catch (\Throwable $e) {
-                        logProgress('FATAL ERROR: ' . $e->getMessage(), 'error');
-                        logger((int) $user->data()->id, LogCategories::LOG_CATEGORY_FIX_SCRIPT, 'Fatal error: ' . $e->getMessage());
+                        logProgress('FATAL ERROR: ' . get_class($e) . ': ' . $e->getMessage(), 'error');
+                        logger((int) $user->data()->id, LogCategories::LOG_CATEGORY_FIX_SCRIPT_ERROR, 'Fatal error: ' . get_class($e) . ': ' . $e->getMessage());
                     }
 
                     ?></pre>

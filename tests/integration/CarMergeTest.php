@@ -7,6 +7,7 @@ require_once __DIR__ . '/IntegrationTestCase.php';
 use ElanRegistry\Car\CarRepository;
 use ElanRegistry\Exceptions\CarNotFoundException;
 use ElanRegistry\Exceptions\CarPermissionException;
+use ElanRegistry\Exceptions\CarValidationException;
 
 use PHPUnit\Framework\Attributes\Group;
 
@@ -71,7 +72,7 @@ final class CarMergeTest extends IntegrationTestCase
     #[Group('fast')]
     public function testMergeCarFailsWhenTargetNotExists(): void
     {
-        $this->expectException(Exception::class);
+        $this->expectException(CarNotFoundException::class);
 
         $car = new Car(99999);
         $car->merge($this->testMergeCarId, 'Test merge');
@@ -83,7 +84,7 @@ final class CarMergeTest extends IntegrationTestCase
     #[Group('fast')]
     public function testMergeCarFailsWhenSourceNotExists(): void
     {
-        $this->expectException(Exception::class);
+        $this->expectException(CarNotFoundException::class);
 
         $car = new Car($this->testCarId);
         $car->merge(99999, 'Test merge');
@@ -95,7 +96,7 @@ final class CarMergeTest extends IntegrationTestCase
     #[Group('fast')]
     public function testMergeCarFailsWhenMergingSelf(): void
     {
-        $this->expectException(Exception::class);
+        $this->expectException(CarValidationException::class);
 
         $car = new Car($this->testCarId);
         $car->merge($this->testCarId, 'Test merge');
@@ -163,14 +164,14 @@ final class CarMergeTest extends IntegrationTestCase
     #[Group('fast')]
     public function testMergeTransactionRollbackOnFailure(): void
     {
-        $this->expectException(Exception::class);
+        $this->expectException(CarNotFoundException::class);
 
         $car = new Car($this->testCarId);
 
         try {
             // Attempt to merge non-existent car
             $car->merge(99999, 'Test merge');
-        } catch (Exception $e) {
+        } catch (CarNotFoundException $e) {
             // After failed merge, original car should still exist
             $carReloaded = new Car((int) $car->data()->id);
             $this->assertTrue($carReloaded->exists());

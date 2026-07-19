@@ -345,7 +345,7 @@ $currentSizes = $settings->elan_image_thumbnail_sizes ?? '100,300,600,1024,2048'
                         $db->query("UPDATE settings SET elan_image_thumbnail_sizes = ? WHERE id = 1", [$newSizes]);
                         $settings->elan_image_thumbnail_sizes = $newSizes;
                         $settingsUpdated = true;
-                    } catch (Exception $e) {
+                    } catch (\Throwable $e) {
                         logger($user->data()->id, LogCategories::LOG_CATEGORY_FIX_SCRIPT, "Failed to update elan_image_thumbnail_sizes setting: " . $e->getMessage() . " (Issue #176)");
                         outputMessage("❌ Failed to update elan_image_thumbnail_sizes in database: " . $e->getMessage());
                     }
@@ -416,7 +416,7 @@ $currentSizes = $settings->elan_image_thumbnail_sizes ?? '100,300,600,1024,2048'
                         "SELECT id, image FROM cars WHERE image IS NOT NULL AND image != '' LIMIT {$batch_size} OFFSET {$offset}"
                     )->results();
                     $batch_car_count = count($cars_with_images);
-                } catch (Exception $e) {
+                } catch (\Throwable $e) {
                     logger($user->data()->id, LogCategories::LOG_CATEGORY_FIX_SCRIPT,
                         "Failed to query cars for thumbnail processing: " . $e->getMessage() . " (Issue #176)");
                     outputMessage("❌ Database error while loading car list: " . $e->getMessage());
@@ -459,7 +459,7 @@ $currentSizes = $settings->elan_image_thumbnail_sizes ?? '100,300,600,1024,2048'
                             'script_name' => basename(__FILE__),
                             'completed_at' => date('Y-m-d H:i:s')
                         ]);
-                    } catch (Exception $e) {
+                    } catch (\Throwable $e) {
                         logger($user->data()->id, LogCategories::LOG_CATEGORY_FIX_SCRIPT, "Failed to record fix_script_runs completion: " . $e->getMessage() . " (Issue #176)");
                         outputMessage("⚠️ Warning: Could not record script completion in fix_script_runs table");
                     }
@@ -555,7 +555,7 @@ $currentSizes = $settings->elan_image_thumbnail_sizes ?? '100,300,600,1024,2048'
                                             outputMessage("    ❌ Failed to generate 768px: {$base_name}.{$extension}");
                                             $global_errors++;
                                         }
-                                    } catch (Exception $e) {
+                                    } catch (\Throwable $e) {
                                         outputMessage("    ❌ Error generating 768px {$base_name}.{$extension}: " . $e->getMessage());
                                         $global_errors++;
                                     }
@@ -654,7 +654,7 @@ $currentSizes = $settings->elan_image_thumbnail_sizes ?? '100,300,600,1024,2048'
                             'script_name' => basename(__FILE__),
                             'completed_at' => date('Y-m-d H:i:s')
                         ]);
-                    } catch (Exception $e) {
+                    } catch (\Throwable $e) {
                         logger($user->data()->id, LogCategories::LOG_CATEGORY_FIX_SCRIPT, "Failed to record fix_script_runs completion: " . $e->getMessage() . " (Issue #176)");
                         outputMessage("⚠️ Warning: Could not record script completion in fix_script_runs table");
                     }
@@ -662,7 +662,7 @@ $currentSizes = $settings->elan_image_thumbnail_sizes ?? '100,300,600,1024,2048'
                     // Log the final completion
                     logger($user->data()->id, LogCategories::LOG_CATEGORY_FIX_SCRIPT, "Thumbnail optimization completed (batched) - Total Processed: {$cumulative_processed}, Generated: {$cumulative_generated}, Removed: {$cumulative_removed}, Errors: {$cumulative_errors} (Issue #176)");
 
-                } catch (Exception $e) {
+                } catch (\Throwable $e) {
                     $batchFailed = true;
                     // Update cumulative counters even if there's an error
                     $cumulative_processed += $global_processed;
@@ -670,10 +670,10 @@ $currentSizes = $settings->elan_image_thumbnail_sizes ?? '100,300,600,1024,2048'
                     $cumulative_removed += $global_removed;
                     $cumulative_errors += $global_errors + 1; // +1 for the current exception
 
-                    outputMessage("❌ ERROR during batch processing: " . $e->getMessage());
+                    outputMessage("❌ ERROR during batch processing: " . get_class($e) . ': ' . $e->getMessage());
                     outputMessage("Processing aborted — partial changes may have been made");
-                    logger($user->data()->id, LogCategories::LOG_CATEGORY_FIX_SCRIPT,
-                        "Thumbnail optimization failed: " . $e->getMessage() . " (Issue #176)");
+                    logger($user->data()->id, LogCategories::LOG_CATEGORY_FIX_SCRIPT_ERROR,
+                        "Thumbnail optimization failed: " . get_class($e) . ': ' . $e->getMessage() . " (Issue #176)");
                     // Note: PHP max_execution_time is a fatal error, not catchable here.
                     // Timeout management is handled by the $batch_start_time check in the foreach loop above.
                 }

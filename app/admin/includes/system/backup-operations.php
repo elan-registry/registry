@@ -69,22 +69,22 @@ try {
             logger($user->data()->id, LogCategories::LOG_CATEGORY_BACKUP_DEBUG, "Tables to backup: " . implode(', ', $criticalTables));
 
             // Create backup
-            try {
-                $backupPath = $backupManager->createManualBackup(
-                    $reason,
-                    $criticalTables,
-                    ['user_id' => $user->data()->id, 'username' => $user->data()->username]
-                );
-            } catch (\Throwable $e) {
-                // Log specific error from BackupManager
-                logger($user->data()->id, LogCategories::LOG_CATEGORY_BACKUP_ERROR, "BackupManager threw exception: " . $e->getMessage() . " in " . $e->getFile() . " at line " . $e->getLine());
-                throw $e; // Re-throw to be caught by outer try-catch
-            }
+            $backupPath = $backupManager->createManualBackup(
+                $reason,
+                $criticalTables,
+                ['user_id' => $user->data()->id, 'username' => $user->data()->username]
+            );
 
             // Get file info
             $filename = basename($backupPath);
-            $filesize = filesize($backupPath);
-            $sizeFormatted = formatBytes($filesize);
+            $rawSize = filesize($backupPath);
+            if ($rawSize === false) {
+                logger($user->data()->id, LogCategories::LOG_CATEGORY_BACKUP_ERROR,
+                    "filesize() failed for backup at {$backupPath} — backup was created but size is unavailable");
+                $sizeFormatted = 'unknown size';
+            } else {
+                $sizeFormatted = formatBytes($rawSize);
+            }
 
             ApiResponse::success('Backup created successfully')
                 ->withDataArray([
@@ -93,8 +93,7 @@ try {
                 ])
                 ->withLogging($user->data()->id, LogCategories::LOG_CATEGORY_BACKUP_MANAGER,
                     "Manual backup completed via API: {$filename} ({$sizeFormatted})")
-                ->send();
-            break;
+                ->send(); // never returns
 
         case 'list_backups':
             // Log backup list request
@@ -117,15 +116,21 @@ try {
                     $files = array_merge($sqlFiles ?: [], $phpFiles ?: []);
 
                     foreach ($files as $file) {
-                        if (is_file($file)) {
-                            $backups[$type][] = [
-                                'filename' => basename($file),
-                                'size' => filesize($file),
-                                'size_formatted' => formatBytes(filesize($file)),
-                                'created' => date('Y-m-d H:i:s', filemtime($file)),
-                                'age_hours' => round((time() - filemtime($file)) / 3600, 1)
-                            ];
+                        if (!is_file($file)) {
+                            continue;
                         }
+                        $rawSize = filesize($file);
+                        $mtime = filemtime($file);
+                        if ($rawSize === false || $mtime === false) {
+                            continue;
+                        }
+                        $backups[$type][] = [
+                            'filename' => basename($file),
+                            'size' => $rawSize,
+                            'size_formatted' => formatBytes($rawSize),
+                            'created' => date('Y-m-d H:i:s', $mtime),
+                            'age_hours' => round((time() - $mtime) / 3600, 1)
+                        ];
                     }
 
                     // Sort by created date, newest first
@@ -150,8 +155,7 @@ try {
                 ])
                 ->withLogging($user->data()->id, LogCategories::LOG_CATEGORY_BACKUP_MANAGER,
                     'Backup list retrieved via API')
-                ->send();
-            break;
+                ->send(); // never returns
 
         case 'preview_cleanup':
             // Get list of files that would be deleted without actually deleting them
@@ -175,21 +179,26 @@ try {
                         'automated' => BACKUP_RETENTION_AUTOMATED,
                         'manual'    => BACKUP_RETENTION_MANUAL,
                         'rollback'  => BACKUP_RETENTION_ROLLBACK,
-                        default     => throw new \RuntimeException("Unknown backup type: {$type}"),
                     };
 
                     $cutoffTime = time() - ($retentionDays * 24 * 60 * 60);
 
                     foreach ($files as $file) {
-                        if (is_file($file) && filemtime($file) < $cutoffTime) {
-                            $filesToDelete[$type][] = [
-                                'filename' => basename($file),
-                                'size' => filesize($file),
-                                'size_formatted' => formatBytes(filesize($file)),
-                                'age_days' => round((time() - filemtime($file)) / 86400, 1),
-                                'created' => date('Y-m-d H:i:s', filemtime($file))
-                            ];
+                        $mtime = is_file($file) ? filemtime($file) : false;
+                        if ($mtime === false || $mtime >= $cutoffTime) {
+                            continue;
                         }
+                        $rawSize = filesize($file);
+                        if ($rawSize === false) {
+                            continue;
+                        }
+                        $filesToDelete[$type][] = [
+                            'filename' => basename($file),
+                            'size' => $rawSize,
+                            'size_formatted' => formatBytes($rawSize),
+                            'age_days' => round((time() - $mtime) / 86400, 1),
+                            'created' => date('Y-m-d H:i:s', $mtime)
+                        ];
                     }
                 }
             }
@@ -206,8 +215,7 @@ try {
                 ])
                 ->withLogging($user->data()->id, LogCategories::LOG_CATEGORY_BACKUP_MANAGER,
                     "Cleanup preview: {$totalFiles} files to delete")
-                ->send();
-            break;
+                ->send(); // never returns
 
         case 'cleanup_backups':
             // Log cleanup initiation
@@ -234,8 +242,7 @@ try {
                 ])
                 ->withLogging($user->data()->id, LogCategories::LOG_CATEGORY_BACKUP_MANAGER,
                     "Backup cleanup completed via API: {$totalDeleted}/{$totalScanned} deleted")
-                ->send();
-            break;
+                ->send(); // never returns
 
         case 'delete_backup':
             // basename() strips ../ traversal sequences; realpath() below provides defense-in-depth against symlinks — both are required
@@ -304,14 +311,12 @@ try {
                 ->withDataArray(['filename' => $filename])
                 ->withLogging($user->data()->id, LogCategories::LOG_CATEGORY_BACKUP_MANAGER,
                     "Backup deletion completed via API: {$filename}")
-                ->send();
-            break;
+                ->send(); // never returns
 
         default:
             ApiResponse::error('Invalid action', 400)
                 ->withLogging($user->data()->id, LogCategories::LOG_CATEGORY_BACKUP_ERROR, "Invalid backup action: {$action}")
-                ->send();
-            break;
+                ->send(); // never returns
     }
 
 } catch (\Throwable $e) {
