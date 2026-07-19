@@ -12,18 +12,36 @@ on:
 
 jobs:
   claude:
+    # Gate all event types to OWNER or COLLABORATOR — the repo is public so
+    # ungated triggers would allow any GitHub user to consume the OAuth quota.
     if: |
-      (github.event_name == 'issue_comment' && contains(github.event.comment.body, '@claude')) ||
-      (github.event_name == 'pull_request_review_comment' && contains(github.event.comment.body, '@claude')) ||
-      (github.event_name == 'pull_request_review' && contains(github.event.review.body, '@claude')) ||
-      (github.event_name == 'issues' && (contains(github.event.issue.body, '@claude') || contains(github.event.issue.title, '@claude')))
+      (
+        github.event_name == 'issue_comment' &&
+        contains(github.event.comment.body, '@claude') &&
+        (github.event.comment.author_association == 'OWNER' || github.event.comment.author_association == 'COLLABORATOR')
+      ) ||
+      (
+        github.event_name == 'pull_request_review_comment' &&
+        contains(github.event.comment.body, '@claude') &&
+        (github.event.comment.author_association == 'OWNER' || github.event.comment.author_association == 'COLLABORATOR')
+      ) ||
+      (
+        github.event_name == 'pull_request_review' &&
+        contains(github.event.review.body, '@claude') &&
+        (github.event.review.author_association == 'OWNER' || github.event.review.author_association == 'COLLABORATOR')
+      ) ||
+      (
+        github.event_name == 'issues' &&
+        (contains(github.event.issue.body, '@claude') || contains(github.event.issue.title, '@claude')) &&
+        (github.event.issue.author_association == 'OWNER' || github.event.issue.author_association == 'COLLABORATOR')
+      )
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      pull-requests: read
-      issues: read
+      pull-requests: write
+      issues: write
       id-token: write
-      actions: read # Required for Claude to read CI results on PRs
+      actions: read
     steps:
       - name: Checkout repository
         uses: actions/checkout@v7
@@ -35,30 +53,25 @@ jobs:
         uses: anthropics/claude-code-action@v1
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
-
-          # This is an optional setting that allows Claude to read CI results on PRs
           additional_permissions: |
             actions: read
-          
-          # Optional: Specify model (defaults to Claude Sonnet 4, uncomment for Claude Opus 4.1)
-          # model: "claude-opus-4-1-20250805"
-          
-          # Optional: Customize the trigger phrase (default: @claude)
-          # trigger_phrase: "/claude"
-          
-          # Optional: Trigger when specific user is assigned to an issue
-          # assignee_trigger: "claude-bot"
-          
-          # Optional: Allow Claude to run specific commands
-          # allowed_tools: "Bash(npm install),Bash(npm run build),Bash(npm run test:*),Bash(npm run lint:*)"
-          
-          # Optional: Add custom instructions for Claude to customize its behavior for your project
-          # custom_instructions: |
-          #   Follow our coding standards
-          #   Ensure all new code has tests
-          #   Use TypeScript for new files
-          
-          # Optional: Custom environment variables for Claude
-          # claude_env: |
-          #   NODE_ENV: test
+          model: "claude-sonnet-5"
+          claude_args: >-
+            --allowedTools
+            "Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*),Bash(gh issue comment:*),Bash(gh issue view:*),Bash(git diff:*),Bash(git log:*),Bash(git show:*),Bash(git diff --name-only:*),Bash(php -l *),Bash(composer check:php),Bash(vendor/bin/phpstan analyse:*),Bash(npm run lint),Read,Grep,Glob"
+          custom_instructions: |
+            This is the Elan Registry — a PHP 8.2 web application (elanregistry.org) built on UserSpice 6.
+            PSR-4 namespace: ElanRegistry\ → usersc/classes/.
 
+            Key conventions:
+            - Use ElanRegistry\Input::raw() for DB storage — never \Input::get() (causes double-encoding)
+            - All AJAX endpoints return ApiResponse JSON; JS side uses ElanRegistryAPI
+            - Typed exceptions extending ElanRegistryException; LogCategories constants for all logger() calls
+            - Never access $_SERVER directly — use validated globals from usersc/includes/server_globals.php
+            - securePage($php_self) required on all protected pages
+            - Two privileged roles: admin (full access) and editor (some tools)
+            - Users = auth/session context (UserSpice, users table); Owners = business domain (UI, registry logic)
+            - Use (new Owner($userId))->data() for combined user+profile data
+
+            Run vendor/bin/phpstan analyse <file> when checking any PHP file you touch.
+            Full architecture, coding standards, and workflow: CLAUDE.md in the repository root.

@@ -1,24 +1,19 @@
 name: Claude Code Review
 
-# Two review modes gated by PR base branch:
+# Two automated review modes gated by PR base branch:
 #
-#   * -> milestone/*        : lightweight Sonnet backstop. Runs on every push.
-#                             Covers any head branch type (issue/*, feat/*,
-#                             fix/*, claude/*, chore/*, etc.) — not restricted
-#                             to issue/ branches by design. Assumes the author
-#                             ran `/review-pr` locally on their Max/Pro plan
-#                             before pushing, and relies on the parallel Static
-#                             Analysis / CodeQL / Semgrep checks to catch the
-#                             cheap issues. This prompt focuses on things static
-#                             tools can't see.
+#   * -> milestone/*    : lightweight Sonnet backstop on every push. Focuses on
+#                         what static tools (PHPStan / CodeQL / Semgrep) can't
+#                         see: silent failures, arch fit, test gaps, CLAUDE.md
+#                         violations. Assumes the author ran /review-pr locally.
 #
-#   milestone/* -> main     : deep Opus review. Runs once on PR open or when
-#                             the `deep-review` label is applied / a
-#                             `@claude deep-review` comment is posted. The
-#                             commits in this PR were already reviewed per-line
-#                             on their issue PRs, so the focus is cross-issue
-#                             integration, architecture drift, release-notes
-#                             accuracy, and deployment readiness.
+#   milestone/* -> main : deep Opus review on PR open / ready_for_review /
+#                         deep-review label. Cross-issue integration, release-
+#                         notes accuracy, architecture drift, deploy readiness.
+#                         Does NOT re-review line-by-line (done on issue PRs).
+#
+# On-demand deep review: post "@claude deep-review" on any PR — handled by
+# claude.yml (gated to OWNER / COLLABORATOR).
 #
 # Drafts and [skip-review] / [WIP] titles are skipped in both modes.
 #
@@ -35,10 +30,6 @@ on:
     # trigger Claude review so the claude-code-action@v1 OIDC token validation
     # runs against the default-branch workflow file. A paths filter that
     # excludes .github/workflows/** causes validation to fail on those PRs.
-  # issue_comment events are not filtered by paths — the job's `if:`
-  # condition and author_association check handle gating.
-  issue_comment:
-    types: [created]
   workflow_dispatch:
     inputs:
       pr_number:
@@ -102,6 +93,7 @@ jobs:
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           track_progress: true
+          model: "claude-sonnet-5"
           claude_args: >-
             --allowedTools
             "Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*),Bash(git diff:*),Bash(git log:*),Bash(git show:*),Bash(git diff --name-only:*),Bash(php -l *),Bash(composer check:php),Bash(vendor/bin/phpstan analyse:*),Bash(npm run lint),Read,Grep,Glob"
@@ -179,9 +171,12 @@ jobs:
           PR_NUM: ${{ steps.ctx.outputs.pr_number }}
           REPO: ${{ github.repository }}
         run: |
-          BODY=$(gh api "repos/${REPO}/issues/${PR_NUM}/comments" \
-            --jq 'last.body // ""' 2>/dev/null || echo "")
-          if echo "$BODY" | grep -qE '^#{1,6} Blocking'; then
+          # Anchor on "### Strengths" — present in every Claude review comment —
+          # so we match the review, not a stray human comment.
+          REVIEW_BODY=$(gh api "repos/${REPO}/issues/${PR_NUM}/comments" \
+            --jq '[.[] | select(.body | test("#+\\s+Strengths"))] | last | .body // ""' \
+            2>/dev/null || echo "")
+          if echo "$REVIEW_BODY" | grep -qE '^#{1,6} Blocking'; then
             echo "::error::Review posted Blocking findings — fix them before merging. See the PR comment for details."
             exit 1
           fi
@@ -189,7 +184,7 @@ jobs:
 
 
   # Deep review for milestone -> main PRs. Runs on open / ready_for_review
-  # and when `deep-review` is explicitly requested.
+  # and when `deep-review` is explicitly requested via label.
   milestone-review:
     if: |
       github.event_name == 'pull_request' &&
@@ -244,7 +239,7 @@ jobs:
           # when the deep-review label triggers this job.
           track_progress: ${{ github.event.action != 'labeled' }}
           # Opus is worth it here: this runs once per milestone, not per push.
-          model: "claude-opus-4-6"
+          model: "claude-opus-4-8"
           claude_args: >-
             --allowedTools
             "Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*),Bash(gh pr list:*),Bash(cat merged-prs.txt),Bash(git diff:*),Bash(git log:*),Bash(git show:*),Bash(git diff --name-only:*),Bash(php -l *),Bash(composer check:php),Bash(vendor/bin/phpstan analyse:*),Bash(npm run lint),Read,Grep,Glob"
@@ -337,113 +332,12 @@ jobs:
           PR_NUM: ${{ github.event.pull_request.number }}
           REPO: ${{ github.repository }}
         run: |
-          BODY=$(gh api "repos/${REPO}/issues/${PR_NUM}/comments" \
-            --jq 'last.body // ""' 2>/dev/null || echo "")
-          if echo "$BODY" | grep -qE '^#{1,6} Blocking'; then
-            echo "::error::Review posted Blocking findings — fix them before merging. See the PR comment for details."
-            exit 1
-          fi
-          echo "✓ No Blocking section in review."
-
-
-  # Deep review triggered by a PR comment: `@claude deep-review`.
-  # Restricted to repository owners and collaborators to prevent abuse.
-  # Useful when the author wants the Opus multi-agent pass on any PR.
-  comment-triggered-deep-review:
-    if: |
-      github.event_name == 'issue_comment' &&
-      github.event.issue.pull_request != null &&
-      contains(github.event.comment.body, '@claude deep-review') &&
-      (
-        github.event.comment.author_association == 'OWNER' ||
-        github.event.comment.author_association == 'COLLABORATOR'
-      )
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      pull-requests: write
-      issues: read
-      id-token: write
-
-    steps:
-      - name: Checkout PR
-        uses: actions/checkout@v7
-        with:
-          fetch-depth: 0
-          ref: refs/pull/${{ github.event.issue.number }}/head
-
-      - name: Get PR base branch
-        id: pr-info
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          PR_NUMBER: ${{ github.event.issue.number }}
-        run: |
-          BASE=$(gh pr view "$PR_NUMBER" --json baseRefName -q .baseRefName)
-          echo "base_ref=${BASE}" >> "$GITHUB_OUTPUT"
-
-      - name: Run Claude Deep Review
-        uses: anthropics/claude-code-action@v1
-        with:
-          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
-          track_progress: true
-          model: "claude-opus-4-6"
-          claude_args: >-
-            --allowedTools
-            "Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*),Bash(git diff:*),Bash(git log:*),Bash(git show:*),Bash(git diff --name-only:*),Bash(php -l *),Bash(composer check:php),Bash(vendor/bin/phpstan analyse:*),Bash(npm run lint),Read,Grep,Glob"
-          prompt: |
-            REPO: ${{ github.repository }}
-            PR NUMBER: ${{ github.event.issue.number }}
-
-            Deep review requested by `@claude deep-review` comment on
-            PR #${{ github.event.issue.number }}.
-
-            Review the PR diff:
-
-            ```bash
-            gh pr diff ${{ github.event.issue.number }}
-            ```
-
-            Check across all quality dimensions:
-
-            - **Code quality** — CLAUDE.md + CODING_STANDARDS compliance, bug detection
-            - **Security** — OWASP patterns, CSRF, prepared statements, input validation
-            - **Error handling** — silent failures, catch blocks, fallback paths
-            - **Test coverage** — are new behaviours tested?
-            - **Architecture fit** — does it fit the existing patterns?
-
-            Post your review as a PR comment using:
-
-            ```bash
-            gh pr comment ${{ github.event.issue.number }} --body "..."
-            ```
-
-            Structure the comment with these sections (use exactly these headings):
-
-            ### Blocking
-            Must fix before merge. Omit this section entirely if there are no
-            blocking issues — do NOT include an empty section.
-
-            ### Important
-            Should address.
-
-            ### Suggestions
-            Optional improvements.
-
-            ### Strengths
-            What's done well.
-
-            Every item must cite `file:line`.
-            Only post GitHub comments — do not output the review as a message.
-
-      - name: Fail if review posted Blocking findings
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          PR_NUM: ${{ github.event.issue.number }}
-          REPO: ${{ github.repository }}
-        run: |
-          BODY=$(gh api "repos/${REPO}/issues/${PR_NUM}/comments" \
-            --jq 'last.body // ""' 2>/dev/null || echo "")
-          if echo "$BODY" | grep -qE '^#{1,6} Blocking'; then
+          # Anchor on "## Strengths" — present in every Claude milestone review —
+          # so we match the review, not a stray human comment.
+          REVIEW_BODY=$(gh api "repos/${REPO}/issues/${PR_NUM}/comments" \
+            --jq '[.[] | select(.body | test("#+\\s+Strengths"))] | last | .body // ""' \
+            2>/dev/null || echo "")
+          if echo "$REVIEW_BODY" | grep -qE '^#{1,6} Blocking'; then
             echo "::error::Review posted Blocking findings — fix them before merging. See the PR comment for details."
             exit 1
           fi
