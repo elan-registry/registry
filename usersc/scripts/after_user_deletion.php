@@ -73,7 +73,10 @@ if ($noOwnerQuery->count() > 0) {
             throw new \RuntimeException("Failed to delete profile for user $id: " . $db->errorString());
         }
         // Transfer each car using the same code path as the admin reassign UI — updates
-        // user_id and all denormalized owner fields (email, fname, lname, city, etc.)
+        // user_id and all denormalized owner fields (email, fname, lname, city, etc.).
+        // Car::transfer() requires $user->isLoggedIn(); this hook is only ever invoked
+        // from admin-authenticated contexts (deleteUsers() callers). A future self-service
+        // GDPR-deletion path would need a different reassignment strategy here.
         foreach ($userCars as $carObj) {
             $car = new \ElanRegistry\Car\Car((int) $carObj->id);
             $car->transfer(
