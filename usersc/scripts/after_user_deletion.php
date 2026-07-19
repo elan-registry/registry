@@ -54,7 +54,7 @@ if ($noOwnerQuery->count() > 0) {
     $userCars = $repo->findByOwner($id);
     $carCount = count($userCars);
 
-    $committed = $inTransaction(function () use ($db, $repo, $id, $noOwnerUserId): void {
+    $committed = $inTransaction(function () use ($db, $id, $noOwnerUserId, $userCars): void {
         // Expire any non-terminal transfer requests the user initiated — prevents orphaned
         // requester FK references and ensures the current car owner sees a clean audit trail.
         $db->query(
@@ -72,8 +72,16 @@ if ($noOwnerQuery->count() > 0) {
         if ($db->error()) {
             throw new \RuntimeException("Failed to delete profile for user $id: " . $db->errorString());
         }
-        // Update primary car ownership (this triggers cars_hist via database trigger)
-        $repo->reassignCarsByUser($id, $noOwnerUserId);
+        // Transfer each car using the same code path as the admin reassign UI — updates
+        // user_id and all denormalized owner fields (email, fname, lname, city, etc.)
+        foreach ($userCars as $carObj) {
+            $car = new \ElanRegistry\Car\Car((int) $carObj->id);
+            $car->transfer(
+                $noOwnerUserId,
+                "Account deleted — reassigned to noowner (ID: $noOwnerUserId)",
+                'NEWOWNER'
+            );
+        }
     });
 
     if (!$committed) {
