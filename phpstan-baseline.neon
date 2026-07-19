@@ -529,12 +529,6 @@ parameters:
 			path: app/views/email/_transfer_response.php
 
 		-
-			message: '#^Access to constant LOG_CATEGORY_SECURITY on an unknown class LogCategories\.$#'
-			identifier: class.notFound
-			count: 4
-			path: docs/pdf-viewer.php
-
-		-
 			message: '#^Variable \$settings might not be defined\.$#'
 			identifier: variable.undefined
 			count: 1
