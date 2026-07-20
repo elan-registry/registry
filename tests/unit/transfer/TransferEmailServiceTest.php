@@ -233,6 +233,26 @@ final class TransferEmailServiceTest extends TestCase
     }
 
     /**
+     * sendResponse() returns true when the previous-owner email succeeds even if
+     * the requester notification fails — verifying the other side of the OR logic in
+     * `return $requesterNotificationSent || $previousOwnerNotificationSent`.
+     */
+    public function testSendResponseReturnsTrueWhenPreviousOwnerSucceedsAndRequesterFails(): void
+    {
+        $db      = $this->createFoundMockDb($this->makeTransferRow(), $this->makeCarRow());
+        $attempt = 0;
+        $mailer  = function () use (&$attempt): bool {
+            $attempt++;
+            return $attempt !== 1; // first call (requester) fails; second (previous owner) succeeds
+        };
+
+        $service = new TransferEmailService($db, $mailer);
+        $result  = $service->sendResponse(1, true, '', 1);
+
+        $this->assertTrue($result);
+    }
+
+    /**
      * sendResponse() denied path uses $carData->user_id as the previous-owner lookup
      * when $previousOwnerId is null. Verifies the mailer is called exactly twice.
      */
@@ -294,22 +314,19 @@ final class TransferEmailServiceTest extends TestCase
     public function testSendResponseEmailBodyEscapesXssInAdminNotes(): void
     {
         $db      = $this->createFoundMockDb($this->makeTransferRow(), $this->makeCarRow());
-        $capturedBody = null;
-        $attempt = 0;
-        $mailer = function (string $to, string $subject, string $body) use (&$capturedBody, &$attempt): bool {
-            $attempt++;
-            if ($attempt === 1) { // first call = requester email
-                $capturedBody = $body;
-            }
+        $capturedBodies = [];
+        $mailer = function (string $to, string $subject, string $body) use (&$capturedBodies): bool {
+            $capturedBodies[] = $body;
             return true;
         };
         $service = new TransferEmailService($db, $mailer);
         $service->sendResponse(1, false, '<script>alert(1)</script>');
 
-        $this->assertNotNull($capturedBody, 'Requester mailer must be called');
-        $this->assertStringContainsString('&lt;script&gt;', $capturedBody);
-        $this->assertStringNotContainsString('<script>alert', $capturedBody);
-        $this->assertSame(2, $attempt, 'Mailer must be called for both requester and previous owner');
+        $this->assertCount(2, $capturedBodies, 'Mailer must be called for both requester and previous owner');
+        foreach ($capturedBodies as $body) {
+            $this->assertStringContainsString('&lt;script&gt;', $body);
+            $this->assertStringNotContainsString('<script>alert', $body);
+        }
     }
 
     public function testSendResponsePreviousOwnerEmailBodyEscapesXssInChassis(): void

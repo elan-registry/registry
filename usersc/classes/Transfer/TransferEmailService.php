@@ -13,8 +13,10 @@ use Throwable;
  * TransferEmailService
  *
  * Sends email notifications for car ownership transfer requests and decisions.
- * Wraps the four notification types with injectable DB and mailer dependencies
- * to allow unit testing without a live database or email server.
+ * Exposes three public methods (sendRequest, sendAdminAlert, sendResponse);
+ * sendResponse() also sends a parallel previous-owner notification internally.
+ * All dependencies are injectable to allow unit testing without a live database
+ * or email server.
  */
 class TransferEmailService
 {
@@ -215,7 +217,7 @@ class TransferEmailService
      *
      * @param int $transferRequestId Transfer request ID
      * @param bool $isApproved Whether the request was approved
-     * @param string $adminNotes Optional admin notes
+     * @param string $adminNotes Admin notes from the administrator; empty string if none
      * @param int|null $previousOwnerId Previous owner ID (for approved transfers)
      * @return bool True if at least one notification was delivered
      */
@@ -277,7 +279,7 @@ class TransferEmailService
      * @param array{transferData: object, carData: object, carInfo: object} $ctx Transfer context from fetchTransferContext()
      * @param object $requester Requester user data, pre-fetched by sendResponse()
      * @param bool $isApproved Whether the request was approved
-     * @param string $adminNotes Optional admin notes
+     * @param string $adminNotes Admin notes from the administrator; empty string if none
      * @param int|null $previousOwnerId Previous owner ID (for approved transfers)
      * @return bool True if the email was delivered
      */
