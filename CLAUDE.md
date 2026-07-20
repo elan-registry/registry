@@ -41,7 +41,10 @@ custom solutions.
 This is a PHP web application for the Lotus Elan Registry hosted at
 <https://elanregistry.org>. Built on UserSpice 6 (<https://userspice.com>) for
 authentication, with custom car registry functionality. Cloudflare provides
-edge caching and CDN for global users (US, EU, AU).
+edge caching and CDN for global users (US, EU, AU). **Cloudflare Rocket Loader
+and Email Obfuscation must remain disabled** — both inject inline scripts that
+are incompatible with the strict CSP nonce policy (v2.27.0+). Edge caching and
+all other Cloudflare features work normally.
 
 > **For complete architecture, see the
 > [GitHub Wiki: Architecture Guide](https://github.com/elan-registry/registry/wiki/Elan-Registry-Architecture-and-Database-Design)**
@@ -86,7 +89,9 @@ edge caching and CDN for global users (US, EU, AU).
   pattern. (`app/api/contact/` is an exception: it contains files that call `securePage()` and
   is therefore included.)
   New admin scripts go under `app/admin/scripts/fix/` (one-time migrations) or
-  `app/admin/scripts/maintenance/` (repeatable maintenance).
+  `app/admin/scripts/maintenance/` (repeatable maintenance). **After adding any
+  new page or admin script, run `21-Fix-Page-Permissions.php` on test then prod
+  to register the new path in UserSpice's permission table.**
 - **Database**: MySQL 8.0+ with audit trails via triggers.
   See [DATABASE.md](docs/development/DATABASE.md).
 - **Classes**: See [CLASSES.md](docs/development/CLASSES.md) for Car,
