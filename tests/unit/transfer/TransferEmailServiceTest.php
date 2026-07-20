@@ -11,34 +11,6 @@ use PHPUnit\Framework\TestCase;
 #[Group('transfer')]
 final class TransferEmailServiceTest extends TestCase
 {
-    /** Temporary directory holding minimal email templates for success-path tests. */
-    private static string $fakeBasePath = '';
-
-    public static function setUpBeforeClass(): void
-    {
-        parent::setUpBeforeClass();
-        $dir = sys_get_temp_dir() . '/transfer_email_test_' . uniqid() . '/';
-        mkdir($dir . 'app/views/email/', 0755, true);
-        foreach (['_transfer_request', '_transfer_admin', '_transfer_response', '_transfer_previous_owner'] as $tpl) {
-            file_put_contents($dir . 'app/views/email/' . $tpl . '.php', '<?php // test stub ?>');
-        }
-        self::$fakeBasePath = $dir;
-    }
-
-    public static function tearDownAfterClass(): void
-    {
-        if (self::$fakeBasePath !== '' && is_dir(self::$fakeBasePath)) {
-            foreach (glob(self::$fakeBasePath . 'app/views/email/*.php') ?: [] as $f) {
-                unlink($f);
-            }
-            rmdir(self::$fakeBasePath . 'app/views/email/');
-            rmdir(self::$fakeBasePath . 'app/views/');
-            rmdir(self::$fakeBasePath . 'app/');
-            rmdir(self::$fakeBasePath);
-        }
-        parent::tearDownAfterClass();
-    }
-
     protected function tearDown(): void
     {
         // Remove any per-test global overrides
@@ -132,7 +104,7 @@ final class TransferEmailServiceTest extends TestCase
     {
         $db      = $this->createMockDb(0);
         $mailer  = function (): bool { return false; };
-        $service = new TransferEmailService($db, $mailer, '/fake/path/');
+        $service = new TransferEmailService($db, $mailer);
 
         $this->assertFalse($service->sendRequest(999));
     }
@@ -141,7 +113,7 @@ final class TransferEmailServiceTest extends TestCase
     {
         $db      = $this->createMockDb(0);
         $mailer  = function (): bool { return false; };
-        $service = new TransferEmailService($db, $mailer, '/fake/path/');
+        $service = new TransferEmailService($db, $mailer);
 
         $this->assertFalse($service->sendAdminAlert(999));
     }
@@ -150,7 +122,7 @@ final class TransferEmailServiceTest extends TestCase
     {
         $db      = $this->createMockDb(0);
         $mailer  = function (): bool { return false; };
-        $service = new TransferEmailService($db, $mailer, '/fake/path/');
+        $service = new TransferEmailService($db, $mailer);
 
         $this->assertFalse($service->sendResponse(999, true));
     }
@@ -163,7 +135,7 @@ final class TransferEmailServiceTest extends TestCase
             $called = true;
             return false;
         };
-        $service = new TransferEmailService($db, $mailer, '/fake/path/');
+        $service = new TransferEmailService($db, $mailer);
 
         $service->sendRequest(999);
 
@@ -188,7 +160,7 @@ final class TransferEmailServiceTest extends TestCase
             return true;
         };
 
-        $service = new TransferEmailService($db, $mailer, self::$fakeBasePath);
+        $service = new TransferEmailService($db, $mailer);
         $result  = $service->sendRequest(1);
 
         $this->assertTrue($result);
@@ -211,7 +183,7 @@ final class TransferEmailServiceTest extends TestCase
             return $attempt > 1; // first call fails, second succeeds
         };
 
-        $service = new TransferEmailService($db, $mailer, self::$fakeBasePath);
+        $service = new TransferEmailService($db, $mailer);
         $result  = $service->sendAdminAlert(1);
 
         $this->assertTrue($result);
@@ -232,7 +204,7 @@ final class TransferEmailServiceTest extends TestCase
             return true;
         };
 
-        $service = new TransferEmailService($db, $mailer, self::$fakeBasePath);
+        $service = new TransferEmailService($db, $mailer);
         $result  = $service->sendAdminAlert(1);
 
         $this->assertFalse($result);
@@ -253,10 +225,69 @@ final class TransferEmailServiceTest extends TestCase
             return $attempt === 1; // first call (requester) succeeds; second (previous owner) fails
         };
 
-        $service = new TransferEmailService($db, $mailer, self::$fakeBasePath);
+        $service = new TransferEmailService($db, $mailer);
         // Pass previousOwnerId so sendPreviousOwnerNotification() resolves an owner
         $result  = $service->sendResponse(1, true, '', 1);
 
         $this->assertTrue($result);
+    }
+
+    // -------------------------------------------------------------------------
+    // XSS content escaping — email body must escape user-supplied data
+    // -------------------------------------------------------------------------
+
+    public function testSendRequestEmailBodyEscapesXssInChassis(): void
+    {
+        $carRow  = $this->makeCarRow(['chassis' => '<script>alert(1)</script>']);
+        $db      = $this->createFoundMockDb($this->makeTransferRow(), $carRow);
+        $capturedBody = null;
+        $mailer = function (string $to, string $subject, string $body) use (&$capturedBody): bool {
+            $capturedBody = $body;
+            return true;
+        };
+        $service = new TransferEmailService($db, $mailer);
+        $service->sendRequest(1);
+
+        $this->assertNotNull($capturedBody, 'Mailer must be called');
+        $this->assertStringContainsString('&lt;script&gt;', $capturedBody);
+        $this->assertStringNotContainsString('<script>alert', $capturedBody);
+    }
+
+    public function testSendAdminAlertEmailBodyEscapesXssInComments(): void
+    {
+        $GLOBALS['mockAdminEmails'] = 'admin@example.com';
+        $transferRow = $this->makeTransferRow(['submitted_comments' => '<script>alert(1)</script>']);
+        $db      = $this->createFoundMockDb($transferRow, $this->makeCarRow());
+        $capturedBody = null;
+        $mailer = function (string $to, string $subject, string $body) use (&$capturedBody): bool {
+            $capturedBody = $body;
+            return true;
+        };
+        $service = new TransferEmailService($db, $mailer);
+        $service->sendAdminAlert(1);
+
+        $this->assertNotNull($capturedBody, 'Mailer must be called');
+        $this->assertStringContainsString('&lt;script&gt;', $capturedBody);
+        $this->assertStringNotContainsString('<script>alert', $capturedBody);
+    }
+
+    public function testSendResponseEmailBodyEscapesXssInAdminNotes(): void
+    {
+        $db      = $this->createFoundMockDb($this->makeTransferRow(), $this->makeCarRow());
+        $capturedBody = null;
+        $attempt = 0;
+        $mailer = function (string $to, string $subject, string $body) use (&$capturedBody, &$attempt): bool {
+            $attempt++;
+            if ($attempt === 1) { // first call = requester email
+                $capturedBody = $body;
+            }
+            return true;
+        };
+        $service = new TransferEmailService($db, $mailer);
+        $service->sendResponse(1, false, '<script>alert(1)</script>');
+
+        $this->assertNotNull($capturedBody, 'Requester mailer must be called');
+        $this->assertStringContainsString('&lt;script&gt;', $capturedBody);
+        $this->assertStringNotContainsString('<script>alert', $capturedBody);
     }
 }

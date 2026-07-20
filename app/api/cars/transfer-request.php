@@ -157,7 +157,7 @@ try {
 
     // Send email notifications with timeout protection
     try {
-        $emailService = new TransferEmailService(DB::getInstance(), 'email', $abs_us_root . $us_url_root);
+        $emailService = new TransferEmailService(DB::getInstance(), 'email');
 
         // Set time limit for email operations
         set_time_limit(60);
