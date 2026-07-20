@@ -74,17 +74,6 @@ final class AdminOwnerManagementTest extends IntegrationTestCase
         $this->createdProfileIds[] = (int) $row->id;
     }
 
-    /**
-     * Seed a valid CSRF token into the session and return it.
-     * The token is a 64-char hex string matching Token::check() format requirements.
-     */
-    private function seedCsrfToken(): string
-    {
-        $token = bin2hex(random_bytes(32));
-        $_SESSION['token'] = $token;
-        return $token;
-    }
-
     // =========================================================================
     // Auth-guard and CSRF-guard source-inspection tests
     // =========================================================================

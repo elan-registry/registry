@@ -100,7 +100,7 @@ try {
     ApiResponse::serverError('Update failed: ' . $e->getUserMessage())
         ->withLogging(
             $user->data()->id,
-            'DatabaseError',
+            LogCategories::LOG_CATEGORY_DATABASE_ERROR,
             "Owner update failed for user ID {$ownerId}: " . $e->getMessage()
         )
         ->send();

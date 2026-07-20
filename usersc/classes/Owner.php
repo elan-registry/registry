@@ -290,6 +290,12 @@ class Owner
             [$this->_data->id]
         );
 
+        if ($this->_db->error()) {
+            logger((int)$this->_data->id, LogCategories::LOG_CATEGORY_DATABASE_ERROR,
+                "getCarsOwned DB error for userId={$this->_data->id}: " . $this->_db->errorString());
+            return [];
+        }
+
         $this->_carsOwned = $carsQuery->count() > 0 ? $carsQuery->results() : [];
         return $this->_carsOwned;
     }
@@ -313,6 +319,12 @@ class Owner
              ORDER BY ch.ctime DESC",
             [$this->_data->id]
         );
+
+        if ($this->_db->error()) {
+            logger((int)$this->_data->id, LogCategories::LOG_CATEGORY_DATABASE_ERROR,
+                "getOwnershipHistory DB error for userId={$this->_data->id}: " . $this->_db->errorString());
+            return [];
+        }
 
         return $historyQuery->count() > 0 ? $historyQuery->results() : [];
     }

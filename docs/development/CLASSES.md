@@ -306,7 +306,7 @@ $results = (new Owner())->searchOwners('Portland');
 
 **Integration**:
 
-- Works with `getUserWithProfile($userId)` custom function
+- Use `(new Owner($userId))->data()` to load combined user+profile data
 - Used in admin consolidated management interface
 
 ### CarValidator
@@ -824,7 +824,7 @@ class MyDomainClass {
 
 ```php
 // Combined user + profile data
-$owner = getUserWithProfile($userId);
+$ownerData = (new Owner($userId))->data();
 ```
 
 **UserSpice Classes**:
@@ -868,7 +868,7 @@ Car
 Owner
 ├── Uses: DB (singleton)
 ├── Related: Car (via user_id)
-└── Integrates: getUserWithProfile()
+└── Uses: (new Owner($userId))->data() for combined user+profile
 
 CarView
 ├── Uses: Resize (for image processing)
