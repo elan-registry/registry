@@ -241,7 +241,7 @@ final class AdminOwnerManagementTest extends IntegrationTestCase
 
     /**
      * Happy path for owner-search: a test user created in the DB is returned
-     * by Owner::searchOwners() when searched by first name.
+     * by $owner->searchOwners() when searched by first name.
      *
      * Validates that the search logic used by process-owner-search.php finds
      * real owners from the database.
@@ -250,7 +250,7 @@ final class AdminOwnerManagementTest extends IntegrationTestCase
     {
         $userId = $this->createTestUser(['fname' => 'SearchHappy', 'lname' => 'PathTest']);
 
-        $results = Owner::searchOwners('SearchHappy', 25);
+        $results = (new Owner())->searchOwners('SearchHappy', 25);
 
         $this->assertIsArray($results);
         $this->assertNotEmpty($results, 'searchOwners() must return the newly created test user');
@@ -262,8 +262,9 @@ final class AdminOwnerManagementTest extends IntegrationTestCase
     }
 
     /**
-     * Happy path for owner-update: Owner::update() persists a
-     * changed city to the profiles table when called with a valid CSRF token.
+     * Happy path for owner-update: Owner::update() persists a changed city to
+     * the profiles table. CSRF is validated by the caller (HTTP layer) before
+     * update() is called.
      *
      * Validates the DB write path used by process-owner-update.php.
      */
@@ -272,12 +273,9 @@ final class AdminOwnerManagementTest extends IntegrationTestCase
         $userId = $this->createTestUser();
         $this->createTestProfile($userId, ['city' => 'Salem']);
 
-        $token = $this->seedCsrfToken();
-
         $owner = new Owner($userId);
         $result = $owner->update([
             'id'   => $userId,
-            'csrf' => $token,
             'city' => 'Eugene',
         ]);
 
