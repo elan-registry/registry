@@ -470,7 +470,6 @@ class TransferEmailService
         if ($isApproved) {
             $statusStyle   = 'success';
             $statusTitle   = 'Transfer Request Approved';
-            $statusContent = $requestDetails;
             $statusMessage = '
         <p><strong>Congratulations!</strong> Your car ownership transfer request has been approved by the registry administrators.</p>
         ' . $et->createButton('View Your Car', $carUrl, 'success') . '
@@ -486,7 +485,6 @@ class TransferEmailService
         } else {
             $statusStyle   = 'alert';
             $statusTitle   = 'Transfer Request Denied';
-            $statusContent = $requestDetails;
             $statusMessage = '
         <p>After review, your car ownership transfer request has been denied by the registry administrators.</p>
         <p><strong>What this means:</strong></p>
@@ -502,7 +500,7 @@ class TransferEmailService
         $content = '
     <p>Hello <strong>' . htmlspecialchars($requester->fname, ENT_QUOTES, 'UTF-8') . '</strong>,</p>
     <p>Your car ownership transfer request has been reviewed by the registry administrators.</p>
-    ' . $et->createMessageBox($statusTitle, $statusContent, $statusStyle) . '
+    ' . $et->createMessageBox($statusTitle, $requestDetails, $statusStyle) . '
     ' . $et->createMessageBox('Car Information', $carDetails) . '
     ' . $statusMessage . '
 ';
@@ -594,10 +592,9 @@ class TransferEmailService
     <p><strong>Questions or concerns?</strong> Please contact the registry administrators at
     <a href="mailto:' . $adminEmail . '">' . $adminEmail . '</a> if you have any questions about this decision.</p>
 ';
-        $statusText = $isApproved ? 'Transfer Approved' : 'Transfer Denied';
         return $et->render(
             'Car Ownership Transfer Decision',
-            $statusText,
+            $isApproved ? 'Transfer Approved' : 'Transfer Denied',
             $content,
             ['footer_text' => 'This notification was sent because a transfer request decision was made for your registered vehicle.']
         );
