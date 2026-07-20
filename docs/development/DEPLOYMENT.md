@@ -299,9 +299,11 @@ Run `./scripts/update-version.sh` to generate VERSION file locally after creatin
 
 ### UserSpice Page Permissions
 
-- **Problem:** New pages and redirects need proper access permissions configured
-- **Solution:** Update page permissions in UserSpice admin panel
-- **Required for:** Both redirect pages AND new destination pages
+- **Problem:** New pages and admin scripts need proper access permissions registered
+- **Solution:** Run `app/admin/scripts/maintenance/21-Fix-Page-Permissions.php`
+  on test, verify, then run on prod — this scans all pages and corrects their
+  permission entries in UserSpice's `pages` table
+- **Required whenever:** A new page, admin script, or route is added or renamed
 
 ### Deployment Verification Checklist
 
