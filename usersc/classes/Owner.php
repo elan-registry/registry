@@ -56,9 +56,9 @@ class Owner
     /**
      * Find and load owner data by user ID
      *
-     * Executes a users LEFT JOIN profiles query. Profile fields absent from the
-     * profiles row are normalised: city/state/country/website default to '' and
-     * lat/lon default to null.
+     * Executes a users LEFT JOIN profiles query. When no profiles row exists,
+     * string location fields (city, state, country, website) are normalised to ''
+     * rather than null; lat and lon remain null as returned by the LEFT JOIN.
      *
      * Returns false both when the user ID does not exist and when a DB error
      * occurs. DB errors are logged to LOG_CATEGORY_DATABASE_ERROR so callers can
@@ -93,8 +93,6 @@ class Owner
             $ownerData->state   = $ownerData->state   ?? '';
             $ownerData->country = $ownerData->country ?? '';
             $ownerData->website = $ownerData->website ?? '';
-            $ownerData->lat     = $ownerData->lat     ?? null;
-            $ownerData->lon     = $ownerData->lon     ?? null;
             $this->_data = $ownerData;
             return true;
         }
@@ -428,11 +426,23 @@ class Owner
             return [];
         }
 
-        // Handle multi-word searches (e.g., "Greg Surcouf", "Portland Oregon")
+        // Split into words; for multi-word input, also strip commas from each token.
+        // Single-word input bypasses comma-stripping to preserve the original term exactly.
         $searchWords = array_values(array_filter(explode(' ', strtolower($searchTerm))));
 
-        if (count($searchWords) === 1) {
-            // Single word search - use original OR logic
+        if (count($searchWords) > 1) {
+            $searchWords = array_values(array_filter(array_map(
+                static fn(string $word) => trim($word, ', '),
+                $searchWords
+            )));
+        }
+
+        if (count($searchWords) === 0) {
+            return [];
+        }
+
+        if (count($searchWords) < 2) {
+            // Single-word search: matches name, email, and location
             $searchPattern = '%' . $searchWords[0] . '%';
             $sql = "SELECT u.id, u.fname, u.lname, u.email, p.city, p.state, p.country, p.lat, p.lon
                     FROM users u
@@ -445,66 +455,44 @@ class Owner
             $params = [$searchPattern, $searchPattern, $searchPattern, $searchPattern, $searchPattern, $searchPattern];
 
         } else {
-            // Multi-word search - use UNION to prioritize exact matches over partial matches
-            $searchWords = array_values(array_filter(array_map(function($word) {
-                return trim($word, ', ');
-            }, $searchWords)));
+            // Multi-word search: UNION-based query to prioritize exact matches
+            // ($searchWords are already lowercased from strtolower($searchTerm) above)
+            $word1 = $searchWords[0];
+            $word2 = $searchWords[1];
 
-            if (count($searchWords) === 0) {
-                return [];
-            }
+            $sql = "
+            (SELECT u.id, u.fname, u.lname, u.email, p.city, p.state, p.country, p.lat, p.lon, 1 as priority
+             FROM users u LEFT JOIN profiles p ON u.id = p.user_id
+             WHERE (LOWER(u.fname) = ? AND LOWER(u.lname) = ?) OR (LOWER(u.fname) = ? AND LOWER(u.lname) = ?))
+            UNION
+            (SELECT u.id, u.fname, u.lname, u.email, p.city, p.state, p.country, p.lat, p.lon, 2 as priority
+             FROM users u LEFT JOIN profiles p ON u.id = p.user_id
+             WHERE ((LOWER(u.fname) = ? OR LOWER(u.lname) = ?) AND (LOWER(p.city) = ? OR LOWER(p.state) = ?))
+                OR ((LOWER(u.fname) = ? OR LOWER(u.lname) = ?) AND (LOWER(p.city) = ? OR LOWER(p.state) = ?)))
+            UNION
+            (SELECT u.id, u.fname, u.lname, u.email, p.city, p.state, p.country, p.lat, p.lon, 3 as priority
+             FROM users u LEFT JOIN profiles p ON u.id = p.user_id
+             WHERE (LOWER(p.city) = ? AND LOWER(p.state) = ?) OR (LOWER(p.city) = ? AND LOWER(p.state) = ?))
+            ORDER BY priority, lname, fname
+            LIMIT " . (int)$limit;
 
-            if (count($searchWords) < 2) {
-                // Fallback to single word search
-                $searchPattern = '%' . $searchWords[0] . '%';
-                $sql = "SELECT u.id, u.fname, u.lname, u.email, p.city, p.state, p.country, p.lat, p.lon
-                        FROM users u
-                        LEFT JOIN profiles p ON u.id = p.user_id
-                        WHERE LOWER(u.fname) LIKE ? OR LOWER(u.lname) LIKE ? OR LOWER(u.email) LIKE ?
-                           OR LOWER(p.city) LIKE ? OR LOWER(p.state) LIKE ? OR LOWER(p.country) LIKE ?
-                        ORDER BY u.lname, u.fname
-                        LIMIT " . (int)$limit;
-                $params = [$searchPattern, $searchPattern, $searchPattern, $searchPattern, $searchPattern, $searchPattern];
-            } else {
-                // Use UNION to prioritize exact matches
-                $word1 = strtolower($searchWords[0]);
-                $word2 = strtolower($searchWords[1]);
-
-                $sql = "
-                (SELECT u.id, u.fname, u.lname, u.email, p.city, p.state, p.country, p.lat, p.lon, 1 as priority
-                 FROM users u LEFT JOIN profiles p ON u.id = p.user_id
-                 WHERE (LOWER(u.fname) = ? AND LOWER(u.lname) = ?) OR (LOWER(u.fname) = ? AND LOWER(u.lname) = ?))
-                UNION
-                (SELECT u.id, u.fname, u.lname, u.email, p.city, p.state, p.country, p.lat, p.lon, 2 as priority
-                 FROM users u LEFT JOIN profiles p ON u.id = p.user_id
-                 WHERE ((LOWER(u.fname) = ? OR LOWER(u.lname) = ?) AND (LOWER(p.city) = ? OR LOWER(p.state) = ?))
-                    OR ((LOWER(u.fname) = ? OR LOWER(u.lname) = ?) AND (LOWER(p.city) = ? OR LOWER(p.state) = ?)))
-                UNION
-                (SELECT u.id, u.fname, u.lname, u.email, p.city, p.state, p.country, p.lat, p.lon, 3 as priority
-                 FROM users u LEFT JOIN profiles p ON u.id = p.user_id
-                 WHERE (LOWER(p.city) = ? AND LOWER(p.state) = ?) OR (LOWER(p.city) = ? AND LOWER(p.state) = ?))
-                ORDER BY priority, lname, fname
-                LIMIT " . (int)$limit;
-
-                $params = [
-                    // First UNION: exact name matches
-                    $word1, $word2,  // fname=word1 AND lname=word2
-                    $word2, $word1,  // fname=word2 AND lname=word1
-                    // Second UNION: name + location matches
-                    $word1, $word1, $word2, $word2,  // (fname=word1 OR lname=word1) AND (city=word2 OR state=word2)
-                    $word2, $word2, $word1, $word1,  // (fname=word2 OR lname=word2) AND (city=word1 OR state=word1)
-                    // Third UNION: location pairs
-                    $word1, $word2,  // city=word1 AND state=word2
-                    $word2, $word1   // city=word2 AND state=word1
-                ];
-            }
+            $params = [
+                // First UNION: exact name matches
+                $word1, $word2,  // fname=word1 AND lname=word2
+                $word2, $word1,  // fname=word2 AND lname=word1
+                // Second UNION: name + location matches
+                $word1, $word1, $word2, $word2,  // (fname=word1 OR lname=word1) AND (city=word2 OR state=word2)
+                $word2, $word2, $word1, $word1,  // (fname=word2 OR lname=word2) AND (city=word1 OR state=word1)
+                // Third UNION: location pairs
+                $word1, $word2,  // city=word1 AND state=word2
+                $word2, $word1   // city=word2 AND state=word1
+            ];
         }
 
-        $db = $this->_db;
-        $searchQuery = $db->query($sql, $params);
-        if ($db->error()) {
+        $searchQuery = $this->_db->query($sql, $params);
+        if ($this->_db->error()) {
             throw OwnerSearchException::withUserMessage(
-                'Owner search DB query failed: ' . $db->errorString(),
+                'Owner search DB query failed: ' . $this->_db->errorString(),
                 'Search failed. Please try again.'
             );
         }

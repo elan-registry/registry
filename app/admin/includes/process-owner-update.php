@@ -15,7 +15,6 @@ use ElanRegistry\Owner;
  * Processes owner profile updates using Owner class
  */
 
-// Include required files
 require_once '../../../users/init.php';
 
 requireAdminAjax('owner update');
@@ -54,11 +53,11 @@ try {
     }
 
     // Attempt to update owner profile — throws OwnerValidationException or OwnerUpdateException on failure
+    // update() calls find() internally, so $owner->data() is already fresh after this returns
     $owner->update($updateFields);
 
-    $updatedOwner = new Owner($ownerId);
-    $newQualityScore = $updatedOwner->getProfileQualityScore();
-    $missingFields = $updatedOwner->validateProfileCompleteness();
+    $newQualityScore = $owner->getProfileQualityScore();
+    $missingFields = $owner->validateProfileCompleteness();
 
     ApiResponse::success('Owner profile updated successfully!')
         ->withDataArray([

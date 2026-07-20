@@ -32,19 +32,19 @@ try {
     $searchResults = (new Owner())->searchOwners($query, 25);
 
     // Enhance results with data quality scoring
+    $esc = static fn(?string $v): string => htmlspecialchars($v ?? '', ENT_QUOTES, 'UTF-8');
     $enhancedResults = [];
     foreach ($searchResults as $owner) {
         $qualityScore = Owner::qualityScoreFromRow($owner);
-
         $enhancedResults[] = [
-            'id' => (int)$owner->id,
-            'fname' => htmlspecialchars($owner->fname ?? '', ENT_QUOTES, 'UTF-8'),
-            'lname' => htmlspecialchars($owner->lname ?? '', ENT_QUOTES, 'UTF-8'),
-            'email' => htmlspecialchars($owner->email ?? '', ENT_QUOTES, 'UTF-8'),
-            'city' => htmlspecialchars($owner->city ?? '', ENT_QUOTES, 'UTF-8'),
-            'state' => htmlspecialchars($owner->state ?? '', ENT_QUOTES, 'UTF-8'),
-            'country' => htmlspecialchars($owner->country ?? '', ENT_QUOTES, 'UTF-8'),
-            'quality_score' => $qualityScore
+            'id'            => (int)$owner->id,
+            'fname'         => $esc($owner->fname),
+            'lname'         => $esc($owner->lname),
+            'email'         => $esc($owner->email),
+            'city'          => $esc($owner->city),
+            'state'         => $esc($owner->state),
+            'country'       => $esc($owner->country),
+            'quality_score' => $qualityScore,
         ];
     }
 
