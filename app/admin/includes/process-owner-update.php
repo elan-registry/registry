@@ -53,36 +53,24 @@ try {
         $updateFields['lon'] = (float)$_POST['lon'];
     }
 
-    // Attempt to update owner profile
-    $success = $owner->update($updateFields);
+    // Attempt to update owner profile — throws OwnerValidationException or OwnerUpdateException on failure
+    $owner->update($updateFields);
 
-    if ($success) {
-        // Get updated data
-        $updatedOwner = new Owner($ownerId);
+    $updatedOwner = new Owner($ownerId);
+    $newQualityScore = $updatedOwner->getProfileQualityScore();
+    $missingFields = $updatedOwner->validateProfileCompleteness();
 
-        // Get updated quality score
-        $newQualityScore = $updatedOwner->getProfileQualityScore();
-        $missingFields = $updatedOwner->validateProfileCompleteness();
-
-        ApiResponse::success('Owner profile updated successfully!')
-            ->withDataArray([
-                'quality_score' => $newQualityScore,
-                'missing_fields' => $missingFields
-            ])
-            ->withLogging(
-                $user->data()->id,
-                'OwnerActions',
-                "Updated owner profile for user ID {$ownerId} (Admin: {$user->data()->fname} {$user->data()->lname})"
-            )
-            ->send();
-
-    } else {
-        ApiResponse::error(
-            'Failed to update owner profile. Please check your input and try again.',
-            400
+    ApiResponse::success('Owner profile updated successfully!')
+        ->withDataArray([
+            'quality_score' => $newQualityScore,
+            'missing_fields' => $missingFields
+        ])
+        ->withLogging(
+            $user->data()->id,
+            LogCategories::LOG_CATEGORY_OWNER_ACTIONS,
+            "Updated owner profile for user ID {$ownerId} (Admin: {$user->data()->fname} {$user->data()->lname})"
         )
         ->send();
-    }
 
 } catch (OwnerValidationException $e) {
     ApiResponse::error(

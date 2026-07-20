@@ -251,6 +251,28 @@ final class AdminOwnerManagementTest extends IntegrationTestCase
     }
 
     /**
+     * Multi-word UNION path: a two-word search term ('Greg Surcouf') resolves
+     * via the exact-name UNION branch and returns the matching owner.
+     *
+     * Validates the three-UNION SQL path in searchOwners() and guards against
+     * parameter-ordering regressions in the 14-placeholder prepared statement.
+     */
+    public function testSearchOwnersReturnsMatchingOwnerForMultiWordQuery(): void
+    {
+        $userId = $this->createTestUser(['fname' => 'Greg', 'lname' => 'Surcouf']);
+
+        $results = (new Owner())->searchOwners('Greg Surcouf', 25);
+
+        $this->assertIsArray($results);
+        $this->assertNotEmpty($results, 'Multi-word searchOwners() must return the test user');
+
+        $ids = array_column((array) $results, 'id');
+        $this->assertContains((string) $userId, array_map('strval', $ids),
+            'Multi-word search must find the user by exact first+last name'
+        );
+    }
+
+    /**
      * Happy path for owner-update: Owner::update() persists a changed city to
      * the profiles table. CSRF is validated by the caller (HTTP layer) before
      * update() is called.

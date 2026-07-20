@@ -471,6 +471,18 @@ class OwnerIntegrationTest extends IntegrationTestCase
             'username must be silently dropped by validateAndSanitizeFields');
     }
 
+    /**
+     * update() with only 'id' and no other fields must throw OwnerValidationException.
+     *
+     * This guard is newly reachable without a 'csrf' field in the array (previously
+     * the array was never empty because 'csrf' was always present).
+     */
+    public function testUpdateWithOnlyIdThrowsValidationException(): void
+    {
+        $this->expectException(\ElanRegistry\Exceptions\OwnerValidationException::class);
+        (new Owner())->update(['id' => 1]);
+    }
+
     public function testExtractUserFieldsExcludesDangerousColumns(): void
     {
         $owner = new Owner();
