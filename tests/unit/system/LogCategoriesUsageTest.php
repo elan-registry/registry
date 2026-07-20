@@ -198,19 +198,19 @@ class LogCategoriesUsageTest extends TestCase
     }
 
     /**
-     * Test that manage-consolidated.js uses ElanRegistryAPI instead of $.ajax
+     * Test that admin-core.js uses ElanRegistryAPI instead of $.ajax
      */
-    public function testManageConsolidatedJsUsesElanRegistryAPI(): void
+    public function testAdminCoreJsUsesElanRegistryAPI(): void
     {
-        $filePath = $this->rootDir . '/app/admin/assets/manage-consolidated.js';
+        $filePath = $this->rootDir . '/app/admin/assets/admin-core.js';
         if (!file_exists($filePath)) {
-            $this->markTestSkipped('manage-consolidated.js not found');
+            $this->markTestSkipped('admin-core.js not found');
         }
 
         $content = file_get_contents($filePath);
 
-        $this->assertStringNotContainsString('$.ajax', $content, 'manage-consolidated.js should use ElanRegistryAPI instead of $.ajax');
-        $this->assertStringContainsString('new ElanRegistryAPI()', $content, 'manage-consolidated.js should use new ElanRegistryAPI()');
+        $this->assertStringNotContainsString('$.ajax', $content, 'admin-core.js should use ElanRegistryAPI instead of $.ajax');
+        $this->assertStringContainsString('new ElanRegistryAPI()', $content, 'admin-core.js should use new ElanRegistryAPI()');
     }
 
     /**
