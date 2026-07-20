@@ -236,7 +236,7 @@ class TransferEmailService
 
             $transferRequest = (object)[
                 'id'             => $transferData->id,
-                'request_date'   => $transferData->request_date,
+                'request_date'   => $transferData->request_date ?? '',
                 'completed_date' => $transferData->completed_date ?: date('Y-m-d H:i:s'),
             ];
 
@@ -296,7 +296,7 @@ class TransferEmailService
 
             $transferRequest = (object)[
                 'id'             => $transferData->id,
-                'request_date'   => $transferData->request_date,
+                'request_date'   => $transferData->request_date ?? '',
                 'completed_date' => $transferData->completed_date ?: date('Y-m-d H:i:s'),
             ];
 
@@ -415,8 +415,8 @@ class TransferEmailService
             $et->createDetailRow('Location', trim($requester->city . ', ' . $requester->state . ', ' . $requester->country, ', ') ?: 'Not specified');
         $requestDetails =
             $et->createDetailRow('Request ID', (string)$transferRequest->id) .
-            $et->createDetailRow('Submitted', date('M j, Y g:i A', strtotime($transferRequest->request_date) ?: time())) .
-            $et->createDetailRow('Expires', date('M j, Y g:i A', strtotime($transferRequest->expires_at) ?: time()));
+            $et->createDetailRow('Submitted', $this->formatDate($transferRequest->request_date, 'request_date')) .
+            $et->createDetailRow('Expires', $this->formatDate($transferRequest->expires_at, 'expires_at'));
         $content = '
     <p><strong>A new car ownership transfer request requires administrative review.</strong></p>
     ' . $et->createMessageBox('Transfer Request Details', $requestDetails, 'alert') . '
@@ -463,8 +463,8 @@ class TransferEmailService
             $et->createDetailRow('Color', $carInfo->color ?: 'Not specified');
         $requestDetails =
             $et->createDetailRow('Request ID', (string)$transferRequest->id) .
-            $et->createDetailRow('Submitted', date('M j, Y g:i A', strtotime($transferRequest->request_date) ?: time())) .
-            $et->createDetailRow('Reviewed', date('M j, Y g:i A', strtotime($transferRequest->completed_date) ?: time())) .
+            $et->createDetailRow('Submitted', $this->formatDate($transferRequest->request_date, 'request_date')) .
+            $et->createDetailRow('Reviewed', $this->formatDate($transferRequest->completed_date, 'completed_date')) .
             $et->createDetailRow('Status', $isApproved ? 'APPROVED' : 'DENIED');
         $adminEmail = htmlspecialchars(getAdminEmails(), ENT_QUOTES, 'UTF-8');
         if ($isApproved) {
@@ -547,7 +547,7 @@ class TransferEmailService
             $et->createDetailRow('Engine', $carInfo->engine ?: 'Not specified');
         $decisionDetails =
             $et->createDetailRow('Request ID', (string)$transferRequest->id) .
-            $et->createDetailRow('Decision Date', date('M j, Y g:i A', strtotime($transferRequest->completed_date) ?: time())) .
+            $et->createDetailRow('Decision Date', $this->formatDate($transferRequest->completed_date, 'completed_date')) .
             $et->createDetailRow('Status', $isApproved ? 'APPROVED' : 'DENIED');
         if ($isApproved) {
             $statusMessage = '<p><strong>Ownership of your ' . htmlspecialchars($carInfo->year, ENT_QUOTES, 'UTF-8') . ' Lotus Elan has been transferred to the new owner following our review.</strong></p>';
@@ -598,5 +598,23 @@ class TransferEmailService
             $content,
             ['footer_text' => 'This notification was sent because a transfer request decision was made for your registered vehicle.']
         );
+    }
+
+    /**
+     * Format a date string for display in email templates.
+     * Logs and falls back to the current time when the value is empty or unparseable.
+     *
+     * @param string $dateString Raw date value from the transfer record
+     * @param string $field Column name, used in the log message for diagnostics
+     * @return string Formatted date string (e.g. "Jan 1, 2026 12:00 PM")
+     */
+    private function formatDate(string $dateString, string $field): string
+    {
+        $ts = $dateString !== '' ? strtotime($dateString) : false;
+        if ($ts === false) {
+            logger(0, LogCategories::LOG_CATEGORY_EMAIL_ERROR, "Transfer email: unparseable date for '$field' ('$dateString') — substituting current time");
+            return date('M j, Y g:i A');
+        }
+        return date('M j, Y g:i A', $ts);
     }
 }
