@@ -33,7 +33,7 @@ class TransferEmailService
     }
 
     /**
-     * Fetch and validate the transfer row, car row, and pre-built template objects
+     * Fetch and validate the transfer row, car row, and a normalized car DTO
      * for a given transfer request ID.
      *
      * Returns an associative array with keys: transferData, carData, carInfo, on success.
@@ -57,7 +57,7 @@ class TransferEmailService
         $carQuery = $this->db->query('SELECT * FROM cars WHERE id = ?', [$transferData->existing_car_id]);
         $carData = $carQuery->count() > 0 ? $carQuery->first() : null;
         if (!$carData) {
-            logger(0, LogCategories::LOG_CATEGORY_EMAIL_ERROR, "$context failed: Car ID {$transferData->existing_car_id} not found");
+            logger(0, LogCategories::LOG_CATEGORY_EMAIL_ERROR, "$context failed: Transfer #$transferRequestId Car ID {$transferData->existing_car_id} not found");
             return false;
         }
 
@@ -123,7 +123,8 @@ class TransferEmailService
 
         } catch (Throwable $e) {
             logger(0, LogCategories::LOG_CATEGORY_EMAIL_ERROR, sprintf(
-                "Transfer request notification error [%s] in %s:%d: %s",
+                "Transfer request notification error for request #%d [%s] in %s:%d: %s",
+                $transferRequestId,
                 get_class($e), $e->getFile(), $e->getLine(), $e->getMessage()
             ));
             return false;
@@ -200,7 +201,8 @@ class TransferEmailService
 
         } catch (Throwable $e) {
             logger(0, LogCategories::LOG_CATEGORY_EMAIL_ERROR, sprintf(
-                "Transfer admin alert error [%s] in %s:%d: %s",
+                "Transfer admin alert error for request #%d [%s] in %s:%d: %s",
+                $transferRequestId,
                 get_class($e), $e->getFile(), $e->getLine(), $e->getMessage()
             ));
             return false;
@@ -252,13 +254,14 @@ class TransferEmailService
                 logger($transferData->requested_by_user_id, LogCategories::LOG_CATEGORY_EMAIL_ERROR, "Failed to send transfer response notification to requester: {$requester->email}");
             }
 
-            $previousOwnerNotificationSent = $this->sendPreviousOwnerNotification($ctx, $isApproved, $adminNotes, $previousOwnerId);
+            $previousOwnerNotificationSent = $this->sendPreviousOwnerNotification($ctx, $requester, $isApproved, $adminNotes, $previousOwnerId);
 
             return $requesterNotificationSent || $previousOwnerNotificationSent;
 
         } catch (Throwable $e) {
             logger(0, LogCategories::LOG_CATEGORY_EMAIL_ERROR, sprintf(
-                "Transfer response notification error [%s] in %s:%d: %s",
+                "Transfer response notification error for request #%d [%s] in %s:%d: %s",
+                $transferRequestId,
                 get_class($e), $e->getFile(), $e->getLine(), $e->getMessage()
             ));
             return false;
@@ -272,12 +275,13 @@ class TransferEmailService
      * For denied transfers (or when no ID is supplied), the car's current owner is used.
      *
      * @param array{transferData: object, carData: object, carInfo: object} $ctx Transfer context from fetchTransferContext()
+     * @param object $requester Requester user data, pre-fetched by sendResponse()
      * @param bool $isApproved Whether the request was approved
      * @param string $adminNotes Optional admin notes
      * @param int|null $previousOwnerId Previous owner ID (for approved transfers)
      * @return bool True if the email was delivered
      */
-    private function sendPreviousOwnerNotification(array $ctx, bool $isApproved, string $adminNotes = '', ?int $previousOwnerId = null): bool
+    private function sendPreviousOwnerNotification(array $ctx, object $requester, bool $isApproved, string $adminNotes = '', ?int $previousOwnerId = null): bool
     {
         try {
             ['transferData' => $transferData, 'carData' => $carData, 'carInfo' => $carInfo] = $ctx;
@@ -287,12 +291,6 @@ class TransferEmailService
 
             if (!$previousOwner) {
                 logger(0, LogCategories::LOG_CATEGORY_EMAIL_ERROR, "Transfer previous owner notification failed: User ID $lookupId not found");
-                return false;
-            }
-
-            $requester = (new Owner(dbInt($transferData, 'requested_by_user_id')))->data();
-            if (!$requester) {
-                logger(0, LogCategories::LOG_CATEGORY_EMAIL_ERROR, "Transfer previous owner notification failed: Requester ID {$transferData->requested_by_user_id} not found");
                 return false;
             }
 
@@ -317,8 +315,10 @@ class TransferEmailService
             return false;
 
         } catch (Throwable $e) {
+            $ctxTransferId = $ctx['transferData']->id ?? 'unknown';
             logger(0, LogCategories::LOG_CATEGORY_EMAIL_ERROR, sprintf(
-                "Transfer previous owner notification error [%s] in %s:%d: %s",
+                "Transfer previous owner notification error for request #%s [%s] in %s:%d: %s",
+                $ctxTransferId,
                 get_class($e), $e->getFile(), $e->getLine(), $e->getMessage()
             ));
             return false;
@@ -443,8 +443,8 @@ class TransferEmailService
      * @param object $carInfo Car detail object
      * @param object $transferRequest Transfer request detail object
      * @param bool $isApproved Whether the request was approved
-     * @param string $adminNotes Optional admin notes
-     * @param string $carUrl Car detail URL
+     * @param string $adminNotes Admin notes from the administrator; empty string if none
+     * @param string $carUrl Car detail page URL; only used in the approved branch
      * @return string Rendered HTML email body
      */
     private function buildResponseEmailBody(
@@ -523,11 +523,11 @@ class TransferEmailService
      * Build the transfer decision email body sent to the previous owner.
      *
      * @param object $previousOwner Previous registered owner
-     * @param object $requester Member who requested the transfer
+     * @param object $requester Member who requested the transfer; only used in the approved branch to show new-owner details
      * @param object $carInfo Car detail object
      * @param object $transferRequest Transfer request detail object
      * @param bool $isApproved Whether the request was approved
-     * @param string $adminNotes Optional admin notes
+     * @param string $adminNotes Admin notes from the administrator; empty string if none
      * @return string Rendered HTML email body
      */
     private function buildPreviousOwnerEmailBody(

@@ -232,6 +232,26 @@ final class TransferEmailServiceTest extends TestCase
         $this->assertTrue($result);
     }
 
+    /**
+     * sendResponse() denied path uses $carData->user_id as the previous-owner lookup
+     * when $previousOwnerId is null. Verifies the mailer is called exactly twice.
+     */
+    public function testSendResponseDeniedPathCallsMailerTwice(): void
+    {
+        $db      = $this->createFoundMockDb($this->makeTransferRow(), $this->makeCarRow());
+        $attempt = 0;
+        $mailer  = function () use (&$attempt): bool {
+            $attempt++;
+            return true;
+        };
+
+        $service = new TransferEmailService($db, $mailer);
+        $result  = $service->sendResponse(1, false, '', null);
+
+        $this->assertTrue($result);
+        $this->assertSame(2, $attempt, 'Mailer must be called for requester and previous owner');
+    }
+
     // -------------------------------------------------------------------------
     // XSS content escaping — email body must escape user-supplied data
     // -------------------------------------------------------------------------
@@ -289,5 +309,23 @@ final class TransferEmailServiceTest extends TestCase
         $this->assertNotNull($capturedBody, 'Requester mailer must be called');
         $this->assertStringContainsString('&lt;script&gt;', $capturedBody);
         $this->assertStringNotContainsString('<script>alert', $capturedBody);
+        $this->assertSame(2, $attempt, 'Mailer must be called for both requester and previous owner');
+    }
+
+    public function testSendResponsePreviousOwnerEmailBodyEscapesXssInChassis(): void
+    {
+        $carRow  = $this->makeCarRow(['chassis' => '<script>alert(1)</script>']);
+        $db      = $this->createFoundMockDb($this->makeTransferRow(), $carRow);
+        $capturedBodies = [];
+        $mailer = function (string $to, string $subject, string $body) use (&$capturedBodies): bool {
+            $capturedBodies[] = $body;
+            return true;
+        };
+        $service = new TransferEmailService($db, $mailer);
+        $service->sendResponse(1, false, '', 1);
+
+        $this->assertCount(2, $capturedBodies, 'Both mailer calls must fire');
+        $this->assertStringContainsString('&lt;script&gt;', $capturedBodies[1]);
+        $this->assertStringNotContainsString('<script>alert', $capturedBodies[1]);
     }
 }

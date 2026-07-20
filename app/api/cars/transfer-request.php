@@ -158,30 +158,17 @@ try {
     // Send email notifications with timeout protection
     try {
         $emailService = new TransferEmailService(DB::getInstance(), 'email');
-
-        // Set time limit for email operations
         set_time_limit(60);
 
-        // Send notification to current owner with error handling
-        try {
-            $ownerNotified = $emailService->sendRequest($transferRequestId);
-            if (!$ownerNotified) {
-                logger($userData->id, LogCategories::LOG_CATEGORY_EMAIL_ERROR, "Owner notification failed for transfer request #$transferRequestId — owner may not be aware of this request");
-            }
-        } catch (\Throwable $emailEx) {
-            logger($userData->id, LogCategories::LOG_CATEGORY_EMAIL_ERROR, "Unexpected exception sending owner notification for request #$transferRequestId: " . $emailEx->getMessage());
+        $ownerNotified = $emailService->sendRequest($transferRequestId);
+        if (!$ownerNotified) {
+            logger($userData->id, LogCategories::LOG_CATEGORY_EMAIL_ERROR, "Owner notification failed for transfer request #$transferRequestId — owner may not be aware of this request");
         }
 
-        // Send alert to administrators with error handling
-        try {
-            $adminNotified = $emailService->sendAdminAlert($transferRequestId);
-            if (!$adminNotified) {
-                logger($userData->id, LogCategories::LOG_CATEGORY_EMAIL_ERROR, "Admin alert failed for transfer request #$transferRequestId");
-            }
-        } catch (\Throwable $emailEx) {
-            logger($userData->id, LogCategories::LOG_CATEGORY_EMAIL_ERROR, "Unexpected exception sending admin alert for request #$transferRequestId: " . $emailEx->getMessage());
+        $adminNotified = $emailService->sendAdminAlert($transferRequestId);
+        if (!$adminNotified) {
+            logger($userData->id, LogCategories::LOG_CATEGORY_EMAIL_ERROR, "Admin alert failed for transfer request #$transferRequestId");
         }
-
     } catch (\Throwable $generalEmailEx) {
         logger($userData->id, LogCategories::LOG_CATEGORY_EMAIL_ERROR, "General email error for request #$transferRequestId: " . $generalEmailEx->getMessage());
     }
