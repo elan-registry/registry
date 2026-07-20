@@ -77,6 +77,14 @@ class ChassisValidator
             return $this->result;
         }
 
+        // Allowlist: only digits, letters, forward-slash, and hyphen are valid in any known
+        // Lotus Elan chassis format (e.g. "26-R-01", "26/0001", "11120R0001A").
+        // This guard runs before the override branch so override cannot bypass char-safety.
+        if (!preg_match('/^[0-9A-Za-z\/\-]+$/', $this->result['chassis'])) {
+            $this->result['error_reason'] = 'Chassis number contains invalid characters';
+            return $this->result;
+        }
+
         $chassisLength = strlen($this->result['chassis']);
         
         // Parse model components

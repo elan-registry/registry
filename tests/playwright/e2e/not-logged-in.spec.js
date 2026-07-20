@@ -198,7 +198,7 @@ test.describe('Internal Links Discovery and Testing (Not Logged In)', () => {
           try {
             const url = new URL(href);
             isInternalLink = url.hostname === 'elanregistry.org' || url.hostname === 'www.elanregistry.org';
-          } catch (e) {
+          } catch (_e) {
             isInternalLink = false;
           }
         }
@@ -268,7 +268,7 @@ test.describe('Internal Links Discovery and Testing (Not Logged In)', () => {
           try {
             const url = new URL(href);
             isInternalLink = url.hostname === 'elanregistry.org' || url.hostname === 'www.elanregistry.org';
-          } catch (e) {
+          } catch (_e) {
             isInternalLink = false;
           }
         }

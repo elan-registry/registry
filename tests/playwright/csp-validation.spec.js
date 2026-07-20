@@ -154,13 +154,50 @@ test.describe('CSP Validation Tests', () => {
       try {
         const url = new URL(req.url);
         return criticalDomains.includes(url.hostname);
-      } catch (e) {
+      } catch (_e) {
         // If URL parsing fails, fall back to includes check
         return criticalDomains.some(domain => req.url.includes(domain));
       }
     });
 
     expect(criticalFailures, `Critical external resources failed to load: ${JSON.stringify(criticalFailures, null, 2)}`).toHaveLength(0);
+  });
+
+  test('script-src header must not contain unsafe-inline and must include nonce', async ({ page }) => {
+    const response = await page.goto('');
+    const cspHeader = (response.headers()['content-security-policy'] ?? '');
+    const scriptSrc = cspHeader.match(/script-src[^;]*/)?.[0] ?? '';
+    expect(scriptSrc, "CSP script-src must not contain 'unsafe-inline'").not.toContain("'unsafe-inline'");
+    expect(scriptSrc, "CSP script-src must contain a nonce").toMatch(/'nonce-/);
+  });
+
+  test('nonce must rotate between requests', async ({ page }) => {
+    const extractNonce = (headers) => {
+      const csp = headers['content-security-policy'] ?? '';
+      const match = csp.match(/'nonce-([^']+)'/);
+      return match ? match[1] : null;
+    };
+
+    const r1 = await page.goto('');
+    const nonce1 = extractNonce(r1.headers());
+
+    const r2 = await page.goto('');
+    const nonce2 = extractNonce(r2.headers());
+
+    expect(nonce1, 'First response must contain a nonce').not.toBeNull();
+    expect(nonce2, 'Second response must contain a nonce').not.toBeNull();
+    expect(nonce1, 'Nonce must be different on each request — static nonce breaks the entire CSP strategy').not.toBe(nonce2);
+  });
+
+  test('contact feedback page should not have CSP violations', async ({ page }) => {
+    const cspViolations = setupCSPViolationMonitoring(page);
+
+    await page.goto('app/owner/contact/index.php');
+    await page.waitForLoadState('networkidle');
+    await page.waitForTimeout(1000);
+
+    // Page may redirect to login — CSP check still valid on redirect target
+    expect(cspViolations, `Found ${cspViolations.length} CSP violations: ${JSON.stringify(cspViolations, null, 2)}`).toHaveLength(0);
   });
 
   test('no requests to Google Maps domains on statistics or details pages', async ({ page }) => {
@@ -189,8 +226,11 @@ test.describe('CSP Validation Tests', () => {
       await page.goto('app/owner/cars/details.php?car_id=1');
       await page.waitForTimeout(2000);
       expect(googleMapsRequests, 'No Google Maps requests on car details page').toHaveLength(0);
-    } catch {
-      // Details page may require auth — prohibition is still verified via CSP headers
+    } catch (navError) {
+      // page.goto throws on timeout/crash, not on auth redirects;
+      // log so navigation failures are diagnosable. CSP prohibition is still
+      // verified via the googleMapsRequests assertion above.
+      console.warn('car details CSP check skipped (navigation error):', navError.message);
     }
   });
 });

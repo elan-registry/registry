@@ -1,6 +1,6 @@
-/* exported formatNumber, formatDate, prefersReducedMotion, initializeCarManagement, showNotification, switchToOwnerManagementTab, openAdminContactModal, showConfirmDialog, showInputDialog, escapeHtml */
+/* exported formatNumber, formatDate, prefersReducedMotion, initializeCarManagement, showNotification, switchToOwnerManagementTab, openAdminContactModal, showConfirmDialog, showInputDialog, escapeHtml, makeInfoRow */
 /**
- * manage-consolidated.js
+ * admin-core.js
  * Consolidated Management Interface JavaScript
  *
  * Provides enhanced interactivity for the unified administrative interface
@@ -20,6 +20,16 @@ function escapeHtml(unsafe) {
         .replace(/>/g, '&gt;')
         .replace(/"/g, '&quot;')
         .replace(/'/g, '&#039;');
+}
+
+/**
+ * Build a DOM-safe label/value row for modal info panels.
+ * @param {string} label
+ * @param {*} value
+ * @return {string} HTML string
+ */
+function makeInfoRow(label, value) {
+    return `<div><strong>${escapeHtml(String(label))}:</strong> ${escapeHtml(String(value ?? ''))}</div>`;
 }
 
 $(document).ready(function() {
@@ -433,6 +443,66 @@ $(document).ready(function() {
 
     // Start initialization
     initialize();
+
+    // ==========================================================================
+    // Collapse icon rotation (page-wide via event delegation)
+    // ==========================================================================
+    $(document).on('show.bs.collapse', '.collapse', function() {
+        const icon = $(this).prev('.card-header').find('.collapse-icon');
+        icon.removeClass('fa-chevron-down').addClass('fa-chevron-up');
+    });
+
+    $(document).on('hide.bs.collapse', '.collapse', function() {
+        const icon = $(this).prev('.card-header').find('.collapse-icon');
+        icon.removeClass('fa-chevron-up').addClass('fa-chevron-down');
+    });
+
+    // ==========================================================================
+    // Reusable data-attribute delegated handlers (shared across all admin tabs)
+    // Prefer these over per-tab named functions for simple DOM/navigation actions.
+    // ==========================================================================
+
+    // Dismiss/hide any element: <button data-dismiss-target=".some-alert">
+    $(document).on('click', '[data-dismiss-target]', function() {
+        const selector = $(this).data('dismiss-target');
+        if (selector) { $(selector).fadeOut(200); }
+    });
+
+    // Click feedback for action links: briefly swap an outline button to its
+    // filled variant, then restore. <a data-feedback-link ...>
+    $(document).on('click', '[data-feedback-link]', function() {
+        const btn = this;
+        btn.classList.add('btn-primary');
+        btn.classList.remove('btn-outline-primary');
+        setTimeout(function() {
+            btn.classList.remove('btn-primary');
+            btn.classList.add('btn-outline-primary');
+        }, 3000);
+    });
+
+    // Tab navigation: <button data-switch-tab="owner-mgmt" data-owner-id="5">
+    $(document).on('click', '[data-switch-tab]', function() {
+        const tab = $(this).data('switch-tab');
+        if (!tab) { return; }
+        let url = '?tab=' + encodeURIComponent(tab);
+        const ownerId = $(this).data('owner-id');
+        const carId = $(this).data('car-id');
+        if (ownerId !== undefined && ownerId !== '') { url += '&owner_id=' + encodeURIComponent(ownerId); }
+        if (carId !== undefined && carId !== '') { url += '&car_id=' + encodeURIComponent(carId); }
+        window.location.href = url;
+    });
+
+    // Confirm-then-submit: <button data-confirm-form="#deleteForm"
+    //   data-confirm-title="Delete" data-confirm-message="Are you sure?">
+    $(document).on('click', '[data-confirm-form]', function() {
+        const title = $(this).data('confirm-title') || 'Confirm';
+        const message = $(this).data('confirm-message') || 'Are you sure?';
+        const formSelector = $(this).data('confirm-form');
+        showConfirmDialog(title, message, function() {
+            const form = formSelector ? document.querySelector(formSelector) : null;
+            if (form) { form.submit(); }
+        });
+    });
 
     // ==========================================================================
     // Public API (for future use)
@@ -1346,6 +1416,24 @@ function initializeCarManagement() {
     $('#transferDecisionModal').on('hidden.bs.modal', function() {
         transferDecisionData = null;
     });
+
+    // Handle pre-loaded car ID from data attribute (set by tab-car_mgmt.php)
+    const $reassignForm = $('.reassign-form');
+    const preloadCarId = $reassignForm.data('preload-car-id');
+    if (preloadCarId) {
+        $('#reassign_car_id').val(preloadCarId);
+        $('#lookupCarBtn').trigger('click');
+        $('html, body').animate({ scrollTop: $reassignForm.offset().top - 100 }, 500);
+        const $msgContainer = $('#messageContainer');
+        if ($msgContainer.length) {
+            $msgContainer.prepend(
+                '<div class="alert alert-info alert-dismissible fade show" role="alert">' +
+                '<i class="fas fa-info-circle"></i> Car #' + escapeHtml(String(preloadCarId)) + ' pre-loaded from data quality report. ' +
+                '<button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>' +
+                '</div>'
+            );
+        }
+    }
 }
 
 // ==========================================================================
@@ -1390,36 +1478,60 @@ function switchToOwnerManagementTab(userId) {
 }
 
 /**
- * Function to open admin contact modal for owner communication
+ * Open the admin contact modal pre-populated with car and owner data.
+ * @param {Object} carData
+ * @param {Object} ownerData
+ * @param {string} qualityIssue  Pre-select this option in the quality-issue dropdown
+ * @param {string} targetEmail   Override recipient email (defaults to owner email)
  */
 function openAdminContactModal(carData, ownerData, qualityIssue = '', targetEmail = '') {
-    document.getElementById('contactCarInfo').innerHTML = [
-        `<div><strong>Car ID:</strong> ${escapeHtml(String(carData.id ?? ''))}</div>`,
-        `<div><strong>Year/Model:</strong> ${escapeHtml(carData.year || 'N/A')} ${escapeHtml(carData.model || 'N/A')}</div>`,
-        `<div><strong>Chassis:</strong> ${escapeHtml(carData.chassis || 'Missing')}</div>`,
-        `<div><strong>Series:</strong> ${escapeHtml(carData.series || 'Missing')}</div>`,
+    const carInfoEl = document.getElementById('contactCarInfo');
+    const ownerInfoEl = document.getElementById('contactOwnerInfo');
+    const modalEl = document.getElementById('adminContactModal');
+    if (!carInfoEl || !ownerInfoEl || !modalEl) {
+        console.error('openAdminContactModal: required modal elements missing from DOM', {
+            contactCarInfo: !!carInfoEl,
+            contactOwnerInfo: !!ownerInfoEl,
+            adminContactModal: !!modalEl,
+        });
+        showNotification('Could not open contact form — required page elements are missing. Refresh and try again.', 'danger');
+        return;
+    }
+
+    carInfoEl.innerHTML = [
+        makeInfoRow('Car ID', carData.id),
+        makeInfoRow('Year/Model', (carData.year || 'N/A') + ' ' + (carData.model || 'N/A')),
+        makeInfoRow('Chassis', carData.chassis || 'Missing'),
+        makeInfoRow('Series', carData.series || 'Missing'),
     ].join('');
 
-    document.getElementById('contactOwnerInfo').innerHTML = [
-        `<div><strong>Name:</strong> ${escapeHtml(ownerData.name || 'Unknown')}</div>`,
-        `<div><strong>Email:</strong> ${escapeHtml(ownerData.email || 'Unknown')}</div>`,
-        `<div><strong>User ID:</strong> ${escapeHtml(String(ownerData.id ?? 'Unknown'))}</div>`,
+    ownerInfoEl.innerHTML = [
+        makeInfoRow('Name', ownerData.name || 'Unknown'),
+        makeInfoRow('Email', ownerData.email || 'Unknown'),
+        makeInfoRow('User ID', ownerData.id !== 0 ? ownerData.id : 'Unknown'),
     ].join('');
 
-    // Set hidden field values
     document.getElementById('contactCarId').value = carData.id;
     document.getElementById('contactOwnerId').value = ownerData.id;
     document.getElementById('contactTargetEmail').value = targetEmail || ownerData.email || '';
 
-    // Pre-populate quality issue if provided
     if (qualityIssue) {
-        document.getElementById('qualityIssue').value = qualityIssue;
+        const select = document.getElementById('qualityIssue');
+        if (select) {
+            const opt = select.querySelector(`option[value="${CSS.escape(qualityIssue)}"]`);
+            if (opt) {
+                select.value = qualityIssue;
+            } else {
+                console.warn('openAdminContactModal: qualityIssue value not found in select options:', qualityIssue);
+                select.value = '';
+            }
+        }
     } else {
-        document.getElementById('qualityIssue').value = '';
+        const select = document.getElementById('qualityIssue');
+        if (select) { select.value = ''; }
     }
 
-    // Show the modal
-    bootstrap.Modal.getOrCreateInstance(document.getElementById('adminContactModal')).show();
+    bootstrap.Modal.getOrCreateInstance(modalEl).show();
 }
 
 /**
@@ -1542,3 +1654,52 @@ function showInputDialog(title, message, defaultValue, onConfirm) {
         showNotification('Input dialog could not open. Please reload the page.', 'danger');
     }
 }
+
+document.addEventListener('click', function(e) {
+    const btn = e.target.closest('[data-action]');
+    if (!btn) return;
+    const action = btn.dataset.action;
+    // Tab-specific functions (e.g. testEmailConfiguration, createManualBackup) are defined
+    // in per-tab JS files loaded separately; ESLint can't see them statically.
+    /* eslint-disable no-undef */
+    switch (action) {
+        case 'testEmailConfiguration':
+            if (typeof testEmailConfiguration === 'function') testEmailConfiguration();
+            break;
+        case 'createManualBackup':
+            if (typeof createManualBackup === 'function') createManualBackup(btn);
+            break;
+        case 'listBackupFiles':
+            if (typeof listBackupFiles === 'function') listBackupFiles();
+            break;
+        case 'performBackupCleanup':
+            if (typeof performBackupCleanup === 'function') performBackupCleanup();
+            break;
+        case 'closeOwnerProfile':
+            if (typeof closeOwnerProfile === 'function') closeOwnerProfile();
+            break;
+        case 'loadOwnerById':
+            if (typeof loadOwnerById === 'function') loadOwnerById(parseInt(btn.dataset.id, 10));
+            break;
+        case 'openCarDetails':
+            if (typeof openCarDetails === 'function') openCarDetails(parseInt(btn.dataset.id, 10));
+            break;
+        case 'switchToOwnerManagementTab':
+            switchToOwnerManagementTab(parseInt(btn.dataset.id, 10));
+            break;
+        case 'openAdminContactModal':
+            try {
+                openAdminContactModal(
+                    JSON.parse(btn.dataset.car),
+                    JSON.parse(btn.dataset.owner),
+                    btn.dataset.subject || '',
+                    btn.dataset.targetEmail || ''
+                );
+            } catch (err) {
+                console.error('[openAdminContactModal] Failed to parse data attributes:', err);
+                showNotification('Could not open contact form — data may be malformed. Refresh and try again.', 'danger');
+            }
+            break;
+    }
+    /* eslint-enable no-undef */
+});

@@ -339,7 +339,7 @@ try {
 ?>
 
 <!-- Data for JavaScript -->
-<script>
+<script nonce="<?= htmlspecialchars($userspice_nonce ?? '', ENT_QUOTES, 'UTF-8') ?>">
 window.statisticsRawData = {
     // Overview data - loaded immediately
     timeline: <?= $timelineJson ?>,
@@ -348,17 +348,13 @@ window.statisticsRawData = {
     countriesCount: <?= count($dataService->getCountryData()) ?>,
     colorsCount: <?= count($dataService->getColorData()) ?>
 };
-
-// Configuration
 window.statisticsConfig = {
-    baseUrl: '<?= $us_url_root ?>app/owner/reports/',
-    statisticsDataUrl: '<?= $us_url_root ?>app/api/shared/statistics.php',
-    csrfToken: '<?= Token::generate() ?>',
-    imageUrl: '<?= $us_url_root . $settings->elan_image_dir ?>',
-    versatileStyleUrl: '<?= $us_url_root ?>usersc/js/versatiles-colorful.json'
+    baseUrl: <?= json_encode($us_url_root . 'app/owner/reports/', JSON_HEX_TAG | JSON_HEX_AMP) ?>,
+    statisticsDataUrl: <?= json_encode($us_url_root . 'app/api/shared/statistics.php', JSON_HEX_TAG | JSON_HEX_AMP) ?>,
+    csrfToken: <?= json_encode(Token::generate()) ?>,
+    imageUrl: <?= json_encode((string)($us_url_root . ($settings->elan_image_dir ?? '')), JSON_HEX_TAG | JSON_HEX_AMP) ?>,
+    versatileStyleUrl: <?= json_encode($us_url_root . 'usersc/js/versatiles-colorful.json', JSON_HEX_TAG | JSON_HEX_AMP) ?>
 };
-</script>
-<script>
 window.elanMapMarkers = <?= $mapMarkersJson ?>;
 </script>
 
@@ -368,17 +364,4 @@ window.elanMapMarkers = <?= $mapMarkersJson ?>;
 <!-- Load Statistics JavaScript first -->
 <script src="<?= $us_url_root ?>app/assets/js/statistics.min.js?v=<?= ASSET_VERSION ?>"></script>
 
-<!-- Initialize MapLibre and Statistics -->
-<script>
-document.addEventListener('DOMContentLoaded', function() {
-    if (typeof Chart === 'undefined') {
-        console.error('Chart.js failed to load');
-        return;
-    }
-
-    if (window.statisticsInitMap) {
-        window.statisticsInitMap();
-    }
-});
-</script>
 <?php require_once $abs_us_root . $us_url_root . 'users/includes/html_footer.php'; ?>

@@ -18,11 +18,8 @@ use ElanRegistry\Resize;
  * 4. Preserves existing 100px, 300px, 1024px, and 2048px thumbnails
  * 5. Uses existing high-quality source images (1024px or 2048px) for regeneration
  */
-ini_set('display_errors', 1);
-ini_set('display_startup_errors', 1);
-error_reporting(E_ALL);
-
 require_once '../../../../users/init.php';
+require_once $abs_us_root . $us_url_root . 'app/admin/includes/fix-script-core.php';
 require_once $abs_us_root . $us_url_root . 'users/includes/template/prep.php';
 
 if (!securePage($php_self)) {
@@ -34,8 +31,6 @@ $db = DB::getInstance();
 $settings = getSettings();
 
 $currentSizes = $settings->elan_image_thumbnail_sizes ?? '100,300,600,1024,2048';
-
-$line = 1; // Where messages go
 
 ?>
 
@@ -88,8 +83,16 @@ $line = 1; // Where messages go
                 }
             </style>
 
+            <?php $is_initial = admin_script_exec_requested(); ?>
+            <?php if ($is_initial): ?>
+            <script nonce="<?= htmlspecialchars($userspice_nonce ?? '', ENT_QUOTES, 'UTF-8') ?>">document.addEventListener('DOMContentLoaded', function() {
+                var el = document.getElementById('startTimeText');
+                if (el) el.textContent = new Date().toLocaleString();
+            });</script>
+            <?php endif; ?>
+
             <!-- Initial Description Card -->
-            <div class="row" id="descriptionSection">
+            <div class="row" id="descriptionSection"<?= $is_initial ? ' style="display:none;"' : '' ?>>
                 <div class="col-lg-12 mb-4">
                     <div class="card registry-card">
                         <div class="card-header">
@@ -134,9 +137,17 @@ $line = 1; // Where messages go
                             </div>
 
                             <div class="text-center">
-                                <button onclick="startProcessing()" class="btn btn-success">
-                                    <i class="fa fa-play"></i> Start Thumbnail Optimization
-                                </button>
+                                <?= admin_script_start_form('Start Thumbnail Optimization') ?>
+                                <script nonce="<?= htmlspecialchars($userspice_nonce ?? '', ENT_QUOTES, 'UTF-8') ?>">
+                                document.currentScript.previousElementSibling.addEventListener('submit', function(e) {
+                                    var sel = document.getElementById('batchSize');
+                                    if (sel) {
+                                        var input = document.createElement('input');
+                                        input.type = 'hidden'; input.name = 'batch_size'; input.value = sel.value;
+                                        e.target.appendChild(input);
+                                    }
+                                });
+                                </script>
                             </div>
                         </div>
                     </div>
@@ -205,7 +216,7 @@ $line = 1; // Where messages go
                 </div>
             </div>
 
-            <script>
+            <script nonce="<?= htmlspecialchars($userspice_nonce ?? '', ENT_QUOTES, 'UTF-8') ?>">
                 let totalSteps = 0;
                 let currentStep = 0;
                 let processStarted = false;
@@ -230,23 +241,27 @@ $line = 1; // Where messages go
                     }
                 }
 
-                function showCompletionSummary(stats) {
-                    // Update progress bar to 100% and remove animation
-                    updateProgress(100, 100, 'Thumbnail Optimization completed successfully!');
+                function showCompletionSummary(stats, isError) {
+                    const statusText = isError
+                        ? 'Thumbnail optimization completed with errors.'
+                        : 'Thumbnail Optimization completed successfully!';
+                    updateProgress(100, 100, statusText);
 
-                    // Populate summary content
+                    const icon  = isError ? '<i class="fa fa-exclamation-triangle text-warning"></i>' : '<i class="fa fa-check-circle text-success"></i>';
+                    const title = isError ? 'Completed with Errors' : 'Complete!';
+
                     const summaryContent = document.getElementById('summaryContent');
                     summaryContent.innerHTML = `
         <div class="mb-3">
-            <h5><i class="fa fa-check-circle text-success"></i> Complete!</h5>
+            <h5>${icon} ${title}</h5>
             <small class="text-muted">Completed at: ${new Date().toLocaleString()}</small>
         </div>
         <div class="mb-3">
             ${stats}
         </div>
         <div class="text-center">
-            <button onclick="if(window.opener){window.opener.location.reload(); window.close();} else {window.location.href='../../maintenance.php?tab=maintenance';}" class="btn btn-outline-primary">
-                <i class="fa fa-arrow-left"></i> Return to Admin Console
+            <button data-action="returnToMenu" class="btn btn-primary">
+                <i class="fa fa-times"></i> Close Window
             </button>
         </div>
     `;
@@ -275,28 +290,6 @@ $line = 1; // Where messages go
                     container.scrollTop = container.scrollHeight;
                 }
 
-                function startProcessing() {
-                    if (processStarted) return;
-                    processStarted = true;
-
-                    // Get selected batch size
-                    const batchSize = document.getElementById('batchSize').value;
-
-                    // Hide description section
-                    document.getElementById('descriptionSection').style.display = 'none';
-
-                    // Set start time
-                    const now = new Date();
-                    document.getElementById('startTimeText').textContent = now.toLocaleString();
-
-                    // Start the actual processing with batch size
-                    const params = new URLSearchParams(window.location.search);
-                    params.set('start', '1');
-                    params.set('batch_size', batchSize);
-
-                    window.location.href = window.location.pathname + '?' + params.toString();
-                }
-
                 // Check if we should start automatically
                 if (new URLSearchParams(window.location.search).get('start') === '1') {
                     processStarted = true;
@@ -305,28 +298,78 @@ $line = 1; // Where messages go
                     const now = new Date();
                     document.getElementById('startTimeText').textContent = now.toLocaleString();
                 }
+
+                document.addEventListener('click', function(e) {
+                    const btn = e.target.closest('[data-action]');
+                    if (!btn) return;
+                    if (btn.dataset.action === 'returnToMenu') {
+                        if (window.opener) { window.opener.location.reload(); window.close(); }
+                        else { window.location.href = '../../index.php?tab=maintenance'; }
+                    }
+                });
             </script>
 
             <?php
-            // Only run the actual processing if start parameter is set
-            if (isset($_GET['start']) && $_GET['start'] == '1') {
+            $is_continuation = $method === 'GET' && (int) ($_GET['start'] ?? 0) === 1
+                               && (int) ($_GET['offset'] ?? 0) > 0
+                               && isset($_SESSION['thumb_batch_token'])
+                               && hash_equals($_SESSION['thumb_batch_token'], $_GET['batch_token'] ?? '');
+
+            if ($is_initial || $is_continuation) {
+
+                if (!isAdmin()) {
+                    logger($user->data()->id, LogCategories::LOG_CATEGORY_SECURITY,
+                        'Non-admin attempted thumbnail batch operation');
+                    echo '<div class="alert alert-danger mt-3">Administrator access required.</div>';
+                    exit;
+                }
+
+                function outputMessage(string $message, ?int $percentage = null): void {
+                    global $userspice_nonce;
+                    $jsMessage = json_encode($message, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT);
+                    $nonce = htmlspecialchars($userspice_nonce ?? '', ENT_QUOTES, 'UTF-8');
+                    echo '<script nonce="' . $nonce . '">addLogMessage(' . $jsMessage . ');</script>';
+                    if ($percentage !== null) {
+                        echo '<script nonce="' . $nonce . '">updateProgress(' . $percentage . ', 100, ' . $jsMessage . ');</script>';
+                    }
+                    ob_flush();
+                    flush();
+                }
 
                 // Update thumbnail sizes setting: replace 600 with 768
                 $newSizes = $currentSizes;
-                if (strpos($currentSizes, '600') !== false) {
+                $settingsUpdated = false;
+                if (str_contains($currentSizes, '600')) {
                     $newSizes = str_replace('600', '768', $currentSizes);
                     try {
                         $db->query("UPDATE settings SET elan_image_thumbnail_sizes = ? WHERE id = 1", [$newSizes]);
                         $settings->elan_image_thumbnail_sizes = $newSizes;
-                    } catch (Exception $e) {
+                        $settingsUpdated = true;
+                    } catch (\Throwable $e) {
                         logger($user->data()->id, LogCategories::LOG_CATEGORY_FIX_SCRIPT, "Failed to update elan_image_thumbnail_sizes setting: " . $e->getMessage() . " (Issue #176)");
+                        outputMessage("❌ Failed to update elan_image_thumbnail_sizes in database: " . $e->getMessage());
                     }
                 }
 
+                // Generate or retrieve the per-session batch nonce (guards continuation GETs against CSRF)
+                if ($is_initial) {
+                    try {
+                        $_SESSION['thumb_batch_token'] = bin2hex(random_bytes(16));
+                    } catch (\Random\RandomException $e) {
+                        logger($user->data()->id, LogCategories::LOG_CATEGORY_FIX_SCRIPT, 'Failed to generate batch token: ' . $e->getMessage());
+                        outputMessage('❌ Failed to generate a secure batch token. Cannot start batch processing safely.');
+                        outputMessage('Please try again. If this persists, check server entropy availability.');
+                        exit;
+                    }
+                }
+                $batch_token = $_SESSION['thumb_batch_token'];
+
                 // Batch processing parameters
-                $batch_size = (int)($_GET['batch_size'] ?? 10); // Default 10 cars per batch
-                $offset = (int)($_GET['offset'] ?? 0);
-                $total_processed_prev = (int)($_GET['total_processed'] ?? 0); // From previous batches
+                $allowed_batch_sizes = [5, 10, 15, 25];
+                $raw_batch           = $is_continuation ? (int) ($_GET['batch_size'] ?? 10) : (int) ($_POST['batch_size'] ?? 10);
+                $batch_size          = in_array($raw_batch, $allowed_batch_sizes, true) ? $raw_batch : 10;
+                $offset               = $is_continuation ? (int) ($_GET['offset'] ?? 0) : 0;
+                $total_processed_prev = $is_continuation ? (int) ($_GET['total_processed'] ?? 0) : 0;
 
                 // Initialize global counters (for this batch)
                 $global_processed = 0;
@@ -336,32 +379,22 @@ $line = 1; // Where messages go
 
                 // Cumulative counters (including previous batches)
                 $cumulative_processed = $total_processed_prev;
-                $cumulative_generated = (int)($_GET['total_generated'] ?? 0);
-                $cumulative_removed = (int)($_GET['total_removed'] ?? 0);
-                $cumulative_errors = (int)($_GET['total_errors'] ?? 0);
+                $cumulative_generated = $is_continuation ? (int) ($_GET['total_generated'] ?? 0) : 0;
+                $cumulative_removed   = $is_continuation ? (int) ($_GET['total_removed'] ?? 0) : 0;
+                $cumulative_errors    = $is_continuation ? (int) ($_GET['total_errors'] ?? 0) : 0;
 
                 // Track batch start time for timeout management
                 $batch_start_time = time();
                 $max_batch_time = 25; // Allow 25 seconds per batch (5s buffer)
-                
-                function outputMessage(string $message, ?int $percentage = null): void {
-                    $jsMessage = json_encode($message, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT);
-                    echo '<script>addLogMessage(' . $jsMessage . ');</script>';
-                    if ($percentage !== null) {
-                        echo '<script>updateProgress(' . $percentage . ', 100, ' . $jsMessage . ');</script>';
-                    }
-                    ob_flush();
-                    flush();
-                }
 
                 outputMessage("=== THUMBNAIL OPTIMIZATION STARTED ===");
                 outputMessage("Timestamp: " . date('Y-m-d H:i:s'));
                 outputMessage("");
 
                 // Report settings update
-                if (strpos($currentSizes, '600') !== false) {
+                if ($settingsUpdated) {
                     outputMessage("⚙️ Updated elan_image_thumbnail_sizes: {$currentSizes} → {$newSizes}");
-                } else {
+                } elseif (!str_contains($currentSizes, '600')) {
                     outputMessage("✅ elan_image_thumbnail_sizes already correct: {$currentSizes}");
                 }
                 outputMessage("");
@@ -371,12 +404,25 @@ $line = 1; // Where messages go
                 outputMessage("🔍 Image base path: " . $imageBasePath);
 
                 // Get total count of cars with images (for overall progress tracking)
-                $total_cars_result = $db->query("SELECT COUNT(*) as count FROM cars WHERE image IS NOT NULL AND image != ''")->results();
-                $total_cars = $total_cars_result[0]->count;
+                try {
+                    $total_cars_result = $db->query("SELECT COUNT(*) as count FROM cars WHERE image IS NOT NULL AND image != ''")->results();
+                    $total_cars = $total_cars_result[0]->count;
 
-                // Get batched cars with images for processing
-                $cars_with_images = $db->query("SELECT id, image FROM cars WHERE image IS NOT NULL AND image != '' LIMIT {$batch_size} OFFSET {$offset}")->results();
-                $batch_car_count = count($cars_with_images);
+                    // Get batched cars with images for processing
+                    // $batch_size is allowlist-validated (cast + in_array against [5,10,15,25]).
+                    // $offset is cast to int, which is sufficient for SQL safety with LIMIT/OFFSET.
+                    // UserSpice's DB class does not support bound parameters for LIMIT/OFFSET.
+                    $cars_with_images = $db->query(
+                        "SELECT id, image FROM cars WHERE image IS NOT NULL AND image != '' LIMIT {$batch_size} OFFSET {$offset}"
+                    )->results();
+                    $batch_car_count = count($cars_with_images);
+                } catch (\Throwable $e) {
+                    logger($user->data()->id, LogCategories::LOG_CATEGORY_FIX_SCRIPT,
+                        "Failed to query cars for thumbnail processing: " . $e->getMessage() . " (Issue #176)");
+                    outputMessage("❌ Database error while loading car list: " . $e->getMessage());
+                    outputMessage("Cannot continue. Check database connectivity.");
+                    exit;
+                }
                 
                 outputMessage("📊 Found {$total_cars} total cars with image data");
                 outputMessage("📦 Processing batch: " . ($offset + 1) . " to " . min($offset + $batch_size, $total_cars) . " (batch size: {$batch_size})");
@@ -388,7 +434,8 @@ $line = 1; // Where messages go
 
                 if ($total_cars == 0) {
                     outputMessage("ℹ️  No cars with images found. Process complete.");
-                    echo '<script>showCompletionSummary("<p>No cars with images to process.</p>");</script>';
+                    echo '<script nonce="' . htmlspecialchars($userspice_nonce ?? '', ENT_QUOTES, 'UTF-8') . '">showCompletionSummary("<p>No cars with images to process.</p>", false);</script>';
+                    unset($_SESSION['thumb_batch_token']);
                     exit;
                 }
 
@@ -404,7 +451,7 @@ $line = 1; // Where messages go
                             <div class='col-sm-3'><strong>Errors:</strong> {$cumulative_errors}</div>
                         </div>";
 
-                    echo "<script>showCompletionSummary(`$final_stats`);</script>";
+                    echo "<script nonce=\"" . htmlspecialchars($userspice_nonce ?? '', ENT_QUOTES, 'UTF-8') . "\">showCompletionSummary(`$final_stats`, " . ($cumulative_errors > 0 ? 'true' : 'false') . ");</script>";
 
                     // Log to fix_script_runs table
                     try {
@@ -412,19 +459,21 @@ $line = 1; // Where messages go
                             'script_name' => basename(__FILE__),
                             'completed_at' => date('Y-m-d H:i:s')
                         ]);
-                    } catch (Exception $e) {
+                    } catch (\Throwable $e) {
                         logger($user->data()->id, LogCategories::LOG_CATEGORY_FIX_SCRIPT, "Failed to record fix_script_runs completion: " . $e->getMessage() . " (Issue #176)");
                         outputMessage("⚠️ Warning: Could not record script completion in fix_script_runs table");
                     }
 
                     // Log final completion
                     logger($user->data()->id, LogCategories::LOG_CATEGORY_FIX_SCRIPT, "Thumbnail optimization completed (batched) - Total Processed: {$cumulative_processed}, Generated: {$cumulative_generated}, Removed: {$cumulative_removed}, Errors: {$cumulative_errors} (Issue #176)");
+                    unset($_SESSION['thumb_batch_token']);
                     exit;
                 }
 
                 outputMessage("🚀 Starting batch thumbnail optimization...");
                 outputMessage("");
 
+                $batchFailed = false;
                 try {
                     foreach ($cars_with_images as $index => $car) {
                         $car_id = $car->id;
@@ -443,7 +492,7 @@ $line = 1; // Where messages go
 
                         // Calculate progress within current batch and overall progress
                         $current_car_overall = $offset + $index + 1;
-                        $percentage = round(($current_car_overall / $total_cars) * 100);
+                        $percentage = (int) round(($current_car_overall / $total_cars) * 100);
                         outputMessage("Processing Car ID {$car_id} (Overall: {$current_car_overall}/{$total_cars}, Batch: " . ($index + 1) . "/{$batch_car_count})...", $percentage);
                         
                         if (empty($car_images)) {
@@ -472,7 +521,7 @@ $line = 1; // Where messages go
                             $extension = pathinfo($image_name, PATHINFO_EXTENSION);
                             
                             // Skip files that are already thumbnails
-                            if (strpos($base_name, '-resized-') !== false) {
+                            if (str_contains($base_name, '-resized-')) {
                                 continue;
                             }
 
@@ -506,7 +555,7 @@ $line = 1; // Where messages go
                                             outputMessage("    ❌ Failed to generate 768px: {$base_name}.{$extension}");
                                             $global_errors++;
                                         }
-                                    } catch (Exception $e) {
+                                    } catch (\Throwable $e) {
                                         outputMessage("    ❌ Error generating 768px {$base_name}.{$extension}: " . $e->getMessage());
                                         $global_errors++;
                                     }
@@ -528,6 +577,8 @@ $line = 1; // Where messages go
                                     $car_removed++;
                                 } else {
                                     outputMessage("    ❌ Failed to remove 600px: {$base_name}.{$extension}");
+                                    logger($user->data()->id, LogCategories::LOG_CATEGORY_FIX_SCRIPT,
+                                        "unlink() failed for 600px thumbnail: {$old_600} (Issue #176)");
                                     $global_errors++;
                                 }
                             }
@@ -570,6 +621,7 @@ $line = 1; // Where messages go
                         // Build URL for next batch
                         $next_url = $php_self . '?' . http_build_query([
                             'start' => '1',
+                            'batch_token' => $batch_token,
                             'batch_size' => $batch_size,
                             'offset' => $next_offset,
                             'total_processed' => $cumulative_processed,
@@ -582,10 +634,11 @@ $line = 1; // Where messages go
                         logger($user->data()->id, LogCategories::LOG_CATEGORY_FIX_SCRIPT, "Batch completed - Batch: " . (floor($offset / $batch_size) + 1) . ", Cars: {$global_processed}, Generated: {$global_generated}, Removed: {$global_removed}, Errors: {$global_errors} (Issue #176)");
 
                         // Auto-redirect to next batch after 2 seconds
-                        echo "<script>
+                        $next_url_js = json_encode($next_url, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT);
+                        echo "<script nonce=\"" . htmlspecialchars($userspice_nonce ?? '', ENT_QUOTES, 'UTF-8') . "\">
                             setTimeout(function() {
                                 addLogMessage('🔄 Automatically continuing to next batch...');
-                                window.location.href = '{$next_url}';
+                                window.location.href = {$next_url_js};
                             }, 2000);
                         </script>";
 
@@ -601,7 +654,7 @@ $line = 1; // Where messages go
                             'script_name' => basename(__FILE__),
                             'completed_at' => date('Y-m-d H:i:s')
                         ]);
-                    } catch (Exception $e) {
+                    } catch (\Throwable $e) {
                         logger($user->data()->id, LogCategories::LOG_CATEGORY_FIX_SCRIPT, "Failed to record fix_script_runs completion: " . $e->getMessage() . " (Issue #176)");
                         outputMessage("⚠️ Warning: Could not record script completion in fix_script_runs table");
                     }
@@ -609,49 +662,28 @@ $line = 1; // Where messages go
                     // Log the final completion
                     logger($user->data()->id, LogCategories::LOG_CATEGORY_FIX_SCRIPT, "Thumbnail optimization completed (batched) - Total Processed: {$cumulative_processed}, Generated: {$cumulative_generated}, Removed: {$cumulative_removed}, Errors: {$cumulative_errors} (Issue #176)");
 
-                } catch (Exception $e) {
+                } catch (\Throwable $e) {
+                    $batchFailed = true;
                     // Update cumulative counters even if there's an error
                     $cumulative_processed += $global_processed;
                     $cumulative_generated += $global_generated;
                     $cumulative_removed += $global_removed;
                     $cumulative_errors += $global_errors + 1; // +1 for the current exception
 
-                    outputMessage("❌ ERROR during batch processing: " . $e->getMessage());
-
-                    // Check if this might be a timeout error
-                    if (strpos($e->getMessage(), 'Maximum execution time') !== false ||
-                        strpos($e->getMessage(), 'timeout') !== false) {
-
-                        outputMessage("⚠️ Timeout detected - this batch will be retried");
-                        outputMessage("📈 Progress so far: Processed {$cumulative_processed}/{$total_cars} cars");
-
-                        // Calculate resume point (current batch with current progress)
-                        $resume_url = $php_self . '?' . http_build_query([
-                            'start' => '1',
-                            'batch_size' => $batch_size,
-                            'offset' => $offset, // Resume from same batch
-                            'total_processed' => $cumulative_processed,
-                            'total_generated' => $cumulative_generated,
-                            'total_removed' => $cumulative_removed,
-                            'total_errors' => $cumulative_errors
-                        ]);
-
-                        outputMessage("🔄 You can resume processing by refreshing the page or clicking the button below:");
-                        echo "<div style='text-align: center; margin: 20px;'>
-                            <button onclick='window.location.href=\"{$resume_url}\"' class='btn btn-warning'>
-                                <i class='fa fa-refresh'></i> Resume Batch Processing
-                            </button>
-                        </div>";
-
-                        logger($user->data()->id, LogCategories::LOG_CATEGORY_FIX_SCRIPT, "Batch timeout - Batch: " . (floor($offset / $batch_size) + 1) . ", Partial progress saved. Resume URL available. (Issue #176)");
-                    } else {
-                        outputMessage("Processing aborted - partial changes may have been made");
-                        logger($user->data()->id, LogCategories::LOG_CATEGORY_FIX_SCRIPT, "Thumbnail optimization failed: " . $e->getMessage() . " (Issue #176)");
-                    }
+                    outputMessage("❌ ERROR during batch processing: " . get_class($e) . ': ' . $e->getMessage());
+                    outputMessage("Processing aborted — partial changes may have been made");
+                    logger($user->data()->id, LogCategories::LOG_CATEGORY_FIX_SCRIPT_ERROR,
+                        "Thumbnail optimization failed: " . get_class($e) . ': ' . $e->getMessage() . " (Issue #176)");
+                    // Note: PHP max_execution_time is a fatal error, not catchable here.
+                    // Timeout management is handled by the $batch_start_time check in the foreach loop above.
                 }
 
                 outputMessage("");
-                outputMessage("Script completed at " . date("h:i:sa"));
+                if ($batchFailed) {
+                    outputMessage("Script terminated with errors at " . date("h:i:sa"));
+                } else {
+                    outputMessage("Script completed at " . date("h:i:sa"));
+                }
 
                 // Calculate final stats and show completion summary
                 $completionPercentage = $cumulative_processed > 0 ? 100 : 0;
@@ -679,7 +711,14 @@ $line = 1; // Where messages go
                         </div>
                     </div>";
 
-                echo "<script>showCompletionSummary(`$statsHtml`);</script>";
+                $hasErrors = ($batchFailed || $cumulative_errors > 0) ? 'true' : 'false';
+                echo "<script nonce=\"" . htmlspecialchars($userspice_nonce ?? '', ENT_QUOTES, 'UTF-8') . "\">showCompletionSummary(`$statsHtml`, {$hasErrors});</script>";
+                unset($_SESSION['thumb_batch_token']);
+            } elseif ($method === 'GET' && (int) ($_GET['start'] ?? 0) === 1) {
+                logger($user->data()->id, LogCategories::LOG_CATEGORY_SECURITY, 'Batch continuation rejected (session expired or token mismatch)');
+                echo '<div class="alert alert-warning mt-3"><strong>Session Expired</strong> Your processing session expired. <a href="'
+                    . htmlspecialchars($php_self, ENT_QUOTES, 'UTF-8')
+                    . '">Start over</a> to process all thumbnails.</div>';
             }
             ?>
 
@@ -689,9 +728,7 @@ $line = 1; // Where messages go
 
 <!-- Return to Admin Console button -->
 <div style="margin-top: 20px; text-align: center;">
-    <button onclick="if(window.opener){window.opener.location.reload(); window.close();} else {window.location.href='../../maintenance.php?tab=maintenance';}" class="btn btn-outline-primary">
-        <i class="fa fa-arrow-left" aria-hidden="true"></i> Return to Admin Console
-    </button>
+    <?= admin_script_close_button() ?>
 </div>
 
 <!-- footers -->

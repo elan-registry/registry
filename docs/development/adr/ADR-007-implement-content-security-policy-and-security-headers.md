@@ -2,7 +2,7 @@
 
 ## Status
 
-**In Review** (retroactive)
+**Accepted** (retroactive; nonce strategy adopted and `unsafe-inline` removed in v2.27.0 — see Revision History)
 
 ## Date
 
@@ -39,7 +39,8 @@ The application required a security header strategy that:
 
 6. Does not require a CSP nonce system given the UserSpice framework's use of
 
-   inline JavaScript and inline styles throughout its templates
+   inline JavaScript and inline styles throughout its templates *(this constraint
+   was reversed in v2.27.0 — see Nonce Feasibility Assessment below)*
 
 ### Threat Model
 
@@ -91,23 +92,40 @@ error pages must emit minimum anti-clickjacking headers independently, before an
 
 ### Nonce Feasibility Assessment
 
-A CSP nonce approach (replacing `'unsafe-inline'` with per-request
-`'nonce-{value}'`tokens on each`<script>`and`<style>` tag) was assessed and
-rejected. The UserSpice framework generates substantial inline JavaScript and
-inline `<style>` blocks throughout its template system, plugin hooks, and helper
-files. These are upstream framework files (constrained by ADR-001) and cannot be
-modified to accept nonce attributes. Adding nonces only to custom application code
-while leaving framework code covered by `'unsafe-inline'` provides no security
-benefit, since `'unsafe-inline'` in the policy allows all inline scripts regardless
-of which files produced them.
+A CSP nonce approach was originally assessed and rejected when this ADR was
+written. The decision was reversed in v2.27.0 once the prerequisite extraction
+of inline scripts was complete (#1327, #1328).
 
-The `$userspice_nonce` variable exists in the UserSpice framework (used in
-`users/includes/template/header1_must_include.php`) and the application defines
-`$usespice_nonce` (note different spelling) for the ElanRegistryAPI client script
-tag in `usersc/includes/footer.php`. However, neither variable feeds into the CSP
-header itself; the CSP header is set before these templates render. The nonce
-attributes on the framework script tags are framework-side annotations that are
-inconsistent with the emitted CSP policy and do not provide enforcement.
+**Why nonces became viable by v2.27.0:**
+
+1. All custom inline `<script>` blocks were extracted from admin templates (#1327)
+   and user-facing templates (#1328) into external cached files. The remaining
+   inline blocks are either pure data islands (window.*Config objects) or upstream
+   UserSpice templates.
+
+2. UserSpice already supports nonces: every inline `<script>` block in
+   `usersc/login.php`, `usersc/includes/system_messages_footer.php`,
+   `usersc/templates/customizer/header.php`, `usersc/templates/customizer/customize.php`,
+   `users/login.php`, `users/join.php`, and other framework files carries a
+   `nonce="<?= htmlspecialchars($userspice_nonce ?? '') ?>"` attribute. These
+   attributes were non-functional only because `$userspice_nonce` was never
+   populated in the CSP header.
+
+3. Some UserSpice inline scripts contain PHP conditionals (e.g., the login page
+   script toggles TOTP vs. password flow) and `Math.random()` calls (the flash
+   message system), making hash-allowlisting impossible. Nonces are the only
+   viable option for these dynamic scripts.
+
+4. Generating `$userspice_nonce` in `security_headers.php` (before the CSP header
+   call) and including it as `'nonce-{$userspice_nonce}'` in `script-src` wires
+   up the entire nonce chain without modifying any upstream files:
+   - `security_headers.php` runs at Phase 1.11.2, before any HTML output
+   - The variable is in PHP global scope, visible to all subsequent template renders
+   - Upstream templates already carry `nonce="<?= htmlspecialchars($userspice_nonce ?? '') ?>"`
+
+5. Data island `<script>` blocks in the new external-JS architecture (e.g.,
+   `window.carListConfig = {...}`) are PHP-generated per request and must also
+   carry the nonce attribute. These were added during the v2.27.0 extraction.
 
 ## Decision
 
@@ -134,13 +152,14 @@ third-party domains required by the application:
 | Directive | Value | Purpose |
 | --- | --- | --- |
 | `default-src` | `'self'` | Catch-all fallback for unlisted resource types |
-| `script-src` | `'self' 'unsafe-inline' 'unsafe-eval'` + CDN domains | Allow UserSpice inline JS and all CDN script sources |
+| `script-src` | `'self' 'nonce-{per-request}'` + 5 SHA-256 hashes + CDN domains | Allow scripts via per-request nonce; belt-and-suspenders SHA-256 hashes for static upstream scripts |
 | `style-src` | `'self' 'unsafe-inline'` + CDN domains | Allow Bootstrap/Bootswatch/FontAwesome inline and CDN styles |
 | `img-src` | `'self' data: blob:` + image domains | Allow embedded SVGs (`data:`), canvas exports (`blob:`), MapLibre GL JS / VersaTiles map tiles (`https://tiles.versatiles.org`), Gravatar avatars |
 | `font-src` | `'self'` + font CDN domains | FontAwesome kit and Google Fonts |
 | `connect-src` | `'self'` + API domains | AJAX calls to application endpoints, MapLibre GL JS tile fetches (`https://tiles.versatiles.org`), Cloudflare Analytics beacon |
 | `frame-src` | `'self' https://challenges.cloudflare.com` | Cloudflare Turnstile CAPTCHA iframe on registration page |
 | `frame-ancestors` | `'self'` | Anti-clickjacking: prevents cross-origin iframes (CSP3, preferred method) |
+| `form-action` | `'self'` | Restricts form POST targets to same-origin (does not fall back to `default-src`, must be set explicitly) |
 | `object-src` | `'none'` | Blocks Flash/plugin embeds entirely |
 | `base-uri` | `'self'` | Prevents`<base>` tag injection attacks that redirect relative URLs |
 
@@ -309,10 +328,10 @@ header("Content-Security-Policy: frame-ancestors 'self'");
 ```
 
 This minimal CSP covers only `frame-ancestors` (the anti-clickjacking directive)
-rather than the full application CSP. The error pages do not load CDN resources
-that would require a full whitelist; they only load Bootstrap from
-`cdn.jsdelivr.net` directly in the HTML. The full application CSP (from
-`security_headers.php`) is emitted if `init.php` succeeds; if it fails, the
+rather than the full application CSP. The error pages load Bootstrap CSS and JS
+from self-hosted assets (`usersc/css/` and `usersc/js/`), which `'self'` covers,
+so no CDN domains need to be whitelisted in the fallback. The full application CSP
+(from `security_headers.php`) is emitted if `init.php` succeeds; if it fails, the
 fallback CSP at minimum prevents clickjacking.
 
 Additionally, if `init.php` fails to load on an error page, the error page
@@ -366,6 +385,8 @@ via HTTP response inspection.
 | 2026-04-22 | Replace reCAPTCHA CSP entries with Cloudflare Turnstile | #630 |
 | 2026-04-27 | Remove 11 stale/library CDN domains from CSP allowlist (libraries self-hosted per ADR-015) | #405 |
 | 2026-05-06 | Remove Google Maps domains (`maps.googleapis.com`, `maps.gstatic.com`, `gstatic.com`, `ssl.gstatic.com`, `www.gstatic.com`) from CSP allowlist; add `https://tiles.versatiles.org` to `img-src` and `connect-src` for MapLibre GL JS tile fetches | v2.22.0 |
+| 2026-07-13 | Add `form-action 'self'` directive; remove `'unsafe-eval'` from `script-src` (grep-verified: no `eval()` or `new Function()` in first-party JS under `app/assets/js/`, `app/admin/assets/`, `usersc/js/`, or inline `<script>` blocks in customizer templates) | #1326 |
+| 2026-07-15 | Remove `'unsafe-inline'` from `script-src`; add per-request nonce (`'nonce-{$userspice_nonce}'`) generated in `security_headers.php`; add SHA-256 hashes for 5 static upstream scripts as belt-and-suspenders; wire nonce attributes to all data-island `<script>` blocks introduced in #1328 | #1328 |
 
 > **2026-04-27 (#405):** Removed the following domains from the CSP allowlist:
 >
@@ -380,7 +401,7 @@ via HTTP response inspection.
 > Font Awesome is served from `users/fonts/css/`. Remaining CDN domains
 > (`cdn.jsdelivr.net`, `cdnjs.cloudflare.com`) will be removed in #618 when
 > Bootstrap migrates to self-hosted.
-
+>
 > **2026-05-06 (v2.22.0):** Removed all Google Maps related domains from the
 > CSP allowlist: `https://maps.googleapis.com`, `https://maps.gstatic.com`,
 > `https://gstatic.com`, `https://ssl.gstatic.com`, and
@@ -394,6 +415,13 @@ via HTTP response inspection.
 > style JSON).
 
 ## Known Issues
+
+### `'unsafe-inline'` Removed — v2.27.0
+
+`'unsafe-inline'` was removed from `script-src` in v2.27.0 as the final step of
+the three-phase CSP migration plan (#1326, #1327, #1328). The Known Issues and
+Consequences sections for this limitation have been retired. The CSP now enforces
+strict inline-script control via per-request nonces and SHA-256 hash allowlisting.
 
 ### Referrer-Policy Discrepancy
 
@@ -415,30 +443,31 @@ leaking to CDN analytics and tracking endpoints. The PHP value should be updated
 to match the Apache value, or the Apache value should be removed to eliminate
 the duplicate header entirely.
 
-### `'unsafe-inline'`and`'unsafe-eval'` Limitations
+### CSP Migration Plan — Completed (v2.27.0)
 
-The CSP does not eliminate XSS risk from inline scripts because `'unsafe-inline'`
-and `'unsafe-eval'`are present in`script-src`. These are required by the
-UserSpice framework (ADR-001 constraint) and cannot be removed without forking
-the framework. The CSP still provides value via:
+The three-phase inline-script extraction and `'unsafe-inline'` removal is complete:
 
-- `object-src 'none'` — blocks plugin-based execution
-- `base-uri 'self'` — prevents base tag injection
-- `frame-ancestors 'self'` — prevents clickjacking
-- CDN domain allowlists — prevents loading scripts from arbitrary external domains
+| Phase | Issue | Status | Summary |
+| --- | --- | --- | --- |
+| A — CSP quick wins | #1326 | ✅ Merged | Added `form-action 'self'`; removed `'unsafe-eval'` |
+| B — Admin JS extraction | #1327 | ✅ Merged | Extracted inline `<script>` blocks from all admin templates into `app/admin/assets/js/` |
+| C — User-facing JS extraction + nonce flip | #1328 | ✅ Merged | Extracted inline `<script>` blocks from user-facing templates; wired `$userspice_nonce`; removed `'unsafe-inline'` |
 
-A strict CSP (without `'unsafe-inline'`) requires a full Bootstrap 5 migration
-and UserSpice framework refactoring, tracked separately.
+**Upstream-template resolution (Phase C):**
 
-### Nonce Variable Inconsistency
+The customizer templates (`header.php`, `customize.php`) were handled via a
+hybrid nonce + hash approach:
 
-`$userspice_nonce` (UserSpice framework variable, set in framework core) and
-`$usespice_nonce` (custom application variable, referenced in
-`usersc/includes/footer.php` for the ElanRegistryAPI script tag) both appear in
-templates with `nonce`attributes on`<script>` tags. Neither variable is
-currently populated with a value by the application (the `?? ''` null-coalescing
-default produces empty strings), and neither is wired into the CSP header. The
-nonce attributes on script tags are non-functional annotations at present.
+- **Nonce**: `$userspice_nonce` is now generated in `security_headers.php` and
+  propagated as `'nonce-{value}'` in `script-src`. All inline scripts in these
+  templates already carry `nonce="<?= htmlspecialchars($userspice_nonce ?? '') ?>"`.
+- **SHA-256 hashes (belt-and-suspenders)**: Five static script blocks in
+  `header.php` and `customize.php` are also hash-allowlisted (`'sha256-Gp7...'`
+  etc.) as defense in depth in case the nonce mechanism fails.
+- **Dynamic scripts**: Scripts in `users/login.php`, `usersc/login.php`,
+  `usersc/includes/system_messages_footer.php`, and other framework files that
+  contain PHP conditionals or `Math.random()` calls are covered exclusively by
+  the nonce (they cannot be hashed).
 
 ## Consequences
 
@@ -487,10 +516,14 @@ nonce attributes on script tags are non-functional annotations at present.
 
 ### Negative
 
-- **`'unsafe-inline'` limits XSS protection.** The CSP does not prevent execution
+- **`'unsafe-inline'` removed (v2.27.0)** — inline-script XSS protection is now
+  enforced via nonces. Injected inline `<script>` blocks lacking the per-request
+  nonce are blocked by the browser.
 
-  of inline scripts injected via stored or reflected XSS. This is the most
-  significant security limitation of the current implementation.
+- **Nonce security degrades if nonce is leaked per-request.** The nonce is in
+  global PHP scope and is visible in rendered HTML source. An attacker with XSS
+  could read the current page's nonce and craft a same-request injection that uses
+  it. Per-request nonces mitigate this because the token changes on every reload.
 
 - **Broad CDN whitelist increases supply-chain risk surface.** Whitelisting CDNs
 
@@ -533,7 +566,7 @@ nonce attributes on script tags are non-functional annotations at present.
 
 | Risk | Likelihood | Impact | Mitigation |
 | --- | --- | --- | --- |
-| Stored XSS succeeds due to `'unsafe-inline'` | Low | High | Input validation, output escaping, prepared statements, and UserSpice CSRF tokens mitigate the primary injection vectors;`'unsafe-inline'` removal requires Bootstrap 5 migration |
+| Stored XSS via injected inline script | Very Low | High | `'unsafe-inline'` removed (v2.27.0); per-request nonce blocks injected inline scripts; input validation, output escaping, and CSRF tokens mitigate primary injection vectors |
 | CDN-domain CSP bypass (e.g., malicious npm package on jsdelivr.net) | Very Low | High | SRI hashes (ADR-006) block tampered CDN files; domain allowlist is a necessary trade-off for CDN-based dependencies |
 | HSTS preload causes prolonged downtime if HTTPS fails | Very Low | Critical | Ensure HTTPS renewal is automated (Let's Encrypt); monitor cert expiry; do not submit to preload lists until production HTTPS is stable |
 | CSP violation in production breaks user functionality silently | Medium | Medium | Playwright E2E tests catch CSP violations in CI; users experiencing issues should report to admin; consider adding temporary `report-uri` during major changes |
@@ -545,33 +578,28 @@ nonce attributes on script tags are non-functional annotations at present.
 ### Nonce-Based CSP (Strict CSP)
 
 Replace `'unsafe-inline'` with per-request cryptographic nonces on all
-`<script>`and`<style>`tags. Emit`'nonce-{base64value}'` in the CSP header
-and add `nonce="..."` attributes to each inline script block.
+`<script>` tags. Emit `'nonce-{base64value}'` in the CSP header and add
+`nonce="..."` attributes to each inline script block.
 
-**Rejected because:**
+**Originally rejected** (retroactive ADR) because UserSpice upstream templates
+could not be modified to carry nonce attributes, and adding nonces while keeping
+`'unsafe-inline'` provides no security benefit.
 
-- The UserSpice framework emits inline JavaScript in its template files, plugin
+**Adopted in v2.27.0 (#1328)** once the prerequisites were met:
 
-  hooks, and helper functions (ADR-001 constraint). These upstream files cannot
-  be modified to accept nonce attributes without forking the framework.
+- All custom inline scripts were extracted to external files (#1327, #1328),
+  so no custom template contains `<script>` blocks that need nonces added.
+- UserSpice templates already carry `nonce="<?= htmlspecialchars($userspice_nonce ?? '') ?>"`
+  on all their inline scripts — the nonce attribute infrastructure was always there.
+- `$userspice_nonce` is now generated in `security_headers.php` (Phase 1.11.2)
+  and included in `'nonce-...'` in `script-src`.
+- `'unsafe-inline'` is no longer needed once nonces are wired.
 
-- `'unsafe-inline'` in the policy defeats the nonce approach entirely: if
-
-  `'unsafe-inline'` is present, browsers allow all inline scripts, and nonces
-  have no additional effect.
-
-- Implementing nonces on custom application code only (while leaving framework
-
-  code under `'unsafe-inline'`) provides no security improvement.
-
-- Nonce-based CSP requires a centralized nonce generation mechanism accessible
-
-  before any HTML output, a PHP session or request object, and reliable injection
-  into the CSP header and all relevant template locations simultaneously.
-
-- The correct long-term path is Bootstrap 5 migration plus UserSpice framework
-
-  updates to eliminate inline script needs, tracked as a separate roadmap item.
+**Implementation:** `$userspice_nonce = base64_encode(random_bytes(16));` in
+`security_headers.php`, before the `header()` call. Data-island `<script>` blocks
+(PHP-generated per-request JSON objects) carry the nonce via
+`<script nonce="<?= htmlspecialchars($userspice_nonce ?? '', ENT_QUOTES, 'UTF-8') ?>">`.
+SHA-256 hashes are kept for static upstream scripts as belt-and-suspenders.
 
 ### Hash-Based CSP
 

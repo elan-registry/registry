@@ -213,7 +213,8 @@ try {
                                 </h6>
                             </div>
                             <div class="card-body">
-                                <form name="assignCar" action="" method="POST" class="reassign-form needs-validation" novalidate>
+                                <form name="assignCar" action="" method="POST" class="reassign-form needs-validation" novalidate
+                                      data-preload-car-id="<?= ($preloadCarId && $preloadCarData) ? (int)$preloadCarId : '' ?>">
                                     <div class="row">
                                         <!-- Car Selection -->
                                         <div class="col-md-6">
@@ -356,41 +357,3 @@ try {
         </div>
     </div>
 </div>
-
-
-<?php if ($preloadCarId && $preloadCarData): ?>
-<script>
-// Pre-populate car ID from data quality integration
-document.addEventListener("DOMContentLoaded", function() {
-    const carIdField = document.getElementById("reassign_car_id");
-    if (carIdField) {
-        carIdField.value = "<?= $preloadCarId // nosemgrep: php.lang.security.taint-unsafe-echo-tag.taint-unsafe-echo-tag ?>";
-
-        // Trigger lookup to display car details
-        const lookupBtn = document.getElementById("lookupCarBtn");
-        if (lookupBtn) {
-            lookupBtn.click();
-        }
-
-        // Scroll to the car management section
-        const reassignSection = document.querySelector(".reassign-form");
-        if (reassignSection) {
-            reassignSection.scrollIntoView({ behavior: "smooth", block: "center" });
-        }
-
-        // Show alert about data quality integration
-        const messageContainer = document.getElementById("messageContainer");
-        if (messageContainer) {
-            const alertDiv = document.createElement("div");
-            alertDiv.className = "alert alert-primary alert-dismissible fade show";
-            alertDiv.innerHTML = `
-                <i class="fas fa-info-circle"></i> <strong>Data Quality Integration:</strong>
-                Car ID <?= $preloadCarId // nosemgrep: php.lang.security.taint-unsafe-echo-tag.taint-unsafe-echo-tag ?> has been pre-loaded from the Data Quality dashboard for editing.
-                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
-            `;
-            messageContainer.appendChild(alertDiv);
-        }
-    }
-});
-</script>
-<?php endif; ?>

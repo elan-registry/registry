@@ -75,7 +75,7 @@ if (isset($_GET['owner_id']) && is_numeric($_GET['owner_id'])) {
             <span id="ownerProfileName" class="card-header-er-primary-text"></span>
         </h5>
         <div>
-            <button class="btn btn-sm btn-outline-light" onclick="closeOwnerProfile()">
+            <button class="btn btn-sm btn-outline-light" data-action="closeOwnerProfile">
                 <i class="fas fa-times"></i> Close
             </button>
         </div>
@@ -108,13 +108,8 @@ if (isset($_GET['owner_id']) && is_numeric($_GET['owner_id'])) {
  *
  * @param DB $db Database connection instance
  * @return array Array of quality report data with counts and details
- * @throws InvalidArgumentException If database connection is invalid
  */
 function getOwnerQualityReports(DB $db): array {
-    if (!$db || !is_object($db)) {
-        throw new InvalidArgumentException('Valid database connection required');
-    }
-
     $reports = [];
 
     try {
@@ -542,16 +537,16 @@ $ownerQualityIcon  = match (true) {
                                                                                     <div class="mt-3 pt-3 border-top">
                                                                                         <div class="d-flex justify-content-between">
                                                                                             <button type="button" class="btn btn-sm btn-outline-primary"
-                                                                                                    onclick="loadOwnerById(<?= $owner->id ?>)"
+                                                                                                    data-action="loadOwnerById"
+                                                                                                    data-id="<?= (int)$owner->id ?>"
                                                                                                     title="Edit Owner Profile">
                                                                                                 <i class="fas fa-edit"></i> Edit Profile
                                                                                             </button>
                                                                                             <button type="button" class="btn btn-sm btn-outline-warning"
-                                                                                                    onclick="openAdminContactModal(
-                                                                                                        {id: '<?= $owner->car_count ?>', year: '', model: '', chassis: '', series: ''},
-                                                                                                        {id: '<?= $owner->id ?>', name: <?= htmlspecialchars(json_encode(trim(($owner->fname ?? '') . ' ' . ($owner->lname ?? ''))), ENT_COMPAT, 'UTF-8') // nosemgrep: php.lang.security.taint-unsafe-echo-tag.taint-unsafe-echo-tag ?>, email: <?= htmlspecialchars(json_encode($owner->email ?? ''), ENT_COMPAT, 'UTF-8') // nosemgrep: php.lang.security.taint-unsafe-echo-tag.taint-unsafe-echo-tag ?>},
-                                                                                                        'Duplicate Email Addresses'
-                                                                                                    )"
+                                                                                                    data-action="openAdminContactModal"
+                                                                                                    data-car="<?= htmlspecialchars(json_encode(['id' => (string)(int)$owner->car_count, 'year' => '', 'model' => '', 'chassis' => '', 'series' => '']), ENT_QUOTES, 'UTF-8') ?>"
+                                                                                                    data-owner="<?= htmlspecialchars(json_encode(['id' => (string)(int)$owner->id, 'name' => trim(($owner->fname ?? '') . ' ' . ($owner->lname ?? '')), 'email' => $owner->email ?? '']), ENT_QUOTES, 'UTF-8') ?>"
+                                                                                                    data-subject="Duplicate Email Addresses"
                                                                                                     title="Contact Owner via Registry">
                                                                                                 <i class="fas fa-envelope"></i> Contact
                                                                                             </button>
@@ -635,17 +630,19 @@ $ownerQualityIcon  = match (true) {
                                                                 <?php } ?>
                                                                 <td>
                                                                     <button type="button" class="btn btn-sm btn-outline-primary me-1"
-                                                                            onclick="loadOwnerById(<?= $owner->id ?>)"
+                                                                            data-action="loadOwnerById"
+                                                                            data-id="<?= (int)$owner->id ?>"
                                                                             title="Edit Owner Profile">
                                                                         <i class="fas fa-edit"></i> Edit
                                                                     </button>
                                                                     <?php if ($key === 'owners_missing_info') { ?>
+                                                                    <?php $carCount2 = $owner->car_count !== null ? (string)(int)$owner->car_count : 'Multiple'; ?>
                                                                     <button type="button" class="btn btn-sm btn-outline-warning"
-                                                                            onclick="openAdminContactModal(
-                                                                                {id: '<?= $owner->car_count ?? 'Multiple' ?>', year: '', model: '', chassis: '', series: ''},
-                                                                                {id: '<?= $owner->id ?>', name: <?= htmlspecialchars(json_encode(trim(($owner->fname ?? '') . ' ' . ($owner->lname ?? ''))), ENT_COMPAT, 'UTF-8') // nosemgrep: php.lang.security.taint-unsafe-echo-tag.taint-unsafe-echo-tag ?>, email: <?= htmlspecialchars(json_encode($owner->email ?? ''), ENT_COMPAT, 'UTF-8') // nosemgrep: php.lang.security.taint-unsafe-echo-tag.taint-unsafe-echo-tag ?>},
-                                                                                'Missing Information'
-                                                                            )" title="Contact Owner via Registry">
+                                                                            data-action="openAdminContactModal"
+                                                                            data-car="<?= htmlspecialchars(json_encode(['id' => $carCount2, 'year' => '', 'model' => '', 'chassis' => '', 'series' => '']), ENT_QUOTES, 'UTF-8') ?>"
+                                                                            data-owner="<?= htmlspecialchars(json_encode(['id' => (string)(int)$owner->id, 'name' => trim(($owner->fname ?? '') . ' ' . ($owner->lname ?? '')), 'email' => $owner->email ?? '']), ENT_QUOTES, 'UTF-8') ?>"
+                                                                            data-subject="Missing Information"
+                                                                            title="Contact Owner via Registry">
                                                                         <i class="fas fa-envelope"></i>
                                                                     </button>
                                                                     <?php } ?>
@@ -668,149 +665,4 @@ $ownerQualityIcon  = match (true) {
 </div>
 
 <!-- Scripts for Manage Owners -->
-<script>
-let currentOwnerId = null;
-let searchTimeout = null;
-
-$(document).ready(function() {
-    <?php if ($selectedOwnerId): ?>
-        loadOwnerById(<?= $selectedOwnerId // nosemgrep: php.lang.security.taint-unsafe-echo-tag.taint-unsafe-echo-tag ?>);
-    <?php endif; ?>
-
-    $('#ownerSearchInput').on('input', function() {
-        clearTimeout(searchTimeout);
-        const query = $(this).val().trim();
-
-        if (query.length >= 2) {
-            searchTimeout = setTimeout(() => searchOwners(query), 300);
-        } else if (query.length === 0) {
-            clearSearchResults();
-        }
-    });
-
-    $('#ownerSearchBtn').click(function() {
-        const query = $('#ownerSearchInput').val().trim();
-        if (query.length >= 2) {
-            searchOwners(query);
-        }
-    });
-
-    $('#ownerClearBtn').click(function() {
-        clearSearchResults();
-        closeOwnerProfile();
-    });
-
-    $('#ownerSearchInput').keypress(function(e) {
-        if (e.which === 13) {
-            $('#ownerSearchBtn').click();
-        }
-    });
-});
-
-function searchOwners(query) {
-    $('#ownerSearchResults').html('<div class="text-center py-2"><i class="fas fa-spinner fa-spin"></i> Searching...</div>');
-
-    new ElanRegistryAPI()
-        .post('<?= $us_url_root ?>app/admin/includes/process-owner-search.php', { query: query })
-        .then(function(response) {
-            displaySearchResults(response.owners);
-        })
-        .catch(function(error) {
-            console.error('Owner search failed for query:', query, error);
-            $('#ownerSearchResults').html('<div class="alert alert-danger"><i class="fas fa-exclamation-circle"></i> Search failed. Please try again.</div>');
-        });
-}
-
-function displaySearchResults(owners) {
-    if (owners.length === 0) {
-        $('#ownerSearchResults').html('<div class="alert alert-primary"><i class="fas fa-info-circle"></i> No owners found matching your search.</div>');
-        return;
-    }
-
-    let html = '<div class="table-responsive"><table class="table table-hover"><thead><tr>';
-    html += '<th>Name</th><th>Email</th><th>Location</th><th>Data Quality</th><th>Actions</th>';
-    html += '</tr></thead><tbody>';
-
-    const esc = NotificationHelper.escapeHtml;
-    owners.forEach(function(owner) {
-        const qualityClass = owner.quality_score >= 80 ? 'success' : (owner.quality_score >= 60 ? 'warning' : 'danger');
-        const location = esc([owner.city, owner.state, owner.country].filter(Boolean).join(', ') || 'Not specified');
-        const ownerId = parseInt(owner.id, 10);
-
-        html += `<tr onclick="loadOwnerById(${ownerId})" style="cursor: pointer;">`;
-        html += `<td><strong>${esc(owner.fname)} ${esc(owner.lname)}</strong></td>`;
-        html += `<td>${esc(owner.email)}</td>`;
-        html += `<td>${location}</td>`;
-        html += `<td><span class="badge badge-${qualityClass}">${parseInt(owner.quality_score, 10)}%</span></td>`;
-        html += `<td><button class="btn btn-sm btn-primary" onclick="event.stopPropagation(); loadOwnerById(${ownerId})"><i class="fas fa-edit"></i> Edit</button></td>`;
-        html += '</tr>';
-    });
-
-    html += '</tbody></table></div>';
-    $('#ownerSearchResults').html(html);
-}
-
-function loadOwnerById(ownerId) {
-    currentOwnerId = ownerId;
-    $('#ownerProfilePanel').show();
-
-    $('html, body').animate({
-        scrollTop: $('#ownerProfilePanel').offset().top - 100
-    }, 500);
-
-    const currentUrl = new URL(window.location);
-    currentUrl.searchParams.set('owner_id', ownerId);
-    window.history.replaceState({}, '', currentUrl);
-
-    new ElanRegistryAPI()
-        .post('<?= $us_url_root ?>app/admin/includes/load-owner-profile.php', { owner_id: ownerId })
-        .then(function(response) {
-            $('#ownerProfileForm').html(response.html);
-        })
-        .catch(function(error) {
-            console.error('Failed to load owner profile for ID', ownerId, error);
-            $('#ownerProfileForm').html('<div class="alert alert-danger">Failed to load owner profile.</div>');
-        });
-
-    new ElanRegistryAPI()
-        .post('<?= $us_url_root ?>app/admin/includes/load-owner-info.php', { owner_id: ownerId })
-        .then(function(response) {
-            $('#ownerInfoSidebar').html(response.html);
-        })
-        .catch(function(error) {
-            console.error('Failed to load owner info for ID', ownerId, error);
-            $('#ownerInfoSidebar').html('<div class="alert alert-danger">Failed to load owner information.</div>');
-        });
-}
-
-function clearSearchResults() {
-    $('#ownerSearchInput').val('');
-    $('#ownerSearchResults').html('<div class="text-center py-4 text-muted"><i class="fas fa-users fa-2x mb-2"></i><p>Search for owners to view and edit their profiles</p></div>');
-}
-
-function closeOwnerProfile() {
-    $('#ownerProfilePanel').hide();
-    currentOwnerId = null;
-
-    const currentUrl = new URL(window.location);
-    currentUrl.searchParams.delete('owner_id');
-    window.history.replaceState({}, '', currentUrl);
-}
-
-// Redirects to manage-cars tab; called from car quality report links
-function switchToDataQualityTab() {
-    if (typeof switchToTab === 'function') {
-        switchToTab('manage-cars');
-    } else {
-        showNotification('Please use the Manage Cars tab to view quality reports.', 'info');
-    }
-}
-
-// Called from manage-cars tab to jump directly to an owner's profile
-function switchToOwnerManagementTab(ownerId) {
-    if (typeof switchToTab === 'function') {
-        switchToTab('owner-mgmt');
-        setTimeout(() => loadOwnerById(ownerId), 100);
-    }
-}
-</script>
+<script src="<?= $us_url_root ?>app/admin/assets/js/tab-owner-mgmt.min.js?v=<?= ASSET_VERSION ?>"></script>

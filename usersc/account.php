@@ -337,7 +337,7 @@ $_baseUrl = htmlspecialchars($us_url_root, ENT_QUOTES, 'UTF-8');
 <?php if ($hasOwnerMap): ?>
 <link rel="stylesheet" href="<?= $_baseUrl ?>usersc/css/maplibre-gl.css">
 <script src="<?= $_baseUrl ?>usersc/js/maplibre-gl.min.js" data-cfasync="false"></script>
-<script nonce="<?= htmlspecialchars($usespice_nonce ?? '', ENT_QUOTES, 'UTF-8') ?>">
+<script nonce="<?= htmlspecialchars($userspice_nonce ?? '', ENT_QUOTES, 'UTF-8') ?>">
 (function () {
     if (typeof maplibregl === 'undefined') {
         var mapEl = document.getElementById('ownerMap');
@@ -376,7 +376,7 @@ $_baseUrl = htmlspecialchars($us_url_root, ENT_QUOTES, 'UTF-8');
 </script>
 <?php endif; ?>
 
-<script nonce="<?= htmlspecialchars($usespice_nonce ?? '', ENT_QUOTES, 'UTF-8') ?>">
+<script nonce="<?= htmlspecialchars($userspice_nonce ?? '', ENT_QUOTES, 'UTF-8') ?>">
 (function () {
     // Restore localStorage collapse states and sync button UI on page load
     document.querySelectorAll('.collapse[id^="car-details-"]').forEach(function (el) {

@@ -5,7 +5,9 @@ declare(strict_types=1);
 require_once __DIR__ . '/IntegrationTestCase.php';
 
 use ElanRegistry\Car\CarRepository;
+use ElanRegistry\Exceptions\CarNotFoundException;
 use ElanRegistry\Exceptions\CarPermissionException;
+use ElanRegistry\Exceptions\CarValidationException;
 
 use PHPUnit\Framework\Attributes\Group;
 
@@ -20,7 +22,6 @@ final class CarMergeTest extends IntegrationTestCase
 {
     private $testCarId;
     private $testMergeCarId;
-    protected $db;
 
     protected function setUp(): void
     {
@@ -40,8 +41,6 @@ final class CarMergeTest extends IntegrationTestCase
 
         $GLOBALS['user'] = $user;
 
-        $this->db = DB::getInstance();
-
         // Create unique test cars for this test
         try {
             $this->testCarId = $this->createTestCar(1, [
@@ -53,11 +52,6 @@ final class CarMergeTest extends IntegrationTestCase
         } catch (RuntimeException $e) {
             $this->markTestSkipped('Could not create test cars: ' . $e->getMessage());
         }
-    }
-
-    protected function tearDown(): void
-    {
-        parent::tearDown();
     }
 
     /**
@@ -78,7 +72,7 @@ final class CarMergeTest extends IntegrationTestCase
     #[Group('fast')]
     public function testMergeCarFailsWhenTargetNotExists(): void
     {
-        $this->expectException(Exception::class);
+        $this->expectException(CarNotFoundException::class);
 
         $car = new Car(99999);
         $car->merge($this->testMergeCarId, 'Test merge');
@@ -90,7 +84,7 @@ final class CarMergeTest extends IntegrationTestCase
     #[Group('fast')]
     public function testMergeCarFailsWhenSourceNotExists(): void
     {
-        $this->expectException(Exception::class);
+        $this->expectException(CarNotFoundException::class);
 
         $car = new Car($this->testCarId);
         $car->merge(99999, 'Test merge');
@@ -102,7 +96,7 @@ final class CarMergeTest extends IntegrationTestCase
     #[Group('fast')]
     public function testMergeCarFailsWhenMergingSelf(): void
     {
-        $this->expectException(Exception::class);
+        $this->expectException(CarValidationException::class);
 
         $car = new Car($this->testCarId);
         $car->merge($this->testCarId, 'Test merge');
@@ -170,14 +164,14 @@ final class CarMergeTest extends IntegrationTestCase
     #[Group('fast')]
     public function testMergeTransactionRollbackOnFailure(): void
     {
-        $this->expectException(Exception::class);
+        $this->expectException(CarNotFoundException::class);
 
         $car = new Car($this->testCarId);
 
         try {
             // Attempt to merge non-existent car
             $car->merge(99999, 'Test merge');
-        } catch (Exception $e) {
+        } catch (CarNotFoundException $e) {
             // After failed merge, original car should still exist
             $carReloaded = new Car((int) $car->data()->id);
             $this->assertTrue($carReloaded->exists());
@@ -208,6 +202,26 @@ final class CarMergeTest extends IntegrationTestCase
                 $GLOBALS['user'] = $originalUser;
             }
         }
+    }
+
+    /**
+     * Test that merging an already-deleted source car throws CarNotFoundException.
+     *
+     * This exercises the findByIdForUpdate() path added in issue #1311: after the
+     * source car is deleted, the SELECT ... FOR UPDATE inside the merge transaction
+     * returns no row, which the service translates into CarNotFoundException.
+     */
+    #[Group('fast')]
+    public function testMergeAlreadyDeletedSourceCarThrowsCarNotFoundException(): void
+    {
+        // Permanently remove the source car; deleteTestCar() also removes it from
+        // the tearDown tracking list so cleanup does not double-attempt the delete.
+        $this->deleteTestCar($this->testMergeCarId);
+
+        // The target car still exists; the source is gone — merge must throw
+        $this->expectException(CarNotFoundException::class);
+        $car = new Car($this->testCarId);
+        $car->merge($this->testMergeCarId, 'Test merge after source deletion');
     }
 
     /**

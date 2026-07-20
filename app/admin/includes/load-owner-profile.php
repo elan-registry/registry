@@ -129,7 +129,7 @@ try {
 
                 <!-- Location Actions -->
                 <div class="mt-3">
-                    <button type="button" class="btn btn-outline-primary btn-sm" onclick="syncLocationToCars(<?= $ownerId // nosemgrep: php.lang.security.taint-unsafe-echo-tag.taint-unsafe-echo-tag ?>)">
+                    <button type="button" class="btn btn-outline-primary btn-sm" data-sync-owner-id="<?= (int)$ownerId // nosemgrep: php.lang.security.taint-unsafe-echo-tag.taint-unsafe-echo-tag ?>">
                         <i class="fas fa-sync"></i> Sync Location to Owned Cars
                     </button>
                 </div>
@@ -144,7 +144,7 @@ try {
                         <button type="submit" class="btn btn-success">
                             <i class="fas fa-save"></i> Save Changes
                         </button>
-                        <button type="button" class="btn btn-secondary" onclick="closeOwnerProfile()">
+                        <button type="button" class="btn btn-secondary" data-action="closeOwnerProfile">
                             <i class="fas fa-times"></i> Cancel
                         </button>
                     </div>
@@ -164,116 +164,20 @@ try {
         </div>
     </form>
 
-    <script>
-    // Store original values for change detection
-    $(document).ready(function() {
-        $('#ownerProfileUpdateForm input, #ownerProfileUpdateForm select').each(function() {
-            $(this).data('original-value', $(this).val());
-        });
-
-        if (document.getElementById('location-picker-admin')) {
-            const urlRoot = '<?php echo $us_url_root ?? '/'; ?>';
-
-            const currentLocation = {
-                city: '<?= htmlspecialchars($ownerData->city ?? '', ENT_QUOTES) ?>',
-                state: '<?= htmlspecialchars($ownerData->state ?? '', ENT_QUOTES) ?>',
-                country: '<?= htmlspecialchars($ownerData->country ?? '', ENT_QUOTES) ?>',
-                lat: <?= (float)($ownerData->lat ?? 0) // nosemgrep: php.lang.security.taint-unsafe-echo-tag.taint-unsafe-echo-tag ?>,
-                lon: <?= (float)($ownerData->lon ?? 0) // nosemgrep: php.lang.security.taint-unsafe-echo-tag.taint-unsafe-echo-tag ?>
-            };
-
-            const locationPicker = new LocationPicker({
-                containerId: 'location-picker-admin',
-                csrfToken: '<?= Token::generate() ?>',
-                urlRoot: urlRoot,
-                showGPS: true,
-                required: false
-            });
-
-            if (currentLocation.city && currentLocation.country) {
-                const displayText = [currentLocation.city, currentLocation.state, currentLocation.country]
-                    .filter(Boolean).join(', ');
-                locationPicker.setLocation(currentLocation, displayText);
-            }
+    <script nonce="<?= htmlspecialchars($userspice_nonce ?? '', ENT_QUOTES, 'UTF-8') ?>">
+    window.elanOwnerProfileData = {
+        csrfToken: <?= json_encode(Token::generate()) ?>,
+        ownerId: <?= (int)$ownerId // nosemgrep: php.lang.security.taint-unsafe-echo-tag.taint-unsafe-echo-tag ?>,
+        location: {
+            city: <?= json_encode($ownerData->city ?? '', JSON_HEX_TAG | JSON_HEX_AMP) // nosemgrep: php.lang.security.taint-unsafe-echo-tag.taint-unsafe-echo-tag ?>,
+            state: <?= json_encode($ownerData->state ?? '', JSON_HEX_TAG | JSON_HEX_AMP) // nosemgrep: php.lang.security.taint-unsafe-echo-tag.taint-unsafe-echo-tag ?>,
+            country: <?= json_encode($ownerData->country ?? '', JSON_HEX_TAG | JSON_HEX_AMP) // nosemgrep: php.lang.security.taint-unsafe-echo-tag.taint-unsafe-echo-tag ?>,
+            lat: <?= (float)($ownerData->lat ?? 0) // nosemgrep: php.lang.security.taint-unsafe-echo-tag.taint-unsafe-echo-tag ?>,
+            lon: <?= (float)($ownerData->lon ?? 0) // nosemgrep: php.lang.security.taint-unsafe-echo-tag.taint-unsafe-echo-tag ?>
         }
-    });
-
-    // Handle form submission
-    $('#ownerProfileUpdateForm').on('submit', function(e) {
-        e.preventDefault();
-
-        const esc = NotificationHelper.escapeHtml;
-        const formDataObj = {};
-        $(this).serializeArray().forEach(function(item) {
-            formDataObj[item.name] = item.value;
-        });
-        const submitBtn = $(this).find('button[type="submit"]');
-        const originalText = submitBtn.html();
-
-        submitBtn.html('<i class="fas fa-spinner fa-spin"></i> Saving...').prop('disabled', true);
-
-        new ElanRegistryAPI()
-            .post('<?= $us_url_root ?>app/admin/includes/process-owner-update.php', formDataObj)
-            .then(function(response) {
-                $('#ownerProfileForm').prepend(
-                    '<div class="alert alert-success alert-dismissible fade show">' +
-                    '<i class="fas fa-check"></i> ' + esc(response.message) +
-                    '<button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>' +
-                    '</div>'
-                );
-
-                setTimeout(() => {
-                    loadOwnerById(<?= $ownerId // nosemgrep: php.lang.security.taint-unsafe-echo-tag.taint-unsafe-echo-tag ?>);
-                }, 1500);
-
-                const searchQuery = $('#ownerSearchInput').val();
-                if (searchQuery.length >= 2) {
-                    searchOwners(searchQuery);
-                }
-            })
-            .catch(function(error) {
-                console.error('Owner profile update failed:', error);
-                $('#ownerProfileForm').prepend(
-                    '<div class="alert alert-danger alert-dismissible fade show">' +
-                    '<i class="fas fa-exclamation-circle"></i> ' + esc(error.message || 'Update failed. Please try again.') +
-                    '<button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>' +
-                    '</div>'
-                );
-            })
-            .finally(function() {
-                submitBtn.html(originalText).prop('disabled', false);
-            });
-    });
-
-    function syncLocationToCars(ownerId) {
-        const esc = NotificationHelper.escapeHtml;
-        const btn = $('button[onclick="syncLocationToCars(' + ownerId + ')"]');
-        const originalText = btn.html();
-
-        btn.html('<i class="fas fa-spinner fa-spin"></i> Syncing...').prop('disabled', true);
-
-        new ElanRegistryAPI()
-            .post('<?= $us_url_root ?>app/admin/includes/process-owner-sync-location.php', { owner_id: ownerId })
-            .then(function(response) {
-                $('#ownerProfileForm').prepend(
-                    '<div class="alert alert-success alert-dismissible fade show">' +
-                    '<i class="fas fa-check"></i> ' + esc(response.message) +
-                    '<button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>' +
-                    '</div>'
-                );
-            })
-            .catch(function(error) {
-                console.error('Location sync failed:', error);
-                $('#ownerProfileForm').prepend(
-                    '<div class="alert alert-danger alert-dismissible fade show">' +
-                    '<i class="fas fa-exclamation-circle"></i> ' + esc(error.message || 'Sync failed. Please try again.') +
-                    '<button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>' +
-                    '</div>'
-                );
-            })
-            .finally(function() {
-                btn.html(originalText).prop('disabled', false);
-            });
+    };
+    if (typeof initOwnerProfileForm === 'function') {
+        initOwnerProfileForm(window.elanOwnerProfileData);
     }
     </script>
 

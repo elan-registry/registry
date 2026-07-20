@@ -3,7 +3,6 @@ declare(strict_types=1);
 
 use ElanRegistry\AppConstants;
 use ElanRegistry\Car\Car;
-use ElanRegistry\Car\CarRepository;
 use ElanRegistry\Exceptions\CarDatabaseException;
 use ElanRegistry\Exceptions\CarDeletionException;
 use ElanRegistry\Exceptions\CarMergeException;
@@ -68,6 +67,7 @@ try {
     logger(0, LogCategories::LOG_CATEGORY_SECURITY,
         "Admin page accessed with invalid user session on $php_self");
     Redirect::to($us_url_root . 'users/login.php');
+    die();
 }
 
 // Tab routing - determine which tab to show
@@ -160,14 +160,10 @@ try {
     $systemStatus['owner_issues'] = $ownerIssues;
     $systemStatus['quality_issues'] = $carIssues + $ownerIssues;
 
-} catch (PDOException $e) {
+} catch (\Throwable $e) {
     // Fail silently for header stats - main functionality should still work
-    logger($currentUserId ?? 0, LogCategories::LOG_CATEGORY_DATABASE_ERROR,
-           "Database error getting system status: " . $e->getMessage());
-} catch (RuntimeException $e) {
-    // Handle database connection or other runtime errors
-    logger($currentUserId ?? 0, LogCategories::LOG_CATEGORY_SYSTEM_ERROR,
-           "Runtime error getting system status: " . $e->getMessage());
+    logger($currentUserId, LogCategories::LOG_CATEGORY_SYSTEM_ERROR,
+           "Database or runtime error getting system status: " . $e->getMessage());
 }
 
 // Process form submissions for car management tab
@@ -201,18 +197,14 @@ if (ElanInput::existsPost()) {
                             : "User ID $user_id";
 
                         $reason = "Car was reassigned to $targetName (User ID: $user_id) by admin " . $currentUserId;
-                        $transferSuccess = $car->transfer((int) $user_id, $reason);
+                        $car->transfer((int) $user_id, $reason);
 
-                        if ($transferSuccess) {
-                            $successes[] = "Car ID $car_id successfully reassigned to $targetName";
-                            logger($currentUserId, LogCategories::LOG_CATEGORY_CAR_ACTIONS, "Car ID $car_id reassigned to User ID $user_id");
-                        } else {
-                            $errors[] = "Failed to reassign car ID $car_id";
-                        }
+                        $successes[] = "Car ID $car_id successfully reassigned to $targetName";
+                        logger($currentUserId, LogCategories::LOG_CATEGORY_CAR_ACTIONS, "Car ID $car_id reassigned to User ID $user_id");
                     } catch (CarPermissionException $e) {
                         $errors[] = "Permission denied for car ID {$car_id}.";
                         logger($currentUserId, LogCategories::LOG_CATEGORY_ACCESS_DENIED, "Car reassignment permission denied for Car ID {$car_id}: " . $e->getMessage());
-                    } catch (Exception $e) {
+                    } catch (\Throwable $e) {
                         $errors[] = 'Transfer failed. Please try again.';
                         logger($currentUserId, LogCategories::LOG_CATEGORY_CAR_TRANSFER_ERROR, "Car reassignment failed for Car ID $car_id: " . $e->getMessage());
                     }
@@ -228,7 +220,7 @@ if (ElanInput::existsPost()) {
                         break;
                     }
 
-                    if (count($cars) <> 2) {
+                    if (count($cars) !== 2) {
                         $errors[] = 'Select 2 cars to merge';
                         break;
                     }
@@ -244,124 +236,59 @@ if (ElanInput::existsPost()) {
                         break;
                     }
 
-                    if (count($reason) <> 1) {
+                    if (count($reason) !== 1) {
                         $errors[] = 'Select 1 reason code';
                         break;
-                    } else {
-                        // Assign old_car_id / new_car_id and build the audit comment based on reason code
-                        switch ($reason[0]) {
-                            case "duplicate":
-                                // Determine the newest car
-                                if ($car1 > $car2) {
-                                    $new_car_id = $car1;
-                                    $old_car_id = $car2;
-                                } else {
-                                    $new_car_id = $car2;
-                                    $old_car_id = $car1;
-                                }
-                                $fields['comments'] = "Car $old_car_id is a duplicate of $new_car_id.  The history of $old_car_id has been merged with $new_car_id and $old_car_id deleted.";
-                                $fields['operation'] = "DUPLICATE";
-                                break;
+                    }
 
-                            case "newownerNewToOld":
-                                // Determine the newest car
-                                if ($car1 > $car2) {
-                                    $new_car_id = $car1;
-                                    $old_car_id = $car2;
-                                } else {
-                                    $new_car_id = $car2;
-                                    $old_car_id = $car1;
-                                }
-                                $fields['comments'] = "Car $old_car_id was sold to a new owner and the new owner created a record for the same car as $new_car_id. The history of $old_car_id has been merged with $new_car_id and $old_car_id deleted.";
-                                $fields['operation'] = "NEWOWNER";
-                                break;
+                    // Assign old_car_id / new_car_id and build the audit comment based on reason code
+                    $mergeComment = '';
+                    $old_car_id = 0;
+                    $new_car_id = 0;
+                    switch ($reason[0]) {
+                        case "duplicate":
+                            // Newer (higher-ID) car is kept as canonical
+                            [$old_car_id, $new_car_id] = $car1 > $car2 ? [$car2, $car1] : [$car1, $car2];
+                            $mergeComment = "Car $old_car_id is a duplicate of $new_car_id.  The history of $old_car_id has been merged with $new_car_id and $old_car_id deleted.";
+                            break;
 
-                            case "newownerOldToNew":
-                                // newownerOldToNew: the older (lower-ID) car record is kept as canonical
-                                if ($car1 > $car2) {
-                                    $new_car_id = $car2;
-                                    $old_car_id = $car1;
-                                } else {
-                                    $new_car_id = $car1;
-                                    $old_car_id = $car2;
-                                }
-                                $fields['comments'] = "Car $old_car_id was sold to a new owner and the new owner created a record for the same car as $new_car_id. The history of $old_car_id has been merged with $new_car_id and $old_car_id deleted.";
-                                $fields['operation'] = "NEWOWNER";
-                                break;
+                        case "newownerNewToOld":
+                            // Newer (higher-ID) car is kept as canonical
+                            [$old_car_id, $new_car_id] = $car1 > $car2 ? [$car2, $car1] : [$car1, $car2];
+                            $mergeComment = "Car $old_car_id was sold to a new owner and the new owner created a record for the same car as $new_car_id. The history of $old_car_id has been merged with $new_car_id and $old_car_id deleted.";
+                            break;
 
-                            default:
-                                $errors[] = 'Invalid merge reason code.';
-                                break;
-                        }
+                        case "newownerOldToNew":
+                            // Older (lower-ID) car is kept as canonical
+                            [$old_car_id, $new_car_id] = $car1 > $car2 ? [$car1, $car2] : [$car2, $car1];
+                            $mergeComment = "Car $old_car_id was sold to a new owner and the new owner created a record for the same car as $new_car_id. The history of $old_car_id has been merged with $new_car_id and $old_car_id deleted.";
+                            break;
+
+                        default:
+                            $errors[] = 'Invalid merge reason code.';
+                            break;
                     }
 
                     if (!empty($errors)) {
                         break;
                     }
 
-                    // Execute the merge transaction: transfer history, delete old car, write audit record
-                    $carRepo = new CarRepository($db);
                     try {
-                        $carRepo->beginTransaction();
-                        if (!$carRepo->transferHistory((int) $old_car_id, (int) $new_car_id)) {
-                            throw new CarMergeException('transferHistory failed: ' . $carRepo->errorString());
-                        }
-                        if (!$carRepo->deleteCar((int) $old_car_id)) {
-                            throw new CarMergeException('deleteCar failed: ' . $carRepo->errorString());
-                        }
-
-                        // Set up the audit record fields now that all structural steps succeeded
-                        $fields['car_id'] = $new_car_id;
-                        $fields['ctime']  = date(AppConstants::DATETIME_FORMAT);
-                        $fields['mtime']  = $fields['ctime'];
-
-                        // insertHistory is best-effort: an audit failure must not roll back the structural merge.
-                        // The inner try/catch prevents both false-returns and thrown Throwables from reaching
-                        // the outer catch, so commit() proceeds regardless. A successful insert is committed
-                        // atomically with the structural changes; a failed insert is logged and merge still succeeds.
-                        try {
-                            if (!$carRepo->insertHistory($fields)) {
-                                logger($currentUserId, LogCategories::LOG_CATEGORY_DATABASE_ERROR,
-                                    "WARNING: History insert failed after merging CAR $old_car_id to CAR $new_car_id — merge completed but audit record missing.");
-                            }
-                        } catch (\Throwable $insertEx) {
-                            logger($currentUserId, LogCategories::LOG_CATEGORY_DATABASE_ERROR,
-                                "WARNING: History insert threw after merging CAR $old_car_id to CAR $new_car_id — merge completed but audit record missing: " . $insertEx->getMessage());
-                        }
-
-                        $carRepo->commit();
-                        $successes[] = $fields['comments'];
-                        logger($currentUserId, LogCategories::LOG_CATEGORY_CAR_MERGE, $fields['comments']);
-                    } catch (CarMergeException $e) {
-                        try {
-                            $carRepo->rollback();
-                        } catch (\PDOException $rollbackEx) {
-                            logger($currentUserId, LogCategories::LOG_CATEGORY_DATABASE_ERROR,
-                                "CRITICAL: Rollback failed after car merge failure — DB may be inconsistent. " . $rollbackEx->getMessage());
-                        }
+                        (new Car($new_car_id))->merge($old_car_id, $reason[0]);
+                        $successes[] = $mergeComment;
+                        logger($currentUserId, LogCategories::LOG_CATEGORY_CAR_MERGE, $mergeComment);
+                    } catch (CarNotFoundException $e) {
+                        $errors[] = 'Car merge failed: one or both cars could not be found. Check the admin log for details.';
+                        logger($currentUserId, LogCategories::LOG_CATEGORY_CAR_MERGE,
+                            "FAILED: Car merge aborted — car not found. " . $e->getMessage());
+                    } catch (CarMergeException | CarDatabaseException $e) {
                         $errors[] = 'Car merge failed and was rolled back. Check the admin log for details.';
                         logger($currentUserId, LogCategories::LOG_CATEGORY_CAR_MERGE,
                             "FAILED: Car merge rolled back. " . $e->getMessage());
-                    } catch (\PDOException $e) {
-                        try {
-                            $carRepo->rollback();
-                        } catch (\PDOException $rollbackEx) {
-                            logger($currentUserId, LogCategories::LOG_CATEGORY_DATABASE_ERROR,
-                                "CRITICAL: Rollback failed after car merge database error — DB may be inconsistent. " . $rollbackEx->getMessage());
-                        }
-                        $errors[] = 'Car merge failed due to a database error and was rolled back. Check the admin log for details.';
-                        logger($currentUserId, LogCategories::LOG_CATEGORY_CAR_MERGE,
-                            "FAILED: Car merge rolled back due to database error. " . $e->getMessage());
                     } catch (\Throwable $e) {
-                        try {
-                            $carRepo->rollback();
-                        } catch (\PDOException $rollbackEx) {
-                            logger($currentUserId, LogCategories::LOG_CATEGORY_DATABASE_ERROR,
-                                "CRITICAL: Rollback failed after car merge unexpected error — DB may be inconsistent. " . $rollbackEx->getMessage());
-                        }
                         $errors[] = 'Car merge failed due to an unexpected error and was rolled back. Check the admin log for details.';
                         logger($currentUserId, LogCategories::LOG_CATEGORY_CAR_MERGE,
-                            "FAILED: Car merge rolled back due to unexpected error. " . get_class($e) . ': ' . $e->getMessage());
+                            "FAILED: Car merge unexpected error. " . get_class($e) . ': ' . $e->getMessage());
                     }
                     break;
 
@@ -398,7 +325,7 @@ if (ElanInput::existsPost()) {
                     } catch (CarDeletionException | CarDatabaseException $e) {
                         // CarAdministrationService::delete() logs technical detail before throwing.
                         $errors[] = "Failed to delete car. Check the system log for details.";
-                    } catch (\Exception $e) {
+                    } catch (\Throwable $e) {
                         logger($currentUserId, LogCategories::LOG_CATEGORY_CAR_DELETION,
                             "Unexpected error deleting car ID $car_id: " . get_class($e) . ': ' . $e->getMessage());
                         $errors[] = "An unexpected error occurred. Check the system log for details.";
@@ -537,7 +464,7 @@ if (ElanInput::existsPost()) {
                         <!-- Tab Content -->
                         <div class="card-body">
                             <div class="tab-content" id="managementTabContent">
-
+                                <?php include 'includes/partials/js-data-island.php'; ?>
                                 <?php
                                 // Include the appropriate tab content
                                 $tabFile = 'includes/tab-' . str_replace('-', '_', $activeTab) . '.php';
@@ -867,10 +794,6 @@ if (ElanInput::existsPost()) {
 <script src="<?=$us_url_root?>app/assets/js/location-picker.min.js?v=<?= ASSET_VERSION ?>"></script>
 
 <!-- Include custom CSS and JavaScript -->
-<link rel="stylesheet" href="assets/manage-consolidated.min.css?v=<?= ASSET_VERSION ?>">
-<script>
-    window.elanUrlRoot = '<?= $us_url_root ?>';
-    // Make CSRF token available to ElanRegistryAPI client
-    document.documentElement.setAttribute('data-csrf-token', '<?= $csrfToken ?>');
-</script>
-<script src="assets/manage-consolidated.min.js?v=<?= ASSET_VERSION ?>"></script>
+<link rel="stylesheet" href="assets/admin-core.min.css?v=<?= ASSET_VERSION ?>">
+<script src="assets/admin-core.min.js?v=<?= ASSET_VERSION ?>"></script>
+<script src="<?= $us_url_root ?>app/admin/assets/js/load-owner-profile.min.js?v=<?= ASSET_VERSION ?>"></script>

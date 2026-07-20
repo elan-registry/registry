@@ -337,7 +337,7 @@ See [DEPLOYMENT.md](docs/development/DEPLOYMENT.md) for complete procedures. **C
 The wiki is a **separate git repository** at the permanent path:
 
 ```text
-/Users/jimboone/Documents/Developer/Web/ElanRegistryWiki
+/Users/jimboone/Documents/Developer/Web/ElanRegistry/Wiki
 ```
 
 **CRITICAL:** ALWAYS use this exact path. NEVER clone to `/tmp/`, a worktree,
@@ -347,8 +347,8 @@ only place to use.
 To update the live wiki after editing files in `wiki/` on a branch:
 
 ```bash
-cp wiki/<file>.md /Users/jimboone/Documents/Developer/Web/ElanRegistryWiki/
-cd /Users/jimboone/Documents/Developer/Web/ElanRegistryWiki
+cp wiki/<file>.md /Users/jimboone/Documents/Developer/Web/ElanRegistry/Wiki/
+cd /Users/jimboone/Documents/Developer/Web/ElanRegistry/Wiki
 git add <file>.md
 git commit -m "docs: <description>"
 git push

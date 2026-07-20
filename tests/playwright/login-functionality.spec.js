@@ -207,8 +207,6 @@ test.describe('Login Functionality', () => {
     
     // Should be redirected to login or see login prompt
     const currentUrl = page.url();
-    const pageContent = await page.textContent('body');
-    
     if (currentUrl.includes('login.php')) {
       // On login page - perform login
       await page.fill('input[name="username"], input[name="email"]', VALID_CREDENTIALS.username);
@@ -271,8 +269,6 @@ test.describe('Login Functionality', () => {
 
   test('session security - no session fixation', async ({ page }) => {
     // Get initial session info (if available via cookies or headers)
-    const initialCookies = await page.context().cookies();
-    
     // Perform login
     await login(page, VALID_CREDENTIALS.username, VALID_CREDENTIALS.password);
     

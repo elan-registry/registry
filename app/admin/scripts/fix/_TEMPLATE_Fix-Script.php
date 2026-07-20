@@ -28,10 +28,8 @@ use ElanRegistry\LogCategories;
  * - Clean error handling and reporting
  */
 
-// UI Constants for progress output
-define('SECTION_SEPARATOR', '═══════════════════════════════════════════════════════');
-
 require_once '../../../../users/init.php';
+require_once $abs_us_root . $us_url_root . 'app/admin/includes/fix-script-core.php';
 require_once $abs_us_root . $us_url_root . 'users/includes/template/prep.php';
 
 // Optional: Include BackupManager if you need database backups
@@ -60,7 +58,7 @@ $db = DB::getInstance();
     <div class="container-fluid">
         <div class="well">
 
-            <?php if (!isset($_GET['start'])): ?>
+            <?php if (!admin_script_exec_requested()): ?>
             <!-- Initial Description -->
             <div class="row">
                 <div class="col-lg-12 mb-4">
@@ -94,9 +92,7 @@ $db = DB::getInstance();
                             </div>
 
                             <div class="text-center">
-                                <a href="?start=1" class="btn btn-success btn-lg">
-                                    <i class="fa fa-play"></i> Continue - Start [ACTION_NAME]
-                                </a>
+                                <?= admin_script_start_form('Continue - Start [ACTION_NAME]') ?>
                             </div>
                         </div>
                     </div>
@@ -122,25 +118,6 @@ $db = DB::getInstance();
                 </div>
                 <div class="card-body">
                     <pre style="background: #f5f5f5; padding: 15px; border-radius: 4px; max-height: 600px; overflow-y: auto; font-family: 'Courier New', monospace; font-size: 13px;"><?php
-
-                    /**
-                     * Helper function for progress output
-                     *
-                     * @param string $message Message to display
-                     * @param string $type Type of message: 'info', 'success', 'error', 'warning', 'step'
-                     */
-                    function logProgress(string $message, string $type = 'info'): void {
-                        $icons = [
-                            'info' => 'ℹ️',
-                            'success' => '✅',
-                            'error' => '❌',
-                            'warning' => '⚠️',
-                            'step' => '▶️'
-                        ];
-                        $icon = $icons[$type] ?? '•';
-                        echo date('[H:i:s] ') . $icon . ' ' . $message . "\n";
-                        flush();
-                    }
 
                     // Initialize results tracking
                     $results = [
@@ -228,9 +205,7 @@ $db = DB::getInstance();
                     ?></pre>
 
                     <div class="text-center mt-3">
-                        <a href="../../maintenance.php?tab=maintenance" class="btn btn-primary btn-lg">
-                            <i class="fa fa-arrow-left"></i> Return to Maintenance
-                        </a>
+                        <?= admin_script_close_button() ?>
                     </div>
                 </div>
             </div>

@@ -303,7 +303,7 @@ foreach ($dataQualityReports as $key => $report) {
 $carIssues = $carCriticalIssues + $carWarningIssues;
 
 // Calculate car quality health score (higher is better)
-$totalCars = $systemStatus['total_cars'];
+$totalCars = $systemStatus['total_cars'] ?? 0;
 $qualityScore = $totalCars > 0 ? max(0, 100 - (($carIssues / $totalCars) * 100)) : 100;
 
 ?>
@@ -429,7 +429,7 @@ $qualityScore = $totalCars > 0 ? max(0, 100 - (($carIssues / $totalCars) * 100))
                                             ?>
                                             <tr data-override="<?= $chassisOverride ?>">
                                                 <td>
-                                                    <button class="btn btn-sm btn-outline-primary" onclick="openCarDetails(<?= $car->id ?>)">
+                                                    <button class="btn btn-sm btn-outline-primary" data-action="openCarDetails" data-id="<?= (int)$car->id ?>">
                                                         <i class="fas fa-eye"></i> <?= $car->id ?>
                                                     </button>
                                                 </td>
@@ -455,15 +455,15 @@ $qualityScore = $totalCars > 0 ? max(0, 100 - (($carIssues / $totalCars) * 100))
                                                     <?php } ?>
                                                 </td>
                                                 <td>
-                                                    <button type="button" class="btn btn-sm btn-outline-primary" onclick="openCarDetails(<?= $car->id ?>)" title="Edit Car Details">
+                                                    <button type="button" class="btn btn-sm btn-outline-primary" data-action="openCarDetails" data-id="<?= (int)$car->id ?>" title="Edit Car Details">
                                                         <i class="fas fa-edit"></i> Edit
                                                     </button>
                                                     <button type="button" class="btn btn-sm btn-outline-warning ms-1"
-                                                            onclick="openAdminContactModal(
-                                                                {id: <?= (int)$car->id ?>, year: <?= $jsStr((string)($car->year ?? '')) ?>, model: <?= $jsStr($car->model ?? '') ?>, chassis: <?= $jsStr($car->chassis ?? '') ?>, series: <?= $jsStr($car->series ?? '') ?>},
-                                                                {id: <?= (int)($car->user_id ?? 0) ?>, name: <?= $jsStr($car->fname && $car->lname ? $car->fname . ' ' . $car->lname : 'Unknown') // nosemgrep: php.lang.security.taint-unsafe-echo-tag.taint-unsafe-echo-tag ?>, email: <?= $jsStr($car->email ?? '') // nosemgrep: php.lang.security.taint-unsafe-echo-tag.taint-unsafe-echo-tag ?>},
-                                                                'Invalid Chassis'
-                                                            )" title="Contact Owner via Registry">
+                                                            data-action="openAdminContactModal"
+                                                            data-car="<?= htmlspecialchars(json_encode(['id' => (int)$car->id, 'year' => (string)($car->year ?? ''), 'model' => $car->model ?? '', 'chassis' => $car->chassis ?? '', 'series' => $car->series ?? '']), ENT_QUOTES, 'UTF-8') ?>"
+                                                            data-owner="<?= htmlspecialchars(json_encode(['id' => (int)($car->user_id ?? 0), 'name' => $car->fname && $car->lname ? $car->fname . ' ' . $car->lname : 'Unknown', 'email' => $car->email ?? '']), ENT_QUOTES, 'UTF-8') ?>"
+                                                            data-subject="Invalid Chassis"
+                                                            title="Contact Owner via Registry">
                                                         <i class="fas fa-envelope"></i>
                                                     </button>
                                                     <button type="button" class="btn btn-sm btn-outline-primary ms-1" data-bs-toggle="modal" data-bs-target="#chassisValidationModal">
@@ -478,24 +478,6 @@ $qualityScore = $totalCars > 0 ? max(0, 100 - (($carIssues / $totalCars) * 100))
                                         </tbody>
                                     </table>
                                 </div>
-                                <script>
-                                (function() {
-                                    const cb    = document.getElementById('hide_overridden_chassis');
-                                    const tbody = document.getElementById('invalid-chassis-tbody');
-                                    const empty = document.getElementById('invalid-chassis-no-results');
-                                    if (!cb || !tbody || !empty) return;
-                                    cb.addEventListener('change', function() {
-                                        const hide = cb.checked;
-                                        let visible = 0;
-                                        tbody.querySelectorAll('tr[data-override]').forEach(function(tr) {
-                                            const shouldHide = hide && tr.getAttribute('data-override') === '1';
-                                            tr.classList.toggle('d-none', shouldHide);
-                                            if (!shouldHide) visible++;
-                                        });
-                                        empty.classList.toggle('d-none', visible > 0);
-                                    });
-                                })();
-                                </script>
                             <?php } else { ?>
                                 <!-- Data table for other reports -->
                                 <div class="table-responsive">
@@ -532,16 +514,17 @@ $qualityScore = $totalCars > 0 ? max(0, 100 - (($carIssues / $totalCars) * 100))
                                                     </td>
                                                     <td>
                                                         <button type="button" class="btn btn-sm btn-outline-primary me-1"
-                                                                onclick="switchToOwnerManagementTab(<?= $owner->id ?>)"
+                                                                data-action="switchToOwnerManagementTab"
+                                                                data-id="<?= (int)$owner->id ?>"
                                                                 title="Edit Owner Profile">
                                                             <i class="fas fa-edit"></i> Edit
                                                         </button>
                                                         <button type="button" class="btn btn-sm btn-outline-warning"
-                                                                onclick="openAdminContactModal(
-                                                                    {id: <?= $jsStr((string)($owner->car_count ?? 'Multiple')) ?>, year: '', model: '', chassis: '', series: ''},
-                                                                    {id: <?= (int)($owner->id ?? 0) ?>, name: <?= $jsStr(trim(($owner->fname ?? '') . ' ' . ($owner->lname ?? ''))) // nosemgrep: php.lang.security.taint-unsafe-echo-tag.taint-unsafe-echo-tag ?>, email: <?= $jsStr($owner->email ?? '') // nosemgrep: php.lang.security.taint-unsafe-echo-tag.taint-unsafe-echo-tag ?>},
-                                                                    'Missing Information'
-                                                                )" title="Contact Owner via Registry">
+                                                                data-action="openAdminContactModal"
+                                                                data-car="<?= htmlspecialchars(json_encode(['id' => (string)($owner->car_count ?? 'Multiple'), 'year' => '', 'model' => '', 'chassis' => '', 'series' => '']), ENT_QUOTES, 'UTF-8') ?>"
+                                                                data-owner="<?= htmlspecialchars(json_encode(['id' => (int)($owner->id ?? 0), 'name' => trim(($owner->fname ?? '') . ' ' . ($owner->lname ?? '')), 'email' => $owner->email ?? '']), ENT_QUOTES, 'UTF-8') ?>"
+                                                                data-subject="Missing Information"
+                                                                title="Contact Owner via Registry">
                                                             <i class="fas fa-envelope"></i>
                                                         </button>
                                                     </td>
@@ -579,7 +562,7 @@ $qualityScore = $totalCars > 0 ? max(0, 100 - (($carIssues / $totalCars) * 100))
                                                         </td>
                                                     <?php } ?>
                                                     <td>
-                                                        <button class="btn btn-sm btn-outline-primary" onclick="switchToOwnerManagementTab(<?= $owner->id ?>)" title="Edit Owner">
+                                                        <button class="btn btn-sm btn-outline-primary" data-action="switchToOwnerManagementTab" data-id="<?= (int)$owner->id ?>" title="Edit Owner">
                                                             <i class="fas fa-edit"></i> Edit
                                                         </button>
                                                     </td>
@@ -610,12 +593,12 @@ $qualityScore = $totalCars > 0 ? max(0, 100 - (($carIssues / $totalCars) * 100))
                                                     </td>
                                                     <td>
                                                         <button type="button" class="btn btn-sm btn-outline-warning"
-                                                                onclick="openAdminContactModal(
-                                                                    {id: 'Multiple', year: '', model: '', chassis: '', series: ''},
-                                                                    {id: 'Multiple', name: <?= $jsStr('Users with ' . ($duplicate->email ?? '')) ?>, email: <?= $jsStr($duplicate->email ?? '') ?>},
-                                                                    'Duplicate Email Addresses',
-                                                                    <?= $jsStr($duplicate->email ?? '') ?>
-                                                                )" title="Contact Users via Registry">
+                                                                data-action="openAdminContactModal"
+                                                                data-car="<?= htmlspecialchars(json_encode(['id' => 'Multiple', 'year' => '', 'model' => '', 'chassis' => '', 'series' => '']), ENT_QUOTES, 'UTF-8') ?>"
+                                                                data-owner="<?= htmlspecialchars(json_encode(['id' => 'Multiple', 'name' => 'Users with ' . ($duplicate->email ?? ''), 'email' => $duplicate->email ?? '']), ENT_QUOTES, 'UTF-8') ?>"
+                                                                data-subject="Duplicate Email Addresses"
+                                                                data-target-email="<?= htmlspecialchars($duplicate->email ?? '', ENT_QUOTES, 'UTF-8') ?>"
+                                                                title="Contact Users via Registry">
                                                             <i class="fas fa-envelope"></i> Contact
                                                         </button>
                                                     </td>
@@ -645,7 +628,7 @@ $qualityScore = $totalCars > 0 ? max(0, 100 - (($carIssues / $totalCars) * 100))
                                             <?php foreach ($report['data'] as $car) { ?>
                                             <tr>
                                                 <td>
-                                                    <button class="btn btn-sm btn-outline-primary" onclick="openCarDetails(<?= $car->id ?>)">
+                                                    <button class="btn btn-sm btn-outline-primary" data-action="openCarDetails" data-id="<?= (int)$car->id ?>">
                                                         <?= $car->id ?>
                                                     </button>
                                                 </td>
@@ -683,15 +666,15 @@ $qualityScore = $totalCars > 0 ? max(0, 100 - (($carIssues / $totalCars) * 100))
                                                     </td>
                                                 <?php } ?>
                                                 <td>
-                                                    <button type="button" class="btn btn-sm btn-outline-primary" onclick="openCarDetails(<?= $car->id ?>)" title="Edit Car Details">
+                                                    <button type="button" class="btn btn-sm btn-outline-primary" data-action="openCarDetails" data-id="<?= (int)$car->id ?>" title="Edit Car Details">
                                                         <i class="fas fa-edit"></i> Edit
                                                     </button>
                                                     <button type="button" class="btn btn-sm btn-outline-warning ms-1"
-                                                            onclick="openAdminContactModal(
-                                                                {id: <?= (int)$car->id ?>, year: <?= $jsStr((string)($car->year ?? '')) ?>, model: <?= $jsStr($car->model ?? '') ?>, chassis: <?= $jsStr($car->chassis ?? '') ?>, series: <?= $jsStr($car->series ?? '') ?>},
-                                                                {id: <?= (int)($car->user_id ?? 0) ?>, name: <?= $jsStr($car->fname && $car->lname ? $car->fname . ' ' . $car->lname : 'Unknown') // nosemgrep: php.lang.security.taint-unsafe-echo-tag.taint-unsafe-echo-tag ?>, email: <?= $jsStr($car->email ?? '') // nosemgrep: php.lang.security.taint-unsafe-echo-tag.taint-unsafe-echo-tag ?>},
-                                                                'Missing Information'
-                                                            )" title="Contact Owner via Registry">
+                                                            data-action="openAdminContactModal"
+                                                            data-car="<?= htmlspecialchars(json_encode(['id' => (int)$car->id, 'year' => (string)($car->year ?? ''), 'model' => $car->model ?? '', 'chassis' => $car->chassis ?? '', 'series' => $car->series ?? '']), ENT_QUOTES, 'UTF-8') ?>"
+                                                            data-owner="<?= htmlspecialchars(json_encode(['id' => (int)($car->user_id ?? 0), 'name' => $car->fname && $car->lname ? $car->fname . ' ' . $car->lname : 'Unknown', 'email' => $car->email ?? '']), ENT_QUOTES, 'UTF-8') ?>"
+                                                            data-subject="Missing Information"
+                                                            title="Contact Owner via Registry">
                                                         <i class="fas fa-envelope"></i>
                                                     </button>
                                                 </td>
@@ -1195,405 +1178,4 @@ $qualityScore = $totalCars > 0 ? max(0, 100 - (($carIssues / $totalCars) * 100))
 </div> <!-- Close row -->
 <?php } ?>
 
-<style>
-.car-comparison-card {
-    transition: all 0.3s ease;
-    display: flex;
-    flex-direction: column;
-}
-
-.car-comparison-card .card-body {
-    flex: 1;
-}
-
-/* Fix cascading height issue - ensure all car cards have same minimum height */
-.car-comparison-cards-row {
-    display: flex;
-    flex-wrap: wrap;
-    margin: 0 -15px;
-}
-
-.car-comparison-cards-row > .col-lg-6 {
-    display: flex;
-    padding: 0 15px;
-    margin-bottom: 1rem;
-}
-
-.car-comparison-cards-row .car-comparison-card {
-    width: 100%;
-    min-height: 420px; /* Set consistent minimum height */
-}
-
-.car-comparison-card:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 4px 15px rgba(0,0,0,0.1);
-}
-
-.car-comparison-card.selected {
-    border: 2px solid var(--er-primary);
-    background-color: rgba(var(--er-primary-rgb), 0.03);
-}
-
-.car-comparison-card.newer-car {
-    border-left: 4px solid var(--er-primary);
-}
-
-.car-comparison-card.newer-car .card-header {
-    background-color: rgba(var(--er-primary-rgb), 0.04);
-}
-
-.duplicate-group {
-    transition: all 0.3s ease;
-}
-
-/* Prominent timestamp styles */
-.timestamp-info {
-    padding: 8px 4px;
-}
-
-.timestamp-label {
-    font-size: 0.75rem;
-    font-weight: 600;
-    color: var(--er-neutral);
-    text-transform: uppercase;
-    margin-bottom: 2px;
-}
-
-.timestamp-value {
-    font-size: 0.9rem;
-    font-weight: 600;
-    color: var(--er-neutral-dark);
-    margin-bottom: 1px;
-}
-
-.timestamp-time {
-    font-size: 0.7rem;
-    color: var(--er-neutral);
-}
-
-/* Field comparison highlighting */
-.field-match {
-    background-color: rgba(var(--er-primary-rgb), 0.08);
-    border-left: 3px solid var(--er-primary);
-    padding: 4px 8px;
-    margin: 2px 0;
-    border-radius: 4px;
-}
-
-.field-differ {
-    background-color: rgba(var(--er-danger-rgb), 0.08);
-    border-left: 3px solid var(--er-danger);
-    padding: 4px 8px;
-    margin: 2px 0;
-    border-radius: 4px;
-}
-
-.field-match .field-value {
-    font-weight: 500;
-    color: var(--er-primary);
-}
-
-.field-differ .field-value {
-    font-weight: 500;
-    color: var(--er-danger);
-}
-
-.field-match i.fa-check {
-    font-size: 0.8rem;
-}
-
-.field-differ i.fa-exclamation-triangle {
-    font-size: 0.8rem;
-}
-
-.duplicate-group:hover {
-    box-shadow: 0 4px 20px rgba(0,0,0,0.1);
-}
-
-.form-validation input.is-invalid {
-    border-color: var(--er-danger);
-}
-
-.form-validation input.is-valid {
-    border-color: var(--er-primary);
-}
-
-.badge-lg {
-    font-size: 0.9rem;
-    padding: 0.5rem 0.75rem;
-}
-
-.bg-opacity-10 {
-    background-color: rgba(255, 193, 7, 0.1) !important;
-}
-
-.merge-btn:disabled {
-    opacity: 0.6;
-    cursor: not-allowed;
-}
-
-@media (max-width: 768px) {
-    .car-comparison-card .col-sm-6 {
-        margin-bottom: 1rem;
-    }
-
-    .form-check-inline {
-        display: block !important;
-        margin-bottom: 0.5rem;
-    }
-
-    .timestamp-info {
-        padding: 6px 2px;
-    }
-
-    .timestamp-label {
-        font-size: 0.7rem;
-    }
-
-    .timestamp-value {
-        font-size: 0.8rem;
-    }
-
-    .timestamp-time {
-        font-size: 0.65rem;
-    }
-
-    .badge-sm {
-        font-size: 0.7rem;
-        padding: 0.2rem 0.4rem;
-    }
-
-    .field-match, .field-differ {
-        padding: 3px 6px;
-        margin: 1px 0;
-    }
-
-    .field-match i.fa-check,
-    .field-differ i.fa-exclamation-triangle {
-        font-size: 0.7rem;
-    }
-}
-</style>
-
-<script>
-// Auto-refresh data every 5 minutes for live monitoring
-setTimeout(function() {
-    location.reload();
-}, 300000);
-
-// Function to open car details page for editing
-function openCarDetails(carId) {
-    // Open car details page in new tab for editing
-    window.open('../../app/owner/cars/details.php?car_id=' + carId, '_blank');
-}
-
-// Function to switch to car management tab with specific car pre-loaded
-function switchToCarManagementTab(carId) {
-    // Switch to car management tab and pass car ID as parameter
-    window.location.href = '?tab=car-mgmt&car_id=' + carId;
-}
-
-// Function to switch to owner management tab with specific user pre-loaded
-function switchToOwnerManagementTab(userId) {
-    // Switch to owner management tab and pass user ID as parameter
-    window.location.href = '?tab=owner-mgmt&owner_id=' + userId;
-}
-
-// Build a label-value row using DOM API (no innerHTML) to prevent XSS.
-function makeInfoRow(label, value) {
-    const div = document.createElement('div');
-    const strong = document.createElement('strong');
-    strong.textContent = label + ':';
-    div.appendChild(strong);
-    div.appendChild(document.createTextNode(' ' + String(value)));
-    return div;
-}
-
-function openAdminContactModal(carData, ownerData, qualityIssue = '', targetEmail = '') {
-    const carInfo   = document.getElementById('contactCarInfo');
-    const ownerInfo = document.getElementById('contactOwnerInfo');
-    const modal     = document.getElementById('adminContactModal');
-
-    if (!carInfo || !ownerInfo || !modal) {
-        console.error('openAdminContactModal: required modal elements missing from DOM', {
-            contactCarInfo: !!carInfo,
-            contactOwnerInfo: !!ownerInfo,
-            adminContactModal: !!modal,
-        });
-        alert('Unable to open contact form. Please reload the page.');
-        return;
-    }
-
-    // Populate car information
-    carInfo.replaceChildren(
-        makeInfoRow('Car ID', carData.id),
-        makeInfoRow('Year/Model', (carData.year || 'N/A') + ' ' + (carData.model || 'N/A')),
-        makeInfoRow('Chassis', carData.chassis || 'Missing'),
-        makeInfoRow('Series', carData.series || 'Missing')
-    );
-
-    // Populate owner information
-    ownerInfo.replaceChildren(
-        makeInfoRow('Name', ownerData.name || 'Unknown'),
-        makeInfoRow('Email', ownerData.email || 'Unknown'),
-        makeInfoRow('User ID', ownerData.id !== 0 ? ownerData.id : 'Unknown')
-    );
-
-    // Set hidden field values
-    document.getElementById('contactCarId').value = carData.id;
-    document.getElementById('contactOwnerId').value = ownerData.id;
-    document.getElementById('contactTargetEmail').value = targetEmail || ownerData.email || '';
-    const qualityIssueSelect = document.getElementById('qualityIssue');
-    qualityIssueSelect.value = qualityIssue;
-
-    if (qualityIssue && qualityIssueSelect.value !== qualityIssue) {
-        console.warn('openAdminContactModal: qualityIssue value not found in select options:', qualityIssue);
-    }
-
-    // Show the modal
-    bootstrap.Modal.getOrCreateInstance(modal).show();
-}
-
-// Smooth scrolling to report sections
-document.querySelectorAll('a[href^="#report-"]').forEach(anchor => {
-    anchor.addEventListener('click', function (e) {
-        e.preventDefault();
-        const target = document.querySelector(this.getAttribute('href'));
-        if (target) {
-            target.scrollIntoView({
-                behavior: 'smooth',
-                block: 'start'
-            });
-            // Auto-expand the clicked report
-            const collapseElement = target.querySelector('.collapse');
-            if (collapseElement && !collapseElement.classList.contains('show')) {
-                new bootstrap.Collapse(collapseElement, {toggle: false}).show();
-            }
-        }
-    });
-});
-
-// Handle collapse icon rotation
-$(document).on('show.bs.collapse', '.collapse', function() {
-    const icon = $(this).prev('.card-header').find('.collapse-icon');
-    icon.removeClass('fa-chevron-down').addClass('fa-chevron-up');
-});
-
-$(document).on('hide.bs.collapse', '.collapse', function() {
-    const icon = $(this).prev('.card-header').find('.collapse-icon');
-    icon.removeClass('fa-chevron-up').addClass('fa-chevron-down');
-});
-
-// Add hover effect for collapsible headers
-$(document).ready(function() {
-    $('.card-header[data-bs-toggle="collapse"]').hover(
-        function() {
-            $(this).css('background-color', '#495057');
-        },
-        function() {
-            $(this).css('background-color', '');
-        }
-    );
-});
-
-// Duplicate detection JavaScript functionality
-$(document).ready(function() {
-    // Enhanced merge functionality
-    $('.merge-form').each(function() {
-        const $form = $(this);
-        const $carCheckboxes = $form.find('.car-select');
-        const $reasonRadios = $form.find('input[name="reason[]"]');
-        const $mergeBtn = $form.find('.merge-btn');
-
-        // Enable/disable merge button based on selections
-        function updateMergeButton() {
-            const selectedCars = $carCheckboxes.filter(':checked').length;
-            const selectedReason = $reasonRadios.filter(':checked').length;
-
-            const canMerge = selectedCars === 2 && selectedReason === 1;
-            $mergeBtn.prop('disabled', !canMerge);
-
-            if (selectedCars > 2) {
-                $mergeBtn.text('Select exactly 2 cars to merge');
-                $mergeBtn.removeClass('btn-danger').addClass('btn-warning');
-            } else if (selectedCars === 2 && selectedReason === 1) {
-                $mergeBtn.html('<i class="fas fa-compress-arrows-alt"></i> Merge Selected');
-                $mergeBtn.removeClass('btn-warning').addClass('btn-danger');
-            } else {
-                $mergeBtn.html('<i class="fas fa-compress-arrows-alt"></i> Merge Selected');
-                $mergeBtn.removeClass('btn-warning').addClass('btn-danger');
-            }
-        }
-
-        // Visual feedback for selected cars
-        $carCheckboxes.on('change', function() {
-            const $card = $(this).closest('.car-comparison-card');
-            if ($(this).is(':checked')) {
-                $card.addClass('selected');
-            } else {
-                $card.removeClass('selected');
-            }
-            updateMergeButton();
-        });
-
-        $reasonRadios.on('change', updateMergeButton);
-
-        // Confirmation dialog for merge operations
-        $form.on('submit', function(e) {
-            const selectedCars = $carCheckboxes.filter(':checked');
-            const selectedReason = $reasonRadios.filter(':checked');
-
-            if (selectedCars.length !== 2 || selectedReason.length !== 1) {
-                e.preventDefault();
-                showNotification('Please select exactly 2 cars and 1 merge reason.', 'danger');
-                return false;
-            }
-
-            const car1Id = $(selectedCars[0]).val();
-            const car2Id = $(selectedCars[1]).val();
-            const reason = selectedReason.val();
-
-            let reasonText = '';
-            switch(reason) {
-                case 'duplicate':
-                    reasonText = 'These are duplicate entries of the same car';
-                    break;
-                case 'newownerNewToOld':
-                    reasonText = 'Keep the newer record (current owner information)';
-                    break;
-                case 'newownerOldToNew':
-                    reasonText = 'Keep the older record (original registration)';
-                    break;
-            }
-
-            e.preventDefault();
-
-            showConfirmDialog(
-                'Confirm Car Merge',
-                `Are you sure you want to merge cars #${car1Id} and #${car2Id}?\n\nReason: ${reasonText}\n\nThis action cannot be undone. The history will be preserved, but one car record will be permanently deleted.`,
-                function() { $form[0].submit(); }
-            );
-        });
-
-        // Initialize button state
-        updateMergeButton();
-    });
-
-    // Collapsible group management
-    $('.duplicate-group [data-bs-toggle="collapse"]').on('click', function() {
-        const $icon = $(this).find('i');
-        const isExpanded = $(this).attr('aria-expanded') === 'true';
-
-        setTimeout(function() {
-            if (isExpanded) {
-                $icon.removeClass('fa-chevron-down').addClass('fa-chevron-right');
-            } else {
-                $icon.removeClass('fa-chevron-right').addClass('fa-chevron-down');
-            }
-        }, 100);
-    });
-
-    // Enhanced tooltips and popovers (if Bootstrap supports them)
-    document.querySelectorAll('[data-bs-toggle="tooltip"]').forEach(function(el) { bootstrap.Tooltip.getOrCreateInstance(el); });
-});
-</script>
+<script src="<?= $us_url_root ?>app/admin/assets/js/tab-manage-cars.min.js?v=<?= ASSET_VERSION ?>"></script>

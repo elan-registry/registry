@@ -108,10 +108,6 @@ if (!function_exists('processSettingsAutoCreation')) {
 
                     $fieldConfig = $allSettingsFields[$fieldName];
 
-                    if (!isset($fieldConfig['type']) || !isset($fieldConfig['default']) || !isset($fieldConfig['description'])) {
-                        continue;
-                    }
-
                     $allowedTypes = ['TINYINT(1)', 'INT(11)', 'DECIMAL(4,2)', 'TEXT', 'VARCHAR(255)'];
                     if (!in_array($fieldConfig['type'], $allowedTypes)) {
                         continue;
@@ -136,10 +132,8 @@ if (!function_exists('processSettingsAutoCreation')) {
                     }
                 }
 
-                if (!empty($fieldsToAdd)) {
-                    logger($user->data()->id, LogCategories::LOG_CATEGORY_SETTINGS_UPDATE, 'Auto-created and populated settings fields: ' . implode(', ', $fieldsToAdd));
-                    $messages[] = ['type' => 'success', 'message' => count($fieldsToAdd) . ' settings fields were automatically added and populated with default values.'];
-                }
+                logger($user->data()->id, LogCategories::LOG_CATEGORY_SETTINGS_UPDATE, 'Auto-created and populated settings fields: ' . implode(', ', $fieldsToAdd));
+                $messages[] = ['type' => 'success', 'message' => count($fieldsToAdd) . ' settings fields were automatically added and populated with default values.'];
             } catch (Exception $e) {
                 $messages[] = ['type' => 'danger', 'message' => 'Error creating settings fields. See system log for details.'];
                 logger($user->data()->id ?? 0, LogCategories::LOG_CATEGORY_DATABASE_ERROR, 'Settings field creation failed: ' . $e->getMessage());
@@ -191,11 +185,6 @@ $autoCreationMessages = processSettingsAutoCreation();
 <div class="alert alert-primary">
     <h4><i class="fas fa-cog"></i> Registry Settings</h4>
     <p class="mb-0">Comprehensive configuration management for the Elan Registry system with automatic database field creation.</p>
-</div>
-
-<!-- AJAX Messages Area -->
-<div id="settingsMessages" style="display: none;">
-    <span id="settingsMessage"></span>
 </div>
 
 <form class="settings-form" method="post" id="registrySettingsForm">
@@ -325,7 +314,7 @@ $autoCreationMessages = processSettingsAutoCreation();
                     </div>
 
                     <div class="mt-3">
-                        <button type="button" class="btn btn-outline-primary btn-sm" onclick="testEmailConfiguration()">
+                        <button type="button" id="testEmailBtn" class="btn btn-outline-primary btn-sm" data-action="testEmailConfiguration">
                             <i class="fas fa-paper-plane"></i> Test Email Config
                         </button>
                     </div>
@@ -336,81 +325,4 @@ $autoCreationMessages = processSettingsAutoCreation();
 </form>
 
 
-<script>
-// Settings management JavaScript
-function settingsMessages(msg, type) {
-    $('#settingsMessages').removeClass();
-    $('#settingsMessage').text('');
-    $('#settingsMessages').show();
-    if (type === 'success') {
-        $('#settingsMessages').addClass('alert alert-success alert-dismissible fade show');
-        $('#settingsMessage').text(msg || 'Setting updated successfully');
-    } else {
-        $('#settingsMessages').addClass('alert alert-danger alert-dismissible fade show');
-        $('#settingsMessage').text(msg || 'Error updating setting');
-    }
-    $('#settingsMessages').delay(3000).fadeOut('slow');
-}
-
-$(document).ready(function() {
-    const settingsEndpoint = '<?= $us_url_root ?>app/api/admin/process-settings.php';
-    const api = new ElanRegistryAPI();
-
-    function postSetting(elem, value) {
-        api.post(settingsEndpoint, {
-            field: elem.attr('id'),
-            value: value,
-            desc:  elem.data('desc') || elem.attr('id'),
-            table: elem.data('table') || 'settings',
-        })
-        .then(function(r) { settingsMessages(r.message, 'success'); })
-        .catch(function(e) {
-            if (!(e instanceof ApiCancelledError)) {
-                settingsMessages(e.message, 'error');
-            }
-        });
-    }
-
-    $('.toggle').change(function() { postSetting($(this), $(this).prop('checked')); });
-    $('.ajxnum').change(function() { postSetting($(this), $(this).val()); });
-    $('.ajxtxt').change(function() { postSetting($(this), $(this).val()); });
-});
-
-// Test Email Configuration
-function testEmailConfiguration() {
-    const emails = $('#elan_admin_emails').val();
-
-    if (!emails.trim()) {
-        showNotification('Please enter at least one admin email address.', 'danger');
-        return;
-    }
-
-    // Validate email format
-    const emailList = emails.split(',');
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    let invalidEmails = [];
-
-    emailList.forEach(email => {
-        const trimmedEmail = email.trim();
-        if (trimmedEmail && !emailRegex.test(trimmedEmail)) {
-            invalidEmails.push(trimmedEmail);
-        }
-    });
-
-    const btn = $('button[onclick="testEmailConfiguration()"]');
-    const originalText = btn.html();
-
-    if (invalidEmails.length > 0) {
-        btn.html('<i class="fas fa-exclamation-triangle text-warning"></i> Invalid Format').removeClass('btn-outline-primary').addClass('btn-warning');
-        showNotification('Invalid email format detected: ' + invalidEmails.join(', '), 'danger');
-        setTimeout(() => {
-            btn.html(originalText).removeClass('btn-warning').addClass('btn-outline-primary');
-        }, 3000);
-    } else {
-        btn.html('<i class="fas fa-check text-success"></i> Format Valid').removeClass('btn-outline-primary').addClass('btn-success');
-        setTimeout(() => {
-            btn.html(originalText).removeClass('btn-success').addClass('btn-outline-primary');
-        }, 3000);
-    }
-}
-</script>
+<script src="<?= $us_url_root ?>app/admin/assets/js/tab-settings.min.js?v=<?= ASSET_VERSION ?>"></script>

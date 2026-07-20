@@ -238,14 +238,14 @@ Release:
 Next Steps — Deploy:
 
   1. Deploy to TEST server (recommended first):
-     git push test main
      git push test v<version>
+     git push test main
 
   2. Validate on test server
 
   3. Deploy to PRODUCTION when ready:
-     git push prod main
      git push prod v<version>
+     git push prod main
 
 Links:
 - GitHub Release: <release URL>

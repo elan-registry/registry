@@ -108,9 +108,47 @@ run sequentially.
 
 After each fix, verify the change looks correct before moving on.
 
+## Step 5.5: Local review on full branch diff (before committing)
+
+Before committing fixes, run a local code review against the **full accumulated
+branch diff** — the same view CI uses. This catches cross-commit issues
+(dead code, broken call interactions, unreachable paths) that per-fix diffs miss.
+
+Get the base branch from the PR's `baseRefName` (e.g. `milestone/v2.27.0`):
+
+```bash
+BASE=$(gh pr view <pr-number> --repo elan-registry/registry --json baseRefName --jq .baseRefName)
+git diff $(git merge-base HEAD origin/$BASE)..HEAD
+```
+
+Launch `pr-review-toolkit:code-reviewer` with:
+
+- The full branch diff (output of the command above)
+- The **full file content** of every changed file (read each file in full, not
+  just the diff — this is how CI spots orphaned functions and unreachable fallbacks)
+- Instruction: "Review this as the complete accumulated set of changes on this
+  branch. Look for cross-commit issues: dead code, functions that are no longer
+  called, interaction bugs between changes made in separate commits, unreachable
+  fallbacks, and anything that looks correct in isolation but is broken in context."
+
+**If the local review finds additional Blocking items**: fix them before
+proceeding (same pattern as Step 5). Then re-run the local review to confirm
+clean.
+
+**If the local review finds Advisory/Recommendation items**: present them to
+the user with a one-line summary each and ask which (if any) to address before
+committing. Wait for the user's response. For each item the user wants to
+address, fix it, then re-run the local review.
+
+**If the local review is clean**: proceed to Step 6.
+
+Do not commit until the local review is clean and the user has been consulted
+on any recommendations.
+
 ## Step 6: Commit and Push Fixes
 
-After all blocking items are fixed, commit and push:
+After all blocking items are fixed and the user has decided on any local review
+recommendations, commit and push:
 
 ```bash
 git add <changed-files>

@@ -220,19 +220,20 @@ class CarAdministrationService
             throw new CarValidationException(CarErrorMessages::getMessage('car_merge_self'));
         }
 
-        $oldCarData = $repo->findById($oldCarId);
-        if (!$oldCarData) {
-            $technicalMsg = CarErrorMessages::getTechnicalMessage('merge_source_not_found', ['id' => $oldCarId]);
-            logger($adminUserId, LogCategories::LOG_CATEGORY_CAR_MERGE, $technicalMsg);
-            throw new CarNotFoundException(CarErrorMessages::getMessage('merge_source_not_found'));
-        }
-
         $newCarId = (int) $targetCarData->id;
         $newChassis = $targetCarData->chassis ?? 'Unknown';
-        $oldChassis = $oldCarData->chassis ?? 'Unknown';
 
         try {
             $repo->beginTransaction();
+
+            $oldCarData = $repo->findByIdForUpdate($oldCarId);
+            if (!$oldCarData) {
+                $technicalMsg = CarErrorMessages::getTechnicalMessage('merge_source_not_found', ['id' => $oldCarId]);
+                logger($adminUserId, LogCategories::LOG_CATEGORY_CAR_MERGE, $technicalMsg);
+                throw new CarNotFoundException(CarErrorMessages::getMessage('merge_source_not_found'));
+            }
+
+            $oldChassis = $oldCarData->chassis ?? 'Unknown';
 
             if (!$repo->transferHistory($oldCarId, $newCarId)) {
                 $technicalMsg = CarErrorMessages::getTechnicalMessage('car_history_transfer_failed', ['error' => 'query returned false']);

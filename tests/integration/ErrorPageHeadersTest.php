@@ -104,8 +104,8 @@ class ErrorPageHeadersTest extends TestCase
             "{$pageName} should set security headers with header() call"
         );
 
-        // If both exist, headers should come before init.php
-        if ($hasHeaderCall && $hasInitCall) {
+        // If init.php is loaded, headers must precede it
+        if ($hasInitCall) {
             $this->assertLessThan(
                 $initLineNum,
                 $headerLineNum,
