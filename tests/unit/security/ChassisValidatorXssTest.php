@@ -24,6 +24,7 @@ use PHPUnit\Framework\Attributes\Group;
  * Because this guard executes before the override branch, $allowOverride=true
  * cannot bypass it. Tests 1–5 confirm rejection. Tests 6–8 confirm that
  * legitimate Lotus Elan formats still pass through the allowlist unharmed.
+ * Test 9 covers the parseModel() early-return path added in #1286.
  *
  * @see usersc/classes/ChassisValidator.php
  */
@@ -211,5 +212,25 @@ final class ChassisValidatorXssTest extends TestCase
         $this->assertTrue($result['valid']);
         $this->assertTrue($result['override_used']);
         $this->assertStringNotContainsString('invalid characters', $result['error_reason']);
+    }
+
+    // -------------------------------------------------------------------------
+    // Malformed model string — early-return path
+    // -------------------------------------------------------------------------
+
+    /**
+     * A chassis submitted with a model string that does not contain two pipe
+     * delimiters (e.g. "MALFORMED") triggers the parseModel() early-return path
+     * added in #1286 and must be rejected with an "Invalid model format" reason.
+     *
+     * The chassis itself ("1234") passes the character allowlist, so only the
+     * model-format guard can produce this result.
+     */
+    public function testMalformedModelStringFailsValidation(): void
+    {
+        $result = (new \ElanRegistry\ChassisValidator())->validate('1234', 1966, 'MALFORMED', false);
+
+        $this->assertFalse($result['valid']);
+        $this->assertStringContainsString('Invalid model format', $result['error_reason']);
     }
 }

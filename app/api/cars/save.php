@@ -4,6 +4,7 @@ declare(strict_types=1);
 use ElanRegistry\ApiResponse;
 use ElanRegistry\Car\Car;
 use ElanRegistry\Car\CarImageProcessor;
+use ElanRegistry\Car\CarValidator;
 use ElanRegistry\ChassisValidator;
 use ElanRegistry\Exceptions\CarConcurrentModificationException;
 use ElanRegistry\Exceptions\CarDatabaseException;
@@ -442,17 +443,18 @@ function updateYear(array &$cardetails, array &$errors): void
  */
 function updateModel(array &$cardetails, array &$errors): void
 {
-    global $successes;
+    global $successes, $user;
 
     $model = Input::raw('model');
     if ($model !== null && $model !== '') {
         $cardetails['model'] = $model;
-        $modelParts = explode('|', $cardetails['model']);
-        if (count($modelParts) !== 3) {
+        try {
+            [$cardetails['series'], $cardetails['variant'], $cardetails['type']] = CarValidator::parseModel($cardetails['model']);
+        } catch (CarValidationException $e) {
             $errors[] = 'Invalid model format — please select a model from the dropdown';
+            logger((int)$user->data()->id, LogCategories::LOG_CATEGORY_VALIDATION_ERROR, 'updateModel: invalid model string: "' . $model . '": ' . $e->getMessage());
             return;
         }
-        [$cardetails['series'], $cardetails['variant'], $cardetails['type']] = $modelParts;
 
         $successes[] = 'Model: ' . htmlspecialchars($model, ENT_QUOTES, 'UTF-8');
     } else {
@@ -1107,30 +1109,23 @@ function getMimeType(string $file): string
  *
  * @param array $file File upload array from $_FILES
  * @param int $maxSize Maximum file size in bytes (default 5MB)
- * @return bool Always returns true if validation passes
  * @throws ImageProcessingException If validation fails
  */
-function validateFileUpload(array $file, int $maxSize = 5242880): bool // Default 5MB
+function validateFileUpload(array $file, int $maxSize = 5242880): void // Default 5MB
 {
-    // Check for upload errors
     if ($file['error'] !== UPLOAD_ERR_OK) {
         throw new ImageProcessingException("File upload error: " . $file['error']);
     }
 
-    // Check file size (default 5MB limit)
     if ($file['size'] > $maxSize) {
         throw new ImageProcessingException("File too large. Maximum size: " . ($maxSize / 1024 / 1024) . "MB");
     }
 
-    // Verify the file was actually uploaded via HTTP POST
     if (!is_uploaded_file($file['tmp_name'])) {
         throw new ImageProcessingException("Invalid file upload");
     }
 
-    // Additional security: Check for minimum file size (avoid empty files)
     if ($file['size'] < 100) {
         throw new ImageProcessingException("File too small - minimum 100 bytes required");
     }
-
-    return true;
 }
