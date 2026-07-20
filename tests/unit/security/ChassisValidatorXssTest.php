@@ -212,4 +212,24 @@ final class ChassisValidatorXssTest extends TestCase
         $this->assertTrue($result['override_used']);
         $this->assertStringNotContainsString('invalid characters', $result['error_reason']);
     }
+
+    // -------------------------------------------------------------------------
+    // Malformed model string — early-return path
+    // -------------------------------------------------------------------------
+
+    /**
+     * A chassis submitted with a model string that does not contain two pipe
+     * delimiters (e.g. "MALFORMED") triggers the parseModel() early-return path
+     * added in #1304 and must be rejected with an "Invalid model format" reason.
+     *
+     * The chassis itself ("1234") passes the character allowlist, so only the
+     * model-format guard can produce this result.
+     */
+    public function testMalformedModelStringFailsValidation(): void
+    {
+        $result = (new \ElanRegistry\ChassisValidator())->validate('1234', 1966, 'MALFORMED', false);
+
+        $this->assertFalse($result['valid']);
+        $this->assertStringContainsString('Invalid model format', $result['error_reason']);
+    }
 }

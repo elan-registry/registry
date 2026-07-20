@@ -17,6 +17,8 @@ require_once '../../../users/init.php';
 use ElanRegistry\ApiResponse;
 use ElanRegistry\Input;
 use ElanRegistry\LogCategories;
+use ElanRegistry\Car\CarValidator;
+use ElanRegistry\Exceptions\CarValidationException;
 
 if (!Input::existsPost()) {
     ApiResponse::error('No data received', 400)->send();
@@ -56,12 +58,11 @@ try {
         ApiResponse::error('Model must be 30 characters or less', 400)->send();
     }
 
-    $modelParts = explode('|', $model);
-    if (count($modelParts) !== 3) {
+    try {
+        [, , $type] = CarValidator::parseModel($model);
+    } catch (CarValidationException $e) {
         ApiResponse::error('Invalid model format', 400)->send();
     }
-
-    list($series, $variant, $type) = $modelParts;
 
     $db = DB::getInstance();
     $carQ = $db->query(

@@ -716,4 +716,51 @@ final class CarValidatorTest extends TestCase
 
         $this->validator->validateAndSanitizeFields($data, true);
     }
+
+    // ============================================================
+    // parseModel() — static pipe-delimited string parser
+    // ============================================================
+
+    /**
+     * @param array{0: string, 1: string, 2: string} $expected
+     */
+    #[DataProvider('validModelStringProvider')]
+    public function testParseModelReturnsCorrectComponents(string $model, array $expected): void
+    {
+        $result = CarValidator::parseModel($model);
+        $this->assertSame($expected, $result);
+    }
+
+    /**
+     * @return array<string, array{0: string, 1: array{0: string, 1: string, 2: string}}>
+     */
+    public static function validModelStringProvider(): array
+    {
+        return [
+            'well-formed'       => ['S1|SE|65',       ['S1', 'SE', '65']],
+            'whitespace-padded' => [' S1 | SE | 65 ', ['S1', 'SE', '65']],
+        ];
+    }
+
+    #[DataProvider('invalidModelStringProvider')]
+    public function testParseModelThrowsOnInvalidFormat(string $model): void
+    {
+        $this->expectException(CarValidationException::class);
+        $this->expectExceptionMessage('Invalid model format');
+        CarValidator::parseModel($model);
+    }
+
+    /**
+     * @return array<string, array{0: string}>
+     */
+    public static function invalidModelStringProvider(): array
+    {
+        return [
+            'single segment (no pipes)'  => ['S1'],
+            'too many pipes'             => ['S1|SE|65|extra'],
+            'empty string'               => [''],
+            'all empty segments (||)'    => ['||'],
+            'whitespace-only segments'   => [' | | '],
+        ];
+    }
 }
