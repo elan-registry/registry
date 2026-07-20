@@ -28,7 +28,8 @@ class CarValidator
      *
      * @param string $model A string in "series|variant|type" format.
      * @return array{0: string, 1: string, 2: string} [$series, $variant, $type]
-     * @throws CarValidationException If the string does not contain exactly two pipe separators.
+     * @throws CarValidationException If the string does not contain exactly two pipe separators,
+     *                                or if any of the three resulting components is empty or whitespace-only.
      */
     public static function parseModel(string $model): array
     {

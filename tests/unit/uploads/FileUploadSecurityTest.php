@@ -130,8 +130,8 @@ class FileUploadSecurityTest extends TestCase
             'tmp_name' => $this->createTestFile('valid.jpg', str_repeat('x', 1024 * 1024))
         ];
         
-        $this->assertTrue(validateFileUpload($validFile));
-        
+        validateFileUpload($validFile); // void — success means no exception thrown
+
         // Test file exceeding size limit
         $largeFile = [
             'error' => UPLOAD_ERR_OK,

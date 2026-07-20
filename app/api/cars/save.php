@@ -443,7 +443,7 @@ function updateYear(array &$cardetails, array &$errors): void
  */
 function updateModel(array &$cardetails, array &$errors): void
 {
-    global $successes;
+    global $successes, $user;
 
     $model = Input::raw('model');
     if ($model !== null && $model !== '') {
@@ -452,6 +452,7 @@ function updateModel(array &$cardetails, array &$errors): void
             [$cardetails['series'], $cardetails['variant'], $cardetails['type']] = CarValidator::parseModel($cardetails['model']);
         } catch (CarValidationException $e) {
             $errors[] = 'Invalid model format — please select a model from the dropdown';
+            logger((int)$user->data()->id, LogCategories::LOG_CATEGORY_VALIDATION_ERROR, 'updateModel: invalid model string: "' . htmlspecialchars($model, ENT_QUOTES, 'UTF-8') . '": ' . $e->getMessage());
             return;
         }
 

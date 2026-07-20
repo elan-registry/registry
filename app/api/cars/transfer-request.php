@@ -75,7 +75,7 @@ try {
     try {
         [$series, $variant, $type] = CarValidator::parseModel($model);
     } catch (CarValidationException $e) {
-        throw new CarTransferException('Invalid model format');
+        throw new CarTransferException('Invalid model format: ' . $model, 0, $e);
     }
 
     // Validate model-derived field lengths against DB column widths

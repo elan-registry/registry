@@ -15,8 +15,6 @@ use ElanRegistry\Exceptions\CarValidationException;
  * including historical race car formats and production car evolution from 1963-1974.
  * 
  * @author Elan Registry Team
- * @copyright 2025
- * @version 1.0
  */
 
 class ChassisValidator 

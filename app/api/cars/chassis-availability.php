@@ -61,7 +61,9 @@ try {
     try {
         [, , $type] = CarValidator::parseModel($model);
     } catch (CarValidationException $e) {
-        ApiResponse::error('Invalid model format', 400)->send();
+        ApiResponse::error('Invalid model format', 400)
+            ->withLogging($logUserId, LogCategories::LOG_CATEGORY_VALIDATION_ERROR, 'chassis-availability: invalid model string from user ' . $logUserId . ': ' . $model)
+            ->send();
     }
 
     $db = DB::getInstance();
@@ -91,7 +93,7 @@ try {
         ->withLogging(
             $logUserId,
             LogCategories::LOG_CATEGORY_SYSTEM_ERROR,
-            'Chassis check error: ' . $e->getMessage()
+            'Chassis check error [' . get_class($e) . ']: ' . $e->getMessage()
         )
         ->send();
 }
