@@ -47,7 +47,7 @@ try {
     }
 
     // Accept coordinates from location picker (frontend provides precise coordinates)
-    if (!empty($_POST['lat']) && !empty($_POST['lon'])) {
+    if (isset($_POST['lat']) && $_POST['lat'] !== '' && isset($_POST['lon']) && $_POST['lon'] !== '') {
         $updateFields['lat'] = (float)$_POST['lat'];
         $updateFields['lon'] = (float)$_POST['lon'];
     }

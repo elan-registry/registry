@@ -57,7 +57,7 @@ try {
         ])
         ->withLogging(
             $user->data()->id,
-            'OwnerActions',
+            LogCategories::LOG_CATEGORY_OWNER_ACTIONS,
             "Owner search performed: '{$query}' - {$resultCount} results"
         )
         ->send();
