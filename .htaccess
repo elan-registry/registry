@@ -1,7 +1,5 @@
-# Disable directory browsing for security
 Options -Indexes
 
-# Custom error pages
 ErrorDocument 400 /error/500.php
 ErrorDocument 401 /error/500.php
 ErrorDocument 403 /error/403.php
@@ -12,13 +10,11 @@ ErrorDocument 500 /error/500.php
 ErrorDocument 502 /error/500.php
 ErrorDocument 504 /error/500.php
 
-# Security headers
 Header always set X-Frame-Options "SAMEORIGIN"
 Header always set X-Content-Type-Options "nosniff"
 Header always set Referrer-Policy "strict-origin-when-cross-origin"
 Header always set Permissions-Policy "geolocation=(), camera=(), microphone=(), payment=()"
 
-# Deny access to sensitive files
 <Files "*.env*">
     Require all denied
 </Files>
@@ -68,27 +64,33 @@ Header always set Permissions-Policy "geolocation=(), camera=(), microphone=(), 
     Require all denied
 </LimitExcept>
 
-# Block access to sensitive directories using RewriteRule
 RewriteEngine On
 
-# Block access to backup directories
-RewriteRule ^@backup/ - [F,L]
-RewriteRule ^db-backups/ - [F,L]
-
-# Block access to node_modules
-RewriteRule ^node_modules/ - [F,L]
-
-# Block access to vendor directory from web
 RewriteRule ^vendor/ - [F,L]
+RewriteRule ^backups/ - [F,L]
 
-# Block access to test directories
-RewriteRule ^tests/ - [F,L]
+# Test subdomain: serve a blocking robots.txt without affecting production (#1369)
+RewriteCond %{HTTP_HOST} ^test\.elanregistry\.org [NC]
+RewriteRule ^robots\.txt$ /robots-test.txt [L]
 
-# Block access to SQL directory
-RewriteRule ^SQL/ - [F,L]
+# Soft 404 fix: embed.php (removed) and pdf-viewer.php single-param ?doc= format (#1369)
+# All referenced PDFs confirmed in docs/reference/assets/
+# NE preserves URL encoding in filenames with spaces/parens; QSD drops the original query string
+RewriteCond %{QUERY_STRING} ^doc=([^&]+\.pdf)$ [NC]
+RewriteRule ^docs/(embed|pdf-viewer)\.php$ /docs/pdf-viewer.php?subdir=reference/assets&doc=%1 [R=301,L,NE,QSD]
 
-# Block access to FIX directory except operational scripts (admin interface)
-RewriteRule ^FIX/(?!index\.php$|[0-9]+-.*\.php$|[A-Za-z]+-.*\.php$) - [F,L]
+# /stories/* moved to /docs/stories/ — redirect was missing until #1369
+RewriteRule ^stories/(.+)$ /docs/stories/$1 [R=301,L]
+
+# docs/view.php and docs/guide-viewer.php removed in #911
+RewriteCond %{QUERY_STRING} doc=IDENTIFICATION_GUIDE\.md [NC]
+RewriteRule ^docs/view\.php$ /docs/reference/identification-guide.php [R=301,L,QSD]
+
+RewriteCond %{QUERY_STRING} doc=CAR_TRANSFER_FAQ\.md [NC]
+RewriteRule ^docs/(view|guide-viewer)\.php$ /docs/guides/car-transfer-faq.php [R=301,L,QSD]
+
+RewriteCond %{QUERY_STRING} doc=CAR_TRANSFER_USER_GUIDE\.md [NC]
+RewriteRule ^docs/guide-viewer\.php$ /docs/guides/ [R=301,L,QSD]
 
 # Redirects for migrated pages (#559)
 Redirect 301 /app/cars/identify.php /docs/reference/identification-guide.php
@@ -105,3 +107,15 @@ Redirect 301 /app/contact/index.php /app/owner/contact/index.php
 Redirect 301 /app/contact/owner.php /app/owner/contact/owner.php
 Redirect 301 /app/reports/statistics.php /app/owner/reports/statistics.php
 Redirect 301 /app/privacy.php /app/owner/privacy.php
+
+# Legacy paths — GSC 404 cleanup (#1369)
+# /app/car_details.php preserves ?car_id=N automatically via mod_alias
+Redirect 301 /app/car_details.php /app/owner/cars/details.php
+Redirect 301 /app/identification.php /docs/reference/identification-guide.php
+Redirect 301 /app/list_cars.php /app/owner/cars/index.php
+Redirect 301 /list_cars.php /app/owner/cars/index.php
+Redirect 301 /guide.php /docs/
+# @slug: /app/cars/ prefix redirect fires first → /app/owner/cars/@the_elan_sprint_diary → this rule
+Redirect 301 /app/owner/cars/@the_elan_sprint_diary /docs/car-stories.php
+# Duplicate PDF path: /docs/assets/ renamed to /docs/reference/assets/ in #715
+Redirect 301 /docs/assets/ /docs/reference/assets/

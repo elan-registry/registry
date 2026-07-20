@@ -6,11 +6,11 @@ User-agent: *
 Disallow: /users/
 Disallow: /usersc/
 Disallow: /app/admin/
-Disallow: /FIX/
 Disallow: /error/
 Disallow: /vendor/
-Disallow: /tests/
-Disallow: /scripts/
+# Login-required pages — redirect to login without authentication
+Disallow: /app/owner/cars/edit.php
+Disallow: /app/owner/contact/
 
 # Block AI training bots
 User-agent: GPTBot

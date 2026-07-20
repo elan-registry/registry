@@ -1,0 +1,3 @@
+# Block all crawlers from the test subdomain
+User-agent: *
+Disallow: /
