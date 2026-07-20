@@ -5,7 +5,6 @@ namespace ElanRegistry;
 
 use DB;
 use Exception;
-use Token;
 use ElanRegistry\Car\CarRepository;
 use ElanRegistry\Exceptions\OwnerCreationException;
 use ElanRegistry\Exceptions\OwnerSearchException;
@@ -129,17 +128,6 @@ class Owner
             );
         }
 
-        // CSRF Protection
-        if (!isset($fields['csrf']) || !Token::check($fields['csrf'])) {
-            throw OwnerCreationException::withUserMessage(
-                'Invalid CSRF token provided',
-                'Your session may have expired. Please refresh the page and try again.'
-            );
-        }
-
-        // Remove token from fields array after validation
-        unset($fields['csrf']);
-
         // Validate required fields for both user and profile
         $this->validateRequiredFields($fields, ['fname', 'lname', 'email']);
 
@@ -210,18 +198,6 @@ class Owner
                 'Unable to process update. Please try again.'
             );
         }
-
-        // CSRF Protection
-        if (!isset($fields['csrf']) || !Token::check($fields['csrf'])) {
-            logger($fields['id'] ?? 0, LogCategories::LOG_CATEGORY_VALIDATION_ERROR, 'Owner update failed: Invalid CSRF token');
-            throw OwnerValidationException::withUserMessage(
-                'Invalid CSRF token provided',
-                'Your session may have expired. Please refresh the page and try again.'
-            );
-        }
-
-        // Remove token from fields array after validation
-        unset($fields['csrf']);
 
         if (!is_numeric($fields['id']) || $fields['id'] <= 0) {
             throw OwnerValidationException::withUserMessage(
@@ -433,7 +409,7 @@ class Owner
      * @param int $limit Maximum number of results (default 50)
      * @return array Array of owner search results
      */
-    public static function searchOwners(string $searchTerm, int $limit = 50): array
+    public function searchOwners(string $searchTerm, int $limit = 50): array
     {
         $searchTerm = trim($searchTerm);
         if (empty($searchTerm)) {
@@ -512,7 +488,7 @@ class Owner
             }
         }
 
-        $db = DB::getInstance();
+        $db = $this->_db;
         $searchQuery = $db->query($sql, $params);
         if ($db->error()) {
             throw OwnerSearchException::withUserMessage(

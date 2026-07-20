@@ -38,7 +38,6 @@ try {
     // Prepare update fields
     $updateFields = [
         'id' => $ownerId,
-        'csrf' => $_POST['csrf']
     ];
 
     // Text fields: basic info and location (coordinates handled separately below)

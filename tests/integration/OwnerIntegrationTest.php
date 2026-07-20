@@ -290,11 +290,9 @@ class OwnerIntegrationTest extends IntegrationTestCase
         ]);
         $this->assertTrue((bool) $insertResult, 'Test fixture: profiles insert must succeed');
         try {
-            $csrf = Token::generate();
             $owner = new Owner($userId);
             $owner->update([
                 'id' => $userId,
-                'csrf' => $csrf,
                 'lat' => '0',
                 'lon' => '0',
             ]);
@@ -418,11 +416,9 @@ class OwnerIntegrationTest extends IntegrationTestCase
         try {
             $before = $this->db->query("SELECT active, permissions FROM users WHERE id = ?", [$userId])
                 ->first();
-            $csrf = \Token::generate();
             $owner = new Owner($userId);
             $owner->update([
                 'id'          => $userId,
-                'csrf'        => $csrf,
                 'active'      => '0',
                 'permissions' => '3',
                 'city'        => 'AfterCity',
@@ -452,11 +448,9 @@ class OwnerIntegrationTest extends IntegrationTestCase
             'lat' => 0.0, 'lon' => 0.0,
         ]);
         try {
-            $csrf = \Token::generate();
             $owner = new Owner($userId);
             $owner->update([
                 'id'     => $userId,
-                'csrf'   => $csrf,
                 'active' => '1',
                 'city'   => 'AfterCity',
             ]);

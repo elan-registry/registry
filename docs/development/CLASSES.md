@@ -288,8 +288,7 @@ $owner->update([
     'id' => $userId,
     'city' => 'Portland',
     'state' => 'Oregon',
-    'country' => 'United States',
-    'csrf' => Token::generate()
+    'country' => 'United States'
 ]);
 // Note: Pass lat/lon explicitly; coordinates are not auto-populated server-side
 
@@ -297,7 +296,7 @@ $owner->update([
 $score = $owner->getProfileQualityScore(); // Returns 0-100
 
 // Search owners (admin function)
-$results = Owner::searchOwners('Portland');
+$results = (new Owner())->searchOwners('Portland');
 ```
 
 **Database Tables**:
@@ -802,9 +801,9 @@ class MyDomainClass {
     }
 
     // Update existing record
+    // CSRF is validated by the caller (HTTP layer) before update() is called
     public function update(array $fields): bool {
         // Validation
-        // CSRF check
         // Database update
         // Audit logging
         return true;

@@ -29,7 +29,7 @@ if (strlen($query) > 100) {
 }
 
 try {
-    $searchResults = Owner::searchOwners($query, 25);
+    $searchResults = (new Owner())->searchOwners($query, 25);
 
     // Enhance results with data quality scoring
     $enhancedResults = [];
