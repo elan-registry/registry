@@ -737,8 +737,9 @@ final class CarValidatorTest extends TestCase
     public static function validModelStringProvider(): array
     {
         return [
-            'well-formed'       => ['S1|SE|65',       ['S1', 'SE', '65']],
-            'whitespace-padded' => [' S1 | SE | 65 ', ['S1', 'SE', '65']],
+            'well-formed'            => ['S1|SE|65',            ['S1', 'SE', '65']],
+            'whitespace-padded'      => [' S1 | SE | 65 ',     ['S1', 'SE', '65']],
+            'internal spaces kept'   => ['S1|Race Prep|65',    ['S1', 'Race Prep', '65']],
         ];
     }
 

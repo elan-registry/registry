@@ -82,7 +82,7 @@ class ChassisValidator
         
         // Parse model components
         try {
-            [$series, $variant, $type] = CarValidator::parseModel($model);
+            [$series, $variant] = CarValidator::parseModel($model);
         } catch (CarValidationException $e) {
             $this->result['error_reason'] = 'Invalid model format';
             return $this->result;

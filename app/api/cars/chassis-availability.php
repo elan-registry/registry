@@ -59,7 +59,7 @@ try {
     }
 
     try {
-        [, , $type] = CarValidator::parseModel($model);
+        [, , $type] = CarValidator::parseModel($model); // $series/$variant not needed for this query
     } catch (CarValidationException $e) {
         ApiResponse::error('Invalid model format', 400)
             ->withLogging($logUserId, LogCategories::LOG_CATEGORY_VALIDATION_ERROR, 'chassis-availability: invalid model string from user ' . $logUserId . ': ' . $model)
