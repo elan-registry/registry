@@ -60,7 +60,7 @@ try {
 
     // Send denial notification email with error handling
     try {
-        $emailService = new TransferEmailService(DB::getInstance(), 'email', $abs_us_root . $us_url_root);
+        $emailService = new TransferEmailService(DB::getInstance(), 'email');
         $notificationSent = $emailService->sendResponse(
             $transferId,
             false,
