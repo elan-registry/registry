@@ -155,7 +155,8 @@ try {
 
     logger($userData->id, LogCategories::LOG_CATEGORY_CAR_TRANSFER, "Transfer request created for car ID {$existingCar->id}, chassis {$chassis}, transfer request ID: {$transferRequestId}");
 
-    // Send email notifications with timeout protection
+    // Send email notifications; outer catch covers TransferEmailService constructor only —
+    // sendRequest() and sendAdminAlert() each catch Throwable internally and return bool.
     try {
         $emailService = new TransferEmailService(DB::getInstance(), 'email');
         set_time_limit(60);

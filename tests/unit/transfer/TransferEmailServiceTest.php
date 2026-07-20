@@ -164,7 +164,8 @@ final class TransferEmailServiceTest extends TestCase
         $result  = $service->sendRequest(1);
 
         $this->assertTrue($result);
-        // Owner::find() is intercepted by the mock DB in bootstrap-unit.php, which returns 'test@example.com'
+        // 'test@example.com' is the hardcoded email returned by the Owner stub in
+        // tests/unit/bootstrap-unit.php — if that fixture changes, update this assertion.
         $this->assertSame('test@example.com', $capturedTo);
     }
 

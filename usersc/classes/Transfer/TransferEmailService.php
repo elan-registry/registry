@@ -288,6 +288,14 @@ class TransferEmailService
         try {
             ['transferData' => $transferData, 'carData' => $carData, 'carInfo' => $carInfo] = $ctx;
 
+            if ($isApproved && $previousOwnerId === null) {
+                // After Car::transfer() commits, $carData->user_id is already the new owner.
+                // Callers must always supply $previousOwnerId for approved transfers.
+                logger(0, LogCategories::LOG_CATEGORY_EMAIL_ERROR,
+                    "sendPreviousOwnerNotification: previousOwnerId is null for an approved transfer #"
+                    . ($ctx['transferData']->id ?? 'unknown')
+                    . " — falling back to car's current user_id which may now be the new owner");
+            }
             $lookupId = ($isApproved && $previousOwnerId) ? $previousOwnerId : dbInt($carData, 'user_id');
             $previousOwner = (new Owner($lookupId))->data();
 
