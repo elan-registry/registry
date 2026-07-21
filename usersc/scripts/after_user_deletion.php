@@ -74,9 +74,10 @@ if ($noOwnerQuery->count() > 0) {
         }
         // Transfer each car using the same code path as the admin reassign UI — updates
         // user_id and all denormalized owner fields (email, fname, lname, city, etc.).
-        // Car::transfer() requires $user->isLoggedIn(); this hook is only ever invoked
-        // from admin-authenticated contexts (deleteUsers() callers). A future self-service
-        // GDPR-deletion path would need a different reassignment strategy here.
+        // Car::transfer() does not enforce isLoggedIn() internally — auth is the
+        // caller's responsibility. This hook is only invoked from admin-authenticated
+        // contexts (deleteUsers() callers). A future self-service GDPR-deletion path
+        // must ensure admin-level auth is established before calling transfer().
         foreach ($userCars as $carObj) {
             $car = new \ElanRegistry\Car\Car((int) $carObj->id);
             $car->transfer(

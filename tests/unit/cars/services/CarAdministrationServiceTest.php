@@ -59,16 +59,7 @@ final class CarAdministrationServiceTest extends TestCase
 
         $carData = (object) ['id' => 999, 'chassis' => 'TEST99999'];
 
-        $this->service->transfer(
-            $carData,
-            0,
-            'Test transfer reason',
-            'NEWOWNER',
-            1,
-            $this->repo,
-            fn($fields) => true,
-            fn($carId) => (object) []
-        );
+        $this->service->transfer($carData, 0, 'Test transfer reason', 'NEWOWNER', 1, $this->repo);
     }
 
     public function testTransferThrowsCarDatabaseExceptionWhenUpdateFails(): void
@@ -77,16 +68,27 @@ final class CarAdministrationServiceTest extends TestCase
 
         $carData = (object) ['id' => 999, 'chassis' => 'TEST99999'];
 
-        $this->service->transfer(
-            $carData,
-            1,
-            'Test transfer reason',
-            'NEWOWNER',
-            1,
-            $this->repo,
-            fn($fields) => false,
-            fn($carId) => (object) []
-        );
+        $repo = $this->createMock(CarRepository::class);
+        $repo->expects($this->once())->method('beginTransaction');
+        $repo->expects($this->once())->method('updateCar')->willReturn(false);
+        $repo->expects($this->once())->method('rollback');
+
+        $this->service->transfer($carData, 1, 'Test transfer reason', 'NEWOWNER', 1, $repo);
+    }
+
+    public function testTransferThrowsCarDatabaseExceptionWhenInsertHistoryFails(): void
+    {
+        $this->expectException(CarDatabaseException::class);
+
+        $carData = (object) ['id' => 999, 'chassis' => 'TEST99999'];
+
+        $repo = $this->createMock(CarRepository::class);
+        $repo->expects($this->once())->method('beginTransaction');
+        $repo->expects($this->once())->method('updateCar')->willReturn(true);
+        $repo->expects($this->once())->method('insertHistory')->willReturn(false);
+        $repo->expects($this->once())->method('rollback');
+
+        $this->service->transfer($carData, 1, 'Test transfer reason', 'NEWOWNER', 1, $repo);
     }
 
     // =========================================================================

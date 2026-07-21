@@ -13,7 +13,6 @@ use ElanRegistry\Exceptions\CarCreationException;
 use ElanRegistry\Exceptions\CarDatabaseException;
 use ElanRegistry\Exceptions\CarDeletionException;
 use ElanRegistry\Exceptions\CarNotFoundException;
-use ElanRegistry\Exceptions\CarPermissionException;
 use ElanRegistry\Exceptions\CarValidationException;
 use ElanRegistry\Exceptions\ImageProcessingException;
 use ElanRegistry\LogCategories;
@@ -423,8 +422,6 @@ class Car
      */
     public function delete(string $reason, string $token): bool
     {
-        global $user;
-
         if (!Token::check($token)) {
             throw new CarDeletionException(CarErrorMessages::getMessage('csrf_token_invalid', 'admin', ['operation' => 'car deletion']));
         }
@@ -433,10 +430,6 @@ class Car
             $technicalMsg = CarErrorMessages::getTechnicalMessage('car_not_found_delete', ['id' => 'unknown']);
             logger(0, LogCategories::LOG_CATEGORY_CAR_DELETION, $technicalMsg);
             throw new CarNotFoundException(CarErrorMessages::getMessage('car_not_found_delete'));
-        }
-
-        if (!isset($user) || !$user->isLoggedIn()) {
-            throw new CarDeletionException(CarErrorMessages::getMessage('user_auth_required', 'admin', ['operation' => 'car deletion']));
         }
 
         $this->getAdministrationService()->delete(
@@ -463,42 +456,25 @@ class Car
      * @param string $operationType Operation type for history
      * @return true Always returns true; throws on any failure.
      * @throws CarNotFoundException If the car does not exist
-     * @throws CarPermissionException If the user is not authenticated
+     * @throws CarValidationException If the target user does not exist
      * @throws CarDatabaseException If a database operation fails
      */
     public function transfer(int $newUserId, string $reason = 'Administrative transfer', string $operationType = 'NEWOWNER'): true
     {
-        global $user;
-
         if (!$this->exists()) {
             $technicalMsg = CarErrorMessages::getTechnicalMessage('car_not_found_transfer', ['id' => 'unknown']);
             logger(0, LogCategories::LOG_CATEGORY_CAR_TRANSFER, $technicalMsg);
             throw new CarNotFoundException(CarErrorMessages::getMessage('car_not_found_transfer'));
         }
 
-        if (!isset($user) || !$user->isLoggedIn()) {
-            throw new CarPermissionException(CarErrorMessages::getMessage('user_auth_required', 'admin', ['operation' => 'car transfer']));
-        }
-
-        $result = $this->getAdministrationService()->transfer(
+        return $this->getAdministrationService()->transfer(
             $this->_data,
             $newUserId,
             $reason,
             $operationType,
             currentUserId(),
-            $this->getRepository(),
-            function (array $fields): bool {
-                return $this->update($fields);
-            },
-            function (int $id): object {
-                if (!$this->find($id)) {
-                    throw new CarNotFoundException("Car ID {$id} not found after transfer");
-                }
-                return $this->data();
-            }
+            $this->getRepository()
         );
-
-        return $result;
     }
 
     /**
@@ -511,16 +487,10 @@ class Car
      */
     public function merge(int $oldCarId, string $reason = 'Administrative merge'): bool
     {
-        global $user;
-
         if (!$this->exists()) {
             $technicalMsg = CarErrorMessages::getTechnicalMessage('car_not_found_merge', ['id' => 'target']);
             logger(0, LogCategories::LOG_CATEGORY_CAR_MERGE, $technicalMsg);
             throw new CarNotFoundException(CarErrorMessages::getMessage('car_not_found_merge'));
-        }
-
-        if (!isset($user) || !$user->isLoggedIn()) {
-            throw new CarPermissionException(CarErrorMessages::getMessage('user_auth_required', 'admin', ['operation' => 'car merge']));
         }
 
         $result = $this->getAdministrationService()->merge(
