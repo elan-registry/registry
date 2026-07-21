@@ -32,7 +32,6 @@ class CarVerificationManager
      * @param object $carData Car data object (must have ->id property)
      * @param string $verificationCode The verification code to set
      * @return bool True if verification code was set successfully
-     * @throws CarNotFoundException If car data is invalid
      * @throws CarValidationException If verification code is invalid
      * @throws CarDatabaseException If database update fails
      */

@@ -120,6 +120,7 @@ final class CarVerificationManagerTest extends TestCase
     #[DataProvider('invalidSoldDateProvider')]
     public function testMarkSoldRejectsInvalidDate(string $date): void
     {
+        $this->mockRepo->expects($this->never())->method('updateSoldDate');
         $this->expectException(CarValidationException::class);
 
         $carData = (object) ['id' => 1, 'solddate' => null];
