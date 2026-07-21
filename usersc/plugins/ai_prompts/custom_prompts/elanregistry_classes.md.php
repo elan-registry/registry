@@ -80,7 +80,7 @@ $car->delete('Reason for deletion', Token::generate(), currentUserId());
 | `CarNotFoundException` | 404 | ID not found |
 | `CarValidationException` | 422 | Invalid field data |
 | `CarDatabaseException` | 500 | DB operation failure |
-| `CarPermissionException` | 403 | User lacks permission |
+| `CarPermissionException` | 403 | User lacks permission *(no production code throws this post-v2.28.0; retained for hierarchy completeness)* |
 | `CarCreationException` | 500 | Create failed |
 | `CarDeletionException` | 500 | Delete failed |
 | `CarMergeException` | 500 | Merge failed |
