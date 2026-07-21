@@ -197,7 +197,7 @@ if (ElanInput::existsPost()) {
                             : "User ID $user_id";
 
                         $reason = "Car was reassigned to $targetName (User ID: $user_id) by admin " . $currentUserId;
-                        $car->transfer((int) $user_id, $reason);
+                        $car->transfer((int) $user_id, $reason, 'NEWOWNER', $currentUserId);
 
                         $successes[] = "Car ID $car_id successfully reassigned to $targetName";
                         logger($currentUserId, LogCategories::LOG_CATEGORY_CAR_ACTIONS, "Car ID $car_id reassigned to User ID $user_id");
@@ -280,7 +280,7 @@ if (ElanInput::existsPost()) {
                     }
 
                     try {
-                        (new Car($new_car_id))->merge($old_car_id, $reason[0]);
+                        (new Car($new_car_id))->merge($old_car_id, $reason[0], $currentUserId);
                         $successes[] = $mergeComment;
                         logger($currentUserId, LogCategories::LOG_CATEGORY_CAR_MERGE, $mergeComment);
                     } catch (CarNotFoundException $e) {
@@ -321,7 +321,7 @@ if (ElanInput::existsPost()) {
                             break;
                         }
                         $chassis = $car->data()->chassis;
-                        $car->delete($reason, $token);
+                        $car->delete($reason, $token, $currentUserId);
                         $successes[] = "Car ID $car_id ($chassis) has been permanently deleted";
                     } catch (CarNotFoundException $e) {
                         // Race: car deleted between the exists() check and delete().

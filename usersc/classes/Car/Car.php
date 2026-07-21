@@ -417,13 +417,16 @@ class Car
      *
      * @param string $reason Reason for deletion (for audit trail)
      * @param string $token CSRF token (required)
+     * @param int $actingUserId ID of the user performing the action (0 falls back to currentUserId())
      * @return bool True if deletion was successful
      * @throws Exception If validation fails or database operation fails
      */
-    public function delete(string $reason, string $token): bool
+    public function delete(string $reason, string $token, int $actingUserId = 0): bool
     {
+        $userId = $actingUserId ?: currentUserId();
+
         if (!Token::check($token)) {
-            logger(currentUserId(), LogCategories::LOG_CATEGORY_ACCESS_DENIED, 'Car deletion rejected: invalid CSRF token');
+            logger($userId, LogCategories::LOG_CATEGORY_ACCESS_DENIED, 'Car deletion rejected: invalid CSRF token');
             throw new CarDeletionException(CarErrorMessages::getMessage('csrf_token_invalid', 'admin', ['operation' => 'car deletion']));
         }
 
@@ -436,7 +439,7 @@ class Car
         $this->getAdministrationService()->delete(
             $this->_data,
             $reason,
-            currentUserId(),
+            $userId,
             $this->getRepository()
         );
 
@@ -455,12 +458,13 @@ class Car
      * @param int $newUserId The user ID to transfer ownership to
      * @param string $reason Reason for transfer (for audit trail)
      * @param string $operationType Operation type for history
+     * @param int $actingUserId ID of the user performing the action (0 falls back to currentUserId())
      * @return true Always returns true; throws on any failure.
      * @throws CarNotFoundException If the car does not exist
      * @throws CarValidationException If the target user does not exist
      * @throws CarDatabaseException If a database operation fails
      */
-    public function transfer(int $newUserId, string $reason = 'Administrative transfer', string $operationType = 'NEWOWNER'): true
+    public function transfer(int $newUserId, string $reason = 'Administrative transfer', string $operationType = 'NEWOWNER', int $actingUserId = 0): true
     {
         if (!$this->exists()) {
             $technicalMsg = CarErrorMessages::getTechnicalMessage('car_not_found_transfer', ['id' => 'unknown']);
@@ -473,7 +477,7 @@ class Car
             $newUserId,
             $reason,
             $operationType,
-            currentUserId(),
+            $actingUserId ?: currentUserId(),
             $this->getRepository()
         );
     }
@@ -483,10 +487,11 @@ class Car
      *
      * @param int $oldCarId The car ID to merge into this car (will be deleted)
      * @param string $reason Reason for merge (for audit trail)
+     * @param int $actingUserId ID of the user performing the action (0 falls back to currentUserId())
      * @return bool True if merge was successful
      * @throws Exception If validation fails or database operation fails
      */
-    public function merge(int $oldCarId, string $reason = 'Administrative merge'): bool
+    public function merge(int $oldCarId, string $reason = 'Administrative merge', int $actingUserId = 0): bool
     {
         if (!$this->exists()) {
             $technicalMsg = CarErrorMessages::getTechnicalMessage('car_not_found_merge', ['id' => 'target']);
@@ -498,7 +503,7 @@ class Car
             $this->_data,
             $oldCarId,
             $reason,
-            currentUserId(),
+            $actingUserId ?: currentUserId(),
             $this->getRepository()
         );
 

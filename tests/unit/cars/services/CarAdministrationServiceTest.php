@@ -64,6 +64,7 @@ final class CarAdministrationServiceTest extends TestCase
 
     public function testTransferSucceeds(): void
     {
+        // userId=1 triggers (new Owner(1))->data() which requires user 1 in the test DB fixture.
         $carData = (object) ['id' => 999, 'chassis' => 'TEST99999'];
 
         $repo = $this->createMock(CarRepository::class);
