@@ -92,7 +92,9 @@ jobs:
         uses: anthropics/claude-code-action@v1
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
-          track_progress: true
+          # track_progress is unsupported for workflow_dispatch — disable it
+          # when this job is triggered on-demand (e.g. via /finish-issue).
+          track_progress: ${{ github.event_name != 'workflow_dispatch' }}
           model: "claude-sonnet-5"
           claude_args: >-
             --allowedTools
