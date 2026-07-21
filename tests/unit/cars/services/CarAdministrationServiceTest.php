@@ -162,6 +162,7 @@ final class CarAdministrationServiceTest extends TestCase
         $repo->expects($this->once())->method('beginTransaction');
         $repo->expects($this->once())->method('findByIdForUpdate')->willReturn(null);
         $repo->expects($this->once())->method('rollback');
+        $repo->expects($this->never())->method('commit');
 
         $this->expectException(CarNotFoundException::class);
         $this->service->merge($targetCarData, 999, 'Test merge', 1, $repo);
@@ -181,6 +182,7 @@ final class CarAdministrationServiceTest extends TestCase
         $repo->expects($this->once())->method('findByIdForUpdate')->willReturn($sourceData);
         $repo->expects($this->once())->method('transferHistory')->willReturn(false);
         $repo->expects($this->once())->method('rollback');
+        $repo->expects($this->never())->method('commit');
 
         $this->expectException(CarDatabaseException::class);
         $this->service->merge($targetCarData, 999, 'Test merge', 1, $repo);

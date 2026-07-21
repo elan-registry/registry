@@ -3,6 +3,7 @@ declare(strict_types=1);
 
 use ElanRegistry\AppConstants;
 use ElanRegistry\Car\Car;
+use ElanRegistry\Exceptions\CarConcurrentModificationException;
 use ElanRegistry\Exceptions\CarDatabaseException;
 use ElanRegistry\Exceptions\CarDeletionException;
 use ElanRegistry\Exceptions\CarMergeException;
@@ -207,6 +208,9 @@ if (ElanInput::existsPost()) {
                     } catch (CarValidationException $e) {
                         $errors[] = $e->getUserMessage();
                         logger($currentUserId, LogCategories::LOG_CATEGORY_CAR_TRANSFER_ERROR, "Car reassignment failed — validation error: " . $e->getMessage());
+                    } catch (CarConcurrentModificationException $e) {
+                        $errors[] = 'Transfer was not applied — the record changed mid-operation. Please retry.';
+                        logger($currentUserId, LogCategories::LOG_CATEGORY_CAR_TRANSFER_ERROR, "Car reassignment failed — concurrent modification: " . $e->getMessage());
                     } catch (CarDatabaseException $e) {
                         $errors[] = 'Transfer failed due to a database error. Check the admin log for details.';
                         logger($currentUserId, LogCategories::LOG_CATEGORY_CAR_TRANSFER_ERROR, "Car reassignment failed — DB error: " . $e->getMessage());
@@ -329,7 +333,7 @@ if (ElanInput::existsPost()) {
                             "Car ID $car_id not found during deletion attempt");
                         $errors[] = "Car ID $car_id not found";
                     } catch (CarDeletionException | CarDatabaseException $e) {
-                        // CarAdministrationService::delete() logs technical detail before throwing.
+                        // Car::delete() logs CSRF failures; CarAdministrationService::delete() logs DB failures.
                         $errors[] = "Failed to delete car. Check the system log for details.";
                     } catch (\Throwable $e) {
                         logger($currentUserId, LogCategories::LOG_CATEGORY_CAR_DELETION,
