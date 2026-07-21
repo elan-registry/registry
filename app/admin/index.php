@@ -7,6 +7,7 @@ use ElanRegistry\Exceptions\CarDatabaseException;
 use ElanRegistry\Exceptions\CarDeletionException;
 use ElanRegistry\Exceptions\CarMergeException;
 use ElanRegistry\Exceptions\CarNotFoundException;
+use ElanRegistry\Exceptions\CarValidationException;
 use ElanRegistry\Input as ElanInput;
 use ElanRegistry\LogCategories;
 use ElanRegistry\Owner;
@@ -200,9 +201,18 @@ if (ElanInput::existsPost()) {
 
                         $successes[] = "Car ID $car_id successfully reassigned to $targetName";
                         logger($currentUserId, LogCategories::LOG_CATEGORY_CAR_ACTIONS, "Car ID $car_id reassigned to User ID $user_id");
+                    } catch (CarNotFoundException $e) {
+                        $errors[] = "Car ID $car_id could not be found.";
+                        logger($currentUserId, LogCategories::LOG_CATEGORY_CAR_TRANSFER_ERROR, "Car reassignment failed — car not found. " . $e->getMessage());
+                    } catch (CarValidationException $e) {
+                        $errors[] = $e->getUserMessage();
+                        logger($currentUserId, LogCategories::LOG_CATEGORY_CAR_TRANSFER_ERROR, "Car reassignment failed — validation error: " . $e->getMessage());
+                    } catch (CarDatabaseException $e) {
+                        $errors[] = 'Transfer failed due to a database error. Check the admin log for details.';
+                        logger($currentUserId, LogCategories::LOG_CATEGORY_CAR_TRANSFER_ERROR, "Car reassignment failed — DB error: " . $e->getMessage());
                     } catch (\Throwable $e) {
-                        $errors[] = 'Transfer failed. Please try again.';
-                        logger($currentUserId, LogCategories::LOG_CATEGORY_CAR_TRANSFER_ERROR, "Car reassignment failed for Car ID $car_id: " . $e->getMessage());
+                        $errors[] = 'Transfer failed due to an unexpected error. Check the admin log for details.';
+                        logger($currentUserId, LogCategories::LOG_CATEGORY_CAR_TRANSFER_ERROR, "Car reassignment unexpected error [" . get_class($e) . "]: " . $e->getMessage());
                     }
                     break;
 

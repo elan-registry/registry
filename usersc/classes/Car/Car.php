@@ -423,6 +423,7 @@ class Car
     public function delete(string $reason, string $token): bool
     {
         if (!Token::check($token)) {
+            logger(currentUserId() ?: 0, LogCategories::LOG_CATEGORY_ACCESS_DENIED, 'Car deletion rejected: invalid CSRF token');
             throw new CarDeletionException(CarErrorMessages::getMessage('csrf_token_invalid', 'admin', ['operation' => 'car deletion']));
         }
 

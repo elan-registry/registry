@@ -62,6 +62,21 @@ final class CarAdministrationServiceTest extends TestCase
         $this->service->transfer($carData, 0, 'Test transfer reason', 'NEWOWNER', 1, $this->repo);
     }
 
+    public function testTransferSucceeds(): void
+    {
+        $carData = (object) ['id' => 999, 'chassis' => 'TEST99999'];
+
+        $repo = $this->createMock(CarRepository::class);
+        $repo->expects($this->once())->method('beginTransaction');
+        $repo->expects($this->once())->method('updateCar')->willReturn(true);
+        $repo->expects($this->once())->method('insertHistory')->willReturn(true);
+        $repo->expects($this->once())->method('commit');
+        $repo->expects($this->never())->method('rollback');
+
+        $result = $this->service->transfer($carData, 1, 'Test transfer reason', 'NEWOWNER', 1, $repo);
+        $this->assertTrue($result);
+    }
+
     public function testTransferThrowsCarDatabaseExceptionWhenUpdateFails(): void
     {
         $this->expectException(CarDatabaseException::class);
@@ -72,6 +87,7 @@ final class CarAdministrationServiceTest extends TestCase
         $repo->expects($this->once())->method('beginTransaction');
         $repo->expects($this->once())->method('updateCar')->willReturn(false);
         $repo->expects($this->once())->method('rollback');
+        $repo->expects($this->never())->method('commit');
 
         $this->service->transfer($carData, 1, 'Test transfer reason', 'NEWOWNER', 1, $repo);
     }
@@ -87,6 +103,7 @@ final class CarAdministrationServiceTest extends TestCase
         $repo->expects($this->once())->method('updateCar')->willReturn(true);
         $repo->expects($this->once())->method('insertHistory')->willReturn(false);
         $repo->expects($this->once())->method('rollback');
+        $repo->expects($this->never())->method('commit');
 
         $this->service->transfer($carData, 1, 'Test transfer reason', 'NEWOWNER', 1, $repo);
     }
@@ -164,6 +181,41 @@ final class CarAdministrationServiceTest extends TestCase
         $repo->expects($this->once())->method('findByIdForUpdate')->willReturn($sourceData);
         $repo->expects($this->once())->method('transferHistory')->willReturn(false);
         $repo->expects($this->once())->method('rollback');
+
+        $this->expectException(CarDatabaseException::class);
+        $this->service->merge($targetCarData, 999, 'Test merge', 1, $repo);
+    }
+
+    public function testMergeThrowsCarDatabaseExceptionWhenDeleteCarFails(): void
+    {
+        $targetCarData = (object) ['id' => 1, 'chassis' => 'TARGET01'];
+        $sourceData = (object) ['id' => 999, 'chassis' => 'SOURCE01'];
+
+        $repo = $this->createMock(CarRepository::class);
+        $repo->expects($this->once())->method('beginTransaction');
+        $repo->expects($this->once())->method('findByIdForUpdate')->willReturn($sourceData);
+        $repo->expects($this->once())->method('transferHistory')->willReturn(true);
+        $repo->expects($this->once())->method('deleteCar')->willReturn(false);
+        $repo->expects($this->once())->method('rollback');
+        $repo->expects($this->never())->method('commit');
+
+        $this->expectException(CarDatabaseException::class);
+        $this->service->merge($targetCarData, 999, 'Test merge', 1, $repo);
+    }
+
+    public function testMergeThrowsCarDatabaseExceptionWhenInsertHistoryFails(): void
+    {
+        $targetCarData = (object) ['id' => 1, 'chassis' => 'TARGET01'];
+        $sourceData = (object) ['id' => 999, 'chassis' => 'SOURCE01'];
+
+        $repo = $this->createMock(CarRepository::class);
+        $repo->expects($this->once())->method('beginTransaction');
+        $repo->expects($this->once())->method('findByIdForUpdate')->willReturn($sourceData);
+        $repo->expects($this->once())->method('transferHistory')->willReturn(true);
+        $repo->expects($this->once())->method('deleteCar')->willReturn(true);
+        $repo->expects($this->once())->method('insertHistory')->willReturn(false);
+        $repo->expects($this->once())->method('rollback');
+        $repo->expects($this->never())->method('commit');
 
         $this->expectException(CarDatabaseException::class);
         $this->service->merge($targetCarData, 999, 'Test merge', 1, $repo);
