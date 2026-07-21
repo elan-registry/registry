@@ -22,7 +22,9 @@ use ElanRegistry\LogCategories;
  *
  * Delegates to focused service classes for validation, image processing,
  * database operations, verification, administration, and DataTables.
- * Maintains full backward compatibility with existing callers.
+ * Administration methods (delete, transfer, merge) require an explicit
+ * $actingUserId parameter (added v2.28.0) — callers are responsible for
+ * ensuring the acting user is authenticated before invoking those methods.
  *
  * @author Jim Boone
  * @version 2.15.0
@@ -417,7 +419,8 @@ class Car
      *
      * @param string $reason Reason for deletion (for audit trail)
      * @param string $token CSRF token (required)
-     * @param int $actingUserId ID of the user performing the action
+     * @param int $actingUserId ID of the admin performing the action — caller MUST verify
+     *                         the user is authenticated and authorized before invoking
      * @return bool True if deletion was successful
      * @throws Exception If validation fails or database operation fails
      */
@@ -456,7 +459,8 @@ class Car
      * @param int $newUserId The user ID to transfer ownership to
      * @param string $reason Reason for transfer (for audit trail)
      * @param string $operationType Operation type for history
-     * @param int $actingUserId ID of the user performing the action
+     * @param int $actingUserId ID of the admin performing the action — caller MUST verify
+     *                         the user is authenticated and authorized before invoking
      * @return true Always returns true; throws on any failure.
      * @throws CarNotFoundException If the car does not exist
      * @throws CarValidationException If the target user does not exist
@@ -485,7 +489,8 @@ class Car
      *
      * @param int $oldCarId The car ID to merge into this car (will be deleted)
      * @param string $reason Reason for merge (for audit trail)
-     * @param int $actingUserId ID of the user performing the action
+     * @param int $actingUserId ID of the admin performing the action — caller MUST verify
+     *                         the user is authenticated and authorized before invoking
      * @return bool True if merge was successful
      * @throws Exception If validation fails or database operation fails
      */
