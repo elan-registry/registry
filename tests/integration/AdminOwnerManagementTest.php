@@ -5,6 +5,7 @@ declare(strict_types=1);
 require_once __DIR__ . '/IntegrationTestCase.php';
 
 use ElanRegistry\Owner;
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\Attributes\Group;
 
 /**
@@ -74,17 +75,6 @@ final class AdminOwnerManagementTest extends IntegrationTestCase
         $this->createdProfileIds[] = (int) $row->id;
     }
 
-    /**
-     * Seed a valid CSRF token into the session and return it.
-     * The token is a 64-char hex string matching Token::check() format requirements.
-     */
-    private function seedCsrfToken(): string
-    {
-        $token = bin2hex(random_bytes(32));
-        $_SESSION['token'] = $token;
-        return $token;
-    }
-
     // =========================================================================
     // Auth-guard and CSRF-guard source-inspection tests
     // =========================================================================
@@ -110,128 +100,35 @@ final class AdminOwnerManagementTest extends IntegrationTestCase
     }
 
     /**
-     * process-owner-search.php must delegate auth+CSRF guard to requireAdminAjax().
+     * Every admin AJAX endpoint must delegate auth+CSRF guard to requireAdminAjax().
+     * To add a new endpoint to this contract, append one entry to the provider array.
+     *
+     * @return array<string, array{string}>
      */
-    public function testOwnerSearchEndpointRequiresRegistryAdmin(): void
+    public static function adminEndpointProvider(): array
     {
-        $content = file_get_contents(__DIR__ . '/../../app/admin/includes/process-owner-search.php');
-        $this->assertNotFalse($content, 'Could not read process-owner-search.php');
-        $this->assertStringContainsString(
-            'requireAdminAjax(',
-            $content,
-            'process-owner-search.php must call requireAdminAjax() for auth+CSRF guard'
-        );
+        return [
+            'process-owner-search'       => ['app/admin/includes/process-owner-search.php'],
+            'process-owner-update'       => ['app/admin/includes/process-owner-update.php'],
+            'process-owner-sync-location' => ['app/admin/includes/process-owner-sync-location.php'],
+            'load-owner-info'            => ['app/admin/includes/load-owner-info.php'],
+            'load-owner-profile'         => ['app/admin/includes/load-owner-profile.php'],
+            'process-car-details'        => ['app/admin/includes/process-car-details.php'],
+            'process-transfer-approve'   => ['app/admin/includes/process-transfer-approve.php'],
+            'process-transfer-deny'      => ['app/admin/includes/process-transfer-deny.php'],
+            'process-user-details'       => ['app/admin/includes/process-user-details.php'],
+        ];
     }
 
-    /**
-     * process-owner-update.php must delegate auth+CSRF guard to requireAdminAjax().
-     */
-    public function testOwnerUpdateEndpointRequiresRegistryAdmin(): void
+    #[DataProvider('adminEndpointProvider')]
+    public function testEndpointHasAdminGuard(string $relativePath): void
     {
-        $content = file_get_contents(__DIR__ . '/../../app/admin/includes/process-owner-update.php');
-        $this->assertNotFalse($content, 'Could not read process-owner-update.php');
+        $content = file_get_contents(__DIR__ . '/../../' . $relativePath);
+        $this->assertNotFalse($content, "Could not read {$relativePath}");
         $this->assertStringContainsString(
             'requireAdminAjax(',
             $content,
-            'process-owner-update.php must call requireAdminAjax() for auth+CSRF guard'
-        );
-    }
-
-    /**
-     * process-owner-sync-location.php must delegate auth+CSRF guard to requireAdminAjax().
-     */
-    public function testOwnerSyncLocationEndpointRequiresRegistryAdmin(): void
-    {
-        $content = file_get_contents(__DIR__ . '/../../app/admin/includes/process-owner-sync-location.php');
-        $this->assertNotFalse($content, 'Could not read process-owner-sync-location.php');
-        $this->assertStringContainsString(
-            'requireAdminAjax(',
-            $content,
-            'process-owner-sync-location.php must call requireAdminAjax() for auth+CSRF guard'
-        );
-    }
-
-    /**
-     * load-owner-info.php must delegate auth+CSRF guard to requireAdminAjax().
-     */
-    public function testLoadOwnerInfoEndpointHasAdminGuard(): void
-    {
-        $content = file_get_contents(__DIR__ . '/../../app/admin/includes/load-owner-info.php');
-        $this->assertNotFalse($content, 'Could not read load-owner-info.php');
-        $this->assertStringContainsString(
-            'requireAdminAjax(',
-            $content,
-            'load-owner-info.php must call requireAdminAjax() for auth+CSRF guard'
-        );
-    }
-
-    /**
-     * load-owner-profile.php must delegate auth+CSRF guard to requireAdminAjax().
-     */
-    public function testLoadOwnerProfileEndpointHasAdminGuard(): void
-    {
-        $content = file_get_contents(__DIR__ . '/../../app/admin/includes/load-owner-profile.php');
-        $this->assertNotFalse($content, 'Could not read load-owner-profile.php');
-        $this->assertStringContainsString(
-            'requireAdminAjax(',
-            $content,
-            'load-owner-profile.php must call requireAdminAjax() for auth+CSRF guard'
-        );
-    }
-
-    /**
-     * process-car-details.php must delegate auth+CSRF guard to requireAdminAjax().
-     */
-    public function testProcessCarDetailsEndpointHasAdminGuard(): void
-    {
-        $content = file_get_contents(__DIR__ . '/../../app/admin/includes/process-car-details.php');
-        $this->assertNotFalse($content, 'Could not read process-car-details.php');
-        $this->assertStringContainsString(
-            'requireAdminAjax(',
-            $content,
-            'process-car-details.php must call requireAdminAjax() for auth+CSRF guard'
-        );
-    }
-
-    /**
-     * process-transfer-approve.php must delegate auth+CSRF guard to requireAdminAjax().
-     */
-    public function testProcessTransferApproveEndpointHasAdminGuard(): void
-    {
-        $content = file_get_contents(__DIR__ . '/../../app/admin/includes/process-transfer-approve.php');
-        $this->assertNotFalse($content, 'Could not read process-transfer-approve.php');
-        $this->assertStringContainsString(
-            'requireAdminAjax(',
-            $content,
-            'process-transfer-approve.php must call requireAdminAjax() for auth+CSRF guard'
-        );
-    }
-
-    /**
-     * process-transfer-deny.php must delegate auth+CSRF guard to requireAdminAjax().
-     */
-    public function testProcessTransferDenyEndpointHasAdminGuard(): void
-    {
-        $content = file_get_contents(__DIR__ . '/../../app/admin/includes/process-transfer-deny.php');
-        $this->assertNotFalse($content, 'Could not read process-transfer-deny.php');
-        $this->assertStringContainsString(
-            'requireAdminAjax(',
-            $content,
-            'process-transfer-deny.php must call requireAdminAjax() for auth+CSRF guard'
-        );
-    }
-
-    /**
-     * process-user-details.php must delegate auth+CSRF guard to requireAdminAjax().
-     */
-    public function testProcessUserDetailsEndpointHasAdminGuard(): void
-    {
-        $content = file_get_contents(__DIR__ . '/../../app/admin/includes/process-user-details.php');
-        $this->assertNotFalse($content, 'Could not read process-user-details.php');
-        $this->assertStringContainsString(
-            'requireAdminAjax(',
-            $content,
-            'process-user-details.php must call requireAdminAjax() for auth+CSRF guard'
+            "{$relativePath} must call requireAdminAjax() for auth+CSRF guard"
         );
     }
 
@@ -241,7 +138,7 @@ final class AdminOwnerManagementTest extends IntegrationTestCase
 
     /**
      * Happy path for owner-search: a test user created in the DB is returned
-     * by Owner::searchOwners() when searched by first name.
+     * by $owner->searchOwners() when searched by first name.
      *
      * Validates that the search logic used by process-owner-search.php finds
      * real owners from the database.
@@ -250,7 +147,7 @@ final class AdminOwnerManagementTest extends IntegrationTestCase
     {
         $userId = $this->createTestUser(['fname' => 'SearchHappy', 'lname' => 'PathTest']);
 
-        $results = Owner::searchOwners('SearchHappy', 25);
+        $results = (new Owner())->searchOwners('SearchHappy', 25);
 
         $this->assertIsArray($results);
         $this->assertNotEmpty($results, 'searchOwners() must return the newly created test user');
@@ -262,8 +159,31 @@ final class AdminOwnerManagementTest extends IntegrationTestCase
     }
 
     /**
-     * Happy path for owner-update: Owner::update() persists a
-     * changed city to the profiles table when called with a valid CSRF token.
+     * Multi-word UNION path: a two-word search term ('Greg Surcouf') resolves
+     * via the exact-name UNION branch and returns the matching owner.
+     *
+     * Validates the three-UNION SQL path in searchOwners() and guards against
+     * parameter-ordering regressions in the 14-placeholder prepared statement.
+     */
+    public function testSearchOwnersReturnsMatchingOwnerForMultiWordQuery(): void
+    {
+        $userId = $this->createTestUser(['fname' => 'Greg', 'lname' => 'Surcouf']);
+
+        $results = (new Owner())->searchOwners('Greg Surcouf', 25);
+
+        $this->assertIsArray($results);
+        $this->assertNotEmpty($results, 'Multi-word searchOwners() must return the test user');
+
+        $ids = array_column((array) $results, 'id');
+        $this->assertContains((string) $userId, array_map('strval', $ids),
+            'Multi-word search must find the user by exact first+last name'
+        );
+    }
+
+    /**
+     * Happy path for owner-update: Owner::update() persists a changed city to
+     * the profiles table. CSRF is validated by the caller (HTTP layer) before
+     * update() is called.
      *
      * Validates the DB write path used by process-owner-update.php.
      */
@@ -272,12 +192,9 @@ final class AdminOwnerManagementTest extends IntegrationTestCase
         $userId = $this->createTestUser();
         $this->createTestProfile($userId, ['city' => 'Salem']);
 
-        $token = $this->seedCsrfToken();
-
         $owner = new Owner($userId);
         $result = $owner->update([
             'id'   => $userId,
-            'csrf' => $token,
             'city' => 'Eugene',
         ]);
 

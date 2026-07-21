@@ -15,7 +15,6 @@ use ElanRegistry\Owner;
  * Processes owner profile updates using Owner class
  */
 
-// Include required files
 require_once '../../../users/init.php';
 
 requireAdminAjax('owner update');
@@ -38,7 +37,6 @@ try {
     // Prepare update fields
     $updateFields = [
         'id' => $ownerId,
-        'csrf' => $_POST['csrf']
     ];
 
     // Text fields: basic info and location (coordinates handled separately below)
@@ -49,41 +47,29 @@ try {
     }
 
     // Accept coordinates from location picker (frontend provides precise coordinates)
-    if (!empty($_POST['lat']) && !empty($_POST['lon'])) {
+    if (isset($_POST['lat']) && $_POST['lat'] !== '' && isset($_POST['lon']) && $_POST['lon'] !== '') {
         $updateFields['lat'] = (float)$_POST['lat'];
         $updateFields['lon'] = (float)$_POST['lon'];
     }
 
-    // Attempt to update owner profile
-    $success = $owner->update($updateFields);
+    // Attempt to update owner profile — throws OwnerValidationException or OwnerUpdateException on failure
+    // update() calls find() internally, so $owner->data() is already fresh after this returns
+    $owner->update($updateFields);
 
-    if ($success) {
-        // Get updated data
-        $updatedOwner = new Owner($ownerId);
+    $newQualityScore = $owner->getProfileQualityScore();
+    $missingFields = $owner->validateProfileCompleteness();
 
-        // Get updated quality score
-        $newQualityScore = $updatedOwner->getProfileQualityScore();
-        $missingFields = $updatedOwner->validateProfileCompleteness();
-
-        ApiResponse::success('Owner profile updated successfully!')
-            ->withDataArray([
-                'quality_score' => $newQualityScore,
-                'missing_fields' => $missingFields
-            ])
-            ->withLogging(
-                $user->data()->id,
-                'OwnerActions',
-                "Updated owner profile for user ID {$ownerId} (Admin: {$user->data()->fname} {$user->data()->lname})"
-            )
-            ->send();
-
-    } else {
-        ApiResponse::error(
-            'Failed to update owner profile. Please check your input and try again.',
-            400
+    ApiResponse::success('Owner profile updated successfully!')
+        ->withDataArray([
+            'quality_score' => $newQualityScore,
+            'missing_fields' => $missingFields
+        ])
+        ->withLogging(
+            $user->data()->id,
+            LogCategories::LOG_CATEGORY_OWNER_ACTIONS,
+            "Updated owner profile for user ID {$ownerId} (Admin: {$user->data()->fname} {$user->data()->lname})"
         )
         ->send();
-    }
 
 } catch (OwnerValidationException $e) {
     ApiResponse::error(
@@ -101,7 +87,7 @@ try {
     ApiResponse::serverError('Update failed: ' . $e->getUserMessage())
         ->withLogging(
             $user->data()->id,
-            'DatabaseError',
+            LogCategories::LOG_CATEGORY_DATABASE_ERROR,
             "Owner update failed for user ID {$ownerId}: " . $e->getMessage()
         )
         ->send();
