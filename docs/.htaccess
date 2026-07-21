@@ -15,9 +15,6 @@ Options -Indexes
     Require all denied
 </Files>
 
-# Viewer renames
-Redirect 301 /docs/embed.php /docs/pdf-viewer.php
-
 # Redirects for doc reorganization (#559)
 Redirect 301 /docs/reference-library.php /docs/reference/index.php
 Redirect 301 /docs/faq/index.php /docs/guides/index.php

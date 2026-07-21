@@ -70,7 +70,11 @@ RewriteRule ^vendor/ - [F,L]
 RewriteRule ^backups/ - [F,L]
 
 # Test subdomain: serve a blocking robots.txt without affecting production (#1369)
-RewriteCond %{HTTP_HOST} ^test\.elanregistry\.org [NC]
+# NOTE: Cloudflare fetches robots.txt directly from origin, bypassing Apache rewrites.
+# The test server must have robots-test.txt deployed as robots.txt directly.
+# This rule is retained for environments not behind Cloudflare.
+RewriteCond %{HTTP_HOST} ^test\.elanregistry\.org [NC,OR]
+RewriteCond %{SERVER_NAME} ^test\.elanregistry\.org [NC]
 RewriteRule ^robots\.txt$ /robots-test.txt [L]
 
 # Soft 404 fix: embed.php (removed) and pdf-viewer.php single-param ?doc= format (#1369)
