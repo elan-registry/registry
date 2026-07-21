@@ -21,7 +21,15 @@ name: Claude Code Review
 #   Claude must explicitly post via `gh pr comment` — the action does not
 #   auto-post Claude's output. Prompts must include that instruction and
 #   Bash(gh pr comment:*) must be in the allowedTools list.
-#   track_progress: true shows a live "Claude is reviewing..." indicator.
+#
+# IMPORTANT — track_progress and agent-mode detection (v1.0+):
+#   Setting track_progress: true forces "tag mode" — the action waits for an
+#   @claude trigger comment and never runs the prompt automatically. To run
+#   automatically on every PR push (agent mode), omit track_progress entirely.
+#   The model input is also deprecated in v1.0; pass --model via claude_args.
+#   The action also validates that the workflow file on the PR branch matches
+#   the default branch. PRs that modify this file will skip the review until
+#   merged — this is intentional security behaviour, not a bug.
 
 on:
   pull_request:
@@ -92,11 +100,13 @@ jobs:
         uses: anthropics/claude-code-action@v1
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
-          track_progress: true
-          model: "claude-sonnet-5"
+          # Do NOT set track_progress — it forces "tag mode" (waits for @claude
+          # comment trigger) and prevents the prompt from running automatically.
+          # Omitting it lets the action detect "agent mode" from the prompt input.
           claude_args: >-
             --allowedTools
             "Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*),Bash(git diff:*),Bash(git log:*),Bash(git show:*),Bash(git diff --name-only:*),Bash(php -l *),Bash(composer check:php),Bash(vendor/bin/phpstan analyse:*),Bash(npm run lint),Read,Grep,Glob"
+            --model claude-sonnet-5
           prompt: |
             REPO: ${{ github.repository }}
             PR NUMBER: ${{ steps.ctx.outputs.pr_number }}
@@ -235,14 +245,12 @@ jobs:
         uses: anthropics/claude-code-action@v1
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
-          # track_progress is unsupported for the 'labeled' event — disable it
-          # when the deep-review label triggers this job.
-          track_progress: ${{ github.event.action != 'labeled' }}
+          # Do NOT set track_progress — see pr-to-milestone-review note above.
           # Opus is worth it here: this runs once per milestone, not per push.
-          model: "claude-opus-4-8"
           claude_args: >-
             --allowedTools
             "Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*),Bash(gh pr list:*),Bash(cat merged-prs.txt),Bash(git diff:*),Bash(git log:*),Bash(git show:*),Bash(git diff --name-only:*),Bash(php -l *),Bash(composer check:php),Bash(vendor/bin/phpstan analyse:*),Bash(npm run lint),Read,Grep,Glob"
+            --model claude-opus-4-8
           prompt: |
             REPO: ${{ github.repository }}
             PR NUMBER: ${{ github.event.pull_request.number }}
