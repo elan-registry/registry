@@ -3,7 +3,6 @@ declare(strict_types=1);
 
 use ElanRegistry\AppConstants;
 use ElanRegistry\Car\Car;
-use ElanRegistry\Exceptions\CarConcurrentModificationException;
 use ElanRegistry\Exceptions\CarDatabaseException;
 use ElanRegistry\Exceptions\CarDeletionException;
 use ElanRegistry\Exceptions\CarMergeException;
@@ -208,9 +207,6 @@ if (ElanInput::existsPost()) {
                     } catch (CarValidationException $e) {
                         $errors[] = $e->getUserMessage();
                         logger($currentUserId, LogCategories::LOG_CATEGORY_CAR_TRANSFER_ERROR, "Car reassignment failed — validation error: " . $e->getMessage());
-                    } catch (CarConcurrentModificationException $e) {
-                        $errors[] = 'Transfer was not applied — the record changed mid-operation. Please retry.';
-                        logger($currentUserId, LogCategories::LOG_CATEGORY_CAR_TRANSFER_ERROR, "Car reassignment failed — concurrent modification: " . $e->getMessage());
                     } catch (CarDatabaseException $e) {
                         $errors[] = 'Transfer failed due to a database error. Check the admin log for details.';
                         logger($currentUserId, LogCategories::LOG_CATEGORY_CAR_TRANSFER_ERROR, "Car reassignment failed — DB error: " . $e->getMessage());
