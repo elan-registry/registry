@@ -88,7 +88,7 @@ class Car
     private function getImageProcessor(): CarImageProcessor
     {
         if ($this->imageProcessor === null) {
-            $this->imageProcessor = new CarImageProcessor();
+            $this->imageProcessor = new CarImageProcessor($this->getRepository());
         }
         return $this->imageProcessor;
     }
@@ -104,7 +104,7 @@ class Car
     private function getVerificationManager(): CarVerificationManager
     {
         if ($this->verificationManager === null) {
-            $this->verificationManager = new CarVerificationManager();
+            $this->verificationManager = new CarVerificationManager($this->getRepository());
         }
         return $this->verificationManager;
     }
@@ -399,7 +399,7 @@ class Car
             throw new CarNotFoundException(CarErrorMessages::getMessage('car_not_found'));
         }
 
-        $result = $this->getImageProcessor()->removeImage($this->_data, $filename, $this->_db);
+        $result = $this->getImageProcessor()->removeImage($this->_data, $filename);
 
         if ($result) {
             // Clear cached images to force reload
@@ -480,8 +480,6 @@ class Car
             throw new CarPermissionException(CarErrorMessages::getMessage('user_auth_required', 'admin', ['operation' => 'car transfer']));
         }
 
-        $self = $this;
-
         $result = $this->getAdministrationService()->transfer(
             $this->_data,
             $newUserId,
@@ -489,14 +487,14 @@ class Car
             $operationType,
             currentUserId(),
             $this->getRepository(),
-            function (array $fields) use ($self): bool {
-                return $self->update($fields);
+            function (array $fields): bool {
+                return $this->update($fields);
             },
-            function (int $id) use ($self): object {
-                if (!$self->find($id)) {
+            function (int $id): object {
+                if (!$this->find($id)) {
                     throw new CarNotFoundException("Car ID {$id} not found after transfer");
                 }
-                return $self->data();
+                return $this->data();
             }
         );
 
@@ -558,7 +556,7 @@ class Car
             throw new CarNotFoundException(CarErrorMessages::getMessage('car_not_found_verification'));
         }
 
-        return $this->getVerificationManager()->setVerificationCode($this->_data, $verificationCode, $this->_db);
+        return $this->getVerificationManager()->setVerificationCode($this->_data, $verificationCode);
     }
 
     /**
@@ -575,7 +573,7 @@ class Car
             throw new CarNotFoundException(CarErrorMessages::getMessage('car_not_found_verify'));
         }
 
-        return $this->getVerificationManager()->markVerified($this->_data, $this->_db);
+        return $this->getVerificationManager()->markVerified($this->_data);
     }
 
     /**
@@ -593,7 +591,7 @@ class Car
             throw new CarNotFoundException(CarErrorMessages::getMessage('car_not_found_sold'));
         }
 
-        return $this->getVerificationManager()->markSold($this->_data, $soldDate, $this->_db);
+        return $this->getVerificationManager()->markSold($this->_data, $soldDate);
     }
 
     /**
