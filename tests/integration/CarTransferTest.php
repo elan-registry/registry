@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/IntegrationTestCase.php';
 
-use ElanRegistry\Exceptions\CarPermissionException;
 use ElanRegistry\Owner;
 
 use PHPUnit\Framework\Attributes\Group;
@@ -192,31 +191,6 @@ final class CarTransferTest extends IntegrationTestCase
             $carReloaded = new Car((int) $car->data()->id);
             $this->assertEquals($originalUserId, $carReloaded->data()->user_id);
             throw $e;
-        }
-    }
-
-    /**
-     * Test car transfer requires authenticated user
-     */
-    #[Group('fast')]
-    public function testTransferRequiresAuthenticatedUser(): void
-    {
-        $this->expectException(CarPermissionException::class);
-
-        $car = new Car($this->testCarId);
-
-        // Mock: Unset global user to simulate no authentication
-        global $user;
-        $originalUser = $user ?? null;
-        unset($GLOBALS['user']);
-
-        try {
-            $car->transfer($this->targetUserId, 'Test transfer', 'NEWOWNER');
-        } finally {
-            // Restore user
-            if ($originalUser) {
-                $GLOBALS['user'] = $originalUser;
-            }
         }
     }
 

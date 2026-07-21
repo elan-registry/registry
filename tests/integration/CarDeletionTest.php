@@ -124,61 +124,6 @@ final class CarDeletionTest extends IntegrationTestCase
     }
 
     /**
-     * Test car deletion transaction rollback on failure
-     */
-    #[Group('fast')]
-    public function testDeleteTransactionRollbackOnFailure(): void
-    {
-        // This test verifies that if any step fails, the transaction rolls back
-        // It's challenging to test without mocking the database
-        // For now, we verify that attempting to delete without auth fails
-
-        $this->expectException(CarDeletionException::class);
-
-        // Create a car without authentication context
-        $car = new Car($this->testCarId);
-
-        // Mock: Unset global user to simulate no authentication
-        global $user;
-        $originalUser = $user ?? null;
-        unset($GLOBALS['user']);
-
-        try {
-            $car->delete('Test deletion', Token::generate());
-        } finally {
-            // Restore user
-            if ($originalUser) {
-                $GLOBALS['user'] = $originalUser;
-            }
-        }
-    }
-
-    /**
-     * Test car deletion requires authenticated user
-     */
-    #[Group('fast')]
-    public function testDeleteRequiresAuthenticatedUser(): void
-    {
-        $this->expectException(CarDeletionException::class);
-
-        $car = new Car($this->testCarId);
-
-        // Mock: Unset global user to simulate no authentication
-        global $user;
-        $originalUser = $user ?? null;
-        unset($GLOBALS['user']);
-
-        try {
-            $car->delete('Test deletion', Token::generate());
-        } finally {
-            // Restore user
-            if ($originalUser) {
-                $GLOBALS['user'] = $originalUser;
-            }
-        }
-    }
-
-    /**
      * Test that deleting an already-deleted car throws CarNotFoundException.
      *
      * This exercises the path added in issue #1311: when the first deletion

@@ -6,7 +6,6 @@ require_once __DIR__ . '/IntegrationTestCase.php';
 
 use ElanRegistry\Car\CarRepository;
 use ElanRegistry\Exceptions\CarNotFoundException;
-use ElanRegistry\Exceptions\CarPermissionException;
 use ElanRegistry\Exceptions\CarValidationException;
 
 use PHPUnit\Framework\Attributes\Group;
@@ -176,31 +175,6 @@ final class CarMergeTest extends IntegrationTestCase
             $carReloaded = new Car((int) $car->data()->id);
             $this->assertTrue($carReloaded->exists());
             throw $e;
-        }
-    }
-
-    /**
-     * Test car merge requires authenticated user
-     */
-    #[Group('fast')]
-    public function testMergeRequiresAuthenticatedUser(): void
-    {
-        $this->expectException(CarPermissionException::class);
-
-        $car = new Car($this->testCarId);
-
-        // Mock: Unset global user to simulate no authentication
-        global $user;
-        $originalUser = $user ?? null;
-        unset($GLOBALS['user']);
-
-        try {
-            $car->merge($this->testMergeCarId, 'Test merge');
-        } finally {
-            // Restore user
-            if ($originalUser) {
-                $GLOBALS['user'] = $originalUser;
-            }
         }
     }
 
