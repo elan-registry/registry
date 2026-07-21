@@ -65,18 +65,23 @@ final class CarImageProcessorTest extends TestCase
 
     public function testRemoveImageThrowsOnEmptyFilename(): void
     {
-        $this->expectException(ImageProcessingException::class);
+        $repo = $this->createMock(CarRepository::class);
+        $repo->expects($this->never())->method('updateImage');
+        $processor = new CarImageProcessor($repo);
 
+        $this->expectException(ImageProcessingException::class);
         $carData = (object) ['id' => 1, 'image' => '["test.jpg"]'];
-        $this->processor->removeImage($carData, '');
+        $processor->removeImage($carData, '');
     }
 
     public function testRemoveImageReturnsFalseWhenImageNotFound(): void
     {
-        // Returns false before reaching the repo — no stub needed.
+        $repo = $this->createMock(CarRepository::class);
+        $repo->expects($this->never())->method('updateImage');
+        $processor = new CarImageProcessor($repo);
+
         $carData = (object) ['id' => 1, 'image' => '["other.jpg"]'];
-        $result = $this->processor->removeImage($carData, 'nonexistent.jpg');
-        $this->assertFalse($result);
+        $this->assertFalse($processor->removeImage($carData, 'nonexistent.jpg'));
     }
 
     public function testRemoveImageReturnsTrueWhenFound(): void
@@ -110,6 +115,17 @@ final class CarImageProcessorTest extends TestCase
         $carData = (object) ['id' => 1, 'image' => 'test.jpg,other.jpg'];
         $result = $processor->removeImage($carData, 'test.jpg');
         $this->assertTrue($result);
+    }
+
+    public function testRemoveLastImageSetsCarDataImageToEmptyString(): void
+    {
+        $repo = $this->createMock(CarRepository::class);
+        $repo->expects($this->once())->method('updateImage')->willReturn(true);
+        $processor = new CarImageProcessor($repo);
+
+        $carData = (object) ['id' => 1, 'image' => '["test.jpg"]'];
+        $processor->removeImage($carData, 'test.jpg');
+        $this->assertSame('', $carData->image);
     }
 
     /**

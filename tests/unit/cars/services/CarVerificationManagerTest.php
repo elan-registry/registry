@@ -142,4 +142,34 @@ final class CarVerificationManagerTest extends TestCase
         $carData = (object) ['id' => 1, 'solddate' => null];
         $this->manager->markSold($carData, '2024-06-15');
     }
+
+    public function testSetVerificationCodeThrowsCarDatabaseExceptionWhenRepositoryThrows(): void
+    {
+        $this->mockRepo->expects($this->once())->method('updateVerificationCode')
+            ->willThrowException(new \RuntimeException('DB connection lost'));
+        $this->expectException(CarDatabaseException::class);
+
+        $carData = (object) ['id' => 1, 'vericode' => null];
+        $this->manager->setVerificationCode($carData, 'VERIFY12345678');
+    }
+
+    public function testMarkVerifiedThrowsCarDatabaseExceptionWhenRepositoryThrows(): void
+    {
+        $this->mockRepo->expects($this->once())->method('updateLastVerified')
+            ->willThrowException(new \RuntimeException('DB connection lost'));
+        $this->expectException(CarDatabaseException::class);
+
+        $carData = (object) ['id' => 1, 'last_verified' => null];
+        $this->manager->markVerified($carData);
+    }
+
+    public function testMarkSoldThrowsCarDatabaseExceptionWhenRepositoryThrows(): void
+    {
+        $this->mockRepo->expects($this->once())->method('updateSoldDate')
+            ->willThrowException(new \RuntimeException('DB connection lost'));
+        $this->expectException(CarDatabaseException::class);
+
+        $carData = (object) ['id' => 1, 'solddate' => null];
+        $this->manager->markSold($carData, '2024-06-15');
+    }
 }

@@ -55,7 +55,7 @@ class CarVerificationManager
             return true;
         }
 
-        $technicalMsg = CarErrorMessages::getTechnicalMessage('database_update_failed', ['error' => 'Repository returned false']);
+        $technicalMsg = CarErrorMessages::getTechnicalMessage('database_update_failed', ['error' => 'Repository returned false: ' . ($this->repo->errorString() ?: 'unknown')]);
         logger(0, LogCategories::LOG_CATEGORY_CAR_VERIFICATION, $technicalMsg);
         throw new CarDatabaseException(CarErrorMessages::getMessage('database_update_failed'));
     }
@@ -84,7 +84,7 @@ class CarVerificationManager
             return true;
         }
 
-        $technicalMsg = CarErrorMessages::getTechnicalMessage('database_update_failed', ['error' => 'Repository returned false']);
+        $technicalMsg = CarErrorMessages::getTechnicalMessage('database_update_failed', ['error' => 'Repository returned false: ' . ($this->repo->errorString() ?: 'unknown')]);
         logger(0, LogCategories::LOG_CATEGORY_CAR_VERIFICATION, $technicalMsg);
         throw new CarDatabaseException(CarErrorMessages::getMessage('database_update_failed'));
     }
@@ -120,7 +120,7 @@ class CarVerificationManager
             return true;
         }
 
-        $technicalMsg = CarErrorMessages::getTechnicalMessage('database_update_failed', ['error' => 'Repository returned false']);
+        $technicalMsg = CarErrorMessages::getTechnicalMessage('database_update_failed', ['error' => 'Repository returned false: ' . ($this->repo->errorString() ?: 'unknown')]);
         logger(0, LogCategories::LOG_CATEGORY_CAR_SOLD, $technicalMsg);
         throw new CarDatabaseException(CarErrorMessages::getMessage('database_update_failed'));
     }
