@@ -67,7 +67,7 @@ final class CarTransferTest extends IntegrationTestCase
     {
         $car = new Car($this->testCarId);
 
-        $result = $car->transfer($this->targetUserId, 'Test transfer', 'NEWOWNER');
+        $result = $car->transfer($this->targetUserId, 'Test transfer', 'NEWOWNER', $this->testUserId);
 
         $this->assertTrue($result);
 
@@ -85,7 +85,7 @@ final class CarTransferTest extends IntegrationTestCase
         $this->expectException(Exception::class);
 
         $car = new Car($this->testCarId);
-        $car->transfer(99999, 'Test transfer', 'NEWOWNER');
+        $car->transfer(99999, 'Test transfer', 'NEWOWNER', $this->testUserId);
     }
 
     /**
@@ -97,7 +97,7 @@ final class CarTransferTest extends IntegrationTestCase
         $this->expectException(Exception::class);
 
         $car = new Car(99999);
-        $car->transfer($this->targetUserId, 'Test transfer', 'NEWOWNER');
+        $car->transfer($this->targetUserId, 'Test transfer', 'NEWOWNER', $this->testUserId);
     }
 
     /**
@@ -116,7 +116,7 @@ final class CarTransferTest extends IntegrationTestCase
         )->first();
         $this->assertSame($this->testUserId, (int) $before->user_id);
 
-        $result = $car->transfer($this->targetUserId, 'Test transfer', 'NEWOWNER');
+        $result = $car->transfer($this->targetUserId, 'Test transfer', 'NEWOWNER', $this->testUserId);
 
         $this->assertTrue($result);
 
@@ -137,7 +137,7 @@ final class CarTransferTest extends IntegrationTestCase
         $car = new Car($this->testCarId);
         $carId = $car->data()->id;
 
-        $result = $car->transfer($this->targetUserId, 'Test transfer history', 'NEWOWNER');
+        $result = $car->transfer($this->targetUserId, 'Test transfer history', 'NEWOWNER', $this->testUserId);
 
         $this->assertTrue($result);
 
@@ -161,7 +161,7 @@ final class CarTransferTest extends IntegrationTestCase
         $targetUser = (new Owner($this->targetUserId))->data();
         $this->assertNotNull($targetUser);
 
-        $result = $car->transfer($this->targetUserId, 'Test transfer profile', 'NEWOWNER');
+        $result = $car->transfer($this->targetUserId, 'Test transfer profile', 'NEWOWNER', $this->testUserId);
 
         $this->assertTrue($result);
 
@@ -185,7 +185,7 @@ final class CarTransferTest extends IntegrationTestCase
         $originalUserId = $car->data()->user_id;
 
         try {
-            $car->transfer(99999, 'Test transfer', 'NEWOWNER');
+            $car->transfer(99999, 'Test transfer', 'NEWOWNER', $this->testUserId);
         } catch (Exception $e) {
             // After failed transfer, car should still have original owner
             $carReloaded = new Car((int) $car->data()->id);
@@ -203,7 +203,7 @@ final class CarTransferTest extends IntegrationTestCase
         $car = new Car($this->testCarId);
         $carId = $car->data()->id;
 
-        $result = $car->transfer($this->targetUserId, 'Test transfer', 'TRANSFER');
+        $result = $car->transfer($this->targetUserId, 'Test transfer', 'TRANSFER', $this->testUserId);
 
         $this->assertTrue($result);
 
@@ -223,7 +223,7 @@ final class CarTransferTest extends IntegrationTestCase
     {
         $car = new Car($this->testCarId);
 
-        $result = $car->transfer($this->targetUserId, 'Test transfer location', 'NEWOWNER');
+        $result = $car->transfer($this->targetUserId, 'Test transfer location', 'NEWOWNER', $this->testUserId);
 
         $this->assertTrue($result);
 
@@ -234,5 +234,26 @@ final class CarTransferTest extends IntegrationTestCase
         $this->assertEquals($targetUser->city ?? '', $updatedCar->data()->city);
         $this->assertEquals($targetUser->state ?? '', $updatedCar->data()->state);
         $this->assertEquals($targetUser->country ?? '', $updatedCar->data()->country);
+    }
+
+    /**
+     * Test transfer works with an explicit actingUserId even when global $user is unset.
+     * Verifies that Car::transfer() does not fall back to currentUserId() internally.
+     */
+    #[Group('fast')]
+    public function testTransferHonorsExplicitActingUserIdWithoutGlobalUser(): void
+    {
+        $savedUser = $GLOBALS['user'] ?? null;
+        unset($GLOBALS['user']);
+
+        try {
+            $car = new Car($this->testCarId);
+            $result = $car->transfer($this->targetUserId, 'Explicit actingUserId test', 'NEWOWNER', $this->testUserId);
+            $this->assertTrue($result);
+        } finally {
+            if ($savedUser !== null) {
+                $GLOBALS['user'] = $savedUser;
+            }
+        }
     }
 }

@@ -54,7 +54,8 @@ if ($noOwnerQuery->count() > 0) {
     $userCars = $repo->findByOwner($id);
     $carCount = count($userCars);
 
-    $committed = $inTransaction(function () use ($db, $id, $noOwnerUserId, $userCars): void {
+    $adminUserId = currentUserId();
+    $committed = $inTransaction(function () use ($db, $id, $noOwnerUserId, $userCars, $adminUserId): void {
         // Expire any non-terminal transfer requests the user initiated — prevents orphaned
         // requester FK references and ensures the current car owner sees a clean audit trail.
         $db->query(
@@ -74,15 +75,15 @@ if ($noOwnerQuery->count() > 0) {
         }
         // Transfer each car using the same code path as the admin reassign UI — updates
         // user_id and all denormalized owner fields (email, fname, lname, city, etc.).
-        // This hook is only invoked from admin-authenticated contexts (deleteUsers()
-        // callers). A future self-service GDPR-deletion path must ensure
-        // admin-level auth is established before calling transfer().
+        // $adminUserId is resolved above from currentUserId() (always valid — this hook
+        // runs only from admin-authenticated deleteUsers() callers).
         foreach ($userCars as $carObj) {
             $car = new \ElanRegistry\Car\Car((int) $carObj->id);
             $car->transfer(
                 $noOwnerUserId,
                 "Account deleted — reassigned to noowner (ID: $noOwnerUserId)",
-                'NEWOWNER'
+                'NEWOWNER',
+                $adminUserId
             );
         }
     });

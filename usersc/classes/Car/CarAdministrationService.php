@@ -122,6 +122,8 @@ class CarAdministrationService
                 'website'   => $targetUser->website  ?? '',
             ];
 
+            // $ownerFields comes from Owner->data() (already-validated profile), so
+            // skipping CarValidator::validateAndSanitizeFields() here is intentional.
             $updateSuccess = $repo->updateCar($carId, $ownerFields);
             if (!$updateSuccess) {
                 $technicalMsg = CarErrorMessages::getTechnicalMessage('database_update_failed', ['error' => 'Repository returned false']);

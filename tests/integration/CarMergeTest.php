@@ -60,7 +60,7 @@ final class CarMergeTest extends IntegrationTestCase
     public function testMergeCarSuccessWithValidOldCar(): void
     {
         $car = new Car($this->testCarId);
-        $result = $car->merge($this->testMergeCarId, 'Test merge success');
+        $result = $car->merge($this->testMergeCarId, 'Test merge success', 1);
 
         $this->assertTrue($result);
     }
@@ -74,7 +74,7 @@ final class CarMergeTest extends IntegrationTestCase
         $this->expectException(CarNotFoundException::class);
 
         $car = new Car(99999);
-        $car->merge($this->testMergeCarId, 'Test merge');
+        $car->merge($this->testMergeCarId, 'Test merge', 1);
     }
 
     /**
@@ -86,7 +86,7 @@ final class CarMergeTest extends IntegrationTestCase
         $this->expectException(CarNotFoundException::class);
 
         $car = new Car($this->testCarId);
-        $car->merge(99999, 'Test merge');
+        $car->merge(99999, 'Test merge', 1);
     }
 
     /**
@@ -98,7 +98,7 @@ final class CarMergeTest extends IntegrationTestCase
         $this->expectException(CarValidationException::class);
 
         $car = new Car($this->testCarId);
-        $car->merge($this->testCarId, 'Test merge');
+        $car->merge($this->testCarId, 'Test merge', 1);
     }
 
     /**
@@ -108,7 +108,7 @@ final class CarMergeTest extends IntegrationTestCase
     public function testMergeTransfersHistoryRecords(): void
     {
         $car = new Car($this->testCarId);
-        $result = $car->merge($this->testMergeCarId, 'Test merge history transfer');
+        $result = $car->merge($this->testMergeCarId, 'Test merge history transfer', 1);
 
         $this->assertTrue($result);
 
@@ -129,7 +129,7 @@ final class CarMergeTest extends IntegrationTestCase
         $oldCarId = $this->testMergeCarId;
 
         $car = new Car($this->testCarId);
-        $result = $car->merge($oldCarId, 'Test merge deletes old car');
+        $result = $car->merge($oldCarId, 'Test merge deletes old car', 1);
 
         $this->assertTrue($result);
 
@@ -145,7 +145,7 @@ final class CarMergeTest extends IntegrationTestCase
     public function testMergeCreatesAuditTrail(): void
     {
         $car = new Car($this->testCarId);
-        $result = $car->merge($this->testMergeCarId, 'Test merge audit trail');
+        $result = $car->merge($this->testMergeCarId, 'Test merge audit trail', 1);
 
         $this->assertTrue($result);
 
@@ -169,7 +169,7 @@ final class CarMergeTest extends IntegrationTestCase
 
         try {
             // Attempt to merge non-existent car
-            $car->merge(99999, 'Test merge');
+            $car->merge(99999, 'Test merge', 1);
         } catch (CarNotFoundException $e) {
             // After failed merge, original car should still exist
             $carReloaded = new Car((int) $car->data()->id);
@@ -195,7 +195,7 @@ final class CarMergeTest extends IntegrationTestCase
         // The target car still exists; the source is gone — merge must throw
         $this->expectException(CarNotFoundException::class);
         $car = new Car($this->testCarId);
-        $car->merge($this->testMergeCarId, 'Test merge after source deletion');
+        $car->merge($this->testMergeCarId, 'Test merge after source deletion', 1);
     }
 
     /**
@@ -288,5 +288,26 @@ final class CarMergeTest extends IntegrationTestCase
             $histCountAfter,
             'cars_hist rows must remain on testCarId after rollback'
         );
+    }
+
+    /**
+     * Test merge works with an explicit actingUserId even when global $user is unset.
+     * Verifies that Car::merge() does not fall back to currentUserId() internally.
+     */
+    #[Group('fast')]
+    public function testMergeHonorsExplicitActingUserIdWithoutGlobalUser(): void
+    {
+        $savedUser = $GLOBALS['user'] ?? null;
+        unset($GLOBALS['user']);
+
+        try {
+            $car = new Car($this->testCarId);
+            $result = $car->merge($this->testMergeCarId, 'Explicit actingUserId test', 1);
+            $this->assertTrue($result);
+        } finally {
+            if ($savedUser !== null) {
+                $GLOBALS['user'] = $savedUser;
+            }
+        }
     }
 }
