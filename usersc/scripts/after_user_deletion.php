@@ -54,7 +54,17 @@ if ($noOwnerQuery->count() > 0) {
     $userCars = $repo->findByOwner($id);
     $carCount = count($userCars);
 
-    $adminUserId = currentUserId();
+    // Resolve the acting admin ID before the transaction. currentUserId() throws
+    // RuntimeException if there is no authenticated session; guard it so a bad-session
+    // edge case logs and exits cleanly rather than propagating uncaught after the
+    // users row has already been deleted.
+    try {
+        $adminUserId = currentUserId();
+    } catch (\RuntimeException $e) {
+        logger($id, LogCategories::LOG_CATEGORY_USER_DELETION, 'Cleanup aborted: no authenticated admin session — ' . $e->getMessage());
+        return;
+    }
+
     $committed = $inTransaction(function () use ($db, $id, $noOwnerUserId, $userCars, $adminUserId): void {
         // Expire any non-terminal transfer requests the user initiated — prevents orphaned
         // requester FK references and ensures the current car owner sees a clean audit trail.
@@ -73,10 +83,6 @@ if ($noOwnerQuery->count() > 0) {
         if ($db->error()) {
             throw new \RuntimeException("Failed to delete profile for user $id: " . $db->errorString());
         }
-        // Transfer each car using the same code path as the admin reassign UI — updates
-        // user_id and all denormalized owner fields (email, fname, lname, city, etc.).
-        // $adminUserId is resolved above from currentUserId() (always valid — this hook
-        // runs only from admin-authenticated deleteUsers() callers).
         foreach ($userCars as $carObj) {
             $car = new \ElanRegistry\Car\Car((int) $carObj->id);
             $car->transfer(
