@@ -14,6 +14,7 @@ use ElanRegistry\Exceptions\CarNotFoundException;
 use ElanRegistry\Exceptions\CarValidationException;
 use ElanRegistry\LogCategories;
 use ElanRegistry\Owner;
+use ElanRegistry\Car\CarValidator;
 
 /**
  * CarAdministrationService - Administrative operations for cars
@@ -122,8 +123,12 @@ class CarAdministrationService
                 'website'   => $targetUser->website  ?? '',
             ];
 
-            // $ownerFields comes from Owner->data() (already-validated profile), so
-            // skipping CarValidator::validateAndSanitizeFields() here is intentional.
+            // Validate owner fields before writing. $requireAll = false so only the
+            // fields present in $ownerFields are checked (email format, website scheme,
+            // lat/lon range, city/state/country normalization) without requiring car-
+            // intrinsic fields like chassis/model/year that are not being updated here.
+            $ownerFields = (new CarValidator())->validateAndSanitizeFields($ownerFields, false);
+
             $updateSuccess = $repo->updateCar($carId, $ownerFields);
             if (!$updateSuccess) {
                 $technicalMsg = CarErrorMessages::getTechnicalMessage('database_update_failed', ['error' => 'Repository returned false']);

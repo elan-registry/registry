@@ -25,6 +25,8 @@ use ElanRegistry\LogCategories;
  * Administration methods (delete, transfer, merge) require an explicit
  * $actingUserId parameter (added v2.28.0) — callers are responsible for
  * ensuring the acting user is authenticated before invoking those methods.
+ * All current callers enforce this via securePage()/requireAdminAjax()
+ * before resolving $actingUserId from currentUserId() or $user->data()->id.
  *
  * @author Jim Boone
  * @version 2.15.0
