@@ -88,13 +88,92 @@ jobs:
           fetch-depth: 0
           ref: refs/pull/${{ steps.ctx.outputs.pr_number }}/head
 
+      # claude-code-action@v1 now errors if track_progress is set (any value)
+      # on workflow_dispatch. Split into two conditional steps: one for PR
+      # events (track_progress: true) and one for on-demand dispatch (omitted).
       - name: Run Claude Issue-Level Review
+        if: github.event_name == 'pull_request'
         uses: anthropics/claude-code-action@v1
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
-          # track_progress is unsupported for workflow_dispatch — disable it
-          # when this job is triggered on-demand (e.g. via /finish-issue).
-          track_progress: ${{ github.event_name != 'workflow_dispatch' }}
+          track_progress: true
+          model: "claude-sonnet-5"
+          claude_args: >-
+            --allowedTools
+            "Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*),Bash(git diff:*),Bash(git log:*),Bash(git show:*),Bash(git diff --name-only:*),Bash(php -l *),Bash(composer check:php),Bash(vendor/bin/phpstan analyse:*),Bash(npm run lint),Read,Grep,Glob"
+          prompt: |
+            REPO: ${{ github.repository }}
+            PR NUMBER: ${{ steps.ctx.outputs.pr_number }}
+
+            You are reviewing an **issue-level PR** targeting a milestone branch.
+
+            - Base: ${{ steps.ctx.outputs.base_ref }}
+            - Head: ${{ steps.ctx.outputs.head_ref }}
+            - Title: ${{ steps.ctx.outputs.title }}
+
+            The author ran `/review-pr` locally before pushing. The parallel
+            Static Analysis, CodeQL, and Semgrep jobs catch obvious issues.
+
+            **You are the backstop.** Focus on what static tools cannot see.
+
+            ## Scope
+
+            Review only the diff on this PR:
+
+            ```bash
+            gh pr diff ${{ steps.ctx.outputs.pr_number }}
+            ```
+
+            Skip `vendor/**`, `node_modules/**`, and minified / generated assets.
+
+            ## What to check
+
+            - Does the change fit the architecture (CLAUDE.md patterns)?
+            - Are there silent failures in catch blocks or fallback paths?
+            - Are tests adequate for the behaviour being added?
+            - Does it cross the Users (auth) vs Owners (registry domain) boundary?
+            - Security-sensitive changes: CSRF, prepared statements, input validation
+
+            ## What to skip
+
+            - Type-hint absence, missing `declare(strict_types=1)`, unused imports —
+              PHPStan / coding-standards checker flag these
+            - Obvious SQL concatenation — CodeQL / Semgrep flag these
+            - JS style issues — ESLint flags these
+
+            ## Output
+
+            Post your review as a PR comment using:
+
+            ```bash
+            gh pr comment ${{ steps.ctx.outputs.pr_number }} --body "..."
+            ```
+
+            Structure the comment with these sections (use exactly these headings):
+
+            ### Blocking
+            Must fix before merge (critical bugs, security issues, silent
+            failures, CLAUDE.md violations). Omit this section entirely if
+            there are no blocking issues — do NOT include an empty section.
+
+            ### Important
+            Should address (design, test gaps, unclear code).
+
+            ### Suggestions
+            Optional improvements.
+
+            ### Strengths
+            What's done well.
+
+            Each item must cite `file:line` and the specific rule or reason.
+            If there is nothing to say in a section, omit it entirely.
+            Only post GitHub comments — do not output the review as a message.
+
+      - name: Run Claude Issue-Level Review (on-demand)
+        if: github.event_name == 'workflow_dispatch'
+        uses: anthropics/claude-code-action@v1
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           model: "claude-sonnet-5"
           claude_args: >-
             --allowedTools
