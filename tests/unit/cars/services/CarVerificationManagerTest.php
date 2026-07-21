@@ -37,6 +37,7 @@ final class CarVerificationManagerTest extends TestCase
 
     public function testSetVerificationCodeRejectsShortCode(): void
     {
+        $this->mockRepo->expects($this->never())->method('updateVerificationCode');
         $this->expectException(CarValidationException::class);
 
         $carData = (object) ['id' => 1, 'vericode' => null];
@@ -45,6 +46,7 @@ final class CarVerificationManagerTest extends TestCase
 
     public function testSetVerificationCodeRejectsEmptyCode(): void
     {
+        $this->mockRepo->expects($this->never())->method('updateVerificationCode');
         $this->expectException(CarValidationException::class);
 
         $carData = (object) ['id' => 1, 'vericode' => null];
