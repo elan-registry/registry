@@ -137,7 +137,7 @@ handling and logging.
 | CarDeletionException | 500 | CarDeletion | Car deletion |
 | CarMergeException | 500 | CarMerge | Car merge operation |
 | CarNotFoundException | 404 | CarErrors | Car not found |
-| CarPermissionException | 403 | AccessDenied | Car permission denied |
+| CarPermissionException | 403 | AccessDenied | Car permission denied *(no production throw site post-v2.28.0; retained for hierarchy)* |
 | CarTransferException | 500 | CarTransferError | Ownership transfer |
 | CarValidationException | 422 | ValidationError | Car data validation |
 | OwnerCreationException | 500 | OwnerCreation | Owner creation |

@@ -58,6 +58,13 @@ if ($noOwnerQuery->count() > 0) {
     // RuntimeException if there is no authenticated session; guard it so a bad-session
     // edge case logs and exits cleanly rather than propagating uncaught after the
     // users row has already been deleted.
+    //
+    // ASSUMPTION: this hook is only invoked from admin-authenticated deleteUsers()
+    // callers (currently only tab-account_cleanup.php, gated by securePage() +
+    // isAdmin()). ADR-010 documents a potential future cron caller — if that is ever
+    // added without a session, this catch will silently abort car reassignment (logged
+    // only), leaving cars pointing at the now-deleted user ID. At that point, resolve
+    // $adminUserId via a dedicated service/system account rather than currentUserId().
     try {
         $adminUserId = currentUserId();
     } catch (\RuntimeException $e) {
