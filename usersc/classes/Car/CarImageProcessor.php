@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace ElanRegistry\Car;
 
-use ElanRegistry\CarErrorMessages;
 use ElanRegistry\Exceptions\CarConcurrentModificationException;
 use ElanRegistry\Exceptions\CarDatabaseException;
 use ElanRegistry\Exceptions\ImageProcessingException;
@@ -212,7 +211,7 @@ class CarImageProcessor
     public function removeImage(object $carData, string $filename): bool
     {
         if (empty($filename)) {
-            throw new ImageProcessingException(CarErrorMessages::getMessage('image_filename_empty'));
+            throw new ImageProcessingException('No image was specified for removal.');
         }
 
         $currentImages = [];
@@ -235,7 +234,7 @@ class CarImageProcessor
 
         $imageJson = empty($currentImages) ? '' : json_encode($currentImages);
         if ($imageJson === false) {
-            throw new ImageProcessingException(CarErrorMessages::getMessage('image_encoding_failed'));
+            throw new ImageProcessingException('Unable to process car images. Please try again or contact support.');
         }
 
         $cas = $this->repo->updateImage((int) $carData->id, $imageJson, $carData->image);

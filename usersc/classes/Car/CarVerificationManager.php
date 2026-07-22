@@ -6,7 +6,6 @@ namespace ElanRegistry\Car;
 
 use DateTime;
 use ElanRegistry\AppConstants;
-use ElanRegistry\CarErrorMessages;
 use ElanRegistry\Exceptions\CarDatabaseException;
 use ElanRegistry\Exceptions\CarNotFoundException;
 use ElanRegistry\Exceptions\CarValidationException;
@@ -38,15 +37,14 @@ class CarVerificationManager
     public function setVerificationCode(object $carData, string $verificationCode): bool
     {
         if (strlen($verificationCode) < 8) {
-            throw new CarValidationException(CarErrorMessages::getMessage('invalid_verification_code'));
+            throw new CarValidationException('The verification code format is not valid.');
         }
 
         try {
             $updateSuccess = $this->repo->updateVerificationCode((int) $carData->id, $verificationCode);
-        } catch (\Exception $e) {
-            $technicalMsg = CarErrorMessages::getTechnicalMessage('verification_code_failed', ['error' => $e->getMessage()]);
-            logger(0, LogCategories::LOG_CATEGORY_CAR_VERIFICATION, $technicalMsg);
-            throw new CarDatabaseException(CarErrorMessages::getMessage('verification_code_failed'));
+        } catch (\Throwable $e) {
+            logger(0, LogCategories::LOG_CATEGORY_CAR_VERIFICATION, 'Failed to set verification code: ' . $e->getMessage());
+            throw new CarDatabaseException('Verification code could not be updated. Please try again or contact support.');
         }
 
         if ($updateSuccess) {
@@ -54,9 +52,8 @@ class CarVerificationManager
             return true;
         }
 
-        $technicalMsg = CarErrorMessages::getTechnicalMessage('database_update_failed', ['error' => 'Repository returned false: ' . ($this->repo->errorString() ?: 'unknown')]);
-        logger(0, LogCategories::LOG_CATEGORY_CAR_VERIFICATION, $technicalMsg);
-        throw new CarDatabaseException(CarErrorMessages::getMessage('database_update_failed'));
+        logger(0, LogCategories::LOG_CATEGORY_CAR_VERIFICATION, 'Database update failed: Repository returned false: ' . ($this->repo->errorString() ?: 'unknown'));
+        throw new CarDatabaseException('Unable to save changes. Please try again.');
     }
 
     /**
@@ -72,10 +69,9 @@ class CarVerificationManager
 
         try {
             $updateSuccess = $this->repo->updateLastVerified((int) $carData->id, $currentDateTime);
-        } catch (\Exception $e) {
-            $technicalMsg = CarErrorMessages::getTechnicalMessage('verification_mark_failed', ['error' => $e->getMessage()]);
-            logger(0, LogCategories::LOG_CATEGORY_CAR_VERIFICATION, $technicalMsg);
-            throw new CarDatabaseException(CarErrorMessages::getMessage('verification_mark_failed'));
+        } catch (\Throwable $e) {
+            logger(0, LogCategories::LOG_CATEGORY_CAR_VERIFICATION, 'Failed to mark car as verified: ' . $e->getMessage());
+            throw new CarDatabaseException('Unable to mark car as verified. Please try again or contact support.');
         }
 
         if ($updateSuccess) {
@@ -83,9 +79,8 @@ class CarVerificationManager
             return true;
         }
 
-        $technicalMsg = CarErrorMessages::getTechnicalMessage('database_update_failed', ['error' => 'Repository returned false: ' . ($this->repo->errorString() ?: 'unknown')]);
-        logger(0, LogCategories::LOG_CATEGORY_CAR_VERIFICATION, $technicalMsg);
-        throw new CarDatabaseException(CarErrorMessages::getMessage('database_update_failed'));
+        logger(0, LogCategories::LOG_CATEGORY_CAR_VERIFICATION, 'Database update failed: Repository returned false: ' . ($this->repo->errorString() ?: 'unknown'));
+        throw new CarDatabaseException('Unable to save changes. Please try again.');
     }
 
     /**
@@ -103,15 +98,14 @@ class CarVerificationManager
 
         $parsedDate = DateTime::createFromFormat('Y-m-d', $soldDate);
         if (!$parsedDate || $parsedDate->format('Y-m-d') !== $soldDate) {
-            throw new CarValidationException(CarErrorMessages::getMessage('invalid_sold_date', 'user', ['date' => $soldDate]));
+            throw new CarValidationException('The sold date format is not valid. Please use YYYY-MM-DD format.');
         }
 
         try {
             $updateSuccess = $this->repo->updateSoldDate((int) $carData->id, $soldDate);
-        } catch (\Exception $e) {
-            $technicalMsg = CarErrorMessages::getTechnicalMessage('sold_mark_failed', ['error' => $e->getMessage()]);
-            logger(0, LogCategories::LOG_CATEGORY_CAR_SOLD, $technicalMsg);
-            throw new CarDatabaseException(CarErrorMessages::getMessage('sold_mark_failed'));
+        } catch (\Throwable $e) {
+            logger(0, LogCategories::LOG_CATEGORY_CAR_SOLD, 'Failed to mark car as sold: ' . $e->getMessage());
+            throw new CarDatabaseException('Unable to mark car as sold. Please try again or contact support.');
         }
 
         if ($updateSuccess) {
@@ -119,8 +113,7 @@ class CarVerificationManager
             return true;
         }
 
-        $technicalMsg = CarErrorMessages::getTechnicalMessage('database_update_failed', ['error' => 'Repository returned false: ' . ($this->repo->errorString() ?: 'unknown')]);
-        logger(0, LogCategories::LOG_CATEGORY_CAR_SOLD, $technicalMsg);
-        throw new CarDatabaseException(CarErrorMessages::getMessage('database_update_failed'));
+        logger(0, LogCategories::LOG_CATEGORY_CAR_SOLD, 'Database update failed: Repository returned false: ' . ($this->repo->errorString() ?: 'unknown'));
+        throw new CarDatabaseException('Unable to save changes. Please try again.');
     }
 }

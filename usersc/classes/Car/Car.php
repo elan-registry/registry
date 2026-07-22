@@ -8,7 +8,6 @@ use DB;
 use Exception;
 use Token;
 use ElanRegistry\AppConstants;
-use ElanRegistry\CarErrorMessages;
 use ElanRegistry\Exceptions\CarCreationException;
 use ElanRegistry\Exceptions\CarDatabaseException;
 use ElanRegistry\Exceptions\CarDeletionException;
@@ -293,12 +292,12 @@ class Car
 
         // Get factory info
         $this->_factory = null;
-        if (!is_null($this->_data->chassis) && !empty($this->_data->chassis)) {
+        if (!empty($this->_data->chassis)) {
             $factoryData = $repo->getFactoryInfo($this->_data->chassis, self::CHASSIS_SUFFIX_LENGTH);
             if ($factoryData !== null) {
-                if (!is_null($factoryData->suffix) && $factoryData->suffix !== "") {
+                if (!empty($factoryData->suffix)) {
                     $factoryData->suffix = $factoryData->suffix .
-                        " (" . FactoryDataFormatter::suffixToText($factoryData->suffix) . ")";
+                        " (" . CarRepository::suffixToText($factoryData->suffix) . ")";
                 }
                 $this->_factory = $factoryData;
             }
@@ -399,7 +398,7 @@ class Car
     public function removeImage(string $filename): bool
     {
         if (!$this->exists()) {
-            throw new CarNotFoundException(CarErrorMessages::getMessage('car_not_found'));
+            throw new CarNotFoundException('The requested car could not be found or may have already been removed.');
         }
 
         $result = $this->getImageProcessor()->removeImage($this->_data, $filename);
@@ -430,13 +429,12 @@ class Car
     {
         if (!Token::check($token)) {
             logger($actingUserId, LogCategories::LOG_CATEGORY_ACCESS_DENIED, 'Car deletion rejected: invalid CSRF token');
-            throw new CarDeletionException(CarErrorMessages::getMessage('csrf_token_invalid', 'admin', ['operation' => 'car deletion']));
+            throw new CarDeletionException('CSRF token validation failed - possible security issue.');
         }
 
         if (!$this->exists()) {
-            $technicalMsg = CarErrorMessages::getTechnicalMessage('car_not_found_delete', ['id' => 'unknown']);
-            logger(0, LogCategories::LOG_CATEGORY_CAR_DELETION, $technicalMsg);
-            throw new CarNotFoundException(CarErrorMessages::getMessage('car_not_found_delete'));
+            logger($actingUserId, LogCategories::LOG_CATEGORY_CAR_DELETION, 'Car not found - cannot delete car ID: unknown');
+            throw new CarNotFoundException('The car could not be found or may have already been removed.');
         }
 
         $this->getAdministrationService()->delete(
@@ -471,9 +469,8 @@ class Car
     public function transfer(int $newUserId, string $reason, string $operationType, int $actingUserId): true
     {
         if (!$this->exists()) {
-            $technicalMsg = CarErrorMessages::getTechnicalMessage('car_not_found_transfer', ['id' => 'unknown']);
-            logger(0, LogCategories::LOG_CATEGORY_CAR_TRANSFER, $technicalMsg);
-            throw new CarNotFoundException(CarErrorMessages::getMessage('car_not_found_transfer'));
+            logger($actingUserId, LogCategories::LOG_CATEGORY_CAR_TRANSFER, 'Car not found - cannot transfer car ID: unknown');
+            throw new CarNotFoundException('The car could not be found for ownership transfer.');
         }
 
         return $this->getAdministrationService()->transfer(
@@ -499,9 +496,8 @@ class Car
     public function merge(int $oldCarId, string $reason, int $actingUserId): bool
     {
         if (!$this->exists()) {
-            $technicalMsg = CarErrorMessages::getTechnicalMessage('car_not_found_merge', ['id' => 'target']);
-            logger(0, LogCategories::LOG_CATEGORY_CAR_MERGE, $technicalMsg);
-            throw new CarNotFoundException(CarErrorMessages::getMessage('car_not_found_merge'));
+            logger($actingUserId, LogCategories::LOG_CATEGORY_CAR_MERGE, 'Target car not found - cannot merge car ID: target');
+            throw new CarNotFoundException('The car could not be found for merging.');
         }
 
         $result = $this->getAdministrationService()->merge(
@@ -532,9 +528,8 @@ class Car
     public function setVerificationCode(string $verificationCode): bool
     {
         if (!$this->exists()) {
-            $technicalMsg = CarErrorMessages::getTechnicalMessage('car_not_found_verification', ['id' => 'unknown']);
-            logger(0, LogCategories::LOG_CATEGORY_CAR_VERIFICATION, $technicalMsg);
-            throw new CarNotFoundException(CarErrorMessages::getMessage('car_not_found_verification'));
+            logger(0, LogCategories::LOG_CATEGORY_CAR_VERIFICATION, 'Car not found - cannot set verification code for ID: unknown');
+            throw new CarNotFoundException('The car could not be found for verification.');
         }
 
         return $this->getVerificationManager()->setVerificationCode($this->_data, $verificationCode);
@@ -549,9 +544,8 @@ class Car
     public function markVerified(): bool
     {
         if (!$this->exists()) {
-            $technicalMsg = CarErrorMessages::getTechnicalMessage('car_not_found_verify', ['id' => 'unknown']);
-            logger(0, LogCategories::LOG_CATEGORY_CAR_VERIFICATION, $technicalMsg);
-            throw new CarNotFoundException(CarErrorMessages::getMessage('car_not_found_verify'));
+            logger(0, LogCategories::LOG_CATEGORY_CAR_VERIFICATION, 'Car not found - cannot mark as verified for ID: unknown');
+            throw new CarNotFoundException('The car could not be found for verification.');
         }
 
         return $this->getVerificationManager()->markVerified($this->_data);
@@ -567,9 +561,8 @@ class Car
     public function markSold(?string $soldDate = null): bool
     {
         if (!$this->exists()) {
-            $technicalMsg = CarErrorMessages::getTechnicalMessage('car_not_found_sold', ['id' => 'unknown']);
-            logger(0, LogCategories::LOG_CATEGORY_CAR_SOLD, $technicalMsg);
-            throw new CarNotFoundException(CarErrorMessages::getMessage('car_not_found_sold'));
+            logger(0, LogCategories::LOG_CATEGORY_CAR_SOLD, 'Car not found - cannot mark as sold for ID: unknown');
+            throw new CarNotFoundException('The car could not be found to mark as sold.');
         }
 
         return $this->getVerificationManager()->markSold($this->_data, $soldDate);
@@ -599,9 +592,8 @@ class Car
             }
             return null;
         } catch (Exception $e) {
-            $technicalMsg = CarErrorMessages::getTechnicalMessage('unexpected_error', ['error' => $e->getMessage()]);
-            logger(0, LogCategories::LOG_CATEGORY_CAR_VERIFICATION, $technicalMsg);
-            throw new CarDatabaseException(CarErrorMessages::getMessage('unexpected_error'));
+            logger(0, LogCategories::LOG_CATEGORY_CAR_VERIFICATION, 'Unexpected error: ' . $e->getMessage());
+            throw new CarDatabaseException('An unexpected error occurred. Please try again or contact support.');
         }
     }
 

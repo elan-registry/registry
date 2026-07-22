@@ -2,35 +2,36 @@
 
 declare(strict_types=1);
 
-use ElanRegistry\Car\FactoryDataFormatter;
+use ElanRegistry\Car\CarRepository;
 use PHPUnit\Framework\TestCase;
 
 use PHPUnit\Framework\Attributes\Group;
 
 /**
- * Unit tests for FactoryDataFormatter service class
+ * Unit tests for CarRepository::suffixToText()
  */
 #[Group('fast')]
-final class FactoryDataFormatterTest extends TestCase
+final class CarRepositorySuffixTest extends TestCase
 {
     public function testSuffixToTextReturnsCorrectDescriptionForA(): void
     {
-        $this->assertEquals('S4 FHC UK Market', FactoryDataFormatter::suffixToText('A'));
+        $this->assertEquals('S4 FHC UK Market', CarRepository::suffixToText('A'));
     }
 
     public function testSuffixToTextReturnsCorrectDescriptionForB(): void
     {
-        $this->assertEquals('S4 FHC Export', FactoryDataFormatter::suffixToText('B'));
+        $this->assertEquals('S4 FHC Export', CarRepository::suffixToText('B'));
     }
 
     public function testSuffixToTextHandlesLowercase(): void
     {
-        $this->assertEquals('S4 FHC UK Market', FactoryDataFormatter::suffixToText('a'));
+        $this->assertEquals('S4 FHC UK Market', CarRepository::suffixToText('a'));
     }
 
     public function testSuffixToTextReturnsUnknownForInvalidSuffix(): void
     {
-        $this->assertEquals('Unknown suffix: Z', FactoryDataFormatter::suffixToText('Z'));
+        $this->assertEquals('Unknown suffix: Z', CarRepository::suffixToText('Z'));
+        $this->assertEquals('Unknown suffix: X', CarRepository::suffixToText('x'));
     }
 
     public function testSuffixToTextAllValidSuffixes(): void
@@ -52,7 +53,7 @@ final class FactoryDataFormatterTest extends TestCase
         ];
 
         foreach ($expected as $suffix => $description) {
-            $this->assertEquals($description, FactoryDataFormatter::suffixToText($suffix), "Failed for suffix: $suffix");
+            $this->assertEquals($description, CarRepository::suffixToText($suffix), "Failed for suffix: $suffix");
         }
     }
 }
