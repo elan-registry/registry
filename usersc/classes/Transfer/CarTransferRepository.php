@@ -20,15 +20,7 @@ use ElanRegistry\LogCategories;
  */
 class CarTransferRepository
 {
-    private DB $db;
-
-    /**
-     * @param DB $db Database instance
-     */
-    public function __construct(DB $db)
-    {
-        $this->db = $db;
-    }
+    public function __construct(private DB $db) {}
 
     /**
      * Find a transfer request by ID.

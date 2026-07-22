@@ -28,9 +28,6 @@ class CarModel
 {
     private DB $db;
 
-    /**
-     * Construct and initialize database connection
-     */
     public function __construct()
     {
         $this->db = DB::getInstance();

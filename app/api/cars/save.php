@@ -45,11 +45,9 @@ if (!isset($settings->elan_image_thumbnail_sizes)) {
     $settings->elan_image_thumbnail_sizes = '100,300,768,1024,2048';
 }
 
-// A place to put some messages
 $errors     = [];
 $chassis_override_used = false; // Track if chassis validation override was used
 $cardetails = [];
-
 
 $targetFilePath = $abs_us_root . $us_url_root . $settings->elan_image_dir;
 $targetURL = $us_url_root . $settings->elan_image_dir;

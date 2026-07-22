@@ -23,8 +23,6 @@ final class CarDataTablesServiceTest extends TestCase
 
     /**
      * Invoke the private validateColumnName() method via reflection.
-     *
-     * @return string|false Validated column name or false if invalid
      */
     private function invokeValidateColumnName(string $columnName, string $tableName): string|false
     {

@@ -17,16 +17,7 @@ use DB;
  */
 
 class StatisticsDataService {
-    private DB $db;
-
-    /**
-     * Constructor for StatisticsDataService
-     *
-     * @param DB $database Database connection instance
-     */
-    public function __construct(DB $database) {
-        $this->db = $database;
-    }
+    public function __construct(private DB $db) {}
 
     /**
      * Execute database query and return results
