@@ -12,6 +12,11 @@ use ElanRegistry\LogCategories;
  * Exception thrown when a car operation is denied due to
  * insufficient permissions or authentication failures.
  *
+ * NOTE: No production code throws this directly after v2.28.0 removed the
+ * isLoggedIn() guard from Car methods. Retained for hierarchy completeness
+ * (provides the 403 slot in CarException) and to avoid breaking callers that
+ * catch CarPermissionException specifically.
+ *
  * @package ElanRegistry
  * @subpackage Exceptions
  * @since v2.14.0

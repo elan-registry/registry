@@ -128,7 +128,7 @@ final class CarDatabaseOperationsTest extends IntegrationTestCase
     public function testCarDeletionRemovesFromDatabase(): void
     {
         $car = new Car($this->testCarId);
-        $result = $car->delete('Integration test deletion', Token::generate());
+        $result = $car->delete('Integration test deletion', Token::generate(), $this->testUserId);
 
         $this->assertTrue($result);
 
@@ -144,7 +144,7 @@ final class CarDatabaseOperationsTest extends IntegrationTestCase
     public function testCarDeletionCreatesAuditTrail(): void
     {
         $car = new Car($this->testCarId);
-        $result = $car->delete('Integration test audit trail', Token::generate());
+        $result = $car->delete('Integration test audit trail', Token::generate(), $this->testUserId);
 
         $this->assertTrue($result);
 
@@ -173,7 +173,7 @@ final class CarDatabaseOperationsTest extends IntegrationTestCase
         $this->assertSame($this->testUserId, (int) $origRelation->user_id);
 
         // Transfer car
-        $result = $car->transfer($targetUserId, 'Integration test transfer', 'NEWOWNER');
+        $result = $car->transfer($targetUserId, 'Integration test transfer', 'NEWOWNER', $this->testUserId);
 
         $this->assertTrue($result);
 
@@ -194,7 +194,7 @@ final class CarDatabaseOperationsTest extends IntegrationTestCase
         $car = new Car($this->testCarId);
 
         // Transfer car to existing user ID 10 (FredHansen)
-        $result = $car->transfer(10, 'Integration test transfer history', 'NEWOWNER');
+        $result = $car->transfer(10, 'Integration test transfer history', 'NEWOWNER', $this->testUserId);
 
         $this->assertTrue($result);
 
@@ -218,7 +218,7 @@ final class CarDatabaseOperationsTest extends IntegrationTestCase
         ]);
 
         $car = new Car($this->testCarId);
-        $result = $car->merge($mergeCarId, 'Integration test merge');
+        $result = $car->merge($mergeCarId, 'Integration test merge', $this->testUserId);
 
         $this->assertTrue($result);
 

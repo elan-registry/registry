@@ -14,7 +14,7 @@ use ElanRegistry\Exceptions\CarNotFoundException;
 use ElanRegistry\Exceptions\CarValidationException;
 use ElanRegistry\LogCategories;
 use ElanRegistry\Owner;
-use Token;
+use ElanRegistry\Car\CarValidator;
 
 /**
  * CarAdministrationService - Administrative operations for cars
@@ -84,8 +84,6 @@ class CarAdministrationService
      * @param string $operationType Operation type (e.g., 'NEWOWNER', 'TRANSFER')
      * @param int $adminUserId ID of the admin performing the transfer
      * @param CarRepository $repo Repository for database operations
-     * @param callable $updateCallback Callback to perform car update (receives array of fields)
-     * @param callable $refreshCallback Callback to refresh car data after update (receives car ID)
      * @return true Always returns true; throws on any failure.
      * @throws CarValidationException If target user is invalid
      * @throws CarDatabaseException If database operation fails
@@ -96,9 +94,7 @@ class CarAdministrationService
         string $reason,
         string $operationType,
         int $adminUserId,
-        CarRepository $repo,
-        callable $updateCallback,
-        callable $refreshCallback
+        CarRepository $repo
     ): true {
         $targetUser = (new Owner($newUserId))->data();
         if (!$targetUser) {
@@ -112,64 +108,64 @@ class CarAdministrationService
         try {
             $repo->beginTransaction();
 
-            $updateFields = [
-                'id' => $carId,
-                'token' => Token::generate(),
-                'user_id' => $targetUser->id,
-                'email' => $targetUser->email ?? '',
-                'fname' => $targetUser->fname ?? '',
-                'lname' => $targetUser->lname ?? '',
+            $ownerFields = [
+                'mtime'     => date(AppConstants::DATETIME_FORMAT),
+                'user_id'   => $targetUser->id,
+                'email'     => $targetUser->email    ?? '',
+                'fname'     => $targetUser->fname    ?? '',
+                'lname'     => $targetUser->lname    ?? '',
                 'join_date' => $targetUser->join_date ?? date(AppConstants::DATETIME_FORMAT),
-                'city' => $targetUser->city ?? '',
-                'state' => $targetUser->state ?? '',
-                'country' => $targetUser->country ?? '',
-                'lat' => $targetUser->lat ?? null,
-                'lon' => $targetUser->lon ?? null,
-                'website' => $targetUser->website ?? ''
+                'city'      => $targetUser->city     ?? '',
+                'state'     => $targetUser->state    ?? '',
+                'country'   => $targetUser->country  ?? '',
+                'lat'       => $targetUser->lat      ?? null,
+                'lon'       => $targetUser->lon      ?? null,
+                'website'   => $targetUser->website  ?? '',
             ];
 
-            $updateSuccess = $updateCallback($updateFields);
+            // Validate owner fields before writing. $requireAll = false so only the
+            // fields present in $ownerFields are checked (email format, website scheme,
+            // lat/lon range, city/state/country normalization) without requiring car-
+            // intrinsic fields like chassis/model/year that are not being updated here.
+            $ownerFields = (new CarValidator())->validateAndSanitizeFields($ownerFields, false);
+
+            $updateSuccess = $repo->updateCar($carId, $ownerFields);
             if (!$updateSuccess) {
-                $technicalMsg = CarErrorMessages::getTechnicalMessage('database_update_failed', ['error' => 'Car update method returned false']);
+                $technicalMsg = CarErrorMessages::getTechnicalMessage('database_update_failed', ['error' => 'Repository returned false']);
                 logger($adminUserId, LogCategories::LOG_CATEGORY_CAR_TRANSFER, $technicalMsg);
                 throw new CarDatabaseException(CarErrorMessages::getAdminMessage('database_update_failed'));
             }
 
-            // Refresh car data within the transaction — InnoDB reads own uncommitted
-            // writes, so the refreshed fields reflect the update above in both
-            // standalone and outer-transaction mode.
-            $refreshedData = $refreshCallback($carId);
-
             // Insert history before commit so a failure rolls back the entire
             // ownership change atomically (standalone and outer-transaction alike).
             $historyFields = [
-                'operation' => $operationType,
-                'car_id' => $carId,
-                'comments' => $reason,
-                'ctime' => $refreshedData->ctime ?? date(AppConstants::DATETIME_FORMAT),
-                'mtime' => date(AppConstants::DATETIME_FORMAT),
-                'model' => $refreshedData->model ?? '',
-                'series' => $refreshedData->series ?? '',
-                'variant' => $refreshedData->variant ?? '',
-                'year' => $refreshedData->year ?? '',
-                'type' => $refreshedData->type ?? '',
-                'chassis' => $refreshedData->chassis ?? '',
-                'color' => $refreshedData->color ?? '',
-                'engine' => $refreshedData->engine ?? '',
-                'purchasedate' => $refreshedData->purchasedate ?? null,
-                'solddate' => $refreshedData->solddate ?? null,
-                'image' => $refreshedData->image ?? '',
-                'user_id' => $targetUser->id,
-                'email' => $targetUser->email ?? '',
-                'fname' => $targetUser->fname ?? '',
-                'lname' => $targetUser->lname ?? '',
-                'join_date' => $targetUser->join_date ?? null,
-                'city' => $targetUser->city ?? '',
-                'state' => $targetUser->state ?? '',
-                'country' => $targetUser->country ?? '',
-                'lat' => $targetUser->lat ?? null,
-                'lon' => $targetUser->lon ?? null,
-                'website' => $targetUser->website ?? ''
+                'operation'    => $operationType,
+                'car_id'       => $carId,
+                'comments'     => $reason,
+                'ctime'        => $carData->ctime ?? date(AppConstants::DATETIME_FORMAT),
+                'mtime'        => date(AppConstants::DATETIME_FORMAT),
+                'model'        => $carData->model ?? '',
+                'series'       => $carData->series ?? '',
+                'variant'      => $carData->variant ?? '',
+                'year'         => $carData->year ?? '',
+                'type'         => $carData->type ?? '',
+                'chassis'      => $carData->chassis ?? '',
+                'color'        => $carData->color ?? '',
+                'engine'       => $carData->engine ?? '',
+                'purchasedate' => $carData->purchasedate ?? null,
+                'solddate'     => $carData->solddate ?? null,
+                'image'        => $carData->image ?? '',
+                'user_id'      => $targetUser->id,
+                'email'        => $targetUser->email ?? '',
+                'fname'        => $targetUser->fname ?? '',
+                'lname'        => $targetUser->lname ?? '',
+                'join_date'    => $targetUser->join_date ?? null,
+                'city'         => $targetUser->city ?? '',
+                'state'        => $targetUser->state ?? '',
+                'country'      => $targetUser->country ?? '',
+                'lat'          => $targetUser->lat ?? null,
+                'lon'          => $targetUser->lon ?? null,
+                'website'      => $targetUser->website ?? ''
             ];
 
             if (!$repo->insertHistory($historyFields)) {
@@ -248,22 +244,22 @@ class CarAdministrationService
             }
 
             $historyFields = [
-                'operation' => self::OPERATION_MERGE,
-                'car_id' => $newCarId,
-                'comments' => "Car $oldChassis (ID: $oldCarId) was merged into car $newChassis (ID: $newCarId) by admin $adminUserId. Reason: $reason",
-                'ctime' => $targetCarData->ctime ?? date(AppConstants::DATETIME_FORMAT),
-                'mtime' => date(AppConstants::DATETIME_FORMAT),
-                'model' => $targetCarData->model ?? '',
-                'series' => $targetCarData->series ?? '',
-                'variant' => $targetCarData->variant ?? '',
-                'year' => $targetCarData->year ?? '',
-                'type' => $targetCarData->type ?? '',
-                'chassis' => $targetCarData->chassis ?? '',
-                'color' => $targetCarData->color ?? '',
-                'engine' => $targetCarData->engine ?? '',
+                'operation'    => self::OPERATION_MERGE,
+                'car_id'       => $newCarId,
+                'comments'     => "Car $oldChassis (ID: $oldCarId) was merged into car $newChassis (ID: $newCarId) by admin $adminUserId. Reason: $reason",
+                'ctime'        => $targetCarData->ctime ?? date(AppConstants::DATETIME_FORMAT),
+                'mtime'        => date(AppConstants::DATETIME_FORMAT),
+                'model'        => $targetCarData->model ?? '',
+                'series'       => $targetCarData->series ?? '',
+                'variant'      => $targetCarData->variant ?? '',
+                'year'         => $targetCarData->year ?? '',
+                'type'         => $targetCarData->type ?? '',
+                'chassis'      => $targetCarData->chassis ?? '',
+                'color'        => $targetCarData->color ?? '',
+                'engine'       => $targetCarData->engine ?? '',
                 'purchasedate' => $targetCarData->purchasedate ?? null,
-                'solddate' => $targetCarData->solddate ?? null,
-                'image' => $targetCarData->image ?? ''
+                'solddate'     => $targetCarData->solddate ?? null,
+                'image'        => $targetCarData->image ?? ''
             ];
 
             if (!$repo->insertHistory($historyFields)) {

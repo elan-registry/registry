@@ -130,12 +130,6 @@ class CarErrorMessages
                 'technical' => 'Target user not found - cannot transfer ownership to user ID: {user_id}'
             ],
             
-            'user_auth_required' => [
-                'user' => 'You must be logged in to perform this action.',
-                'admin' => 'User authentication required for this administrative operation.',
-                'technical' => 'User authentication required for {operation}'
-            ],
-            
             // Database operation errors
             'database_update_failed' => [
                 'user' => 'Unable to save changes. Please try again.',

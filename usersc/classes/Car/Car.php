@@ -13,7 +13,6 @@ use ElanRegistry\Exceptions\CarCreationException;
 use ElanRegistry\Exceptions\CarDatabaseException;
 use ElanRegistry\Exceptions\CarDeletionException;
 use ElanRegistry\Exceptions\CarNotFoundException;
-use ElanRegistry\Exceptions\CarPermissionException;
 use ElanRegistry\Exceptions\CarValidationException;
 use ElanRegistry\Exceptions\ImageProcessingException;
 use ElanRegistry\LogCategories;
@@ -23,7 +22,11 @@ use ElanRegistry\LogCategories;
  *
  * Delegates to focused service classes for validation, image processing,
  * database operations, verification, administration, and DataTables.
- * Maintains full backward compatibility with existing callers.
+ * Administration methods (delete, transfer, merge) require an explicit
+ * $actingUserId parameter (added v2.28.0) — callers are responsible for
+ * ensuring the acting user is authenticated before invoking those methods.
+ * All current callers enforce this via securePage()/requireAdminAjax()
+ * before resolving $actingUserId from currentUserId() or $user->data()->id.
  *
  * @author Jim Boone
  * @version 2.15.0
@@ -418,14 +421,15 @@ class Car
      *
      * @param string $reason Reason for deletion (for audit trail)
      * @param string $token CSRF token (required)
+     * @param int $actingUserId ID of the admin performing the action — caller MUST verify
+     *                         the user is authenticated and authorized before invoking
      * @return bool True if deletion was successful
      * @throws Exception If validation fails or database operation fails
      */
-    public function delete(string $reason, string $token): bool
+    public function delete(string $reason, string $token, int $actingUserId): bool
     {
-        global $user;
-
         if (!Token::check($token)) {
+            logger($actingUserId, LogCategories::LOG_CATEGORY_ACCESS_DENIED, 'Car deletion rejected: invalid CSRF token');
             throw new CarDeletionException(CarErrorMessages::getMessage('csrf_token_invalid', 'admin', ['operation' => 'car deletion']));
         }
 
@@ -435,14 +439,10 @@ class Car
             throw new CarNotFoundException(CarErrorMessages::getMessage('car_not_found_delete'));
         }
 
-        if (!isset($user) || !$user->isLoggedIn()) {
-            throw new CarDeletionException(CarErrorMessages::getMessage('user_auth_required', 'admin', ['operation' => 'car deletion']));
-        }
-
         $this->getAdministrationService()->delete(
             $this->_data,
             $reason,
-            currentUserId(),
+            $actingUserId,
             $this->getRepository()
         );
 
@@ -461,44 +461,29 @@ class Car
      * @param int $newUserId The user ID to transfer ownership to
      * @param string $reason Reason for transfer (for audit trail)
      * @param string $operationType Operation type for history
+     * @param int $actingUserId ID of the admin performing the action — caller MUST verify
+     *                         the user is authenticated and authorized before invoking
      * @return true Always returns true; throws on any failure.
      * @throws CarNotFoundException If the car does not exist
-     * @throws CarPermissionException If the user is not authenticated
+     * @throws CarValidationException If the target user does not exist
      * @throws CarDatabaseException If a database operation fails
      */
-    public function transfer(int $newUserId, string $reason = 'Administrative transfer', string $operationType = 'NEWOWNER'): true
+    public function transfer(int $newUserId, string $reason, string $operationType, int $actingUserId): true
     {
-        global $user;
-
         if (!$this->exists()) {
             $technicalMsg = CarErrorMessages::getTechnicalMessage('car_not_found_transfer', ['id' => 'unknown']);
             logger(0, LogCategories::LOG_CATEGORY_CAR_TRANSFER, $technicalMsg);
             throw new CarNotFoundException(CarErrorMessages::getMessage('car_not_found_transfer'));
         }
 
-        if (!isset($user) || !$user->isLoggedIn()) {
-            throw new CarPermissionException(CarErrorMessages::getMessage('user_auth_required', 'admin', ['operation' => 'car transfer']));
-        }
-
-        $result = $this->getAdministrationService()->transfer(
+        return $this->getAdministrationService()->transfer(
             $this->_data,
             $newUserId,
             $reason,
             $operationType,
-            currentUserId(),
-            $this->getRepository(),
-            function (array $fields): bool {
-                return $this->update($fields);
-            },
-            function (int $id): object {
-                if (!$this->find($id)) {
-                    throw new CarNotFoundException("Car ID {$id} not found after transfer");
-                }
-                return $this->data();
-            }
+            $actingUserId,
+            $this->getRepository()
         );
-
-        return $result;
     }
 
     /**
@@ -506,28 +491,24 @@ class Car
      *
      * @param int $oldCarId The car ID to merge into this car (will be deleted)
      * @param string $reason Reason for merge (for audit trail)
+     * @param int $actingUserId ID of the admin performing the action — caller MUST verify
+     *                         the user is authenticated and authorized before invoking
      * @return bool True if merge was successful
      * @throws Exception If validation fails or database operation fails
      */
-    public function merge(int $oldCarId, string $reason = 'Administrative merge'): bool
+    public function merge(int $oldCarId, string $reason, int $actingUserId): bool
     {
-        global $user;
-
         if (!$this->exists()) {
             $technicalMsg = CarErrorMessages::getTechnicalMessage('car_not_found_merge', ['id' => 'target']);
             logger(0, LogCategories::LOG_CATEGORY_CAR_MERGE, $technicalMsg);
             throw new CarNotFoundException(CarErrorMessages::getMessage('car_not_found_merge'));
         }
 
-        if (!isset($user) || !$user->isLoggedIn()) {
-            throw new CarPermissionException(CarErrorMessages::getMessage('user_auth_required', 'admin', ['operation' => 'car merge']));
-        }
-
         $result = $this->getAdministrationService()->merge(
             $this->_data,
             $oldCarId,
             $reason,
-            currentUserId(),
+            $actingUserId,
             $this->getRepository()
         );
 

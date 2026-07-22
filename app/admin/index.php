@@ -7,7 +7,7 @@ use ElanRegistry\Exceptions\CarDatabaseException;
 use ElanRegistry\Exceptions\CarDeletionException;
 use ElanRegistry\Exceptions\CarMergeException;
 use ElanRegistry\Exceptions\CarNotFoundException;
-use ElanRegistry\Exceptions\CarPermissionException;
+use ElanRegistry\Exceptions\CarValidationException;
 use ElanRegistry\Input as ElanInput;
 use ElanRegistry\LogCategories;
 use ElanRegistry\Owner;
@@ -197,16 +197,22 @@ if (ElanInput::existsPost()) {
                             : "User ID $user_id";
 
                         $reason = "Car was reassigned to $targetName (User ID: $user_id) by admin " . $currentUserId;
-                        $car->transfer((int) $user_id, $reason);
+                        $car->transfer((int) $user_id, $reason, 'NEWOWNER', $currentUserId);
 
                         $successes[] = "Car ID $car_id successfully reassigned to $targetName";
                         logger($currentUserId, LogCategories::LOG_CATEGORY_CAR_ACTIONS, "Car ID $car_id reassigned to User ID $user_id");
-                    } catch (CarPermissionException $e) {
-                        $errors[] = "Permission denied for car ID {$car_id}.";
-                        logger($currentUserId, LogCategories::LOG_CATEGORY_ACCESS_DENIED, "Car reassignment permission denied for Car ID {$car_id}: " . $e->getMessage());
+                    } catch (CarNotFoundException $e) {
+                        $errors[] = "Car ID $car_id could not be found.";
+                        logger($currentUserId, LogCategories::LOG_CATEGORY_CAR_TRANSFER_ERROR, "Car reassignment failed — car not found. " . $e->getMessage());
+                    } catch (CarValidationException $e) {
+                        $errors[] = $e->getUserMessage();
+                        logger($currentUserId, LogCategories::LOG_CATEGORY_CAR_TRANSFER_ERROR, "Car reassignment failed — validation error: " . $e->getMessage());
+                    } catch (CarDatabaseException $e) {
+                        $errors[] = 'Transfer failed due to a database error. Check the admin log for details.';
+                        logger($currentUserId, LogCategories::LOG_CATEGORY_CAR_TRANSFER_ERROR, "Car reassignment failed — DB error: " . $e->getMessage());
                     } catch (\Throwable $e) {
-                        $errors[] = 'Transfer failed. Please try again.';
-                        logger($currentUserId, LogCategories::LOG_CATEGORY_CAR_TRANSFER_ERROR, "Car reassignment failed for Car ID $car_id: " . $e->getMessage());
+                        $errors[] = 'Transfer failed due to an unexpected error. Check the admin log for details.';
+                        logger($currentUserId, LogCategories::LOG_CATEGORY_CAR_TRANSFER_ERROR, "Car reassignment unexpected error [" . get_class($e) . "]: " . $e->getMessage());
                     }
                     break;
 
@@ -274,7 +280,7 @@ if (ElanInput::existsPost()) {
                     }
 
                     try {
-                        (new Car($new_car_id))->merge($old_car_id, $reason[0]);
+                        (new Car($new_car_id))->merge($old_car_id, $reason[0], $currentUserId);
                         $successes[] = $mergeComment;
                         logger($currentUserId, LogCategories::LOG_CATEGORY_CAR_MERGE, $mergeComment);
                     } catch (CarNotFoundException $e) {
@@ -315,7 +321,7 @@ if (ElanInput::existsPost()) {
                             break;
                         }
                         $chassis = $car->data()->chassis;
-                        $car->delete($reason, $token);
+                        $car->delete($reason, $token, $currentUserId);
                         $successes[] = "Car ID $car_id ($chassis) has been permanently deleted";
                     } catch (CarNotFoundException $e) {
                         // Race: car deleted between the exists() check and delete().
@@ -323,7 +329,7 @@ if (ElanInput::existsPost()) {
                             "Car ID $car_id not found during deletion attempt");
                         $errors[] = "Car ID $car_id not found";
                     } catch (CarDeletionException | CarDatabaseException $e) {
-                        // CarAdministrationService::delete() logs technical detail before throwing.
+                        // Car::delete() logs CSRF failures; CarAdministrationService::delete() logs DB failures.
                         $errors[] = "Failed to delete car. Check the system log for details.";
                     } catch (\Throwable $e) {
                         logger($currentUserId, LogCategories::LOG_CATEGORY_CAR_DELETION,

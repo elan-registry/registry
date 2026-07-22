@@ -133,7 +133,7 @@ All exception classes are in the `ElanRegistry\Exceptions` namespace:
 - `CarNotFoundException` - Car ID not found (404)
 - `CarValidationException` - Invalid car data (422)
 - `CarDatabaseException` - Database operation failures (500)
-- `CarPermissionException` - Permission/auth denied (403)
+- `CarPermissionException` - Permission/auth denied (403) *(no production code throws this post-v2.28.0; retained for hierarchy completeness)*
 - `CarCreationException` - Car creation failures (500)
 - `CarDeletionException` - Car deletion failures (500)
 - `CarMergeException` - Car merge failures (500)
@@ -146,7 +146,7 @@ All exception classes are in the `ElanRegistry\Exceptions` namespace:
 | Car ID not found in database | CarNotFoundException | User tries to edit car that was deleted |
 | Validation of user input fails | CarValidationException | Invalid chassis format, missing required field |
 | Database query/operation fails | CarDatabaseException | INSERT fails, UPDATE fails, deadlock |
-| User lacks permission | CarPermissionException | Non-owner trying to edit someone else's car |
+| User lacks permission | CarPermissionException | Non-owner trying to edit someone else's car *(unthrown post-v2.28.0 — auth gates moved to callers; class retained for hierarchy)* |
 | Car creation fails | CarCreationException | Cannot create car due to validation or database issue |
 | Car deletion fails | CarDeletionException | Cannot delete car, foreign key constraint |
 | Car merge operation fails | CarMergeException | Cannot merge duplicate cars |
