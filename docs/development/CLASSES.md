@@ -739,9 +739,6 @@ use ElanRegistry\Documentation\DocumentPortalTemplate;
 // Breadcrumb derived from a nav section
 echo DocumentPortalTemplate::renderBreadcrumb('guides', $us_url_root, $title, 'fa-car');
 
-// Breadcrumb from explicit items
-echo DocumentPortalTemplate::renderBreadcrumbFromItems($breadcrumb);
-
 // Card grid for an index page
 echo DocumentPortalTemplate::renderDocumentCardGrid($cards);
 ```

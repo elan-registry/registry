@@ -235,6 +235,48 @@ final class TransferEmailServiceTest extends TestCase
     }
 
     /**
+     * sendResponse() approved path skips the previous-owner notification when
+     * $previousOwnerId is null — the guard in sendPreviousOwnerNotification() returns
+     * false early to avoid emailing the new owner (who now holds $carData->user_id).
+     * Mailer must be called exactly once (requester only).
+     */
+    public function testSendResponseApprovedWithNullPreviousOwnerIdSkipsPreviousOwnerNotification(): void
+    {
+        $db      = $this->createFoundMockDb($this->makeTransferRow(), $this->makeCarRow());
+        $attempt = 0;
+        $mailer  = function () use (&$attempt): bool {
+            $attempt++;
+            return true;
+        };
+
+        $service = new TransferEmailService($db, $mailer);
+        $result  = $service->sendResponse(1, true, '', null);
+
+        $this->assertTrue($result);
+        $this->assertSame(1, $attempt, 'Mailer must be called only for requester; previous-owner notification must be skipped');
+    }
+
+    /**
+     * sendResponse() approved path skips the previous-owner notification when
+     * $previousOwnerId is 0 (int cast of NULL user_id from DB). Same guard as null case.
+     */
+    public function testSendResponseApprovedWithZeroPreviousOwnerIdSkipsPreviousOwnerNotification(): void
+    {
+        $db      = $this->createFoundMockDb($this->makeTransferRow(), $this->makeCarRow());
+        $attempt = 0;
+        $mailer  = function () use (&$attempt): bool {
+            $attempt++;
+            return true;
+        };
+
+        $service = new TransferEmailService($db, $mailer);
+        $result  = $service->sendResponse(1, true, '', 0);
+
+        $this->assertTrue($result);
+        $this->assertSame(1, $attempt, 'Mailer must be called only for requester; previous-owner notification must be skipped when previousOwnerId is 0');
+    }
+
+    /**
      * sendResponse() denied path uses $carData->user_id as the previous-owner lookup
      * when $previousOwnerId is null. Verifies the mailer is called exactly twice.
      */

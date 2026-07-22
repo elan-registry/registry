@@ -66,6 +66,12 @@ Header always set Permissions-Policy "geolocation=(), camera=(), microphone=(), 
 
 RewriteEngine On
 
+RewriteRule ^@backup/ - [F,L]
+RewriteRule ^db-backups/ - [F,L]
+RewriteRule ^node_modules/ - [F,L]
+RewriteRule ^tests/ - [F,L]
+RewriteRule ^SQL/ - [F,L]
+RewriteRule ^FIX/(?!index\.php$|[0-9]+-.*\.php$|[A-Za-z]+-.*\.php$) - [F,L]
 RewriteRule ^vendor/ - [F,L]
 RewriteRule ^backups/ - [F,L]
 
