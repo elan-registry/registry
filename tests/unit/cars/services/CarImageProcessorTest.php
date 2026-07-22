@@ -20,7 +20,7 @@ final class CarImageProcessorTest extends TestCase
 
     protected function setUp(): void
     {
-        $this->processor = new CarImageProcessor($this->createMock(CarRepository::class));
+        $this->processor = new CarImageProcessor($this->createStub(CarRepository::class));
     }
 
     // ============================================================
