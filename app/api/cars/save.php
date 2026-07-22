@@ -47,7 +47,6 @@ if (!isset($settings->elan_image_thumbnail_sizes)) {
 
 // A place to put some messages
 $errors     = [];
-$successes  = [];
 $chassis_override_used = false; // Track if chassis validation override was used
 $cardetails = [];
 
@@ -291,15 +290,12 @@ switch ($action) {
  */
 function updateCar(array &$cardetails, array &$errors): void
 {
-    global $successes;
     global $user;
 
     try {
         $car = new Car();
 
         $car->update($cardetails);
-        $successes[] = 'Update Car ID: ' . $car->data()->id;
-        $successes[] = 'Update BY ID: ' . $car->data()->user_id;
     } catch (CarValidationException $e) {
         logger($user->data()->id, LogCategories::LOG_CATEGORY_VALIDATION_ERROR, 'Car Update Validation Error: ' . $e->getMessage());
         $errors[] = $e->getUserMessage();
@@ -320,15 +316,12 @@ function updateCar(array &$cardetails, array &$errors): void
  */
 function addCar(array &$cardetails, array &$errors): void
 {
-    global $successes;
     global $user;
-    
+
     try {
         $car = new Car();
 
         $car->create($cardetails);
-        $successes[] = 'Add Car ID: ' . $car->data()->id;
-        $successes[] = 'Added by User ID: ' . $car->data()->user_id;
         $cardetails['id'] = $car->data()->id;
     } catch (CarValidationException $e) {
         logger($user->data()->id, LogCategories::LOG_CATEGORY_VALIDATION_ERROR, 'Car Creation Validation Error: ' . $e->getMessage());
@@ -353,7 +346,6 @@ function addCar(array &$cardetails, array &$errors): void
 function buildCarDetails(array &$cardetails, array &$errors, ?int $carId = null): void
 {
     global $user;
-    global $successes;
     global $db;
 
     // Get the combined user+profile
@@ -423,12 +415,9 @@ function buildCarDetails(array &$cardetails, array &$errors, ?int $carId = null)
  */
 function updateYear(array &$cardetails, array &$errors): void
 {
-    global $successes;
-
     $year = Input::raw('year');
     if ($year !== null && $year !== '') {
         $cardetails['year'] = $year;
-        $successes[] = 'Year: ' . htmlspecialchars($year, ENT_QUOTES, 'UTF-8');
     } else {
         $errors[] = "Please select Year";
     }
@@ -443,7 +432,7 @@ function updateYear(array &$cardetails, array &$errors): void
  */
 function updateModel(array &$cardetails, array &$errors): void
 {
-    global $successes, $user;
+    global $user;
 
     $model = Input::raw('model');
     if ($model !== null && $model !== '') {
@@ -455,8 +444,6 @@ function updateModel(array &$cardetails, array &$errors): void
             logger((int)$user->data()->id, LogCategories::LOG_CATEGORY_VALIDATION_ERROR, 'updateModel: invalid model string: "' . $model . '": ' . $e->getMessage());
             return;
         }
-
-        $successes[] = 'Model: ' . htmlspecialchars($model, ENT_QUOTES, 'UTF-8');
     } else {
         $errors[] = "Please select Model";
     }
@@ -471,8 +458,8 @@ function updateModel(array &$cardetails, array &$errors): void
  */
 function updateChassis(array &$cardetails, array &$errors): void
 {
-    global $successes, $chassis_override_used, $user;
-    
+    global $chassis_override_used, $user;
+
     // Check if validation override is enabled
     // Checkbox only sends value when checked, so check if parameter exists and has value '1'
     $chassisOverrideRaw = Input::raw('chassis_override');
@@ -501,8 +488,6 @@ function updateChassis(array &$cardetails, array &$errors): void
         // Handle validation result
         if ($result['valid']) {
             $cardetails['chassis_override'] = $result['override_used'] ? 1 : 0;
-            $label = htmlspecialchars($cardetails['chassis'], ENT_QUOTES, 'UTF-8');
-            $successes[] = 'Chassis: ' . $label . ($result['override_used'] ? ' (Override used)' : '');
             if ($result['override_used']) {
                 $chassis_override_used = true; // Track that override was used for comments
             }
@@ -525,7 +510,6 @@ function updateColor(array &$cardetails): void
     $color = Input::raw('color');
     if ($color !== null && $color !== '') {
         $cardetails['color'] = $color;
-        $successes[] = 'Color: ' . htmlspecialchars($color, ENT_QUOTES, 'UTF-8');
     } else {
         $cardetails['color'] = null;
     }
@@ -542,7 +526,6 @@ function updateEngine(array &$cardetails): void
     $engine = Input::raw('engine');
     if ($engine !== null && $engine !== '') {
         $cardetails['engine'] = str_replace(" ", "", strtoupper(trim($engine)));
-        $successes[] = 'Engine: ' . htmlspecialchars($cardetails['engine'], ENT_QUOTES, 'UTF-8');
     } else {
         $cardetails['engine'] = null;
     }
@@ -565,7 +548,6 @@ function updatePurchasedate(array &$cardetails, array &$errors): void
             return;
         }
         $cardetails['purchasedate'] = $raw;
-        $successes[] = 'Purchase Date: ' . $raw;
     } else {
         $cardetails['purchasedate'] = null;
     }
@@ -588,7 +570,6 @@ function updateSolddate(array &$cardetails, array &$errors): void
             return;
         }
         $cardetails['solddate'] = $raw;
-        $successes[] = 'Sold Date: ' . $raw;
     } else {
         $cardetails['solddate'] = null;
     }
@@ -615,7 +596,6 @@ function updateWebsite(array &$cardetails, array &$errors): void
             return;
         }
         $cardetails['website'] = $website;
-        $successes[] = 'Website: ' . htmlspecialchars($website, ENT_QUOTES, 'UTF-8');
     } else {
         $cardetails['website'] = null;
     }
@@ -629,13 +609,12 @@ function updateWebsite(array &$cardetails, array &$errors): void
  */
 function updateComments(array &$cardetails): void
 {
-    global $successes, $chassis_override_used;
-    
+    global $chassis_override_used;
+
     // Update 'comments'
     $comments = Input::raw('comments');
     if ($comments !== null && $comments !== '') {
         $cardetails['comments'] = $comments;
-        $successes[] = 'Comments: Updated';
     } else {
         $cardetails['comments'] = null;
     }
@@ -697,7 +676,6 @@ function buildImageDetails(array &$cardetails): void
 function uploadImages(array &$cardetails, array &$errors): void
 {
     global $targetFilePath;
-    global $successes;
     global $user;
     global $settings;
 
@@ -711,7 +689,6 @@ function uploadImages(array &$cardetails, array &$errors): void
 
     // Do I have any new files?
     if (!isset($_FILES['file']['name'][0]) || $_FILES['file']['name'][0] == 'blob') {
-        $successes[] = 'No image';
         if (empty($cardetails['id'])) {
             // New car with no uploaded files: clear any phantom filenames that
             // buildImageDetails() may have written from the filenames POST param.
@@ -788,8 +765,6 @@ function uploadImages(array &$cardetails, array &$errors): void
                 $newFileName = CarImageProcessor::generateSecureFilename($extension);
 
                 if (move_uploaded_file($tempFile, $filePath . $newFileName)) {
-                    $successes[] = "Photo uploaded: " . $name;
-
                     //  Create resized images
                     $fileinfo = pathinfo($filePath . $newFileName);
                     $filename = $fileinfo['filename'];
@@ -815,9 +790,7 @@ function uploadImages(array &$cardetails, array &$errors): void
                         }
                     }
                     
-                    if ($resizeSuccess) {
-                        $successes[] = "Image resize: Success";
-                    } else {
+                    if (!$resizeSuccess) {
                         $errors[] = "Image resize: Failed";
                     }
                     arrayReplaceValue($requestedOrder, $name, $newFileName);

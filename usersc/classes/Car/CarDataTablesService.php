@@ -173,7 +173,7 @@ class CarDataTablesService
      * @param string $tableName Table name for context
      * @return string|false Validated column name or false if invalid
      */
-    public function validateColumnName(string $columnName, string $tableName): string|false
+    private function validateColumnName(string $columnName, string $tableName): string|false
     {
         if (!isset(self::ALLOWED_COLUMNS[$tableName])) {
             return false;

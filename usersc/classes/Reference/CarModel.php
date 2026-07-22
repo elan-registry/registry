@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace ElanRegistry\Reference;
 
 use DB;
+use ElanRegistry\Exceptions\CarValidationException;
 
 /**
  * CarModel - Reference Data for Lotus Elan Model Definitions
@@ -40,7 +41,7 @@ class CarModel
      *
      * @param int $year Production year (1963-1974)
      * @return array<object> Array of model objects ordered by series
-     * @throws \Exception If year is outside valid range
+     * @throws CarValidationException If year is outside valid range
      *
      * Query: WHERE year_available_from <= year AND year_available_to >= year
      *
@@ -51,7 +52,7 @@ class CarModel
     public function getAvailableInYear(int $year): array
     {
         if ($year < 1963 || $year > 1974) {
-            throw new \Exception("Year must be between 1963 and 1974, got {$year}");
+            throw new CarValidationException("Year must be between 1963 and 1974, got {$year}");
         }
 
         return $this->db->query(
@@ -133,7 +134,7 @@ class CarModel
      *
      * @param int $year Production year (1963-1974)
      * @return array<string> Array of series names (S1, S2, S3, S4, Sprint, +2, etc.)
-     * @throws \Exception If year is outside valid range
+     * @throws CarValidationException If year is outside valid range
      *
      * Query: SELECT DISTINCT series_normalized
      * WHERE year_available_from <= year AND year_available_to >= year
@@ -145,7 +146,7 @@ class CarModel
     public function getSeriesInYear(int $year): array
     {
         if ($year < 1963 || $year > 1974) {
-            throw new \Exception("Year must be between 1963 and 1974, got {$year}");
+            throw new CarValidationException("Year must be between 1963 and 1974, got {$year}");
         }
 
         $results = $this->db->query(

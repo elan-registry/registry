@@ -514,7 +514,7 @@ class BackupManager {
             // Get table structure
             $createResult = $this->db->query("SHOW CREATE TABLE `{$tableName}`");
             if ($createResult->count() === 0) {
-                ($this->logger)(1, 'BackupWarning', "Table {$tableName} not found during backup");
+                ($this->logger)(1, LogCategories::LOG_CATEGORY_BACKUP_MANAGER, "Table {$tableName} not found during backup");
                 return "-- Warning: Table {$tableName} not found\n\n";
             }
 

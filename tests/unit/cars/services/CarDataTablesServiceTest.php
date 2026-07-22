@@ -21,67 +21,78 @@ final class CarDataTablesServiceTest extends TestCase
         $this->service = new CarDataTablesService();
     }
 
+    /**
+     * Invoke the private validateColumnName() method via reflection.
+     *
+     * @return string|false Validated column name or false if invalid
+     */
+    private function invokeValidateColumnName(string $columnName, string $tableName): string|false
+    {
+        $method = new ReflectionMethod(CarDataTablesService::class, 'validateColumnName');
+        return $method->invoke($this->service, $columnName, $tableName);
+    }
+
     // ============================================================
     // validateColumnName tests
     // ============================================================
 
     public function testValidateColumnNameAcceptsValidCarsColumn(): void
     {
-        $result = $this->service->validateColumnName('chassis', 'cars');
+        $result = $this->invokeValidateColumnName('chassis', 'cars');
         $this->assertEquals('chassis', $result);
     }
 
     public function testValidateColumnNameAcceptsValidFactoryColumn(): void
     {
-        $result = $this->service->validateColumnName('serial', 'elan_factory_info');
+        $result = $this->invokeValidateColumnName('serial', 'elan_factory_info');
         $this->assertEquals('serial', $result);
     }
 
     public function testValidateColumnNameRejectsInvalidColumn(): void
     {
-        $result = $this->service->validateColumnName('password', 'cars');
+        $result = $this->invokeValidateColumnName('password', 'cars');
         $this->assertFalse($result);
     }
 
     public function testValidateColumnNameRejectsInvalidTable(): void
     {
-        $result = $this->service->validateColumnName('id', 'users');
+        $result = $this->invokeValidateColumnName('id', 'users');
         $this->assertFalse($result);
     }
 
     public function testValidateColumnNameRejectsSqlInjection(): void
     {
-        $result = $this->service->validateColumnName('id; DROP TABLE cars', 'cars');
+        $result = $this->invokeValidateColumnName('id; DROP TABLE cars', 'cars');
         $this->assertFalse($result);
     }
 
     public function testValidateColumnNameRejectsRemovedModifiedByColumn(): void
     {
-        $result = $this->service->validateColumnName('ModifiedBy', 'cars');
+        $result = $this->invokeValidateColumnName('ModifiedBy', 'cars');
         $this->assertFalse($result);
     }
 
     public function testValidateColumnNameRejectsEmail(): void
     {
-        $result = $this->service->validateColumnName('email', 'cars');
+        $result = $this->invokeValidateColumnName('email', 'cars');
         $this->assertFalse($result);
     }
 
     public function testValidateColumnNameRejectsLname(): void
     {
-        $result = $this->service->validateColumnName('lname', 'cars');
+        $result = $this->invokeValidateColumnName('lname', 'cars');
         $this->assertFalse($result);
     }
 
     public function testValidateColumnNameRejectsVericode(): void
     {
-        $result = $this->service->validateColumnName('vericode', 'cars');
+        $result = $this->invokeValidateColumnName('vericode', 'cars');
         $this->assertFalse($result);
     }
 
     public function testValidateColumnNameRejectsLastVerified(): void
     {
-        $result = $this->service->validateColumnName('last_verified', 'cars');
+        $result = $this->invokeValidateColumnName('last_verified', 'cars');
         $this->assertFalse($result);
     }
 
