@@ -10,7 +10,7 @@ use ElanRegistry\LogCategories;
  * CarDatabaseException
  *
  * Exception thrown when car-related database operations fail.
- * Used for insert, update, delete, and transaction failures
+ * Used for query, insert, update, delete, and transaction failures
  * across car-related data access operations.
  *
  * @package ElanRegistry
