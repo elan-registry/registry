@@ -35,7 +35,7 @@ try {
         ApiResponse::notFound('User not found')
             ->withLogging(
                 $user->data()->id,
-                LogCategories::LOG_CATEGORY_OWNER_ACTIONS,
+                LogCategories::LOG_CATEGORY_OWNER_ERRORS,
                 "User details lookup failed: User ID {$userId} not found"
             )
             ->send();

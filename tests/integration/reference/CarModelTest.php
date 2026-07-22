@@ -135,7 +135,7 @@ class CarModelTest extends TestCase
      */
     public function testGetAvailableInYearThrowsForYearTooEarly(): void
     {
-        $this->expectException(\Exception::class);
+        $this->expectException(CarValidationException::class);
         $this->carModel->getAvailableInYear(1962);
     }
 
@@ -145,7 +145,7 @@ class CarModelTest extends TestCase
      */
     public function testGetAvailableInYearThrowsForYearTooLate(): void
     {
-        $this->expectException(\Exception::class);
+        $this->expectException(CarValidationException::class);
         $this->carModel->getAvailableInYear(1975);
     }
 
@@ -349,7 +349,7 @@ class CarModelTest extends TestCase
      */
     public function testGetSeriesInYearThrowsForInvalidYear(): void
     {
-        $this->expectException(\Exception::class);
+        $this->expectException(CarValidationException::class);
         $this->carModel->getSeriesInYear(1975);
     }
 
