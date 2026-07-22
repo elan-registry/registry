@@ -64,13 +64,13 @@ class TransferEmailService
         }
 
         $carInfo = (object)[
-            'id'      => $carData->id ?? 0,
-            'year'    => $carData->year ?? '',
-            'series'  => $carData->series ?? '',
-            'variant' => $carData->variant ?? '',
-            'chassis' => $carData->chassis ?? '',
-            'color'   => $carData->color ?? '',
-            'engine'  => $carData->engine ?? '',
+            'id'      => (int)($carData->id ?? 0),
+            'year'    => (string)($carData->year ?? ''),
+            'series'  => (string)($carData->series ?? ''),
+            'variant' => (string)($carData->variant ?? ''),
+            'chassis' => (string)($carData->chassis ?? ''),
+            'color'   => (string)($carData->color ?? ''),
+            'engine'  => (string)($carData->engine ?? ''),
         ];
 
         return compact('transferData', 'carData', 'carInfo');
@@ -288,15 +288,17 @@ class TransferEmailService
         try {
             ['transferData' => $transferData, 'carData' => $carData, 'carInfo' => $carInfo] = $ctx;
 
-            if ($isApproved && $previousOwnerId === null) {
-                // After Car::transfer() commits, $carData->user_id is already the new owner.
-                // Callers must always supply $previousOwnerId for approved transfers.
+            if ($isApproved && ($previousOwnerId === null || $previousOwnerId === 0)) {
+                // After Car::transfer() commits, $carData->user_id is the new owner.
+                // Callers must supply a valid $previousOwnerId for approved transfers; skip
+                // the notification rather than emailing the wrong person.
                 logger(0, LogCategories::LOG_CATEGORY_EMAIL_ERROR,
-                    "sendPreviousOwnerNotification: previousOwnerId is null for an approved transfer #"
+                    "sendPreviousOwnerNotification: no valid previousOwnerId for approved transfer #"
                     . ($ctx['transferData']->id ?? 'unknown')
-                    . " — falling back to car's current user_id which may now be the new owner");
+                    . " — skipping previous-owner notification");
+                return false;
             }
-            $lookupId = ($isApproved && $previousOwnerId) ? $previousOwnerId : dbInt($carData, 'user_id');
+            $lookupId = ($isApproved && $previousOwnerId > 0) ? $previousOwnerId : dbInt($carData, 'user_id');
             $previousOwner = (new Owner($lookupId))->data();
 
             if (!$previousOwner) {
