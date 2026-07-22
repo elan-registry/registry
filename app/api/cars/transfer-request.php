@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use ElanRegistry\ApiResponse;
+use ElanRegistry\Exceptions\CarException;
 use ElanRegistry\Exceptions\CarTransferException;
 use ElanRegistry\Input;
 use ElanRegistry\Car\CarValidator;
@@ -179,8 +180,8 @@ try {
         ->withLogging($userData->id, LogCategories::LOG_CATEGORY_CAR_TRANSFER, "Transfer request submitted for car ID {$existingCar->id}")
         ->send();
 
-} catch (CarTransferException $e) {
-    ApiResponse::error($e->getUserMessage(), 400)
+} catch (CarException $e) {
+    ApiResponse::error($e->getUserMessage(), $e->getHttpStatusCode())
         ->withLogging($logUserId, $e->getLogCategory(), 'Transfer request failed: ' . $e->getMessage())
         ->send();
 
