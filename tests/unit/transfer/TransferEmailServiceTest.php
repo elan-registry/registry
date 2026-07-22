@@ -22,23 +22,13 @@ final class TransferEmailServiceTest extends TestCase
      * Creates a mock DB whose query() always returns count=0 (transfer not found).
      * error() always returns false (no DB error).
      */
-    private function createMockDb(int $rowCount = 0): object
+    private function createMockDb(int $rowCount = 0): \DB
     {
-        return new class($rowCount) {
-            public function __construct(private int $rowCount) {}
-
-            public function query(string $sql, array $params = []): object
-            {
-                $count = $this->rowCount;
-                return new class($count) {
-                    public function __construct(private int $count) {}
-                    public function count(): int { return $this->count; }
-                    public function first(): mixed { return null; }
-                };
-            }
-
-            public function error(): bool { return false; }
-        };
+        $rows = array_fill(0, $rowCount, (object) []);
+        $db = $this->createStub(\DB::class);
+        $db->method('query')->willReturn(new \QueryResult($rows));
+        $db->method('error')->willReturn(false);
+        return $db;
     }
 
     /**
@@ -47,26 +37,17 @@ final class TransferEmailServiceTest extends TestCase
      * queries against `cars` return $carRow.
      * error() always returns false (no DB error).
      */
-    private function createFoundMockDb(object $transferRow, object $carRow): object
+    private function createFoundMockDb(object $transferRow, object $carRow): \DB
     {
-        return new class($transferRow, $carRow) {
-            public function __construct(
-                private object $transferRow,
-                private object $carRow,
-            ) {}
-
-            public function query(string $sql, array $params = []): object
-            {
-                $row = str_contains($sql, 'car_transfer_requests') ? $this->transferRow : $this->carRow;
-                return new class($row) {
-                    public function __construct(private object $row) {}
-                    public function count(): int { return 1; }
-                    public function first(): object { return $this->row; }
-                };
+        $db = $this->createStub(\DB::class);
+        $db->method('query')->willReturnCallback(
+            function (string $sql, array $params = []) use ($transferRow, $carRow): \QueryResult {
+                $row = str_contains($sql, 'car_transfer_requests') ? $transferRow : $carRow;
+                return new \QueryResult([$row]);
             }
-
-            public function error(): bool { return false; }
-        };
+        );
+        $db->method('error')->willReturn(false);
+        return $db;
     }
 
     private function makeTransferRow(array $overrides = []): object

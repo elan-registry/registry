@@ -97,6 +97,12 @@ class LogCategories
     public const LOG_CATEGORY_OWNER_ACTIONS = 'OwnerActions';
 
     /**
+     * Owner operation errors
+     * Used when owner lookup or profile operations fail
+     */
+    public const LOG_CATEGORY_OWNER_ERRORS = 'OwnerErrors';
+
+    /**
      * User deletion operations
      * Used when user accounts are deleted from the system
      */

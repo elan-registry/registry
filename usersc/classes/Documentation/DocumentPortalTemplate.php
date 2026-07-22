@@ -287,41 +287,6 @@ class DocumentPortalTemplate
     }
 
     /**
-     * Render a breadcrumb from a pre-built array of crumb items.
-     *
-     * Accepts a pre-built breadcrumb item array:
-     *   - Link crumb:   ['url' => '...', 'icon' => 'fas fa-home', 'text' => '...']
-     *   - Active crumb: ['active' => true, 'text' => '...']
-     *
-     * @param list<array{url?: string, icon?: string, text: string, active?: bool}> $items
-     */
-    public static function renderBreadcrumbFromItems(array $items): string
-    {
-        $html  = "<div class='mb-3'>";
-        $html .= "<nav aria-label='breadcrumb'>";
-        $html .= "<ol class='breadcrumb'>";
-
-        foreach ($items as $item) {
-            $text = htmlspecialchars($item['text'], ENT_QUOTES, 'UTF-8');
-            if (!empty($item['active'])) {
-                $html .= "<li class='breadcrumb-item active text-muted' aria-current='page'>{$text}</li>";
-            } else {
-                $url  = htmlspecialchars($item['url'] ?? '', ENT_QUOTES, 'UTF-8');
-                $icon = isset($item['icon']) && $item['icon'] !== ''
-                    ? "<i class='" . htmlspecialchars($item['icon'], ENT_QUOTES, 'UTF-8') . "'></i> "
-                    : '';
-                $html .= "<li class='breadcrumb-item'><a href='{$url}' class='text-primary'>{$icon}{$text}</a></li>";
-            }
-        }
-
-        $html .= "</ol>";
-        $html .= "</nav>";
-        $html .= "</div>";
-
-        return $html;
-    }
-
-    /**
      * Render a breadcrumb navigation row for a page, derived from its nav section.
      *
      * Pages declare their section key and (optionally) their own title and icon;

@@ -272,30 +272,4 @@ class ChassisValidator
             'description' => 'A-K (excluding I)'
         ];
     }
-
-    /**
-     * Get validation rules summary for display
-     * 
-     * @return array<string, array<int|string, string>>
-     */
-    public static function getValidationRules(): array 
-    {
-        return [
-            'race_cars' => [
-                '1963' => '26-R-xx format only',
-                '1964' => '26-R-xx or 26-S2-xx formats',
-                '1965-1966' => '26-S2-xx format only',
-                'other_years' => '26-R-xx format'
-            ],
-            'production_cars' => [
-                'pre_1970' => '4 digits numeric only',
-                '1970' => '5 characters (legacy) or 11 characters (YYMMBBXXXXC)',
-                'post_1970' => '11 characters YYMMBBXXXXC format'
-            ],
-            'letter_codes' => [
-                'elan' => 'A, B, C, D, E, F, G, H, J, K (excluding I)',
-                'plus2' => 'L, M, N only'
-            ]
-        ];
-    }
 }

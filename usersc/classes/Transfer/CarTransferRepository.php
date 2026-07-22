@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace ElanRegistry\Transfer;
 
 use DB;
+use ElanRegistry\Exceptions\CarDatabaseException;
 use ElanRegistry\LogCategories;
 
 /**
@@ -19,26 +20,14 @@ use ElanRegistry\LogCategories;
  */
 class CarTransferRepository
 {
-    /**
-     * Production always receives DB::getInstance(); declared as object so test
-     * doubles (which implement query() only) can be injected without a type error.
-     */
-    private object $db;
-
-    /**
-     * @param object $db Database instance (accepts test doubles; production always passes DB)
-     */
-    public function __construct(object $db)
-    {
-        $this->db = $db;
-    }
+    public function __construct(private DB $db) {}
 
     /**
      * Find a transfer request by ID.
      *
      * @param int $id Transfer request ID
      * @return object|null Transfer request data object or null if not found
-     * @throws \RuntimeException on database error
+     * @throws CarDatabaseException on database error
      */
     public function findById(int $id): ?object
     {
@@ -48,7 +37,7 @@ class CarTransferRepository
         );
         if ($this->db->error()) {
             logger(0, LogCategories::LOG_CATEGORY_DATABASE_ERROR, "CarTransferRepository::findById failed for id=$id: " . $this->db->errorString());
-            throw new \RuntimeException('Database error looking up transfer request');
+            throw new CarDatabaseException('Database error looking up transfer request');
         }
         return $result->count() > 0 ? $result->first() : null;
     }
@@ -58,7 +47,7 @@ class CarTransferRepository
      *
      * @param int $id Transfer request ID
      * @return object|null Object with id and requested_by_user_id, or null if not found
-     * @throws \RuntimeException on database error
+     * @throws CarDatabaseException on database error
      */
     public function findPendingById(int $id): ?object
     {
@@ -68,7 +57,7 @@ class CarTransferRepository
         );
         if ($this->db->error()) {
             logger(0, LogCategories::LOG_CATEGORY_DATABASE_ERROR, "CarTransferRepository::findPendingById failed for id=$id: " . $this->db->errorString());
-            throw new \RuntimeException('Database error looking up transfer request');
+            throw new CarDatabaseException('Database error looking up transfer request');
         }
         return $result->count() > 0 ? $result->first() : null;
     }
@@ -78,7 +67,7 @@ class CarTransferRepository
      *
      * @param int $id Transfer request ID
      * @return object|null Full transfer request row (ctr.*) plus car_id and current_owner_id aliases, or null if not found
-     * @throws \RuntimeException on database error
+     * @throws CarDatabaseException on database error
      */
     public function findPendingWithCarById(int $id): ?object
     {
@@ -91,7 +80,7 @@ class CarTransferRepository
         );
         if ($this->db->error()) {
             logger(0, LogCategories::LOG_CATEGORY_DATABASE_ERROR, "CarTransferRepository::findPendingWithCarById failed for id=$id: " . $this->db->errorString());
-            throw new \RuntimeException('Database error looking up transfer request');
+            throw new CarDatabaseException('Database error looking up transfer request');
         }
         return $result->count() > 0 ? $result->first() : null;
     }
@@ -106,7 +95,7 @@ class CarTransferRepository
      * @param int $carId Car ID
      * @param int $userId Requesting user ID
      * @return bool True if an active pending request exists
-     * @throws \RuntimeException on database error (fail-closed: does not silently permit duplicates)
+     * @throws CarDatabaseException on database error (fail-closed: does not silently permit duplicates)
      */
     public function hasPendingForCar(int $carId, int $userId): bool
     {
@@ -116,7 +105,7 @@ class CarTransferRepository
         );
         if ($this->db->error()) {
             logger(0, LogCategories::LOG_CATEGORY_DATABASE_ERROR, "CarTransferRepository::hasPendingForCar failed for car=$carId user=$userId: " . $this->db->errorString());
-            throw new \RuntimeException('Database error checking for pending transfer request');
+            throw new CarDatabaseException('Database error checking for pending transfer request');
         }
         return $result->count() > 0;
     }
@@ -125,7 +114,7 @@ class CarTransferRepository
      * Get all pending, non-expired transfer requests with car and user details.
      *
      * @return array<object> Array of transfer request objects with car and owner/requester fields
-     * @throws \RuntimeException on database error
+     * @throws CarDatabaseException on database error
      */
     public function getPendingWithCarAndUsers(): array
     {
@@ -143,7 +132,7 @@ class CarTransferRepository
         );
         if ($this->db->error()) {
             logger(0, LogCategories::LOG_CATEGORY_DATABASE_ERROR, 'CarTransferRepository::getPendingWithCarAndUsers failed: ' . $this->db->errorString());
-            throw new \RuntimeException('Database error loading pending transfer requests');
+            throw new CarDatabaseException('Database error loading pending transfer requests');
         }
         return $result->results();
     }
@@ -152,7 +141,7 @@ class CarTransferRepository
      * Get counts of today's completed and denied transfer requests, grouped by status.
      *
      * @return array<object> Array of objects with status and count fields
-     * @throws \RuntimeException on database error
+     * @throws CarDatabaseException on database error
      */
     public function getTodayStatusCounts(): array
     {
@@ -164,7 +153,7 @@ class CarTransferRepository
         );
         if ($this->db->error()) {
             logger(0, LogCategories::LOG_CATEGORY_DATABASE_ERROR, 'CarTransferRepository::getTodayStatusCounts failed: ' . $this->db->errorString());
-            throw new \RuntimeException('Database error loading today transfer stats');
+            throw new CarDatabaseException('Database error loading today transfer stats');
         }
         return $result->results();
     }
@@ -173,7 +162,7 @@ class CarTransferRepository
      * Count pending, non-expired transfer requests.
      *
      * @return int Number of pending requests
-     * @throws \RuntimeException on database error
+     * @throws CarDatabaseException on database error
      */
     public function countPending(): int
     {
@@ -182,7 +171,7 @@ class CarTransferRepository
         );
         if ($this->db->error()) {
             logger(0, LogCategories::LOG_CATEGORY_DATABASE_ERROR, 'CarTransferRepository::countPending failed: ' . $this->db->errorString());
-            throw new \RuntimeException('Database error counting pending transfer requests');
+            throw new CarDatabaseException('Database error counting pending transfer requests');
         }
         return $result->count() > 0 ? (int) $result->first()->count : 0;
     }
@@ -192,18 +181,18 @@ class CarTransferRepository
      *
      * @param array<string, mixed> $fields Field values
      * @return int New transfer request ID (always > 0)
-     * @throws \RuntimeException on insert failure or if the database returns no ID
+     * @throws CarDatabaseException on insert failure or if the database returns no ID
      */
     public function create(array $fields): int
     {
         if (!$this->db->insert('car_transfer_requests', $fields)) {
             logger(0, LogCategories::LOG_CATEGORY_DATABASE_ERROR, 'CarTransferRepository::create insert failed: ' . $this->db->errorString());
-            throw new \RuntimeException('Database error creating transfer request');
+            throw new CarDatabaseException('Database error creating transfer request');
         }
         $id = $this->db->lastId();
         if ($id <= 0) {
             logger(0, LogCategories::LOG_CATEGORY_DATABASE_ERROR, 'CarTransferRepository::create returned no ID after insert');
-            throw new \RuntimeException('Database error: no ID returned after creating transfer request');
+            throw new CarDatabaseException('Database error: no ID returned after creating transfer request');
         }
         return $id;
     }
@@ -226,7 +215,7 @@ class CarTransferRepository
      * @param TransferStatus $status New status
      * @param string $adminNotes Admin notes to record
      * @return bool True if one or more rows were updated; false if no row matched (already processed)
-     * @throws \RuntimeException on database error
+     * @throws CarDatabaseException on database error
      */
     public function updateStatus(int $id, TransferStatus $status, string $adminNotes): bool
     {
@@ -246,7 +235,7 @@ class CarTransferRepository
 
         if ($this->db->error()) {
             logger(0, LogCategories::LOG_CATEGORY_DATABASE_ERROR, "CarTransferRepository::updateStatus failed for id=$id status={$status->value}: " . $this->db->errorString());
-            throw new \RuntimeException('Database error updating transfer request status');
+            throw new CarDatabaseException('Database error updating transfer request status');
         }
         return $result->count() > 0;
     }

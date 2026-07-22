@@ -80,8 +80,7 @@ if (!function_exists('processSettingsAutoCreation')) {
                     // Note: Column names cannot be parameterized in PDO, but $fieldName is validated above
                     // Using concatenation to avoid triggering SQL injection warnings
                     $selectSql = 'SELECT `' . $fieldName . '` FROM settings WHERE id = 1';
-                    // phpcs:ignore Generic.PHP.NoSilencedErrors.Discouraged
-                    $checkValue = @$db->query($selectSql);
+                    $checkValue = $db->query($selectSql);
                     if ($checkValue && $checkValue->count() > 0) {
                         $currentValue = $checkValue->first()->$fieldName;
                         if ($currentValue === null) {

@@ -48,12 +48,6 @@ final class CarRepositoryTest extends TestCase
         $this->assertIsInt($lastId);
     }
 
-    public function testGetDbReturnsDbInstance(): void
-    {
-        $db = $this->repo->getDb();
-        $this->assertInstanceOf(DB::class, $db);
-    }
-
     public function testTransactionMethodsDoNotThrow(): void
     {
         $this->repo->beginTransaction();
@@ -305,7 +299,7 @@ final class CarRepositoryTest extends TestCase
 
         $repo = new CarRepository($db);
 
-        $this->expectException(\RuntimeException::class);
+        $this->expectException(CarDatabaseException::class);
         $this->expectExceptionMessageMatches('/reassignCarsByUser failed/');
 
         $repo->reassignCarsByUser(42, 7);

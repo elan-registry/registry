@@ -77,16 +77,6 @@ class CarRepository
     }
 
     /**
-     * Find all cars
-     *
-     * @return array<object> Array of car data objects
-     */
-    public function findAll(): array
-    {
-        return $this->db->findAll('cars')->results();
-    }
-
-    /**
      * Insert a new car record
      *
      * @param array<string, mixed> $fields Field values
@@ -144,7 +134,7 @@ class CarRepository
      * @param int      $fromUserId Source user whose cars are being reassigned
      * @param int|null $toUserId   Target user, or null to clear ownership (user_id = NULL)
      * @return int                 Rows affected by the UPDATE (rows where user_id actually changed; 0 if no match or value already equal to target)
-     * @throws \RuntimeException   If the UPDATE fails
+     * @throws CarDatabaseException If the UPDATE fails
      */
     public function reassignCarsByUser(int $fromUserId, ?int $toUserId): int
     {
@@ -157,7 +147,7 @@ class CarRepository
             $target = $toUserId ?? 'NULL';
             $msg = "CarRepository::reassignCarsByUser failed (from={$fromUserId} to={$target}): " . $this->db->errorString();
             logger(0, LogCategories::LOG_CATEGORY_DATABASE_ERROR, $msg);
-            throw new \RuntimeException($msg);
+            throw new CarDatabaseException($msg);
         }
 
         return $this->db->count();
@@ -443,13 +433,4 @@ class CarRepository
         return $this->db->errorString();
     }
 
-    /**
-     * Get the underlying DB instance
-     *
-     * @return DB Database instance
-     */
-    public function getDb(): DB
-    {
-        return $this->db;
-    }
 }
