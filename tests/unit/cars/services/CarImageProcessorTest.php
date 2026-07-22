@@ -3,8 +3,8 @@
 declare(strict_types=1);
 
 use ElanRegistry\Car\CarImageProcessor;
+use ElanRegistry\Car\CarRepository;
 use ElanRegistry\Exceptions\CarConcurrentModificationException;
-use ElanRegistry\Exceptions\CarDatabaseException;
 use ElanRegistry\Exceptions\ImageProcessingException;
 use PHPUnit\Framework\TestCase;
 
@@ -20,7 +20,7 @@ final class CarImageProcessorTest extends TestCase
 
     protected function setUp(): void
     {
-        $this->processor = new CarImageProcessor();
+        $this->processor = new CarImageProcessor($this->createStub(CarRepository::class));
     }
 
     // ============================================================
@@ -60,70 +60,72 @@ final class CarImageProcessorTest extends TestCase
     }
 
     // ============================================================
-    // removeImage tests (requires mock DB)
+    // removeImage tests
     // ============================================================
-
-    /**
-     * Build a DB mock whose updateImage path returns the given outcome.
-     *
-     * removeImage() creates a CarRepository internally and calls updateImage(),
-     * which uses only query(), error(), and count().  Tests that exercise the
-     * update path must supply this mock instead of a real DB connection so the
-     * outcome is deterministic and independent of real DB state.
-     *
-     * @param bool $error      Whether the DB query should simulate a failure
-     * @param int  $rowsAffected  Rows reported by count() (1 = success, 0 = CAS conflict)
-     * @return \PHPUnit\Framework\MockObject\MockObject&DB
-     */
-    private function makeDbMockForUpdate(bool $error = false, int $rowsAffected = 1): object
-    {
-        $db = $this->createMock(DB::class);
-        $db->expects($this->once())->method('query')->willReturn(new QueryResult([]));
-        $db->method('error')->willReturn($error);
-        $db->method('count')->willReturn($rowsAffected);
-        return $db;
-    }
 
     public function testRemoveImageThrowsOnEmptyFilename(): void
     {
-        $this->expectException(ImageProcessingException::class);
+        $repo = $this->createMock(CarRepository::class);
+        $repo->expects($this->never())->method('updateImage');
+        $processor = new CarImageProcessor($repo);
 
+        $this->expectException(ImageProcessingException::class);
         $carData = (object) ['id' => 1, 'image' => '["test.jpg"]'];
-        $db = DB::getInstance();
-        $this->processor->removeImage($carData, '', $db);
+        $processor->removeImage($carData, '');
     }
 
     public function testRemoveImageReturnsFalseWhenImageNotFound(): void
     {
-        // Returns false before reaching the DB — no mock needed.
+        $repo = $this->createMock(CarRepository::class);
+        $repo->expects($this->never())->method('updateImage');
+        $processor = new CarImageProcessor($repo);
+
         $carData = (object) ['id' => 1, 'image' => '["other.jpg"]'];
-        $db = DB::getInstance();
-        $result = $this->processor->removeImage($carData, 'nonexistent.jpg', $db);
-        $this->assertFalse($result);
+        $this->assertFalse($processor->removeImage($carData, 'nonexistent.jpg'));
     }
 
     public function testRemoveImageReturnsTrueWhenFound(): void
     {
+        $repo = $this->createMock(CarRepository::class);
+        $repo->expects($this->once())->method('updateImage')->willReturn(true);
+        $processor = new CarImageProcessor($repo);
+
         $carData = (object) ['id' => 1, 'image' => '["test.jpg","other.jpg"]'];
-        $db = $this->makeDbMockForUpdate();
-        $result = $this->processor->removeImage($carData, 'test.jpg', $db);
+        $result = $processor->removeImage($carData, 'test.jpg');
         $this->assertTrue($result);
     }
 
     public function testRemoveImageUpdatesCarData(): void
     {
+        $repo = $this->createMock(CarRepository::class);
+        $repo->expects($this->once())->method('updateImage')->willReturn(true);
+        $processor = new CarImageProcessor($repo);
+
         $carData = (object) ['id' => 1, 'image' => '["test.jpg","other.jpg"]'];
-        $db = $this->makeDbMockForUpdate();
-        $this->processor->removeImage($carData, 'test.jpg', $db);
+        $processor->removeImage($carData, 'test.jpg');
         $this->assertEquals('["other.jpg"]', $carData->image);
     }
 
     public function testRemoveImageHandlesCsvFormat(): void
     {
+        $repo = $this->createMock(CarRepository::class);
+        $repo->expects($this->once())->method('updateImage')->willReturn(true);
+        $processor = new CarImageProcessor($repo);
+
         $carData = (object) ['id' => 1, 'image' => 'test.jpg,other.jpg'];
-        $db = $this->makeDbMockForUpdate();
-        $result = $this->processor->removeImage($carData, 'test.jpg', $db);
+        $result = $processor->removeImage($carData, 'test.jpg');
         $this->assertTrue($result);
+    }
+
+    public function testRemoveLastImageSetsCarDataImageToEmptyString(): void
+    {
+        $repo = $this->createMock(CarRepository::class);
+        $repo->expects($this->once())->method('updateImage')->willReturn(true);
+        $processor = new CarImageProcessor($repo);
+
+        $carData = (object) ['id' => 1, 'image' => '["test.jpg"]'];
+        $processor->removeImage($carData, 'test.jpg');
+        $this->assertSame('', $carData->image);
     }
 
     /**
@@ -134,11 +136,13 @@ final class CarImageProcessorTest extends TestCase
      */
     public function testRemoveImageThrowsCarConcurrentModificationExceptionOnCasConflict(): void
     {
-        $carData = (object) ['id' => 1, 'image' => '["test.jpg"]'];
         // count=0: UPDATE matched 0 rows → CAS guard failed → updateImage() returns false
-        $db = $this->makeDbMockForUpdate(false, 0);
+        $repo = $this->createMock(CarRepository::class);
+        $repo->expects($this->once())->method('updateImage')->willReturn(false);
+        $processor = new CarImageProcessor($repo);
 
+        $carData = (object) ['id' => 1, 'image' => '["test.jpg"]'];
         $this->expectException(CarConcurrentModificationException::class);
-        $this->processor->removeImage($carData, 'test.jpg', $db);
+        $processor->removeImage($carData, 'test.jpg');
     }
 }

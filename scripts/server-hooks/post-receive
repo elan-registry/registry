@@ -47,6 +47,13 @@ do
         exit 1
     }
 
+    # Cloudflare fetches robots.txt directly from origin, bypassing Apache rewrites.
+    # Override with the blocking version on test so crawlers are never admitted.
+    if [ "$ENV_NAME" = "Test" ]; then
+        cp "$WORK_TREE/robots-test.txt" "$WORK_TREE/robots.txt"
+        echo "Test environment: robots.txt replaced with robots-test.txt (crawler block)."
+    fi
+
     cd "$WORK_TREE" || { echo "ERROR: cannot cd to WORK_TREE=$WORK_TREE — deployment halted."; exit 1; }
 
     # Generate VERSION file from latest matching tag

@@ -416,3 +416,96 @@ test.describe('Internal Links Discovery and Testing (Not Logged In)', () => {
     console.log(`Failed: ${failCount}`);
   });
 });
+
+test.describe('Redirect verification — GSC 404 and soft 404 cleanup (#1369)', () => {
+  test.beforeEach(async ({ }, testInfo) => {
+    if (testInfo.project.name !== 'not-logged-in') {
+      testInfo.skip();
+    }
+  });
+
+  const BASE = 'https://elanregistry.org';
+
+  const redirects = [
+    {
+      from: '/docs/embed.php?doc=Elan_26_36_Workshop_Manual.pdf',
+      to: '/docs/pdf-viewer.php?subdir=reference/assets&doc=Elan_26_36_Workshop_Manual.pdf',
+      label: 'embed.php soft 404 → pdf-viewer.php with subdir',
+    },
+    {
+      from: '/docs/pdf-viewer.php?doc=Elan_26_36_Workshop_Manual.pdf',
+      to: '/docs/pdf-viewer.php?subdir=reference/assets&doc=Elan_26_36_Workshop_Manual.pdf',
+      label: 'pdf-viewer.php single-param → two-param format',
+    },
+    {
+      from: '/stories/type26register.com/index.html',
+      to: '/docs/stories/type26register.com/index.html',
+      label: 'stories/* migration',
+    },
+    // Legacy doc viewer removed in #911
+    {
+      from: '/docs/view.php?doc=IDENTIFICATION_GUIDE.md',
+      to: '/docs/reference/identification-guide.php',
+      label: 'docs/view.php IDENTIFICATION_GUIDE.md',
+    },
+    {
+      from: '/docs/view.php?doc=CAR_TRANSFER_FAQ.md',
+      to: '/docs/guides/car-transfer-faq.php',
+      label: 'docs/view.php CAR_TRANSFER_FAQ.md',
+    },
+    {
+      from: '/docs/guide-viewer.php?doc=CAR_TRANSFER_FAQ.md',
+      to: '/docs/guides/car-transfer-faq.php',
+      label: 'docs/guide-viewer.php CAR_TRANSFER_FAQ.md',
+    },
+    {
+      from: '/docs/guide-viewer.php?doc=CAR_TRANSFER_USER_GUIDE.md',
+      to: '/docs/guides/',
+      label: 'docs/guide-viewer.php CAR_TRANSFER_USER_GUIDE.md',
+    },
+    {
+      from: '/app/car_details.php?car_id=100',
+      to: '/app/owner/cars/details.php?car_id=100',
+      label: '/app/car_details.php preserves car_id query string',
+    },
+    {
+      from: '/app/identification.php',
+      to: '/docs/reference/identification-guide.php',
+      label: '/app/identification.php legacy path',
+    },
+    {
+      from: '/app/list_cars.php',
+      to: '/app/owner/cars/index.php',
+      label: '/app/list_cars.php legacy path',
+    },
+    {
+      from: '/list_cars.php',
+      to: '/app/owner/cars/index.php',
+      label: '/list_cars.php root-level legacy path',
+    },
+    {
+      from: '/guide.php',
+      to: '/docs/',
+      label: '/guide.php legacy guide index',
+    },
+    // Duplicate PDF path: /docs/assets/ renamed to /docs/reference/assets/ in #715
+    {
+      from: '/docs/assets/Elan_26_36_Workshop_Manual.pdf',
+      to: '/docs/reference/assets/Elan_26_36_Workshop_Manual.pdf',
+      label: '/docs/assets/ → /docs/reference/assets/ (duplicate PDF path)',
+    },
+  ];
+
+  redirects.forEach(({ from, to, label }) => {
+    test(`301: ${label}`, async ({ request }) => {
+      const response = await request.get(`${BASE}${from}`, { maxRedirects: 0 });
+      expect(response.status(), `Expected 301 for ${from}`).toBe(301);
+      const location = response.headers()['location'] ?? '';
+      // Normalize absolute Location headers to path + query for comparison
+      const locationPath = location.startsWith('http')
+        ? new URL(location).pathname + new URL(location).search
+        : location;
+      expect(locationPath, `Expected Location: ${to} for ${from}`).toBe(to);
+    });
+  });
+});

@@ -78,7 +78,7 @@ try {
 
     // 2. Transfer car ownership — CarRepository defers to this outer transaction
     // Car::transfer() always returns true or throws; no false return path exists.
-    $car->transfer((int)$transfer->requested_by_user_id, $reason);
+    $car->transfer((int)$transfer->requested_by_user_id, $reason, 'NEWOWNER', (int)$user->data()->id);
 
     $db->commit();
 
@@ -91,7 +91,7 @@ try {
 
     // Send approval notification email with error handling
     try {
-        $emailService = new TransferEmailService(DB::getInstance(), 'email', $abs_us_root . $us_url_root);
+        $emailService = new TransferEmailService(DB::getInstance(), 'email');
         $notificationSent = $emailService->sendResponse(
             $transferId,
             true,

@@ -4,7 +4,8 @@ declare(strict_types=1);
 
 namespace ElanRegistry;
 
-use Exception;
+use ElanRegistry\Car\CarValidator;
+use ElanRegistry\Exceptions\CarValidationException;
 
 /**
  * ChassisValidator.php
@@ -14,8 +15,6 @@ use Exception;
  * including historical race car formats and production car evolution from 1963-1974.
  * 
  * @author Elan Registry Team
- * @copyright 2025
- * @version 1.0
  */
 
 class ChassisValidator 
@@ -24,7 +23,7 @@ class ChassisValidator
      * Validation result structure
      * @var array{valid: bool, chassis: string, error_reason: string, format_type: string, override_used: bool}
      */
-    private $result = [
+    private array $result = [
         'valid' => false,
         'chassis' => '',
         'error_reason' => '',
@@ -32,19 +31,13 @@ class ChassisValidator
         'override_used' => false
     ];
 
-    /**
-     * Valid letter codes for different model types
-     * @var array
-     */
+    /** Valid letter codes for different model types */
     private const LETTER_CODES = [
         'elan' => ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'J', 'K'], // Excluding I
         'plus2' => ['L', 'M', 'N']
     ];
 
-    /**
-     * Race car patterns by year
-     * @var array
-     */
+    /** Race car patterns by year */
     private const RACE_PATTERNS = [
         1963 => ['/^26-R-\d{2}$/'],
         1964 => ['/^26-R-\d{2}$/', '/^26-S2-\d{2}$/'],
@@ -88,20 +81,18 @@ class ChassisValidator
         $chassisLength = strlen($this->result['chassis']);
         
         // Parse model components
-        $modelParts = explode('|', $model);
-        $series = $modelParts[0] ?? '';
-        $variant = $modelParts[1] ?? '';
-        $type = $modelParts[2] ?? '';
-
         try {
-            // Validate based on variant (Race vs Production)
-            if (stripos($variant, 'Race') !== false) {
-                $this->validateRaceCar($this->result['chassis'], $year);
-            } else {
-                $this->validateProductionCar($this->result['chassis'], $year, $series, $chassisLength);
-            }
-        } catch (Exception $e) {
-            $this->result['error_reason'] = $e->getMessage();
+            [$series, $variant] = CarValidator::parseModel($model);
+        } catch (CarValidationException $e) {
+            $this->result['error_reason'] = 'Invalid model format';
+            return $this->result;
+        }
+
+        // Validate based on variant (Race vs Production)
+        if (stripos($variant, 'Race') !== false) {
+            $this->validateRaceCar($this->result['chassis'], $year);
+        } else {
+            $this->validateProductionCar($this->result['chassis'], $year, $series, $chassisLength);
         }
 
         // Handle override if validation failed but override is allowed
@@ -115,12 +106,11 @@ class ChassisValidator
 
     /**
      * Validate race car chassis numbers
-     * 
+     *
      * @param string $chassis
      * @param int $year
-     * @throws Exception
      */
-    private function validateRaceCar(string $chassis, int $year): void 
+    private function validateRaceCar(string $chassis, int $year): void
     {
         $this->result['format_type'] = 'race';
         
@@ -133,34 +123,23 @@ class ChassisValidator
             }
         }
 
-        // Generate specific error message based on year
-        switch ($year) {
-            case 1963:
-                $this->result['error_reason'] = '1963 race cars must use format 26-R-xx (e.g., 26-R-01)';
-                break;
-            case 1964:
-                $this->result['error_reason'] = '1964 race cars must use format 26-R-xx or 26-S2-xx (e.g., 26-R-01 or 26-S2-01)';
-                break;
-            case 1965:
-            case 1966:
-                $this->result['error_reason'] = $year . ' race cars must use format 26-S2-xx (e.g., 26-S2-01)';
-                break;
-            default:
-                $this->result['error_reason'] = $year . ' race cars must use format 26-R-xx (e.g., 26-R-01)';
-                break;
-        }
+        $this->result['error_reason'] = match ($year) {
+            1963       => '1963 race cars must use format 26-R-xx (e.g., 26-R-01)',
+            1964       => '1964 race cars must use format 26-R-xx or 26-S2-xx (e.g., 26-R-01 or 26-S2-01)',
+            1965, 1966 => "{$year} race cars must use format 26-S2-xx (e.g., 26-S2-01)",
+            default    => "{$year} race cars must use format 26-R-xx (e.g., 26-R-01)",
+        };
     }
 
     /**
      * Validate production car chassis numbers
-     * 
+     *
      * @param string $chassis
      * @param int $year
      * @param string $series
      * @param int $chassisLength
-     * @throws Exception
      */
-    private function validateProductionCar(string $chassis, int $year, string $series, int $chassisLength): void 
+    private function validateProductionCar(string $chassis, int $year, string $series, int $chassisLength): void
     {
         if ($year < 1970) {
             $this->validatePre1970($chassis, $chassisLength);
@@ -285,38 +264,12 @@ class ChassisValidator
                 'type' => '+2',
                 'description' => 'L, M, N'
             ];
-        } else {
-            return [
-                'codes' => self::LETTER_CODES['elan'],
-                'type' => 'Elan',
-                'description' => 'A-K (excluding I)'
-            ];
         }
-    }
 
-    /**
-     * Get validation rules summary for display
-     * 
-     * @return array<string, array<int|string, string>>
-     */
-    public static function getValidationRules(): array 
-    {
         return [
-            'race_cars' => [
-                '1963' => '26-R-xx format only',
-                '1964' => '26-R-xx or 26-S2-xx formats',
-                '1965-1966' => '26-S2-xx format only',
-                'other_years' => '26-R-xx format'
-            ],
-            'production_cars' => [
-                'pre_1970' => '4 digits numeric only',
-                '1970' => '5 characters (legacy) or 11 characters (YYMMBBXXXXC)',
-                'post_1970' => '11 characters YYMMBBXXXXC format'
-            ],
-            'letter_codes' => [
-                'elan' => 'A, B, C, D, E, F, G, H, J, K (excluding I)',
-                'plus2' => 'L, M, N only'
-            ]
+            'codes' => self::LETTER_CODES['elan'],
+            'type' => 'Elan',
+            'description' => 'A-K (excluding I)'
         ];
     }
 }

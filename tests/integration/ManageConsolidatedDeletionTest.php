@@ -62,7 +62,7 @@ final class ManageConsolidatedDeletionTest extends IntegrationTestCase
     public function testManageConsolidatedDeleteCreatesExactlyOneAuditRow(): void
     {
         $car = new Car($this->testCarId);
-        $car->delete('Integration test deletion', Token::generate());
+        $car->delete('Integration test deletion', Token::generate(), $this->testUserId);
 
         $historyQuery = $this->db->query(
             "SELECT * FROM cars_hist WHERE car_id = ? AND operation = 'DELETE'",

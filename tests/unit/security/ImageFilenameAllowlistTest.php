@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use ElanRegistry\Car\CarImageProcessor;
+use ElanRegistry\Car\CarRepository;
 use PHPUnit\Framework\TestCase;
 use PHPUnit\Framework\Attributes\Group;
 
@@ -285,7 +286,7 @@ final class ImageFilenameAllowlistTest extends TestCase
 
     public function testDecodeAndProcessImagesSkipsTraversalFilename(): void
     {
-        $result = (new CarImageProcessor())->decodeAndProcessImages(
+        $result = (new CarImageProcessor($this->createStub(CarRepository::class)))->decodeAndProcessImages(
             json_encode(['../../../etc/passwd']), '/images/1/', '/', '/var/www/'
         );
         $this->assertEmpty($result, 'Traversal filename must not appear in decoded image list');
@@ -293,7 +294,7 @@ final class ImageFilenameAllowlistTest extends TestCase
 
     public function testDecodeAndProcessImagesSkipsWildcardFilename(): void
     {
-        $result = (new CarImageProcessor())->decodeAndProcessImages(
+        $result = (new CarImageProcessor($this->createStub(CarRepository::class)))->decodeAndProcessImages(
             json_encode(['*']), '/images/1/', '/', '/var/www/'
         );
         $this->assertEmpty($result, 'Wildcard filename must not appear in decoded image list');
@@ -302,7 +303,7 @@ final class ImageFilenameAllowlistTest extends TestCase
     public function testDecodeAndProcessImagesSkipsUnsupportedExtension(): void
     {
         // 'photo.bmp' is rejected by isSafeFilename() — unsupported extension.
-        $result = (new CarImageProcessor())->decodeAndProcessImages(
+        $result = (new CarImageProcessor($this->createStub(CarRepository::class)))->decodeAndProcessImages(
             json_encode(['photo.bmp']), '/images/1/', '/', '/var/www/'
         );
         $this->assertEmpty($result, 'Unsupported-extension filename must not appear in decoded image list');
@@ -310,7 +311,7 @@ final class ImageFilenameAllowlistTest extends TestCase
 
     public function testDecodeAndProcessImagesSkipsScriptTagFilename(): void
     {
-        $result = (new CarImageProcessor())->decodeAndProcessImages(
+        $result = (new CarImageProcessor($this->createStub(CarRepository::class)))->decodeAndProcessImages(
             json_encode(['<script>alert(1)</script>']), '/images/1/', '/', '/var/www/'
         );
         $this->assertEmpty($result, 'XSS payload filename must not appear in decoded image list');
@@ -330,7 +331,7 @@ final class ImageFilenameAllowlistTest extends TestCase
         file_put_contents($tmpDir . $safeName, str_repeat('x', 100));
 
         try {
-            $result = (new CarImageProcessor())->decodeAndProcessImages(
+            $result = (new CarImageProcessor($this->createStub(CarRepository::class)))->decodeAndProcessImages(
                 json_encode([$safeName, $unsafeName]),
                 '',
                 '',

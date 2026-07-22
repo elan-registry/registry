@@ -11,34 +11,6 @@ use PHPUnit\Framework\TestCase;
 #[Group('transfer')]
 final class TransferEmailServiceTest extends TestCase
 {
-    /** Temporary directory holding minimal email templates for success-path tests. */
-    private static string $fakeBasePath = '';
-
-    public static function setUpBeforeClass(): void
-    {
-        parent::setUpBeforeClass();
-        $dir = sys_get_temp_dir() . '/transfer_email_test_' . uniqid() . '/';
-        mkdir($dir . 'app/views/email/', 0755, true);
-        foreach (['_transfer_request', '_transfer_admin', '_transfer_response', '_transfer_previous_owner'] as $tpl) {
-            file_put_contents($dir . 'app/views/email/' . $tpl . '.php', '<?php // test stub ?>');
-        }
-        self::$fakeBasePath = $dir;
-    }
-
-    public static function tearDownAfterClass(): void
-    {
-        if (self::$fakeBasePath !== '' && is_dir(self::$fakeBasePath)) {
-            foreach (glob(self::$fakeBasePath . 'app/views/email/*.php') ?: [] as $f) {
-                unlink($f);
-            }
-            rmdir(self::$fakeBasePath . 'app/views/email/');
-            rmdir(self::$fakeBasePath . 'app/views/');
-            rmdir(self::$fakeBasePath . 'app/');
-            rmdir(self::$fakeBasePath);
-        }
-        parent::tearDownAfterClass();
-    }
-
     protected function tearDown(): void
     {
         // Remove any per-test global overrides
@@ -50,23 +22,13 @@ final class TransferEmailServiceTest extends TestCase
      * Creates a mock DB whose query() always returns count=0 (transfer not found).
      * error() always returns false (no DB error).
      */
-    private function createMockDb(int $rowCount = 0): object
+    private function createMockDb(int $rowCount = 0): \DB
     {
-        return new class($rowCount) {
-            public function __construct(private int $rowCount) {}
-
-            public function query(string $sql, array $params = []): object
-            {
-                $count = $this->rowCount;
-                return new class($count) {
-                    public function __construct(private int $count) {}
-                    public function count(): int { return $this->count; }
-                    public function first(): mixed { return null; }
-                };
-            }
-
-            public function error(): bool { return false; }
-        };
+        $rows = array_fill(0, $rowCount, (object) []);
+        $db = $this->createStub(\DB::class);
+        $db->method('query')->willReturn(new \QueryResult($rows));
+        $db->method('error')->willReturn(false);
+        return $db;
     }
 
     /**
@@ -75,26 +37,17 @@ final class TransferEmailServiceTest extends TestCase
      * queries against `cars` return $carRow.
      * error() always returns false (no DB error).
      */
-    private function createFoundMockDb(object $transferRow, object $carRow): object
+    private function createFoundMockDb(object $transferRow, object $carRow): \DB
     {
-        return new class($transferRow, $carRow) {
-            public function __construct(
-                private object $transferRow,
-                private object $carRow,
-            ) {}
-
-            public function query(string $sql, array $params = []): object
-            {
-                $row = str_contains($sql, 'car_transfer_requests') ? $this->transferRow : $this->carRow;
-                return new class($row) {
-                    public function __construct(private object $row) {}
-                    public function count(): int { return 1; }
-                    public function first(): object { return $this->row; }
-                };
+        $db = $this->createStub(\DB::class);
+        $db->method('query')->willReturnCallback(
+            function (string $sql, array $params = []) use ($transferRow, $carRow): \QueryResult {
+                $row = str_contains($sql, 'car_transfer_requests') ? $transferRow : $carRow;
+                return new \QueryResult([$row]);
             }
-
-            public function error(): bool { return false; }
-        };
+        );
+        $db->method('error')->willReturn(false);
+        return $db;
     }
 
     private function makeTransferRow(array $overrides = []): object
@@ -132,7 +85,7 @@ final class TransferEmailServiceTest extends TestCase
     {
         $db      = $this->createMockDb(0);
         $mailer  = function (): bool { return false; };
-        $service = new TransferEmailService($db, $mailer, '/fake/path/');
+        $service = new TransferEmailService($db, $mailer);
 
         $this->assertFalse($service->sendRequest(999));
     }
@@ -141,7 +94,7 @@ final class TransferEmailServiceTest extends TestCase
     {
         $db      = $this->createMockDb(0);
         $mailer  = function (): bool { return false; };
-        $service = new TransferEmailService($db, $mailer, '/fake/path/');
+        $service = new TransferEmailService($db, $mailer);
 
         $this->assertFalse($service->sendAdminAlert(999));
     }
@@ -150,7 +103,7 @@ final class TransferEmailServiceTest extends TestCase
     {
         $db      = $this->createMockDb(0);
         $mailer  = function (): bool { return false; };
-        $service = new TransferEmailService($db, $mailer, '/fake/path/');
+        $service = new TransferEmailService($db, $mailer);
 
         $this->assertFalse($service->sendResponse(999, true));
     }
@@ -163,7 +116,7 @@ final class TransferEmailServiceTest extends TestCase
             $called = true;
             return false;
         };
-        $service = new TransferEmailService($db, $mailer, '/fake/path/');
+        $service = new TransferEmailService($db, $mailer);
 
         $service->sendRequest(999);
 
@@ -188,11 +141,12 @@ final class TransferEmailServiceTest extends TestCase
             return true;
         };
 
-        $service = new TransferEmailService($db, $mailer, self::$fakeBasePath);
+        $service = new TransferEmailService($db, $mailer);
         $result  = $service->sendRequest(1);
 
         $this->assertTrue($result);
-        // Owner::find() is intercepted by the mock DB in bootstrap-unit.php, which returns 'test@example.com'
+        // 'test@example.com' is the hardcoded email returned by the Owner stub in
+        // tests/unit/bootstrap-unit.php — if that fixture changes, update this assertion.
         $this->assertSame('test@example.com', $capturedTo);
     }
 
@@ -211,7 +165,7 @@ final class TransferEmailServiceTest extends TestCase
             return $attempt > 1; // first call fails, second succeeds
         };
 
-        $service = new TransferEmailService($db, $mailer, self::$fakeBasePath);
+        $service = new TransferEmailService($db, $mailer);
         $result  = $service->sendAdminAlert(1);
 
         $this->assertTrue($result);
@@ -232,7 +186,7 @@ final class TransferEmailServiceTest extends TestCase
             return true;
         };
 
-        $service = new TransferEmailService($db, $mailer, self::$fakeBasePath);
+        $service = new TransferEmailService($db, $mailer);
         $result  = $service->sendAdminAlert(1);
 
         $this->assertFalse($result);
@@ -253,10 +207,166 @@ final class TransferEmailServiceTest extends TestCase
             return $attempt === 1; // first call (requester) succeeds; second (previous owner) fails
         };
 
-        $service = new TransferEmailService($db, $mailer, self::$fakeBasePath);
+        $service = new TransferEmailService($db, $mailer);
         // Pass previousOwnerId so sendPreviousOwnerNotification() resolves an owner
         $result  = $service->sendResponse(1, true, '', 1);
 
         $this->assertTrue($result);
+    }
+
+    /**
+     * sendResponse() returns true when the previous-owner email succeeds even if
+     * the requester notification fails — verifying the other side of the OR logic in
+     * `return $requesterNotificationSent || $previousOwnerNotificationSent`.
+     */
+    public function testSendResponseReturnsTrueWhenPreviousOwnerSucceedsAndRequesterFails(): void
+    {
+        $db      = $this->createFoundMockDb($this->makeTransferRow(), $this->makeCarRow());
+        $attempt = 0;
+        $mailer  = function () use (&$attempt): bool {
+            $attempt++;
+            return $attempt !== 1; // first call (requester) fails; second (previous owner) succeeds
+        };
+
+        $service = new TransferEmailService($db, $mailer);
+        $result  = $service->sendResponse(1, true, '', 1);
+
+        $this->assertTrue($result);
+    }
+
+    /**
+     * sendResponse() approved path skips the previous-owner notification when
+     * $previousOwnerId is null — the guard in sendPreviousOwnerNotification() returns
+     * false early to avoid emailing the new owner (who now holds $carData->user_id).
+     * Mailer must be called exactly once (requester only).
+     */
+    public function testSendResponseApprovedWithNullPreviousOwnerIdSkipsPreviousOwnerNotification(): void
+    {
+        $db      = $this->createFoundMockDb($this->makeTransferRow(), $this->makeCarRow());
+        $attempt = 0;
+        $mailer  = function () use (&$attempt): bool {
+            $attempt++;
+            return true;
+        };
+
+        $service = new TransferEmailService($db, $mailer);
+        $result  = $service->sendResponse(1, true, '', null);
+
+        $this->assertTrue($result);
+        $this->assertSame(1, $attempt, 'Mailer must be called only for requester; previous-owner notification must be skipped');
+    }
+
+    /**
+     * sendResponse() approved path skips the previous-owner notification when
+     * $previousOwnerId is 0 (int cast of NULL user_id from DB). Same guard as null case.
+     */
+    public function testSendResponseApprovedWithZeroPreviousOwnerIdSkipsPreviousOwnerNotification(): void
+    {
+        $db      = $this->createFoundMockDb($this->makeTransferRow(), $this->makeCarRow());
+        $attempt = 0;
+        $mailer  = function () use (&$attempt): bool {
+            $attempt++;
+            return true;
+        };
+
+        $service = new TransferEmailService($db, $mailer);
+        $result  = $service->sendResponse(1, true, '', 0);
+
+        $this->assertTrue($result);
+        $this->assertSame(1, $attempt, 'Mailer must be called only for requester; previous-owner notification must be skipped when previousOwnerId is 0');
+    }
+
+    /**
+     * sendResponse() denied path uses $carData->user_id as the previous-owner lookup
+     * when $previousOwnerId is null. Verifies the mailer is called exactly twice.
+     */
+    public function testSendResponseDeniedPathCallsMailerTwice(): void
+    {
+        $db      = $this->createFoundMockDb($this->makeTransferRow(), $this->makeCarRow());
+        $attempt = 0;
+        $mailer  = function () use (&$attempt): bool {
+            $attempt++;
+            return true;
+        };
+
+        $service = new TransferEmailService($db, $mailer);
+        $result  = $service->sendResponse(1, false, '', null);
+
+        $this->assertTrue($result);
+        $this->assertSame(2, $attempt, 'Mailer must be called for requester and previous owner');
+    }
+
+    // -------------------------------------------------------------------------
+    // XSS content escaping — email body must escape user-supplied data
+    // -------------------------------------------------------------------------
+
+    public function testSendRequestEmailBodyEscapesXssInChassis(): void
+    {
+        $carRow  = $this->makeCarRow(['chassis' => '<script>alert(1)</script>']);
+        $db      = $this->createFoundMockDb($this->makeTransferRow(), $carRow);
+        $capturedBody = null;
+        $mailer = function (string $to, string $subject, string $body) use (&$capturedBody): bool {
+            $capturedBody = $body;
+            return true;
+        };
+        $service = new TransferEmailService($db, $mailer);
+        $service->sendRequest(1);
+
+        $this->assertNotNull($capturedBody, 'Mailer must be called');
+        $this->assertStringContainsString('&lt;script&gt;', $capturedBody);
+        $this->assertStringNotContainsString('<script>alert', $capturedBody);
+    }
+
+    public function testSendAdminAlertEmailBodyEscapesXssInComments(): void
+    {
+        $GLOBALS['mockAdminEmails'] = 'admin@example.com';
+        $transferRow = $this->makeTransferRow(['submitted_comments' => '<script>alert(1)</script>']);
+        $db      = $this->createFoundMockDb($transferRow, $this->makeCarRow());
+        $capturedBody = null;
+        $mailer = function (string $to, string $subject, string $body) use (&$capturedBody): bool {
+            $capturedBody = $body;
+            return true;
+        };
+        $service = new TransferEmailService($db, $mailer);
+        $service->sendAdminAlert(1);
+
+        $this->assertNotNull($capturedBody, 'Mailer must be called');
+        $this->assertStringContainsString('&lt;script&gt;', $capturedBody);
+        $this->assertStringNotContainsString('<script>alert', $capturedBody);
+    }
+
+    public function testSendResponseEmailBodyEscapesXssInAdminNotes(): void
+    {
+        $db      = $this->createFoundMockDb($this->makeTransferRow(), $this->makeCarRow());
+        $capturedBodies = [];
+        $mailer = function (string $to, string $subject, string $body) use (&$capturedBodies): bool {
+            $capturedBodies[] = $body;
+            return true;
+        };
+        $service = new TransferEmailService($db, $mailer);
+        $service->sendResponse(1, false, '<script>alert(1)</script>');
+
+        $this->assertCount(2, $capturedBodies, 'Mailer must be called for both requester and previous owner');
+        foreach ($capturedBodies as $body) {
+            $this->assertStringContainsString('&lt;script&gt;', $body);
+            $this->assertStringNotContainsString('<script>alert', $body);
+        }
+    }
+
+    public function testSendResponsePreviousOwnerEmailBodyEscapesXssInChassis(): void
+    {
+        $carRow  = $this->makeCarRow(['chassis' => '<script>alert(1)</script>']);
+        $db      = $this->createFoundMockDb($this->makeTransferRow(), $carRow);
+        $capturedBodies = [];
+        $mailer = function (string $to, string $subject, string $body) use (&$capturedBodies): bool {
+            $capturedBodies[] = $body;
+            return true;
+        };
+        $service = new TransferEmailService($db, $mailer);
+        $service->sendResponse(1, false, '', 1);
+
+        $this->assertCount(2, $capturedBodies, 'Both mailer calls must fire');
+        $this->assertStringContainsString('&lt;script&gt;', $capturedBodies[1]);
+        $this->assertStringNotContainsString('<script>alert', $capturedBodies[1]);
     }
 }

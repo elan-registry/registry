@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use ElanRegistry\ApiResponse;
+use ElanRegistry\Exceptions\CarException;
 use ElanRegistry\Exceptions\CarTransferException;
 use ElanRegistry\LogCategories;
 use ElanRegistry\Transfer\CarTransferRepository;
@@ -60,7 +61,7 @@ try {
 
     // Send denial notification email with error handling
     try {
-        $emailService = new TransferEmailService(DB::getInstance(), 'email', $abs_us_root . $us_url_root);
+        $emailService = new TransferEmailService(DB::getInstance(), 'email');
         $notificationSent = $emailService->sendResponse(
             $transferId,
             false,
@@ -90,7 +91,7 @@ try {
         )
         ->send();
 
-} catch (CarTransferException $e) {
+} catch (CarException $e) {
     ApiResponse::error($e->getUserMessage(), $e->getHttpStatusCode())
         ->withLogging(
             $user->data()->id,

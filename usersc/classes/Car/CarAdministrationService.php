@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace ElanRegistry\Car;
 
 use ElanRegistry\AppConstants;
-use ElanRegistry\CarErrorMessages;
 use ElanRegistry\Exceptions\CarDatabaseException;
 use ElanRegistry\Exceptions\CarDeletionException;
 use ElanRegistry\Exceptions\CarException;
@@ -14,7 +13,7 @@ use ElanRegistry\Exceptions\CarNotFoundException;
 use ElanRegistry\Exceptions\CarValidationException;
 use ElanRegistry\LogCategories;
 use ElanRegistry\Owner;
-use Token;
+use ElanRegistry\Car\CarValidator;
 
 /**
  * CarAdministrationService - Administrative operations for cars
@@ -55,9 +54,8 @@ class CarAdministrationService
             $repo->beginTransaction();
 
             if (!$repo->deleteCar($carId)) {
-                $technicalMsg = CarErrorMessages::getTechnicalMessage('database_update_failed', ['error' => 'query returned false']);
-                logger($adminUserId, LogCategories::LOG_CATEGORY_CAR_DELETION, $technicalMsg);
-                throw new CarDatabaseException(CarErrorMessages::getAdminMessage('database_update_failed'));
+                logger($adminUserId, LogCategories::LOG_CATEGORY_CAR_DELETION, 'Database update failed: query returned false');
+                throw new CarDatabaseException('Database update failed - check system logs for details.');
             }
 
             $repo->commit();
@@ -69,9 +67,8 @@ class CarAdministrationService
             if ($e instanceof CarException) {
                 throw $e;
             }
-            $technicalMsg = CarErrorMessages::getTechnicalMessage('operation_failed', ['operation' => 'Car deletion', 'error' => $e->getMessage()]);
-            logger($adminUserId, LogCategories::LOG_CATEGORY_CAR_DELETION, $technicalMsg);
-            throw new CarDeletionException(CarErrorMessages::getMessage('operation_failed', 'admin'));
+            logger($adminUserId, LogCategories::LOG_CATEGORY_CAR_DELETION, 'Car deletion failed: ' . $e->getMessage());
+            throw new CarDeletionException('Operation failed - check system logs for technical details.');
         }
     }
 
@@ -84,8 +81,6 @@ class CarAdministrationService
      * @param string $operationType Operation type (e.g., 'NEWOWNER', 'TRANSFER')
      * @param int $adminUserId ID of the admin performing the transfer
      * @param CarRepository $repo Repository for database operations
-     * @param callable $updateCallback Callback to perform car update (receives array of fields)
-     * @param callable $refreshCallback Callback to refresh car data after update (receives car ID)
      * @return true Always returns true; throws on any failure.
      * @throws CarValidationException If target user is invalid
      * @throws CarDatabaseException If database operation fails
@@ -96,15 +91,12 @@ class CarAdministrationService
         string $reason,
         string $operationType,
         int $adminUserId,
-        CarRepository $repo,
-        callable $updateCallback,
-        callable $refreshCallback
+        CarRepository $repo
     ): true {
         $targetUser = (new Owner($newUserId))->data();
         if (!$targetUser) {
-            $technicalMsg = CarErrorMessages::getTechnicalMessage('user_not_found', ['user_id' => $newUserId]);
-            logger($adminUserId, LogCategories::LOG_CATEGORY_CAR_TRANSFER, $technicalMsg);
-            throw new CarValidationException(CarErrorMessages::getMessage('user_not_found'));
+            logger($adminUserId, LogCategories::LOG_CATEGORY_CAR_TRANSFER, 'Target user not found - cannot transfer ownership to user ID: ' . $newUserId);
+            throw new CarValidationException('Unable to transfer ownership: the target user account is not valid.');
         }
 
         $carId = (int) $carData->id;
@@ -112,70 +104,68 @@ class CarAdministrationService
         try {
             $repo->beginTransaction();
 
-            $updateFields = [
-                'id' => $carId,
-                'token' => Token::generate(),
-                'user_id' => $targetUser->id,
-                'email' => $targetUser->email ?? '',
-                'fname' => $targetUser->fname ?? '',
-                'lname' => $targetUser->lname ?? '',
+            $ownerFields = [
+                'mtime'     => date(AppConstants::DATETIME_FORMAT),
+                'user_id'   => $targetUser->id,
+                'email'     => $targetUser->email    ?? '',
+                'fname'     => $targetUser->fname    ?? '',
+                'lname'     => $targetUser->lname    ?? '',
                 'join_date' => $targetUser->join_date ?? date(AppConstants::DATETIME_FORMAT),
-                'city' => $targetUser->city ?? '',
-                'state' => $targetUser->state ?? '',
-                'country' => $targetUser->country ?? '',
-                'lat' => $targetUser->lat ?? null,
-                'lon' => $targetUser->lon ?? null,
-                'website' => $targetUser->website ?? ''
+                'city'      => $targetUser->city     ?? '',
+                'state'     => $targetUser->state    ?? '',
+                'country'   => $targetUser->country  ?? '',
+                'lat'       => $targetUser->lat      ?? null,
+                'lon'       => $targetUser->lon      ?? null,
+                'website'   => $targetUser->website  ?? '',
             ];
 
-            $updateSuccess = $updateCallback($updateFields);
-            if (!$updateSuccess) {
-                $technicalMsg = CarErrorMessages::getTechnicalMessage('database_update_failed', ['error' => 'Car update method returned false']);
-                logger($adminUserId, LogCategories::LOG_CATEGORY_CAR_TRANSFER, $technicalMsg);
-                throw new CarDatabaseException(CarErrorMessages::getAdminMessage('database_update_failed'));
-            }
+            // Validate owner fields before writing. $requireAll = false so only the
+            // fields present in $ownerFields are checked (email format, website scheme,
+            // lat/lon range, city/state/country normalization) without requiring car-
+            // intrinsic fields like chassis/model/year that are not being updated here.
+            $ownerFields = (new CarValidator())->validateAndSanitizeFields($ownerFields, false);
 
-            // Refresh car data within the transaction — InnoDB reads own uncommitted
-            // writes, so the refreshed fields reflect the update above in both
-            // standalone and outer-transaction mode.
-            $refreshedData = $refreshCallback($carId);
+            $updateSuccess = $repo->updateCar($carId, $ownerFields);
+            if (!$updateSuccess) {
+                logger($adminUserId, LogCategories::LOG_CATEGORY_CAR_TRANSFER, 'Database update failed: Repository returned false');
+                throw new CarDatabaseException('Database update failed - check system logs for details.');
+            }
 
             // Insert history before commit so a failure rolls back the entire
             // ownership change atomically (standalone and outer-transaction alike).
             $historyFields = [
-                'operation' => $operationType,
-                'car_id' => $carId,
-                'comments' => $reason,
-                'ctime' => $refreshedData->ctime ?? date(AppConstants::DATETIME_FORMAT),
-                'mtime' => date(AppConstants::DATETIME_FORMAT),
-                'model' => $refreshedData->model ?? '',
-                'series' => $refreshedData->series ?? '',
-                'variant' => $refreshedData->variant ?? '',
-                'year' => $refreshedData->year ?? '',
-                'type' => $refreshedData->type ?? '',
-                'chassis' => $refreshedData->chassis ?? '',
-                'color' => $refreshedData->color ?? '',
-                'engine' => $refreshedData->engine ?? '',
-                'purchasedate' => $refreshedData->purchasedate ?? null,
-                'solddate' => $refreshedData->solddate ?? null,
-                'image' => $refreshedData->image ?? '',
-                'user_id' => $targetUser->id,
-                'email' => $targetUser->email ?? '',
-                'fname' => $targetUser->fname ?? '',
-                'lname' => $targetUser->lname ?? '',
-                'join_date' => $targetUser->join_date ?? null,
-                'city' => $targetUser->city ?? '',
-                'state' => $targetUser->state ?? '',
-                'country' => $targetUser->country ?? '',
-                'lat' => $targetUser->lat ?? null,
-                'lon' => $targetUser->lon ?? null,
-                'website' => $targetUser->website ?? ''
+                'operation'    => $operationType,
+                'car_id'       => $carId,
+                'comments'     => $reason,
+                'ctime'        => $carData->ctime ?? date(AppConstants::DATETIME_FORMAT),
+                'mtime'        => date(AppConstants::DATETIME_FORMAT),
+                'model'        => $carData->model ?? '',
+                'series'       => $carData->series ?? '',
+                'variant'      => $carData->variant ?? '',
+                'year'         => $carData->year ?? '',
+                'type'         => $carData->type ?? '',
+                'chassis'      => $carData->chassis ?? '',
+                'color'        => $carData->color ?? '',
+                'engine'       => $carData->engine ?? '',
+                'purchasedate' => $carData->purchasedate ?? null,
+                'solddate'     => $carData->solddate ?? null,
+                'image'        => $carData->image ?? '',
+                'user_id'      => $targetUser->id,
+                'email'        => $targetUser->email ?? '',
+                'fname'        => $targetUser->fname ?? '',
+                'lname'        => $targetUser->lname ?? '',
+                'join_date'    => $targetUser->join_date ?? null,
+                'city'         => $targetUser->city ?? '',
+                'state'        => $targetUser->state ?? '',
+                'country'      => $targetUser->country ?? '',
+                'lat'          => $targetUser->lat ?? null,
+                'lon'          => $targetUser->lon ?? null,
+                'website'      => $targetUser->website ?? ''
             ];
 
             if (!$repo->insertHistory($historyFields)) {
-                $technicalMsg = CarErrorMessages::getTechnicalMessage('audit_trail_failed', ['operation' => $operationType]);
-                logger($adminUserId, LogCategories::LOG_CATEGORY_CAR_TRANSFER_ERROR, $technicalMsg);
-                throw new CarDatabaseException(CarErrorMessages::getAdminMessage('audit_trail_failed', ['operation' => $operationType]));
+                logger($adminUserId, LogCategories::LOG_CATEGORY_CAR_TRANSFER_ERROR, 'Failed to create audit trail entry for ' . $operationType);
+                throw new CarDatabaseException('Operation failed - could not create audit trail entry.');
             }
 
             $repo->commit();
@@ -187,9 +177,8 @@ class CarAdministrationService
             if ($e instanceof CarException) {
                 throw $e;
             }
-            $technicalMsg = CarErrorMessages::getTechnicalMessage('operation_failed', ['operation' => 'Car ownership transfer', 'error' => $e->getMessage()]);
-            logger($adminUserId, LogCategories::LOG_CATEGORY_CAR_TRANSFER, $technicalMsg);
-            throw new CarDatabaseException(CarErrorMessages::getMessage('operation_failed', 'admin'));
+            logger($adminUserId, LogCategories::LOG_CATEGORY_CAR_TRANSFER, 'Car ownership transfer failed: ' . $e->getMessage());
+            throw new CarDatabaseException('Operation failed - check system logs for technical details.');
         }
     }
 
@@ -215,9 +204,8 @@ class CarAdministrationService
         CarRepository $repo
     ): true {
         if ($oldCarId === (int) $targetCarData->id) {
-            $technicalMsg = CarErrorMessages::getTechnicalMessage('car_merge_self', ['id' => $oldCarId]);
-            logger($adminUserId, LogCategories::LOG_CATEGORY_CAR_MERGE, $technicalMsg);
-            throw new CarValidationException(CarErrorMessages::getMessage('car_merge_self'));
+            logger($adminUserId, LogCategories::LOG_CATEGORY_CAR_MERGE, 'Cannot merge a car with itself - car ID: ' . $oldCarId);
+            throw new CarValidationException('Unable to merge a car with itself.');
         }
 
         $newCarId = (int) $targetCarData->id;
@@ -228,48 +216,44 @@ class CarAdministrationService
 
             $oldCarData = $repo->findByIdForUpdate($oldCarId);
             if (!$oldCarData) {
-                $technicalMsg = CarErrorMessages::getTechnicalMessage('merge_source_not_found', ['id' => $oldCarId]);
-                logger($adminUserId, LogCategories::LOG_CATEGORY_CAR_MERGE, $technicalMsg);
-                throw new CarNotFoundException(CarErrorMessages::getMessage('merge_source_not_found'));
+                logger($adminUserId, LogCategories::LOG_CATEGORY_CAR_MERGE, 'Source car not found - cannot merge car ID: ' . $oldCarId);
+                throw new CarNotFoundException('The source car for merging could not be found.');
             }
 
             $oldChassis = $oldCarData->chassis ?? 'Unknown';
 
             if (!$repo->transferHistory($oldCarId, $newCarId)) {
-                $technicalMsg = CarErrorMessages::getTechnicalMessage('car_history_transfer_failed', ['error' => 'query returned false']);
-                logger($adminUserId, LogCategories::LOG_CATEGORY_CAR_MERGE, $technicalMsg);
-                throw new CarDatabaseException(CarErrorMessages::getAdminMessage('car_history_transfer_failed'));
+                logger($adminUserId, LogCategories::LOG_CATEGORY_CAR_MERGE, 'Failed to transfer car history: query returned false');
+                throw new CarDatabaseException('Car merge failed - could not transfer history records.');
             }
 
             if (!$repo->deleteCar($oldCarId)) {
-                $technicalMsg = CarErrorMessages::getTechnicalMessage('database_update_failed', ['error' => 'query returned false']);
-                logger($adminUserId, LogCategories::LOG_CATEGORY_CAR_MERGE, $technicalMsg);
-                throw new CarDatabaseException(CarErrorMessages::getAdminMessage('database_update_failed'));
+                logger($adminUserId, LogCategories::LOG_CATEGORY_CAR_MERGE, 'Database update failed: query returned false');
+                throw new CarDatabaseException('Database update failed - check system logs for details.');
             }
 
             $historyFields = [
-                'operation' => self::OPERATION_MERGE,
-                'car_id' => $newCarId,
-                'comments' => "Car $oldChassis (ID: $oldCarId) was merged into car $newChassis (ID: $newCarId) by admin $adminUserId. Reason: $reason",
-                'ctime' => $targetCarData->ctime ?? date(AppConstants::DATETIME_FORMAT),
-                'mtime' => date(AppConstants::DATETIME_FORMAT),
-                'model' => $targetCarData->model ?? '',
-                'series' => $targetCarData->series ?? '',
-                'variant' => $targetCarData->variant ?? '',
-                'year' => $targetCarData->year ?? '',
-                'type' => $targetCarData->type ?? '',
-                'chassis' => $targetCarData->chassis ?? '',
-                'color' => $targetCarData->color ?? '',
-                'engine' => $targetCarData->engine ?? '',
+                'operation'    => self::OPERATION_MERGE,
+                'car_id'       => $newCarId,
+                'comments'     => "Car $oldChassis (ID: $oldCarId) was merged into car $newChassis (ID: $newCarId) by admin $adminUserId. Reason: $reason",
+                'ctime'        => $targetCarData->ctime ?? date(AppConstants::DATETIME_FORMAT),
+                'mtime'        => date(AppConstants::DATETIME_FORMAT),
+                'model'        => $targetCarData->model ?? '',
+                'series'       => $targetCarData->series ?? '',
+                'variant'      => $targetCarData->variant ?? '',
+                'year'         => $targetCarData->year ?? '',
+                'type'         => $targetCarData->type ?? '',
+                'chassis'      => $targetCarData->chassis ?? '',
+                'color'        => $targetCarData->color ?? '',
+                'engine'       => $targetCarData->engine ?? '',
                 'purchasedate' => $targetCarData->purchasedate ?? null,
-                'solddate' => $targetCarData->solddate ?? null,
-                'image' => $targetCarData->image ?? ''
+                'solddate'     => $targetCarData->solddate ?? null,
+                'image'        => $targetCarData->image ?? ''
             ];
 
             if (!$repo->insertHistory($historyFields)) {
-                $technicalMsg = CarErrorMessages::getTechnicalMessage('audit_trail_failed', ['operation' => 'car merge']);
-                logger($adminUserId, LogCategories::LOG_CATEGORY_CAR_MERGE, $technicalMsg);
-                throw new CarDatabaseException(CarErrorMessages::getAdminMessage('audit_trail_failed', ['operation' => 'car merge']));
+                logger($adminUserId, LogCategories::LOG_CATEGORY_CAR_MERGE, 'Failed to create audit trail entry for car merge');
+                throw new CarDatabaseException('Operation failed - could not create audit trail entry.');
             }
 
             $repo->commit();
@@ -280,9 +264,8 @@ class CarAdministrationService
             if ($e instanceof CarException) {
                 throw $e;
             }
-            $technicalMsg = CarErrorMessages::getTechnicalMessage('operation_failed', ['operation' => 'Car merge', 'error' => $e->getMessage()]);
-            logger($adminUserId, LogCategories::LOG_CATEGORY_CAR_MERGE, $technicalMsg);
-            throw new CarMergeException(CarErrorMessages::getMessage('operation_failed', 'admin'));
+            logger($adminUserId, LogCategories::LOG_CATEGORY_CAR_MERGE, 'Car merge failed: ' . $e->getMessage());
+            throw new CarMergeException('Operation failed - check system logs for technical details.');
         }
     }
 }

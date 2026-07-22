@@ -58,7 +58,7 @@ final class CarDeletionTest extends IntegrationTestCase
         $this->assertTrue($car->exists());
 
         $token = Token::generate();
-        $result = $car->delete('Test deletion', $token);
+        $result = $car->delete('Test deletion', $token, 1);
 
         $this->assertTrue($result);
         $this->assertFalse($car->exists());
@@ -73,7 +73,7 @@ final class CarDeletionTest extends IntegrationTestCase
         $this->expectException(CarDeletionException::class);
 
         $car = new Car($this->testCarId);
-        $car->delete('Test deletion', 'invalid-token-12345');
+        $car->delete('Test deletion', 'invalid-token-12345', 1);
     }
 
     /**
@@ -85,7 +85,7 @@ final class CarDeletionTest extends IntegrationTestCase
         $this->expectException(CarDeletionException::class);
 
         $car = new Car($this->testCarId);
-        $car->delete('Test deletion', '');
+        $car->delete('Test deletion', '', 1);
     }
 
     /**
@@ -97,7 +97,7 @@ final class CarDeletionTest extends IntegrationTestCase
         $this->expectException(CarNotFoundException::class);
 
         $car = new Car(99999);
-        $car->delete('Test deletion', Token::generate());
+        $car->delete('Test deletion', Token::generate(), 1);
     }
 
     /**
@@ -112,7 +112,7 @@ final class CarDeletionTest extends IntegrationTestCase
         $car = new Car($this->testCarId);
         $carId = $car->data()->id;
 
-        $result = $car->delete('Test deletion for audit', Token::generate());
+        $result = $car->delete('Test deletion for audit', Token::generate(), 1);
 
         $this->assertTrue($result);
 
@@ -121,61 +121,6 @@ final class CarDeletionTest extends IntegrationTestCase
             [$carId]
         );
         $this->assertSame(1, $historyQuery->count(), 'Expected exactly one DELETE row in cars_hist');
-    }
-
-    /**
-     * Test car deletion transaction rollback on failure
-     */
-    #[Group('fast')]
-    public function testDeleteTransactionRollbackOnFailure(): void
-    {
-        // This test verifies that if any step fails, the transaction rolls back
-        // It's challenging to test without mocking the database
-        // For now, we verify that attempting to delete without auth fails
-
-        $this->expectException(CarDeletionException::class);
-
-        // Create a car without authentication context
-        $car = new Car($this->testCarId);
-
-        // Mock: Unset global user to simulate no authentication
-        global $user;
-        $originalUser = $user ?? null;
-        unset($GLOBALS['user']);
-
-        try {
-            $car->delete('Test deletion', Token::generate());
-        } finally {
-            // Restore user
-            if ($originalUser) {
-                $GLOBALS['user'] = $originalUser;
-            }
-        }
-    }
-
-    /**
-     * Test car deletion requires authenticated user
-     */
-    #[Group('fast')]
-    public function testDeleteRequiresAuthenticatedUser(): void
-    {
-        $this->expectException(CarDeletionException::class);
-
-        $car = new Car($this->testCarId);
-
-        // Mock: Unset global user to simulate no authentication
-        global $user;
-        $originalUser = $user ?? null;
-        unset($GLOBALS['user']);
-
-        try {
-            $car->delete('Test deletion', Token::generate());
-        } finally {
-            // Restore user
-            if ($originalUser) {
-                $GLOBALS['user'] = $originalUser;
-            }
-        }
     }
 
     /**
@@ -190,7 +135,7 @@ final class CarDeletionTest extends IntegrationTestCase
     {
         // First deletion — must succeed
         $car = new Car($this->testCarId);
-        $car->delete('First deletion', Token::generate());
+        $car->delete('First deletion', Token::generate(), 1);
 
         // tearDown will attempt to clean up $this->testCarId; if the car is
         // already gone the cleanup silently ignores the missing row.
@@ -198,7 +143,29 @@ final class CarDeletionTest extends IntegrationTestCase
         // Second deletion on the same ID — car no longer exists
         $this->expectException(CarNotFoundException::class);
         $car2 = new Car($this->testCarId);
-        $car2->delete('Second deletion', Token::generate());
+        $car2->delete('Second deletion', Token::generate(), 1);
+    }
+
+    /**
+     * Test delete works with an explicit actingUserId even when global $user is unset.
+     * Verifies that Car::delete() does not fall back to currentUserId() internally.
+     */
+    #[Group('fast')]
+    public function testDeleteHonorsExplicitActingUserIdWithoutGlobalUser(): void
+    {
+        $savedUser = $GLOBALS['user'] ?? null;
+        unset($GLOBALS['user']);
+
+        try {
+            $car = new Car($this->testCarId);
+            $token = Token::generate();
+            $result = $car->delete('Explicit actingUserId test', $token, 1);
+            $this->assertTrue($result);
+        } finally {
+            if ($savedUser !== null) {
+                $GLOBALS['user'] = $savedUser;
+            }
+        }
     }
 
 }

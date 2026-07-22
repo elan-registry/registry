@@ -257,7 +257,6 @@ users/init.php
 - `EmailTemplate` - Email template rendering
 - `DocumentPortalTemplate` - Documentation index/card rendering (namespace:
   ElanRegistry\Documentation)
-- `CarErrorMessages` - Centralized error message definitions
 
 **Custom Exceptions** (`usersc/classes/exceptions/`):
 

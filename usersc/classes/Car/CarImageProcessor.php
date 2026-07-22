@@ -4,8 +4,6 @@ declare(strict_types=1);
 
 namespace ElanRegistry\Car;
 
-use DB;
-use ElanRegistry\CarErrorMessages;
 use ElanRegistry\Exceptions\CarConcurrentModificationException;
 use ElanRegistry\Exceptions\CarDatabaseException;
 use ElanRegistry\Exceptions\ImageProcessingException;
@@ -24,6 +22,8 @@ use ElanRegistry\LogCategories;
  */
 class CarImageProcessor
 {
+    public function __construct(private CarRepository $repo) {}
+
     /**
      * Allowed image file extensions. Shared by generateSecureFilename() (what
      * it may produce) and isValidFilename() (what it will accept).
@@ -203,16 +203,15 @@ class CarImageProcessor
      *
      * @param object $carData Car data object (must have ->image and ->id properties)
      * @param string $filename Image filename to remove
-     * @param DB $db Database instance
      * @return bool True if image was removed successfully, false if not found
      * @throws ImageProcessingException If filename is empty or encoding fails
      * @throws CarDatabaseException If database update fails
      * @throws CarConcurrentModificationException If a concurrent request modified the image list
      */
-    public function removeImage(object $carData, string $filename, DB $db): bool
+    public function removeImage(object $carData, string $filename): bool
     {
         if (empty($filename)) {
-            throw new ImageProcessingException(CarErrorMessages::getMessage('image_filename_empty'));
+            throw new ImageProcessingException('No image was specified for removal.');
         }
 
         $currentImages = [];
@@ -235,11 +234,10 @@ class CarImageProcessor
 
         $imageJson = empty($currentImages) ? '' : json_encode($currentImages);
         if ($imageJson === false) {
-            throw new ImageProcessingException(CarErrorMessages::getMessage('image_encoding_failed'));
+            throw new ImageProcessingException('Unable to process car images. Please try again or contact support.');
         }
 
-        $repo = new CarRepository($db);
-        $cas = $repo->updateImage((int) $carData->id, $imageJson, $carData->image);
+        $cas = $this->repo->updateImage((int) $carData->id, $imageJson, $carData->image);
         if (!$cas) {
             throw new CarConcurrentModificationException(
                 "Image list changed concurrently for car {$carData->id}"

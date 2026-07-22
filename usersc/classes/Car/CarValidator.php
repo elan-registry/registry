@@ -24,6 +24,27 @@ class CarValidator
     public const MIN_CAR_DATE = '1957-01-01';
 
     /**
+     * Parse a pipe-delimited model string into its three components.
+     *
+     * @param string $model A string in "series|variant|type" format.
+     * @return array{0: string, 1: string, 2: string} [$series, $variant, $type]
+     * @throws CarValidationException If the string does not contain exactly two pipe separators,
+     *                                or if any of the three resulting components is empty or whitespace-only.
+     */
+    public static function parseModel(string $model): array
+    {
+        $parts = explode('|', $model);
+        if (count($parts) !== 3) {
+            throw new CarValidationException('Invalid model format. Expected format: series|variant|type');
+        }
+        $trimmed = [trim($parts[0]), trim($parts[1]), trim($parts[2])];
+        if ($trimmed[0] === '' || $trimmed[1] === '' || $trimmed[2] === '') {
+            throw new CarValidationException('Invalid model format. Expected format: series|variant|type');
+        }
+        return $trimmed;
+    }
+
+    /**
      * Validate that required fields are present and not empty
      *
      * @param array<string, mixed> $fields Fields to validate
@@ -67,25 +88,10 @@ class CarValidator
 
                 case 'model':
                     if (!empty($value)) {
-                        // Sanitize input
                         $validatedFields[$key] = InputSanitizer::normalize($value, 100);
 
-                        // Validate format: "series|variant|type"
-                        $parts = explode('|', $validatedFields[$key]);
-                        if (count($parts) !== 3) {
-                            throw new CarValidationException(
-                                'Invalid model format. Expected format: series|variant|type'
-                            );
-                        }
+                        [$series, $variant, $type] = self::parseModel($validatedFields[$key]);
 
-                        list($series, $variant, $type) = $parts;
-
-                        // Trim whitespace
-                        $series = trim($series);
-                        $variant = trim($variant);
-                        $type = trim($type);
-
-                        // Validate model combination exists in car_models table
                         $carModelRef = new CarModel();
                         if (!$carModelRef->exists($series, $variant, $type)) {
                             throw new CarValidationException(
@@ -93,7 +99,6 @@ class CarValidator
                             );
                         }
 
-                        // Store validated model
                         $validatedFields[$key] = "{$series}|{$variant}|{$type}";
 
                     } elseif ($requireAll) {

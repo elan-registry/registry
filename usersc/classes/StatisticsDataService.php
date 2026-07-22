@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace ElanRegistry;
 
+use DB;
+
 /**
  * StatisticsDataService.php
  * Centralized data service for statistics
@@ -15,16 +17,7 @@ namespace ElanRegistry;
  */
 
 class StatisticsDataService {
-    private object $db;
-
-    /**
-     * Constructor for StatisticsDataService
-     *
-     * @param object $database Database connection instance
-     */
-    public function __construct(object $database) {
-        $this->db = $database;
-    }
+    public function __construct(private DB $db) {}
 
     /**
      * Execute database query and return results

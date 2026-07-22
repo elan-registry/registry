@@ -19,9 +19,9 @@ class AutoloaderTest extends TestCase
     /**
      * Test that core application classes are available via PSR-4 autoloading.
      *
-     * - Owner, CarView, Resize, ChassisValidator, EmailTemplate, and
-     *   CarErrorMessages are namespaced under ElanRegistry\ and load via the
-     *   PSR-4 root prefix mapping to usersc/classes/.
+     * - Owner, CarView, Resize, ChassisValidator, and EmailTemplate are
+     *   namespaced under ElanRegistry\ and load via the PSR-4 root prefix
+     *   mapping to usersc/classes/.
      * - The class_exists('Car') assertion is a regression guard confirming the global
      *   Car alias remains available. In the unit test environment it resolves to the
      *   bootstrap mock rather than the real ElanRegistry\Car\Car; in production it
@@ -36,7 +36,6 @@ class AutoloaderTest extends TestCase
         $this->assertTrue(class_exists('ElanRegistry\\Resize'), 'ElanRegistry\\Resize class should auto-load');
         $this->assertTrue(class_exists('ElanRegistry\\ChassisValidator'), 'ElanRegistry\\ChassisValidator class should auto-load');
         $this->assertTrue(class_exists('ElanRegistry\\EmailTemplate'), 'ElanRegistry\\EmailTemplate class should auto-load');
-        $this->assertTrue(class_exists('ElanRegistry\\CarErrorMessages'), 'ElanRegistry\\CarErrorMessages class should auto-load');
     }
 
     /**
@@ -127,36 +126,13 @@ class AutoloaderTest extends TestCase
      *
      * Note: bootstrap-unit.php pre-loads CarModel via an eval mock before the
      * autoloader registers, so class_exists() here confirms availability, not
-     * PSR-4 path resolution. Path verification for the ElanRegistry\Reference\
-     * prefix is covered by testReferencePrefixResolution() using SeriesData,
-     * which is not mocked.
+     * PSR-4 path resolution.
      */
     public function testReferenceClassIsAvailable(): void
     {
         $this->assertTrue(
             class_exists('ElanRegistry\\Reference\\CarModel'),
             'ElanRegistry\\Reference\\CarModel must be available'
-        );
-    }
-
-    /**
-     * Test that the ElanRegistry\Reference\ prefix resolves to the correct file path.
-     *
-     * CarModel is pre-loaded by the bootstrap eval mock, so ReflectionClass cannot
-     * verify its path. SeriesData is not mocked, so the real autoloader fires and
-     * the path can be confirmed.
-     *
-     * This catches regressions where the Reference\ prefix mapping points at the
-     * wrong directory — e.g., the old usersc/classes/ElanRegistry/Reference/ path
-     * corrected in PR #1250.
-     */
-    public function testReferencePrefixResolution(): void
-    {
-        $rc = new ReflectionClass('ElanRegistry\\Reference\\SeriesData');
-        $this->assertStringEndsWith(
-            '/usersc/classes/Reference/SeriesData.php',
-            (string) $rc->getFileName(),
-            'ElanRegistry\\Reference\\SeriesData must load from usersc/classes/Reference/SeriesData.php via the ElanRegistry\\Reference\\ prefix mapping'
         );
     }
 

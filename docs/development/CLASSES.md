@@ -133,7 +133,7 @@ All exception classes are in the `ElanRegistry\Exceptions` namespace:
 - `CarNotFoundException` - Car ID not found (404)
 - `CarValidationException` - Invalid car data (422)
 - `CarDatabaseException` - Database operation failures (500)
-- `CarPermissionException` - Permission/auth denied (403)
+- `CarPermissionException` - Permission/auth denied (403) *(no production code throws this post-v2.28.0; retained for hierarchy completeness)*
 - `CarCreationException` - Car creation failures (500)
 - `CarDeletionException` - Car deletion failures (500)
 - `CarMergeException` - Car merge failures (500)
@@ -146,7 +146,7 @@ All exception classes are in the `ElanRegistry\Exceptions` namespace:
 | Car ID not found in database | CarNotFoundException | User tries to edit car that was deleted |
 | Validation of user input fails | CarValidationException | Invalid chassis format, missing required field |
 | Database query/operation fails | CarDatabaseException | INSERT fails, UPDATE fails, deadlock |
-| User lacks permission | CarPermissionException | Non-owner trying to edit someone else's car |
+| User lacks permission | CarPermissionException | Non-owner trying to edit someone else's car *(unthrown post-v2.28.0 — auth gates moved to callers; class retained for hierarchy)* |
 | Car creation fails | CarCreationException | Cannot create car due to validation or database issue |
 | Car deletion fails | CarDeletionException | Cannot delete car, foreign key constraint |
 | Car merge operation fails | CarMergeException | Cannot merge duplicate cars |
@@ -288,8 +288,7 @@ $owner->update([
     'id' => $userId,
     'city' => 'Portland',
     'state' => 'Oregon',
-    'country' => 'United States',
-    'csrf' => Token::generate()
+    'country' => 'United States'
 ]);
 // Note: Pass lat/lon explicitly; coordinates are not auto-populated server-side
 
@@ -297,7 +296,7 @@ $owner->update([
 $score = $owner->getProfileQualityScore(); // Returns 0-100
 
 // Search owners (admin function)
-$results = Owner::searchOwners('Portland');
+$results = (new Owner())->searchOwners('Portland');
 ```
 
 **Database Tables**:
@@ -307,7 +306,7 @@ $results = Owner::searchOwners('Portland');
 
 **Integration**:
 
-- Works with `getUserWithProfile($userId)` custom function
+- Use `(new Owner($userId))->data()` to load combined user+profile data
 - Used in admin consolidated management interface
 
 ### CarValidator
@@ -740,9 +739,6 @@ use ElanRegistry\Documentation\DocumentPortalTemplate;
 // Breadcrumb derived from a nav section
 echo DocumentPortalTemplate::renderBreadcrumb('guides', $us_url_root, $title, 'fa-car');
 
-// Breadcrumb from explicit items
-echo DocumentPortalTemplate::renderBreadcrumbFromItems($breadcrumb);
-
 // Card grid for an index page
 echo DocumentPortalTemplate::renderDocumentCardGrid($cards);
 ```
@@ -802,9 +798,9 @@ class MyDomainClass {
     }
 
     // Update existing record
+    // CSRF is validated by the caller (HTTP layer) before update() is called
     public function update(array $fields): bool {
         // Validation
-        // CSRF check
         // Database update
         // Audit logging
         return true;
@@ -825,7 +821,7 @@ class MyDomainClass {
 
 ```php
 // Combined user + profile data
-$owner = getUserWithProfile($userId);
+$ownerData = (new Owner($userId))->data();
 ```
 
 **UserSpice Classes**:
@@ -869,7 +865,7 @@ Car
 Owner
 ├── Uses: DB (singleton)
 ├── Related: Car (via user_id)
-└── Integrates: getUserWithProfile()
+└── Uses: (new Owner($userId))->data() for combined user+profile
 
 CarView
 ├── Uses: Resize (for image processing)

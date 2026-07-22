@@ -3,8 +3,11 @@
 declare(strict_types=1);
 
 use ElanRegistry\ApiResponse;
+use ElanRegistry\Exceptions\CarException;
 use ElanRegistry\Exceptions\CarTransferException;
 use ElanRegistry\Input;
+use ElanRegistry\Car\CarValidator;
+use ElanRegistry\Exceptions\CarValidationException;
 use ElanRegistry\LogCategories;
 use ElanRegistry\Transfer\CarTransferRepository;
 use ElanRegistry\Transfer\TransferEmailService;
@@ -70,14 +73,11 @@ try {
     }
 
     // Parse model to get series, variant, type
-    $modelParts = explode('|', $model);
-    if (count($modelParts) !== 3) {
-        throw new CarTransferException('Invalid model format');
+    try {
+        [$series, $variant, $type] = CarValidator::parseModel($model);
+    } catch (CarValidationException $e) {
+        throw new CarTransferException('Invalid model format: ' . $model, 0, $e);
     }
-
-    $series = $modelParts[0];
-    $variant = $modelParts[1];
-    $type = $modelParts[2];
 
     // Validate model-derived field lengths against DB column widths
     if (strlen($model) > 30) {
@@ -131,7 +131,7 @@ try {
 
     $fields = [
         'existing_car_id' => $existingCar->id,
-        'requested_by_user_id' => $user->data()->id,
+        'requested_by_user_id' => $userData->id,
         'security_token' => $securityToken,
         'expires_at' => $expiresAt,
         'submitted_model' => $model,
@@ -149,51 +149,39 @@ try {
         'submitted_city' => $userData->city ?? '',
         'submitted_state' => $userData->state ?? '',
         'submitted_country' => $userData->country ?? '',
-        'created_by' => $user->data()->id,
+        'created_by' => $userData->id,
     ];
 
     $transferRequestId = $repo->create($fields);
 
-    logger($user->data()->id, LogCategories::LOG_CATEGORY_CAR_TRANSFER, "Transfer request created for car ID {$existingCar->id}, chassis {$chassis}, transfer request ID: {$transferRequestId}");
+    logger($userData->id, LogCategories::LOG_CATEGORY_CAR_TRANSFER, "Transfer request created for car ID {$existingCar->id}, chassis {$chassis}, transfer request ID: {$transferRequestId}");
 
-    // Send email notifications with timeout protection
+    // Send email notifications; outer catch covers TransferEmailService constructor only —
+    // sendRequest() and sendAdminAlert() each catch Throwable internally and return bool.
     try {
-        $emailService = new TransferEmailService(DB::getInstance(), 'email', $abs_us_root . $us_url_root);
-
-        // Set time limit for email operations
+        $emailService = new TransferEmailService(DB::getInstance(), 'email');
         set_time_limit(60);
 
-        // Send notification to current owner with error handling
-        try {
-            $ownerNotified = $emailService->sendRequest($transferRequestId);
-            if (!$ownerNotified) {
-                logger($user->data()->id, LogCategories::LOG_CATEGORY_EMAIL_ERROR, "Owner notification failed for transfer request #$transferRequestId — owner may not be aware of this request");
-            }
-        } catch (\Throwable $emailEx) {
-            logger($user->data()->id, LogCategories::LOG_CATEGORY_EMAIL_ERROR, "Unexpected exception sending owner notification for request #$transferRequestId: " . $emailEx->getMessage());
+        $ownerNotified = $emailService->sendRequest($transferRequestId);
+        if (!$ownerNotified) {
+            logger($userData->id, LogCategories::LOG_CATEGORY_EMAIL_ERROR, "Owner notification failed for transfer request #$transferRequestId — owner may not be aware of this request");
         }
 
-        // Send alert to administrators with error handling
-        try {
-            $adminNotified = $emailService->sendAdminAlert($transferRequestId);
-            if (!$adminNotified) {
-                logger($user->data()->id, LogCategories::LOG_CATEGORY_EMAIL_ERROR, "Admin alert failed for transfer request #$transferRequestId");
-            }
-        } catch (\Throwable $emailEx) {
-            logger($user->data()->id, LogCategories::LOG_CATEGORY_EMAIL_ERROR, "Unexpected exception sending admin alert for request #$transferRequestId: " . $emailEx->getMessage());
+        $adminNotified = $emailService->sendAdminAlert($transferRequestId);
+        if (!$adminNotified) {
+            logger($userData->id, LogCategories::LOG_CATEGORY_EMAIL_ERROR, "Admin alert failed for transfer request #$transferRequestId");
         }
-
     } catch (\Throwable $generalEmailEx) {
-        logger($user->data()->id, LogCategories::LOG_CATEGORY_EMAIL_ERROR, "General email error for request #$transferRequestId: " . $generalEmailEx->getMessage());
+        logger($userData->id, LogCategories::LOG_CATEGORY_EMAIL_ERROR, "General email error for request #$transferRequestId: " . $generalEmailEx->getMessage());
     }
 
     ApiResponse::success('Transfer request submitted successfully.')
         ->withData('transfer_request_id', $transferRequestId)
-        ->withLogging($user->data()->id, LogCategories::LOG_CATEGORY_CAR_TRANSFER, "Transfer request submitted for car ID {$existingCar->id}")
+        ->withLogging($userData->id, LogCategories::LOG_CATEGORY_CAR_TRANSFER, "Transfer request submitted for car ID {$existingCar->id}")
         ->send();
 
-} catch (CarTransferException $e) {
-    ApiResponse::error($e->getUserMessage(), 400)
+} catch (CarException $e) {
+    ApiResponse::error($e->getUserMessage(), $e->getHttpStatusCode())
         ->withLogging($logUserId, $e->getLogCategory(), 'Transfer request failed: ' . $e->getMessage())
         ->send();
 

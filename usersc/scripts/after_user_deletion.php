@@ -54,7 +54,25 @@ if ($noOwnerQuery->count() > 0) {
     $userCars = $repo->findByOwner($id);
     $carCount = count($userCars);
 
-    $committed = $inTransaction(function () use ($db, $id, $noOwnerUserId, $userCars): void {
+    // Resolve the acting admin ID before the transaction. currentUserId() throws
+    // RuntimeException if there is no authenticated session; guard it so a bad-session
+    // edge case logs and exits cleanly rather than propagating uncaught after the
+    // users row has already been deleted.
+    //
+    // ASSUMPTION: this hook is only invoked from admin-authenticated deleteUsers()
+    // callers (currently only tab-account_cleanup.php, gated by securePage() +
+    // isAdmin()). ADR-010 documents a potential future cron caller — if that is ever
+    // added without a session, this catch will silently abort car reassignment (logged
+    // only), leaving cars pointing at the now-deleted user ID. At that point, resolve
+    // $adminUserId via a dedicated service/system account rather than currentUserId().
+    try {
+        $adminUserId = currentUserId();
+    } catch (\RuntimeException $e) {
+        logger($id, LogCategories::LOG_CATEGORY_USER_DELETION, 'Cleanup aborted: no authenticated admin session — ' . $e->getMessage());
+        return;
+    }
+
+    $committed = $inTransaction(function () use ($db, $id, $noOwnerUserId, $userCars, $adminUserId): void {
         // Expire any non-terminal transfer requests the user initiated — prevents orphaned
         // requester FK references and ensures the current car owner sees a clean audit trail.
         $db->query(
@@ -72,17 +90,13 @@ if ($noOwnerQuery->count() > 0) {
         if ($db->error()) {
             throw new \RuntimeException("Failed to delete profile for user $id: " . $db->errorString());
         }
-        // Transfer each car using the same code path as the admin reassign UI — updates
-        // user_id and all denormalized owner fields (email, fname, lname, city, etc.).
-        // Car::transfer() requires $user->isLoggedIn(); this hook is only ever invoked
-        // from admin-authenticated contexts (deleteUsers() callers). A future self-service
-        // GDPR-deletion path would need a different reassignment strategy here.
         foreach ($userCars as $carObj) {
             $car = new \ElanRegistry\Car\Car((int) $carObj->id);
             $car->transfer(
                 $noOwnerUserId,
                 "Account deleted — reassigned to noowner (ID: $noOwnerUserId)",
-                'NEWOWNER'
+                'NEWOWNER',
+                $adminUserId
             );
         }
     });

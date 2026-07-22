@@ -2,6 +2,7 @@
 declare(strict_types=1);
 
 use ElanRegistry\ApiResponse;
+use ElanRegistry\LogCategories;
 use ElanRegistry\Owner;
 
 /**
@@ -31,10 +32,10 @@ try {
     $userWithProfile = (new Owner($userId))->data();
 
     if (!$userWithProfile) {
-        ApiResponse::error('User not found', 200)
+        ApiResponse::notFound('User not found')
             ->withLogging(
                 $user->data()->id,
-                'OwnerErrors',
+                LogCategories::LOG_CATEGORY_OWNER_ERRORS,
                 "User details lookup failed: User ID {$userId} not found"
             )
             ->send();
@@ -60,7 +61,7 @@ try {
     ApiResponse::serverError('Database error occurred')
         ->withLogging(
             $user->data()->id,
-            'DatabaseError',
+            LogCategories::LOG_CATEGORY_DATABASE_ERROR,
             "User details query failed: " . $e->getMessage()
         )
         ->send();
