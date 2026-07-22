@@ -19,9 +19,9 @@ class AutoloaderTest extends TestCase
     /**
      * Test that core application classes are available via PSR-4 autoloading.
      *
-     * - Owner, CarView, Resize, ChassisValidator, EmailTemplate, and
-     *   CarErrorMessages are namespaced under ElanRegistry\ and load via the
-     *   PSR-4 root prefix mapping to usersc/classes/.
+     * - Owner, CarView, Resize, ChassisValidator, and EmailTemplate are
+     *   namespaced under ElanRegistry\ and load via the PSR-4 root prefix
+     *   mapping to usersc/classes/.
      * - The class_exists('Car') assertion is a regression guard confirming the global
      *   Car alias remains available. In the unit test environment it resolves to the
      *   bootstrap mock rather than the real ElanRegistry\Car\Car; in production it
@@ -36,7 +36,6 @@ class AutoloaderTest extends TestCase
         $this->assertTrue(class_exists('ElanRegistry\\Resize'), 'ElanRegistry\\Resize class should auto-load');
         $this->assertTrue(class_exists('ElanRegistry\\ChassisValidator'), 'ElanRegistry\\ChassisValidator class should auto-load');
         $this->assertTrue(class_exists('ElanRegistry\\EmailTemplate'), 'ElanRegistry\\EmailTemplate class should auto-load');
-        $this->assertTrue(class_exists('ElanRegistry\\CarErrorMessages'), 'ElanRegistry\\CarErrorMessages class should auto-load');
     }
 
     /**

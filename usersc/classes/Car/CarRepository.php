@@ -21,6 +21,23 @@ use ElanRegistry\LogCategories;
  */
 class CarRepository
 {
+    /** @var array<string, string> Factory suffix code to description mapping */
+    private const SUFFIX_MAP = [
+        'A' => 'S4 FHC UK Market',
+        'B' => 'S4 FHC Export',
+        'C' => 'S4 DHC UK Market',
+        'D' => 'S4 DHC Export',
+        'E' => 'S4 S/E FHC UK Market',
+        'F' => 'S4 S/E FHC Export',
+        'G' => 'S4 S/E DHC UK Market',
+        'H' => 'S4 S/E DHC Export',
+        'J' => 'S4 FHC Federal',
+        'K' => 'S4 DHC Federal',
+        'L' => '+2S and +2S/130 UK Market',
+        'M' => '+2S and +2S/130 Export',
+        'N' => '+2S and +2S/130 Federal',
+    ];
+
     private bool $transactionOwner = false;
 
     public function __construct(private DB $db) {}
@@ -293,6 +310,18 @@ class CarRepository
         }
 
         return null;
+    }
+
+    /**
+     * Convert a factory suffix code to descriptive text
+     *
+     * @param string $suffix Suffix code — single letter, case-insensitive (e.g. 'A' or 'a')
+     * @return string Human-readable description, or "Unknown suffix: {suffix}" if the code is not recognised
+     */
+    public static function suffixToText(string $suffix): string
+    {
+        $s = strtoupper($suffix);
+        return self::SUFFIX_MAP[$s] ?? "Unknown suffix: " . $s;
     }
 
     /**

@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace ElanRegistry\Car;
 
 use ElanRegistry\AppConstants;
-use ElanRegistry\CarErrorMessages;
 use ElanRegistry\Exceptions\CarDatabaseException;
 use ElanRegistry\Exceptions\CarDeletionException;
 use ElanRegistry\Exceptions\CarException;
@@ -55,9 +54,8 @@ class CarAdministrationService
             $repo->beginTransaction();
 
             if (!$repo->deleteCar($carId)) {
-                $technicalMsg = CarErrorMessages::getTechnicalMessage('database_update_failed', ['error' => 'query returned false']);
-                logger($adminUserId, LogCategories::LOG_CATEGORY_CAR_DELETION, $technicalMsg);
-                throw new CarDatabaseException(CarErrorMessages::getAdminMessage('database_update_failed'));
+                logger($adminUserId, LogCategories::LOG_CATEGORY_CAR_DELETION, 'Database update failed: query returned false');
+                throw new CarDatabaseException('Database update failed - check system logs for details.');
             }
 
             $repo->commit();
@@ -69,9 +67,8 @@ class CarAdministrationService
             if ($e instanceof CarException) {
                 throw $e;
             }
-            $technicalMsg = CarErrorMessages::getTechnicalMessage('operation_failed', ['operation' => 'Car deletion', 'error' => $e->getMessage()]);
-            logger($adminUserId, LogCategories::LOG_CATEGORY_CAR_DELETION, $technicalMsg);
-            throw new CarDeletionException(CarErrorMessages::getMessage('operation_failed', 'admin'));
+            logger($adminUserId, LogCategories::LOG_CATEGORY_CAR_DELETION, 'Car deletion failed: ' . $e->getMessage());
+            throw new CarDeletionException('Operation failed - check system logs for technical details.');
         }
     }
 
@@ -98,9 +95,8 @@ class CarAdministrationService
     ): true {
         $targetUser = (new Owner($newUserId))->data();
         if (!$targetUser) {
-            $technicalMsg = CarErrorMessages::getTechnicalMessage('user_not_found', ['user_id' => $newUserId]);
-            logger($adminUserId, LogCategories::LOG_CATEGORY_CAR_TRANSFER, $technicalMsg);
-            throw new CarValidationException(CarErrorMessages::getMessage('user_not_found'));
+            logger($adminUserId, LogCategories::LOG_CATEGORY_CAR_TRANSFER, 'Target user not found - cannot transfer ownership to user ID: ' . $newUserId);
+            throw new CarValidationException('Unable to transfer ownership: the target user account is not valid.');
         }
 
         $carId = (int) $carData->id;
@@ -131,9 +127,8 @@ class CarAdministrationService
 
             $updateSuccess = $repo->updateCar($carId, $ownerFields);
             if (!$updateSuccess) {
-                $technicalMsg = CarErrorMessages::getTechnicalMessage('database_update_failed', ['error' => 'Repository returned false']);
-                logger($adminUserId, LogCategories::LOG_CATEGORY_CAR_TRANSFER, $technicalMsg);
-                throw new CarDatabaseException(CarErrorMessages::getAdminMessage('database_update_failed'));
+                logger($adminUserId, LogCategories::LOG_CATEGORY_CAR_TRANSFER, 'Database update failed: Repository returned false');
+                throw new CarDatabaseException('Database update failed - check system logs for details.');
             }
 
             // Insert history before commit so a failure rolls back the entire
@@ -169,9 +164,8 @@ class CarAdministrationService
             ];
 
             if (!$repo->insertHistory($historyFields)) {
-                $technicalMsg = CarErrorMessages::getTechnicalMessage('audit_trail_failed', ['operation' => $operationType]);
-                logger($adminUserId, LogCategories::LOG_CATEGORY_CAR_TRANSFER_ERROR, $technicalMsg);
-                throw new CarDatabaseException(CarErrorMessages::getAdminMessage('audit_trail_failed', ['operation' => $operationType]));
+                logger($adminUserId, LogCategories::LOG_CATEGORY_CAR_TRANSFER_ERROR, 'Failed to create audit trail entry for ' . $operationType);
+                throw new CarDatabaseException('Operation failed - could not create audit trail entry.');
             }
 
             $repo->commit();
@@ -183,9 +177,8 @@ class CarAdministrationService
             if ($e instanceof CarException) {
                 throw $e;
             }
-            $technicalMsg = CarErrorMessages::getTechnicalMessage('operation_failed', ['operation' => 'Car ownership transfer', 'error' => $e->getMessage()]);
-            logger($adminUserId, LogCategories::LOG_CATEGORY_CAR_TRANSFER, $technicalMsg);
-            throw new CarDatabaseException(CarErrorMessages::getMessage('operation_failed', 'admin'));
+            logger($adminUserId, LogCategories::LOG_CATEGORY_CAR_TRANSFER, 'Car ownership transfer failed: ' . $e->getMessage());
+            throw new CarDatabaseException('Operation failed - check system logs for technical details.');
         }
     }
 
@@ -211,9 +204,8 @@ class CarAdministrationService
         CarRepository $repo
     ): true {
         if ($oldCarId === (int) $targetCarData->id) {
-            $technicalMsg = CarErrorMessages::getTechnicalMessage('car_merge_self', ['id' => $oldCarId]);
-            logger($adminUserId, LogCategories::LOG_CATEGORY_CAR_MERGE, $technicalMsg);
-            throw new CarValidationException(CarErrorMessages::getMessage('car_merge_self'));
+            logger($adminUserId, LogCategories::LOG_CATEGORY_CAR_MERGE, 'Cannot merge a car with itself - car ID: ' . $oldCarId);
+            throw new CarValidationException('Unable to merge a car with itself.');
         }
 
         $newCarId = (int) $targetCarData->id;
@@ -224,23 +216,20 @@ class CarAdministrationService
 
             $oldCarData = $repo->findByIdForUpdate($oldCarId);
             if (!$oldCarData) {
-                $technicalMsg = CarErrorMessages::getTechnicalMessage('merge_source_not_found', ['id' => $oldCarId]);
-                logger($adminUserId, LogCategories::LOG_CATEGORY_CAR_MERGE, $technicalMsg);
-                throw new CarNotFoundException(CarErrorMessages::getMessage('merge_source_not_found'));
+                logger($adminUserId, LogCategories::LOG_CATEGORY_CAR_MERGE, 'Source car not found - cannot merge car ID: ' . $oldCarId);
+                throw new CarNotFoundException('The source car for merging could not be found.');
             }
 
             $oldChassis = $oldCarData->chassis ?? 'Unknown';
 
             if (!$repo->transferHistory($oldCarId, $newCarId)) {
-                $technicalMsg = CarErrorMessages::getTechnicalMessage('car_history_transfer_failed', ['error' => 'query returned false']);
-                logger($adminUserId, LogCategories::LOG_CATEGORY_CAR_MERGE, $technicalMsg);
-                throw new CarDatabaseException(CarErrorMessages::getAdminMessage('car_history_transfer_failed'));
+                logger($adminUserId, LogCategories::LOG_CATEGORY_CAR_MERGE, 'Failed to transfer car history: query returned false');
+                throw new CarDatabaseException('Car merge failed - could not transfer history records.');
             }
 
             if (!$repo->deleteCar($oldCarId)) {
-                $technicalMsg = CarErrorMessages::getTechnicalMessage('database_update_failed', ['error' => 'query returned false']);
-                logger($adminUserId, LogCategories::LOG_CATEGORY_CAR_MERGE, $technicalMsg);
-                throw new CarDatabaseException(CarErrorMessages::getAdminMessage('database_update_failed'));
+                logger($adminUserId, LogCategories::LOG_CATEGORY_CAR_MERGE, 'Database update failed: query returned false');
+                throw new CarDatabaseException('Database update failed - check system logs for details.');
             }
 
             $historyFields = [
@@ -263,9 +252,8 @@ class CarAdministrationService
             ];
 
             if (!$repo->insertHistory($historyFields)) {
-                $technicalMsg = CarErrorMessages::getTechnicalMessage('audit_trail_failed', ['operation' => 'car merge']);
-                logger($adminUserId, LogCategories::LOG_CATEGORY_CAR_MERGE, $technicalMsg);
-                throw new CarDatabaseException(CarErrorMessages::getAdminMessage('audit_trail_failed', ['operation' => 'car merge']));
+                logger($adminUserId, LogCategories::LOG_CATEGORY_CAR_MERGE, 'Failed to create audit trail entry for car merge');
+                throw new CarDatabaseException('Operation failed - could not create audit trail entry.');
             }
 
             $repo->commit();
@@ -276,9 +264,8 @@ class CarAdministrationService
             if ($e instanceof CarException) {
                 throw $e;
             }
-            $technicalMsg = CarErrorMessages::getTechnicalMessage('operation_failed', ['operation' => 'Car merge', 'error' => $e->getMessage()]);
-            logger($adminUserId, LogCategories::LOG_CATEGORY_CAR_MERGE, $technicalMsg);
-            throw new CarMergeException(CarErrorMessages::getMessage('operation_failed', 'admin'));
+            logger($adminUserId, LogCategories::LOG_CATEGORY_CAR_MERGE, 'Car merge failed: ' . $e->getMessage());
+            throw new CarMergeException('Operation failed - check system logs for technical details.');
         }
     }
 }
