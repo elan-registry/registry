@@ -93,6 +93,19 @@ define('ELAN_IMAGE_DISPLAY_MAX_SIZE', 2048);
 define('ELAN_IMAGE_THUMBNAIL_SIZES', '100,300,768,1024,2048');
 
 // ============================================================================
+// Cron Configuration
+// ============================================================================
+
+/**
+ * How often (in minutes) the UserSpice cron transport fires on dev, test,
+ * and prod. See docs/development/DEPLOYMENT.md, "Cron Transport (UserSpice
+ * Cron Manager)" for the operational record of the underlying cPanel/launchd
+ * schedule — this constant is the in-code mirror cron jobs can read to
+ * self-gate cadence or detect a stalled transport (see #2001).
+ */
+define('CRON_TRANSPORT_INTERVAL_MINUTES', 10);
+
+// ============================================================================
 // Transfer & Email Configuration
 // ============================================================================
 

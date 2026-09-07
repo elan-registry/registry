@@ -28,3 +28,4 @@ None. (Brevo webhook registration, BREVO_WEBHOOK_TOKEN environment variable setu
 - WIP: [#1924](https://github.com/elan-registry/registry/issues/1924) — feat: show email bounce / suppression / verification state on the admin user view hook
 - [#1926](https://github.com/elan-registry/registry/issues/1926) — feat: verification-system feature switch with Brevo prerequisite check and admin warning
 - [#1968](https://github.com/elan-registry/registry/issues/1968) — chore: raise dev, then test and prod, to PHP 8.4 before 8.2 security EOL
+- [#2001](https://github.com/elan-registry/registry/issues/2001) — chore: extract cron transport interval into a shared, discoverable constant (`CRON_TRANSPORT_INTERVAL_MINUTES` in `usersc/includes/config.php`); no behavior change

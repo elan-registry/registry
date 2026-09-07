@@ -817,7 +817,7 @@ shared state or dependency exists between the two.
 - `isEnabled(): bool` - Whether verification is currently switched on
 - `setEnabled(bool $enabled, int $actingUserId = 0): bool` - Turn verification on or off
 - `brevoReady(): bool` - True only if the Brevo API key is configured AND the plugin override file is active
-- `cronReady(): bool` - True if a non-denied `CronRequest` log exists within the last 20 minutes
+- `cronReady(): bool` - True if a non-denied `CronRequest` log exists within twice `CRON_TRANSPORT_INTERVAL_MINUTES` (`usersc/includes/config.php`; 20 minutes today)
 - `lastCronRequestAt(): ?DateTimeImmutable` - Timestamp of the most recent non-denied cron request
 
 **Exceptions**:

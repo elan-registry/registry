@@ -48,22 +48,15 @@ final class VerificationSettings
     private const SETTINGS_ROW_ID = 1;
 
     /**
-     * Age, in seconds, beyond which the newest `CronRequest` log means cron is stalled.
-     *
-     * The cron transport fires every 10 minutes on dev, test, and prod — see
-     * `docs/development/DEPLOYMENT.md`, "Cron Transport (UserSpice Cron Manager)".
-     * That interval lives in the doc as prose in a contract block, not as a PHP
-     * constant, so it is restated here rather than imported. Doubling it gives one
-     * missed tick of slack before the environment is called stalled, so a single
-     * late or dropped hit does not flap the readiness indicator.
-     *
-     * This constant is a known-temporary duplication: #2001 tracks extracting the
-     * cron transport interval into one shared, discoverable source (candidates:
-     * `usersc/includes/config.php`, or a DB-backed value) that this class and
-     * future cron jobs can both read, instead of each restating "10 minutes"
-     * independently.
+     * Minutes to fall back to for {@see cronStaleAfterSeconds()} if
+     * `CRON_TRANSPORT_INTERVAL_MINUTES` (`usersc/includes/config.php`) is
+     * somehow undefined. Matches that constant's current value exactly — this
+     * is not an independent guess, just insurance against a class-load fatal
+     * on a path that should never occur (`config.php` loads during UserSpice
+     * bootstrap, before any application class is autoloaded) but that this
+     * class's own never-throw contract (see class docblock) can't risk.
      */
-    private const CRON_STALE_AFTER_SECONDS = 20 * 60;
+    private const CRON_TRANSPORT_INTERVAL_MINUTES_FALLBACK = 10;
 
     /**
      * Path of the Brevo plugin's override file, relative to the site root.
@@ -257,14 +250,19 @@ final class VerificationSettings
     /**
      * Whether the cron transport has hit this environment recently enough
      *
-     * "Recently enough" is strictly less than 20 minutes ago — a request exactly
-     * 20:00 old counts as stalled, not ready. The comparison is deliberately
-     * strict (`<`) so the boundary sits at a single unambiguous point that a test
-     * can pin by inserting a log row at a known age.
+     * "Recently enough" is strictly less than twice `CRON_TRANSPORT_INTERVAL_MINUTES`
+     * (`usersc/includes/config.php`) ago — a request exactly at that age counts as
+     * stalled, not ready. The comparison is deliberately strict (`<`) so the
+     * boundary sits at a single unambiguous point that a test can pin by inserting
+     * a log row at a known age. Doubling the interval gives one missed tick of
+     * slack, so a single late or dropped hit does not flap the readiness indicator.
      *
-     * Never throws: no cron log at all, or an unreadable one, reports "not ready".
+     * Never throws: no cron log at all, an unreadable one, or a missing
+     * `CRON_TRANSPORT_INTERVAL_MINUTES` (see {@see cronStaleAfterSeconds()})
+     * all report "not ready" rather than raising.
      *
-     * @return bool True if a non-denied CronRequest was logged less than 20 minutes ago
+     * @return bool True if a non-denied CronRequest was logged less than
+     *              twice the cron transport interval ago
      */
     public function cronReady(): bool
     {
@@ -275,7 +273,30 @@ final class VerificationSettings
 
         $elapsedSeconds = time() - $lastRequest->getTimestamp();
 
-        return $elapsedSeconds < self::CRON_STALE_AFTER_SECONDS;
+        return $elapsedSeconds < $this->cronStaleAfterSeconds();
+    }
+
+    /**
+     * Age, in seconds, beyond which the newest `CronRequest` log means cron is stalled.
+     *
+     * Derived from `CRON_TRANSPORT_INTERVAL_MINUTES` (`usersc/includes/config.php`),
+     * the shared, discoverable source for how often the UserSpice cron transport
+     * fires — see `docs/development/DEPLOYMENT.md`, "Cron Transport (UserSpice Cron
+     * Manager)" for the operational record. Doubling it gives one missed tick of
+     * slack before the environment is called stalled.
+     *
+     * Reads the constant at call time rather than as a class constant expression,
+     * so a caller that somehow reaches this class before `config.php` has loaded
+     * gets the documented fallback instead of a class-load fatal — this class's
+     * never-throw contract (see class docblock) must hold even then.
+     */
+    private function cronStaleAfterSeconds(): int
+    {
+        $minutes = defined('CRON_TRANSPORT_INTERVAL_MINUTES')
+            ? (int) CRON_TRANSPORT_INTERVAL_MINUTES
+            : self::CRON_TRANSPORT_INTERVAL_MINUTES_FALLBACK;
+
+        return $minutes * 60 * 2;
     }
 
     /**

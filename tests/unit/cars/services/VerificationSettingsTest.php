@@ -484,6 +484,21 @@ final class VerificationSettingsTest extends TestCase
         $this->assertFalse((new VerificationSettings($db))->cronReady());
     }
 
+    public function testCronStaleAfterSecondsDerivesToTwentyMinutes(): void
+    {
+        // Pins #2001's value-preserving invariant directly: the shared
+        // CRON_TRANSPORT_INTERVAL_MINUTES constant (10, per tests/bootstrap-unit.php)
+        // doubled for slack must still equal 1200 seconds — the same 20-minute
+        // boundary the tests above pin behaviorally. This catches a regression in
+        // the derivation formula itself (e.g. dropping the `* 2` slack multiplier),
+        // which those tests cannot: they run against cronReady()'s comparison
+        // outcome, not the derived value it compares against.
+        $db = new VerificationSettingsFakeDatabase();
+        $method = new \ReflectionMethod(VerificationSettings::class, 'cronStaleAfterSeconds');
+
+        $this->assertSame(1200, $method->invoke(new VerificationSettings($db)));
+    }
+
     // =========================================================================
     // lastCronRequestAt()
     // =========================================================================
