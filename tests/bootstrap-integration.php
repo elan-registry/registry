@@ -272,6 +272,41 @@ try {
     fwrite(STDERR, "NOTE: Database reconnection attempt failed: {$e->getMessage()}\n");
 }
 
+// ============================================================
+// Reset Rate Limit State for Integration Tests (once per suite run)
+// ============================================================
+// us_rate_limits accumulates one row per hit against every rate-limited
+// endpoint the suite exercises — including cars_list, factory_list,
+// car_history, and statistics_request, all rate-limited (not CSRF-gated)
+// since #1913/#1951. Nothing ages these rows out automatically:
+// RateLimit::cleanup() is only ever invoked manually via admin maintenance
+// script #25 (see app/admin/scripts/maintenance/25-Cleanup-Rate-Limits.php),
+// never by a cron job or by any test. Left alone, rows compound across
+// every integration run against this schema — confirmed to reach 3.1M+
+// rows locally, at which point BackupCriticalTablesTest's full-schema
+// backup dump of this table alone exhausts PHP's memory regardless of
+// memory_limit (see #2004). Truncating once per suite run — not per test —
+// keeps this bounded without adding a DB write to every test's tearDown().
+try {
+    if (class_exists('DB')) {
+        $rateLimitDb = DB::getInstance();
+        if ($rateLimitDb->tableExists('us_rate_limits')) {
+            $rateLimitDb->query('TRUNCATE TABLE us_rate_limits');
+            fwrite(STDERR, "NOTE: Truncated us_rate_limits for integration test suite run\n");
+        }
+    }
+} catch (Throwable $e) {
+    // ERROR, not NOTE: a failed truncate here silently reintroduces the exact
+    // OOM condition this block exists to prevent — us_rate_limits keeps
+    // whatever huge row count it already had, and BackupCriticalTablesTest
+    // fatals again several hundred tests later with no obvious link back to
+    // this failure. Non-fatal (unlike the DB-identity check above, which
+    // aborts) because a stale-but-non-huge table shouldn't block every
+    // unrelated test from running — but this must be loud enough that it
+    // isn't missed in CI output when the OOM does resurface downstream.
+    fwrite(STDERR, "ERROR: Could not truncate us_rate_limits: {$e->getMessage()}\n");
+}
+
 /**
  * Write each message line to STDERR and exit(1).
  *
