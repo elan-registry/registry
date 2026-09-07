@@ -98,9 +98,10 @@ To switch back to Brevo for production testing: re-enter the Brevo API key in th
 
 The Lotus Elan Registry uses a feature switch to gate all verification-related
 email sends (webhooks, reconciliation, suppression import, and future
-verification sends) behind two readiness prerequisites. This ensures the
-system cannot send verification email until both Brevo and the cron transport
-are confirmed operational.
+verification sends), enabled only once Brevo is confirmed operational. Cron
+readiness is not a gate — it is surfaced as an advisory indicator, since a
+stalled cron transport delays reminders rather than losing the ability to
+send them at all.
 
 ### VerificationSettings Class
 
@@ -112,7 +113,10 @@ The `VerificationSettings` class gates the entire verification system via a sing
 **Key Methods:**
 
 - `isEnabled(): bool` — reads the current switch state
-- `setEnabled(bool $enabled): bool` — writes the switch; throws `VerificationConfigException` if attempting to enable while `brevoReady()` is false
+- `setEnabled(bool $enabled, int $actingUserId = 0): bool` — writes the
+  switch; throws `VerificationConfigException` if attempting to enable while
+  `brevoReady()` is false. `$actingUserId` attributes the change in the audit
+  log — the class performs no session lookups itself
 - `brevoReady(): bool` — computed live; true only if **both** conditions hold:
   1. `plg_sendinblue.key` is non-empty (API key configured)
   2. `usersc/plugins/sendinblue/override.php` exists (plugin override active)
@@ -157,7 +161,7 @@ An administrator must always be able to turn verification off, even mid-incident
 ```php
 try {
     $settings = new VerificationSettings($db);
-    $settings->setEnabled(true);  // throws if brevoReady() is false
+    $settings->setEnabled(true, $userId);  // throws if brevoReady() is false
 } catch (VerificationConfigException $e) {
     // The exception already logged the refusal internally; surface its
     // user-facing message (e.g. "Brevo is not configured") in the response.
@@ -165,7 +169,7 @@ try {
 }
 
 // Disabling always succeeds, regardless of readiness
-$settings->setEnabled(false);  // never throws
+$settings->setEnabled(false, $userId);  // never throws
 ```
 
 ### Admin UI
@@ -206,6 +210,12 @@ The banner states which prerequisite failed and links to the Verification System
 
 - If `!isEnabled()` → respond 2xx immediately, write nothing, log nothing (the gate is off, so no events proceed)
 - If `isEnabled() && !brevoReady()` → respond 2xx (so Brevo doesn't retry), log a refusal under `LOG_CATEGORY_VERIFICATION_CONFIG_WARNING`, do not persist any event
+- If `isEnabled() && brevoReady()` → respond 2xx; the receiver is a no-op
+  until #1887 lands, so a rate-limited (max once per hour) discoverability
+  notice is logged under `LOG_CATEGORY_VERIFICATION_CONFIG_WARNING` warning
+  that real events are being accepted and silently discarded — without this,
+  an admin who enables verification ahead of #1887 has no way to learn the
+  endpoint isn't actually doing anything
 - No signature verification, no payload parsing, no `email_events` table writes — all of that is #1887's responsibility
 
 This stub exists to verify the gate's acceptance criteria end-to-end: webhook returns 2xx and drops events when disabled or when a prerequisite fails.
