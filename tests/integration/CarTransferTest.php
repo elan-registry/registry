@@ -315,6 +315,66 @@ final class CarTransferTest extends IntegrationTestCase
     }
 
     /**
+     * email_bounced_address and email_suppressed (#1887) are properties of
+     * the previous owner's address by the same argument as email_bounced
+     * above: carrying email_suppressed forward would suppress mail to a new
+     * owner who never sent a spam complaint, and carrying the bounced
+     * address forward retains a stale personal identifier for someone who no
+     * longer owns the car. Transfer to a real owner must clear both.
+     */
+    #[Group('fast')]
+    public function testTransferClearsBounceAddressAndSuppressedOnPreviouslyFlaggedCar(): void
+    {
+        $flaggedCarId = $this->createTestCar($this->testUserId, [
+            'chassis'               => 'TR' . uniqid(),
+            'email_bounced'         => 1,
+            'email_bounced_address' => 'previous-owner@example.com',
+            'email_suppressed'      => 1,
+        ]);
+
+        $car = new Car($flaggedCarId);
+        $car->transfer($this->targetUserId, 'Test transfer flagged car', 'NEWOWNER', $this->testUserId);
+
+        $carRow = $this->db->query(
+            "SELECT email_bounced_address, email_suppressed FROM cars WHERE id = ?",
+            [$flaggedCarId]
+        )->first();
+        $this->assertNull($carRow->email_bounced_address);
+        $this->assertSame(0, (int) $carRow->email_suppressed);
+    }
+
+    /**
+     * Reassignment to the system account ("no owner") is NOT a change of
+     * owner (see the sold-date precedent for the same distinction, #1878) —
+     * the bounce/suppression state must survive so the flags aren't lost
+     * while a car sits ownerless, mirroring email_bounced's own preservation.
+     */
+    #[Group('fast')]
+    public function testSystemAccountReassignmentPreservesBounceAddressAndSuppressed(): void
+    {
+        $flaggedCarId = $this->createTestCar($this->testUserId, [
+            'chassis'               => 'TR' . uniqid(),
+            'email_bounced'         => 1,
+            'email_bounced_address' => 'still-bounced@example.com',
+            'email_suppressed'      => 1,
+        ]);
+
+        $noOwner = $this->db->query("SELECT id FROM users WHERE username = 'noowner'")->first();
+        $this->assertNotNull($noOwner, 'noowner system account must exist for this test');
+
+        $car = new Car($flaggedCarId);
+        $car->transfer((int) $noOwner->id, 'Test reassignment to noowner', 'NEWOWNER', $this->testUserId);
+
+        $carRow = $this->db->query(
+            "SELECT email_bounced, email_bounced_address, email_suppressed FROM cars WHERE id = ?",
+            [$flaggedCarId]
+        )->first();
+        $this->assertSame(1, (int) $carRow->email_bounced);
+        $this->assertSame('still-bounced@example.com', $carRow->email_bounced_address);
+        $this->assertSame(1, (int) $carRow->email_suppressed);
+    }
+
+    /**
      * Test transfer works with an explicit actingUserId even when global $user is unset.
      * Verifies that Car::transfer() does not fall back to currentUserId() internally.
      */

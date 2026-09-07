@@ -811,7 +811,28 @@ final class CarRepositoryTest extends TestCase
     public function testUpdateEmailBouncedReturnsTrue(): void
     {
         $repo   = new CarRepository($this->makeEmptyResultDb());
-        $result = $repo->updateEmailBounced(1, true);
+        $result = $repo->updateEmailBounced(1, true, 'owner@example.com');
+        $this->assertTrue($result);
+    }
+
+    public function testUpdateEmailBouncedThrowsWhenBouncedTrueWithNoAddress(): void
+    {
+        $repo = new CarRepository($this->makeEmptyResultDb());
+        $this->expectException(\ElanRegistry\Exceptions\CarDatabaseException::class);
+        $repo->updateEmailBounced(1, true);
+    }
+
+    public function testUpdateEmailBouncedThrowsWhenBouncedTrueWithEmptyAddress(): void
+    {
+        $repo = new CarRepository($this->makeEmptyResultDb());
+        $this->expectException(\ElanRegistry\Exceptions\CarDatabaseException::class);
+        $repo->updateEmailBounced(1, true, '');
+    }
+
+    public function testUpdateEmailBouncedClearsAddressWhenFalse(): void
+    {
+        $repo   = new CarRepository($this->makeEmptyResultDb());
+        $result = $repo->updateEmailBounced(1, false);
         $this->assertTrue($result);
     }
 

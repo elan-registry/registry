@@ -289,15 +289,49 @@ class CarRepository
     }
 
     /**
-     * Update the email-bounced flag for a car
+     * Update the email-bounced flag for a car, and the address it bounced against
+     *
+     * The `$bouncedAddress` default of `null` exists only to make `$bounced =
+     * false` (clearing the flag) callable without a throwaway argument — it
+     * is NOT safe to omit while setting `$bounced = true`. Passing
+     * `updateEmailBounced($id, true)` with no address is rejected rather
+     * than silently writing `email_bounced = 1` with a null
+     * `email_bounced_address`, which would leave the two columns
+     * observably in disagreement (see the integration test asserting they
+     * are never independently readable that way).
      *
      * @param int $carId Car ID
      * @param bool $bounced True if the owner's email address bounced
+     * @param string|null $bouncedAddress The address the bounce was reported against.
+     *                                    Required (non-null, non-empty) when $bounced is
+     *                                    true; ignored (always written as null) when false.
+     * @return bool True on success
+     * @throws CarDatabaseException If $bounced is true and $bouncedAddress is null/empty
+     */
+    public function updateEmailBounced(int $carId, bool $bounced, ?string $bouncedAddress = null): bool
+    {
+        if ($bounced && ($bouncedAddress === null || $bouncedAddress === '')) {
+            throw new CarDatabaseException(
+                "CarRepository::updateEmailBounced (carId={$carId}): a non-empty bounced address is required when setting the flag."
+            );
+        }
+
+        return $this->updateCar($carId, [
+            'email_bounced' => $bounced ? 1 : 0,
+            'email_bounced_address' => $bounced ? $bouncedAddress : null,
+        ]);
+    }
+
+    /**
+     * Update the email-suppressed flag for a car
+     *
+     * @param int $carId Car ID
+     * @param bool $suppressed True if Brevo reported the owner's email address as suppressed
      * @return bool True on success
      */
-    public function updateEmailBounced(int $carId, bool $bounced): bool
+    public function updateEmailSuppressed(int $carId, bool $suppressed): bool
     {
-        return $this->updateCar($carId, ['email_bounced' => $bounced ? 1 : 0]);
+        return $this->updateCar($carId, ['email_suppressed' => $suppressed ? 1 : 0]);
     }
 
     /**
@@ -687,6 +721,160 @@ class CarRepository
             );
         }
         return $result->results();
+    }
+
+    /**
+     * Find cars whose email column matches a given address
+     *
+     * Used by the Brevo webhook receiver to map an inbound delivery-status
+     * event's recipient address back to the car(s) it belongs to. Multiple
+     * cars can share one owner email, so this returns every match.
+     *
+     * @param string $email Email address to match against cars.email
+     * @return array<object> Array of objects with 'id' and 'email' properties (empty if no match)
+     * @throws CarDatabaseException If the query fails
+     */
+    public function findByEmail(string $email): array
+    {
+        $result = $this->db->query("SELECT id, email FROM cars WHERE email = ?", [$email]);
+        if ($this->db->error()) {
+            throw new CarDatabaseException(
+                "CarRepository::findByEmail failed for email={$email}: " . $this->db->errorString()
+            );
+        }
+        return $result->results();
+    }
+
+    /**
+     * Record one Brevo delivery-status event against a car
+     *
+     * Deliberately does NOT use {@see \DB::insert()}'s `$update = true` mode:
+     * that mode's `ON DUPLICATE KEY UPDATE` clause updates every non-`id` key
+     * indiscriminately, which would also reassign `car_id`/`email`/`event`/
+     * `brevo_message_id` on conflict — exactly the columns the unique index
+     * is keyed on. This writes the raw parameterized query instead, naming
+     * only `reason` and `occurred_at` in the UPDATE clause, so a duplicate
+     * delivery of the same event updates its detail fields without ever
+     * touching identity columns.
+     *
+     * @param int $carId Car ID the event is being recorded against
+     * @param string $email Recipient email address from the Brevo payload
+     * @param string $event Brevo event name (e.g. 'hard_bounce', 'delivered')
+     * @param string|null $reason Optional reason/detail text from the payload
+     * @param string $brevoMessageId Brevo's message id for this send (or a
+     *                                locally-generated id for the 'sent' event)
+     * @param string $occurredAt Datetime string in AppConstants::DATETIME_FORMAT
+     * @return int MySQL's `rowCount()` for an `INSERT ... ON DUPLICATE KEY
+     *             UPDATE`: 1 for a fresh insert, 2 if a duplicate's `reason`/
+     *             `occurred_at` were actually changed, 0 if a duplicate
+     *             arrived with identical values (no-op). Never a failure
+     *             signal on its own — a real failure throws.
+     * @throws CarDatabaseException If the query fails
+     */
+    public function insertEmailEvent(
+        int $carId,
+        string $email,
+        string $event,
+        ?string $reason,
+        string $brevoMessageId,
+        string $occurredAt
+    ): int {
+        $this->db->query(
+            'INSERT INTO er_email_events (car_id, email, event, reason, brevo_message_id, occurred_at)
+             VALUES (?, ?, ?, ?, ?, ?)
+             ON DUPLICATE KEY UPDATE reason = VALUES(reason), occurred_at = VALUES(occurred_at)',
+            [$carId, $email, $event, $reason, $brevoMessageId, $occurredAt]
+        );
+
+        if ($this->db->error()) {
+            throw new CarDatabaseException(
+                "CarRepository::insertEmailEvent failed for car={$carId} event={$event}: " . $this->db->errorString()
+            );
+        }
+
+        return $this->db->count();
+    }
+
+    /**
+     * Count distinct soft-bounce send cycles for an email since its last delivery
+     *
+     * A "send cycle" is one distinct `brevo_message_id`, not a raw event row —
+     * Brevo can report the same soft bounce more than once for one send. Only
+     * cycles that occurred after the most recent `delivered` event for this
+     * email count; if no `delivered` event exists yet, all soft-bounce cycles
+     * on record count. This is the query the webhook processor uses to decide
+     * whether repeated soft bounces should escalate to a hard bounce.
+     *
+     * @param string $email Email address to count soft bounces for
+     * @return int Number of distinct soft-bounce message ids since the last delivery
+     * @throws CarDatabaseException If the query fails
+     */
+    public function countSoftBouncesSinceLastDelivered(string $email): int
+    {
+        $this->db->query(
+            "SELECT COUNT(DISTINCT brevo_message_id) AS cnt
+               FROM er_email_events
+              WHERE email = ?
+                AND event = 'soft_bounce'
+                AND occurred_at > COALESCE(
+                    (SELECT MAX(occurred_at) FROM er_email_events WHERE email = ? AND event = 'delivered'),
+                    '1970-01-01 00:00:00'
+                )",
+            [$email, $email]
+        );
+
+        if ($this->db->error()) {
+            throw new CarDatabaseException(
+                "CarRepository::countSoftBouncesSinceLastDelivered failed for email={$email}: " . $this->db->errorString()
+            );
+        }
+
+        $row = $this->db->first();
+        if (!is_object($row) || !isset($row->cnt)) {
+            // A COUNT() query always yields exactly one row — reaching here
+            // means the query did not execute as written, not that the true
+            // count is zero. Returning 0 would silently disable soft-bounce
+            // escalation for this email instead of surfacing the fault.
+            throw new CarDatabaseException(
+                "CarRepository::countSoftBouncesSinceLastDelivered returned no COUNT row for email={$email}"
+            );
+        }
+        return (int) $row->cnt;
+    }
+
+    /**
+     * Delete all er_email_events rows for a set of car ids
+     *
+     * Used by account-deletion cleanup: a departing owner's email history
+     * must not survive the account, and cars are keyed off `car_id` in this
+     * table (see class docblock's account-deletion note). No-ops cleanly on
+     * an empty array rather than issuing a query with an empty IN() list.
+     *
+     * @param array<int> $carIds Car ids whose event history should be deleted
+     * @return int Number of rows actually deleted (0 for the empty-array no-op
+     *             case, or if the matching cars simply had no event history)
+     * @throws CarDatabaseException If the query fails
+     */
+    public function deleteEmailEventsForCarIds(array $carIds): int
+    {
+        if ($carIds === []) {
+            return 0;
+        }
+
+        $placeholders = implode(',', array_fill(0, count($carIds), '?'));
+        $this->db->query(
+            "DELETE FROM er_email_events WHERE car_id IN ({$placeholders})",
+            array_values($carIds)
+        );
+
+        if ($this->db->error()) {
+            throw new CarDatabaseException(
+                'CarRepository::deleteEmailEventsForCarIds failed for car_ids=' . implode(',', $carIds)
+                . ': ' . $this->db->errorString()
+            );
+        }
+
+        return $this->db->count();
     }
 
     /**

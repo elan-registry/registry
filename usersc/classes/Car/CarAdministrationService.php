@@ -42,6 +42,12 @@ class CarAdministrationService
      */
     private const OWNER_IDENTITY_FIELDS = [
         'email', 'fname', 'lname', 'city', 'state', 'country', 'lat', 'lon', 'website',
+        // email_bounced_address (#1887) has no dedicated CarValidator case, so a
+        // null value (the clear-on-transfer case) hits the validator's default
+        // branch, which drops null/'' fields — silently defeating the clear.
+        // Restoring it here, the same way the other owner-identity fields are
+        // restored, is what makes the clear actually reach updateCar().
+        'email_bounced_address',
     ];
 
     private const OPERATION_MERGE = 'MERGE';
@@ -190,10 +196,17 @@ class CarAdministrationService
         $isSystemAccount = ($targetUser->username ?? '') === self::SYSTEM_ACCOUNT_USERNAME;
         $soldDate = $isSystemAccount ? ($carData->solddate ?? null) : null;
 
-        // email_bounced is a property of the previous owner's address, not the
-        // car — cleared on a real-owner transfer (see below) and preserved on a
-        // system-account reassignment, mirroring solddate's treatment.
+        // email_bounced, email_bounced_address, and email_suppressed (#1887) are
+        // all properties of the previous owner's address, not the car — cleared
+        // together on a real-owner transfer (see below) and preserved on a
+        // system-account reassignment, mirroring solddate's treatment. Carrying
+        // email_suppressed forward on a real transfer would suppress mail to a
+        // new owner who never sent a spam complaint; carrying the bounced
+        // address forward retains a stale personal identifier for someone who
+        // no longer owns the car.
         $emailBounced = $isSystemAccount ? (int) ($carData->email_bounced ?? 0) : 0;
+        $emailBouncedAddress = $isSystemAccount ? ($carData->email_bounced_address ?? null) : null;
+        $emailSuppressed = $isSystemAccount ? (int) ($carData->email_suppressed ?? 0) : 0;
 
         try {
             $repo->beginTransaction();
@@ -221,8 +234,12 @@ class CarAdministrationService
                 // email_bounced belonged to the previous owner's address, not the
                 // car — carrying it forward would permanently exclude the car from
                 // CarRepository::findVerificationEligible() once the address that
-                // caused the bounce is gone.
+                // caused the bounce is gone. email_bounced_address and
+                // email_suppressed (#1887) are cleared alongside it for the same
+                // reason.
                 $ownerFields['email_bounced'] = $emailBounced;
+                $ownerFields['email_bounced_address'] = $emailBouncedAddress;
+                $ownerFields['email_suppressed'] = $emailSuppressed;
             }
 
             // Validate owner fields before writing. $requireAll = false so only the
@@ -259,6 +276,8 @@ class CarAdministrationService
                 'purchasedate' => $carData->purchasedate ?? null,
                 'solddate'     => $soldDate,
                 'email_bounced' => $emailBounced,
+                'email_bounced_address' => $emailBouncedAddress,
+                'email_suppressed' => $emailSuppressed,
                 'image'        => $carData->image ?? '',
                 'user_id'      => $targetUser->id,
                 'email'        => $targetEmail,

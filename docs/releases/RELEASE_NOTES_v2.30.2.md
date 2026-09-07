@@ -5,9 +5,36 @@
 
 ## Required Actions After Deployment
 
-None. (Brevo webhook registration, BREVO_WEBHOOK_TOKEN environment variable setup, and `email_events` table migration will be added as issues complete.)
+1. Run pending migrations (`composer migrate`) — adds `cars.email_bounced_address`,
+   `cars.email_suppressed`, the new `er_email_events` table, and
+   `er_verification_settings.unmatched_webhook_recipient_count`. See #1887.
+2. Generate and set `BREVO_WEBHOOK_TOKEN` on **each environment that will
+   receive real Brevo webhook calls** (test.elanregistry.org and
+   elanregistry.org — not needed on dev, see note below). This is the bearer
+   token `app/api/webhooks/brevo.php` requires on every inbound request; an
+   empty/missing value rejects all requests (fail-closed), so the receiver is
+   inert until this is set.
+   - Generate a token with at least 32 bytes of cryptographic randomness, e.g.:
+     ```bash
+     openssl rand -hex 32
+     ```
+   - Add it to that environment's `.env` (not `.env.example`, which stays a
+     placeholder):
+     ```
+     BREVO_WEBHOOK_TOKEN=<the generated value>
+     ```
+     `chmod 600 .env` if not already set.
+   - Configure the same value as the bearer token/custom header Brevo sends
+     with each webhook call for this domain (webhook registration and
+     verification is #1888's job — do this step when #1888 configures the
+     Brevo-side webhook URL for that environment).
+   - Treat this token as a credential: do not commit it, do not log it (the
+     endpoint only ever logs a hashed prefix on rejection), and rotate it by
+     generating a new value and updating both sides (`.env` and the Brevo
+     webhook config) together — a rotation with only one side updated causes
+     every webhook call to be rejected until both match again.
 
-**Note:** Development environments do not have access to Brevo and cannot receive real inbound Brevo webhooks (no public URL reaches a dev machine). Webhook-dependent testing (#1887, #1888, #1889, #1890, #1923) will rely on synthetic/captured payloads for local dev and unit tests, with real end-to-end webhook verification happening only on test.elanregistry.org.
+**Note:** Development environments do not have access to Brevo and cannot receive real inbound Brevo webhooks (no public URL reaches a dev machine) — `BREVO_WEBHOOK_TOKEN` is not needed there. Webhook-dependent testing (#1887, #1888, #1889, #1890, #1923) will rely on synthetic/captured payloads for local dev and unit tests, with real end-to-end webhook verification happening only on test.elanregistry.org.
 
 ## User-Facing Changes
 

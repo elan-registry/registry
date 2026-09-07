@@ -566,7 +566,26 @@ to provide a focused, testable data access layer wrapping the `cars`,
 - `updateVerificationCode(int $carId, string $verificationCode): bool` - Update a car's verification code
 - `updateLastVerified(int $carId, string $dateTime): bool` - Update a car's last-verified timestamp
 - `updateVerificationSentAt(int $carId, string $dateTime): bool` - Update the timestamp at which a verification email was sent
-- `updateEmailBounced(int $carId, bool $bounced): bool` - Set or clear a car's email-bounced flag
+- `updateEmailBounced(int $carId, bool $bounced, ?string $bouncedAddress = null): bool` -
+  Set or clear a car's email-bounced flag, and the address it bounced against (#1887)
+- `updateEmailSuppressed(int $carId, bool $suppressed): bool` - Set or clear a car's email-suppressed flag (#1887)
+- `findByEmail(string $email): array` - Find cars whose `cars.email` matches a
+  given address; used by the Brevo webhook receiver to map an inbound
+  event's recipient back to the car(s) it belongs to (#1887)
+- `insertEmailEvent(int $carId, string $email, string $event, ?string $reason, string $brevoMessageId, string $occurredAt): int` -
+  Record one Brevo delivery-status event against a car (`er_email_events`),
+  deduping on `(car_id, brevo_message_id, event)` via a hand-written
+  `ON DUPLICATE KEY UPDATE` (deliberately not `DB::insert()`'s `$update`
+  mode, which would also reassign identity columns on conflict); returns
+  MySQL's `rowCount()` (1 insert, 2 changed duplicate, 0 unchanged
+  duplicate) (#1887)
+- `countSoftBouncesSinceLastDelivered(string $email): int` - Count distinct
+  soft-bounce send cycles (`brevo_message_id` values) for an email since its
+  most recent `delivered` event; the query the webhook receiver's
+  soft-bounce escalation threshold is checked against (#1887)
+- `deleteEmailEventsForCarIds(array $carIds): int` - Delete all
+  `er_email_events` rows for a set of car ids; used by account-deletion
+  cleanup, returns the number of rows deleted (0 for an empty array) (#1887)
 - `updateOwnerLastUpdated(int $carId, string $dateTime): bool` - Update the
   timestamp of the owner's last self-initiated edit; standalone primitive not
   currently called by `Car::update()` (which folds the same write into its
@@ -627,8 +646,9 @@ to provide a focused, testable data access layer wrapping the `cars`,
 
 - Car class (composed data-access layer)
 - `app/api/cars/chassis-availability.php`, `app/api/cars/transfer-request.php` (`findByChassisKey()`)
-- User-deletion hook (`reassignCarsByUser()`)
+- User-deletion hook (`reassignCarsByUser()`, `deleteEmailEventsForCarIds()`)
 - Sitemap generation (`getAllForSitemap()`)
+- `BrevoWebhookEventProcessor` (`findByEmail()`, `insertEmailEvent()`, `countSoftBouncesSinceLastDelivered()`) (#1887)
 
 **See Also**:
 
@@ -765,8 +785,10 @@ on success.
 - `generateVerificationCode(): string` - Generate a new verification code; pure function, no repository call
 - `markVerified(object $carData): bool` - Record that a car has been verified (sets `last_verified` to now)
 - `setVerificationSentAt(object $carData, string $dateTime): bool` - Record when a verification email was sent
-- `setBounced(object $carData): bool` - Flag a car's owner email as bounced
-- `clearBounced(object $carData): bool` - Clear a car's bounced-email flag (admin reversal)
+- `setBounced(object $carData, string $bouncedAddress): bool` - Flag a car's owner email as bounced, recording the address the bounce was reported against
+- `clearBounced(object $carData): bool` - Clear a car's bounced-email flag and the recorded bounced address (admin reversal)
+- `setSuppressed(object $carData): bool` - Flag a car's owner email as suppressed (e.g. a Brevo `spam` complaint) — a distinct signal from a bounce (#1887)
+- `clearSuppressed(object $carData): bool` - Clear a car's email-suppressed flag (admin reversal)
 - `markSold(object $carData, ?string $soldDate): bool` - Record a car as sold (`null` defaults to today)
 
 **Exceptions**:
@@ -776,14 +798,19 @@ on success.
 
 **Used By**:
 
-- Backend foundation for the car-owner verification system (issue #1155);
-  no production caller yet as of v2.30.0 — the email-sending consumer that
-  will call these methods lands in a later verification-system milestone
+- Backend foundation for the car-owner verification system (issue #1155).
+  `setBounced()`/`setSuppressed()` gained their first production caller in
+  #1887: `BrevoWebhookEventProcessor` calls them when an inbound Brevo
+  delivery-status webhook event reports a bounce or spam complaint. The
+  verification-email-sending consumer for `setVerificationCode()`/
+  `markVerified()`/`setVerificationSentAt()` still lands in a later
+  verification-system milestone.
 
 **See Also**:
 
 - [ERROR_HANDLING.md](ERROR_HANDLING.md) - Exception patterns
-- [DATABASE.md](DATABASE.md) - `cars.vericode`, `cars.last_verified`, `cars.owner_last_updated`, `cars.vericode_sent_at`, `cars.email_bounced`, `cars.solddate`
+- [DATABASE.md](DATABASE.md) - `cars.vericode`, `cars.last_verified`, `cars.owner_last_updated`,
+  `cars.vericode_sent_at`, `cars.email_bounced`, `cars.email_bounced_address`, `cars.email_suppressed`, `cars.solddate`
 
 ---
 
@@ -819,6 +846,12 @@ shared state or dependency exists between the two.
 - `brevoReady(): bool` - True only if the Brevo API key is configured AND the plugin override file is active
 - `cronReady(): bool` - True if a non-denied `CronRequest` log exists within twice `CRON_TRANSPORT_INTERVAL_MINUTES` (`usersc/includes/config.php`; 20 minutes today)
 - `lastCronRequestAt(): ?DateTimeImmutable` - Timestamp of the most recent non-denied cron request
+- `incrementUnmatchedRecipientCounter(): bool` - Increment
+  `er_verification_settings.unmatched_webhook_recipient_count` when an
+  inbound Brevo webhook event's recipient matches no car; never throws
+  (logs and returns `false` on a DB error, or if the `id = 1` settings row
+  itself is missing) since the webhook's own response to Brevo must not
+  hinge on this counter succeeding (#1887)
 
 **Exceptions**:
 
@@ -828,13 +861,83 @@ shared state or dependency exists between the two.
 
 - Admin "Verification System" tab (`app/admin/index.php`, `app/admin/includes/tab-verification.php`)
 - Toggle endpoint (`app/api/admin/verification-toggle.php`)
-- Gate-only webhook stub (`app/api/webhooks/brevo.php`) — placeholder for #1887
+- Brevo webhook receiver (`app/api/webhooks/brevo.php`) — `isEnabled()`/`brevoReady()` gates, and `incrementUnmatchedRecipientCounter()` (#1887)
 
 **See Also**:
 
 - [EMAIL_SYSTEM.md](EMAIL_SYSTEM.md) - Full feature-switch design, the asymmetric gate, readiness-check semantics
 - [DATABASE.md](DATABASE.md) - `er_verification_settings`, the `er_` table-prefix convention
 - [LOG_CATEGORIES.md](LOG_CATEGORIES.md) - `LOG_CATEGORY_VERIFICATION_CONFIG_WARNING`, `LOG_CATEGORY_VERIFICATION_CONFIG_CHANGED`
+
+---
+
+### BrevoWebhookEventProcessor
+
+**Location**: `/usersc/classes/Car/BrevoWebhookEventProcessor.php`
+
+**Namespace**: `ElanRegistry\Car`
+
+**Purpose**: Owns all parsing/matching/escalation *logic* for inbound Brevo
+delivery-status webhook events (#1887); no HTTP concerns
+(`http_response_code()`, `exit`) live here — that separation is what makes
+this class unit-testable without the subprocess dance the endpoint itself
+needs.
+
+**Key Features**:
+
+- Rejects malformed payloads (non-object JSON, a top-level list, missing
+  `email`/`event`/`message-id`, or a non-list `tags`) before any DB call
+- Filters to only events tagged `AppConstants::VERIFICATION_EMAIL_TAG`
+- Matches the payload's `email` against every car sharing that address
+  (`CarRepository::findByEmail()`), applying each car's transition
+  independently
+- Escalation rules: `hard_bounce`/`blocked`/`invalid` bounce immediately;
+  `soft_bounce` escalates at 3+ distinct send cycles since the last
+  `delivered` event; `spam` suppresses; `delivered`/`unique_opened` record
+  only; any other event name is recorded but logged as unrecognized
+- A malformed/overflowing `ts_event`/`ts` falls back to receipt time
+  (logged) rather than producing a `DATETIME` value MySQL would reject
+- The whole per-car write loop fails the entire request on the first write
+  failure, even if earlier cars already succeeded — safe because every
+  write is idempotent (`ON DUPLICATE KEY UPDATE` or a plain column update)
+
+**Methods**:
+
+- `process(mixed $decodedPayload): ProcessingResult` - Process one decoded
+  webhook payload; the sole public entry point
+
+**Used By**:
+
+- Brevo webhook receiver (`app/api/webhooks/brevo.php`)
+
+**See Also**:
+
+- [EMAIL_SYSTEM.md](EMAIL_SYSTEM.md) - Full webhook receiver contract, escalation rules, HTTP status table
+- [DATABASE.md](DATABASE.md) - `er_email_events`, `cars.email_bounced_address`, `cars.email_suppressed`
+- [LOG_CATEGORIES.md](LOG_CATEGORIES.md) - `LOG_CATEGORY_EMAIL_WEBHOOK`
+
+---
+
+### ProcessingResult (enum)
+
+**Location**: `/usersc/classes/Car/ProcessingResult.php`
+
+**Namespace**: `ElanRegistry\Car`
+
+**Purpose**: Outcome of `BrevoWebhookEventProcessor::process()`. The webhook
+endpoint maps each case 1:1 to an HTTP status (#1887).
+
+**Cases**: `MATCHED_AND_RECORDED` (2xx), `NO_TAG_MATCH` (2xx, logged),
+`NO_CAR_MATCH` (2xx, logged, unmatched counter incremented), `MALFORMED`
+(4xx, logged), `WRITE_FAILURE` (5xx — the only retryable case)
+
+**Used By**:
+
+- Brevo webhook receiver (`app/api/webhooks/brevo.php`)
+
+**See Also**:
+
+- [EMAIL_SYSTEM.md](EMAIL_SYSTEM.md) - HTTP status contract table
 
 ---
 
