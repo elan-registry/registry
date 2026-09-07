@@ -43,7 +43,7 @@ if (!defined('ELAN_IMAGE_DIR')) {
 }
 
 // Cron transport interval (normally from usersc/includes/config.php, #2001) —
-// VerificationSettings::CRON_STALE_AFTER_SECONDS derives from this.
+// VerificationSettings::cronStaleAfterSeconds() derives from this.
 if (!defined('CRON_TRANSPORT_INTERVAL_MINUTES')) {
     define('CRON_TRANSPORT_INTERVAL_MINUTES', 10);
 }
