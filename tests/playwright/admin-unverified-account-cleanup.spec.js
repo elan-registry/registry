@@ -3,18 +3,16 @@
 // Behavioral tests for the Account Cleanup tab on the admin index page.
 // Covers: threshold form, CSRF token, DataTables auto-load, confirmation modal.
 //
-// Requires local MAMP at http://localhost:9999/ElanRegistry/Registry
+// Requires local MAMP. Default: http://localhost:9999/ElanRegistry/Registry/ — override with PLAYWRIGHT_BASE_URL, see docs/development/ENVIRONMENT.md
 // See: app/admin/index.php?tab=account-cleanup
 
 const { test, expect } = require('@playwright/test');
 const { ensureLoggedIn } = require('./auth-helper.js');
 
-const ADMIN_URL = 'http://localhost:9999/ElanRegistry/Registry/app/admin/index.php?tab=account-cleanup';
-
 test.describe('Admin Account Cleanup Tab', () => {
     test.beforeEach(async ({ page }) => {
         await ensureLoggedIn(page);
-        await page.goto(ADMIN_URL, { waitUntil: 'networkidle' });
+        await page.goto('app/admin/index.php?tab=account-cleanup', { waitUntil: 'networkidle' });
     });
 
     test('page loads with threshold form and both table skeletons', async ({ page }) => {

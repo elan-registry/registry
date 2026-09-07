@@ -48,8 +48,9 @@
 // profile; this test's job is narrower and complementary: proving the real
 // HTTP endpoint actually runs that code at all.
 //
-// Requires local MAMP at http://localhost:9999/ElanRegistry/Registry and
-// TEST_USERNAME/TEST_PASSWORD configured in .env.local (see
+// Requires local MAMP. Default: http://localhost:9999/ElanRegistry/Registry/ —
+// override with PLAYWRIGHT_BASE_URL, see docs/development/ENVIRONMENT.md. Also
+// requires TEST_USERNAME/TEST_PASSWORD configured in .env.local (see
 // playwright.config.js's `logged-in` project and CAR_ID_STANDARD in
 // tests/playwright/fixtures.js, which must be a car TEST_USERNAME owns).
 

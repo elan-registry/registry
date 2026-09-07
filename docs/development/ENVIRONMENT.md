@@ -146,6 +146,20 @@ internally, setting the `X-Forwarded-Proto: https` header so `$is_https` is
 > **Note:** The tunnel URL changes every run. Browser DevTools → Network tab
 > will show requests to `challenges.cloudflare.com` succeeding under HTTPS.
 
+### Local Playwright Base URL
+
+**Usage**: `playwright.config.js` (local config only — not `playwright.config.prod.js`
+or `playwright.config.test.js`, which stay hardcoded to their real deployed environments)
+
+- `PLAYWRIGHT_BASE_URL` — overrides the default local Playwright `baseURL`
+  (`http://localhost:9999/ElanRegistry/Registry/`) for developers whose MAMP
+  document root serves the site from a different path. Must include a
+  trailing slash, same as the default value — `page.goto('')` collapses the
+  path without one. Unset behaves identically to today.
+
+  Excluded from the prod/test configs intentionally, to avoid accidentally
+  pointing a destructive test run at the wrong live site.
+
 ## Setup & Configuration
 
 ### Development Setup

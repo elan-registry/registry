@@ -293,6 +293,7 @@ export default [
                 clearTimeout: "readonly",
                 Promise: "readonly",
                 Buffer: "readonly",
+                AbortSignal: "readonly",
                 // Playwright test runner
                 test: "readonly",
                 expect: "readonly",

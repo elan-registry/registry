@@ -19,6 +19,8 @@ const hasCredentials = !!(process.env.TEST_USERNAME && process.env.TEST_PASSWORD
  */
 module.exports = defineConfig({
   testDir: './tests/playwright',
+  /* Provisions the shared PLAYWRIGHT_BASE_URL fallback used by `use.baseURL` below. */
+  globalSetup: require.resolve('./tests/playwright/global-setup.js'),
   /* Run tests in files in parallel */
   fullyParallel: true,
   /* Fail the build on CI if you accidentally left test.only in the source code. */
@@ -33,7 +35,8 @@ module.exports = defineConfig({
   use: {
     /* Base URL to use in actions like `await page.goto('/')`. */
     /* Trailing slash is required — goto('') resolves to baseURL; without it the path collapses. */
-    baseURL: 'http://localhost:9999/ElanRegistry/Registry/',
+    /* If PLAYWRIGHT_BASE_URL is set, it must also include a trailing slash for the same reason. */
+    baseURL: process.env.PLAYWRIGHT_BASE_URL || 'http://localhost:9999/ElanRegistry/Registry/',
 
     /* Collect trace when retrying the failed test. See https://playwright.dev/docs/trace-viewer */
     trace: 'on-first-retry',

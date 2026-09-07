@@ -72,7 +72,7 @@ npm run test:debug        # Debug mode
 
 - **e2e/**: factory-registry-link.spec.js (Registry Link UI workflow)
 - Security, navigation, functionality, UI consistency
-- Requires: Local dev server at `http://localhost:9999/elan_registry`
+- Requires: Local dev server, default `http://localhost:9999/ElanRegistry/Registry` — override with `PLAYWRIGHT_BASE_URL`, see [ENVIRONMENT.md](../development/ENVIRONMENT.md)
 
 ## Writing Tests
 
