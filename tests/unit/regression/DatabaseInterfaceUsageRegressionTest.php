@@ -317,13 +317,16 @@ final class DatabaseInterfaceUsageRegressionTest extends TestCase
         $excludedPaths = [
             '/usersc/classes/Database/DbAdapter.php',
             '/vendor/',
-            '/.',
         ];
 
         $files = [];
 
         foreach (self::PRODUCTION_DIRS as $dir) {
             foreach ($this->iteratePhpFiles($this->projectRoot . '/' . $dir) as $path) {
+                if ($this->hasDotSegment($path)) {
+                    continue;
+                }
+
                 foreach ($excludedPaths as $excluded) {
                     if (str_contains($path, $excluded)) {
                         continue 2;
@@ -357,7 +360,7 @@ final class DatabaseInterfaceUsageRegressionTest extends TestCase
         $files = [];
 
         foreach ($this->iteratePhpFiles($this->projectRoot . '/tests') as $path) {
-            if ($path === __FILE__ || str_contains($path, '/vendor/') || str_contains($path, '/.')) {
+            if ($path === __FILE__ || str_contains($path, '/vendor/') || $this->hasDotSegment($path)) {
                 continue;
             }
 
@@ -395,5 +398,24 @@ final class DatabaseInterfaceUsageRegressionTest extends TestCase
     private function relativePath(string $absolutePath): string
     {
         return str_replace($this->projectRoot . '/', '', $absolutePath);
+    }
+
+    /**
+     * Whether any path segment relative to the project root is dot-prefixed
+     * (e.g. `.git`, `.claude`). Checked against the path *relative to
+     * $this->projectRoot*, not the absolute path — a checkout located under a
+     * dot-prefixed ancestor directory (e.g. Claude Code's own
+     * `.claude/worktrees/<name>/` convention) must not cause every file in the
+     * scan to match this exclusion. See #2012.
+     */
+    private function hasDotSegment(string $absolutePath): bool
+    {
+        foreach (explode('/', $this->relativePath($absolutePath)) as $segment) {
+            if (str_starts_with($segment, '.')) {
+                return true;
+            }
+        }
+
+        return false;
     }
 }
