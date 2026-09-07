@@ -17,7 +17,7 @@
 //
 // All server calls are intercepted with page.route() so no MAMP DB row is needed.
 //
-// Requires local MAMP at http://localhost:9999/ElanRegistry/Registry
+// Requires local MAMP. Default: http://localhost:9999/ElanRegistry/Registry/ — override with PLAYWRIGHT_BASE_URL, see docs/development/ENVIRONMENT.md
 
 const { test, expect } = require('@playwright/test');
 const { ensureLoggedIn } = require('./auth-helper.js');
@@ -130,7 +130,7 @@ test.describe('Car edit form — text-only save (regression #796)', () => {
                             success: true,
                             images: [
                                 {
-                                    path: 'http://localhost:9999/ElanRegistry/Registry/usersc/uploads/cars/1/existing-photo.jpg',
+                                    path: 'usersc/uploads/cars/1/existing-photo.jpg',
                                     basename: 'existing-photo.jpg'
                                 }
                             ]

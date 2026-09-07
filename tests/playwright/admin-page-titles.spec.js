@@ -7,7 +7,7 @@
 // generic site title rendered instead). This confirms the actual rendered
 // <title> now reflects the page-specific title for each tab.
 //
-// Requires local MAMP at http://localhost:9999/ElanRegistry/Registry
+// Requires local MAMP. Default: http://localhost:9999/ElanRegistry/Registry/ — override with PLAYWRIGHT_BASE_URL, see docs/development/ENVIRONMENT.md
 
 const { test } = require('@playwright/test');
 const { ensureLoggedIn, assertPageTitle } = require('./auth-helper.js');
