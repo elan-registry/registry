@@ -3,7 +3,11 @@ require('dotenv').config({ path: '.env.local' });
 const { defineConfig, devices } = require('@playwright/test');
 const path = require('path');
 
-const authFile = path.join(__dirname, 'tests/playwright/.auth/user.json');
+// Distinct from playwright.config.js's/playwright.config.prod.js's user.json —
+// this config runs against local MAMP, not the deployed site, so sharing that
+// file would let a dev run silently overwrite the production storageState the
+// 1Password/CAPTCHA flow (see docs/testing/PLAYWRIGHT_E2E.md) produces.
+const authFile = path.join(__dirname, 'tests/playwright/.auth/user-dev.json');
 const authFileNonAdmin = path.join(__dirname, 'tests/playwright/.auth/user-dev-non-admin.json');
 const hasCredentials = !!(process.env.TEST_USERNAME && process.env.TEST_PASSWORD);
 const hasCredentialsNonAdmin = !!(process.env.TEST_USERNAME2 && process.env.TEST_PASSWORD2);
@@ -36,6 +40,10 @@ module.exports = defineConfig({
 
     /* Take screenshot on failure */
     screenshot: 'only-on-failure',
+
+    /* Record video on failure — cheap locally, and useful given #2011's
+       local-login flake. */
+    video: 'retain-on-failure',
   },
 
   /* Configure projects for major browsers */
@@ -48,10 +56,10 @@ module.exports = defineConfig({
     {
       // Exact-filename allowlist so this doesn't also match auth-non-admin.setup.js
       // below — same convention playwright.config.js uses for its own 'setup'
-      // and 'logged-in' projects (which had to be tightened for the same reason
-      // when auth-non-admin.setup.js was added, see playwright.config.js).
+      // project (tightened there for the same reason when this file was added,
+      // see playwright.config.js).
       name: 'setup',
-      testMatch: /(?:^|\/)auth\.setup\.js$/,
+      testMatch: /(?:^|\/)auth-dev\.setup\.js$/,
       use: { ...devices['Desktop Chrome'] },
     },
     {
@@ -62,8 +70,11 @@ module.exports = defineConfig({
     {
       // NOTE: when adding a spec that needs the non-admin session, add it to
       // 'logged-in-non-admin's testMatch below too if it should ALSO run here.
+      // Kept in sync with playwright.config.js's own 'logged-in' alternation
+      // (car-edit-owner-refresh included) so Dev is a strict superset of what
+      // Local covers for authenticated e2e specs.
       name: 'logged-in',
-      testMatch: /(?:^|\/)(logged-in|factory-registry-link)\.spec\.js$/,
+      testMatch: /(?:^|\/)(logged-in|factory-registry-link|car-edit-owner-refresh)\.spec\.js$/,
       dependencies: ['setup'],
       use: {
         ...devices['Desktop Chrome'],
@@ -72,10 +83,10 @@ module.exports = defineConfig({
     },
     {
       name: 'logged-in-non-admin',
-      // No spec targets this project yet — infra-only for #1858. A future
-      // spec opts in by checking testInfo.project.name === 'logged-in-non-admin'
-      // and adding its filename to this testMatch (mirrors the allowlist
-      // convention on the 'logged-in' project above).
+      // Add a spec's filename to this testMatch to opt it into the non-admin
+      // session (mirrors the allowlist convention on 'logged-in' above). No
+      // npm script runs this project by default until a spec does — see
+      // package.json's test:e2e:dev family.
       testMatch: /(?:^|\/)__none__\.spec\.js$/,
       dependencies: ['setup-non-admin'],
       use: {

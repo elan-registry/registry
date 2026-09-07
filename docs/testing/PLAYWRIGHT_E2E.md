@@ -1,6 +1,6 @@
 # Playwright E2E Testing Guide
 
-Four-tier Playwright testing strategy for local development, staging, and production environments.
+Four-tier Playwright testing strategy spanning local development, staging, and production environments (two tiers, Local and Dev, target local MAMP — see below).
 
 ## Four-Tier Architecture
 
@@ -17,11 +17,12 @@ Four-tier Playwright testing strategy for local development, staging, and produc
 `playwright.config.js` (Local) covers `tests/playwright/` broadly — fast,
 mostly-unauthenticated browser checks plus one `logged-in` project.
 `playwright.config.dev.js` (Dev) scopes to `tests/playwright/e2e/` only —
-the same authenticated specs that run against Test/Production in CI
-(`not-logged-in`, `logged-in`, `logged-in-non-admin`) — so a developer can
-validate that exact suite against local MAMP first, using two separate
-local test accounts (admin and non-admin) rather than Local's single
-account.
+the same `not-logged-in`/`logged-in` specs that run against Test/Production
+in CI — so a developer can validate that exact suite against local MAMP
+first. Dev also provisions a `logged-in-non-admin` project (a second local
+test account, admin and non-admin) as infrastructure for future non-admin
+e2e coverage; no spec targets it yet, so it has no npm script until one
+does.
 
 ## Running Tests
 
@@ -73,16 +74,16 @@ npm run test:e2e:dev:headed        # With browser
 npm run test:e2e:dev:ui            # UI mode
 npm run test:e2e:dev:not-logged-in # Public pages only
 npm run test:e2e:dev:logged-in     # Authenticated flows (admin account)
-npm run test:e2e:dev:logged-in-non-admin # Authenticated flows (non-admin account)
 npm run test:e2e:dev:report        # View test report
 ```
 
 ## Authentication Setup
 
 E2E tests use session persistence to avoid CAPTCHA challenges. Local and Dev
-tiers instead use a live login via `tests/playwright/e2e/auth.setup.js`,
-with credentials from `TEST_USERNAME`/`TEST_PASSWORD` in `.env.local`; Test
-and Production use the 1Password / CAPTCHA flow described below.
+tiers instead use a live login (`auth.setup.js` / `auth-dev.setup.js`
+respectively, see [ENVIRONMENT.md](../development/ENVIRONMENT.md)), with
+credentials from `TEST_USERNAME`/`TEST_PASSWORD` in `.env.local`; Test and
+Production use the 1Password / CAPTCHA flow described below.
 
 ### Prerequisites
 

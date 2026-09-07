@@ -37,7 +37,6 @@
     "test:e2e:dev:ui": "playwright test --config=playwright.config.dev.js --ui",
     "test:e2e:dev:not-logged-in": "playwright test --config=playwright.config.dev.js --project=not-logged-in",
     "test:e2e:dev:logged-in": "playwright test --config=playwright.config.dev.js --project=logged-in",
-    "test:e2e:dev:logged-in-non-admin": "playwright test --config=playwright.config.dev.js --project=logged-in-non-admin",
     "test:e2e:dev:report": "playwright show-report playwright-report-e2e-dev",
     "build": "node scripts/build.js",
     "lint": "eslint .",
