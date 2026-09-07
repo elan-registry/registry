@@ -184,6 +184,14 @@ Discover all constants: `grep "const LOG_CATEGORY" usersc/classes/LogCategories.
 
 - `LOG_CATEGORY_ELAN_REGISTRY` → `ElanRegistry` (Registry operations)
 
+### Verification System Categories
+
+- `LOG_CATEGORY_VERIFICATION_CONFIG_WARNING` → `VerificationConfigWarning`
+  (verification feature switch prerequisite failures)
+- `LOG_CATEGORY_VERIFICATION_CONFIG_CHANGED` → `VerificationConfigChanged`
+  (successful enable/disable actions, kept separate from the warning
+  category above)
+
 ### Backup Operations Categories
 
 - `LOG_CATEGORY_BACKUP_DEBUG` → `BackupDebug` (Backup debugging)

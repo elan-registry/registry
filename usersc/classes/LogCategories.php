@@ -694,6 +694,25 @@ class LogCategories
      */
     public const LOG_CATEGORY_ELAN_REGISTRY = 'ElanRegistry';
 
+    // ========== VERIFICATION SYSTEM CATEGORIES ==========
+
+    /**
+     * Verification-system configuration warnings
+     * Used when the verification feature switch's Brevo/cron prerequisites fail,
+     * or when an admin attempt to enable verification is rejected due to a
+     * failed prerequisite.
+     */
+    public const LOG_CATEGORY_VERIFICATION_CONFIG_WARNING = 'VerificationConfigWarning';
+
+    /**
+     * Verification-system configuration changes
+     * Used for successful admin actions on the verification feature switch
+     * (enable/disable). Kept distinct from LOG_CATEGORY_VERIFICATION_CONFIG_WARNING
+     * so operators filtering for genuine prerequisite failures don't have to wade
+     * through routine, successful toggles.
+     */
+    public const LOG_CATEGORY_VERIFICATION_CONFIG_CHANGED = 'VerificationConfigChanged';
+
     // ========== BACKUP OPERATIONS CATEGORIES ==========
 
     /**

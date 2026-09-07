@@ -156,6 +156,11 @@ split *is* the permission boundary:
   location to the cars it owns.
 - **Account cleanup** — the page is reachable by editors, but the delete and
   restore actions are administrator-only.
+- **Verification System** — feature switch gating all verification-related
+  email sends, visible to both roles (read-only for editor); defaults off,
+  gated on live Brevo/cron readiness checks. Admin can toggle it; enabling
+  while a prerequisite has failed is refused, disabling always succeeds. See
+  [EMAIL_SYSTEM.md § Verification System Feature Switch](EMAIL_SYSTEM.md#verification-system-feature-switch).
 
 **`app/admin/maintenance.php` — administrators only**
 

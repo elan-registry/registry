@@ -787,6 +787,57 @@ on success.
 
 ---
 
+### VerificationSettings
+
+**Location**: `/usersc/classes/Car/VerificationSettings.php`
+
+**Namespace**: `ElanRegistry\Car`
+
+**Purpose**: Site-wide feature switch and readiness probes for the car
+verification system — kept separate from `CarVerificationManager` above:
+this class owns one global config row plus two infrastructure probes
+(Brevo, cron), while `CarVerificationManager` mutates per-car records. No
+shared state or dependency exists between the two.
+
+**Key Features**:
+
+- Owns the single-row `er_verification_settings` table (`id = 1`)
+- `brevoReady()` and `cronReady()` are computed live on every call, never
+  cached
+- **Asymmetric gate**: `setEnabled(true)` throws `VerificationConfigException`
+  when `brevoReady()` is false; `setEnabled(false)` never throws, for any
+  reason — an admin must always be able to disable verification mid-incident
+- Every probe fails closed and logs rather than throwing, so a database or
+  filesystem hiccup hides the feature instead of breaking the page
+- Performs no permission checks itself — callers must run `hasPerm()` before
+  calling `setEnabled()`
+
+**Methods**:
+
+- `isEnabled(): bool` - Whether verification is currently switched on
+- `setEnabled(bool $enabled, int $actingUserId = 0): bool` - Turn verification on or off
+- `brevoReady(): bool` - True only if the Brevo API key is configured AND the plugin override file is active
+- `cronReady(): bool` - True if a non-denied `CronRequest` log exists within the last 20 minutes
+- `lastCronRequestAt(): ?DateTimeImmutable` - Timestamp of the most recent non-denied cron request
+
+**Exceptions**:
+
+- `VerificationConfigException` - Thrown by `setEnabled(true)` when `brevoReady()` is false
+
+**Used By**:
+
+- Admin "Verification System" tab (`app/admin/index.php`, `app/admin/includes/tab-verification.php`)
+- Toggle endpoint (`app/api/admin/verification-toggle.php`)
+- Gate-only webhook stub (`app/api/webhooks/brevo.php`) — placeholder for #1887
+
+**See Also**:
+
+- [EMAIL_SYSTEM.md](EMAIL_SYSTEM.md) - Full feature-switch design, the asymmetric gate, readiness-check semantics
+- [DATABASE.md](DATABASE.md) - `er_verification_settings`, the `er_` table-prefix convention
+- [LOG_CATEGORIES.md](LOG_CATEGORIES.md) - `LOG_CATEGORY_VERIFICATION_CONFIG_WARNING`, `LOG_CATEGORY_VERIFICATION_CONFIG_CHANGED`
+
+---
+
 ### TransferEmailService
 
 **Location**: `/usersc/classes/Transfer/TransferEmailService.php`

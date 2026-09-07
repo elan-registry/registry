@@ -30,6 +30,7 @@ const jsFiles = [
   'app/admin/assets/js/tab-manage-cars.js',
   'app/admin/assets/js/tab-account-cleanup.js',
   'app/admin/assets/js/tab-owner-mgmt.js',
+  'app/admin/assets/js/tab-verification.js',
   'app/admin/assets/js/load-owner-profile.js',
 ];
 
