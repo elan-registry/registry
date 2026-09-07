@@ -42,6 +42,12 @@ if (!defined('ELAN_IMAGE_DIR')) {
     define('EMAIL_SUBJECT_PREFIX', '[ELANREGISTRY]');
 }
 
+// Cron transport interval (normally from usersc/includes/config.php, #2001) —
+// VerificationSettings::CRON_STALE_AFTER_SECONDS derives from this.
+if (!defined('CRON_TRANSPORT_INTERVAL_MINUTES')) {
+    define('CRON_TRANSPORT_INTERVAL_MINUTES', 10);
+}
+
 // Prevent any integration test code from loading
 if (defined('INTEGRATION_TEST_SUITE')) {
     die("ERROR: bootstrap-unit.php cannot be used with INTEGRATION_TEST_SUITE defined");

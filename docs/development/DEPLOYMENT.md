@@ -508,9 +508,12 @@ per environment outside the codebase. Installed on test and prod on 2026-09-03
 > - `crons_logs` gets one row per job per hit regardless of whether the job did
 >   anything, so it cannot tell you how often real work happened. Log real work
 >   under the job's own `LogCategories` constant.
-> - The interval is a cPanel setting, not code, and can change. Treat 10 minutes
->   as the *maximum latency* before a due job is picked up, not as a schedule a
->   job may rely on. This section is the single place the number is recorded.
+> - The interval is a cPanel/launchd setting, not code, and can change. Treat
+>   10 minutes as the *maximum latency* before a due job is picked up, not as a
+>   schedule a job may rely on. This section is the operational record of what
+>   the transport is actually configured to; `CRON_TRANSPORT_INTERVAL_MINUTES`
+>   in `usersc/includes/config.php` is the in-code mirror cron jobs read (see
+>   #2001) — if the schedule changes, update both in the same change.
 > - Runtime budget: a job must finish comfortably inside the interval or it will
 >   overlap its own next run.
 

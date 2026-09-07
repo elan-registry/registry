@@ -50,20 +50,14 @@ final class VerificationSettings
     /**
      * Age, in seconds, beyond which the newest `CronRequest` log means cron is stalled.
      *
-     * The cron transport fires every 10 minutes on dev, test, and prod — see
-     * `docs/development/DEPLOYMENT.md`, "Cron Transport (UserSpice Cron Manager)".
-     * That interval lives in the doc as prose in a contract block, not as a PHP
-     * constant, so it is restated here rather than imported. Doubling it gives one
-     * missed tick of slack before the environment is called stalled, so a single
-     * late or dropped hit does not flap the readiness indicator.
-     *
-     * This constant is a known-temporary duplication: #2001 tracks extracting the
-     * cron transport interval into one shared, discoverable source (candidates:
-     * `usersc/includes/config.php`, or a DB-backed value) that this class and
-     * future cron jobs can both read, instead of each restating "10 minutes"
-     * independently.
+     * Derived from `CRON_TRANSPORT_INTERVAL_MINUTES` (`usersc/includes/config.php`),
+     * the shared, discoverable source for how often the UserSpice cron transport
+     * fires — see `docs/development/DEPLOYMENT.md`, "Cron Transport (UserSpice Cron
+     * Manager)" for the operational record. Doubling it gives one missed tick of
+     * slack before the environment is called stalled, so a single late or dropped
+     * hit does not flap the readiness indicator.
      */
-    private const CRON_STALE_AFTER_SECONDS = 20 * 60;
+    private const CRON_STALE_AFTER_SECONDS = CRON_TRANSPORT_INTERVAL_MINUTES * 60 * 2;
 
     /**
      * Path of the Brevo plugin's override file, relative to the site root.
