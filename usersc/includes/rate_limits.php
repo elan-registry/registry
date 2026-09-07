@@ -207,11 +207,13 @@ $rateLimits['car_history']['user_window'] = 300;
 $rateLimits['car_history']['total_max'] = 5000;
 $rateLimits['car_history']['total_window'] = 300;
 
-// Public, unauthenticated external caller (Brevo webhook, ADR-019 pending):
-// every transactional send generates 2-3 webhook calls (request/delivered/
-// opened) within seconds, from a small, shared set of Brevo egress IPs —
-// sized generously so legitimate traffic is never throttled, with total_max
-// as the real backstop.
+// Public external caller (Brevo webhook), authenticated by a static bearer
+// token rather than a UserSpice session or CSRF token (see
+// app/api/webhooks/brevo.php and ADR-019's endpoint table) — every
+// transactional send generates 2-3 webhook calls (request/delivered/opened)
+// within seconds, from a small, shared set of Brevo egress IPs — sized
+// generously so legitimate traffic is never throttled, with total_max as the
+// real backstop.
 $rateLimits['brevo_webhook']['ip_max'] = 500;
 $rateLimits['brevo_webhook']['ip_window'] = 300;
 $rateLimits['brevo_webhook']['total_max'] = 2000;

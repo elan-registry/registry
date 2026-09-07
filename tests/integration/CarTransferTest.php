@@ -346,11 +346,20 @@ final class CarTransferTest extends IntegrationTestCase
     /**
      * Reassignment to the system account ("no owner") is NOT a change of
      * owner (see the sold-date precedent for the same distinction, #1878) —
-     * the bounce/suppression state must survive so the flags aren't lost
-     * while a car sits ownerless, mirroring email_bounced's own preservation.
+     * the boolean email_bounced/email_suppressed flags must survive so they
+     * aren't lost while a car sits ownerless, mirroring email_bounced's own
+     * preservation.
+     *
+     * email_bounced_address is different: it is the actual bounced email
+     * address string, not a boolean signal, and this is exactly the
+     * reassignment path usersc/scripts/after_user_deletion.php uses to move
+     * a departing user's cars to 'noowner' for GDPR erasure. Preserving the
+     * address here would leave a deleted user's real email address readable
+     * indefinitely on a car they no longer own — so, unlike the two boolean
+     * flags, it must always be cleared, including on this path.
      */
     #[Group('fast')]
-    public function testSystemAccountReassignmentPreservesBounceAddressAndSuppressed(): void
+    public function testSystemAccountReassignmentPreservesFlagsButClearsBounceAddress(): void
     {
         $flaggedCarId = $this->createTestCar($this->testUserId, [
             'chassis'               => 'TR' . uniqid(),
@@ -369,9 +378,16 @@ final class CarTransferTest extends IntegrationTestCase
             "SELECT email_bounced, email_bounced_address, email_suppressed FROM cars WHERE id = ?",
             [$flaggedCarId]
         )->first();
-        $this->assertSame(1, (int) $carRow->email_bounced);
-        $this->assertSame('still-bounced@example.com', $carRow->email_bounced_address);
-        $this->assertSame(1, (int) $carRow->email_suppressed);
+        $this->assertSame(1, (int) $carRow->email_bounced, 'The boolean bounced flag carries no PII and must survive');
+        $this->assertNull($carRow->email_bounced_address, 'The bounced address is PII and must be cleared even on GDPR-erasure reassignment');
+        $this->assertSame(1, (int) $carRow->email_suppressed, 'The boolean suppressed flag carries no PII and must survive');
+
+        $histRow = $this->db->query(
+            "SELECT email_bounced_address FROM cars_hist WHERE car_id = ? AND operation = 'NEWOWNER' ORDER BY timestamp DESC LIMIT 1",
+            [$flaggedCarId]
+        )->first();
+        $this->assertIsObject($histRow, 'Expected a NEWOWNER row in cars_hist');
+        $this->assertNull($histRow->email_bounced_address, 'The audit trail must not retain the bounced address either');
     }
 
     /**

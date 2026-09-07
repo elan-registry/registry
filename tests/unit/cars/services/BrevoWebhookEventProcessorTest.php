@@ -263,6 +263,10 @@ final class BrevoWebhookEventProcessorTest extends TestCase
             'hard_bounce' => ['hard_bounce'],
             'blocked' => ['blocked'],
             'invalid' => ['invalid'],
+            // Never actually observed live (#1871 spike) — both spellings
+            // are accepted since EMAIL_SYSTEM.md's own docs and this
+            // project's issue text disagree on which one Brevo really sends.
+            'invalid_email' => ['invalid_email'],
         ];
     }
 

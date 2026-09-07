@@ -202,16 +202,26 @@ class CarAdministrationService
         $isSystemAccount = ($targetUser->username ?? '') === self::SYSTEM_ACCOUNT_USERNAME;
         $soldDate = $isSystemAccount ? ($carData->solddate ?? null) : null;
 
-        // email_bounced, email_bounced_address, and email_suppressed (#1887) are
-        // all properties of the previous owner's address, not the car — cleared
-        // together on a real-owner transfer (see below) and preserved on a
-        // system-account reassignment, mirroring solddate's treatment. Carrying
-        // email_suppressed forward on a real transfer would suppress mail to a
-        // new owner who never sent a spam complaint; carrying the bounced
-        // address forward retains a stale personal identifier for someone who
-        // no longer owns the car.
+        // email_bounced and email_suppressed (#1887) are boolean signals about
+        // the previous owner's address, not the car — cleared on a real-owner
+        // transfer (see below) and preserved on a system-account reassignment,
+        // mirroring solddate's treatment. Carrying email_suppressed forward on
+        // a real transfer would suppress mail to a new owner who never sent a
+        // spam complaint.
+        //
+        // email_bounced_address is NOT treated the same way: it is the actual
+        // personal-data string (the bounced email address itself), not a
+        // boolean flag, so it is always cleared — including on a
+        // system-account reassignment. That path is exactly the one
+        // usersc/scripts/after_user_deletion.php uses to reassign a departing
+        // user's cars to 'noowner' for GDPR erasure; carrying the address
+        // forward there would leave the deleted user's real email address
+        // readable indefinitely on a car they no longer own, contradicting
+        // the erasure guarantee documented in SYSTEM_OVERVIEW.md and
+        // DATABASE.md. The boolean flags carry no PII, so they are the only
+        // ones system-account reassignment preserves.
         $emailBounced = $isSystemAccount ? (int) ($carData->email_bounced ?? 0) : 0;
-        $emailBouncedAddress = $isSystemAccount ? ($carData->email_bounced_address ?? null) : null;
+        $emailBouncedAddress = null;
         $emailSuppressed = $isSystemAccount ? (int) ($carData->email_suppressed ?? 0) : 0;
 
         try {
@@ -230,6 +240,12 @@ class CarAdministrationService
                 'lat'       => $targetUser->lat      ?? null,
                 'lon'       => $targetUser->lon      ?? null,
                 'website'   => $targetUser->website  ?? '',
+                // Always cleared, including on a system-account reassignment
+                // (see $emailBouncedAddress's own comment above) — this is
+                // the one column here that holds actual PII, not a boolean
+                // signal, so it does not get the same-as-solddate preservation
+                // treatment the fields below it do.
+                'email_bounced_address' => $emailBouncedAddress,
             ];
             // Ordinary transfer: clear it. For the system account the key is omitted
             // entirely — DB::update() writes only the keys given, so the stored value
@@ -240,11 +256,9 @@ class CarAdministrationService
                 // email_bounced belonged to the previous owner's address, not the
                 // car — carrying it forward would permanently exclude the car from
                 // CarRepository::findVerificationEligible() once the address that
-                // caused the bounce is gone. email_bounced_address and
-                // email_suppressed (#1887) are cleared alongside it for the same
-                // reason.
+                // caused the bounce is gone. email_suppressed (#1887) is cleared
+                // alongside it for the same reason.
                 $ownerFields['email_bounced'] = $emailBounced;
-                $ownerFields['email_bounced_address'] = $emailBouncedAddress;
                 $ownerFields['email_suppressed'] = $emailSuppressed;
             }
 

@@ -151,6 +151,24 @@ Sizing, and why these numbers:
 | `cars_list` | 10000 | `app/api/cars/list.php` |
 | `factory_list` | 10000 | `app/api/cars/factory-list.php` |
 | `car_history` | 5000 | `app/api/cars/history.php` |
+| `brevo_webhook` | 2000 | `app/api/webhooks/brevo.php` |
+
+`brevo_webhook` does not qualify under the four criteria above and is **not**
+a CSRF-token removal — it never carried one. It is included in this table
+because it is the other case (besides the four endpoints above) of an
+`app/api/` endpoint reachable with no UserSpice session, and its rate-limit
+sizing follows the same headroom-for-shared-IP reasoning as `statistics_request`
+below. Criterion 1 (no state change) fails outright: the endpoint writes
+`er_email_events` and mutates `cars` columns per request. Criterion 3 (no
+authority to borrow) also does not apply in the CSRF sense — the endpoint
+authenticates every caller via a static bearer token
+(`Authorization: Bearer <token>`, compared with `hash_equals()` against
+`BREVO_WEBHOOK_TOKEN`) rather than a UserSpice session, which is what makes
+CSRF inapplicable here: CSRF exploits a browser silently attaching a victim's
+*ambient* session credential to a forged request, and there is no ambient
+credential a browser can attach on this caller's behalf. See
+[EMAIL_SYSTEM.md](../EMAIL_SYSTEM.md#brevo-webhook-receiver-1887) for the full
+auth/rate-limit/status contract.
 
 `total_max` is the operative limit (see the third trap below). These ceilings
 are far above any interactive session — DataTables debounces search input by

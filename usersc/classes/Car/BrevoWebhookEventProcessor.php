@@ -43,8 +43,18 @@ final class BrevoWebhookEventProcessor
      */
     private const SOFT_BOUNCE_ESCALATION_THRESHOLD = 3;
 
-    /** Brevo event names that immediately count as a confirmed bounce. */
-    private const HARD_BOUNCE_EVENTS = ['hard_bounce', 'blocked', 'invalid'];
+    /**
+     * Brevo event names that immediately count as a confirmed bounce.
+     *
+     * Both `invalid` and `invalid_email` are listed: the spike behind this
+     * issue (#1871) never actually observed this event live, and
+     * EMAIL_SYSTEM.md's own "Design deltas" section names `invalid_email` as
+     * the expected wire value while this project's original issue text used
+     * `invalid` — neither has been confirmed against real Brevo traffic.
+     * Accepting both costs nothing (they're mutually exclusive event names)
+     * and avoids a silent miss on whichever one Brevo actually sends.
+     */
+    private const HARD_BOUNCE_EVENTS = ['hard_bounce', 'blocked', 'invalid', 'invalid_email'];
 
     /**
      * Brevo event names known to have no flag/escalation effect. Anything
