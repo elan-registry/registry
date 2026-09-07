@@ -140,7 +140,7 @@ except those explicitly listed as project-owned:
 
 ### System Requirements
 
-- PHP 8.2+ required
+- PHP 8.2+ required (local dev and CI target 8.4.x this cycle; see `ENVIRONMENT.md` — PHP Version for details)
 - MySQL 8.0+
 - Uses `vlucas/phpdotenv` for environment variable loading (plaintext `.env`, `chmod 600`)
 

@@ -172,7 +172,7 @@ before merge, not by GitHub blocking the merge button itself (see issue #1437).
   platform level. Enforcement instead relies on `/finish-issue`'s CI-status gate, which polls
   actual check status and requires explicit confirmation before merging. See
   [#1437](https://github.com/elan-registry/registry/issues/1437) for the rationale.
-- **Configuration**: `.github/workflows/tests.yml`; PHP 8.3 via `shivammathur/setup-php`
+- **Configuration**: `.github/workflows/tests.yml`; PHP 8.4 via `shivammathur/setup-php`
 
 ### Milestone Release PRs
 
