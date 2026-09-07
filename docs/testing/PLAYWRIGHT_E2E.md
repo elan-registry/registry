@@ -1,16 +1,27 @@
 # Playwright E2E Testing Guide
 
-Three-tier Playwright testing strategy for local development, staging, and production environments.
+Four-tier Playwright testing strategy for local development, staging, and production environments.
 
-## Three-Tier Architecture
+## Four-Tier Architecture
 
 | Tier | Location | Environment | When to Run |
 | ------ | ---------- | ------------- | ------------- |
 | **Local** | `tests/playwright/` | `localhost:9999/ElanRegistry/Registry`[^1] | During development |
+| **Dev** | `tests/playwright/e2e/` | `localhost:9999/ElanRegistry/Registry` | During development (logged-in E2E flows) |
 | **Test** | `tests/playwright/e2e/` | `test.elanregistry.org` | Before releases |
 | **Production** | `tests/playwright/e2e/` | `elanregistry.org` | Post-deployment |
 
 [^1]: Default — override with `PLAYWRIGHT_BASE_URL`, see [ENVIRONMENT.md](../development/ENVIRONMENT.md).
+
+**Why Dev exists alongside Local, against the same environment:**
+`playwright.config.js` (Local) covers `tests/playwright/` broadly — fast,
+mostly-unauthenticated browser checks plus one `logged-in` project.
+`playwright.config.dev.js` (Dev) scopes to `tests/playwright/e2e/` only —
+the same authenticated specs that run against Test/Production in CI
+(`not-logged-in`, `logged-in`, `logged-in-non-admin`) — so a developer can
+validate that exact suite against local MAMP first, using two separate
+local test accounts (admin and non-admin) rather than Local's single
+account.
 
 ## Running Tests
 
@@ -54,9 +65,24 @@ npm run test:e2e:logged-in
 npm run test:e2e:report
 ```
 
+### Dev Environment
+
+```bash
+npm run test:e2e:dev               # All E2E against local MAMP
+npm run test:e2e:dev:headed        # With browser
+npm run test:e2e:dev:ui            # UI mode
+npm run test:e2e:dev:not-logged-in # Public pages only
+npm run test:e2e:dev:logged-in     # Authenticated flows (admin account)
+npm run test:e2e:dev:logged-in-non-admin # Authenticated flows (non-admin account)
+npm run test:e2e:dev:report        # View test report
+```
+
 ## Authentication Setup
 
-E2E tests use session persistence to avoid CAPTCHA challenges.
+E2E tests use session persistence to avoid CAPTCHA challenges. Local and Dev
+tiers instead use a live login via `tests/playwright/e2e/auth.setup.js`,
+with credentials from `TEST_USERNAME`/`TEST_PASSWORD` in `.env.local`; Test
+and Production use the 1Password / CAPTCHA flow described below.
 
 ### Prerequisites
 

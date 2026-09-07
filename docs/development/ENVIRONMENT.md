@@ -148,8 +148,9 @@ internally, setting the `X-Forwarded-Proto: https` header so `$is_https` is
 
 ### Local Playwright Base URL
 
-**Usage**: `playwright.config.js` (local config only — not `playwright.config.prod.js`
-or `playwright.config.test.js`, which stay hardcoded to their real deployed environments)
+**Usage**: `playwright.config.js` and `playwright.config.dev.js` (local configs only —
+not `playwright.config.prod.js` or `playwright.config.test.js`, which stay hardcoded to
+their real deployed environments)
 
 - `PLAYWRIGHT_BASE_URL` — overrides the default local Playwright `baseURL`
   (`http://localhost:9999/ElanRegistry/Registry/`) for developers whose MAMP
@@ -159,6 +160,24 @@ or `playwright.config.test.js`, which stay hardcoded to their real deployed envi
 
   Excluded from the prod/test configs intentionally, to avoid accidentally
   pointing a destructive test run at the wrong live site.
+
+### Local Playwright Test Credentials
+
+**Usage**: `playwright.config.js`'s `logged-in` project, `playwright.config.dev.js`'s
+`logged-in`/`logged-in-non-admin` projects, and `tests/playwright/e2e/auth.setup.js` /
+`auth-non-admin.setup.js`
+
+- `TEST_USERNAME` / `TEST_PASSWORD` — credentials for an admin test account, used to
+  populate `tests/playwright/.auth/user.json` via a live login through
+  `usersc/login.php` each time the `setup` project runs. Required for the `logged-in`
+  project; if unset, `auth.setup.js` skips and the storageState file is removed, so
+  `logged-in` tests run unauthenticated instead of failing on a missing file.
+- `TEST_USERNAME2` / `TEST_PASSWORD2` — credentials for a non-admin test account, used
+  the same way by `auth-non-admin.setup.js` to populate
+  `tests/playwright/.auth/user-dev-non-admin.json`, feeding
+  `playwright.config.dev.js`'s `logged-in-non-admin` project.
+- All four are gitignored via `.env.local` and must never be committed. See
+  `.env.example` for the placeholder entries.
 
 ## Setup & Configuration
 

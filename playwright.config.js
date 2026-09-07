@@ -62,8 +62,12 @@ module.exports = defineConfig({
       testIgnore: '**/e2e/**',
     },
     {
+      // Exact-filename allowlist so this doesn't also match auth-non-admin.setup.js
+      // (added for playwright.config.dev.js's setup-non-admin project) —
+      // this config has no use for it and would otherwise perform an unused
+      // live login on every local run.
       name: 'setup',
-      testMatch: /(?:^|\/)e2e\/.*\.setup\.js$/,
+      testMatch: /(?:^|\/)auth\.setup\.js$/,
       use: { ...devices['Desktop Chrome'] },
     },
     {
