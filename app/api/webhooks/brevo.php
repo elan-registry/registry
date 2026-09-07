@@ -21,6 +21,13 @@ use ElanRegistry\LogCategories;
  * UserSpice session, so this endpoint must stay reachable unauthenticated.
  * Signature/IP verification is #1887's job; this stub performs none.
  *
+ * NO RATE LIMITING — deliberate for this stub, not an oversight. It runs at
+ * most one cheap DB read (`isEnabled()`) when verification is off, and up to
+ * three once it's on, and verification defaults off (see
+ * `er_verification_settings`). #1887's acceptance criteria requires rate
+ * limiting on the real receiver (see `usersc/includes/rate_limits.php` for
+ * the project convention) plus an ADR-019 entry; do not add limiting here.
+ *
  * @see docs/development/EMAIL_SYSTEM.md — "Brevo Webhooks — Verified Behaviour (#1871)"
  * @see https://github.com/elan-registry/registry/issues/1887
  * @since v2.30.2
