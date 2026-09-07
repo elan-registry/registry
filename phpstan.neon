@@ -17,6 +17,16 @@ includes:
 parameters:
     level: 5
 
+    # Test/prod run PHP 8.2 this cycle (#1968) while dev/CI run 8.4. PHPStan
+    # has no independent version detection — without this, it silently
+    # inherits composer.json's config.platform.php, which #1968 raised to
+    # 8.4.0 for local dependency resolution. Left unpinned, that same change
+    # would retarget analysis to 8.4 as a side effect, so 8.3/8.4-only syntax
+    # (property hooks, asymmetric visibility, etc.) would pass CI clean and
+    # then fatal on the 8.2 test/prod hosts. Pin explicitly to the deployment
+    # floor so this stays a real guard regardless of what platform.php says.
+    phpVersion: 80229
+
     # Explicit, stable path so CI can cache PHPStan's result cache across runs
     # (actions/cache in .github/workflows/static-analysis.yml) instead of
     # paying for a cold full-repo analysis on every PR. PHPStan invalidates
