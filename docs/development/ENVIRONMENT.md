@@ -148,6 +148,32 @@ internally, setting the `X-Forwarded-Proto: https` header so `$is_https` is
 
 ## Setup & Configuration
 
+### PHP Version
+
+- **Local dev and CI**: Target PHP 8.4.x this cycle.
+- **Test and production**: Remain on PHP 8.2 until a later milestone switches them (tracked in issue #1968) — code written locally must still run on 8.2 this cycle.
+- **CI coverage gap**: No CI job currently validates against PHP 8.2, even
+  though test/prod run 8.2 all cycle — all `php-version` pins in
+  `.github/workflows/tests.yml` and `static-analysis.yml` were moved to 8.4
+  alongside dev, including the job that previously stayed on 8.2.
+  Compatibility with 8.2 must be verified by local testing/developer
+  discipline until this is revisited (either restoring one 8.2 CI job, or a
+  matrix build, when the test/prod switch issue lands).
+- **MAMP Apache PHP version**: MAMP's Apache does not use the
+  `/Applications/MAMP/bin/php/php` symlink — it serves PHP via
+  `/Applications/MAMP/fcgi-bin/php.fcgi`, a wrapper script MAMP.app
+  regenerates on every Apache restart based on the PHP version selected in
+  MAMP's Preferences → PHP panel. To switch versions, use MAMP.app's
+  Preferences GUI (the wrapper file itself says "Do not modify, it will be
+  overwritten"). Verify the actual serving version with a `phpinfo()` page
+  load after restarting MAMP's servers, not by checking any symlink.
+- **CLI PHP (Homebrew)**: The `php`/`composer` commands on the shell PATH
+  resolve to Homebrew's linked PHP, separate from MAMP's Apache-served PHP.
+  Keep it on the same target version as MAMP (`brew install php@8.4 && brew
+  link php@8.4 --force --overwrite`, then `hash -r`) — `composer
+  test:integration` and other CLI-invoked test/tooling commands run under
+  whichever version is linked, not MAMP's.
+
 ### Development Setup
 
 1. **Get Database Credentials**:
