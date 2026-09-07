@@ -191,9 +191,10 @@ npm run playwright:security     # Security tests
 npm run playwright:maps         # Maps & charts tests
 npm run playwright:csp          # CSP validation tests
 
-# E2E tests (against deployed environments)
+# E2E tests
 npm run test:e2e                # All E2E on elanregistry.org
 npm run test:e2e:test           # All E2E on test.elanregistry.org
+npm run test:e2e:dev            # All E2E against local MAMP (http://localhost:9999/ElanRegistry/Registry/)
 ```
 
 ### Pre-commit Quality Checks
