@@ -15,7 +15,7 @@ None. (Brevo webhook registration, BREVO_WEBHOOK_TOKEN environment variable setu
 
 ## Admin-Facing Changes
 
-(No admin-facing changes yet — content will be added as issues complete.)
+- New "Verification System" tab on the admin management page (`app/admin/index.php?tab=verification`), visible to admins and editors. Shows whether Brevo email delivery and the cron transport are configured/healthy, and lets an admin turn the site-wide verification feature switch on or off. The switch defaults **off** and ships with no way to enable real verification sends until a future release — this issue only builds the gate. Enabling the switch is blocked while Brevo isn't configured; disabling it is never blocked, even mid-incident, so an admin can always turn it off. A dashboard banner appears if the switch is left on with a broken prerequisite. (#1926)
 
 ## Issues Resolved
 
@@ -26,5 +26,5 @@ None. (Brevo webhook registration, BREVO_WEBHOOK_TOKEN environment variable setu
 - WIP: [#1922](https://github.com/elan-registry/registry/issues/1922) — email: investigate sender reputation — Outlook.com auto-junks registrar@ mail; Brevo suppression list unread
 - WIP: [#1923](https://github.com/elan-registry/registry/issues/1923) — feat: import Brevo's suppression list (blockedContacts) into owner email status
 - WIP: [#1924](https://github.com/elan-registry/registry/issues/1924) — feat: show email bounce / suppression / verification state on the admin user view hook
-- WIP: [#1926](https://github.com/elan-registry/registry/issues/1926) — feat: verification-system feature switch with Brevo prerequisite check and admin warning
+- [#1926](https://github.com/elan-registry/registry/issues/1926) — feat: verification-system feature switch with Brevo prerequisite check and admin warning
 - [#1968](https://github.com/elan-registry/registry/issues/1968) — chore: raise dev, then test and prod, to PHP 8.4 before 8.2 security EOL

@@ -21,6 +21,25 @@
 - **System Tables**: `audit`, `country`, `fix_script_runs` for system operations
   and reference data
 
+## Database Naming Conventions
+
+### Table Naming
+
+**ElanRegistry-owned tables created from v2.30.2 onwards use the `er_` prefix.** This convention establishes a clear separation between project-owned tables and upstream UserSpice tables.
+
+**Why:** The existing registry tables (`cars`, `car_transfer_requests`, `deleted_accounts_archive`, `fix_script_runs`) have no consistent naming prefix. `elan_factory_info` is an accidental exception. Since the project continues to add tables — particularly system configuration and workflow tables that will be added alongside UserSpice's own `settings` and utility tables — a namespace prefix prevents future collisions and makes it obvious at a glance which tables belong to the application logic vs. which are upstream.
+
+**Existing tables are not being renamed.** This convention applies only to **new tables created from v2.30.2 onward.**
+
+**Examples:**
+
+- `er_verification_settings` (v2.30.2) — single-row gate for the verification system feature switch
+- Any future feature-config, workflow state, or application-owned table created after this issue
+
+**Upstream tables (not renamed):** `settings`, `users`, `users_session`, `us_*`, etc. (UserSpice), and `cars`, `car_transfer_requests`, `deleted_accounts_archive`, `elan_factory_info`, `car_models`, `fix_script_runs`, `country` (pre-existing project tables).
+
+---
+
 ## Changing the schema — use Phinx
 
 **Every structural change goes through a Phinx migration.** Do not hand-edit

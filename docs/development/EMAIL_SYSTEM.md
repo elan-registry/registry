@@ -94,6 +94,140 @@ Use Mailtrap to capture all email for debugging and development:
 
 To switch back to Brevo for production testing: re-enter the Brevo API key in the plugin configuration and reactivate the override.
 
+## Verification System Feature Switch
+
+The Lotus Elan Registry uses a feature switch to gate all verification-related
+email sends (webhooks, reconciliation, suppression import, and future
+verification sends), enabled only once Brevo is confirmed operational. Cron
+readiness is not a gate — it is surfaced as an advisory indicator, since a
+stalled cron transport delays reminders rather than losing the ability to
+send them at all.
+
+### VerificationSettings Class
+
+**Location:** `usersc/classes/Car/VerificationSettings.php`  
+**Namespace:** `ElanRegistry\Car`
+
+The `VerificationSettings` class gates the entire verification system via a single-row `er_verification_settings` table (`enabled` column, default off).
+
+**Key Methods:**
+
+- `isEnabled(): bool` — reads the current switch state
+- `setEnabled(bool $enabled, int $actingUserId = 0): bool` — writes the
+  switch; throws `VerificationConfigException` if attempting to enable while
+  `brevoReady()` is false. `$actingUserId` attributes the change in the audit
+  log — the class performs no session lookups itself
+- `brevoReady(): bool` — computed live; true only if **both** conditions hold:
+  1. `plg_sendinblue.key` is non-empty (API key configured)
+  2. `usersc/plugins/sendinblue/override.php` exists (plugin override active)
+- `cronReady(): bool` — computed live; true if the newest non-denied `logs`
+  row where `logtype = 'CronRequest'` exists within the last 20 minutes (2×
+  the documented 10-minute cron transport interval — see
+  [DEPLOYMENT.md — Cron Transport](DEPLOYMENT.md#cron-transport-userspice-cron-manager)).
+  `users/cron/cron.php` writes a `CronRequest` row on every hit, including
+  ones its own `cron_ip` allowlist then denies, so rows whose message
+  contains `DENIED` are excluded — otherwise a transport hitting from a
+  misconfigured IP would look healthy while running zero jobs.
+- `lastCronRequestAt(): ?DateTimeImmutable` — returns the timestamp of the most recent cron request, or null
+
+### Readiness Checks
+
+Both `brevoReady()` and `cronReady()` are **computed live on every call, never
+cached**. No "last checked" timestamp is stored; no periodic background
+health check runs. This is an explicit design decision: status displays
+always reflect current state.
+
+**Brevo Readiness:**
+
+- `brevoReady()` checks only that the plugin's configuration exists and the override file is active
+- It does **not** validate the API key by calling Brevo, since that would add latency to every status check and introduce a hard dependency on external availability
+- The first actual API call (a verification send) will fail and log if the key is stale or invalid; those failures are the true signal
+
+**Cron Readiness:**
+
+- The 20-minute window is 2× the standard documented cron transport interval (10 minutes)
+- If no non-denied `CronRequest` log exists at all, `cronReady()` returns false
+- If the most recent non-denied request is older than 20 minutes, `cronReady()` returns false
+- Denied requests (`cron_ip` allowlist rejection) are excluded — they prove only that the transport reached the server, not that it was recognized and ran jobs
+
+### Asymmetric Enable/Disable Gate
+
+**Critical invariant:** `setEnabled(true)` throws
+`VerificationConfigException` (HTTP 422) when `brevoReady()` is false.
+**`setEnabled(false)` never throws, for any reason.**
+
+An administrator must always be able to turn verification off, even mid-incident. Disabling the switch when Brevo is broken is the recovery path.
+
+```php
+try {
+    $settings = new VerificationSettings($db);
+    $settings->setEnabled(true, $userId);  // throws if brevoReady() is false
+} catch (VerificationConfigException $e) {
+    // The exception already logged the refusal internally; surface its
+    // user-facing message (e.g. "Brevo is not configured") in the response.
+    return ApiResponse::validationError(['enabled' => $e->getUserMessage()], $e->getUserMessage());
+}
+
+// Disabling always succeeds, regardless of readiness
+$settings->setEnabled(false, $userId);  // never throws
+```
+
+### Admin UI
+
+The verification system status appears on the Admin dashboard
+(`app/admin/index.php?tab=verification`), visible to both admin and editor
+roles (read-only for editor, toggle control for admin only).
+
+**Status Indicators:**
+
+- `brevoReady()` — badge `text-bg-danger` if false while the switch is on; muted text if switch is off
+- `cronReady()` — badge `text-bg-warning` if false; muted if true
+- Last webhook received — muted "Not yet implemented (#1887)" (placeholder for the real webhook implementation)
+- Last reconciliation run — muted "Not yet implemented (#1889)"
+
+**Toggle Control:**
+
+- Located on the Verification System tab
+- Disabled (with explanatory text) when current user is not admin, or when admin but attempting to enable while `brevoReady()` is false
+- Label always explains which prerequisite failed if the enable direction is blocked
+- Disabling is never blocked — the switch can always be turned off
+
+**Dashboard Banner:**
+
+A conditional banner appears below pending-migrations alerts when `isEnabled() && (!brevoReady() || !cronReady())`. Severity:
+
+- `alert-danger` if `!brevoReady()`
+- `alert-warning` if `brevoReady()` is true but `!cronReady()`
+
+The banner states which prerequisite failed and links to the Verification System tab for details.
+
+### Webhook Stub (Gate-Only Placeholder)
+
+**Location:** `app/api/webhooks/brevo.php`  
+**Important:** This is a placeholder implementation for issue #1887. It will be **replaced entirely** when #1887 ships; do not extend this file.
+
+**Behavior:**
+
+- If `!isEnabled()` → respond 2xx immediately, write nothing, log nothing (the gate is off, so no events proceed)
+- If `isEnabled() && !brevoReady()` → respond 2xx (so Brevo doesn't retry), log a refusal under `LOG_CATEGORY_VERIFICATION_CONFIG_WARNING`, do not persist any event
+- If `isEnabled() && brevoReady()` → respond 2xx; the receiver is a no-op
+  until #1887 lands, so a rate-limited (max once per hour) discoverability
+  notice is logged under `LOG_CATEGORY_VERIFICATION_CONFIG_WARNING` warning
+  that real events are being accepted and silently discarded — without this,
+  an admin who enables verification ahead of #1887 has no way to learn the
+  endpoint isn't actually doing anything
+- No signature verification, no payload parsing, no `email_events` table writes — all of that is #1887's responsibility
+
+This stub exists to verify the gate's acceptance criteria end-to-end: webhook returns 2xx and drops events when disabled or when a prerequisite fails.
+
+### Feature Switch Related Documentation
+
+- [DEPLOYMENT.md — Cron Transport](DEPLOYMENT.md#cron-transport-userspice-cron-manager) — the 10-minute interval constant referenced by `cronReady()`
+- [LOG_CATEGORIES.md](LOG_CATEGORIES.md) — `LOG_CATEGORY_VERIFICATION_CONFIG_WARNING` for logging failures
+- [CLASSES.md](CLASSES.md) — `VerificationSettings` and `VerificationConfigException` class reference
+
+---
+
 ## Verifying Email Delivery
 
 ### Brevo Dashboard
