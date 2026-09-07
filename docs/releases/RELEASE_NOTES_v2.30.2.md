@@ -46,7 +46,7 @@
 
 ## Issues Resolved
 
-- WIP: [#1887](https://github.com/elan-registry/registry/issues/1887) — feat: automatic bounce & delivery-status detection via Brevo webhooks
+- [#1887](https://github.com/elan-registry/registry/issues/1887) — feat: automatic bounce & delivery-status detection via Brevo webhooks
 - WIP: [#1888](https://github.com/elan-registry/registry/issues/1888) — chore: configure & verify the Brevo webhook
 - WIP: [#1889](https://github.com/elan-registry/registry/issues/1889) — feat: nightly Brevo delivery-event reconciliation job
 - WIP: [#1890](https://github.com/elan-registry/registry/issues/1890) — feat: auto-clear email_bounced when the owner confirms an email change
