@@ -5,10 +5,12 @@ Three-tier Playwright testing strategy for local development, staging, and produ
 ## Three-Tier Architecture
 
 | Tier | Location | Environment | When to Run |
-|------|----------|-------------|-------------|
-| **Local** | `tests/playwright/` | `localhost:9999/elan_registry` | During development |
+| ------ | ---------- | ------------- | ------------- |
+| **Local** | `tests/playwright/` | `localhost:9999/ElanRegistry/Registry`[^1] | During development |
 | **Test** | `tests/playwright/e2e/` | `test.elanregistry.org` | Before releases |
 | **Production** | `tests/playwright/e2e/` | `elanregistry.org` | Post-deployment |
+
+[^1]: Default — override with `PLAYWRIGHT_BASE_URL`, see [ENVIRONMENT.md](../development/ENVIRONMENT.md).
 
 ## Running Tests
 
@@ -83,21 +85,23 @@ E2E tests use session persistence to avoid CAPTCHA challenges.
 
 ### Auth Files
 
-| Environment | File | Config |
-|-------------|------|--------|
-| Test | `.auth/user-test.json` | `playwright.config.test.js` |
-| Production | `.auth/user.json` | `playwright.config.prod.js` |
+| Environment | File                   | Config                      |
+| ----------- | ---------------------- | --------------------------- |
+| Test        | `.auth/user-test.json` | `playwright.config.test.js` |
+| Production  | `.auth/user.json`      | `playwright.config.prod.js` |
 
 Files are gitignored. Re-run setup if sessions expire.
 
 ## Test Projects
 
 ### not-logged-in
+
 - Public page accessibility
 - No authentication required
 - Always runs
 
 ### logged-in
+
 - Authenticated workflows
 - Requires auth file
 - Skipped if auth file missing
@@ -105,7 +109,7 @@ Files are gitignored. Re-run setup if sessions expire.
 ## Troubleshooting
 
 | Issue | Solution |
-|-------|----------|
+| ------- | ---------- |
 | Auth file doesn't exist | Run auth setup script |
 | Tests fail with login redirect | Session expired - re-run auth setup |
 | CAPTCHA timeout | Re-run setup, solve CAPTCHA promptly |
