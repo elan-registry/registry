@@ -19,10 +19,10 @@ mostly-unauthenticated browser checks plus one `logged-in` project.
 `playwright.config.dev.js` (Dev) scopes to `tests/playwright/e2e/` only —
 the same `not-logged-in`/`logged-in` specs that run against Test/Production
 in CI — so a developer can validate that exact suite against local MAMP
-first. Dev also provisions a `logged-in-non-admin` project (a second local
-test account, admin and non-admin) as infrastructure for future non-admin
-e2e coverage; no spec targets it yet, so it has no npm script until one
-does.
+first. Dev also provisions a `logged-in-non-admin` project — a second local
+test account distinct from `logged-in`'s admin account — as infrastructure
+for future non-admin e2e coverage; no spec targets it yet, so it has no npm
+script until one does.
 
 ## Running Tests
 
