@@ -513,7 +513,9 @@ per environment outside the codebase. Installed on test and prod on 2026-09-03
 >   schedule a job may rely on. This section is the operational record of what
 >   the transport is actually configured to; `CRON_TRANSPORT_INTERVAL_MINUTES`
 >   in `usersc/includes/config.php` is the in-code mirror cron jobs read (see
->   #2001) — if the schedule changes, update both in the same change.
+>   #2001) — if the schedule changes, update this section, that constant, its
+>   `tests/bootstrap-unit.php` mirror, and
+>   `VerificationSettings::CRON_TRANSPORT_INTERVAL_MINUTES_FALLBACK` together.
 > - Runtime budget: a job must finish comfortably inside the interval or it will
 >   overlap its own next run.
 
