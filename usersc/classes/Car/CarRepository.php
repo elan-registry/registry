@@ -927,6 +927,37 @@ class CarRepository
     }
 
     /**
+     * Reassign er_email_events rows from one car to another (car merge, #1887)
+     *
+     * Unlike deleteEmailEventsForCarIds() (used on account/car deletion, where
+     * the history has nowhere to go), a merge's surviving car should keep both
+     * cars' bounce/suppression signal rather than lose the source's. No
+     * ON DUPLICATE KEY UPDATE here — a genuine collision on the unique index
+     * (car_id, brevo_message_id, event) between the two cars' histories throws
+     * rather than silently dropping one side's row.
+     *
+     * @param int $fromCarId Source (merged-away) car ID
+     * @param int $toCarId Target (surviving) car ID
+     * @return bool True on success
+     * @throws CarDatabaseException If the query fails
+     */
+    public function transferEmailEvents(int $fromCarId, int $toCarId): bool
+    {
+        $this->db->query(
+            'UPDATE er_email_events SET car_id = ? WHERE car_id = ?',
+            [$toCarId, $fromCarId]
+        );
+
+        if ($this->db->error()) {
+            throw new CarDatabaseException(
+                "CarRepository::transferEmailEvents failed (from={$fromCarId} to={$toCarId}): " . $this->db->errorString()
+            );
+        }
+
+        return true;
+    }
+
+    /**
      * Look up factory information by chassis serial number
      *
      * @param string $chassis Full chassis number

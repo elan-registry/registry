@@ -233,7 +233,12 @@ issue #1889's job (nightly reconciliation), out of scope for #1887.
 up by:** `usersc/scripts/after_user_deletion.php`
 (`CarRepository::deleteEmailEventsForCarIds()`) when an owner's account is
 deleted, in the same transaction as car reassignment, before the car→owner
-link is severed.
+link is severed; and by `CarAdministrationService::delete()`
+(`deleteEmailEventsForCarIds()`) on a direct car deletion, same transaction as
+the car row. **Reassigned by:** `CarAdministrationService::merge()`
+(`CarRepository::transferEmailEvents()`) — a merge moves the source car's
+history onto the surviving car rather than deleting it, since the target
+owner should keep the merged bounce/suppression signal.
 
 ### Factory Reference Data
 

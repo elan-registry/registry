@@ -122,6 +122,12 @@ class CarAdministrationService
         try {
             $repo->beginTransaction();
 
+            // #1887: er_email_events has no FK on car_id, so a deleted car's
+            // Brevo event history would otherwise survive the delete
+            // permanently (no cascade to clean it up later). Delete it in
+            // the same transaction as the car row.
+            $repo->deleteEmailEventsForCarIds([$carId]);
+
             if (!$repo->deleteCar($carId)) {
                 logger($adminUserId, LogCategories::LOG_CATEGORY_CAR_DELETION, 'Database update failed: query returned false');
                 throw new CarDatabaseException('Database update failed - check system logs for details.');
@@ -392,6 +398,18 @@ class CarAdministrationService
             if (!$repo->transferHistory($oldCarId, $newCarId)) {
                 logger($adminUserId, LogCategories::LOG_CATEGORY_CAR_MERGE, 'Failed to transfer car history: query returned false');
                 throw new CarDatabaseException('Car merge failed - could not transfer history records.');
+            }
+
+            // #1887: er_email_events has no FK/cascade, so reassign the
+            // source car's Brevo event history onto the surviving car —
+            // deleting it here (as delete() does) would be wrong for a merge,
+            // since the target owner should keep the merged bounce/suppression
+            // signal rather than lose it.
+            try {
+                $repo->transferEmailEvents($oldCarId, $newCarId);
+            } catch (CarDatabaseException $e) {
+                logger($adminUserId, LogCategories::LOG_CATEGORY_CAR_MERGE, 'Failed to transfer email event history: ' . $e->getMessage());
+                throw new CarDatabaseException('Car merge failed - could not transfer email event history.');
             }
 
             if (!$repo->deleteCar($oldCarId)) {

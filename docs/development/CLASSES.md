@@ -584,8 +584,13 @@ to provide a focused, testable data access layer wrapping the `cars`,
   most recent `delivered` event; the query the webhook receiver's
   soft-bounce escalation threshold is checked against (#1887)
 - `deleteEmailEventsForCarIds(array $carIds): int` - Delete all
-  `er_email_events` rows for a set of car ids; used by account-deletion
-  cleanup, returns the number of rows deleted (0 for an empty array) (#1887)
+  `er_email_events` rows for a set of car ids; used by account-deletion and
+  direct car-deletion cleanup, returns the number of rows deleted (0 for an
+  empty array) (#1887)
+- `transferEmailEvents(int $fromCarId, int $toCarId): bool` - Reassign
+  `er_email_events` rows from one car to another; used by car merge, so the
+  surviving car keeps the merged-away car's bounce/suppression history
+  instead of losing it (#1887)
 - `updateOwnerLastUpdated(int $carId, string $dateTime): bool` - Update the
   timestamp of the owner's last self-initiated edit; standalone primitive not
   currently called by `Car::update()` (which folds the same write into its
@@ -647,6 +652,7 @@ to provide a focused, testable data access layer wrapping the `cars`,
 - Car class (composed data-access layer)
 - `app/api/cars/chassis-availability.php`, `app/api/cars/transfer-request.php` (`findByChassisKey()`)
 - User-deletion hook (`reassignCarsByUser()`, `deleteEmailEventsForCarIds()`)
+- `CarAdministrationService` (`deleteEmailEventsForCarIds()` on car deletion, `transferEmailEvents()` on car merge)
 - Sitemap generation (`getAllForSitemap()`)
 - `BrevoWebhookEventProcessor` (`findByEmail()`, `insertEmailEvent()`, `countSoftBouncesSinceLastDelivered()`) (#1887)
 

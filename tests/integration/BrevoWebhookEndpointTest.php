@@ -703,6 +703,86 @@ final class BrevoWebhookEndpointTest extends IntegrationTestCase
         }
     }
 
+    /**
+     * The test above proves checkRateLimit() correctly reads pre-seeded
+     * us_rate_limits rows — it does NOT prove the endpoint's own
+     * recordRateLimit() calls write anything, since it never sends a normal
+     * (non-seeded) request and checks the table afterward. That gap matters
+     * because RateLimit::check()'s ip_max/total_max paths count ONLY rows
+     * written by record() (see the endpoint's own docblock) — without a
+     * working recordRateLimit() call, the configured limit can silently
+     * never trip, and a passing test suite would not catch a regression that
+     * removed those calls or typo'd the action string on just those two call
+     * sites. This test closes that gap directly.
+     */
+    public function testEndpointRecordsRateLimitAttemptsForBothOutcomes(): void
+    {
+        // RateLimit::getRealIP() rejects 127.0.0.1 (FILTER_FLAG_NO_RES_RANGE
+        // treats loopback as a reserved range) even off the reverse-proxy
+        // path, so record()'s single identifier ('ip') resolves to nothing
+        // and it silently writes zero rows for a same-machine test request
+        // unless a trusted-proxy + X-Forwarded-For fixture is set up, exactly
+        // like the ip_max exhaustion test above.
+        $spoofedPublicIp = '203.0.113.77'; // TEST-NET-3 (RFC 5737)
+
+        $this->db->query('UPDATE settings SET behind_reverse_proxy = 1 WHERE id = 1');
+        $this->assertFalse($this->db->error(), 'Test setup: failed to enable behind_reverse_proxy');
+
+        $this->db->insert('us_rate_limit_proxy_settings', [
+            'proxy_ip' => '127.0.0.1',
+            'header_name' => 'X-Forwarded-For',
+            'priority' => 1,
+            'enabled' => 1,
+        ]);
+        $this->assertFalse($this->db->error(), 'Test setup: failed to register trusted proxy fixture');
+        $proxyFixtureId = (int) $this->db->lastId();
+
+        $identifierKey = hash('sha256', 'ip::' . $spoofedPublicIp);
+        $countFor = fn (int $success): int => (int) $this->db->query(
+            "SELECT COUNT(*) AS cnt FROM us_rate_limits WHERE action = 'brevo_webhook' AND success = ? AND identifier_key = ?",
+            [$success, $identifierKey]
+        )->first()->cnt;
+
+        try {
+            $successBefore = $countFor(1);
+            $failureBefore = $countFor(0);
+
+            // A normal, authorized, allowed request must record a success=1 row.
+            $result = $this->postToWebhook($this->taggedPayload(), [
+                'Authorization' => 'Bearer ' . self::TEST_TOKEN,
+                'X-Forwarded-For' => $spoofedPublicIp,
+            ]);
+            $this->assertSame(200, $result['status']);
+
+            $successAfterAllowed = $countFor(1);
+            $this->assertSame(
+                $successBefore + 1,
+                $successAfterAllowed,
+                'A normal allowed request must write exactly one success=1 row via recordRateLimit(..., true) — '
+                    . 'without this, checkRateLimit() would see zero attempts and the configured limit could never trip'
+            );
+
+            // A rejected request (wrong auth — fails before rate limiting is
+            // even reached) must NOT write a rate-limit row at all:
+            // recordRateLimit() only runs after auth passes, per the
+            // endpoint's own ordering.
+            $rejectedResult = $this->postToWebhook($this->taggedPayload(), [
+                'Authorization' => 'Bearer wrong-token',
+                'X-Forwarded-For' => $spoofedPublicIp,
+            ]);
+            $this->assertSame(401, $rejectedResult['status']);
+            $this->assertSame(
+                $successAfterAllowed,
+                $countFor(1),
+                'An auth-rejected request must not record a rate-limit attempt — auth runs before rate limiting'
+            );
+            $this->assertSame($failureBefore, $countFor(0), 'An auth-rejected request must not record a rate-limit attempt');
+        } finally {
+            $this->db->query('UPDATE settings SET behind_reverse_proxy = 0 WHERE id = 1');
+            $this->db->query('DELETE FROM us_rate_limit_proxy_settings WHERE id = ?', [$proxyFixtureId]);
+        }
+    }
+
     // ------------------------------------------------------------------
     // Transient DB error (5xx)
     // ------------------------------------------------------------------

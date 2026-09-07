@@ -75,6 +75,14 @@ function respondAndExit(int $status, ?string $logCategory = null, ?string $logMe
     exit;
 }
 
+// Brevo only ever POSTs. Rejecting anything else matches every other
+// app/api/ endpoint's convention (see join-failure-report.php,
+// verification-toggle.php) and closes off a GET-with-bearer-token request
+// being logged/cached/replayed by an intermediary that saw the URL+headers.
+if ($method !== 'POST') {
+    respondAndExit(405);
+}
+
 // --- 1. Auth (must run before rate limiting — see file docblock) ----------
 $authHeader = Server::get('HTTP_AUTHORIZATION', '');
 $providedToken = '';
@@ -95,37 +103,62 @@ if ($expectedToken === '' || $providedToken === '' || !hash_equals($expectedToke
     );
 }
 
-// --- 2. Rate limit (IP-scoped; fails open on limiter exception, matching
-// join-failure-report.php's pattern). recordRateLimit() is required, not
-// optional: RateLimit::check()'s total_max/ip_max paths count only rows
-// written by record() — without it, checkRateLimit() always sees zero
-// attempts and this limit can never trip. See send-owner-email.php for the
-// same record-on-both-outcomes shape. -----------------------------------
+// --- 2-5. Rate limit, gates, parse, and process — wrapped in a single
+// top-level catch. This is a request boundary whose entire job is to turn
+// any failure into a logged, retryable status: without it, an exception
+// thrown by anything below (a dropped DB connection surfacing as a raw
+// PDOException/\Exception rather than the CarDatabaseException
+// BrevoWebhookEventProcessor::process() itself catches, or a failed
+// recordRateLimit() insert, for instance) would escape as an uncaught
+// fatal — Brevo still gets a 5xx and retries, but with zero log line, which
+// is indistinguishable from the endpoint being silently broken. The
+// rate-limit block is inside this boundary (not before it, as an earlier
+// version had it) for exactly that reason: an uncaught exception from
+// recordRateLimit() must not skip past this handler. Broad-by-design, not a
+// lazy catch.
 try {
-    $rateLimitAllowed = checkRateLimit('brevo_webhook');
-} catch (\Throwable $e) {
-    logger(0, LogCategories::LOG_CATEGORY_EMAIL_WEBHOOK, sprintf(
-        'Brevo webhook: rate limit check failed (%s), failing open: %s',
-        get_class($e),
-        $e->getMessage()
-    ));
-    $rateLimitAllowed = true;
-}
-if (!$rateLimitAllowed) {
-    recordRateLimit('brevo_webhook', false);
-    respondAndExit(429);
-}
-recordRateLimit('brevo_webhook', true);
+    // Rate limit (IP-scoped). recordRateLimit() is required, not optional:
+    // RateLimit::check()'s total_max/ip_max paths count only rows written
+    // by record() — without it, checkRateLimit() always sees zero attempts
+    // and this limit can never trip. See send-owner-email.php for the same
+    // record-on-both-outcomes shape.
+    //
+    // Config-missing is a distinct, louder failure from a genuine limiter
+    // exception: RateLimit::check() returns true with NO exception at all
+    // when the 'brevo_webhook' key is absent from $rateLimits (see
+    // usersc/includes/rate_limits.php), so an accidentally-deleted config
+    // block would otherwise look identical to healthy, unthrottled traffic.
+    // Checking for the key explicitly turns that into a logged condition.
+    /** @var array<string, array<string, int>> $rateLimits */
+    $rateLimits = [];
+    require __DIR__ . '/../../../usersc/includes/rate_limits.php';
+    if (!isset($rateLimits['brevo_webhook'])) {
+        logger(0, LogCategories::LOG_CATEGORY_EMAIL_WEBHOOK,
+            "Brevo webhook: 'brevo_webhook' rate-limit config is missing — running unthrottled.");
+    }
 
-// --- 3-5. Gates, parse, and process — wrapped in a top-level catch. This is
-// a request boundary whose entire job is to turn any failure into a logged,
-// retryable status: without it, an exception thrown by anything below (a
-// dropped DB connection surfacing as a raw PDOException/\Exception rather
-// than the CarDatabaseException BrevoWebhookEventProcessor::process() itself
-// catches, for instance) would escape as an uncaught fatal — Brevo still
-// gets a 5xx and retries, but with zero log line, which is indistinguishable
-// from the endpoint being silently broken. Broad-by-design, not a lazy catch.
-try {
+    try {
+        $rateLimitAllowed = checkRateLimit('brevo_webhook');
+    } catch (\PDOException | \RuntimeException $e) {
+        // Narrowed to storage-layer failures (a dropped connection or a
+        // failed query inside RateLimit itself) so this catch cannot also
+        // swallow a \TypeError/\Error from a genuinely broken
+        // rate_limits.php — that class of bug now surfaces via the outer
+        // catch below instead of silently running unthrottled forever.
+        logger(0, LogCategories::LOG_CATEGORY_EMAIL_WEBHOOK, sprintf(
+            'Brevo webhook: rate limit check failed (%s), failing open: %s',
+            get_class($e),
+            $e->getMessage()
+        ));
+        $rateLimitAllowed = true;
+    }
+    if (!$rateLimitAllowed) {
+        recordRateLimit('brevo_webhook', false);
+        respondAndExit(429);
+    }
+    recordRateLimit('brevo_webhook', true);
+
+    // --- 3. Verification-system gates (preserved from the pre-#1887 stub) -
     $settings = new VerificationSettings(dbi());
 
     if (!$settings->isEnabled()) {
@@ -175,11 +208,18 @@ try {
             // no break — respondAndExit() never returns
 
         case ProcessingResult::NO_CAR_MATCH:
-            $settings->incrementUnmatchedRecipientCounter();
+            // incrementUnmatchedRecipientCounter() never throws (see its own
+            // docblock) and already logs its own failure — but its return
+            // value still needs to be honored here, otherwise this log line
+            // would unconditionally claim "incremented" even on the one path
+            // where the method just logged that it could not.
+            $counterIncremented = $settings->incrementUnmatchedRecipientCounter();
             respondAndExit(
                 200,
                 LogCategories::LOG_CATEGORY_EMAIL_WEBHOOK,
-                'Brevo webhook: event recipient matched no car — dropped, unmatched counter incremented.'
+                $counterIncremented
+                    ? 'Brevo webhook: event recipient matched no car — dropped, unmatched counter incremented.'
+                    : 'Brevo webhook: event recipient matched no car — dropped, unmatched counter increment failed (see prior log line).'
             );
             // no break — respondAndExit() never returns
 

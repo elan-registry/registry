@@ -206,10 +206,15 @@ The banner states which prerequisite failed and links to the Verification System
 **Location:** `app/api/webhooks/brevo.php`
 **Not in `$path`, no `securePage()`:** Brevo is an external caller with no
 UserSpice session. Authentication is a static bearer token instead (below).
+**Method:** POST only; anything else gets a 405, matching every other
+`app/api/` endpoint's convention.
 
 **Auth:** `Authorization: Bearer <token>`, compared with `hash_equals()`
-against `getenv('BREVO_WEBHOOK_TOKEN')`. Fails **closed**: an empty/missing
-configured token rejects every request rather than accepting everything.
+against `$_ENV['BREVO_WEBHOOK_TOKEN']` — reads `$_ENV`, not `getenv()`, since
+`Dotenv::createImmutable()` (`users/init.php`) never calls `putenv()`, so
+`getenv()` would always return `false` here even with a correctly configured
+`.env`. Fails **closed**: an empty/missing configured token rejects every
+request rather than accepting everything.
 Rejections are logged under `LOG_CATEGORY_SECURITY` with only a short hashed
 prefix of the provided token, never the raw value. See
 [ENVIRONMENT.md](ENVIRONMENT.md) for how to generate and set this token, and

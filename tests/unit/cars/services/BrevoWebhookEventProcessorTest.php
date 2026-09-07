@@ -163,6 +163,48 @@ final class BrevoWebhookEventProcessorTest extends TestCase
         $this->assertSame(ProcessingResult::NO_TAG_MATCH, $result);
     }
 
+    public function testOversizedEventNameReturnsMalformedNotWriteFailure(): void
+    {
+        // er_email_events.event is varchar(32) under STRICT_TRANS_TABLES — an
+        // unbounded value would throw a CarDatabaseException from
+        // insertEmailEvent(), mapping to WRITE_FAILURE/5xx and putting Brevo
+        // into a permanent retry loop on this one poisoned payload. Rejecting
+        // it here as MALFORMED (4xx, no retry) before any DB call is the fix.
+        $this->mockRepo->expects($this->never())->method('findByEmail');
+        $this->mockManager->expects($this->never())->method('setBounced');
+        $this->mockManager->expects($this->never())->method('setSuppressed');
+
+        $result = $this->processor->process($this->basePayload(['event' => str_repeat('x', 33)]));
+
+        $this->assertSame(ProcessingResult::MALFORMED, $result);
+    }
+
+    public function testEventNameAtExactColumnWidthIsAccepted(): void
+    {
+        $car = (object) ['id' => 1, 'email' => 'owner@example.com'];
+        $this->mockRepo->expects($this->once())->method('findByEmail')->willReturn([$car]);
+        $this->mockRepo->expects($this->once())->method('insertEmailEvent')->willReturn(1);
+        $this->mockManager->expects($this->never())->method('setBounced');
+        $this->mockManager->expects($this->never())->method('setSuppressed');
+
+        $result = $this->processor->process($this->basePayload(['event' => str_repeat('x', 32)]));
+
+        $this->assertSame(ProcessingResult::MATCHED_AND_RECORDED, $result);
+    }
+
+    public function testOversizedMessageIdReturnsMalformedNotWriteFailure(): void
+    {
+        // er_email_events.brevo_message_id is varchar(255) — same failure
+        // mode and same fix as the oversized event name above.
+        $this->mockRepo->expects($this->never())->method('findByEmail');
+        $this->mockManager->expects($this->never())->method('setBounced');
+        $this->mockManager->expects($this->never())->method('setSuppressed');
+
+        $result = $this->processor->process($this->basePayload(['message-id' => str_repeat('x', 256)]));
+
+        $this->assertSame(ProcessingResult::MALFORMED, $result);
+    }
+
     public function testNonArrayTagsReturnsMalformed(): void
     {
         // A non-list `tags` means Brevo's payload contract changed, not that

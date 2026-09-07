@@ -63,6 +63,12 @@ final class BrevoWebhookEventProcessor
      */
     private const MAX_PLAUSIBLE_TIMESTAMP = 253402300799;
 
+    /** Matches er_email_events.event's column width (migration 20260907141817). */
+    private const MAX_EVENT_LENGTH = 32;
+
+    /** Matches er_email_events.brevo_message_id's column width (migration 20260907141817). */
+    private const MAX_MESSAGE_ID_LENGTH = 255;
+
     public function __construct(
         private CarRepository $repo,
         private CarVerificationManager $verificationManager,
@@ -94,6 +100,23 @@ final class BrevoWebhookEventProcessor
             || !is_string($event) || $event === ''
             || !is_string($messageId) || $messageId === ''
         ) {
+            return ProcessingResult::MALFORMED;
+        }
+
+        // Bounded against er_email_events' actual column widths
+        // (event varchar(32), brevo_message_id varchar(255)) so an
+        // oversized value is rejected here as MALFORMED (4xx, no retry)
+        // rather than reaching insertEmailEvent() and throwing a
+        // CarDatabaseException under STRICT_TRANS_TABLES — which would map
+        // to WRITE_FAILURE/5xx and put Brevo into a permanent retry loop on
+        // one poisoned payload, the same failure mode MAX_PLAUSIBLE_TIMESTAMP
+        // exists to prevent for ts_event.
+        if (strlen($event) > self::MAX_EVENT_LENGTH || strlen($messageId) > self::MAX_MESSAGE_ID_LENGTH) {
+            logger(0, LogCategories::LOG_CATEGORY_EMAIL_WEBHOOK, sprintf(
+                'Brevo webhook: event or message-id exceeds storage width (event=%d bytes, message-id=%d bytes).',
+                strlen($event),
+                strlen($messageId)
+            ));
             return ProcessingResult::MALFORMED;
         }
 
