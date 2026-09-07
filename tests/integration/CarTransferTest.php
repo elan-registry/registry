@@ -315,6 +315,82 @@ final class CarTransferTest extends IntegrationTestCase
     }
 
     /**
+     * email_bounced_address and email_suppressed (#1887) are properties of
+     * the previous owner's address by the same argument as email_bounced
+     * above: carrying email_suppressed forward would suppress mail to a new
+     * owner who never sent a spam complaint, and carrying the bounced
+     * address forward retains a stale personal identifier for someone who no
+     * longer owns the car. Transfer to a real owner must clear both.
+     */
+    #[Group('fast')]
+    public function testTransferClearsBounceAddressAndSuppressedOnPreviouslyFlaggedCar(): void
+    {
+        $flaggedCarId = $this->createTestCar($this->testUserId, [
+            'chassis'               => 'TR' . uniqid(),
+            'email_bounced'         => 1,
+            'email_bounced_address' => 'previous-owner@example.com',
+            'email_suppressed'      => 1,
+        ]);
+
+        $car = new Car($flaggedCarId);
+        $car->transfer($this->targetUserId, 'Test transfer flagged car', 'NEWOWNER', $this->testUserId);
+
+        $carRow = $this->db->query(
+            "SELECT email_bounced_address, email_suppressed FROM cars WHERE id = ?",
+            [$flaggedCarId]
+        )->first();
+        $this->assertNull($carRow->email_bounced_address);
+        $this->assertSame(0, (int) $carRow->email_suppressed);
+    }
+
+    /**
+     * Reassignment to the system account ("no owner") is NOT a change of
+     * owner (see the sold-date precedent for the same distinction, #1878) —
+     * the boolean email_bounced/email_suppressed flags must survive so they
+     * aren't lost while a car sits ownerless, mirroring email_bounced's own
+     * preservation.
+     *
+     * email_bounced_address is different: it is the actual bounced email
+     * address string, not a boolean signal, and this is exactly the
+     * reassignment path usersc/scripts/after_user_deletion.php uses to move
+     * a departing user's cars to 'noowner' for GDPR erasure. Preserving the
+     * address here would leave a deleted user's real email address readable
+     * indefinitely on a car they no longer own — so, unlike the two boolean
+     * flags, it must always be cleared, including on this path.
+     */
+    #[Group('fast')]
+    public function testSystemAccountReassignmentPreservesFlagsButClearsBounceAddress(): void
+    {
+        $flaggedCarId = $this->createTestCar($this->testUserId, [
+            'chassis'               => 'TR' . uniqid(),
+            'email_bounced'         => 1,
+            'email_bounced_address' => 'still-bounced@example.com',
+            'email_suppressed'      => 1,
+        ]);
+
+        $noOwner = $this->db->query("SELECT id FROM users WHERE username = 'noowner'")->first();
+        $this->assertNotNull($noOwner, 'noowner system account must exist for this test');
+
+        $car = new Car($flaggedCarId);
+        $car->transfer((int) $noOwner->id, 'Test reassignment to noowner', 'NEWOWNER', $this->testUserId);
+
+        $carRow = $this->db->query(
+            "SELECT email_bounced, email_bounced_address, email_suppressed FROM cars WHERE id = ?",
+            [$flaggedCarId]
+        )->first();
+        $this->assertSame(1, (int) $carRow->email_bounced, 'The boolean bounced flag carries no PII and must survive');
+        $this->assertNull($carRow->email_bounced_address, 'The bounced address is PII and must be cleared even on GDPR-erasure reassignment');
+        $this->assertSame(1, (int) $carRow->email_suppressed, 'The boolean suppressed flag carries no PII and must survive');
+
+        $histRow = $this->db->query(
+            "SELECT email_bounced_address FROM cars_hist WHERE car_id = ? AND operation = 'NEWOWNER' ORDER BY timestamp DESC LIMIT 1",
+            [$flaggedCarId]
+        )->first();
+        $this->assertIsObject($histRow, 'Expected a NEWOWNER row in cars_hist');
+        $this->assertNull($histRow->email_bounced_address, 'The audit trail must not retain the bounced address either');
+    }
+
+    /**
      * Test transfer works with an explicit actingUserId even when global $user is unset.
      * Verifies that Car::transfer() does not fall back to currentUserId() internally.
      */

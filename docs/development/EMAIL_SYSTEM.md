@@ -201,29 +201,87 @@ A conditional banner appears below pending-migrations alerts when `isEnabled() &
 
 The banner states which prerequisite failed and links to the Verification System tab for details.
 
-### Webhook Stub (Gate-Only Placeholder)
+### Brevo Webhook Receiver (#1887)
 
-**Location:** `app/api/webhooks/brevo.php`  
-**Important:** This is a placeholder implementation for issue #1887. It will be **replaced entirely** when #1887 ships; do not extend this file.
+**Location:** `app/api/webhooks/brevo.php`
+**Not in `$path`, no `securePage()`:** Brevo is an external caller with no
+UserSpice session. Authentication is a static bearer token instead (below).
+**Method:** POST only; anything else gets a 405, matching every other
+`app/api/` endpoint's convention.
 
-**Behavior:**
+**Auth:** `Authorization: Bearer <token>`, compared with `hash_equals()`
+against `$_ENV['BREVO_WEBHOOK_TOKEN']` — reads `$_ENV`, not `getenv()`, since
+`Dotenv::createImmutable()` (`users/init.php`) never calls `putenv()`, so
+`getenv()` would always return `false` here even with a correctly configured
+`.env`. Fails **closed**: an empty/missing configured token rejects every
+request rather than accepting everything.
+Rejections are logged under `LOG_CATEGORY_SECURITY` with only a short hashed
+prefix of the provided token, never the raw value. See
+[ENVIRONMENT.md](ENVIRONMENT.md) for how to generate and set this token, and
+[RELEASE_NOTES_TEMPLATE.md](RELEASE_NOTES_TEMPLATE.md)-driven release notes
+for the per-environment setup step.
 
-- If `!isEnabled()` → respond 2xx immediately, write nothing, log nothing (the gate is off, so no events proceed)
-- If `isEnabled() && !brevoReady()` → respond 2xx (so Brevo doesn't retry), log a refusal under `LOG_CATEGORY_VERIFICATION_CONFIG_WARNING`, do not persist any event
-- If `isEnabled() && brevoReady()` → respond 2xx; the receiver is a no-op
-  until #1887 lands, so a rate-limited (max once per hour) discoverability
-  notice is logged under `LOG_CATEGORY_VERIFICATION_CONFIG_WARNING` warning
-  that real events are being accepted and silently discarded — without this,
-  an admin who enables verification ahead of #1887 has no way to learn the
-  endpoint isn't actually doing anything
-- No signature verification, no payload parsing, no `email_events` table writes — all of that is #1887's responsibility
+**Rate limiting:** `checkRateLimit('brevo_webhook')` (IP-scoped; see
+`usersc/includes/rate_limits.php`), checked only **after** auth passes, so a
+rate-limiter failure (which fails open, matching
+`app/api/shared/join-failure-report.php`'s pattern) can only ever become a
+throughput bypass, never an auth bypass.
 
-This stub exists to verify the gate's acceptance criteria end-to-end: webhook returns 2xx and drops events when disabled or when a prerequisite fails.
+**Verification-system gates** (unchanged from the pre-#1887 stub):
+`!isEnabled()` → 2xx, silent. `isEnabled() && !brevoReady()` → 2xx, logged
+once under `LOG_CATEGORY_VERIFICATION_CONFIG_WARNING`.
+
+**Tag filter:** the payload's `tags` array must contain
+`AppConstants::VERIFICATION_EMAIL_TAG` (`'car_verification'`) — Brevo also
+delivers webhook events for other kinds of mail this app may someday send,
+and this receiver only ever acts on verification-email events.
+
+**Matching:** the payload's `email` is looked up against `cars.email`
+(`CarRepository::findByEmail()`) — every matching car (an email can be shared
+by more than one car) gets its own `er_email_events` row and its own
+independent escalation.
+
+**Escalation rules** (`BrevoWebhookEventProcessor`):
+
+| Brevo event | Effect |
+| --- | --- |
+| `hard_bounce`, `blocked`, `invalid` | Immediately flags the car bounced (`cars.email_bounced = 1`, `email_bounced_address` set to the reported address) |
+| `soft_bounce` | Event row only, unless this is the 3rd or later distinct send cycle (distinct `brevo_message_id`) since the email's last `delivered` event — then escalates via the same bounced flag |
+| `delivered` | Event row only. Implicitly resets the soft-bounce escalation window (the count query only looks at soft bounces after the most recent `delivered` row) |
+| `unique_opened` | Event row only, never touches flags or the escalation count |
+| `spam` | Flags the car suppressed (`cars.email_suppressed = 1`) — a distinct signal from a bounce |
+
+**HTTP status contract:**
+
+| Situation | Response |
+| --- | --- |
+| Parsed and durably written | 2xx |
+| No recognized tag | 2xx, logged |
+| Recipient matches no car | 2xx, logged, `er_verification_settings.unmatched_webhook_recipient_count` incremented |
+| Malformed/unparseable payload (incl. a top-level JSON list — Brevo's `batched: false` guarantee means a list body is never legitimate) | 4xx, logged |
+| Auth token missing/empty/wrong | 4xx, logged (hashed prefix only) |
+| Database write failure | 5xx — the only retryable case |
+
+No response body on any status — Brevo parses no body, only the HTTP status.
+Never acknowledges (2xx) before the `er_email_events` write commits: Brevo
+does not retry a 2xx, so acking early on a write that then fails would
+silently lose the event forever.
+
+**Storage:** `er_email_events` (see [DATABASE.md](DATABASE.md)) is the
+durable per-car event log; `cars.email_bounced`/`email_bounced_address`/
+`email_suppressed` (mirrored on `cars_hist`) are the current-state flags it
+drives.
+
+**Out of scope for #1887** (see that issue's non-goals): no outbound Brevo
+API calls of any kind (webhook *registration* is #1888, blocked-contacts
+*import* is #1923, nightly *reconciliation* is #1889), and no admin UI
+rendering of the per-car event history or the unmatched-recipient counter —
+that is a follow-up issue.
 
 ### Feature Switch Related Documentation
 
 - [DEPLOYMENT.md — Cron Transport](DEPLOYMENT.md#cron-transport-userspice-cron-manager) — the 10-minute interval constant referenced by `cronReady()`
-- [LOG_CATEGORIES.md](LOG_CATEGORIES.md) — `LOG_CATEGORY_VERIFICATION_CONFIG_WARNING` for logging failures
+- [LOG_CATEGORIES.md](LOG_CATEGORIES.md) — `LOG_CATEGORY_VERIFICATION_CONFIG_WARNING` for logging failures, `LOG_CATEGORY_EMAIL_WEBHOOK` for webhook event processing
 - [CLASSES.md](CLASSES.md) — `VerificationSettings` and `VerificationConfigException` class reference
 
 ---

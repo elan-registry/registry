@@ -236,12 +236,13 @@ final class CarVerificationManagerTest extends TestCase
     public function testSetBouncedSucceeds(): void
     {
         $this->mockRepo->expects($this->once())->method('updateEmailBounced')
-            ->with(1, true)->willReturn(true);
+            ->with(1, true, 'owner@example.com')->willReturn(true);
 
-        $carData = (object) ['id' => 1, 'email_bounced' => 0];
-        $result = $this->manager->setBounced($carData);
+        $carData = (object) ['id' => 1, 'email_bounced' => 0, 'email_bounced_address' => null];
+        $result = $this->manager->setBounced($carData, 'owner@example.com');
         $this->assertTrue($result);
         $this->assertSame(1, $carData->email_bounced);
+        $this->assertSame('owner@example.com', $carData->email_bounced_address);
     }
 
     public function testSetBouncedThrowsCarDatabaseExceptionWhenRepositoryReturnsFalse(): void
@@ -249,8 +250,8 @@ final class CarVerificationManagerTest extends TestCase
         $this->mockRepo->expects($this->once())->method('updateEmailBounced')->willReturn(false);
         $this->expectException(CarDatabaseException::class);
 
-        $carData = (object) ['id' => 1, 'email_bounced' => 0];
-        $this->manager->setBounced($carData);
+        $carData = (object) ['id' => 1, 'email_bounced' => 0, 'email_bounced_address' => null];
+        $this->manager->setBounced($carData, 'owner@example.com');
     }
 
     public function testSetBouncedThrowsCarDatabaseExceptionWhenRepositoryThrows(): void
@@ -259,19 +260,20 @@ final class CarVerificationManagerTest extends TestCase
             ->willThrowException(new \RuntimeException('DB connection lost'));
         $this->expectException(CarDatabaseException::class);
 
-        $carData = (object) ['id' => 1, 'email_bounced' => 0];
-        $this->manager->setBounced($carData);
+        $carData = (object) ['id' => 1, 'email_bounced' => 0, 'email_bounced_address' => null];
+        $this->manager->setBounced($carData, 'owner@example.com');
     }
 
     public function testClearBouncedSucceeds(): void
     {
         $this->mockRepo->expects($this->once())->method('updateEmailBounced')
-            ->with(1, false)->willReturn(true);
+            ->with(1, false, null)->willReturn(true);
 
-        $carData = (object) ['id' => 1, 'email_bounced' => 1];
+        $carData = (object) ['id' => 1, 'email_bounced' => 1, 'email_bounced_address' => 'owner@example.com'];
         $result = $this->manager->clearBounced($carData);
         $this->assertTrue($result);
         $this->assertSame(0, $carData->email_bounced);
+        $this->assertNull($carData->email_bounced_address);
     }
 
     public function testClearBouncedThrowsCarDatabaseExceptionWhenRepositoryReturnsFalse(): void
@@ -279,7 +281,7 @@ final class CarVerificationManagerTest extends TestCase
         $this->mockRepo->expects($this->once())->method('updateEmailBounced')->willReturn(false);
         $this->expectException(CarDatabaseException::class);
 
-        $carData = (object) ['id' => 1, 'email_bounced' => 1];
+        $carData = (object) ['id' => 1, 'email_bounced' => 1, 'email_bounced_address' => 'owner@example.com'];
         $this->manager->clearBounced($carData);
     }
 
@@ -289,7 +291,67 @@ final class CarVerificationManagerTest extends TestCase
             ->willThrowException(new \RuntimeException('DB connection lost'));
         $this->expectException(CarDatabaseException::class);
 
-        $carData = (object) ['id' => 1, 'email_bounced' => 1];
+        $carData = (object) ['id' => 1, 'email_bounced' => 1, 'email_bounced_address' => 'owner@example.com'];
         $this->manager->clearBounced($carData);
+    }
+
+    public function testSetSuppressedSucceeds(): void
+    {
+        $this->mockRepo->expects($this->once())->method('updateEmailSuppressed')
+            ->with(1, true)->willReturn(true);
+
+        $carData = (object) ['id' => 1, 'email_suppressed' => 0];
+        $result = $this->manager->setSuppressed($carData);
+        $this->assertTrue($result);
+        $this->assertSame(1, $carData->email_suppressed);
+    }
+
+    public function testSetSuppressedThrowsCarDatabaseExceptionWhenRepositoryReturnsFalse(): void
+    {
+        $this->mockRepo->expects($this->once())->method('updateEmailSuppressed')->willReturn(false);
+        $this->expectException(CarDatabaseException::class);
+
+        $carData = (object) ['id' => 1, 'email_suppressed' => 0];
+        $this->manager->setSuppressed($carData);
+    }
+
+    public function testSetSuppressedThrowsCarDatabaseExceptionWhenRepositoryThrows(): void
+    {
+        $this->mockRepo->expects($this->once())->method('updateEmailSuppressed')
+            ->willThrowException(new \RuntimeException('DB connection lost'));
+        $this->expectException(CarDatabaseException::class);
+
+        $carData = (object) ['id' => 1, 'email_suppressed' => 0];
+        $this->manager->setSuppressed($carData);
+    }
+
+    public function testClearSuppressedSucceeds(): void
+    {
+        $this->mockRepo->expects($this->once())->method('updateEmailSuppressed')
+            ->with(1, false)->willReturn(true);
+
+        $carData = (object) ['id' => 1, 'email_suppressed' => 1];
+        $result = $this->manager->clearSuppressed($carData);
+        $this->assertTrue($result);
+        $this->assertSame(0, $carData->email_suppressed);
+    }
+
+    public function testClearSuppressedThrowsCarDatabaseExceptionWhenRepositoryReturnsFalse(): void
+    {
+        $this->mockRepo->expects($this->once())->method('updateEmailSuppressed')->willReturn(false);
+        $this->expectException(CarDatabaseException::class);
+
+        $carData = (object) ['id' => 1, 'email_suppressed' => 1];
+        $this->manager->clearSuppressed($carData);
+    }
+
+    public function testClearSuppressedThrowsCarDatabaseExceptionWhenRepositoryThrows(): void
+    {
+        $this->mockRepo->expects($this->once())->method('updateEmailSuppressed')
+            ->willThrowException(new \RuntimeException('DB connection lost'));
+        $this->expectException(CarDatabaseException::class);
+
+        $carData = (object) ['id' => 1, 'email_suppressed' => 1];
+        $this->manager->clearSuppressed($carData);
     }
 }

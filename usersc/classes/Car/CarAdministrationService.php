@@ -42,6 +42,12 @@ class CarAdministrationService
      */
     private const OWNER_IDENTITY_FIELDS = [
         'email', 'fname', 'lname', 'city', 'state', 'country', 'lat', 'lon', 'website',
+        // email_bounced_address (#1887) has no dedicated CarValidator case, so a
+        // null value (the clear-on-transfer case) hits the validator's default
+        // branch, which drops null/'' fields — silently defeating the clear.
+        // Restoring it here, the same way the other owner-identity fields are
+        // restored, is what makes the clear actually reach updateCar().
+        'email_bounced_address',
     ];
 
     private const OPERATION_MERGE = 'MERGE';
@@ -115,6 +121,12 @@ class CarAdministrationService
 
         try {
             $repo->beginTransaction();
+
+            // #1887: er_email_events has no FK on car_id, so a deleted car's
+            // Brevo event history would otherwise survive the delete
+            // permanently (no cascade to clean it up later). Delete it in
+            // the same transaction as the car row.
+            $repo->deleteEmailEventsForCarIds([$carId]);
 
             if (!$repo->deleteCar($carId)) {
                 logger($adminUserId, LogCategories::LOG_CATEGORY_CAR_DELETION, 'Database update failed: query returned false');
@@ -190,10 +202,27 @@ class CarAdministrationService
         $isSystemAccount = ($targetUser->username ?? '') === self::SYSTEM_ACCOUNT_USERNAME;
         $soldDate = $isSystemAccount ? ($carData->solddate ?? null) : null;
 
-        // email_bounced is a property of the previous owner's address, not the
-        // car — cleared on a real-owner transfer (see below) and preserved on a
-        // system-account reassignment, mirroring solddate's treatment.
+        // email_bounced and email_suppressed (#1887) are boolean signals about
+        // the previous owner's address, not the car — cleared on a real-owner
+        // transfer (see below) and preserved on a system-account reassignment,
+        // mirroring solddate's treatment. Carrying email_suppressed forward on
+        // a real transfer would suppress mail to a new owner who never sent a
+        // spam complaint.
+        //
+        // email_bounced_address is NOT treated the same way: it is the actual
+        // personal-data string (the bounced email address itself), not a
+        // boolean flag, so it is always cleared — including on a
+        // system-account reassignment. That path is exactly the one
+        // usersc/scripts/after_user_deletion.php uses to reassign a departing
+        // user's cars to 'noowner' for GDPR erasure; carrying the address
+        // forward there would leave the deleted user's real email address
+        // readable indefinitely on a car they no longer own, contradicting
+        // the erasure guarantee documented in SYSTEM_OVERVIEW.md and
+        // DATABASE.md. The boolean flags carry no PII, so they are the only
+        // ones system-account reassignment preserves.
         $emailBounced = $isSystemAccount ? (int) ($carData->email_bounced ?? 0) : 0;
+        $emailBouncedAddress = null;
+        $emailSuppressed = $isSystemAccount ? (int) ($carData->email_suppressed ?? 0) : 0;
 
         try {
             $repo->beginTransaction();
@@ -211,6 +240,12 @@ class CarAdministrationService
                 'lat'       => $targetUser->lat      ?? null,
                 'lon'       => $targetUser->lon      ?? null,
                 'website'   => $targetUser->website  ?? '',
+                // Always cleared, including on a system-account reassignment
+                // (see $emailBouncedAddress's own comment above) — this is
+                // the one column here that holds actual PII, not a boolean
+                // signal, so it does not get the same-as-solddate preservation
+                // treatment the fields below it do.
+                'email_bounced_address' => $emailBouncedAddress,
             ];
             // Ordinary transfer: clear it. For the system account the key is omitted
             // entirely — DB::update() writes only the keys given, so the stored value
@@ -221,8 +256,10 @@ class CarAdministrationService
                 // email_bounced belonged to the previous owner's address, not the
                 // car — carrying it forward would permanently exclude the car from
                 // CarRepository::findVerificationEligible() once the address that
-                // caused the bounce is gone.
+                // caused the bounce is gone. email_suppressed (#1887) is cleared
+                // alongside it for the same reason.
                 $ownerFields['email_bounced'] = $emailBounced;
+                $ownerFields['email_suppressed'] = $emailSuppressed;
             }
 
             // Validate owner fields before writing. $requireAll = false so only the
@@ -259,6 +296,8 @@ class CarAdministrationService
                 'purchasedate' => $carData->purchasedate ?? null,
                 'solddate'     => $soldDate,
                 'email_bounced' => $emailBounced,
+                'email_bounced_address' => $emailBouncedAddress,
+                'email_suppressed' => $emailSuppressed,
                 'image'        => $carData->image ?? '',
                 'user_id'      => $targetUser->id,
                 'email'        => $targetEmail,
@@ -373,6 +412,18 @@ class CarAdministrationService
             if (!$repo->transferHistory($oldCarId, $newCarId)) {
                 logger($adminUserId, LogCategories::LOG_CATEGORY_CAR_MERGE, 'Failed to transfer car history: query returned false');
                 throw new CarDatabaseException('Car merge failed - could not transfer history records.');
+            }
+
+            // #1887: er_email_events has no FK/cascade, so reassign the
+            // source car's Brevo event history onto the surviving car —
+            // deleting it here (as delete() does) would be wrong for a merge,
+            // since the target owner should keep the merged bounce/suppression
+            // signal rather than lose it.
+            try {
+                $repo->transferEmailEvents($oldCarId, $newCarId);
+            } catch (CarDatabaseException $e) {
+                logger($adminUserId, LogCategories::LOG_CATEGORY_CAR_MERGE, 'Failed to transfer email event history: ' . $e->getMessage());
+                throw new CarDatabaseException('Car merge failed - could not transfer email event history.');
             }
 
             if (!$repo->deleteCar($oldCarId)) {

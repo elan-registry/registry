@@ -83,6 +83,33 @@ row and appends these two keys to `.env` (preserving all other keys), then
 re-applies `chmod 600`. Deletable from the repo once test/prod are both
 confirmed populated — it is not ongoing deploy infrastructure.
 
+### Brevo Webhook Authentication
+
+**Usage**: `app/api/webhooks/brevo.php`
+
+- `BREVO_WEBHOOK_TOKEN` — bearer token Brevo must present
+  (`Authorization: Bearer <token>`) on every call to the webhook receiver
+  (#1887). Compared with `hash_equals()`; an empty or missing value rejects
+  **every** request rather than accepting everything (fail-closed).
+
+**Generating a good token:** use at least 32 bytes (256 bits) of
+cryptographically secure randomness, hex- or base64-encoded — do not hand-type
+a password or reuse a value from elsewhere. On any machine with OpenSSL:
+
+```bash
+openssl rand -hex 32
+```
+
+Set the same value on both sides: this app's `.env` (`BREVO_WEBHOOK_TOKEN=...`,
+`chmod 600 .env`) and the Brevo-side webhook configuration for that
+environment's URL (webhook registration is #1888). Rotate by generating a new
+value and updating both sides together — updating only one side rejects every
+webhook call until they match again. Not needed in local dev — no public URL
+reaches a dev machine, so Brevo can never call it (see the note under
+[Test Database Isolation](#test-database-isolation) and
+`docs/development/EMAIL_SYSTEM.md`'s "Brevo Webhooks — Verified Behaviour"
+section for why webhook testing happens on test.elanregistry.org instead).
+
 ### Cloudflare Turnstile CAPTCHA
 
 **Usage**: `usersc/includes/turnstile.php`

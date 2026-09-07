@@ -47,6 +47,27 @@ $inTransaction = function (callable $work) use ($repo, $id): bool {
     }
 };
 
+// Capture car list before cleanup so both branches below can log per-car
+// after commit and clean up er_email_events rows (#1887) before the
+// car->owner link is severed. Hoisted above the noowner-exists split so both
+// branches — including the fallback, which previously never fetched a car
+// list at all before calling reassignCarsByUser() — capture it identically.
+try {
+    $userCars = $repo->findByOwner($id);
+} catch (CarDatabaseException $e) {
+    logger($id, LogCategories::LOG_CATEGORY_USER_DELETION, 'Cleanup aborted: findByOwner failed — ' . $e->getMessage());
+    return;
+}
+$carCount = count($userCars);
+$userCarIds = array_column($userCars, 'id');
+
+// Populated inside whichever transaction closure below runs, with the actual
+// row count deleteEmailEventsForCarIds() reports, so the post-commit log line
+// states what was actually deleted rather than merely how many cars were
+// considered — the count() difference: a user with cars but no event history
+// should log "0 rows", not imply cleanup that never happened.
+$deletedEmailEventCount = 0;
+
 // Find the "no owner" user dynamically
 $noOwnerQuery = $db->query('SELECT id FROM users WHERE username = ?', ['noowner']);
 if ($db->error()) {
@@ -55,15 +76,6 @@ if ($db->error()) {
 }
 if ($noOwnerQuery->count() > 0) {
     $noOwnerUserId = (int) $noOwnerQuery->first()->id;
-
-    // Capture car list before cleanup so we can log per-car after commit
-    try {
-        $userCars = $repo->findByOwner($id);
-    } catch (CarDatabaseException $e) {
-        logger($id, LogCategories::LOG_CATEGORY_USER_DELETION, 'Cleanup aborted: findByOwner failed — ' . $e->getMessage());
-        return;
-    }
-    $carCount = count($userCars);
 
     // Resolve the acting admin ID before the transaction. currentUserId() throws
     // RuntimeException if there is no authenticated session; guard it so a bad-session
@@ -83,7 +95,7 @@ if ($noOwnerQuery->count() > 0) {
         return;
     }
 
-    $committed = $inTransaction(function () use ($db, $id, $noOwnerUserId, $userCars, $adminUserId): void {
+    $committed = $inTransaction(function () use ($db, $repo, $id, $noOwnerUserId, $userCars, $userCarIds, $adminUserId, &$deletedEmailEventCount): void {
         // Expire any non-terminal transfer requests the user initiated — prevents orphaned
         // requester FK references and ensures the current car owner sees a clean audit trail.
         $db->query(
@@ -101,6 +113,9 @@ if ($noOwnerQuery->count() > 0) {
         if ($db->error()) {
             throw new \RuntimeException("Failed to delete profile for user $id: " . $db->errorString());
         }
+        // #1887: clear the departing owner's email-webhook event history before the
+        // car->owner link is severed below.
+        $deletedEmailEventCount = $repo->deleteEmailEventsForCarIds($userCarIds);
         foreach ($userCars as $carObj) {
             $car = new \ElanRegistry\Car\Car((int) $carObj->id);
             $car->transfer(
@@ -123,7 +138,7 @@ if ($noOwnerQuery->count() > 0) {
     logger($id, LogCategories::LOG_CATEGORY_USER_DELETION, "Complete cleanup: reassigned $carCount cars to noowner user (ID: $noOwnerUserId)");
 } else {
     // Fallback if noowner doesn't exist - preserve cars but mark as ownerless
-    $committed = $inTransaction(function () use ($db, $repo, $id): void {
+    $committed = $inTransaction(function () use ($db, $repo, $id, $userCarIds, &$deletedEmailEventCount): void {
         $db->query(
             "UPDATE car_transfer_requests
                 SET status = 'expired',
@@ -139,6 +154,9 @@ if ($noOwnerQuery->count() > 0) {
         if ($db->error()) {
             throw new \RuntimeException("Failed to delete profile for user $id: " . $db->errorString());
         }
+        // #1887: clear the departing owner's email-webhook event history before the
+        // car->owner link is severed below.
+        $deletedEmailEventCount = $repo->deleteEmailEventsForCarIds($userCarIds);
         $repo->reassignCarsByUser($id, null);
     });
 
@@ -148,3 +166,5 @@ if ($noOwnerQuery->count() > 0) {
 
     logger($id, LogCategories::LOG_CATEGORY_USER_DELETION, 'Fallback cleanup: noowner user not found, set cars to NULL');
 }
+
+logger($id, LogCategories::LOG_CATEGORY_USER_DELETION, "er_email_events: deleted $deletedEmailEventCount rows across $carCount cars for user $id");

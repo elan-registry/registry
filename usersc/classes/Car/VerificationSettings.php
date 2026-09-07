@@ -300,6 +300,53 @@ final class VerificationSettings
     }
 
     /**
+     * Increment the count of inbound Brevo webhook events matched to no car
+     *
+     * Called by the Brevo webhook receiver (#1887) when an event's recipient
+     * email matches no `cars.email` value. A rising count with verification
+     * enabled signals recipients whose emails have drifted from what any car
+     * record has on file.
+     *
+     * Never throws: a failed UPDATE is logged and swallowed, matching this
+     * class's fail-quietly contract for the write paths a webhook receiver
+     * depends on — the webhook's own 2xx/logged response to Brevo must not
+     * hinge on this counter succeeding.
+     *
+     * @return bool True if the counter was incremented successfully
+     */
+    public function incrementUnmatchedRecipientCounter(): bool
+    {
+        $this->db->query(
+            'UPDATE er_verification_settings SET unmatched_webhook_recipient_count = unmatched_webhook_recipient_count + 1 WHERE id = ?',
+            [self::SETTINGS_ROW_ID]
+        );
+
+        if ($this->db->error()) {
+            logger(0, LogCategories::LOG_CATEGORY_VERIFICATION_CONFIG_WARNING, sprintf(
+                'Failed to increment er_verification_settings.unmatched_webhook_recipient_count: %s',
+                $this->db->errorString() ?: 'unknown'
+            ));
+            return false;
+        }
+
+        // Unlike a plain `SET col = ?` update, `col = col + 1` always changes
+        // the row's value when a row matches, so `count() === 0` here
+        // unambiguously means the id=1 row is absent — not "value unchanged".
+        // Without this check a missing settings row would silently stop the
+        // counter incrementing forever, with no signal anywhere that the only
+        // measure of recipient email drift had gone dead.
+        if ($this->db->count() === 0) {
+            logger(0, LogCategories::LOG_CATEGORY_VERIFICATION_CONFIG_WARNING, sprintf(
+                'er_verification_settings row id=%d not found; unmatched-recipient counter is not being recorded.',
+                self::SETTINGS_ROW_ID
+            ));
+            return false;
+        }
+
+        return true;
+    }
+
+    /**
      * Timestamp of the most recent (non-denied) cron transport request
      *
      * `users/cron/cron.php` writes a `CronRequest` log row on every hit, including

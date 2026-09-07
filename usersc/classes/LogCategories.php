@@ -147,6 +147,17 @@ class LogCategories
     public const LOG_CATEGORY_EMAIL_SETTINGS = 'EmailSettings';
 
     /**
+     * Brevo webhook event processing
+     * Used for inbound Brevo delivery-status events and the bounce/suppression
+     * escalation they drive. Authentication and rate-limit rejections in the
+     * webhook endpoint use LOG_CATEGORY_SECURITY instead.
+     *
+     * @since v2.30.2
+     * @see https://github.com/elan-registry/registry/issues/1887
+     */
+    public const LOG_CATEGORY_EMAIL_WEBHOOK = 'EmailWebhook';
+
+    /**
      * Feedback form submissions
      * Used to track form submissions and user feedback
      */

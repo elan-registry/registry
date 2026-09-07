@@ -251,6 +251,47 @@ final class RateLimitConfigTest extends TestCase
     }
 
     /**
+     * The 'brevo_webhook' rate-limit entry (issue #1887) must be configured in
+     * usersc/includes/rate_limits.php — app/api/webhooks/brevo.php is an
+     * unauthenticated endpoint Brevo POSTs to, with no user session to key on,
+     * and calls checkRateLimit('brevo_webhook', ...) as its only volume
+     * control. It will silently no-op (fail open) if this key is missing or
+     * mistyped.
+     */
+    public function testBrevoWebhookActionIsConfigured(): void
+    {
+        $projectRoot = dirname(__DIR__, 3);
+
+        /** @var array<string, array<string, int>> $rateLimits */
+        $rateLimits = [];
+        require $projectRoot . '/usersc/includes/rate_limits.php';
+
+        $this->assertIsArray($rateLimits);
+        $this->assertArrayHasKey(
+            'brevo_webhook',
+            $rateLimits,
+            'brevo_webhook must be configured in usersc/includes/rate_limits.php '
+                . '(the project override, which wholesale-replaces the framework defaults) — '
+                . 'app/api/webhooks/brevo.php calls checkRateLimit() with this action name and '
+                . 'will silently no-op if it is missing, leaving the unauthenticated webhook '
+                . 'endpoint with no volume control at all.'
+        );
+        // Mirrors the project's actual active brevo_webhook limits
+        // (usersc/includes/rate_limits.php). No user_max/user_window: the
+        // webhook carries no UserSpice session, so there is no user
+        // identifier to key on (same shape as join_failure_beacon and
+        // feedback_submission). Sized generously because every transactional
+        // send produces 2-3 webhook calls within seconds from a small, shared
+        // set of Brevo egress IPs; total_max is the real backstop.
+        $this->assertSame(500, $rateLimits['brevo_webhook']['ip_max']);
+        $this->assertSame(300, $rateLimits['brevo_webhook']['ip_window']);
+        $this->assertSame(2000, $rateLimits['brevo_webhook']['total_max']);
+        $this->assertSame(300, $rateLimits['brevo_webhook']['total_window']);
+        $this->assertArrayNotHasKey('user_max', $rateLimits['brevo_webhook']);
+        $this->assertArrayNotHasKey('user_window', $rateLimits['brevo_webhook']);
+    }
+
+    /**
      * Every ADR-019 endpoint's action string must match a configured key.
      *
      * The per-key tests above pin the *config* side only: they prove

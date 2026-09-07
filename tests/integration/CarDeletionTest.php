@@ -70,6 +70,32 @@ final class CarDeletionTest extends IntegrationTestCase
     }
 
     /**
+     * er_email_events (#1887) has no FK/cascade on car_id, so a deleted
+     * car's Brevo event history would otherwise survive the delete
+     * permanently — CarAdministrationService::delete() must clean it up in
+     * the same transaction as the car row.
+     */
+    #[Group('fast')]
+    public function testDeleteCarRemovesEmailEventHistory(): void
+    {
+        $this->db->query(
+            'INSERT INTO er_email_events (car_id, email, event, reason, brevo_message_id, occurred_at)
+             VALUES (?, ?, ?, NULL, ?, NOW())',
+            [$this->testCarId, 'delete-test@example.com', 'delivered', 'del-test-msg-1']
+        );
+        $this->assertFalse($this->db->error(), 'Test setup: failed to seed er_email_events row');
+
+        $car = new Car($this->testCarId);
+        $car->delete('Test deletion', $this->testUserId);
+
+        $remaining = $this->db->query(
+            'SELECT COUNT(*) AS cnt FROM er_email_events WHERE car_id = ?',
+            [$this->testCarId]
+        )->first();
+        $this->assertSame(0, (int) $remaining->cnt, 'er_email_events rows for a deleted car must be removed');
+    }
+
+    /**
      * Test car deletion creates exactly one audit trail row in cars_hist
      *
      * Verifies the trigger-only write path introduced in #593: the DELETE trigger
