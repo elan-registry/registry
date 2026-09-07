@@ -107,6 +107,19 @@ visible there and nowhere else), the car details page, and the sitemap's `<lastm
 A discrepancy means the conversion ran under a mismatched clock: **stop and restore
 from the step 1 backup** rather than adjusting the display layer.
 
+### Wiki Architecture Guide refresh (recommended, not blocking)
+
+The three wiki pages updated for this milestone (Users-Profiles-and-the-Owner-Concept,
+Database-Schema-and-Data-Model, Elan-Registry-Architecture-and-Database-Design) cover
+the specific facts this milestone changed. The Architecture Guide's broader description
+of `cars` table denormalization still predates the full picture: five separate write
+paths now keep the nine owner-contact columns in sync (profile save, email
+verification, car edit, admin profile edit, admin sync), and ADR-019's no-CSRF-on-
+public-reads policy is only mentioned in passing. A dedicated pass over the
+Architecture Guide describing the five-path sync lifecycle and ADR-019's rationale as
+a first-class topic (not a one-line addendum) would close this gap. Not required
+before deploying — this is documentation catch-up, not a functional dependency.
+
 ### 5. Register new admin scripts' page permissions
 
 This release adds two new `securePage()`-gated admin scripts —
