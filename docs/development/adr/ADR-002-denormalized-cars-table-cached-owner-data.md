@@ -89,42 +89,29 @@ $updateFields = [
 // Executed via Car::update() callback (which calls CarRepository::update())
 ```
 
-#### 2. Owner Profile Update (Partial Sync)
+#### 2. Owner Profile Update (Full Sync, as of #1873)
 
-When an owner updates their location via the user settings page
-(`usersc/user_settings.php`, lines 252-293), five location columns are
-synchronized -- but **only when coordinates are available** (either from the
-frontend LocationPicker or fallback geocoding). If validation passes but no
-coordinates are obtained, no car sync occurs at all:
-
-```php
-// Sync fires only when geoResult contains lat/lon coordinates
-if (!empty($geoResult) && isset($geoResult['lat']) && isset($geoResult['lon'])) {
-    $userCarsQuery = $db->query("SELECT car_id AS id FROM car_user WHERE userid = ?", [$userId]);
-    foreach ($userCarsQuery->results() as $car) {
-        $db->update('cars', (int)$car->id, [
-            'city'  => $city,
-            'state' => $state,
-            'country' => $country,
-            'lat'   => $geoResult['lat'],
-            'lon'   => $geoResult['lon'],
-            'mtime' => date(AppConstants::DATETIME_FORMAT),
-        ]);
-    }
-}
-```
+When an owner saves the user settings page (`usersc/user_settings.php`), any
+change to one of nine owner-contact fields (`city`, `state`, `country`, `lat`,
+`lon`, `fname`, `lname`, `website`, `email`) triggers
+`Owner::syncOwnerFieldsToCars()`, which writes all nine current values to
+every car the owner owns (via `Owner::getCarsOwned()`). Before #1873, this
+path synchronized only the five location fields, and only when coordinates
+were available.
 
 #### 3. Admin Location Sync (Targeted Sync)
 
-Administrators can trigger location synchronization via the admin panel AJAX
-endpoint (`app/admin/includes/process-owner-sync-location.php`):
+Administrators can trigger a sync via the admin panel AJAX endpoint
+(`app/admin/includes/process-owner-sync-location.php`):
 
 ```php
-// Triggered via admin UI -- calls Owner::syncLocationToCars()
-// which updates all cars owned by the user via the car_user junction table
-$owner->syncLocationToCars();
-// Syncs: city, state, country, lat, lon, mtime
-// Also writes LOCATION_SYNC audit record to cars_hist
+// Triggered via admin UI -- calls Owner::syncOwnerFieldsToCars()
+// which updates all cars owned by the user, found via Owner::getCarsOwned()
+// (SELECT c.* FROM cars c WHERE c.user_id = ?) -- not the car_user junction
+// table, which was dropped in v2.26.2
+$owner->syncOwnerFieldsToCars();
+// Syncs: city, state, country, lat, lon, fname, lname, website, email, mtime
+// Also writes an OWNER_SYNC audit record to cars_hist for each changed car
 ```
 
 #### 4. Bulk Repair (Historical)
@@ -159,7 +146,10 @@ operations:
 
 - **NEWOWNER** -- new car registered to an owner
 - **MERGE** -- cars merged (rarely used)
-- **LOCATION_SYNC** -- location fields synchronized via admin panel
+- **LOCATION_SYNC** -- location fields synchronized via admin panel (historical
+  rows only, pre-#1873; not written by current code)
+- **OWNER_SYNC** -- all nine owner-contact fields synchronized (profile save or
+  admin panel), as of #1873
 - **GDPR_DELETE** -- cars reassigned to noowner system account when owner is deleted
 
 The triggers bypass mechanism allows critical operations to skip audit logging:
@@ -205,21 +195,23 @@ denormalized data:
 
 ### Negative
 
-- **Identity and website sync gap.** The `fname`, `lname`, `email`, `join_date`,
-  and `website` columns only synchronize during ownership transfer. If an owner
-  changes their name, email address, or website URL, the `cars` table will not
-  be updated automatically. The divergence persists until either: (a) another
-  owner change occurs, or (b) an administrator manually runs the location sync
-  (which does not fix identity or website fields). This is a known and documented
-  limitation.
+- **`join_date` sync gap (identity/website gap resolved, #1873).** As of #1873,
+  `fname`, `lname`, `email`, and `website` synchronize on ownership transfer
+  *and* on any owner profile save or admin-triggered sync
+  (`Owner::syncOwnerFieldsToCars()`), closing the divergence window described
+  in earlier versions of this ADR. `join_date`, however, is still written only
+  at ownership transfer -- it is not one of the nine fields
+  `syncOwnerFieldsToCars()` carries, so if a `users.join_date` value is ever
+  corrected after the fact, the `cars` table will not pick up the change until
+  the next transfer. This is a known and accepted limitation.
 - **Storage overhead.** Ten columns are duplicated per car row. For 500+ cars,
   this is roughly 40-80 KB of additional storage (negligible in 2024). However,
   the `cars_hist` table doubles this overhead for audit trail purposes.
 - **Multiple sync code paths.** Four distinct sync mechanisms must remain
   synchronized as the application evolves:
   1. Ownership transfer (all fields)
-  2. Profile update (location only)
-  3. Admin location sync (location only)
+  2. Profile update (all nine owner-contact fields, as of #1873)
+  3. Admin location sync (all nine owner-contact fields, as of #1873)
   4. GDPR user deletion (fields set to defaults)
 
   Changes to either the source schema (`users`, `profiles`) or the business
@@ -384,7 +376,8 @@ if (displaying_email($context)) {
 - **Car Administration**: [usersc/classes/Car/CarAdministrationService.php](../../usersc/classes/Car/CarAdministrationService.php)
   (transfer method lines 125-230)
 - **Owner Class**: [usersc/classes/Owner.php](../../usersc/classes/Owner.php)
-  (syncLocationToCars method lines 531-572)
+  (`syncOwnerFieldsToCars` method -- line numbers omitted, as they have already
+  drifted once since this ADR was written)
 - **User Settings Page**: [usersc/user_settings.php](../../usersc/user_settings.php)
   (location update and conditional car sync, lines 162-293)
 - **Admin Location Sync**: [app/admin/includes/process-owner-sync-location.php](../../app/admin/includes/process-owner-sync-location.php)

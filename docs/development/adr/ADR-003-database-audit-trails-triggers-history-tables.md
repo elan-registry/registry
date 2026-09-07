@@ -83,7 +83,7 @@ metadata:
 | Column | Type | Purpose |
 | --- | --- | --- |
 | `id` | bigint PRIMARY KEY | Auto-increment surrogate key (separate from car_id) |
-| `operation` | varchar(32) NOT NULL | Operation type: INSERT, UPDATE, DELETE, NEWOWNER, MERGE, LOCATION_SYNC, VERIFIED, VERIFIED SOLD |
+| `operation` | varchar(32) NOT NULL | Operation type: INSERT, UPDATE, DELETE, NEWOWNER, MERGE, LOCATION_SYNC, OWNER_SYNC, VERIFIED, VERIFIED SOLD |
 | `car_id` | int NOT NULL KEY | Original car ID (indexed for efficient queries) |
 | `timestamp` | timestamp DEFAULT CURRENT_TIMESTAMP KEY | When history row was written (indexed) |
 | All 28 `cars` columns | [See DATABASE.md] | Complete car record snapshot including denormalized owner data |
@@ -130,7 +130,8 @@ with domain-specific operation types that capture business context:
 | --- | --- | --- |
 | `'NEWOWNER'` | Ownership transfer completed | `CarAdministrationService::transfer()` |
 | `'MERGE'` | Car record merge (duplicate resolution) | `CarAdministrationService::merge()` |
-| `'LOCATION_SYNC'` | Owner location data synchronized | `Owner::syncLocationToCars()` |
+| `'LOCATION_SYNC'` | Owner location data synchronized (historical rows only, pre-#1873) | `Owner::syncLocationToCars()` (renamed; see below) |
+| `'OWNER_SYNC'` | All nine owner-contact fields synchronized (city, state, country, lat, lon, fname, lname, website, email) | `Owner::syncOwnerFieldsToCars()` |
 | `'VERIFIED'` | Admin verified car details | `verify_car.php` (removed in #1613) |
 | `'VERIFIED SOLD'` | Admin marked car as sold | `verify_car.php` (removed in #1613) |
 | `'DELETE'` | Application-level pre-delete snapshot | `CarAdministrationService::delete()` |
@@ -140,6 +141,54 @@ reason notes, specific fields changed) that database triggers alone cannot
 capture. They work in conjunction with the `logs` table (via the `logger()`
 function) to provide both structured data snapshots and human-readable narrative
 of administrative actions.
+
+#### OWNER_SYNC: an additive operation value, not a rename (#1873)
+
+`Owner::syncLocationToCars()` (5 location fields) was replaced by
+`Owner::syncOwnerFieldsToCars()` (9 owner-contact fields) in #1873. The new
+method writes `'OWNER_SYNC'` rather than reusing `'LOCATION_SYNC'`. This is a
+deliberate, additive choice, consistent with this ADR's ownership of the
+operation-value enumeration:
+
+- `'LOCATION_SYNC'` is retained on existing historical rows and is not
+  written by any current code path.
+- No backfill renames old `'LOCATION_SYNC'` rows to `'OWNER_SYNC'` -- the
+  value on a history row should reflect the code path that was actually live
+  when the row was written, not be rewritten to match a later rename.
+- `'LOCATION_SYNC'` was, and `'OWNER_SYNC'` is, a bare string literal (at the
+  call site in `Owner.php`), not a shared constant -- there is no
+  operation-value enum in this codebase to update instead.
+
+Two further points, verified empirically during #1873:
+
+- A changed car accumulates **two** `cars_hist` rows per sync call: the
+  `cars_update` trigger's own `'UPDATE'` row and the application's
+  `'OWNER_SYNC'` row. This is expected, not a double-write bug in the sense
+  described elsewhere in this ADR -- the two rows capture different things
+  (trigger: raw column snapshot; application: business-context confirmation
+  that an owner sync ran).
+- The trigger fires on every row **matched**, not every row changed.
+  `cars_update` is `AFTER UPDATE ... FOR EACH ROW` gated only by
+  `@disable_triggers`, and it compares no `OLD`/`NEW` values. So a car whose
+  values already match still receives one trigger `'UPDATE'` row even though
+  `ROW_COUNT()` is 0 and the application correctly skips its own insert. An
+  unchanged car therefore gains one `cars_hist` row per sync, not zero.
+- Consequently `cars_hist` is not a record of value changes alone, and
+  callers that count sync operations must filter to
+  `operation = 'OWNER_SYNC'` rather than counting all new rows for the car.
+- The application-level history insert had a latent defect fixed in #1873:
+  `cars_hist` declares `model`, `series`, `variant`, `type`, and `chassis` as
+  `NOT NULL` with no default, and `syncLocationToCars()`'s history insert
+  supplied none of them. Under `STRICT_TRANS_TABLES` (the local/test
+  configuration) this insert fails outright
+  (`Field 'model' doesn't have a default value`); production runs permissive
+  `sql_mode` and had instead been writing 41 `LOCATION_SYNC` rows since
+  2025-09-03 with those columns silently stored as empty strings -- a
+  degraded, non-reconstructable audit snapshot rather than an absent one.
+  `syncOwnerFieldsToCars()` fixes this by populating the car's identity
+  columns from the row already in hand (`getCarsOwned()`'s `SELECT c.*`)
+  before writing the history row. Any future application-level insert into
+  `cars_hist` should populate every `NOT NULL` column for the same reason.
 
 ### Complementary Logging Systems
 

@@ -115,24 +115,61 @@ Requires `gh` CLI authenticated (`gh auth status`). Creates at most one open
 
 ### refresh-local-db.sh
 
-Refreshes the local development database from a production SQL dump and masks all
-email addresses for developer safety. Optionally rsyncs car images from production.
+Refreshes the local development database from production: fetches a dump over
+SSH, upserts the registry tables, masks every email address, and syncs car
+images into a persistent local cache.
 
 ```bash
-# Full refresh (DB + images)
-./scripts/refresh-local-db.sh
+# Full refresh: fetch a fresh production dump, import, sync images
+./scripts/refresh-local-db.sh --fetch
 
 # DB only (skip image rsync)
-./scripts/refresh-local-db.sh --skip-images
+./scripts/refresh-local-db.sh --fetch --skip-images
 
 # Images only (skip DB refresh)
 ./scripts/refresh-local-db.sh --images-only
 
-# Use a specific dump file
+# Import a dump you already have, instead of fetching
 ./scripts/refresh-local-db.sh ~/Downloads/my-dump.sql
+
+# Rehearse against the scratch test schema before touching your dev DB
+./scripts/refresh-local-db.sh --fetch --env-file .env.test.local
 ```
 
 Default dump path: `~/Downloads/unibrain_registry.sql`.
+
+**`--fetch`** runs `mysqldump` on the production host over the `a2hosting` SSH
+alias, reading DB credentials from the prod docroot `.env` there — no production
+credentials are stored locally. It dumps only the tables listed below (which
+also sidesteps the broken `users_carsview` view), uses `--single-transaction`
+so the live site is never blocked, and verifies the `Dump completed` trailer
+before importing so a truncated download cannot silently import partial data.
+
+**Tables imported:** `cars`, `cars_hist`, `car_models`, `car_transfer_requests`,
+`elan_factory_info`, `users`, `profiles`, `user_permission_matches`, `country`,
+`audit`. Deliberately excluded: `logs`/`crons_logs` (noise), `users_online`/
+`users_session` (prod session state), `settings`/`email` (would overwrite local
+dev config, holds SMTP credentials), and `phinxlog`/`fix_script_runs`/`updates`/
+`pages`/`menus`/`permissions` (locally owned by migrations).
+
+**Email masking** replaces every address with `dev.owner.{id}@elanregistry.local`,
+preserving user id 1. The masking `UPDATE`s run inside the same transaction as
+the inserts, so real addresses are never the committed state. A verification
+pass then re-checks all five email columns; if any unmasked address survives,
+the script exits non-zero and leaves the database untouched for inspection
+(restore manually from `db-backups/`). City and IP columns are intentionally
+left intact — they are coarse-grained and needed to exercise location and map
+features.
+
+**Safety:** the local database is dumped to `db-backups/` before any import.
+`--env-file` and `--db` retarget the import, so a refresh can be rehearsed
+against a scratch schema first.
+
+**Images** sync in two hops: production to a persistent cache outside the repo
+(`~/Developer/Web/ElanRegistry/.local-userimages`, override with
+`ELAN_IMAGE_CACHE`), then cache to `./userimages/`. Only the first hop touches
+the network, and it is incremental across runs, so the cache survives
+`git clean`, branch switches, and repo moves.
 
 ## Playwright Authentication
 

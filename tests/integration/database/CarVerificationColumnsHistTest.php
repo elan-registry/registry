@@ -45,17 +45,6 @@ final class CarVerificationColumnsHistTest extends IntegrationTestCase
 
         $this->testUserId = $this->createTestUser();
         $this->loginAsTestUser($this->testUserId);
-
-        // Car::delete() reads ELAN_IMAGE_DIR (usersc/classes/Car/Car.php),
-        // which tests/bootstrap-integration.php does not define — unlike
-        // tests/bootstrap-unit.php, which defines it identically to
-        // usersc/includes/config.php. Guard-define it here so the DELETE
-        // test can exercise the real Car::delete() path; this is a
-        // pre-existing integration-bootstrap gap (also hit by
-        // CarDeletionTest.php), not something introduced by this test.
-        if (!defined('ELAN_IMAGE_DIR')) {
-            define('ELAN_IMAGE_DIR', 'userimages/');
-        }
     }
 
     /**
@@ -369,14 +358,24 @@ final class CarVerificationColumnsHistTest extends IntegrationTestCase
      * installed. Without the @disable_triggers guard it wraps the statement
      * in, that trigger would fire once per row and insert a spurious 'UPDATE'
      * cars_hist row for what is pure internal bookkeeping, not a real edit —
-     * this reproduces the exact guarded statement and proves it doesn't,
-     * mirroring CarsYearSmallintMigrationTest::test_disableTriggersGuard_suppressesUpdateHistory()
+     * this proves the guard suppresses it, mirroring
+     * CarsYearSmallintMigrationTest::test_disableTriggersGuard_suppressesUpdateHistory()
      * for a different migration's guarded UPDATE.
+     *
+     * The property under test is the @disable_triggers guard itself, not the
+     * backfill's `IS NULL` predicate. Migration 20260905172137 made
+     * `cars.owner_last_updated` NOT NULL DEFAULT CURRENT_TIMESTAMP, so a NULL
+     * fixture is no longer constructible and the original one-time backfill can
+     * never match a row again. The guarded UPDATE is therefore driven off a
+     * known-stale sentinel value instead — same statement shape, same trigger
+     * exposure, and it keeps running on every migrated database rather than
+     * skipping into permanent silence.
      */
     #[Group('fast')]
     public function testMigrationBackfillGuardSuppressesUpdateHistory(): void
     {
-        $carId = $this->createTestCar($this->testUserId, ['owner_last_updated' => null]);
+        $staleSentinel = '2000-01-01 00:00:00';
+        $carId = $this->createTestCar($this->testUserId, ['owner_last_updated' => $staleSentinel]);
 
         $histCountBefore = $this->db->query(
             "SELECT COUNT(*) AS cnt FROM cars_hist WHERE car_id = ? AND operation = 'UPDATE'",
@@ -385,8 +384,8 @@ final class CarVerificationColumnsHistTest extends IntegrationTestCase
 
         $this->db->query('SET @disable_triggers = 1');
         $this->db->query(
-            'UPDATE cars SET owner_last_updated = mtime, mtime = mtime WHERE id = ? AND owner_last_updated IS NULL',
-            [$carId]
+            'UPDATE cars SET owner_last_updated = mtime, mtime = mtime WHERE id = ? AND owner_last_updated = ?',
+            [$carId, $staleSentinel]
         );
         $this->db->query('SET @disable_triggers = NULL');
 
@@ -408,8 +407,9 @@ final class CarVerificationColumnsHistTest extends IntegrationTestCase
             [$carId]
         )->first();
 
-        $this->assertNotNull(
-            $carsRow->owner_last_updated,
+        $this->assertNotSame(
+            $staleSentinel,
+            (string) $carsRow->owner_last_updated,
             'The guarded UPDATE must still perform the backfill even though the trigger is suppressed'
         );
     }

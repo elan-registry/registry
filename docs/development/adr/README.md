@@ -28,6 +28,7 @@ We follow the [Michael Nygard ADR template](https://cognitect.com/blog/2011/11/1
 | [ADR-016](ADR-016-file-based-navigation-customizer-template.md) | File-Based Navigation for Customizer Template | Accepted | Medium |
 | [ADR-017](ADR-017-automate-frontend-vendoring-via-npm-build-pipeline.md) | Automate Frontend Vendoring via npm Build Pipeline | Superseded (by ADR-018) | Medium |
 | [ADR-018](ADR-018-build-at-deploy-for-frontend-vendoring.md) | Build Frontend Assets at Deploy Time Instead of Committing Build Output | Accepted | Medium |
+| [ADR-019](ADR-019-no-csrf-on-public-read-only-endpoints.md) | Do Not Apply CSRF Tokens to Public Read-Only Endpoints | In Review | High |
 
 ## Statuses
 

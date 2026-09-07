@@ -7,6 +7,7 @@ namespace ElanRegistry\Car;
 use ElanRegistry\DatabaseInterface;
 use ElanRegistry\Exceptions\CarDatabaseException;
 use ElanRegistry\Exceptions\CarNotFoundException;
+use ElanRegistry\Exceptions\CarValidationException;
 use ElanRegistry\LogCategories;
 
 /**
@@ -159,6 +160,99 @@ class CarRepository
     }
 
     /**
+     * Update a car's fields, scoped to both the car ID and its current owner.
+     *
+     * Used by the owner-profile sync to copy owner-contact values onto the cars
+     * that owner holds. The `user_id` half of the WHERE clause is the point of
+     * the method: it prevents writing one owner's details onto a car that was
+     * transferred to somebody else after the caller took its list of car IDs.
+     *
+     * On database error, throws so that any enclosing transaction can roll back
+     * rather than commit over a partial state. It deliberately does NOT log —
+     * see the note below on why the exception is the durable record.
+     *
+     * IMPORTANT — the return is rows **changed**, not rows **matched**. PDO is not
+     * configured with MYSQL_ATTR_FOUND_ROWS, so MySQL reports only rows whose values
+     * actually differed: an UPDATE that rewrites identical values returns 0 even
+     * though it matched a row. A 0 return is therefore **ambiguous** between
+     * "the row matched but nothing needed to change" and "no row matched this
+     * id + user_id pair (the car is no longer owned by this user)".
+     *
+     * Disambiguating those two cases is the **caller's** responsibility: on a 0
+     * return, issue a follow-up ownership check
+     * (`SELECT id FROM cars WHERE id = ? AND user_id = ?`) — a row present means
+     * success with nothing to write, no row means the car left this owner. Do not
+     * treat 0 as failure on its own.
+     *
+     * This method writes no log row of its own. It is designed to be called inside
+     * a per-car transaction, and `logs` is InnoDB on the same connection, so any
+     * row logged here would be destroyed by the caller's rollback — erasing the
+     * diagnostic exactly when something has gone wrong. The exception message
+     * carries the full error string and is the durable record; callers MUST log
+     * it after their transaction has closed.
+     *
+     * @param int                  $carId  Car to update
+     * @param int                  $userId Owner the car must currently belong to
+     * @param array<string, mixed> $fields Column => value pairs to write; column names
+     *                                     are developer-supplied identifiers, never
+     *                                     user input
+     * @return int                 Rows changed by the UPDATE (0 when nothing differed
+     *                             *or* no row matched — see above)
+     * @throws CarDatabaseException If the UPDATE fails, or if $fields is empty —
+     *                              an empty write returning 0 is indistinguishable
+     *                              to the caller from a matched-but-unchanged row,
+     *                              so it would be reported as success having
+     *                              written nothing
+     */
+    public function updateCarForOwner(int $carId, int $userId, array $fields): int
+    {
+        // An empty SET clause is invalid SQL, and returning 0 here would collide with
+        // the ambiguous-zero contract above: the caller's ownership check would pass
+        // and the car would be reported as synchronized with nothing written.
+        if (empty($fields)) {
+            throw new CarDatabaseException(
+                "CarRepository::updateCarForOwner called with no fields (carId={$carId} userId={$userId}); "
+                . 'an empty write cannot be distinguished from a no-op by the caller.'
+            );
+        }
+
+        // Column names are interpolated, so they are validated against the same
+        // identifier pattern and backtick-quoting DB::_sanitizeColumnName() applies.
+        // That method is private to DB and absent from DatabaseInterface, so it
+        // cannot be reused here; the rule is duplicated rather than skipped.
+        $setClause = implode(', ', array_map(
+            static function (string $column): string {
+                if (!preg_match('/^[A-Za-z_][A-Za-z0-9_]{0,63}$/', $column)) {
+                    throw new CarDatabaseException("Invalid column name: '{$column}'");
+                }
+                return "`{$column}` = ?";
+            },
+            array_keys($fields)
+        ));
+
+        $this->db->query(
+            "UPDATE cars SET {$setClause} WHERE id = ? AND user_id = ?",
+            [...array_values($fields), $carId, $userId]
+        );
+
+        if ($this->db->error()) {
+            // Deliberately no logger() here. This method is designed to be called
+            // inside a per-car transaction (see Owner::syncOwnerFieldsToCars()), and
+            // `logs` is InnoDB on the same connection — a row written here is
+            // destroyed by the caller's rollback, erasing the diagnostic exactly
+            // when it is needed. The exception message carries the full error string
+            // and is the durable record; callers MUST log it after their transaction
+            // has closed. Matches Owner::carBelongsToOwner(), which does the same.
+            throw new CarDatabaseException(
+                "CarRepository::updateCarForOwner failed (carId={$carId} userId={$userId}): "
+                . $this->db->errorString()
+            );
+        }
+
+        return $this->db->count();
+    }
+
+    /**
      * Update the verification code for a car
      *
      * @param int $carId Car ID
@@ -219,17 +313,215 @@ class CarRepository
     }
 
     /**
+     * SQL fragment that is true for a car whose registry data counts as fresh.
+     *
+     * A car is fresh when it was verified within the last year, or when its owner
+     * updated it within the last year. Freshness is the primary definition;
+     * staleness is its exact negation (see stalenessSql()).
+     *
+     * Deliberately excludes `cars.mtime`. That column is
+     * `ON UPDATE CURRENT_TIMESTAMP`, so MySQL bumps it on any UPDATE that changes
+     * a value — including an owner-profile sync that has nothing to do with the
+     * car's data being confirmed. See Owner::syncOwnerFieldsToCars().
+     *
+     * Two forms that must NOT be used here, both of which reintroduce the
+     * never-fires failure this expression exists to fix:
+     *   - COALESCE(last_verified, owner_last_updated) returns the first non-NULL,
+     *     not the greatest — a car verified three years ago but edited yesterday
+     *     would read stale.
+     *   - GREATEST(...) returns NULL when any argument is NULL — i.e. every
+     *     never-verified car, which is the majority of the registry.
+     *
+     * CLOCK CONSISTENCY: this fragment compares against MySQL's NOW(), while the
+     * PHP-side equivalent isFresh() uses PHP's clock. Both must resolve to the
+     * same timezone, or the two forms can disagree at the one-year boundary from
+     * clock skew alone. Sharing a host does NOT guarantee that: users/init.php
+     * pins PHP to `America/Los_Angeles` on every web request, while MySQL
+     * follows its own `time_zone` setting. They agree only when MySQL's resolved
+     * zone matches that one — which must be checked per environment, not
+     * assumed. (Production 2026-09-05: MySQL `SYSTEM` => MST (-7) and web PHP
+     * PDT (-7) agree, but MST does not observe DST and LA does, so they diverge
+     * by an hour from November to March.)
+     *
+     * @param string $alias Table alias to qualify the columns with. Developer-supplied,
+     *                      never request-derived; validated as a SQL identifier before
+     *                      interpolation so this helper cannot become an injection vector.
+     * @return string Parenthesised boolean SQL expression
+     * @throws CarValidationException If $alias is not a valid SQL identifier
+     */
+    public static function freshnessSql(string $alias = 'cars'): string
+    {
+        self::assertValidAlias($alias);
+
+        return "(({$alias}.last_verified IS NOT NULL"
+             . " AND {$alias}.last_verified >= NOW() - INTERVAL 1 YEAR)"
+             . " OR {$alias}.owner_last_updated >= NOW() - INTERVAL 1 YEAR)";
+    }
+
+    /**
+     * SQL fragment that is true for a car whose registry data counts as stale.
+     *
+     * This is the exact boolean negation of freshnessSql(), never an
+     * approximation: neither operand of that expression can evaluate to NULL —
+     * `last_verified` is guarded by an explicit IS NOT NULL, and
+     * `owner_last_updated` is NOT NULL by schema — so SQL's three-valued logic
+     * cannot produce an UNKNOWN that both forms would exclude.
+     *
+     * @param string $alias Table alias to qualify the columns with. Developer-supplied,
+     *                      never request-derived; validated as a SQL identifier before
+     *                      interpolation.
+     * @return string Boolean SQL expression
+     * @throws CarValidationException If $alias is not a valid SQL identifier
+     */
+    public static function stalenessSql(string $alias = 'cars'): string
+    {
+        return 'NOT ' . self::freshnessSql($alias);
+    }
+
+    /**
+     * PHP-side equivalent of freshnessSql() for a single car's timestamps.
+     *
+     * NOT YET CALLED FROM PRODUCTION CODE, deliberately. Only the SQL form is
+     * wired in today, via findVerificationEligible(). This is the designated
+     * PHP-side counterpart for callers that hold a single car's timestamps
+     * already and would otherwise re-derive the rule by hand — the send
+     * pipeline in v2.30.3 is the intended first caller. It is kept rather than
+     * deferred so the rule has exactly one definition per language: a caller
+     * that reimplements "fresh" inline is how the #1953 defect returns.
+     *
+     * Delete this paragraph in the same PR that adds the first caller — see
+     * issue #1970. A stale "not yet called" note misleads worse than none.
+     *
+     * Throws on a malformed or empty date string for either parameter rather than
+     * returning a boolean. `owner_last_updated` is NOT NULL by schema and
+     * `last_verified` is either NULL or a valid datetime, so a malformed value is
+     * a programming error, not a data state: returning false would let corruption
+     * silently trigger verification email, and returning true would silently
+     * suppress it — the exact never-fires failure mode this rule exists to avoid.
+     *
+     * CLOCK CONSISTENCY: this method uses PHP's clock, while freshnessSql()
+     * compares against MySQL's NOW(). Both must resolve to the same timezone, or
+     * the two forms can disagree at the one-year boundary from clock skew alone.
+     * Sharing a host does NOT guarantee that — see freshnessSql()'s note; PHP is
+     * pinned to `America/Los_Angeles` by users/init.php while MySQL follows its
+     * own `time_zone`.
+     *
+     * @param string|null $lastVerified      Datetime string, or null if never verified
+     * @param string      $ownerLastUpdated  Datetime string (NOT NULL by schema)
+     * @return bool True when the car counts as fresh
+     * @throws CarValidationException If either argument is an empty or unparseable date string
+     */
+    public static function isFresh(?string $lastVerified, string $ownerLastUpdated): bool
+    {
+        $cutoff = strtotime('-1 year');
+
+        // Both operands are validated BEFORE either comparison, deliberately not
+        // short-circuiting on a fresh owner_last_updated. A malformed value is a
+        // programming error or data corruption, and it must surface whichever
+        // operand carries it — a caller whose last_verified is garbage would
+        // otherwise get a silent `true` for as long as the owner timestamp happened
+        // to be recent, and the defect would only appear a year later. This is the
+        // one place the PHP form intentionally diverges from the SQL form's OR
+        // short-circuit: SQL cannot raise on a malformed DATETIME because the
+        // column type makes one unrepresentable.
+        $ownerTs      = self::parseTimestamp($ownerLastUpdated, 'owner_last_updated');
+        $verifiedTs   = $lastVerified === null
+            ? null
+            : self::parseTimestamp($lastVerified, 'last_verified');
+
+        return $ownerTs >= $cutoff || ($verifiedTs !== null && $verifiedTs >= $cutoff);
+    }
+
+    /**
+     * Validate a table alias before interpolating it into SQL.
+     *
+     * Same identifier pattern applied to column names in updateCarForOwner().
+     *
+     * @param string $alias Candidate SQL identifier
+     * @return void
+     * @throws CarValidationException If $alias is not a valid SQL identifier
+     */
+    private static function assertValidAlias(string $alias): void
+    {
+        if (!preg_match('/^[A-Za-z_][A-Za-z0-9_]{0,63}$/', $alias)) {
+            throw new CarValidationException("Invalid table alias: '{$alias}'");
+        }
+    }
+
+    /**
+     * Parse a datetime string to a Unix timestamp, rejecting empty or malformed input.
+     *
+     * Validates the calendar, not merely the shape: a well-formed but
+     * impossible date such as '2026-02-30 12:00:00' is rejected rather than
+     * silently rolled over to 2026-03-02.
+     *
+     * @param string $value  Datetime string to parse
+     * @param string $column Column name, for the exception message
+     * @return int Unix timestamp
+     * @throws CarValidationException If $value is empty, malformed, or not a
+     *                                real calendar date
+     */
+    private static function parseTimestamp(string $value, string $column): int
+    {
+        if ($value === '') {
+            throw new CarValidationException(
+                "CarRepository::isFresh received an empty {$column} value; "
+                . 'the column is NOT NULL by schema, so this indicates corrupt data or a caller bug.'
+            );
+        }
+
+        // strtotime() alone is far too permissive to enforce this contract: it
+        // happily accepts 'now', 'tomorrow', '+1 day', ' ' and a bare '2026',
+        // returning a plausible timestamp for each. Any of those reaching here
+        // means corrupt data or a caller bug, but strtotime() would silently
+        // turn them into a confident true/false — the exact silent-wrong-answer
+        // this method throws to avoid.
+        //
+        // A regex shape check is NOT sufficient on its own. '2026-02-30
+        // 12:00:00' and '0000-00-00 00:00:00' both match a \d{4}-\d{2}-\d{2}
+        // pattern, and strtotime() silently rolls them over (to 2026-03-02 and
+        // -0001-11-30 respectively) rather than returning false — so a corrupt
+        // value would be reported FRESH and suppress the owner's verification
+        // email for a year. That is #1953's own defect on the PHP side.
+        //
+        // This is reachable: users/classes/DB.php sets `sql_mode = ''` on every
+        // application connection, so MySQL accepts and returns a zero-date in a
+        // DATETIME column. NOT NULL blocks NULL, not '0000-00-00 00:00:00'.
+        //
+        // createFromFormat() with a leading '!' resets unparsed fields and
+        // reports rollovers through getLastErrors(), which is what makes the
+        // calendar — not merely the shape — the thing being validated.
+        $normalized = str_replace('T', ' ', $value);
+        $parsed     = \DateTimeImmutable::createFromFormat('!Y-m-d H:i:s', $normalized);
+        $errors     = \DateTimeImmutable::getLastErrors();
+
+        if (
+            $parsed === false
+            || ($errors !== false
+                && (($errors['warning_count'] ?? 0) > 0 || ($errors['error_count'] ?? 0) > 0))
+        ) {
+            throw new CarValidationException(
+                "CarRepository::isFresh received a malformed {$column} value: '{$value}'. "
+                . 'Expected a valid Y-m-d H:i:s datetime as stored by the column.'
+            );
+        }
+
+        return $parsed->getTimestamp();
+    }
+
+    /**
      * Find cars eligible for a verification email, ordered oldest-verified first.
      *
      * A car is eligible when it is not marked sold, has a non-null, non-empty
-     * (deliverable) email address, its last owner-driven update is more than two
-     * years old, and it has either never been verified (last_verified IS NULL) or
-     * was last verified more than two years ago.
+     * (deliverable) email address that has not bounced, and is stale — that is,
+     * it was neither verified nor updated by its owner within the last year (see
+     * stalenessSql()).
      *
      * @param int $limit Maximum rows to return (values below 1 return no rows)
      * @param int $offset Rows to skip (negative values are treated as 0)
      * @return array<object> Eligible car rows (empty if none)
      * @throws CarDatabaseException If the query fails
+     * @throws CarValidationException If the freshness alias is rejected (unreachable — literal)
      */
     public function findVerificationEligible(int $limit, int $offset): array
     {
@@ -245,16 +537,18 @@ class CarRepository
         // solddate is a DATE column; under STRICT_TRANS_TABLES, comparing it to ''
         // is a hard SQL error (ERROR 1525: Incorrect DATE value), not a no-op — the
         // column has no empty-string state, only NULL. email similarly needs an
-        // explicit NULL check: `!= ''` alone is silently false (not true) for a
-        // NULL email under SQL's three-valued logic, which happens to be the
-        // desired exclusion but was previously undocumented as such.
+        // explicit NULL check: `!= ''` alone evaluates to UNKNOWN (not FALSE)
+        // for a NULL email under SQL's three-valued logic. UNKNOWN excludes the
+        // row from this WHERE just as FALSE would, so the effect is the desired
+        // one, but the mechanism is not the obvious one.
+        $stale = self::stalenessSql('cars');
+
         $result = $this->db->query(
             "SELECT * FROM cars
               WHERE solddate IS NULL
                 AND email_bounced = 0
                 AND email IS NOT NULL AND email != ''
-                AND (last_verified IS NULL OR last_verified < NOW() - INTERVAL 2 YEAR)
-                AND COALESCE(owner_last_updated, mtime) < NOW() - INTERVAL 2 YEAR
+                AND {$stale}
               ORDER BY last_verified ASC
               LIMIT {$limit} OFFSET {$offset}"
         );
@@ -285,16 +579,29 @@ class CarRepository
      * Returns true when exactly 1 row was updated, false when 0 rows matched
      * (indicating a concurrent modification — the caller may retry or raise a conflict error).
      *
-     * @param int    $carId        Car ID
-     * @param string $newJson      New JSON-encoded image list
-     * @param string $expectedJson The image value that must currently be stored (CAS guard)
+     * Callers must not issue a no-op write: MySQL reports rows *changed*, not
+     * rows *matched* (PDO::MYSQL_ATTR_FOUND_ROWS is unset), so writing a value
+     * identical to the stored one returns false despite matching the row.
+     * Compare before calling and skip the write when nothing changes.
+     *
+     * @param int         $carId        Car ID
+     * @param string      $newJson      New JSON-encoded image list
+     * @param string|null $expectedJson The image value that must currently be
+     *                                  stored (CAS guard); null matches a NULL
+     *                                  column, which is the state of a car that
+     *                                  has never had an image
      * @return bool True if the row was updated, false on concurrent modification
      * @throws CarDatabaseException If the query itself fails
      */
-    public function updateImage(int $carId, string $newJson, string $expectedJson): bool
+    public function updateImage(int $carId, string $newJson, ?string $expectedJson): bool
     {
+        // `<=>` is MySQL's null-safe equality. Plain `=` is never true against a
+        // NULL column, and cars.image is nullable with no default, so a car that
+        // has never had an image cannot be matched by `image = ''` — the CAS
+        // would reject every such update. `<=>` matches NULL to NULL and behaves
+        // identically to `=` for non-NULL values.
         $this->db->query(
-            'UPDATE cars SET image = ? WHERE id = ? AND image = ?',
+            'UPDATE cars SET image = ? WHERE id = ? AND image <=> ?',
             [$newJson, $carId, $expectedJson]
         );
         if ($this->db->error()) {

@@ -1,6 +1,6 @@
 ---
 description: Begin work on a milestone by creating a milestone branch and drafting release notes
-model: claude-opus-4-8
+model: claude-opus-5
 ---
 
 # Start Milestone
@@ -39,10 +39,10 @@ Record the full milestone title and milestone number for later steps.
 
 ### Step 1.5: Check for a proposed sprint plan
 
-Look for a sprint plan matching this milestone in the `Plans/` project:
+Look for a sprint plan matching this milestone under `docs/plans/sprints/`:
 
 ```bash
-ls ../Plans/sprints/$ARGUMENTS.md
+ls docs/plans/sprints/$ARGUMENTS.md
 ```
 
 - **If found**: read it. This becomes the starting point for the issue order
@@ -279,6 +279,51 @@ gh issue close NNN --repo elan-registry/registry \
 After closing, remove the secondary issues from the working issue list. The
 primary issue carries the full combined scope into Step 5.
 
+### Step 4.6: Offer a production data refresh
+
+Decide from the milestone's **content**, not the calendar, whether development
+on these issues would be more reliable against fresh production data. Weigh the
+issue list gathered in Step 4:
+
+**Suggest a refresh when the milestone involves:**
+
+- Schema or migration work — labels `component: database`, or any issue adding
+  a Phinx migration
+- Bulk data manipulation, merges, dedup, or repair scripts
+- Image handling — label `component: images` (needs real `userimages/` files
+  and the JSON `cars.image` shapes production actually contains)
+- Admin tooling over real records — label `component: admin`
+- Large refactors of data-access code — `refactor` or `tech-debt` touching
+  `usersc/classes/`, where stale or thin local data hides breakage
+- Anything whose acceptance criteria depend on realistic row counts,
+  distributions, or edge-case records
+
+**Skip silently when** the milestone is documentation, CI/workflow, styling, or
+copy work — fresh data changes nothing there. Do not prompt; continue to Step 5.
+
+When it is warranted, state the reason and ask:
+
+> "This milestone touches <reason — e.g. schema changes in #NNN and image
+> handling in #NNN>. Development will be more reliable against current
+> production data. Refresh the local database now? (~N minutes)"
+
+If the user declines, continue to Step 5 — do not re-ask.
+
+If the user agrees, run:
+
+```bash
+./scripts/refresh-local-db.sh --fetch
+```
+
+The script backs up the local database to `db-backups/` first, imports the
+registry tables, masks every email address to `dev.owner.{id}@elanregistry.local`,
+and verifies the masking before reporting success. Add `--skip-images` if only
+the database is needed; see `scripts/README.md` for the full option list.
+
+If the refresh fails, report the error and ask whether to continue the
+milestone with the existing local data rather than blocking — starting the
+milestone does not depend on it.
+
 ### Step 5: Recommend an issue order
 
 Launch the **senior-product-manager** agent to analyze all issues and
@@ -312,12 +357,11 @@ Ask the user to approve the order:
 > "Approve this issue order? Reply yes to continue, or list changes."
 
 If a sprint plan file exists (Step 1.5), once the user approves the final
-order, update `Plans/sprints/$ARGUMENTS.md` in place so its sequence line
+order, update `docs/plans/sprints/$ARGUMENTS.md` in place so its sequence line
 matches the approved order (same format the file already uses, e.g.
-`**#NNN → #NNN → ...**`). Commit is not required — this is a working
-document in a separate repo; leave the change unstaged for the user to review
-and commit themselves per that repo's own workflow. Do not touch
-`Plans/sprints/README.md` — it is only removed/updated when the milestone is
+`**#NNN → #NNN → ...**`). There is nothing to commit — `docs/plans/` is
+gitignored local scratch space. Do not touch
+`docs/plans/sprints/README.md` — it is only removed/updated when the milestone is
 released, not here.
 
 ### Step 6: Create draft release notes
@@ -350,12 +394,12 @@ issues or complex scope.
 Display:
 
 - The milestone branch name (`milestone/$ARGUMENTS`)
-- Whether a sprint plan was found at `Plans/sprints/$ARGUMENTS.md` and used to
+- Whether a sprint plan was found at `docs/plans/sprints/$ARGUMENTS.md` and used to
   seed the order
 - How many issues were closed in the quality review (if any)
 - Any consolidation opportunities flagged (if not already addressed by the user)
 - The approved issue order (from step 5)
-- Whether `Plans/sprints/$ARGUMENTS.md` was updated to match (if applicable)
+- Whether `docs/plans/sprints/$ARGUMENTS.md` was updated to match (if applicable)
 - Which issues are expected to require wiki/architecture updates
 - Note that draft release notes were created at
   `docs/releases/RELEASE_NOTES_$ARGUMENTS.md`
@@ -373,6 +417,6 @@ Display:
 - Release notes are cumulative — each `/execute-plan` run adds to them as
   work progresses (`/start-issue` only plans; it doesn't touch release
   notes).
-- `Plans/` is a separate private repo, sibling to this one (see
-  `Web/ElanRegistry/CLAUDE.md`). Sprint plan files are deleted once a
+- `docs/plans/` is gitignored local scratch space, never committed (see
+  `CLAUDE.md`, Planning Work). Sprint plan files are deleted once a
   milestone is released — do not treat a missing file as an error.

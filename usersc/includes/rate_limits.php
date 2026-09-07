@@ -141,11 +141,19 @@ $rateLimits['diagnostics']['user_window'] = 300;
 $rateLimits['diagnostics']['total_max'] = 100;
 $rateLimits['diagnostics']['total_window'] = 300;
 
-$rateLimits['statistics_request']['ip_max'] = 50;
+// Public read-only endpoint (ADR-019): fires once per statistics tab (four
+// tabs) rather than per keystroke, so it needs less headroom than the list
+// endpoints below but the same Cloudflare-shared-bucket reasoning applies —
+// getRealIP() returns the edge address, so total_max is shared across every
+// visitor behind that node. The pre-ADR-019 sizing (50/25/100) was carried
+// over by mistake when CSRF was dropped from this endpoint in favor of rate
+// limiting alone; that left it under-sized relative to its sibling public
+// endpoints below, which were sized correctly in the same change.
+$rateLimits['statistics_request']['ip_max'] = 600;
 $rateLimits['statistics_request']['ip_window'] = 300;
-$rateLimits['statistics_request']['user_max'] = 25;
+$rateLimits['statistics_request']['user_max'] = 600;
 $rateLimits['statistics_request']['user_window'] = 300;
-$rateLimits['statistics_request']['total_max'] = 100;
+$rateLimits['statistics_request']['total_max'] = 5000;
 $rateLimits['statistics_request']['total_window'] = 300;
 
 // ip_max is PHP_INT_MAX by design: authenticated admin sessions are tracked
@@ -165,4 +173,37 @@ $rateLimits['location_search']['ip_max'] = PHP_INT_MAX;
 $rateLimits['location_search']['ip_window'] = 60;
 $rateLimits['location_search']['total_max'] = 10;
 $rateLimits['location_search']['total_window'] = 60;
+
+// Public read-only DataTables endpoints (ADR-019): one AJAX draw fires per
+// search keystroke and per sort/page click, so these are sized well above the
+// interactive-browsing ceiling to avoid 429s during normal use.
+//
+// total_max is the operative limit for the three keys defined below.
+// RateLimit::check() counts ip_max / user_max against FAILED attempts only,
+// and these three endpoints record every admitted draw as a success while
+// recording nothing on rejection — so those two counters never see a nonzero
+// count. total_max counts all attempts and is scoped per identifier (per IP
+// for anonymous callers), not site-wide.
+$rateLimits['cars_list']['ip_max'] = 1000;
+$rateLimits['cars_list']['ip_window'] = 300;
+$rateLimits['cars_list']['user_max'] = 1000;
+$rateLimits['cars_list']['user_window'] = 300;
+$rateLimits['cars_list']['total_max'] = 10000;
+$rateLimits['cars_list']['total_window'] = 300;
+
+$rateLimits['factory_list']['ip_max'] = 1000;
+$rateLimits['factory_list']['ip_window'] = 300;
+$rateLimits['factory_list']['user_max'] = 1000;
+$rateLimits['factory_list']['user_window'] = 300;
+$rateLimits['factory_list']['total_max'] = 10000;
+$rateLimits['factory_list']['total_window'] = 300;
+
+// Fires once per car-details view rather than per keystroke, so it needs
+// less headroom than the list endpoints above.
+$rateLimits['car_history']['ip_max'] = 600;
+$rateLimits['car_history']['ip_window'] = 300;
+$rateLimits['car_history']['user_max'] = 600;
+$rateLimits['car_history']['user_window'] = 300;
+$rateLimits['car_history']['total_max'] = 5000;
+$rateLimits['car_history']['total_window'] = 300;
 

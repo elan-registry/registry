@@ -113,7 +113,6 @@ require_once $abs_us_root . $us_url_root . 'users/includes/html_footer.php'; //c
 <?php include 'includes/elan-config-island.php'; ?>
 <script nonce="<?= htmlspecialchars($userspice_nonce ?? '', ENT_QUOTES, 'UTF-8') ?>">
 window.carListConfig = {
-    csrf: <?= json_encode(Token::generate()) ?>,
     urlRoot: <?= json_encode((string)$us_url_root, JSON_HEX_TAG | JSON_HEX_AMP) ?>,
     newCarIds: <?= json_encode((new CarShowcaseService())->getNewCarIds(), JSON_HEX_TAG | JSON_HEX_AMP) ?>
 };

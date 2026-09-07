@@ -355,7 +355,6 @@ window.statisticsRawData = {
 window.statisticsConfig = {
     baseUrl: <?= json_encode($us_url_root . 'app/owner/reports/', JSON_HEX_TAG | JSON_HEX_AMP) ?>,
     statisticsDataUrl: <?= json_encode($us_url_root . 'app/api/shared/statistics.php', JSON_HEX_TAG | JSON_HEX_AMP) ?>,
-    csrfToken: <?= json_encode(Token::generate()) ?>,
     imageUrl: <?= json_encode((string)($us_url_root . ELAN_IMAGE_DIR), JSON_HEX_TAG | JSON_HEX_AMP) ?>,
     versatileStyleUrl: <?= json_encode($us_url_root . 'usersc/js/versatiles-colorful.json', JSON_HEX_TAG | JSON_HEX_AMP) ?>
 };

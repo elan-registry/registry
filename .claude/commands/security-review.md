@@ -1,6 +1,6 @@
 ---
 description: Run a security review of recent code changes (OWASP, CSRF, SQL injection, XSS)
-model: claude-haiku-4-5-20251001
+model: claude-haiku-4-5
 ---
 
 # Security Review

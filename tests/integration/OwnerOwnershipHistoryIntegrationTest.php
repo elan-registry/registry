@@ -48,7 +48,7 @@ final class OwnerOwnershipHistoryIntegrationTest extends IntegrationTestCase
 
     /**
      * Insert a cars_hist row tied to a given car/user, mirroring the field
-     * shape Owner::syncLocationToCars() itself builds (Owner.php:624-629) —
+     * shape Owner::syncOwnerFieldsToCars() itself builds (Owner.php) —
      * `operation`, `car_id`, `model`, `series`, `variant`, `type`, `chassis`
      * are NOT NULL with no default in the real schema (confirmed via
      * DESCRIBE cars_hist), so all must be supplied explicitly.

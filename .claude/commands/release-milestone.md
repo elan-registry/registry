@@ -1,6 +1,6 @@
 ---
 description: Merge a milestone PR into main, tag the release, and publish a GitHub release
-model: claude-opus-4-8
+model: claude-fable-5-1
 ---
 
 # Release Milestone

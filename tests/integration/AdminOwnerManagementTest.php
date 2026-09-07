@@ -209,36 +209,48 @@ final class AdminOwnerManagementTest extends IntegrationTestCase
         $this->assertSame('Eugene', $row->city, 'City must be persisted to the profiles table');
     }
 
+    // Happy path for owner-sync (formerly owner-sync-location) is now covered
+    // by the nine-field suite in OwnerSyncOwnerFieldsToCarsTest.php (#1873),
+    // which subsumes this test's single lat/lon assertion.
+
     /**
-     * Happy path for owner-sync-location: Owner::syncLocationToCars()
-     * copies the owner's lat/lon to all owned cars and returns the count of
-     * cars updated.
+     * process-owner-update.php's actual sequence — Owner::update() followed by
+     * syncOwnerFieldsToCars() — must propagate the change to the owner's cars,
+     * not just the profiles table.
      *
-     * Validates the sync logic used by process-owner-sync-location.php.
+     * process-owner-update.php cannot be exercised directly (every path ends
+     * in exit via ApiResponse::send()), so this test drives the same two
+     * calls the endpoint makes, in the same order, against a real car. Before
+     * this fix, the endpoint called only Owner::update() — an admin editing a
+     * member's profile here left every car stale until the owner separately
+     * triggered a sync, the one owner-contact-field write path this milestone
+     * otherwise missed (user_settings.php, the email-verification hook, car
+     * edit, and the standalone admin sync endpoint all already synced).
      */
-    public function testSyncLocationToCarsCopiesCoordinatesToOwnedCar(): void
+    public function testAdminOwnerUpdateSequenceSyncsToOwnedCars(): void
     {
-        $userId = $this->createTestUser();
-        $this->createTestProfile($userId, [
-            'city'    => 'Portland',
-            'state'   => 'Oregon',
-            'country' => 'United States',
-            'lat'     => 45.5231,
-            'lon'     => -122.6765,
-        ]);
-        $carId = $this->createTestCar($userId);
+        $userId = $this->createTestUser(['fname' => 'Original']);
+        $this->createTestProfile($userId, ['city' => 'Salem']);
+        $carId = $this->createTestCar($userId, ['city' => 'Salem']);
 
-        // Load owner with full profile data (lat/lon present)
+        // Mirrors process-owner-update.php: Owner::update() first, then
+        // syncOwnerFieldsToCars() on a freshly-reloaded Owner.
         $owner = new Owner($userId);
-        $this->assertNotNull($owner->data(), 'Owner must load successfully after profile creation');
+        $owner->update(['id' => $userId, 'fname' => 'AdminEdited', 'city' => 'Eugene']);
+        $owner = new Owner($userId);
+        $syncResult = $owner->syncOwnerFieldsToCars();
 
-        $carsUpdated = $owner->syncLocationToCars();
+        $this->assertTrue($syncResult->isCompleteSuccess());
+        $this->assertContains($carId, $syncResult->updated);
 
-        $this->assertSame(1, $carsUpdated, 'syncLocationToCars() must update the one owned car');
-
-        $car = $this->db->query("SELECT lat, lon FROM cars WHERE id = ?", [$carId])->first();
+        $car = $this->db->query("SELECT fname, city FROM cars WHERE id = ?", [$carId])->first();
         $this->assertNotNull($car);
-        $this->assertEqualsWithDelta(45.5231, (float) $car->lat, 0.001, 'Car lat must match owner lat');
-        $this->assertEqualsWithDelta(-122.6765, (float) $car->lon, 0.001, 'Car lon must match owner lon');
+        $this->assertSame(
+            'AdminEdited',
+            $car->fname,
+            "An admin editing a member's profile must propagate to the member's cars, "
+                . 'the same as every other owner-contact-field write path'
+        );
+        $this->assertSame('Eugene', $car->city);
     }
 }

@@ -1,6 +1,6 @@
 ---
 description: Update ElanRegistry architecture documentation in the local wiki repo with codebase audit and Mermaid diagrams
-model: claude-opus-4-8
+model: claude-fable-5-1
 ---
 
 # Architecture Documentation Update

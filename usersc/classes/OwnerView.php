@@ -117,6 +117,36 @@ class OwnerView
     }
 
     /**
+     * The owner-contact website, if it is safe to display as a link.
+     *
+     * Website is owner-level (issue #1963) — this is the single validation
+     * rule for whether a `website` value (from an Owner or, since `website`
+     * is synced onto every car, a Car row) should render as a link:
+     * non-empty and using the `http` or `https` scheme. Callers that want
+     * stricter validation (e.g. confirming the URL is well-formed at all,
+     * not just its scheme) should use
+     * {@see \ElanRegistry\OwnerContactRefresher::isValidWebsite()} instead —
+     * that one gates whether a value is safe to *write*; this one gates
+     * whether an already-stored value is safe to *display* as a link, which
+     * is deliberately more lenient so a stored value that predates stricter
+     * write-side validation still renders instead of silently vanishing.
+     *
+     * @param mixed $website
+     * @return string|null The website URL, unescaped, or null if it should
+     *                      not be displayed as a link.
+     */
+    public static function websiteUrl($website): ?string
+    {
+        if (!is_string($website) || $website === '') {
+            return null;
+        }
+
+        $scheme = strtolower((string) (parse_url($website, PHP_URL_SCHEME) ?? ''));
+
+        return in_array($scheme, ['http', 'https'], true) ? $website : null;
+    }
+
+    /**
      * Display the owner's email and optional website as links
      *
      * @param object $owner Owner object with email and website properties
@@ -133,15 +163,11 @@ class OwnerView
         }
 
         $websiteHtml = '';
-        $website = $owner->website ?? '';
+        $website = self::websiteUrl($owner->website ?? '');
 
-        if ($website !== '') {
-            $scheme = strtolower((string) (parse_url((string) $website, PHP_URL_SCHEME) ?? ''));
-
-            if (in_array($scheme, ['http', 'https'], true)) {
-                $escapedUrl = htmlspecialchars($website, ENT_QUOTES, 'UTF-8');
-                $websiteHtml = '<a href="' . $escapedUrl . '" target="_blank" rel="noopener noreferrer">' . $escapedUrl . '</a>';
-            }
+        if ($website !== null) {
+            $escapedUrl = htmlspecialchars($website, ENT_QUOTES, 'UTF-8');
+            $websiteHtml = '<a href="' . $escapedUrl . '" target="_blank" rel="noopener noreferrer">' . $escapedUrl . '</a>';
         }
 
         if ($emailHtml === '' && $websiteHtml === '') {

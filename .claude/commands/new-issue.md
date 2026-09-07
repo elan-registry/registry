@@ -1,6 +1,6 @@
 ---
 description: Create a new GitHub issue with PM-driven scope refinement and expert input
-model: claude-sonnet-5
+model: claude-fable-5-1
 ---
 
 # Create Issue Command

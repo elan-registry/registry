@@ -11,9 +11,7 @@ use ElanRegistry\StatisticsDataService;
  * Public API endpoint for lazy-loading statistics tab data
  *
  * Returns JSON data for specific tab content to enable progressive loading
- * and improve page performance. CSRF token required (POST only). The statistics
- * page requires login and is the sole source of the CSRF token; the API itself
- * does not independently verify authentication.
+ * and improve page performance. POST only.
  *
  * @author Elan Registry Development Team
  * @copyright 2025
@@ -31,15 +29,8 @@ try {
 
     $userId = $user->isLoggedIn() ? (int) $user->data()->id : 0;
 
-    if (!isset($_POST['csrf']) || !Token::check($_POST['csrf'])) {
-        ApiResponse::forbidden('Invalid CSRF token')
-            ->withLogging($userId, LogCategories::LOG_CATEGORY_SECURITY, 'Invalid CSRF token in statistics API request')
-            ->send();
-    }
-
     $rateUserId = $userId ?: null; // null is the framework's "no user" sentinel; 0 is not a valid user ID
     if (!checkRateLimit('statistics_request', $rateUserId)) {
-        recordRateLimit('statistics_request', false, $rateUserId);
         ApiResponse::error('Too many requests. Please slow down.', 429)
             ->withLogging($userId, LogCategories::LOG_CATEGORY_SECURITY, 'Rate limit exceeded for statistics API')
             ->send();

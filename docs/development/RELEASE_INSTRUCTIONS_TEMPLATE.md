@@ -15,7 +15,6 @@ Placeholders, filled from `.claude.local.md` § "Deployment hosts" and the relea
 | `<ssh-host>` | `.claude.local.md` — ssh host alias |
 | `<test-docroot>` / `<prod-docroot>` | `.claude.local.md` — docroots |
 | `<repo-path>` | Absolute path of the local checkout |
-| `<plans-dir>` | `.claude.local.md` — Plans directory (only when writing the sheet to a file) |
 
 Conditional blocks are marked `<!-- IF: condition -->` … `<!-- END IF -->`.
 Include a block only when its condition holds for **this** release, and drop
@@ -38,8 +37,9 @@ UI)** are done in the browser, not the shell. Everything else is a command to
 run from the local machine.
 
 When the user asks for the sheet as a file (it is normally imported into Apple
-Notes), write it to `<plans-dir>/releases/<version>-deploy.md` — never into
-this repo — and format for Notes: `##` per section and `###` per step; every
+Notes), write it to `docs/plans/releases/<version>-deploy.md`. That directory
+is gitignored, so the sheet is never committed — it carries deployment
+specifics that do not belong in a public repo. Format for Notes: `##` per section and `###` per step; every
 command, SQL statement and crontab line in a fenced block (Notes renders these
 as a grey box; a bare `*/10 * * * *` italicises); no `---` rules (they render
 as a stub); no inline backticks in prose (they render as pink highlights);

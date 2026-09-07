@@ -58,7 +58,6 @@ function initializeHistoryTable() {
                 dataSrc: 'history',
                 type: 'POST',
                 data: function(d) {
-                    d.csrf = window.carDetailsConfig?.csrf;
                     d.car_id = carId;
                 },
                 error: function(xhr, error, thrown) {
@@ -67,7 +66,10 @@ function initializeHistoryTable() {
                     if (tableContainer && !tableContainer.parentElement.querySelector('.alert')) {
                         const warning = document.createElement('div');
                         warning.className = 'alert alert-warning';
-                        warning.textContent = 'Car history could not be loaded. Please refresh the page to try again.';
+                        // Reloading re-fires the request, so it is the wrong advice for a 429.
+                        warning.textContent = xhr.status === 429
+                            ? 'Too many requests. Please wait a few minutes before trying again.'
+                            : 'Car history could not be loaded. Please refresh the page to try again.';
                         tableContainer.insertAdjacentElement('beforebegin', warning);
                     }
                 }

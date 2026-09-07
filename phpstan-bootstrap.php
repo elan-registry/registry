@@ -48,6 +48,15 @@ if (!function_exists('randomstring')) {
     }
 }
 
+if (!function_exists('registerHooks')) {
+    /**
+     * @param array<string, array<string, string>> $hooks
+     */
+    function registerHooks(array $hooks, string $plugin_name): void
+    {
+    }
+}
+
 // tests/bootstrap-integration.php defines this at PHPUnit's real runtime bootstrap
 // (see phpunit-integration.xml), which PHPStan never executes — declared here so
 // TESTING_ROOT resolves during analysis of integration tests that reference it (#1555).

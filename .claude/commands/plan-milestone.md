@@ -1,6 +1,6 @@
 ---
 description: Signal review, theme selection, and gate — seal a milestone's issue list before branching
-model: claude-opus-4-8
+model: claude-opus-5
 ---
 
 # Plan Milestone
@@ -45,7 +45,7 @@ bar).
 Also check for a proposed sprint plan, same as `/start-milestone` Step 1.5:
 
 ```bash
-ls ../Plans/sprints/$ARGUMENTS.md 2>/dev/null
+ls docs/plans/sprints/$ARGUMENTS.md 2>/dev/null
 ```
 
 If found, read it — it may already propose a theme or cluster.

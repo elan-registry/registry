@@ -281,10 +281,14 @@ posture is more deliberate than most hobby projects.
   anonymous visitors. Only the action buttons vary by viewer. Privacy comes
   from what is never stored or shown — last name and email address are not on
   the page for anyone — rather than from per-viewer redaction.
-- **`app/api/cars/history.php` is CSRF-gated but not login-gated.** Any holder
-  of a valid CSRF token can read any car's audit history. This is consistent
-  with the detail page already being public, but it is worth naming: the API
-  has no independent access check of its own.
+- **Public read endpoints are rate-limited, not CSRF-gated.** The car list,
+  factory records, car history, and statistics endpoints are all public and
+  read-only: they change no state, require no login, and return no data beyond
+  what the corresponding public page already renders. Per
+  [ADR-019](adr/ADR-019-no-csrf-on-public-read-only-endpoints.md), these
+  endpoints carry no CSRF token check; abuse is bounded by app-layer rate
+  limiting instead. This eliminates the stale-token failure when a session
+  ends, and aligns the security model with the endpoints' actual risk profile.
 
 ## 6. What is deliberately not built
 

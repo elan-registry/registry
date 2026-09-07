@@ -1,5 +1,4 @@
 {
-  "model": "claude-sonnet-5",
   "enabledPlugins": {
     "commit-commands@claude-plugins-official": true,
     "pr-review-toolkit@claude-plugins-official": true,

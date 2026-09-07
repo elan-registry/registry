@@ -70,9 +70,8 @@ if ($ownerData !== null) {
 $qualityScore = $owner->getProfileQualityScore();
 
 // Owner website (only display for http/https)
-$ownerWebsite       = $ownerData?->website ?? '';
-$ownerWebsiteScheme = !empty($ownerWebsite) ? strtolower((string)parse_url((string)$ownerWebsite, PHP_URL_SCHEME)) : '';
-$hasOwnerWebsite    = in_array($ownerWebsiteScheme, ['http', 'https'], true);
+$ownerWebsite    = OwnerView::websiteUrl($ownerData?->website ?? '');
+$hasOwnerWebsite = $ownerWebsite !== null;
 
 $_baseUrl = htmlspecialchars($us_url_root, ENT_QUOTES, 'UTF-8');
 ?>

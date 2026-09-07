@@ -113,8 +113,8 @@ All changes implemented, tested, documented, and reviewed.
 
 Implementation complete for issue #423. Next steps:
 
-0. Update test plan  — Add test scenarios to test-plan-<milestone>.md in the
-                       local Plans directory (path in .claude.local.md)
+0. Update test plan  — Add test scenarios to docs/plans/test-plan-<milestone>.md
+                       (gitignored local scratch)
 1. /simplify         — Review and clean up the code (optional)
 2. /commit           — Commit your changes
 3. /review-pr        — Multi-agent local review (requires a commit — it
@@ -207,8 +207,8 @@ Here's my plan with escape analysis and preventive tests...
 
 Implementation complete for issue #512. Next steps:
 
-0. Update test plan  — Add test scenarios to test-plan-<milestone>.md in the
-                       local Plans directory (path in .claude.local.md)
+0. Update test plan  — Add test scenarios to docs/plans/test-plan-<milestone>.md
+                       (gitignored local scratch)
 1. /simplify         — Review and clean up the code (optional)
 2. /commit           — Commit your changes
 3. /review-pr        — Multi-agent local review (requires a commit — it

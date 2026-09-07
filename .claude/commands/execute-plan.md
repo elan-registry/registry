@@ -1,6 +1,6 @@
 ---
 description: Execute an approved plan file from /start-issue — implementation, tests, and reviews
-model: claude-sonnet-5
+model: claude-opus-5
 ---
 
 # Execute Plan
@@ -406,8 +406,9 @@ the user to include the escape analysis in the PR description.
 issue is closed (typically during/after `/finish-issue`) — its job (a
 verifiable record other agents/sessions could check against) is done once
 the code is merged; the merged diff and closed issue are then the source of
-truth, same lifecycle as milestone sprint plans. Do not delete it from within
-this command — that happens later, at merge time, not here.
+truth, same lifecycle as milestone sprint plans. `docs/plans/` is gitignored,
+so that deletion is a plain `rm` with no git operation. Do not delete it from
+within this command — that happens later, at merge time, not here.
 
 ## Available Agents
 

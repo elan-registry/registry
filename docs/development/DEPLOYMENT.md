@@ -460,6 +460,33 @@ Run `./scripts/update-version.sh` to generate VERSION file locally after creatin
   permission entries in UserSpice's `pages` table
 - **Required whenever:** A new page, admin script, or route is added or renamed
 
+### Hooker Hook Registration
+
+- **Problem:** A new hooker plugin hook
+  (`usersc/plugins/hooker/hooks/sync_owner_email_on_verify.php`, fixing #1958 —
+  a confirmed email change via the verify-by-link flow wasn't syncing to
+  `cars.email`) needs to be registered in the `us_plugin_hooks` table before it
+  takes effect; a hook file alone does nothing until registered per environment
+- **Solution:** Run `app/admin/scripts/fix/26-Register-Verify-Email-Sync-Hook.php`
+  on test, verify, then run on prod — the same test-then-prod order as the Page
+  Permissions script above, though note the two live in different directories:
+  this one is a one-time script under `app/admin/scripts/fix/`, while
+  `21-Fix-Page-Permissions.php` is a repeatable one under
+  `app/admin/scripts/maintenance/`. Registration is idempotent (safe to re-run) but per-environment —
+  running it on test does not register it on prod
+- **Required whenever:** This specific one-time deploy fix for #1958 — a
+  one-time fix script, not a repeatable maintenance task (contrast with the
+  Cron Transport contract, which is per-environment but repeatable)
+- **Manual verification** (no automated E2E exists — no Playwright pattern in
+  this repo retrieves a Mailtrap-captured confirmation link): log in as a
+  test owner with at least one car, change the account email (stages
+  `email_new`; `cars.email` should still show the OLD address at this
+  point), retrieve the confirmation link from the local Mailtrap inbox
+  (see [EMAIL_SYSTEM.md](EMAIL_SYSTEM.md)), click it, confirm the success
+  page renders, then check `cars.email` reflects the NEW address for every
+  car the owner has and that no `LOG_CATEGORY_DATABASE_ERROR` row mentioning
+  `sync_owner_email_on_verify` was logged
+
 ### Cron Transport (UserSpice Cron Manager)
 
 UserSpice's Cron Manager (Admin → Settings → Cron Manager) only maintains the

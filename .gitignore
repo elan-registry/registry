@@ -228,3 +228,10 @@ scripts/check-plugin-updates/*.conf
 # Temporary local scratch copy of production userimages (exploration only)
 /prod_images/
 
+
+########################################
+# Planning Documents (local scratch, never committed)
+########################################
+# Sprint plans, FRDs, spikes, and per-issue plan files. Registry is public;
+# these are private working documents. See CLAUDE.md — Planning Work.
+docs/plans/

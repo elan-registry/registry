@@ -40,7 +40,6 @@ $cardetails['color']        = null;
 $cardetails['engine']       = null;
 $cardetails['purchasedate'] = null;
 $cardetails['solddate']     = null;
-$cardetails['website']      = null;
 $cardetails['comments']     = null;
 $cardetails['image']        = null;
 
@@ -49,7 +48,6 @@ $carprompt['chassis']       = 'Enter Chassis Number';
 $carprompt['color']         = 'Enter the current color of the car';
 $carprompt['engine']        = 'Enter Engine number - LPAxxxxx';
 $carprompt['comments']      = 'Please give a brief history of your car and anything special';
-$carprompt['website']       = 'Website URL';
 
 // Default action when no form submission
 $action = 'addCar';
@@ -362,18 +360,6 @@ function updateCarDetails(array &$car): void
                             <input class='form-control' name='solddate' id='solddate' value='<?= htmlspecialchars((string)($cardetails['solddate'] ?? ''), ENT_QUOTES, 'UTF-8') ?>' type='date' min='1957-01-01' max='<?= date('Y-m-d') ?>' aria-describedby='solddateHelp' />
                         </div>
                         <small id='solddateHelp' class='form-text text-muted'>Approximate date you sold the car.</small>
-                    </div>
-                </div>
-
-                <!-- Website -->
-                <div class='mb-3 row'>
-                    <label for='website' class='col-md-3 col-12 col-form-label'>Website</label>
-                    <div class='col-12 col-sm-9'>
-                        <div class='input-group'>
-                            <span class='input-group-text'><i aria-hidden='true' class='fas fa-globe'></i></span>
-                            <input class='form-control' type='url' name='website' id='website' placeholder='<?= htmlspecialchars($carprompt['website'], ENT_QUOTES, 'UTF-8') ?>' value='<?= htmlspecialchars((string)($cardetails['website'] ?? ''), ENT_QUOTES, 'UTF-8') ?>' pattern="https?://.+" />
-                        </div>
-                        <div class='invalid-feedback'>URL must start with http:// or https:// (e.g. https://example.com)</div>
                     </div>
                 </div>
 

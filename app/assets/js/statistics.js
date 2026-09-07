@@ -230,7 +230,7 @@ function loadTabContent(tabName) {
 
   spinner.show();
 
-  new ElanRegistryAPI({ csrfToken: window.statisticsConfig.csrfToken })
+  new ElanRegistryAPI()
     .post(window.statisticsConfig.statisticsDataUrl, {
       tab: tabName
     })
@@ -242,7 +242,11 @@ function loadTabContent(tabName) {
       }
     })
     .catch(function (error) {
-      NotificationHelper.show('Failed to load data. Please try again.', 'error');
+      // Retrying re-fires the request, so it is the wrong advice for a 429.
+      const message = error && error.status === 429
+        ? 'Too many requests. Please wait a few minutes before trying again.'
+        : 'Failed to load data. Please try again.';
+      NotificationHelper.show(message, 'error');
       console.error('[ElanRegistry] loadTabContent error:', error);
     })
     .finally(function () {

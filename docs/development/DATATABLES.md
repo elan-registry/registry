@@ -238,7 +238,7 @@ server-side processing or assess if the UX trade-offs are acceptable.
 **Solution**:
 
 - Check `/app/api/cars/list.php` or `/app/api/cars/factory-list.php` for PHP errors
-- Verify CSRF token is being passed correctly
+- Verify the browser console for a 429 (Too many requests) error — if present, reduce request frequency or wait for the rate-limit window to reset
 - Check database connection and query performance
 - Review server error logs
 

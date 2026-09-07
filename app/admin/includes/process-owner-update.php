@@ -3,6 +3,8 @@ declare(strict_types=1);
 
 use ElanRegistry\ApiResponse;
 use ElanRegistry\Exceptions\AdminOperationException;
+use ElanRegistry\Exceptions\CarDatabaseException;
+use ElanRegistry\Exceptions\OwnerDatabaseException;
 use ElanRegistry\Exceptions\OwnerUpdateException;
 use ElanRegistry\Exceptions\OwnerValidationException;
 use ElanRegistry\LogCategories;
@@ -59,7 +61,60 @@ try {
     $newQualityScore = $owner->getProfileQualityScore();
     $missingFields = $owner->validateProfileCompleteness();
 
-    ApiResponse::success('Owner profile updated successfully!')
+    // Push the updated contact fields onto the owner's cars, same as
+    // usersc/user_settings.php and process-owner-sync-location.php already
+    // do after their own writes to these fields (#1873). Without this, an
+    // admin editing a member's profile here left every car stale until the
+    // owner separately triggered a sync themselves — the one owner-field
+    // write path this milestone otherwise missed.
+    $syncMessage = '';
+    try {
+        $syncResult = $owner->syncOwnerFieldsToCars();
+        if ($syncResult->isCompleteSuccess()) {
+            if ($syncResult->updatedCount() > 0) {
+                $syncMessage = " Synchronized to {$syncResult->updatedCount()} car(s).";
+            }
+        } else {
+            // totalCount() includes skipped cars, so the denominator can
+            // exceed updated + failed. Name the skips too, or the count
+            // reads as unexplained missing cars (#1954).
+            $syncMessage = sprintf(
+                ' Synchronized to only %d of %d car(s). %s',
+                $syncResult->updatedCount(),
+                $syncResult->totalCount(),
+                $syncResult->failedCarsPhrase()
+            );
+            if ($syncResult->skippedCount() > 0) {
+                $syncMessage .= ' ' . $syncResult->skippedCarsPhrase();
+            }
+        }
+    } catch (OwnerDatabaseException | CarDatabaseException $e) {
+        // An infrastructure fault mid-sync: syncOwnerFieldsToCars() propagates rather
+        // than reporting per-car failures, which discards the result — the profile
+        // write above already committed, so this must degrade gracefully rather than
+        // fail the whole request. Matches user_settings.php's precedent for this
+        // exact failure mode.
+        logger(
+            $user->data()->id,
+            LogCategories::LOG_CATEGORY_DATABASE_ERROR,
+            "process-owner-update.php: car owner-field sync failed for owner ID {$ownerId}: " . $e->getMessage()
+        );
+        $syncMessage = ' Car synchronization encountered an error; please contact support if this persists.';
+    } catch (\Throwable $e) {
+        // \Throwable, not Exception: PHP's Error hierarchy (TypeError et al.) does not
+        // extend Exception, and syncOwnerFieldsToCars() builds its field bundle from
+        // untyped $_data properties. Matches process-owner-sync-location.php's
+        // precedent for this same class of failure.
+        logger(
+            $user->data()->id,
+            LogCategories::LOG_CATEGORY_SYSTEM_ERROR,
+            'process-owner-update.php: unexpected ' . get_class($e)
+                . " during owner-field sync for owner ID {$ownerId}: " . $e->getMessage()
+        );
+        $syncMessage = ' Car synchronization encountered an error; please contact support if this persists.';
+    }
+
+    ApiResponse::success('Owner profile updated successfully!' . $syncMessage)
         ->withDataArray([
             'quality_score' => $newQualityScore,
             'missing_fields' => $missingFields

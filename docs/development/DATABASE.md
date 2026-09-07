@@ -100,9 +100,9 @@ For the full workflow, see
 | Column | Type | Description |
 |--------|------|-------------|
 | `id` | `int UNSIGNED` | PRIMARY KEY, AUTO_INCREMENT |
-| `ctime`, `mtime` | `timestamp` | Creation and modification times |
+| `ctime`, `mtime` | `datetime` | Creation and modification times; `mtime` is `NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP` (the `ON UPDATE` clause is deliberate — see verification system) |
 | `vericode` | `varchar(32)` | Verification code |
-| `last_verified` | `timestamp` | Last verification date |
+| `last_verified` | `datetime NULL` | Last verification date |
 | `model` | `varchar(30)` | Car model (Elan) |
 | `series` | `varchar(12)` | Car series (S1, S2, S3, S4, +2, Sprint) |
 | `variant` | `varchar(15)` | Car variant |
@@ -116,18 +116,24 @@ For the full workflow, see
 | `comments` | `mediumtext` | Additional notes and history |
 | `image` | `mediumtext` | Legacy image field (deprecated) |
 | `user_id` | `int` | Primary owner user ID |
-| `email`, `fname`, `lname` | `varchar(155)` | Owner contact info (synced) |
-| `join_date` | `datetime` | Owner join date (synced) |
+| `email`, `fname`, `lname` | `varchar(155)` | Owner contact info (synced as of v2.30.1) |
+| `join_date` | `datetime` | Owner join date (set at car creation only — never synced) |
 | `city`, `state`, `country` | `varchar(100)` | Owner location (synced, INDEXED) |
 | `lat`, `lon` | `float` | Geographic coordinates (synced) |
-| `website` | `varchar(100)` | Owner website (synced) |
-| `owner_last_updated` | `datetime NULL` | Timestamp of owner's last action on this car (used for verification system) |
+| `website` | `varchar(100)` | Owner website (synced as of v2.30.1) |
+| `owner_last_updated` | `datetime NOT NULL DEFAULT CURRENT_TIMESTAMP` | Timestamp of owner's last action on this car (used for verification system); **has no `ON UPDATE` clause** — this absence is deliberate to prevent any write from resetting the verification clock |
 | `vericode_sent_at` | `datetime NULL` | Timestamp when verification code was sent to owner |
 | `email_bounced` | `TINYINT(1) NOT NULL DEFAULT 0` | Flag indicating whether verification emails bounced. Set to `1` if email failed; `0` if deliverable or not yet tested. |
 
-**Note**: Owner-related fields (email, fname, lname, join_date, city, state,
-country, lat, lon, website) are denormalized for performance and are
-automatically synchronized from user profiles when user data changes.
+**Note**: Nine owner-related fields — `email`, `fname`, `lname`, `city`,
+`state`, `country`, `lat`, `lon`, `website` — are denormalized onto `cars`
+for performance and are kept current via `Owner::syncOwnerFieldsToCars()`,
+which runs whenever the owner edits their profile. Before v2.30.1, only the
+five location fields (`city`, `state`, `country`, `lat`, `lon`) synced this
+way; `email`, `fname`, `lname`, and `website` were written once at car
+creation (`website` was not even set then — it started `null`) and never
+refreshed. `join_date` is **not** in this sync and is still set only at car
+creation.
 
 #### `cars_hist` - Car audit trail
 | Column | Type | Description |
@@ -135,8 +141,8 @@ automatically synchronized from user profiles when user data changes.
 | `id` | `int` | PRIMARY KEY |
 | `operation` | `varchar(32)` | Operation type (INSERT/UPDATE/DELETE) |
 | `car_id` | `int UNSIGNED` | Original car ID |
-| `timestamp` | `timestamp` | Change timestamp |
-| *(All car columns)* | | Mirror of `cars` table structure including `chassis_override`, `owner_last_updated`, `vericode_sent_at`, and `email_bounced`. `year` is `SMALLINT UNSIGNED NULL` to match cars. |
+| `timestamp` | `datetime NOT NULL DEFAULT CURRENT_TIMESTAMP` | Change timestamp (INDEXED as `idx_cars_hist_timestamp`) |
+| *(All car columns)* | | Mirror of `cars` table structure including `chassis_override`, `owner_last_updated`, `vericode_sent_at`, and `email_bounced`. `year` is `SMALLINT UNSIGNED NULL` to match cars. `ctime` and `mtime` are `datetime NULL`. The nullability asymmetry against `cars.mtime` (`NOT NULL`) is deliberate: history rows preserve whatever the source row held, while `cars.mtime` is live data with `ON UPDATE CURRENT_TIMESTAMP`. |
 
 > #### Removed: `car_user` and `car_user_hist`
 >

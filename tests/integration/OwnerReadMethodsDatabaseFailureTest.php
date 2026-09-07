@@ -112,12 +112,13 @@ final class OwnerReadMethodsDatabaseFailureTest extends TestCase
     }
 
     /**
-     * syncLocationToCars()'s new behavior per the resolved PR-B design
-     * decision: it must not catch getCarsOwned()'s exception — a DB failure
-     * should surface as a real exception, not silently collapse into
-     * "0 cars synced" (which looks identical to a legitimate no-op).
+     * syncOwnerFieldsToCars()'s behavior per the resolved PR-B design
+     * decision (carried over from the renamed syncLocationToCars()): it must
+     * not catch getCarsOwned()'s exception — a DB failure should surface as a
+     * real exception, not silently collapse into "0 cars synced" (which looks
+     * identical to a legitimate no-op).
      */
-    public function testSyncLocationToCarsPropagatesGetCarsOwnedException(): void
+    public function testSyncOwnerFieldsToCarsPropagatesGetCarsOwnedException(): void
     {
         $db = $this->failingDbStub('mock cars query failure during sync');
         $owner = new Owner(null, $db);
@@ -126,15 +127,19 @@ final class OwnerReadMethodsDatabaseFailureTest extends TestCase
         $dataProp = $ref->getProperty('_data');
         $dataProp->setValue($owner, (object) [
             'id'      => 7,
+            'fname'   => 'Test',
+            'lname'   => 'Owner',
+            'email'   => 'test@example.com',
             'city'    => 'Portland',
             'state'   => 'OR',
             'country' => 'USA',
             'lat'     => '45.5',
             'lon'     => '-122.6',
+            'website' => '',
         ]);
 
         $this->expectException(OwnerDatabaseException::class);
 
-        $owner->syncLocationToCars();
+        $owner->syncOwnerFieldsToCars();
     }
 }

@@ -14,6 +14,7 @@ use ElanRegistry\Exceptions\ImageProcessingException;
 use ElanRegistry\Input;
 use ElanRegistry\LogCategories;
 use ElanRegistry\Owner;
+use ElanRegistry\OwnerContactRefresher;
 use ElanRegistry\Resize;
 use ElanRegistry\UploadPathGuard;
 
@@ -351,6 +352,46 @@ function buildCarDetails(array &$cardetails, array &$errors, ?int $carId = null)
             foreach ($carData as $key => $value) {
                 $cardetails[$key] = $value;
             }
+
+            // Refresh the car's owner-contact columns from the owner's current
+            // profile so edits to a stale car row don't perpetuate outdated
+            // contact data. Must be constructed from the CAR's owner
+            // (user_id, just loaded above from the DB row), never the
+            // logged-in $user — an admin or editor may be editing someone
+            // else's car, and using the session user would overwrite the
+            // member's contact details with staff's own.
+            //
+            // Security invariant: no client input may reach $cardetails['user_id']
+            // at any point before this line. That holds today because $cardetails
+            // is initialized empty above (see the top of this function), the
+            // caller never pre-populates it, and all Input::raw() consumers
+            // (updateYear/updateModel/updateChassis/updateColor/updateEngine/
+            // updatePurchasedate/updateSolddate/updateComments) run
+            // AFTER this refresh, at the end of buildCarDetails(). Moving this
+            // Owner construction below those input-processing calls, or having
+            // the caller pre-populate $cardetails before calling buildCarDetails(),
+            // would let a client-supplied user_id substitute another owner's
+            // contact details onto this car — do not reorder.
+            //
+            // The merge itself lives in OwnerContactRefresher so it is reachable
+            // from a test; this file cannot be require()'d (every path exits).
+            $carOwner = new Owner((int) $cardetails['user_id']);
+            $refresher = new OwnerContactRefresher();
+            if ($refresher->hasLoadableOwner($carOwner)) {
+                if (!$refresher->hasValidWebsite($carOwner)) {
+                    logger($user->data()->id, LogCategories::LOG_CATEGORY_OWNER_ERRORS,
+                        'buildCarDetails: Car ID ' . $carId . ' owner ' . (int) $cardetails['user_id']
+                        . ' has an invalid profile website; skipping website refresh on this car');
+                }
+                $cardetails = $refresher->refresh($cardetails, $carOwner);
+            } else {
+                $ownerId = $cardetails['user_id'] !== null ? (int) $cardetails['user_id'] : null;
+                $ownerDescription = $ownerId === null
+                    ? 'has no owner (user_id is null)'
+                    : 'owner ' . $ownerId . ' could not be loaded';
+                logger($user->data()->id, LogCategories::LOG_CATEGORY_OWNER_ERRORS,
+                    'buildCarDetails: Car ID ' . $carId . ' ' . $ownerDescription . '; skipping owner-contact refresh');
+            }
         } else {
             logger($user->data()->id, LogCategories::LOG_CATEGORY_CAR_ACTIONS,
                 'buildCarDetails: Car ID ' . $carId . ' not found or failed to load for user_id=' . $user->data()->id);
@@ -361,17 +402,22 @@ function buildCarDetails(array &$cardetails, array &$errors, ?int $carId = null)
         $owner = new Owner($ownerId);
         $ownerData = $owner->data();
 
-        /*  Add the User/profile information to the record */
+        /*  Add the User/profile information to the record. Routed through
+            OwnerContactRefresher — the same class the edit branch uses — so
+            an invalid profile website is skipped here too, rather than
+            reaching Car::create() and throwing CarValidationException for a
+            field this page no longer has an input for. user_id and
+            join_date are outside ownerContactFields()'s scope and are
+            assigned explicitly. */
+        $refresher = new OwnerContactRefresher();
+        if (!$refresher->hasValidWebsite($owner)) {
+            logger($ownerId, LogCategories::LOG_CATEGORY_OWNER_ERRORS,
+                'buildCarDetails: new car for owner ' . $ownerId
+                . ' has an invalid profile website; skipping website on this car');
+        }
+        $cardetails = $refresher->refresh($cardetails, $owner);
         $cardetails['user_id']      = $ownerData->id;
-        $cardetails['email']        = $ownerData->email;
-        $cardetails['fname']        = $ownerData->fname;
-        $cardetails['lname']        = $ownerData->lname;
         $cardetails['join_date']    = $ownerData->join_date;
-        $cardetails['city']         = $ownerData->city;
-        $cardetails['state']        = $ownerData->state;
-        $cardetails['country']      = $ownerData->country;
-        $cardetails['lat']          = $ownerData->lat;
-        $cardetails['lon']          = $ownerData->lon;
 
         $cardetails['id']           = null;
         $cardetails['year']         = null;
@@ -384,7 +430,6 @@ function buildCarDetails(array &$cardetails, array &$errors, ?int $carId = null)
         $cardetails['engine']       = null;
         $cardetails['purchasedate'] = null;
         $cardetails['solddate']     = null;
-        $cardetails['website']      = null;
         $cardetails['comments']     = null;
     }
     updateYear($cardetails, $errors);
@@ -394,7 +439,6 @@ function buildCarDetails(array &$cardetails, array &$errors, ?int $carId = null)
     updateEngine($cardetails);
     updatePurchasedate($cardetails, $errors);
     updateSolddate($cardetails, $errors);
-    updateWebsite($cardetails, $errors);
     updateComments($cardetails);
 }
 
@@ -564,32 +608,6 @@ function updateSolddate(array &$cardetails, array &$errors): void
         $cardetails['solddate'] = $raw;
     } else {
         $cardetails['solddate'] = null;
-    }
-}
-
-/**
- * Update car website URL from form input
- *
- * @param array $cardetails Car details array to update
- * @param array $errors     Errors array passed by reference
- * @return void
- */
-function updateWebsite(array &$cardetails, array &$errors): void
-{
-    $website = Input::raw('website');
-    if ($website !== null && $website !== '') {
-        if (!filter_var($website, FILTER_VALIDATE_URL)) {
-            $errors[] = 'Website URL must start with http:// or https:// (e.g. https://example.com)';
-            return;
-        }
-        $scheme = strtolower((string) parse_url($website, PHP_URL_SCHEME));
-        if (!in_array($scheme, ['http', 'https'], true)) {
-            $errors[] = 'Website URL must start with http:// or https://';
-            return;
-        }
-        $cardetails['website'] = $website;
-    } else {
-        $cardetails['website'] = null;
     }
 }
 

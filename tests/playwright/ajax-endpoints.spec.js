@@ -151,25 +151,19 @@ test.describe('Registry-Specific AJAX Endpoints', () => {
     // Navigate to car listing page to establish session
     await page.goto('app/owner/cars/index.php', { waitUntil: 'networkidle' });
 
-    // app/api/cars/list.php requires a valid CSRF token on every POST
-    // (see Token::check() at list.php:40-42) — production's own JS
-    // consumer (car-list.js) always sends one. Fetch a real token the same
-    // way the rest of this file's non-hardcoded-CSRF tests do.
-    const csrf = await getCsrfFromSettingsPage(page);
-    test.skip(!csrf, 'Could not obtain CSRF token from user_settings.php');
-
+    // app/api/cars/list.php is public and read-only (per ADR-019); it carries
+    // no CSRF gate — abuse is bounded by the `cars_list` rate limit instead.
+    // No token is fetched or sent here.
     const response = await page.request.post('app/api/cars/list.php', {
       form: {
         draw: '1',
         start: '0',
-        length: '10',
-        csrf
+        length: '10'
       }
     });
 
-    // The beforeEach hook already established an authenticated session,
-    // and a real CSRF token is now included, so this DataTables endpoint
-    // should always return 200.
+    // The beforeEach hook already established an authenticated session, and
+    // this endpoint requires no CSRF token, so it should always return 200.
     expect(response.status()).toBe(200);
 
     try {
@@ -187,6 +181,7 @@ test.describe('Registry-Specific AJAX Endpoints', () => {
       throw new Error(`list.php returned non-JSON (status ${response.status()}): ${parseError.message}`);
     }
   });
+
 
   test('owner contact endpoint requires authentication', async ({ page }) => {
     // Test the owner-to-owner contact system
@@ -237,10 +232,13 @@ test.describe('Registry-Specific AJAX Endpoints', () => {
   });
 
   test('car history endpoint returns DataTables JSON structure', async ({ page }) => {
-    // Test the car history AJAX endpoint
+    // app/api/cars/history.php is public and read-only (per ADR-019); it
+    // carries no CSRF gate — abuse is bounded by the `car_history` rate limit
+    // instead. A deliberately bogus token is included here purely to prove
+    // it is ignored, not required.
     const response = await page.request.post('app/api/cars/history.php', {
-      data: {
-        car_id: '1',
+      form: {
+        car_id: String(CAR_ID_STANDARD),
         draw: '1',
         start: '0',
         length: '10',
@@ -248,22 +246,18 @@ test.describe('Registry-Specific AJAX Endpoints', () => {
       }
     });
 
-    // CSRF failure should return error response
-    expect(response.status()).not.toBe(500);
+    // No CSRF gate exists on this endpoint, so a bogus token must not cause
+    // a rejection — this should always return 200.
+    expect(response.status()).toBe(200);
 
     try {
       const jsonResponse = await response.json();
-      expect(jsonResponse).toHaveProperty('success');
-      expect(jsonResponse).toHaveProperty('message');
-
-      // If successful, should have DataTables structure
-      if (jsonResponse.success) {
-        expect(jsonResponse).toHaveProperty('draw');
-        expect(jsonResponse).toHaveProperty('recordsTotal');
-        expect(jsonResponse).toHaveProperty('recordsFiltered');
-        expect(jsonResponse).toHaveProperty('history');
-        expect(Array.isArray(jsonResponse.history)).toBe(true);
-      }
+      expect(jsonResponse).toHaveProperty('success', true);
+      expect(jsonResponse).toHaveProperty('draw');
+      expect(jsonResponse).toHaveProperty('recordsTotal');
+      expect(jsonResponse).toHaveProperty('recordsFiltered');
+      expect(jsonResponse).toHaveProperty('history');
+      expect(Array.isArray(jsonResponse.history)).toBe(true);
     } catch (parseError) {
       throw new Error(`car history endpoint returned non-JSON (status ${response.status()}): ${parseError.message}`);
     }
@@ -611,5 +605,191 @@ test.describe('Registry-Specific AJAX Endpoints', () => {
     const validationJson = await validationResponse.json();
     expect(validationJson).toHaveProperty('success', false);
     expect(validationJson.message).toContain('Invalid coordinates');
+  });
+});
+
+test.describe('Issue #1913 — car list survives session loss (no auth, no CSRF plumbing)', () => {
+  // Deliberately outside the authenticated describe above and its
+  // beforeEach — this reproduces the actual production failure mode: a
+  // visitor whose session has been lost (idle GC, browser restart) loading
+  // /app/owner/cars/index.php. Before this fix, car-list.js sent a
+  // page-embedded CSRF token that list.php validated with Token::check();
+  // a lost/absent session made that check fail, the DataTable's ajax.error
+  // handler fired, and the table rendered no rows behind a
+  // "Could not load the car list" .alert-danger banner. list.php now
+  // carries no CSRF gate at all (ADR-019), so this must render successfully
+  // regardless of session state.
+  //
+  // This test must FAIL against main (pre-#1913) and PASS on this branch.
+
+  test('car list renders rows with no session cookie and no error banner', async ({ page }) => {
+    // Clear cookies explicitly rather than relying on a fresh context having
+    // none — makes the "no session" precondition an assertion of intent, not
+    // an accident of test ordering.
+    await page.context().clearCookies();
+
+    await page.goto('app/owner/cars/index.php', { waitUntil: 'networkidle' });
+
+    // list.php is public (no securePage()/isLoggedIn() gate — see ADR-019),
+    // so an anonymous, cookie-less request must still reach the page itself,
+    // not a login redirect.
+    expect(page.url()).not.toContain('login');
+
+    const searchBox = await waitForDataTables(page, 15000);
+    void searchBox;
+
+    // The DataTable's ajax.error handler (car-list.js) prepends this banner
+    // into the wrapper on any failed draw — a lost/absent session must not
+    // trigger it.
+    const errorBanner = page.locator('.dataTables_wrapper .alert-danger, .dt-container .alert-danger');
+    await expect(errorBanner).toHaveCount(0);
+
+    // Rows must actually render — an empty-but-error-free table would also
+    // pass a bare "no banner" check without proving the fix.
+    const rows = page.locator('#cartable tbody tr');
+    await expect(rows.first()).toBeVisible({ timeout: 15000 });
+    expect(await rows.count()).toBeGreaterThan(0);
+  });
+});
+
+test.describe('Issue #1913 — public read-only DataTables endpoints survive a lost/absent CSRF token', () => {
+  // These four endpoints (list.php, factory-list.php, history.php,
+  // statistics.php) are public and read-only per ADR-019: no state change,
+  // no login gate, no non-public data. They must succeed whether a CSRF
+  // field is entirely absent (models a lost session — the actual
+  // production failure mode observed in #1913) or present but
+  // garbage/expired (models a stale page-embedded token). Abuse is bounded
+  // by rate limiting instead, not asserted here.
+
+  // Deliberately OUTSIDE the authenticated describe above. Nested inside it,
+  // these ran only after ensureLoggedIn() — the one session state in which
+  // the reported bug never occurred — and skipped entirely without
+  // TEST_USERNAME/TEST_PASSWORD. Clearing cookies models the real failure:
+  // a visitor whose session is gone.
+  test.beforeEach(async ({ page }) => {
+    await page.context().clearCookies();
+  });
+
+  test('list.php with no csrf field at all returns 200 with populated data', async ({ page }) => {
+    const response = await page.request.post('app/api/cars/list.php', {
+      form: {
+        draw: '1',
+        start: '0',
+        length: '10'
+      }
+    });
+
+    expect(response.status()).toBe(200);
+    const jsonResponse = await response.json();
+    expect(jsonResponse).toHaveProperty('data');
+    expect(Array.isArray(jsonResponse.data)).toBe(true);
+    expect(jsonResponse.data.length).toBeGreaterThan(0);
+  });
+
+  test('list.php with a garbage/expired csrf token returns 200', async ({ page }) => {
+    const response = await page.request.post('app/api/cars/list.php', {
+      form: {
+        draw: '1',
+        start: '0',
+        length: '10',
+        csrf: 'this-is-not-a-valid-token'
+      }
+    });
+
+    expect(response.status()).toBe(200);
+    const jsonResponse = await response.json();
+    expect(jsonResponse).toHaveProperty('data');
+    expect(Array.isArray(jsonResponse.data)).toBe(true);
+  });
+
+  test('factory-list.php with no csrf field at all returns 200 with populated data', async ({ page }) => {
+    const response = await page.request.post('app/api/cars/factory-list.php', {
+      form: {
+        draw: '1',
+        start: '0',
+        length: '10'
+      }
+    });
+
+    expect(response.status()).toBe(200);
+    const jsonResponse = await response.json();
+    expect(jsonResponse).toHaveProperty('data');
+    expect(Array.isArray(jsonResponse.data)).toBe(true);
+    expect(jsonResponse.data.length).toBeGreaterThan(0);
+  });
+
+  test('factory-list.php with a garbage/expired csrf token returns 200', async ({ page }) => {
+    const response = await page.request.post('app/api/cars/factory-list.php', {
+      form: {
+        draw: '1',
+        start: '0',
+        length: '10',
+        csrf: 'this-is-not-a-valid-token'
+      }
+    });
+
+    expect(response.status()).toBe(200);
+    const jsonResponse = await response.json();
+    expect(jsonResponse).toHaveProperty('data');
+    expect(Array.isArray(jsonResponse.data)).toBe(true);
+  });
+
+  test('history.php with no csrf field at all returns 200', async ({ page }) => {
+    const response = await page.request.post('app/api/cars/history.php', {
+      form: {
+        car_id: String(CAR_ID_STANDARD),
+        draw: '1',
+        start: '0',
+        length: '10'
+      }
+    });
+
+    expect(response.status()).toBe(200);
+    const jsonResponse = await response.json();
+    expect(jsonResponse).toHaveProperty('success', true);
+    expect(jsonResponse).toHaveProperty('history');
+    expect(Array.isArray(jsonResponse.history)).toBe(true);
+  });
+
+  test('history.php with a garbage/expired csrf token returns 200', async ({ page }) => {
+    const response = await page.request.post('app/api/cars/history.php', {
+      form: {
+        car_id: String(CAR_ID_STANDARD),
+        draw: '1',
+        start: '0',
+        length: '10',
+        csrf: 'this-is-not-a-valid-token'
+      }
+    });
+
+    expect(response.status()).toBe(200);
+    const jsonResponse = await response.json();
+    expect(jsonResponse).toHaveProperty('success', true);
+  });
+
+  test('statistics.php with no csrf field at all returns 200', async ({ page }) => {
+    const response = await page.request.post('app/api/shared/statistics.php', {
+      form: {
+        tab: 'production'
+      }
+    });
+
+    expect(response.status()).toBe(200);
+    const jsonResponse = await response.json();
+    expect(jsonResponse).toHaveProperty('success', true);
+    expect(jsonResponse).toHaveProperty('data');
+  });
+
+  test('statistics.php with a garbage/expired csrf token returns 200', async ({ page }) => {
+    const response = await page.request.post('app/api/shared/statistics.php', {
+      form: {
+        tab: 'production',
+        csrf: 'this-is-not-a-valid-token'
+      }
+    });
+
+    expect(response.status()).toBe(200);
+    const jsonResponse = await response.json();
+    expect(jsonResponse).toHaveProperty('success', true);
   });
 });

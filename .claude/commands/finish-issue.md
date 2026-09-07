@@ -306,30 +306,35 @@ this convention), add the entry now instead — don't skip it.
 ls docs/plans/issue-$ARGUMENTS-*.md 2>/dev/null
 ```
 
-If found, stage its removal — its job (a verifiable, resumable record other
+If found, delete it — its job (a verifiable, resumable record other
 agents/sessions could check against) is done once the code is merged and the
 issue is closed; the merged diff and closed issue are now the source of
-truth, same lifecycle as sprint plans in the sibling `Plans/` repo. If no
-matching file exists, skip silently — not every issue goes through the
-plan-file workflow (e.g. trivial fixes done ad hoc).
+truth, same lifecycle as sprint plans. If no matching file exists, skip
+silently — not every issue goes through the plan-file workflow (e.g. trivial
+fixes done ad hoc).
 
-Commit whichever of the two changed (release notes, plan-file removal, or
-both) in one commit:
+`docs/plans/` is gitignored, so this is a plain delete with no git operation
+and nothing to mention in the PR:
+
+```bash
+rm -f docs/plans/issue-$ARGUMENTS-*.md
+```
+
+Commit the release notes update:
 
 ```bash
 git add docs/releases/
-git rm -f docs/plans/issue-$ARGUMENTS-*.md 2>/dev/null
 git commit -m "docs: mark issue #$ARGUMENTS as resolved in release notes"
 git push origin <milestone-branch>
 ```
 
 ### Step 8.5: Mark the issue complete in the sprint plan
 
-Look for a sprint plan matching this milestone in the sibling `Plans/` repo
-(see `Web/ElanRegistry/CLAUDE.md`):
+Look for a sprint plan matching this milestone under `docs/plans/sprints/`
+(gitignored local working documents — see `CLAUDE.md`, Planning Work):
 
 ```bash
-ls ../Plans/sprints/<version>.md
+ls docs/plans/sprints/<version>.md
 ```
 
 (where `<version>` is the same one used in Step 8, e.g. `v2.29.3`.)
@@ -341,16 +346,15 @@ ls ../Plans/sprints/<version>.md
 - **If present and not already marked complete:** prefix the issue's number
   with a checkmark, e.g. `#1591` → `✅#1591`. Preserve the rest of the line
   (arrows, other issue numbers, formatting) exactly. Write the change to
-  `../Plans/sprints/<version>.md`.
+  `docs/plans/sprints/<version>.md`.
 - **If present and already marked complete:** skip, nothing to do.
 - **If issue `#$ARGUMENTS` does not appear in the sequence line at all**
   (e.g. an unplanned bugfix not part of the tracked sprint): make no edit to
   the file. Note in the Step 9 summary that this issue wasn't part of the
   tracked sequence.
 
-This edit is made directly in the `Plans/` repo's working tree — a separate
-git repository from this one. Do not commit it; leave it for the user to
-review and commit there per that repo's own workflow (same convention as the
+`docs/plans/` is gitignored, so this edit is a plain local file write —
+there is nothing to stage or commit (same convention as the
 `/start-milestone` sprint-plan update).
 
 ### Step 9: Report results
@@ -433,6 +437,6 @@ Use AskUserQuestion rather than a plain-text menu:
 - This command closes the issue directly. The `Closes #NNN` keyword in the
   milestone PR body (created by `/finish-milestone`) serves as a backup for
   any issues that weren't closed here.
-- `Plans/` is a separate private repo, sibling to this one (see
-  `Web/ElanRegistry/CLAUDE.md`). Sprint plan files are deleted once a
+- `docs/plans/` is gitignored local scratch space, never committed (see
+  `CLAUDE.md`, Planning Work). Sprint plan files are deleted once a
   milestone is released — a missing file is normal, not an error.

@@ -37,18 +37,15 @@ if (!Input::existsPost()) {
         ->send();
 }
 
-$token = Input::get('csrf');
-if (!Token::check($token)) {
-    ApiResponse::forbidden('Invalid CSRF token')
-        ->withDataArray([
-            'draw' => 0,
-            'recordsTotal' => 0,
-            'recordsFiltered' => 0,
-            'data' => [],
-        ])
-        ->withLogging($user->data()->id ?? 0, LogCategories::LOG_CATEGORY_SECURITY, 'CSRF token validation failed in cars list endpoint')
+$userId = $user->isLoggedIn() ? (int) $user->data()->id : 0;
+
+$rateUserId = $userId ?: null; // null is the framework's "no user" sentinel; 0 is not a valid user ID
+if (!checkRateLimit('cars_list', $rateUserId)) {
+    ApiResponse::error('Too many requests. Please slow down.', 429)
+        ->withLogging($userId, LogCategories::LOG_CATEGORY_SECURITY, 'Rate limit exceeded for cars list endpoint')
         ->send();
 }
+recordRateLimit('cars_list', true, $rateUserId);
 
 $emptyDraw = [
     'draw'            => (int) Input::get('draw'),

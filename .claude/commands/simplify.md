@@ -1,6 +1,6 @@
 ---
 description: Simplify recently modified code for clarity without changing behavior
-model: claude-haiku-4-5-20251001
+model: claude-haiku-4-5
 ---
 
 # Simplify

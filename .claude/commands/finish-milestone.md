@@ -1,6 +1,6 @@
 ---
 description: Create a PR to merge a completed milestone branch into main, finalize docs and release notes
-model: claude-sonnet-5
+model: claude-fable-5-1
 ---
 
 # Finish Milestone
@@ -112,11 +112,14 @@ Each issue's `/finish-issue` run deletes its `docs/plans/issue-NNN-*.md` file
 as part of closing out that issue (see `/finish-issue`'s Step 8). A file
 still present here means that step was skipped — most likely an issue whose
 PR was merged some other way (bypassing `/finish-issue`), or an interrupted
-run from an older command version. Either way it's dead weight riding into
-the main-targeting PR with no other check positioned to catch it.
+run from an older command version.
+
+`docs/plans/` is gitignored, so these files never reach the PR — but they do
+accumulate silently on disk, and nothing else is positioned to catch them.
+List them directly:
 
 ```bash
-git diff --name-only main...HEAD -- docs/plans/
+ls docs/plans/issue-*.md 2>/dev/null
 ```
 
 **If any files are found:** present them to the user and ask whether to

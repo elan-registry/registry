@@ -7,20 +7,25 @@ use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\TestCase;
 
 /**
- * Regression test for Issue #1055: updateWebsite() skips FILTER_VALIDATE_URL
+ * Regression test for Issue #1055: website validation skips FILTER_VALIDATE_URL
  *
- * updateWebsite() in app/api/cars/save.php previously only checked the URL
- * scheme, allowing malformed URLs such as "https://" (valid scheme, empty host)
- * to be stored verbatim. A FILTER_VALIDATE_URL guard was added before the
- * scheme check to match the validation level already present in
- * Owner::validateAndSanitizeFields().
+ * The per-car website form field and its handler (formerly updateWebsite() in
+ * app/api/cars/save.php, removed by #1963 — website is now owner-level only)
+ * previously only checked the URL scheme, allowing malformed URLs such as
+ * "https://" (valid scheme, empty host) to be stored verbatim. A
+ * FILTER_VALIDATE_URL guard was added before the scheme check to match the
+ * validation level already present in Owner::validateAndSanitizeFields().
  *
- * These tests verify the validation contract: the same URLs that
- * Owner already rejected must now also be rejected by
- * updateWebsite(). Since updateWebsite() is a procedural function inside a
- * script that requires the full framework, we test the shared PHP validation
- * primitive (filter_var FILTER_VALIDATE_URL) and the scheme-whitelist rule
- * directly. CarValidatorTest covers the identical rules through
+ * These tests pin that validation contract at the primitive level so it
+ * survives independently of which class enforces it. Today that is
+ * Owner::validateAndSanitizeFields() (account settings) and
+ * CarValidator::validateAndSanitizeFields() (car writes, including the
+ * owner-contact refresh — see OwnerContactRefresher::isValidWebsite(), which
+ * uses the identical two guards to decide whether a profile website is safe
+ * to merge onto a car). We test the shared PHP validation primitive
+ * (filter_var FILTER_VALIDATE_URL) and the scheme-whitelist rule directly
+ * rather than any one class, since all three enforce the same rule.
+ * CarValidatorTest covers the identical rules through
  * CarValidator::validateAndSanitizeFields().
  *
  * @issue 1055
@@ -53,7 +58,7 @@ final class Issue1055RegressionTest extends TestCase
     {
         $this->assertFalse(
             (bool) filter_var($url, FILTER_VALIDATE_URL),
-            "Expected FILTER_VALIDATE_URL to reject '{$url}' — updateWebsite() now uses this guard"
+            "Expected FILTER_VALIDATE_URL to reject '{$url}' — website validators rely on this guard"
         );
     }
 
@@ -85,7 +90,7 @@ final class Issue1055RegressionTest extends TestCase
 
     // ----------------------------------------------------------------
     // Scheme whitelist — valid URL but non-http(s) scheme must be
-    // blocked by the second guard in updateWebsite()
+    // blocked by the second guard shared across the website validators
     // ----------------------------------------------------------------
 
     /**

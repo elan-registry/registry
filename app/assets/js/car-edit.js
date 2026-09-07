@@ -2,15 +2,6 @@
 (function() {
     'use strict';
 
-    var el = document.getElementById('website');
-    if (el) {
-        var validateWebsite = function() {
-            el.classList.toggle('is-invalid', el.value !== '' && !el.validity.valid);
-        };
-        el.addEventListener('input', validateWebsite);
-        el.addEventListener('blur', validateWebsite);
-    }
-
     var cfg = window.editCarConfig;
 
     $(document).ready(function() {
@@ -236,7 +227,6 @@
             formData.append('engine', $('#engine').val());
             formData.append('purchasedate', $('#purchasedate').val());
             formData.append('solddate', $('#solddate').val());
-            formData.append('website', $('#website').val());
             formData.append('comments', $('#comments').val());
 
             // Build ordered filenames and append new files in pond order
@@ -332,7 +322,6 @@
                 if (data.cardetails.color) $('#color').val(data.cardetails.color);
                 if (data.cardetails.engine) $('#engine').val(data.cardetails.engine);
                 if (data.cardetails.comments) $('#comments').val(data.cardetails.comments);
-                if (data.cardetails.website) $('#website').val(data.cardetails.website);
                 if (data.cardetails.purchasedate) $('#purchasedate').val(data.cardetails.purchasedate);
                 if (data.cardetails.solddate) {
                     solddateInput.value = data.cardetails.solddate;
@@ -356,7 +345,7 @@
             }, 500);
 
             // Show all fields
-            $('#color, #engine, #purchasedate, #solddate, #website, #comments').prop('disabled', false);
+            $('#color, #engine, #purchasedate, #solddate, #comments').prop('disabled', false);
 
             // Set the form text for Update
             $('#submit').text('Update Car').attr('data-label', 'Update Car');

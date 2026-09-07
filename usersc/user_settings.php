@@ -26,6 +26,7 @@ require_once $abs_us_root . $us_url_root . 'usersc/includes/elanregistry_prep.ph
 
 <?php
 use ElanRegistry\AppConstants;
+use ElanRegistry\Exceptions\CarDatabaseException;
 use ElanRegistry\Exceptions\OwnerDatabaseException;
 use ElanRegistry\Input;
 use ElanRegistry\LogCategories;
@@ -95,6 +96,13 @@ if (!empty($_POST)) {
     if (!Token::check($token)) {
         include($abs_us_root . $us_url_root . 'usersc/scripts/token_error.php');
     } else {
+        // Set true by each block below that actually persisted one of the
+        // owner-contact fields denormalized onto cars (fname, lname, email,
+        // city, state, country, lat, lon, website). Only successful writes set
+        // it — syncing a value that failed validation and never reached
+        // users/profiles would push a stale value onto the cars.
+        $profileFieldsChanged = false;
+
         //Update display name
         //if (($settings->change_un == 0) || (($settings->change_un == 2) && ($user->data()->un_changed == 1)))
         if ($userdetails->username != $_POST['username'] && ($settings->change_un == 1 || (($settings->change_un == 2) && ($user->data()->un_changed == 0)))) {
@@ -142,6 +150,7 @@ if (!empty($_POST)) {
             ]);
             if ($validation->passed()) {
                 $db->update('users', $userId, $fields);
+                $profileFieldsChanged = true;
                 $successes[] = 'First name updated.';
                 logger((int)$user->data()->id, LogCategories::LOG_CATEGORY_USER, "Changed fname from $userdetails->fname to $fname.");
             } else {
@@ -167,6 +176,7 @@ if (!empty($_POST)) {
             ]);
             if ($validation->passed()) {
                 $db->update('users', $userId, $fields);
+                $profileFieldsChanged = true;
                 $successes[] = 'Last name updated.';
                 logger((int)$user->data()->id, LogCategories::LOG_CATEGORY_USER, "Changed lname from $userdetails->lname to $lname.");
             } else {
@@ -244,6 +254,7 @@ if (!empty($_POST)) {
 
                 // Update profile with all location data
                 $db->update('profiles', $profileId, $locationFields);
+                $profileFieldsChanged = true;
 
                 // Update local variables for car sync
                 $city = $locationFields['city'];
@@ -278,31 +289,9 @@ if (!empty($_POST)) {
             $geoResult = [];
         }
 
-        // Sync location to user's cars if coordinates are available
         if (!empty($geoResult) && isset($geoResult['lat']) && isset($geoResult['lon'])) {
             $successes[] = 'Lat/Lon updated.';
             logger((int)$user->data()->id, LogCategories::LOG_CATEGORY_USER, 'Successfully updated lat/lon: ' . json_encode($geoResult));
-
-            // getCarsOwned()/syncLocationToCars() throw OwnerDatabaseException on a DB
-            // failure (#1505 PR B) rather than silently returning []/0 — this page has no
-            // exception handling elsewhere, so a DB blip here must degrade gracefully
-            // rather than crash the whole settings page after the profile fields above
-            // already saved successfully. Matches the defensive-wrap precedent from
-            // PR A (#1816).
-            try {
-                $owner = new Owner($userId);
-                $carsUpdated = $owner->syncLocationToCars();
-                if ($carsUpdated > 0) {
-                    $successes[] = "Location synchronized to $carsUpdated car(s).";
-                } elseif (!empty($owner->getCarsOwned())) {
-                    // User has cars but 0 were updated — sync failed (individual errors logged in syncLocationToCars)
-                    $errors[] = 'Location saved, but car location sync encountered an error. Please contact support if this persists.';
-                }
-            } catch (OwnerDatabaseException $e) {
-                logger((int)$user->data()->id, LogCategories::LOG_CATEGORY_DATABASE_ERROR,
-                    "user_settings.php: car location sync failed for user {$userId}: " . $e->getMessage());
-                $errors[] = 'Location saved, but car location sync encountered an error. Please contact support if this persists.';
-            }
         }
 
         //Update Website
@@ -324,6 +313,7 @@ if (!empty($_POST)) {
                     logger((int)$user->data()->id, LogCategories::LOG_CATEGORY_SECURITY, "Non-http/https website scheme rejected for user {$userId}: scheme='{$websiteScheme}'");
                 } else {
                     $db->update('profiles', $profileId, $fields);
+                    $profileFieldsChanged = true;
                     $successes[] = 'Website updated.';
                     logger((int)$user->data()->id, LogCategories::LOG_CATEGORY_USER, "Changed website from {$profiledetails->website} to {$websiteUrl}.");
                 }
@@ -356,7 +346,13 @@ if (!empty($_POST)) {
                     if ($validation->passed()) {
                         if ($confemail == $email) {
                             if ($emailR->email_act == 0) {
+                                // users.email is written directly here, so the new
+                                // address must reach the cars. The email_act == 1
+                                // branch below only stages email_new — users.email is
+                                // unchanged until the user confirms via
+                                // users/verify.php, so it must NOT set the flag.
                                 $db->update('users', $userId, $fields);
+                                $profileFieldsChanged = true;
                                 $successes[] = 'Email updated.';
                                 logger((int)$user->data()->id, LogCategories::LOG_CATEGORY_USER, "Changed email from $userdetails->email to $email.");
                             }
@@ -461,8 +457,73 @@ if (!empty($_POST)) {
                 $errors[] = 'Current password verification failed. Update failed. Please try again.';
             }
         }
+
+        // Push the owner's contact fields onto their cars once, after every
+        // block above has had its chance to write. Gated on the combined
+        // changed-flag rather than on coordinates: a pure city/state text
+        // change, or a name/website/email change, must sync too (#1873).
+        //
+        // getCarsOwned()/syncOwnerFieldsToCars() throw OwnerDatabaseException on a DB
+        // failure (#1505 PR B) rather than silently returning []/0 — this page has no
+        // exception handling elsewhere, so a DB blip here must degrade gracefully
+        // rather than crash the whole settings page after the profile fields above
+        // already saved successfully. Matches the defensive-wrap precedent from
+        // PR A (#1816).
+        if ($profileFieldsChanged) {
+            try {
+                $owner = new Owner($userId);
+                $syncResult = $owner->syncOwnerFieldsToCars();
+                // Cars in $syncResult's skipped bucket (no longer owned by this user) are
+                // intentionally not reported here — there's nothing actionable for the
+                // owner, since the car isn't theirs anymore. isCompleteSuccess() already
+                // treats a skip-only outcome as success.
+                if ($syncResult->isCompleteSuccess()) {
+                    if ($syncResult->updatedCount() > 0) {
+                        $successes[] = "Owner details synchronized to {$syncResult->updatedCount()} car(s).";
+                    }
+                } else {
+                    // totalCount() includes skipped cars, so the denominator can
+                    // exceed updated + failed. Name the skips too, or the count
+                    // reads as unexplained missing cars (#1954).
+                    $syncError = sprintf(
+                        'Owner details saved, but synchronized to only %d of %d car(s). %s',
+                        $syncResult->updatedCount(),
+                        $syncResult->totalCount(),
+                        $syncResult->failedCarsPhrase()
+                    );
+                    if ($syncResult->skippedCount() > 0) {
+                        $syncError .= ' ' . $syncResult->skippedCarsPhrase();
+                    }
+                    $errors[] = $syncError . ' Please contact support if this persists.';
+                }
+            } catch (OwnerDatabaseException | CarDatabaseException $e) {
+                // CarDatabaseException is a sibling of OwnerDatabaseException, not a
+                // subclass — both must be named explicitly. syncOwnerFieldsToCars()
+                // propagates either on an infrastructure fault (deadlock, lock-wait
+                // timeout) rather than reporting it as a per-car failure, and this page
+                // has no other handler: without this, a routine deadlock would replace
+                // the settings page with a fatal error after the profile fields above
+                // already saved successfully.
+                logger((int)$user->data()->id, LogCategories::LOG_CATEGORY_DATABASE_ERROR,
+                    "user_settings.php: car owner-field sync failed for user {$userId}: " . $e->getMessage());
+                $errors[] = 'Owner details saved, but car synchronization encountered an error. Please contact support if this persists.';
+            } catch (\Throwable $e) {
+                // \Throwable, not Exception: PHP's Error hierarchy (TypeError et al.)
+                // does not extend Exception, and syncOwnerFieldsToCars() builds its
+                // field bundle from untyped $_data properties. The consequence here is
+                // worse than at the admin endpoint: an escaping Error would discard
+                // every queued usError()/usSuccess() message below and skip the PRG
+                // redirect, blanking the page AFTER the profile writes above already
+                // committed — so the owner sees a crash, retries, finds their new
+                // values displayed, and concludes it worked while the cars stay stale.
+                logger((int)$user->data()->id, LogCategories::LOG_CATEGORY_SYSTEM_ERROR,
+                    'user_settings.php: unexpected ' . get_class($e)
+                    . " during owner-field sync for user {$userId}: " . $e->getMessage());
+                $errors[] = 'Owner details saved, but car synchronization encountered an error. Please contact support if this persists.';
+            }
+        }
     }
-    
+
     // Convert error/success arrays to UserSpice session messages (Issue #237)
     if (!empty($errors)) {
         foreach ($errors as $error) {
@@ -549,6 +610,7 @@ if ($userQ2->count() > 0) {
                         <div class="mb-3">
                             <label for="website">Website</label>
                             <input class='form-control' type='text' id='website' name='website' value='<?= htmlspecialchars($profiledetails->website ?? '', ENT_QUOTES, 'UTF-8') ?>' />
+                            <div class="form-text">Shown to other members on the page for every car you own.</div>
                         </div>
                         <!-- END Extend user_setttings.php with some PROFILE information -->
 

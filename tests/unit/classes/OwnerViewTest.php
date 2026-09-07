@@ -326,6 +326,55 @@ final class OwnerViewTest extends TestCase
     }
 
     // ============================================================
+    // websiteUrl() TESTS
+    // ============================================================
+
+    public function testWebsiteUrl_ValidHttpsUrl_ReturnsUrl(): void
+    {
+        $this->assertSame('https://example.com', OwnerView::websiteUrl('https://example.com'));
+    }
+
+    public function testWebsiteUrl_ValidHttpUrl_ReturnsUrl(): void
+    {
+        $this->assertSame('http://example.com', OwnerView::websiteUrl('http://example.com'));
+    }
+
+    public function testWebsiteUrl_UppercaseScheme_ReturnsUrl(): void
+    {
+        $this->assertSame('HTTPS://example.com', OwnerView::websiteUrl('HTTPS://example.com'));
+    }
+
+    public function testWebsiteUrl_FtpScheme_ReturnsNull(): void
+    {
+        $this->assertNull(OwnerView::websiteUrl('ftp://example.com'));
+    }
+
+    public function testWebsiteUrl_JavascriptScheme_ReturnsNull(): void
+    {
+        $this->assertNull(OwnerView::websiteUrl('javascript:alert(1)'));
+    }
+
+    public function testWebsiteUrl_EmptyString_ReturnsNull(): void
+    {
+        $this->assertNull(OwnerView::websiteUrl(''));
+    }
+
+    public function testWebsiteUrl_Null_ReturnsNull(): void
+    {
+        $this->assertNull(OwnerView::websiteUrl(null));
+    }
+
+    public function testWebsiteUrl_NonStringValue_ReturnsNull(): void
+    {
+        $this->assertNull(OwnerView::websiteUrl(12345));
+    }
+
+    public function testWebsiteUrl_MalformedUrl_ReturnsNull(): void
+    {
+        $this->assertNull(OwnerView::websiteUrl('not-a-url'));
+    }
+
+    // ============================================================
     // displayMissingFields() TESTS
     // ============================================================
 

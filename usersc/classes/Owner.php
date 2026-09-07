@@ -5,6 +5,7 @@ namespace ElanRegistry;
 
 use ElanRegistry\Car\CarRepository;
 use ElanRegistry\DatabaseInterface;
+use ElanRegistry\Exceptions\CarDatabaseException;
 use ElanRegistry\Exceptions\OwnerCreationException;
 use ElanRegistry\Exceptions\OwnerDatabaseException;
 use ElanRegistry\Exceptions\OwnerSearchException;
@@ -585,60 +586,320 @@ class Owner
     }
 
     /**
-     * Sync owner location to all owned cars
+     * The single definition of the nine denormalized owner-contact columns.
      *
-     * @return int Number of cars updated
-     * @throws OwnerDatabaseException If getCarsOwned() fails to query — a DB
-     *         failure here must surface as a real exception, not silently
-     *         collapse into "0 cars synced" (#1505 PR B)
+     * fname, lname, email come from `users`; city, state, country, lat, lon,
+     * website come from `profiles` (both loaded via {@see Owner::find()}'s
+     * users+profiles LEFT JOIN). This is the canonical column list for any
+     * caller that copies the owner's contact data onto a car — currently
+     * {@see Owner::syncOwnerFieldsToCars()}, which adds its own `mtime` on
+     * top. Never returns `mtime` or `owner_last_updated`: neither is an
+     * owner-contact value, and `owner_last_updated` in particular must never
+     * be written by a mechanical refresh (see the comment in
+     * `syncOwnerFieldsToCars()` for why).
+     *
+     * If `$this->_data` is null (the owner failed to load, e.g. a
+     * freshly-constructed `Owner` for a deleted or invalid user ID), every
+     * value in the returned array is null — callers that write these values
+     * to a car must check for that themselves before treating the result as
+     * ready to persist.
+     *
+     * @return array<string, mixed> The nine owner-contact fields, keyed by
+     *         column name.
      */
-    public function syncLocationToCars(): int
+    public function ownerContactFields(): array
+    {
+        return [
+            'fname'   => $this->_data->fname ?? null,
+            'lname'   => $this->_data->lname ?? null,
+            'email'   => $this->_data->email ?? null,
+            'city'    => $this->_data->city ?? null,
+            'state'   => $this->_data->state ?? null,
+            'country' => $this->_data->country ?? null,
+            'lat'     => $this->_data->lat ?? null,
+            'lon'     => $this->_data->lon ?? null,
+            'website' => $this->_data->website ?? null,
+        ];
+    }
+
+    /**
+     * Sync the owner's contact fields to every car they own.
+     *
+     * Copies the nine denormalized owner-contact columns — fname, lname, email
+     * from `users` and city, state, country, lat, lon, website from `profiles` —
+     * onto each car in `getCarsOwned()`, plus an explicit `mtime`.
+     *
+     * Each car is written inside its own transaction, so one car's failure rolls
+     * back only that car and the loop continues. Per-car outcomes are collected
+     * into the returned result rather than thrown; only a failure to read the
+     * car list propagates as an exception.
+     *
+     * A car whose ownership changed between the initial car list snapshot and
+     * the write is reported as skipped, not failed — the previous owner's data
+     * was correctly not written, and this is expected behavior rather than an
+     * error.
+     *
+     * @return OwnerSyncResult Per-car outcome: the car IDs synchronized, those
+     *         skipped because ownership changed mid-sync (not a failure), and
+     *         those that were rolled back due to a real error
+     * @throws OwnerDatabaseException If this Owner failed to load (no user row
+     *         for this ID), since there is no owner data to sync onto any car;
+     *         if getCarsOwned() fails to query — a DB failure here must surface
+     *         as a real exception, not silently collapse into "0 cars synced"
+     *         (#1505 PR B); if an ownership lookup fails mid-loop, which is an
+     *         infrastructure failure rather than a per-car outcome; or if this
+     *         method is called while an outer transaction is already open,
+     *         which would make every per-car rollback a silent no-op
+     * @throws CarDatabaseException If a per-car UPDATE fails at the DB level —
+     *         propagated rather than recorded as a per-car failure, for the same
+     *         reason as above
+     */
+    public function syncOwnerFieldsToCars(): OwnerSyncResult
     {
         if (!$this->_data) {
-            return 0;
+            throw new OwnerDatabaseException(
+                'Owner::syncOwnerFieldsToCars() called on an Owner that failed to load '
+                . '(no user row for this ID) — cannot sync fields that were never read.'
+            );
         }
 
-        $carsUpdated = 0;
         $ownedCars = $this->getCarsOwned();
 
         if (empty($ownedCars)) {
-            return 0;
+            return new OwnerSyncResult();
         }
 
-        $locationFields = [
-            'city' => $this->_data->city,
-            'state' => $this->_data->state,
-            'country' => $this->_data->country,
-            'lat' => $this->_data->lat,
-            'lon' => $this->_data->lon,
-            'mtime' => date(AppConstants::DATETIME_FORMAT)
-        ];
+        if ($this->_db->inTransaction()) {
+            throw new OwnerDatabaseException(
+                'Owner::syncOwnerFieldsToCars() cannot run inside an outer transaction: '
+                . "CarRepository's nesting-aware helpers would make every per-car "
+                . 'rollback a silent no-op, committing car rows without their audit rows.'
+            );
+        }
 
+        // `cars.mtime` is `datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE
+        // CURRENT_TIMESTAMP`, so MySQL bumps it on any UPDATE that changes a value —
+        // dropping `mtime` from the bundle below would NOT stop that. What this method
+        // must never write is `owner_last_updated`: a profile sync is not the owner
+        // confirming their car's data, and that omission is the entire mechanism
+        // keeping a synced car eligible for verification. The verification design
+        // therefore excludes `mtime` from the freshness test, which reads
+        // `last_verified` and `owner_last_updated` only. If you are reading this
+        // because you noticed
+        // `mtime` moving on every sync: that is expected — do NOT "fix" it by adding
+        // `mtime` back into a staleness calculation.
+        $syncTime = date(AppConstants::DATETIME_FORMAT);
+        $ownerFields = $this->ownerContactFields();
+        $ownerFields['mtime'] = $syncTime;
+
+        // CarRepository::updateCarForOwner() writes this bundle via raw SQL with
+        // no validation, unlike Car::update()/Car::create() (the path
+        // OwnerContactRefresher::refresh() feeds). Writing an invalid website
+        // through here would not fail now, but would plant a value that blocks
+        // every future Car::update()/create() call for this owner's cars — an
+        // edit having nothing to do with the website field would still fail
+        // CarValidator on save. Drop the field rather than the whole sync;
+        // matches OwnerContactRefresher::refresh()'s "skip the field, not the
+        // car" behavior for the same input.
+        if (isset($ownerFields['website']) && !OwnerContactRefresher::isValidWebsite($ownerFields['website'])) {
+            unset($ownerFields['website']);
+        }
+
+        $ownerId = (int) $this->_data->id;
         $repo = new CarRepository($this->_db);
+        $updated = [];
+        $failed = [];
+        $skipped = [];
 
         foreach ($ownedCars as $car) {
-            if ($repo->updateCar((int) $car->id, $locationFields)) {
-                $carsUpdated++;
+            $carId = (int) $car->id;
 
-                // Add history record for location sync
-                $historyFields = $locationFields;
-                $historyFields['car_id'] = $car->id;
-                $historyFields['operation'] = 'LOCATION_SYNC';
-                $historyFields['comments'] = "Car location synchronized with owner profile update. City: {$this->_data->city}, State: {$this->_data->state}, Country: {$this->_data->country}";
-                $historyFields['ctime'] = $locationFields['mtime'];
-                if (!$repo->insertHistory($historyFields)) {
-                    logger((int) $this->_data->id, LogCategories::LOG_CATEGORY_OWNER_ACTIONS, "syncLocationToCars: failed to insert history record for car ID {$car->id}: " . $repo->errorString());
+            // WARNING: nothing between beginTransaction() and the matching
+            // commit()/rollback() may call logger(). logger() writes to the InnoDB
+            // `logs` table through the same global $db connection this transaction
+            // runs on, so its row is destroyed by the rollback — erasing the
+            // diagnostic exactly when something has gone wrong. Log only after the
+            // transaction has closed (as the handlers below do), and rely on the
+            // exception message as the durable record inside it.
+            $repo->beginTransaction();
+
+            try {
+                $rowsChanged = $repo->updateCarForOwner($carId, $ownerId, $ownerFields);
+
+                if ($rowsChanged === 0) {
+                    // 0 is ambiguous: PDO reports rows *changed*, not matched, so a
+                    // rewrite of identical values is indistinguishable from "no row
+                    // matched". Disambiguate with an ownership check.
+                    if (!$this->carBelongsToOwner($carId, $ownerId)) {
+                        // The car left this owner between the getCarsOwned() snapshot
+                        // and this write. Do not write the previous owner's data anywhere.
+                        $repo->rollback();
+                        $skipped[] = $carId;
+                        logger($ownerId, LogCategories::LOG_CATEGORY_OWNER_ACTIONS,
+                            "syncOwnerFieldsToCars: car ID {$carId} is no longer owned by user {$ownerId}; skipped");
+                        continue;
+                    }
+
+                    // The row matched and already held these values. Success, and no
+                    // application history row: a sync that changed nothing is not a
+                    // business event worth recording as OWNER_SYNC.
+                    //
+                    // This does NOT mean cars_hist gains nothing. The cars_update
+                    // trigger is AFTER UPDATE ... FOR EACH ROW, gated only by
+                    // @disable_triggers, and MySQL fires it for every row MATCHED —
+                    // not every row changed. A no-op UPDATE therefore still writes one
+                    // trigger row with operation='UPDATE' (verified against the live
+                    // trigger during #1873). Anything counting sync activity must
+                    // filter on operation='OWNER_SYNC' rather than counting all new
+                    // rows for the car.
+                    $repo->commit();
+                    $updated[] = $carId;
+                    continue;
                 }
-            } else {
-                logger((int) $this->_data->id, LogCategories::LOG_CATEGORY_OWNER_ACTIONS, "syncLocationToCars: DB update returned false for car ID {$car->id}: " . $repo->errorString());
+
+                // Populate the car's identity columns from the row already in hand.
+                // cars_hist declares model/series/variant/type/chassis NOT NULL with no
+                // default, so under STRICT_TRANS_TABLES omitting them fails the insert
+                // outright; matches CarAdministrationService's history-insert pattern.
+                $historyFields = $ownerFields;
+                $historyFields['car_id']       = $carId;
+                $historyFields['user_id']      = $ownerId;
+                $historyFields['operation']    = 'OWNER_SYNC';
+                $historyFields['comments']     = "Car owner contact details synchronized with owner profile update.";
+                $historyFields['ctime']        = $syncTime;
+                $historyFields['model']        = $car->model ?? '';
+                $historyFields['series']       = $car->series ?? '';
+                $historyFields['variant']      = $car->variant ?? '';
+                // `cars_hist.year` is smallint unsigned NULL: under STRICT_TRANS_TABLES
+                // '' is rejected ("Incorrect integer value") while NULL inserts cleanly,
+                // and `cars.year` is itself nullable.
+                $historyFields['year']         = $car->year ?? null;
+                $historyFields['type']         = $car->type ?? '';
+                $historyFields['chassis']      = $car->chassis ?? '';
+                $historyFields['color']        = $car->color ?? '';
+                $historyFields['engine']       = $car->engine ?? '';
+                $historyFields['purchasedate'] = $car->purchasedate ?? null;
+
+                if (!$repo->insertHistory($historyFields)) {
+                    // Roll back the UPDATE too — a car row must not move without its
+                    // audit entry.
+                    $errorString = $repo->errorString();
+                    $repo->rollback();
+                    $failed[] = $carId;
+                    logger($ownerId, LogCategories::LOG_CATEGORY_OWNER_ACTIONS,
+                        "syncOwnerFieldsToCars: failed to insert history record for car ID {$carId}, update rolled back: " . $errorString);
+                    continue;
+                }
+
+                $repo->commit();
+                $updated[] = $carId;
+            } catch (OwnerDatabaseException | CarDatabaseException $e) {
+                // A failed ownership lookup or a DB-level UPDATE error is an
+                // infrastructure failure, not a per-car outcome — it must not be
+                // reported as "this car could not be updated". Propagate.
+                //
+                // Guard the rollback itself: on a dropped connection ROLLBACK fails
+                // too, and an unguarded call would let PHP discard the original $e
+                // (it does not chain an exception thrown from inside a catch),
+                // replacing "the update failed because X" with "server has gone
+                // away" at exactly the moment an operator needs the real cause.
+                // Matches the pattern in database/migrations/
+                // 20260905172137_convert_car_timestamps_to_datetime.php.
+                try {
+                    $repo->rollback();
+                } catch (\Throwable $rollbackFailure) {
+                    throw new OwnerDatabaseException(
+                        "syncOwnerFieldsToCars: rollback failed at car ID {$carId} while handling: "
+                        . $e->getMessage() . ' (rollback error: ' . $rollbackFailure->getMessage() . ')',
+                        0,
+                        $e
+                    );
+                }
+                // Logged here, after the rollback, because propagating discards the
+                // OwnerSyncResult: the caller receives an exception and cannot report
+                // which cars already committed. Cars listed below are durable — each
+                // commits independently — and the sync is idempotent, so a retry
+                // re-syncs them harmlessly via the no-op branch. Any log row written
+                // inside the transaction would have been rolled back with it, so this
+                // line is the only durable record of the partial state.
+                logger($ownerId, LogCategories::LOG_CATEGORY_DATABASE_ERROR,
+                    "syncOwnerFieldsToCars: aborted at car ID {$carId} for owner {$ownerId} after "
+                    . count($updated) . ' car(s) already committed (IDs: ' . implode(', ', $updated)
+                    . '); ' . count($failed) . ' recorded failed. ' . $e->getMessage());
+                throw $e;
+            } catch (\Throwable $e) {
+                // One bad car must not abandon the rest of the sync.
+                //
+                // Guard the rollback itself, same reasoning as above: if it also
+                // throws, still bucket this car as failed rather than letting the
+                // rollback failure propagate and silently drop the car from every
+                // bucket (updated/failed/skipped) with no record of what happened.
+                try {
+                    $repo->rollback();
+                } catch (\Throwable $rollbackFailure) {
+                    logger($ownerId, LogCategories::LOG_CATEGORY_DATABASE_ERROR,
+                        "syncOwnerFieldsToCars: rollback failed at car ID {$carId} while handling: "
+                        . $e->getMessage() . ' (rollback error: ' . $rollbackFailure->getMessage() . ')');
+                }
+                $failed[] = $carId;
+                logger($ownerId, LogCategories::LOG_CATEGORY_OWNER_ACTIONS,
+                    "syncOwnerFieldsToCars: sync failed for car ID {$carId}: " . $e->getMessage());
             }
         }
 
-        if ($carsUpdated > 0) {
-            logger($this->_data->id, LogCategories::LOG_CATEGORY_OWNER_ACTIONS, "Location synchronized to {$carsUpdated} car(s)");
+        $result = new OwnerSyncResult($updated, $failed, $skipped);
+
+        if ($result->updatedCount() > 0) {
+            logger($ownerId, LogCategories::LOG_CATEGORY_OWNER_ACTIONS,
+                "Owner fields synchronized to {$result->updatedCount()} car(s)");
         }
 
-        return $carsUpdated;
+        return $result;
+    }
+
+    /**
+     * Check whether a car is currently owned by a given user.
+     *
+     * Used to disambiguate a zero-row UPDATE from CarRepository::updateCarForOwner():
+     * a row present means the car simply had nothing to change, no row means it
+     * left this owner.
+     *
+     * Deliberately does no logging of its own: it runs inside the caller's per-car
+     * transaction, and logger() writes through the same connection, so any row it
+     * inserted would be destroyed by the rollback that follows. The thrown
+     * exception carries the full error string and is logged by the call sites'
+     * handlers once the transaction has closed.
+     *
+     * syncOwnerFieldsToCars()'s entire skipped-vs-failed split rests on this
+     * method throwing rather than returning false when the query itself fails —
+     * that is what lets a genuine DB error surface as a real exception instead
+     * of being silently absorbed into "skipped" as if it were an ownership
+     * change (#1954). Never weaken this to catch its own errors and return
+     * false; that would make a real failure invisible everywhere skips are
+     * treated as non-errors, including places that never surface skips to the
+     * user (e.g. usersc/user_settings.php).
+     *
+     * @param int $carId  Car to check
+     * @param int $userId Owner the car must currently belong to
+     * @return bool True if the car exists and belongs to this user
+     * @throws OwnerDatabaseException If the query fails — the caller must not
+     *         treat a failed lookup as proof the car changed hands
+     */
+    private function carBelongsToOwner(int $carId, int $userId): bool
+    {
+        $q = $this->_db->query(
+            'SELECT id FROM cars WHERE id = ? AND user_id = ?',
+            [$carId, $userId]
+        );
+
+        if ($this->_db->error()) {
+            throw new OwnerDatabaseException(
+                "Owner::carBelongsToOwner failed for carId={$carId} userId={$userId}: "
+                . $this->_db->errorString()
+            );
+        }
+
+        return $q->count() > 0;
     }
 
     /**

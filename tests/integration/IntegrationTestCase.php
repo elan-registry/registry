@@ -2,7 +2,9 @@
 
 declare(strict_types=1);
 
+use ElanRegistry\DatabaseInterface;
 use ElanRegistry\Database\DbAdapter;
+use ElanRegistry\Owner;
 use PHPUnit\Framework\TestCase;
 
 /**
@@ -462,5 +464,97 @@ abstract class IntegrationTestCase extends TestCase
         }
 
         return (int) $result->first()->cnt;
+    }
+
+    /**
+     * Build an Owner backed by the given DatabaseInterface (typically a test
+     * proxy), with $_data populated via Reflection so no real find() query is
+     * needed against it.
+     *
+     * @param array<string, mixed> $data Owner data fields (id, fname, email, etc.)
+     */
+    protected function ownerWithLoadedData(DatabaseInterface $db, array $data): Owner
+    {
+        $owner = new Owner(null, $db);
+
+        $ref = new \ReflectionClass(Owner::class);
+        $dataProp = $ref->getProperty('_data');
+        $dataProp->setValue($owner, (object) $data);
+
+        return $owner;
+    }
+
+    /**
+     * Loads the testable, function_exists()-guarded query functions
+     * (findOwnerFieldDriftSummary(), findOrphanedOwnerCarCount(),
+     * findOwnerIdsWithDrift(), findDriftedCarDetails(), their private helpers,
+     * and the RECONCILE_* constants they share) from
+     * `app/admin/scripts/maintenance/26-Reconcile-Owner-Fields.php`, without
+     * executing the rest of that file (top-level securePage() gate, AJAX
+     * request handling, HTML template render) — none of which a test can
+     * safely trigger outside a real HTTP request.
+     *
+     * Shared by ReconcileOwnerFieldsAnalyzeTest and
+     * ReconcileOwnerFieldsExecuteTest (both need the same functions), following
+     * FixPagePermissionsAnalyzeRunTest::loadAnalyzePermissions()'s precedent
+     * for script #21. The extracted slice is written to a real temp file and
+     * require()'d — not eval()'d — so it is subject to normal PHP file
+     * compilation/opcache semantics like any other included file, and the
+     * function_exists() guard makes calling this from both test classes in the
+     * same PHPUnit process safe.
+     */
+    protected function loadOwnerFieldDriftFunctions(): void
+    {
+        if (function_exists('findOwnerFieldDriftSummary')) {
+            return;
+        }
+
+        $scriptPath = __DIR__ . '/../../app/admin/scripts/maintenance/26-Reconcile-Owner-Fields.php';
+
+        $source = file_get_contents($scriptPath);
+        if ($source === false) {
+            throw new \RuntimeException('Could not read ' . $scriptPath);
+        }
+
+        // Isolate the slice from the RECONCILE_MAX_CONSECUTIVE_OWNER_ERRORS
+        // constant (the first line of the testable, function_exists()-guarded
+        // region) up to (but not including) the "AJAX handlers" comment that
+        // starts the securePage()/CSRF/isAdmin()-gated request handling this
+        // must never execute.
+        $startMarker = 'const RECONCILE_MAX_CONSECUTIVE_OWNER_ERRORS';
+        $endMarker = '// AJAX handlers';
+
+        $startPos = strpos($source, $startMarker);
+        $endPos = strpos($source, $endMarker);
+
+        if ($startPos === false || $endPos === false || $endPos <= $startPos) {
+            throw new \RuntimeException(
+                'Could not locate the drift-detection functions in ' . $scriptPath
+                . ' — the script may have been restructured; update loadOwnerFieldDriftFunctions() to match.'
+            );
+        }
+
+        $functionSource = substr($source, $startPos, $endPos - $startPos);
+
+        $tempFile = tempnam(sys_get_temp_dir(), 'reconcileOwnerFields_');
+        if ($tempFile === false) {
+            throw new \RuntimeException('Could not create temp file for drift-function extraction');
+        }
+
+        $preamble = "<?php\n"
+            . "declare(strict_types=1);\n"
+            . "use ElanRegistry\\DatabaseInterface;\n";
+
+        $written = file_put_contents($tempFile, $preamble . $functionSource);
+        if ($written === false) {
+            unlink($tempFile);
+            throw new \RuntimeException('Could not write extracted drift-function source to temp file');
+        }
+
+        try {
+            require $tempFile;
+        } finally {
+            unlink($tempFile);
+        }
     }
 }

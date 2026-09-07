@@ -422,6 +422,147 @@ final class CarRepositoryTest extends TestCase
     }
 
     // =========================================================================
+    // updateCarForOwner() tests (issue #1873)
+    // =========================================================================
+
+    /**
+     * On success, updateCarForOwner() returns the row count reported by
+     * DB::count() — rows *changed*, not matched (no MYSQL_ATTR_FOUND_ROWS).
+     */
+    public function testUpdateCarForOwnerReturnsRowCountOnSuccess(): void
+    {
+        $db = $this->makeDbMock();
+        $db->expects($this->once())->method('query')->willReturnSelf();
+        $db->method('error')->willReturn(false);
+        $db->method('count')->willReturn(1);
+
+        $repo = new CarRepository($db);
+        $result = $repo->updateCarForOwner(101, 42, ['city' => 'Portland']);
+
+        $this->assertSame(1, $result);
+    }
+
+    /**
+     * The SQL must pin both id and user_id in the WHERE clause — that scoping
+     * is the security fix (#1873): it prevents writing one owner's data onto a
+     * car reassigned to someone else mid-loop. Column names are backtick-quoted
+     * (matching DB::update()'s own quoting), values bound positionally in
+     * fields-then-carId-then-userId order.
+     */
+    public function testUpdateCarForOwnerPinsIdAndUserIdInWhereClause(): void
+    {
+        $db = $this->makeDbMock();
+        $db->expects($this->once())
+            ->method('query')
+            ->with(
+                'UPDATE cars SET `city` = ?, `state` = ? WHERE id = ? AND user_id = ?',
+                ['Portland', 'Oregon', 101, 42]
+            )
+            ->willReturnSelf();
+        $db->method('error')->willReturn(false);
+        $db->method('count')->willReturn(1);
+
+        $repo = new CarRepository($db);
+        $repo->updateCarForOwner(101, 42, ['city' => 'Portland', 'state' => 'Oregon']);
+    }
+
+    /**
+     * A query error must log and throw CarDatabaseException so an enclosing
+     * transaction can roll back rather than commit over a partial state.
+     */
+    public function testUpdateCarForOwnerThrowsOnDatabaseError(): void
+    {
+        $db = $this->makeDbMock();
+        $db->expects($this->once())->method('query')->willReturnSelf();
+        $db->method('error')->willReturn(true);
+        $db->method('errorString')->willReturn('Deadlock found');
+
+        $repo = new CarRepository($db);
+
+        $this->expectException(CarDatabaseException::class);
+        $this->expectExceptionMessageMatches('/updateCarForOwner failed/');
+
+        $repo->updateCarForOwner(101, 42, ['city' => 'Portland']);
+    }
+
+    /**
+     * A 0-row change (either a no-op UPDATE that matched but changed nothing,
+     * or a car no longer owned by this user) must return 0 without throwing —
+     * disambiguating the two is the caller's job (Owner::carBelongsToOwner()),
+     * not this method's.
+     */
+    public function testUpdateCarForOwnerReturnsZeroWithoutThrowingWhenNothingChanged(): void
+    {
+        $db = $this->makeDbMock();
+        $db->expects($this->once())->method('query')->willReturnSelf();
+        $db->method('error')->willReturn(false);
+        $db->method('count')->willReturn(0);
+
+        $repo = new CarRepository($db);
+        $result = $repo->updateCarForOwner(101, 42, ['city' => 'Portland']);
+
+        $this->assertSame(0, $result);
+    }
+
+    /**
+     * A malformed column name (not a valid SQL identifier) must throw
+     * CarDatabaseException rather than being interpolated into the SET
+     * clause — this is the injection-prevention check on the structured
+     * $fields array, since column names (unlike values) cannot be bound as
+     * placeholders. No query should be issued once a bad key is found.
+     */
+    public function testUpdateCarForOwnerThrowsOnInvalidColumnName(): void
+    {
+        $db = $this->makeDbMock();
+        $db->expects($this->never())->method('query');
+
+        $repo = new CarRepository($db);
+
+        $this->expectException(CarDatabaseException::class);
+        $this->expectExceptionMessageMatches('/Invalid column name/');
+
+        $repo->updateCarForOwner(101, 42, ['city; DROP TABLE cars' => 'x']);
+    }
+
+    /**
+     * A column name starting with a digit is also not a valid SQL identifier
+     * and must be rejected the same way as an injection attempt — distinct
+     * failure mode from the previous test (malformed-but-innocuous vs.
+     * malformed-and-malicious), both must be caught by the same regex guard.
+     */
+    public function testUpdateCarForOwnerThrowsOnColumnNameStartingWithDigit(): void
+    {
+        $db = $this->makeDbMock();
+        $db->expects($this->never())->method('query');
+
+        $repo = new CarRepository($db);
+
+        $this->expectException(CarDatabaseException::class);
+        $this->expectExceptionMessageMatches('/Invalid column name/');
+
+        $repo->updateCarForOwner(101, 42, ['0bad' => 'x']);
+    }
+
+    /**
+     * Empty $fields must throw rather than return 0 without issuing SQL: a 0
+     * return is already ambiguous between "matched but nothing changed" and "no
+     * row matched", so an empty write would pass the caller's ownership check
+     * and be reported as a successful sync having written nothing.
+     */
+    public function testUpdateCarForOwnerThrowsWhenFieldsEmpty(): void
+    {
+        $db = $this->makeDbMock();
+        $db->expects($this->never())->method('query');
+
+        $repo = new CarRepository($db);
+
+        $this->expectException(CarDatabaseException::class);
+        $this->expectExceptionMessage('called with no fields (carId=101 userId=42)');
+
+        $repo->updateCarForOwner(101, 42, []);
+    }
+
+    // =========================================================================
     // updateImage() CAS semantics tests (issue #1311)
     // =========================================================================
 
@@ -714,12 +855,21 @@ final class CarRepositoryTest extends TestCase
         $this->assertStringContainsString('email_bounced = 0', $capturedSql);
         $this->assertStringContainsString("email IS NOT NULL AND email != ''", $capturedSql);
         $this->assertStringContainsString(
-            '(last_verified IS NULL OR last_verified < NOW() - INTERVAL 2 YEAR)',
-            $capturedSql
+            'NOT ((cars.last_verified IS NOT NULL AND cars.last_verified >= NOW() - INTERVAL 1 YEAR)'
+                . ' OR cars.owner_last_updated >= NOW() - INTERVAL 1 YEAR)',
+            $capturedSql,
+            'findVerificationEligible() must filter on stalenessSql(), the exact negation of freshnessSql()'
         );
-        $this->assertStringContainsString(
-            'COALESCE(owner_last_updated, mtime) < NOW() - INTERVAL 2 YEAR',
-            $capturedSql
+        $this->assertStringNotContainsString(
+            'COALESCE',
+            $capturedSql,
+            'The COALESCE(owner_last_updated, mtime) fallback was removed by #1953 — owner_last_updated '
+                . 'is NOT NULL by schema, so no fallback to mtime is needed or wanted'
+        );
+        $this->assertStringNotContainsString(
+            'INTERVAL 2 YEAR',
+            $capturedSql,
+            'Freshness moved from a 2-year to a 1-year window'
         );
         $this->assertStringContainsString('ORDER BY last_verified ASC', $capturedSql);
     }

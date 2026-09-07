@@ -21,15 +21,6 @@ lives at:
 Always use this exact path. Never clone to /tmp/, a worktree, or any other
 temporary location — there should be one permanent clone per machine.
 
-## Plans directory
-
-Working documents (sprint plans, triage reports, FRDs) live outside the repo at:
-
-/path/to/your/local/plans/directory
-
-Large plans (multi-file: an FRD plus mockups, exported PDFs, images) get their
-own subdirectory. Smaller single-file plans live directly under this directory.
-
 ## Deployment hosts
 
 Used by `/release-milestone` to render `docs/development/RELEASE_INSTRUCTIONS_TEMPLATE.md`.

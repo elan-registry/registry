@@ -91,18 +91,6 @@ parameters:
 			path: app/views/cars/_vehicle_info_card.php
 
 		-
-			message: '#^Variable \$purchaseDate might not be defined\.$#'
-			identifier: variable.undefined
-			count: 1
-			path: app/views/cars/_vehicle_info_card.php
-
-		-
-			message: '#^Variable \$soldDate might not be defined\.$#'
-			identifier: variable.undefined
-			count: 1
-			path: app/views/cars/_vehicle_info_card.php
-
-		-
 			message: '#^Variable \$from might not be defined\.$#'
 			identifier: variable.undefined
 			count: 1

@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 require_once __DIR__ . '/IntegrationTestCase.php';
+require_once __DIR__ . '/CarImageFixtureTrait.php';
 
 use ElanRegistry\Car\Car;
 use ElanRegistry\Car\CarAdministrationService;
@@ -10,7 +11,6 @@ use ElanRegistry\Car\CarImageProcessor;
 use ElanRegistry\Car\CarRepository;
 use ElanRegistry\Exceptions\CarConcurrentModificationException;
 use ElanRegistry\Exceptions\CarNotFoundException;
-use ElanRegistry\Resize;
 
 use PHPUnit\Framework\Attributes\Group;
 
@@ -29,16 +29,7 @@ use PHPUnit\Framework\Attributes\Group;
 #[Group('integration')]
 final class CarImageLifecycleTest extends IntegrationTestCase
 {
-    /**
-     * Thumbnail sizes generated per upload, read from the same
-     * ELAN_IMAGE_THUMBNAIL_SIZES constant app/api/cars/save.php's
-     * uploadImages() uses (#1067 — was a $settings->elan_image_thumbnail_sizes
-     * DB read prior to this), so a production config change can't silently
-     * drift out of sync with this test.
-     *
-     * @var list<int>
-     */
-    private array $thumbnailSizes;
+    use CarImageFixtureTrait;
 
     private int $testUserId;
     private int $testCarId;
@@ -52,7 +43,7 @@ final class CarImageLifecycleTest extends IntegrationTestCase
         parent::setUp();
         $this->requireDatabase();
 
-        $this->thumbnailSizes = array_map('intval', array_map('trim', explode(',', ELAN_IMAGE_THUMBNAIL_SIZES)));
+        $this->initThumbnailSizes();
 
         $this->testUserId = $this->createTestUser();
 
@@ -92,10 +83,10 @@ final class CarImageLifecycleTest extends IntegrationTestCase
     #[Group('fast')]
     public function testUploadWritesVariantsAndUpdatesImageJson(): void
     {
-        $filename = $this->uploadOneTestImage();
+        $filename = $this->uploadOneTestImage($this->imageDir);
 
-        $this->assertUploadedFilesExist($filename);
-        $this->assertVariantsAreActuallyResized($filename);
+        $this->assertUploadedFilesExist($this->imageDir, $filename);
+        $this->assertVariantsAreActuallyResized($this->imageDir, $filename);
 
         $imageJson = $this->processor->encodeImages([$filename]);
         $this->assertTrue(
@@ -129,7 +120,7 @@ final class CarImageLifecycleTest extends IntegrationTestCase
     #[Group('fast')]
     public function testDecodeAndProcessImagesRoundTripsWrittenFiles(): void
     {
-        $filename = $this->uploadOneTestImage();
+        $filename = $this->uploadOneTestImage($this->imageDir);
         $imageJson = $this->processor->encodeImages([$filename]);
 
         $imageDirRelative = '/' . $this->testCarId . '/';
@@ -154,8 +145,8 @@ final class CarImageLifecycleTest extends IntegrationTestCase
     #[Group('fast')]
     public function testDeleteCarRemovesDbRowButLeavesFilesOnDisk(): void
     {
-        $filename = $this->uploadOneTestImage();
-        $this->assertUploadedFilesExist($filename);
+        $filename = $this->uploadOneTestImage($this->imageDir);
+        $this->assertUploadedFilesExist($this->imageDir, $filename);
 
         $carData = $this->repo->findById($this->testCarId);
         $this->assertIsObject($carData);
@@ -187,7 +178,7 @@ final class CarImageLifecycleTest extends IntegrationTestCase
         // KNOWN GAP (#1629): CarAdministrationService::delete() does not delete any image
         // files from disk. This assertion documents CURRENT behavior as a regression
         // baseline — when #1629 lands, this assertion must flip to assertFileDoesNotExist().
-        $this->assertUploadedFilesExist($filename);
+        $this->assertUploadedFilesExist($this->imageDir, $filename);
     }
 
     /**
@@ -197,7 +188,7 @@ final class CarImageLifecycleTest extends IntegrationTestCase
     #[Group('fast')]
     public function testRemoveImageCasConflictThrowsConcurrentModificationException(): void
     {
-        $filename = $this->uploadOneTestImage();
+        $filename = $this->uploadOneTestImage($this->imageDir);
         $imageJson = $this->processor->encodeImages([$filename]);
         $this->assertTrue($this->repo->updateImage($this->testCarId, $imageJson, ''));
 
@@ -225,7 +216,7 @@ final class CarImageLifecycleTest extends IntegrationTestCase
     #[Group('fast')]
     public function testRemoveImageSucceedsButLeavesFilesOnDisk(): void
     {
-        $filename = $this->uploadOneTestImage();
+        $filename = $this->uploadOneTestImage($this->imageDir);
         $imageJson = $this->processor->encodeImages([$filename]);
         $this->assertTrue($this->repo->updateImage($this->testCarId, $imageJson, ''));
 
@@ -246,7 +237,7 @@ final class CarImageLifecycleTest extends IntegrationTestCase
         // unlinks the file it just dropped from the JSON list. Same underlying bug as
         // #1629 (car deletion), at a different call site; documents current behavior
         // as a regression baseline rather than asserting the fix that doesn't exist yet.
-        $this->assertUploadedFilesExist($filename);
+        $this->assertUploadedFilesExist($this->imageDir, $filename);
     }
 
     /**
@@ -267,7 +258,7 @@ final class CarImageLifecycleTest extends IntegrationTestCase
     #[Group('fast')]
     public function testRemoveImagesStripsUnmovedFilenameAfterSimulatedRenameFailure(): void
     {
-        $movedFilename = $this->uploadOneTestImage();
+        $movedFilename = $this->uploadOneTestImage($this->imageDir);
         $unmovedFilename = CarImageProcessor::generateSecureFilename('jpg');
 
         // Both filenames are recorded in cars.image as if mvTmpImages() had already
@@ -347,7 +338,7 @@ final class CarImageLifecycleTest extends IntegrationTestCase
     #[Group('fast')]
     public function testRemoveImagesReportsCasConflictWithoutThrowing(): void
     {
-        $filename = $this->uploadOneTestImage();
+        $filename = $this->uploadOneTestImage($this->imageDir);
         $imageJson = $this->processor->encodeImages([$filename]);
         $this->assertTrue($this->repo->updateImage($this->testCarId, $imageJson, ''));
 
@@ -396,7 +387,7 @@ final class CarImageLifecycleTest extends IntegrationTestCase
     #[Group('fast')]
     public function testRemoveImagesStripsMixedProvenanceFilenamesInSingleCasWrite(): void
     {
-        $movedFilename = $this->uploadOneTestImage();
+        $movedFilename = $this->uploadOneTestImage($this->imageDir);
         // Stands in for mvTmpImages()'s legacy-format-skip branch (save.php:876-887).
         $legacySkipFilename = 'legacy_format_name.jpg';
         // Stands in for mvTmpImages()'s rename()-failure branch (save.php:890-897).
@@ -447,7 +438,7 @@ final class CarImageLifecycleTest extends IntegrationTestCase
     #[Group('fast')]
     public function testCarRemoveImagesClearsCachedImagesOnSuccess(): void
     {
-        $filename = $this->uploadOneTestImage();
+        $filename = $this->uploadOneTestImage($this->imageDir);
         $imageJson = $this->processor->encodeImages([$filename]);
         $this->assertTrue($this->repo->updateImage($this->testCarId, $imageJson, ''));
 
@@ -500,7 +491,7 @@ final class CarImageLifecycleTest extends IntegrationTestCase
     #[Group('fast')]
     public function testRemoveImageReturnsFalseWhenFilenameNotInList(): void
     {
-        $filename = $this->uploadOneTestImage();
+        $filename = $this->uploadOneTestImage($this->imageDir);
         $imageJson = $this->processor->encodeImages([$filename]);
         $this->assertTrue($this->repo->updateImage($this->testCarId, $imageJson, ''));
 
@@ -520,118 +511,5 @@ final class CarImageLifecycleTest extends IntegrationTestCase
         $this->assertIsObject($row);
         $this->assertSame($imageJson, $row->image, 'A no-op removal must leave the stored image list untouched');
         $this->assertSame($imageJson, $carData->image, 'A no-op removal must leave the in-memory car object untouched');
-    }
-
-    /**
-     * Replicate uploadImages()'s real primitives: secure filename, base file on
-     * disk, then one GD resize per configured thumbnail size.
-     *
-     * @return string The base filename (never a resized variant name)
-     */
-    private function uploadOneTestImage(): string
-    {
-        $filename = CarImageProcessor::generateSecureFilename('jpg');
-        $sourcePath = $this->imageDir . $filename;
-        $this->makeTestJpeg($sourcePath);
-
-        foreach ($this->thumbnailSizes as $size) {
-            $resizeObj = new Resize($sourcePath);
-            $resizeObj->resizeImage($size, $size, 'auto');
-            $resizeObj->saveImage($this->variantPath($filename, $size), 80);
-        }
-
-        return $filename;
-    }
-
-    /**
-     * Write a real, valid JPEG — GD and exif_imagetype() reject dummy content.
-     */
-    private function makeTestJpeg(string $path, int $width = 40, int $height = 30): void
-    {
-        $img = imagecreatetruecolor($width, $height);
-        if ($img === false) {
-            $this->fail('GD could not create a truecolor image canvas');
-        }
-
-        $color = imagecolorallocate($img, 200, 30, 30);
-        if ($color === false) {
-            $this->fail('GD could not allocate a colour for the test image');
-        }
-
-        imagefill($img, 0, 0, $color);
-        if (!imagejpeg($img, $path, 80)) {
-            $this->fail("GD could not write the test JPEG to {$path}");
-        }
-    }
-
-    /**
-     * Absolute path of one resized variant for a base filename and target size.
-     */
-    private function variantPath(string $filename, int $size): string
-    {
-        $baseName = pathinfo($filename, PATHINFO_FILENAME);
-
-        return $this->imageDir . $baseName . '-resized-' . $size . '.jpg';
-    }
-
-    /**
-     * Absolute paths of the resized variants generated for a base filename.
-     *
-     * @return list<string>
-     */
-    private function variantPaths(string $filename): array
-    {
-        return array_map(fn (int $size) => $this->variantPath($filename, $size), $this->thumbnailSizes);
-    }
-
-    private function assertUploadedFilesExist(string $filename): void
-    {
-        $this->assertFileExists($this->imageDir . $filename);
-        foreach ($this->variantPaths($filename) as $path) {
-            $this->assertFileExists($path);
-        }
-    }
-
-    /**
-     * Confirms each variant was actually resized to its target width, not just
-     * copied as a same-size file with a "-resized-" name. The source JPEG from
-     * makeTestJpeg() is landscape (40x30), so Resize's 'auto' mode holds width to
-     * the target size and derives height as round(size * 30 / 40).
-     */
-    private function assertVariantsAreActuallyResized(string $filename): void
-    {
-        foreach ($this->thumbnailSizes as $size) {
-            $path = $this->variantPath($filename, $size);
-            $dimensions = getimagesize($path);
-            $this->assertIsArray($dimensions, "Could not read image dimensions for {$path}");
-            $this->assertSame($size, $dimensions[0], "Variant {$path} has the wrong width");
-            $this->assertSame(
-                (int) round($size * 30 / 40),
-                $dimensions[1],
-                "Variant {$path} has the wrong height"
-            );
-        }
-    }
-
-    private function recursiveRemoveDirectory(string $dir): void
-    {
-        if (!is_dir($dir) || is_link($dir)) {
-            return;
-        }
-
-        $files = array_diff(scandir($dir) ?: [], ['.', '..']);
-        foreach ($files as $file) {
-            $path = $dir . '/' . $file;
-            if (is_link($path) || !is_dir($path)) {
-                if (!unlink($path)) {
-                    fwrite(STDERR, "NOTE: tearDown() failed to unlink {$path}\n");
-                }
-            } else {
-                $this->recursiveRemoveDirectory($path);
-            }
-        }
-        if (!rmdir($dir)) {
-            fwrite(STDERR, "NOTE: tearDown() failed to remove directory {$dir}\n");
-        }
     }
 }

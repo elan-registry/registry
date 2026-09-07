@@ -402,11 +402,23 @@ final class DocsChecker
      * agent and command instruction files, which are documentation for Claude
      * and rot the same way.
      *
+     * docs/plans/ is excluded: it is gitignored scratch space for sprint
+     * plans, FRDs and per-issue plan files, which are deleted as work lands
+     * and routinely point at documents that have already been removed. This
+     * checker exists to keep committed documentation honest — holding
+     * throwaway working notes to that standard would block every commit.
+     *
      * @return list<string>
      */
     private function markdownFiles(bool $includeAgents = false): array
     {
-        $files = $this->globRecursive($this->root . '/docs', '*.md');
+        $files = array_values(array_filter(
+            $this->globRecursive($this->root . '/docs', '*.md'),
+            fn (string $path): bool => !str_starts_with(
+                $path,
+                $this->root . '/docs/plans/'
+            )
+        ));
 
         if ($includeAgents) {
             $files = array_merge(

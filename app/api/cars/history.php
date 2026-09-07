@@ -29,12 +29,15 @@ if (!Input::existsPost()) {
     ApiResponse::error('No data received')->send();
 }
 
-$token = Input::get('csrf');
-if (!Token::check($token)) {
-    ApiResponse::forbidden('Invalid CSRF token')
-        ->withLogging($user->data()->id ?? 0, LogCategories::LOG_CATEGORY_SECURITY, 'CSRF token validation failed in car history endpoint')
+$userId = $user->isLoggedIn() ? (int) $user->data()->id : 0;
+
+$rateUserId = $userId ?: null; // null is the framework's "no user" sentinel; 0 is not a valid user ID
+if (!checkRateLimit('car_history', $rateUserId)) {
+    ApiResponse::error('Too many requests. Please slow down.', 429)
+        ->withLogging($userId, LogCategories::LOG_CATEGORY_SECURITY, 'Rate limit exceeded for car history endpoint')
         ->send();
 }
+recordRateLimit('car_history', true, $rateUserId);
 
 $draw = (int)Input::get('draw');
 $carID = (int)Input::get('car_id');

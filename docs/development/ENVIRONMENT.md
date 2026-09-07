@@ -76,8 +76,7 @@ The Elan Registry uses **vlucas/phpdotenv** v5 for environment variable loading 
 Both fall back to `registrar@elanregistry.org` if unset or empty. Formerly
 web-editable `settings` table columns (`elan_admin_emails`/`elan_feedback_email`);
 moved to `.env` in #1067 to close a web-writable path to reroute these
-addresses via a compromised admin session — see `docs/plans/issue-1067-centralize-domain-config.md`
-if still present, or PR #1823.
+addresses via a compromised admin session — see PR #1823.
 
 One-time migration: `scripts/generate-config.php` reads the live `settings`
 row and appends these two keys to `.env` (preserving all other keys), then

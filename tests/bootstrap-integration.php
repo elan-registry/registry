@@ -152,6 +152,47 @@ if (!empty(trim($output))) {
 
 restore_error_handler();
 
+// If users/init.php threw before reaching usersc/includes/loader.php, the
+// application constants (ELAN_IMAGE_DIR, BACKUP_*, ...) that Car and
+// BackupManager read are still undefined. Load the real config.php rather than
+// mirroring its values (as tests/bootstrap-unit.php must, having no framework),
+// so there is nothing to drift. The guard is what emits the NOTE and skips the
+// defaults below when init.php did load config.php; the require_once itself
+// would already be a no-op in that case (same realpath). ELAN_IMAGE_DIR is the
+// sentinel because it is the constant #1931 reported missing.
+//
+// init.php fails here on every run, not occasionally: users/helpers/us_helpers.php's
+// ipCheckBan() reads `global $db`, but PHPUnit includes this bootstrap from a
+// function scope, so the $db init.php just built is a local — ipCheckBan() gets
+// null and throws, before loader.php.
+if (!defined('ELAN_IMAGE_DIR')) {
+    fwrite(STDERR, "NOTE: users/init.php did not reach usersc/includes/loader.php; loading config.php directly\n");
+    // init.php sets these at its top, before anything that can fail, but
+    // Server::get('DOCUMENT_ROOT', '') can also yield '' — hence the empty
+    // check, not just ??=. They must be right, not merely set: config.php
+    // builds the ASSET_VERSION path from them, and an empty root silently
+    // resolves ASSET_VERSION to 'dev'. PHPUnit includes this bootstrap from a
+    // function scope and config.php's require inherits it, so these are
+    // visible without `global`.
+    if (($abs_us_root ?? '') === '') {
+        $abs_us_root = $projectRoot;
+    }
+    if (($us_url_root ?? '') === '') {
+        $us_url_root = '/';
+    }
+    require_once $projectRoot . '/usersc/includes/config.php';
+
+    // require_once no-ops if config.php was already included but died partway
+    // (leaving it permanently half-defined), so confirm rather than assume.
+    if (!defined('ELAN_IMAGE_DIR')) {
+        abortBootstrap(
+            'ERROR: usersc/includes/config.php did not define ELAN_IMAGE_DIR.',
+            'It was likely already included by users/init.php and failed partway,',
+            'which makes require_once a no-op here. Aborting.'
+        );
+    }
+}
+
 // Ensure $user global is properly initialized for getSettings() calls
 // If users/init.php didn't fully initialize $user, create a minimal User object
 //

@@ -1,5 +1,6 @@
 ---
 description: Full-branch PR review that matches CI scope — diff + complete file content, with user confirmation on recommendations
+model: claude-opus-5
 argument-hint: "[aspects: code|errors|comments|tests|simplify|all]"
 ---
 

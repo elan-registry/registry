@@ -7,22 +7,6 @@ require_once __DIR__ . '/../IntegrationTestCase.php';
 use ElanRegistry\Admin\BackupManager;
 use PHPUnit\Framework\Attributes\Group;
 
-// bootstrap-integration.php stops at users/init.php and never reaches
-// usersc/includes/config.php, so the BACKUP_* retention constants that
-// getRetentionDays() needs are undefined when this file runs on its own. Without
-// this, the test passes in a full suite run (something else defines them first)
-// and errors standalone — a suite that only tells the truth in one execution
-// order. Mirrors the same guard in tests/integration/BackupRestorabilityTest.php.
-if (!defined('BACKUP_BASE_DIR')) {
-    // `global` (not $GLOBALS[...]) because PHPUnit's file loader requires this file
-    // from inside a function scope — a plain $GLOBALS[...] write doesn't become the
-    // bare $abs_us_root/$us_url_root variable that config.php's own require reads.
-    global $abs_us_root, $us_url_root;
-    $abs_us_root ??= '';
-    $us_url_root ??= '';
-    require_once dirname(__DIR__, 3) . '/usersc/includes/config.php';
-}
-
 /**
  * Integration tests for BackupManager's table discovery (issue #1714)
  *

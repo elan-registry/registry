@@ -22,8 +22,16 @@ use PHPUnit\Framework\Attributes\Group;
  *   solddate IS NULL
  *   AND email_bounced = 0
  *   AND email IS NOT NULL AND email != ''
- *   AND (last_verified IS NULL OR last_verified < NOW() - INTERVAL 2 YEAR)
- *   AND COALESCE(owner_last_updated, mtime) < NOW() - INTERVAL 2 YEAR
+ *   AND NOT (
+ *     (last_verified IS NOT NULL AND last_verified >= NOW() - INTERVAL 1 YEAR)
+ *     OR owner_last_updated >= NOW() - INTERVAL 1 YEAR
+ *   )
+ *
+ * owner_last_updated is NOT NULL by schema (issue #1953) — there is no
+ * COALESCE(owner_last_updated, mtime) fallback. mtime is deliberately excluded
+ * from the freshness expression entirely: it is ON UPDATE CURRENT_TIMESTAMP, so
+ * MySQL bumps it on any UPDATE that changes a value, including an unrelated
+ * owner-profile sync.
  */
 #[Group('integration')]
 #[Group('car-verification')]
@@ -32,10 +40,10 @@ final class CarVerificationEligibilityTest extends IntegrationTestCase
     private int $testUserId;
     private CarRepository $repo;
 
-    /** More than 2 years ago — satisfies both the last_verified and owner_last_updated staleness checks. */
+    /** More than 1 year ago — satisfies both the last_verified and owner_last_updated staleness checks. */
     private const STALE_DATE = '-3 years';
 
-    /** Within the last 2 years — fails the staleness checks. */
+    /** Within the last 1 year — fails the staleness checks. */
     private const RECENT_DATE = '-1 day';
 
     protected function setUp(): void
@@ -208,7 +216,7 @@ final class CarVerificationEligibilityTest extends IntegrationTestCase
         $this->assertNotContains(
             $carId,
             $this->eligibleIds(),
-            'A car verified within the last 2 years must be excluded from verification eligibility'
+            'A car verified within the last 1 year must be excluded from verification eligibility'
         );
     }
 
@@ -228,7 +236,7 @@ final class CarVerificationEligibilityTest extends IntegrationTestCase
         $this->assertContains(
             $carId,
             $this->eligibleIds(),
-            'A car with both last_verified and owner_last_updated more than 2 years old must be eligible'
+            'A car with both last_verified and owner_last_updated more than 1 year old must be eligible'
         );
     }
 
@@ -257,50 +265,91 @@ final class CarVerificationEligibilityTest extends IntegrationTestCase
     }
 
     /**
-     * COALESCE(owner_last_updated, mtime) fallback: when owner_last_updated
-     * has never been set, eligibility must fall back to mtime — a car whose
-     * row was last touched more than 2 years ago must be eligible.
+     * #1953: cars.owner_last_updated is NOT NULL by schema, so a fixture
+     * attempting to insert NULL must be rejected by the database rather than
+     * silently falling back to mtime. This replaces the two COALESCE-fallback
+     * tests this class used to carry
+     * (testNullOwnerLastUpdatedFallsBackToStaleMtimeAndIsEligible and
+     * testNullOwnerLastUpdatedFallsBackToRecentMtimeAndIsExcluded), which
+     * asserted the COALESCE(owner_last_updated, mtime) fallback worked — i.e.
+     * they pinned the #1953 defect as intended behavior. A green suite
+     * therefore proved nothing about the actual bug: Owner::syncOwnerFieldsToCars()
+     * bumping mtime on an unrelated profile edit could silently reset the
+     * verification clock for any car with a NULL owner_last_updated.
+     *
+     * Skipped, not failed, when the #1953 migration hasn't run locally: the
+     * column is still nullable pre-migration, so the INSERT this test expects
+     * to fail would instead succeed. Mirrors CarVerificationTimestampMigrationTest's
+     * skip-guard pattern rather than assertColumnExists() (existence, not
+     * nullability, is what that helper checks).
      */
     #[Group('fast')]
-    public function testNullOwnerLastUpdatedFallsBackToStaleMtimeAndIsEligible(): void
+    public function testColumnIsNotNullSoNullOwnerLastUpdatedFixtureIsRejected(): void
     {
-        $carId = $this->createTestCar($this->testUserId, [
-            'email'              => 'null-owner-updated-stale-mtime@example.com',
+        $row = $this->db->query(
+            "SELECT IS_NULLABLE
+             FROM information_schema.COLUMNS
+             WHERE TABLE_SCHEMA = DATABASE()
+               AND TABLE_NAME   = 'cars'
+               AND COLUMN_NAME  = 'owner_last_updated'
+             LIMIT 1"
+        )->first();
+
+        if (!$row || $row->IS_NULLABLE !== 'NO') {
+            $this->markTestSkipped(
+                'Migration 20260905172137 has not been applied — cars.owner_last_updated is ' .
+                'still nullable. Run: composer migrate'
+            );
+        }
+
+        $chassis = 'NULLREJ' . substr((string) uniqid(), -8);
+
+        $fields = [
+            'user_id'            => $this->testUserId,
+            'chassis'            => $chassis,
+            'email'              => 'null-owner-updated-rejected@example.com',
             'email_bounced'      => 0,
             'last_verified'      => null,
-            'owner_last_updated' => null,
-            'mtime'              => $this->staleDate(),
+            'solddate'           => null,
+        ];
+
+        // Control: the same row shape WITH a non-null owner_last_updated must
+        // insert cleanly. Without this, the assertion below would pass just as
+        // well if the insert failed for an unrelated reason (a missing required
+        // column, a chassis collision, schema drift) — leaving the NOT NULL
+        // constraint itself untested while still reporting green. createTestCar()
+        // throws on failure and registers the row for teardown.
+        $controlId = $this->createTestCar($this->testUserId, [
+            'email'              => 'null-owner-updated-control@example.com',
+            'email_bounced'      => 0,
+            'last_verified'      => null,
+            'owner_last_updated' => date('Y-m-d H:i:s'),
             'solddate'           => null,
         ]);
 
-        $this->assertContains(
-            $carId,
-            $this->eligibleIds(),
-            'A car with NULL owner_last_updated must fall back to a stale mtime and be eligible'
+        $this->assertGreaterThan(
+            0,
+            $controlId,
+            'Control insert must succeed — otherwise the NULL rejection below proves nothing '
+            . 'about the NOT NULL constraint specifically'
         );
-    }
 
-    /**
-     * COALESCE(owner_last_updated, mtime) fallback, excluded case: when
-     * owner_last_updated has never been set and mtime is recent, the car must
-     * NOT be eligible.
-     */
-    #[Group('fast')]
-    public function testNullOwnerLastUpdatedFallsBackToRecentMtimeAndIsExcluded(): void
-    {
-        $carId = $this->createTestCar($this->testUserId, [
-            'email'              => 'null-owner-updated-recent-mtime@example.com',
-            'email_bounced'      => 0,
-            'last_verified'      => null,
+        $insertResult = $this->db->insert('cars', array_merge($fields, [
             'owner_last_updated' => null,
-            'mtime'              => $this->recentDate(),
-            'solddate'           => null,
-        ]);
+        ]));
 
-        $this->assertNotContains(
-            $carId,
-            $this->eligibleIds(),
-            'A car with NULL owner_last_updated and a recent mtime must be excluded'
+        $this->assertFalse(
+            $insertResult,
+            'Inserting a NULL owner_last_updated must fail — the column is NOT NULL by schema'
+        );
+
+        // And it must fail without creating the row, confirming the constraint
+        // rejected the write rather than the driver merely reporting an error.
+        $orphan = $this->db->query('SELECT id FROM cars WHERE chassis = ?', [$chassis]);
+        $this->assertSame(
+            0,
+            $orphan->count(),
+            'A rejected NULL owner_last_updated insert must leave no row behind'
         );
     }
 }

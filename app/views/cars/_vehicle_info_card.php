@@ -1,6 +1,13 @@
 <?php
 if (count(get_included_files()) == 1) { die(); }
 
+// Callers set these before including this partial; default to null so
+// PHPStan (which analyzes this file in isolation) doesn't flag them as
+// possibly undefined, and so a future caller that forgets one degrades
+// gracefully rather than triggering an undefined-variable warning.
+$purchaseDate ??= null;
+$soldDate ??= null;
+
 $headingTag       = in_array($headingTag, ['h1','h2','h3','h4','h5','h6'], true) ? $headingTag : 'h3';
 $_cardHeaderClass = $headingTag === 'h4' ? ' card-header-er-l2' : '';
 $_headingClass    = $headingTag === 'h4' ? 'mb-0 card-header-er-l2-text' : 'mb-0';
@@ -68,6 +75,7 @@ $_subHeadingClass = $headingTag === 'h4' ? 'card-header-er-l4-text mb-2' : 'text
             </dd>
         </dl>
 
+        <?php if ($purchaseDate || $soldDate) { ?>
         <hr>
 
         <!-- Ownership & History -->
@@ -84,16 +92,8 @@ $_subHeadingClass = $headingTag === 'h4' ? 'card-header-er-l4-text mb-2' : 'text
             <dt class="col-sm-4 text-muted">Sold Date</dt>
             <dd class="col-sm-8"><?= $soldDate->format('F j, Y') ?></dd>
             <?php } ?>
-
-            <?php if (!empty($carData->website) && in_array(strtolower((string)parse_url($carData->website, PHP_URL_SCHEME)), ['http', 'https'], true)) { ?>
-            <dt class="col-sm-4 text-muted">Website</dt>
-            <dd class="col-sm-8">
-                <a href="<?= htmlspecialchars($carData->website, ENT_QUOTES, 'UTF-8') ?>" target="_blank" rel="noopener noreferrer" class="btn btn-outline-primary btn-sm">
-                    <i class="fas fa-external-link-alt" aria-hidden="true"></i> Visit Website
-                </a>
-            </dd>
-            <?php } ?>
         </dl>
+        <?php } ?>
 
         <?php if (!empty($carData->comments)) { ?>
         <hr>

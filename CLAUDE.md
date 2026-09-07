@@ -86,8 +86,11 @@ all other Cloudflare features work normally.
   (e.g. `["abc123.jpg"]`). Files live at `userimages/{carid}/{filename}` with
   resized variants as `{basename}-resized-{size}.{ext}` (sizes: 100, 300, 768,
   1024, 2048). New uploads land in `userimages/temp/` and move to
-  `userimages/{carid}/` on success.
-  Use `CarImageProcessor` to decode; `CarRepository::updateImage()` to write.
+  `userimages/{carid}/` on success. On car merge, the `CarImageRelocator` moves
+  all files (base + variants) from source to target car's directory, renaming on
+  collision, and appends the source's filenames to the target's `cars.image`.
+  Use `CarImageProcessor` to decode; `CarRepository::updateImage()` to write;
+  `CarImageRelocator` for merge-time file relocation.
 - **New PHP Directories**: Only add a directory to the `$path` array in
   `/z_us_root.php` when it contains files that call `securePage()`. Pure API
   endpoints, action handlers, and partials that do not call `securePage()` are
@@ -112,7 +115,8 @@ all other Cloudflare features work normally.
 - ADRs: `docs/development/adr/` — update ADR-018 when changing frontend
   dependencies (supersedes ADR-017, which supersedes ADR-015; Bootstrap
   source-map vendoring above is still ADR-015's territory), ADR-016 for nav
-  changes, ADR-007 for CSP changes
+  changes, ADR-007 for CSP changes, ADR-019 when adding or removing
+  CSRF/rate-limiting on public API endpoints
 
 **Template Customization Rules:**
 
@@ -320,11 +324,14 @@ and architecture agents.
 
 ### Planning Work
 
-- Working documents (sprint plans, triage reports, FRDs) live **outside this
-  repo**, in a separate private directory — never in `plans/` here, which is no
-  longer gitignored. Check `.claude.local.md` for the local path (copy it from
-  `.claude.local.md.example` if it doesn't exist yet). Delete a plan once its
-  decisions are applied to GitHub milestones/issues
+- Working documents (sprint plans, triage reports, FRDs, per-issue plan
+  files) live in `docs/plans/`, which is **gitignored** — this repo is public
+  and these are private scratch. Nothing under `docs/plans/` is ever
+  committed; deleting a plan is a plain `rm`, not a `git rm`. Sprint plans go
+  in `docs/plans/sprints/<version>.md`; large multi-file plans (an FRD plus
+  mockups and images) get their own subdirectory. Delete a plan once its
+  decisions are applied to GitHub milestones/issues — the issues, code, and
+  committed docs are then the source of truth
 - For milestone planning, use the `senior-product-manager`, `senior-architect`,
   and `security-reviewer` agents in parallel for comprehensive analysis
 

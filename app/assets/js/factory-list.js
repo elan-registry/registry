@@ -24,14 +24,18 @@
     "ajax": {
       "url": "../../api/cars/factory-list.php",
       "dataSrc": "data",
-      data: function(d) {
-        d.csrf = window.factoryListConfig.csrf;
-      },
       error: function(xhr, error, thrown) {
         console.error('Factory table load failed:', error, xhr.status, thrown);
-        const wrapper = $('#cartable').closest('.dataTables_wrapper');
+        // DataTables 3.x (pinned in package.json) wraps the table in .dt-container.
+        // .dataTables_wrapper is the legacy 1.x name, retained as a fallback so the
+        // banner still lands if a build ever resolves an older version.
+        const wrapper = $('#cartable').closest('.dt-container, .dataTables_wrapper');
         if (!wrapper.find('.alert-danger').length) {
-          wrapper.prepend('<div class="alert alert-danger mt-2">Could not load factory data. Please refresh the page.</div>');
+          // Reloading re-fires the request, so it is the wrong advice for a 429.
+          const message = xhr.status === 429
+            ? 'Too many requests. Please wait a few minutes before trying again.'
+            : 'Could not load factory data. Please reload the page to try again.';
+          wrapper.prepend($('<div class="alert alert-danger mt-2"></div>').text(message));
         }
       }
     },

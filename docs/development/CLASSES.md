@@ -276,7 +276,8 @@ authentication and ElanRegistry business logic.
 **Key Features**:
 
 - Owner profile management
-- Location field management (city, state, country, lat, lon)
+- Owner-field sync to owned cars (`syncOwnerFieldsToCars()`: city, state,
+  country, lat, lon, fname, lname, website, email)
 - Profile quality scoring
 - Owner search functionality
 - Integration with UserSpice user system
@@ -342,9 +343,97 @@ any failure including a PHP `\Error`. Their post-write reload call is
 wrapped in its own local `try/catch (OwnerDatabaseException $e)` — a reload
 failure after a successful write is logged, not propagated.
 
-`syncLocationToCars()` lets `getCarsOwned()`'s exception propagate
-uncaught by design — a DB failure should surface as a real exception, not
-collapse into "0 cars synced."
+`syncOwnerFieldsToCars()` returns an `OwnerSyncResult` value object with three
+outcome buckets: `updated` (write succeeded), `failed` (history insert or UPDATE
+failed at the DB level), and `skipped` (car no longer owned by this user at write
+time — ownership changed between the initial car list and the write; not a failure,
+expected behavior). `syncOwnerFieldsToCars()` lets `getCarsOwned()`'s exception
+propagate uncaught by design — a DB failure should surface as a real exception, not
+collapse into a result that silently reports nothing as updated or failed. It also
+throws `OwnerDatabaseException` immediately if the `Owner` itself never loaded (no
+user row for its ID) — this is a distinct precondition failure from "loaded but owns
+zero cars," which still returns an empty, complete-success `OwnerSyncResult` (#1979).
+`OwnerSyncResult::successMessage()`, currently called only by
+`process-owner-sync-location.php`, words a skip-only outcome
+(`updatedCount() === 0`) as "No cars were synchronized." rather than "...to 0
+car(s).", which would otherwise read as a failure. `usersc/user_settings.php`
+deliberately does not call it — it stays silent on a skip-only outcome since
+a car the owner no longer owns isn't actionable for them; this is intentional
+divergence, not drift. Callers with a real failure build their own message
+from `failedCarsPhrase()` instead.
+
+`ownerContactFields()` is the single definition of the nine denormalized
+owner-contact columns (`fname`, `lname`, `email` from `users`; `city`,
+`state`, `country`, `lat`, `lon`, `website` from `profiles`). It never
+returns `mtime` or `owner_last_updated` — the latter drives verification-
+email eligibility and must not be reset by a mechanical refresh. When the
+owner failed to load, every value is `null`, so callers must check before
+persisting. Consumed by `syncOwnerFieldsToCars()` (which adds its own
+`mtime`) and by `OwnerContactRefresher`.
+
+### OwnerContactRefresher
+
+**Location**: `/usersc/classes/OwnerContactRefresher.php`
+
+**Namespace**: `ElanRegistry`
+
+**Purpose**: Refreshes a car's denormalized owner-contact columns from the
+owner's current profile when the car is edited, so a stale car row stops
+perpetuating outdated contact data (#1962). Exists as a class rather than
+inline in `app/api/cars/save.php` because that file cannot be loaded by a
+test — every path ends in `exit` via `ApiResponse::send()`, so logic living
+there can only be hand-copied into tests, and a hand-copied test passes
+even when the production code is deleted.
+
+**Key Features**:
+
+- Pure: returns a new array rather than mutating its argument
+- No globals, no exit paths, no logging — callable from a unit test with no
+  database
+- All nine `ownerContactFields()` columns are refreshed, `website` included
+  (#1963 made `website` owner-level and removed the per-car form field, so
+  it no longer needs the carve-out this class previously had)
+- Never writes `mtime` or `owner_last_updated`
+- Returns the car details untouched when the owner failed to load, so a car
+  with a dangling or null `user_id` keeps its existing contact data rather
+  than being blanked with nulls
+- A profile `website` that would fail `CarValidator`'s validation is skipped
+  rather than merged, so an invalid legacy or #1961-bulk-promoted value
+  can't reach `Car::update()`/`Car::create()` and block the edit or add-car
+  flow with a `CarValidationException`
+
+**Methods**:
+
+- `refresh(array $cardetails, Owner $carOwner): array` — Merge the owner's
+  current contact values over the car's details and return the result. The
+  caller must pass the Owner built from the **car row's** `user_id`, never
+  the logged-in session user: an admin or editor may be editing another
+  member's car, and using the session user would write staff's contact
+  details onto that member's record. This method cannot enforce that — by
+  the time it is called both arguments are already chosen, and `Owner`
+  carries no notion of who is logged in. Internally guarded, so calling it
+  for an unloadable owner is safe.
+- `hasLoadableOwner(Owner $carOwner): bool` — Whether the owner loaded.
+  Split out so the endpoint can log the skip (it has the car ID and session
+  user; this class has neither) without duplicating the null test. Calling
+  `refresh()` without checking this first is safe, not a bug — the only
+  consequence is that the skip goes unlogged.
+- `hasValidWebsite(Owner $carOwner): bool` — Whether the owner's current
+  profile website would survive `refresh()` unskipped. Mirrors
+  `hasLoadableOwner()`'s split-out-for-logging pattern: `refresh()` silently
+  skips an invalid website with no log line, so callers check this first if
+  they want to log the skip. Returns `true` when the owner failed to load —
+  `hasLoadableOwner()` already covers and logs that case.
+
+**Persistence asymmetry** (easy to trip over): `syncOwnerFieldsToCars()`
+writes its bundle through `CarRepository::updateCarForOwner()`, which
+persists blanks — clearing your city there clears it on your cars. The edit
+path routes through `Car::update()`, whose `array_filter` drops `''`/`null`
+for any field not in `Car::CLEARABLE_FIELDS`, so blank owner values are
+silently no-ops here — **except `website`**, the one field of the nine that
+*is* in `CLEARABLE_FIELDS`, so it propagates a clear on both paths just like
+the sync path does. This is a deliberate, user-confirmed decision (#1963),
+not an oversight.
 
 ### CarValidator
 
@@ -483,9 +572,33 @@ to provide a focused, testable data access layer wrapping the `cars`,
   currently called by `Car::update()` (which folds the same write into its
   single `updateCar()` call to avoid a duplicate `cars_hist` audit row — see
   `Car::update()`'s `$isOwnerInitiated` parameter)
+- `freshnessSql(string $alias = 'cars'): string` - Static; returns a SQL
+  boolean expression determining if a car is fresh (verified within 1 year via
+  `last_verified` OR edited by owner within 1 year via `owner_last_updated`).
+  The `$alias` parameter must match the table alias in the calling query (e.g.
+  `'c'` for `cars AS c`) and is validated against `/^[A-Za-z_][A-Za-z0-9_]{0,63}$/`
+  to prevent SQL injection. Compares against MySQL's `NOW()`.
+- `stalenessSql(string $alias = 'cars'): string` - Static; returns
+  `'NOT ' . freshnessSql($alias)` — the exact boolean negation of freshness.
+- `isFresh(?string $lastVerified, string $ownerLastUpdated): bool` - **Not yet
+  called from production code** (only the SQL form is wired in, via
+  `findVerificationEligible()`); the send pipeline in v2.30.3 is the intended
+  first caller, at which point this note is removed (issue #1970). PHP
+  equivalent of `freshnessSql()` for in-code freshness checks, using PHP's clock
+  where the SQL form uses MySQL's `NOW()`. Both clocks must resolve to the same
+  timezone or the two forms can disagree at the one-year boundary from skew alone.
+  Sharing a host does **not** guarantee this: `users/init.php` pins PHP to
+  `America/Los_Angeles` on every web request, while MySQL follows its own
+  `time_zone`, so agreement must be verified per environment. Validates **both**
+  operands before comparing — deliberately not short-circuiting on a fresh
+  `$ownerLastUpdated` — and throws `CarValidationException` if either is empty,
+  malformed, or not a real calendar date (`2026-02-30` is rejected rather than
+  rolled over to March 2), because a malformed value there is a programming
+  error, not a data state.
 - `findVerificationEligible(int $limit, int $offset): array` - Paginated
   query for cars eligible for a verification email: not sold, deliverable
-  email, never verified or stale, and a stale owner-driven update
+  email, and stale — neither verified nor updated by its owner within the last
+  year (see `stalenessSql()`). No longer falls back to `cars.mtime`.
 - `updateSoldDate(int $carId, string $soldDate): bool` - Update a car's sold date
 - `updateImage(int $carId, string $newJson, string $expectedJson): bool` - Compare-and-swap update of the image JSON column; returns `false` on concurrent modification
 - `findByChassisKey(string $year, string $type, string $chassis): ?object` -
@@ -521,6 +634,103 @@ to provide a focused, testable data access layer wrapping the `cars`,
 
 - [ERROR_HANDLING.md](ERROR_HANDLING.md) - Exception patterns
 - [DATABASE.md](DATABASE.md) - `cars`, `cars_hist`, `elan_factory_info` schema
+
+---
+
+### CarImageRelocator
+
+**Location**: `/usersc/classes/Car/CarImageRelocator.php`
+
+**Namespace**: `ElanRegistry\Car`
+
+**Purpose**: Filesystem operations for car image relocation during merge. Moves
+all files (base filenames + resized variants) from a source car's image
+directory to a target car's directory, handling collisions by renaming via
+`CarImageProcessor::generateSecureFilename()`, and removes the emptied source
+directory. Compensating inverse operation rolls back moves on merge failure.
+Takes the image base directory as a constructor argument for unit-test
+flexibility against temp directories.
+
+**Key Features**:
+
+- Move all image files (base + `-resized-{size}` variants) with collision renaming
+- Path traversal guard via `UploadPathGuard::isWithinTarget()`
+- Filename validation via `CarImageProcessor::isSafeFilename()`
+- No-op on missing source directory (returns empty map)
+- Self-compensating: a mid-flight failure moves everything back before re-throwing
+- Preserves consistent base-filename mapping across all variants of a file
+- Never overwrites an existing target file — on the forward path, base-filename
+  collisions rename and variant collisions abort; on the compensation path,
+  `restore()` reports the file as unrestored instead of aborting
+
+**Methods**:
+
+- `__construct(string $imageBaseDirectory)` — Absolute path to the `userimages/`
+  root. Must be absolute: `ELAN_IMAGE_DIR` is the *relative* string
+  `'userimages/'`, and passing it bare would silently defeat every path guard.
+- `relocate(int $sourceCarId, int $targetCarId, array $sourceBaseFilenames): array`
+  — Move all files from source to target directory, renaming on collision.
+  Returns an old→new base-filename map for the caller to build the target's
+  updated `cars.image` JSON; only base files that actually moved appear in it,
+  so a filename listed in `cars.image` with no file on disk is omitted rather
+  than carried onto the surviving car. No-op (returns empty map) if the source
+  directory does not exist. On failure it restores everything it had already
+  moved before re-throwing, so the caller's own `restore()` is then a no-op.
+- `restore(int $sourceCarId, int $targetCarId, array $renameMap): array`
+  — Compensating inverse; moves relocated files back under their original names,
+  recreating the source directory if it is gone. Takes `relocate()`'s return
+  value verbatim. Never throws (it runs on an error path where throwing would
+  mask the original exception); returns the entries it could **not** move back,
+  so the caller can log an incomplete rollback. Empty array means full recovery.
+  If the source directory cannot be recreated, the target directory is missing,
+  or either path fails the traversal guard, no files are moved at all and the
+  entire map is returned as unrestored.
+
+**Common Usage**:
+
+```php
+use ElanRegistry\Car\CarImageRelocator;
+
+// Absolute path to the userimages/ root, not the bare constant
+$relocator = new CarImageRelocator($abs_us_root . $us_url_root . ELAN_IMAGE_DIR);
+
+$renameMap = [];
+try {
+    // ... DB work inside the open transaction ...
+
+    $renameMap = $relocator->relocate($sourceId, $targetId, $sourceFilenames);
+
+    // Target's existing entries first, then the source's post-rename names,
+    // so the surviving car's primary (first) image is unchanged
+    $targetNewImage = array_merge($targetExistingFilenames, array_values($renameMap));
+
+    // ... write cars.image, insert audit row, commit ...
+} catch (\Throwable $e) {
+    // Compensate before rolling back. A non-empty return means the filesystem
+    // could not be fully restored — log it, the operator must repair by hand.
+    $unrestored = $relocator->restore($sourceId, $targetId, $renameMap);
+    throw $e;
+}
+```
+
+Initialize `$renameMap` **before** the `try` so the catch always has a value.
+Do not compensate after a failed `commit()` — the DB state is then
+indeterminate, and moving files back can corrupt a merge that actually
+committed.
+
+**Exceptions**:
+
+- `ImageProcessingException` - Path traversal guard rejection or filesystem operation failure
+
+**Used By**:
+
+- `CarAdministrationService::merge()` — Moves images inside the merge transaction
+
+**See Also**:
+
+- [ERROR_HANDLING.md](ERROR_HANDLING.md) - Exception patterns
+- `CarImageProcessor` - Filename validation and secure generation
+- [DATABASE.md](DATABASE.md) - `cars.image` JSON column
 
 ---
 
