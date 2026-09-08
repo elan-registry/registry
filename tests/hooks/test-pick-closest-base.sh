@@ -109,6 +109,10 @@ assert_resolves_to \
 # the original, pre-#2024 exclusion rule's own purpose (#1751/#1767) and
 # must not be broken by the #2024 equality-guard fix.
 TARGET_TIP="$(make_commit_on "$MAIN_TIP" "synthetic: target branch, 1 commit ahead of main")"
+# The tag is never read again below (assert_resolves_to uses $TARGET_TIP
+# directly) — it exists solely to root this loose commit against garbage
+# collection for the lifetime of the script, since a commit-tree commit
+# with no ref pointing to it is otherwise GC-eligible immediately.
 git tag -f __test_target "$TARGET_TIP" >/dev/null 2>&1
 SYNTH_TAGS+=("__test_target")
 SCRATCH_TIP="$(make_commit_on "$TARGET_TIP" "synthetic: scratch branch cut FROM target after the fact")"
