@@ -39,12 +39,12 @@
    switch (#1926) actually being turned on. Requires step 2 above already
    done (`BREVO_WEBHOOK_TOKEN` set in test's `.env`) — not needed in local
    dev at all (see the note below).
-   1. Deploy the temporary capture script,
-      `scripts/spike-1888/brevo-webhook-capture.php`, to the server (edit its
-      `CAPTURE_FILE` placeholder before copying — see `scripts/README.md`).
-      `chmod 700` the capture directory (`CAPTURE_FILE`'s parent) — it holds
-      recipient email addresses from captured payloads. Confirm it's
-      reachable.
+   1. On the server, create the capture directory outside the web root and
+      lock it down (`mkdir -p ~/spike-1888 && chmod 700 ~/spike-1888`) — it
+      will hold recipient email addresses from captured payloads. Edit
+      `scripts/spike-1888/brevo-webhook-capture.php`'s `CAPTURE_FILE`
+      placeholder to point into that directory before copying it to the
+      server (see `scripts/README.md`). Confirm it's reachable.
    2. Register a *throwaway* webhook pointed at the capture script, passing
       the same `BREVO_WEBHOOK_TOKEN` value as its auth token so the capture
       script's inbound auth check has something real to validate against:
