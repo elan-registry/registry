@@ -130,7 +130,7 @@ except those explicitly listed as project-owned:
 
 | Directory | Status | Project-owned exceptions (tracked by git) |
 | --- | --- | --- |
-| `/users/` | Upstream framework | none — extend via `usersc/classes/` instead |
+| `/users/` | Upstream framework | `users/cron/` — `cron.php` carries project logging/hook calls (see [DEPLOYMENT.md's "Cron Transport" section](docs/development/DEPLOYMENT.md#cron-transport-userspice-cron-manager)) and is where all job files must live (see the cron bullet below); everywhere else in `/users/`, extend via `usersc/classes/` instead |
 | `usersc/templates/` | Upstream templates | `customizer/file_nav_custom.php` (project nav additions), `customizer/assets/child_themes/elanregistry*` and `customizer/assets/child_themes/dashboard.php` (project child theme), `customizer.css` (project styles); `customizer/navigation.php` is tracked because UserSpice's template loader requires it — do not edit it, add nav content via `file_nav_custom.php` instead |
 | `usersc/plugins/` | Upstream plugins | `hooker/hooks/` (project hooks), `ai_prompts/custom_prompts/` (Claude AI context prompts) |
 | `usersc/user_settings.php` | Project-owned (customizes `users/user_settings.php`) | the entire file is project-owned — make changes here rather than in `users/user_settings.php` |
