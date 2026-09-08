@@ -113,4 +113,4 @@
 - [#1926](https://github.com/elan-registry/registry/issues/1926) — feat: verification-system feature switch with Brevo prerequisite check and admin warning
 - [#1968](https://github.com/elan-registry/registry/issues/1968) — chore: raise dev, then test and prod, to PHP 8.4 before 8.2 security EOL
 - [#2001](https://github.com/elan-registry/registry/issues/2001) — chore: extract cron transport interval into a shared, discoverable constant (`CRON_TRANSPORT_INTERVAL_MINUTES` in `usersc/includes/config.php`); no behavior change
-- WIP: [#2027](https://github.com/elan-registry/registry/issues/2027) — feat: extract `CronJobGuard` atomic-claim class from #1885, scoped to v2.30.2 — adds `usersc/classes/Cron/CronJobGuard.php` and `settings.reconciliation_last_run`; no production caller yet, consumed by #1889
+- [#2027](https://github.com/elan-registry/registry/issues/2027) — feat: extract `CronJobGuard` atomic-claim class from #1885, scoped to v2.30.2 — adds `usersc/classes/Cron/CronJobGuard.php` and `settings.reconciliation_last_run`; no production caller yet, consumed by #1889
