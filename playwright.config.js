@@ -36,7 +36,7 @@ module.exports = defineConfig({
     /* Base URL to use in actions like `await page.goto('/')`. */
     /* Trailing slash is required — goto('') resolves to baseURL; without it the path collapses. */
     /* If PLAYWRIGHT_BASE_URL is set, it must also include a trailing slash for the same reason. */
-    baseURL: process.env.PLAYWRIGHT_BASE_URL || 'http://localhost:9999/ElanRegistry/Registry/',
+    baseURL: require('./tests/playwright/base-url.js'),
 
     /* Collect trace when retrying the failed test. See https://playwright.dev/docs/trace-viewer */
     trace: 'on-first-retry',
