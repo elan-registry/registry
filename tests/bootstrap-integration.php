@@ -287,23 +287,38 @@ try {
 // backup dump of this table alone exhausts PHP's memory regardless of
 // memory_limit (see #2004). Truncating once per suite run — not per test —
 // keeps this bounded without adding a DB write to every test's tearDown().
+//
+// DB::query() catches its own PDO exceptions internally and never re-throws
+// (see users/classes/DB.php) — it records failure via $this->_error and
+// returns normally, so a try/catch around the query() call cannot detect a
+// failed TRUNCATE. Checking error()/errorString() after the call, the same
+// idiom CarShowcaseService::getNewCarIds() uses, is what actually detects
+// it. The outer try/catch stays as a safety net for exceptions genuinely
+// thrown outside query() itself (e.g. DB::getInstance() failing).
 try {
     if (class_exists('DB')) {
         $rateLimitDb = DB::getInstance();
         if ($rateLimitDb->tableExists('us_rate_limits')) {
             $rateLimitDb->query('TRUNCATE TABLE us_rate_limits');
-            fwrite(STDERR, "NOTE: Truncated us_rate_limits for integration test suite run\n");
+            if ($rateLimitDb->error()) {
+                // ERROR, not NOTE: a failed truncate here silently reintroduces
+                // the exact OOM condition this block exists to prevent —
+                // us_rate_limits keeps whatever huge row count it already had,
+                // and BackupCriticalTablesTest fatals again several hundred
+                // tests later with no obvious link back to this failure.
+                fwrite(STDERR, "ERROR: Could not truncate us_rate_limits: {$rateLimitDb->errorString()}\n");
+            } else {
+                fwrite(STDERR, "NOTE: Truncated us_rate_limits for integration test suite run\n");
+            }
+        } else {
+            // A correctly provisioned integration test schema always has this
+            // table — its absence means the environment itself is broken, not
+            // that there's nothing to truncate. Loud rather than silent so this
+            // isn't confused with a successful truncate in CI output.
+            fwrite(STDERR, "NOTE: us_rate_limits table not found — skipping truncate (check test schema provisioning)\n");
         }
     }
 } catch (Throwable $e) {
-    // ERROR, not NOTE: a failed truncate here silently reintroduces the exact
-    // OOM condition this block exists to prevent — us_rate_limits keeps
-    // whatever huge row count it already had, and BackupCriticalTablesTest
-    // fatals again several hundred tests later with no obvious link back to
-    // this failure. Non-fatal (unlike the DB-identity check above, which
-    // aborts) because a stale-but-non-huge table shouldn't block every
-    // unrelated test from running — but this must be loud enough that it
-    // isn't missed in CI output when the OOM does resurface downstream.
     fwrite(STDERR, "ERROR: Could not truncate us_rate_limits: {$e->getMessage()}\n");
 }
 
