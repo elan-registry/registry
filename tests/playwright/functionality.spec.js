@@ -84,8 +84,12 @@ test.describe('Core Functionality After Refactoring', () => {
   test('NEW badge does not appear on factory listing page', async ({ page }) => {
     await page.goto('app/owner/cars/factory.php', { waitUntil: 'networkidle' });
 
-    // Factory page must NOT define NEW_CAR_IDS
-    const defined = await page.evaluate(() => typeof NEW_CAR_IDS !== 'undefined');
+    // Positive control: prove the page actually rendered (not a login redirect)
+    // before asserting the config's absence below.
+    await expect(page.locator('h2')).toContainText(/Factory/);
+
+    // Factory page must NOT define carListConfig
+    const defined = await page.evaluate(() => typeof window.carListConfig !== 'undefined');
     expect(defined).toBe(false);
   });
 

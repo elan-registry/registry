@@ -198,20 +198,22 @@ test.describe('Registry-Specific AJAX Endpoints', () => {
     expect([200, 401, 403]).toContain(response.status());
   });
 
-  test('NEW_CAR_IDS on car list page is a JSON int array', async ({ page }) => {
+  test('carListConfig.newCarIds on car list page is a JSON int array', async ({ page }) => {
     // Verifies that CarShowcaseService::getNewCarIds() emits valid JSON to the page.
-    // The const is embedded in the inline script block — shape must be int[].
+    // The value is embedded in the inline script block as
+    // window.carListConfig.newCarIds — shape must be int[].
     await page.goto('app/owner/cars/index.php', { waitUntil: 'networkidle' });
 
-    const newCarIds = await page.evaluate(() => {
-      if (typeof NEW_CAR_IDS === 'undefined') return null;
-      return NEW_CAR_IDS;
-    });
+    const config = await page.evaluate(() => window.carListConfig ?? null);
 
-    // Skip when page requires auth and we're unauthenticated — same guard as functionality.spec.js
-    if (newCarIds === null) {
-      return;
-    }
+    // No config at all → page required auth and we're unauthenticated. Skip visibly
+    // (not a silent `return`, which would report this as a pass having verified nothing).
+    test.skip(config === null, 'car list page requires authentication; carListConfig not rendered');
+
+    // Config present but newCarIds missing → a real regression (e.g. json_encode
+    // failure), not an auth case — must fail, not skip.
+    expect(config.newCarIds).toBeDefined();
+    const newCarIds = config.newCarIds;
 
     expect(Array.isArray(newCarIds)).toBe(true);
 
