@@ -184,6 +184,27 @@ their real deployed environments)
 - All four are gitignored via `.env.local` and must never be committed. See
   `.env.example` for the placeholder entries.
 
+### Multi-Clone Session Isolation
+
+**Usage**: `users/init.php` (`$GLOBALS['config']['session']` /
+`['remember']`)
+
+- `SESSION_NAME` / `TOKEN_NAME` / `REMEMBER_COOKIE_NAME` — override
+  UserSpice's `$_SESSION` key names (`user`, `token`) and remember-me cookie
+  name (`pmqesoxiw318374csb`). Only needed when running more than one local
+  clone of this repo from the same MAMP host/port (e.g. `Registry/` and
+  `Registry2/`, a supported workflow for working two milestones in parallel
+  — see the top-level `Web/ElanRegistry/CLAUDE.md`). Every clone's session
+  cookie is scoped `path=/` on the same origin, so without distinct names,
+  one clone's login state, CSRF token, and remember-me cookie silently
+  collide with another's — surfacing as inexplicable login failures with no
+  error in any log (see #1935).
+- Unset in production, test, and a single-clone local install — the app
+  falls back to the original hardcoded values, so this is a no-op there. Set
+  only in the `.env` (not `.env.local`) of whichever clone should get
+  distinct session state; the other clone(s) can keep the defaults.
+- See `.env.example` for the placeholder entries.
+
 ## Setup & Configuration
 
 ### Development Setup
