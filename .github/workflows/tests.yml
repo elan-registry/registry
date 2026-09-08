@@ -57,3 +57,54 @@ jobs:
         # — a Regression test tagged known-broken must be excluded here too or
         # the escape hatch silently wouldn't apply to it.
         run: composer test:regression:ci
+
+  hooks-changes:
+    name: Detect git-hooks changes
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    outputs:
+      hooks: ${{ steps.filter.outputs.hooks }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Filter changed paths
+        uses: dorny/paths-filter@v4
+        id: filter
+        with:
+          filters: |
+            hooks:
+              - ".githooks/**"
+              - "tests/hooks/**"
+
+  git-hooks:
+    name: Git Hooks Regression Tests
+    needs: hooks-changes
+    # Same unconditional-trigger-plus-job-level-if pattern as
+    # static-analysis.yml's `changes`-gated jobs (see that file's comment
+    # on `changes`, PR #1534): a workflow-level path filter means the
+    # workflow never runs at all when nothing matches, which is fine for a
+    # non-required check like this one, but staying consistent with the
+    # established pattern avoids re-litigating it later. Not a required
+    # check, so this job simply runs on push to main unconditionally (no
+    # `hooks-changes` job exists there) and is path-filtered on PRs only.
+    if: always() && (github.event_name != 'pull_request' || needs.hooks-changes.outputs.hooks == 'true')
+    runs-on: ubuntu-latest
+    # `.githooks/pre-push`'s `_pick_closest_base()` has regressed three
+    # times across separate reviews (#1751, #1767, #2029) with zero
+    # automated coverage until this test was added (#2024) — this job is
+    # what makes a fourth regression fail loudly in CI instead of only
+    # being caught if a reviewer happens to hand-build synthetic git
+    # topology again.
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+        with:
+          # The test script builds synthetic commits/branches on top of
+          # origin/main and real milestone/* branches — needs full history,
+          # not the default shallow clone, for git merge-base/rev-list to
+          # resolve correctly against them.
+          fetch-depth: 0
+
+      - name: Run pre-push hook regression tests
+        run: bash tests/hooks/test-pick-closest-base.sh
