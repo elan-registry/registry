@@ -21,7 +21,10 @@ use PHPUnit\Framework\Attributes\Group;
  *
  * The hook FILE's own control flow (run-once-per-request guard, partial-
  * failure logging, log category per catch branch) is covered directly in
- * tests/unit/security/SyncOwnerEmailOnVerifyHookTest.php, which `require`s
+ * tests/unit/security/SyncOwnerEmailOnVerifyHookTest.php (unit tier — no
+ * class-name clash with this file's own class since they run in separate
+ * PHPUnit testsuite configs; only cross-suite --filter runs risk collision,
+ * which is why this file carries the Integration suffix), which `require`s
  * the hook file itself.
  *
  * Manual verification of the real confirm-by-link flow (clicking an actual
@@ -37,7 +40,7 @@ use PHPUnit\Framework\Attributes\Group;
  */
 #[Group('integration')]
 #[Group('owner')]
-final class SyncOwnerEmailOnVerifyHookTest extends IntegrationTestCase
+final class SyncOwnerEmailOnVerifyHookIntegrationTest extends IntegrationTestCase
 {
     protected function setUp(): void
     {
