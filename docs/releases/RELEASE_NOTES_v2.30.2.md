@@ -44,13 +44,18 @@
       will hold recipient email addresses from captured payloads. Edit
       `scripts/spike-1888/brevo-webhook-capture.php`'s `CAPTURE_FILE`
       placeholder to point into that directory before copying it to the
-      server (see `scripts/README.md`). Confirm it's reachable.
+      server (see `scripts/README.md`). Deploy the file itself to
+      `~/test.elanregistry.org/scripts/spike-1888/capture.php` — exactly two
+      directories below the site root that holds `vendor/` and `.env`
+      (`REPO_ROOT` in the script is hardcoded to `../..`); one level too
+      shallow makes the autoloader unreachable and every request silently
+      404s the same way an auth failure does. Confirm it's reachable.
    2. Register a *throwaway* webhook pointed at the capture script, passing
       the same `BREVO_WEBHOOK_TOKEN` value as its auth token so the capture
       script's inbound auth check has something real to validate against:
       ```bash
       php scripts/spike-1888/brevo-register-webhook.php --create \
-        --url='https://test.elanregistry.org/<path-to>/capture.php' \
+        --url='https://test.elanregistry.org/scripts/spike-1888/capture.php' \
         --token=<test's BREVO_WEBHOOK_TOKEN value>
       ```
       Confirm it registered: `php scripts/spike-1888/brevo-register-webhook.php --list-webhooks`.

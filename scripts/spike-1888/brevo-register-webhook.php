@@ -22,7 +22,7 @@ namespace ElanRegistry\Spike1888;
  *
  * Examples:
  *   php scripts/spike-1888/brevo-register-webhook.php \
- *       --create --url='https://test.elanregistry.org/spike-1888/capture.php' \
+ *       --create --url='https://test.elanregistry.org/scripts/spike-1888/capture.php' \
  *       --token=<same value as that server's BREVO_WEBHOOK_TOKEN>
  *   php scripts/spike-1888/brevo-register-webhook.php --list-webhooks
  *   php scripts/spike-1888/brevo-register-webhook.php --delete --id=123
@@ -177,7 +177,7 @@ function usage(): void
 
     Examples:
       php scripts/spike-1888/brevo-register-webhook.php --create \\
-          --url='https://test.elanregistry.org/spike-1888/capture.php' \\
+          --url='https://test.elanregistry.org/scripts/spike-1888/capture.php' \\
           --token=<same value as that server's BREVO_WEBHOOK_TOKEN> \\
           --description='1888 — test env'
       php scripts/spike-1888/brevo-register-webhook.php --list-webhooks

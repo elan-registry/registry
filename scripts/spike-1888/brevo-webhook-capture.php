@@ -53,6 +53,16 @@ namespace ElanRegistry\Spike1888;
  * - The capture file lives outside the web root so captured payloads (which
  *   contain recipient email addresses) are never served over HTTP.
  *
+ * Deploy path: REPO_ROOT below is hardcoded to `../..`, so this file must
+ * land exactly two directories below the directory holding
+ * `vendor/autoload.php` and `.env` (the site root) — e.g.
+ * `~/test.elanregistry.org/scripts/spike-1888/capture.php`, preserving this
+ * repo's own `scripts/spike-1888/` subpath. One level too shallow makes the
+ * autoloader unreachable, which silently 404s every request the same way an
+ * auth failure does (see the autoloader check below) — there is no way to
+ * tell the two apart from outside. Same constraint as this script's sibling,
+ * `scripts/spike-1888/brevo-register-webhook.php` (see its own docblock).
+ *
  * @author Elan Registry Development Team
  */
 

@@ -243,6 +243,15 @@ Edit `CAPTURE_FILE`'s `<cpanel-account>` placeholder before copying. Requires
 `BREVO_WEBHOOK_TOKEN` to already be set in that server's `.env` (see
 `docs/development/ENVIRONMENT.md` — Brevo Webhook Authentication).
 
+**Deploy path matters:** `REPO_ROOT` is hardcoded as `__DIR__ . '/../..'`, so
+the file must land exactly two directories below the directory holding
+`vendor/autoload.php` and `.env` (the site root) — e.g.
+`~/test.elanregistry.org/scripts/spike-1888/capture.php`, preserving this
+repo's own `scripts/spike-1888/` subpath under the site root. One directory
+level too shallow and `is_file($autoloader)` fails silently into the same
+404 the auth-failure path returns, with no way to tell the two apart from
+the outside.
+
 ### spike-1888/brevo-register-webhook.php
 
 CLI script that registers, lists, and deletes Brevo transactional webhooks
@@ -252,7 +261,7 @@ dashboard clicks that #1888's acceptance criteria require.
 ```bash
 # Register a webhook (test URLs only — no bypass for production)
 php scripts/spike-1888/brevo-register-webhook.php \
-  --create --url='https://test.elanregistry.org/spike-1888/capture.php' \
+  --create --url='https://test.elanregistry.org/scripts/spike-1888/capture.php' \
   --token=<same value as that server's BREVO_WEBHOOK_TOKEN>
 
 # List existing transactional webhooks
