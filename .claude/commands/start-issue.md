@@ -118,7 +118,7 @@ This command requires a milestone workflow. The user must already be on a
 2. **If on a `milestone/*` branch**, use it as the base. Extract the version
    from the branch name (e.g., `milestone/v2.17.0` -> `v2.17.0`).
 
-3. **If NOT on a `milestone/*` branch**, check if exactly one exists:
+3. **If NOT on a `milestone/*` branch**, check if exactly one exists locally:
 
    ```bash
    git branch --list 'milestone/*'
@@ -131,10 +131,28 @@ This command requires a milestone workflow. The user must already be on a
      git pull origin milestone/vX.Y.Z
      ```
 
-   - **If zero exist**, stop and tell the user:
-     "No milestone branch found. Please run `/start-milestone` first to create
-     one, then re-run `/start-issue ISSUE_NUMBER`."
-   - **If multiple exist**, stop and tell the user:
+   - **If zero exist locally**, this clone may not be the one where
+     `/start-milestone` was run (this repo is sometimes checked out in more
+     than one local clone sharing the same `origin`, e.g. `Registry/` and
+     `Registry2/`). Check the shared remote before giving up:
+
+     ```bash
+     git ls-remote --heads origin 'milestone/*'
+     ```
+
+     - **If one exists on `origin`**, fetch and check it out (do not create
+       a `git worktree` pointing at another local clone — pull from
+       `origin`):
+
+       ```bash
+       git fetch origin milestone/vX.Y.Z
+       git checkout -b milestone/vX.Y.Z origin/milestone/vX.Y.Z
+       ```
+
+     - **If none exist on `origin` either**, stop and tell the user:
+       "No milestone branch found. Please run `/start-milestone` first to
+       create one, then re-run `/start-issue ISSUE_NUMBER`."
+   - **If multiple exist locally**, stop and tell the user:
      "Multiple milestone branches found: [list them]. Please checkout the one
      you want to work on and re-run `/start-issue ISSUE_NUMBER`."
 
