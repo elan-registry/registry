@@ -330,6 +330,16 @@ id=5, years=1971-1974, series="S4", variant="FHC", type_code="36", model_value="
 | `script_name` | `varchar(255)` | Name of FIX script executed |
 | `run_date` | `timestamp` | Execution timestamp |
 
+#### `settings` - Site-wide configuration (singleton row, `id = 1`)
+
+Single-row config table. Most columns are legacy UserSpice/site-settings
+fields; only recently-added columns relevant to guarded cron jobs are listed
+here — see the migration history in `database/migrations/` for the rest.
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `reconciliation_last_run` | `datetime NULL` | Last successful claim by `CronJobGuard::claim('reconciliation_last_run', ...)` (#2027). `NULL` means never run. Written only via the atomic UPDATE in `CronJobGuard`, never directly. |
+
 #### `phinxlog` - Phinx migration tracking
 
 Phinx's own tracking table. It stores one row per applied migration, recording
