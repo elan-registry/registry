@@ -97,6 +97,33 @@ _pick_closest_base() {
     local target="$1"
     local best_base="" best_count="" best_candidate=""
     local candidate base count
+    local main_base main_tip
+
+    # Fast, unambiguous early-exit (#2024): if the locally known origin/main
+    # tip is ALSO $target's merge-base with origin/main, then $target forked
+    # directly from main's current tip with nothing added to main since —
+    # main is inarguably the correct, most specific parent, and no
+    # milestone-branch scan is needed. This only fires for that exact
+    # zero-divergence case; the moment main has moved on since a branch
+    # forked from a milestone branch (the typical workflow), the two SHAs
+    # differ and this falls straight through to the scan below, unchanged.
+    # Without this check, a long-lived milestone/* branch can "win" the
+    # scan below purely on a lower raw commit-ahead count even when its
+    # merge-base is a much older, unrelated commit than main's — main's
+    # merge-base being ITS OWN TIP is a stronger signal than any commit
+    # count comparison can express (see #2024). Trusts the local
+    # origin/main ref exactly as much as the existing scan below already
+    # does (line ~144) — a stale-but-not-rewritten local view is harmless
+    # here since the diff computed is local-only regardless.
+    main_tip="$(git rev-parse origin/main 2>/dev/null)"
+    if [ -n "$main_tip" ]; then
+        main_base="$(git merge-base "$target" origin/main 2>/dev/null)"
+        if [ -n "$main_base" ] && [ "$main_base" = "$main_tip" ]; then
+            echo "  (merge-base resolved via origin/main: exact fork point, 0 commits behind)" >&2
+            printf '%s\n' "$main_base"
+            return 0
+        fi
+    fi
 
     while IFS= read -r candidate; do
         [ -z "$candidate" ] && continue
