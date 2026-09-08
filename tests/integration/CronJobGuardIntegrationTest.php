@@ -11,10 +11,19 @@ use PHPUnit\Framework\Attributes\Group;
  * Real-DB behavioral test for CronJobGuard::claim() against the
  * `er_cron_job_runs` table (#2034).
  *
- * CronJobGuardTest.php (unit) already covers claim()'s logic against a fake
- * database — this file exists to prove the real SQL actually behaves as
- * expected against real MySQL boolean/datetime column types and the
- * `job_name` primary key, which a mocked-DB unit test cannot fully prove
+ * Named CronJobGuardIntegrationTest, not CronJobGuardTest, to avoid
+ * duplicating tests/unit/cron/CronJobGuardTest.php's global class name — the
+ * two are only ever loaded together by phpunit.xml's default (no -c flag)
+ * config, which combines the Unit and Integration testsuites into a single
+ * process and previously fataled with "Cannot redeclare class" the moment
+ * both files were parsed. composer test:full's split -c phpunit-unit.xml /
+ * -c phpunit-integration.xml invocations run each suite as a separate
+ * process and never hit this, which is why it went unnoticed.
+ *
+ * tests/unit/cron/CronJobGuardTest.php already covers claim()'s logic
+ * against a fake database — this file exists to prove the real SQL actually
+ * behaves as expected against real MySQL boolean/datetime column types and
+ * the `job_name` primary key, which a mocked-DB unit test cannot fully prove
  * (this repo's own convention for new SQL: execute it, don't just read it).
  *
  * Uses the seeded `reconciliation` row (created by the
@@ -24,7 +33,7 @@ use PHPUnit\Framework\Attributes\Group;
  * er_verification_settings.last_cron_request_at.
  */
 #[Group('integration')]
-final class CronJobGuardTest extends IntegrationTestCase
+final class CronJobGuardIntegrationTest extends IntegrationTestCase
 {
     private const JOB_NAME = 'reconciliation';
 
@@ -125,6 +134,57 @@ final class CronJobGuardTest extends IntegrationTestCase
             $now,
             $this->fetchLastRunAt(),
             'A too-recent claim must not update last_run_at'
+        );
+    }
+
+    /**
+     * The `< NOW() - INTERVAL ? HOUR` comparison in claim()'s WHERE clause is
+     * strictly exclusive: a last_run_at exactly `$intervalHours` old does NOT
+     * count as elapsed, only one strictly older does. This can only be
+     * proven against real MySQL datetime arithmetic — a fake database has no
+     * actual notion of elapsed time to get right or wrong, so this boundary
+     * was previously asserted only via a unit test checking the SQL text
+     * contains `< NOW() - INTERVAL ? HOUR` (a string, not a behavior) — a
+     * change from `<` to `<=` would have passed every existing test.
+     */
+    public function testClaimBoundaryIsStrictlyExclusive(): void
+    {
+        $exactlyAtInterval = (new DateTimeImmutable('-24 hours'))->format('Y-m-d H:i:s');
+        $this->setFixtureState(enabled: true, lastRunAt: $exactlyAtInterval);
+        $guard = new CronJobGuard($this->db);
+
+        $this->assertFalse(
+            $guard->claim(self::JOB_NAME, 24),
+            'A last_run_at exactly 24 hours old must NOT be claimable — the boundary is strictly exclusive'
+        );
+
+        $justOverInterval = (new DateTimeImmutable('-24 hours -1 second'))->format('Y-m-d H:i:s');
+        $this->setFixtureState(enabled: true, lastRunAt: $justOverInterval);
+
+        $this->assertTrue(
+            $guard->claim(self::JOB_NAME, 24),
+            'A last_run_at more than 24 hours old must be claimable'
+        );
+    }
+
+    /**
+     * Two sequential claim()s against the real connection: the atomic
+     * conditional UPDATE must self-guard even without an interval elapsing
+     * between them, proving the single-statement UPDATE (not just PHP-level
+     * logic) is what enforces one winner. True concurrent-connection racing
+     * isn't practical in PHPUnit; sequential calls against the real DB are
+     * the closest available proxy for the atomicity property this class
+     * exists to provide.
+     */
+    public function testSequentialClaimsOnlyFirstSucceeds(): void
+    {
+        $this->setFixtureState(enabled: true, lastRunAt: null);
+        $guard = new CronJobGuard($this->db);
+
+        $this->assertTrue($guard->claim(self::JOB_NAME, 24));
+        $this->assertFalse(
+            $guard->claim(self::JOB_NAME, 24),
+            'A second claim immediately after the first must not also succeed'
         );
     }
 }

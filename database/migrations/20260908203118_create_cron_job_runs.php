@@ -19,6 +19,17 @@ use Phinx\Migration\AbstractMigration;
  * own crons table (which only supports add/delete, not pause) — see #2034
  * and #1889's shared cron scaffolding, which will check this flag before
  * running a job's work.
+ *
+ * Not atomic as a whole: up() interleaves DDL (create(), removeColumn())
+ * around one DML insert(). MySQL implicit-commits each DDL statement, so a
+ * wrapping transaction would be defeated regardless — per
+ * database/migrations/README.md's Transactions section, this is documented
+ * here rather than wrapped. A failure partway through (e.g. between create()
+ * and the seed insert) is not recorded in phinxlog, so Phinx will retry the
+ * whole up() on the next `migrate` — but that retry's create() will then hit
+ * an already-existing table. Recovery in that case is manual: drop
+ * er_cron_job_runs (and restore settings.reconciliation_last_run if it was
+ * already dropped) before re-running.
  */
 final class CreateCronJobRuns extends AbstractMigration
 {
@@ -39,12 +50,13 @@ final class CreateCronJobRuns extends AbstractMigration
             ->addColumn('created_at', 'datetime', ['null' => false])
             ->create();
 
-        $this->table('er_cron_job_runs')->insert([
-            'job_name' => 'reconciliation',
-            'enabled' => true,
-            'last_run_at' => null,
-            'created_at' => date('Y-m-d H:i:s'),
-        ])->saveData();
+        // created_at uses the database clock (SQL NOW(), not PHP date()) for
+        // consistency with CronJobGuard::claim(), which deliberately avoids
+        // any PHP-derived time value — see that method's own tests.
+        $this->execute(
+            "INSERT INTO er_cron_job_runs (job_name, enabled, last_run_at, created_at)
+             VALUES ('reconciliation', 1, NULL, NOW())"
+        );
 
         $this->table('settings')->removeColumn('reconciliation_last_run')->update();
     }

@@ -89,6 +89,29 @@ final class CronJobGuardTest extends TestCase
         );
     }
 
+    /**
+     * `job_name` is `varchar(64)` under MySQL's default case-insensitive
+     * collation — `job_name = 'RECONCILIATION'` matches the seeded
+     * `'reconciliation'` row at the SQL layer. The allowlist's strict
+     * `in_array(..., true)` check is the only thing preventing a
+     * case-variant name from claiming a different job's row; if the
+     * allowlist check were ever relaxed to case-insensitive comparison, the
+     * DB layer would silently agree and two logically distinct job names
+     * could share one guard row. This test documents that the strictness is
+     * load-bearing, not incidental.
+     */
+    public function testClaimRejectsCaseVariantOfAllowedJobName(): void
+    {
+        $db = new CronJobGuardFakeDatabase(claimSucceeds: true);
+
+        $this->assertFalse((new CronJobGuard($db))->claim('RECONCILIATION', 24));
+        $this->assertSame(
+            '',
+            $db->lastSql(),
+            'A case-variant of an allowed job name must be rejected before any query is issued'
+        );
+    }
+
     public function testClaimBindsIntervalHoursAsParameter(): void
     {
         $db = new CronJobGuardFakeDatabase(claimSucceeds: true);
@@ -129,7 +152,7 @@ final class CronJobGuardTest extends TestCase
      * minimum interval would be enforced at all. See CronJobGuard::claim()'s
      * own inline comment for the full explanation.
      */
-    public function testClaimRejectsIntervalHoursLessThanOne(): void
+    public function testClaimRejectsIntervalHoursOfZero(): void
     {
         $db = new CronJobGuardFakeDatabase(claimSucceeds: true);
 
@@ -137,7 +160,27 @@ final class CronJobGuardTest extends TestCase
         $this->assertSame(
             '',
             $db->lastSql(),
-            'An interval of 0 (or negative) must be rejected before any query is issued'
+            'An interval of 0 must be rejected before any query is issued'
+        );
+    }
+
+    /**
+     * A negative interval is the more dangerous case than 0: `NOW() -
+     * INTERVAL -24 HOUR` is a future timestamp, so `last_run_at < <future>`
+     * would match almost any existing row, turning the guard into a no-op
+     * that permits unlimited concurrent claims. The `< 1` check must reject
+     * this the same way it rejects 0 — tested separately, since a
+     * `< 1` guard could be miswritten as `=== 0` and still pass a 0-only test.
+     */
+    public function testClaimRejectsNegativeIntervalHours(): void
+    {
+        $db = new CronJobGuardFakeDatabase(claimSucceeds: true);
+
+        $this->assertFalse((new CronJobGuard($db))->claim('reconciliation', -1));
+        $this->assertSame(
+            '',
+            $db->lastSql(),
+            'A negative interval must be rejected before any query is issued'
         );
     }
 
