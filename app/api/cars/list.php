@@ -37,16 +37,6 @@ if (!Input::existsPost()) {
         ->send();
 }
 
-$userId = $user->isLoggedIn() ? (int) $user->data()->id : 0;
-
-$rateUserId = $userId ?: null; // null is the framework's "no user" sentinel; 0 is not a valid user ID
-if (!checkRateLimit('cars_list', $rateUserId)) {
-    ApiResponse::error('Too many requests. Please slow down.', 429)
-        ->withLogging($userId, LogCategories::LOG_CATEGORY_SECURITY, 'Rate limit exceeded for cars list endpoint')
-        ->send();
-}
-recordRateLimit('cars_list', true, $rateUserId);
-
 $emptyDraw = [
     'draw'            => (int) Input::get('draw'),
     'recordsTotal'    => 0,

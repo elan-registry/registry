@@ -97,10 +97,17 @@ is what made the redundancy visible.
 
 **CSRF tokens are not applied to endpoints that are public, read-only, and
 return no data beyond what the corresponding public page already renders.
-Those endpoints are protected by rate limiting instead.**
+Those endpoints were originally protected by rate limiting instead — see the
+2026-09-08 update below, which removed that substitute control from the four
+endpoints this ADR names, leaving them with no app-layer abuse control at
+all.**
 
-An endpoint qualifies only if **all** of the following hold. If any is false,
-it keeps its CSRF token.
+An endpoint qualifies for **CSRF removal** only if **all** of the following
+hold. If any is false, it keeps its CSRF token. Criterion 4 is this ADR's
+*original* design and is historical for the four endpoints below as of
+issue #2018 — decide consciously whether a new public read endpoint still
+needs a rate limit rather than copying these four's current (unlimited)
+state by default.
 
 1. **No state change.** No `INSERT`, `UPDATE`, `DELETE`, no email dispatch, no
    session mutation, no third-party side effect.
@@ -113,17 +120,27 @@ it keeps its CSRF token.
    `pages.private == 0`. If a page's visibility is ever changed, re-check the
    endpoint against these criteria — the endpoint will not have changed with
    it.
-4. **A rate limit is configured** in `usersc/includes/rate_limits.php`, under
-   its own action key.
+4. **(Historical) A rate limit is configured** in
+   `usersc/includes/rate_limits.php`, under its own action key. This was a
+   requirement when the ADR was written; as of #2018 the four endpoints below
+   no longer meet it, by deliberate choice, not oversight.
 
 Applied to the current codebase:
 
 | Endpoint | CSRF | Rate limit key |
 | --- | --- | --- |
-| `app/api/cars/list.php` | removed | `cars_list` |
-| `app/api/cars/factory-list.php` | removed | `factory_list` |
-| `app/api/cars/history.php` | removed | `car_history` |
-| `app/api/shared/statistics.php` | removed | `statistics_request` (existing) |
+| `app/api/cars/list.php` | removed | removed (#2018) |
+| `app/api/cars/factory-list.php` | removed | removed (#2018) |
+| `app/api/cars/history.php` | removed | removed (#2018) |
+| `app/api/shared/statistics.php` | removed | removed (#2018) |
+
+**Update, 2026-09-08:** Rate limiting was also removed from these four
+endpoints per issue #2018, in response to a production log-volume/performance
+complaint attributed to the `us_rate_limits` table's growth. This leaves all
+four endpoints with **no app-layer abuse control at all** — no CSRF, no rate
+limit. Issue #2015, a proposed cron job to clean up `us_rate_limits` (which
+would have addressed the underlying row-growth problem without removing the
+control), remains open and was not chosen.
 
 Explicitly **not** qualifying, and retaining their tokens:
 
@@ -146,11 +163,17 @@ would consume the car list's allowance. Each endpoint gets its own key.
 
 Sizing, and why these numbers:
 
+**Note:** `cars_list`, `factory_list`, `car_history`, and `statistics_request`
+no longer appear in `usersc/includes/rate_limits.php` at all — their entries,
+and this table's rows for the first three, are kept below only as
+historical/reference sizing for the general approach that #2018 removed;
+`brevo_webhook` (a different endpoint, unaffected by #2018) is current.
+
 | Action key | `total_max` per 300s | Endpoint |
 | --- | --- | --- |
-| `cars_list` | 10000 | `app/api/cars/list.php` |
-| `factory_list` | 10000 | `app/api/cars/factory-list.php` |
-| `car_history` | 5000 | `app/api/cars/history.php` |
+| `cars_list` (removed, #2018) | 10000 | `app/api/cars/list.php` |
+| `factory_list` (removed, #2018) | 10000 | `app/api/cars/factory-list.php` |
+| `car_history` (removed, #2018) | 5000 | `app/api/cars/history.php` |
 | `brevo_webhook` | 2000 | `app/api/webhooks/brevo.php` |
 
 `brevo_webhook` does not qualify under the four criteria above and is **not**
@@ -190,11 +213,13 @@ Four traps worth recording:
   (`RateLimit::check()`, in its `!isset($this->rateLimits[$action])` early
   return). A missing or mistyped key does not
   error; it silently disables the limit — and with no CSRF check behind it,
-  that leaves the endpoint with no control at all.
-  `tests/unit/system/RateLimitConfigTest.php` pins both halves: that each key
-  exists in the config, and that each endpoint's source actually calls
-  `checkRateLimit()` with that exact string. Pinning only the config would
-  still let a typo on the endpoint side fail open silently.
+  that leaves the endpoint with no control at all. This still matters for
+  `brevo_webhook`; `tests/unit/system/RateLimitConfigTest.php` pins both
+  halves for it (the key exists in the config, and the endpoint's source
+  actually calls `checkRateLimit()` with that exact string) — pinning only the
+  config would still let a typo on the endpoint side fail open silently. The
+  equivalent pinning for `cars_list`, `factory_list`, `car_history`, and
+  `statistics_request` was removed along with their rate limits by #2018.
 - **Sizing must reflect DataTables' draw rate.** A draw fires per search
   keystroke, per sort and per page change. Reusing `statistics_request`'s
   50-per-300s IP limit would trade a rare 403 for a common 429.
@@ -235,14 +260,17 @@ Four traps worth recording:
   embeds, four client-side sends.
 - The public browse surface no longer depends on session continuity — correct
   for pages explicitly designed to work logged-out (#1305).
-- `factory-list.php` and `history.php` gain a control they never had. Note
-  what rate limiting does and does not buy: `total_max` is scoped per
-  identifier (per IP for anonymous callers), not site-wide, so it bounds
-  accidental load and single-source hammering. It does not deter distributed
-  scraping — an attacker rotating IPs never sees a 429, and raising the
-  threshold cannot fix that, because per-identifier bucketing is the
-  limitation rather than the number. Bulk-extraction resistance, if it is ever
-  wanted, belongs at the CDN edge.
+- ~~`factory-list.php` and `history.php` gain a control they never had.~~
+  **No longer true as of #2018:** the rate limits these four endpoints gained
+  under this ADR were themselves removed per #2018, so this bullet's premise
+  no longer holds — see the 2026-09-08 update above. What rate limiting would
+  have bought, for the record: `total_max` is scoped per identifier (per IP
+  for anonymous callers), not site-wide, so it bounds accidental load and
+  single-source hammering, but does not deter distributed scraping — an
+  attacker rotating IPs never sees a 429, and raising the threshold cannot fix
+  that, because per-identifier bucketing is the limitation rather than the
+  number. Bulk-extraction resistance, if it is ever wanted, belongs at the CDN
+  edge.
 - The security posture becomes stateable in one sentence, so the next public
   read endpoint does not re-inherit the token by cargo cult.
 
@@ -255,12 +283,18 @@ Four traps worth recording:
   this is the failure mode to guard against in review.
 - The criteria require judgement. "Returns nothing beyond the public page" is
   true today because of #1501's PII removal; a future column addition could
-  quietly falsify it. The pinning tests exist for this reason.
+  quietly falsify it. Pinning tests existed for this reason for all four
+  endpoints; as of #2018, only `history.php`'s no-CSRF assertion survives
+  (`CarActionsHistoryAndValidationWiringTest::testHistoryRequiresPostMethodAndHasNoCsrfCheck()`)
+  — `list.php`, `factory-list.php`, and `statistics.php` have no source-level
+  pin against a reflexive CSRF or rate-limit re-add. Accepted as a known gap,
+  not fixed in #2018.
 - Anyone reading only the endpoint code will see no token check and may assume
-  an oversight. This ADR is the answer; the wiring tests in
-  `tests/unit/system/RateLimitConfigTest.php` and
-  `tests/unit/cars/CarActionsHistoryAndValidationWiringTest.php` are what stop
-  the token being reinstated by reflex.
+  an oversight. This ADR is the answer; `history.php`'s wiring test in
+  `tests/unit/cars/CarActionsHistoryAndValidationWiringTest.php` is what stops
+  its token being reinstated by reflex — the equivalent pins for the other
+  three endpoints, and for rate limiting on all four, were removed by #2018
+  (see the note above).
 - Rate limiting is a coarser instrument: it is measured in requests per window,
   not correctness, and a misjudged limit degrades normal browsing.
 
@@ -296,10 +330,16 @@ trades a real security parameter for a cosmetic gain.
 
 ### Remove the token and add no rate limit
 
-Relies on Cloudflare's edge rate limiting alone. Rejected as inconsistent:
-`statistics.php` already carries an app-layer limit, and these endpoints
-currently set no cache headers, so origin load is real. App-layer limiting also
-survives a change of CDN.
+Relies on Cloudflare's edge rate limiting alone. Rejected at the time as
+inconsistent: `statistics.php` already carried an app-layer limit, and these
+endpoints set no cache headers, so origin load is real. App-layer limiting
+also survives a change of CDN.
+
+**Update, 2026-09-08:** #2018 subsequently adopted exactly this alternative —
+rate limiting was removed from all four endpoints with no replacement — in
+response to a production log-volume/performance complaint, not because this
+rejection's reasoning was found wrong. See the Decision section's 2026-09-08
+update for the full rationale and the unchosen alternative (#2015).
 
 ### Remove the login-gate distinction instead — make `list.php` require login
 

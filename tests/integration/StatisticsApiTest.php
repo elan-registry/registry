@@ -392,8 +392,9 @@ class StatisticsApiTest extends IntegrationTestCase
     // =========================================================================
 
     /**
-     * Test that the statistics endpoint logs security, validation, and database events.
-     * The endpoint is hardened with CSRF and rate limiting, so security log calls are expected.
+     * Test that the statistics endpoint logs validation and database events.
+     * Rate limiting (the endpoint's only source of LOG_CATEGORY_SECURITY calls)
+     * was removed by #2018; no CSRF check has applied here since ADR-019.
      */
     public function testValidationAndDatabaseErrorsLogged(): void
     {
@@ -404,9 +405,15 @@ class StatisticsApiTest extends IntegrationTestCase
 
         $content = file_get_contents($filePath);
         $this->assertIsString($content, "File should be readable");
-        $this->assertStringContainsString('LOG_CATEGORY_SECURITY', $content, "Hardened statistics endpoint should log CSRF failures and rate-limit events");
         $this->assertStringContainsString('LOG_CATEGORY_VALIDATION_ERROR', $content, "Should log validation errors via LogCategories");
         $this->assertStringContainsString('LOG_CATEGORY_DATABASE_ERROR', $content, "Should log database errors via LogCategories");
+        $this->assertStringNotContainsString(
+            'LOG_CATEGORY_SECURITY',
+            $content,
+            'No remaining source of security-category logging on this endpoint since #2018 removed '
+                . 'its rate limit (the only prior caller) — a reappearance here likely means rate '
+                . 'limiting or a CSRF check was reintroduced without updating this test'
+        );
     }
 
     /**

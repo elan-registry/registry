@@ -65,17 +65,17 @@ final class CarActionsHistoryAndValidationWiringTest extends TestCase
     // =========================================================================
 
     /**
-     * history.php admits only POST requests carrying a payload, then gates
-     * further processing on the `car_history` rate limit rather than a CSRF
-     * token.
+     * history.php admits only POST requests carrying a payload, and checks no
+     * CSRF token.
      *
      * Per ADR-019, history.php is public and read-only, so it deliberately
-     * carries no CSRF check — abuse is bounded by rate limiting instead.
+     * carries no CSRF check. As of #2018 it also carries no rate limit — no
+     * app-layer abuse control remains on this endpoint.
      *
-     * Source inspection: all guards read request state ($method, $_POST, the
-     * rate-limit bucket) that only exists during a real HTTP request.
+     * Source inspection: all guards read request state ($method, $_POST) that
+     * only exists during a real HTTP request.
      */
-    public function testHistoryRequiresPostMethodAndRateLimit(): void
+    public function testHistoryRequiresPostMethodAndHasNoCsrfCheck(): void
     {
         $content = $this->readEndpointSource(self::HISTORY_ENDPOINT);
 
@@ -101,46 +101,13 @@ final class CarActionsHistoryAndValidationWiringTest extends TestCase
             'An empty POST must return an ApiResponse error'
         );
 
-        // Per ADR-019: public, read-only endpoints are rate-limited instead of
-        // CSRF-gated. This endpoint must no longer check a CSRF token at all —
-        // its presence would mean the removal in #1913 was reverted or
-        // reintroduced.
+        // Per ADR-019: public, read-only endpoints carry no CSRF check. This
+        // endpoint must not check a CSRF token at all — its presence would
+        // mean the removal in #1913 was reverted or reintroduced.
         $this->assertStringNotContainsString(
             'Token::check',
             $content,
-            'history.php must not check a CSRF token — per ADR-019 it is rate-limited instead'
-        );
-
-        // The negation is part of the asserted literal on purpose: an inverted guard
-        // (`if (checkRateLimit(...))`) would reject every legitimate request while a
-        // presence-only assertion still passed.
-        $this->assertStringContainsString(
-            "if (!checkRateLimit('car_history', \$rateUserId))",
-            $content,
-            'Rate-limit check must reject (not accept) a request over the car_history limit'
-        );
-        $this->assertStringContainsString(
-            "recordRateLimit('car_history', true,",
-            $content,
-            'An admitted request must be recorded against the car_history limit, or the '
-                . 'counter never accumulates and the limit can never trip'
-        );
-        // The rejection path deliberately does NOT record. recordRateLimit(..., false, ...)
-        // would be the only writer of failure rows, and RateLimit::check() counts those
-        // against ip_max — so blocked requests would feed a second, independent limit that
-        // nothing but the block itself created.
-        $this->assertStringNotContainsString(
-            "recordRateLimit('car_history', false,",
-            $content,
-            'A rate-limit rejection must not record a failed attempt'
-        );
-        // Deliberately loose: pins the action string, the negation and the 429 status,
-        // but not the local variable name or the user-facing message — renaming or
-        // rewording either is not a behaviour change and must not fail this test.
-        $this->assertMatchesRegularExpression(
-            '/if \(!checkRateLimit\(\'car_history\',[^)]*\)\) \{\s*ApiResponse::error\([^;]*429\)\s*->withLogging\([^;]*LOG_CATEGORY_SECURITY/s',
-            $content,
-            'A rate-limit rejection must return a 429 logged under the security category'
+            'history.php must not check a CSRF token, per ADR-019'
         );
     }
 

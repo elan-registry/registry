@@ -29,14 +29,6 @@ try {
 
     $userId = $user->isLoggedIn() ? (int) $user->data()->id : 0;
 
-    $rateUserId = $userId ?: null; // null is the framework's "no user" sentinel; 0 is not a valid user ID
-    if (!checkRateLimit('statistics_request', $rateUserId)) {
-        ApiResponse::error('Too many requests. Please slow down.', 429)
-            ->withLogging($userId, LogCategories::LOG_CATEGORY_SECURITY, 'Rate limit exceeded for statistics API')
-            ->send();
-    }
-    recordRateLimit('statistics_request', true, $rateUserId);
-
     $tab = Input::get('tab');
 
     if (empty($tab)) {
