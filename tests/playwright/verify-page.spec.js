@@ -20,7 +20,7 @@
 // fixture user + a hash_equals()-matching vericode) is separate, tracked work
 // — this is a known, deliberate gap, not an oversight. See #1253.
 //
-// Requires local MAMP at http://localhost:9999/ElanRegistry/Registry
+// Requires local MAMP. Default: http://localhost:9999/ElanRegistry/Registry/ — override with PLAYWRIGHT_BASE_URL, see docs/development/ENVIRONMENT.md
 
 const { test, expect } = require('@playwright/test');
 

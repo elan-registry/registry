@@ -71,24 +71,40 @@ gate_failed=0
 # the true parent will show 0+ commits ahead; origin/main, being further back
 # in history, will show many more.
 #
-# A candidate is rejected only when $1 (the pushed branch) is itself an
-# ancestor of that candidate — i.e. the candidate was cut FROM $1's own tip
-# (a stale/scratch milestone branch someone branched off the issue branch
-# after diverging from it) rather than being a real, independent parent. This
-# is checked as `! git merge-base --is-ancestor target candidate`, NOT the
-# reverse: requiring the candidate to be an ancestor of $1 would also reject
-# a milestone branch that has legitimately moved on since $1 forked from it
-# (e.g. the developer worked another issue in the meantime, which merged into
-# the milestone branch, before finally pushing $1 for the first time) — that
-# milestone branch is still $1's true logical parent even though $1's tip
-# isn't reachable from it anymore (PR #1767 review). A commit-count
-# comparison alone can't tell a true ancestor with zero commits ahead (e.g.
-# $1 is a genuinely fresh branch with no commits yet) apart from a diverged
-# sibling — both show count=0 — so the ancestor-direction check is required
-# first; count only breaks ties among confirmed candidates (#1751 review).
-# Picking a sibling cut from $1's own tip would silently zero out (or
-# under-report) the diff and defeat the gate exactly like the bug this
-# function fixes, just via a different trigger.
+# A candidate is rejected only when $1 (the pushed branch) is a STRICT
+# (proper) ancestor of that candidate — i.e. the candidate has commits $1
+# lacks, because it was cut FROM $1's own tip (a stale/scratch milestone
+# branch someone branched off the issue branch after diverging from it)
+# rather than being a real, independent parent. This is checked as
+# `! git merge-base --is-ancestor target candidate` PLUS a `target !=
+# candidate` guard (#2024 review) — `--is-ancestor` treats a commit as its
+# own ancestor, so without that guard, a candidate whose tip happens to
+# equal $1's own tip exactly (e.g. $1 is a brand-new branch pushed before
+# it has any commits of its own beyond main's current tip, and origin/main
+# is itself a candidate) gets wrongly excluded as if it were a scratch
+# branch cut off $1 — when it's actually the SAME commit, not a strict
+# descendant, and should remain eligible. This exact mechanism caused the
+# original #2024 bug: origin/main, sharing $1's exact tip, was excluded
+# here, leaving only a stale, unrelated milestone branch as a candidate,
+# which then "won" on its own (much larger, but nonzero) commit-ahead
+# count against ITS OWN merge-base — a different commit than $1's, and
+# not comparable to the near-zero count main would have produced had it
+# not been wrongly excluded.
+#
+# Rejecting the strict-ancestor case only (not equality) is also NOT the
+# reverse check: requiring the candidate to be an ancestor of $1 would
+# reject a milestone branch that has legitimately moved on since $1 forked
+# from it (e.g. another issue merged into the milestone branch before $1's
+# first push) — that milestone branch is still $1's true logical parent
+# even though $1's tip isn't reachable from it anymore (PR #1767 review).
+# A commit-count comparison alone can't tell a true ancestor with zero
+# commits ahead (e.g. $1 is a genuinely fresh branch with no commits yet)
+# apart from a diverged sibling — both show count=0 — so the
+# ancestor-direction check is required first; count only breaks ties among
+# confirmed candidates (#1751 review). Picking a sibling strictly cut from
+# $1's own tip would silently zero out (or under-report) the diff and
+# defeat the gate exactly like the bug this function fixes, just via a
+# different trigger.
 #
 # Echoes the winning base SHA on success, and the winning candidate + commit
 # count to stderr for diagnosability. Returns non-zero (echoes nothing) if no
@@ -96,15 +112,20 @@ gate_failed=0
 _pick_closest_base() {
     local target="$1"
     local best_base="" best_count="" best_candidate=""
-    local candidate base count
+    local candidate base count candidate_sha
 
     while IFS= read -r candidate; do
         [ -z "$candidate" ] && continue
         base="$(git merge-base "$target" "$candidate" 2>/dev/null)" || continue
-        # Reject only candidates cut FROM $target's own tip (i.e. $target is
-        # an ancestor of $candidate) — see the function comment above for why
-        # this direction, not the reverse, is the correct discriminator.
-        git merge-base --is-ancestor "$target" "$candidate" 2>/dev/null && continue
+        candidate_sha="$(git rev-parse "$candidate" 2>/dev/null)" || continue
+        # Reject only candidates STRICTLY cut FROM $target's own tip (i.e.
+        # $target is a proper ancestor of $candidate, not the same commit)
+        # — see the function comment above for why this direction, and why
+        # the equality guard, are both required.
+        if [ "$target" != "$candidate_sha" ] \
+            && git merge-base --is-ancestor "$target" "$candidate" 2>/dev/null; then
+            continue
+        fi
         count="$(git rev-list --count "$base".."$target" 2>/dev/null)" || continue
         case "$count" in
             ''|*[!0-9]*)

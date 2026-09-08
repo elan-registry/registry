@@ -22,7 +22,7 @@
 // fake car_id (no real MAMP car required), mocks the fetchImages API to return
 // one fake image path, and aborts the image fetch so FilePond gets a LOAD_ERROR.
 //
-// Requires local MAMP at http://localhost:9999/ElanRegistry/Registry
+// Requires local MAMP. Default: http://localhost:9999/ElanRegistry/Registry/ — override with PLAYWRIGHT_BASE_URL, see docs/development/ENVIRONMENT.md
 
 const { test, expect } = require('@playwright/test');
 const { ensureLoggedIn } = require('./auth-helper.js');

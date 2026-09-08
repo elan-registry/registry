@@ -19,6 +19,8 @@ const hasCredentials = !!(process.env.TEST_USERNAME && process.env.TEST_PASSWORD
  */
 module.exports = defineConfig({
   testDir: './tests/playwright',
+  /* Provisions the shared PLAYWRIGHT_BASE_URL fallback used by `use.baseURL` below. */
+  globalSetup: require.resolve('./tests/playwright/global-setup.js'),
   /* Run tests in files in parallel */
   fullyParallel: true,
   /* Fail the build on CI if you accidentally left test.only in the source code. */
@@ -33,7 +35,8 @@ module.exports = defineConfig({
   use: {
     /* Base URL to use in actions like `await page.goto('/')`. */
     /* Trailing slash is required — goto('') resolves to baseURL; without it the path collapses. */
-    baseURL: 'http://localhost:9999/ElanRegistry/Registry/',
+    /* If PLAYWRIGHT_BASE_URL is set, it must also include a trailing slash for the same reason. */
+    baseURL: require('./tests/playwright/base-url.js'),
 
     /* Collect trace when retrying the failed test. See https://playwright.dev/docs/trace-viewer */
     trace: 'on-first-retry',
@@ -59,8 +62,12 @@ module.exports = defineConfig({
       testIgnore: '**/e2e/**',
     },
     {
+      // Exact-filename allowlist so this doesn't also match auth-non-admin.setup.js
+      // (added for playwright.config.dev.js's setup-non-admin project) —
+      // this config has no use for it and would otherwise perform an unused
+      // live login on every local run.
       name: 'setup',
-      testMatch: /(?:^|\/)e2e\/.*\.setup\.js$/,
+      testMatch: /(?:^|\/)auth\.setup\.js$/,
       use: { ...devices['Desktop Chrome'] },
     },
     {

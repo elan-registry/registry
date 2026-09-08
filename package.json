@@ -32,6 +32,12 @@
     "test:e2e:test:not-logged-in": "playwright test --config=playwright.config.test.js --project=not-logged-in",
     "test:e2e:test:logged-in": "playwright test --config=playwright.config.test.js --project=logged-in",
     "test:e2e:test:report": "playwright show-report playwright-report-e2e-test",
+    "test:e2e:dev": "playwright test --config=playwright.config.dev.js",
+    "test:e2e:dev:headed": "playwright test --config=playwright.config.dev.js --headed",
+    "test:e2e:dev:ui": "playwright test --config=playwright.config.dev.js --ui",
+    "test:e2e:dev:not-logged-in": "playwright test --config=playwright.config.dev.js --project=not-logged-in",
+    "test:e2e:dev:logged-in": "playwright test --config=playwright.config.dev.js --project=logged-in",
+    "test:e2e:dev:report": "playwright show-report playwright-report-e2e-dev",
     "build": "node scripts/build.js",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix"

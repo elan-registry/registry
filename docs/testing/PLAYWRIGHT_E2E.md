@@ -1,14 +1,28 @@
 # Playwright E2E Testing Guide
 
-Three-tier Playwright testing strategy for local development, staging, and production environments.
+Four-tier Playwright testing strategy spanning local development, staging, and production environments (two tiers, Local and Dev, target local MAMP — see below).
 
-## Three-Tier Architecture
+## Four-Tier Architecture
 
 | Tier | Location | Environment | When to Run |
-|------|----------|-------------|-------------|
-| **Local** | `tests/playwright/` | `localhost:9999/elan_registry` | During development |
+| ------ | ---------- | ------------- | ------------- |
+| **Local** | `tests/playwright/` | `localhost:9999/ElanRegistry/Registry`[^1] | During development |
+| **Dev** | `tests/playwright/e2e/` | `localhost:9999/ElanRegistry/Registry` | During development (logged-in E2E flows) |
 | **Test** | `tests/playwright/e2e/` | `test.elanregistry.org` | Before releases |
 | **Production** | `tests/playwright/e2e/` | `elanregistry.org` | Post-deployment |
+
+[^1]: Default — override with `PLAYWRIGHT_BASE_URL`, see [ENVIRONMENT.md](../development/ENVIRONMENT.md).
+
+**Why Dev exists alongside Local, against the same environment:**
+`playwright.config.js` (Local) covers `tests/playwright/` broadly — fast,
+mostly-unauthenticated browser checks plus one `logged-in` project.
+`playwright.config.dev.js` (Dev) scopes to `tests/playwright/e2e/` only —
+the same `not-logged-in`/`logged-in` specs that run against Test/Production
+in CI — so a developer can validate that exact suite against local MAMP
+first. Dev also provisions a `logged-in-non-admin` project — a second local
+test account distinct from `logged-in`'s admin account — as infrastructure
+for future non-admin e2e coverage; no spec targets it yet, so it has no npm
+script until one does.
 
 ## Running Tests
 
@@ -52,9 +66,24 @@ npm run test:e2e:logged-in
 npm run test:e2e:report
 ```
 
+### Dev Environment
+
+```bash
+npm run test:e2e:dev               # All E2E against local MAMP
+npm run test:e2e:dev:headed        # With browser
+npm run test:e2e:dev:ui            # UI mode
+npm run test:e2e:dev:not-logged-in # Public pages only
+npm run test:e2e:dev:logged-in     # Authenticated flows (admin account)
+npm run test:e2e:dev:report        # View test report
+```
+
 ## Authentication Setup
 
-E2E tests use session persistence to avoid CAPTCHA challenges.
+E2E tests use session persistence to avoid CAPTCHA challenges. Local and Dev
+tiers instead use a live login (`auth.setup.js` / `auth-dev.setup.js`
+respectively, see [ENVIRONMENT.md](../development/ENVIRONMENT.md)), with
+credentials from `TEST_USERNAME`/`TEST_PASSWORD` in `.env.local`; Test and
+Production use the 1Password / CAPTCHA flow described below.
 
 ### Prerequisites
 
@@ -83,21 +112,23 @@ E2E tests use session persistence to avoid CAPTCHA challenges.
 
 ### Auth Files
 
-| Environment | File | Config |
-|-------------|------|--------|
-| Test | `.auth/user-test.json` | `playwright.config.test.js` |
-| Production | `.auth/user.json` | `playwright.config.prod.js` |
+| Environment | File                   | Config                      |
+| ----------- | ---------------------- | --------------------------- |
+| Test        | `.auth/user-test.json` | `playwright.config.test.js` |
+| Production  | `.auth/user.json`      | `playwright.config.prod.js` |
 
 Files are gitignored. Re-run setup if sessions expire.
 
 ## Test Projects
 
 ### not-logged-in
+
 - Public page accessibility
 - No authentication required
 - Always runs
 
 ### logged-in
+
 - Authenticated workflows
 - Requires auth file
 - Skipped if auth file missing
@@ -105,7 +136,7 @@ Files are gitignored. Re-run setup if sessions expire.
 ## Troubleshooting
 
 | Issue | Solution |
-|-------|----------|
+| ------- | ---------- |
 | Auth file doesn't exist | Run auth setup script |
 | Tests fail with login redirect | Session expired - re-run auth setup |
 | CAPTCHA timeout | Re-run setup, solve CAPTCHA promptly |

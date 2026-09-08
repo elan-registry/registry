@@ -7,7 +7,7 @@ const { test, expect } = require('@playwright/test');
  * `isAdmin()` returns 403 JSON for non-admin authenticated users.
  * These tests verify that unauthenticated POSTs never return backup data.
  *
- * Run with: npm run playwright:security (local config, base URL http://localhost:9999)
+ * Run with: npm run playwright:security (local config, base URL defaults to http://localhost:9999 — override with PLAYWRIGHT_BASE_URL, see docs/development/ENVIRONMENT.md)
  *
  * Guards that require an authenticated session (isAdmin() guard, CSRF guard) are
  * not covered here — they require a logged-in session setup via auth-helper.js.
