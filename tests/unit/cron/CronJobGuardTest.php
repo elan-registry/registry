@@ -12,40 +12,40 @@ require_once __DIR__ . '/../../Support/CronJobGuardFakeDatabase.php';
 
 /**
  * Unit tests for CronJobGuard — the atomic-claim guard used to prevent
- * duplicate/overlapping scheduled cron runs (#2027).
+ * duplicate/overlapping scheduled cron runs (#2027, #2034).
  */
 #[Group('fast')]
 final class CronJobGuardTest extends TestCase
 {
-    public function testClaimSucceedsOnFirstRunWithNullColumn(): void
+    public function testClaimSucceedsOnFirstRunWithNullLastRunAt(): void
     {
         $db = new CronJobGuardFakeDatabase(claimSucceeds: true);
 
-        $this->assertTrue((new CronJobGuard($db))->claim('reconciliation_last_run', 24));
+        $this->assertTrue((new CronJobGuard($db))->claim('reconciliation', 24));
         $this->assertStringContainsString(
             'IS NULL',
             $db->lastSql(),
-            'A first-ever run (NULL column) must be claimable — the NULL branch must stay in the SQL'
+            'A first-ever run (NULL last_run_at) must be claimable — the NULL branch must stay in the SQL'
         );
     }
 
     public function testClaimFailsWhenAlreadyClaimedWithinInterval(): void
     {
-        // Simulates two callers racing for the same guard column: the first
+        // Simulates two callers racing for the same guard row: the first
         // claim() call wins, the second (same fake, same guard instance)
         // must lose — proving the guard doesn't unconditionally succeed.
         $db = new CronJobGuardFakeDatabase(claimSucceedsOnce: true);
         $guard = new CronJobGuard($db);
 
-        $this->assertTrue($guard->claim('reconciliation_last_run', 24));
-        $this->assertFalse($guard->claim('reconciliation_last_run', 24));
+        $this->assertTrue($guard->claim('reconciliation', 24));
+        $this->assertFalse($guard->claim('reconciliation', 24));
     }
 
     public function testClaimSucceedsAtIntervalBoundary(): void
     {
         $db = new CronJobGuardFakeDatabase(claimSucceeds: true);
 
-        $this->assertTrue((new CronJobGuard($db))->claim('reconciliation_last_run', 24));
+        $this->assertTrue((new CronJobGuard($db))->claim('reconciliation', 24));
         $this->assertStringContainsString(
             '< NOW() - INTERVAL ? HOUR',
             $db->lastSql(),
@@ -57,30 +57,35 @@ final class CronJobGuardTest extends TestCase
     {
         $db = new CronJobGuardFakeDatabase(claimSucceeds: true);
 
-        (new CronJobGuard($db))->claim('reconciliation_last_run', 24);
+        (new CronJobGuard($db))->claim('reconciliation', 24);
 
         $this->assertStringContainsString('NOW()', $db->lastSql());
         $this->assertStringContainsString(
-            'id = 1',
+            'job_name = ?',
             $db->lastSql(),
-            'The claim must be scoped to the settings singleton row'
+            'The claim must be scoped to the specific job_name row'
+        );
+        $this->assertStringContainsString(
+            'enabled = 1',
+            $db->lastSql(),
+            'The claim must gate on the row being enabled'
         );
         $this->assertSame(
-            [24],
+            ['reconciliation', 24],
             $db->lastParams(),
-            'Only the interval hours must be bound — no PHP date()/time()-derived value'
+            'The job name and interval hours must be bound — no PHP date()/time()-derived value'
         );
     }
 
-    public function testClaimRejectsUnrecognizedColumnName(): void
+    public function testClaimRejectsUnrecognizedJobName(): void
     {
         $db = new CronJobGuardFakeDatabase(claimSucceeds: true);
 
-        $this->assertFalse((new CronJobGuard($db))->claim('not_a_real_column', 24));
+        $this->assertFalse((new CronJobGuard($db))->claim('not_a_real_job', 24));
         $this->assertSame(
             '',
             $db->lastSql(),
-            'An unrecognized column must be rejected before any query is issued'
+            'An unrecognized job name must be rejected before any query is issued'
         );
     }
 
@@ -88,11 +93,52 @@ final class CronJobGuardTest extends TestCase
     {
         $db = new CronJobGuardFakeDatabase(claimSucceeds: true);
 
-        (new CronJobGuard($db))->claim('reconciliation_last_run', 48);
+        (new CronJobGuard($db))->claim('reconciliation', 48);
 
         $this->assertStringContainsString('?', $db->lastSql());
         $this->assertStringNotContainsString('48', $db->lastSql(), 'The interval must be bound, not interpolated');
-        $this->assertSame([48], $db->lastParams());
+        $this->assertSame(['reconciliation', 48], $db->lastParams());
+    }
+
+    /**
+     * The fake's count() is driven purely by its constructor flags — it has
+     * no concept of an `enabled` column, so it can't distinguish "the row
+     * didn't match because it's disabled" from "the row didn't match because
+     * the interval hasn't elapsed". Both produce count() === 0 from the
+     * guard's perspective. That's exactly the point of putting `enabled = 1`
+     * in the same WHERE clause as the interval check (see CronJobGuard's own
+     * class docblock): a disabled job's claim silently no-ops the same way a
+     * too-recent claim does, with no separate code path required.
+     * claimSucceeds: false is already the "claim reports 0 rows changed"
+     * case, so it doubles as the fixture for this scenario.
+     */
+    public function testClaimFailsWhenJobDisabled(): void
+    {
+        $db = new CronJobGuardFakeDatabase(claimSucceeds: false);
+
+        $this->assertFalse((new CronJobGuard($db))->claim('reconciliation', 24));
+    }
+
+    /**
+     * intervalHours < 1 is rejected before any query is issued — this
+     * connection doesn't set MYSQL_ATTR_FOUND_ROWS, so count() reports
+     * changed-rows, not matched-rows. An interval of 0 would let two claims
+     * within the same second both match the WHERE clause while the second's
+     * identical-value write reports 0 rows changed, making claim() report
+     * false on a row that genuinely matched — and one second later, no
+     * minimum interval would be enforced at all. See CronJobGuard::claim()'s
+     * own inline comment for the full explanation.
+     */
+    public function testClaimRejectsIntervalHoursLessThanOne(): void
+    {
+        $db = new CronJobGuardFakeDatabase(claimSucceeds: true);
+
+        $this->assertFalse((new CronJobGuard($db))->claim('reconciliation', 0));
+        $this->assertSame(
+            '',
+            $db->lastSql(),
+            'An interval of 0 (or negative) must be rejected before any query is issued'
+        );
     }
 
     /**
@@ -112,6 +158,6 @@ final class CronJobGuardTest extends TestCase
     {
         $db = new CronJobGuardFakeDatabase(claimSucceeds: true, queryErrors: true);
 
-        $this->assertFalse((new CronJobGuard($db))->claim('reconciliation_last_run', 24));
+        $this->assertFalse((new CronJobGuard($db))->claim('reconciliation', 24));
     }
 }
