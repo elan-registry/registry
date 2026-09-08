@@ -38,7 +38,7 @@ use PHPUnit\Framework\TestCase;
  *   * that a missing/non-existent $verify returns silently.
  *
  * @see usersc/plugins/hooker/hooks/sync_owner_email_on_verify.php
- * @see tests/integration/SyncOwnerEmailOnVerifyHookTest.php
+ * @see tests/integration/SyncOwnerEmailOnVerifyHookIntegrationTest.php
  */
 #[Group('fast')]
 #[Group('unit')]
