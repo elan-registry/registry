@@ -5,10 +5,9 @@
 // real cause (server not running, wrong PLAYWRIGHT_BASE_URL) under dozens of
 // per-test failures.
 
-// Resolved the same way playwright.config.js resolves `use.baseURL` — this
-// script runs standalone before project config, so it can't read that value
-// back and must replicate the same fallback expression here.
-const BASE_URL = process.env.PLAYWRIGHT_BASE_URL || 'http://localhost:9999/ElanRegistry/Registry/';
+// Shared with playwright.config.js/playwright.config.dev.js's `use.baseURL`
+// — see base-url.js for why this can't just read the resolved config back.
+const BASE_URL = require('./base-url.js');
 
 module.exports = async function globalSetup() {
   try {
