@@ -21,11 +21,11 @@ use PHPUnit\Framework\Attributes\Group;
  *
  * The hook FILE's own control flow (run-once-per-request guard, partial-
  * failure logging, log category per catch branch) is covered directly in
- * tests/unit/security/SyncOwnerEmailOnVerifyHookTest.php (unit tier — no
- * class-name clash with this file's own class since they run in separate
- * PHPUnit testsuite configs; only cross-suite --filter runs risk collision,
- * which is why this file carries the Integration suffix), which `require`s
- * the hook file itself.
+ * tests/unit/security/SyncOwnerEmailOnVerifyHookTest.php, which `require`s
+ * the hook file itself. That file's class name would otherwise collide with
+ * this one's — normal suite runs scope to one testsuite config and never hit
+ * it, but a cross-suite --filter that autoloads both fatals with "Cannot
+ * redeclare class" — so this file carries the Integration suffix.
  *
  * Manual verification of the real confirm-by-link flow (clicking an actual
  * emailed link) is not automatable — no Playwright pattern in this repo
