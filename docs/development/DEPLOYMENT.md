@@ -527,13 +527,22 @@ per environment outside the codebase. Installed on test and prod on 2026-09-03
 > - Runtime budget: a job must finish comfortably inside the interval or it will
 >   overlap its own next run.
 
-**What `users/cron/cron.php` does on every hit** (upstream UserSpice, read-only):
+**What `users/cron/cron.php` does on every hit.** Unlike the rest of `/users/`
+(upstream UserSpice, not modified per CLAUDE.md's Template Customization
+Rules), `users/cron/` carries project-specific changes documented in this
+section — `cron.php` itself includes project logging/hook calls, and job
+files live alongside it:
 
-1. Logs `Cron request from <ip>.` under the `CronRequest` log category — before
-   any access check, so every hit is visible in Admin → Logs.
-2. Applies the `cron_ip` allowlist (table below). A denied request logs
-   `Cron request DENIED from <ip>.` and stops.
-3. Runs every active job and inserts one `crons_logs` row per job
+1. Applies the `cron_ip` allowlist (table below). A denied request logs
+   `Cron request DENIED from <ip>.` under the `CronRequest` log category and
+   stops. A non-denied hit is not logged here at all (#1974 removed the
+   unconditional per-hit log line — 144 rows/day/environment with no
+   diagnostic value); instead it records
+   `er_verification_settings.last_cron_request_at` via
+   `VerificationSettings::recordCronRequest()`, which powers the admin
+   dashboard's cron-health indicator. The recorded timestamp proves cron was
+   *accepted*, where the old log only proved something reached the URL.
+2. Runs every active job and inserts one `crons_logs` row per job
    (`user_id` is `1` for unauthenticated hits).
 
 **`cron_ip` semantics** (Admin → Settings → General). The IP is taken from
@@ -550,8 +559,8 @@ the real client address and cannot be spoofed with a header.
 
 | Environment | Trigger | Interval | `cron_ip` | Evidence |
 | --- | --- | --- | --- | --- |
-| dev (MAMP, macOS) | launchd job, see [ENVIRONMENT.md](ENVIRONMENT.md#development-setup) | 10 min | `::1` on this machine (`/etc/hosts` lists both loopbacks and curl prefers IPv6; only `127.0.0.1` is hard-coded, so use whichever address your `CronRequest` log shows) | `~/Library/Logs/ElanRegistry/local-cron.log`, Admin → Logs |
-| test.elanregistry.org | cPanel Cron Job, `curl` to the public URL | 10 min | the server's public outbound IP, as shown in the first `CronRequest` entry | Admin → Logs (`CronRequest`), Cron Manager job log |
+| dev (MAMP, macOS) | launchd job, see [ENVIRONMENT.md](ENVIRONMENT.md#development-setup) | 10 min | `::1` on this machine (`/etc/hosts` lists both loopbacks and curl prefers IPv6; only `127.0.0.1` is hard-coded, so use whichever address a `Cron request DENIED from <ip>.` log line shows if a hit is unexpectedly rejected) | `~/Library/Logs/ElanRegistry/local-cron.log`, `er_verification_settings.last_cron_request_at` (DB Explainer or Admin → Verification tab) |
+| test.elanregistry.org | cPanel Cron Job, `curl` to the public URL | 10 min | the server's public outbound IP, as shown in a `Cron request DENIED from <ip>.` entry if misconfigured | `er_verification_settings.last_cron_request_at`, Cron Manager job log |
 | elanregistry.org | cPanel Cron Job, `curl` to the public URL | 10 min | same policy, checked independently | same |
 
 The literal server IP is deliberately not published here. Because the cPanel
@@ -600,8 +609,8 @@ After each deployment, verify:
 - [ ] Test critical user workflows (car registration, editing, contact forms)
 - [ ] Database connectivity and functionality
 - [ ] Email delivery system functioning
-- [ ] Cron transport still firing: a `CronRequest` entry in Admin → Logs within the
-      last 10 minutes (see "Cron Transport" above)
+- [ ] Cron transport still firing: `er_verification_settings.last_cron_request_at`
+      within the last 10 minutes (see "Cron Transport" above)
 - [ ] Image upload and display working
 - [ ] Search and filtering functionality
 - [ ] Mobile responsiveness maintained

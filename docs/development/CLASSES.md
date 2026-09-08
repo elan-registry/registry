@@ -850,8 +850,17 @@ shared state or dependency exists between the two.
 - `isEnabled(): bool` - Whether verification is currently switched on
 - `setEnabled(bool $enabled, int $actingUserId = 0): bool` - Turn verification on or off
 - `brevoReady(): bool` - True only if the Brevo API key is configured AND the plugin override file is active
-- `cronReady(): bool` - True if a non-denied `CronRequest` log exists within twice `CRON_TRANSPORT_INTERVAL_MINUTES` (`usersc/includes/config.php`; 20 minutes today)
-- `lastCronRequestAt(): ?DateTimeImmutable` - Timestamp of the most recent non-denied cron request
+- `cronReady(): bool` - True if `lastCronRequestAt()` reports a timestamp
+  within twice `CRON_TRANSPORT_INTERVAL_MINUTES` (`usersc/includes/config.php`;
+  20 minutes today)
+- `lastCronRequestAt(): ?DateTimeImmutable` - Timestamp of the most recent
+  cron transport hit, read from `er_verification_settings.last_cron_request_at`
+  (#1974; previously scanned the `logs` table)
+- `recordCronRequest(): bool` - Record that the cron transport hit this
+  environment; called by `users/cron/cron.php` on every non-denied hit,
+  writing `er_verification_settings.last_cron_request_at`; never throws (logs
+  and returns `false` on a DB error, or if the `id = 1` settings row is
+  missing) (#1974)
 - `incrementUnmatchedRecipientCounter(): bool` - Increment
   `er_verification_settings.unmatched_webhook_recipient_count` when an
   inbound Brevo webhook event's recipient matches no car; never throws

@@ -327,11 +327,25 @@ their real deployed environments)
    tail -3 ~/Library/Logs/ElanRegistry/local-cron.log   # expect status=200 lines
    ```
 
-   Set `cron_ip` in Admin → Settings → General to the address the first
-   `CronRequest` entry in Admin → Logs shows. On a standard macOS `/etc/hosts`
-   curl reaches `localhost` over IPv6, so this is `::1`; `cron.php` only
-   hard-codes `127.0.0.1` as the always-allowed address, so `::1` must be set
-   explicitly. If your log shows `127.0.0.1`, leave `cron_ip` at `off`.
+   `cron.php` only logs when `cron_ip` is already set to something and a
+   request's IP doesn't match it (and isn't `127.0.0.1`, which is always
+   allowed) — with `cron_ip` empty (the default), the allowlist check never
+   runs at all, so nothing to read is logged either way (#1974 also removed
+   the unconditional per-hit log, so a *matching* request was never
+   discoverable via Admin → Logs regardless). The launchd log
+   (`~/Library/Logs/ElanRegistry/local-cron.log`) only records a
+   `status=200`/`4xx` HTTP code, not the request's source IP, so it can't
+   answer this. To find the address this machine's curl actually connects
+   from, deliberately set `cron_ip` to a wrong value first, run the curl
+   command above once by hand, and read the resulting
+   `Cron request DENIED from <ip>.` line from Admin → Logs (or
+   `SELECT ip FROM logs ORDER BY id DESC LIMIT 1`) — that line shows the
+   real address regardless of what `cron_ip` was set to. On a standard
+   macOS `/etc/hosts` curl reaches `localhost` over IPv6, so this is
+   normally `::1`; `cron.php` only hard-codes `127.0.0.1` as the
+   always-allowed address, so `::1` must be set explicitly. Once `cron_ip`
+   is set correctly, `er_verification_settings.last_cron_request_at`
+   (Admin → Verification tab) confirms accepted hits are landing.
    Interval semantics, the allowlist table, and the contract every cron job
    must honour are in
    [DEPLOYMENT.md — Cron Transport](DEPLOYMENT.md#cron-transport-userspice-cron-manager).

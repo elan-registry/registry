@@ -5,121 +5,124 @@ declare(strict_types=1);
 require_once __DIR__ . '/IntegrationTestCase.php';
 
 use ElanRegistry\Car\VerificationSettings;
-use ElanRegistry\LogCategories;
 use PHPUnit\Framework\Attributes\Group;
 
 /**
  * Real-DB behavioral test for VerificationSettings::cronReady() /
- * lastCronRequestAt()'s DENIED-row filter (#1926).
+ * lastCronRequestAt() / recordCronRequest() (#1974).
  *
- * `users/cron/cron.php` writes a `CronRequest` log row on every hit,
- * including ones its own `cron_ip` allowlist then denies ("Cron request
- * DENIED from $ip."). Before this fix, lastCronRequestAt()'s query had no
- * filter on lognote, so a denied hit would look identical to a healthy one —
- * cronReady() could report the cron transport healthy while every real
- * request to it was actually being rejected. The fix adds a
- * `NOT LIKE '%DENIED%'` filter; this test proves it against a real `logs`
- * table rather than the unit suite's source-text-only guarantee
- * (VerificationSettingsTest::testLastCronRequestAtQueryExcludesDeniedRows).
+ * Originally a test of lastCronRequestAt()'s `NOT LIKE '%DENIED%'` filter
+ * against the `logs` table (#1926) — that filter and its entire rationale no
+ * longer exist. #1974 replaced the log-based signal with a dedicated
+ * `er_verification_settings.last_cron_request_at` column, written only by
+ * recordCronRequest() from cron.php's non-denied path, so there is no
+ * "denied row" state for this column to ever see. This file now exercises
+ * that column directly against the real DB — real MySQL `datetime`
+ * round-tripping through `DateTimeImmutable` is exactly the kind of thing a
+ * mocked unit test cannot fully prove.
  */
 #[Group('integration')]
 final class VerificationSettingsCronReadyTest extends IntegrationTestCase
 {
-    /** @var int[] logs.id rows created during this test, cleaned up in tearDown() */
-    private array $createdLogIds = [];
+    /** Original last_cron_request_at value, restored in tearDown() so this test doesn't leak state. */
+    private ?string $originalValue = null;
 
     protected function setUp(): void
     {
         parent::setUp();
         $this->requireDatabase();
-        $this->createdLogIds = [];
+
+        $this->db->query('SELECT last_cron_request_at FROM er_verification_settings WHERE id = 1');
+        $this->assertFalse(
+            $this->db->error(),
+            'Failed to read original last_cron_request_at value: ' . $this->db->errorString()
+                . ' — likely means this migration has not been applied to the test schema'
+        );
+        $row = $this->db->first();
+        $this->originalValue = (is_object($row) && !empty($row->last_cron_request_at))
+            ? (string) $row->last_cron_request_at
+            : null;
     }
 
     protected function tearDown(): void
     {
         if ($this->databaseConnected) {
-            foreach ($this->createdLogIds as $id) {
-                $this->db->query('DELETE FROM logs WHERE id = ?', [$id]);
-            }
+            $this->db->query(
+                'UPDATE er_verification_settings SET last_cron_request_at = ? WHERE id = 1',
+                [$this->originalValue]
+            );
         }
 
         parent::tearDown();
     }
 
-    private function insertCronRequestLog(string $lognote, string $logdate): void
+    private function setLastCronRequestAt(?string $datetime): void
     {
-        $this->db->insert('logs', [
-            'user_id' => 0,
-            'logdate' => $logdate,
-            'logtype' => LogCategories::LOG_CATEGORY_CRON_REQUEST,
-            'lognote' => $lognote,
-            'ip' => '203.0.113.99',
-        ]);
-        $this->assertFalse($this->db->error(), 'Failed to insert CronRequest log fixture: ' . $this->db->errorString());
-        $this->createdLogIds[] = (int) $this->db->lastId();
+        $this->db->query(
+            'UPDATE er_verification_settings SET last_cron_request_at = ? WHERE id = 1',
+            [$datetime]
+        );
+        $this->assertFalse($this->db->error(), 'Failed to set last_cron_request_at fixture: ' . $this->db->errorString());
     }
 
-    /**
-     * A recent DENIED row must be treated as if no cron request happened at
-     * all — cronReady() must report false, not "healthy because something
-     * recent exists".
-     */
-    public function testDeniedCronRequestLogIsIgnoredByCronReady(): void
+    public function testLastCronRequestAtReturnsNullWhenColumnNeverSet(): void
     {
-        $recentTimestamp = (new DateTimeImmutable('-1 minute'))->format('Y-m-d H:i:s');
-        $this->insertCronRequestLog('Cron request DENIED from 198.51.100.7.', $recentTimestamp);
+        $this->setLastCronRequestAt(null);
 
         $settings = new VerificationSettings($this->db);
 
-        $this->assertNull(
-            $settings->lastCronRequestAt(),
-            'A DENIED cron request must not count as a real cron hit'
-        );
-        $this->assertFalse(
-            $settings->cronReady(),
-            'cronReady() must not report healthy off the back of a denied request'
-        );
+        $this->assertNull($settings->lastCronRequestAt());
+        $this->assertFalse($settings->cronReady());
     }
 
-    /**
-     * A genuine (non-denied) recent row is still correctly picked up — this
-     * is the control case proving the filter excludes DENIED specifically,
-     * not CronRequest rows in general.
-     */
-    public function testNonDeniedCronRequestLogIsStillHonoredByCronReady(): void
+    public function testLastCronRequestAtRoundTripsARealTimestamp(): void
     {
         $recentTimestamp = (new DateTimeImmutable('-1 minute'))->format('Y-m-d H:i:s');
-        $this->insertCronRequestLog('Cron request processed.', $recentTimestamp);
+        $this->setLastCronRequestAt($recentTimestamp);
 
         $settings = new VerificationSettings($this->db);
 
         $lastRequestAt = $settings->lastCronRequestAt();
-        $this->assertNotNull($lastRequestAt, 'A genuine cron request must be picked up');
+        $this->assertNotNull($lastRequestAt, 'A recorded timestamp must be read back');
         $this->assertSame($recentTimestamp, $lastRequestAt->format('Y-m-d H:i:s'));
         $this->assertTrue($settings->cronReady());
     }
 
-    /**
-     * A recent DENIED row alongside an older genuine row: the DENIED row must
-     * not be selected as "most recent" just because MAX(logdate) would
-     * otherwise favor it — the genuine, older row is what should be reported.
-     */
-    public function testDeniedRowDoesNotShadowAnOlderGenuineRow(): void
+    public function testCronReadyFalseForAStaleTimestamp(): void
     {
-        $olderGenuineTimestamp = (new DateTimeImmutable('-5 minutes'))->format('Y-m-d H:i:s');
-        $newerDeniedTimestamp = (new DateTimeImmutable('-1 minute'))->format('Y-m-d H:i:s');
-
-        $this->insertCronRequestLog('Cron request processed.', $olderGenuineTimestamp);
-        $this->insertCronRequestLog('Cron request DENIED from 198.51.100.7.', $newerDeniedTimestamp);
+        $staleTimestamp = (new DateTimeImmutable('-1 hour'))->format('Y-m-d H:i:s');
+        $this->setLastCronRequestAt($staleTimestamp);
 
         $settings = new VerificationSettings($this->db);
 
-        $lastRequestAt = $settings->lastCronRequestAt();
-        $this->assertNotNull($lastRequestAt);
-        $this->assertSame(
-            $olderGenuineTimestamp,
-            $lastRequestAt->format('Y-m-d H:i:s'),
-            'The newer DENIED row must not be reported as the last cron request'
+        $this->assertFalse($settings->cronReady());
+    }
+
+    /**
+     * recordCronRequest()'s UPDATE against a real row — proves the write
+     * itself is valid SQL against the real schema/column types, which a
+     * mocked-DB unit test cannot prove (this repo's own convention for new
+     * SQL: execute it, don't just read it).
+     */
+    public function testRecordCronRequestUpdatesTheRealColumn(): void
+    {
+        $this->setLastCronRequestAt(null);
+
+        $settings = new VerificationSettings($this->db);
+        $before = new DateTimeImmutable('now');
+
+        $this->assertTrue($settings->recordCronRequest());
+
+        $this->db->query('SELECT last_cron_request_at FROM er_verification_settings WHERE id = 1');
+        $row = $this->db->first();
+        $this->assertIsObject($row);
+        $this->assertNotEmpty($row->last_cron_request_at);
+
+        $recorded = new DateTimeImmutable((string) $row->last_cron_request_at);
+        $this->assertGreaterThanOrEqual(
+            $before->getTimestamp(),
+            $recorded->getTimestamp(),
+            'recordCronRequest() must write a timestamp at or after the moment it was called'
         );
     }
 }

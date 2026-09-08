@@ -7,10 +7,12 @@ namespace Tests\Support;
 /**
  * VerificationSettingsFakeDatabase - FakeDatabase double for VerificationSettingsTest
  *
- * VerificationSettings issues three distinct query shapes against this double
- * (`er_verification_settings`, `plg_sendinblue`, `logs`), and each unit test needs to
- * control the row/error state seen by one or more of them independently — canned via
- * constructor flags rather than a single static `first()`/`error()` override.
+ * VerificationSettings issues several distinct query shapes against this double
+ * (`er_verification_settings`'s `enabled` column, `plg_sendinblue`, and — since
+ * #1974 — `er_verification_settings`'s `last_cron_request_at` column), and each
+ * unit test needs to control the row/error state seen by one or more of them
+ * independently — canned via constructor flags rather than a single static
+ * `first()`/`error()` override.
  *
  * Deliberately a *named* class rather than `new class extends FakeDatabase { ... }`:
  * PHPStan reports `impureMethod.pure` when an anonymous class overrides one of
@@ -29,19 +31,35 @@ namespace Tests\Support;
  * whatever `$firstRowValue`/`$queryErrors` say about the *other* queries
  * (`er_verification_settings` SELECT, `plg_sendinblue` SELECT) this class also issues.
  *
+ * Query-dispatch note (#1974): `lastCronRequestAt()`'s `SELECT
+ * last_cron_request_at FROM er_verification_settings WHERE id = ?` and
+ * `isEnabled()`'s `SELECT enabled FROM er_verification_settings WHERE id = ?`
+ * share a table but read different columns, so they need independent control
+ * the same way the confirmation SELECT does — sniffed by column name, same
+ * pattern as `isConfirmSelect()`. `recordCronRequest()`'s `UPDATE ...
+ * last_cron_request_at = NOW() ...` is tracked the same way `wasUpdateCalled()`
+ * already tracks the `enabled` UPDATE, via a dedicated flag rather than
+ * overloading `updateQueryWasIssued` (the two UPDATEs must be distinguishable
+ * so a test can simulate one write failing without affecting the other).
+ *
  * @package Tests\Support
  * @since v2.30.2
  * @see https://github.com/elan-registry/registry/issues/1926
+ * @see https://github.com/elan-registry/registry/issues/1974
  */
 class VerificationSettingsFakeDatabase extends FakeDatabase
 {
     private bool $updateQueryWasIssued = false;
+    private bool $cronRequestUpdateWasIssued = false;
     private bool $queryWasCalled = false;
     private bool $brevoTableWasQueried = false;
     private string $lastSql = '';
 
     /** True once the post-UPDATE confirmation SELECT (`SELECT id FROM ...`) has run. */
     private bool $confirmSelectWasIssued = false;
+
+    /** True once `lastCronRequestAt()`'s `SELECT last_cron_request_at ...` has run. */
+    private bool $cronRequestSelectWasIssued = false;
 
     /**
      * @param array<string, mixed>|object $firstRowValue Row handed back by first() for every
@@ -78,6 +96,22 @@ class VerificationSettingsFakeDatabase extends FakeDatabase
      *                                   given, in which case a generic non-"table missing" triple
      *                                   is reported so tests written before this parameter existed
      *                                   keep exercising the "genuine fault" branch they always did.
+     * @param array<string, mixed>|object $cronRequestRowValue Row handed back by first()
+     *                                   specifically for `lastCronRequestAt()`'s `SELECT
+     *                                   last_cron_request_at FROM er_verification_settings ...`.
+     *                                   Defaults to [] (no row / never run). Independent of
+     *                                   $firstRowValue, which answers every OTHER query shape.
+     * @param bool $cronRequestQueryErrors When true, error() reports true specifically for
+     *                                   `lastCronRequestAt()`'s SELECT, independent of $queryErrors.
+     * @param bool $cronRequestUpdateErrors When true, error() reports true specifically for
+     *                                   `recordCronRequest()`'s `UPDATE ... last_cron_request_at =
+     *                                   NOW() ...`, independent of every other error flag.
+     * @param int $cronRequestUpdateCount Value count() reports specifically after
+     *                                   `recordCronRequest()`'s UPDATE. Defaults to 1 (the row
+     *                                   matched and changed) — matching every other write-related
+     *                                   default in this fake, which represents the successful case
+     *                                   pre-existing tests implicitly expect. Pass 0 to simulate the
+     *                                   `id = 1` settings row being absent.
      */
     public function __construct(
         private readonly array|object $firstRowValue = [],
@@ -86,6 +120,10 @@ class VerificationSettingsFakeDatabase extends FakeDatabase
         private readonly array|object|null $confirmSelectRowValue = null,
         private readonly bool $confirmSelectErrors = false,
         private readonly ?array $errorInfoValue = null,
+        private readonly array|object $cronRequestRowValue = [],
+        private readonly bool $cronRequestQueryErrors = false,
+        private readonly bool $cronRequestUpdateErrors = false,
+        private readonly int $cronRequestUpdateCount = 1,
     ) {
     }
 
@@ -98,6 +136,23 @@ class VerificationSettingsFakeDatabase extends FakeDatabase
         return (bool) preg_match('/^\s*SELECT\s+id\s+FROM\s+er_verification_settings\b/i', $sql);
     }
 
+    private function isCronRequestSelect(string $sql): bool
+    {
+        return (bool) preg_match('/^\s*SELECT\s+last_cron_request_at\s+FROM\s+er_verification_settings\b/i', $sql);
+    }
+
+    private function isCronRequestUpdate(string $sql): bool
+    {
+        // Anchored, matching isConfirmSelect()/isCronRequestSelect()'s style —
+        // unanchored substring checks would misclassify any future statement
+        // that merely mentions last_cron_request_at (e.g. a combined UPDATE
+        // touching both `enabled` and this column) as this specific write.
+        return (bool) preg_match(
+            '/^\s*UPDATE\s+er_verification_settings\s+SET\s+last_cron_request_at\b/i',
+            $sql
+        );
+    }
+
     public function query(string $sql, array $params = []): self
     {
         $this->queryWasCalled = true;
@@ -105,15 +160,26 @@ class VerificationSettingsFakeDatabase extends FakeDatabase
         if (stripos($sql, 'plg_sendinblue') !== false) {
             $this->brevoTableWasQueried = true;
         }
-        if (stripos($sql, 'UPDATE') !== false && stripos($sql, 'er_verification_settings') !== false) {
+        $this->cronRequestUpdateWasIssued = $this->isCronRequestUpdate($sql);
+        if (stripos($sql, 'UPDATE') !== false
+            && stripos($sql, 'er_verification_settings') !== false
+            && !$this->cronRequestUpdateWasIssued
+        ) {
             $this->updateQueryWasIssued = true;
         }
         $this->confirmSelectWasIssued = $this->isConfirmSelect($sql);
+        $this->cronRequestSelectWasIssued = $this->isCronRequestSelect($sql);
         return $this;
     }
 
     public function error(): bool
     {
+        if ($this->cronRequestUpdateWasIssued) {
+            return $this->cronRequestUpdateErrors;
+        }
+        if ($this->cronRequestSelectWasIssued) {
+            return $this->cronRequestQueryErrors;
+        }
         if ($this->confirmSelectWasIssued) {
             return $this->confirmSelectErrors;
         }
@@ -128,6 +194,20 @@ class VerificationSettingsFakeDatabase extends FakeDatabase
         return $this->error() ? 'ERROR #42S02: simulated failure' : '';
     }
 
+    public function count(): int
+    {
+        if ($this->cronRequestUpdateWasIssued) {
+            return $this->cronRequestUpdateCount;
+        }
+        // Hardcoded 0 (not constructor-driven, unlike error()/first()'s
+        // fallthroughs) because setEnabled() deliberately does not use
+        // count() at all — it abandoned that approach for a confirmation
+        // SELECT after #1926's review found count() ambiguous for its own
+        // write shape. If a future method here needs a count()-dependent
+        // path, add a dedicated constructor param rather than reusing this.
+        return 0;
+    }
+
     public function errorInfo(): array
     {
         if (!$this->error()) {
@@ -138,6 +218,9 @@ class VerificationSettingsFakeDatabase extends FakeDatabase
 
     public function first(bool $assoc = false): array|object
     {
+        if ($this->cronRequestSelectWasIssued) {
+            return $this->cronRequestRowValue;
+        }
         if ($this->confirmSelectWasIssued) {
             return $this->confirmSelectRowValue ?? (object) ['id' => 1];
         }
@@ -152,6 +235,11 @@ class VerificationSettingsFakeDatabase extends FakeDatabase
     public function wasUpdateCalled(): bool
     {
         return $this->updateQueryWasIssued;
+    }
+
+    public function wasCronRequestUpdateCalled(): bool
+    {
+        return $this->cronRequestUpdateWasIssued;
     }
 
     public function wasBrevoTableQueried(): bool

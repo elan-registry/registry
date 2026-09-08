@@ -253,16 +253,17 @@ final class VerificationSettings
      * "Recently enough" is strictly less than twice `CRON_TRANSPORT_INTERVAL_MINUTES`
      * (`usersc/includes/config.php`) ago — a request exactly at that age counts as
      * stalled, not ready. The comparison is deliberately strict (`<`) so the
-     * boundary sits at a single unambiguous point that a test can pin by inserting
-     * a log row at a known age. Doubling the interval gives one missed tick of
-     * slack, so a single late or dropped hit does not flap the readiness indicator.
+     * boundary sits at a single unambiguous point that a test can pin by setting
+     * {@see lastCronRequestAt()}'s underlying column to a known age. Doubling the
+     * interval gives one missed tick of slack, so a single late or dropped hit
+     * does not flap the readiness indicator.
      *
-     * Never throws: no cron log at all, an unreadable one, or a missing
-     * `CRON_TRANSPORT_INTERVAL_MINUTES` (see {@see cronStaleAfterSeconds()})
-     * all report "not ready" rather than raising.
+     * Never throws: no recorded cron request at all, an unreadable/zero-date
+     * column value, or a missing `CRON_TRANSPORT_INTERVAL_MINUTES` (see
+     * {@see cronStaleAfterSeconds()}) all report "not ready" rather than raising.
      *
-     * @return bool True if a non-denied CronRequest was logged less than
-     *              twice the cron transport interval ago
+     * @return bool True if {@see lastCronRequestAt()} reports a timestamp less
+     *              than twice the cron transport interval ago
      */
     public function cronReady(): bool
     {
@@ -277,7 +278,7 @@ final class VerificationSettings
     }
 
     /**
-     * Age, in seconds, beyond which the newest `CronRequest` log means cron is stalled.
+     * Age, in seconds, beyond which {@see lastCronRequestAt()}'s value means cron is stalled.
      *
      * Derived from `CRON_TRANSPORT_INTERVAL_MINUTES` (`usersc/includes/config.php`),
      * the shared, discoverable source for how often the UserSpice cron transport
@@ -347,14 +348,19 @@ final class VerificationSettings
     }
 
     /**
-     * Timestamp of the most recent (non-denied) cron transport request
+     * Timestamp of the most recent cron transport request
      *
-     * `users/cron/cron.php` writes a `CronRequest` log row on every hit, including
-     * ones its own `cron_ip` allowlist then denies ("Cron request DENIED from
-     * $ip.") — a misconfigured transport hitting from the wrong IP would otherwise
-     * look identical to a healthy one here. The `NOT LIKE '%DENIED%'` filter
-     * excludes those so this reflects "cron actually ran", not merely "something
-     * requested the cron URL".
+     * Originally read `MAX(logdate) FROM logs WHERE logtype = 'CronRequest' AND
+     * lognote NOT LIKE '%DENIED%'` — the `NOT LIKE '%DENIED%'` filter existed
+     * because `users/cron/cron.php` logged every hit, including ones its own
+     * `cron_ip` allowlist then denied, and a misconfigured transport hitting
+     * from the wrong IP would otherwise look identical to a healthy one
+     * (#1926). #1974 removed that log line entirely (144 near-worthless rows/day)
+     * in favor of this dedicated `last_cron_request_at` column, written only by
+     * {@see recordCronRequest()}, which `cron.php` calls only from its
+     * non-denied path. The filter's entire rationale disappears by
+     * construction: there is no write path by which a denied hit could ever
+     * reach this column, so no filter is needed to exclude one.
      *
      * @return DateTimeImmutable|null When cron last ran, or null if it never has
      *                                (or the timestamp could not be read)
@@ -362,8 +368,8 @@ final class VerificationSettings
     public function lastCronRequestAt(): ?DateTimeImmutable
     {
         $this->db->query(
-            "SELECT MAX(logdate) AS last_logdate FROM logs WHERE logtype = ? AND lognote NOT LIKE '%DENIED%'",
-            [LogCategories::LOG_CATEGORY_CRON_REQUEST]
+            'SELECT last_cron_request_at FROM er_verification_settings WHERE id = ?',
+            [self::SETTINGS_ROW_ID]
         );
 
         if ($this->db->error()) {
@@ -371,21 +377,101 @@ final class VerificationSettings
         }
 
         $row = $this->db->first();
-        // MAX() over zero matching rows yields one row whose column is NULL,
-        // so an absent cron history arrives here as a null column, not no row.
-        if (!is_object($row) || empty($row->last_logdate)) {
+        if (!is_object($row) || empty($row->last_cron_request_at)) {
+            return null;
+        }
+
+        $value = (string) $row->last_cron_request_at;
+
+        // MySQL's zero-date ('0000-00-00 00:00:00') does not throw when passed
+        // to DateTimeImmutable's constructor — it silently parses to a bogus
+        // year -1 date instead, which would otherwise slip past the catch
+        // block below as a "successfully parsed" value. Since this column is
+        // only ever written by recordCronRequest()'s `NOW()`, a zero-date
+        // here can only mean external/manual tampering or a schema-level
+        // default misconfiguration, never a value this class itself wrote —
+        // treat it the same as any other unparseable value.
+        if (str_starts_with($value, '0000-00-00')) {
+            logger(0, LogCategories::LOG_CATEGORY_VERIFICATION_CONFIG_WARNING, sprintf(
+                'Unparseable last_cron_request_at "%s": MySQL zero-date',
+                $value
+            ));
             return null;
         }
 
         try {
-            return new DateTimeImmutable((string) $row->last_logdate);
+            return new DateTimeImmutable($value);
         } catch (\Exception $e) {
             logger(0, LogCategories::LOG_CATEGORY_VERIFICATION_CONFIG_WARNING, sprintf(
-                'Unparseable CronRequest logdate "%s": %s',
-                (string) $row->last_logdate,
+                'Unparseable last_cron_request_at "%s": %s',
+                $value,
                 $e->getMessage()
             ));
             return null;
         }
+    }
+
+    /**
+     * Record that the cron transport has hit this environment
+     *
+     * Called by `users/cron/cron.php` on every non-denied hit — unconditional,
+     * not gated by any interval-claiming logic, since {@see lastCronRequestAt()}
+     * and {@see cronReady()} need the raw "last touched" timestamp regardless of
+     * how recently it was last recorded. Replaces the `CronRequest` log row this
+     * class used to read (#1926) with a dedicated column, removing 144 rows/day
+     * of log noise carrying no diagnostic value (#1974).
+     *
+     * Never throws: a failed UPDATE is logged and swallowed, matching this
+     * class's fail-quietly contract for write paths (see
+     * {@see incrementUnmatchedRecipientCounter()}) — a cron hit must never fail
+     * loudly just because this bookkeeping write did. Logged under
+     * LOG_CATEGORY_VERIFICATION_CONFIG_WARNING, not LOG_CATEGORY_CRON_REQUEST —
+     * this is a bookkeeping-write failure in the verification subsystem, the
+     * same category every other write failure in this class uses, not cron
+     * transport noise (the category #1974 exists to quiet down).
+     *
+     * Detects a missing `id = 1` row the same way
+     * {@see incrementUnmatchedRecipientCounter()} does: `SET x = NOW()`
+     * changes the row's value on match, so `count() === 0` means the row is
+     * absent — UNLESS this method is called twice within the same second,
+     * in which case a matched row can also report 0 rows changed (no
+     * `MYSQL_ATTR_FOUND_ROWS`), producing a false "row missing" warning on a
+     * write that actually succeeded. This is safe for `cron.php`'s sole
+     * caller today (~10-minute call cadence, no realistic same-second
+     * re-hit) but would NOT be safe for any future caller that might invoke
+     * this method rapidly in succession (a manual "test cron" admin action,
+     * a retry loop, etc.) — such a caller should use a confirmation-SELECT
+     * like {@see setEnabled()} instead, not this `count()` shortcut. Without
+     * this check at all, a missing settings row would make this method
+     * report success having recorded nothing, and {@see cronReady()} would
+     * permanently report "stalled" with no signal anywhere that the
+     * database, not cron, is the actual problem.
+     *
+     * @return bool True if the timestamp was recorded successfully
+     */
+    public function recordCronRequest(): bool
+    {
+        $this->db->query(
+            'UPDATE er_verification_settings SET last_cron_request_at = NOW() WHERE id = ?',
+            [self::SETTINGS_ROW_ID]
+        );
+
+        if ($this->db->error()) {
+            logger(0, LogCategories::LOG_CATEGORY_VERIFICATION_CONFIG_WARNING, sprintf(
+                'Failed to record cron request in er_verification_settings: %s',
+                $this->db->errorString() ?: 'unknown'
+            ));
+            return false;
+        }
+
+        if ($this->db->count() === 0) {
+            logger(0, LogCategories::LOG_CATEGORY_VERIFICATION_CONFIG_WARNING, sprintf(
+                'er_verification_settings row id=%d not found; cron request is not being recorded.',
+                self::SETTINGS_ROW_ID
+            ));
+            return false;
+        }
+
+        return true;
     }
 }

@@ -7,7 +7,6 @@ use ElanRegistry\Exceptions\VerificationConfigException;
 use ElanRegistry\LogCategories;
 use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\TestCase;
-use Tests\Support\FakeDatabase;
 use Tests\Support\VerificationSettingsFakeDatabase;
 
 require_once __DIR__ . '/../../../Support/FakeDatabase.php';
@@ -451,7 +450,7 @@ final class VerificationSettingsTest extends TestCase
     {
         $recentTimestamp = (new DateTimeImmutable('-19 minutes -59 seconds'))->format('Y-m-d H:i:s');
 
-        $db = new VerificationSettingsFakeDatabase(firstRowValue: (object) ['last_logdate' => $recentTimestamp]);
+        $db = new VerificationSettingsFakeDatabase(cronRequestRowValue: (object) ['last_cron_request_at' => $recentTimestamp]);
 
         $this->assertTrue((new VerificationSettings($db))->cronReady());
     }
@@ -462,7 +461,7 @@ final class VerificationSettingsTest extends TestCase
         // counts as stalled, not ready.
         $exactlyTwentyMinutesAgo = (new DateTimeImmutable('-20 minutes'))->format('Y-m-d H:i:s');
 
-        $db = new VerificationSettingsFakeDatabase(firstRowValue: (object) ['last_logdate' => $exactlyTwentyMinutesAgo]);
+        $db = new VerificationSettingsFakeDatabase(cronRequestRowValue: (object) ['last_cron_request_at' => $exactlyTwentyMinutesAgo]);
 
         $this->assertFalse((new VerificationSettings($db))->cronReady());
     }
@@ -471,14 +470,14 @@ final class VerificationSettingsTest extends TestCase
     {
         $staleTimestamp = (new DateTimeImmutable('-25 minutes'))->format('Y-m-d H:i:s');
 
-        $db = new VerificationSettingsFakeDatabase(firstRowValue: (object) ['last_logdate' => $staleTimestamp]);
+        $db = new VerificationSettingsFakeDatabase(cronRequestRowValue: (object) ['last_cron_request_at' => $staleTimestamp]);
 
         $this->assertFalse((new VerificationSettings($db))->cronReady());
     }
 
     public function testCronReadyFalseWhenNoCronHistory(): void
     {
-        // Default firstRowValue is [] — no matching row.
+        // Default cronRequestRowValue is [] — no matching row (column NULL / never run).
         $db = new VerificationSettingsFakeDatabase();
 
         $this->assertFalse((new VerificationSettings($db))->cronReady());
@@ -500,12 +499,16 @@ final class VerificationSettingsTest extends TestCase
     }
 
     // =========================================================================
-    // lastCronRequestAt()
+    // lastCronRequestAt() — reads er_verification_settings.last_cron_request_at (#1974)
     // =========================================================================
 
-    public function testLastCronRequestAtReturnsNullWhenNoCronRequestLogRow(): void
+    public function testLastCronRequestAtReturnsNullWhenNoRowReturned(): void
     {
-        $db = new FakeDatabase();
+        // Default cronRequestRowValue is [] — the real \DB empty-result shape
+        // for "no matching row," which is how a NULL column value in a
+        // matched row also presents through empty(): both collapse to the
+        // same "cron has never run" outcome at this class's isEmpty() check.
+        $db = new VerificationSettingsFakeDatabase();
 
         $this->assertNull((new VerificationSettings($db))->lastCronRequestAt());
     }
@@ -514,7 +517,7 @@ final class VerificationSettingsTest extends TestCase
     {
         $expected = '2026-09-01 12:34:56';
 
-        $db = new VerificationSettingsFakeDatabase(firstRowValue: (object) ['last_logdate' => $expected]);
+        $db = new VerificationSettingsFakeDatabase(cronRequestRowValue: (object) ['last_cron_request_at' => $expected]);
 
         $result = (new VerificationSettings($db))->lastCronRequestAt();
 
@@ -522,47 +525,90 @@ final class VerificationSettingsTest extends TestCase
         $this->assertSame($expected, $result->format('Y-m-d H:i:s'));
     }
 
-    public function testLastCronRequestAtReturnsNullWhenLogdateUnparseable(): void
+    /**
+     * MySQL's zero-date (`0000-00-00 00:00:00`) is the realistic garbage value
+     * for a `datetime` column — a known MySQL foot-gun distinct from an
+     * arbitrary malformed string — so it gets its own case rather than only
+     * testing an unrelated bad string.
+     */
+    public function testLastCronRequestAtReturnsNullWhenColumnIsZeroDate(): void
     {
-        $db = new VerificationSettingsFakeDatabase(firstRowValue: (object) ['last_logdate' => 'not-a-real-date']);
+        global $mockLogEntries;
+
+        $db = new VerificationSettingsFakeDatabase(cronRequestRowValue: (object) ['last_cron_request_at' => '0000-00-00 00:00:00']);
 
         $this->assertNull((new VerificationSettings($db))->lastCronRequestAt());
+
+        $warnings = array_values(array_filter(
+            $mockLogEntries,
+            static fn (array $entry): bool => $entry['category'] === LogCategories::LOG_CATEGORY_VERIFICATION_CONFIG_WARNING
+        ));
+        $this->assertCount(1, $warnings, 'An unparseable column value must be logged, not silently swallowed');
+        $this->assertStringContainsString('Unparseable', $warnings[0]['message']);
+    }
+
+    public function testLastCronRequestAtReturnsNullWhenColumnUnparseable(): void
+    {
+        global $mockLogEntries;
+
+        $db = new VerificationSettingsFakeDatabase(cronRequestRowValue: (object) ['last_cron_request_at' => 'not-a-real-date']);
+
+        $this->assertNull((new VerificationSettings($db))->lastCronRequestAt());
+
+        $warnings = array_values(array_filter(
+            $mockLogEntries,
+            static fn (array $entry): bool => $entry['category'] === LogCategories::LOG_CATEGORY_VERIFICATION_CONFIG_WARNING
+        ));
+        $this->assertCount(1, $warnings, 'An unparseable column value must be logged, not silently swallowed');
+        $this->assertStringContainsString('Unparseable', $warnings[0]['message']);
     }
 
     public function testLastCronRequestAtReturnsNullOnQueryError(): void
     {
-        $db = new VerificationSettingsFakeDatabase(queryErrors: true);
+        $db = new VerificationSettingsFakeDatabase(cronRequestQueryErrors: true);
 
         $this->assertNull((new VerificationSettings($db))->lastCronRequestAt());
     }
 
-    /**
-     * Regression test for #1926's cron.php bug: cron.php logs a CronRequest row
-     * on every hit, including ones its own IP allowlist then denies ("Cron
-     * request DENIED from $ip."), which would make cronReady() report healthy
-     * even when cron requests are actually being rejected. The fix adds a
-     * `NOT LIKE '%DENIED%'` filter to lastCronRequestAt()'s query.
-     *
-     * This fake DB answers every query the same way regardless of its WHERE
-     * clause (it can't execute real SQL filtering), so a DENIED row and a
-     * healthy row are indistinguishable to it by row content alone. What IS
-     * verifiable at the unit level — and is exactly the source-level guarantee
-     * this bug fix depends on — is that the query text VerificationSettings
-     * actually issues contains the DENIED-exclusion filter. The full
-     * behavioral guarantee (a real DENIED row in a real `logs` table being
-     * ignored) is exercised by the real-DB integration suite.
-     */
-    public function testLastCronRequestAtQueryExcludesDeniedRows(): void
+    // =========================================================================
+    // recordCronRequest() (#1974) — replaces cron.php's unconditional log line
+    // =========================================================================
+
+    public function testRecordCronRequestReturnsTrueOnSuccess(): void
     {
-        $db = new VerificationSettingsFakeDatabase(firstRowValue: (object) ['last_logdate' => null]);
+        $db = new VerificationSettingsFakeDatabase();
 
-        (new VerificationSettings($db))->lastCronRequestAt();
+        $this->assertTrue((new VerificationSettings($db))->recordCronRequest());
+        $this->assertTrue($db->wasCronRequestUpdateCalled());
+    }
 
-        $this->assertStringContainsString(
-            "NOT LIKE '%DENIED%'",
-            $db->lastSql(),
-            'lastCronRequestAt() must exclude denied cron requests from consideration'
-        );
+    public function testRecordCronRequestReturnsFalseAndLogsOnDatabaseError(): void
+    {
+        global $mockLogEntries;
+
+        $db = new VerificationSettingsFakeDatabase(cronRequestUpdateErrors: true);
+
+        $this->assertFalse((new VerificationSettings($db))->recordCronRequest());
+
+        $this->assertCount(1, $mockLogEntries);
+        // Logged under VERIFICATION_CONFIG_WARNING, not CRON_REQUEST — this is a
+        // bookkeeping-write failure in the verification subsystem, matching every
+        // other write-failure log in this class, not cron transport noise.
+        $this->assertSame(LogCategories::LOG_CATEGORY_VERIFICATION_CONFIG_WARNING, $mockLogEntries[0]['category']);
+        $this->assertStringContainsString('Failed to record cron request', $mockLogEntries[0]['message']);
+    }
+
+    public function testRecordCronRequestReturnsFalseAndLogsWhenSettingsRowMissing(): void
+    {
+        global $mockLogEntries;
+
+        $db = new VerificationSettingsFakeDatabase(cronRequestUpdateCount: 0);
+
+        $this->assertFalse((new VerificationSettings($db))->recordCronRequest());
+
+        $this->assertCount(1, $mockLogEntries);
+        $this->assertSame(LogCategories::LOG_CATEGORY_VERIFICATION_CONFIG_WARNING, $mockLogEntries[0]['category']);
+        $this->assertStringContainsString('not found', $mockLogEntries[0]['message']);
     }
 
     // =========================================================================

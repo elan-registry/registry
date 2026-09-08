@@ -120,15 +120,22 @@ The `VerificationSettings` class gates the entire verification system via a sing
 - `brevoReady(): bool` — computed live; true only if **both** conditions hold:
   1. `plg_sendinblue.key` is non-empty (API key configured)
   2. `usersc/plugins/sendinblue/override.php` exists (plugin override active)
-- `cronReady(): bool` — computed live; true if the newest non-denied `logs`
-  row where `logtype = 'CronRequest'` exists within the last 20 minutes (2×
-  the documented 10-minute cron transport interval — see
+- `cronReady(): bool` — computed live; true if `lastCronRequestAt()` reports a
+  timestamp within the last 20 minutes (2× the documented 10-minute cron
+  transport interval — see
   [DEPLOYMENT.md — Cron Transport](DEPLOYMENT.md#cron-transport-userspice-cron-manager)).
-  `users/cron/cron.php` writes a `CronRequest` row on every hit, including
-  ones its own `cron_ip` allowlist then denies, so rows whose message
-  contains `DENIED` are excluded — otherwise a transport hitting from a
-  misconfigured IP would look healthy while running zero jobs.
-- `lastCronRequestAt(): ?DateTimeImmutable` — returns the timestamp of the most recent cron request, or null
+- `lastCronRequestAt(): ?DateTimeImmutable` — returns the timestamp of the
+  most recent cron transport hit, read from
+  `er_verification_settings.last_cron_request_at`, or null if cron has never
+  hit this environment. `users/cron/cron.php` writes that column via
+  `recordCronRequest()` only on its non-denied path — a hit its own
+  `cron_ip` allowlist denies never reaches this column at all, so there is
+  no "exclude denied rows" filtering to do (unlike the `logs`-table scan
+  this replaced — see #1974).
+- `recordCronRequest(): bool` — writes `er_verification_settings.last_cron_request_at = NOW()`;
+  called by `users/cron/cron.php` on every non-denied hit. Replaces the
+  unconditional `CronRequest` log line removed by #1974 (144 rows/day/environment
+  with no diagnostic value); never throws.
 
 ### Readiness Checks
 
@@ -146,9 +153,11 @@ always reflect current state.
 **Cron Readiness:**
 
 - The 20-minute window is 2× the standard documented cron transport interval (10 minutes)
-- If no non-denied `CronRequest` log exists at all, `cronReady()` returns false
-- If the most recent non-denied request is older than 20 minutes, `cronReady()` returns false
-- Denied requests (`cron_ip` allowlist rejection) are excluded — they prove only that the transport reached the server, not that it was recognized and ran jobs
+- If cron has never hit this environment (`last_cron_request_at` is `NULL`), `cronReady()` returns false
+- If the most recent hit is older than 20 minutes, `cronReady()` returns false
+- A hit denied by the `cron_ip` allowlist never writes `last_cron_request_at`
+  at all — it proves only that the transport reached the server, not that it
+  was recognized and ran jobs
 
 ### Asymmetric Enable/Disable Gate
 

@@ -175,8 +175,9 @@ Run 21-Fix-Page-Permissions.php from the Maintenance page on test.
 
 - Home page, a car details page, cars list (DataTable loads, no console errors)
 - Log in; account page renders
-- Admin → Logs: no new errors since the deploy timestamp; a CronRequest entry
-  within the last 10 minutes
+- Admin → Logs: no new errors since the deploy timestamp
+- `er_verification_settings.last_cron_request_at` within the last 10 minutes
+  (Admin → Verification tab, or DB Explainer)
 - npm run test:e2e:test   (from <repo-path>)
 
 <!-- IF: release-actions -->
