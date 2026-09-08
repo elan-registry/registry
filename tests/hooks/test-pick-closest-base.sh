@@ -20,6 +20,18 @@
 
 set -u
 
+# git commit-tree requires a resolvable author/committer identity. A
+# developer's machine has one configured, but a fresh CI runner does not —
+# confirmed live in CI (#2024 review): commit-tree fails with "Please tell
+# me who you are", leaving $TARGET_TIP empty and cascading a bogus failure
+# into an otherwise-unrelated scenario. Exporting these only for this
+# script's own process (not `git config`, global or local) avoids touching
+# any real identity or leaving repo/global config mutated.
+export GIT_AUTHOR_NAME="test-pick-closest-base"
+export GIT_AUTHOR_EMAIL="test-pick-closest-base@localhost"
+export GIT_COMMITTER_NAME="$GIT_AUTHOR_NAME"
+export GIT_COMMITTER_EMAIL="$GIT_AUTHOR_EMAIL"
+
 REPO_ROOT="$(git rev-parse --show-toplevel)"
 cd "$REPO_ROOT" || exit 1
 
@@ -61,10 +73,24 @@ trap cleanup EXIT
 
 # make_commit_on <parent-commit-ish> <message> — creates a new commit with
 # the same tree as its parent (no actual file changes needed for these
-# topology tests) and echoes its SHA.
+# topology tests) and echoes its SHA. Fails loudly (script exit, via the
+# `set -u`-safe guard below) rather than letting a git-commit-tree failure
+# silently propagate an empty SHA into a downstream scenario as a
+# misleading assertion failure — this exact failure mode was hit in CI
+# (#2024 review) when commit-tree failed for an unrelated reason (no
+# author identity configured) and produced a confusing "expected: <sha>,
+# actual: <empty>" instead of a clear "could not construct test fixture."
 make_commit_on() {
-    local parent="$1" message="$2"
-    git commit-tree "${parent}^{tree}" -p "$parent" -m "$message"
+    local parent="$1" message="$2" sha
+    sha="$(git commit-tree "${parent}^{tree}" -p "$parent" -m "$message")" || {
+        echo "FATAL: git commit-tree failed while building test fixture (parent=$parent)" >&2
+        exit 1
+    }
+    if [ -z "$sha" ]; then
+        echo "FATAL: git commit-tree produced no output while building test fixture (parent=$parent)" >&2
+        exit 1
+    fi
+    printf '%s\n' "$sha"
 }
 
 # assert_resolves_to <description> <target> <expected-base-sha>
