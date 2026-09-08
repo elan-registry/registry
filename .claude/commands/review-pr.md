@@ -29,7 +29,7 @@ Run this **first**, before launching any agent — a failing suite short-circuit
 the review before spending agent tokens on a branch that is already broken.
 
 ```bash
-composer test:full          # unit + ALL integration (~70s)
+composer test:full          # unit + ALL integration (~3-4 min as of v2.30.2's test suite size)
 composer check:docs         # under a second
 vendor/bin/phpstan analyse --no-progress --memory-limit=512M   # ~1s cached
 ```
