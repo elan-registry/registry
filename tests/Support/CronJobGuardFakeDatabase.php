@@ -7,8 +7,8 @@ namespace Tests\Support;
 /**
  * CronJobGuardFakeDatabase - FakeDatabase double for CronJobGuardTest
  *
- * CronJobGuard issues a single `UPDATE settings ...` query per `claim()` call
- * and derives its return value entirely from `count()` (rows changed) and
+ * CronJobGuard issues a single `UPDATE er_cron_job_runs ...` query per `claim()`
+ * call and derives its return value entirely from `count()` (rows changed) and
  * `error()` — canned via constructor flags, following the same shape as
  * VerificationSettingsFakeDatabase.
  *
@@ -23,6 +23,7 @@ namespace Tests\Support;
  * @package Tests\Support
  * @since v2.30.2
  * @see https://github.com/elan-registry/registry/issues/2027
+ * @see https://github.com/elan-registry/registry/issues/2034
  */
 class CronJobGuardFakeDatabase extends FakeDatabase
 {

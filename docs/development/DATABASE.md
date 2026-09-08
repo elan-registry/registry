@@ -35,6 +35,7 @@
 
 - `er_verification_settings` (v2.30.2) — single-row gate for the verification system feature switch
 - `er_email_events` (v2.30.2) — durable log of inbound Brevo delivery-status webhook events (#1887)
+- `er_cron_job_runs` (v2.30.2) — generic "when did this job last run" table for `CronJobGuard`, replacing per-job bespoke settings columns (#2034)
 - Any future feature-config, workflow state, or application-owned table created after this issue
 
 **Upstream tables (not renamed):** `settings`, `users`, `users_session`, `us_*`, etc. (UserSpice), and `cars`, `car_transfer_requests`, `deleted_accounts_archive`, `elan_factory_info`, `car_models`, `fix_script_runs`, `country` (pre-existing project tables).
@@ -332,13 +333,23 @@ id=5, years=1971-1974, series="S4", variant="FHC", type_code="36", model_value="
 
 #### `settings` - Site-wide configuration (singleton row, `id = 1`)
 
-Single-row config table. Most columns are legacy UserSpice/site-settings
-fields; only recently-added columns relevant to guarded cron jobs are listed
-here — see the migration history in `database/migrations/` for the rest.
+Single-row config table, mostly legacy UserSpice/site-settings fields — see
+the migration history in `database/migrations/` for the rest.
+
+#### `er_cron_job_runs` - Generic cron job "last run" tracking (#2034)
+
+Backs `CronJobGuard::claim()`'s atomic-claim guard. Replaces the earlier
+`settings.reconciliation_last_run` bespoke column (#2027, dropped by the
+same migration that creates this table) — more cron jobs were coming
+(issues 1889 and 1885, plus others), and a bespoke-column-per-job approach
+would have meant a new migration for each one.
 
 | Column | Type | Description |
 |--------|------|-------------|
-| `reconciliation_last_run` | `datetime NULL` | Last successful claim by `CronJobGuard::claim('reconciliation_last_run', ...)` (#2027). `NULL` means never run. Written only via the atomic UPDATE in `CronJobGuard`, never directly. |
+| `job_name` | `varchar(64)` | PRIMARY KEY. Must be in `CronJobGuard::ALLOWED_JOB_NAMES` for `claim()` to act on it — the allowlist and this table's seeded rows must stay in sync. |
+| `enabled` | `boolean NOT NULL DEFAULT true` | Lets an operator pause a single job without touching UserSpice's own `crons` table (which only supports add/delete, not pause). `claim()`'s own query requires `enabled = 1`; a disabled job's claim silently no-ops the same way a too-recent claim does. |
+| `last_run_at` | `datetime NULL` | Last successful claim. `NULL` means never run. Written only via `CronJobGuard`'s atomic UPDATE, never directly. |
+| `created_at` | `datetime NOT NULL` | Set at seed/registration time. Distinguishes "registered, never run" (row present, `last_run_at NULL`) from "not a registered job at all" (no row) — a bare `job_name`/`last_run_at` pair can't tell those apart once a row exists. |
 
 #### `phinxlog` - Phinx migration tracking
 
