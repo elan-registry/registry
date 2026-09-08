@@ -44,6 +44,18 @@ async function login(page, username = process.env.TEST_USERNAME || 'test@example
     .waitForURL(url => !url.toString().includes('login.php'), { timeout: 15000 })
     .then(() => ({ outcome: 'navigated' }));
 
+  // Mark navigationPromise's rejection as handled without consuming its
+  // value: when the 'toast' branch below throws immediately, navigationPromise
+  // is still pending (both waiters started ~simultaneously) and will reject
+  // ~15s later from its own waitForURL timeout — with nothing left awaiting
+  // it, that would surface as an unhandled promise rejection well after
+  // login() has already returned. A second .catch() on the same promise
+  // satisfies Node's unhandled-rejection tracking here while leaving the
+  // 'toast-not-seen' branch's later `await navigationPromise` completely
+  // unaffected — .catch() creates a new derived promise, it does not alter
+  // what the original navigationPromise resolves/rejects with.
+  navigationPromise.catch(() => {});
+
   const toastPromise = toastLocator
     .waitFor({ state: 'visible', timeout: 15000 })
     .then(() => ({ outcome: 'toast' }))
