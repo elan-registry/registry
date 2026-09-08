@@ -25,14 +25,66 @@
      ```
      `chmod 600 .env` if not already set.
    - Configure the same value as the bearer token/custom header Brevo sends
-     with each webhook call for this domain (webhook registration and
-     verification is #1888's job — do this step when #1888 configures the
-     Brevo-side webhook URL for that environment).
+     with each webhook call for this domain — see step 3 below, which uses
+     this same value to both verify the configuration and register the real
+     webhook.
    - Treat this token as a credential: do not commit it, do not log it (the
      endpoint only ever logs a hashed prefix on rejection), and rotate it by
      generating a new value and updating both sides (`.env` and the Brevo
      webhook config) together — a rotation with only one side updated causes
      every webhook call to be rejected until both match again.
+3. **Configure and verify the Brevo webhook on test.elanregistry.org** (#1888).
+   Production registration is explicitly deferred — it's blocked on the
+   v2.30.0 privacy-policy disclosure and on the verification-system feature
+   switch (#1926) actually being turned on. Requires step 2 above already
+   done (`BREVO_WEBHOOK_TOKEN` set in test's `.env`) — not needed in local
+   dev at all (see the note below).
+   1. Deploy the temporary capture script,
+      `scripts/spike-1888/brevo-webhook-capture.php`, to the server (edit its
+      `CAPTURE_FILE` placeholder before copying — see `scripts/README.md`).
+      `chmod 700` the capture directory (`CAPTURE_FILE`'s parent) — it holds
+      recipient email addresses from captured payloads. Confirm it's
+      reachable.
+   2. Register a *throwaway* webhook pointed at the capture script, passing
+      the same `BREVO_WEBHOOK_TOKEN` value as its auth token so the capture
+      script's inbound auth check has something real to validate against:
+      ```bash
+      php scripts/spike-1888/brevo-register-webhook.php --create \
+        --url='https://test.elanregistry.org/<path-to>/capture.php' \
+        --token=<test's BREVO_WEBHOOK_TOKEN value>
+      ```
+      Confirm it registered: `php scripts/spike-1888/brevo-register-webhook.php --list-webhooks`.
+   3. Send a real test email (Admin → Plugins → Brevo Sendinblue → Test
+      Email); confirm `delivered`/`opened` land in the capture log with a
+      passing auth check. Send the Mailtrap hard-bounce fixture using the
+      existing #1871 send script
+      (`scripts/spike-1871/brevo-send-test.php --to='bounce+550+...@inbox.mailtrap.io'`)
+      and confirm a `hard_bounce` line lands too.
+   4. Delete the throwaway webhook
+      (`php scripts/spike-1888/brevo-register-webhook.php --delete --id=<id>`),
+      and delete the capture script **and its capture file** (`capture.jsonl`
+      — it holds real recipient email addresses) from the server.
+      `BREVO_WEBHOOK_TOKEN` in `.env` is left as-is — it's the same value the
+      real endpoint needs, not something to rotate here.
+   5. Register the **real** webhook against the deployed
+      `https://test.elanregistry.org/app/api/webhooks/brevo.php`, using the
+      same `BREVO_WEBHOOK_TOKEN`:
+      ```bash
+      php scripts/spike-1888/brevo-register-webhook.php --create \
+        --url='https://test.elanregistry.org/app/api/webhooks/brevo.php' \
+        --token=<test's BREVO_WEBHOOK_TOKEN value>
+      ```
+      No further capture/verification pass is required — the auth mechanism
+      and configuration were already proven correct in steps 1–3 above.
+   6. Confirm link click-tracking is **off**: Brevo → Transactional →
+      Settings → Tracking. (Otherwise Verify/Sold/Review links get rewritten
+      through a Brevo redirect domain.)
+   7. `spam` end-to-end verification is not self-triggerable (per the #1871
+      spike's findings — it requires a real recipient reporting real mail)
+      and is already covered instead by
+      `testSpamCallsSetSuppressedNotSetBounced` in
+      `tests/unit/cars/services/BrevoWebhookEventProcessorTest.php`. No
+      manual step needed for it.
 
 **Note:** Development environments do not have access to Brevo and cannot receive real inbound Brevo webhooks (no public URL reaches a dev machine) — `BREVO_WEBHOOK_TOKEN` is not needed there. Webhook-dependent testing (#1887, #1888, #1889, #1890, #1923) will rely on synthetic/captured payloads for local dev and unit tests, with real end-to-end webhook verification happening only on test.elanregistry.org.
 
