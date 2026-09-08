@@ -125,7 +125,7 @@ except those explicitly listed as project-owned:
 
 | Directory | Status | Project-owned exceptions (tracked by git) |
 | --- | --- | --- |
-| `/users/` | Upstream framework | none — extend via `usersc/classes/` instead |
+| `/users/` | Upstream framework | `users/init.php`'s `$GLOBALS['config']` array — reads DB and session/cookie-naming values from `.env` (`DB_HOST`/`DB_USER`/`DB_PASS`/`DB_NAME`, `SESSION_NAME`/`TOKEN_NAME`/`REMEMBER_COOKIE_NAME`); this is config wiring, not framework logic — extend actual behavior via `usersc/classes/` instead |
 | `usersc/templates/` | Upstream templates | `customizer/file_nav_custom.php` (project nav additions), `customizer/assets/child_themes/elanregistry*` and `customizer/assets/child_themes/dashboard.php` (project child theme), `customizer.css` (project styles); `customizer/navigation.php` is tracked because UserSpice's template loader requires it — do not edit it, add nav content via `file_nav_custom.php` instead |
 | `usersc/plugins/` | Upstream plugins | `hooker/hooks/` (project hooks), `ai_prompts/custom_prompts/` (Claude AI context prompts) |
 | `usersc/user_settings.php` | Project-owned (customizes `users/user_settings.php`) | the entire file is project-owned — make changes here rather than in `users/user_settings.php` |
