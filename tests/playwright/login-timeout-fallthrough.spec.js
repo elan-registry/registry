@@ -81,7 +81,7 @@ const HUNG_LOGIN_HTML = `<!DOCTYPE html>
 
 test.describe('login() timeout fallthrough', () => {
   test.beforeEach(async ({ page }) => {
-    await page.route('**/usersc/login.php', async (route) => {
+    await page.route('**/usersc/login.php*', async (route) => {
       await route.fulfill({
         status: 200,
         contentType: 'text/html',
