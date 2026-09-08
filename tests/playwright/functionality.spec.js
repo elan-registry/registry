@@ -84,8 +84,10 @@ test.describe('Core Functionality After Refactoring', () => {
   test('NEW badge does not appear on factory listing page', async ({ page }) => {
     await page.goto('app/owner/cars/factory.php', { waitUntil: 'networkidle' });
 
-    // Positive control: prove the page actually rendered (not a login redirect)
-    // before asserting the config's absence below.
+    // Positive control: prove the page actually rendered before asserting the
+    // config's absence below (factory.php is public and never redirects an
+    // unauthenticated visitor — this guards against an unrelated rendering
+    // failure making the absence check pass for the wrong reason).
     await expect(page.locator('h2')).toContainText(/Factory/);
 
     // Factory page must NOT define carListConfig

@@ -202,16 +202,19 @@ test.describe('Registry-Specific AJAX Endpoints', () => {
     // Verifies that CarShowcaseService::getNewCarIds() emits valid JSON to the page.
     // The value is embedded in the inline script block as
     // window.carListConfig.newCarIds — shape must be int[].
+    //
+    // index.php is a fully public page (ADR-019: its `pages.private` row is 0,
+    // so securePage() admits anonymous visitors) and getNewCarIds() never
+    // throws — a DB error makes it return [], not throw — so carListConfig and
+    // its newCarIds key are always present whenever this page renders, for any
+    // visitor. There is no legitimate "unauthenticated, config didn't render"
+    // case to skip here; a missing config or newCarIds key is a real
+    // regression and must fail, not skip.
     await page.goto('app/owner/cars/index.php', { waitUntil: 'networkidle' });
 
-    const config = await page.evaluate(() => window.carListConfig ?? null);
+    const config = await page.evaluate(() => window.carListConfig);
 
-    // No config at all → page required auth and we're unauthenticated. Skip visibly
-    // (not a silent `return`, which would report this as a pass having verified nothing).
-    test.skip(config === null, 'car list page requires authentication; carListConfig not rendered');
-
-    // Config present but newCarIds missing → a real regression (e.g. json_encode
-    // failure), not an auth case — must fail, not skip.
+    expect(config).toBeDefined();
     expect(config.newCarIds).toBeDefined();
     const newCarIds = config.newCarIds;
 
