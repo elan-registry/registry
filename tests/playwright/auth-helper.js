@@ -27,13 +27,45 @@ async function login(page, username = process.env.TEST_USERNAME || 'test@example
   await usernameField.fill(username);
   await passwordField.fill(password);
 
-  // Submit and wait for navigation away from the login page.
-  // Promise.all ensures we start listening for the navigation BEFORE clicking,
-  // preventing the rare race where navigation completes before waitForURL registers.
-  await Promise.all([
-    page.waitForURL(url => !url.toString().includes('login.php'), { timeout: 15000 }),
-    page.locator('button[type="submit"], input[type="submit"]').click(),
-  ]);
+  // The UserSpice error toast (.us-toast .toast-body) auto-dismisses after
+  // 6s (usersc/includes/system_messages_footer.php), so it must be raced
+  // against the success-path navigation rather than checked only after a
+  // full 15s timeout, which would frequently miss it. Scoped to
+  // .us-bar-danger specifically — userSpiceMessage() renders the same
+  // .us-toast/.toast-body DOM for every severity (success, info, danger,
+  // ...), differing only in the sibling .us-toast-bar's color class, so an
+  // unscoped selector would misreport a success/info toast as a login
+  // failure if one were ever shown on this page.
+  const toastLocator = page.locator('.us-toast:has(.us-bar-danger) .toast-body');
+
+  // Both waiters are registered BEFORE the click, preventing the rare race
+  // where navigation completes before waitForURL registers.
+  const navigationPromise = page
+    .waitForURL(url => !url.toString().includes('login.php'), { timeout: 15000 })
+    .then(() => ({ outcome: 'navigated' }));
+
+  const toastPromise = toastLocator
+    .waitFor({ state: 'visible', timeout: 15000 })
+    .then(() => ({ outcome: 'toast' }))
+    .catch(() => ({ outcome: 'toast-not-seen' })); // never rejects the race
+
+  await page.locator('button[type="submit"], input[type="submit"]').click();
+
+  const result = await Promise.race([navigationPromise, toastPromise]);
+
+  if (result.outcome === 'toast') {
+    const toastText = await toastLocator.textContent();
+    throw new Error(
+      `Login failed: UserSpice error toast appeared instead of navigating away ` +
+      `from login.php. Toast text: "${(toastText || '').trim()}". ` +
+      `Common causes: wrong TEST_USERNAME/TEST_PASSWORD, changed login form ` +
+      `markup/selectors, or rate-limiting (RATE_LIMIT_LOGIN).`
+    );
+  }
+
+  if (result.outcome === 'toast-not-seen') {
+    await navigationPromise; // still pending — fall through to Playwright's own timeout/diagnostics
+  }
 
   // Wait for the post-login redirect chain to fully settle.
   await page.waitForLoadState('networkidle');

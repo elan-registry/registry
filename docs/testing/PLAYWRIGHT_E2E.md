@@ -117,6 +117,11 @@ Production use the 1Password / CAPTCHA flow described below.
 | Test        | `.auth/user-test.json` | `playwright.config.test.js` |
 | Production  | `.auth/user.json`      | `playwright.config.prod.js` |
 
+Both auth files hold a session for the **non-admin owner account**
+(`elanregistry - test account` in 1Password) with at least one registered
+car. Admin-session coverage on Test/Production (e.g. for `app/admin/*`
+endpoints) is not yet available — see #2035.
+
 Files are gitignored. Re-run setup if sessions expire.
 
 ## Test Projects
@@ -130,15 +135,25 @@ Files are gitignored. Re-run setup if sessions expire.
 ### logged-in
 
 - Authenticated workflows
-- Requires auth file
-- Skipped if auth file missing
+- Requires a valid auth file
+- Local/Dev: preceded by a `setup` project that performs a live login on
+  every run
+- Test/Production: preceded by a `check-auth` project that loads the
+  existing auth file and verifies the session is still authenticated
+  (navigates to an authenticated page and checks for a logged-in marker —
+  live re-login isn't possible there, both origins run a real Cloudflare
+  Turnstile challenge). If the file is missing or the session has expired,
+  `check-auth` fails loudly with a message pointing at the relevant
+  `scripts/playwright-auth-1password[-test].sh` script, and `logged-in` is
+  skipped — its tests do not silently run anonymous. `not-logged-in` is
+  unaffected and still runs to completion.
 
 ## Troubleshooting
 
 | Issue | Solution |
 | ------- | ---------- |
-| Auth file doesn't exist | Run auth setup script |
-| Tests fail with login redirect | Session expired - re-run auth setup |
+| Auth file doesn't exist | Run auth setup script — also now caught automatically by `check-auth` before `logged-in` runs on Test/Production |
+| `check-auth` fails with "session is stale/expired" | Re-run `./scripts/playwright-auth-1password[-test].sh` (session expired — now caught automatically instead of `logged-in` silently running anonymous) |
 | CAPTCHA timeout | Re-run setup, solve CAPTCHA promptly |
 | CI/CD failures | Check secrets, ensure auth runs before tests |
 

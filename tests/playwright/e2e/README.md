@@ -36,7 +36,6 @@ npm run test:e2e:logged-in
 
 - **`not-logged-in.spec.js`** - Public page accessibility and link validation
 - **`logged-in.spec.js`** - Authenticated user workflows
-- **`helpers.js`** - Authentication utilities
 
 ## Configuration
 
