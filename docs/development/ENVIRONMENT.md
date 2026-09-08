@@ -190,8 +190,9 @@ their real deployed environments)
 `['remember']`)
 
 - `SESSION_NAME` / `TOKEN_NAME` / `REMEMBER_COOKIE_NAME` — override
-  UserSpice's `$_SESSION` key names (`user`, `token`) and remember-me cookie
-  name (`pmqesoxiw318374csb`). Only needed when running more than one local
+  UserSpice's `$_SESSION` key names (`user`, `token`) and its existing
+  hardcoded remember-me cookie name (see `users/init.php`). Only needed
+  when running more than one local
   clone of this repo from the same MAMP host/port (e.g. `Registry/` and
   `Registry2/`, a supported workflow for working two milestones in parallel
   — see the top-level `Web/ElanRegistry/CLAUDE.md`). Every clone shares the
