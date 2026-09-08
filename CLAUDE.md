@@ -101,6 +101,11 @@ all other Cloudflare features work normally.
   `app/admin/scripts/maintenance/` (repeatable maintenance). **After adding any
   new page or admin script, run `21-Fix-Page-Permissions.php` on test then prod
   to register the new path in UserSpice's permission table.**
+  All cron jobs must live in `users/cron/` — `cron.php`'s dispatcher hard-codes
+  that directory as the only path it will resolve a job's `file` column
+  against, so a job placed elsewhere cannot run. See
+  [DEPLOYMENT.md's "Cron Transport" section](docs/development/DEPLOYMENT.md#cron-transport-userspice-cron-manager)
+  for the full contract before writing one.
 - **Database**: MySQL 8.0+ with audit trails via triggers.
   See [DATABASE.md](docs/development/DATABASE.md).
 - **Classes**: See [CLASSES.md](docs/development/CLASSES.md) for Car,

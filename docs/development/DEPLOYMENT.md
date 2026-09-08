@@ -497,6 +497,14 @@ per environment outside the codebase. Installed on test and prod on 2026-09-03
 
 > **Contract for cron job authors — read before writing a job.**
 >
+> - **Job files must live in `users/cron/`.** `cron.php` resolves each active
+>   row's `file` column via `sanitizePath($file, $cronBaseDir)`, where
+>   `$cronBaseDir` is hard-coded to `users/cron/` — this is a path-traversal
+>   guard, not a style preference, and a file placed anywhere else cannot be
+>   resolved and will not run. `users/cron/sample.php` is the stock UserSpice
+>   template to copy from; register the new file's name in the `crons` table
+>   (via a migration/seed, not by hand in the admin UI) so it ships with the
+>   code that depends on it.
 > - The transport fires **every 10 minutes** on dev, test, and prod
 >   (`*/10 * * * *`). Every *active* row in `crons` runs on every hit, in
 >   `sort` order — a job executes about 144 times a day whether or not it has
