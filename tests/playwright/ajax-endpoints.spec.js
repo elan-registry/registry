@@ -152,8 +152,8 @@ test.describe('Registry-Specific AJAX Endpoints', () => {
     await page.goto('app/owner/cars/index.php', { waitUntil: 'networkidle' });
 
     // app/api/cars/list.php is public and read-only (per ADR-019); it carries
-    // no CSRF gate — abuse is bounded by the `cars_list` rate limit instead.
-    // No token is fetched or sent here.
+    // no CSRF gate and, as of #2018, no rate limit either — no app-layer
+    // abuse control. No token is fetched or sent here.
     const response = await page.request.post('app/api/cars/list.php', {
       form: {
         draw: '1',
@@ -233,9 +233,9 @@ test.describe('Registry-Specific AJAX Endpoints', () => {
 
   test('car history endpoint returns DataTables JSON structure', async ({ page }) => {
     // app/api/cars/history.php is public and read-only (per ADR-019); it
-    // carries no CSRF gate — abuse is bounded by the `car_history` rate limit
-    // instead. A deliberately bogus token is included here purely to prove
-    // it is ignored, not required.
+    // carries no CSRF gate and, as of #2018, no rate limit either — no
+    // app-layer abuse control. A deliberately bogus token is included here
+    // purely to prove it is ignored, not required.
     const response = await page.request.post('app/api/cars/history.php', {
       form: {
         car_id: String(CAR_ID_STANDARD),
@@ -658,8 +658,9 @@ test.describe('Issue #1913 — public read-only DataTables endpoints survive a l
   // no login gate, no non-public data. They must succeed whether a CSRF
   // field is entirely absent (models a lost session — the actual
   // production failure mode observed in #1913) or present but
-  // garbage/expired (models a stale page-embedded token). Abuse is bounded
-  // by rate limiting instead, not asserted here.
+  // garbage/expired (models a stale page-embedded token). As of #2018,
+  // these endpoints have no rate limit either — no app-layer abuse
+  // control — which is not asserted here.
 
   // Deliberately OUTSIDE the authenticated describe above. Nested inside it,
   // these ran only after ensureLoggedIn() — the one session state in which

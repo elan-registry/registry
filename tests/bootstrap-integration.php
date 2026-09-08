@@ -276,9 +276,12 @@ try {
 // Reset Rate Limit State for Integration Tests (once per suite run)
 // ============================================================
 // us_rate_limits accumulates one row per hit against every rate-limited
-// endpoint the suite exercises — including cars_list, factory_list,
-// car_history, and statistics_request, all rate-limited (not CSRF-gated)
-// since #1913/#1951. Nothing ages these rows out automatically:
+// action the suite exercises — transfer_request, join_failure_beacon,
+// brevo_webhook, location_search, and similar. cars_list, factory_list,
+// car_history, and statistics_request were rate-limited (not CSRF-gated)
+// from #1913/#1951 until #2018 removed their rate limits too, so those four
+// no longer write rows here — they were the bulk of the growth described
+// below. Nothing ages the remaining rows out automatically:
 // RateLimit::cleanup() is only ever invoked manually via admin maintenance
 // script #25 (see app/admin/scripts/maintenance/25-Cleanup-Rate-Limits.php),
 // never by a cron job or by any test. Left alone, rows compound across
