@@ -20,6 +20,12 @@ async function assertAuthStillValid(browser, { authFile, setupScriptPath, baseUR
   const createContext = newContext || ((opts) => browser.newContext(opts));
   const context = await createContext({ storageState: authFile, baseURL });
   const page = await context.newPage();
+  // Preserve whichever error is the actionable diagnostic: if context.close()
+  // itself throws (e.g. the browser process already crashed), it would
+  // otherwise replace the real "session is stale, run this script" message
+  // with an unrelated cleanup error — exactly the silent-failure mode this
+  // file exists to prevent.
+  let primaryError;
   try {
     await page.goto('usersc/account.php', { waitUntil: 'domcontentloaded' });
     const loggedIn = await isLoggedIn(page);
@@ -30,8 +36,19 @@ async function assertAuthStillValid(browser, { authFile, setupScriptPath, baseUR
         `to re-authenticate, then re-run this suite.`
       );
     }
+  } catch (err) {
+    primaryError = err;
+    throw err;
   } finally {
-    await context.close();
+    try {
+      await context.close();
+    } catch (closeErr) {
+      if (!primaryError) {
+        throw closeErr;
+      }
+      // A real diagnostic is already propagating — don't let a cleanup
+      // failure mask it.
+    }
   }
 }
 

@@ -194,11 +194,15 @@ their real deployed environments)
   name (`pmqesoxiw318374csb`). Only needed when running more than one local
   clone of this repo from the same MAMP host/port (e.g. `Registry/` and
   `Registry2/`, a supported workflow for working two milestones in parallel
-  — see the top-level `Web/ElanRegistry/CLAUDE.md`). Every clone's session
-  cookie is scoped `path=/` on the same origin, so without distinct names,
-  one clone's login state, CSRF token, and remember-me cookie silently
-  collide with another's — surfacing as inexplicable login failures with no
-  error in any log (see #1935).
+  — see the top-level `Web/ElanRegistry/CLAUDE.md`). Every clone shares the
+  same PHP session cookie (`PHPSESSID`, scoped `path=/` on the same origin)
+  regardless of these vars — `SESSION_NAME`/`TOKEN_NAME` only change which
+  key each clone uses *inside* that shared session, so without distinct
+  names, one clone's login state and CSRF token silently collide with
+  another's — surfacing as inexplicable login failures with no error in any
+  log (see #1935). `REMEMBER_COOKIE_NAME` is the one exception: it names an
+  actual separate browser cookie, so setting it does give each clone its own
+  remember-me cookie rather than just a distinct key within a shared one.
 - Unset in production, test, and a single-clone local install — the app
   falls back to the original hardcoded values, so this is a no-op there. Set
   only in the `.env` (not `.env.local`) of whichever clone should get

@@ -60,4 +60,26 @@ test.describe('login() failure diagnostics', () => {
       'The error must embed real UserSpice toast content, not a generic timeout message'
     ).toMatch(/\*\* FAILED LOGIN \*\*|Too many failed login attempts/);
   });
+
+  // The counterpart to the test above: the race in login() has two arms, and
+  // pinning only the toast arm would let a regression that makes login()
+  // throw (or hang) on a *successful* sign-in pass unnoticed here. Other
+  // specs call login() with valid credentials, but none asserts the resolve
+  // itself — a failure there surfaces as an unrelated test's timeout rather
+  // than as "login()'s success path broke".
+  test('resolves without throwing and navigates away on valid credentials', async ({ page }) => {
+    if (!process.env.TEST_USERNAME || !process.env.TEST_PASSWORD) {
+      test.skip(true, 'Set TEST_USERNAME and TEST_PASSWORD in .env.local to run this test');
+    }
+
+    await expect(
+      login(page, process.env.TEST_USERNAME, process.env.TEST_PASSWORD),
+      'login() must resolve, not throw, when the credentials are accepted'
+    ).resolves.toBeUndefined();
+
+    expect(
+      page.url(),
+      'login() must not resolve while still on the login page'
+    ).not.toContain('login.php');
+  });
 });
