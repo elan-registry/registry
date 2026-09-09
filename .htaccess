@@ -13,7 +13,7 @@ ErrorDocument 504 /error/500.php
 Header always set X-Frame-Options "SAMEORIGIN"
 Header always set X-Content-Type-Options "nosniff"
 Header always set Referrer-Policy "strict-origin-when-cross-origin"
-Header always set Permissions-Policy "geolocation=(), camera=(), microphone=(), payment=()"
+Header always set Permissions-Policy "geolocation=(self), camera=(), microphone=(), payment=()"
 Header always set X-XSS-Protection "0"
 
 <Files "*.env*">
