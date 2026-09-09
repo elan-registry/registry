@@ -21,7 +21,7 @@ const path = require('path');
 const { test, expect } = require('@playwright/test');
 const { assertAuthStillValid } = require('./e2e/auth-staleness-check');
 
-const SETUP_SCRIPT = './scripts/playwright-auth-1password-test.sh';
+const SETUP_SCRIPT = 'node scripts/playwright-auth-setup.js test admin';
 
 /**
  * Build a fake Playwright context whose page reports `locatorCount` matches

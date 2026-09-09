@@ -5,7 +5,7 @@ const path = require('path');
 
 // storageState paths are resolved once at config-load time, before any
 // project runs — so if TEST_USERNAME/TEST_PASSWORD are unset, auth.setup.js
-// will skip (leaving no file) and every `logged-in` test would fail with
+// will skip (leaving no file) and every `admin` test would fail with
 // ENOENT instead of skipping. Checking the credentials directly here (not
 // just file existence, which can't self-heal on a fresh checkout — the file
 // legitimately doesn't exist yet until `setup` first runs successfully)
@@ -71,7 +71,9 @@ module.exports = defineConfig({
       use: { ...devices['Desktop Chrome'] },
     },
     {
-      // NOTE: this is an exact-filename allowlist, not a directory/suffix
+      // NOTE (renamed from 'logged-in' to 'admin' — issue #2035, since this
+      // tier's credential is actually the admin account): this is an exact-
+      // filename allowlist, not a directory/suffix
       // match — deliberately narrow so it can't accidentally also match
       // not-logged-in.spec.js (see #1781's regex-anchoring fix). The
       // trade-off: any NEW spec file added under e2e/ that needs an
@@ -79,8 +81,8 @@ module.exports = defineConfig({
       // or it will be silently unreachable (chromium/Mobile Chrome both
       // testIgnore e2e/** entirely) — the same failure mode #1781 exists to
       // fix. When adding such a file, add it here too.
-      name: 'logged-in',
-      testMatch: /(?:^|\/)(logged-in|factory-registry-link|car-edit-owner-refresh|car-edit-workflow)\.spec\.js$/,
+      name: 'admin',
+      testMatch: /(?:^|\/)(admin|factory-registry-link|car-edit-owner-refresh|car-edit-workflow)\.spec\.js$/,
       dependencies: ['setup'],
       use: {
         ...devices['Desktop Chrome'],

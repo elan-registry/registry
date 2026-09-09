@@ -4,17 +4,19 @@ These tests validate user workflows on the **production environment** (`https://
 
 ## Quick Start
 
-### 1. Setup Authentication (One-time)
+### 1. Setup Authentication (One-time, or when stale)
+
+Test/Prod run HTTPS with an active Cloudflare Turnstile challenge, so login
+cannot happen automatically. A human must manually disable Turnstile, run the
+setup script, then re-enable it:
 
 ```bash
-# Using 1Password (recommended)
-./scripts/playwright-auth-1password.sh
-
-# Or manually with environment variables
-export ELAN_USERNAME="your_test_username"
-export ELAN_PASSWORD="your_test_password"
-node scripts/playwright-auth-setup.js
+node scripts/playwright-auth-setup.js prod admin
+node scripts/playwright-auth-setup.js prod nonadmin
 ```
+
+Credentials are read from `.env.local` (`E2E_PROD_ADMIN_USERNAME`/`_PASSWORD`,
+`E2E_PROD_NONADMIN_USERNAME`/`_PASSWORD`) — see `docs/development/ENVIRONMENT.md`.
 
 ### 2. Run Tests
 
@@ -28,20 +30,24 @@ npm run test:e2e:headed
 # Run only public page tests (no auth needed)
 npm run test:e2e:not-logged-in
 
-# Run only authenticated tests (auth required)
+# Run only admin-authenticated tests (auth required)
+npm run test:e2e:admin
+
+# Run only non-admin-authenticated tests (auth required)
 npm run test:e2e:logged-in
 ```
 
 ## Test Files
 
 - **`not-logged-in.spec.js`** - Public page accessibility and link validation
-- **`logged-in.spec.js`** - Authenticated user workflows
+- **`admin.spec.js`** - Authenticated admin user workflows
 
 ## Configuration
 
 - **Config**: `playwright.config.prod.js` (project root)
 - **Base URL**: `https://elanregistry.org`
-- **Auth State**: Saved to `tests/playwright/.auth/user.json` (gitignored)
+- **Auth State**: Saved to `tests/playwright/.auth/user-prod-admin.json` and
+  `user-prod-nonadmin.json` (gitignored)
 
 ## Documentation
 
@@ -49,17 +55,15 @@ See comprehensive guide: [`docs/testing/PLAYWRIGHT_E2E.md`](../../../docs/testin
 
 ## When to Run
 
-- **CI/CD**: Scheduled runs (daily/weekly)
-- **Pre-release**: Before deploying to production
+- **Pre-release**: Before deploying to production, at milestone-release time
 - **Monitoring**: Continuous validation of production environment
 
 ## Troubleshooting
 
-**Tests fail with login errors?**
-→ Re-run auth setup: `./scripts/playwright-auth-1password.sh`
+**Tests fail with login errors, or auth file is stale/missing?**
+→ Re-run auth setup (see step 1 above) — remember to manually disable
+  Turnstile first, then re-enable it once done.
 
-**No auth file found?**
-→ Run setup script (see step 1 above)
-
-**CAPTCHA timeout?**
-→ Re-run setup and solve CAPTCHA within 5 minutes
+**Turnstile blocks the setup script?**
+→ The script fails fast with an actionable message rather than hanging —
+  disable Turnstile in Cloudflare before retrying.

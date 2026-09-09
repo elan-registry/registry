@@ -70,11 +70,11 @@ module.exports = defineConfig({
     {
       // NOTE: when adding a spec that needs the non-admin session, add it to
       // 'logged-in-non-admin's testMatch below too if it should ALSO run here.
-      // Kept in sync with playwright.config.js's own 'logged-in' alternation
+      // Kept in sync with playwright.config.js's own 'admin' alternation
       // (car-edit-owner-refresh included) so Dev is a strict superset of what
       // Local covers for authenticated e2e specs.
-      name: 'logged-in',
-      testMatch: /(?:^|\/)(logged-in|factory-registry-link|car-edit-owner-refresh|car-edit-workflow)\.spec\.js$/,
+      name: 'admin',
+      testMatch: /(?:^|\/)(admin|factory-registry-link|car-edit-owner-refresh|car-edit-workflow)\.spec\.js$/,
       dependencies: ['setup'],
       use: {
         ...devices['Desktop Chrome'],
@@ -84,7 +84,7 @@ module.exports = defineConfig({
     {
       name: 'logged-in-non-admin',
       // Add a spec's filename to this testMatch to opt it into the non-admin
-      // session (mirrors the allowlist convention on 'logged-in' above). No
+      // session (mirrors the allowlist convention on 'admin' above). No
       // npm script runs this project by default until a spec does — see
       // package.json's test:e2e:dev family.
       testMatch: /(?:^|\/)__none__\.spec\.js$/,
