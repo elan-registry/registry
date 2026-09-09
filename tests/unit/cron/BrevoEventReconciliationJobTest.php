@@ -44,6 +44,25 @@ final class BrevoEventReconciliationJobTest extends TestCase
     private const NOW = '2026-09-09 03:00:00';
 
     /**
+     * Brevo's `date` is UTC, but occurred_at is stored in PHP's default
+     * timezone (see resolveOccurredAt()) — so this test's expected value is
+     * timezone-dependent and would silently pass under a UTC CI runner while
+     * the real production conversion differed. Pinning the app's timezone
+     * (users/init.php sets America/Los_Angeles) makes the conversion the
+     * assertion actually exercises, regardless of the runner's system clock.
+     */
+    private const APP_TIMEZONE = 'America/Los_Angeles';
+
+    /** Brevo's UTC event date used by FakeBrevoEvent's default. */
+    private const EVENT_DATE_UTC = '2026-09-08T12:00:00Z';
+
+    /** self::EVENT_DATE_UTC rendered in self::APP_TIMEZONE (UTC-7, PDT). */
+    private const EVENT_DATE_LOCAL = '2026-09-08 05:00:00';
+
+    /** Restores the process timezone after each test pins it. */
+    private string $originalTimezone = 'UTC';
+
+    /**
      * The repository double. Created as a stub by default and swapped for a
      * mock only by the tests that assert on how it was called — PHPUnit emits
      * a notice for a mock carrying no expectations.
@@ -59,8 +78,16 @@ final class BrevoEventReconciliationJobTest extends TestCase
         global $mockLogEntries;
         $mockLogEntries = [];
 
+        $this->originalTimezone = date_default_timezone_get();
+        date_default_timezone_set(self::APP_TIMEZONE);
+
         $this->mockRepo = $this->createStub(CarRepository::class);
         $this->applier = new SpyEmailEventApplier();
+    }
+
+    protected function tearDown(): void
+    {
+        date_default_timezone_set($this->originalTimezone);
     }
 
     /**
@@ -110,7 +137,7 @@ final class BrevoEventReconciliationJobTest extends TestCase
                 email: 'owner@example.com',
                 event: 'hard_bounce',
                 messageId: 'brevo-msg-42',
-                date: '2026-09-08T12:00:00Z',
+                date: self::EVENT_DATE_UTC,
                 reason: 'mailbox unavailable'
             ),
         ])->runNow();
@@ -122,7 +149,7 @@ final class BrevoEventReconciliationJobTest extends TestCase
                 'event' => 'hard_bounce',
                 'reason' => 'mailbox unavailable',
                 'messageId' => 'brevo-msg-42',
-                'occurredAt' => '2026-09-08 12:00:00',
+                'occurredAt' => self::EVENT_DATE_LOCAL,
             ],
             [
                 'carId' => 9,
@@ -130,7 +157,7 @@ final class BrevoEventReconciliationJobTest extends TestCase
                 'event' => 'hard_bounce',
                 'reason' => 'mailbox unavailable',
                 'messageId' => 'brevo-msg-42',
-                'occurredAt' => '2026-09-08 12:00:00',
+                'occurredAt' => self::EVENT_DATE_LOCAL,
             ],
         ], $this->applier->calls);
     }
@@ -381,6 +408,60 @@ final class BrevoEventReconciliationJobTest extends TestCase
         $this->assertSame([], $this->applier->calls);
     }
 
+    // --- Non-string payload fields ---------------------------------------
+
+    /**
+     * The SDK's getters are untyped, so a payload-contract change could yield
+     * an array or an int. A bare (string) cast would record an array as the
+     * literal "Array" and an int as a numeric string, feeding garbage into
+     * EmailEventApplier::apply()'s escalation logic — these must be skipped.
+     *
+     * @param array{email?: mixed, event?: mixed, messageId?: mixed} $overrides
+     */
+    #[\PHPUnit\Framework\Attributes\DataProvider('nonStringPayloadFields')]
+    public function testNonStringPayloadFieldIsSkippedAndLogged(array $overrides): void
+    {
+        $this->expectRepoCalls()->expects($this->never())->method('findByEmail');
+
+        $this->makeJob([new FakeBrevoEvent(...$overrides)])->runNow();
+
+        $this->assertSame([], $this->applier->calls, 'A non-string payload field must not be applied');
+
+        // EMAIL_WEBHOOK, not CRON_JOB_FAILURE: a shape change in Brevo's
+        // payload is a data-contract warning, and the job itself is healthy.
+        $log = $this->logsContaining('non-string field in event payload');
+        $this->assertNotEmpty($log, 'A skipped event must be logged, not silent');
+        $this->assertSame(LogCategories::LOG_CATEGORY_EMAIL_WEBHOOK, $log[0]['category']);
+    }
+
+    /** @return array<string, array{array<string, mixed>}> */
+    public static function nonStringPayloadFields(): array
+    {
+        return [
+            'event as an array' => [['event' => ['delivered']]],
+            'event as an int' => [['event' => 42]],
+            'email as an array' => [['email' => ['owner@example.com']]],
+            'message id as an int' => [['messageId' => 12345]],
+        ];
+    }
+
+    /**
+     * A malformed event must not stop the page — the same containment the tag
+     * gate and per-event write failures already have.
+     */
+    public function testNonStringPayloadFieldDoesNotBlockLaterEvents(): void
+    {
+        $this->mockRepo->method('findByEmail')->willReturn([(object) ['id' => 1]]);
+
+        $this->makeJob([
+            new FakeBrevoEvent(messageId: 'm1'),
+            new FakeBrevoEvent(event: ['delivered'], messageId: 'm2'),
+            new FakeBrevoEvent(messageId: 'm3'),
+        ])->runNow();
+
+        $this->assertSame(['m1', 'm3'], $this->applier->messageIds());
+    }
+
     // --- Date handling ---------------------------------------------------
 
     public function testUnparseableDateFallsBackToRunTimeAndLogs(): void
@@ -391,6 +472,49 @@ final class BrevoEventReconciliationJobTest extends TestCase
 
         $this->assertSame(self::NOW, $this->applier->calls[0]['occurredAt']);
         $this->assertNotEmpty($this->logsContaining('no usable date'));
+    }
+
+    /**
+     * er_email_events.occurred_at is a naive DATETIME written by both this job
+     * and BrevoWebhookEventProcessor, and compared across them by
+     * CarRepository::countSoftBouncesSinceLastDelivered(). Brevo's `date` is
+     * UTC, so a backfilled row is only comparable if it is converted to the
+     * same clock the webhook writes (PHP's default timezone) rather than kept
+     * at its source offset.
+     */
+    public function testUtcDateIsStoredInThePhpDefaultTimezoneLikeTheWebhook(): void
+    {
+        $this->mockRepo->method('findByEmail')->willReturn([(object) ['id' => 1]]);
+
+        $this->makeJob([new FakeBrevoEvent(date: self::EVENT_DATE_UTC)])->runNow();
+
+        $this->assertSame(
+            date('Y-m-d H:i:s', (new DateTimeImmutable(self::EVENT_DATE_UTC))->getTimestamp()),
+            $this->applier->calls[0]['occurredAt'],
+            'occurred_at must use the same clock BrevoWebhookEventProcessor writes'
+        );
+        $this->assertSame(self::EVENT_DATE_LOCAL, $this->applier->calls[0]['occurredAt']);
+        $this->assertSame([], $this->logsContaining('no usable date'), 'A valid date must not log a fallback');
+    }
+
+    /**
+     * The SDK's getDate() is untyped, so an int (the shape the webhook's
+     * `ts_event` carries) is a plausible payload-contract change. resolveOccurredAt()
+     * only trusts strings, so anything else must take the logged "now" fallback
+     * rather than being coerced.
+     */
+    public function testNonStringDateFallsBackToRunTimeAndLogs(): void
+    {
+        $this->mockRepo->method('findByEmail')->willReturn([(object) ['id' => 1]]);
+
+        $this->makeJob([new FakeBrevoEvent(date: 1_700_000_000)])->runNow();
+
+        $this->assertSame(self::NOW, $this->applier->calls[0]['occurredAt']);
+
+        $log = $this->logsContaining('no usable date');
+        $this->assertNotEmpty($log, 'A non-string date must be logged, not silently coerced');
+        $this->assertSame(LogCategories::LOG_CATEGORY_EMAIL_WEBHOOK, $log[0]['category']);
+        $this->assertStringContainsString('(int)', $log[0]['message']);
     }
 
     public function testMissingDateFallsBackToRunTime(): void

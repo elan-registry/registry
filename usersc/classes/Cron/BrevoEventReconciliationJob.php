@@ -196,9 +196,32 @@ final class BrevoEventReconciliationJob extends AbstractCronJob
             return;
         }
 
-        $email = (string) $event->getEmail();
-        $eventName = (string) $event->getEvent();
-        $messageId = (string) $event->getMessageId();
+        $rawEmail = $event->getEmail();
+        $rawEventName = $event->getEvent();
+        $rawMessageId = $event->getMessageId();
+
+        // The SDK's getters are untyped at the boundary, so a payload-contract
+        // change could hand us an array or an int here. An unconditional
+        // (string) cast would turn an array into the literal "Array" (with a
+        // warning) and an int into a numeric string, either of which would then
+        // be recorded as a genuine event name and fed to
+        // EmailEventApplier::apply()'s escalation logic. Skip instead, and log
+        // it under EMAIL_WEBHOOK for the same reason the bound check below
+        // does: it is a Brevo payload problem, not a broken job.
+        if (!is_string($rawEmail) || !is_string($rawEventName) || !is_string($rawMessageId)) {
+            logger(0, LogCategories::LOG_CATEGORY_EMAIL_WEBHOOK, sprintf(
+                'Brevo event reconciliation: non-string field in event payload'
+                . ' (email=%s, event=%s, message-id=%s) — event skipped.',
+                get_debug_type($rawEmail),
+                get_debug_type($rawEventName),
+                get_debug_type($rawMessageId)
+            ));
+            return;
+        }
+
+        $email = $rawEmail;
+        $eventName = $rawEventName;
+        $messageId = $rawMessageId;
 
         if ($email === '' || $eventName === '' || $messageId === '') {
             return;
@@ -300,6 +323,12 @@ final class BrevoEventReconciliationJob extends AbstractCronJob
      * `occurred_at` ordering
      * {@see CarRepository::countSoftBouncesSinceLastDelivered()} depends on.
      *
+     * The UTC-ness is the *input's* only. `er_email_events.occurred_at` is a
+     * naive DATETIME with no stored offset, and the webhook writes it in PHP's
+     * default timezone, so the stored value here must be rendered in that same
+     * timezone rather than preserving Brevo's UTC offset — otherwise rows from
+     * the two paths sort against each other hours apart.
+     *
      * A parsed value is only trusted when its Unix timestamp is positive and
      * at or below {@see self::MAX_PLAUSIBLE_TIMESTAMP} — an unbounded parse
      * accepts strings like "+100000 years", producing a DATETIME MySQL
@@ -315,7 +344,16 @@ final class BrevoEventReconciliationJob extends AbstractCronJob
                 $parsed = new \DateTimeImmutable($rawDate);
                 $seconds = $parsed->getTimestamp();
                 if ($seconds > 0 && $seconds <= self::MAX_PLAUSIBLE_TIMESTAMP) {
-                    return $parsed->format(AppConstants::DATETIME_FORMAT);
+                    // date(), not $parsed->format(): date() renders in PHP's
+                    // default timezone, matching
+                    // BrevoWebhookEventProcessor::resolveOccurredAt().
+                    // er_email_events.occurred_at is a naive DATETIME written by
+                    // both paths and compared across them by
+                    // CarRepository::countSoftBouncesSinceLastDelivered(), so
+                    // both must write the same clock — formatting the parsed
+                    // value directly would store Brevo's UTC offset and skew
+                    // backfilled rows against webhook-written ones.
+                    return date(AppConstants::DATETIME_FORMAT, $seconds);
                 }
             } catch (\Exception $e) {
                 // Fall through to the logged fallback below.
