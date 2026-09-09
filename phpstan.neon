@@ -69,21 +69,24 @@ parameters:
 
     # Symbol sources that are NOT analysed themselves but must be resolvable.
     # The Brevo SDK and its Guzzle dependency ship vendored inside the
-    # sendinblue plugin and are not wired into the project's own Composer
-    # autoloader, so `excludePaths: */vendor/*` below leaves every Brevo\ and
-    # GuzzleHttp\ class unknown. scanDirectories makes them resolvable for
-    # callers (usersc/classes/Cron/BrevoEventReconciliationClient.php) without
-    # pulling third-party code into the analysed set or the baseline.
-    scanDirectories:
-        - usersc/plugins/sendinblue/vendor/getbrevo/brevo-php/lib
-        - usersc/plugins/sendinblue/vendor/guzzlehttp
+    # sendinblue plugin, which is a manually installed licensed plugin and is
+    # gitignored in full (`usersc/plugins/*`) — so it is present on machines
+    # with email configured and absent in CI and on any fresh clone. Pointing
+    # scanDirectories at that vendor tree made analysis environment-dependent:
+    # PHPStan exits 1 when a scanned directory is missing, which broke CI on
+    # every run. Committed stubs supply the same symbols from inside the repo,
+    # so callers (usersc/classes/Cron/BrevoEventReconciliationClient.php) are
+    # analysed identically whether or not the plugin is installed. Stub files
+    # are read for types only and never analysed, so no third-party code
+    # enters the analysed set or the baseline.
+    scanFiles:
+        - stubs/brevo-sdk.php
 
     excludePaths:
-        # analyseAndScan by default; listed under analyse: so that the
-        # scanDirectories entries above stay resolvable. A plain excludePaths
-        # entry removes files from symbol discovery as well as from analysis,
-        # which would silently defeat scanDirectories for the vendored Brevo
-        # SDK — third-party code is still never analysed or baselined.
+        # Third-party code is never analysed and never enters the baseline.
+        # Kept under analyse: (rather than analyseAndScan:) so vendor trees
+        # remain available for symbol discovery — excluding them from scanning
+        # as well buys nothing and only risks unresolvable symbols later.
         analyse:
             - */vendor/*
         analyseAndScan:
