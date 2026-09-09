@@ -1120,11 +1120,63 @@ boolean.
 **Used By**:
 
 - `AbstractCronJob::run()` — Enables distinct logging for pause vs. infrastructure fault
+- `CronJobRunsReader::status()`/`badgeFor()` — Admin UI display (#2054)
 
 **See Also**:
 
 - `AbstractCronJob` — Logs the three non-enabled cases distinctly
+- `CronJobRunsReader` — Display-side counterpart reading the same table for admin UI
 - [LOG_CATEGORIES.md](LOG_CATEGORIES.md) — `LOG_CATEGORY_CRON_JOB_SKIPPED` (DISABLED), `LOG_CATEGORY_CRON_JOB_FAILURE` (MISSING/UNREADABLE)
+
+---
+
+### CronJobRunsReader
+
+**Location**: `/usersc/classes/Cron/CronJobRunsReader.php`
+
+**Namespace**: `ElanRegistry\Cron`
+
+**Purpose**: Read-only, never-throws access to `er_cron_job_runs` for admin
+UI display. `AbstractCronJob::enabledState()` reads the same table but is
+scoped to the per-job cron *dispatch* context (private, no job-name
+parameter, advances skip-logging bookkeeping). This is the display-side
+counterpart: any job name, no side effects, returns both `enabled` state and
+`last_run_at`. Same shape as `VerificationSettings` — the established
+pattern for read-only, admin-facing status classes.
+
+**Constructor**:
+
+```php
+public function __construct(private DatabaseInterface $db)
+```
+
+**Public Methods**:
+
+- `status(string $jobName): array{state: CronJobEnabledState, lastRunAt: ?DateTimeImmutable}`
+  — Single-query read of a job's state and last-run timestamp. Prefer this
+  over calling `state()`/`lastRunAt()` separately, which issues two queries
+  and can report the two values as of different moments on an intermittent
+  fault.
+- `state(string $jobName): CronJobEnabledState` — Thin wrapper over `status()`
+- `lastRunAt(string $jobName): ?DateTimeImmutable` — Thin wrapper over `status()`;
+  null for a missing/unreadable row, a job that has never run, or an
+  unparseable stored value (including MySQL zero-dates)
+- `badgeFor(CronJobEnabledState $state, ?DateTimeImmutable $lastRunAt): array{badgeClass: string, icon: string, text: string}`
+  (static) — Maps a state/timestamp pair to display attributes; `MISSING`
+  and `UNREADABLE` render identically ("Status unavailable"), `DISABLED`
+  ("Paused") is visually distinct from both
+
+**Used By**:
+
+- `app/admin/includes/tab-verification.php` — Verification tab's "Last
+  reconciliation run" row (#2054)
+
+**See Also**:
+
+- `AbstractCronJob` — dispatch-context counterpart reading the same table
+- `CronJobEnabledState` — the enum this class's `state()`/`status()` return
+- [LOG_CATEGORIES.md](LOG_CATEGORIES.md) — `LOG_CATEGORY_CRON_JOB_FAILURE`
+  (MISSING/UNREADABLE and unparseable `last_run_at` values)
 
 ---
 
