@@ -677,13 +677,27 @@ After each deployment, verify:
 
 - [ ] Maps display correctly: world map on Statistics page, single-marker map on car Details pages (no API key required — uses self-hosted MapLibre GL JS + VersaTiles)
 - [ ] All redirected pages work and maintain proper permissions
-- [ ] **Purge Cloudflare cache for any static file the release moved, renamed, or
-      deleted** (CSS/JS/PDF/image paths). Static assets are served with
-      `cache-control: max-age=31536000`, so the edge keeps returning the old
-      200 for up to a year after the origin starts returning 301/404 — the
-      v2.29.6 deploy left `/docs/assets/document-content.css` cached this way.
-      Cloudflare dashboard → Caching → Purge by URL, one entry per old path.
-      Run `npm run test:e2e` afterwards; the redirect specs hit those URLs.
+- [ ] **Purge Cloudflare cache for any static file the release moved, renamed,
+      deleted, or whose *content* changed at the same path** (CSS/JS/PDF/image
+      paths). Static assets are served with `cache-control: max-age=31536000`,
+      so the edge keeps returning a stale 200 for up to a year — for a
+      moved/renamed/deleted file that means the old 301/404 never surfaces
+      (the v2.29.6 deploy left `/docs/assets/document-content.css` cached this
+      way); for `usersc/js/*`/`usersc/css/*` — rebuilt in place under the same
+      filenames on every deploy via ADR-018 — it means different edge PoPs can
+      keep serving pre-deploy JS/CSS indefinitely after a release that touched
+      any vendored frontend asset, with **no path change to detect**: some
+      users get the new build, others silently keep the old one depending on
+      which PoP they hit, producing symptoms that look user- or role-specific
+      (the v2.30.1 test deploy: MapLibre failed to load for owner/anon
+      sessions but worked for admin, purely because of which cached PoP each
+      session landed on — `curl -I` showing `cf-cache-status: HIT` with a
+      pre-deploy `age` on `usersc/js/*` was the tell). Purge
+      `usersc/js/*`/`usersc/css/*` on every deploy that ran `npm run build`,
+      not only when a path is added/removed. Cloudflare dashboard → Caching →
+      Purge by URL, one entry per old path (or a prefix purge for
+      `usersc/js/*`/`usersc/css/*`). Run `npm run test:e2e` afterwards; the
+      redirect specs hit those URLs.
 - [ ] New pages have appropriate UserSpice permission levels
 - [ ] Contact forms send to correct email addresses
 - [ ] VERSION file exists on server (created by deployment hook)

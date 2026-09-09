@@ -171,7 +171,26 @@ Run 21-Fix-Page-Permissions.php from the Maintenance page on test.
 <one line per script, from the Maintenance page on test>
 <!-- END IF -->
 
-13. Smoke test
+13. Purge Cloudflare cache for usersc/js and usersc/css (test)
+
+usersc/js/* and usersc/css/* are rebuilt in place under the same filenames on
+every deploy that ran npm run build (ADR-018) and are served with
+cache-control: max-age=31536000. A content change at an unchanged path gives
+Cloudflare nothing to invalidate on its own, so different edge PoPs can keep
+serving the pre-deploy build indefinitely — symptoms then look user- or
+session-specific (whichever PoP a given session hits) rather than
+deploy-wide, and can pass smoke testing if your own session happens to land
+on an already-fresh PoP. Purge before smoke testing below, on every deploy
+that ran npm run build — not only when a file was added, renamed, or removed.
+
+- [ ] Cloudflare dashboard → Caching → Purge by URL/prefix — purge
+      usersc/js/* and usersc/css/* for test.elanregistry.org
+- [ ] Re-check one asset for cf-cache-status: MISS (or a fresh age) after the
+      purge:
+
+curl -sI https://test.elanregistry.org/usersc/js/maplibre-gl-worker.js | grep -i 'cf-cache-status\|age:'
+
+14. Smoke test
 
 - Home page, a car details page, cars list (DataTable loads, no console errors)
 - Log in; account page renders
@@ -181,7 +200,7 @@ Run 21-Fix-Page-Permissions.php from the Maintenance page on test.
 - npm run test:e2e:test   (from <repo-path>)
 
 <!-- IF: release-actions -->
-14. Release-specific checks
+15. Release-specific checks
 
 <one line per item, from Required Actions / Deployment Verification Checklist>
 <!-- END IF -->
@@ -190,14 +209,14 @@ Run 21-Fix-Page-Permissions.php from the Maintenance page on test.
 DEPLOY PROD
 --------------------------------------------------------------------
 
-15. Push the tag, then deploy exactly the tagged commit
+16. Push the tag, then deploy exactly the tagged commit
 
 cd <repo-path>
 git push prod <version>
 git push prod '<version>^{commit}:main'
 
 <!-- IF: hook-changed -->
-16. Two-push hook rule (again, independently for prod)
+17. Two-push hook rule (again, independently for prod)
 
 git checkout -q -b tmp/hook-rerun <version>
 git commit --allow-empty -m "chore: trigger post-receive hook rerun"
@@ -210,7 +229,7 @@ git checkout -q main && git branch -D tmp/hook-rerun
 POST-DEPLOY VERIFICATION (prod)
 --------------------------------------------------------------------
 
-17. Deploy output and assets
+18. Deploy output and assets
 
 ssh <ssh-host> '
 echo "--- VERSION ---";    cat <prod-docroot>/VERSION
@@ -219,49 +238,64 @@ echo "--- usersc/css ---"; ls <prod-docroot>/usersc/css/
 '
 
 <!-- IF: migration -->
-18. Migration applied
+19. Migration applied
 
 SELECT version FROM phinxlog WHERE version = <migration-version>;   -- 1 row
 <!-- END IF -->
 
 <!-- IF: trigger-migration -->
-19. Audit triggers intact
+20. Audit triggers intact
 
 SHOW TRIGGERS LIKE 'cars';   -- 3 rows
 <!-- END IF -->
 
 <!-- IF: new-pages -->
-20. Register new pages (you — admin UI)
+21. Register new pages (you — admin UI)
 
 Run 21-Fix-Page-Permissions.php from the Maintenance page on prod.
 <!-- END IF -->
 
 <!-- IF: admin-scripts -->
-21. Run new admin scripts (you — admin UI)
+22. Run new admin scripts (you — admin UI)
 
 <one line per script, from the Maintenance page on prod>
 <!-- END IF -->
 
-22. Smoke test
+23. Purge Cloudflare cache for usersc/js and usersc/css (prod)
 
-Same as step 13 against elanregistry.org; npm run test:e2e.
+Same reasoning as step 13 — required on every deploy that ran npm run build.
+
+- [ ] Cloudflare dashboard → Caching → Purge by URL/prefix — purge
+      usersc/js/* and usersc/css/* for elanregistry.org
+- [ ] Re-check one asset for cf-cache-status: MISS (or a fresh age) after the
+      purge:
+
+curl -sI https://elanregistry.org/usersc/js/maplibre-gl-worker.js | grep -i 'cf-cache-status\|age:'
+
+24. Smoke test
+
+Same as step 14 against elanregistry.org; npm run test:e2e.
 Footer version reads <version>.
 
 --------------------------------------------------------------------
 PUBLISH
 --------------------------------------------------------------------
 
-23. Publish the GitHub release (it is a draft until prod is live)
+25. Publish the GitHub release (it is a draft until prod is live)
 
 gh release edit <version> --draft=false --repo elan-registry/registry
 
-24. Housekeeping
+26. Housekeeping
 
 - Delete the sprint plan for <version> in the Plans repo, if still present
 - Confirm the milestone is closed: gh api repos/elan-registry/registry/milestones --jq '.[] | select(.title|startswith("<version>"))'
 
 Recovery if a migration aborts on either host: fix the privileges in step 3,
-then ssh in and run `composer migrate` in the docroot — every step is
-idempotent. Full checklist: docs/development/DEPLOYMENT.md § Deployment
-Verification Checklist.
+then re-push the same tag — the hook re-runs composer install, the migration,
+and the frontend build from scratch, and every step is idempotent. `composer
+migrate` will not work directly on the docroot after step 7's cleanup removes
+`composer.json`/`composer.lock`; if a migration must be run without a
+re-push, use `php vendor/bin/phinx migrate` with `phinx.php` in the docroot
+(vendor/ survives cleanup). Full checklist: docs/development/DEPLOYMENT.md §
+Deployment Verification Checklist.
 ```
