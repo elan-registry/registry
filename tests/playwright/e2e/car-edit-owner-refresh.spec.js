@@ -54,13 +54,17 @@
 //
 // NOT enrolled on Test or Production (see playwright.config.test.js /
 // playwright.config.prod.js testMatch, which excludes this file). Enrollment
-// was attempted and reverted: this test still FAILS on those tiers, because
-// app/owner/cars/edit.php's #model <select> is rendered disabled and
-// app/assets/js/car-edit.js's isUpdate re-enable block does not include
-// #model (only re-enabled via the #year change handler, which this test
-// never triggers) — a disabled field submits no value, so the real
-// (unmocked) save.php rejects the submission on model validation. Tracked
-// by #2045 — do not re-enroll until that's fixed.
+// was attempted and reverted: this test still FAILS on those tiers. Root
+// cause is a timing race, not a permanently-disabled field: on page load,
+// app/assets/js/car-edit.js's isUpdate block re-enables #model via the
+// #year change handler (triggered synchronously at load) and then, in a
+// separate 500ms setTimeout, calls ModelLoader.populateModelDropdown() to
+// actually set #model's value. This test clicks #submit as soon as
+// #comments is visible, without waiting for that async chain to settle —
+// so the real (unmocked) save.php's updateModel() rejects the still-empty
+// model value. Tracked by #2045 — do not re-enroll until fixed (the correct
+// fix is waiting for #model to have a value before submitting, not
+// re-enabling a field that's already enabled by the time submit fires).
 //
 // The target car is discovered dynamically via usersc/account.php's "Update
 // Car" button rather than a hardcoded fixture id (car ownership differs per
@@ -157,19 +161,18 @@ test.describe('Car edit — real buildCarDetails() owner-column refresh (#1962)'
     // to time out waiting for a nonexistent element. logged-in.spec.js's
     // identical stale selector is a separate, pre-existing issue, not fixed
     // by this change.
+    // The form submits via a real fetch() to app/api/cars/save.php (see
+    // car-edit.js's submitCarForm()), not a plain form POST — on success it
+    // does window.location = details.php?car_id=... itself; on failure it
+    // stays on this page and injects .alert-danger into #message client-side
+    // (car-edit.js's displayValidationErrors()). waitForLoadState() after the
+    // click does NOT wait for that fetch to resolve (there's no navigation to
+    // wait for on the current page), so it was a no-op that let this
+    // assertion pass vacuously regardless of outcome — wait for the actual
+    // redirect instead, which fails loudly (with the alert still visible for
+    // debugging) if the save was rejected.
     await page.locator('#submit').click();
-    await page.waitForLoadState('domcontentloaded');
-
-    // The save must not have failed (UserSpice renders failures via
-    // usError() -> .alert-danger, same convention as logged-in.spec.js).
-    await expect(page.locator('.alert-danger')).toHaveCount(0);
-
-    // The real save.php reloads $cardetails from the DB and re-renders the
-    // form, so the comment field on THIS page already proves the save
-    // round-tripped — but the owner-contact columns this test cares about
-    // (fname/city/state/country) are not rendered on the edit form itself,
-    // only on the public details page. Navigate there to observe them.
-    await page.goto(`app/owner/cars/details.php?car_id=${editedCarId}`);
+    await page.waitForURL(/details\.php\?car_id=/, { timeout: 10000 });
     await page.waitForLoadState('domcontentloaded');
 
     // Owner Information card's "Owner Name" value — see

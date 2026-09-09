@@ -62,8 +62,15 @@ async function setupAuth() {
     // filling and submitting the form, and a resulting Turnstile rejection
     // would be misattributed to bad credentials or 2FA in the catch block
     // below instead of reported as what it is.
+    // state: 'attached' (not the default 'visible') — .cf-turnstile is an
+    // empty, unstyled div until Cloudflare's own api.js finishes loading and
+    // rendering the widget into it, giving it zero size in the meantime.
+    // 'visible' would wait on that render, reintroducing a race against
+    // Cloudflare's script timing; 'attached' only depends on the div itself,
+    // which is confirmed server-rendered synchronously in the initial
+    // response body (see addTurnstile() in usersc/includes/turnstile.php).
     const turnstileWidget = await page
-      .waitForSelector('.cf-turnstile', { timeout: 2000 })
+      .waitForSelector('.cf-turnstile', { state: 'attached', timeout: 2000 })
       .catch(() => null);
     if (turnstileWidget) {
       throw new Error(
@@ -82,7 +89,9 @@ async function setupAuth() {
     console.log('  → Entering password...');
     await page.fill('input[name="password"]', password);
 
-    // Click the submit button (Turnstile test keys auto-pass)
+    // Click the submit button. The check above already throws if any
+    // Turnstile widget is present, test-sitekey or not — this script no
+    // longer relies on test keys auto-passing.
     console.log('Submitting login form...');
     await page.waitForSelector('button[type="submit"]', { timeout: 5000 });
     await page.click('button[type="submit"]');
