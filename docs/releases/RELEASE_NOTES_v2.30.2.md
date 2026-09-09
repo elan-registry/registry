@@ -106,7 +106,7 @@
 - [#1887](https://github.com/elan-registry/registry/issues/1887) — feat: automatic bounce & delivery-status detection via Brevo webhooks
 - [#1888](https://github.com/elan-registry/registry/issues/1888) — chore: configure & verify the Brevo webhook
 - [#1889](https://github.com/elan-registry/registry/issues/1889) — feat: nightly Brevo delivery-event reconciliation job
-- WIP: [#1890](https://github.com/elan-registry/registry/issues/1890) — feat: auto-clear email_bounced when the owner confirms an email change
+- [#1890](https://github.com/elan-registry/registry/issues/1890) — feat: auto-clear email_bounced when the owner confirms an email change
 - WIP: [#1922](https://github.com/elan-registry/registry/issues/1922) — email: investigate sender reputation — Outlook.com auto-junks registrar@ mail; Brevo suppression list unread
 - WIP: [#1923](https://github.com/elan-registry/registry/issues/1923) — feat: import Brevo's suppression list (blockedContacts) into owner email status
 - WIP: [#1924](https://github.com/elan-registry/registry/issues/1924) — feat: show email bounce / suppression / verification state on the admin user view hook
