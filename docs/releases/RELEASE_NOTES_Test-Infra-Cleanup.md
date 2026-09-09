@@ -29,5 +29,5 @@ Changes to the local/CI test harness so a green test run actually reflects reali
 - [#1935](https://github.com/elan-registry/registry/issues/1935) — test: Playwright auth harness has no failure detection — stale storageState runs anonymous, bad local creds hang on a generic timeout
 - WIP: [#1949](https://github.com/elan-registry/registry/issues/1949) — test: two Playwright tests pass without running their assertions (stale DataTables selector, removed JS global)
 - WIP: [#1950](https://github.com/elan-registry/registry/issues/1950) — test: guarded Playwright assertions silently stop testing when a DOM/JS contract moves
-- WIP: [#2014](https://github.com/elan-registry/registry/issues/2014) — test-env Playwright auth setup script no longer hangs on Turnstile (car-edit-owner-refresh Test/Production enrollment itself moved to #2045, backlog — not part of this release)
+- [#2014](https://github.com/elan-registry/registry/issues/2014) — test-env Playwright auth setup script no longer hangs on Turnstile (car-edit-owner-refresh Test/Production enrollment itself moved to #2045, backlog — not part of this release)
 - WIP: [#2044](https://github.com/elan-registry/registry/issues/2044) — spike: is a CI-runnable integration suite achievable without a UserSpice install in CI?
