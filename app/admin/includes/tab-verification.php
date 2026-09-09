@@ -2,6 +2,9 @@
 declare(strict_types=1);
 
 use ElanRegistry\Car\VerificationSettings;
+use ElanRegistry\Cron\BrevoEventReconciliationJob;
+use ElanRegistry\Cron\CronJobEnabledState;
+use ElanRegistry\Cron\CronJobRunsReader;
 use ElanRegistry\LogCategories;
 
 /**
@@ -43,6 +46,29 @@ try {
     logger($currentUserId, LogCategories::LOG_CATEGORY_VERIFICATION_CONFIG_WARNING,
         'Verification tab status probe failed: ' . $e->getMessage());
 }
+
+// ---------------------------------------------------------------------------
+// Reconciliation status probe. This is a distinct fault domain from the
+// VerificationSettings probe above — kept in its own try/catch so a failure
+// here is logged and rendered independently, not folded into $vsProbeFailed.
+// ---------------------------------------------------------------------------
+$reconciliationState = CronJobEnabledState::UNREADABLE;
+$reconciliationLastRunAt = null;
+
+try {
+    $cronJobRunsReader = new CronJobRunsReader(dbi());
+    $reconciliationStatus = $cronJobRunsReader->status(BrevoEventReconciliationJob::JOB_NAME);
+    $reconciliationState = $reconciliationStatus['state'];
+    $reconciliationLastRunAt = $reconciliationStatus['lastRunAt'];
+} catch (\Throwable $e) {
+    logger($currentUserId, LogCategories::LOG_CATEGORY_CRON_JOB_FAILURE,
+        'Reconciliation status probe failed: ' . $e->getMessage());
+}
+
+$reconciliationBadge = CronJobRunsReader::badgeFor($reconciliationState, $reconciliationLastRunAt);
+$reconciliationBadgeClass = $reconciliationBadge['badgeClass'];
+$reconciliationBadgeIcon = $reconciliationBadge['icon'];
+$reconciliationBadgeText = $reconciliationBadge['text'];
 
 // Admins may toggle; editors see the same status read-only.
 $vsCanToggle = hasPerm([2], $currentUserId);
@@ -155,7 +181,19 @@ if (!$vsCanToggle) {
             </dd>
 
             <dt class="col-sm-4">Last reconciliation run</dt>
-            <dd class="col-sm-8"><span class="text-muted">Not yet implemented (#1889)</span></dd>
+            <dd class="col-sm-8">
+                <span class="<?= htmlspecialchars($reconciliationBadgeClass, ENT_QUOTES, 'UTF-8') ?>">
+                    <i class="fas <?= htmlspecialchars($reconciliationBadgeIcon, ENT_QUOTES, 'UTF-8') ?>"></i>
+                    <?= htmlspecialchars($reconciliationBadgeText, ENT_QUOTES, 'UTF-8') ?>
+                </span>
+                <?php if ($reconciliationLastRunAt !== null) { ?>
+                    <small class="text-muted ms-1">
+                        <i class="fas fa-clock"></i>
+                        last ran
+                        <?= htmlspecialchars($reconciliationLastRunAt->format('M j, Y g:i A'), ENT_QUOTES, 'UTF-8') ?>
+                    </small>
+                <?php } ?>
+            </dd>
 
         </dl>
 
