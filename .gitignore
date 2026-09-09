@@ -71,6 +71,7 @@ userimages/*
 !users/
 users/**
 !users/cron/
+!users/cron/**
 !users/images/logo.png
 users/updates/
 # Exclude usersc plugins except specific ones

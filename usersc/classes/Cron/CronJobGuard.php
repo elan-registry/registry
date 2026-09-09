@@ -16,8 +16,9 @@ use ElanRegistry\LogCategories;
  * others unnamed), and a bespoke column approach would have meant a new
  * migration for each one. `$jobName` must be in the `ALLOWED_JOB_NAMES`
  * allowlist below — it grows only when a new caller genuinely needs a new
- * job. Currently just `reconciliation`, added for issue #1889's future
- * consumption; not used by any caller yet. The allowlist and the seeded
+ * job. Currently just `reconciliation`, claimed by
+ * {@see AbstractCronJob::run()} on behalf of
+ * {@see BrevoEventReconciliationJob} (#1889). The allowlist and the seeded
  * `er_cron_job_runs` rows must stay in sync — a job name present in only one
  * of the two fails silently (allowlist-only: `claim()` always returns
  * `false`; table-only: unreachable, since nothing can pass that name through
@@ -33,10 +34,15 @@ use ElanRegistry\LogCategories;
  * `claim()` — but it also means none of these three cases (disabled,
  * too-recent, unrecognized name) is distinguishable from the others by a
  * caller, and none is logged. That's acceptable for a guard (silent no-op is
- * the safe default), but it does mean an operator who disables a job gets no
- * signal that this is why it stopped running — #1889's `AbstractCronJob` and
- * #2038's admin UI are where that operator-visibility gap should be closed,
- * not here.
+ * the safe default), but on its own it would mean an operator who disables a
+ * job gets no signal that this is why it stopped running. That gap is closed
+ * outside this class, not in it: {@see AbstractCronJob::run()} now does a
+ * separate `er_cron_job_runs` read before claiming and reports the three
+ * not-enabled cases distinctly ({@see CronJobEnabledState}) — a deliberate
+ * pause logged as a skip, a missing or unreadable row logged as a failure.
+ * The remaining half of that gap is the operator's *control* surface: pausing
+ * a job still means a direct `UPDATE` on `er_cron_job_runs.enabled`, until
+ * #2038 adds the admin UI for it.
  */
 final class CronJobGuard
 {

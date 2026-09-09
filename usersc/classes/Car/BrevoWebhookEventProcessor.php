@@ -17,7 +17,9 @@ use ElanRegistry\LogCategories;
  * what makes this class unit-testable without the subprocess dance the
  * endpoint itself needs (see `app/api/webhooks/brevo.php`).
  *
- * ESCALATION RULES:
+ * ESCALATION RULES (externally-observable behavior of this endpoint; the rules
+ * themselves now live in {@see EmailEventApplier}, which owns them so that the
+ * #1889 reconciliation job escalates identically — change them there, not here):
  * - `hard_bounce` / `blocked` / `invalid` immediately flag the car as bounced.
  * - `soft_bounce` does not immediately change anything. After the event row
  *   is recorded, {@see CarRepository::countSoftBouncesSinceLastDelivered()}
@@ -38,33 +40,6 @@ use ElanRegistry\LogCategories;
 final class BrevoWebhookEventProcessor
 {
     /**
-     * Number of distinct soft-bounce send cycles since the last delivery that
-     * escalates a car to a confirmed bounce.
-     */
-    private const SOFT_BOUNCE_ESCALATION_THRESHOLD = 3;
-
-    /**
-     * Brevo event names that immediately count as a confirmed bounce.
-     *
-     * Both `invalid` and `invalid_email` are listed: the spike behind this
-     * issue (#1871) never actually observed this event live, and
-     * EMAIL_SYSTEM.md's own "Design deltas" section names `invalid_email` as
-     * the expected wire value while this project's original issue text used
-     * `invalid` — neither has been confirmed against real Brevo traffic.
-     * Accepting both costs nothing (they're mutually exclusive event names)
-     * and avoids a silent miss on whichever one Brevo actually sends.
-     */
-    private const HARD_BOUNCE_EVENTS = ['hard_bounce', 'blocked', 'invalid', 'invalid_email'];
-
-    /**
-     * Brevo event names known to have no flag/escalation effect. Anything
-     * outside this list still records its event row (Brevo may add or rename
-     * event types at any time) but is logged, since an unrecognized event is
-     * more likely a payload-contract change than routine traffic.
-     */
-    private const KNOWN_INERT_EVENTS = ['delivered', 'unique_opened'];
-
-    /**
      * Latest Unix timestamp `resolveOccurredAt()` will accept (9999-12-31
      * 23:59:59 UTC). Bounds a malformed/overflowing `ts_event` so it cannot
      * produce a DATETIME string MySQL rejects — which would otherwise turn
@@ -79,9 +54,15 @@ final class BrevoWebhookEventProcessor
     /** Matches er_email_events.brevo_message_id's column width (migration 20260907141817). */
     private const MAX_MESSAGE_ID_LENGTH = 255;
 
+    /**
+     * @param CarRepository      $repo    Used directly for recipient matching
+     *                                    ({@see CarRepository::findByEmail()}).
+     * @param EmailEventApplier  $applier Owns the event→escalation mapping,
+     *                                    shared with the #1889 reconciliation job.
+     */
     public function __construct(
         private CarRepository $repo,
-        private CarVerificationManager $verificationManager,
+        private EmailEventApplier $applier,
     ) {}
 
     /**
@@ -172,7 +153,7 @@ final class BrevoWebhookEventProcessor
 
         foreach ($matchedCars as $car) {
             try {
-                $this->applyEventToCar((int) $car->id, $email, $event, $reason, $messageId, $occurredAt);
+                $this->applier->apply((int) $car->id, $email, $event, $reason, $messageId, $occurredAt);
             } catch (CarDatabaseException $e) {
                 // Fail the whole request on the first write failure, even if
                 // earlier cars in this loop already succeeded — Brevo's retry
@@ -185,56 +166,6 @@ final class BrevoWebhookEventProcessor
         }
 
         return ProcessingResult::MATCHED_AND_RECORDED;
-    }
-
-    /**
-     * Record the event for one matched car and apply any resulting escalation
-     *
-     * @throws CarDatabaseException If any write fails
-     */
-    private function applyEventToCar(
-        int $carId,
-        string $email,
-        string $event,
-        ?string $reason,
-        string $messageId,
-        string $occurredAt
-    ): void {
-        $this->repo->insertEmailEvent($carId, $email, $event, $reason, $messageId, $occurredAt);
-
-        if (in_array($event, self::HARD_BOUNCE_EVENTS, true)) {
-            $this->verificationManager->setBounced((object) ['id' => $carId], $email);
-            return;
-        }
-
-        if ($event === 'soft_bounce') {
-            $cycles = $this->repo->countSoftBouncesSinceLastDelivered($email);
-            if ($cycles >= self::SOFT_BOUNCE_ESCALATION_THRESHOLD) {
-                $this->verificationManager->setBounced((object) ['id' => $carId], $email);
-            }
-            return;
-        }
-
-        if ($event === 'spam') {
-            $this->verificationManager->setSuppressed((object) ['id' => $carId]);
-            return;
-        }
-
-        // 'delivered', 'unique_opened': the event row itself (already written
-        // above) is the only effect. Anything else reaching here is a Brevo
-        // event name this processor doesn't recognize — still recorded (Brevo
-        // may add/rename event types at any time and a dropped row would be
-        // worse), but logged, since an unrecognized event is more likely a
-        // payload-contract change than routine traffic and would otherwise
-        // silently disable bounce detection for that event type.
-        if (!in_array($event, self::KNOWN_INERT_EVENTS, true)) {
-            logger(0, LogCategories::LOG_CATEGORY_EMAIL_WEBHOOK, sprintf(
-                'Brevo webhook: unrecognized event "%s" recorded for car %d with no flag change'
-                . ' — Brevo may have added or renamed an event type.',
-                $event,
-                $carId
-            ));
-        }
     }
 
     /**

@@ -254,4 +254,39 @@ final class CarRepositoryEmailEventsTest extends IntegrationTestCase
         $this->db->query('DELETE FROM er_email_events WHERE car_id = ?', [$otherCarId]);
         $this->deleteTestCar($otherCarId);
     }
+
+    // --- deleteEmailEventsOlderThan() --------------------------------------
+
+    #[Group('fast')]
+    public function testDeletesOnlyRowsOlderThanCutoff(): void
+    {
+        $email = $this->carEmail();
+
+        $this->insertRawEvent('delivered', 'old-msg', '2024-01-01 10:00:00');
+        $this->insertRawEvent('delivered', 'recent-msg', '2026-01-01 10:00:00');
+
+        $cutoff = new \DateTimeImmutable('2025-01-01 00:00:00');
+        $deletedCount = $this->repo->deleteEmailEventsOlderThan($cutoff);
+
+        $this->assertSame(1, $deletedCount);
+
+        $remaining = $this->db->query(
+            'SELECT brevo_message_id FROM er_email_events WHERE car_id = ?',
+            [$this->carId]
+        )->results();
+
+        $this->assertCount(1, $remaining, 'Only the row older than the cutoff should be deleted');
+        $this->assertSame('recent-msg', $remaining[0]->brevo_message_id);
+    }
+
+    #[Group('fast')]
+    public function testReturnsZeroWhenNoRowsAreOlderThanCutoff(): void
+    {
+        $this->insertRawEvent('delivered', 'recent-msg', '2026-01-01 10:00:00');
+
+        $cutoff = new \DateTimeImmutable('2024-01-01 00:00:00');
+        $deletedCount = $this->repo->deleteEmailEventsOlderThan($cutoff);
+
+        $this->assertSame(0, $deletedCount);
+    }
 }

@@ -5,6 +5,7 @@ declare(strict_types=1);
 use ElanRegistry\Car\BrevoWebhookEventProcessor;
 use ElanRegistry\Car\CarRepository;
 use ElanRegistry\Car\CarVerificationManager;
+use ElanRegistry\Car\EmailEventApplier;
 use ElanRegistry\Car\ProcessingResult;
 use ElanRegistry\Car\VerificationSettings;
 use ElanRegistry\LogCategories;
@@ -15,7 +16,8 @@ use ElanRegistry\LogCategories;
  * Receives Brevo's delivery-status events (bounces, blocks, spam complaints,
  * deliveries, opens) for transactional verification emails and records them
  * against the matching car(s), escalating to a bounced/suppressed flag per
- * the rules in BrevoWebhookEventProcessor.
+ * the rules in EmailEventApplier (which BrevoWebhookEventProcessor delegates
+ * to, and which the #1889 reconciliation job shares).
  *
  * NO `securePage()` AND NOT IN `$path`. Brevo is an external caller with no
  * UserSpice session, so this endpoint must stay reachable unauthenticated by
@@ -190,7 +192,8 @@ try {
     // --- 5. Process -----------------------------------------------------
     $repo = new CarRepository(dbi());
     $verificationManager = new CarVerificationManager($repo);
-    $processor = new BrevoWebhookEventProcessor($repo, $verificationManager);
+    $applier = new EmailEventApplier($repo, $verificationManager);
+    $processor = new BrevoWebhookEventProcessor($repo, $applier);
 
     $result = $processor->process($decoded);
 

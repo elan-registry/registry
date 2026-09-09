@@ -527,6 +527,88 @@ per environment outside the codebase. Installed on test and prod on 2026-09-03
 > - Runtime budget: a job must finish comfortably inside the interval or it will
 >   overlap its own next run.
 
+#### Timeout & Crash Isolation
+
+The transport's in-process dispatcher (#1889, #2034) poses two hazards every
+new job author must mitigate: (1) an unhandled exception in one job can kill
+every job scheduled after it in the same cron hit, and (2) a hung or slow job
+can delay or prevent subsequent jobs from running at all. New cron jobs must
+extend `AbstractCronJob` (in `usersc/classes/Cron/AbstractCronJob.php`), which
+provides a template-method architecture that enforces three controls:
+
+**Crash isolation**: The template method wraps `execute()` in a
+`try/catch(\Throwable)` that logs the failure under
+`LogCategories::LOG_CATEGORY_CRON_JOB_FAILURE` and never rethrows — ensuring
+one job's bug cannot cascade to the next job in `cron.php`'s dispatcher loop.
+Any subclass's own `try/catch` blocks inside `execute()` are purely for
+recovery logic; a top-level catch is redundant and should be removed.
+
+**A `set_time_limit()` backstop**: After the `CronJobGuard` claim succeeds and
+immediately before calling `execute()`, the template method calls
+`set_time_limit(CRON_TRANSPORT_INTERVAL_MINUTES * 60)` — bounding how long a
+hung job can block the dispatcher loop. The constant is synchronized from
+`usersc/includes/config.php` (see the "Runtime budget" bullet above). The
+ordering matters: `cron.php` dispatches every job in a single PHP process, so
+calling this before the claim would reset the shared execution clock once per
+enabled job on every hit — including the ~143 of 144 daily hits where the claim
+fails immediately — making the effective budget N-jobs × the interval rather
+than bounding it. Only a claimed run arms the backstop. `runNow()` (the manual
+admin path) deliberately does not call it at all: that runs inside a page
+request which already has the web SAPI's own `max_execution_time`.
+**Note:** This backstop is real only under the HTTP SAPI (how the transport
+actually runs in this codebase); under CLI (`php -r` or CLI testing), PHP's
+default `max_execution_time` is already `0` (no limit), so the call has no
+effect there, no harm — tests and CLI invocations are not time-constrained
+anyway.
+
+**A job-owned `enabled` flag** (`er_cron_job_runs.enabled`, distinct from
+UserSpice's own `crons.active`): The template method reads this before
+proceeding and resolves it to one of three non-running states, logged
+distinctly because they need opposite operator responses. A row with
+`enabled = 0` is a deliberate pause and logs under
+`LogCategories::LOG_CATEGORY_CRON_JOB_SKIPPED`; a **missing** row (never
+seeded, or deleted) and an **unreadable** row (DB error) are genuine faults
+and log under `LogCategories::LOG_CATEGORY_CRON_JOB_FAILURE`. All three
+return without running. The skip line is rate-limited to roughly once per
+guard interval rather than once per cron hit — a job left paused would
+otherwise emit ~144 identical rows a day, the same noise issue #1974 removed
+from the transport. That throttle is keyed on its own column,
+`er_cron_job_runs.last_skip_logged_at`, which the template method stamps each
+time the skip line actually fires. It deliberately does **not** key on
+`last_run_at`: that column is written only by `CronJobGuard::claim()`, and a
+disabled job returns before claiming, so its value is frozen for as long as
+the job stays paused — any "older than one interval" test against it latches
+permanently true and degrades back to logging on every hit. A new job needs no
+extra work for this; it is entirely inside `AbstractCronJob`. This lets an
+operator pause a single job (via direct DB update or a future admin UI control
+— #2038) without deleting the entire `crons` row from UserSpice, and with
+visibility that the job is disabled (not just silently not running). The
+`er_cron_job_runs` table (introduced in #2034) also seeds
+`BrevoEventReconciliationJob` as the reference implementation — see that job
+and its shim `users/cron/brevo_event_reconciliation.php` for the required
+patterns.
+
+**Implementing a new cron job:**
+
+1. Extend `AbstractCronJob` and implement `jobName(): string` (must match an
+   entry in `CronJobGuard::ALLOWED_JOB_NAMES` in `usersc/classes/Cron/CronJobGuard.php`),
+   `guardIntervalHours(): int` (>= 1), and `execute(): void` (the actual work).
+   Do not override `run()` or `runNow()` — both are `final`.
+2. Add the job name to `CronJobGuard::ALLOWED_JOB_NAMES` (manually maintained
+   allowlist).
+3. Create a migration seeding a row in `er_cron_job_runs` for your job, with
+   both `job_name` and `enabled` set appropriately.
+4. Create a migration or seed seeding a corresponding row in the `crons` table,
+   pointing to your shim file in `users/cron/`.
+5. Write a shim file (e.g., `users/cron/your_job_name.php`) that instantiates
+   your job class with its dependencies and calls `->run()`.
+
+**For manual "run now" admin maintenance scripts** (bypassing the guard and
+enabled check, when an operator explicitly triggers a run), instantiate the
+job and call `->runNow()` instead of `->run()` — still crash-isolated, but no
+guard claim or enabled check. See `app/admin/scripts/maintenance/27-Reconcile-Brevo-Events.php`
+as a reference.
+
 **What `users/cron/cron.php` does on every hit.** Unlike the rest of `/users/`
 (upstream UserSpice, not modified per CLAUDE.md's Template Customization
 Rules), `users/cron/` carries project-specific changes documented in this
