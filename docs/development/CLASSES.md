@@ -591,6 +591,17 @@ to provide a focused, testable data access layer wrapping the `cars`,
   `er_email_events` rows with `occurred_at` before the cutoff (retention
   pruning); used by nightly reconciliation job, returns the number of rows
   deleted (#1889)
+- `clearBouncedForUser(int $userId, string $currentEmail): int` - Clear
+  `email_bounced` and `email_bounced_address` on every car owned by a user
+  whose recorded bounced address is no longer their current confirmed address
+  (as determined by a successful email-verification code confirmation). Returns
+  the number of rows affected by the UPDATE. Used by the `verifySuccess` hook
+  to auto-clear stale bounces on confirmed email changes (#1890)
+- `carIdsWithBouncedFlagButNoAddress(int $userId): array` - Query for car IDs
+  owned by a user with `email_bounced=1` but no recorded bounced address —
+  a pre-existing data-integrity anomaly. Returns an array of car IDs (empty if
+  none). Used by the `verifySuccess` hook to detect and log the anomaly before
+  clearing stale bounces (#1890)
 - `transferEmailEvents(int $fromCarId, int $toCarId): bool` - Reassign
   `er_email_events` rows from one car to another; used by car merge, so the
   surviving car keeps the merged-away car's bounce/suppression history
@@ -657,6 +668,7 @@ to provide a focused, testable data access layer wrapping the `cars`,
 - `app/api/cars/chassis-availability.php`, `app/api/cars/transfer-request.php` (`findByChassisKey()`)
 - User-deletion hook (`reassignCarsByUser()`, `deleteEmailEventsForCarIds()`)
 - `CarAdministrationService` (`deleteEmailEventsForCarIds()` on car deletion, `transferEmailEvents()` on car merge)
+- Email-verification hook (`clearBouncedForUser()`, `carIdsWithBouncedFlagButNoAddress()`) (#1890)
 - Sitemap generation (`getAllForSitemap()`)
 - `BrevoWebhookEventProcessor` (`findByEmail()`, `insertEmailEvent()`, `countSoftBouncesSinceLastDelivered()`) (#1887)
 - `BrevoEventReconciliationJob` (`findByEmail()`, `insertEmailEvent()`, `countSoftBouncesSinceLastDelivered()`, `deleteEmailEventsOlderThan()`) (#1889)

@@ -161,6 +161,77 @@ class CarRepository
     }
 
     /**
+     * Clear email_bounced/email_bounced_address on every car this user owns
+     * whose recorded bounced address is no longer their current confirmed
+     * address — a single UPDATE scoped by user_id, not a per-car loop.
+     *
+     * A row with email_bounced = 1 and a NULL/empty email_bounced_address is
+     * a pre-existing data-integrity violation (CarRepository::updateEmailBounced()
+     * forbids writing that combination, but it can still exist from data
+     * predating that guard). This method clears it anyway — refusing would
+     * permanently exclude an owner who just proved their address is reachable;
+     * clearing wrongly self-corrects on the next real bounce. The caller is
+     * responsible for detecting and logging that condition (see the hook).
+     *
+     * @param int    $userId       Owner whose cars to check. Assumes a non-empty,
+     *                             validated $currentEmail — reachable only after
+     *                             a successful vericode confirmation, so there is
+     *                             no real path where it is blank.
+     * @param string $currentEmail The just-confirmed users.email value
+     * @return int Rows **changed** by the UPDATE, not rows matched — PDO here is
+     *             not configured with MYSQL_ATTR_FOUND_ROWS (same caveat as
+     *             CarRepository::updateCar()). Harmless here since every matched
+     *             row's values differ by construction, but callers should not
+     *             assume "matched" semantics.
+     * @throws CarDatabaseException If the UPDATE fails
+     */
+    public function clearBouncedForUser(int $userId, string $currentEmail): int
+    {
+        $this->db->query(
+            'UPDATE cars
+                SET email_bounced = 0, email_bounced_address = NULL
+              WHERE user_id = ?
+                AND email_bounced = 1
+                AND (email_bounced_address IS NULL
+                     OR email_bounced_address = \'\'
+                     OR LOWER(email_bounced_address) <> LOWER(?))',
+            [$userId, $currentEmail]
+        );
+
+        if ($this->db->error()) {
+            $msg = "CarRepository::clearBouncedForUser failed (userId={$userId}): " . $this->db->errorString();
+            logger(0, LogCategories::LOG_CATEGORY_DATABASE_ERROR, $msg);
+            throw new CarDatabaseException($msg);
+        }
+
+        return $this->db->count();
+    }
+
+    /**
+     * @param int $userId Owner whose cars to check
+     * @return list<int> Car ids for this user with email_bounced=1 but no
+     *                    recorded bounced address — a pre-existing data-
+     *                    integrity anomaly (see clearBouncedForUser()).
+     * @throws CarDatabaseException If the SELECT fails
+     */
+    public function carIdsWithBouncedFlagButNoAddress(int $userId): array
+    {
+        $result = $this->db->query(
+            "SELECT id FROM cars WHERE user_id = ? AND email_bounced = 1
+              AND (email_bounced_address IS NULL OR email_bounced_address = '')",
+            [$userId]
+        );
+
+        if ($this->db->error()) {
+            throw new CarDatabaseException(
+                "CarRepository::carIdsWithBouncedFlagButNoAddress failed (userId={$userId}): " . $this->db->errorString()
+            );
+        }
+
+        return array_map(static fn (object $row): int => (int) $row->id, $result->results());
+    }
+
+    /**
      * Update a car's fields, scoped to both the car ID and its current owner.
      *
      * Used by the owner-profile sync to copy owner-contact values onto the cars

@@ -20,6 +20,10 @@
 // rather than a bare boolean so that a second fire for a genuinely different
 // user would still be allowed through (defense in depth — in practice both
 // fires are the same request and the same user).
+//
+// Issue #1890: this hook now performs two operations under that same
+// run-once guard — bounce-clear first, then the owner-field sync below —
+// each in its own try/catch so a failure in one doesn't block the other.
 global $verify;
 
 if (!isset($verify) || !$verify->exists()) {
@@ -36,8 +40,52 @@ if (!empty($GLOBALS[$syncedKey])) {
 }
 $GLOBALS[$syncedKey] = true;
 
+// A fresh Owner lookup, not $verify->data()->email: $verify is the User
+// object verify.php constructed BEFORE the email-change UPDATE runs, and
+// User::update() never refreshes its cached _data — so $verify->data()->email
+// is the pre-change address on the exact path this feature targets. Owner's
+// own find() issues a fresh SELECT, same as the sync block below already
+// relies on; sharing one instance means both blocks see the same
+// post-update row.
+$owner = new \ElanRegistry\Owner($userId);
+
 try {
-    $result = (new \ElanRegistry\Owner($userId))->syncOwnerFieldsToCars();
+    $currentEmail = (string) ($owner->data()->email ?? '');
+    if ($currentEmail === '') {
+        logger($userId, \ElanRegistry\LogCategories::LOG_CATEGORY_SYSTEM_ERROR,
+            "sync_owner_email_on_verify: skipping bounce-clear for user {$userId} — "
+            . 'could not read a confirmed email after verification.');
+    } else {
+        $repo = new \ElanRegistry\Car\CarRepository(dbi());
+
+        $integrityCarIds = $repo->carIdsWithBouncedFlagButNoAddress($userId);
+        if (!empty($integrityCarIds)) {
+            logger($userId, \ElanRegistry\LogCategories::LOG_CATEGORY_EMAIL_BOUNCED,
+                "sync_owner_email_on_verify: car(s) " . implode(',', $integrityCarIds)
+                . " had email_bounced=1 with no recorded bounced address for user {$userId} "
+                . '— clearing as part of confirmed email change (data-integrity anomaly).');
+        }
+
+        $cleared = $repo->clearBouncedForUser($userId, $currentEmail);
+        if ($cleared > 0) {
+            logger($userId, \ElanRegistry\LogCategories::LOG_CATEGORY_EMAIL_BOUNCED,
+                "sync_owner_email_on_verify: cleared bounce flag on {$cleared} car(s) "
+                . "for user {$userId} after confirmed email change.");
+        }
+    }
+} catch (\ElanRegistry\Exceptions\CarDatabaseException $e) {
+    logger($userId, \ElanRegistry\LogCategories::LOG_CATEGORY_DATABASE_ERROR,
+        "sync_owner_email_on_verify: bounce-clear failed for user {$userId}: " . $e->getMessage());
+} catch (\Throwable $e) {
+    // \Throwable, matching the sync block's own rationale below: this is a
+    // silent background repair and must never interrupt verify.php's render.
+    logger($userId, \ElanRegistry\LogCategories::LOG_CATEGORY_SYSTEM_ERROR,
+        'sync_owner_email_on_verify: unexpected ' . get_class($e)
+        . " during bounce-clear for user {$userId}: " . $e->getMessage());
+}
+
+try {
+    $result = $owner->syncOwnerFieldsToCars();
 
     if (!$result->isCompleteSuccess()) {
         // Per-car failures (a history insert failed and rolled back, any per-car
