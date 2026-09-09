@@ -74,7 +74,7 @@ module.exports = defineConfig({
       // (car-edit-owner-refresh included) so Dev is a strict superset of what
       // Local covers for authenticated e2e specs.
       name: 'logged-in',
-      testMatch: /(?:^|\/)(logged-in|factory-registry-link|car-edit-owner-refresh)\.spec\.js$/,
+      testMatch: /(?:^|\/)(logged-in|factory-registry-link|car-edit-owner-refresh|car-edit-workflow)\.spec\.js$/,
       dependencies: ['setup'],
       use: {
         ...devices['Desktop Chrome'],

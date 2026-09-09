@@ -1,6 +1,6 @@
 // tests/playwright/ui-consistency.test.js
 const { test, expect } = require('@playwright/test');
-const { navigateAndWait, validateCardStructure, NO_CARDS_ERROR } = require('./auth-helper.js');
+const { navigateAndWait, validateCardStructure, NO_CARDS_ERROR, waitForDataTables } = require('./auth-helper.js');
 const { CAR_ID_STANDARD } = require('./fixtures.js');
 
 test.describe('UI Consistency After Style Refactoring', () => {
@@ -69,11 +69,16 @@ test.describe('UI Consistency After Style Refactoring', () => {
     const mainContent = page.locator('.page-wrapper, .container, .card');
     await expect(mainContent.first()).toBeVisible();
     
-    // Check that DataTables is responsive
-    const dataTable = page.locator('.dataTables_wrapper');
-    if (await dataTable.count() > 0) {
-      await expect(dataTable).toBeVisible();
-    }
+    // Check that DataTables is responsive. car-list.js initializes this
+    // table with serverSide: true — an AJAX round-trip precedes the wrapper
+    // appearing, so wait for it via the shared waitForDataTables() helper
+    // (auth-helper.js) rather than sampling .count() once immediately after
+    // domcontentloaded, which depends on incidental timing between page
+    // load and this line rather than on the table actually being ready.
+    // The returned search-box locator isn't needed here — only the wait.
+    await waitForDataTables(page, 15000);
+    const dataTable = page.locator('.dt-container, .dataTables_wrapper');
+    await expect(dataTable).toBeVisible();
   });
 
   test('consistent button styling', async ({ page }) => {
