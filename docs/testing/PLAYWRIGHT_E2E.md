@@ -127,17 +127,14 @@ Production use the 1Password / CAPTCHA flow described below.
 
 Both auth files are intended to hold a session for the **non-admin owner
 account** (`elanregistry - test account` in 1Password) with at least one
-registered car. Admin-session coverage on Test/Production (e.g. for
-`app/admin/*` endpoints) is not yet available — see #2035.
+registered car. Admin-session coverage on Test/Production is not yet
+available.
 
-**Unresolved discrepancy (pre-existing, not introduced by this doc's most
-recent edits):** the Prerequisites section above lists Test's 1Password
-credential as `Elanregistry - Test Admin`, not the non-admin
-`elanregistry - test account` referenced here — meaning Test's actual saved
-session may be an admin account, contradicting "both...non-admin" above.
-Verify which account `user-test.json` actually holds before relying on either
-statement; this also affects whether #2035's "no admin coverage exists yet"
-claim is accurate.
+**Known discrepancy:** Prerequisites above lists Test's 1Password credential
+as `Elanregistry - Test Admin`, not the non-admin `elanregistry - test
+account` this table describes — `user-test.json` may currently hold an admin
+session under a tier documented as non-admin. Tracked by #2035, which also
+covers building the dedicated admin tier this repo needs.
 
 Files are gitignored. Re-run setup if sessions expire.
 

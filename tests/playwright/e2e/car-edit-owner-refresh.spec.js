@@ -48,17 +48,26 @@
 // profile; this test's job is narrower and complementary: proving the real
 // HTTP endpoint actually runs that code at all.
 //
-// Runs against Local/Dev (MAMP, default http://localhost:9999/ElanRegistry/Registry/
+// Runs against Local/Dev only (MAMP, default http://localhost:9999/ElanRegistry/Registry/
 // — override with PLAYWRIGHT_BASE_URL, see docs/development/ENVIRONMENT.md;
-// requires TEST_USERNAME/TEST_PASSWORD in .env.local) and Test
-// (playwright.config.test.js, via the saved storageState session — see
-// docs/testing/PLAYWRIGHT_E2E.md). The target car is discovered dynamically
-// via usersc/account.php's "Update Car" button rather than a hardcoded
-// fixture id, since car ownership differs per account/tier (see #2014 —
-// a hardcoded CAR_ID_STANDARD previously caused this test to silently hit
-// an unowned/nonexistent car id on Test). Not enrolled on Production: this
-// test submits a real form save, and Production write-safety has not been
-// separately evaluated (#2014).
+// requires TEST_USERNAME/TEST_PASSWORD in .env.local).
+//
+// NOT enrolled on Test or Production (see playwright.config.test.js /
+// playwright.config.prod.js testMatch, which excludes this file). Enrollment
+// was attempted and reverted: this test still FAILS on those tiers, because
+// app/owner/cars/edit.php's #model <select> is rendered disabled and
+// app/assets/js/car-edit.js's isUpdate re-enable block does not include
+// #model (only re-enabled via the #year change handler, which this test
+// never triggers) — a disabled field submits no value, so the real
+// (unmocked) save.php rejects the submission on model validation. Tracked
+// by #2045 — do not re-enroll until that's fixed.
+//
+// The target car is discovered dynamically via usersc/account.php's "Update
+// Car" button rather than a hardcoded fixture id (car ownership differs per
+// account — a hardcoded CAR_ID_STANDARD previously hit an unowned/nonexistent
+// car on Test). The credential gate below is tier-aware (E2E_AUTH_TIER) for
+// the same reason — both are preparatory groundwork for #2045's fix, kept
+// even though the test isn't enrolled yet.
 
 const { test, expect } = require('@playwright/test');
 
@@ -80,8 +89,9 @@ test.describe('Car edit — real buildCarDetails() owner-column refresh (#1962)'
   // not TEST_USERNAME/TEST_PASSWORD, and are already gated by check-auth
   // failing loudly before `logged-in` runs (see docs/testing/PLAYWRIGHT_E2E.md)
   // — so the credential check below only applies when E2E_AUTH_TIER is unset
-  // (Local/Dev). Gating it unconditionally previously made this test skip on
-  // every Test/Production run regardless of the real credential state there.
+  // (Local/Dev). This is preparatory: this test isn't enrolled on Test/
+  // Production yet (see the file header — #2045), but gating it
+  // unconditionally would still incorrectly skip it there once it is.
   test.beforeEach(async ({}, testInfo) => {
     if (testInfo.project.name !== 'logged-in') {
       testInfo.skip();
