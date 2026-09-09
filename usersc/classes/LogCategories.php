@@ -536,6 +536,22 @@ class LogCategories
     public const LOG_CATEGORY_CRON_REQUEST = 'CronRequest';
 
     /**
+     * Cron job failure
+     * Used when an AbstractCronJob subclass's execute() throws — the crash is
+     * caught, logged under this category, and never rethrown (crash isolation).
+     */
+    public const LOG_CATEGORY_CRON_JOB_FAILURE = 'CronJobFailure';
+
+    /**
+     * Cron job skipped
+     * Used when AbstractCronJob's run() finds the job disabled
+     * (er_cron_job_runs.enabled = 0) and returns early without invoking
+     * execute() — logged, not silent, but distinct from CronJobFailure since
+     * this is not an error.
+     */
+    public const LOG_CATEGORY_CRON_JOB_SKIPPED = 'CronJobSkipped';
+
+    /**
      * Migration operations
      * Used for system migrations and upgrades
      */

@@ -5,6 +5,7 @@ declare(strict_types=1);
 use ElanRegistry\Car\BrevoWebhookEventProcessor;
 use ElanRegistry\Car\CarRepository;
 use ElanRegistry\Car\CarVerificationManager;
+use ElanRegistry\Car\EmailEventApplier;
 use ElanRegistry\Car\ProcessingResult;
 use ElanRegistry\Exceptions\CarDatabaseException;
 use PHPUnit\Framework\Attributes\DataProvider;
@@ -15,9 +16,15 @@ use PHPUnit\Framework\TestCase;
  * Unit tests for BrevoWebhookEventProcessor.
  *
  * Mocks CarRepository and CarVerificationManager entirely — this class owns
- * only parsing/matching/escalation logic, no HTTP or real DB concerns (see
- * its class docblock). Follows the mocking conventions established by
+ * only parsing/matching/dispatch logic, no HTTP or real DB concerns (see its
+ * class docblock). Follows the mocking conventions established by
  * CarVerificationManagerTest.php (createMock, ->expects()->method()->with()).
+ *
+ * EmailEventApplier is injected as a REAL collaborator built over those same
+ * two mocks, not as a mock of its own: the escalation mapping it owns is the
+ * externally-observable contract of this endpoint, and these tests assert it
+ * end-to-end through process(). EmailEventApplierTest covers the same mapping
+ * directly, at the unit it now lives in.
  *
  * NOTE on the "retried identical local 'sent' row" dedup scenario from the
  * plan's Test Plan: insertEmailEvent() is mocked at this tier, so there is
@@ -40,7 +47,10 @@ final class BrevoWebhookEventProcessorTest extends TestCase
     {
         $this->mockRepo = $this->createMock(CarRepository::class);
         $this->mockManager = $this->createMock(CarVerificationManager::class);
-        $this->processor = new BrevoWebhookEventProcessor($this->mockRepo, $this->mockManager);
+        $this->processor = new BrevoWebhookEventProcessor(
+            $this->mockRepo,
+            new EmailEventApplier($this->mockRepo, $this->mockManager)
+        );
     }
 
     private function basePayload(array $overrides = []): array

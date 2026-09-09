@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace ElanRegistry\Car;
 
+use ElanRegistry\AppConstants;
 use ElanRegistry\DatabaseInterface;
 use ElanRegistry\Exceptions\CarDatabaseException;
 use ElanRegistry\Exceptions\CarNotFoundException;
@@ -871,6 +872,35 @@ class CarRepository
             throw new CarDatabaseException(
                 'CarRepository::deleteEmailEventsForCarIds failed for car_ids=' . implode(',', $carIds)
                 . ': ' . $this->db->errorString()
+            );
+        }
+
+        return $this->db->count();
+    }
+
+    /**
+     * Delete er_email_events rows older than a given cutoff
+     *
+     * Used by the nightly reconciliation job (#1889) to enforce the 24-month
+     * retention policy for Brevo delivery-status event history stated in the
+     * v2.30.0 privacy policy.
+     *
+     * @param \DateTimeImmutable $cutoff Rows with `occurred_at` before this
+     *                                   instant are deleted
+     * @return int Number of rows actually deleted (0 if none were older than the cutoff)
+     * @throws CarDatabaseException If the query fails
+     */
+    public function deleteEmailEventsOlderThan(\DateTimeImmutable $cutoff): int
+    {
+        $this->db->query(
+            'DELETE FROM er_email_events WHERE occurred_at < ?',
+            [$cutoff->format(AppConstants::DATETIME_FORMAT)]
+        );
+
+        if ($this->db->error()) {
+            throw new CarDatabaseException(
+                'CarRepository::deleteEmailEventsOlderThan failed for cutoff='
+                . $cutoff->format(AppConstants::DATETIME_FORMAT) . ': ' . $this->db->errorString()
             );
         }
 

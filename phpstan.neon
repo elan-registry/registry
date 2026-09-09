@@ -67,17 +67,35 @@ parameters:
         - usersc/widgets/settings
         - usersc/widgets/tools
 
+    # Symbol sources that are NOT analysed themselves but must be resolvable.
+    # The Brevo SDK and its Guzzle dependency ship vendored inside the
+    # sendinblue plugin and are not wired into the project's own Composer
+    # autoloader, so `excludePaths: */vendor/*` below leaves every Brevo\ and
+    # GuzzleHttp\ class unknown. scanDirectories makes them resolvable for
+    # callers (usersc/classes/Cron/BrevoEventReconciliationClient.php) without
+    # pulling third-party code into the analysed set or the baseline.
+    scanDirectories:
+        - usersc/plugins/sendinblue/vendor/getbrevo/brevo-php/lib
+        - usersc/plugins/sendinblue/vendor/guzzlehttp
+
     excludePaths:
-        - */vendor/*
-        - */node_modules/*
-        - users/
-        # Excluded because its placeholder code generates errors that can never be fixed;
-        # keeping it out of scope prevents those errors from entering the baseline.
-        - app/admin/scripts/fix/_TEMPLATE_Fix-Script.php
-        # Test double for \User (#1566). Excluded so PHPStan never adopts its narrow
-        # 2-method surface as the definition of \User project-wide — see the file's
-        # own docblock for the full leak mechanism this prevents.
-        - tests/unit/auth/_User_test_double.php
+        # analyseAndScan by default; listed under analyse: so that the
+        # scanDirectories entries above stay resolvable. A plain excludePaths
+        # entry removes files from symbol discovery as well as from analysis,
+        # which would silently defeat scanDirectories for the vendored Brevo
+        # SDK — third-party code is still never analysed or baselined.
+        analyse:
+            - */vendor/*
+        analyseAndScan:
+            - */node_modules/*
+            - users/
+            # Excluded because its placeholder code generates errors that can never be fixed;
+            # keeping it out of scope prevents those errors from entering the baseline.
+            - app/admin/scripts/fix/_TEMPLATE_Fix-Script.php
+            # Test double for \User (#1566). Excluded so PHPStan never adopts its narrow
+            # 2-method surface as the definition of \User project-wide — see the file's
+            # own docblock for the full leak mechanism this prevents.
+            - tests/unit/auth/_User_test_double.php
 
     treatPhpDocTypesAsCertain: false
     checkMissingTypehints: true
