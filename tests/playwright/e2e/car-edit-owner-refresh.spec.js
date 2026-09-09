@@ -48,19 +48,38 @@
 // profile; this test's job is narrower and complementary: proving the real
 // HTTP endpoint actually runs that code at all.
 //
-// Requires local MAMP. Default: http://localhost:9999/ElanRegistry/Registry/ —
-// override with PLAYWRIGHT_BASE_URL, see docs/development/ENVIRONMENT.md. Also
-// requires TEST_USERNAME/TEST_PASSWORD configured in .env.local (see
-// playwright.config.js's `logged-in` project and CAR_ID_STANDARD in
-// tests/playwright/fixtures.js, which must be a car TEST_USERNAME owns).
+// Runs against Local/Dev only (MAMP, default http://localhost:9999/ElanRegistry/Registry/
+// — override with PLAYWRIGHT_BASE_URL, see docs/development/ENVIRONMENT.md;
+// requires TEST_USERNAME/TEST_PASSWORD in .env.local).
+//
+// NOT enrolled on Test or Production (see playwright.config.test.js /
+// playwright.config.prod.js testMatch, which excludes this file). Enrollment
+// was attempted and reverted: this test still FAILS on those tiers. Root
+// cause is a timing race, not a permanently-disabled field: on page load,
+// app/assets/js/car-edit.js's isUpdate block re-enables #model via the
+// #year change handler (triggered synchronously at load) and then, in a
+// separate 500ms setTimeout, calls ModelLoader.populateModelDropdown() to
+// actually set #model's value. This test clicks #submit as soon as
+// #comments is visible, without waiting for that async chain to settle —
+// so the real (unmocked) save.php's updateModel() rejects the still-empty
+// model value. Tracked by #2045 — do not re-enroll until fixed (the correct
+// fix is waiting for #model to have a value before submitting, not
+// re-enabling a field that's already enabled by the time submit fires).
+//
+// The target car is discovered dynamically via usersc/account.php's "Update
+// Car" button rather than a hardcoded fixture id (car ownership differs per
+// account — a hardcoded CAR_ID_STANDARD previously hit an unowned/nonexistent
+// car on Test). The credential gate below is tier-aware (E2E_AUTH_TIER) for
+// the same reason — both are preparatory groundwork for #2045's fix, kept
+// even though the test isn't enrolled yet.
 
 const { test, expect } = require('@playwright/test');
-const { CAR_ID_STANDARD } = require('../fixtures.js');
 
 test.describe('Car edit — real buildCarDetails() owner-column refresh (#1962)', () => {
-  // Skip unless running in the authenticated `logged-in` project AND real
-  // credentials are configured. The project-name check alone (the pattern
-  // mirrored from tests/playwright/e2e/logged-in.spec.js) is not sufficient:
+  // Skip unless running in the authenticated `logged-in` project AND,
+  // for Local/Dev only, real credentials are configured. The project-name
+  // check alone (the pattern mirrored from
+  // tests/playwright/e2e/logged-in.spec.js) is not sufficient on Local/Dev:
   // per playwright.config.js's own `hasCredentials` guard, when
   // TEST_USERNAME/TEST_PASSWORD are unset, auth.setup.js skips cleanly with
   // no storageState file — but the `logged-in` project itself still runs,
@@ -69,11 +88,20 @@ test.describe('Car edit — real buildCarDetails() owner-column refresh (#1962)'
   // preconditions (an authenticated fname on user_settings.php, an editable
   // car) would fail rather than skip, misreporting a missing local
   // credential as a real regression.
+  //
+  // Test/Production authenticate via a saved storageState (1Password flow),
+  // not TEST_USERNAME/TEST_PASSWORD, and are already gated by check-auth
+  // failing loudly before `logged-in` runs (see docs/testing/PLAYWRIGHT_E2E.md)
+  // — so the credential check below only applies when E2E_AUTH_TIER is unset
+  // (Local/Dev). This is preparatory: this test isn't enrolled on Test/
+  // Production yet (see the file header — #2045), but gating it
+  // unconditionally would still incorrectly skip it there once it is.
   test.beforeEach(async ({}, testInfo) => {
     if (testInfo.project.name !== 'logged-in') {
       testInfo.skip();
     }
-    if (!process.env.TEST_USERNAME || !process.env.TEST_PASSWORD) {
+    const usesLiveLogin = !process.env.E2E_AUTH_TIER;
+    if (usesLiveLogin && (!process.env.TEST_USERNAME || !process.env.TEST_PASSWORD)) {
       testInfo.skip();
     }
   });
@@ -89,36 +117,62 @@ test.describe('Car edit — real buildCarDetails() owner-column refresh (#1962)'
     const currentFname = await page.locator('#fname').inputValue();
     expect(currentFname, 'Precondition: TEST_USERNAME must have a first name set').not.toBe('');
 
-    // Edit the target car's comments field only — the unrelated field this
-    // test uses to trigger a save without claiming to change anything
-    // owner-related.
-    await page.goto(`app/owner/cars/edit.php?car_id=${CAR_ID_STANDARD}`);
+    // Discover a car the logged-in account actually owns via
+    // usersc/account.php's per-car "Update Car" button (same pattern as
+    // tests/playwright/e2e/logged-in.spec.js's "Update Car" test) rather
+    // than a hardcoded CAR_ID_STANDARD fixture — car ownership on Local/Dev
+    // differs from Test/Production, and CAR_ID_STANDARD (fixtures.js,
+    // defaults to 1) is not guaranteed to belong to whichever account each
+    // tier's storageState/credentials authenticate as. Confirmed directly:
+    // car_id=1 does not belong to the Test account as of this test's most
+    // recent fix — edit.php silently falls into "Add Car" mode for an
+    // unowned/nonexistent id, which then fails validation rather than
+    // failing this test's own precondition assertion clearly.
+    await page.goto('usersc/account.php');
+    await page.waitForLoadState('domcontentloaded');
+
+    const updateCarButton = page.locator('button:has-text("Update Car"), a:has-text("Update Car")');
+    const hasCarToUpdate = await updateCarButton.count() > 0;
+    test.skip(!hasCarToUpdate, 'Logged-in account has no registered cars — nothing to edit');
+
+    await updateCarButton.first().click();
     await page.waitForLoadState('domcontentloaded');
 
     const commentField = page.locator('#comments');
-    await expect(commentField, `Precondition: car ${CAR_ID_STANDARD} must be TEST_USERNAME's own editable car`).toBeVisible();
+    await expect(commentField, "Precondition: the account's own car edit page must render the comments field").toBeVisible();
+
+    // Capture the actual car id the edit page loaded (edit.php's hidden
+    // #car_id field — see app/owner/cars/edit.php) rather than assuming
+    // CAR_ID_STANDARD, since the "Update Car" button above may resolve to
+    // any car the account owns, not necessarily that fixture's id.
+    const editedCarId = await page.locator('#car_id').inputValue();
+    expect(editedCarId, 'Precondition: edit.php must render a car_id for the discovered car').not.toBe('');
 
     const marker = `owner-refresh-e2e ${new Date().toISOString()}`;
     await commentField.fill(marker);
 
-    // Section 2 (Photos) must be expanded before #submit is interactable,
-    // matching the established pattern in tests/playwright/e2e/logged-in.spec.js.
-    await page.locator('#heading-section2 button').click();
-    await page.waitForSelector('#section2', { state: 'visible', timeout: 5000 });
-
+    // NOTE: tests/playwright/e2e/logged-in.spec.js's "Update Car" test uses
+    // this same accordion-expand step ('#heading-section2 button' /
+    // '#section2') before clicking #submit — as of this edit, that pattern
+    // no longer matches app/owner/cars/edit.php's actual markup (verified:
+    // the Photos section, line ~368, is a plain <h5> heading, not a
+    // collapsible accordion; #submit and #myPond are directly visible with
+    // no expand step required). Dropped here since it only caused this test
+    // to time out waiting for a nonexistent element. logged-in.spec.js's
+    // identical stale selector is a separate, pre-existing issue, not fixed
+    // by this change.
+    // The form submits via a real fetch() to app/api/cars/save.php (see
+    // car-edit.js's submitCarForm()), not a plain form POST — on success it
+    // does window.location = details.php?car_id=... itself; on failure it
+    // stays on this page and injects .alert-danger into #message client-side
+    // (car-edit.js's displayValidationErrors()). waitForLoadState() after the
+    // click does NOT wait for that fetch to resolve (there's no navigation to
+    // wait for on the current page), so it was a no-op that let this
+    // assertion pass vacuously regardless of outcome — wait for the actual
+    // redirect instead, which fails loudly (with the alert still visible for
+    // debugging) if the save was rejected.
     await page.locator('#submit').click();
-    await page.waitForLoadState('domcontentloaded');
-
-    // The save must not have failed (UserSpice renders failures via
-    // usError() -> .alert-danger, same convention as logged-in.spec.js).
-    await expect(page.locator('.alert-danger')).toHaveCount(0);
-
-    // The real save.php reloads $cardetails from the DB and re-renders the
-    // form, so the comment field on THIS page already proves the save
-    // round-tripped — but the owner-contact columns this test cares about
-    // (fname/city/state/country) are not rendered on the edit form itself,
-    // only on the public details page. Navigate there to observe them.
-    await page.goto(`app/owner/cars/details.php?car_id=${CAR_ID_STANDARD}`);
+    await page.waitForURL(/details\.php\?car_id=/, { timeout: 10000 });
     await page.waitForLoadState('domcontentloaded');
 
     // Owner Information card's "Owner Name" value — see
@@ -127,7 +181,7 @@ test.describe('Car edit — real buildCarDetails() owner-column refresh (#1962)'
     const ownerNameText = await page.locator('dt:has-text("Owner Name") + dd').first().innerText();
     expect(
       ownerNameText.trim().toLowerCase(),
-      `Car ${CAR_ID_STANDARD}'s rendered owner name must reflect TEST_USERNAME's CURRENT ` +
+      `Car ${editedCarId}'s rendered owner name must reflect the logged-in account's CURRENT ` +
       'profile fname after an unrelated-field edit — this only happens if the real ' +
       'buildCarDetails() owner-contact refresh executed during the save'
     ).toBe(currentFname.trim().toLowerCase());

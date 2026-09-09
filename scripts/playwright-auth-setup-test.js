@@ -1,6 +1,9 @@
 /**
  * One-time setup script to log in to TEST environment and save authentication state
- * Run once to capture auth cookies; Cloudflare Turnstile test keys auto-pass.
+ * Run once to capture auth cookies. Requires Turnstile to be disabled on
+ * this environment first — this script fails fast (does not attempt to
+ * solve or bypass it) if any Turnstile widget is present, including a
+ * Cloudflare test/always-pass sitekey. See docs/testing/PLAYWRIGHT_E2E.md.
  *
  * Usage:
  *   export ELAN_USERNAME=$(op read "op://ElanRegistry/Elanregistry - Test Admin/username")
@@ -36,13 +39,49 @@ async function setupAuth() {
     console.log('📝 Navigating to TEST environment login page...');
     // Use usersc/login.php (customized version with security validation)
     await page.goto('https://test.elanregistry.org/usersc/login.php');
-    await page.waitForLoadState('networkidle');
 
     console.log('✍️  Filling in credentials...');
 
-    // Wait for form fields to be available
-    await page.waitForSelector('input[name="username"]', { timeout: 5000 });
-    await page.waitForSelector('input[name="password"]', { timeout: 5000 });
+    // waitForLoadState('networkidle') can hang indefinitely on this page
+    // even after the form has rendered — wait for the form directly instead.
+    await page.waitForSelector('input[name="username"]', { timeout: 15000 });
+    await page.waitForSelector('input[name="password"]', { timeout: 15000 });
+
+    // Fail fast with a clear message if a real Turnstile challenge is
+    // present. addTurnstile() (usersc/includes/turnstile.php) only emits a
+    // .cf-turnstile div when Turnstile is enabled server-side — an
+    // automated browser cannot solve a real challenge, and continuing here
+    // previously produced a silent-looking hang (see docs/testing/PLAYWRIGHT_E2E.md
+    // Troubleshooting) with no indication Turnstile was the cause.
+    //
+    // Bounded wait rather than an instantaneous page.$(): the div is
+    // server-rendered (not injected later by Cloudflare's JS), but a
+    // non-waiting query can still run before the browser has finished
+    // parsing that part of the response body, even though the form fields
+    // above already resolved — a false negative here would fall through to
+    // filling and submitting the form, and a resulting Turnstile rejection
+    // would be misattributed to bad credentials or 2FA in the catch block
+    // below instead of reported as what it is.
+    // state: 'attached' (not the default 'visible') — .cf-turnstile is an
+    // empty, unstyled div until Cloudflare's own api.js finishes loading and
+    // rendering the widget into it, giving it zero size in the meantime.
+    // 'visible' would wait on that render, reintroducing a race against
+    // Cloudflare's script timing; 'attached' only depends on the div itself,
+    // which is confirmed server-rendered synchronously in the initial
+    // response body (see addTurnstile() in usersc/includes/turnstile.php).
+    const turnstileWidget = await page
+      .waitForSelector('.cf-turnstile', { state: 'attached', timeout: 2000 })
+      .catch(() => null);
+    if (turnstileWidget) {
+      throw new Error(
+        'Turnstile is enabled on this environment — a real challenge widget is ' +
+        'present on the login page. An automated browser cannot solve it, including ' +
+        'a Cloudflare test/always-pass sitekey (this check does not distinguish sitekey ' +
+        'types). Disable Turnstile entirely on this environment, re-run this script, ' +
+        'then re-enable Turnstile once the auth file is saved. ' +
+        'See docs/testing/PLAYWRIGHT_E2E.md Prerequisites/Troubleshooting.'
+      );
+    }
 
     // Fill in username and password using correct selectors
     console.log('  → Entering username...');
@@ -50,7 +89,9 @@ async function setupAuth() {
     console.log('  → Entering password...');
     await page.fill('input[name="password"]', password);
 
-    // Click the submit button (Turnstile test keys auto-pass)
+    // Click the submit button. The check above already throws if any
+    // Turnstile widget is present, test-sitekey or not — this script no
+    // longer relies on test keys auto-passing.
     console.log('Submitting login form...');
     await page.waitForSelector('button[type="submit"]', { timeout: 5000 });
     await page.click('button[type="submit"]');
@@ -83,6 +124,8 @@ async function setupAuth() {
         console.error('- Invalid credentials (check 1Password vault)');
         console.error('- 2FA/TOTP required');
         console.error('- Network connectivity issue');
+        console.error('- Turnstile rejected the submission (the pre-submit check above ' +
+          'did not catch it — see docs/testing/PLAYWRIGHT_E2E.md Troubleshooting)');
         process.exit(1);
       }
     }

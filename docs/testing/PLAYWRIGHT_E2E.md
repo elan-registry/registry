@@ -91,6 +91,14 @@ Production use the 1Password / CAPTCHA flow described below.
 - Credentials stored in 1Password:
   - Test: `op://ElanRegistry/Elanregistry - Test Admin/username`
   - Production: `op://ElanRegistry/elanregistry - test account/username`
+- **Turnstile must be disabled on Test before running
+  `./scripts/playwright-auth-1password-test.sh`** — an automated browser
+  cannot solve a real challenge, including a Cloudflare test/always-pass
+  sitekey (the script's own check does not distinguish sitekey types; see
+  Troubleshooting). Re-enable it once auth setup completes. Production runs
+  a real Turnstile challenge too, but its setup script is human-driven (see
+  Setup Process below) — you solve the challenge yourself, so it isn't
+  affected by this limitation.
 
 ### Setup Commands
 
@@ -117,10 +125,16 @@ Production use the 1Password / CAPTCHA flow described below.
 | Test        | `.auth/user-test.json` | `playwright.config.test.js` |
 | Production  | `.auth/user.json`      | `playwright.config.prod.js` |
 
-Both auth files hold a session for the **non-admin owner account**
-(`elanregistry - test account` in 1Password) with at least one registered
-car. Admin-session coverage on Test/Production (e.g. for `app/admin/*`
-endpoints) is not yet available — see #2035.
+Both auth files are intended to hold a session for the **non-admin owner
+account** (`elanregistry - test account` in 1Password) with at least one
+registered car. Admin-session coverage on Test/Production is not yet
+available.
+
+**Known discrepancy:** Prerequisites above lists Test's 1Password credential
+as `Elanregistry - Test Admin`, not the non-admin `elanregistry - test
+account` this table describes — `user-test.json` may currently hold an admin
+session under a tier documented as non-admin. Tracked by #2035, which also
+covers building the dedicated admin tier this repo needs.
 
 Files are gitignored. Re-run setup if sessions expire.
 
@@ -155,6 +169,8 @@ Files are gitignored. Re-run setup if sessions expire.
 | Auth file doesn't exist | Run auth setup script — also now caught automatically by `check-auth` before `logged-in` runs on Test/Production |
 | `check-auth` fails with "session is stale/expired" | Re-run `./scripts/playwright-auth-1password[-test].sh` (session expired — now caught automatically instead of `logged-in` silently running anonymous) |
 | CAPTCHA timeout | Re-run setup, solve CAPTCHA promptly |
+| Test-env auth setup fails with "Turnstile is enabled on this environment..." | **Turnstile is enabled on Test.** An automated browser cannot pass it — this is not a bug in the login flow, and the check fires on any Turnstile widget including a test/always-pass sitekey. Disable Turnstile entirely on Test, re-run the auth script, then re-enable it once the auth file is saved. Do not attempt to work around Turnstile programmatically. |
+| Test-env auth setup fails with "Invalid credentials / 2FA / network" but credentials are correct | Turnstile may have rejected the submission after the pre-submit check missed it (a race — see `playwright-auth-setup-test.js`'s Turnstile-check comment). Confirm Turnstile is fully disabled on Test, not just set to a test sitekey, then re-run. |
 | CI/CD failures | Check secrets, ensure auth runs before tests |
 
 ## Recommended Workflow
