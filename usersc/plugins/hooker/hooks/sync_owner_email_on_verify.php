@@ -47,9 +47,17 @@ $GLOBALS[$syncedKey] = true;
 // own find() issues a fresh SELECT, same as the sync block below already
 // relies on; sharing one instance means both blocks see the same
 // post-update row.
-$owner = new \ElanRegistry\Owner($userId);
+//
+// The construction itself lives INSIDE this try block, not above it:
+// Owner::find() throws OwnerDatabaseException on a DB error (not a return
+// value), and this file has no enclosing function for a top-level try to
+// wrap — an uncaught throw here would propagate straight out of
+// includeHook()'s bare, unguarded include() and fatal verify.php's render,
+// exactly what this hook exists to never do.
+$owner = null;
 
 try {
+    $owner = new \ElanRegistry\Owner($userId);
     $currentEmail = (string) ($owner->data()->email ?? '');
     if ($currentEmail === '') {
         logger($userId, \ElanRegistry\LogCategories::LOG_CATEGORY_SYSTEM_ERROR,
@@ -79,9 +87,18 @@ try {
 } catch (\Throwable $e) {
     // \Throwable, matching the sync block's own rationale below: this is a
     // silent background repair and must never interrupt verify.php's render.
+    // Covers OwnerDatabaseException from the $owner lookup itself as well as
+    // any failure inside the bounce-clear logic above.
     logger($userId, \ElanRegistry\LogCategories::LOG_CATEGORY_SYSTEM_ERROR,
         'sync_owner_email_on_verify: unexpected ' . get_class($e)
         . " during bounce-clear for user {$userId}: " . $e->getMessage());
+}
+
+// $owner is null only if its construction above threw — already logged by
+// the catch blocks above. Nothing further to do; the sync below needs the
+// same successfully-loaded Owner.
+if ($owner === null) {
+    return;
 }
 
 try {

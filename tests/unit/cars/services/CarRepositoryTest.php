@@ -1111,18 +1111,17 @@ final class CarRepositoryTest extends TestCase
     }
 
     /**
-     * Defensive-mapping check per /execute-plan's standing risk class for
-     * DB-row-to-output mapping: a row missing the expected ->id property (an
-     * unexpected shape, e.g. schema drift or a wrong query) does NOT fail
-     * predictably today. `array_map(static fn (object $row): int => (int)
-     * $row->id, ...)` accesses an undefined property, which PHP 8 treats as a
-     * non-fatal E_WARNING ("Undefined property: stdClass::$id") rather than
-     * a \Throwable, and `(int) null` silently coerces to 0 — producing a
+     * A row missing the expected ->id property (an unexpected shape, e.g.
+     * schema drift or a wrong query) does NOT fail predictably today.
+     * `array_map(static fn (object $row): int => (int) $row->id, ...)`
+     * accesses an undefined property, which PHP 8 treats as a non-fatal
+     * E_WARNING ("Undefined property: stdClass::$id") rather than a
+     * \Throwable, and `(int) null` silently coerces to 0 — producing a
      * *plausible-looking but bogus* car id (0) instead of surfacing the
      * malformed row. This test pins that actual (undesirable) behavior
-     * rather than asserting a throw that does not happen; see this test
-     * run's final summary for a flagged finding rather than a silent fix,
-     * per the task's instruction not to modify CarRepository.php.
+     * rather than asserting a throw that does not happen — a real,
+     * low-severity gap (SELECT-only; the id is only ever used in a log
+     * message) worth hardening, not silently papering over.
      */
     public function testCarIdsWithBouncedFlagButNoAddressSilentlyCoercesUnexpectedRowShapeToZero(): void
     {

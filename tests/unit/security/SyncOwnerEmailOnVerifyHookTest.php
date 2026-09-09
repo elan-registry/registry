@@ -583,10 +583,9 @@ final class SyncOwnerEmailOnVerifyHookTest extends TestCase
     }
 
     /**
-     * pr-test-analyzer Blocking finding: HookTestDb's failBounceClearUpdate
-     * flag was pre-wired but never exercised by any test — the bounce-clear
-     * UPDATE's own failure path (clearBouncedForUser() throwing
-     * CarDatabaseException) had no coverage.
+     * Covers the bounce-clear UPDATE's own failure path — clearBouncedForUser()
+     * throwing CarDatabaseException — distinct from the integrity-check
+     * SELECT's failure path covered elsewhere in this file.
      *
      * Seeds BOTH an integrity anomaly (so the anomaly line, which runs
      * BEFORE the failing UPDATE, is proven to still fire) and a bounce-clear
@@ -640,6 +639,66 @@ final class SyncOwnerEmailOnVerifyHookTest extends TestCase
             1,
             $this->carLookupCount(),
             'The sync block must still run after the bounce-clear block throws on the UPDATE itself'
+        );
+    }
+
+    /**
+     * Issue #1890 regression: the hook used to construct
+     * `new \ElanRegistry\Owner($userId)` OUTSIDE both try/catch blocks.
+     * Owner::find() (called from the constructor) throws
+     * OwnerDatabaseException — not a return value — on a DB error, so an
+     * infrastructure fault during that lookup (e.g. a lock-wait timeout)
+     * would propagate straight out of this hook file. The hook is a bare
+     * `include` with no enclosing try/catch in includeHook()
+     * (users/helpers/us_helpers.php), so that exception would escape all the
+     * way out and fatal users/verify.php's render — exactly what this hook's
+     * own documented contract ("this is a silent background repair and must
+     * never interrupt verify.php's render") forbids.
+     *
+     * The fix moved the Owner construction INSIDE the first try block (so
+     * the same \Throwable catch that already handles bounce-clear failures
+     * catches this too) and added an `if ($owner === null) return;` guard
+     * before the second (sync) try block.
+     *
+     * Against the old buggy code (construction outside both try blocks),
+     * this test would fail with an uncaught OwnerDatabaseException escaping
+     * fireHook() itself — not merely a wrong assertion value.
+     */
+    public function testOwnerLookupFailureIsCaughtAndDoesNotThrowOrRunSyncBlock(): void
+    {
+        global $mockLogEntries, $verify;
+        $verify = $this->fakeVerify(7);
+        $GLOBALS['hookTestDb'] = new HookTestDb(
+            cars: [(object) ['id' => 100]],
+            failOwnerLookup: true
+        );
+
+        // If the #1890 bug were still present, Owner::find()'s
+        // OwnerDatabaseException would propagate straight out of this
+        // require() and fail the test with an uncaught exception, not just
+        // a wrong assertion below.
+        $this->fireHook();
+
+        // The bounce-clear block's own \Throwable catch (which now also
+        // covers the Owner construction itself) must have logged this under
+        // SYSTEM_ERROR.
+        $failureEntries = array_values(array_filter(
+            $mockLogEntries,
+            static fn(array $e): bool => str_contains($e['message'], 'unexpected')
+                && str_contains($e['message'], 'during bounce-clear for user 7')
+        ));
+        $this->assertCount(1, $failureEntries, 'The Owner construction failure must be logged exactly once');
+        $this->assertSame(LogCategories::LOG_CATEGORY_SYSTEM_ERROR, $failureEntries[0]['category']);
+        $this->assertStringContainsString('OwnerDatabaseException', $failureEntries[0]['message']);
+
+        // Neither the bounce-clear UPDATE nor the sync block's car lookup
+        // may have run — $owner stayed null, so the `if ($owner === null)
+        // return;` guard must have skipped the second try block entirely.
+        $this->assertSame(0, $GLOBALS['hookTestDb']->bounceClearCalls);
+        $this->assertSame(
+            0,
+            $this->carLookupCount(),
+            'The sync block must never run when the Owner lookup itself failed'
         );
     }
 
@@ -813,6 +872,11 @@ final class HookTestDb implements DatabaseInterface
      *        zero rows, so Owner::find() returns false and Owner::data()
      *        stays null — models the hook's defensive
      *        `$currentEmail === ''` branch.
+     * @param bool $failOwnerLookup When true, the `FROM users u` SELECT
+     *        (Owner::find()) reports a DB error via error(), so Owner::find()
+     *        throws OwnerDatabaseException — models an infrastructure fault
+     *        (lock-wait timeout, deadlock) during the hook's own `new
+     *        Owner($userId)` construction, issue #1890's regression case.
      */
     public function __construct(
         private array $cars = [],
@@ -824,7 +888,8 @@ final class HookTestDb implements DatabaseInterface
         private bool $failBounceClearUpdate = false,
         private bool $failIntegrityCheckSelect = false,
         private string $ownerEmail = 'new-address@example.com',
-        private bool $ownerNotFound = false
+        private bool $ownerNotFound = false,
+        private bool $failOwnerLookup = false
     ) {
     }
 
@@ -837,6 +902,13 @@ final class HookTestDb implements DatabaseInterface
             // users/verify.php's email-change UPDATE has already committed —
             // $ownerEmail models that post-update row, independent of
             // whatever fakeVerify() was constructed with.
+            if ($this->failOwnerLookup) {
+                $this->error = true;
+                $this->rows = [];
+                $this->count = 0;
+                return $this;
+            }
+
             if ($this->ownerNotFound) {
                 $this->rows = [];
                 $this->count = 0;
