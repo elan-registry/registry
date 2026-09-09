@@ -25,7 +25,7 @@ Changes to the local/CI test harness so a green test run actually reflects reali
 
 ## Issues Resolved
 
-- WIP: [#1648](https://github.com/elan-registry/registry/issues/1648) — test: no positive assertion that pdf-viewer.php's success branch renders the iframe with the correct document src
+- [#1648](https://github.com/elan-registry/registry/issues/1648) — test: no positive assertion that pdf-viewer.php's success branch renders the iframe with the correct document src
 - WIP: [#1773](https://github.com/elan-registry/registry/issues/1773) — test: add Playwright HTTP coverage for process-user-details.php admin endpoint
 - [#1935](https://github.com/elan-registry/registry/issues/1935) — test: Playwright auth harness has no failure detection — stale storageState runs anonymous, bad local creds hang on a generic timeout
 - [#1949](https://github.com/elan-registry/registry/issues/1949) — test: Playwright tests that passed without running their assertions (stale DataTables selector, dead accordion markup, unauthenticated chassis-validation test) now run for real
