@@ -36,13 +36,15 @@ async function setupAuth() {
     console.log('📝 Navigating to TEST environment login page...');
     // Use usersc/login.php (customized version with security validation)
     await page.goto('https://test.elanregistry.org/usersc/login.php');
-    await page.waitForLoadState('networkidle');
 
     console.log('✍️  Filling in credentials...');
 
-    // Wait for form fields to be available
-    await page.waitForSelector('input[name="username"]', { timeout: 5000 });
-    await page.waitForSelector('input[name="password"]', { timeout: 5000 });
+    // Wait for form fields directly instead of networkidle — some
+    // persistent background request (analytics beacon, leftover Turnstile
+    // script, etc.) can keep the network non-idle indefinitely even though
+    // the form itself renders immediately, causing a false-timeout hang.
+    await page.waitForSelector('input[name="username"]', { timeout: 15000 });
+    await page.waitForSelector('input[name="password"]', { timeout: 15000 });
 
     // Fill in username and password using correct selectors
     console.log('  → Entering username...');
