@@ -91,19 +91,14 @@ Production use the 1Password / CAPTCHA flow described below.
 - Credentials stored in 1Password:
   - Test: `op://ElanRegistry/Elanregistry - Test Admin/username`
   - Production: `op://ElanRegistry/elanregistry - test account/username`
-- **Turnstile must be disabled (or set to a Cloudflare test/always-pass
-  sitekey) on Test before running `./scripts/playwright-auth-1password-test.sh`.**
-  A real Turnstile challenge cannot be solved by an automated browser and
-  causes `playwright-auth-setup-test.js` to fail — historically as a hang on
-  `page.waitForLoadState('networkidle')` (fixed to fail via a bounded
-  `waitForSelector` on the login form instead, but the underlying "automated
-  login can't pass Turnstile" limitation remains). Re-enable Turnstile on
-  Test once auth setup is complete — do not leave it disabled, it's a real
-  security control that Production also runs, and Test should mirror
-  Production. See [Troubleshooting](#troubleshooting) for the failure
-  symptom if this step is missed. Production is not exempt from this
-  (see the `check-auth` note below); it is not affected here only because
-  routine re-auth against Production isn't part of this local workflow.
+- **Turnstile must be disabled on Test before running
+  `./scripts/playwright-auth-1password-test.sh`** — an automated browser
+  cannot solve a real challenge, including a Cloudflare test/always-pass
+  sitekey (the script's own check does not distinguish sitekey types; see
+  Troubleshooting). Re-enable it once auth setup completes. Production runs
+  a real Turnstile challenge too, but its setup script is human-driven (see
+  Setup Process below) — you solve the challenge yourself, so it isn't
+  affected by this limitation.
 
 ### Setup Commands
 
@@ -130,10 +125,19 @@ Production use the 1Password / CAPTCHA flow described below.
 | Test        | `.auth/user-test.json` | `playwright.config.test.js` |
 | Production  | `.auth/user.json`      | `playwright.config.prod.js` |
 
-Both auth files hold a session for the **non-admin owner account**
-(`elanregistry - test account` in 1Password) with at least one registered
-car. Admin-session coverage on Test/Production (e.g. for `app/admin/*`
-endpoints) is not yet available — see #2035.
+Both auth files are intended to hold a session for the **non-admin owner
+account** (`elanregistry - test account` in 1Password) with at least one
+registered car. Admin-session coverage on Test/Production (e.g. for
+`app/admin/*` endpoints) is not yet available — see #2035.
+
+**Unresolved discrepancy (pre-existing, not introduced by this doc's most
+recent edits):** the Prerequisites section above lists Test's 1Password
+credential as `Elanregistry - Test Admin`, not the non-admin
+`elanregistry - test account` referenced here — meaning Test's actual saved
+session may be an admin account, contradicting "both...non-admin" above.
+Verify which account `user-test.json` actually holds before relying on either
+statement; this also affects whether #2035's "no admin coverage exists yet"
+claim is accurate.
 
 Files are gitignored. Re-run setup if sessions expire.
 
@@ -168,7 +172,8 @@ Files are gitignored. Re-run setup if sessions expire.
 | Auth file doesn't exist | Run auth setup script — also now caught automatically by `check-auth` before `logged-in` runs on Test/Production |
 | `check-auth` fails with "session is stale/expired" | Re-run `./scripts/playwright-auth-1password[-test].sh` (session expired — now caught automatically instead of `logged-in` silently running anonymous) |
 | CAPTCHA timeout | Re-run setup, solve CAPTCHA promptly |
-| Test-env auth setup hangs indefinitely with no error (was: `page.waitForLoadState('networkidle')` timeout) | **Turnstile is enabled on Test.** An automated browser cannot pass it — this is not a bug in the login flow. Disable Turnstile (or switch to a Cloudflare test/always-pass sitekey) on Test, re-run the auth script, then re-enable Turnstile once the auth file is saved. Do not attempt to work around Turnstile programmatically. |
+| Test-env auth setup fails with "Turnstile is enabled on this environment..." | **Turnstile is enabled on Test.** An automated browser cannot pass it — this is not a bug in the login flow, and the check fires on any Turnstile widget including a test/always-pass sitekey. Disable Turnstile entirely on Test, re-run the auth script, then re-enable it once the auth file is saved. Do not attempt to work around Turnstile programmatically. |
+| Test-env auth setup fails with "Invalid credentials / 2FA / network" but credentials are correct | Turnstile may have rejected the submission after the pre-submit check missed it (a race — see `playwright-auth-setup-test.js`'s Turnstile-check comment). Confirm Turnstile is fully disabled on Test, not just set to a test sitekey, then re-run. |
 | CI/CD failures | Check secrets, ensure auth runs before tests |
 
 ## Recommended Workflow

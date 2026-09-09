@@ -1,6 +1,9 @@
 /**
  * One-time setup script to log in to TEST environment and save authentication state
- * Run once to capture auth cookies; Cloudflare Turnstile test keys auto-pass.
+ * Run once to capture auth cookies. Requires Turnstile to be disabled on
+ * this environment first — this script fails fast (does not attempt to
+ * solve or bypass it) if any Turnstile widget is present, including a
+ * Cloudflare test/always-pass sitekey. See docs/testing/PLAYWRIGHT_E2E.md.
  *
  * Usage:
  *   export ELAN_USERNAME=$(op read "op://ElanRegistry/Elanregistry - Test Admin/username")
@@ -39,10 +42,8 @@ async function setupAuth() {
 
     console.log('✍️  Filling in credentials...');
 
-    // Wait for form fields directly instead of networkidle — some
-    // persistent background request (analytics beacon, leftover Turnstile
-    // script, etc.) can keep the network non-idle indefinitely even though
-    // the form itself renders immediately, causing a false-timeout hang.
+    // waitForLoadState('networkidle') can hang indefinitely on this page
+    // even after the form has rendered — wait for the form directly instead.
     await page.waitForSelector('input[name="username"]', { timeout: 15000 });
     await page.waitForSelector('input[name="password"]', { timeout: 15000 });
 
@@ -52,14 +53,26 @@ async function setupAuth() {
     // automated browser cannot solve a real challenge, and continuing here
     // previously produced a silent-looking hang (see docs/testing/PLAYWRIGHT_E2E.md
     // Troubleshooting) with no indication Turnstile was the cause.
-    const turnstileWidget = await page.$('.cf-turnstile');
+    //
+    // Bounded wait rather than an instantaneous page.$(): the div is
+    // server-rendered (not injected later by Cloudflare's JS), but a
+    // non-waiting query can still run before the browser has finished
+    // parsing that part of the response body, even though the form fields
+    // above already resolved — a false negative here would fall through to
+    // filling and submitting the form, and a resulting Turnstile rejection
+    // would be misattributed to bad credentials or 2FA in the catch block
+    // below instead of reported as what it is.
+    const turnstileWidget = await page
+      .waitForSelector('.cf-turnstile', { timeout: 2000 })
+      .catch(() => null);
     if (turnstileWidget) {
       throw new Error(
         'Turnstile is enabled on this environment — a real challenge widget is ' +
-        'present on the login page. An automated browser cannot solve it. Disable ' +
-        'Turnstile (or switch to a Cloudflare test/always-pass sitekey) on this ' +
-        'environment, re-run this script, then re-enable Turnstile once the auth ' +
-        'file is saved. See docs/testing/PLAYWRIGHT_E2E.md Prerequisites/Troubleshooting.'
+        'present on the login page. An automated browser cannot solve it, including ' +
+        'a Cloudflare test/always-pass sitekey (this check does not distinguish sitekey ' +
+        'types). Disable Turnstile entirely on this environment, re-run this script, ' +
+        'then re-enable Turnstile once the auth file is saved. ' +
+        'See docs/testing/PLAYWRIGHT_E2E.md Prerequisites/Troubleshooting.'
       );
     }
 
@@ -102,6 +115,8 @@ async function setupAuth() {
         console.error('- Invalid credentials (check 1Password vault)');
         console.error('- 2FA/TOTP required');
         console.error('- Network connectivity issue');
+        console.error('- Turnstile rejected the submission (the pre-submit check above ' +
+          'did not catch it — see docs/testing/PLAYWRIGHT_E2E.md Troubleshooting)');
         process.exit(1);
       }
     }

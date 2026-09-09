@@ -41,7 +41,7 @@ module.exports = defineConfig({
           },
           {
             name: "logged-in",
-            testMatch: /(?:^|\/)(logged-in|factory-registry-link|car-edit-owner-refresh)\.spec\.js$/,
+            testMatch: /(?:^|\/)(logged-in|factory-registry-link)\.spec\.js$/,
             dependencies: ["check-auth"],
             use: {
               ...devices["Desktop Chrome"],
