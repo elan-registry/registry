@@ -192,7 +192,15 @@ final class BrevoEventReconciliationJob extends AbstractCronJob
         // Same gate BrevoWebhookEventProcessor::process() applies to the
         // webhook's `tags` array — but the statistics API returns a single
         // `tag` string per event, not a list.
-        if ((string) $event->getTag() !== AppConstants::VERIFICATION_EMAIL_TAG) {
+        //
+        // is_string() rather than an unconditional (string) cast: getTag() is
+        // untyped at the SDK boundary like the three fields guarded below, and
+        // an unconditional cast would emit the same "Array to string
+        // conversion" warning that guard exists to avoid. A non-string tag
+        // can never equal VERIFICATION_EMAIL_TAG, so it is routine
+        // non-matching traffic — skip silently, same as any other tag.
+        $rawTag = $event->getTag();
+        if (!is_string($rawTag) || $rawTag !== AppConstants::VERIFICATION_EMAIL_TAG) {
             return;
         }
 

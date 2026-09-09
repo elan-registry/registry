@@ -446,6 +446,23 @@ final class BrevoEventReconciliationJobTest extends TestCase
     }
 
     /**
+     * getTag() is untyped at the SDK boundary like the three fields above,
+     * and hits the tag gate before those checks even run. Unlike them, a
+     * non-string tag needs no data-hygiene log: it can never equal
+     * VERIFICATION_EMAIL_TAG, so it is routine non-matching traffic, not a
+     * payload-contract warning — same as any other tag that doesn't match.
+     */
+    public function testNonStringTagIsSkippedWithoutLogging(): void
+    {
+        $this->expectRepoCalls()->expects($this->never())->method('findByEmail');
+
+        $this->makeJob([new FakeBrevoEvent(tag: ['car_verification'])])->runNow();
+
+        $this->assertSame([], $this->applier->calls, 'A non-string tag must not be applied');
+        $this->assertSame([], $this->logsContaining('non-string field in event payload'));
+    }
+
+    /**
      * A malformed event must not stop the page — the same containment the tag
      * gate and per-event write failures already have.
      */
