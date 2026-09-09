@@ -802,12 +802,21 @@ test.describe('GSC 404 cleanup redirects (#1409)', () => {
     // Regression guard: the pre-fix redirect used an invalid `subdir` value,
     // which pdf-viewer.php rejected with this exact error text (#1409). Also
     // checked against the extension-allowlist error text for the same reason
-    // as the sibling test below (#1473). (A positive assertion that the
-    // iframe actually renders the correct document is tracked in #1648,
-    // blocked on working around Cloudflare Turnstile's injected iframe.)
+    // as the sibling test below (#1473).
     const bodyText = await page.locator('body').innerText();
     expect(bodyText).not.toContain('Invalid document path.');
     expect(bodyText).not.toContain('Invalid document type');
+
+    // Positive assertion (#1648): the iframe actually renders the requested
+    // document, from the correct subdir. Scoped by `title` (pdf-viewer.php
+    // sets it to the document filename) so this locator can't match
+    // Cloudflare Turnstile's injected, untitled 1x1 iframe. The src regex
+    // asserts the full reference/assets path, not just the filename suffix
+    // — a bare filename match would also pass for a wrong-subdir src (the
+    // #1594 bug class the sibling redirect tests above guard against).
+    await expect(
+      page.locator('iframe[title="elan_s1_s2_coupe_masterpartslist.pdf"]')
+    ).toHaveAttribute('src', /\/docs\/reference\/assets\/elan_s1_s2_coupe_masterpartslist\.pdf$/);
   });
 });
 
@@ -884,6 +893,17 @@ test.describe('PDF viewer subdir normalization and 404 fixes (#1473)', () => {
     const bodyText = await page.locator('body').innerText();
     expect(bodyText).not.toContain('Invalid document path.');
     expect(bodyText).not.toContain('Invalid document type');
+
+    // Positive assertion (#1648): the iframe actually renders the requested
+    // document, from the correct subdir. Scoped by `title` (pdf-viewer.php
+    // sets it to the document filename) so this locator can't match
+    // Cloudflare Turnstile's injected, untitled 1x1 iframe. The src regex
+    // asserts the full reference/assets path, not just the filename suffix
+    // — a bare filename match would also pass for a wrong-subdir src (the
+    // #1594 bug class the sibling redirect tests above guard against).
+    await expect(
+      page.locator('iframe[title="elan_s1_s2_coupe_masterpartslist.pdf"]')
+    ).toHaveAttribute('src', /\/docs\/reference\/assets\/elan_s1_s2_coupe_masterpartslist\.pdf$/);
   });
 
   test('404: pdf-viewer.php directory traversal attempt in doc param (#1538)', async ({ page }) => {
