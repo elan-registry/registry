@@ -58,7 +58,8 @@ npm run test:e2e:test              # All tests
 npm run test:e2e:test:headed       # With browser
 npm run test:e2e:test:not-logged-in
 npm run test:e2e:test:admin        # Authenticated admin tests
-npm run test:e2e:test:logged-in    # Authenticated non-admin tests
+# No non-admin npm script yet — logged-in project is infra-only until a
+# non-admin spec exists (#2035)
 npm run test:e2e:test:report
 ```
 
@@ -69,7 +70,8 @@ npm run test:e2e                   # All tests
 npm run test:e2e:headed            # With browser
 npm run test:e2e:not-logged-in
 npm run test:e2e:admin             # Authenticated admin tests
-npm run test:e2e:logged-in         # Authenticated non-admin tests
+# No non-admin npm script yet — logged-in project is infra-only until a
+# non-admin spec exists (#2035)
 npm run test:e2e:report
 ```
 

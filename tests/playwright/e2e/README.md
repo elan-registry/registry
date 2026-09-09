@@ -33,8 +33,9 @@ npm run test:e2e:not-logged-in
 # Run only admin-authenticated tests (auth required)
 npm run test:e2e:admin
 
-# Run only non-admin-authenticated tests (auth required)
-npm run test:e2e:logged-in
+# No non-admin npm script yet — the logged-in Playwright project exists
+# (auth staleness check + storageState wiring) but no spec targets it yet;
+# infrastructure only, same convention as Dev's logged-in-non-admin (#2035)
 ```
 
 ## Test Files

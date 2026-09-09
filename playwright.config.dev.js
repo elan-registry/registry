@@ -3,10 +3,11 @@ require('dotenv').config({ path: '.env.local' });
 const { defineConfig, devices } = require('@playwright/test');
 const path = require('path');
 
-// Distinct from playwright.config.js's/playwright.config.prod.js's user.json —
-// this config runs against local MAMP, not the deployed site, so sharing that
-// file would let a dev run silently overwrite the production storageState the
-// 1Password/CAPTCHA flow (see docs/testing/PLAYWRIGHT_E2E.md) produces.
+// Distinct from playwright.config.js's user.json — this config runs against
+// local MAMP, not the deployed site, so sharing that file would let a dev
+// run silently overwrite the Local storageState. Test/Prod use their own
+// user-<tier>-<role>.json files, populated by scripts/playwright-auth-setup.js
+// (see docs/testing/PLAYWRIGHT_E2E.md), so there's no collision with those either.
 const authFile = path.join(__dirname, 'tests/playwright/.auth/user-dev.json');
 const authFileNonAdmin = path.join(__dirname, 'tests/playwright/.auth/user-dev-non-admin.json');
 const hasCredentials = !!(process.env.TEST_USERNAME && process.env.TEST_PASSWORD);

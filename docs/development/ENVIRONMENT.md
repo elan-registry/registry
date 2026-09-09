@@ -172,7 +172,7 @@ their real deployed environments)
   the corresponding `setup` project runs — `tests/playwright/.auth/user.json` for
   `playwright.config.js`, `tests/playwright/.auth/user-dev.json` for
   `playwright.config.dev.js` (kept separate so a dev run can't overwrite the
-  production storageState the 1Password/CAPTCHA flow produces). Required for the
+  Local storageState). Required for the
   `admin` project; if unset, the setup test skips and the storageState file is
   removed, so `admin` tests run unauthenticated instead of failing on a missing
   file.
@@ -192,8 +192,9 @@ their real deployed environments)
 issue #2035), invoked manually to populate the pre-authenticated storageState
 files that `tests/playwright/e2e/auth-staleness.setup.js` /
 `auth-staleness-admin.setup.js` check for staleness before each Test/Prod run
-(`playwright.config.test.js` / `playwright.config.prod.js`'s `admin` and
-`logged-in` projects).
+(`playwright.config.test.js` / `playwright.config.prod.js`'s `admin` project;
+`logged-in` also wires up but is infrastructure only — no non-admin spec
+targets it yet).
 
 - `E2E_TEST_ADMIN_USERNAME` / `E2E_TEST_ADMIN_PASSWORD` — admin account on
   `test.elanregistry.org`.
