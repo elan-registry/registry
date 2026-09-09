@@ -716,25 +716,31 @@ headers at the infrastructure level, removing header management from PHP.
 
 ### Permissions-Policy Header
 
-Add a `Permissions-Policy` header to restrict browser feature access
-(geolocation, camera, microphone, payment, etc.).
+Restrict browser feature access (geolocation, camera, microphone, payment,
+etc.) via a `Permissions-Policy` header.
 
-**Not adopted (but identified as planned) because:**
+**Adopted in #1329** (2026-07-13), sent from both `.htaccess` and
+`usersc/includes/security_headers.php`. Camera, microphone, and payment are
+fully blocked (`()`, no origins allowed) — nothing in the application uses
+them.
 
-- The application does not use browser geolocation APIs (MapLibre GL JS
+Geolocation is restricted to same-origin (`geolocation=(self)`), not blocked
+outright: the join form's "Use My Current Location" button
+(`app/assets/js/location-picker.js`) calls the browser's Geolocation API
+directly to prefill a new owner's location during registration. #1329's
+initial header set `geolocation=()` (blocked everywhere, including
+same-origin), which silently broke that feature from the day the header
+shipped until the mistake was caught and corrected (#2050, #2051) — MapLibre
+GL JS's own map rendering was never affected, since it only consumes
+pre-computed marker coordinates and vendored assets, not the Geolocation API;
+the geolocation feature in scope here is exclusively the join-form GPS
+button.
 
-  renders from vendored assets and pre-computed marker coordinates; address
-  coordinates are geocoded server-side via ElanRegistryOwner).
-
-- No camera, microphone, payment, or other restricted API access occurs.
-- The benefit is minimal for this application's feature set.
-- Adding a restrictive `Permissions-Policy` could inadvertently block future
-
-  features without clear documentation that the header must be updated.
-
-- Remains a planned addition once the feature set stabilizes and requirements
-
-  for browser permissions are well understood.
+Where both files set the header, Apache's `Header always set` in `.htaccess`
+is what actually reaches the browser — confirmed by #2050's bug itself
+(`security_headers.php`'s PHP-level header never restricted geolocation, yet
+the browser still blocked it). Both copies are kept in sync regardless, so a
+future change to one source doesn't silently diverge from the other.
 
 ## References
 
