@@ -291,11 +291,10 @@ gh release edit <version> --draft=false --repo elan-registry/registry
 - Confirm the milestone is closed: gh api repos/elan-registry/registry/milestones --jq '.[] | select(.title|startswith("<version>"))'
 
 Recovery if a migration aborts on either host: fix the privileges in step 3,
-then re-push the same tag — the hook re-runs composer install, the migration,
-and the frontend build from scratch, and every step is idempotent. `composer
-migrate` will not work directly on the docroot after step 7's cleanup removes
-`composer.json`/`composer.lock`; if a migration must be run without a
-re-push, use `php vendor/bin/phinx migrate` with `phinx.php` in the docroot
-(vendor/ survives cleanup). Full checklist: docs/development/DEPLOYMENT.md §
+then ssh in and run `composer migrate` in the docroot — every step is
+idempotent. `composer.json`/`composer.lock` are still present at this point:
+the hook's cleanup step only runs after every prior step succeeds, and a
+migration failure halts the hook (`exit 1`) before cleanup is ever reached.
+Full checklist: docs/development/DEPLOYMENT.md §
 Deployment Verification Checklist.
 ```
