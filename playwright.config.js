@@ -80,7 +80,7 @@ module.exports = defineConfig({
       // testIgnore e2e/** entirely) — the same failure mode #1781 exists to
       // fix. When adding such a file, add it here too.
       name: 'logged-in',
-      testMatch: /(?:^|\/)(logged-in|factory-registry-link|car-edit-owner-refresh)\.spec\.js$/,
+      testMatch: /(?:^|\/)(logged-in|factory-registry-link|car-edit-owner-refresh|car-edit-workflow)\.spec\.js$/,
       dependencies: ['setup'],
       use: {
         ...devices['Desktop Chrome'],
