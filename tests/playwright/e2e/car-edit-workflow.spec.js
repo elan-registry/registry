@@ -1,72 +1,42 @@
 // tests/playwright/e2e/car-edit-workflow.spec.js
 //
 // Replacement coverage for two tests removed from
-// tests/playwright/functionality.spec.js (#1949).
+// tests/playwright/functionality.spec.js (#1949), each of which passed
+// while asserting nothing real:
 //
-// Why this file exists — test 1 ("year->model dependency"): the original
-// "car edit form workflow functions" test asserted against an accordion UI
-// (#editCarAccordion, #section1/#section2, '#heading-section2 button') that
-// app/owner/cars/edit.php no longer renders — the form is a flat, single-page
-// layout now, and the Photos section is a plain <h5> heading with no
-// collapsible wrapper at all (the same stale-selector finding
-// tests/playwright/e2e/car-edit-owner-refresh.spec.js documented in its own
-// header when it dropped the identical expand step). Worse, that test was
-// silently vacuous rather than failing: it early-`return`ed whenever
-// `#editCarAccordion` was absent, which — since the element does not exist
-// anywhere in the current markup — was ALWAYS. It therefore asserted nothing
-// beyond "edit.php isn't a 404", on every tier, forever.
+// - "car edit form workflow functions" gated its assertions behind
+//   #editCarAccordion, which app/owner/cars/edit.php no longer renders (the
+//   form is a flat, single-page layout now) — so it early-returned on every
+//   run, on every tier, forever.
+// - "chassis validation works" ran unauthenticated, so it always landed on
+//   edit.php's "Add Car" fallback rather than genuine UPDATE mode. #year
+//   exists in both modes so its guard opened, but chassis-validate.php's
+//   real validation requires a valid year AND model (see car-edit.js's
+//   #chassis blur handler), and Add Car mode starts with no model selected
+//   — so its `#chassis_icon` assertion was trivially true regardless of
+//   whether real validation logic ran.
 //
-// Why this file exists — test 2 ("chassis validation"): the original
-// "chassis validation works" test ran unauthenticated (no login step, and
-// functionality.spec.js's plain `chromium` project has no storageState), so
-// it always landed on edit.php's "Add Car" fallback rather than genuine
-// UPDATE mode. #year exists in both modes, so that test's own `hasForm`
-// guard opened and it did execute assertions — but against the wrong
-// scenario: chassis-validate.php's real validation requires BOTH a valid
-// year AND model (see app/assets/js/car-edit.js's #chassis blur handler),
-// and Add Car mode starts with an empty, unselected model — so the
-// assertion it made (`#chassis_icon` visible) was trivially true regardless
-// of whether real chassis validation logic ran correctly.
+// These two tests instead authenticate, discover a genuinely owned car in
+// real edit mode (window.editCarConfig.isUpdate === true), and exercise the
+// #year -> #model repopulation and chassis-validate.php AJAX flow for real.
+// See each test body below for its specific assertions and the mechanisms
+// behind them.
 //
-// What these tests prove instead: the same interactions the original tests
-// were written to cover — the car-edit form's #year -> #model dependency,
-// and chassis-number validation — actually work, asserted against the
-// form's REAL current selectors, and from a genuine authenticated
-// edit-mode page load rather than the unauthenticated "Add Car" fallback
-// either old test would have landed on (silently, for the accordion test;
-// silently-wrong-scenario, for the chassis test). Specifically: that
-// edit.php loaded in update mode for a car the account owns (window
-// .editCarConfig.isUpdate === true and a non-empty #car_id), that #year is
-// visible and interactive without any expand/reveal step, that selecting a
-// year drives app/assets/js/car-edit.js's async #year change handler to
-// repopulate #model from app/api/cars/models.php, and that entering a
-// chassis number after a valid year+model triggers the real
-// chassis-validate.php AJAX call and updates #chassis_icon accordingly.
-//
-// Both tests are deliberately READ-ONLY against the database: neither
-// clicks #submit or persists anything. Unlike car-edit-owner-refresh.spec.js
-// — whose entire purpose is exercising the real save.php path — this file's
-// scope is client-side form interactions, so there is no reason to take on
-// the write-safety concerns #2045/#2014 raised for that sibling file.
+// Both are deliberately READ-ONLY against the database — neither clicks
+// #submit. Unlike car-edit-owner-refresh.spec.js (whose entire purpose is
+// exercising the real save.php path), this file's scope is client-side form
+// interactions only, so it doesn't inherit that file's write-safety
+// concerns (#2045/#2014).
 //
 // Runs against Local/Dev only (MAMP, default http://localhost:9999/ElanRegistry/Registry/
 // — override with PLAYWRIGHT_BASE_URL, see docs/development/ENVIRONMENT.md;
 // requires TEST_USERNAME/TEST_PASSWORD in .env.local).
 //
 // NOT enrolled on Test or Production (see playwright.config.test.js /
-// playwright.config.prod.js testMatch, which excludes this file). This is a
-// deferral out of caution, not a claim that it fails there — and the reason
-// is narrower than it may look: #2045's actual blocker for
-// car-edit-owner-refresh.spec.js is a SUBMIT-time failure (edit.php's
-// #model select is rendered disabled, and a real form submit drops its
-// value, which save.php's server-side validation rejects). This test never
-// clicks #submit, so that specific blocker likely does not apply here — its
-// expect.poll() on #model's option list is a real, deterministic DOM
-// signal, not a race against the same timing #2045 documents. Deferred
-// anyway pending #2045's resolution, since that issue's audit is the right
-// place to also verify this file's assumption before enrolling it
-// independently — don't treat "blocked by #2045" as proven without
-// re-checking against whatever #2045 concludes.
+// playwright.config.prod.js testMatch, which excludes this file) — deferred
+// pending #2045, whose SUBMIT-time #model blocker may not apply here since
+// this file never submits, but that assumption needs re-verifying against
+// whatever #2045 concludes before enrolling independently.
 //
 // The target car is discovered dynamically via usersc/account.php's "Update
 // Car" button rather than a hardcoded fixture id, and the credential gate
@@ -77,27 +47,19 @@
 const { test, expect } = require('@playwright/test');
 
 test.describe('Car edit — year/model form workflow (#1949)', () => {
-  // Skip unless running in the authenticated `logged-in` project AND,
-  // for Local/Dev only, real credentials are configured. The project-name
-  // check alone (the pattern mirrored from
-  // tests/playwright/e2e/logged-in.spec.js) is not sufficient on Local/Dev:
-  // per playwright.config.js's own `hasCredentials` guard, when
-  // TEST_USERNAME/TEST_PASSWORD are unset, auth.setup.js skips cleanly with
-  // no storageState file — but the `logged-in` project itself still runs,
-  // unauthenticated, rather than being skipped (see CLAUDE.md's
-  // "Local Playwright tests" note). Without this check, this test's own
-  // precondition (an owned, editable car reachable from account.php) would
-  // fail rather than skip, misreporting a missing local credential as a real
-  // regression — which is precisely the silent-pass/false-fail confusion the
-  // replaced test suffered from.
-  //
-  // Test/Production authenticate via a saved storageState (1Password flow),
-  // not TEST_USERNAME/TEST_PASSWORD, and are already gated by check-auth
-  // failing loudly before `logged-in` runs (see docs/testing/PLAYWRIGHT_E2E.md)
-  // — so the credential check below only applies when E2E_AUTH_TIER is unset
-  // (Local/Dev). This is preparatory: this test isn't enrolled on Test/
-  // Production yet (see the file header — #2045), but gating it
-  // unconditionally would still incorrectly skip it there once it is.
+  // Skip unless running in the authenticated `logged-in` project AND, for
+  // Local/Dev only, real credentials are configured. On Local/Dev, per
+  // playwright.config.js's own `hasCredentials` guard, missing credentials
+  // make auth.setup.js skip cleanly (no storageState) while `logged-in`
+  // still runs unauthenticated (see CLAUDE.md's "Local Playwright tests"
+  // note) — without this check, this test's precondition (an owned car
+  // reachable from account.php) would fail rather than skip, misreporting a
+  // missing local credential as a real regression. Test/Production instead
+  // authenticate via a saved storageState and are already gated by
+  // check-auth failing loudly beforehand (docs/testing/PLAYWRIGHT_E2E.md),
+  // so the credential check only applies when E2E_AUTH_TIER is unset
+  // (Local/Dev) — kept here in preparation for #2045 enrollment (see file
+  // header) so an unconditional gate doesn't incorrectly skip it there.
   test.beforeEach(async ({}, testInfo) => {
     if (testInfo.project.name !== 'logged-in') {
       testInfo.skip();
@@ -278,29 +240,24 @@ test.describe('Car edit — year/model form workflow (#1949)', () => {
     // number is taken is real registry data this test has no control
     // over), only that real validation genuinely ran against THIS input.
     //
-    // Asserting on #chassis_icon's resulting class ALONE is not sufficient
-    // to prove that, and an earlier version of this test made exactly that
-    // mistake: the skip branch (car-edit.js:452-457, taken when year/model
-    // aren't both set) calls updateChassisUI(false, '') unconditionally,
-    // which sets fa-thumbs-down just as validly as a real "invalid chassis"
-    // response would. A check for "some thumbs class is present" cannot
-    // tell the two apart.
+    // Two things this assertion must NOT rely on alone:
+    // - #chassis_icon's resulting class alone: the skip branch (taken when
+    //   year/model aren't both set) calls updateChassisUI(false, '')
+    //   unconditionally, which sets fa-thumbs-down just as validly as a
+    //   real "invalid chassis" response would — a "some thumbs class is
+    //   present" check can't tell the two apart.
+    // - waitForResponse() matched on the endpoint URL alone: edit.php's own
+    //   page-load sequence independently fires #chassis's blur handler
+    //   twice on load (car-edit.js's isUpdate pre-population block, for the
+    //   car's ALREADY-SAVED chassis value, and again from the #year change
+    //   handler's re-validation) — either can produce an unrelated
+    //   chassis-validate.php response that a URL-only matcher can't
+    //   distinguish from this test's own request.
     //
-    // Matching waitForResponse() on the endpoint URL alone (a second
-    // mistake caught only by deliberately sabotaging this test and
-    // confirming it still passed) is ALSO not sufficient: edit.php's own
-    // page-load sequence independently calls #chassis's blur handler twice
-    // — once from the isUpdate pre-population block (car-edit.js:344, ~500ms
-    // after load, for the car's ALREADY-SAVED chassis value) and once from
-    // the #year change handler when re-validating on load (car-edit.js:428).
-    // Either can produce an unrelated chassis-validate.php response that
-    // arrives around the same time as this test's own request, and a
-    // URL-only matcher cannot tell them apart — it can resolve on someone
-    // else's response while this test's own request is still in flight or
-    // never even sent. The fix: match on the actual POST body containing
-    // THIS test's distinctive chassis value (server receives it as
-    // FormData's `chassis` field — see car-edit.js:460-462), which only
-    // the response to this exact request can satisfy.
+    // So: match on the actual POST body containing THIS test's distinctive
+    // chassis value (server receives it as FormData's `chassis` field —
+    // see car-edit.js's ElanRegistryAPI.post() call), which only the
+    // response to this exact request can satisfy.
     const chassisMarker = `TEST${Date.now()}`;
     const validateResponse = page.waitForResponse(
       async (response) => {
