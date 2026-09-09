@@ -43,8 +43,8 @@ test.describe('Car Image Endpoints — Ownership Guard', () => {
     let csrf;
 
     test.beforeEach(async ({ page }) => {
-      if (!process.env.TEST_USERNAME || !process.env.TEST_PASSWORD) {
-        test.skip(true, 'Set TEST_USERNAME and TEST_PASSWORD in .env.local to run authenticated tests');
+      if (!process.env.E2E_DEV_ADMIN_USERNAME || !process.env.E2E_DEV_ADMIN_PASSWORD) {
+        test.skip(true, 'Set E2E_DEV_ADMIN_USERNAME and E2E_DEV_ADMIN_PASSWORD in .env.local to run authenticated tests');
       }
       await ensureLoggedIn(page);
       const token = await getCsrfFromForm(page);

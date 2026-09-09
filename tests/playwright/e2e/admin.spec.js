@@ -101,12 +101,12 @@ test.describe('Elan Registry - Car Update Functionality (Logged In)', () => {
     console.log('✓ Navigated to account page');
 
     // The "Update Car" button only renders inside account.php's per-car loop
-    // (app/views/cars/_car_hero_actions.php) — if TEST_USERNAME has no
+    // (app/views/cars/_car_hero_actions.php) — if E2E_DEV_ADMIN_USERNAME has no
     // registered cars locally, there's nothing to click. Skip rather than
     // assume, same convention used for fixture-dependent factory-page tests.
     const updateCarButton = page.locator('button:has-text("Update Car"), a:has-text("Update Car")');
     const hasCarToUpdate = await updateCarButton.count() > 0;
-    test.skip(!hasCarToUpdate, 'TEST_USERNAME account has no registered cars locally — nothing to update');
+    test.skip(!hasCarToUpdate, 'E2E_DEV_ADMIN_USERNAME account has no registered cars locally — nothing to update');
 
     // Click "Update Car" button to enter the update workflow
     await updateCarButton.first().click();

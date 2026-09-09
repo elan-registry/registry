@@ -68,12 +68,12 @@ test.describe('login() failure diagnostics', () => {
   // itself — a failure there surfaces as an unrelated test's timeout rather
   // than as "login()'s success path broke".
   test('resolves without throwing and navigates away on valid credentials', async ({ page }) => {
-    if (!process.env.TEST_USERNAME || !process.env.TEST_PASSWORD) {
-      test.skip(true, 'Set TEST_USERNAME and TEST_PASSWORD in .env.local to run this test');
+    if (!process.env.E2E_DEV_ADMIN_USERNAME || !process.env.E2E_DEV_ADMIN_PASSWORD) {
+      test.skip(true, 'Set E2E_DEV_ADMIN_USERNAME and E2E_DEV_ADMIN_PASSWORD in .env.local to run this test');
     }
 
     await expect(
-      login(page, process.env.TEST_USERNAME, process.env.TEST_PASSWORD),
+      login(page, process.env.E2E_DEV_ADMIN_USERNAME, process.env.E2E_DEV_ADMIN_PASSWORD),
       'login() must resolve, not throw, when the credentials are accepted'
     ).resolves.toBeUndefined();
 

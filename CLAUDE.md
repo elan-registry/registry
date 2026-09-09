@@ -181,8 +181,9 @@ npm run playwright:install      # Install browsers
 npm run playwright:test         # All local tests, incl. an admin e2e project
                                  # (tests/playwright/e2e/admin.spec.js,
                                  # factory-registry-link.spec.js) that auto-authenticates
-                                 # via TEST_USERNAME/TEST_PASSWORD in .env.local. If those
-                                 # are unset, the auth setup step itself skips cleanly, but
+                                 # via E2E_DEV_ADMIN_USERNAME/E2E_DEV_ADMIN_PASSWORD
+                                 # in .env.local. If those are unset, the auth setup
+                                 # step itself skips cleanly, but
                                  # the admin tests still run — unauthenticated, not
                                  # skipped — so some (menu/account tests expecting a logged-
                                  # in session) will fail while others (factory.php, which is

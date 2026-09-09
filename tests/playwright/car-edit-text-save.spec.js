@@ -742,10 +742,10 @@ test.describe('Car edit form — text-only save (regression #796)', () => {
         // the real "Update Car" button's POST directly (mirrors
         // app/views/cars/_car_hero_actions.php and the precedent in
         // car-edit-missing-car.spec.js) using CAR_ID_WITH_HISTORY — a real,
-        // existing car. TEST_USERNAME is provisioned as an Administrator
+        // existing car. E2E_DEV_ADMIN_USERNAME is provisioned as an Administrator
         // (permission_id=2), so updateCarDetails()'s admin/editor bypass
         // (edit.php's hasPerm([2,3]) check) grants access regardless of
-        // whether TEST_USERNAME owns this specific car.
+        // whether E2E_DEV_ADMIN_USERNAME owns this specific car.
         await page.goto('app/owner/cars/edit.php', { waitUntil: 'domcontentloaded' });
 
         const initialUrl = page.url();
@@ -791,7 +791,7 @@ test.describe('Car edit form — text-only save (regression #796)', () => {
         const isUpdateMode = await page.evaluate(() => window.editCarConfig?.isUpdate === true);
         expect(
             isUpdateMode,
-            'POST with action=updateCar must render edit.php in real update mode — if this fails, verify TEST_USERNAME still has admin/editor access and CAR_ID_WITH_HISTORY still exists'
+            'POST with action=updateCar must render edit.php in real update mode — if this fails, verify E2E_DEV_ADMIN_USERNAME still has admin/editor access and CAR_ID_WITH_HISTORY still exists'
         ).toBe(true);
 
         // Wait for the real existing image(s) to hydrate

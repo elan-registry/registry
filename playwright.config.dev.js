@@ -10,8 +10,8 @@ const path = require('path');
 // (see docs/testing/PLAYWRIGHT_E2E.md), so there's no collision with those either.
 const authFile = path.join(__dirname, 'tests/playwright/.auth/user-dev.json');
 const authFileNonAdmin = path.join(__dirname, 'tests/playwright/.auth/user-dev-non-admin.json');
-const hasCredentials = !!(process.env.TEST_USERNAME && process.env.TEST_PASSWORD);
-const hasCredentialsNonAdmin = !!(process.env.TEST_USERNAME2 && process.env.TEST_PASSWORD2);
+const hasCredentials = !!(process.env.E2E_DEV_ADMIN_USERNAME && process.env.E2E_DEV_ADMIN_PASSWORD);
+const hasCredentialsNonAdmin = !!(process.env.E2E_DEV_NONADMIN_USERNAME && process.env.E2E_DEV_NONADMIN_PASSWORD);
 
 /**
  * @see https://playwright.dev/docs/test-configuration

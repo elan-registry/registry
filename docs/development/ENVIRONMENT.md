@@ -161,30 +161,32 @@ their real deployed environments)
   Excluded from the prod/test configs intentionally, to avoid accidentally
   pointing a destructive test run at the wrong live site.
 
-### Local Playwright Test Credentials (Local/Dev)
+### Playwright Test Credentials (Local/Dev)
 
 **Usage**: `playwright.config.js`'s `admin` project (via `auth.setup.js`),
 `playwright.config.dev.js`'s `admin`/`logged-in-non-admin` projects (via
 `auth-dev.setup.js` / `auth-non-admin.setup.js`)
 
-- `TEST_USERNAME` / `TEST_PASSWORD` — credentials for an admin test account, used to
-  populate a storageState file via a live login through `usersc/login.php` each time
-  the corresponding `setup` project runs — `tests/playwright/.auth/user.json` for
-  `playwright.config.js`, `tests/playwright/.auth/user-dev.json` for
-  `playwright.config.dev.js` (kept separate so a dev run can't overwrite the
-  Local storageState). Required for the
+- `E2E_DEV_ADMIN_USERNAME` / `E2E_DEV_ADMIN_PASSWORD` — credentials for an admin test
+  account, used to populate a storageState file via a live login through
+  `usersc/login.php` each time the corresponding `setup` project runs —
+  `tests/playwright/.auth/user.json` for `playwright.config.js`,
+  `tests/playwright/.auth/user-dev.json` for `playwright.config.dev.js` (kept separate so
+  a dev run can't overwrite the Local storageState). Required for the
   `admin` project; if unset, the setup test skips and the storageState file is
   removed, so `admin` tests run unauthenticated instead of failing on a missing
   file.
-- `TEST_USERNAME2` / `TEST_PASSWORD2` — credentials for a non-admin test account, used
-  the same way by `auth-non-admin.setup.js` to populate
+- `E2E_DEV_NONADMIN_USERNAME` / `E2E_DEV_NONADMIN_PASSWORD` — credentials for a
+  non-admin test account, used the same way by `auth-non-admin.setup.js` to populate
   `tests/playwright/.auth/user-dev-non-admin.json`, feeding
   `playwright.config.dev.js`'s `logged-in-non-admin` project (infrastructure only —
   no spec targets it yet).
 - All four are gitignored via `.env.local` and must never be committed. See
   `.env.example` for the placeholder entries.
-- These are Local/Dev-only accounts (plain-HTTP MAMP, no Turnstile) —
-  unrelated to the `E2E_*` Test/Prod credentials below.
+- These are Local/Dev-only accounts (plain-HTTP MAMP, no Turnstile) — same
+  `E2E_<TIER>_<ROLE>_*` naming scheme as the Test/Prod credentials below (#2059
+  renamed these from `TEST_USERNAME`/`TEST_PASSWORD`/`TEST_USERNAME2`/`TEST_PASSWORD2`
+  for consistency).
 
 ### Playwright Test Credentials (Test/Prod)
 

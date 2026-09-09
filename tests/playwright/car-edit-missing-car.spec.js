@@ -40,10 +40,10 @@
 // car to view a hero-actions form for).
 //
 // The ownership-violation test below needs a genuine non-admin, non-owner
-// session — TEST_USERNAME (the shared local login used by beforeEach()) is
+// session — E2E_DEV_ADMIN_USERNAME (the shared local login used by beforeEach()) is
 // provisioned as an Administrator (permission_id=2), which bypasses the
 // logout branch entirely. It logs in as a second, persistent plain-owner
-// account instead (TEST_USERNAME2/TEST_PASSWORD2 in .env.local,
+// account instead (E2E_DEV_NONADMIN_USERNAME/E2E_DEV_NONADMIN_PASSWORD in .env.local,
 // permission_id=1, owns no cars), avoiding the cost and registration
 // rate-limit contention of registering a throwaway account per test run.
 
@@ -168,15 +168,15 @@ test.describe('Car edit page — missing car (#1313)', () => {
     // separate save.php AJAX endpoint against a NONEXISTENT car_id, which
     // never reaches edit.php's own logout branch at all.
     //
-    // Why a second, persistent account (TEST_USERNAME2/TEST_PASSWORD2), not
-    // TEST_USERNAME: TEST_USERNAME (the shared local dev/test login) is
+    // Why a second, persistent account (E2E_DEV_NONADMIN_USERNAME/E2E_DEV_NONADMIN_PASSWORD), not
+    // E2E_DEV_ADMIN_USERNAME: E2E_DEV_ADMIN_USERNAME (the shared local dev/test login) is
     // provisioned as an Administrator in this environment's DB
     // (permission_id=2), and hasPerm([2, 3]) at edit.php:117 makes admins
     // bypass the logout branch entirely — using it here would make the test
     // pass vacuously (or not exercise the branch at all) regardless of which
-    // car_id is used. TEST_USERNAME2 is a genuine plain owner
+    // car_id is used. E2E_DEV_NONADMIN_USERNAME is a genuine plain owner
     // (permission_id=1, verified once at provisioning time — see
-    // .env.local's TEST_USERNAME2/TEST_PASSWORD2 comment for how it was
+    // .env.local's E2E_DEV_NONADMIN_USERNAME/E2E_DEV_NONADMIN_PASSWORD comment for how it was
     // created) that owns no cars, so it can never coincidentally hold
     // admin/editor perms or pass the ownership check by actually owning
     // CAR_ID_WITH_HISTORY.
@@ -190,24 +190,24 @@ test.describe('Car edit page — missing car (#1313)', () => {
     test('genuine ownership violation on an existing car still logs the user out (edit.php:119-124)', async ({ page, browserName }) => {
         test.skip(browserName !== 'chromium', 'Login/logout dance only needs to run once, not per-browser-project');
 
-        // beforeEach() above logs in as TEST_USERNAME (the shared admin
+        // beforeEach() above logs in as E2E_DEV_ADMIN_USERNAME (the shared admin
         // account) for every test in this file — log out first, then back in
         // as the persistent plain-owner account.
         await logout(page);
-        await login(page, process.env.TEST_USERNAME2, process.env.TEST_PASSWORD2);
+        await login(page, process.env.E2E_DEV_NONADMIN_USERNAME, process.env.E2E_DEV_NONADMIN_PASSWORD);
 
         await page.goto('app/owner/cars/edit.php', { waitUntil: 'domcontentloaded' });
         const prePostUrl = page.url();
         expect(
             prePostUrl.includes('login') || prePostUrl.includes('Please Log In'),
-            'TEST_USERNAME2 must be logged in before the ownership POST'
+            'E2E_DEV_NONADMIN_USERNAME must be logged in before the ownership POST'
         ).toBe(false);
 
         const csrfToken = await page.locator('#csrf').inputValue();
         expect(csrfToken, 'edit.php must render a #csrf hidden field to obtain a token from').toBeTruthy();
 
         // POST action=updateCar for CAR_ID_WITH_HISTORY — an existing car
-        // TEST_USERNAME2 does not own and has no admin/editor perms over.
+        // E2E_DEV_NONADMIN_USERNAME does not own and has no admin/editor perms over.
         // Mirrors the real "Update Car" button submit (see the missing-car
         // test above for why a synthetic form POST is used instead of
         // clicking a button).
