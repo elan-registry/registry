@@ -91,6 +91,19 @@ Production use the 1Password / CAPTCHA flow described below.
 - Credentials stored in 1Password:
   - Test: `op://ElanRegistry/Elanregistry - Test Admin/username`
   - Production: `op://ElanRegistry/elanregistry - test account/username`
+- **Turnstile must be disabled (or set to a Cloudflare test/always-pass
+  sitekey) on Test before running `./scripts/playwright-auth-1password-test.sh`.**
+  A real Turnstile challenge cannot be solved by an automated browser and
+  causes `playwright-auth-setup-test.js` to fail — historically as a hang on
+  `page.waitForLoadState('networkidle')` (fixed to fail via a bounded
+  `waitForSelector` on the login form instead, but the underlying "automated
+  login can't pass Turnstile" limitation remains). Re-enable Turnstile on
+  Test once auth setup is complete — do not leave it disabled, it's a real
+  security control that Production also runs, and Test should mirror
+  Production. See [Troubleshooting](#troubleshooting) for the failure
+  symptom if this step is missed. Production is not exempt from this
+  (see the `check-auth` note below); it is not affected here only because
+  routine re-auth against Production isn't part of this local workflow.
 
 ### Setup Commands
 
@@ -155,6 +168,7 @@ Files are gitignored. Re-run setup if sessions expire.
 | Auth file doesn't exist | Run auth setup script — also now caught automatically by `check-auth` before `logged-in` runs on Test/Production |
 | `check-auth` fails with "session is stale/expired" | Re-run `./scripts/playwright-auth-1password[-test].sh` (session expired — now caught automatically instead of `logged-in` silently running anonymous) |
 | CAPTCHA timeout | Re-run setup, solve CAPTCHA promptly |
+| Test-env auth setup hangs indefinitely with no error (was: `page.waitForLoadState('networkidle')` timeout) | **Turnstile is enabled on Test.** An automated browser cannot pass it — this is not a bug in the login flow. Disable Turnstile (or switch to a Cloudflare test/always-pass sitekey) on Test, re-run the auth script, then re-enable Turnstile once the auth file is saved. Do not attempt to work around Turnstile programmatically. |
 | CI/CD failures | Check secrets, ensure auth runs before tests |
 
 ## Recommended Workflow

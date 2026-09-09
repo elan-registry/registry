@@ -46,6 +46,23 @@ async function setupAuth() {
     await page.waitForSelector('input[name="username"]', { timeout: 15000 });
     await page.waitForSelector('input[name="password"]', { timeout: 15000 });
 
+    // Fail fast with a clear message if a real Turnstile challenge is
+    // present. addTurnstile() (usersc/includes/turnstile.php) only emits a
+    // .cf-turnstile div when Turnstile is enabled server-side — an
+    // automated browser cannot solve a real challenge, and continuing here
+    // previously produced a silent-looking hang (see docs/testing/PLAYWRIGHT_E2E.md
+    // Troubleshooting) with no indication Turnstile was the cause.
+    const turnstileWidget = await page.$('.cf-turnstile');
+    if (turnstileWidget) {
+      throw new Error(
+        'Turnstile is enabled on this environment — a real challenge widget is ' +
+        'present on the login page. An automated browser cannot solve it. Disable ' +
+        'Turnstile (or switch to a Cloudflare test/always-pass sitekey) on this ' +
+        'environment, re-run this script, then re-enable Turnstile once the auth ' +
+        'file is saved. See docs/testing/PLAYWRIGHT_E2E.md Prerequisites/Troubleshooting.'
+      );
+    }
+
     // Fill in username and password using correct selectors
     console.log('  → Entering username...');
     await page.fill('input[name="username"]', username);
