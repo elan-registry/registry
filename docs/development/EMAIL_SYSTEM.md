@@ -287,6 +287,57 @@ API calls of any kind (webhook *registration* is #1888, blocked-contacts
 rendering of the per-car event history or the unmatched-recipient counter —
 that is a follow-up issue.
 
+### Auto-Clear Bounce Flag on Confirmed Email Change (#1890)
+
+When an owner completes a UserSpice email-verification flow (confirming they
+own a new email address by clicking a vericode link), the registry automatically
+clears the `cars.email_bounced` flag on any of their cars whose recorded bounced
+address is no longer current. This closes the loop: a bounce recorded against
+an old address should not permanently suppress verification emails once the
+owner has proven a new address is reachable.
+
+**Timing:** Runs on the `verifySuccess` hook, after a successful vericode
+confirmation but before the owner-field sync that propagates the new email
+address to the cars (see `usersc/plugins/hooker/hooks/sync_owner_email_on_verify.php`).
+
+**Method:** `CarRepository::clearBouncedForUser(int $userId, string $currentEmail): int`
+— a single parameterized `UPDATE` scoped by user_id, not a per-car loop.
+Clears both `email_bounced` and `email_bounced_address` on every car owned by
+the user whose `email_bounced_address` is NULL, empty, or differs from the
+just-confirmed email (case-insensitive comparison). Returns the count of rows
+affected.
+
+**Data-integrity handling:** Rows with `email_bounced=1` and a NULL/empty
+`email_bounced_address` represent a pre-existing data anomaly (the
+`updateEmailBounced()` method forbids writing that combination, but legacy
+data can still exist). The hook detects this anomaly via
+`CarRepository::carIdsWithBouncedFlagButNoAddress(int $userId): array` before
+calling `clearBouncedForUser()`, logs it under `LOG_CATEGORY_EMAIL_BOUNCED`,
+and clears it anyway — refusing would permanently exclude an owner who just
+proved their address is reachable; clearing wrongly self-corrects on the next
+real bounce.
+
+**Logging:** The hook logs only when something actually changed:
+
+- If the integrity-check query finds anomalous cars, logs the car IDs and explains the condition
+- If `clearBouncedForUser()` clears at least one row, logs the count of cars affected
+
+A no-op confirmation (address never bounced, or a stale re-click) writes no log line.
+
+**Exception safety:** `clearBouncedForUser()` runs in its own `try`/`catch` block,
+separate from the owner-field sync. A database failure in the bounce-clear does not
+prevent the sync from running, and vice versa; all failures are logged and the
+hook continues silently (this is a background repair, not a user-facing operation).
+
+**Related**:
+
+- `UserSpice user email-verification flow` — `users/verify.php`, triggered via
+  a clickable vericode link the owner receives via email
+- `sync_owner_email_on_verify` hook — runs the bounce-clear operation plus the
+  owner-field sync to `cars.email` on every confirmed email change
+- `CarRepository::updateEmailBounced()` — the write method that sets the bounce
+  flag (forbids writing a null/empty address at the same time)
+
 ### Feature Switch Related Documentation
 
 - [DEPLOYMENT.md — Cron Transport](DEPLOYMENT.md#cron-transport-userspice-cron-manager) — the 10-minute interval constant referenced by `cronReady()`

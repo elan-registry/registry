@@ -6,6 +6,7 @@ use ElanRegistry\Car\CarRepository;
 use ElanRegistry\DatabaseInterface;
 use ElanRegistry\Exceptions\CarDatabaseException;
 use ElanRegistry\Exceptions\CarNotFoundException;
+use ElanRegistry\LogCategories;
 use PHPUnit\Framework\TestCase;
 
 use PHPUnit\Framework\Attributes\Group;
@@ -953,5 +954,196 @@ final class CarRepositoryTest extends TestCase
         $this->expectException(CarDatabaseException::class);
         $this->expectExceptionMessageMatches('/findVerificationEligible failed/');
         $repo->findVerificationEligible(10, 0);
+    }
+
+    // =========================================================================
+    // clearBouncedForUser() / carIdsWithBouncedFlagButNoAddress() tests (issue #1890)
+    // =========================================================================
+
+    /**
+     * clearBouncedForUser() must issue exactly the parameterized UPDATE the
+     * plan specifies, with $userId then $currentEmail bound in that order —
+     * the WHERE clause's LOWER() comparison and NULL/empty-address OR-branch
+     * are the entire correctness surface of this method, so the exact SQL
+     * text is worth pinning rather than just the return value.
+     */
+    public function testClearBouncedForUserSendsExpectedSqlAndParams(): void
+    {
+        $db = $this->makeDbMock();
+        $db->expects($this->once())
+            ->method('query')
+            ->with(
+                'UPDATE cars
+                SET email_bounced = 0, email_bounced_address = NULL
+              WHERE user_id = ?
+                AND email_bounced = 1
+                AND (email_bounced_address IS NULL
+                     OR email_bounced_address = \'\'
+                     OR LOWER(email_bounced_address) <> LOWER(?))',
+                [42, 'new-address@example.com']
+            )
+            ->willReturnSelf();
+        $db->method('error')->willReturn(false);
+        $db->method('count')->willReturn(2);
+
+        $repo = new CarRepository($db);
+        $result = $repo->clearBouncedForUser(42, 'new-address@example.com');
+
+        $this->assertSame(2, $result, 'Must return DB::count() — rows changed by the UPDATE');
+    }
+
+    /**
+     * A no-op run (nothing matched the WHERE clause) must return 0 without
+     * throwing — this is the "stale re-click" / "join-time verification"
+     * acceptance-criteria case from the plan, at the repository level.
+     */
+    public function testClearBouncedForUserReturnsZeroWhenNothingMatches(): void
+    {
+        $db = $this->makeDbMock();
+        $db->expects($this->once())->method('query')->willReturnSelf();
+        $db->method('error')->willReturn(false);
+        $db->method('count')->willReturn(0);
+
+        $repo = new CarRepository($db);
+        $result = $repo->clearBouncedForUser(42, 'new-address@example.com');
+
+        $this->assertSame(0, $result);
+    }
+
+    /**
+     * On a DB error, clearBouncedForUser() must log under
+     * LOG_CATEGORY_DATABASE_ERROR — matching reassignCarsByUser()'s own
+     * convention of logging infrastructure faults under the generic
+     * database-error category rather than an operation-specific one — and
+     * throw CarDatabaseException.
+     */
+    public function testClearBouncedForUserThrowsAndLogsOnDatabaseError(): void
+    {
+        global $mockLogEntries;
+        $mockLogEntries = [];
+
+        $db = $this->makeDbMock();
+        $db->expects($this->once())->method('query')->willReturnSelf();
+        $db->method('error')->willReturn(true);
+        $db->method('errorString')->willReturn('Deadlock found');
+
+        $repo = new CarRepository($db);
+
+        try {
+            $repo->clearBouncedForUser(42, 'new-address@example.com');
+            $this->fail('Expected CarDatabaseException was not thrown');
+        } catch (CarDatabaseException $e) {
+            $this->assertMatchesRegularExpression('/clearBouncedForUser failed \(userId=42\)/', $e->getMessage());
+        }
+
+        $this->assertCount(1, $mockLogEntries);
+        $this->assertSame(LogCategories::LOG_CATEGORY_DATABASE_ERROR, $mockLogEntries[0]['category']);
+        $this->assertStringContainsString('clearBouncedForUser failed (userId=42)', $mockLogEntries[0]['message']);
+    }
+
+    /**
+     * carIdsWithBouncedFlagButNoAddress() must issue the plain integrity-check
+     * SELECT and map every returned row's ->id to an int — the SQL text and
+     * the row-to-int mapping are both part of the contract callers rely on.
+     */
+    public function testCarIdsWithBouncedFlagButNoAddressReturnsListOfInts(): void
+    {
+        $db = $this->makeDbMock();
+        $db->expects($this->once())
+            ->method('query')
+            ->with(
+                "SELECT id FROM cars WHERE user_id = ? AND email_bounced = 1
+              AND (email_bounced_address IS NULL OR email_bounced_address = '')",
+                [42]
+            )
+            ->willReturnSelf();
+        $db->method('error')->willReturn(false);
+        $db->method('results')->willReturn([
+            (object) ['id' => 100],
+            (object) ['id' => 101],
+        ]);
+
+        $repo = new CarRepository($db);
+        $result = $repo->carIdsWithBouncedFlagButNoAddress(42);
+
+        $this->assertSame([100, 101], $result);
+        foreach ($result as $id) {
+            $this->assertIsInt($id);
+        }
+    }
+
+    /**
+     * No matching rows must return an empty array, not null or false — the
+     * hook's `!empty($integrityCarIds)` check relies on this being a real
+     * empty array.
+     */
+    public function testCarIdsWithBouncedFlagButNoAddressReturnsEmptyArrayWhenNoneMatch(): void
+    {
+        $db = $this->makeDbMock();
+        $db->expects($this->once())->method('query')->willReturnSelf();
+        $db->method('error')->willReturn(false);
+        $db->method('results')->willReturn([]);
+
+        $repo = new CarRepository($db);
+        $result = $repo->carIdsWithBouncedFlagButNoAddress(42);
+
+        $this->assertSame([], $result);
+    }
+
+    /**
+     * A DB error must throw CarDatabaseException. Unlike clearBouncedForUser(),
+     * this method does NOT log its own error (per the plan) — the hook's own
+     * \Throwable/\CarDatabaseException catch blocks are the logging point for
+     * this method's failures, so no logger() call is asserted here.
+     */
+    public function testCarIdsWithBouncedFlagButNoAddressThrowsOnDatabaseError(): void
+    {
+        $db = $this->makeDbMock();
+        $db->expects($this->once())->method('query')->willReturnSelf();
+        $db->method('error')->willReturn(true);
+        $db->method('errorString')->willReturn('Connection lost');
+
+        $repo = new CarRepository($db);
+
+        $this->expectException(CarDatabaseException::class);
+        $this->expectExceptionMessageMatches('/carIdsWithBouncedFlagButNoAddress failed \(userId=42\)/');
+        $repo->carIdsWithBouncedFlagButNoAddress(42);
+    }
+
+    /**
+     * A row missing the expected ->id property (an unexpected shape, e.g.
+     * schema drift or a wrong query) does NOT fail predictably today.
+     * `array_map(static fn (object $row): int => (int) $row->id, ...)`
+     * accesses an undefined property, which PHP 8 treats as a non-fatal
+     * E_WARNING ("Undefined property: stdClass::$id") rather than a
+     * \Throwable, and `(int) null` silently coerces to 0 — producing a
+     * *plausible-looking but bogus* car id (0) instead of surfacing the
+     * malformed row. This test pins that actual (undesirable) behavior
+     * rather than asserting a throw that does not happen — a real,
+     * low-severity gap (SELECT-only; the id is only ever used in a log
+     * message) worth hardening, not silently papering over.
+     */
+    public function testCarIdsWithBouncedFlagButNoAddressSilentlyCoercesUnexpectedRowShapeToZero(): void
+    {
+        $db = $this->makeDbMock();
+        $db->expects($this->once())->method('query')->willReturnSelf();
+        $db->method('error')->willReturn(false);
+        // Row shape missing 'id' entirely.
+        $db->method('results')->willReturn([(object) ['not_id' => 999]]);
+
+        $repo = new CarRepository($db);
+
+        // @ suppresses the non-fatal "Undefined property" warning this
+        // mapping emits — the warning itself (visible without suppression)
+        // is the evidence backing this test's docblock finding.
+        $result = @$repo->carIdsWithBouncedFlagButNoAddress(42);
+
+        $this->assertSame(
+            [0],
+            $result,
+            'Documents current behavior: an unexpected row shape silently maps to car id 0 '
+            . 'rather than throwing — a real (low-severity, SELECT-only) gap worth triaging, '
+            . 'not a bug this test suite should paper over.'
+        );
     }
 }

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/IntegrationTestCase.php';
 
+use ElanRegistry\Car\CarRepository;
 use ElanRegistry\DatabaseInterface;
 use ElanRegistry\Exceptions\CarDatabaseException;
 use ElanRegistry\Owner;
@@ -420,5 +421,186 @@ final class SyncOwnerEmailOnVerifyHookIntegrationTest extends IntegrationTestCas
 
         // The actual fix: casting avoids the TypeError.
         admin_script_record_completion(__FILE__, (int) $row->id);
+    }
+
+    // =========================================================================
+    // Issue #1890: CarRepository::clearBouncedForUser() /
+    // carIdsWithBouncedFlagButNoAddress() against a real database.
+    //
+    // These exercise exactly what a mocked unit test cannot: MySQL's actual
+    // LOWER() comparison semantics, the cars_update AFTER UPDATE trigger
+    // firing (a cars_hist row per changed car), and that the bounce-clear
+    // UPDATE and syncOwnerFieldsToCars()'s own per-car UPDATEs can run back
+    // to back in one request without a transaction conflict — the specific
+    // risk class called out in the plan's "Database & Security
+    // Considerations" section (bounce-clear is a bare autocommit UPDATE with
+    // no beginTransaction() of its own).
+    // =========================================================================
+
+    /**
+     * Two real cars for the same user, bounced under two different
+     * addresses. Confirming the new users.email only matches one of them
+     * proves the real UPDATE's WHERE clause (including MySQL's LOWER()
+     * comparison) selects the correct row and leaves the other alone — a
+     * mocked unit test can only pin the SQL text, not that MySQL evaluates
+     * it as intended.
+     *
+     * The "current" car's bounced address is seeded as a case-DIFFERENT but
+     * otherwise identical string to the confirmed email
+     * ('NEW-Address@Example.com' vs. 'new-address@example.com') — not merely
+     * a different address as the stale car is. This is what makes the
+     * "must be left untouched" assertion below actually exercise the
+     * LOWER() comparison: removing LOWER() from clearBouncedForUser()'s SQL
+     * would break specifically this assertion (the car would then no longer
+     * match the confirmed email case-sensitively... but the point is
+     * clearBouncedForUser()'s WHERE clause matches on the ADDRESS DIFFERING,
+     * so a case-only difference must NOT count as differing — proving the
+     * comparison is genuinely case-insensitive, not merely coincidentally
+     * passing because the two strings happen to already match byte-for-byte).
+     *
+     * Also verifies `email_suppressed` (set on both cars beforehand) is left
+     * untouched by the UPDATE on both cars — proving the bounce-clear UPDATE
+     * genuinely never writes that column, not just that its SQL text omits it.
+     */
+    public function testOnlyTheMatchingBouncedCarClearsAndGetsAHistoryRow(): void
+    {
+        $userId = $this->createTestUser(['email' => 'new-address@example.com']);
+
+        $repo = new CarRepository($this->db);
+
+        $staleCarId = $this->createTestCar($userId, ['chassis' => 'BOUNCECLR1']);
+        $repo->updateEmailBounced($staleCarId, true, 'OLD-ADDRESS@EXAMPLE.COM');
+        $repo->updateEmailSuppressed($staleCarId, true);
+
+        $currentCarId = $this->createTestCar($userId, ['chassis' => 'BOUNCECLR2']);
+        // Case-DIFFERENT from, but otherwise identical to, the confirmed
+        // email — so only the LOWER() comparison can tell this car's
+        // recorded address already matches.
+        $repo->updateEmailBounced($currentCarId, true, 'NEW-Address@Example.com');
+        $repo->updateEmailSuppressed($currentCarId, true);
+
+        // Clear cars_hist rows written by the calls above so this test's own
+        // assertion below (exactly one new row) isn't polluted by them.
+        $this->db->query('DELETE FROM cars_hist WHERE car_id IN (?, ?)', [$staleCarId, $currentCarId]);
+
+        $cleared = $repo->clearBouncedForUser($userId, 'new-address@example.com');
+
+        $this->assertSame(1, $cleared, 'Only the car bounced under a different (case-insensitively) address must clear');
+
+        $staleCar = $this->db->query(
+            'SELECT email_bounced, email_bounced_address, email_suppressed FROM cars WHERE id = ?',
+            [$staleCarId]
+        )->first();
+        $this->assertSame(0, (int) $staleCar->email_bounced, 'The stale-address car must have its bounce flag cleared');
+        $this->assertNull($staleCar->email_bounced_address);
+        $this->assertSame(
+            1,
+            (int) $staleCar->email_suppressed,
+            'email_suppressed must be untouched by the bounce-clear UPDATE, which only sets email_bounced/email_bounced_address'
+        );
+
+        $currentCar = $this->db->query(
+            'SELECT email_bounced, email_bounced_address, email_suppressed FROM cars WHERE id = ?',
+            [$currentCarId]
+        )->first();
+        $this->assertSame(
+            1,
+            (int) $currentCar->email_bounced,
+            'The car already bounced under the current (case-insensitively matching) address must be left untouched'
+        );
+        $this->assertSame('NEW-Address@Example.com', $currentCar->email_bounced_address);
+        $this->assertSame(
+            1,
+            (int) $currentCar->email_suppressed,
+            'email_suppressed must remain untouched on the car the UPDATE skips entirely'
+        );
+
+        // The cars_update trigger must have fired exactly once, for the
+        // one car actually changed by the UPDATE — not for the untouched one.
+        $histRows = $this->db->query(
+            'SELECT car_id FROM cars_hist WHERE car_id IN (?, ?) ORDER BY car_id',
+            [$staleCarId, $currentCarId]
+        )->results();
+        $this->assertCount(1, $histRows, 'cars_update trigger must fire exactly once, for the changed row only');
+        $this->assertSame($staleCarId, (int) $histRows[0]->car_id);
+    }
+
+    /**
+     * A car with email_bounced=1 and a NULL email_bounced_address (the
+     * pre-existing data-integrity anomaly the plan describes) must be found
+     * by the integrity-check SELECT beforehand, and then clears via the real
+     * UPDATE — clearBouncedForUser()'s WHERE clause explicitly ORs on
+     * "address IS NULL", which a unit test can pin as SQL text but not prove
+     * MySQL evaluates as true for a genuinely NULL column.
+     */
+    public function testCarWithNullBouncedAddressIsFoundByIntegrityCheckAndClears(): void
+    {
+        $userId = $this->createTestUser(['email' => 'new-address@example.com']);
+        $repo = new CarRepository($this->db);
+
+        $carId = $this->createTestCar($userId, ['chassis' => 'BOUNCECLR3']);
+        // Write the anomaly directly — updateEmailBounced() itself forbids
+        // this combination, so it can only exist from data predating that
+        // guard (per the plan's docblock rationale for clearBouncedForUser()).
+        $this->db->query(
+            'UPDATE cars SET email_bounced = 1, email_bounced_address = NULL WHERE id = ?',
+            [$carId]
+        );
+        $this->assertFalse($this->db->error(), 'Failed to seed the integrity-anomaly row: ' . $this->db->errorString());
+        $this->db->query('DELETE FROM cars_hist WHERE car_id = ?', [$carId]);
+
+        $integrityCarIds = $repo->carIdsWithBouncedFlagButNoAddress($userId);
+        $this->assertSame([$carId], $integrityCarIds, 'The integrity-check SELECT must find the anomalous row beforehand');
+
+        $cleared = $repo->clearBouncedForUser($userId, 'new-address@example.com');
+        $this->assertSame(1, $cleared, 'A NULL-address anomaly row must still clear via the real UPDATE');
+
+        $car = $this->db->query('SELECT email_bounced, email_bounced_address FROM cars WHERE id = ?', [$carId])->first();
+        $this->assertSame(0, (int) $car->email_bounced);
+        $this->assertNull($car->email_bounced_address);
+
+        $histRows = $this->db->query('SELECT car_id FROM cars_hist WHERE car_id = ?', [$carId])->results();
+        $this->assertCount(1, $histRows, 'The clearing UPDATE must produce exactly one cars_hist row');
+    }
+
+    /**
+     * The specific transaction-ordering risk the plan calls out: bounce-clear
+     * runs first (a bare autocommit UPDATE with no explicit beginTransaction()
+     * of its own), then syncOwnerFieldsToCars() (which manages its own
+     * per-car transactions) runs immediately after, in the same request. This
+     * confirms neither call interferes with the other — the sync must still
+     * fully succeed when called right after a real bounce-clear UPDATE.
+     */
+    public function testSyncOwnerFieldsToCarsSucceedsImmediatelyAfterBounceClearUpdate(): void
+    {
+        $userId = $this->createTestUser(['email' => 'old-address@example.com']);
+        $repo = new CarRepository($this->db);
+
+        $carId = $this->createTestCar($userId, [
+            'chassis' => 'BOUNCECLR4',
+            'email'   => 'old-address@example.com',
+        ]);
+        $repo->updateEmailBounced($carId, true, 'old-address@example.com');
+        $this->db->query('DELETE FROM cars_hist WHERE car_id = ?', [$carId]);
+
+        // Mirrors the real confirm-by-link write and the hook's own ordering:
+        // users.email changes first, then bounce-clear, then the sync.
+        $this->db->query('UPDATE users SET email = ? WHERE id = ?', ['new-address@example.com', $userId]);
+
+        $cleared = $repo->clearBouncedForUser($userId, 'new-address@example.com');
+        $this->assertSame(1, $cleared, 'Precondition: the bounce-clear UPDATE must have run and cleared the car');
+
+        $owner = new Owner($userId);
+        $result = $owner->syncOwnerFieldsToCars();
+
+        $this->assertTrue(
+            $result->isCompleteSuccess(),
+            'syncOwnerFieldsToCars() must succeed when called immediately after the bounce-clear UPDATE — '
+            . 'no transaction conflict between the two independent operations'
+        );
+
+        $car = $this->db->query('SELECT email, email_bounced FROM cars WHERE id = ?', [$carId])->first();
+        $this->assertSame('new-address@example.com', $car->email, 'The sync must still propagate the new email');
+        $this->assertSame(0, (int) $car->email_bounced, 'The bounce-clear result must not be undone by the subsequent sync');
     }
 }
