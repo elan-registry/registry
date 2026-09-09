@@ -50,7 +50,6 @@ error_log
 ########################################
 utilities
 runme.php
-scripts/playwright-auth-1password*.sh
 
 ########################################
 # Access Control (environment-specific)

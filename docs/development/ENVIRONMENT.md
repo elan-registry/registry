@@ -161,10 +161,10 @@ their real deployed environments)
   Excluded from the prod/test configs intentionally, to avoid accidentally
   pointing a destructive test run at the wrong live site.
 
-### Local Playwright Test Credentials
+### Local Playwright Test Credentials (Local/Dev)
 
-**Usage**: `playwright.config.js`'s `logged-in` project (via `auth.setup.js`),
-`playwright.config.dev.js`'s `logged-in`/`logged-in-non-admin` projects (via
+**Usage**: `playwright.config.js`'s `admin` project (via `auth.setup.js`),
+`playwright.config.dev.js`'s `admin`/`logged-in-non-admin` projects (via
 `auth-dev.setup.js` / `auth-non-admin.setup.js`)
 
 - `TEST_USERNAME` / `TEST_PASSWORD` — credentials for an admin test account, used to
@@ -172,9 +172,9 @@ their real deployed environments)
   the corresponding `setup` project runs — `tests/playwright/.auth/user.json` for
   `playwright.config.js`, `tests/playwright/.auth/user-dev.json` for
   `playwright.config.dev.js` (kept separate so a dev run can't overwrite the
-  production storageState the 1Password/CAPTCHA flow produces). Required for the
-  `logged-in` project; if unset, the setup test skips and the storageState file is
-  removed, so `logged-in` tests run unauthenticated instead of failing on a missing
+  Local storageState). Required for the
+  `admin` project; if unset, the setup test skips and the storageState file is
+  removed, so `admin` tests run unauthenticated instead of failing on a missing
   file.
 - `TEST_USERNAME2` / `TEST_PASSWORD2` — credentials for a non-admin test account, used
   the same way by `auth-non-admin.setup.js` to populate
@@ -182,6 +182,36 @@ their real deployed environments)
   `playwright.config.dev.js`'s `logged-in-non-admin` project (infrastructure only —
   no spec targets it yet).
 - All four are gitignored via `.env.local` and must never be committed. See
+  `.env.example` for the placeholder entries.
+- These are Local/Dev-only accounts (plain-HTTP MAMP, no Turnstile) —
+  unrelated to the `E2E_*` Test/Prod credentials below.
+
+### Playwright Test Credentials (Test/Prod)
+
+**Usage**: `scripts/playwright-auth-setup.js` (consolidated setup script,
+issue #2035), invoked manually to populate the pre-authenticated storageState
+files that `tests/playwright/e2e/auth-staleness.setup.js` /
+`auth-staleness-admin.setup.js` check for staleness before each Test/Prod run
+(`playwright.config.test.js` / `playwright.config.prod.js`'s `admin` project;
+`logged-in` also wires up but is infrastructure only — no non-admin spec
+targets it yet).
+
+- `E2E_TEST_ADMIN_USERNAME` / `E2E_TEST_ADMIN_PASSWORD` — admin account on
+  `test.elanregistry.org`.
+- `E2E_TEST_NONADMIN_USERNAME` / `E2E_TEST_NONADMIN_PASSWORD` — non-admin
+  account on `test.elanregistry.org`.
+- `E2E_PROD_ADMIN_USERNAME` / `E2E_PROD_ADMIN_PASSWORD` — admin account on
+  `elanregistry.org`.
+- `E2E_PROD_NONADMIN_USERNAME` / `E2E_PROD_NONADMIN_PASSWORD` — non-admin
+  account on `elanregistry.org`.
+- Both environments run HTTPS with an active Cloudflare Turnstile challenge,
+  which blocks automated login entirely — these credentials are never used
+  for a live per-run login. Instead a human manually disables Turnstile, runs
+  `node scripts/playwright-auth-setup.js <test|prod> <admin|nonadmin>` once
+  per tier/role to produce `tests/playwright/.auth/user-<tier>-<role>.json`,
+  then re-enables Turnstile. See `docs/testing/PLAYWRIGHT_E2E.md` for the
+  full setup process.
+- All eight are gitignored via `.env.local` and must never be committed. See
   `.env.example` for the placeholder entries.
 
 ### Multi-Clone Session Isolation

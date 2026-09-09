@@ -2,9 +2,9 @@ const { test, expect } = require('@playwright/test');
 const { waitForDataTables } = require('../auth-helper.js');
 
 test.describe('Factory Page - Registry Link Feature', () => {
-  // Run these tests with the logged-in project
+  // Run these tests with the admin project
   test.beforeEach(async ({ }, testInfo) => {
-    if (testInfo.project.name !== 'logged-in') {
+    if (testInfo.project.name !== 'admin') {
       testInfo.skip();
     }
   });

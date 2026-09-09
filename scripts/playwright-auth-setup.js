@@ -1,82 +1,158 @@
 /**
- * One-time setup script to log in and save authentication state
- * This needs to be run once, and you'll need to manually solve any CAPTCHA
+ * Consolidated one-time setup script to log in to Test or Prod and save
+ * authentication state for Playwright's storageState-based auth (issue
+ * #2035, replacing the separate 1Password-driven playwright-auth-setup.js /
+ * playwright-auth-setup-test.js and their .sh wrappers).
+ *
+ * Both Test and Prod run HTTPS with an active Cloudflare Turnstile
+ * challenge, which an automated browser cannot solve — this script fails
+ * fast (does not attempt to solve or bypass it) if any Turnstile widget is
+ * present, including a Cloudflare test/always-pass sitekey. A human must
+ * manually disable Turnstile on the target environment before running this
+ * script, then re-enable it once the auth file is saved. See
+ * docs/testing/PLAYWRIGHT_E2E.md.
+ *
+ * Credentials are read from .env.local (never committed) as
+ * E2E_<TIER>_<ROLE>_USERNAME / E2E_<TIER>_<ROLE>_PASSWORD — see
+ * docs/development/ENVIRONMENT.md.
  *
  * Usage:
- *   export ELAN_USERNAME=$(op read "op://ElanRegistry/elanregistry - test account/username")
- *   export ELAN_PASSWORD=$(op read "op://ElanRegistry/elanregistry - test account/password")
- *   node scripts/setup-auth.js
+ *   node scripts/playwright-auth-setup.js <test|prod> <admin|nonadmin>
  *
- * Or use the provided script:
- *   ./scripts/setup-auth-with-1password.sh
+ * Examples:
+ *   node scripts/playwright-auth-setup.js test admin
+ *   node scripts/playwright-auth-setup.js prod nonadmin
  */
+
+require('dotenv').config({ path: require('path').join(__dirname, '..', '.env.local') });
 
 const { chromium } = require('@playwright/test');
 const path = require('path');
 const fs = require('fs');
 
-async function setupAuth() {
-  const username = process.env.ELAN_USERNAME;
-  const password = process.env.ELAN_PASSWORD;
+const TIERS = ['test', 'prod'];
+const ROLES = ['admin', 'nonadmin'];
 
-  if (!username || !password) {
-    console.error('❌ Error: ELAN_USERNAME and ELAN_PASSWORD environment variables must be set');
-    console.log('\nRun this script with:');
-    console.log('  ./scripts/setup-auth-with-1password.sh');
+const TIER_HOSTS = {
+  test: 'https://test.elanregistry.org',
+  prod: 'https://elanregistry.org',
+};
+
+function parseArgs(argv) {
+  const [tier, role] = argv;
+
+  if (!TIERS.includes(tier)) {
+    console.error(`❌ Error: first argument must be 'test' or 'prod' (got: ${tier || 'unset'})`);
+    console.log('\nUsage: node scripts/playwright-auth-setup.js <test|prod> <admin|nonadmin>');
+    process.exit(1);
+  }
+  if (!ROLES.includes(role)) {
+    console.error(`❌ Error: second argument must be 'admin' or 'nonadmin' (got: ${role || 'unset'})`);
+    console.log('\nUsage: node scripts/playwright-auth-setup.js <test|prod> <admin|nonadmin>');
     process.exit(1);
   }
 
-  console.log('🔐 Starting authentication setup...\n');
+  return { tier, role };
+}
 
-  const browser = await chromium.launch({ headless: false }); // Run in headed mode so you can solve CAPTCHA
+function resolveCredentials(tier, role) {
+  const prefix = `E2E_${tier.toUpperCase()}_${role.toUpperCase()}`;
+  const username = process.env[`${prefix}_USERNAME`];
+  const password = process.env[`${prefix}_PASSWORD`];
+
+  if (!username || !password) {
+    console.error(`❌ Error: ${prefix}_USERNAME and ${prefix}_PASSWORD must be set in .env.local`);
+    console.log('\nSee docs/development/ENVIRONMENT.md and .env.example for the full E2E_* variable list.');
+    process.exit(1);
+  }
+
+  return { username, password };
+}
+
+async function setupAuth() {
+  const { tier, role } = parseArgs(process.argv.slice(2));
+  const { username, password } = resolveCredentials(tier, role);
+  const host = TIER_HOSTS[tier];
+
+  console.log(`🔐 Starting ${tier.toUpperCase()} (${role}) authentication setup...\n`);
+
+  const browser = await chromium.launch({ headless: false });
   const context = await browser.newContext();
   const page = await context.newPage();
 
   try {
-    console.log('📝 Navigating to login page...');
-    await page.goto('https://elanregistry.org/users/login.php');
-    await page.waitForLoadState('networkidle');
+    console.log(`📝 Navigating to ${tier} login page...`);
+    // usersc/login.php is the customized login page (adds security
+    // validation over UserSpice's own users/login.php) — see CLAUDE.md's
+    // Template Customization Rules.
+    await page.goto(`${host}/usersc/login.php`);
 
-    console.log('✍️  Filling in credentials...');
-    await page.fill('input[name="username"], input[type="text"]', username);
-    await page.fill('input[name="password"], input[type="password"]', password);
+    // waitForLoadState('networkidle') can hang indefinitely on this page
+    // even after the form has rendered — wait for the form directly instead
+    // (see #2014).
+    console.log('✍️  Waiting for login form...');
+    await page.waitForSelector('input[name="username"]', { timeout: 15000 });
+    await page.waitForSelector('input[name="password"]', { timeout: 15000 });
 
-    console.log('\n' + '='.repeat(70));
-    console.log('⚠️  IMPORTANT INSTRUCTIONS:');
-    console.log('='.repeat(70));
-    console.log('1. Look at the browser window that just opened');
-    console.log('2. If there is a CAPTCHA, solve it now');
-    console.log('3. Click the LOGIN/SUBMIT button');
-    console.log('4. Wait for the page to redirect after successful login');
-    console.log('\n⏳ This script will wait up to 5 minutes for you to complete the login...');
-    console.log('='.repeat(70) + '\n');
-
-    // Wait for navigation away from login page (5 minute timeout)
-    try {
-      await page.waitForFunction(
-        () => !window.location.href.includes('login.php'),
-        { timeout: 300000 } // 5 minutes
+    // Fail fast if a real Turnstile challenge is present — an automated
+    // browser cannot solve it. Bounded wait with state: 'attached' (not
+    // 'visible') to detect the empty div before Cloudflare's JS renders it.
+    // See docs/testing/PLAYWRIGHT_E2E.md Troubleshooting for full context.
+    const turnstileWidget = await page
+      .waitForSelector('.cf-turnstile', { state: 'attached', timeout: 2000 })
+      .catch(() => null);
+    if (turnstileWidget) {
+      throw new Error(
+        'Turnstile is enabled on this environment — a real challenge widget is ' +
+        'present on the login page. An automated browser cannot solve it, including ' +
+        'a Cloudflare test/always-pass sitekey (this check does not distinguish sitekey ' +
+        'types). Disable Turnstile entirely on this environment, re-run this script, ' +
+        'then re-enable Turnstile once the auth file is saved. ' +
+        'See docs/testing/PLAYWRIGHT_E2E.md Prerequisites/Troubleshooting.'
       );
+    }
 
-      await page.waitForLoadState('networkidle');
+    console.log('  → Entering username...');
+    await page.fill('input[name="username"]', username);
+    console.log('  → Entering password...');
+    await page.fill('input[name="password"]', password);
+
+    console.log('Submitting login form...');
+    await page.waitForSelector('button[type="submit"]', { timeout: 5000 });
+    await page.click('button[type="submit"]');
+    console.log('Login form submitted');
+
+    try {
+      console.log('Waiting for login redirect...');
+      await Promise.race([
+        page.waitForFunction(
+          () => !window.location.href.includes('login.php'),
+          { timeout: 30000 }
+        ),
+        page.waitForSelector('[data-testid="dashboard"], .account-page, .app-container',
+          { timeout: 30000 }).catch(() => {})
+      ]);
+
+      await page.waitForLoadState('networkidle').catch(() => {});
 
       const currentUrl = page.url();
-      console.log(`\n✅ Login successful! Redirected to: ${currentUrl}`);
+      console.log(`Login successful! Redirected to: ${currentUrl}`);
     } catch (_timeoutError) {
       const currentUrl = page.url();
-      console.log(`\n⏱️  Timeout waiting for login. Current URL: ${currentUrl}`);
+      console.log(`Timeout waiting for login redirect. Current URL: ${currentUrl}`);
 
       if (currentUrl.includes('login')) {
-        console.log('❌ Still on login page. Login may have failed or timed out.');
-        console.log('Please try running the script again.');
+        console.error('Still on login page. Possible issues:');
+        console.error('- Invalid credentials (check .env.local)');
+        console.error('- 2FA/TOTP required');
+        console.error('- Network connectivity issue');
+        console.error('- Turnstile rejected the submission (the pre-submit check above ' +
+          'did not catch it — see docs/testing/PLAYWRIGHT_E2E.md Troubleshooting)');
         process.exit(1);
-      } else {
-        console.log('✅ Login appears successful (moved away from login page)');
       }
     }
 
-    // Save authentication state
-    const authFile = path.join(__dirname, '../tests/playwright/.auth/user.json');
+    const authFile = path.join(__dirname, `../tests/playwright/.auth/user-${tier}-${role}.json`);
     const authDir = path.dirname(authFile);
 
     if (!fs.existsSync(authDir)) {
@@ -84,8 +160,8 @@ async function setupAuth() {
     }
 
     await context.storageState({ path: authFile });
-    console.log(`💾 Authentication state saved to: ${authFile}`);
-    console.log('\n✅ Setup complete! You can now run logged-in tests without manual login.\n');
+    console.log(`💾 ${tier.toUpperCase()} (${role}) authentication state saved to: ${authFile}`);
+    console.log(`\n✅ Setup complete! Remember to re-enable Turnstile on ${tier} now.\n`);
 
   } catch (error) {
     console.error('\n❌ Error during authentication setup:', error.message);

@@ -1,9 +1,9 @@
 const { test, expect } = require('@playwright/test');
 
 test.describe('Elan Registry - Menu Verification (Logged In)', () => {
-  // Skip these tests if NOT running in logged-in project
+  // Skip these tests if NOT running in admin project
   test.beforeEach(async ({ }, testInfo) => {
-    if (testInfo.project.name !== 'logged-in') {
+    if (testInfo.project.name !== 'admin') {
       testInfo.skip();
     }
   });
@@ -80,9 +80,9 @@ test.describe('Elan Registry - Menu Verification (Logged In)', () => {
 });
 
 test.describe('Elan Registry - Car Update Functionality (Logged In)', () => {
-  // Skip these tests if NOT running in logged-in project
+  // Skip these tests if NOT running in admin project
   test.beforeEach(async ({ }, testInfo) => {
-    if (testInfo.project.name !== 'logged-in') {
+    if (testInfo.project.name !== 'admin') {
       testInfo.skip();
     }
   });
@@ -148,9 +148,9 @@ test.describe('Elan Registry - Car Update Functionality (Logged In)', () => {
 });
 
 test.describe('Elan Registry - All Pages (Logged In)', () => {
-  // Skip these tests if NOT running in logged-in project
+  // Skip these tests if NOT running in admin project
   test.beforeEach(async ({ }, testInfo) => {
-    if (testInfo.project.name !== 'logged-in') {
+    if (testInfo.project.name !== 'admin') {
       testInfo.skip();
     }
   });
@@ -187,9 +187,9 @@ test.describe('Elan Registry - All Pages (Logged In)', () => {
 });
 
 test.describe('Internal Links Discovery and Testing (Logged In)', () => {
-  // Skip these tests if NOT running in logged-in project
+  // Skip these tests if NOT running in admin project
   test.beforeEach(async ({ }, testInfo) => {
-    if (testInfo.project.name !== 'logged-in') {
+    if (testInfo.project.name !== 'admin') {
       testInfo.skip();
     }
   });

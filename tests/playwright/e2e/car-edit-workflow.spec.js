@@ -47,21 +47,21 @@
 const { test, expect } = require('@playwright/test');
 
 test.describe('Car edit — year/model form workflow (#1949)', () => {
-  // Skip unless running in the authenticated `logged-in` project AND, for
+  // Skip unless running in the authenticated `admin` project AND, for
   // Local/Dev only, real credentials are configured. On Local/Dev, per
   // playwright.config.js's own `hasCredentials` guard, missing credentials
-  // make auth.setup.js skip cleanly (no storageState) while `logged-in`
+  // make auth.setup.js skip cleanly (no storageState) while `admin`
   // still runs unauthenticated (see CLAUDE.md's "Local Playwright tests"
   // note) — without this check, this test's precondition (an owned car
   // reachable from account.php) would fail rather than skip, misreporting a
   // missing local credential as a real regression. Test/Production instead
   // authenticate via a saved storageState and are already gated by
-  // check-auth failing loudly beforehand (docs/testing/PLAYWRIGHT_E2E.md),
+  // check-auth-admin failing loudly beforehand (docs/testing/PLAYWRIGHT_E2E.md),
   // so the credential check only applies when E2E_AUTH_TIER is unset
   // (Local/Dev) — kept here in preparation for #2045 enrollment (see file
   // header) so an unconditional gate doesn't incorrectly skip it there.
   test.beforeEach(async ({}, testInfo) => {
-    if (testInfo.project.name !== 'logged-in') {
+    if (testInfo.project.name !== 'admin') {
       testInfo.skip();
     }
     const usesLiveLogin = !process.env.E2E_AUTH_TIER;
@@ -72,7 +72,7 @@ test.describe('Car edit — year/model form workflow (#1949)', () => {
 
   // Discover a car the logged-in account actually owns via
   // usersc/account.php's per-car "Update Car" button (same pattern as
-  // tests/playwright/e2e/logged-in.spec.js's "Update Car" test and
+  // tests/playwright/e2e/admin.spec.js's "Update Car" test and
   // car-edit-owner-refresh.spec.js) rather than a hardcoded
   // CAR_ID_STANDARD fixture — car ownership on Local/Dev differs from
   // Test/Production, and CAR_ID_STANDARD (fixtures.js, defaults to 1) is

@@ -1,36 +1,42 @@
 const path = require('path');
 
 /**
- * Resolve the per-tier auth file and 1Password setup script for a given
- * E2E_AUTH_TIER value.
+ * Resolve the per-(tier, role) auth file and setup command for a given
+ * E2E_AUTH_TIER value and hardcoded role.
  *
- * Fails fast on an unset/misspelled tier rather than silently falling through
- * to 'prod' — auth-staleness.setup.js exists specifically to eliminate silent
- * wrong-mode auth behavior, so defaulting to the more sensitive tier here
- * would be exactly the failure mode it's meant to prevent.
+ * Fails fast on an unset/misspelled tier or role rather than silently
+ * falling through to a default — auth-staleness.setup.js /
+ * auth-staleness-admin.setup.js exist specifically to eliminate silent
+ * wrong-mode auth behavior, so defaulting to the more sensitive combination
+ * here would be exactly the failure mode they're meant to prevent.
  *
- * Lives in its own module (rather than inside auth-staleness.setup.js) so it
- * is importable for unit testing without also registering that file's
+ * Lives in its own module (rather than inside the *.setup.js files) so it
+ * is importable for unit testing without also registering those files'
  * Playwright test() into the importing suite. Mirrors the "pure function
  * importable for testing" design of auth-staleness-check.js.
  *
  * @param {string|undefined} tier 'test' | 'prod'
+ * @param {string|undefined} role 'admin' | 'nonadmin'
  * @param {string} authDir Directory holding the saved storageState files
  * @returns {{authFile: string, setupScriptPath: string}}
  */
-function resolveTierConfig(tier, authDir) {
+function resolveTierConfig(tier, role, authDir) {
   if (tier !== 'test' && tier !== 'prod') {
     throw new Error(
       `auth-staleness.setup.js requires E2E_AUTH_TIER to be 'test' or 'prod' (got: ${tier || 'unset'}). ` +
       `It is set by playwright.config.test.js / playwright.config.prod.js.`
     );
   }
+  if (role !== 'admin' && role !== 'nonadmin') {
+    throw new Error(
+      `resolveTierConfig requires role to be 'admin' or 'nonadmin' (got: ${role || 'unset'}). ` +
+      `It is hardcoded by auth-staleness.setup.js (nonadmin) / auth-staleness-admin.setup.js (admin).`
+    );
+  }
 
   return {
-    authFile: path.join(authDir, tier === 'test' ? 'user-test.json' : 'user.json'),
-    setupScriptPath: tier === 'test'
-      ? './scripts/playwright-auth-1password-test.sh'
-      : './scripts/playwright-auth-1password.sh',
+    authFile: path.join(authDir, `user-${tier}-${role}.json`),
+    setupScriptPath: `node scripts/playwright-auth-setup.js ${tier} ${role}`,
   };
 }
 

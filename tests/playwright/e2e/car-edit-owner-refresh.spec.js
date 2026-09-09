@@ -76,28 +76,28 @@
 const { test, expect } = require('@playwright/test');
 
 test.describe('Car edit — real buildCarDetails() owner-column refresh (#1962)', () => {
-  // Skip unless running in the authenticated `logged-in` project AND,
+  // Skip unless running in the authenticated `admin` project AND,
   // for Local/Dev only, real credentials are configured. The project-name
   // check alone (the pattern mirrored from
-  // tests/playwright/e2e/logged-in.spec.js) is not sufficient on Local/Dev:
+  // tests/playwright/e2e/admin.spec.js) is not sufficient on Local/Dev:
   // per playwright.config.js's own `hasCredentials` guard, when
   // TEST_USERNAME/TEST_PASSWORD are unset, auth.setup.js skips cleanly with
-  // no storageState file — but the `logged-in` project itself still runs,
+  // no storageState file — but the `admin` project itself still runs,
   // unauthenticated, rather than being skipped (see CLAUDE.md's
   // "Local Playwright tests" note). Without this check, this test's own
   // preconditions (an authenticated fname on user_settings.php, an editable
   // car) would fail rather than skip, misreporting a missing local
   // credential as a real regression.
   //
-  // Test/Production authenticate via a saved storageState (1Password flow),
-  // not TEST_USERNAME/TEST_PASSWORD, and are already gated by check-auth
-  // failing loudly before `logged-in` runs (see docs/testing/PLAYWRIGHT_E2E.md)
+  // Test/Production authenticate via a saved storageState, not
+  // TEST_USERNAME/TEST_PASSWORD, and are already gated by check-auth-admin
+  // failing loudly before `admin` runs (see docs/testing/PLAYWRIGHT_E2E.md)
   // — so the credential check below only applies when E2E_AUTH_TIER is unset
   // (Local/Dev). This is preparatory: this test isn't enrolled on Test/
   // Production yet (see the file header — #2045), but gating it
   // unconditionally would still incorrectly skip it there once it is.
   test.beforeEach(async ({}, testInfo) => {
-    if (testInfo.project.name !== 'logged-in') {
+    if (testInfo.project.name !== 'admin') {
       testInfo.skip();
     }
     const usesLiveLogin = !process.env.E2E_AUTH_TIER;
@@ -119,7 +119,7 @@ test.describe('Car edit — real buildCarDetails() owner-column refresh (#1962)'
 
     // Discover a car the logged-in account actually owns via
     // usersc/account.php's per-car "Update Car" button (same pattern as
-    // tests/playwright/e2e/logged-in.spec.js's "Update Car" test) rather
+    // tests/playwright/e2e/admin.spec.js's "Update Car" test) rather
     // than a hardcoded CAR_ID_STANDARD fixture — car ownership on Local/Dev
     // differs from Test/Production, and CAR_ID_STANDARD (fixtures.js,
     // defaults to 1) is not guaranteed to belong to whichever account each
@@ -151,14 +151,14 @@ test.describe('Car edit — real buildCarDetails() owner-column refresh (#1962)'
     const marker = `owner-refresh-e2e ${new Date().toISOString()}`;
     await commentField.fill(marker);
 
-    // NOTE: tests/playwright/e2e/logged-in.spec.js's "Update Car" test uses
+    // NOTE: tests/playwright/e2e/admin.spec.js's "Update Car" test uses
     // this same accordion-expand step ('#heading-section2 button' /
     // '#section2') before clicking #submit — as of this edit, that pattern
     // no longer matches app/owner/cars/edit.php's actual markup (verified:
     // the Photos section, line ~368, is a plain <h5> heading, not a
     // collapsible accordion; #submit and #myPond are directly visible with
     // no expand step required). Dropped here since it only caused this test
-    // to time out waiting for a nonexistent element. logged-in.spec.js's
+    // to time out waiting for a nonexistent element. admin.spec.js's
     // identical stale selector is a separate, pre-existing issue, not fixed
     // by this change.
     // The form submits via a real fetch() to app/api/cars/save.php (see
