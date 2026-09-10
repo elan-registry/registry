@@ -133,6 +133,7 @@ test.describe('Join form client-side failure beacon (#1690)', () => {
     const gpsButton = page.locator('[id$="-gps-btn"]');
     if (!(await gpsButton.count())) {
       test.skip(true, 'GPS button not rendered — geolocation not available in this browser context');
+      return;
     }
     await gpsButton.click();
 
@@ -171,6 +172,7 @@ test.describe('Join form client-side failure beacon (#1690)', () => {
     const gpsButton = page.locator('[id$="-gps-btn"]');
     if (!(await gpsButton.count())) {
       test.skip(true, 'GPS button not rendered — geolocation not available in this browser context');
+      return;
     }
     await gpsButton.click();
 
@@ -207,6 +209,7 @@ test.describe('Join form client-side failure beacon (#1690)', () => {
     const gpsButton = page.locator('[id$="-gps-btn"]');
     if (!(await gpsButton.count())) {
       test.skip(true, 'GPS button not rendered — geolocation not available in this browser context');
+      return;
     }
 
     await page.evaluate(() => {
@@ -258,6 +261,7 @@ test.describe('Join form client-side failure beacon (#1690)', () => {
     const gpsButton = page.locator('[id$="-gps-btn"]');
     if (!(await gpsButton.count())) {
       test.skip(true, 'GPS button not rendered — no way to trigger handleGPSClick() in this browser context');
+      return;
     }
     await gpsButton.click();
 

@@ -21,10 +21,10 @@ test.describe('Privacy page', () => {
     await page.goto('app/owner/privacy.php', { waitUntil: 'domcontentloaded' });
 
     const currentUrl = page.url();
-    if (currentUrl.includes('login') || currentUrl.includes('Please Log In')) {
-      test.skip('Session not established locally — skipping privacy page assertion');
-      return;
-    }
+    test.skip(
+      currentUrl.includes('login') || currentUrl.includes('Please Log In'),
+      'Session not established locally — skipping privacy page assertion'
+    );
 
     expect(currentUrl).toContain('privacy.php');
 

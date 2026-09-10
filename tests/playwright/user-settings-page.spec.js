@@ -24,10 +24,10 @@ test.describe('User settings page (customized) — #1253', () => {
     await page.goto('usersc/user_settings.php', { waitUntil: 'domcontentloaded' });
 
     const currentUrl = page.url();
-    if (currentUrl.includes('login') || currentUrl.includes('Please Log In')) {
-      test.skip('Session not established locally — skipping user settings assertions');
-      return;
-    }
+    test.skip(
+      currentUrl.includes('login') || currentUrl.includes('Please Log In'),
+      'Session not established locally — skipping user settings assertions'
+    );
 
     expect(currentUrl).toContain('user_settings.php');
 

@@ -34,10 +34,10 @@ test.describe('Contact owner page — DatabaseInterface migration (#1585)', () =
     await page.goto(`app/owner/contact/owner.php?car_id=${CAR_ID_STANDARD}`, { waitUntil: 'domcontentloaded' });
 
     const currentUrl = page.url();
-    if (currentUrl.includes('login') || currentUrl.includes('Please Log In')) {
-      test.skip('Session not established locally — skipping contact-owner form assertion');
-      return;
-    }
+    test.skip(
+      currentUrl.includes('login') || currentUrl.includes('Please Log In'),
+      'Session not established locally — skipping contact-owner form assertion'
+    );
 
     // Deliberately not skipped on a redirect to '/': that is exactly the failure
     // mode of the bug this file exists to catch (a call to a \DB-only method, or
@@ -59,10 +59,10 @@ test.describe('Contact owner page — DatabaseInterface migration (#1585)', () =
     await page.goto(`app/owner/contact/owner.php?car_id=${CAR_ID_NONEXISTENT}`, { waitUntil: 'domcontentloaded' });
 
     const currentUrl = page.url();
-    if (currentUrl.includes('login') || currentUrl.includes('Please Log In')) {
-      test.skip('Session not established locally — skipping car_id redirect assertion');
-      return;
-    }
+    test.skip(
+      currentUrl.includes('login') || currentUrl.includes('Please Log In'),
+      'Session not established locally — skipping car_id redirect assertion'
+    );
 
     expect(currentUrl).not.toContain('contact/owner.php');
     await expect(page.locator('textarea[name="message"]')).toHaveCount(0);

@@ -64,10 +64,10 @@ test.describe('Car edit page — missing car (#1313)', () => {
         await page.goto('app/owner/cars/edit.php', { waitUntil: 'domcontentloaded' });
 
         const initialUrl = page.url();
-        if (initialUrl.includes('login') || initialUrl.includes('Please Log In')) {
-            test.skip('Session not established locally — skipping missing-car assertion');
-            return;
-        }
+        test.skip(
+            initialUrl.includes('login') || initialUrl.includes('Please Log In'),
+            'Session not established locally — skipping missing-car assertion'
+        );
 
         const csrfToken = await page.locator('#csrf').inputValue();
         expect(csrfToken, 'edit.php must render a #csrf hidden field to obtain a token from').toBeTruthy();
@@ -112,10 +112,10 @@ test.describe('Car edit page — missing car (#1313)', () => {
         await page.waitForLoadState('domcontentloaded');
 
         const currentUrl = page.url();
-        if (currentUrl.includes('login') || currentUrl.includes('Please Log In')) {
-            test.skip('Session not established locally — skipping missing-car assertion');
-            return;
-        }
+        test.skip(
+            currentUrl.includes('login') || currentUrl.includes('Please Log In'),
+            'Session not established locally — skipping missing-car assertion'
+        );
 
         // ------------------------------------------------------------------
         // Assertion 1: redirected away from edit.php to cars/index.php.
