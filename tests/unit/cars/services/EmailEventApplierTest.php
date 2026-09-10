@@ -146,6 +146,31 @@ final class EmailEventApplierTest extends TestCase
         $this->assertNoLogEntries();
     }
 
+    // --- Unsubscribed ----------------------------------------------------
+
+    /**
+     * An unsubscribe suppresses exactly like a spam complaint (#1923), but is
+     * still recorded under its own event name — the two must stay
+     * distinguishable in er_email_events, not aliased to one another.
+     */
+    public function testUnsubscribedEventSuppressesRatherThanBounces(): void
+    {
+        $this->mockRepo->expects($this->once())
+            ->method('insertEmailEvent')
+            ->with(7, 'owner@example.com', 'unsubscribed', null, 'msg-1', '2026-01-01 00:00:00');
+        $this->mockRepo->expects($this->never())->method('countSoftBouncesSinceLastDelivered');
+
+        $this->mockManager->expects($this->once())
+            ->method('setSuppressed')
+            ->with($this->callback(fn ($carData) => $carData->id === 7))
+            ->willReturn(true);
+        $this->mockManager->expects($this->never())->method('setBounced');
+
+        $this->applier->apply(7, 'owner@example.com', 'unsubscribed', null, 'msg-1', '2026-01-01 00:00:00');
+
+        $this->assertNoLogEntries();
+    }
+
     // --- Known inert events ----------------------------------------------
 
     /**

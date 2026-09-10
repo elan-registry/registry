@@ -16,9 +16,9 @@ use ElanRegistry\LogCategories;
  * others unnamed), and a bespoke column approach would have meant a new
  * migration for each one. `$jobName` must be in the `ALLOWED_JOB_NAMES`
  * allowlist below — it grows only when a new caller genuinely needs a new
- * job. Currently just `reconciliation`, claimed by
- * {@see AbstractCronJob::run()} on behalf of
- * {@see BrevoEventReconciliationJob} (#1889). The allowlist and the seeded
+ * job, each claimed by {@see AbstractCronJob::run()} on behalf of its own
+ * job class (e.g. {@see BrevoEventReconciliationJob} #1889,
+ * {@see BrevoSuppressionSyncJob} #1923). The allowlist and the seeded
  * `er_cron_job_runs` rows must stay in sync — a job name present in only one
  * of the two fails silently (allowlist-only: `claim()` always returns
  * `false`; table-only: unreachable, since nothing can pass that name through
@@ -48,6 +48,7 @@ final class CronJobGuard
 {
     private const ALLOWED_JOB_NAMES = [
         'reconciliation',
+        'brevo_suppression_sync',
     ];
 
     public function __construct(private readonly DatabaseInterface $db)
