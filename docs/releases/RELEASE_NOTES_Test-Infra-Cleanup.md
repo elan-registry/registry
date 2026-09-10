@@ -37,4 +37,4 @@ Changes to the local/CI test harness so a green test run actually reflects reali
 - [#2035](https://github.com/elan-registry/registry/issues/2035) — test: add admin Playwright auth tier to Test/Prod configs, consolidate auth setup scripts off 1Password
 - WIP: [#2044](https://github.com/elan-registry/registry/issues/2044) — spike: is a CI-runnable integration suite achievable without a UserSpice install in CI?
 - [#2059](https://github.com/elan-registry/registry/issues/2059) — test: rename TEST_USERNAME/TEST_USERNAME2 to E2E_DEV_* naming for consistency
-- WIP: [#2055](https://github.com/elan-registry/registry/issues/2055) — bug: leading-slash page.goto()/request.get() calls in not-logged-in.spec.js break when baseURL has a non-root path
+- [#2055](https://github.com/elan-registry/registry/issues/2055) — bug: leading-slash page.goto()/request.get() calls in not-logged-in.spec.js break when baseURL has a non-root path
