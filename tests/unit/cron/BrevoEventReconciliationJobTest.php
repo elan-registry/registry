@@ -406,6 +406,13 @@ final class BrevoEventReconciliationJobTest extends TestCase
         $this->makeJob([new FakeBrevoEvent(email: '')])->runNow();
 
         $this->assertSame([], $this->applier->calls);
+
+        // EMAIL_WEBHOOK, not CRON_JOB_FAILURE: an empty required field is a
+        // Brevo payload-contract warning, and the job itself is healthy. Same
+        // category the non-string and oversized-value branches use.
+        $log = $this->logsContaining('empty required field in event payload');
+        $this->assertNotEmpty($log, 'A skipped event must be logged, not silent');
+        $this->assertSame(LogCategories::LOG_CATEGORY_EMAIL_WEBHOOK, $log[0]['category']);
     }
 
     // --- Non-string payload fields ---------------------------------------
@@ -606,6 +613,38 @@ final class BrevoEventReconciliationJobTest extends TestCase
         $this->assertSame([], $this->applier->calls);
     }
 
+    /**
+     * execute() (the nightly cron path, unlike runNowWithSummary()) logs its
+     * summary and discards it — nobody renders `$summary->pollFailed`. Without
+     * a distinguishing suffix, a failed poll (all counts 0) and a genuinely
+     * quiet night (also all counts 0) log byte-for-byte identical lines,
+     * silently misrepresenting a failed run as a clean one on the one path
+     * nobody is actively watching. Guards against that regression.
+     */
+    public function testNightlyRunLogsAPollFailureDistinctlyFromAnEmptyRun(): void
+    {
+        $this->mockRepo->method('deleteEmailEventsOlderThan')->willReturn(0);
+
+        $this->makeJob(null)->runNow();
+        $failedPollLog = $this->logsContaining('incremental run complete');
+        $this->assertNotEmpty($failedPollLog);
+        $this->assertStringContainsString('poll failed', $failedPollLog[0]['message']);
+
+        global $mockLogEntries;
+        $mockLogEntries = [];
+
+        $this->makeJob([])->runNow();
+        $emptyRunLog = $this->logsContaining('incremental run complete');
+        $this->assertNotEmpty($emptyRunLog);
+        $this->assertStringNotContainsString('poll failed', $emptyRunLog[0]['message']);
+
+        $this->assertNotSame(
+            $failedPollLog[0]['message'],
+            $emptyRunLog[0]['message'],
+            'A failed poll must not log identically to a genuinely empty page'
+        );
+    }
+
     // --- runNowWithSummary() counts ---------------------------------------
 
     public function testRunNowWithSummaryHappyPathCountsAreCorrect(): void
@@ -664,11 +703,18 @@ final class BrevoEventReconciliationJobTest extends TestCase
     /**
      * The multi-car partial-failure case this issue exists for (#2061):
      * matchedCount/skippedCount are counted per car-write, not per event. One
-     * event matching 3 cars where 2 writes succeed and 1 throws must
-     * contribute +2 matched and +1 skipped — not "the whole event counted as
+     * event matching 3 cars where 1 write succeeds and 2 throw must
+     * contribute +1 matched and +2 skipped — not "the whole event counted as
      * skipped", and eventsExamined must stay 1.
+     *
+     * Two (not one) failing car-writes deliberately, so skippedCount is
+     * distinguishable from a plausible event-granularity bug: with only one
+     * failing car, "skippedCount = 1" is what BOTH per-car-write counting AND
+     * a wrong "flag the whole event as skipped if any write failed"
+     * implementation would produce. A 1-matched/2-skipped split only comes
+     * out of genuine per-car-write counting.
      */
-    public function testOneEventMatchingThreeCarsWithOneFailedWriteCountsPerCar(): void
+    public function testOneEventMatchingThreeCarsWithTwoFailedWritesCountsPerCar(): void
     {
         $this->mockRepo->method('findByEmail')->willReturn([
             (object) ['id' => 1],
@@ -676,19 +722,20 @@ final class BrevoEventReconciliationJobTest extends TestCase
             (object) ['id' => 3],
         ]);
         // All three calls share this event's single message-id, so failOn()
-        // alone cannot isolate one — failOnCarId() targets car 2 specifically.
-        $this->applier->failOnCarId(2);
+        // alone cannot isolate individual calls — failOnCarId() targets cars
+        // 2 and 3 specifically.
+        $this->applier->failOnCarId(2, 3);
 
         $summary = $this->makeJob([
             new FakeBrevoEvent(email: 'multi@example.com', event: 'hard_bounce', messageId: 'm1'),
         ])->runNowWithSummary();
 
         $this->assertCount(3, $this->applier->calls, 'All three car writes must be attempted');
-        $this->assertSame(2, $summary->matchedCount, 'Two of three car writes succeeded');
-        $this->assertSame(1, $summary->skippedCount, 'One of three car writes failed');
+        $this->assertSame(1, $summary->matchedCount, 'One of three car writes succeeded');
+        $this->assertSame(2, $summary->skippedCount, 'Two of three car writes failed');
         $this->assertSame(0, $summary->unmatchedCount);
         $this->assertSame(1, $summary->eventsExamined, 'One event was examined, regardless of car count');
-        $this->assertSame(['hard_bounce' => 2], $summary->eventTypeCounts);
+        $this->assertSame(['hard_bounce' => 1], $summary->eventTypeCounts);
     }
 
     /**

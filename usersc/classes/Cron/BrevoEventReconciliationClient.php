@@ -35,9 +35,11 @@ use ElanRegistry\LogCategories;
  * Brevo should log and skip this cycle, not abort the whole cron run. `null`
  * means the poll itself failed (SDK unconfigured/missing, HTTP/API
  * exception); `[]` means the poll succeeded and Brevo genuinely returned zero
- * events for the window — mirrors {@see BrevoSuppressionSyncClient::fetchBlockedContacts()}'s
- * existing null-on-failure contract exactly, so a caller that needs to tell
- * "nothing happened" apart from "nothing to report" can.
+ * events for the window — same *intent* as
+ * {@see BrevoSuppressionSyncClient::fetchBlockedContacts()}'s null-on-failure
+ * signal (so a caller can tell "nothing happened" apart from "nothing to
+ * report"), though that method's own success shape differs: it returns a
+ * single page object (never `[]`), not an array.
  *
  * Not `final`, matching {@see \ElanRegistry\Car\CarRepository} and
  * {@see \ElanRegistry\Car\CarVerificationManager}: this class is an injected

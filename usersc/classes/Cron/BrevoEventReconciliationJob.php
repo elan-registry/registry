@@ -162,15 +162,25 @@ final class BrevoEventReconciliationJob extends AbstractCronJob
         // there would dilute the one category an operator filters on to find
         // broken jobs. Matches BrevoSuppressionSyncJob::execute()'s identical
         // choice for its own incremental-run summary line.
+        //
+        // The pollFailed suffix matters here specifically: without it, a
+        // failed poll (all counts 0) logs a line byte-for-byte identical to a
+        // genuinely quiet night with nothing to backfill — the same
+        // fabricated-all-zero-summary problem runNowWithSummary()'s own
+        // docblock argues against, just on the nightly path nobody is
+        // actively watching. fetchEvents() already logs the specific cause
+        // under CRON_JOB_FAILURE; this suffix only prevents this summary line
+        // itself from reading as a false all-clear.
         logger(0, LogCategories::LOG_CATEGORY_EMAIL_WEBHOOK, sprintf(
             'Brevo event reconciliation: incremental run complete —'
             . ' %d matched, %d unmatched, %d skipped, %d ignored (non-verification tag),'
-            . ' %d page(s) fetched.',
+            . ' %d page(s) fetched%s.',
             $summary->matchedCount,
             $summary->unmatchedCount,
             $summary->skippedCount,
             $summary->ignoredByTagCount,
-            $summary->pagesFetched
+            $summary->pagesFetched,
+            $summary->pollFailed ? ' — a Brevo poll failed, nothing was backfilled this cycle' : ''
         ));
 
         // Independent of the backfill, and deliberately outside its error
@@ -236,7 +246,9 @@ final class BrevoEventReconciliationJob extends AbstractCronJob
     private function backfillEvents(): ReconciliationSummary
     {
         // fetchEvents() never throws — a poll failure returns null and is
-        // already logged there under LOG_CATEGORY_CRON_JOB_FAILURE.
+        // already logged there (under LOG_CATEGORY_CRON_JOB_FAILURE for a
+        // genuine failure, or LOG_CATEGORY_CRON_JOB_SKIPPED when Brevo simply
+        // isn't configured — see fetchEvents()'s own docblock).
         $events = $this->client->fetchEvents(
             $this->now->modify('-' . self::LOOKBACK_HOURS . ' hours'),
             $this->now,

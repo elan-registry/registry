@@ -40,8 +40,8 @@ class SpyEmailEventApplier extends EmailEventApplier
     /** apply() throws CarDatabaseException when the message-id equals this. */
     private ?string $failOnMessageId = null;
 
-    /** apply() throws CarDatabaseException when the car id equals this. */
-    private ?int $failOnCarId = null;
+    /** apply() throws CarDatabaseException when the car id is in this set. */
+    private array $failOnCarIds = [];
 
     public function __construct()
     {
@@ -57,15 +57,18 @@ class SpyEmailEventApplier extends EmailEventApplier
     }
 
     /**
-     * Make apply() throw for this car id, regardless of message-id.
+     * Make apply() throw for these car ids, regardless of message-id.
      *
      * Needed when several calls for the same event share one message-id (a
      * single event applied to multiple matched cars), so failOn() alone
-     * cannot isolate one call.
+     * cannot isolate individual calls. Accepts one or more ids so a test can
+     * script more than one failing car-write within the same multi-car event
+     * — proving skippedCount is counted per car-write, not "any failure in
+     * this event marks it skipped".
      */
-    public function failOnCarId(int $carId): void
+    public function failOnCarId(int ...$carIds): void
     {
-        $this->failOnCarId = $carId;
+        $this->failOnCarIds = $carIds;
     }
 
     public function apply(
@@ -78,7 +81,7 @@ class SpyEmailEventApplier extends EmailEventApplier
     ): void {
         $this->calls[] = compact('carId', 'email', 'event', 'reason', 'messageId', 'occurredAt');
 
-        if ($messageId === $this->failOnMessageId || $carId === $this->failOnCarId) {
+        if ($messageId === $this->failOnMessageId || in_array($carId, $this->failOnCarIds, true)) {
             throw new CarDatabaseException('simulated write failure');
         }
     }
