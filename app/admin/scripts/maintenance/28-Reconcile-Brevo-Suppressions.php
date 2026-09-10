@@ -27,11 +27,11 @@ use ElanRegistry\LogCategories;
  * `er_email_events` row under the UNIQUE constraint, and the flag writes are
  * plain column updates.
  *
- * Unlike 27-Reconcile-Brevo-Events.php's `runNow()`, which is crash-isolated
- * and returns void, `runNowWithSummary()` logs and then **rethrows** on a
- * genuinely failed run so a crash cannot be rendered as a plausible all-zero
- * summary. The try/catch below therefore covers the call itself, not just the
- * construction above it.
+ * Like 27-Reconcile-Brevo-Events.php (#2061), this calls a job-class sibling
+ * `runNowWithSummary()` rather than the `final`/void `runNow()`: it logs and
+ * then **rethrows** on a genuinely failed run so a crash cannot be rendered
+ * as a plausible all-zero summary. The try/catch below therefore covers the
+ * call itself, not just the construction above it.
  *
  * Issue #1923.
  */

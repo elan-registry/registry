@@ -378,11 +378,13 @@ full rationale and the count-accuracy notes behind its `SuppressionSyncSummary`
 return value.
 
 **Admin UI:** `app/admin/scripts/maintenance/28-Reconcile-Brevo-Suppressions.php`
-— the manual "run now" wrapper, mirroring `27-Reconcile-Brevo-Events.php`'s
-gate/two-phase-UI pattern but additionally rendering the run's summary inline
-(matched/unmatched/already-flagged/skipped counts, a per-reason-code breakdown,
-and warnings when the backfill was capped, a Brevo poll failed mid-run, or any
-contact was skipped).
+— the manual "run now" wrapper, sharing `27-Reconcile-Brevo-Events.php`'s
+gate/two-phase-UI pattern. Both scripts render their run's summary inline
+(matched/unmatched/skipped counts and a per-event-type or per-reason-code
+breakdown, plus warnings when the run was incomplete or something was
+skipped) rather than requiring a trip to Admin → Logs — #1923 introduced the
+pattern via `SuppressionSyncSummary`/`runNowWithSummary()`, and #2061 applied
+the same shape to the reconciliation job via `ReconciliationSummary`.
 
 ### Feature Switch Related Documentation
 

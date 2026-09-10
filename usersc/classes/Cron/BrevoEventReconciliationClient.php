@@ -31,12 +31,15 @@ use ElanRegistry\LogCategories;
  * HTTP call gets an explicit deadline.
  *
  * All failure modes (Brevo unconfigured, missing SDK, DB error, HTTP error)
- * return an empty array rather than throwing: a reconciliation poll that
- * cannot reach Brevo should log and skip this cycle, not abort the whole
- * cron run. Callers cannot distinguish "no events in window" from "poll
- * failed" — that is deliberate, since both mean "backfill nothing this
- * cycle", and the distinction is recorded in the log rather than in the
- * return value.
+ * return `null` rather than throwing: a reconciliation poll that cannot reach
+ * Brevo should log and skip this cycle, not abort the whole cron run. `null`
+ * means the poll itself failed (SDK unconfigured/missing, HTTP/API
+ * exception); `[]` means the poll succeeded and Brevo genuinely returned zero
+ * events for the window — same *intent* as
+ * {@see BrevoSuppressionSyncClient::fetchBlockedContacts()}'s null-on-failure
+ * signal (so a caller can tell "nothing happened" apart from "nothing to
+ * report"), though that method's own success shape differs: it returns a
+ * single page object (never `[]`), not an array.
  *
  * Not `final`, matching {@see \ElanRegistry\Car\CarRepository} and
  * {@see \ElanRegistry\Car\CarVerificationManager}: this class is an injected
@@ -87,24 +90,26 @@ class BrevoEventReconciliationClient
      * @param \DateTimeImmutable $endDate   End of the window (date part only)
      * @param int                $limit     Page size (Brevo caps this at 2500)
      * @param int                $offset    Zero-based offset into the result set
-     * @return \Brevo\Client\Model\GetEmailEventReportEvents[] Empty array if
-     *         Brevo is not configured/ready, or the API call fails — never
+     * @return \Brevo\Client\Model\GetEmailEventReportEvents[]|null Null if
+     *         Brevo is not configured/ready or the API call fails — never
      *         throws (a reconciliation job's polling failure should be
-     *         logged and skipped this cycle, not crash the whole run).
+     *         logged and skipped this cycle, not crash the whole run). An
+     *         empty array means the poll succeeded and Brevo returned no
+     *         events for the window.
      */
     public function fetchEvents(
         \DateTimeImmutable $startDate,
         \DateTimeImmutable $endDate,
         int $limit,
         int $offset
-    ): array {
+    ): ?array {
         $apiKey = $this->apiKey();
         if ($apiKey === null) {
-            return [];
+            return null;
         }
 
         if (!$this->loadSdk()) {
-            return [];
+            return null;
         }
 
         try {
@@ -159,7 +164,7 @@ class BrevoEventReconciliationClient
                 get_class($e),
                 $e->getMessage()
             ));
-            return [];
+            return null;
         }
     }
 

@@ -1198,8 +1198,10 @@ holding cron runs open indefinitely.
   applied to Guzzle client, unlike the plugin's own `sendinblue()` function
   which leaves both at unlimited
 - All failure modes (Brevo unconfigured, missing SDK, DB error, HTTP error)
-  return empty array rather than throwing, so reconciliation poll failures do
-  not abort the whole cron run
+  return `null` rather than throwing, so reconciliation poll failures do not
+  abort the whole cron run; an empty array means the poll succeeded and Brevo
+  genuinely returned zero events for the window — the two are distinguishable
+  (#2061), unlike this method's original `array`-only return type (#1889)
 - Defensive reads for Brevo configuration (API key, plugin status), with
   distinct logging: `SKIPPED` for "not configured" (expected), `FAILURE` for
   "configured but unreachable" (infrastructure fault)
@@ -1213,10 +1215,11 @@ public function __construct(private readonly DatabaseInterface $db)
 
 **Public Methods**:
 
-- `fetchEvents(\DateTimeImmutable $startDate, \DateTimeImmutable $endDate, int $limit, int $offset): array`
+- `fetchEvents(\DateTimeImmutable $startDate, \DateTimeImmutable $endDate, int $limit, int $offset): ?array`
   — Fetch one page of delivery events for the date window; returns
-  `\Brevo\Client\Model\GetEmailEventReportEvents[]`, or empty array on any
-  failure (never throws)
+  `\Brevo\Client\Model\GetEmailEventReportEvents[]` on success (empty array if
+  Brevo returned no events), or `null` if the poll itself failed (never
+  throws)
 
 **Private Methods**:
 
@@ -1291,13 +1294,25 @@ The `$now` parameter is injectable for testing; defaults to wall-clock time.
 
 - `jobName(): string` — Returns `'reconciliation'`
 - `guardIntervalHours(): int` — Returns `20`
-- `execute(): void` — Backfill one page, then prune expired rows
+- `execute(): void` — Backfill one page, log a one-line summary (with a
+  distinct suffix if the poll failed), then prune expired rows
+- `runNowWithSummary(): ReconciliationSummary` — Sibling to the inherited
+  `final runNow()` for the manual "run now" admin path (#2061). Not an
+  override — `runNow()` stays `final`/void. Wraps the backfill and prune in
+  try/catch, logs and **rethrows** on a genuinely unexpected failure (so a
+  crash cannot render as a plausible all-zero summary), and returns a real
+  `ReconciliationSummary` — with `pollFailed` set, not thrown — when only the
+  Brevo poll itself failed
 
 **Private Methods**:
 
-- `backfillEvents(): void` — Fetch one page and apply each tag-matching event
-- `applyEvent(object $event): void` — Apply one Brevo statistics-API event to
-  its cars (tag/email/event/message-id validation, `EmailEventApplier::apply()`)
+- `backfillEvents(): ReconciliationSummary` — Fetch one page and apply each
+  tag-matching event, returning the run's counts
+- `applyEvent(object $event, array &$counts, array &$eventTypeCounts): void`
+  — Apply one Brevo statistics-API event to its cars (tag/email/event/
+  message-id validation, `EmailEventApplier::apply()`), incrementing the
+  passed-by-reference counters. Counts at *car-write* granularity, not event
+  granularity — see `ReconciliationSummary`
 - `pruneExpiredEvents(): void` — Delete `er_email_events` rows older than
   retention cutoff
 - `resolveOccurredAt(mixed $rawDate, string $email, string $event): string` —
@@ -1307,16 +1322,70 @@ The `$now` parameter is injectable for testing; defaults to wall-clock time.
 **Used By**:
 
 - Cron dispatch (`users/cron/cron.php`) via `AbstractCronJob::run()`
+- `app/admin/scripts/maintenance/27-Reconcile-Brevo-Events.php` — Manual "run
+  now" admin script, via `runNowWithSummary()` (#2061)
 
 **See Also**:
 
 - `AbstractCronJob` — Template-method base (crash isolation, enabled check, guard claim)
 - `BrevoEventReconciliationClient` — Brevo statistics API polling
+- `ReconciliationSummary` — Return type of `runNowWithSummary()`
 - `EmailEventApplier` — Escalation logic (shared with webhook)
 - `CronJobGuard` — Atomic claim semantics
 - [DATABASE.md](DATABASE.md) — `er_email_events`, `er_cron_job_runs` schema
 - [LOG_CATEGORIES.md](LOG_CATEGORIES.md) — `LOG_CATEGORY_CRON_JOB_FAILURE`, `LOG_CATEGORY_EMAIL_WEBHOOK`
 - [DEPLOYMENT.md](DEPLOYMENT.md) — Cron job contract and timeout rationale
+
+---
+
+### ReconciliationSummary
+
+**Location**: `/usersc/classes/Cron/ReconciliationSummary.php`
+
+**Namespace**: `ElanRegistry\Cron`
+
+**Purpose**: `final readonly class` — outcome of one `BrevoEventReconciliationJob::runNowWithSummary()`
+run (#2061). Lets the manual "run now" admin script render what a run did
+inline, instead of requiring a trip to Admin → Logs. Mirrors
+`SuppressionSyncSummary`'s role for the sibling suppression-sync job (#1923).
+
+**Key Features**:
+
+- Pure value object — no behavior, just readonly properties
+- **Car-write granularity, not event granularity**: `matchedCount` and
+  `skippedCount` are incremented per car-write, not per event, because one
+  Brevo event can match several cars (a shared verified email) and each
+  car's write succeeds or fails independently. A single event matching 3
+  cars where 2 writes succeed and 1 fails contributes +2 to `matchedCount`
+  AND +1 to `skippedCount` simultaneously. As a direct consequence,
+  `eventsExamined` is **not** the sum of the other counts — it is the only
+  field answering "how many events did Brevo return," in a different unit
+  than the car-write counts
+
+**Constructor** (all params required except `pollFailed`):
+
+```php
+public function __construct(
+    public int $matchedCount,
+    public int $unmatchedCount,
+    public int $skippedCount,
+    public array $eventTypeCounts,   // array<string, int>, keyed on Brevo's raw event name
+    public int $eventsExamined,
+    public int $ignoredByTagCount,
+    public int $pagesFetched,
+    public bool $pollFailed = false,
+)
+```
+
+**Used By**:
+
+- `BrevoEventReconciliationJob::runNowWithSummary()` — Constructs and returns it
+- `app/admin/scripts/maintenance/27-Reconcile-Brevo-Events.php` — Renders it inline
+
+**See Also**:
+
+- `BrevoEventReconciliationJob` — Producer
+- `SuppressionSyncSummary` — Sibling DTO for the suppression-sync job, contrasting per-contact vs. this class's per-car-write counting
 
 ---
 

@@ -35,23 +35,26 @@ class FakeBrevoEventReconciliationClient extends BrevoEventReconciliationClient
     public array $fetchArgs = [];
 
     /**
-     * @param list<object> $events Returned verbatim by every fetchEvents() call.
+     * @param list<object>|null $events Returned verbatim by every fetchEvents()
+     *        call. Null scripts a poll failure — the same contract the real
+     *        client's `fetchEvents()` now has (#2061).
      */
-    public function __construct(private array $events = [])
+    public function __construct(private ?array $events = [])
     {
     }
 
     /**
-     * @return list<object> Stub events shaped like the SDK's
+     * @return list<object>|null Stub events shaped like the SDK's
      *         GetEmailEventReportEvents (the vendored SDK is not on the unit
-     *         suite's autoloader, so real model instances aren't available).
+     *         suite's autoloader, so real model instances aren't available),
+     *         or null to script a poll failure.
      */
     public function fetchEvents(
         \DateTimeImmutable $startDate,
         \DateTimeImmutable $endDate,
         int $limit,
         int $offset
-    ): array {
+    ): ?array {
         $this->fetchCalls++;
         $this->fetchArgs[] = [
             'start' => $startDate,
