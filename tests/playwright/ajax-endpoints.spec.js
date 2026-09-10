@@ -198,25 +198,6 @@ test.describe('Registry-Specific AJAX Endpoints', () => {
     expect([200, 401, 403]).toContain(response.status());
   });
 
-  test('admin user details endpoint requires admin permissions', async ({ page }) => {
-    // Unauthenticated request — requireAdminAjax() checks login before CSRF
-    // (usersc/includes/custom_functions.php:224), so this always 403s on the
-    // auth check regardless of the CSRF token's validity. Same shape as
-    // 'owner contact endpoint requires authentication' above; the sibling
-    // process-car-details.php shares the same requireAdminAjax() guard but
-    // has no equivalent unauthenticated-403 test of its own yet (#1773).
-    const response = await page.request.post('app/admin/includes/process-user-details.php', {
-      form: {
-        user_id: '1',
-        csrf: 'test_token'
-      }
-    });
-
-    expect(response.status()).toBe(403);
-    const jsonResponse = await response.json();
-    expect(jsonResponse).toHaveProperty('success', false);
-  });
-
   test('carListConfig.newCarIds on car list page is a JSON int array', async ({ page }) => {
     // Verifies that CarShowcaseService::getNewCarIds() emits valid JSON to the page.
     // The value is embedded in the inline script block as
@@ -815,5 +796,31 @@ test.describe('Issue #1913 — public read-only DataTables endpoints survive a l
     expect(response.status()).toBe(200);
     const jsonResponse = await response.json();
     expect(jsonResponse).toHaveProperty('success', true);
+  });
+});
+
+test.describe('Admin AJAX Endpoints — Unauthenticated Access', () => {
+  // Deliberately outside the describe block above, which logs in via
+  // beforeEach for every test in it. The bare `request` fixture (not
+  // page.request) carries no cookies of its own — same idiom as
+  // e2e/not-logged-in.spec.js — so this genuinely exercises
+  // requireAdminAjax()'s login check (usersc/includes/custom_functions.php:224),
+  // which runs before the CSRF check (:231) and short-circuits the response
+  // before CSRF is ever evaluated. Asserting the exact 'Unauthorized access'
+  // message (not just the status code) pins this to the auth branch
+  // specifically, so the test can't silently start passing on the CSRF
+  // branch instead if a future edit reorders the guard.
+  test('admin user details endpoint rejects an unauthenticated request', async ({ request }) => {
+    const response = await request.post('app/admin/includes/process-user-details.php', {
+      form: {
+        user_id: '1',
+        csrf: 'test_token'
+      }
+    });
+
+    expect(response.status()).toBe(403);
+    const jsonResponse = await response.json();
+    expect(jsonResponse).toHaveProperty('success', false);
+    expect(jsonResponse).toHaveProperty('message', 'Unauthorized access');
   });
 });
