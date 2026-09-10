@@ -18,7 +18,8 @@ use ElanRegistry\LogCategories;
  * CronJobGuard interval are bypassed — an operator triggering this has already
  * made the scheduling decision the guard exists to make — and, unlike the
  * nightly path's single windowed page, a full unwindowed walk of Brevo's
- * suppression list is performed, bounded by the job's page-count safety cap.
+ * suppression list is performed, bounded by the job's page-count AND
+ * wall-clock safety caps.
  *
  * Repeatable maintenance, not a one-time fix, hence `scripts/maintenance/`
  * (see CLAUDE.md). Safe to run as often as wanted: every write is idempotent —
@@ -73,7 +74,7 @@ if (!isAdmin()) {
                                 <h5><i class="fa fa-info-circle"></i> What this script does:</h5>
                                 <ul class="mb-0">
                                     <li>Polls Brevo's blocked-contacts list for every suppressed address: hard bounces, spam complaints, and unsubscribes</li>
-                                    <li>Runs a <strong>full backfill</strong> with no date window — unlike the nightly job's single 48-hour page — walking up to 500 pages (about 50,000 contacts) before stopping at its safety cap</li>
+                                    <li>Runs a <strong>full backfill</strong> with no date window — unlike the nightly job's single 48-hour page — walking up to 500 pages (about 50,000 contacts), stopping early if that page count or a 20-second time limit is reached first</li>
                                     <li>Maps Brevo's reason codes onto the registry's bounce and suppression flags through the same <code>EmailEventApplier</code> a live webhook event uses, so an imported suppression flags a car identically to a live one</li>
                                     <li>Skips any reason code it does not recognize rather than guessing — unmapped codes are tallied in the breakdown below and logged</li>
                                     <li>Bypasses the normal 20-hour cron guard, so it runs even if the scheduled job has already run today</li>
@@ -101,6 +102,32 @@ if (!isAdmin()) {
                             <div class="card-body">
                                 <?php
                                 try {
+                                    // A full backfill can walk up to MAX_BACKFILL_PAGES sequential
+                                    // Brevo requests — comfortably past a typical 30s
+                                    // max_execution_time. runFullBackfill() has its own
+                                    // MAX_BACKFILL_SECONDS (20s) wall-clock stop that degrades into
+                                    // a normal "capped" summary between pages, but that only helps
+                                    // if the PHP-level limit doesn't fire first — an execution
+                                    // timeout is not catchable (it skips every catch block below,
+                                    // including this one), so the operator would otherwise see a
+                                    // blank or truncated page instead of either a real summary or a
+                                    // real error. Raised here, not left to AbstractCronJob::runNow()
+                                    // (which deliberately skips set_time_limit() for the one-page
+                                    // execute() case — that reasoning does not cover this method).
+                                    //
+                                    // A bounded value, not 0 (unbounded): every other call site in
+                                    // this codebase (AbstractCronJob::run(), transfer-request.php)
+                                    // sizes this backstop rather than disabling it, and runNow()'s
+                                    // own docblock argues against silently extending an admin
+                                    // request's budget past what it was granted — set_time_limit(0)
+                                    // is the maximal form of exactly that. 120s is comfortably over
+                                    // the worst legitimate case (the loop's own 20s deadline plus one
+                                    // in-flight page's 30s client timeout, since the deadline check
+                                    // runs between pages, not mid-page — see MAX_BACKFILL_SECONDS's
+                                    // docblock), so this can only fire when something is genuinely
+                                    // wrong, which is what a backstop is for.
+                                    set_time_limit(120);
+
                                     $suppressionRepo = new CarRepository(dbi());
 
                                     // runNowWithSummary() returns the run's counts and can throw:
@@ -126,7 +153,7 @@ if (!isAdmin()) {
                                             $summary->alreadyFlaggedCount,
                                             $summary->skippedCount,
                                             $summary->pagesFetched,
-                                            $summary->backfillCapped ? ', stopped at page cap' : '',
+                                            $summary->backfillCapped ? ', stopped at a safety cap (page count or elapsed time)' : '',
                                             $summary->pollFailed ? ', a Brevo poll failed mid-run' : ''
                                         ));
                                     $recordingWarning = null;
@@ -137,7 +164,7 @@ if (!isAdmin()) {
                                     <?php if ($summary->backfillCapped): ?>
                                     <div class="alert alert-warning">
                                         <h5 class="mb-2"><i class="fa fa-exclamation-triangle"></i> Backfill incomplete — re-run this script</h5>
-                                        <p class="mb-0">The walk stopped at its page-count safety cap before reaching the end of Brevo's suppression list, so more suppressions likely remain unimported. Run this script again to continue — suppressions already imported are re-applied harmlessly.</p>
+                                        <p class="mb-0">The walk stopped at a safety cap (page count or elapsed time) before reaching the end of Brevo's suppression list, so more suppressions likely remain unimported. Run this script again to continue — suppressions already imported are re-applied harmlessly.</p>
                                     </div>
                                     <?php endif; ?>
 

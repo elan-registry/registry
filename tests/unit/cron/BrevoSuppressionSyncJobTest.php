@@ -590,6 +590,35 @@ final class BrevoSuppressionSyncJobTest extends TestCase
     }
 
     /**
+     * REGRESSION (found in review, #1923): the real generated Brevo SDK's
+     * `getContacts()` returns null, not an empty array, whenever the response
+     * carries no `contacts` key at all — the shape Brevo actually sends for
+     * an empty/exhausted suppression list. Confirmed directly against
+     * usersc/plugins/sendinblue/vendor/getbrevo/brevo-php/lib/Model/GetTransacBlockedContacts.php's
+     * deserializer. Without a `?? []` guard, `count(null)` throws a
+     * TypeError on exactly this condition — meaning every full backfill
+     * would fatal on its own final page, and any quiet nightly run would
+     * fatal too. The bug was invisible to every earlier test because the
+     * fake client's `page()` factory could only ever produce an empty
+     * *array*, never null, so no test could reach it — this test uses
+     * {@see FakeBrevoSuppressionSyncClient::pageWithNullContacts()}
+     * specifically to close that gap.
+     */
+    public function testBackfillTreatsNullContactsAsAnEmptyExhaustedPageRatherThanThrowing(): void
+    {
+        $summary = $this->makeJob(
+            [FakeBrevoSuppressionSyncClient::pageWithNullContacts()],
+            $client
+        )->runFullBackfill();
+
+        $this->assertSame(1, $client->fetchCalls);
+        $this->assertSame(1, $summary->pagesFetched);
+        $this->assertSame(0, $summary->contactsExamined);
+        $this->assertSame(0, $summary->matchedCount);
+        $this->assertFalse($summary->backfillCapped);
+    }
+
+    /**
      * A failed poll is explicitly NOT end-of-data, but it is also not retried:
      * the walk stops and returns what it has, and the page is not counted as
      * fetched — which is exactly how the loop tells a null poll from an empty
@@ -614,6 +643,11 @@ final class BrevoSuppressionSyncJobTest extends TestCase
         $this->assertSame(1, $summary->pagesFetched, 'A failed poll is not a fetched page');
         $this->assertSame(self::PAGE_SIZE, $summary->matchedCount, 'Work already applied must be reported');
         $this->assertFalse($summary->backfillCapped);
+        $this->assertTrue(
+            $summary->pollFailed,
+            'pollFailed must be true here specifically, so an operator can tell a Brevo'
+                . ' outage apart from the page-count cap — both mean "incomplete, re-run me"'
+        );
     }
 
     // --- Backfill page cap ------------------------------------------------
@@ -651,6 +685,51 @@ final class BrevoSuppressionSyncJobTest extends TestCase
             self::MAX_BACKFILL_PAGES,
             $client->fetchCalls,
             'No page may be fetched past the cap'
+        );
+    }
+
+    /**
+     * REGRESSION (found in review, #1923): the boundary the earlier
+     * on-the-final-iteration `capped` assignment got wrong — a suppression
+     * list that is genuinely exhausted exactly on the cap-th page (a SHORT
+     * final page, not a full one) must NOT be reported as capped. The prior
+     * implementation set `$capped = true` unconditionally on iterating the
+     * final permitted page, before knowing whether that page turned out to
+     * be short; the fix moved the check to after the loop, keyed on which
+     * stop condition actually fired. `testBackfillStopsAtItsPageCapAndFlagsTheSummary`
+     * above only proves the cap fires when there is *more* data past it
+     * (pages 501-505 unconsumed) — that scenario would also pass under the
+     * old buggy code, since the old bug only misfired when exhaustion and
+     * the cap coincide, which is exactly what this test isolates.
+     */
+    public function testBackfillEndingExactlyOnTheCapBoundaryIsNotFlaggedAsCapped(): void
+    {
+        $this->matchEveryEmailTo([1]);
+
+        $fullPage = FakeBrevoSuppressionSyncClient::page(array_fill(
+            0,
+            self::PAGE_SIZE,
+            FakeBrevoBlockedContact::withReason('owner@example.com', 'hardBounce')
+        ));
+
+        // MAX_BACKFILL_PAGES - 1 full pages, then a genuinely SHORT final
+        // page as exactly the MAX_BACKFILL_PAGESth fetch — the walk both
+        // exhausts the list and reaches the cap on the same page.
+        $pages = array_fill(0, self::MAX_BACKFILL_PAGES - 1, $fullPage);
+        $pages[] = FakeBrevoSuppressionSyncClient::page([
+            FakeBrevoBlockedContact::withReason('last@example.com', 'hardBounce'),
+        ]);
+
+        $summary = $this->makeJob($pages, $client)->runFullBackfill();
+
+        $this->assertFalse(
+            $summary->backfillCapped,
+            'Exhaustion and the page cap coinciding must report exhausted, not capped'
+        );
+        $this->assertSame(
+            self::MAX_BACKFILL_PAGES,
+            $client->fetchCalls,
+            'The walk must still reach exactly the cap-th page — no page beyond it'
         );
     }
 
@@ -724,25 +803,39 @@ final class BrevoSuppressionSyncJobTest extends TestCase
             FakeBrevoBlockedContact::withReason('already@example.com', 'contactFlaggedAsSpam'),
             FakeBrevoBlockedContact::withReason('unknown-a@example.com', 'hardBounce'),
             FakeBrevoBlockedContact::withReason('unknown-b@example.com', 'unsubscribedViaEmail'),
+            // Included specifically so contactsExamined/skippedCount can be
+            // distinguished from the three-bucket sum below — without a
+            // skipped contact in this fixture, a bug that wires
+            // contactsExamined to the bucket sum instead of the real row
+            // count would pass unnoticed.
+            FakeBrevoBlockedContact::withReason('skip@example.com', 'someFutureBrevoCode'),
         ])->runNowWithSummary();
 
         $this->assertSame(2, $summary->matchedCount);
         $this->assertSame(2, $summary->unmatchedCount);
         $this->assertSame(1, $summary->alreadyFlaggedCount);
+        $this->assertSame(1, $summary->skippedCount, 'The unrecognized-code contact reaches no bucket');
 
         $this->assertSame(
             5,
             $summary->matchedCount + $summary->unmatchedCount + $summary->alreadyFlaggedCount,
-            'The three buckets must sum to the number of contacts examined'
+            'The three flag-decision buckets must sum to the contacts that reached one'
+        );
+        $this->assertSame(
+            6,
+            $summary->contactsExamined,
+            'contactsExamined is the real row count, including the skipped contact the'
+                . ' three buckets above do not account for'
         );
 
         $this->assertSame(1, $summary->pagesFetched);
         $this->assertFalse($summary->backfillCapped);
+        $this->assertFalse($summary->pollFailed);
 
         // Only the three matched contacts (including the already-flagged one)
         // are tallied by reason code; unmatched contacts never reach the tally.
         $this->assertSame(
-            ['hardBounce' => 1, 'contactFlaggedAsSpam' => 2],
+            ['hardBounce' => 1, 'contactFlaggedAsSpam' => 2, 'unrecognized' => 1],
             $summary->reasonCodeCounts
         );
 
@@ -826,6 +919,32 @@ final class BrevoSuppressionSyncJobTest extends TestCase
         $this->assertSame(0, $summary->alreadyFlaggedCount);
 
         $log = $this->logsContaining('could not read current flags');
+        $this->assertNotEmpty($log);
+        $this->assertSame(LogCategories::LOG_CATEGORY_CRON_JOB_FAILURE, $log[0]['category']);
+    }
+
+    /**
+     * A distinct pre-check failure mode from the DB-exception case above:
+     * findByEmail() matches a car, but findById() then returns null for that
+     * same id — the row vanished between the two reads (deleted mid-run, or a
+     * read-consistency problem), not a DB error. Same fail-open behavior and
+     * same log category, but a different, specifically-worded log line, so an
+     * operator can tell the two apart during triage.
+     */
+    public function testCarVanishedBetweenLookupAndPreCheckStillAppliesTheSuppressionAndLogs(): void
+    {
+        $this->mockRepo->method('findByEmail')->willReturn([(object) ['id' => 1]]);
+        $this->mockRepo->method('findById')->willReturn(null);
+
+        $summary = $this->makeJobWithContacts([
+            FakeBrevoBlockedContact::withReason('owner@example.com', 'hardBounce'),
+        ])->runNowWithSummary();
+
+        $this->assertCount(1, $this->applier->calls, 'A vanished car must never cost a suppression');
+        $this->assertSame(1, $summary->matchedCount);
+        $this->assertSame(0, $summary->alreadyFlaggedCount);
+
+        $log = $this->logsContaining('vanished before the flag pre-check');
         $this->assertNotEmpty($log);
         $this->assertSame(LogCategories::LOG_CATEGORY_CRON_JOB_FAILURE, $log[0]['category']);
     }

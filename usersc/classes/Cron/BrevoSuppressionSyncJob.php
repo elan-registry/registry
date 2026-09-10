@@ -176,6 +176,38 @@ final class BrevoSuppressionSyncJob extends AbstractCronJob
      */
     private const MAX_BACKFILL_PAGES = 500;
 
+    /**
+     * Wall-clock ceiling on a single {@see self::runFullBackfill()} run, in
+     * seconds.
+     *
+     * `runFullBackfill()` is reached only via the admin script's
+     * `runNowWithSummary()`, never via the guarded `run()` — so it never
+     * passes through {@see AbstractCronJob::run()}'s own `set_time_limit()`
+     * backstop, and `AbstractCronJob::runNow()`'s documented reason for
+     * skipping that backstop (the web SAPI's own `max_execution_time`
+     * already bounds an admin page request) was written for a one-page
+     * `execute()`, not for a walk of up to `MAX_BACKFILL_PAGES` sequential
+     * HTTP calls. At `MAX_BACKFILL_PAGES` pages and `BrevoSuppressionSyncClient
+     * ::TIMEOUT_SECONDS` per call, the worst case is 500 × 30s — comfortably
+     * past a default 30s `max_execution_time`, which is not catchable
+     * (unlike a normal exception, a fatal from that limit skips every
+     * `catch` block between here and the request's end, so neither this
+     * loop's own logic nor the admin script's `try/catch(\Throwable)` would
+     * ever run — the operator would see a blank or truncated page instead of
+     * either a real summary or a real error).
+     *
+     * This constant is deliberately well under a typical PHP default (30s)
+     * multiplied by any single slow page, checked *between* pages so the
+     * loop can still finish the page in flight and return a real,
+     * `backfillCapped` summary — degrading into the same "re-run me" path a
+     * page-count cap produces, rather than risking the uncatchable fatal.
+     * Not a substitute for raising `max_execution_time` in the admin script
+     * itself (still worth doing, since a single very slow page could still
+     * exceed a low limit) — this is the second, independent backstop for a
+     * long *walk*, not a single request.
+     */
+    private const MAX_BACKFILL_SECONDS = 20;
+
     /** Matches er_email_events.event's column width (migration 20260907141817). */
     private const MAX_EVENT_LENGTH = 32;
 
@@ -349,8 +381,25 @@ final class BrevoSuppressionSyncJob extends AbstractCronJob
         $reasonCodeCounts = [];
 
         $pagesWalked = 0;
+        $deadline = microtime(true) + self::MAX_BACKFILL_SECONDS;
+        $timedOut = false;
 
         for ($page = 0; $page < self::MAX_BACKFILL_PAGES; $page++) {
+            if (microtime(true) >= $deadline) {
+                // Stops BETWEEN pages, never mid-page — the page in flight
+                // always finishes and its work is counted, so this cannot
+                // itself produce a torn/half-applied page. See
+                // MAX_BACKFILL_SECONDS's docblock for why this exists
+                // alongside the page-count cap: an uncaught PHP execution
+                // timeout would skip every catch block including the admin
+                // script's, leaving the operator with neither a summary nor
+                // an error. Reuses the same `backfillCapped` signal as the
+                // page-count cap, since both mean the identical thing to an
+                // operator: "incomplete, re-run me."
+                $timedOut = true;
+                break;
+            }
+
             $pagesWalked = $page + 1;
             $pageSummary = $this->syncPage(null, null, $page * self::PAGE_SIZE);
 
@@ -380,11 +429,13 @@ final class BrevoSuppressionSyncJob extends AbstractCronJob
             }
         }
 
-        // Capped only when the loop ran out of pages without either of the
-        // other two stop conditions firing — see the method docblock's case 3
-        // for why this is evaluated after the loop rather than on the final
-        // permitted page unconditionally.
-        $capped = !$exhausted && !$pollFailed && $pagesWalked >= self::MAX_BACKFILL_PAGES;
+        // Capped when the loop ran out of pages OR ran out of time, without
+        // either of the other two stop conditions (exhaustion, poll failure)
+        // firing first — see the method docblock's case 3 for why the
+        // page-count check is evaluated after the loop rather than on the
+        // final permitted page unconditionally, and MAX_BACKFILL_SECONDS's
+        // docblock for why a wall-clock stop needs the identical signal.
+        $capped = !$exhausted && !$pollFailed && ($timedOut || $pagesWalked >= self::MAX_BACKFILL_PAGES);
 
         if ($capped) {
             // No LogCategories constant fits this cleanly, and the closest one
@@ -400,11 +451,14 @@ final class BrevoSuppressionSyncJob extends AbstractCronJob
             // — this line exists so the fact survives past that one page view,
             // not as its only route to the operator.
             logger(0, LogCategories::LOG_CATEGORY_EMAIL_WEBHOOK, sprintf(
-                'Brevo suppression sync: full backfill stopped at its %d-page safety cap'
-                . ' (%d contacts examined) — more pages likely remain.'
+                'Brevo suppression sync: full backfill stopped at its %s safety cap after'
+                . ' %d page(s) (%d contacts examined) — more pages likely remain.'
                 . ' Re-run the backfill to continue; already-imported suppressions are'
                 . ' re-applied harmlessly.',
-                self::MAX_BACKFILL_PAGES,
+                $timedOut
+                    ? sprintf('%d-second', self::MAX_BACKFILL_SECONDS)
+                    : sprintf('%d-page', self::MAX_BACKFILL_PAGES),
+                $pagesWalked,
                 $matched + $unmatched + $alreadyFlagged + $skipped
             ));
         }
@@ -516,7 +570,19 @@ final class BrevoSuppressionSyncJob extends AbstractCronJob
         /** @var array<string, int> $reasonCodeCounts */
         $reasonCodeCounts = [];
 
-        $contacts = $result->getContacts();
+        // getContacts() is declared to return an array, but the real
+        // generated SDK's deserializer leaves the underlying field null
+        // whenever the response carries no `contacts` key at all — verified
+        // directly against usersc/plugins/sendinblue/vendor/getbrevo/brevo-php/lib/Model/GetTransacBlockedContacts.php,
+        // which sets `$this->container['contacts'] = isset($data['contacts'])
+        // ? $data['contacts'] : null`. That is exactly the shape Brevo returns
+        // for an empty or exhausted suppression list (`{"count":0}` with no
+        // `contacts` key) — i.e. the routine end-of-list condition every full
+        // backfill eventually reaches, and every quiet nightly run. Without
+        // this guard, `count(null)` throws a TypeError here on precisely that
+        // condition. The sibling BrevoEventReconciliationClient::fetchEvents()
+        // already guards the equivalent case with `?? []`; this mirrors it.
+        $contacts = $result->getContacts() ?? [];
         $contactsExamined = count($contacts);
 
         foreach ($contacts as $contact) {

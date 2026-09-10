@@ -81,6 +81,19 @@ class FakeBrevoSuppressionSyncClient extends BrevoSuppressionSyncClient
         ]);
     }
 
+    /**
+     * Build a page whose `getContacts()` returns null rather than an empty
+     * array — the real SDK's actual deserialized shape for an
+     * empty/exhausted suppression list, per its own constructor
+     * (`isset($data['contacts']) ? $data['contacts'] : null`), as opposed to
+     * {@see self::page()}'s `page([])`, which stores an empty array and
+     * therefore cannot exercise the null-safety this method is for.
+     */
+    public static function pageWithNullContacts(int $count = 0): \Brevo\Client\Model\GetTransacBlockedContacts
+    {
+        return new \Brevo\Client\Model\GetTransacBlockedContacts(['count' => $count]);
+    }
+
     public function fetchBlockedContacts(
         ?\DateTimeImmutable $startDate,
         ?\DateTimeImmutable $endDate,
@@ -134,16 +147,24 @@ if (!class_exists(\Brevo\Client\Model\GetTransacBlockedContacts::class, false)) 
     {
         private readonly int $count;
 
-        /** @var list<\Tests\Support\FakeBrevoBlockedContact> */
-        private readonly array $contacts;
+        /** @var list<\Tests\Support\FakeBrevoBlockedContact>|null */
+        private readonly ?array $contacts;
 
         /**
+         * `contacts` is genuinely nullable — matching the real generated
+         * SDK's deserializer, which leaves it null whenever the response
+         * carries no `contacts` key at all (an empty/exhausted result).
+         * Omitting the key entirely from `$data` (rather than passing
+         * `'contacts' => []`) is what this stand-in and
+         * {@see FakeBrevoSuppressionSyncClient::page()} use to script that
+         * exact condition for tests.
+         *
          * @param array{count?: int, contacts?: list<\Tests\Support\FakeBrevoBlockedContact>}|null $data
          */
         public function __construct(?array $data = null)
         {
             $this->count = $data['count'] ?? 0;
-            $this->contacts = $data['contacts'] ?? [];
+            $this->contacts = $data['contacts'] ?? null;
         }
 
         public function getCount(): int
@@ -152,9 +173,9 @@ if (!class_exists(\Brevo\Client\Model\GetTransacBlockedContacts::class, false)) 
         }
 
         /**
-         * @return list<\Tests\Support\FakeBrevoBlockedContact>
+         * @return list<\Tests\Support\FakeBrevoBlockedContact>|null
          */
-        public function getContacts(): array
+        public function getContacts(): ?array
         {
             return $this->contacts;
         }

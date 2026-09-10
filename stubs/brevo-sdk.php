@@ -235,7 +235,14 @@ namespace Brevo\Client\Model {
         }
 
         /**
-         * @return \Brevo\Client\Model\GetTransacBlockedContactsContacts[]
+         * The real generated SDK leaves this null whenever the response
+         * carries no `contacts` key (an empty/exhausted result) — confirmed
+         * against the vendored SDK's deserializer, which does
+         * `isset($data['contacts']) ? $data['contacts'] : null`. Declared
+         * nullable here (unlike the SDK's own inaccurate non-nullable
+         * PHPDoc) so a caller's `?? []` guard is not flagged as dead code.
+         *
+         * @return \Brevo\Client\Model\GetTransacBlockedContactsContacts[]|null
          */
         public function getContacts()
         {
