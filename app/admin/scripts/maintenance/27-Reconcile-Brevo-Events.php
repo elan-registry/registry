@@ -162,6 +162,7 @@ if (!isAdmin()) {
                                     <?php if ($summary->eventTypeCounts === []): ?>
                                     <p class="text-muted mb-0">No events were recorded in this run.</p>
                                     <?php else: ?>
+                                    <p class="text-muted small mb-2">Counted per car, like the matched total above — an event matching several cars adds one to its row for each successful write.</p>
                                     <div class="table-responsive">
                                         <table class="table table-sm table-striped mb-0">
                                             <thead>
