@@ -91,8 +91,8 @@ npm run test:e2e:dev:report        # View test report
 E2E tests use session persistence to avoid Turnstile challenges. Local and
 Dev tiers instead use a live login (`auth.setup.js` / `auth-dev.setup.js` /
 `auth-non-admin.setup.js`, see [ENVIRONMENT.md](../development/ENVIRONMENT.md)),
-with credentials from `TEST_USERNAME`/`TEST_PASSWORD` (admin) and
-`TEST_USERNAME2`/`TEST_PASSWORD2` (non-admin) in `.env.local` — plain HTTP,
+with credentials from `E2E_DEV_ADMIN_USERNAME`/`E2E_DEV_ADMIN_PASSWORD` (admin) and
+`E2E_DEV_NONADMIN_USERNAME`/`E2E_DEV_NONADMIN_PASSWORD` (non-admin) in `.env.local` — plain HTTP,
 no Turnstile challenge. Test and Production use a pre-generated storageState
 file described below, since both run HTTPS with an active Cloudflare
 Turnstile challenge that an automated browser cannot solve.

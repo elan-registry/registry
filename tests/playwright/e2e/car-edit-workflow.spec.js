@@ -30,7 +30,7 @@
 //
 // Runs against Local/Dev only (MAMP, default http://localhost:9999/ElanRegistry/Registry/
 // — override with PLAYWRIGHT_BASE_URL, see docs/development/ENVIRONMENT.md;
-// requires TEST_USERNAME/TEST_PASSWORD in .env.local).
+// requires E2E_DEV_ADMIN_USERNAME/E2E_DEV_ADMIN_PASSWORD in .env.local).
 //
 // NOT enrolled on Test or Production (see playwright.config.test.js /
 // playwright.config.prod.js testMatch, which excludes this file) — deferred
@@ -65,7 +65,7 @@ test.describe('Car edit — year/model form workflow (#1949)', () => {
       testInfo.skip();
     }
     const usesLiveLogin = !process.env.E2E_AUTH_TIER;
-    if (usesLiveLogin && (!process.env.TEST_USERNAME || !process.env.TEST_PASSWORD)) {
+    if (usesLiveLogin && (!process.env.E2E_DEV_ADMIN_USERNAME || !process.env.E2E_DEV_ADMIN_PASSWORD)) {
       testInfo.skip();
     }
   });

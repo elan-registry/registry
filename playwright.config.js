@@ -4,7 +4,7 @@ const { defineConfig, devices } = require('@playwright/test');
 const path = require('path');
 
 // storageState paths are resolved once at config-load time, before any
-// project runs — so if TEST_USERNAME/TEST_PASSWORD are unset, auth.setup.js
+// project runs — so if E2E_DEV_ADMIN_USERNAME/E2E_DEV_ADMIN_PASSWORD are unset, auth.setup.js
 // will skip (leaving no file) and every `admin` test would fail with
 // ENOENT instead of skipping. Checking the credentials directly here (not
 // just file existence, which can't self-heal on a fresh checkout — the file
@@ -12,7 +12,7 @@ const path = require('path');
 // lets the project include storageState only when auth.setup.js is actually
 // going to produce or already has produced it.
 const authFile = path.join(__dirname, 'tests/playwright/.auth/user.json');
-const hasCredentials = !!(process.env.TEST_USERNAME && process.env.TEST_PASSWORD);
+const hasCredentials = !!(process.env.E2E_DEV_ADMIN_USERNAME && process.env.E2E_DEV_ADMIN_PASSWORD);
 
 /**
  * @see https://playwright.dev/docs/test-configuration

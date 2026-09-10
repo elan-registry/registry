@@ -39,7 +39,7 @@
 // app/assets/js/car-edit.js's submitCarForm()), causes the saved car's
 // publicly-visible owner-contact fields (owner name and location, the two
 // buildCarDetails() writes that details.php actually renders) to reflect
-// TEST_USERNAME's CURRENT profile. That is only true if the real
+// E2E_DEV_ADMIN_USERNAME's CURRENT profile. That is only true if the real
 // buildCarDetails() executed and its Owner refresh ran — a save.php that
 // merely persisted the submitted form fields (comments) without touching
 // owner columns, or a broken refresh that wrote null/wrong values, would
@@ -50,7 +50,7 @@
 //
 // Runs against Local/Dev only (MAMP, default http://localhost:9999/ElanRegistry/Registry/
 // — override with PLAYWRIGHT_BASE_URL, see docs/development/ENVIRONMENT.md;
-// requires TEST_USERNAME/TEST_PASSWORD in .env.local).
+// requires E2E_DEV_ADMIN_USERNAME/E2E_DEV_ADMIN_PASSWORD in .env.local).
 //
 // NOT enrolled on Test or Production (see playwright.config.test.js /
 // playwright.config.prod.js testMatch, which excludes this file). Enrollment
@@ -81,7 +81,7 @@ test.describe('Car edit — real buildCarDetails() owner-column refresh (#1962)'
   // check alone (the pattern mirrored from
   // tests/playwright/e2e/admin.spec.js) is not sufficient on Local/Dev:
   // per playwright.config.js's own `hasCredentials` guard, when
-  // TEST_USERNAME/TEST_PASSWORD are unset, auth.setup.js skips cleanly with
+  // E2E_DEV_ADMIN_USERNAME/E2E_DEV_ADMIN_PASSWORD are unset, auth.setup.js skips cleanly with
   // no storageState file — but the `admin` project itself still runs,
   // unauthenticated, rather than being skipped (see CLAUDE.md's
   // "Local Playwright tests" note). Without this check, this test's own
@@ -90,7 +90,7 @@ test.describe('Car edit — real buildCarDetails() owner-column refresh (#1962)'
   // credential as a real regression.
   //
   // Test/Production authenticate via a saved storageState, not
-  // TEST_USERNAME/TEST_PASSWORD, and are already gated by check-auth-admin
+  // E2E_DEV_ADMIN_USERNAME/E2E_DEV_ADMIN_PASSWORD, and are already gated by check-auth-admin
   // failing loudly before `admin` runs (see docs/testing/PLAYWRIGHT_E2E.md)
   // — so the credential check below only applies when E2E_AUTH_TIER is unset
   // (Local/Dev). This is preparatory: this test isn't enrolled on Test/
@@ -101,13 +101,13 @@ test.describe('Car edit — real buildCarDetails() owner-column refresh (#1962)'
       testInfo.skip();
     }
     const usesLiveLogin = !process.env.E2E_AUTH_TIER;
-    if (usesLiveLogin && (!process.env.TEST_USERNAME || !process.env.TEST_PASSWORD)) {
+    if (usesLiveLogin && (!process.env.E2E_DEV_ADMIN_USERNAME || !process.env.E2E_DEV_ADMIN_PASSWORD)) {
       testInfo.skip();
     }
   });
 
   test('editing an unrelated field writes the owner\'s current name and location onto the car', async ({ page }) => {
-    // Read TEST_USERNAME's current profile fname/location from account.php's
+    // Read E2E_DEV_ADMIN_USERNAME's current profile fname/location from account.php's
     // account summary before touching anything, so the assertion below is
     // against a value this test observed rather than one baked into
     // .env.local (which can drift independently of the live DB).
@@ -115,7 +115,7 @@ test.describe('Car edit — real buildCarDetails() owner-column refresh (#1962)'
     await page.waitForLoadState('domcontentloaded');
 
     const currentFname = await page.locator('#fname').inputValue();
-    expect(currentFname, 'Precondition: TEST_USERNAME must have a first name set').not.toBe('');
+    expect(currentFname, 'Precondition: E2E_DEV_ADMIN_USERNAME must have a first name set').not.toBe('');
 
     // Discover a car the logged-in account actually owns via
     // usersc/account.php's per-car "Update Car" button (same pattern as

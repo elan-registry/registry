@@ -13,7 +13,7 @@ const { expect } = require('@playwright/test');
  * @param {string} username - Username for login
  * @param {string} password - Password for login
  */
-async function login(page, username = process.env.TEST_USERNAME || 'test@example.com', password = process.env.TEST_PASSWORD || 'defaultTestPass') {
+async function login(page, username = process.env.E2E_DEV_ADMIN_USERNAME || 'test@example.com', password = process.env.E2E_DEV_ADMIN_PASSWORD || 'defaultTestPass') {
   // Navigate to login page directly (skip /users/login.php 302 redirect)
   await page.goto('usersc/login.php', { waitUntil: 'networkidle' });
 
@@ -70,7 +70,7 @@ async function login(page, username = process.env.TEST_USERNAME || 'test@example
     throw new Error(
       `Login failed: UserSpice error toast appeared instead of navigating away ` +
       `from login.php. Toast text: "${(toastText || '').trim()}". ` +
-      `Common causes: wrong TEST_USERNAME/TEST_PASSWORD, changed login form ` +
+      `Common causes: wrong E2E_DEV_ADMIN_USERNAME/E2E_DEV_ADMIN_PASSWORD, changed login form ` +
       `markup/selectors, or rate-limiting (RATE_LIMIT_LOGIN).`
     );
   }
@@ -121,7 +121,7 @@ async function logout(page) {
  * @param {string} username - Username for login
  * @param {string} password - Password for login
  */
-async function ensureLoggedIn(page, username = process.env.TEST_USERNAME || 'test@example.com', password = process.env.TEST_PASSWORD || 'defaultTestPass') {
+async function ensureLoggedIn(page, username = process.env.E2E_DEV_ADMIN_USERNAME || 'test@example.com', password = process.env.E2E_DEV_ADMIN_PASSWORD || 'defaultTestPass') {
   const alreadyLoggedIn = await isLoggedIn(page);
   if (!alreadyLoggedIn) {
     await login(page, username, password);

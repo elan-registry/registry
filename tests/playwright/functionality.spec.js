@@ -72,8 +72,8 @@ test.describe('Core Functionality After Refactoring', () => {
 test.describe('Add Car form — no premature validation on page load', () => {
   test.beforeEach(async ({ page }) => {
     // Skip when test credentials are not configured in .env.local
-    if (!process.env.TEST_USERNAME || !process.env.TEST_PASSWORD) {
-      test.skip(true, 'Set TEST_USERNAME and TEST_PASSWORD in .env.local to run authenticated tests');
+    if (!process.env.E2E_DEV_ADMIN_USERNAME || !process.env.E2E_DEV_ADMIN_PASSWORD) {
+      test.skip(true, 'Set E2E_DEV_ADMIN_USERNAME and E2E_DEV_ADMIN_PASSWORD in .env.local to run authenticated tests');
     }
     await ensureLoggedIn(page);
     await page.goto('app/owner/cars/edit.php', { waitUntil: 'networkidle' });
